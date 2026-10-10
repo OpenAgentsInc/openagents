@@ -1,0 +1,120 @@
+diff --git a/crates/coder-new/src/plugin_tools.rs b/crates/coder-new/src/plugin_tools.rs
+index 09ba8c386ca8f59e5d8bcf62874e3c8028786d73..147bfe54f555a6d316c3f95663005580c2120c5e 100644
+--- a/crates/coder-new/src/plugin_tools.rs
++++ b/crates/coder-new/src/plugin_tools.rs
+@@ -205,7 +205,7 @@ impl ExecutionSettings {
+             guidance.push_str("The OpenAgents CLI ships beside Coder and is available through openagents_cli for requested OpenAgents work. Answer conversational questions directly; read [\"--help\"] or a group's --help only when you need a command you do not know. Use argument arrays and its --json output. The command covers computers, Coder tasks and issues, settings, knowledge, plugin registries, relay identities, shared worlds, and wallets. It enforces each command's existing rights; do not assume a chat tool grants access.\n");
+         }
+         if self.shell {
+-            guidance.push_str("The Run tool runs shell commands with full filesystem and network access by default. Follow the user's instructions and any explicit host approval policy; a rejected command stays rejected.\n");
++            guidance.push_str("The Run tool runs shell commands with full filesystem and network access by default. Follow the user's instructions and any explicit host approval policy; a rejected command stays rejected. Prefer foreground builds/tests so output streams live. Begin long commands with a descriptive shell comment. When waiting for background jobs, stream their logs and print periodic status rather than silently sleeping; in this repository use python3 scripts/wait-job-logs.py LOGDIR build tests --timeout 100.\n");
+         }
+         if self.registered(ToolBinding::Microcoder) {
+             guidance.push_str("The Microcoder plugin runs the existing local coding loop. Delegate concrete work with a complete task and relevant constraints; its commands have full filesystem and network access unless the host explicitly installs an approval policy. It uses the selected OpenRouter model when this chat has that provider, otherwise the existing Codex or Claude Code login. Jev judgments are used only when the Jev plugin is enabled and configured.\n");
+diff --git a/scripts/test-wait-job-logs.py b/scripts/test-wait-job-logs.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..3f37f2b966fe9a14f6a837f3b3781cd1ffede035
+--- /dev/null
++++ b/scripts/test-wait-job-logs.py
+@@ -0,0 +1,32 @@
++import pathlib
++import subprocess
++import tempfile
++import unittest
++
++SCRIPT = pathlib.Path(__file__).with_name('wait-job-logs.py')
++
++
++class WaitLogsTests(unittest.TestCase):
++    def test_success_and_large_logs(self):
++        with tempfile.TemporaryDirectory() as directory:
++            root = pathlib.Path(directory)
++            (root / 'build.log').write_text('x' * 70000 + '\nlast line\n')
++            (root / 'build.exit').write_text('0')
++            result = subprocess.run(['python3', str(SCRIPT), directory, 'build'], capture_output=True, text=True)
++            self.assertEqual(result.returncode, 0)
++            self.assertIn('last line', result.stdout)
++            self.assertIn('finished: exit 0', result.stdout)
++
++    def test_failure_and_timeout(self):
++        with tempfile.TemporaryDirectory() as directory:
++            root = pathlib.Path(directory)
++            (root / 'tests.exit').write_text('2')
++            result = subprocess.run(['python3', str(SCRIPT), directory, 'tests'], capture_output=True)
++            self.assertEqual(result.returncode, 1)
++            result = subprocess.run(['python3', str(SCRIPT), directory, 'build', '--timeout', '.05', '--interval', '.01'], capture_output=True)
++            self.assertEqual(result.returncode, 124)
++            self.assertIn(b'build running', result.stdout)
++
++
++if __name__ == '__main__':
++    unittest.main()
+diff --git a/scripts/wait-job-logs.py b/scripts/wait-job-logs.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..00724d073170fd4d29a76addf43c6831b0888b68
+--- /dev/null
++++ b/scripts/wait-job-logs.py
+@@ -0,0 +1,63 @@
++#!/usr/bin/env python3
++"""Stream NAME.log while waiting for NAME.exit in a job directory."""
++import argparse
++import pathlib
++import time
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('directory', type=pathlib.Path)
++    parser.add_argument('names', nargs='+')
++    parser.add_argument('--timeout', type=float, default=100)
++    parser.add_argument('--interval', type=float, default=5)
++    args = parser.parse_args()
++    if args.timeout <= 0 or args.interval <= 0:
++        parser.error('timeout and interval must be positive')
++    if any(pathlib.Path(name).name != name for name in args.names):
++        parser.error('job names must be basenames')
++    started = time.monotonic()
++    offsets = dict.fromkeys(args.names, 0)
++    while True:
++        statuses = []
++        codes = []
++        for name in args.names:
++            log = args.directory / (name + '.log')
++            try:
++                with log.open('rb') as stream:
++                    if log.stat().st_size < offsets[name]:
++                        offsets[name] = 0
++                    stream.seek(offsets[name])
++                    # Bound each poll without loading a large log in memory.
++                    data = stream.read(65536)
++                    offsets[name] = stream.tell()
++                if data:
++                    print(f'[{name}] {data.decode("utf-8", errors="replace")}', end='', flush=True)
++            except FileNotFoundError:
++                pass
++            try:
++                code = int((args.directory / (name + '.exit')).read_text().strip())
++                codes.append(code)
++                statuses.append(f'{name} finished: exit {code}')
++            except FileNotFoundError:
++                statuses.append(f'{name} running')
++            except ValueError:
++                print(f'Invalid exit status for {name}', flush=True)
++                return 1
++        elapsed = time.monotonic() - started
++        print(f'\n[{elapsed:05.1f}s] ' + '; '.join(statuses), flush=True)
++        if len(codes) == len(args.names):
++            # Drain any remaining log chunks before returning.
++            if any((args.directory / (n + '.log')).exists() and
++                   (args.directory / (n + '.log')).stat().st_size > offsets[n]
++                   for n in args.names):
++                continue
++            return int(any(codes))
++        if elapsed >= args.timeout:
++            print('Wait timed out; background jobs have not been canceled.', flush=True)
++            return 124
++        time.sleep(min(args.interval, args.timeout - elapsed))
++
++
++if __name__ == '__main__':
++    raise SystemExit(main())

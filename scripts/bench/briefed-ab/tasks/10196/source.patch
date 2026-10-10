@@ -1,0 +1,113 @@
+diff --git a/crates/openagents-web/README.md b/crates/openagents-web/README.md
+index 0ad9437e2a64133463159bacb2707e468ddf87ed..4dd767c5cb975d42f4801ede38fdf9b5a16ce801 100644
+--- a/crates/openagents-web/README.md
++++ b/crates/openagents-web/README.md
+@@ -49,6 +49,7 @@ everything it serves is compiled in or read from this repository.
+ | `POST /ask` | The homepage terminal's questions (`src/ask.rs`, #10106): a NIP-CJ job to the OpenAgents chat worker through `relay.openagents.com`, surface `web`, signed with a key derived from the visitor's `oa_visitor` cookie and the server's secret (`OPENAGENTS_WEB_ASK_SALT`, random per process when unset). The worker answers about OpenAgents only and never offers Coder, a computer, a command, or a screen. One question at a time and 6 a minute per visitor, 32 waiting at once for everyone, besides the worker's quotas. Streams newline-delimited JSON | Answers from the live chat worker. |
+ | `/docs`, `/docs/{slug}` | `content/docs/*.md`, short guides in reading order, compiled in: what OpenAgents is, download (`/docs/install` redirects to `/docs/download`), connecting a computer, chat, Coder, plugins (what they are, writing, testing, publishing and sharing), the Verse, the Grid (with its screenshot, `static/verse-grid.jpg`, captured from the live relay with `crates/verse/examples/overlook_capture.rs`), privacy and security, and help | Renders. |
+ | `/live` | `src/pages/live.rs` and `static/flow.js` (#10197): the route map drawn from the pay host's flow snapshot, each streamed event animated as the desktop deck's `routes-live` scene does (white request out, gold payment back, gold share to the author, gold payout to the wallet, a ring for a bonus), a totals ticker, the last event's time, and the recent events. Reads `/api/flow/snapshot` and `/api/flow/stream` on this origin (#10195); never draws synthetic traffic. The mapping's tests are `static/flow.test.js` (`node --test`) | Says the flow stream is unreachable until `/api/flow/*` answers. |
++| `/stats` | `src/pages/stats.rs` (#10196): drawn on the server from the pay host's public `/stats` and `/flow/snapshot` (#10195): received, paid out, pending, calls, and author earnings; plugins (calls, earned, paid out); authors (earned, paid out, pending); the 20 most recent author payouts; 24 hour and 30 day bars of sats received (inline SVG); the reconciliation state and the last event's time. Linked from `/live` and linking back. No script; public fields only, never a payer | Says the statistics are unreachable without a pay host, and "No payments yet" with an empty ledger. |
+ | `/terms`, `/privacy` | `content/legal/*.md`, the published text (2026-09-03), compiled in | Renders. |
+ | `/connect` | Landing page for `https://openagents.com/connect#<code>` | Renders; no script, no referrer. |
+ | `/.well-known/apple-app-site-association`, `/.well-known/assetlinks.json` | Universal link and App Link claims for `/connect` | Serves. |
+@@ -91,7 +92,7 @@ cargo test -p openagents-web
+ 
+ The tests check that every public page answers `200` on a development
+ server with the header, the footer's links to the terms and the policy, and
+-no script except the homepage terminal's and `/live`'s map; the homepage's single download
++no script except the homepage terminal's and `/live`'s map (`/stats` is drawn on the server); the homepage's single download
+ link and its terminal; The Grid guide's screenshot; `/ask`'s stream, cookie,
+ bounds, and one-at-a-time rule, against an in-process door;
+ the download page and the `/install`, `/desktop`, and `/docs/install` redirects; that the legal pages carry the
+diff --git a/crates/openagents-web/src/pages/live.rs b/crates/openagents-web/src/pages/live.rs
+index 419c80862ffcd14ecbda2bfecceb62cada3bb04b..69b61b6c184f499560a267b981859951458ca515 100644
+--- a/crates/openagents-web/src/pages/live.rs
++++ b/crates/openagents-web/src/pages/live.rs
+@@ -55,7 +55,9 @@ payments coming back, shares going on to a plugin's author, and payouts to the a
+ wallet; a gold dot with a ring is a bonus. Payers show only as a daily alias.</p>\
+ <h2>Recent events</h2>\
+ <ol class=\"flow-recent\" id=\"flow-recent\"><li class=\"dim\">None yet.</li></ol>\
+-<noscript><p class=\"dim\">Turn on JavaScript to see the live map.</p></noscript>\
++<p><a href=\"/stats\">[ Stats ]</a> <span class=\"dim\">The totals, plugins, authors, and payouts \
++as tables.</span></p>\
++<noscript><p class=\"dim\">Turn on JavaScript to see the live map, or read the numbers on <a href=\"/stats\">Stats</a>.</p></noscript>\
+ </section>\
+ <script src=\"/static/flow.js\" defer></script>"
+     )
+diff --git a/crates/openagents-web/src/pages/mod.rs b/crates/openagents-web/src/pages/mod.rs
+index 908db4dcb9b255e60b39bc0f35acea41566193d2..4dba78e4c18adb2e3d4c7b45739c8a04f2463c1c 100644
+--- a/crates/openagents-web/src/pages/mod.rs
++++ b/crates/openagents-web/src/pages/mod.rs
+@@ -6,6 +6,7 @@ mod download;
+ mod home;
+ mod live;
+ mod profile;
++mod stats;
+ 
+ use axum::Router;
+ 
+diff --git a/crates/openagents-web/src/upstream.rs b/crates/openagents-web/src/upstream.rs
+index d6793732485caec64eb41dd81330574975c8df1e..41b69604f485ebd1c242f584ff799f5d912e7147 100644
+--- a/crates/openagents-web/src/upstream.rs
++++ b/crates/openagents-web/src/upstream.rs
+@@ -33,7 +33,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
+ 
+ /// The paths this site answers itself, exactly or as a prefix. `/app`, the
+ /// local task browser, is never proxied; the host guard keeps it local.
+-const OWNED_EXACT: [&str; 20] = [
++const OWNED_EXACT: [&str; 21] = [
+     "/",
+     "/download",
+     "/install",
+@@ -43,6 +43,7 @@ const OWNED_EXACT: [&str; 20] = [
+     "/privacy",
+     "/connect",
+     "/live",
++    "/stats",
+     "/ask",
+     "/health",
+     "/app",
+diff --git a/crates/openagents-web/static/site.css b/crates/openagents-web/static/site.css
+index c64315ad9ebe84c8c0fda195655240bc9f102310..d03affabba7bcc7dd61ad772184a650416743133 100644
+--- a/crates/openagents-web/static/site.css
++++ b/crates/openagents-web/static/site.css
+@@ -154,6 +154,15 @@ details summary{cursor:pointer;color:var(--w75)}
+ .flow-recent{list-style:none;padding:0;margin:0 0 1rem}
+ .flow-recent li{border-bottom:1px solid var(--w25);padding:.25rem 0;overflow-wrap:anywhere}
+ 
++/* /stats: the payment numbers as tables and bar series, no script. */
++.stats-id{overflow-wrap:anywhere}
++.stats-series{margin:0 0 1.5rem}
++.stats-series svg{display:block;width:100%;height:4rem;border-bottom:1px solid var(--w25)}
++.stats-slot{fill:transparent}
++.stats-bar{fill:var(--w75)}
++.stats-series g:hover .stats-bar{fill:var(--w100)}
++.stats-series figcaption{color:var(--w50);margin:.25rem 0 0}
++
+ @media (max-width:640px){
+   html{font-size:13px}
+   .site-header nav,.site-footer,main{width:calc(100% - 32px)}
+@@ -161,4 +170,5 @@ details summary{cursor:pointer;color:var(--w75)}
+   .facts{grid-template-columns:repeat(2,minmax(0,1fr))}
+   .box{padding:1.25rem 1.5ch 1rem}
+   .flow{aspect-ratio:1/1}
++  .stats-totals{grid-template-columns:repeat(2,minmax(0,1fr))}
+ }
+diff --git a/docs/payments/2026-10-02-central-receive-and-splits.md b/docs/payments/2026-10-02-central-receive-and-splits.md
+index 7be7062989b11a06620d84e6984cd29842807019..7735348ea7131676b61d67e196ca29b594444139 100644
+--- a/docs/payments/2026-10-02-central-receive-and-splits.md
++++ b/docs/payments/2026-10-02-central-receive-and-splits.md
+@@ -432,7 +432,12 @@ stays `unknown` until a reconciler updates it. Configure the website with
+   under it. With no traffic it shows the last real events, never synthetic
+   ones, and says when the last event was.
+ - **`openagents.com/stats`:** the numbers as tables and small series charts,
+-  linked from `/live`.
++  linked from `/live`. Drawn on the server
++  (`crates/openagents-web/src/pages/stats.rs`, #10196) from the pay host's
++  `/stats` and `/flow/snapshot`: totals, plugins, authors, recent author
++  payouts, 24 h and 30 d bars, the reconciliation state, and the last
++  event's time. No script; it says when the pay host is unreachable or no
++  payment has settled yet.
+ - **Desktop deck scene `routes-live`:** `RouteFuture`'s renderer fed by the
+   stream instead of `traffic()`'s hash slots: each event maps to a leaf by
+   node id, and its pulses run along `path_to(leaf)`. Episode decks can show

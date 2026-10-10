@@ -1,0 +1,17 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10285,
+  "title": "microcoder local_run replay tests fail on main",
+  "body": "Reported by the #10254 and #10281 agents: two `microcoder` `local_run` tests (a replay test among them) fail on clean origin/main, along with `recipe_class_eval` in coder-delegate. Identify each failing test, find whether it's a stale fixture/recording after recent changes (lean session 0fd51fe58f, prompt change, #10281 67d7c09e4b) or a real regression, and fix (re-record fixtures only if the new behavior is intended, and say why).",
+  "fix": "47dd087f72bc2f57cae516bac3095118439d3703",
+  "parent": "056562971410ea99a0355760c1a0d36776309505",
+  "package": "microcoder",
+  "source_files": [],
+  "test_files": [
+    "crates/microcoder/src/repository/tests.rs"
+  ],
+  "test_names": [],
+  "fix_lines": 9
+}

@@ -1,0 +1,779 @@
+diff --git a/INVARIANTS.md b/INVARIANTS.md
+index d0c0008c7966f6e70a38cfeb80ac86e88d201afc..75458dec2117d69649118972196a50b020d92a5a 100644
+--- a/INVARIANTS.md
++++ b/INVARIANTS.md
+@@ -105,10 +105,10 @@ See [Coder on this computer](docs/desktop/local-coder.md#what-changed).
+ | The Mac's menu bar is built from the shared command registry (`openagents_chat_app::commands::registry`) and its chat items run only those commands, by their registry keys, through the same path as the palette; it holds no chat logic of its own, lists every registry command (at most ten "Switch to" rows), and mirrors each command's enabled state. The update strip's button carries Settings' update intent, so it installs only what the updater already verified (the Desktop updates rows). | New on 2026-09-30 ([#10023](https://github.com/OpenAgentsInc/openagents/issues/10023)). | `the_menu_bar_is_the_command_registry`, `tags_resolve_to_registry_keys_and_system_rows_run_nothing_here` in `crates/openagents-desktop/src/appmenu.rs`; `menu_bar_items_run_the_registry_commands`, `a_downloaded_update_shows_the_strip_and_its_button_runs_the_update` in `crates/openagents-desktop/src/native_tests.rs` |
+ | Every pairing grants full permission: a QR code (redeemed over iroh or on the relay), a copied code, a nearby approval, `openagents connect invite`, and `openagents connect --ssh` all carry the pairing grant, `observe`, `operate`, `terminal`, `review`, `access_read`, and `access_admin` (`Rights::pairing`). No screen asks which rights a phone gets: the connect screen (`DSK-01`) and the nearby prompt (`DSK-04`) have no checkbox. The phone keeps a new grant only with exactly those rights; the narrower sets earlier codes carried (`observe,operate`, with or without `terminal`) are refused. To narrow a phone, the owner removes it. | New on 2026-09-29 ([#9970](https://github.com/OpenAgentsInc/openagents/issues/9970)) with a terminal checkbox, off by default. Owner-directed on 2026-09-29 ([#9965](https://github.com/OpenAgentsInc/openagents/issues/9965)): the checkbox is gone and every pairing is full permission, access rights included, since a phone paired from the owner's unlocked screen is the owner's and the phone app lists, invites, and removes devices. | `every_code_carries_the_full_rights_an_owner_phone_uses` in `crates/openagents-desktop/src/codes.rs`; `no_screen_asks_about_a_terminal` in `crates/openagents-desktop/src/tests.rs`; `codes_are_minted_rotated_and_cancelled_over_the_socket` in `crates/coder-host/tests/control.rs`; `only_the_connect_code_rights_are_kept` in `crates/coder-host/src/client/iroh.rs`; `unknown_operations_and_fields_do_not_parse` in `crates/openagents-connect/tests/control.rs` |
+ | The desktop app's pairing QR code (and `openagents connect invite`'s) carries the connect link `https://openagents.com/connect#<payload>`, so a phone's system camera opens the OpenAgents app straight into pairing; the payload rides only in the URL fragment, which a browser never sends. Readers accept exactly that prefix or the `openagents-connect:` text and parse both to the same code; another scheme, host, path, or a query is no code. The phone app hands a link it was opened with only to its own pairing. openagents.com's `/connect` page runs no script, and its content security policy allows none, so nothing reads or sends the fragment; its app-association files claim only `/connect`, for `HQWSG26L43.com.openagents.app` and `com.openagents.app` signed with the release key. | New on 2026-09-29 ([#9992](https://github.com/OpenAgentsInc/openagents/issues/9992)), owner-directed: the iPhone Camera answered "No usable data found" for the bare `openagents-connect:` string. It narrows NIP-HOST's rule that a connect code's capability never appears in a URL: the link's fragment is the one exception. No custom URL scheme is registered, because any app can claim one and the payload is a bearer secret; a verified universal link or App Link reaches only this app. | `the_link_form_carries_the_code_only_in_its_fragment` in `crates/openagents-connect/tests/code.rs`; `only_computer_codes_classify` and `the_prefixes_are_the_connect_codes` in `crates/coder-computers` (`connect`); `a_link_from_the_camera_opens_connect_and_pairs` and `the_app_shows_connect_and_its_packet_never_carries_the_iroh_key` in `crates/openagents-mobile`; `the_qr_code_carries_the_link_form`, `a_full_size_code_fits` in `crates/openagents-desktop` (`qr`) and `the_code_scans_over_the_brightest_backdrop` (bin); `the_connect_page_runs_no_script_and_points_to_the_app`, `the_apple_association_names_the_app_and_only_connect`, `the_android_association_names_the_release_key` in the `coder` repository's `bins/coder-serve/src/app_links.rs` (commit `c8821c72eb`, not deployed), the reference for whichever server hosts openagents.com |
+-| The desktop app's pairing and task paths hold no host or owner secret key. It reaches the host only over the local control socket; the keychain key source runs in the host, and on every launch the app upgrades an old-style setup silently, off the UI thread, before registering its own agent: it runs the bundled `coder host adopt detect` and then `coder host adopt` as child processes (never in the window, and only when `coder host help` names the keychain), so the items are written by the program that reads them; each prints one line of JSON with no secret. There is no question and no adoption screen: when a check refuses, the old setup keeps running, the app registers nothing beside it, logs the reason, and shows its normal screens with at most one quiet line. The start runs on its own worker lane, so the window keeps asking the control socket while it runs. When Coder has not answered for 20 seconds the screens say so plainly with **Try again**, never a wait with no end, and the app runs the same start again at most once a minute (or on **Try again**); it never starts anything against the in-process host (`--fake-host`, whose start registers, upgrades, and reads nothing), with `--no-login-agent`, or while the person must allow the agent in Login Items. The home screen lists no task the owner archived. No desktop screen shows a banned word (key, host, relay, grant, workspace, tailnet, Tailscale, npub, nsec, and the wireframe's list). | New on 2026-09-29 ([#9970](https://github.com/OpenAgentsInc/openagents/issues/9970)); adoption moved into `coder host adopt` on 2026-09-29, and made silent with the question removed the same day ([#9965](https://github.com/OpenAgentsInc/openagents/issues/9965)). Extended on 2026-09-29: the start runs on its own lane, and a Coder that does not answer is said plainly with **Try again** and started again at most once a minute, after the owner's window sat on "Waiting for Coder" with no way forward. | `pairing_sources_never_reach_the_host_keychain`, `no_screen_shows_a_banned_word`, `no_screen_asks_about_an_earlier_setup`, `the_code_text_is_never_a_word_on_screen` in `crates/openagents-desktop/src/tests.rs`; `reports_carry_no_secret_and_round_trip`, `an_earlier_setup_upgrades_silently_then_registers`, `a_refused_check_keeps_the_earlier_setup_running_with_one_quiet_line`, `an_older_coder_never_adopts`, `a_test_that_reaches_the_real_home_fails` in `crates/openagents-desktop/src/migrate.rs`; `launch_starts_coder_once_and_asks_nothing`, `a_host_that_never_answers_says_so_and_starts_coder_again`, `try_again_asks_now_and_starts_coder_again`, `a_stall_starts_nothing_the_app_does_not_manage`, `the_in_process_host_keeps_answering_for_hours` in `crates/openagents-desktop/src/model.rs`; `a_slow_start_does_not_keep_the_window_from_the_host`, `the_fake_host_starts_nothing_on_this_computer` in `crates/openagents-desktop/src/worker.rs`; `the_fake_host_window_never_waits_for_coder` in `crates/openagents-desktop/src/shell.rs`; `archived_tasks_are_not_listed` in `crates/openagents-desktop/src/worker.rs` |
++| The desktop app's pairing and task paths hold no host or owner secret key. It reaches the host only over the local control socket; the keychain key source runs in the host, and on every launch the app upgrades an old-style setup silently, off the UI thread, before registering its own agent: it runs the bundled `coder host adopt detect` and then `coder host adopt` as child processes (never in the window, and only when `coder host help` names the keychain), so the items are written by the program that reads them; each prints one line of JSON with no secret. There is no question and no adoption screen: when a check refuses, the old setup keeps running, the app registers nothing beside it, logs the reason, and shows its normal screens with at most one quiet line. The start runs on its own worker lane, so the window keeps asking the control socket while it runs. When Coder has not answered for 20 seconds the screens say so plainly with **Try again**, never a wait with no end, and the app runs the same start again at most once a minute (or on **Try again**); it never starts anything against the in-process host (`--fake-host`, whose start registers, upgrades, and reads nothing), with `--no-login-agent`, or while the person must allow the agent in Login Items, and a dev build (no `OPENAGENTS_DESKTOP_RELEASE=1`) never runs `coder host adopt`: an earlier setup keeps running as it was. The home screen lists no task the owner archived. No desktop screen shows a banned word (key, host, relay, grant, workspace, tailnet, Tailscale, npub, nsec, and the wireframe's list). | New on 2026-09-29 ([#9970](https://github.com/OpenAgentsInc/openagents/issues/9970)); adoption moved into `coder host adopt` on 2026-09-29, and made silent with the question removed the same day ([#9965](https://github.com/OpenAgentsInc/openagents/issues/9965)). Extended on 2026-09-29: the start runs on its own lane, and a Coder that does not answer is said plainly with **Try again** and started again at most once a minute, after the owner's window sat on "Waiting for Coder" with no way forward. | `pairing_sources_never_reach_the_host_keychain`, `no_screen_shows_a_banned_word`, `no_screen_asks_about_an_earlier_setup`, `the_code_text_is_never_a_word_on_screen` in `crates/openagents-desktop/src/tests.rs`; `reports_carry_no_secret_and_round_trip`, `an_earlier_setup_upgrades_silently_then_registers`, `a_refused_check_keeps_the_earlier_setup_running_with_one_quiet_line`, `an_older_coder_never_adopts`, `a_dev_build_never_adopts`, `a_test_that_reaches_the_real_home_fails` in `crates/openagents-desktop/src/migrate.rs`; `launch_starts_coder_once_and_asks_nothing`, `a_host_that_never_answers_says_so_and_starts_coder_again`, `try_again_asks_now_and_starts_coder_again`, `a_stall_starts_nothing_the_app_does_not_manage`, `the_in_process_host_keeps_answering_for_hours` in `crates/openagents-desktop/src/model.rs`; `a_slow_start_does_not_keep_the_window_from_the_host`, `the_fake_host_starts_nothing_on_this_computer` in `crates/openagents-desktop/src/worker.rs`; `the_fake_host_window_never_waits_for_coder` in `crates/openagents-desktop/src/shell.rs`; `archived_tasks_are_not_listed` in `crates/openagents-desktop/src/worker.rs` |
+ | Desktop task operations on the same-user control socket are signed inside the resident host as its locally established owner and pass the portable NIP-HOST client, normal admission, exact-packet retries, and durable task-owner dispatch. The window receives no host or owner key, and task creation grants no execution authority. Read-only history uses the phone observer client and only the configured Coder source. A desktop chat's Coder run on this computer is not a task operation on the socket: it is the local run above, started by the person at the computer. | New on 2026-09-30 ([#10014](https://github.com/OpenAgentsInc/openagents/issues/10014)); [local broker design](docs/desktop/local-coder.md). | `desktop_creates_retries_reads_and_cancels_through_the_phone_clients` in `crates/coder/tests/desktop_local_coder.rs`; existing same-user peer and device-right checks in `coder-host` and `coder-access` |
+ | The desktop app's Watch is a spectator of the Grid, never a player, and exists only on the **Verse** page (opened from the sidebar's footer): no other page loads, connects, or draws any of the world, so chat, Settings, and the rest have a plain background; opening the Verse page loads the spectator, and leaving it drops the spectator with its relay connection and GPU resources and stops Play. It subscribes to `verse-bare` pose frames and entity states only and publishes nothing (no event, presence, avatar, name, chat, or input to the world); its one signed message is a NIP-42 `AUTH` when the relay asks, with a fresh key kept in memory for that connection. It shows only what the relay carries, so an empty Grid stays empty, and it draws no frame while the window is hidden and closes its relay connection after 20 seconds hidden. The views keep full contrast over it, and the QR code still scans. | New on 2026-09-29 ([#9982](https://github.com/OpenAgentsInc/openagents/issues/9982)). Narrowed on 2026-10-01 ([#10071](https://github.com/OpenAgentsInc/openagents/issues/10071)), owner-directed: the Grid was the backdrop behind every page; it is now its own page and nothing of it runs elsewhere. | `the_world_loads_only_on_the_verse_page_and_is_released_when_left` in `crates/openagents-desktop/src/grid.rs`; `a_spectator_sees_a_walking_player_and_publishes_nothing` in `crates/verse/tests/spectator.rs`; `an_offline_grid_is_empty_and_draws_no_avatar_of_its_own`, `an_unoccupied_world_leaves_the_bodies_at_rest` in `crates/verse` (`spectator`); `frames_come_at_thirty_a_second_while_visible_and_never_while_hidden`, `reduce_motion_draws_one_still_frame_per_showing` in `crates/openagents-desktop/src/backdrop.rs`; `the_code_scans_over_the_brightest_backdrop`, `the_window_screenshot_with_the_grid_behind_it_scans` in `crates/openagents-desktop` (bin); `an_opaque_view_pixel_wins_and_a_clear_one_shows_the_dimmed_backdrop` in `crates/rust-native-desktop` |
+-| Desktop Play is explicit and joins only the phone's `verse-bare` Grid through the shared Rust scene. Watch, startup, chat, and pairing create no player. Its dedicated world key and Gym connection live in protected platform storage under `com.openagents.desktop.verse`, separate from every host, owner, pairing, and chat key; an unreadable identity is never replaced. The chat's Gym uses that same world key as its trainer key, as the phone does (read, or made once and verified, off the window's thread when the real window starts, never by the fake host, captures, or tests; held in memory only and never shown or logged), signs hosted Gym requests with it, and encrypts its saved runs under it at `~/.openagents/desktop/gym`; reading it creates no player. Panel admission and execution grants remain shared with mobile. Escape, focus loss, hidden windows, modals, resize, and departure clear held input and release cursor capture. | New on 2026-09-30 ([#10038](https://github.com/OpenAgentsInc/openagents/issues/10038)); the chat Gym's trainer key added the same day ([#10060](https://github.com/OpenAgentsInc/openagents/issues/10060)). | `verse_surface` tests in `coder-mobile`; `an_unconfigured_window_reads_no_trainer` in `openagents-desktop`; `grid_play_owns_input_and_releases_it_on_escape_focus_and_departure`, `grid::controls` and `grid::store` tests in `openagents-desktop`; `a_gpu_surface_stays_inside_nested_scroll_clips` in `rust-native-desktop` |
++| Desktop Play is explicit and joins only the phone's `verse-bare` Grid through the shared Rust scene. Watch, startup, chat, and pairing create no player. Its dedicated world key and Gym connection live in protected platform storage under `com.openagents.desktop.verse`, separate from every host, owner, pairing, and chat key; an unreadable identity is never replaced. A dev build (any build without `OPENAGENTS_DESKTOP_RELEASE=1`, which only the packaging scripts set; `cargo build --release` included) keeps its own items under `com.openagents-dev.desktop.verse` and never reads, prompts for, or replaces the release app's. The chat's Gym uses that same world key as its trainer key, as the phone does (read, or made once and verified, off the window's thread only when a hosted Gym run first needs it, never at launch, when a chat opens, or by the fake host, captures, or tests; held in memory only and never shown or logged), signs hosted Gym requests with it, and encrypts its saved runs under it at `~/.openagents/desktop/gym`; reading it creates no player. A keychain read or write that fails (denied, cancelled, or locked) is remembered for the session: nothing asks again until the app restarts, and the Gym says so in one plain line. Panel admission and execution grants remain shared with mobile. Escape, focus loss, hidden windows, modals, resize, and departure clear held input and release cursor capture. | New on 2026-09-30 ([#10038](https://github.com/OpenAgentsInc/openagents/issues/10038)); the chat Gym's trainer key added the same day ([#10060](https://github.com/OpenAgentsInc/openagents/issues/10060)). Narrowed on 2026-10-01 ([#10096](https://github.com/OpenAgentsInc/openagents/issues/10096)) after a dev build prompted for the release item at launch: the key is read lazily, dev builds use their own service, and a failure asks once. | `verse_surface` tests in `coder-mobile`; `an_unconfigured_window_has_no_trainer`, `a_dev_build_uses_its_own_keychain_service`, `a_failed_keychain_call_is_never_repeated_this_session` in `openagents-desktop`; `the_trainer_key_is_read_only_when_a_hosted_run_starts`, `a_denied_trainer_key_is_asked_for_once_and_said_plainly` in `openagents-desktop` (bin); `a_lazy_trainer_key_is_asked_for_once_by_a_hosted_start` in `openagents-chat-app`; `grid_play_owns_input_and_releases_it_on_escape_focus_and_departure`, `grid::controls` and `grid::store` tests in `openagents-desktop`; `a_gpu_surface_stays_inside_nested_scroll_clips` in `rust-native-desktop` |
+ | A host serving chats hands a `coder-pair:` invitation to its read-only Coder chats only to a device that holds a current grant with `observe`: in its answer to a redemption on the iroh enroll ALPN, and in answer to NIP-HOST `chats.invite`, which the access layer admits only with `observe`. A refused device gets none, and a redemption on the relay carries none. The invitation admits only the host's Coder task store, as tailnet admission's does. Every pairing path (QR over iroh, nearby, a connect code on the relay) ends with the same usable chat pairing: the phone asks with `chats.invite` for each computer it may observe and holds no chat pairing for that lasts another day, so it also renews before the 29-day chat grant ends. | New on 2026-09-29 ([#9974](https://github.com/OpenAgentsInc/openagents/issues/9974)); `chats.invite` for every path and renewal on 2026-09-29 ([#9987](https://github.com/OpenAgentsInc/openagents/issues/9987)). | `a_phone_that_pairs_over_iroh_gets_a_chat_invitation_and_a_refused_one_does_not`, `a_phone_paired_over_iroh_reads_its_chats_and_renews_them_on_its_link`, `a_phone_that_redeems_a_code_on_the_relay_gets_its_chats_from_chats_invite`, and `a_host_that_serves_no_chats_refuses_chats_invite_as_unavailable` in `crates/coder-host/tests/iroh.rs`; `a_nearby_phone_reads_its_chats_with_an_invitation_from_chats_invite` in `crates/coder-host/tests/nearby.rs`; `a_phone_paired_on_the_relay_asks_for_its_chats_on_its_link` in `crates/coder-computers/tests/connect_live.rs`; `chats_invite_requires_observe_and_answers_only_a_chat_invitation` in `crates/coder-access/tests/wire.rs`; `crates/openagents-mobile/src/chat_invites.rs` tests |
+ | A host's chat threads reach a device only through NIP-HOST `thread.list` and `thread.read`, which the access layer admits only with `observe`, and `thread.send`, `thread.stop`, and `thread.run`, only with `operate`, on any link (iroh, the relay, CAP/CJ), under the same grant, epoch, and freshness checks as every other operation. They run the same chat service commands on the same store (`<host root>/basic-chats`) as the local operator socket, so a device never reaches the socket and a thread the desktop app or `openagents chat` started is the one the device reads. A thread answer carries titles, turns, the streaming reply, and a link to Coder work, and encodes in at most 48 KiB. Each turn may carry the router's offers, cards, and follow-up chips; the typed judgment (tier, answer, route, bank, and judgment text) stays on the host. A page over 48 KiB drops the oldest turns' extras before it drops turns. An older page with no extras means there are none. A send appends at most one message per send ID; other text under a held ID, a thread that is answering, and an archived thread refuse as `conflict`. A stop runs the chat service's own stop only while the thread is answering the message whose send ID it names, so it is idempotent per thread and send ID and a stale one never stops a later reply; the partial is kept as a reply marked stopped, and the words stay "Stopped receiving this reply. The hosted worker may still finish." A phone shows a stop control on a host's thread only after the host answered a no-op `thread.stop` (a fresh send ID) with `dispatched`: an older host, or a device without `operate`, gets no stop control, never a dead one. A tap on that stop, **Open Coder**, or **Stop Coder too** that names a view a newer render replaced still counts when the current view offers the same control, resolved against the current view; every other stale tap is ignored. Stopping a reply never stops a Coder task; that is offered separately, through the task's own stop. A thread's link to a Coder run `openagents chat` started on this computer (host `local`) names the host's own key only when the host's task owner holds that task and its local-run record for that thread, so the device opens, follows, and interrupts it through the normal task paths and grant checks; a run in another task store reaches the device only as `outside` (task, project, time), with no link, and the phone shows words and no Coder control for it. `outside` is omitted when absent. `thread.run` asks the host to start Coder for that thread through the same handoff the desktop uses, and its receipt names the task. It grants no execution authority beyond that handoff. An older host refuses it as `malformed` or `unsupported`. Thread reads are the one exception to reply retention: the host keeps no reply for them, so polling a streaming thread never grows the access store. | New on 2026-09-30 ([#10035](https://github.com/OpenAgentsInc/openagents/issues/10035)); `thread.stop` on 2026-09-30 ([#10039](https://github.com/OpenAgentsInc/openagents/issues/10039)); offers, cards, follow-ups, and `thread.run` on 2026-09-30 ([#10040](https://github.com/OpenAgentsInc/openagents/issues/10040)); local runs through the host on 2026-09-30 ([#10043](https://github.com/OpenAgentsInc/openagents/issues/10043)). | `a_paired_phone_reads_a_host_thread_and_continues_it`, `thread_reads_are_not_retained_so_polling_never_fills_the_store`, `a_phone_stops_a_host_threads_streaming_reply_and_the_owner_reads_it_stopped` in `crates/coder-host/tests/threads.rs`; `a_computers_streaming_reply_stops_from_the_phone_and_offers_to_stop_its_coder`, `an_older_computer_shows_no_stop_control_while_its_reply_streams` in `crates/openagents-mobile/src/coder_tab_tests.rs`; `a_streaming_reply_stops_through_the_computer_and_keeps_its_partial`, `an_older_computer_shows_no_stop_control` in `crates/openagents-chat-app/src/host_threads.rs`; `thread_reads_need_observe_sends_need_operate_and_reads_are_not_retained`, `thread_stop_needs_operate_names_a_send_id_and_is_retained` in `crates/coder-access/tests/wire.rs`; `a_page_fits_its_bound_keeping_the_newest_turns`, `extras_drop_before_turns_and_an_older_page_has_none` in `crates/coder-access/src/thread.rs`; `thread_run_needs_operate_and_is_retained` in `crates/coder-access/tests/wire.rs`; `a_phone_runs_coder_from_a_host_threads_offer` in `crates/coder-host/tests/threads.rs`; `a_host_threads_offer_is_read_back_and_run_starts_coder` in `crates/openagents-chat-app/src/host_threads.rs`; `a_host_thread_shows_the_same_run_coder_chip_and_follow_ups` in `crates/openagents-chat-app/src/coder_tab.rs`; `a_local_run_on_the_hosts_store_is_visible_and_stoppable_from_a_phone` in `crates/coder-host/tests/threads.rs`; `a_host_on_the_same_store_holds_the_local_run_and_a_phone_stops_it` in `crates/coder/src/task/local.rs`; `a_local_run_outside_the_host_is_named_only_when_present` in `crates/coder-access/src/thread.rs`; `a_local_run_outside_the_computers_host_is_said_plainly_with_no_dead_controls` in `crates/openagents-mobile/src/coder_tab_tests.rs` |
+ | Threads `openagents chat` kept without a host (`<chat home>/threads`, under the chat home's own device key) move into this computer's host store (`<host root>/basic-chats`, re-encrypted under the host's key) only when that host starts as this user's own host (root `~/.openagents/host`, or `OPENAGENTS_CHAT_HOME` set) or when `openagents chat` finds a running host and sends the same-user control operation `chat_migrate`. A move keeps every thread's ID, title, times, turns with their router metadata and send IDs, lane, archived and pinned state, and Coder link, so the thread's ATIF export is unchanged. It never loses a thread: each thread becomes a durable record in the host's store before the chat home gets its marker (`threads-migrated.json`), and only then is the old store renamed `threads-moved-<time>`, never deleted; a thread the host already holds is left as it is; a record that can't be read stops the move before the marker. A second move is a no-op. A scratch store, a relative path, or a home another user owns (or a link) is never moved. | New on 2026-09-30 ([#10037](https://github.com/OpenAgentsInc/openagents/issues/10037)). Model boundary: a `--local` process writing to the old store while the host renames it may leave that one write in the renamed store, still readable with the chat home's key. | `threads_move_whole_and_their_export_is_unchanged`, `a_second_move_is_a_no_op`, `a_move_stopped_halfway_resumes_and_loses_nothing`, `a_thread_the_host_already_changed_is_left_as_it_is`, `scratch_stores_and_unreadable_records_are_never_moved` in `crates/openagents-chat/src/migrate.rs`; `threads_kept_without_a_host_join_it_at_start_and_when_the_command_asks` in `crates/coder-host/tests/control.rs` |
+diff --git a/crates/openagents-chat-app/src/gym.rs b/crates/openagents-chat-app/src/gym.rs
+index 6b89d56ac8de0227242607cb3a9775bb176bfcf1..016946f299d322f3fd64da2fe2b782b74dc752f0 100644
+--- a/crates/openagents-chat-app/src/gym.rs
++++ b/crates/openagents-chat-app/src/gym.rs
+@@ -539,6 +539,13 @@ pub struct Gym {
+     seen: std::collections::BTreeSet<String>,
+     /// Structural events for the playtest log, taken by the app.
+     logged: Vec<playtest::session::Code>,
++    /// The trainer key is read only when a hosted run needs it
++    /// ([`Gym::wait_for_world`], the desktop): the runs waiting for it.
++    lazy_world: bool,
++    awaiting_world: Vec<String>,
++    /// Why the trainer key can't be had this session, once the app said
++    /// so ([`Gym::world_unavailable`]): hosted runs refuse with it at once.
++    world_denied: Option<String>,
+ }
+ 
+ fn unix_now() -> u64 {
+@@ -579,9 +586,67 @@ impl Gym {
+             on_menu: false,
+             seen: std::collections::BTreeSet::new(),
+             logged: Vec::new(),
++            lazy_world: false,
++            awaiting_world: Vec::new(),
++            world_denied: None,
+         }
+     }
+ 
++    /// Read the trainer key only when a hosted run needs it: a hosted
++    /// start without it waits (the run shows Starting) and
++    /// [`Gym::wants_world`] asks the app for it. The desktop does this so
++    /// opening the app or a chat never asks the keychain (#10096).
++    pub fn wait_for_world(&mut self) {
++        self.lazy_world = true;
++    }
++
++    /// A hosted run is waiting for the trainer key: the app should read it
++    /// now, then call [`Gym::set_world`] or [`Gym::world_unavailable`].
++    pub fn wants_world(&self) -> bool {
++        self.world.is_none() && self.world_denied.is_none() && !self.awaiting_world.is_empty()
++    }
++
++    /// The trainer key couldn't be read this session (denied, cancelled,
++    /// or broken): the waiting runs, and every hosted start after, refuse
++    /// with `why`, a plain line. Nothing asks for it again.
++    pub fn world_unavailable(&mut self, why: &str) {
++        self.world_denied = Some(why.to_owned());
++        for id in std::mem::take(&mut self.awaiting_world) {
++            if let Some(run) = self.run_mut(&id) {
++                run.state = RunState::Refused {
++                    why: why.to_owned(),
++                    connect: false,
++                };
++            }
++        }
++        self.save();
++    }
++
++    /// Keep this Gym in `store` from now on, once its key is known: what
++    /// was saved there comes back, with this session's runs and steps on
++    /// top, and it's all saved.
++    pub fn attach_store(&mut self, store: Cache) {
++        let mut saved: Saved = store.read("gym").ok().flatten().unwrap_or_default();
++        let session = std::mem::take(&mut self.saved);
++        saved.gym |= session.gym;
++        saved.first_run = saved.first_run.max(session.first_run);
++        if session.first_talk.is_some() {
++            saved.first_talk = session.first_talk;
++        }
++        saved
++            .runs
++            .retain(|run| session.runs.iter().all(|new| new.id != run.id));
++        saved.runs.extend(session.runs);
++        while saved.runs.len() > MAX_RUNS_KEPT {
++            saved.runs.remove(0);
++        }
++        saved.level_seen = saved.level_seen.max(session.level_seen);
++        saved.eval_xp_seen = saved.eval_xp_seen.max(session.eval_xp_seen);
++        self.saved = saved;
++        self.store = Some(store);
++        self.save();
++    }
++
+     /// The playtest log's events since the last call.
+     pub fn take_logged(&mut self) -> Vec<playtest::session::Code> {
+         std::mem::take(&mut self.logged)
+@@ -685,10 +750,27 @@ impl Gym {
+         }
+         if first {
+             self.resume();
++            // The hosted runs that waited for the key start now.
++            for id in std::mem::take(&mut self.awaiting_world) {
++                let Some(run) = self.run(&id).cloned() else {
++                    continue;
++                };
++                self.saved.runs.retain(|kept| kept.id != id);
++                let _ = self.start(
++                    &run.talk,
++                    run.turn,
++                    &run.offer,
++                    &run.tool,
++                    run.purpose,
++                    run.draft,
++                    None,
++                    Some(run.runs),
++                );
++            }
+         }
+     }
+ 
+-    #[cfg(test)]
++    /// Every run kept, oldest first.
+     pub fn runs(&self) -> &[Run] {
+         &self.saved.runs
+     }
+@@ -1022,9 +1104,17 @@ impl Gym {
+                     )));
+                     Effect::None
+                 }
++                (None, Some(_)) if self.lazy_world && self.world_denied.is_none() => {
++                    // The key is read now, not at launch; the run starts
++                    // once it is.
++                    self.awaiting_world.push(id.clone());
++                    Effect::None
++                }
+                 _ => {
+                     run.state = RunState::Refused {
+-                        why: "We couldn't read your trainer name on this device. Try again in a moment.".into(),
++                        why: self.world_denied.clone().unwrap_or_else(|| {
++                            "We couldn't read your trainer name on this device. Try again in a moment.".into()
++                        }),
+                         connect: false,
+                     };
+                     Effect::None
+@@ -1080,7 +1170,9 @@ impl Gym {
+                 }
+             },
+         };
+-        if !matches!(run.state, RunState::Refused { .. }) {
++        // A run waiting for the trainer key is logged when it starts.
++        let waiting = self.awaiting_world.last() == Some(&id);
++        if !matches!(run.state, RunState::Refused { .. }) && !waiting {
+             self.logged.push(playtest::session::Code::RunStarted);
+         }
+         self.saved.runs.push(run);
+diff --git a/crates/openagents-desktop/README.md b/crates/openagents-desktop/README.md
+index df5cdc5e5ecfa8ce1a334036da68a4ee53ebf4a4..b45c52a886b685815317001dc405d88ba7d43a85 100644
+--- a/crates/openagents-desktop/README.md
++++ b/crates/openagents-desktop/README.md
+@@ -119,6 +119,29 @@ keys: service `com.openagents.desktop.verse`, accounts `world-key` and
+ `gym-connection`, in the macOS login Keychain or Linux Secret Service. Key
+ creation and reads happen off the UI thread, only after Play. An unreadable
+ stored identity is never replaced; Play stays offline and explains why.
++
++### The keychain (#10096)
++
++- **Never at launch.** Opening the app, a chat, or the Verse page reads
++  nothing from the keychain. The world key is read only when you choose
++  **Play**, or when the chat's Gym starts its first hosted run (the chat Gym
++  signs hosted runs with it and opens its saved runs under it, so earlier
++  runs come back with that first hosted start).
++- **At most one prompt.** A read or write the keychain denies, cancels, or
++  can't answer is remembered until the app restarts: nothing asks again,
++  Play stays offline, and the Gym says in one line that hosted runs need the
++  key.
++- **Dev builds keep their own items.** Only the packaged release is built
++  with `OPENAGENTS_DESKTOP_RELEASE=1` (set by
++  [`scripts/desktop/package-macos.sh`](../../scripts/desktop/package-macos.sh)
++  and [`package-linux.sh`](../../scripts/desktop/package-linux.sh); see
++  [`docs/desktop/release.md`](../../docs/desktop/release.md)). Every other
++  build, `cargo build` and `cargo build --release` included, is a dev build
++  (`openagents_desktop::RELEASE` is false): it keeps its world key and Gym
++  connection under `com.openagents-dev.desktop.verse`, never reads or prompts
++  for the signed app's `com.openagents.desktop.*` items, and never runs
++  `coder host adopt`. A dev build outside an app bundle registers no login
++  agent on macOS either, so nothing it starts reads the host's keys.
+ The public result cache and Compare notes preference live under
+ `~/.openagents/desktop/grid/`; these files contain no secret key or Gym grant.
+ 
+diff --git a/crates/openagents-desktop/src/chat.rs b/crates/openagents-desktop/src/chat.rs
+index a1726bf0aad2bffabf20a733c29dc9eedb52493b..938e7f8fb5d8ee04a87f412a0fa50408dc8138c9 100644
+--- a/crates/openagents-desktop/src/chat.rs
++++ b/crates/openagents-desktop/src/chat.rs
+@@ -143,9 +143,10 @@ pub struct Panel {
+     changes_open: bool,
+     changes_scroll: f32,
+     changes_highlighter: Option<rust_native::syntax::Highlighter>,
+-    /// The Gym's trainer key, being read (`chat_gym`).
++    /// The Gym's trainer key, read when a hosted run first needs it
++    /// (`chat_gym`, #10096).
+     #[cfg(not(windows))]
+-    gym_loading: Option<crate::chat_gym::Loading>,
++    gym_trainer: Option<crate::chat_gym::Trainer>,
+ }
+ 
+ /// A transcript button's action and target when a press began on it.
+@@ -237,7 +238,7 @@ impl Panel {
+             changes_scroll: 0.0,
+             changes_highlighter: None,
+             #[cfg(not(windows))]
+-            gym_loading: None,
++            gym_trainer: None,
+         }
+     }
+     /// Whether the composer takes images: the shared
+@@ -394,11 +395,14 @@ impl Panel {
+         }
+         let wake = waker.clone();
+         self.transcript.start(Arc::new(move || wake.wake()));
+-        // The Gym's trainer and hosted runner, in the real window only.
++        // The Gym's hosted runner, in the real window only. Its trainer key
++        // is read when a hosted run first needs it, never here (#10096).
+         #[cfg(not(windows))]
+         {
+             let wake = waker.clone();
+-            self.gym_loading = crate::chat_gym::load(Arc::new(move || wake.wake()));
++            if let Some((gym, trainer)) = crate::chat_gym::launch(Arc::new(move || wake.wake())) {
++                self.use_gym_trainer(gym, trainer);
++            }
+         }
+         self.waker = Some(waker);
+     }
+@@ -408,23 +412,28 @@ impl Panel {
+         self.session.cards.gym = gym;
+         self.rows_dirty = true;
+     }
++    /// Use `gym` with `trainer` reading its key when a hosted run needs it.
++    #[cfg(not(windows))]
++    pub fn use_gym_trainer(
++        &mut self,
++        gym: openagents_chat_app::gym::Gym,
++        trainer: crate::chat_gym::Trainer,
++    ) {
++        self.use_gym(gym);
++        self.gym_trainer = Some(trainer);
++    }
+     /// The chat's Gym.
+     pub fn gym(&self) -> &openagents_chat_app::gym::Gym {
+         &self.session.cards.gym
+     }
+-    /// Take the trainer once it's read, and what hosted runs saw since
+-    /// the last tick.
++    /// Read the trainer key when a hosted run waits for it, and take what
++    /// hosted runs saw since the last tick.
+     fn poll_gym(&mut self) {
+         #[cfg(not(windows))]
+-        if let Some(loaded) = self
+-            .gym_loading
+-            .as_ref()
+-            .and_then(crate::chat_gym::Loading::poll)
++        if let Some(trainer) = self.gym_trainer.as_mut()
++            && trainer.tick(&mut self.session.cards.gym)
+         {
+-            self.gym_loading = None;
+-            if let Ok(gym) = loaded {
+-                self.use_gym(gym);
+-            }
++            self.rows_dirty = true;
+         }
+         // A computer run's phase is its Coder run's, in this chat's own
+         // transcript; only hosted runs report here.
+@@ -2646,8 +2655,19 @@ impl Panel {
+             || self.session.next_wake(now),
+             |task| self.session.next_wake(now).min(task.next_wake(now)),
+         );
+-        // A hosted Gym run is read again each second, beside its wakes.
+-        let wake = if self.session.cards.gym.active().is_some_and(|run| {
++        // A hosted Gym run is read again each second, beside its wakes; a
++        // run waiting for its trainer key starts the read on the next tick.
++        let gym = &self.session.cards.gym;
++        #[cfg(not(windows))]
++        let read_key = self
++            .gym_trainer
++            .as_ref()
++            .is_some_and(|trainer| trainer.to_start(gym));
++        #[cfg(windows)]
++        let read_key = false;
++        let wake = if read_key {
++            now
++        } else if gym.active().is_some_and(|run| {
+             matches!(
+                 run.place,
+                 Some(openagents_chat_app::gym::Place::Hosted { .. })
+diff --git a/crates/openagents-desktop/src/chat_gym.rs b/crates/openagents-desktop/src/chat_gym.rs
+index 5f787c5eeec61d0bec7205e1d029fe2a694ea817..3557b5ef32f4437a8f1dfdd7bdb91a202d7a92cc 100644
+--- a/crates/openagents-desktop/src/chat_gym.rs
++++ b/crates/openagents-desktop/src/chat_gym.rs
+@@ -7,17 +7,23 @@
+ //!
+ //! - **The trainer.** The trainer key is the desktop's Verse world key,
+ //!   the one Play already keeps in protected platform storage
+-//!   (`com.openagents.desktop.verse`, `grid::store`), as the phone's
+-//!   trainer key is its Verse world key. It is read on a thread of its own
+-//!   when the window starts, made once if there is none (verified before
+-//!   use, and an unreadable one is never replaced), and held in this
+-//!   process's memory only. It creates no player: Play still joins only
+-//!   on its own button.
++//!   (`grid::store`), as the phone's trainer key is its Verse world key.
++//!   It is read only when a hosted run needs it (#10096): opening the app
++//!   or a chat never asks the keychain. The first hosted start waits while
++//!   it's read on a thread of its own (made once if there is none,
++//!   verified before use, and an unreadable one is never replaced), then
++//!   starts. A denied or cancelled read is remembered for the session: the
++//!   run refuses in one plain line and nothing asks again. The key is held
++//!   in this process's memory only and creates no player: Play still joins
++//!   only on its own button. A dev build reads its own keychain service,
++//!   never the release app's (`grid::store::SERVICE`).
+ //! - **The runner.** [`HostedRelay`], shared with the phone, on a small
+ //!   runtime of its own, waking the window's event loop.
+ //! - **Saved runs.** An encrypted store under the world key at
+-//!   `~/.openagents/desktop/gym`, so runs and their results survive a
+-//!   restart and a hosted run still going is followed again.
++//!   `~/.openagents/desktop/gym`, opened once the key is read, so runs and
++//!   their results survive a restart; earlier runs come back, and a hosted
++//!   run still going is followed again, with the first hosted start of a
++//!   session.
+ //!
+ //! Only the real window configures this (`main`); the fake host, captures,
+ //! and tests never touch the keychain or the home folder.
+@@ -46,51 +52,109 @@ pub fn store_path(home: &Path) -> PathBuf {
+     home.join(".openagents/desktop/gym")
+ }
+ 
+-/// The trainer, loading.
+-pub struct Loading {
++/// The line a hosted run shows when the trainer key can't be read.
++pub const NO_KEY: &str = "Our computers need your trainer key, and this computer's keychain didn't give it. Restart OpenAgents to be asked again.";
++
++/// Reads the trainer key.
++pub type ReadKey = Arc<dyn Fn() -> Result<SecretKey, String> + Send + Sync>;
++
++/// The trainer key, read once when a hosted run first needs it.
++pub struct Trainer {
+     home: PathBuf,
+-    world: Receiver<Result<SecretKey, String>>,
++    read: ReadKey,
+     wake: Arc<dyn Fn() + Send + Sync>,
++    state: State,
++}
++
++enum State {
++    /// Not asked for: nothing has touched the keychain.
++    Idle,
++    Reading(Receiver<Result<SecretKey, String>>),
++    /// Read, or refused for the session.
++    Done,
+ }
+ 
+-/// Start reading the trainer key off the window's thread, when the window
+-/// was configured for it; `wake` wakes the event loop when it's read and
+-/// whenever a hosted run moves.
+-pub fn load(wake: Arc<dyn Fn() + Send + Sync>) -> Option<Loading> {
++/// The chat's Gym at launch, when the window was configured for it: the
++/// hosted runner wired, no key and no store yet, and the [`Trainer`] that
++/// reads the key when a hosted run asks. Nothing here reads the keychain.
++pub fn launch(wake: Arc<dyn Fn() + Send + Sync>) -> Option<(Gym, Trainer)> {
+     let home = HOME.get()?.clone();
+-    let (tx, rx) = sync_channel(1);
+-    let ring = wake.clone();
+-    std::thread::Builder::new()
+-        .name("gym-trainer".into())
+-        .spawn(move || {
+-            let _ = tx.send(crate::grid::store::world_key());
+-            ring();
+-        })
+-        .ok()?;
+-    Some(Loading {
+-        home,
+-        world: rx,
+-        wake,
+-    })
++    let runtime = runtime()?;
++    let hosted = HostedRelay::new(None, None).for_desktop(wake.clone());
++    let gym = lazy(Arc::new(hosted), runtime);
++    let read: ReadKey = Arc::new(crate::grid::store::world_key);
++    Some((gym, Trainer::new(home, read, wake)))
+ }
+ 
+-impl Loading {
+-    /// The Gym, once the trainer key is read: `Some(Ok)` to use, `Some(Err)`
+-    /// when it couldn't be (the chat keeps its Gym without a runner),
+-    /// `None` while still reading.
+-    pub fn poll(&self) -> Option<Result<Gym, String>> {
+-        let world = match self.world.try_recv() {
+-            Ok(world) => world,
+-            Err(std::sync::mpsc::TryRecvError::Empty) => return None,
+-            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+-                Err("The trainer key could not be read".into())
++/// A Gym with runs on `hosted` that waits for its trainer key.
++pub fn lazy(hosted: Arc<dyn Hosted>, runtime: tokio::runtime::Handle) -> Gym {
++    let mut gym = Gym::new(None, Some(hosted), Some(runtime));
++    gym.wait_for_world();
++    gym
++}
++
++impl Trainer {
++    /// A trainer whose key `read` reads, keeping the Gym's store under
++    /// `home`; `wake` wakes the window when it's read.
++    pub fn new(home: PathBuf, read: ReadKey, wake: Arc<dyn Fn() + Send + Sync>) -> Self {
++        Self {
++            home,
++            read,
++            wake,
++            state: State::Idle,
++        }
++    }
++
++    /// Whether `gym` waits for a read that [`Trainer::tick`] hasn't
++    /// started yet.
++    pub fn to_start(&self, gym: &Gym) -> bool {
++        matches!(self.state, State::Idle) && gym.wants_world()
++    }
++
++    /// Start reading the key when `gym` wants it, and hand it over once
++    /// read: the store opens and the waiting runs start, or they refuse
++    /// with [`NO_KEY`]. Reads at most once. True when `gym` changed.
++    pub fn tick(&mut self, gym: &mut Gym) -> bool {
++        match &self.state {
++            State::Idle if gym.wants_world() => {
++                let (tx, rx) = sync_channel(1);
++                let (read, wake) = (self.read.clone(), self.wake.clone());
++                let spawned = std::thread::Builder::new()
++                    .name("gym-trainer".into())
++                    .spawn(move || {
++                        let _ = tx.send(read());
++                        wake();
++                    });
++                if spawned.is_err() {
++                    self.state = State::Done;
++                    gym.world_unavailable("The Gym's trainer key could not be read.");
++                    return true;
++                }
++                self.state = State::Reading(rx);
++                false
++            }
++            State::Reading(rx) => {
++                let world = match rx.try_recv() {
++                    Ok(world) => world,
++                    Err(std::sync::mpsc::TryRecvError::Empty) => return false,
++                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
++                        Err("The trainer key could not be read".into())
++                    }
++                };
++                self.state = State::Done;
++                match world {
++                    Ok(world) => {
++                        if let Ok(store) = Cache::open(&store_path(&self.home), &world) {
++                            gym.attach_store(store);
++                        }
++                        gym.set_world(world);
++                    }
++                    Err(_) => gym.world_unavailable(NO_KEY),
++                }
++                true
+             }
+-        };
+-        Some(world.and_then(|world| {
+-            let runtime = runtime().ok_or("The Gym's runner could not start")?;
+-            let hosted = HostedRelay::new(None, None).for_desktop(self.wake.clone());
+-            Ok(gym(&self.home, world, Arc::new(hosted), runtime))
+-        }))
++            _ => false,
++        }
+     }
+ }
+ 
+diff --git a/crates/openagents-desktop/src/grid/store.rs b/crates/openagents-desktop/src/grid/store.rs
+index 7e24be1571b7f3ec4566ad446a01879aeeed4b1d..272d2260e3ecc09649f2183f637a6883177fa3e3 100644
+--- a/crates/openagents-desktop/src/grid/store.rs
++++ b/crates/openagents-desktop/src/grid/store.rs
+@@ -2,7 +2,49 @@
+ use coder_mobile::{BareGym, BarePresence};
+ use std::path::{Path, PathBuf};
+ 
+-const SERVICE: &str = "com.openagents.desktop.verse";
++/// The release app's Verse items.
++const RELEASE_SERVICE: &str = "com.openagents.desktop.verse";
++/// A dev build's own Verse items, so it never reads, prompts for, or
++/// replaces the signed app's (#10096).
++const DEV_SERVICE: &str = "com.openagents-dev.desktop.verse";
++/// The keychain service this build keeps its world key and Gym grant
++/// under.
++pub const SERVICE: &str = service(crate::RELEASE);
++
++const fn service(release: bool) -> &'static str {
++    if release {
++        RELEASE_SERVICE
++    } else {
++        DEV_SERVICE
++    }
++}
++
++/// What a keychain read or write answered this session. Once one fails
++/// (denied, cancelled, locked, or broken) every later one answers the same
++/// without asking, until the app restarts: at most one prompt (#10096).
++struct Latch(std::sync::Mutex<Option<String>>);
++
++impl Latch {
++    const fn new() -> Self {
++        Self(std::sync::Mutex::new(None))
++    }
++
++    fn guard<T>(&self, call: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
++        let mut failed = self.0.lock().unwrap_or_else(|poison| poison.into_inner());
++        if let Some(why) = failed.as_ref() {
++            return Err(why.clone());
++        }
++        let answer = call();
++        if let Err(why) = &answer {
++            *failed = Some(format!(
++                "{why} It won't be asked for again until OpenAgents restarts."
++            ));
++        }
++        answer
++    }
++}
++
++static KEYCHAIN: Latch = Latch::new();
+ const WORLD_KEY: &str = "world-key";
+ const GYM: &str = "gym-connection";
+ static IDENTITY_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+@@ -163,8 +205,16 @@ pub fn save_connection(code: &str) -> Result<(), String> {
+     write(GYM, code)
+ }
+ 
+-#[cfg(target_os = "linux")]
+ fn read(account: &str) -> Result<Option<String>, String> {
++    KEYCHAIN.guard(|| platform_read(account))
++}
++
++fn write(account: &str, value: &str) -> Result<(), String> {
++    KEYCHAIN.guard(|| platform_write(account, value))
++}
++
++#[cfg(target_os = "linux")]
++fn platform_read(account: &str) -> Result<Option<String>, String> {
+     let entry = keyring::Entry::new(SERVICE, account)
+         .map_err(|_| "Could not open the world identity store".to_owned())?;
+     match entry.get_password() {
+@@ -174,13 +224,13 @@ fn read(account: &str) -> Result<Option<String>, String> {
+     }
+ }
+ #[cfg(target_os = "linux")]
+-fn write(account: &str, value: &str) -> Result<(), String> {
++fn platform_write(account: &str, value: &str) -> Result<(), String> {
+     keyring::Entry::new(SERVICE, account)
+         .and_then(|entry| entry.set_password(value))
+         .map_err(|_| "Could not save the world identity or Gym connection".into())
+ }
+ #[cfg(target_os = "macos")]
+-fn read(account: &str) -> Result<Option<String>, String> {
++fn platform_read(account: &str) -> Result<Option<String>, String> {
+     match security_framework::os::macos::passwords::find_generic_password(None, SERVICE, account) {
+         Ok((value, _)) => String::from_utf8(value.to_vec())
+             .map(Some)
+@@ -190,7 +240,7 @@ fn read(account: &str) -> Result<Option<String>, String> {
+     }
+ }
+ #[cfg(target_os = "macos")]
+-fn write(account: &str, value: &str) -> Result<(), String> {
++fn platform_write(account: &str, value: &str) -> Result<(), String> {
+     security_framework::os::macos::keychain::SecKeychain::default()
+         .and_then(|keychain| keychain.set_generic_password(SERVICE, account, value.as_bytes()))
+         .map_err(|_| "Could not save the world identity or Gym connection".into())
+diff --git a/crates/openagents-desktop/src/lib.rs b/crates/openagents-desktop/src/lib.rs
+index 29e7300b4385707c1df1055fac62dea26c05bb80..c608e72c5bda7a3b6d2b8d2a750a6c7a3c28870f 100644
+--- a/crates/openagents-desktop/src/lib.rs
++++ b/crates/openagents-desktop/src/lib.rs
+@@ -37,6 +37,21 @@
+ //! - [`notices`]: when Coder's work is worth a desktop notification.
+ //! - `update`: the signed-manifest updater (the `app` feature).
+ 
++/// Whether this binary is the packaged release. The packaging scripts
++/// (`scripts/desktop/package-macos.sh`, `scripts/desktop/package-linux.sh`)
++/// build it with `OPENAGENTS_DESKTOP_RELEASE=1` in the environment; every
++/// other build, `cargo build --release` included, is a dev build. A dev
++/// build keeps its own keychain items (`grid::store::SERVICE`) and never
++/// asks `coder` to adopt the keychain, so it can't prompt for, read, or
++/// move the signed app's secrets (#10096).
++pub const RELEASE: bool = release_flag(option_env!("OPENAGENTS_DESKTOP_RELEASE"));
++
++/// Whether a build-time `OPENAGENTS_DESKTOP_RELEASE` marks the release:
++/// exactly `1`.
++pub const fn release_flag(value: Option<&str>) -> bool {
++    matches!(value, Some(value) if value.len() == 1 && value.as_bytes()[0] == b'1')
++}
++
+ #[cfg(all(feature = "app", not(windows)))]
+ pub mod backdrop;
+ #[cfg(all(feature = "app", not(windows)))]
+diff --git a/crates/openagents-desktop/src/migrate.rs b/crates/openagents-desktop/src/migrate.rs
+index d8f57afc39a1c09bc05cbd9d3fa1a1b282cb908c..bf17c165dfac93e8c91b1df622f38e123e4fd818 100644
+--- a/crates/openagents-desktop/src/migrate.rs
++++ b/crates/openagents-desktop/src/migrate.rs
+@@ -200,6 +200,26 @@ pub fn start(
+     }
+ }
+ 
++/// Starts Coder under a dev build ([`crate::RELEASE`] is false): as
++/// [`start`], but it never runs `coder host adopt`, so a dev build never
++/// moves an earlier setup's keys into the keychain or prompts for the
++/// signed app's items (#10096). An earlier setup keeps running as it was.
++pub fn start_dev(home: &Path, register: &mut dyn FnMut(&Keys) -> Agent) -> Started {
++    if home.join(".openagents/coder-access/access.json").exists() {
++        eprintln!(
++            "openagents-desktop: a dev build never adopts; the earlier Coder setup keeps running"
++        );
++        return Started {
++            agent: Agent::NotRegistered,
++            note: Some(KEPT_RUNNING.into()),
++        };
++    }
++    Started {
++        agent: register(&Keys::Keychain),
++        note: None,
++    }
++}
++
+ // The tests stand in for `coder` with shell scripts.
+ #[cfg(all(test, unix))]
+ mod tests {
+@@ -291,6 +311,24 @@ esac
+         );
+     }
+ 
++    /// A dev build never adopts: an earlier setup keeps running and
++    /// nothing registers; without one it registers as the release does.
++    #[test]
++    fn a_dev_build_never_adopts() {
++        let home = tempfile::tempdir().unwrap();
++        let mut registered = Vec::new();
++        let started = start_dev(home.path(), &mut |keys| {
++            registered.push(keys.clone());
++            Agent::NotRegistered
++        });
++        assert_eq!(started.note, None);
++        assert_eq!(registered, [Keys::Keychain]);
++        earlier_setup(home.path());
++        let started = start_dev(home.path(), &mut |_| panic!("a dev build registered"));
++        assert_eq!(started.agent, Agent::NotRegistered);
++        assert_eq!(started.note.as_deref(), Some(KEPT_RUNNING));
++    }
++
+     #[test]
+     fn a_missing_coder_does_not_read_the_keychain() {
+         assert!(!host_reads_keychain(Path::new("/nonexistent/coder")));
+diff --git a/crates/openagents-desktop/src/worker.rs b/crates/openagents-desktop/src/worker.rs
+index f8b6918591059c993d480e7e198cf887b032307d..898d97c1ec0659b70ea82fc44ac5b5996f4598a4 100644
+--- a/crates/openagents-desktop/src/worker.rs
++++ b/crates/openagents-desktop/src/worker.rs
+@@ -77,6 +77,9 @@ struct HostLane {
+ /// whether the host is the in-process one.
+ struct LocalLane {
+     fake: bool,
++    /// Whether this is the packaged release, which may run `coder host
++    /// adopt` ([`openagents_desktop::RELEASE`]; a test may stand in).
++    release: bool,
+     coder: Option<PathBuf>,
+     home: PathBuf,
+     saved_config: Option<coder_history::Config>,
+@@ -131,6 +134,7 @@ impl Context {
+             },
+             local: LocalLane {
+                 fake: fake.is_some(),
++                release: openagents_desktop::RELEASE,
+                 coder,
+                 home,
+                 saved_config: None,
+@@ -145,6 +149,14 @@ impl Context {
+         }
+     }
+ 
++    /// Start Coder as the packaged release would, adopting an earlier
++    /// setup.
++    #[cfg(test)]
++    pub fn released(mut self) -> Self {
++        self.local.release = true;
++        self
++    }
++
+     /// Select explicit history roots for an isolated fixture or host adapter.
+     #[cfg(test)]
+     pub fn with_saved_history(mut self, config: coder_history::Config) -> Self {
+@@ -308,6 +320,12 @@ impl LocalLane {
+                 note: None,
+             };
+         }
++        // A dev build never runs `coder host adopt` (#10096).
++        if !self.release {
++            return openagents_desktop::migrate::start_dev(&self.home, &mut |keys| {
++                platform::register_agent(keys)
++            });
++        }
+         openagents_desktop::migrate::start(self.coder.as_deref(), &self.home, &mut |keys| {
+             platform::register_agent(keys)
+         })
+diff --git a/docs/desktop/release.md b/docs/desktop/release.md
+index 95ebd519d0c58ca1fad74460bc57066d2a190997..2194df07e464c36ef1f7d9d6f36b77d671b0d88a 100644
+--- a/docs/desktop/release.md
++++ b/docs/desktop/release.md
+@@ -81,7 +81,16 @@ What it does, in order:
+    `coder`, `microcoder`, and `openagents` (the `openagents-cli` package) for
+    `aarch64-apple-darwin` and `x86_64-apple-darwin`, with
+    `MACOSX_DEPLOYMENT_TARGET=13.0` (the floor for `SMAppService`), joined
+-   into universal binaries with `lipo`.
++   into universal binaries with `lipo`. The build sets
++   `OPENAGENTS_DESKTOP_RELEASE=1`, which marks it as the release: only a
++   build with that flag uses the signed app's keychain items
++   (`com.openagents.desktop.verse`) and runs `coder host adopt`. Any other
++   build, `cargo build --release` included, is a dev build that keeps its
++   own items under `com.openagents-dev.desktop.verse`, so testing a dev
++   build never prompts for or touches the real ones
++   ([#10096](https://github.com/OpenAgentsInc/openagents/issues/10096)).
++   Binaries passed with `--bin-dir` must be built with the flag too, or
++   the release would read a fresh dev world key instead of the person's.
+ 2. **Assemble** `OpenAgents.app`:
+ 
+    ```text
+@@ -236,7 +245,11 @@ Two steps, on two computers:
+    It compiles the window, `coder`, and `microcoder` inside the pinned
+    `rust:1.97.1-bullseye` image (glibc 2.31: Debian 11, Ubuntu 20.04, and
+    newer) and packages them with `package-linux.sh` and the pinned AppImage
+-   type-2 runtime. Paths are fixed and remapped, and every packaged file
++   type-2 runtime. `package-linux.sh` builds with
++   `OPENAGENTS_DESKTOP_RELEASE=1`, as the Mac's does, so only the release
++   uses the release Secret Service items
++   ([#10096](https://github.com/OpenAgentsInc/openagents/issues/10096));
++   with `--skip-build`, the binaries must have been built with it. Paths are fixed and remapped, and every packaged file
+    carries the commit's time, so a second run of the same commit writes the
+    same bytes. `BUILDINFO` records the commit, the image digest, and the
+    runtime's SHA-256.
+diff --git a/scripts/desktop/package-linux.sh b/scripts/desktop/package-linux.sh
+index 1efa3f366c30a47a1354d866cbac25ed5ebfcc6b..f57fb8baebe480b9d4aa90c308ebd3337a47c5a1 100755
+--- a/scripts/desktop/package-linux.sh
++++ b/scripts/desktop/package-linux.sh
+@@ -118,7 +118,10 @@ trap 'rm -rf "$work"' EXIT
+ if ((build)); then
+   args=()
+   for bin in "${binaries[@]}"; do args+=(--bin "$bin"); done
+-  cargo build --release --locked --manifest-path "$root/Cargo.toml" \
++  # OPENAGENTS_DESKTOP_RELEASE=1 marks the release build: only it uses the
++  # release app's Secret Service items; any other build keeps its own
++  # (#10096).
++  OPENAGENTS_DESKTOP_RELEASE=1 cargo build --release --locked --manifest-path "$root/Cargo.toml" \
+     -p openagents-desktop -p coder -p microcoder "${args[@]}"
+ fi
+ 
+diff --git a/scripts/desktop/package-macos.sh b/scripts/desktop/package-macos.sh
+index 5fb53f48dfa952ad31bb98833fb4c09d27a63962..1b3ff991334ccc137f27939071ec165799604575 100755
+--- a/scripts/desktop/package-macos.sh
++++ b/scripts/desktop/package-macos.sh
+@@ -191,6 +191,10 @@ build_universal() { # $1 package, $2 bin
+   for t in "${triples[@]}"; do
+     rustup target list --installed 2>/dev/null | grep -qx "$t" ||
+       die "missing Rust target $t; run: rustup target add $t"
++    # OPENAGENTS_DESKTOP_RELEASE=1 marks the release build: only it uses
++    # the signed app's keychain items (com.openagents.desktop.*); any other
++    # build, `cargo build --release` included, keeps its own (#10096).
++    OPENAGENTS_DESKTOP_RELEASE=1 \
+     MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-13.0}" \
+       cargo build --release --locked --manifest-path "$root/Cargo.toml" \
+       --target "$t" -p "$package" --bin "$bin" >&2

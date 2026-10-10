@@ -1,0 +1,81 @@
+diff --git a/crates/background/src/paths.rs b/crates/background/src/paths.rs
+index 8b497694093af9bd4d8c60c764895c069ecd5738..ec5a77125f8e04b65d949c0ac8bb4206ea7cc352 100644
+--- a/crates/background/src/paths.rs
++++ b/crates/background/src/paths.rs
+@@ -434,6 +483,37 @@ pub fn bytes(n: u64) -> String {
+ mod tests {
+     use super::*;
+ 
++    #[test]
++    fn coders_folders_sit_beside_any_task_store_and_rules_follow_them() {
++        let dir = tempfile::tempdir().unwrap();
++        let store = dir.path().join("elsewhere/tasks");
++        std::fs::create_dir_all(&store).unwrap();
++        let layout = Layout::new(dir.path(), Some(store.clone())).unwrap();
++        let beside = store.canonicalize().unwrap().parent().unwrap().to_owned();
++        assert_eq!(layout.worktrees(), beside.join("worktrees"));
++        assert_eq!(layout.targets(), beside.join("targets"));
++        assert_eq!(layout.worktrees(), task_worktrees(&layout.store));
++        assert_eq!(layout.targets(), task_targets(&layout.store));
++        // The default rules name `~/.openagents/{targets,worktrees}`; they
++        // mean the store's folders, which may now be cleaned.
++        let rule = crate::rule::disk();
++        let slot = layout.targets().join("p-slot-9");
++        let tree = layout.worktrees().join("t");
++        std::fs::create_dir_all(&slot).unwrap();
++        std::fs::create_dir_all(&tree).unwrap();
++        assert_eq!(layout.refuse(&rule, &slot), None);
++        assert_eq!(layout.refuse(&rule, &tree), None);
++        // The task store itself stays denied wherever it is.
++        assert_eq!(
++            layout.refuse(&rule, &layout.store),
++            Some("outside the allowed folders")
++        );
++        // The default layout keeps them under `~/.openagents`.
++        let home = Layout::new(dir.path(), None).unwrap();
++        assert_eq!(home.worktrees(), home.openagents.join("worktrees"));
++        assert_eq!(home.targets(), home.openagents.join("targets"));
++    }
++
+     #[test]
+     fn deny_wins_and_symlinks_are_refused() {
+         let dir = tempfile::tempdir().unwrap();
+diff --git a/crates/background/tests/task_store_env.rs b/crates/background/tests/task_store_env.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..4a971f17f109bc8261ae5ff371e3827de79a0c23
+--- /dev/null
++++ b/crates/background/tests/task_store_env.rs
+@@ -0,0 +1,33 @@
++//! `OPENAGENTS_TASKS` moves the task store, and with it the worktrees and
++//! target slots the background runner looks at (#10290). Its own test
++//! binary, since it sets a process-wide variable.
++
++use std::path::Path;
++
++#[test]
++fn the_runner_finds_coders_folders_where_openagents_tasks_puts_them() {
++    let home = tempfile::tempdir().unwrap();
++    let store = home.path().join("pool/tasks");
++    std::fs::create_dir_all(&store).unwrap();
++    // SAFETY: this binary has one test and no other threads read the
++    // environment while it runs.
++    unsafe {
++        std::env::set_var("HOME", home.path());
++        std::env::set_var(background::paths::STORE_VAR, &store);
++    }
++    assert_eq!(background::task_store(home.path()), store);
++    let layout = background::Layout::from_env().unwrap();
++    let beside = store.canonicalize().unwrap();
++    let beside = beside.parent().unwrap();
++    assert_eq!(layout.store, beside.join("tasks"));
++    assert_eq!(layout.worktrees(), beside.join("worktrees"));
++    assert_eq!(layout.targets(), beside.join("targets"));
++    assert_ne!(layout.worktrees(), layout.openagents.join("worktrees"));
++
++    // Unset, it is the default store under the home.
++    unsafe { std::env::remove_var(background::paths::STORE_VAR) };
++    assert_eq!(
++        background::task_store(Path::new("/h")),
++        Path::new("/h/.openagents/tasks")
++    );
++}

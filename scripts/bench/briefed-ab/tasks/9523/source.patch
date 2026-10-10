@@ -1,0 +1,161 @@
+diff --git a/crates/nostr-relay/src/gateway/config.rs b/crates/nostr-relay/src/gateway/config.rs
+index 2d574462200d377278bd273fb0f40b42a0b9f03a..9a1f2c861c75de793d9f5235b978cdf959079c73 100644
+--- a/crates/nostr-relay/src/gateway/config.rs
++++ b/crates/nostr-relay/src/gateway/config.rs
+@@ -90,6 +90,9 @@ pub struct GatewayConfig {
+     pub limits: GatewayLimits,
+     pub identity: RelayIdentity,
+     pub advertised_nips: Option<Vec<u16>>,
++    /// When set, NIP-11 advertises the OpenAgents profile roles the
++    /// admission tests cover. Unset, those names stay out of the document.
++    pub openagents_profiles: bool,
+     pub log_level: String,
+ }
+ 
+@@ -112,6 +115,7 @@ impl GatewayConfig {
+             limits: GatewayLimits::default(),
+             identity: RelayIdentity::default(),
+             advertised_nips: None,
++            openagents_profiles: false,
+             log_level: "info".to_owned(),
+         }
+     }
+@@ -195,6 +199,7 @@ impl GatewayConfig {
+         config.advertised_nips = optional_string("NOSTR_RELAY_SUPPORTED_NIPS")?
+             .map(|value| parse_supported_nips(&value))
+             .transpose()?;
++        config.openagents_profiles = parse_bool("NOSTR_RELAY_OPENAGENTS_PROFILES", false)?;
+         if let Some(signer) = &config.relay_signer {
+             if config
+                 .identity
+diff --git a/crates/nostr-relay/src/gateway/server.rs b/crates/nostr-relay/src/gateway/server.rs
+index bf57909a2b5ddfc0ee9de527191ad7a0a1c10543..d89a01d10230fc44bc3f702dde916e25f51913d8 100644
+--- a/crates/nostr-relay/src/gateway/server.rs
++++ b/crates/nostr-relay/src/gateway/server.rs
+@@ -883,6 +883,19 @@ async fn handle_event(
+         ));
+         return Ok(());
+     }
++    if nostr::profile::requires_author_auth(&event)
++        && !context
++            .auth
++            .as_ref()
++            .is_some_and(|auth| auth.is_authenticated_as(&event.pubkey))
++    {
++        pending.push_back(ok_message(
++            &event.id,
++            false,
++            "auth-required: this OpenAgents record requires authentication by its author",
++        ));
++        return Ok(());
++    }
+     if event.is_protected()
+         && !context
+             .auth
+diff --git a/crates/nostr-relay/src/gateway/wire.rs b/crates/nostr-relay/src/gateway/wire.rs
+index f1864c7b098e33882dc95afc22141cb5432970b4..461049cd32262ffd28099f4e0b46a8011016079b 100644
+--- a/crates/nostr-relay/src/gateway/wire.rs
++++ b/crates/nostr-relay/src/gateway/wire.rs
+@@ -329,6 +329,9 @@ pub fn nip11_json_with_icon(
+     if config.relay_url.is_some() && config.management_pubkey.is_some() {
+         supported_extensions.push("nip-wp");
+     }
++    if config.openagents_profiles {
++        supported_extensions.extend(["nip-cap-v1", "nip-ext-v1", "nip-prg-v1", "nip-run-v1"]);
++    }
+     supported_extensions.sort_unstable();
+     let document = Nip11Document {
+         name: &config.identity.name,
+diff --git a/crates/nostr/src/domain/block.rs b/crates/nostr/src/domain/block.rs
+index 55284db44cefd63fc16eaad146cfa7c238b2a458..d615e1405eaa9734f8a8deb4f99411f87ff0fc62 100644
+--- a/crates/nostr/src/domain/block.rs
++++ b/crates/nostr/src/domain/block.rs
+@@ -58,7 +58,9 @@ pub fn validate_block_ingest(event: &Event, now: u64) -> Result<(), String> {
+         EVENT_REMINDER_KIND => validate_reminder(event, now),
+         PROJECT_KIND => validate_project(event),
+         PUSH_LEASE_KIND => validate_push_lease_envelope(event, now),
+-        _ => Ok(()),
++        _ => {
++            crate::profile::admit(event).map_err(|error| format!("{} {}", error.code, error.detail))
++        }
+     }
+ }
+ 
+diff --git a/crates/nostr/src/lib.rs b/crates/nostr/src/lib.rs
+index d64f5bfa22633679ea50dd66575d0d0fa34220a7..ebcef7deda22d85724779e8711b3c511531176dd 100644
+--- a/crates/nostr/src/lib.rs
++++ b/crates/nostr/src/lib.rs
+@@ -19,4 +19,5 @@ pub mod ext;
+ pub mod nip19;
+ pub mod nip44;
+ pub mod prg;
++pub mod profile;
+ pub mod run;
+diff --git a/crates/nostr/src/run.rs b/crates/nostr/src/run.rs
+index 31cbc7d0d1e31b9df502b24267b86b0eefc5a1db..df28a947a7f866aa20e2cecfef452572d2432f28 100644
+--- a/crates/nostr/src/run.rs
++++ b/crates/nostr/src/run.rs
+@@ -537,6 +537,28 @@ pub fn link_evidence(receipt: Option<&str>, artifact: Option<&str>) -> EvidenceL
+     }
+ }
+ 
++/// Accept a run envelope's tags. The content stays ciphertext.
++///
++/// # Errors
++///
++/// Returns [`RefusalCode::Malformed`] when the tags are not one recipient
++/// and one mailbox, or when the content is empty or plaintext JSON.
++pub fn admit_envelope(event: &Event) -> Result<(), ContractError> {
++    if event.kind != RECORD_KIND && event.kind != HEAD_KIND {
++        return Err(ContractError::new(
++            RefusalCode::UnsupportedVersion,
++            "run kind",
++        ));
++    }
++    if !envelope_tags_ok(event)
++        || event.content.is_empty()
++        || event.content.trim_start().starts_with('{')
++    {
++        return Err(ContractError::new(RefusalCode::Malformed, "run envelope"));
++    }
++    Ok(())
++}
++
+ /// Whether a run record may be shown to `readers`.
+ ///
+ /// The author and the single `p` recipient may read it. A relay owner who is
+diff --git a/docs/protocol/openagents-retention.md b/docs/protocol/openagents-retention.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..7da5b15eb743d58920c74c9730595d15e90679fd
+--- /dev/null
++++ b/docs/protocol/openagents-retention.md
+@@ -0,0 +1,29 @@
++# OpenAgents relay retention
++
++The relay stores protocol records. It does not execute them.
++
++## What is kept
++
++| Kind | Class | Retention |
++| --- | --- | --- |
++| `30180`, `30181`, `30182`, `30184`, `30185`, `30186` | Addressable | The latest event for each author, kind, and `d` tag. Replacement does not run a program or install a release. |
++| `3184`, `3185`, `3186`, `3187` | Regular | Every accepted event stays. A later event does not erase a release, revocation, migration, or run record. |
++| `25900`–`25920`, `26900`–`26920`, `27000`–`27020` | Ephemeral | Fan-out only. The relay does not keep job state. |
++
++Private capability policy (`30181` with `oa:cap-policy:private:v1`) and run records (`3187`, `30186`) are readable by the author and the single `p` recipient. Other readers, including a relay operator who is neither, get no match from `REQ`, id lookup, `COUNT`, search, or live fan-out.
++
++## What an acknowledgement means
++
++`OK true` means the relay accepted the event for storage or fan-out. It does not mean a worker admitted the job, a program ran, or a release was installed.
++
++`EOSE` means the stored query has been sent. It does not mean a run journal is complete, a gap is filled, or an effect finished.
++
++NIP-40 expiration drops delivery of an event. It does not stop a process a worker already started.
++
++## Advertised roles
++
++`NOSTR_RELAY_OPENAGENTS_PROFILES=true` adds `nip-cap-v1`, `nip-prg-v1`, `nip-ext-v1`, and `nip-run-v1` to NIP-11 `supported_extensions`. Leave it unset until this relay build is the one whose admission tests you have run. The names are not numeric `supported_nips`.
++
++Public CAP, PRG, and EXT bodies are parsed at admission. Private policy and run content are checked as envelopes only. The relay does not decrypt them and does not treat ciphertext as a program.
++
++Publication of a private policy or a run record requires NIP-42 authentication by the event author.

@@ -1,0 +1,34 @@
+{
+  "test_targets": [
+    "--test",
+    "inference_routes",
+    "--lib"
+  ],
+  "issue": 11068,
+  "title": "Inference gateway P1: pass the Open Responses acceptance suite and an OpenAI SDK Chat Completions run",
+  "body": "Spec: [`docs/inference/gateway.md`](https://github.com/OpenAgentsInc/openagents/blob/main/docs/inference/gateway.md), section 3.\n\nProve the API against the standards:\n\n- Run the Open Responses acceptance suite (https://www.openresponses.org/compliance; 10 HTTP tests now, 7 WebSocket tests in P2) against staging before each release and against production, and record the run.\n- A Chat Completions conformance run with the official OpenAI SDKs (Python and JavaScript), streaming and tools included, checking each row of section 3's mapping table.\n\nBlocked by: #11065.\n",
+  "fix": "de519485167082e4a2f52307f80035d863f185fd",
+  "parent": "0831075e84b490878b890eaa1f90702d022d04fb",
+  "package": "gateway",
+  "source_files": [
+    "crates/coder/src/generate.rs",
+    "crates/gateway/src/inference_routes.rs",
+    "crates/gateway/src/inference_state.rs",
+    "crates/inference/src/response.rs",
+    "crates/inference/src/run.rs",
+    "docs/inference/2026-10-09-acceptance-run.md",
+    "docs/inference/README.md",
+    "docs/inference/gateway.md",
+    "scripts/dev/openai-sdk-conformance.mjs",
+    "scripts/dev/openai-sdk-conformance.py",
+    "scripts/dev/openresponses-acceptance.sh"
+  ],
+  "test_files": [
+    "crates/gateway/tests/inference_routes.rs",
+    "crates/inference/src/response.rs"
+  ],
+  "test_names": [
+    "a_responses_function_tools_carry_every_required_field"
+  ],
+  "fix_lines": 804
+}

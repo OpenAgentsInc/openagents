@@ -1,0 +1,424 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 4d05557637cef81f1762e1d603ab8174912fbbf5..d6888618cbf5d9005df9d439c037c9b0829e3e46 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -3390,6 +3390,7 @@ dependencies = [
+  "crossterm",
+  "getrandom 0.3.4",
+  "jev",
++ "jev-hosted",
+  "microcoder-loop",
+  "model-access",
+  "nostr",
+diff --git a/crates/coder-new/Cargo.toml b/crates/coder-new/Cargo.toml
+index a0f83caccf10a31cd8a952fb4c404c67079f65d1..684b1d00f98cbb95ed004dd522292eca4edd1eae 100644
+--- a/crates/coder-new/Cargo.toml
++++ b/crates/coder-new/Cargo.toml
+@@ -25,6 +25,7 @@ acp-client = { path = "../acp-client" }
+ coder-boundary = { path = "../coder-boundary" }
+ codex-transport = { path = "../codex-transport" }
+ jev = { path = "../jev" }
++jev-hosted = { path = "../jev-hosted" }
+ microcoder-loop = { path = "../microcoder-loop" }
+ supervise = { path = "../supervise" }
+ model-access = { path = "../model-access" }
+diff --git a/crates/coder-new/src/bundled_runtime.rs b/crates/coder-new/src/bundled_runtime.rs
+index df14fbf3f12acadbd9e885671edffb4e599c028c..2f8c1e40d40b1f885d231b58c15ebdad7a75888b 100644
+--- a/crates/coder-new/src/bundled_runtime.rs
++++ b/crates/coder-new/src/bundled_runtime.rs
+@@ -186,12 +186,32 @@ pub enum RuntimeEvent {
+         output: Value,
+         running: bool,
+     },
++    /// A Microcoder step Jev judged: the loop's step, from one, and Jev's
++    /// estimate of how much of the task is complete (0 to 1), when Jev
++    /// answered. There is never a step or time budget, and no other source
++    /// fills `complete`.
++    Progress {
++        step: usize,
++        complete: Option<f64>,
++    },
+ }
+ 
+ impl RuntimeEvent {
++    /// "step 3 · ≈40% done", or "step 3" while Jev has given no estimate.
++    #[must_use]
++    pub fn progress_line(step: usize, complete: Option<f64>) -> String {
++        match complete.filter(|complete| complete.is_finite()) {
++            Some(complete) => format!(
++                "step {step} · ≈{:.0}% done",
++                complete.clamp(0.0, 1.0) * 100.0
++            ),
++            None => format!("step {step}"),
++        }
++    }
++
+     pub(crate) fn redact(&mut self, keys: &[ApiKey]) {
+         match self {
+-            Self::Tokens(_) => {}
++            Self::Tokens(_) | Self::Progress { .. } => {}
+             Self::Text(text) | Self::Model(text) => *text = redact_text(text, keys),
+             Self::Delegation {
+                 id,
+@@ -1542,6 +1562,17 @@ impl Observer for MicrocoderEvents<'_> {
+                 output: json!(result),
+                 running: false,
+             }),
++            // Jev's estimate, and only Jev's: a judgment that failed or
++            // asked no `complete` score shows the step alone.
++            Event::Judged { step, judgment } => self.emit.emit(RuntimeEvent::Progress {
++                step: *step,
++                complete: judgment
++                    .error
++                    .is_none()
++                    .then(|| judgment.complete())
++                    .flatten()
++                    .filter(|complete| complete.is_finite()),
++            }),
+             _ => {}
+         }
+     }
+diff --git a/crates/coder-new/src/bundled_settings.rs b/crates/coder-new/src/bundled_settings.rs
+index 048e22115e0402f428717a7ad64207d892f482c2..8570537eb19c249a8e4b8956de3fe1caabd13b64 100644
+--- a/crates/coder-new/src/bundled_settings.rs
++++ b/crates/coder-new/src/bundled_settings.rs
+@@ -396,6 +396,9 @@ impl BundledSettings {
+         }
+         match id {
+             crate::brainstorm::PLUGIN => self.brainstorm.status(),
++            // No key saved: the built-in decision service answers, needing
++            // none, unless it is turned off on this computer.
++            "jev" if self.jev_key.is_none() && keyless_jev() => "Built in",
+             "jev" if self.jev_key.is_none() => "Setup required",
+             "jev" => match self.connection {
+                 Connection::Checking => "Checking",
+@@ -570,6 +573,9 @@ impl BundledSettings {
+             return "Demo · no requests sent";
+         }
+         match &self.connection {
++            Connection::Unchecked if self.jev_key.is_none() && keyless_jev() => {
++                "Built in · no key needed"
++            }
+             Connection::Unchecked => "Not checked",
+             Connection::Checking => "Checking Jev API key…",
+             Connection::Verified => "Jev API key verified",
+@@ -931,6 +937,12 @@ impl BundledSettings {
+     }
+ }
+ 
++/// Whether Jev answers here with no saved key (the hosted decision
++/// service, unless `OPENAGENTS_JEV_HOSTED=off`).
++fn keyless_jev() -> bool {
++    crate::jev_plugin::keyless_available(&|name| std::env::var(name).ok())
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+diff --git a/crates/coder-new/src/delegation_events.rs b/crates/coder-new/src/delegation_events.rs
+index 4abd1140d27c8326acbc0ea54ddb0637dbad8025..81c1bc229b8a227bee959c740495e8c36d6a6ef2 100644
+--- a/crates/coder-new/src/delegation_events.rs
++++ b/crates/coder-new/src/delegation_events.rs
+@@ -237,6 +237,13 @@ pub(crate) fn decode(value: &Value, depth: usize) -> Option<RuntimeEvent> {
+         "delta" => RuntimeEvent::Text(word("text")?),
+         "model" => RuntimeEvent::Model(word("model")?),
+         "usage" => RuntimeEvent::Tokens(value.get("tokens")?.as_u64()?),
++        "progress" => RuntimeEvent::Progress {
++            step: usize::try_from(value.get("step")?.as_u64()?).ok()?,
++            complete: value
++                .get("complete")
++                .and_then(Value::as_f64)
++                .filter(|complete| complete.is_finite()),
++        },
+         "tool" => RuntimeEvent::Tool {
+             name: word("name")?,
+             input: value.get("input")?.clone(),
+diff --git a/crates/coder-new/src/jev_plugin.rs b/crates/coder-new/src/jev_plugin.rs
+index bf8430a1e5a0d52eb50e5e1dd63f2d2f2d56e402..cf49b55dd074f66ea00609d16c3dcd8b3dca73d1 100644
+--- a/crates/coder-new/src/jev_plugin.rs
++++ b/crates/coder-new/src/jev_plugin.rs
+@@ -116,6 +116,17 @@ struct Arguments {
+ pub async fn execute(api_key: &str, endpoint: &str, arguments: Value) -> Result<Value, String> {
+     let request = request(arguments, api_key)?;
+     let client = client(api_key, endpoint)?;
++    send(&client, request, api_key).await
++}
++
++/// Ask Jev through a client that holds no key of this computer's, such as
++/// the hosted decision service ([`keyless_client`]).
++pub async fn execute_keyless(client: &Client, arguments: Value) -> Result<Value, String> {
++    let request = request(arguments, "")?;
++    send(client, request, "").await
++}
++
++async fn send(client: &Client, request: SystemOneRequest, api_key: &str) -> Result<Value, String> {
+     let response = client
+         .system_one(request)
+         .await
+@@ -305,6 +316,50 @@ fn default_model(endpoint: &str) -> &'static str {
+     }
+ }
+ 
++/// Whether Jev works here with no key saved: the OpenAgents hosted decision
++/// service answers unless `OPENAGENTS_JEV_HOSTED=off` turns it off.
++pub fn keyless_available(env: &dyn Fn(&str) -> Option<String>) -> bool {
++    !env(jev_hosted::HOSTED_VAR).is_some_and(|value| value.trim() == "off")
++}
++
++/// Jev when no key is saved in `/plugins`, through the resolver every Jev
++/// caller shares (`jev_hosted::resolve`): this computer's TypeSafe key
++/// (`TYPESAFE_API_KEY`, else `api_key` in `~/.openagents/jev.json`), else the
++/// OpenAgents hosted decision service, which needs no key. `dir` is
++/// `~/.openagents`. A saved key never reaches here: it always wins.
++///
++/// # Errors
++///
++/// Why this computer has no Jev, in one sentence that carries no key.
++pub fn keyless_client(
++    env: &dyn Fn(&str) -> Option<String>,
++    dir: &std::path::Path,
++    model: &str,
++) -> Result<Client, String> {
++    let door = jev_hosted::Door {
++        url: jev_hosted::DOOR,
++        model,
++    };
++    jev_hosted::resolve(env, dir, &door, &|config| {
++        config.retry(RetryPolicy {
++            budget: Some(CALL_BUDGET),
++            ..RetryPolicy::default()
++        })
++    })
++    .map(|resolved| resolved.client)
++    .map_err(|why| format!("Jev is unavailable: {why}"))
++}
++
++/// The model a keyless call asks for: the chosen model on TypeSafe's door,
++/// else Jev's default (the hosted service fronts TypeSafe's door only).
++pub fn keyless_model<'a>(endpoint: &str, model: &'a str) -> &'a str {
++    if endpoint.trim_end_matches('/') == DEFAULT_ENDPOINT.trim_end_matches('/') {
++        model
++    } else {
++        jev::defaults::MODEL
++    }
++}
++
+ /// Build the SDK client shared by bundled tools with the selected Jev model.
+ pub fn configured_client(api_key: &str, endpoint: &str, model: &str) -> Result<Client, String> {
+     if api_key.trim().is_empty() {
+diff --git a/crates/coder-new/src/live.rs b/crates/coder-new/src/live.rs
+index f006d07da1cefb7acb5738c986ec930a01f38c95..d8b1e5b1fff8b78303e68e57c13806eb7fc03bd1 100644
+--- a/crates/coder-new/src/live.rs
++++ b/crates/coder-new/src/live.rs
+@@ -49,6 +49,9 @@ pub enum Entry {
+         task: String,
+         running: bool,
+         output: serde_json::Value,
++        /// The run's latest step and Jev's estimate of how much is done,
++        /// while a Microcoder run reports them. Never a budget.
++        progress: Option<(usize, Option<f64>)>,
+     },
+ }
+ 
+@@ -461,7 +464,7 @@ fn run_with_provider(
+                                 execution.redact(&mut output);
+                                 event_callback(RuntimeEvent::Tool { name, input, output, running });
+                             }
+-                            RuntimeEvent::Delegation { .. } | RuntimeEvent::Tokens(_) => event_callback(event),
++                            RuntimeEvent::Delegation { .. } | RuntimeEvent::Tokens(_) | RuntimeEvent::Progress { .. } => event_callback(event),
+                         }
+                     };
+                     let result = async {
+diff --git a/crates/coder-new/src/plugin_tools.rs b/crates/coder-new/src/plugin_tools.rs
+index 304335eac5f430b6474b9c286e76002191b4924b..09ba8c386ca8f59e5d8bcf62874e3c8028786d73 100644
+--- a/crates/coder-new/src/plugin_tools.rs
++++ b/crates/coder-new/src/plugin_tools.rs
+@@ -230,7 +230,7 @@ impl ExecutionSettings {
+             guidance.push_str(jev_plugin::instructions());
+             guidance.push('\n');
+             if self.jev_key.is_none() {
+-                guidance.push_str("Jev is enabled but has no configured key. Tell the user to connect it in /plugins when a decision call is needed.\n");
++                guidance.push_str("Jev has no key saved here, so it runs through the built-in OpenAgents decision service. A key connected in /plugins is used instead when one is saved.\n");
+             }
+         }
+         if self.registered(ToolBinding::BrainstormSearch) {
+@@ -244,11 +244,31 @@ impl ExecutionSettings {
+             return Ok(None);
+         }
+         let Some(key) = &self.jev_key else {
+-            return Ok(None);
++            return Ok(self.keyless_jev());
+         };
+         jev_plugin::configured_client(key.expose(), &self.jev_endpoint, &self.jev_model).map(Some)
+     }
+ 
++    /// Jev with no saved key: the shared resolver's keyless path, or none
++    /// with the reason dropped (the run then shows no estimate). Tests never
++    /// read this computer's home or reach the hosted service.
++    fn keyless_jev(&self) -> Option<jev::Client> {
++        if cfg!(test) {
++            return None;
++        }
++        let env = |name: &str| std::env::var(name).ok();
++        if !jev_plugin::keyless_available(&env) {
++            return None;
++        }
++        let dir = jev_hosted::openagents_dir()?;
++        jev_plugin::keyless_client(
++            &env,
++            &dir,
++            jev_plugin::keyless_model(&self.jev_endpoint, &self.jev_model),
++        )
++        .ok()
++    }
++
+     pub async fn execute(
+         &self,
+         name: &str,
+@@ -422,19 +442,32 @@ impl ExecutionSettings {
+                 }
+             }
+             "jev" if self.registered(ToolBinding::Jev) => {
+-                let key = self
+-                    .jev_key
+-                    .as_ref()
+-                    .ok_or("Connect a Jev API key in /plugins to use the Jev tool.")?;
+                 let mut arguments = arguments;
+-                let object = arguments
++                let model = match self.jev_key {
++                    Some(_) => self.jev_model.as_str(),
++                    None => jev_plugin::keyless_model(&self.jev_endpoint, &self.jev_model),
++                };
++                arguments
+                     .as_object_mut()
+-                    .ok_or("Jev arguments must be an object.")?;
+-                object
++                    .ok_or("Jev arguments must be an object.")?
+                     .entry("model")
+-                    .or_insert_with(|| json!(self.jev_model));
++                    .or_insert_with(|| json!(model));
++                // A saved key always wins; with none, the built-in service.
++                let call = async {
++                    match &self.jev_key {
++                        Some(key) => {
++                            jev_plugin::execute(key.expose(), &self.jev_endpoint, arguments).await
++                        }
++                        None => {
++                            let client = self.keyless_jev().ok_or(
++                                "Jev is unavailable here: no key is saved in /plugins and the built-in decision service is off.",
++                            )?;
++                            jev_plugin::execute_keyless(&client, arguments).await
++                        }
++                    }
++                };
+                 tokio::select! {
+-                    result = jev_plugin::execute(key.expose(),&self.jev_endpoint,arguments) => result,
++                    result = call => result,
+                     () = async { while !cancel.load(Ordering::Relaxed) { tokio::time::sleep(std::time::Duration::from_millis(50)).await; } } => Err("The Jev decision call was canceled; whether it was billed is unknown.".into()),
+                 }
+             }
+diff --git a/crates/coder-new/src/programmatic.rs b/crates/coder-new/src/programmatic.rs
+index 72a2775e73bf7e274297aca82641da4e3d3eb4a1..e2b736be9aea46ab7f667fe8c77a300ac0834af6 100644
+--- a/crates/coder-new/src/programmatic.rs
++++ b/crates/coder-new/src/programmatic.rs
+@@ -1262,6 +1262,7 @@ fn entry_value(entry: &live::Entry) -> Value {
+             task,
+             running,
+             output,
++            ..
+         } => {
+             json!({"source":"delegation","id":id,"name":name,"task":task,"running":running,"output":output})
+         }
+@@ -1395,6 +1396,9 @@ fn delegate(
+                         output,
+                         running,
+                     } => app.live.tool(name, input, output, running),
++                    // A step of this chat's own loop: the JSON event above
++                    // carries it; a delegation's step reaches its row.
++                    RuntimeEvent::Progress { .. } => {}
+                     RuntimeEvent::Delegation {
+                         id,
+                         name,
+@@ -1455,6 +1459,9 @@ fn runtime_value(event: &RuntimeEvent) -> Value {
+         RuntimeEvent::Tokens(tokens) => json!({"event":"usage","tokens":tokens}),
+         RuntimeEvent::Text(text) => json!({"event":"delta","text":text}),
+         RuntimeEvent::Model(model) => json!({"event":"model","model":model}),
++        RuntimeEvent::Progress { step, complete } => {
++            json!({"event":"progress","step":step,"complete":complete})
++        }
+         RuntimeEvent::Tool {
+             name,
+             input,
+diff --git a/crates/coder-new/src/trajectory.rs b/crates/coder-new/src/trajectory.rs
+index 6b2e26870c0a3e57107534f9b7edfb80c83c2661..9cf5f3d64fc2266cceaf3053d95462a3d9b76fcf 100644
+--- a/crates/coder-new/src/trajectory.rs
++++ b/crates/coder-new/src/trajectory.rs
+@@ -80,6 +80,7 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
+                 task,
+                 output,
+                 running,
++                ..
+             } => {
+                 let mut extra = Map::new();
+                 extra.insert("schema".into(), json!("openagents.delegation.v1"));
+@@ -178,6 +179,7 @@ fn demo_document(app: &App, cwd: &Path) -> Value {
+             task: agent.task.into(),
+             running: true,
+             output: Value::Null,
++            progress: None,
+         });
+     }
+     append_demo_messages(&mut chat, &app.messages);
+@@ -477,6 +479,7 @@ pub fn from_document(value: &Value) -> Result<Chat, String> {
+                                 .into(),
+                             output,
+                             running: false,
++                            progress: None,
+                         });
+                         continue;
+                     }
+diff --git a/crates/coder-new/src/ui.rs b/crates/coder-new/src/ui.rs
+index 987d8f23a5e6d31d60a4168da0cdf12410578896..cf0bc9fb0623971310c2dc881a3a915d2566a238 100644
+--- a/crates/coder-new/src/ui.rs
++++ b/crates/coder-new/src/ui.rs
+@@ -754,6 +754,7 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
+             task,
+             running,
+             output,
++            progress,
+             ..
+         } => {
+             lines.push(Line::from(vec![
+@@ -778,14 +779,25 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
+                 ),
+                 span(format!(" {name}"), t::TEXT_PRIMARY),
+             ]));
+-            let status = if *running {
+-                "Running"
+-            } else if output.get("error").is_some() {
+-                "Failed"
+-            } else {
+-                "Done"
++            let status = match progress {
++                // Jev's estimate while a Microcoder run reports its steps.
++                Some((step, complete)) if *running => {
++                    crate::bundled_runtime::RuntimeEvent::progress_line(*step, *complete)
++                }
++                _ if *running => "Running".into(),
++                _ if output.get("error").is_some() => "Failed".into(),
++                _ => "Done".into(),
+             };
+-            let detail = format!("{} · {status}", truncate(task, width.saturating_sub(17)));
++            let detail =
++                format!(
++                    "{} · {status}",
++                    truncate(
++                        task,
++                        width.saturating_sub(10_u16.saturating_add(
++                            u16::try_from(status.chars().count()).unwrap_or(u16::MAX)
++                        ))
++                    )
++                );
+             lines.push(Line::from(vec![
+                 span("   ╰ ", t::GRAY_DIM),
+                 span(detail, t::GRAY_BRIGHT),

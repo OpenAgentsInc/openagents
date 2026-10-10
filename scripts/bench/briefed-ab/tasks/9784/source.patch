@@ -1,0 +1,709 @@
+diff --git a/crates/physics/src/contact.rs b/crates/physics/src/contact.rs
+index 6079c56f6fb31a471c0f1f458d429c056ac42205..2108970647e5e5d6e0998f3a26c99e3594f04a2e 100644
+--- a/crates/physics/src/contact.rs
++++ b/crates/physics/src/contact.rs
+@@ -24,7 +24,9 @@ pub struct SolverSettings {
+     pub erp: f64,
+     /// Penetration tolerated without correction, m.
+     pub slop: f64,
+-    /// Closing speed below which contacts do not bounce, m/s.
++    /// Closing speed below which contacts do not bounce, m/s. Well above
++    /// what one step of gravity adds (about 0.1 m/s at 100 Hz), so resting
++    /// contacts do not chatter.
+     pub bounce_threshold: f64,
+     /// Contacts start this far before touching, m, plus the distance the
+     /// pair can close in one step.
+@@ -37,7 +39,7 @@ impl Default for SolverSettings {
+             iterations: 20,
+             erp: 0.2,
+             slop: 0.005,
+-            bounce_threshold: 0.1,
++            bounce_threshold: 0.5,
+             margin: 0.01,
+         }
+     }
+@@ -336,16 +338,25 @@ impl World {
+                 let rb = c.point - self.bodies()[b].pos;
+                 let (ma, mb) = (&motions[a], &motions[b]);
+                 let closing = (mb.point_velocity(rb) - ma.point_velocity(ra)).dot(c.normal);
++                // Bounce when the surfaces meet within this step, including
++                // a speculative contact about to close; otherwise a fast body
++                // stopped at the surface one step early would lose it.
++                let meets = c.separation <= 0.0 || -closing * dt >= c.separation;
++                let bounce = if meets && closing < -settings.bounce_threshold {
++                    -restitution * closing
++                } else {
++                    0.0
++                };
+                 let target = if c.separation > 0.0 {
+-                    // Speculative: allow closing until the surfaces meet.
+-                    -c.separation / dt
++                    // Speculative: allow closing until the surfaces meet, or
++                    // bounce if they meet within the step.
++                    if bounce > 0.0 {
++                        bounce
++                    } else {
++                        -c.separation / dt
++                    }
+                 } else {
+                     let push = settings.erp * (-c.separation - settings.slop).max(0.0) / dt;
+-                    let bounce = if closing < -settings.bounce_threshold {
+-                        -restitution * closing
+-                    } else {
+-                        0.0
+-                    };
+                     push.max(bounce)
+                 };
+                 let tangents = basis(c.normal);
+diff --git a/crates/physics/src/lib.rs b/crates/physics/src/lib.rs
+index f94c89ba10a3fc9efda51685e9ebf1fa6779d6ab..d775bba4eba7b8706a5d5a7468bb41258017e2bd 100644
+--- a/crates/physics/src/lib.rs
++++ b/crates/physics/src/lib.rs
+@@ -16,6 +16,8 @@
+ //!   whole steps and reports time it drops.
+ //! - [`ledger`]: linear and angular momentum with named external impulses,
+ //!   for conservation tests.
++//! - [`sensors`]: raycasts, per-body contact force, an IMU, and debug lines
++//!   for contacts and joints.
+ //! - [`thrusters`]: body-mounted thrusters, a bounded allocator from a wanted
+ //!   force and torque to throttles, and a vector PID controller.
+ //! - [`trace`]: sampled states and a tolerance comparison for replay tests.
+@@ -30,6 +32,7 @@ pub mod collision;
+ pub mod contact;
+ pub mod joint;
+ pub mod ledger;
++pub mod sensors;
+ pub mod thrusters;
+ pub mod trace;
+ pub mod world;
+@@ -40,6 +43,7 @@ pub use collision::{Collider, ColliderId, ContactPoint, Filter, Manifold, Materi
+ pub use contact::{ContactReport, SolverSettings};
+ pub use joint::{Joint, JointId, JointKind, Spring};
+ pub use ledger::{Ledger, LedgerError, Momentum};
++pub use sensors::{DebugKind, DebugLine, Imu, ImuReading, RayHit};
+ pub use thrusters::{Pid, Thruster, ThrusterSet, Wrench};
+ pub use trace::{Divergence, Tolerance, Trace, attitude_difference};
+ pub use world::{BodyId, Field, NoField, SleepSettings, StepStats, Uniform, World};
+diff --git a/crates/physics/src/sensors.rs b/crates/physics/src/sensors.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..8499c87e3d8780369380eec39419bb770c5338e8
+--- /dev/null
++++ b/crates/physics/src/sensors.rs
+@@ -0,0 +1,304 @@
++//! Sensors and debug primitives, after Genesis `sensors/contact_force_go2.py`,
++//! `sensors/imu_franka.py`, `sensors/lidar_teleop.py`, and
++//! `tutorials/draw_debug.py`: a raycast against colliders, per-body contact
++//! force from the last step, an inertial measurement unit, and lines that
++//! show contacts and joints.
++
++use glam::{DMat3, DVec3};
++use serde::{Deserialize, Serialize};
++
++use crate::body::Body;
++use crate::collision::{Collider, ColliderId, Shape};
++use crate::world::{BodyId, World};
++
++/// Where a ray first meets a collider.
++#[derive(Clone, Copy, Debug, PartialEq)]
++pub struct RayHit {
++    pub collider: ColliderId,
++    pub body: BodyId,
++    /// Distance along the unit ray direction, m.
++    pub distance: f64,
++    pub point: DVec3,
++    /// Outward surface normal at the hit.
++    pub normal: DVec3,
++}
++
++/// Smallest `t` in `[0, max]` where `origin + dir t` enters a sphere, with
++/// the outward normal.
++fn ray_sphere(
++    origin: DVec3,
++    dir: DVec3,
++    center: DVec3,
++    radius: f64,
++    max: f64,
++) -> Option<(f64, DVec3)> {
++    let m = origin - center;
++    let b = m.dot(dir);
++    let c = m.length_squared() - radius * radius;
++    if c <= 0.0 {
++        // Starts inside: hit at the origin, facing back along the ray.
++        return Some((0.0, -dir));
++    }
++    if b > 0.0 {
++        return None;
++    }
++    let disc = b * b - c;
++    if disc < 0.0 {
++        return None;
++    }
++    let t = -b - disc.sqrt();
++    (t <= max).then(|| (t, (origin + dir * t - center) / radius))
++}
++
++fn ray_capsule(
++    origin: DVec3,
++    dir: DVec3,
++    p: DVec3,
++    q: DVec3,
++    radius: f64,
++    max: f64,
++) -> Option<(f64, DVec3)> {
++    let axis = q - p;
++    let length = axis.length();
++    let mut best = [p, q]
++        .into_iter()
++        .filter_map(|c| ray_sphere(origin, dir, c, radius, max))
++        .min_by(|a, b| a.0.total_cmp(&b.0));
++    if length > 1e-12 {
++        // The cylinder between the end caps.
++        let a = axis / length;
++        let (d, m) = (dir - a * dir.dot(a), (origin - p) - a * (origin - p).dot(a));
++        let (qa, qb, qc) = (
++            d.length_squared(),
++            2.0 * d.dot(m),
++            m.length_squared() - radius * radius,
++        );
++        if qa > 1e-12 {
++            let disc = qb * qb - 4.0 * qa * qc;
++            if disc >= 0.0 {
++                let t = (-qb - disc.sqrt()) / (2.0 * qa);
++                let x = origin + dir * t;
++                let along = (x - p).dot(a);
++                if (0.0..=max).contains(&t)
++                    && (0.0..=length).contains(&along)
++                    && best.is_none_or(|b| t < b.0)
++                {
++                    let core = p + a * along;
++                    best = Some((t, (x - core) / radius));
++                }
++            }
++        }
++    }
++    best
++}
++
++fn ray_box(
++    origin: DVec3,
++    dir: DVec3,
++    center: DVec3,
++    axes: DMat3,
++    half: DVec3,
++    max: f64,
++) -> Option<(f64, DVec3)> {
++    let o = axes.transpose() * (origin - center);
++    let d = axes.transpose() * dir;
++    let (mut near, mut far) = (0.0_f64, max);
++    let mut normal = DVec3::ZERO;
++    for i in 0..3 {
++        if d[i].abs() < 1e-15 {
++            if o[i].abs() > half[i] {
++                return None;
++            }
++            continue;
++        }
++        let (t1, t2) = ((-half[i] - o[i]) / d[i], (half[i] - o[i]) / d[i]);
++        let (lo, hi) = if t1 < t2 { (t1, t2) } else { (t2, t1) };
++        if lo > near {
++            near = lo;
++            let mut n = DVec3::ZERO;
++            n[i] = -d[i].signum();
++            normal = n;
++        }
++        far = far.min(hi);
++        if near > far {
++            return None;
++        }
++    }
++    if normal == DVec3::ZERO {
++        // Starts inside.
++        return Some((0.0, -dir));
++    }
++    Some((near, axes * normal))
++}
++
++impl World {
++    /// The first collider a ray from `origin` along `dir` meets within
++    /// `max` meters, among colliders `accept` allows.
++    #[must_use]
++    pub fn raycast(
++        &self,
++        origin: DVec3,
++        dir: DVec3,
++        max: f64,
++        accept: &dyn Fn(&Collider) -> bool,
++    ) -> Option<RayHit> {
++        let dir = dir.try_normalize()?;
++        let mut best: Option<RayHit> = None;
++        for (i, c) in self.colliders().iter().enumerate() {
++            if !accept(c) {
++                continue;
++            }
++            let (pos, rotation) = c.pose(self);
++            let limit = best.map_or(max, |b| b.distance);
++            let hit = match c.shape {
++                Shape::Sphere { radius } => ray_sphere(origin, dir, pos, radius, limit),
++                Shape::Capsule {
++                    radius,
++                    half_length,
++                } => {
++                    let axis = rotation * DVec3::Z * half_length;
++                    ray_capsule(origin, dir, pos - axis, pos + axis, radius, limit)
++                }
++                Shape::Cuboid { half } => {
++                    ray_box(origin, dir, pos, DMat3::from_quat(rotation), half, limit)
++                }
++            };
++            if let Some((t, normal)) = hit
++                && t <= limit
++            {
++                best = Some(RayHit {
++                    collider: ColliderId(i as u32),
++                    body: c.body,
++                    distance: t,
++                    point: origin + dir * t,
++                    normal,
++                });
++            }
++        }
++        best
++    }
++
++    /// Force and torque about its center of mass that contacts applied to
++    /// `body` in the last step, N and N m.
++    #[must_use]
++    pub fn contact_force(&self, body: BodyId) -> (DVec3, DVec3) {
++        let center = self[body].pos;
++        let mut force = DVec3::ZERO;
++        let mut torque = DVec3::ZERO;
++        for c in &self.contacts {
++            let sign = if c.body_b == body {
++                1.0
++            } else if c.body_a == body {
++                -1.0
++            } else {
++                continue;
++            };
++            force += c.impulse * sign;
++            torque += (c.point - center).cross(c.impulse * sign) + c.twist * sign;
++        }
++        (force / self.dt, torque / self.dt)
++    }
++
++    /// Lines showing the last step's contacts and the joints: each contact
++    /// point with its normal, the impulse it carried, and each joint's
++    /// anchors.
++    #[must_use]
++    pub fn debug_lines(&self) -> Vec<DebugLine> {
++        let mut lines = Vec::new();
++        for c in &self.contacts {
++            lines.push(DebugLine {
++                from: c.point,
++                to: c.point + c.normal * 0.3,
++                kind: DebugKind::ContactNormal,
++            });
++            if c.impulse != DVec3::ZERO {
++                // Scaled so a 1 N s impulse draws 10 cm.
++                lines.push(DebugLine {
++                    from: c.point,
++                    to: c.point + c.impulse * 0.1,
++                    kind: DebugKind::ContactImpulse,
++                });
++            }
++        }
++        for (_, joint) in self.joints() {
++            let (a, b) = joint.anchors(self);
++            lines.push(DebugLine {
++                from: self[joint.a].pos,
++                to: a,
++                kind: DebugKind::Joint,
++            });
++            lines.push(DebugLine {
++                from: a,
++                to: b,
++                kind: if joint.saturated {
++                    DebugKind::Strained
++                } else {
++                    DebugKind::Joint
++                },
++            });
++            lines.push(DebugLine {
++                from: b,
++                to: self[joint.b].pos,
++                kind: DebugKind::Joint,
++            });
++        }
++        lines
++    }
++}
++
++/// What a debug line shows.
++#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
++#[serde(rename_all = "snake_case")]
++pub enum DebugKind {
++    ContactNormal,
++    ContactImpulse,
++    Joint,
++    /// A joint at its force or torque limit.
++    Strained,
++    /// A thruster's force, drawn by its owner.
++    Thrust,
++}
++
++#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
++pub struct DebugLine {
++    pub from: DVec3,
++    pub to: DVec3,
++    pub kind: DebugKind,
++}
++
++/// One inertial reading, body frame.
++#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
++pub struct ImuReading {
++    /// Proper acceleration: what an accelerometer feels, the acceleration
++    /// minus the field's, m/s^2. Zero in free fall.
++    pub specific_force: DVec3,
++    /// Angular rate, rad/s.
++    pub angular_rate: DVec3,
++}
++
++/// An inertial measurement unit fixed at a body's center of mass. It
++/// differences velocity between readings, so read it once per step.
++#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
++pub struct Imu {
++    last_vel: Option<DVec3>,
++    pub reading: ImuReading,
++}
++
++impl Imu {
++    /// Read after a step of `dt` in which the field accelerated the body by
++    /// `field`.
++    pub fn read(&mut self, body: &Body, field: DVec3, dt: f64) -> ImuReading {
++        let accel = self.last_vel.map_or(DVec3::ZERO, |v| (body.vel - v) / dt);
++        let specific = if self.last_vel.is_some() {
++            accel - field
++        } else {
++            DVec3::ZERO
++        };
++        self.last_vel = Some(body.vel);
++        self.reading = ImuReading {
++            specific_force: body.orientation.inverse() * specific,
++            angular_rate: body.omega,
++        };
++        self.reading
++    }
++}
+diff --git a/crates/verse-lagrange/src/station.rs b/crates/verse-lagrange/src/station.rs
+index 918c116dfb30738b7d9257576e39b91aa604a546..d7f8e0f45cb99e7a721d637b831fdf8ab166e4de 100644
+--- a/crates/verse-lagrange/src/station.rs
++++ b/crates/verse-lagrange/src/station.rs
+@@ -7,8 +7,9 @@
+ 
+ use glam::{DQuat, DVec3};
+ use physics::{
+-    Body, BodyId, BodyKind, Collider, ColliderId, Composite, Filter, FixedStep, Joint, JointId,
+-    JointKind, Ledger, Material, Momentum, Shape, ThrusterSet, World,
++    Body, BodyId, BodyKind, Collider, ColliderId, Composite, DebugKind, DebugLine, Filter,
++    FixedStep, Imu, Joint, JointId, JointKind, Ledger, Material, Momentum, Shape, ThrusterSet,
++    World,
+ };
+ use serde::{Deserialize, Serialize};
+ 
+@@ -409,6 +410,15 @@ pub struct Snapshot {
+     pub awake_bodies: usize,
+     /// Wall-clock time of the last physics step, ms, for profiling.
+     pub step_ms: f64,
++    /// Contact force on the astronaut and anything it holds in the last
++    /// step, N.
++    pub impact_n: f64,
++    /// What the suit's accelerometer feels, in standard gravities.
++    pub g_load: f64,
++    /// The astronaut's rotation rate, degrees per second.
++    pub spin_deg_s: f64,
++    /// Distance to the nearest structure or part straight ahead, m.
++    pub proximity_m: Option<f64>,
+     pub refilling: bool,
+     /// A station-keeping burn fired within the last second.
+     pub keeping_active: bool,
+@@ -449,6 +459,12 @@ pub struct Station {
+     pub anchor: BodyId,
+     /// The astronaut's safety tether from the airlock.
+     pub tether: JointId,
++    /// The suit's inertial measurement unit.
++    #[serde(default)]
++    pub imu: Imu,
++    /// Thrusters that fired in the last step: world force and position.
++    #[serde(skip)]
++    pub fired: Vec<(DVec3, DVec3)>,
+     /// Apply the L1 tidal field to local bodies. Off only for conservation
+     /// tests, since the rotating-frame field is an external force.
+     #[serde(default = "enabled")]
+@@ -569,6 +585,8 @@ impl Station {
+             pilot: Command::default(),
+             journal: None,
+             grip: None,
++            imu: Imu::default(),
++            fired: Vec::new(),
+             anchor,
+             tether,
+             tide: true,
+@@ -948,6 +966,13 @@ impl Station {
+             if tidal { tide(c2, p, v) } else { DVec3::ZERO }
+         });
+         self.account_contacts();
++        let astronaut = *self.astronaut();
++        let field = if self.tide {
++            tide(c2, astronaut.pos, astronaut.vel)
++        } else {
++            DVec3::ZERO
++        };
++        self.imu.read(&astronaut, field, dt);
+         self.check_grip();
+         self.account_tethers();
+         // Emergency boundary: only if the tether gave way past its tension.
+@@ -978,9 +1003,46 @@ impl Station {
+             astronaut.mass = mass + added;
+         }
+         self.emit_plumes(&fired, dt);
++        self.fired = fired;
+         self.settle_parts();
+     }
+ 
++    /// Contact force on the astronaut and anything it holds, N.
++    #[must_use]
++    pub fn impact(&self) -> f64 {
++        let mut total = self.world.contact_force(self.astronaut).0;
++        if let Some(i) = self.carried() {
++            total += self.world.contact_force(self.parts[i].body).0;
++        }
++        total.length()
++    }
++
++    /// Distance to the nearest structure or part along the astronaut's
++    /// facing, within 50 m, ignoring the astronaut and what it holds.
++    #[must_use]
++    pub fn proximity(&self) -> Option<f64> {
++        let held = self.carried().map(|i| self.parts[i].body);
++        let astronaut = self.astronaut;
++        self.world
++            .raycast(self.astronaut().pos, self.facing(), 50.0, &|c| {
++                c.body != astronaut && Some(c.body) != held && c.filter.group != 0
++            })
++            .map(|hit| hit.distance)
++    }
++
++    /// Lines for a physics overlay: contacts, their impulses, joints (the
++    /// grip, tethers, and latches), and the pack's firing thrusters.
++    #[must_use]
++    pub fn debug_lines(&self) -> Vec<DebugLine> {
++        let mut lines = self.world.debug_lines();
++        lines.extend(self.fired.iter().map(|(force, at)| DebugLine {
++            from: *at,
++            to: *at + *force * 0.05,
++            kind: DebugKind::Thrust,
++        }));
++        lines
++    }
++
+     /// The astronaut and anything it holds, as one body.
+     #[must_use]
+     pub fn group(&self) -> Composite {
+@@ -1165,8 +1227,22 @@ impl Station {
+             }
+         };
+         let kind = self.parts[index].kind;
+-        let grabbed = self.world.colliders()[self.parts[index].collider.0 as usize]
+-            .closest_point(&self.world, hands);
++        // Reach from the hands toward the part's center; the glove closes where
++        // that ray meets the part, or on its nearest point if the hands are
++        // already inside it.
++        let target = self.parts[index].collider;
++        let body = self.parts[index].body;
++        let center = self.world[body].pos;
++        let grabbed = self
++            .world
++            .raycast(hands, center - hands, GRAB_RANGE + 10.0, &|c| {
++                c.body == body
++            })
++            .filter(|hit| hit.distance > 0.0)
++            .map_or_else(
++                || self.world.colliders()[target.0 as usize].closest_point(&self.world, hands),
++                |hit| hit.point,
++            );
+         self.set_state(index, PartState::Carried);
+         let grip = Joint::weld_here(&self.world, self.astronaut, self.parts[index].body, grabbed)
+             .soft(GRIP_FREQUENCY, 1.0)
+@@ -1360,6 +1436,10 @@ impl Station {
+             latch_angle_deg: self.latch_error().map(|e| e.1.to_degrees()),
+             awake_bodies: self.world.stats.awake,
+             step_ms: self.world.stats.total.as_secs_f64() * 1_000.0,
++            impact_n: self.impact(),
++            g_load: self.imu.reading.specific_force.length() / G0,
++            spin_deg_s: self.astronaut().omega.length().to_degrees(),
++            proximity_m: self.proximity(),
+             latch_distance_m: latch_distance,
+             refilling: self.refilling,
+             keeping_active: self.keeping_glow > 0.0,
+diff --git a/crates/verse/src/zones/lagrange.rs b/crates/verse/src/zones/lagrange.rs
+index 5735adabaa6e30cce5f9f9462a87f8ebbbb904c3..3e5ceb8f73b58b1dd2174f2cd7c102c92a811e28 100644
+--- a/crates/verse/src/zones/lagrange.rs
++++ b/crates/verse/src/zones/lagrange.rs
+@@ -13,6 +13,7 @@ use glam::{DVec3, Mat4, Quat, Vec3};
+ use verse_lagrange::{
+     Command, PartKind, PartState, Station,
+     orbit::{EARTH_RADIUS, MOON_RADIUS, SUN_RADIUS},
++    physics::DebugKind,
+     station::{self, AIRLOCK},
+ };
+ 
+@@ -33,6 +34,8 @@ const SAFETY: [f32; 3] = [0.92, 0.6, 0.08];
+ 
+ pub(crate) struct Lagrange {
+     pub station: Station,
++    /// Draw contacts, their impulses, joints, and thrust.
++    pub overlay: bool,
+     rendered: Mesh,
+ }
+ 
+@@ -40,6 +43,7 @@ impl Lagrange {
+     pub fn new() -> Self {
+         let mut zone = Self {
+             station: Station::new(),
++            overlay: false,
+             rendered: Mesh::default(),
+         };
+         zone.rendered = zone.build_dynamic();
+@@ -299,7 +303,12 @@ impl Lagrange {
+         let astronaut_pos = s.astronaut().interpolated(alpha).0;
+         let astronaut = astronaut_pos.as_vec3();
+         let carrying = s.parts.iter().any(|p| p.state == PartState::Carried);
+-        suit(&mut mesh, feet(astronaut_pos), s.heading_yaw() as f32, carrying);
++        suit(
++            &mut mesh,
++            feet(astronaut_pos),
++            s.heading_yaw() as f32,
++            carrying,
++        );
+         for p in &s.plumes {
+             let pos = DVec3::from(p.pos).as_vec3();
+             let dir = DVec3::from(p.dir).as_vec3();
+@@ -354,6 +363,18 @@ impl Lagrange {
+         if let Some(target) = s.target {
+             dashed(&mut mesh, astronaut, target.as_vec3(), [0.3, 0.8, 0.9]);
+         }
++        if self.overlay {
++            for l in s.debug_lines() {
++                let color = match l.kind {
++                    DebugKind::ContactNormal => [0.3, 0.9, 1.2],
++                    DebugKind::ContactImpulse => [1.4, 0.3, 0.2],
++                    DebugKind::Joint => [0.9, 0.9, 0.3],
++                    DebugKind::Strained => [1.5, 0.2, 0.9],
++                    DebugKind::Thrust => [1.2, 0.7, 1.4],
++                };
++                line(&mut mesh, l.from.as_vec3(), l.to.as_vec3(), color);
++            }
++        }
+         mesh
+     }
+ }
+diff --git a/crates/verse/src/zones/runtime.rs b/crates/verse/src/zones/runtime.rs
+index fd25496bab0b07c126bff0f1e140ad9ad4e2bf19..9ea667e95a6da4f37c740fb5b4e8aba6c6e21704 100644
+--- a/crates/verse/src/zones/runtime.rs
++++ b/crates/verse/src/zones/runtime.rs
+@@ -209,6 +209,15 @@ impl WorldRuntime {
+                     .cast(spell, origin.to_array(), direction.to_array())?;
+                 self.zone_state.error = None;
+             }
++            Intent::Forces => {
++                let lagrange = self
++                    .zone_state
++                    .lagrange
++                    .as_mut()
++                    .ok_or("Enter Lagrange 1 first")?;
++                lagrange.overlay = !lagrange.overlay;
++                lagrange.tick();
++            }
+             Intent::Grab | Intent::Release => {
+                 let lagrange = self
+                     .zone_state
+@@ -395,6 +404,16 @@ impl WorldRuntime {
+             } else {
+                 add("grab", "Grab", Intent::Grab, s.can_grab);
+             }
++            add(
++                "forces",
++                if lagrange.overlay {
++                    "Hide forces"
++                } else {
++                    "Forces"
++                },
++                Intent::Forces,
++                true,
++            );
+             add("return", "Plaza", Intent::Return, true);
+             let status = if let Some(kind) = s.carrying {
+                 match s.latch_distance_m {
+@@ -417,8 +436,15 @@ impl WorldRuntime {
+             } else {
+                 status
+             };
++            let mut sensed = format!("{:.2} g · spin {:.0}°/s", s.g_load, s.spin_deg_s);
++            if let Some(ahead) = s.proximity_m {
++                sensed.push_str(&format!(" · {ahead:.1} m ahead"));
++            }
++            if s.impact_n > 1.0 {
++                sensed.push_str(&format!(" · impact {:.0} N", s.impact_n));
++            }
+             format!(
+-                "Earth {:.2}M km · N2 {:.1} kg · {:.1} m/s\n{}",
++                "Earth {:.2}M km · N2 {:.1} kg · {:.1} m/s\n{sensed}\n{}",
+                 s.orbit.earth_distance_km / 1.0e6,
+                 s.propellant_kg,
+                 s.speed_m_s,
+diff --git a/docs/verse/lagrange-1.md b/docs/verse/lagrange-1.md
+index 9c0205a98af0318f425911c34a82100e709b23e4..1ef5c1634303679a2c7a70497108c65354cf50c3 100644
+--- a/docs/verse/lagrange-1.md
++++ b/docs/verse/lagrange-1.md
+@@ -224,6 +224,20 @@ a moving body touches it, a force acts on it, a joint on it changes, or its
+ owner sets it moving. The snapshot reports the awake body count and the last
+ step's wall-clock time.
+ 
++### Sensors and the forces overlay
++
++The suit carries an inertial measurement unit (`physics::Imu`): the HUD shows
++the proper acceleration in standard gravities (a full 40 N burn empty is about
++0.016 g) and the spin rate. A ray along the facing reports the nearest
++structure or part ahead, and the contact force on the astronaut and anything
++it holds shows as an impact in newtons. Grabbing casts a ray from the hands to
++the part's center and closes the glove where it meets the surface.
++
++The **Forces** control draws the physics overlay: contact points with their
++normals (cyan) and impulses (red), joints such as the grip, tethers, and
++latches (yellow, magenta at their limit), and each firing thruster's force
++(violet).
++
+ ## Approximations
+ 
+ - The Sun and the EMB move on circular orbits (no eccentricity), the Moon is a
+@@ -249,7 +263,7 @@ exact unstable eigenvector, Jacobi conservation and uncontrolled divergence,
+ two years of controlled flight, microgravity magnitude, the rocket equation
+ and position hold, inelastic capture, latch conditions (position, speed,
+ spin, and alignment), a latched part under impact, the safety tether's arrest, latched parts
+-sleeping while free parts never do,
++sleeping while free parts never do, the HUD's sensors, the grab point,
+ collisions, frame-rate
+ independence, the frame step cap, save and restore, journal replay, and the
+ momentum ledger through coasting, burns, structure contact, the tether,
+diff --git a/docs/verse/zones.md b/docs/verse/zones.md
+index d45e44a5663f6690b0e3362e50a148cabc7fe08a..767810ee5194214e2f472d56e3d22a0fca3706e0 100644
+--- a/docs/verse/zones.md
++++ b/docs/verse/zones.md
+@@ -76,6 +76,7 @@ Carry it to its outlined slot on the keel jig. When the part is within 1.6 m of
+ the slot, aligned within 15 degrees, moving below 0.35 m/s, and turning below
+ 0.05 rad/s, the control reads **Latch** and releasing welds it to the jig.
+ Releasing elsewhere lets it drift and tumble as a free rigid body.
++**Forces** toggles an overlay of contacts, joints, and thrust.
+ Six parts complete the keel: main engine, propellant tank, two keel trusses, RCS
+ pod, and avionics bay. [Lagrange 1](lagrange-1.md) documents the physics.
+ 

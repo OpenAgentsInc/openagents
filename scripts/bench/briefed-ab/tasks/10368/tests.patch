@@ -1,0 +1,59 @@
+diff --git a/crates/openagents-cli/src/computer.rs b/crates/openagents-cli/src/computer.rs
+index a144488d3ec256e8b1b3185e99f030d0d1752d8a..c8ce1594be1b17a3824daf9e4690611428a74b0e 100644
+--- a/crates/openagents-cli/src/computer.rs
++++ b/crates/openagents-cli/src/computer.rs
+@@ -728,3 +801,54 @@ fn dispatch(
+         other => Ok(output.usage("computer", &format!("unknown command `{other}`"), USAGE)),
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use coder_computers::model::{Compatibility, DeviceList, Enrollment, HostRecord};
++
++    /// A host that publishes nothing to this computer may be off or may have
++    /// removed it; the message says both and how to check and enroll again,
++    /// in words rather than the supervisor's debug text (#10368).
++    #[test]
++    fn a_silent_host_names_both_causes_and_the_way_back() {
++        let record = HostRecord {
++            key: "93".repeat(32),
++            label: "coderos-4080".into(),
++            listing: None,
++            delisted: false,
++            ssh: None,
++            tunnel: None,
++            enrollment: Enrollment::NotEnrolled,
++            link: None,
++            route: None,
++            compatibility: Compatibility::Unknown,
++            presence: None,
++            devices: DeviceList::NotLoaded,
++            enrollments: Vec::new(),
++            workspaces: None,
++            watchers: None,
++            background: None,
++        };
++        let name = host_name(&record, &record.key);
++        assert_eq!(name, "coderos-4080");
++        let text = not_connected(&record, &name, 15, "--wait");
++        assert!(text.starts_with("coderos-4080 did not connect within 15s (not connecting)."));
++        assert!(text.contains("it removed this computer"));
++        assert!(text.contains("`openagents connect devices`"));
++        assert!(text.contains("`openagents computer link CODE`"));
++        assert!(!text.contains("Backoff"));
++        assert_eq!(
++            phase_words(&coder_link::Phase::Backoff {
++                until: coder_link::Moment(5)
++            }),
++            "retrying"
++        );
++        assert_eq!(
++            phase_words(&coder_link::Phase::Blocked(
++                coder_link::BlockReason::Revoked
++            )),
++            "it removed this computer's access"
++        );
++    }
++}

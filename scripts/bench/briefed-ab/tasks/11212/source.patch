@@ -1,0 +1,896 @@
+diff --git a/crates/claude_agent_sdk/PARITY.md b/crates/claude_agent_sdk/PARITY.md
+index 3367f4275efb302c8ec21bf5c70adbfdc026dc61..24c2c71885c1169d3a736d35801cd745f7140539 100644
+--- a/crates/claude_agent_sdk/PARITY.md
++++ b/crates/claude_agent_sdk/PARITY.md
+@@ -3,8 +3,8 @@
+ This crate ports the wire protocol of `@anthropic-ai/claude-agent-sdk`: the
+ stream-json frames the `claude` CLI writes, the control protocol in both
+ directions, and the options that become CLI flags or `initialize` fields.
+-It tracks SDK **0.3.289** (`UPSTREAM_SDK_VERSION` in `src/lib.rs`), checked
+-against Claude Code **2.1.289**. The npm package is read as a reference;
++It tracks SDK **0.3.296** (`UPSTREAM_SDK_VERSION` in `src/lib.rs`), checked
++against Claude Code **2.1.295**, the newest CLI installed for the smoke. The npm package is read as a reference;
+ nothing from it is vendored.
+ 
+ Run `scripts/check-claude-sdk-parity.sh` to compare the crate with the
+@@ -13,7 +13,7 @@ script exits 1 only for gaps this file does not list as deferred.
+ 
+ ## Stream messages
+ 
+-Every `type` and `system` `subtype` in the 0.3.289 `SDKMessage` union
++Every `type` and `system` `subtype` in the 0.3.296 `SDKMessage` union
+ parses to a typed `SdkMessage` variant. A valid JSON object with an
+ unmodelled `type` or `subtype` becomes `SdkMessage::Unknown { type_name,
+ raw }` and the stream continues; invalid JSON becomes
+@@ -43,9 +43,35 @@ Added for 0.3.289:
+ 
+ No 0.3.172 message type or required field was removed in 0.3.289.
+ 
++Added for 0.3.296 (0.3.290 to 0.3.296 add no message type or subtype):
++
++- `agent_id` on assistant and user messages a subagent produces
++  (0.3.292); assistant messages also carry `subagent_type` and
++  `task_description`, which 0.3.289 already had.
++- `run_id` on `task_started`, `task_updated`, `task_progress`, and
++  `task_notification`, and `parent_task_id` on `task_started` (0.3.292).
++- `background_tasks_changed` entries: `run_id`, `parent_task_id` (0.3.292)
++  and `subagent_type` (0.3.293).
++- `SdkRateLimitInfo::overage_enabled` (`overageEnabled`, 0.3.295). The
++  `overageStatus`, `overageResetsAt`, and `overageDisabledReason` fields
++  were already modelled, so `allowed_warning` events now carrying them
++  parse unchanged.
++- `startup_failure_reason` values `org_config_required_unavailable` and
++  `org_config_refused` (0.3.296) parse; the field stays a string.
++- `citations` on text blocks (fixed in 0.3.295 for streamed responses)
++  pass through: `message` and stream `event` are kept as JSON, and a test
++  pins both forms.
++- Fixed here: an inbound `user` frame (tool results, replays) parsed to
++  `SdkMessage::Unknown`, because the enum tag consumed the `type` field the
++  struct required. It now parses to `SdkMessage::User` and serializes with
++  one `type`, and `isSynthetic` and `isReplay` use their wire names (the
++  snake_case spellings are still read). `microcoder`'s `claude_sdk` engine
++  records these frames in its transcript, which it had silently skipped.
++
+ ## Control protocol
+ 
+ Outbound (SDK to CLI): all 40 subtypes in 0.3.289 `SDKControlRequestInner`
++(unchanged through 0.3.296)
+ serialize, and `Query` has a method for each one a host sends. New since
+ 0.3.172: `list_models`, `get_hooks_listing`, `get_task_output`,
+ `list_permission_rules`, `mcp_read_resource`, `reload_output_styles`, and
+@@ -73,6 +99,20 @@ does not stall the stdout reader:
+ | `remote_tool_call` and the other remote tool subtypes | No reply, as in the TS SDK. |
+ | Any other subtype | Error naming the subtype. |
+ 
++Added for 0.3.296:
++
++- The `initialize` response's `claude_code_version` is
++  `Query::claude_code_version()`. Claude Code 2.1.295 does not send it yet,
++  so the smoke reports it absent.
++- A permission answer whose `updatedPermissions` holds over
++  `MAX_UPDATED_PERMISSIONS` (4,096) updates, rules, and directories counted
++  together is sent as a deny that names the count
++  (`PermissionResult::within_limits`). Claude Code 2.1.295 and later count
++  such an answer as a denial; the CLI does not say whether the limit is per
++  list or combined, so the SDK applies the stricter combined count.
++- `suppress_always_allow_rule` on `can_use_tool` (set for connector tools
++  an organization requires approval for, 0.3.292) was already modelled.
++
+ `control_cancel_request` aborts the matching in-flight answer, and a
+ duplicate delivery of an in-flight request is skipped. Permission and
+ dialog requests carried in a control response's
+@@ -86,7 +126,33 @@ the CLI in `initialize.hooks`.
+ 
+ ## Options and flags
+ 
+-`build_args` follows the 0.3.289 argument builder. Fixed against the
++Added for 0.3.296:
++
++- Flag values ride in the flag's own argument (`--model=haiku`), as the TS
++  SDK does since 0.3.295, so a value that starts with `-` is never read as
++  another flag. `--mcp-config`, `--managed-settings`, `--settings`, and
++  extra arguments keep `--flag value` unless the value starts with `-`,
++  also as in the TS SDK. The stream-json transport flags are unchanged. The
++  crate's own `--system-prompt`, `--append-system-prompt`, and `--agents`
++  use the joined form too.
++- `AgentDefinition::auto_compact_window` (`autoCompactWindow`, 0.3.296).
++  `AgentDefinition` now derives `Default`.
++- The sandbox option merges into an inline `settings.sandbox` block
++  instead of replacing it (0.3.296): its values win, values it does not set
++  are kept, `filesystem.denyRead`, `filesystem.denyWrite`,
++  `network.deniedDomains`, `credentials.files`, and `credentials.envVars`
++  from both sides are combined, `ripgrep` and `network.tlsTerminate` are
++  replaced whole, `filesystem.disabled: true` is dropped when the option
++  restricts the filesystem, unset proxy ports are dropped when it restricts
++  domains, and `failIfUnavailable` defaults to `true` only when neither side
++  sets it. `settings` given as inline JSON text merges like an object; a
++  settings file path with a sandbox is still rejected.
++- `SandboxSettings` gains `fail_if_unavailable`, `filesystem`,
++  `credentials`, and `extra`; `SandboxNetworkConfig` gains
++  `allowed_domains`, `denied_domains`, `strict_allowlist`, and `extra`.
++  Fields without a typed slot go in `extra` as written.
++
++`build_args` follows the 0.3.289 argument builder, as revised above. Fixed against the
+ CLI: `--allowedTools` and `--disallowedTools` take one comma-joined value,
+ `--setting-sources=` and `--betas` take joined lists,
+ `allow_dangerously_skip_permissions` is
+@@ -126,7 +192,12 @@ from 0.3.172.
+   the installed CLI with `--no-session-persistence`, no tools, and no
+   settings files. On 2026-10-04 with Claude Code 2.1.289 it completed the
+   handshake (12 models, 55 commands) and a `success` result with no
+-  `Unknown` messages.
++  `Unknown` messages. On 2026-10-09 with Claude Code 2.1.295, the owner's
++  login, no API key, and the `--flag=value` arguments it completed the
++  handshake (13 models, 55 commands, no `claude_code_version` yet) and a
++  `success` result (`completed`) with no `Unknown` messages.
++- `cargo test -p microcoder`: the `claude_sdk` engine's fake-CLI tests,
++  updated for the joined flag spelling.
+ 
+ ## Deferred
+ 
+@@ -142,3 +213,15 @@ from 0.3.172.
+   expose.
+ - Hook input and hook-specific output stay `serde_json::Value` rather than
+   one Rust type per event.
++- Tool inputs and results stay JSON, so the 0.3.290 to 0.3.296 tool shape
++  changes (WebFetch `offset`, ListAgents `sections` and `notes`,
++  SendMessage `recipient_kind`, ReadNotifications `read_at` and
++  `arrived_at`, MCP `tool_use_result` caps, `tool_result_meta`) need no
++  port. The same holds for settings-file fields the SDK passes through
++  untyped (hook `onFailure`, `idleCompaction`).
++- Message `origin` (and its 0.3.292 `runId`) is not modelled.
++- `AgentDefinition` models the 0.3.172 fields plus `autoCompactWindow`;
++  the other optional agent fields (`initialPrompt`, `maxTurns`,
++  `background`, `omitClaudeMd`, and the rest) are not.
++- MCP description limits (4,096 and 16,384 characters) apply to
++  SDK-hosted MCP servers, which this crate does not support.
+diff --git a/crates/claude_agent_sdk/README.md b/crates/claude_agent_sdk/README.md
+index 2002a21b73926f9671a58fa64aaf0891697884f9..333e1c126a320e78a64cb34d95176c650fc0823b 100644
+--- a/crates/claude_agent_sdk/README.md
++++ b/crates/claude_agent_sdk/README.md
+@@ -14,6 +14,11 @@ a studio approval: **Allow once** runs that exact request, **Deny** refuses
+ it, and the seat's standing rules apply. The engine runs under full access
+ only. See the [Agent Studio audit](../../docs/verse/agent-studio-audit.md).
+ 
++The crate tracks SDK 0.3.296 (Claude Code 2.1.296) as of October 9, 2026;
++[PARITY.md](PARITY.md) lists what each release added and what is deferred,
++and `scripts/check-claude-sdk-parity.sh latest` compares it with the newest
++npm release.
++
+ On Unix the CLI leads a process group of its own; `Query::kill`, or dropping
+ the `Query`, stops the whole group.
+ 
+@@ -412,7 +417,7 @@ let options = QueryOptions::new().hook(HookEvent::PreToolUse, HookMatcher::new(S
+ Set `on_elicitation` to answer MCP elicitation (without it, the SDK
+ declines) and `on_user_dialog` to answer `request_user_dialog` (without
+ it, the request gets no reply). [PARITY.md](PARITY.md) lists what the
+-crate covers at SDK 0.3.289 and what remains.
++crate covers at SDK 0.3.296 and what remains.
+ 
+ To check the crate against the installed CLI, run the live smoke. It
+ saves no session:
+diff --git a/crates/claude_agent_sdk/examples/smoke.rs b/crates/claude_agent_sdk/examples/smoke.rs
+index adc70f1a943056c0a40edd1a590ab809b11718d8..dddebbade05fa84f5447bb1def93e0180fc1cf8c 100644
+--- a/crates/claude_agent_sdk/examples/smoke.rs
++++ b/crates/claude_agent_sdk/examples/smoke.rs
+@@ -20,6 +20,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
+         .no_session_persistence();
+     options.tools = Some(ToolsConfig::Names(Vec::new()));
+     options.setting_sources = Some(Vec::new());
++    // Run on the Claude Code login, never an API key.
++    options.env_remove = vec!["ANTHROPIC_API_KEY".into()];
+ 
+     let mut stream = query("Reply with the single word: pong", options).await?;
+     let init = stream
+@@ -27,7 +29,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
+         .ok_or("initialize returned no payload")?;
+     let models = init["models"].as_array().map_or(0, Vec::len);
+     let commands = init["commands"].as_array().map_or(0, Vec::len);
+-    println!("initialize: ok ({models} models, {commands} commands)");
++    println!(
++        "initialize: ok ({models} models, {commands} commands, claude_code_version={})",
++        stream.claude_code_version().unwrap_or("absent")
++    );
+ 
+     let mut unknown = Vec::new();
+     while let Some(message) = stream.next().await {
+diff --git a/crates/claude_agent_sdk/src/lib.rs b/crates/claude_agent_sdk/src/lib.rs
+index c1a10a18a20a96d56ba73dd7a41568b8926c2346..9fa114519eb3fb3f1aa686c0cdd043f3d79a59ac 100644
+--- a/crates/claude_agent_sdk/src/lib.rs
++++ b/crates/claude_agent_sdk/src/lib.rs
+@@ -84,7 +84,7 @@ pub mod transport;
+ 
+ /// The `@anthropic-ai/claude-agent-sdk` version whose wire protocol this
+ /// crate tracks.
+-pub const UPSTREAM_SDK_VERSION: &str = "0.3.289";
++pub const UPSTREAM_SDK_VERSION: &str = "0.3.296";
+ 
+ // Re-export main types at crate root
+ pub use callbacks::{ElicitationHandler, HookCallback, HookMatcher, UserDialogHandler, hook_fn};
+@@ -101,20 +101,20 @@ pub use permissions::{
+ };
+ pub use protocol::{
+     AssistantMessageError, AsyncHookJSONOutput, CanUseToolRequest, ElicitationAction,
+-    ElicitationRequest, ElicitationResult, HookEvent, HookJSONOutput, KeepAliveMessage, ModelUsage,
+-    PermissionBehavior, PermissionDenial, PermissionMode, PermissionResult, PermissionRule,
+-    PermissionUpdate, RequestUserDialogRequest, ResultError, ResultSuccess, ResultTurnFields,
+-    SdkActiveGoalMessage, SdkApiRetryMessage, SdkAssistantMessage, SdkAuthStatusMessage,
+-    SdkBackgroundTasksChangedMessage, SdkCommandsChangedMessage, SdkControlRequest,
+-    SdkControlRequestProgressMessage, SdkControlResponse, SdkConversationResetMessage,
+-    SdkElicitationCompleteMessage, SdkFilesPersistedEvent, SdkHookProgressMessage,
+-    SdkHookStartedMessage, SdkInformationalMessage, SdkLocalCommandOutputMessage,
+-    SdkMemoryRecallMessage, SdkMessage, SdkMirrorErrorMessage, SdkModelRefusalFallbackMessage,
+-    SdkModelRefusalNoFallbackMessage, SdkNotificationMessage, SdkPermissionDeniedMessage,
+-    SdkPluginInstallMessage, SdkPromptSuggestionMessage, SdkRateLimitEvent, SdkRateLimitInfo,
+-    SdkResultMessage, SdkSessionStateChangedMessage, SdkStreamEvent, SdkSystemMessage,
+-    SdkTaskNotificationMessage, SdkTaskProgressMessage, SdkTaskStartedMessage,
+-    SdkTaskUpdatedMessage, SdkThinkingTokensMessage, SdkToolProgressMessage,
++    ElicitationRequest, ElicitationResult, HookEvent, HookJSONOutput, KeepAliveMessage,
++    MAX_UPDATED_PERMISSIONS, ModelUsage, PermissionBehavior, PermissionDenial, PermissionMode,
++    PermissionResult, PermissionRule, PermissionUpdate, RequestUserDialogRequest, ResultError,
++    ResultSuccess, ResultTurnFields, SdkActiveGoalMessage, SdkApiRetryMessage, SdkAssistantMessage,
++    SdkAuthStatusMessage, SdkBackgroundTasksChangedMessage, SdkCommandsChangedMessage,
++    SdkControlRequest, SdkControlRequestProgressMessage, SdkControlResponse,
++    SdkConversationResetMessage, SdkElicitationCompleteMessage, SdkFilesPersistedEvent,
++    SdkHookProgressMessage, SdkHookStartedMessage, SdkInformationalMessage,
++    SdkLocalCommandOutputMessage, SdkMemoryRecallMessage, SdkMessage, SdkMirrorErrorMessage,
++    SdkModelRefusalFallbackMessage, SdkModelRefusalNoFallbackMessage, SdkNotificationMessage,
++    SdkPermissionDeniedMessage, SdkPluginInstallMessage, SdkPromptSuggestionMessage,
++    SdkRateLimitEvent, SdkRateLimitInfo, SdkResultMessage, SdkSessionStateChangedMessage,
++    SdkStreamEvent, SdkSystemMessage, SdkTaskNotificationMessage, SdkTaskProgressMessage,
++    SdkTaskStartedMessage, SdkTaskUpdatedMessage, SdkThinkingTokensMessage, SdkToolProgressMessage,
+     SdkToolUseSummaryMessage, SdkUserMessage, SdkWorkerShuttingDownMessage, StdinMessage,
+     StdoutMessage, SyncHookJSONOutput, TerminalReason, Usage, parse_stdout_line,
+ };
+diff --git a/crates/claude_agent_sdk/src/options.rs b/crates/claude_agent_sdk/src/options.rs
+index ad5a9d7f743c8be12f9f8ff02d541d96a641a1f1..1e3073db60d399302f50fcf635e68d3a427fd008 100644
+--- a/crates/claude_agent_sdk/src/options.rs
++++ b/crates/claude_agent_sdk/src/options.rs
+@@ -1,8 +1,8 @@
+ //! Query options for configuring Claude Code sessions.
+ //!
+ //! [`QueryOptions::build_args`] follows the argument builder of
+-//! `@anthropic-ai/claude-agent-sdk` 0.3.289, checked against
+-//! `claude --help` for Claude Code 2.1.289.
++//! `@anthropic-ai/claude-agent-sdk` 0.3.296, checked against
++//! `claude --help` for Claude Code 2.1.295.
+ 
+ use crate::callbacks::{ElicitationHandler, HookMatcher, UserDialogHandler};
+ use crate::error::{Error, Result};
+@@ -295,7 +295,7 @@ pub enum McpServerConfig {
+ }
+ 
+ /// Agent definition for custom subagents.
+-#[derive(Debug, Clone, Serialize, Deserialize)]
++#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+ #[serde(rename_all = "camelCase")]
+ pub struct AgentDefinition {
+     /// Description of when to use this agent.
+@@ -311,6 +311,11 @@ pub struct AgentDefinition {
+     /// Model to use.
+     #[serde(skip_serializing_if = "Option::is_none")]
+     pub model: Option<AgentModel>,
++    /// Token count at which the agent compacts its own conversation when
++    /// it runs as a subagent; it only lowers the inherited window
++    /// (`autoCompactWindow`, 0.3.296).
++    #[serde(skip_serializing_if = "Option::is_none")]
++    pub auto_compact_window: Option<u64>,
+ }
+ 
+ /// Base set of built-in tools (`--tools`).
+@@ -411,12 +416,22 @@ impl SettingSource {
+     }
+ }
+ 
+-/// Sandbox settings.
++/// Sandbox settings (the TS `sandbox` option).
++///
++/// Merged into `--settings`. When `settings` is inline and has its own
++/// `sandbox` block, the two merge as in the TS SDK 0.3.296: a value set
++/// here replaces the value at the same path, a value not set here is kept,
++/// and the restriction lists from both sides are combined. Fields this
++/// struct does not name go in `extra`.
+ #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+ pub struct SandboxSettings {
+     /// Enable sandboxing.
+     #[serde(skip_serializing_if = "Option::is_none")]
+     pub enabled: Option<bool>,
++    /// Exit at startup when an enabled sandbox cannot start. Defaults to
++    /// `true` when `enabled` is set and neither side sets it.
++    #[serde(rename = "failIfUnavailable", skip_serializing_if = "Option::is_none")]
++    pub fail_if_unavailable: Option<bool>,
+     /// Auto-allow bash if sandboxed.
+     #[serde(
+         rename = "autoAllowBashIfSandboxed",
+@@ -426,6 +441,15 @@ pub struct SandboxSettings {
+     /// Network configuration.
+     #[serde(skip_serializing_if = "Option::is_none")]
+     pub network: Option<SandboxNetworkConfig>,
++    /// Filesystem restrictions (`denyRead`, `denyWrite`, `disabled`, ...).
++    #[serde(skip_serializing_if = "Option::is_none")]
++    pub filesystem: Option<Value>,
++    /// Credential restrictions (`files`, `envVars`).
++    #[serde(skip_serializing_if = "Option::is_none")]
++    pub credentials: Option<Value>,
++    /// Any other sandbox setting, passed through as written.
++    #[serde(flatten)]
++    pub extra: serde_json::Map<String, Value>,
+ }
+ 
+ /// Sandbox network configuration.
+@@ -437,6 +461,18 @@ pub struct SandboxNetworkConfig {
+     /// Allowed Unix sockets.
+     #[serde(rename = "allowUnixSockets", skip_serializing_if = "Option::is_none")]
+     pub allow_unix_sockets: Option<Vec<String>>,
++    /// Domains commands may reach.
++    #[serde(rename = "allowedDomains", skip_serializing_if = "Option::is_none")]
++    pub allowed_domains: Option<Vec<String>>,
++    /// Domains commands may not reach.
++    #[serde(rename = "deniedDomains", skip_serializing_if = "Option::is_none")]
++    pub denied_domains: Option<Vec<String>>,
++    /// Allow only `allowed_domains`.
++    #[serde(rename = "strictAllowlist", skip_serializing_if = "Option::is_none")]
++    pub strict_allowlist: Option<bool>,
++    /// Any other network setting, passed through as written.
++    #[serde(flatten)]
++    pub extra: serde_json::Map<String, Value>,
+ }
+ 
+ /// Plugin configuration.
+@@ -566,7 +602,9 @@ impl QueryOptions {
+                     .to_string(),
+             ));
+         }
+-        if self.sandbox.is_some() && matches!(self.settings, Some(Value::String(_))) {
++        if self.sandbox.is_some()
++            && matches!(&self.settings, Some(Value::String(path)) if !is_inline_json(path))
++        {
+             return Err(Error::InvalidOptions(
+                 "cannot use both a settings file path and the sandbox option".to_string(),
+             ));
+@@ -666,7 +704,7 @@ impl QueryOptions {
+             args.push("--continue".into());
+         }
+         if let Some(ref session_id) = self.resume {
+-            args.push(format!("--resume={session_id}"));
++            push_pair(&mut args, "--resume", session_id.clone());
+         }
+         if let Some(ref tools) = self.allowed_tools
+             && !tools.is_empty()
+@@ -690,7 +728,7 @@ impl QueryOptions {
+                 "mcpServers": self.mcp_servers,
+             }))
+         {
+-            push_pair(&mut args, "--mcp-config", json);
++            push_split(&mut args, "--mcp-config", json);
+         }
+         if let Some(ref sources) = self.setting_sources {
+             let joined: Vec<&str> = sources.iter().map(|s| s.as_cli_str()).collect();
+@@ -756,7 +794,7 @@ impl QueryOptions {
+             args.push("--no-session-persistence".into());
+         }
+         if let Some(ref managed) = self.managed_settings {
+-            push_pair(&mut args, "--managed-settings", managed.clone());
++            push_split(&mut args, "--managed-settings", managed.clone());
+         }
+ 
+         // Flags the TS SDK sends in `initialize` instead; the CLI accepts
+@@ -779,16 +817,13 @@ impl QueryOptions {
+         }
+ 
+         if let Some(settings) = self.settings_arg() {
+-            push_pair(&mut args, "--settings", settings);
++            push_split(&mut args, "--settings", settings);
+         }
+ 
+         for (key, value) in &self.extra_args {
+             match value {
+                 None => args.push(format!("--{key}")),
+-                Some(v) if v.len() > 1 && v.starts_with('-') => {
+-                    args.push(format!("--{key}={v}"));
+-                }
+-                Some(v) => push_pair(&mut args, &format!("--{key}"), v.clone()),
++                Some(v) => push_split(&mut args, &format!("--{key}"), v.clone()),
+             }
+         }
+ 
+@@ -796,31 +831,29 @@ impl QueryOptions {
+     }
+ 
+     /// `--settings` value: the settings path or object, with the sandbox
+-    /// merged in as the TS SDK does.
++    /// option merged into its `sandbox` block as the TS SDK 0.3.296 does.
+     fn settings_arg(&self) -> Option<String> {
+-        let sandbox = self.sandbox.as_ref().map(|sandbox| {
+-            let mut value = serde_json::to_value(sandbox).unwrap_or(Value::Null);
+-            // The TS SDK fails closed when an enabled sandbox is unavailable.
+-            if sandbox.enabled == Some(true)
+-                && let Some(map) = value.as_object_mut()
+-            {
+-                map.entry("failIfUnavailable").or_insert(Value::Bool(true));
+-            }
+-            value
+-        });
+-        match (&self.settings, sandbox) {
+-            (None, None) => None,
+-            (Some(Value::String(path)), None) => Some(path.clone()),
+-            (Some(settings), None) => serde_json::to_string(settings).ok(),
+-            (settings, Some(sandbox)) => {
+-                let mut merged = match settings {
+-                    Some(Value::Object(map)) => map.clone(),
++        let Some(sandbox) = self.sandbox.as_ref() else {
++            return match &self.settings {
++                None => None,
++                Some(Value::String(path)) => Some(path.clone()),
++                Some(settings) => serde_json::to_string(settings).ok(),
++            };
++        };
++        let mut settings = match &self.settings {
++            Some(Value::Object(map)) => map.clone(),
++            Some(Value::String(text)) if is_inline_json(text) => {
++                match serde_json::from_str::<Value>(text) {
++                    Ok(Value::Object(map)) => map,
+                     _ => serde_json::Map::new(),
+-                };
+-                merged.insert("sandbox".into(), sandbox);
+-                serde_json::to_string(&Value::Object(merged)).ok()
++                }
+             }
+-        }
++            _ => serde_json::Map::new(),
++        };
++        let option = serde_json::to_value(sandbox).unwrap_or(Value::Null);
++        let merged = merge_sandbox(settings.get("sandbox"), &option);
++        settings.insert("sandbox".into(), merged);
++        serde_json::to_string(&Value::Object(settings)).ok()
+     }
+ 
+     /// Environment the CLI runs with, on top of the inherited environment.
+@@ -864,7 +897,128 @@ impl QueryOptions {
+     }
+ }
+ 
++/// `--flag=value`: since 0.3.295 the TS SDK sends a named option's value in
++/// the same argument as its flag, so a value that starts with `-` is never
++/// read as another flag.
+ fn push_pair(args: &mut Vec<String>, flag: &str, value: String) {
+-    args.push(flag.to_string());
+-    args.push(value);
++    args.push(format!("{flag}={value}"));
++}
++
++/// `--flag value`, or `--flag=value` when the value starts with `-`. The TS
++/// SDK keeps this form for `--mcp-config`, `--managed-settings`,
++/// `--settings`, and extra arguments.
++fn push_split(args: &mut Vec<String>, flag: &str, value: String) {
++    if value.len() > 1 && value.starts_with('-') {
++        args.push(format!("{flag}={value}"));
++    } else {
++        args.push(flag.to_string());
++        args.push(value);
++    }
++}
++
++/// A `settings` string that is inline JSON rather than a file path.
++fn is_inline_json(text: &str) -> bool {
++    let text = text.trim();
++    text.starts_with('{') && text.ends_with('}')
++}
++
++/// Restriction lists combined from both sides instead of replaced.
++const SANDBOX_UNION_PATHS: &[&str] = &[
++    "filesystem.denyRead",
++    "filesystem.denyWrite",
++    "network.deniedDomains",
++    "credentials.files",
++    "credentials.envVars",
++];
++
++/// Objects the sandbox option replaces whole instead of merging.
++const SANDBOX_REPLACE_PATHS: &[&str] = &["ripgrep", "network.tlsTerminate"];
++
++/// Proxy ports dropped when the option sets a domain restriction.
++const SANDBOX_PROXY_PORTS: &[&str] = &["httpProxyPort", "socksProxyPort"];
++
++fn merge_sandbox_at(base: Option<&Value>, option: &Value, prefix: &str) -> Value {
++    let mut merged = match base {
++        Some(Value::Object(map)) => map.clone(),
++        _ => serde_json::Map::new(),
++    };
++    let Value::Object(option) = option else {
++        return Value::Object(merged);
++    };
++    for (key, value) in option {
++        if matches!(key.as_str(), "__proto__" | "constructor" | "prototype") {
++            continue;
++        }
++        let path = if prefix.is_empty() {
++            key.clone()
++        } else {
++            format!("{prefix}.{key}")
++        };
++        let next = match (merged.get(key), value) {
++            (Some(Value::Array(old)), Value::Array(new))
++                if SANDBOX_UNION_PATHS.contains(&path.as_str()) =>
++            {
++                let mut combined = old.clone();
++                for item in new {
++                    if !combined.contains(item) {
++                        combined.push(item.clone());
++                    }
++                }
++                Value::Array(combined)
++            }
++            (Some(old @ Value::Object(_)), Value::Object(_))
++                if !SANDBOX_REPLACE_PATHS.contains(&path.as_str()) =>
++            {
++                merge_sandbox_at(Some(old), value, &path)
++            }
++            _ => value.clone(),
++        };
++        merged.insert(key.clone(), next);
++    }
++    Value::Object(merged)
++}
++
++/// Merge the sandbox option into a settings `sandbox` block (TS SDK
++/// 0.3.296): the option's values win, restriction lists combine,
++/// `filesystem.disabled: true` is dropped when the option restricts the
++/// filesystem, proxy ports are dropped when the option restricts domains,
++/// and an enabled sandbox fails closed unless either side says otherwise.
++fn merge_sandbox(base: Option<&Value>, option: &Value) -> Value {
++    let mut merged = merge_sandbox_at(base, option, "");
++    let restricts_files = option.get("filesystem").is_some_and(|v| !v.is_null())
++        || option
++            .pointer("/credentials/files")
++            .and_then(Value::as_array)
++            .is_some_and(|files| files.iter().any(|f| f["mode"] == "deny"));
++    if restricts_files
++        && option.pointer("/filesystem/disabled").is_none()
++        && let Some(filesystem) = merged.get_mut("filesystem").and_then(Value::as_object_mut)
++        && filesystem.get("disabled") == Some(&Value::Bool(true))
++    {
++        filesystem.remove("disabled");
++    }
++    let network = option.get("network");
++    let restricts_domains = network.is_some_and(|n| {
++        n.get("allowedDomains").is_some_and(|v| !v.is_null())
++            || n["deniedDomains"].as_array().is_some_and(|d| !d.is_empty())
++            || n["strictAllowlist"] == Value::Bool(true)
++    });
++    if restricts_domains
++        && let Some(merged_network) = merged.get_mut("network").and_then(Value::as_object_mut)
++    {
++        for port in SANDBOX_PROXY_PORTS {
++            let set_by_option = network
++                .and_then(|n| n.get(*port))
++                .is_some_and(|v| !v.is_null());
++            if !set_by_option {
++                merged_network.remove(*port);
++            }
++        }
++    }
++    if option["enabled"] == Value::Bool(true)
++        && let Some(map) = merged.as_object_mut()
++    {
++        map.entry("failIfUnavailable").or_insert(Value::Bool(true));
++    }
++    merged
+ }
+diff --git a/crates/claude_agent_sdk/src/protocol/control.rs b/crates/claude_agent_sdk/src/protocol/control.rs
+index d69a57f951c8520d283caa2f0acf781051bc3cc9..04d38e713a4232db8f1d2d0ac44d820fb3877691 100644
+--- a/crates/claude_agent_sdk/src/protocol/control.rs
++++ b/crates/claude_agent_sdk/src/protocol/control.rs
+@@ -1,5 +1,5 @@
+ //! Control request and response types for the bidirectional control
+-//! protocol (`@anthropic-ai/claude-agent-sdk` 0.3.289).
++//! protocol (`@anthropic-ai/claude-agent-sdk` 0.3.296).
+ //!
+ //! The SDK sends most subtypes to the CLI. The CLI sends `can_use_tool`,
+ //! `hook_callback`, `mcp_message`, `elicitation`, `request_user_dialog`,
+@@ -450,7 +450,7 @@ pub struct SetPermissionModeRequest {
+     pub mode: PermissionMode,
+ }
+ 
+-/// Permission mode (unchanged from 0.3.172 to 0.3.289).
++/// Permission mode (unchanged from 0.3.172 to 0.3.296).
+ #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+ #[serde(rename_all = "camelCase")]
+ pub enum PermissionMode {
+@@ -904,7 +904,60 @@ pub enum PermissionResult {
+     },
+ }
+ 
++/// Most `updatedPermissions` entries a permission answer may carry, counting
++/// updates, rules, and directories together. Claude Code 2.1.295 and later
++/// treat an answer over this limit as a denial, so the SDK sends such an
++/// answer as an explicit deny instead (see [`PermissionResult::within_limits`]).
++pub const MAX_UPDATED_PERMISSIONS: usize = 4096;
++
++impl PermissionUpdate {
++    /// Rules or directories this update carries, plus one for the update.
++    fn entries(&self) -> usize {
++        1 + match self {
++            Self::AddRules { rules, .. }
++            | Self::ReplaceRules { rules, .. }
++            | Self::RemoveRules { rules, .. } => rules.len(),
++            Self::AddDirectories { directories, .. }
++            | Self::RemoveDirectories { directories, .. } => directories.len(),
++            Self::SetMode { .. } => 0,
++        }
++    }
++}
++
+ impl PermissionResult {
++    /// Updates, rules, and directories in `updatedPermissions`, counted
++    /// together.
++    pub fn updated_permission_entries(&self) -> usize {
++        match self {
++            Self::Allow {
++                updated_permissions: Some(updates),
++                ..
++            } => updates.iter().map(PermissionUpdate::entries).sum(),
++            _ => 0,
++        }
++    }
++
++    /// This answer, or a deny when its `updatedPermissions` is over
++    /// [`MAX_UPDATED_PERMISSIONS`]: the CLI would count it as a denial, so
++    /// the host's answer says so instead of being dropped silently.
++    pub fn within_limits(self) -> Self {
++        let entries = self.updated_permission_entries();
++        if entries <= MAX_UPDATED_PERMISSIONS {
++            return self;
++        }
++        let tool_use_id = match &self {
++            Self::Allow { tool_use_id, .. } | Self::Deny { tool_use_id, .. } => tool_use_id.clone(),
++        };
++        Self::Deny {
++            message: format!(
++                "Permission answer denied: updatedPermissions holds {entries} entries, over the limit of {MAX_UPDATED_PERMISSIONS}"
++            ),
++            interrupt: None,
++            tool_use_id,
++            decision_classification: None,
++        }
++    }
++
+     /// Allow with the original input.
+     pub fn allow(input: Value) -> Self {
+         Self::Allow {
+diff --git a/crates/claude_agent_sdk/src/protocol/messages.rs b/crates/claude_agent_sdk/src/protocol/messages.rs
+index 195cd6135842190bf3355752ce7f704c482953ae..4cf859cd7b1c83ce104bdff2f13ed7135b3800e4 100644
+--- a/crates/claude_agent_sdk/src/protocol/messages.rs
++++ b/crates/claude_agent_sdk/src/protocol/messages.rs
+@@ -23,7 +23,7 @@ pub const KNOWN_SDK_MESSAGE_TYPES: &[&str] = &[
+     "conversation_reset",
+ ];
+ 
+-/// Internally tagged union of recognized SDK stdout messages (0.3.289 set).
++/// Internally tagged union of recognized SDK stdout messages (0.3.296 set).
+ /// Unknown future `type` values become [`SdkMessage::Unknown`] instead of a
+ /// deserialize failure, so hosts can count protocol drift.
+ #[derive(Debug, Clone, Serialize, Deserialize)]
+@@ -164,7 +164,8 @@ impl Serialize for SdkMessage {
+         match self {
+             SdkMessage::Unknown { raw, .. } => raw.serialize(serializer),
+             SdkMessage::Assistant(v) => KnownSdkMessage::Assistant(v.clone()).serialize(serializer),
+-            SdkMessage::User(v) => KnownSdkMessage::User(v.clone()).serialize(serializer),
++            // The user message carries its own `type` field.
++            SdkMessage::User(v) => v.serialize(serializer),
+             SdkMessage::Result(v) => KnownSdkMessage::Result(v.clone()).serialize(serializer),
+             SdkMessage::System(v) => KnownSdkMessage::System(v.clone()).serialize(serializer),
+             SdkMessage::StreamEvent(v) => {
+@@ -233,6 +234,17 @@ pub struct SdkAssistantMessage {
+     /// Usage report, when the CLI attaches one.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub usage_report: Option<Value>,
++    /// The subagent that produced this message: the `task_id` of its task
++    /// events, unchanged when the subagent resumes. Absent on main-thread
++    /// messages (0.3.292).
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub agent_id: Option<String>,
++    /// Subagent type that produced this message.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub subagent_type: Option<String>,
++    /// Description of the subagent task that produced this message.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub task_description: Option<String>,
+     /// Unique message ID
+     pub uuid: String,
+     /// Session ID
+@@ -262,15 +274,22 @@ pub enum AssistantMessageError {
+ /// User message to send to Claude.
+ #[derive(Debug, Clone, Serialize, Deserialize)]
+ pub struct SdkUserMessage {
+-    /// Message type marker
+-    #[serde(rename = "type")]
++    /// Message type marker. Defaulted when parsing: inside [`SdkMessage`]
++    /// the `type` tag is consumed by the enum.
++    #[serde(rename = "type", default)]
+     pub msg_type: UserMessageType,
+     /// The message content (APIUserMessage format)
+     pub message: Value,
+     /// Parent tool use ID if responding to a tool call
+     pub parent_tool_use_id: Option<String>,
+-    /// Whether this is a synthetic (system-generated) message
+-    #[serde(skip_serializing_if = "Option::is_none")]
++    /// Whether this is a synthetic (system-generated) message (TS
++    /// `isSynthetic`).
++    #[serde(
++        rename = "isSynthetic",
++        alias = "is_synthetic",
++        default,
++        skip_serializing_if = "Option::is_none"
++    )]
+     pub is_synthetic: Option<bool>,
+     /// Tool use result if responding to a tool call
+     #[serde(skip_serializing_if = "Option::is_none")]
+@@ -280,18 +299,28 @@ pub struct SdkUserMessage {
+     pub uuid: Option<String>,
+     /// Session ID
+     pub session_id: String,
+-    /// True if this is a replay/acknowledgment
+-    #[serde(skip_serializing_if = "Option::is_none")]
++    /// True if this is a replay/acknowledgment (TS `isReplay`).
++    #[serde(
++        rename = "isReplay",
++        alias = "is_replay",
++        default,
++        skip_serializing_if = "Option::is_none"
++    )]
+     pub is_replay: Option<bool>,
+     /// Deliver the text as written: no `@path` expansion and no
+     /// slash-command dispatch (TS `client_composed`, 0.3.289).
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub client_composed: Option<bool>,
++    /// The subagent that produced this message (0.3.292); absent on
++    /// main-thread messages and on prompts the host sends.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub agent_id: Option<String>,
+ }
+ 
+-#[derive(Debug, Clone, Serialize, Deserialize)]
++#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+ #[serde(rename_all = "snake_case")]
+ pub enum UserMessageType {
++    #[default]
+     User,
+ }
+ 
+@@ -491,7 +520,7 @@ pub struct PermissionDenial {
+ 
+ /// System message types (`type: "system"` plus a `subtype` discriminator).
+ ///
+-/// Subtypes follow `@anthropic-ai/claude-agent-sdk` 0.3.289. An unrecognized
++/// Subtypes follow `@anthropic-ai/claude-agent-sdk` 0.3.296. An unrecognized
+ /// subtype fails this enum and is recovered as [`SdkMessage::Unknown`].
+ #[derive(Debug, Clone, Serialize, Deserialize)]
+ #[serde(tag = "subtype")]
+@@ -802,6 +831,14 @@ pub struct SdkRateLimitInfo {
+         skip_serializing_if = "Option::is_none"
+     )]
+     pub overage_in_use: Option<bool>,
++    /// On usage-limit warnings: whether the account has extra usage turned
++    /// on (0.3.295).
++    #[serde(
++        rename = "overageEnabled",
++        default,
++        skip_serializing_if = "Option::is_none"
++    )]
++    pub overage_enabled: Option<bool>,
+     #[serde(
+         rename = "surpassedThreshold",
+         default,
+@@ -934,6 +971,10 @@ pub struct SdkPluginInstallMessage {
+ #[derive(Debug, Clone, Serialize, Deserialize)]
+ pub struct SdkTaskNotificationMessage {
+     pub task_id: String,
++    /// One run of the task; a resumed task keeps its `task_id` and gets a
++    /// new `run_id` (0.3.292).
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub run_id: Option<String>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub tool_use_id: Option<String>,
+     pub status: String,
+@@ -958,6 +999,10 @@ pub struct SdkTaskNotificationMessage {
+ #[derive(Debug, Clone, Serialize, Deserialize)]
+ pub struct SdkTaskStartedMessage {
+     pub task_id: String,
++    /// One run of the task; a resumed task keeps its `task_id` and gets a
++    /// new `run_id` (0.3.292).
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub run_id: Option<String>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub tool_use_id: Option<String>,
+     pub description: String,
+@@ -975,6 +1020,10 @@ pub struct SdkTaskStartedMessage {
+     pub is_backgrounded: Option<bool>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub spawn_depth: Option<u32>,
++    /// `task_id` of the subagent task that launched this task; absent when
++    /// the main thread launched it (0.3.292).
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub parent_task_id: Option<String>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub ambient: Option<bool>,
+     pub uuid: String,
+@@ -985,6 +1034,10 @@ pub struct SdkTaskStartedMessage {
+ #[derive(Debug, Clone, Serialize, Deserialize)]
+ pub struct SdkTaskUpdatedMessage {
+     pub task_id: String,
++    /// One run of the task; a resumed task keeps its `task_id` and gets a
++    /// new `run_id` (0.3.292).
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub run_id: Option<String>,
+     pub patch: SdkTaskUpdatedPatch,
+     pub uuid: String,
+     pub session_id: String,
+@@ -1011,6 +1064,10 @@ pub struct SdkTaskUpdatedPatch {
+ #[derive(Debug, Clone, Serialize, Deserialize)]
+ pub struct SdkTaskProgressMessage {
+     pub task_id: String,
++    /// One run of the task; a resumed task keeps its `task_id` and gets a
++    /// new `run_id` (0.3.292).
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub run_id: Option<String>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub tool_use_id: Option<String>,
+     pub description: String,
+@@ -1221,8 +1278,18 @@ pub struct SdkBackgroundTasksChangedMessage {
+ #[derive(Debug, Clone, Serialize, Deserialize)]
+ pub struct SdkBackgroundTask {
+     pub task_id: String,
++    /// One run of the task; a resumed task keeps its `task_id` and gets a
++    /// new `run_id` (0.3.292).
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub run_id: Option<String>,
+     pub task_type: String,
++    /// Agent type of a `local_agent` task (0.3.293).
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub subagent_type: Option<String>,
+     pub description: String,
++    /// `task_id` of the subagent task that launched this one (0.3.292).
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub parent_task_id: Option<String>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub ambient: Option<bool>,
+ }
+diff --git a/crates/claude_agent_sdk/src/query.rs b/crates/claude_agent_sdk/src/query.rs
+index fab88a45f578f61ac8d737da9ac8959bd28055ec..920ba060abfb8017e725e25cec121b26e6d9fc41 100644
+--- a/crates/claude_agent_sdk/src/query.rs
++++ b/crates/claude_agent_sdk/src/query.rs
+@@ -97,7 +97,7 @@ impl ControlHandlers {
+                 Some(handler) => handler
+                     .can_use_tool_request(tool)
+                     .await
+-                    .and_then(|r| Ok(Some(serde_json::to_value(r)?))),
++                    .and_then(|r| Ok(Some(serde_json::to_value(r.within_limits())?))),
+                 None => Err(Error::InvalidMessage(
+                     "canUseTool callback is not provided".into(),
+                 )),
+@@ -270,6 +270,7 @@ impl Query {
+             session_id,
+             is_replay: None,
+             client_composed: self.verbatim_prompts.then_some(true),
++            agent_id: None,
+         };
+ 
+         let mut transport = self.transport.lock().await;
+@@ -689,6 +690,16 @@ impl Query {
+         self.initialization.as_ref()
+     }
+ 
++    /// Claude Code version of the process that runs the session's turns,
++    /// from the `initialize` response (0.3.296). `None` on CLIs that
++    /// predate the field.
++    pub fn claude_code_version(&self) -> Option<&str> {
++        self.initialization
++            .as_ref()
++            .and_then(|value| value.get("claude_code_version"))
++            .and_then(Value::as_str)
++    }
++
+     /// Models advertised in the initialize handshake. [`Query::list_models`]
+     /// asks the CLI again.
+     pub fn supported_models(&self) -> Option<&Value> {

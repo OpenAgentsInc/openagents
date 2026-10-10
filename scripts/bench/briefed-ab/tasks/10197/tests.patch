@@ -1,0 +1,99 @@
+diff --git a/crates/openagents-web/src/tests.rs b/crates/openagents-web/src/tests.rs
+index d9c58a4f7153fa1bec2af61e3982169489d24285..d7ffd3f50d0e24906b5dee91a277520ee2504e1e 100644
+--- a/crates/openagents-web/src/tests.rs
++++ b/crates/openagents-web/src/tests.rs
+@@ -65,8 +65,9 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
+ }
+ 
+ /// Every public HTML page a development server serves.
+-const PAGES: [&str; 36] = [
++const PAGES: [&str; 37] = [
+     "/",
++    "/live",
+     "/download",
+     "/terms",
+     "/privacy",
+@@ -137,8 +138,9 @@ async fn every_public_page_answers_in_development() {
+         assert_eq!(status, StatusCode::OK, "{uri}: {body}");
+         let lower = body.to_ascii_lowercase();
+         assert!(lower.starts_with("<!doctype html>"), "{uri}");
+-        // The homepage terminal is the site's one script (#10106).
+-        let script = uri == "/";
++        // The homepage terminal (#10106) and the live map (#10197) are
++        // the site's scripts.
++        let script = uri == "/" || uri == "/live";
+         assert_eq!(
+             lower.matches("<script").count(),
+             usize::from(script),
+@@ -223,6 +225,56 @@ async fn the_homepage_links_one_download_page_and_leads_with_the_terminal() {
+     );
+ }
+ 
++/// `/live` (#10197): the map's canvas, the totals, its one script reading
++/// the flow endpoints on this origin, and the event mapping's own tests
++/// (`static/flow.test.js`, run with node when it is installed).
++#[tokio::test]
++async fn the_live_page_draws_the_flow_stream_on_the_route_map() {
++    let root = tempfile::tempdir().unwrap();
++    let (status, headers, live) =
++        get_with(router(config(root.path().into())), "/live", LOCAL).await;
++    assert_eq!(status, StatusCode::OK);
++    assert!(live.contains("<canvas id=\"flow-map\""));
++    assert!(live.contains("data-snapshot=\"/api/flow/snapshot\""));
++    assert!(live.contains("data-stream=\"/api/flow/stream\""));
++    assert!(live.contains("id=\"flow-totals\""));
++    assert!(live.contains("<script src=\"/static/flow.js\" defer></script>"));
++    assert!(live.contains("Nothing here is simulated."));
++    let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
++    assert!(policy.contains("script-src 'self'") && policy.contains("connect-src 'self'"));
++    let (status, headers, script) =
++        get_with(router(config(root.path().into())), "/static/flow.js", LOCAL).await;
++    assert_eq!(status, StatusCode::OK);
++    assert_eq!(
++        headers[header::CONTENT_TYPE],
++        "text/javascript; charset=utf-8"
++    );
++    // Same-origin reads, the browser's own reconnect, and no made-up
++    // traffic: no timer or random source feeds the schedule.
++    assert!(script.contains("new EventSource("));
++    assert!(script.contains("getAttribute(\"data-stream\")"));
++    assert!(!script.contains("Math.random"));
++    assert!(!script.contains("http://") && !script.contains("https://"));
++    assert!(
++        !script.contains("innerHTML"),
++        "event text goes in as text only"
++    );
++    let crate_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
++    match std::process::Command::new("node")
++        .arg("--test")
++        .arg(crate_dir.join("static/flow.test.js"))
++        .output()
++    {
++        Ok(out) => assert!(
++            out.status.success(),
++            "{}{}",
++            String::from_utf8_lossy(&out.stdout),
++            String::from_utf8_lossy(&out.stderr)
++        ),
++        Err(_) => eprintln!("node is not installed; static/flow.test.js did not run"),
++    }
++}
++
+ #[tokio::test]
+ async fn the_download_page_links_only_the_release_candidates_and_the_source() {
+     let root = tempfile::tempdir().unwrap();
+@@ -733,12 +785,14 @@ fn the_site_owns_its_pages_and_the_removed_sections() {
+         "/terms",
+         "/privacy",
+         "/connect",
++        "/live",
+         "/ask",
+         "/health",
+         "/.well-known/apple-app-site-association",
+         "/.well-known/assetlinks.json",
+         "/static/site.css",
+         "/static/ask.js",
++        "/static/flow.js",
+         "/static/verse-grid.jpg",
+         "/favicon.svg",
+         "/favicon.ico",

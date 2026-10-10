@@ -1,0 +1,378 @@
+diff --git a/crates/atif/src/log.rs b/crates/atif/src/log.rs
+index 502c1fa2c686d51e589a8f2d41bcdf0dcfcde7c0..395f49119b2d19d7ec6aaecb245022f1df216027 100644
+--- a/crates/atif/src/log.rs
++++ b/crates/atif/src/log.rs
+@@ -69,7 +69,7 @@
+ 
+ use std::fmt;
+ use std::fs::{self, File, OpenOptions};
+-use std::io::{self, Write};
++use std::io::{self, Seek, SeekFrom, Write};
+ use std::path::{Path, PathBuf};
+ 
+ use serde_json::{Map, Value, json};
+@@ -226,12 +226,46 @@ impl Log {
+ /// The sync is the whole point of the module: without it the line sits in
+ /// the operating system's cache, and a killed process leaves a file that is
+ /// shorter than what the agent had already done.
++///
++/// A write that fails part way, as one does when the disk fills (#10237),
++/// is cut back off, so the log never holds half a line that the next
++/// record would be glued onto.
+ fn write_line(file: &mut File, record: &Value) -> io::Result<()> {
+     let mut line = serde_json::to_string(record).map_err(io::Error::other)?;
+     line.push('\n');
+-    file.write_all(line.as_bytes())?;
+-    file.flush()?;
+-    file.sync_data()
++    write_whole(file, line.as_bytes())
++}
++
++/// Writes `bytes` at the end of `file` and syncs them, or leaves the file
++/// as long as it was.
++fn write_whole<W: Write + Seek + Truncate>(file: &mut W, bytes: &[u8]) -> io::Result<()> {
++    let start = file.seek(SeekFrom::End(0))?;
++    let written = file
++        .write_all(bytes)
++        .and_then(|()| file.flush())
++        .and_then(|()| file.sync());
++    if written.is_err() {
++        let _ = file.cut(start);
++        let _ = file.seek(SeekFrom::Start(start));
++    }
++    written
++}
++
++/// What [`write_whole`] needs beyond writing: cutting a file back and
++/// syncing it.
++trait Truncate {
++    fn cut(&mut self, length: u64) -> io::Result<()>;
++    fn sync(&mut self) -> io::Result<()>;
++}
++
++impl Truncate for File {
++    fn cut(&mut self, length: u64) -> io::Result<()> {
++        self.set_len(length)
++    }
++
++    fn sync(&mut self) -> io::Result<()> {
++        self.sync_data()
++    }
+ }
+ 
+ /// A session log read back.
+diff --git a/crates/coder/src/task/adapter.rs b/crates/coder/src/task/adapter.rs
+index 70e6ed149fc0fbc650954dddecf3aafabb584f07..a6fc1df39777c13cea902a448c274b1d169ddd0a 100644
+--- a/crates/coder/src/task/adapter.rs
++++ b/crates/coder/src/task/adapter.rs
+@@ -40,6 +40,10 @@ pub const CONFIG_SCHEMA: &str = "openagents.microcoder.repository-config.v1";
+ /// digests their snapshots took, so the next owner's first snapshot reads
+ /// only the files that changed ([`Snapshot::recall_digests`]).
+ pub const SNAPSHOT_DIGESTS: &str = "snapshot-digests.bin";
++/// The ending of a run whose disk stayed full while it kept its evidence
++/// (#10237): what the person reads is "disk full", not that Coder's
++/// process ended.
++pub const DISK_FULL: &str = "disk_full";
+ const TRACE_LIMIT: usize = 48 * 1024 * 1024;
+ const STEP_LIMIT: usize = 8 * 1024 * 1024;
+ 
+@@ -579,6 +583,13 @@ pub struct Host {
+     group_clear: Cell<bool>,
+     output_incomplete: Cell<bool>,
+     fault: RefCell<Option<String>>,
++    /// The disk filled past [`owner::STORAGE_FULL_WAIT`] while the run
++    /// kept its evidence (#10237): its result says so.
++    disk_full: Cell<bool>,
++    /// How long, and how often, a trace write waits out a full disk.
++    evidence_wait: Cell<(Duration, Duration)>,
++    /// Trace writes still to fail as on a full disk ([`Host::fill_disk`]).
++    full_writes: Cell<usize>,
+     /// What the run cost, as the engine reported it ([`Host::cost`]).
+     cost: Cell<owner::Cost>,
+     /// The checks the delegate recipe froze for this turn
+@@ -749,7 +760,10 @@ impl Host {
+             container.admit(&workspace, &owner.dir).await?;
+         }
+         let context = checks::Context::capture(&task, &workspace, grant.requirements.as_ref())?;
+-        let controller = std::env::current_exe()?.canonicalize()?;
++        // The running engine, read through a path that still opens it
++        // after a rebuild replaced its file (#10237), named by the path
++        // it was started from.
++        let (controller, image) = super::autostart::running_program()?;
+         // Only a pinned controller is read and digested, as its launcher
+         // does (#10115): a development build is a gigabyte, and digesting
+         // it held every start for thirteen seconds before the engine ran
+@@ -757,7 +771,7 @@ impl Host {
+         // and modification time.
+         let controller_digest = match &configuration.expected_controller_digest {
+             Some(expected) => {
+-                let digest = digest_bytes(&std::fs::read(&controller)?);
++                let digest = digest_bytes(&std::fs::read(&image)?);
+                 if expected != &digest {
+                     return Err(Error::InvalidCommand(
+                         "the repository controller differs from its grant",
+@@ -767,7 +781,7 @@ impl Host {
+             }
+             None => None,
+         };
+-        let controller_file = std::fs::metadata(&controller).ok();
++        let controller_file = std::fs::metadata(&image).ok();
+         let controller_bytes = controller_file.as_ref().map(std::fs::Metadata::len);
+         let controller_modified = controller_file
+             .and_then(|file| file.modified().ok())
+@@ -890,6 +904,9 @@ impl Host {
+             group_clear: Cell::new(true),
+             output_incomplete: Cell::new(false),
+             fault: RefCell::new(None),
++            disk_full: Cell::new(false),
++            evidence_wait: Cell::new((owner::STORAGE_FULL_WAIT, Duration::from_secs(2))),
++            full_writes: Cell::new(0),
+             cost: Cell::new(owner::Cost::default()),
+             frozen_checks: RefCell::new(Vec::new()),
+         })
+@@ -1140,14 +1157,54 @@ impl Host {
+             self.fail("the adapter evidence limit was reached; the attempted record was omitted");
+             return Err(Error::LimitExceeded);
+         }
+-        if let Err(error) = self.trace.borrow_mut().append(step) {
+-            self.fail("task evidence could not be retained");
+-            return Err(error.into());
++        if let Err(error) = self.keep_evidence(|trace| trace.append(step)) {
++            self.evidence_lost(&error);
++            return Err(error);
+         }
+         self.trace_bytes.set(self.trace_bytes.get() + bytes);
+         Ok(())
+     }
+ 
++    /// Writes to the trace, waiting out a full disk for as long as an owner
++    /// does ([`owner::wait_out_full_disk`]): the host frees space, and the
++    /// trace writer cuts a half-written line back off, so the write can
++    /// simply be made again (#10237).
++    fn keep_evidence(
++        &self,
++        mut write: impl FnMut(&mut Log) -> std::io::Result<()>,
++    ) -> Result<(), Error> {
++        let (wait, step) = self.evidence_wait.get();
++        owner::wait_out_full_disk(wait, step, || {
++            if let Some(left) = self.full_writes.get().checked_sub(1) {
++                self.full_writes.set(left);
++                return Err(Error::Io(std::io::ErrorKind::StorageFull.into()));
++            }
++            write(&mut self.trace.borrow_mut()).map_err(Error::Io)
++        })
++    }
++
++    /// For tests: the next `writes` trace writes fail as on a full disk,
++    /// each waited out for at most `wait`.
++    #[doc(hidden)]
++    pub fn fill_disk(&self, writes: usize, wait: Duration) {
++        self.full_writes.set(writes);
++        self.evidence_wait.set((wait, Duration::from_millis(1)));
++    }
++
++    /// Notes that evidence could not be kept, and why: the run then ends,
++    /// and still records its result (#10237).
++    fn evidence_lost(&self, error: &Error) {
++        self.output_incomplete.set(true);
++        if owner::storage_full(error) {
++            self.disk_full.set(true);
++            self.fail(format!(
++                "the disk is full, so task evidence could not be retained: {error}"
++            ));
++        } else {
++            self.fail(format!("task evidence could not be retained: {error}"));
++        }
++    }
++
+     pub fn effect(&self, kind: &str, arguments: Value) -> Result<usize, Error> {
+         if self.cancelled() {
+             return Err(Error::InvalidTransition);
+@@ -1448,7 +1505,16 @@ impl Host {
+ 
+     /// Seal the same task journal and trace; the adapter never sets checks passed.
+     pub fn finish(self, ending: &str, completed: bool, summary: Value) -> Result<Task, Error> {
+-        let stopped = self.cancelled();
++        // A full disk ends the run as a failure, never as a stop the person
++        // asked for (#10237); a stop they did ask for still reads as one.
++        let stopped = if self.disk_full.get() {
++            self.stopped.get()
++                || Store::open(&self.owner.dir)
++                    .and_then(|store| store.show(&self.task.task_id))
++                    .is_ok_and(|task| task.status == Status::CancelRequested)
++        } else {
++            self.cancelled()
++        };
+         let summary = if serde_json::to_vec(&summary)
+             .map_err(|_| Error::UnsupportedSchema)?
+             .len()
+@@ -1462,18 +1528,38 @@ impl Host {
+         };
+         // Reserved headroom preserves the final disposition even when a prior
+         // record exceeded the ordinary trace cap. The file remains below 64 MiB.
+-        self.trace.borrow_mut().append(
+-            &Step::said(
+-                Source::System,
+-                "Repository adapter ended; independent checks are separate.",
+-            )
+-            .noting("adapter_summary", summary)
+-            .noting("host_fault", json!(*self.fault.borrow())),
+-        )?;
++        // Evidence that cannot be kept, as on a full disk, is noted and the
++        // result is still recorded: an owner that exited here left its run
++        // to be ended as "owner process ended" (#10237).
++        let closing = Step::said(
++            Source::System,
++            "Repository adapter ended; independent checks are separate.",
++        )
++        .noting("adapter_summary", summary)
++        .noting("host_fault", json!(*self.fault.borrow()));
++        if let Err(error) = self.keep_evidence(|trace| trace.append(&closing)) {
++            self.evidence_lost(&error);
++        }
+         let after = Snapshot::observe(self.workspace());
+-        let (artifact_file, artifact_digest) =
+-            artifact::retain(&self.owner.dir, &self.before, &after)?;
+-        self.trace.borrow_mut().finish(atif::log::ENDED)?;
++        let (artifact_file, artifact_digest) = match owner::wait_out_full_disk(
++            owner::STORAGE_FULL_WAIT,
++            Duration::from_secs(2),
++            || artifact::retain(&self.owner.dir, &self.before, &after),
++        ) {
++            Ok((file, digest)) => (Some(file), Some(digest)),
++            Err(error) => {
++                self.evidence_lost(&error);
++                (None, None)
++            }
++        };
++        if let Err(error) = self.keep_evidence(|trace| trace.finish(atif::log::ENDED)) {
++            self.evidence_lost(&error);
++        }
++        let ending = if self.disk_full.get() {
++            DISK_FULL
++        } else {
++            ending
++        };
+         let mut result = owner::ResultRecord {
+             ending: ending.into(),
+             exit_code: Some(if completed && self.fault.borrow().is_none() {
+@@ -1489,10 +1575,12 @@ impl Host {
+                 .as_millis()
+                 .try_into()
+                 .unwrap_or(u64::MAX),
+-            trace_digest: digest_bytes(&std::fs::read(self.trace.borrow().path())?),
++            trace_digest: digest_bytes(
++                &std::fs::read(self.trace.borrow().path()).unwrap_or_default(),
++            ),
+             candidate_snapshot: after.is_complete().then(|| after.digest()),
+-            artifact_file: Some(artifact_file),
+-            artifact_digest: Some(artifact_digest),
++            artifact_file,
++            artifact_digest,
+             output_incomplete: self.output_incomplete.get(),
+             cost_status: "unknown".into(),
+             cost_microusd: None,
+diff --git a/crates/coder/src/task/autostart.rs b/crates/coder/src/task/autostart.rs
+index 228688f98aa1724996b23cb4c41134ed8280b8eb..641525cad320aaed8f674cf841e6c2ed98de2bcc 100644
+--- a/crates/coder/src/task/autostart.rs
++++ b/crates/coder/src/task/autostart.rs
+@@ -2368,6 +2368,26 @@ pub fn default_controller() -> std::result::Result<PathBuf, String> {
+         })
+ }
+ 
++/// This running program: the path it was started from, without the
++/// ` (deleted)` Linux appends once that file is replaced or removed, and a
++/// path that opens or starts this very program even then (#10237): Linux's
++/// `/proc/self/exe`, elsewhere that same path. A long-running owner reads
++/// or re-executes itself through the second, so a rebuild that replaced
++/// its file neither fails its next launch nor swaps its engine mid-flow.
++///
++/// # Errors
++/// The program's path cannot be found.
++pub fn running_program() -> std::io::Result<(PathBuf, PathBuf)> {
++    let named = controller_executable_path(std::env::current_exe()?);
++    let image = Path::new("/proc/self/exe");
++    let image = if cfg!(target_os = "linux") && image.exists() {
++        image.to_path_buf()
++    } else {
++        named.clone()
++    };
++    Ok((named, image))
++}
++
+ /// Linux appends ` (deleted)` when a running executable has been replaced.
+ /// Keep its directory even if the original executable no longer exists.
+ fn controller_executable_path(exe: PathBuf) -> PathBuf {
+diff --git a/crates/coder/src/task/owner.rs b/crates/coder/src/task/owner.rs
+index d94c3d53a02bfc6855098b351549e2f1ba17dcc0..b808b473ed4d72b0469def6c51aa3fa460258296 100644
+--- a/crates/coder/src/task/owner.rs
++++ b/crates/coder/src/task/owner.rs
+@@ -860,8 +860,52 @@ impl Owner {
+         )
+     }
+ 
++    /// Records `event`, waiting out a full disk ([`wait_out_full_disk`]):
++    /// an owner that gave up there would leave its run to be ended as
++    /// [`OWNER_ENDED`] while the host's cleanup frees space (#10237).
+     pub(super) fn record(&self, event: Event) -> Result<Task, Error> {
+-        Store::open_for_owner(&self.dir)?.record(self, event, 1)
++        wait_out_full_disk(STORAGE_FULL_WAIT, STORAGE_FULL_STEP, || {
++            Store::open_for_owner(&self.dir)?.record(self, event.clone(), 1)
++        })
++    }
++}
++
++/// How long an owner waits for disk space to record an event (#10237).
++/// The host frees space when its disk is almost full, within a minute.
++pub const STORAGE_FULL_WAIT: std::time::Duration = std::time::Duration::from_secs(600);
++const STORAGE_FULL_STEP: std::time::Duration = std::time::Duration::from_secs(2);
++
++/// Whether `error` is a full disk or an exhausted quota: one the host's
++/// disk cleanup can clear, so worth waiting out (#10237).
++#[must_use]
++pub fn storage_full(error: &Error) -> bool {
++    matches!(error, Error::Io(error) if io_storage_full(error))
++}
++
++/// [`storage_full`] for an I/O error.
++#[must_use]
++pub fn io_storage_full(error: &std::io::Error) -> bool {
++    matches!(
++        error.kind(),
++        std::io::ErrorKind::StorageFull | std::io::ErrorKind::QuotaExceeded
++    )
++}
++
++/// Runs `attempt` again every `step` while it fails for a full disk, for
++/// up to `wait`; any other outcome, or the last one, is returned.
++pub(super) fn wait_out_full_disk<T>(
++    wait: std::time::Duration,
++    step: std::time::Duration,
++    mut attempt: impl FnMut() -> Result<T, Error>,
++) -> Result<T, Error> {
++    let deadline = std::time::Instant::now() + wait;
++    loop {
++        match attempt() {
++            Err(error) if storage_full(&error) && std::time::Instant::now() < deadline => {
++                std::thread::sleep(step);
++            }
++            outcome => return outcome,
++        }
+     }
+ }
+ 
+diff --git a/crates/microcoder/src/repository/launch.rs b/crates/microcoder/src/repository/launch.rs
+index 4b9758e1bd6d4ba2e57467e77fa5c73e86f50611..6c6850276e05da41cb6914844350ac1e835f35f4 100644
+--- a/crates/microcoder/src/repository/launch.rs
++++ b/crates/microcoder/src/repository/launch.rs
+@@ -68,7 +68,9 @@ fn admit(directory: &Path, bytes: &[u8]) -> Result<(String, PathBuf), Box<dyn st
+     {
+         return Err("task and repository launch configuration differ".into());
+     }
+-    let executable = std::env::current_exe()?.canonicalize()?;
++    // This very program, even when a rebuild replaced its file while it
++    // ran (#10237): the owner it starts is the engine that admitted it.
++    let (_, executable) = task::autostart::running_program()?;
+     // Only a pinned executable is read and digested: reading the whole
+     // engine on every start costs a start time for nothing (#10115).
+     if let Some(pin) = &configuration.expected_controller_digest

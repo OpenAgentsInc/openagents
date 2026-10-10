@@ -1,0 +1,49 @@
+diff --git a/crates/openagents-cli/tests/terminal.rs b/crates/openagents-cli/tests/terminal.rs
+index 379dd5a398cfc9c457a57fbf5e16aeddf7baf4cd..dff61095c5a7ca2a2a582b3360881b3b49f58dc0 100644
+--- a/crates/openagents-cli/tests/terminal.rs
++++ b/crates/openagents-cli/tests/terminal.rs
+@@ -90,11 +90,14 @@ fn a_bad_thread_is_a_usage_error() {
+ }
+ 
+ /// OpenAgents Terminal in a real pseudo-terminal, from a stand-in home
+-/// where Codex, Claude Code, and Grok Build are signed in and Devin is
+-/// signed in but not in the settings (#10113): the welcome card names
+-/// every ready agent, not only the one a run would start on. The stand-in
+-/// logins are fixtures; no real login, store, or host is touched, and the
+-/// screen quits before it sends anything.
++/// where Codex, Claude Code, Grok Build, and Devin are signed in (#10113):
++/// the welcome card names every ready agent, not only the one a run would
++/// start on. Agents are opt-out (#10184), so a signed-in Devin is named even
++/// though the settings never mention it. The stand-in logins are fixtures,
++/// and every agent the screen looks for is pinned to them or to a missing
++/// path, so what this computer has installed never changes the card (#10303);
++/// no real login, store, or host is touched, and the screen quits before it
++/// sends anything.
+ #[cfg(unix)]
+ #[test]
+ fn the_welcome_card_names_every_ready_agent_here() {
+@@ -218,6 +221,9 @@ fn the_welcome_card_names_every_ready_agent_here() {
+         .env("CLAUDE_BIN", bin.join("claude"))
+         .env("GROK_BIN", bin.join("grok"))
+         .env("DEVIN_BIN", bin.join("devin"))
++        // OpenCode is not set up here; an installed one must not count.
++        .env("OPENCODE_BIN", bin.join("opencode-missing"))
++        .env("CODER_ONE_OPENCODE_BIN", bin.join("opencode-missing"))
+         .stdin(Stdio::from(open()))
+         .stdout(Stdio::from(open()))
+         .stderr(Stdio::from(open()));
+@@ -276,11 +282,11 @@ fn the_welcome_card_names_every_ready_agent_here() {
+         .find(|line| line.contains("│ Agents"))
+         .unwrap_or_default();
+     assert!(
+-        agents.contains("Codex · Claude Code · Grok Build"),
++        agents.contains("Codex · Claude Code · Grok Build · Devin"),
+         "{shown}"
+     );
+-    // Devin is signed in but not enabled, so the card leaves it out.
+-    assert!(!agents.contains("Devin"), "{shown}");
++    // Nothing else: OpenCode is not set up in the stand-in home.
++    assert!(!agents.contains("OpenCode"), "{shown}");
+     assert!(shown.contains("demo"), "{shown}");
+     let mut master = master;
+     for _ in 0..2 {

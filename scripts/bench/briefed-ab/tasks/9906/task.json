@@ -1,0 +1,34 @@
+{
+  "test_targets": [
+    "--bins",
+    "--lib"
+  ],
+  "issue": 9906,
+  "title": "Sign playtest awards from triage-log decisions, gated on the playtest referee key",
+  "body": "Follow-up to epic #9888 (#9884, #9885). The triage log records every acceptance (`openagents playtest log --acceptances`), and NIP-XP's `playtest` rule and `microcoder xp playtest` can sign an award, but nothing turns an acceptance into an award: a person would have to copy fields between two tools.\n\nScope: an `award` step (for example `openagents playtest award CODE|--issue N`) that joins an acceptance to the tester's public `3197` report (#9904) and the quest, builds the NIP-XP `playtest` award, checks it with the rule, and signs it with the playtest referee key. The production path stays disabled while `PLAYTEST_REFEREE` is `None` (the owner hasn't created the key); tests use a test key.\n\nAcceptance: an award built from a triage-log acceptance passes the `playtest` rule and the ledger; a missing or wrong referee key refuses; a dry run prints the award; no secret is printed; docs updated.",
+  "fix": "f8b773578ae4ed63280b399be954d71e41e2143e",
+  "parent": "d145d7ffbfa5865451ec92825dc5be8a2390b651",
+  "package": "openagents-cli",
+  "source_files": [
+    "INVARIANTS.md",
+    "crates/openagents-cli/src/playtest.rs",
+    "crates/playtest/src/lib.rs",
+    "crates/playtest/src/triage.rs",
+    "docs/game/playtest-triage.md"
+  ],
+  "test_files": [
+    "crates/openagents-cli/src/playtest/award.rs",
+    "crates/openagents-cli/src/playtest/award/tests.rs",
+    "crates/playtest/src/award.rs",
+    "crates/playtest/src/award/tests.rs"
+  ],
+  "test_names": [
+    "a_filed_report_becomes_a_signed_award_with_a_test_referee_key",
+    "a_mismatched_acceptance_is_refused",
+    "an_award_from_a_triage_log_acceptance_passes_the_playtest_rule",
+    "no_award_is_signed_without_the_playtest_referee_key",
+    "the_acceptance_is_named_exactly",
+    "without_the_playtest_referee_key_nothing_is_read_or_signed"
+  ],
+  "fix_lines": 924
+}

@@ -1,0 +1,32 @@
+{
+  "test_targets": [
+    "--lib",
+    "--bins"
+  ],
+  "issue": 11200,
+  "title": "Grow Little Bunny B3: game contract (generic game input, HUD elements, replay envelope, shared pack format crate)",
+  "body": "A game-neutral contract a community game uses: a generic game-input channel, a small HUD element set, a replay envelope, and the pack format moved out of the Everglade zone crate.\n\nSpec: docs/verse/games/grow-little-bunny.md (Milestones, B3).",
+  "fix": "3551012941110b10c45253051aea130a07e43af9",
+  "parent": "09eb5f07b5cdf3152f59167a05d295cea82c5bbf",
+  "package": "bunny-web",
+  "source_files": [
+    "crates/bunny-web/Cargo.toml",
+    "crates/bunny-web/src/app.rs",
+    "crates/bunny-web/src/copy.rs",
+    "crates/bunny-web/src/lib.rs",
+    "crates/verse-game/Cargo.toml",
+    "docs/verse/games/grow-little-bunny.md"
+  ],
+  "test_files": [
+    "crates/bunny-web/src/mesh.rs",
+    "crates/bunny-web/src/zone.rs",
+    "crates/verse-game/src/lib.rs"
+  ],
+  "test_names": [
+    "a_replay_round_trips_and_verifies_and_refuses_tampering",
+    "keys_and_swipes_map_onto_the_channel",
+    "the_bot_plays_through_the_contract_and_its_replay_verifies",
+    "the_hud_shows_food_size_score_and_the_map"
+  ],
+  "fix_lines": 855
+}

@@ -1,0 +1,24 @@
+{
+  "test_targets": [
+    "--lib",
+    "--bins"
+  ],
+  "issue": 10292,
+  "title": "Enable the worktrees cleanup rule by default on CoderOS and pool hosts",
+  "body": "P1.3: both background cleanup rules ship off. Enable the `worktrees` rule (daily, worktree_days 7) by default on CoderOS (`~/coderos-hosts` nix config if needed) and GCE/Boat pool hosts; keep the `disk` rule opt-in on owner Macs. Document.\n\nFrom the Paseo worktree gap analysis (docs/worktrees/2026-10-03-paseo-worktree-gap-analysis.md, 61580a0aec), phase 1 (disk).",
+  "fix": "7ae1102705581027472ca6df0572d76e76594708",
+  "parent": "e1f38510570e1ff95734a650c510f16912c8fefe",
+  "package": "background",
+  "source_files": [
+    "crates/background/src/builtins.rs",
+    "crates/openagents-cli/src/cloud.rs",
+    "docs/background/2026-10-02-background-processes.md",
+    "scripts/cloud/coder-host-setup.sh"
+  ],
+  "test_files": [
+    "crates/background/src/phase3_tests.rs",
+    "crates/openagents-cli/src/cloud.rs"
+  ],
+  "test_names": [],
+  "fix_lines": 50
+}

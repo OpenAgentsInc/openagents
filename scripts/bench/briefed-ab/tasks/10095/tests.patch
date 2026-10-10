@@ -1,0 +1,206 @@
+diff --git a/crates/openagents-desktop/src/chat.rs b/crates/openagents-desktop/src/chat.rs
+index 8354e917bb69c42d5bd5ebae45e04c6ead63168a..b9c8ae434af5523faa59b2ea01ffa1d26189b68d 100644
+--- a/crates/openagents-desktop/src/chat.rs
++++ b/crates/openagents-desktop/src/chat.rs
+@@ -4376,6 +4439,8 @@ mod start_setting_tests {
+     fn a_run_carries_the_drafts_images_and_keeps_them_until_accepted() {
+         let chat = "c".repeat(32);
+         let mut panel = replied(|| true);
++        // The image pipeline, with attachments turned on (#10095).
++        panel.set_attachments(true);
+         let image = openagents_chat_app::attachments::Image::pixels(5, 4, vec![77; 80]).unwrap();
+         let bytes = image.bytes.as_ref().clone();
+         panel.session.images.add(&chat, image).unwrap();
+@@ -4423,6 +4488,8 @@ mod start_setting_tests {
+         let now = Instant::now();
+         let chat = "c".repeat(32);
+         let mut panel = Panel::new(now);
++        // The image pipeline, with attachments turned on (#10095).
++        panel.set_attachments(true);
+         panel.set_coder_asks_first(asks_first);
+         panel.session.states.insert(
+             chat.clone(),
+@@ -4555,6 +4622,76 @@ mod start_setting_tests {
+         };
+         assert_eq!(*images[0].bytes, bytes);
+     }
++
++    /// Attachments off (#10095, the switch the phone shares): a draft
++    /// restored from before still holding an image shows no image or
++    /// attach control, sends its words only, and Command-V is the field's
++    /// text paste, never an image import.
++    #[test]
++    fn a_restored_draft_with_images_sends_its_words_only() {
++        let now = Instant::now();
++        let chat = "c".repeat(32);
++        let mut panel = Panel::new(now);
++        assert!(!panel.attachments_enabled());
++        panel.session.states.insert(
++            chat.clone(),
++            Snapshot {
++                chat: Some(chat.clone()),
++                ..Default::default()
++            },
++        );
++        panel.session.select(&chat);
++        panel.selected_changed(None);
++        let image = openagents_chat_app::attachments::Image::pixels(2, 2, vec![9; 16]).unwrap();
++        panel.session.images.add(&chat, image).unwrap();
++        let view = rust_native::View::new("text-only", 1, panel.footer())
++            .validate()
++            .unwrap();
++        let tree = format!("{:?}", view.view());
++        assert!(!tree.contains("chat-attach") && !tree.contains("image-previews"));
++        panel.mounted(&view);
++        panel.input(TextInput::Commit("just the words"), now);
++        let _ = panel.input(
++            TextInput::Key {
++                key: "v",
++                text: None,
++                command: true,
++                alt: false,
++                shift: false,
++            },
++            now,
++        );
++        assert!(panel.image_input.is_none());
++        let Some(Request::Chat { command, .. }) = panel.action(Action::Send, &view, now) else {
++            panic!("a send")
++        };
++        let Command::Send { text, .. } = command else {
++            panic!("{command:?}")
++        };
++        assert_eq!(text, "just the words");
++        assert!(panel.session.images.is_empty());
++        assert_ne!(
++            panel.notice(),
++            Some(openagents_chat_app::attachments::HELD_FOR_CODER)
++        );
++    }
++
++    /// Attachments off: Run Coder on this computer starts with the words
++    /// and no images, though the draft held one.
++    #[test]
++    fn run_coder_carries_no_images_while_attachments_are_off() {
++        let chat = "c".repeat(32);
++        let mut panel = replied(|| true);
++        let image = openagents_chat_app::attachments::Image::pixels(2, 2, vec![9; 16]).unwrap();
++        panel.session.images.add(&chat, image).unwrap();
++        panel.start_run(&chat);
++        let (_, _, request) = next_run(&mut panel);
++        let coder_run::Request::Start { images, .. } = &request else {
++            panic!("{request:?}")
++        };
++        assert!(images.is_empty());
++        assert!(panel.session.images.is_empty());
++    }
+ }
+ 
+ #[cfg(test)]
+diff --git a/crates/openagents-desktop/src/shell.rs b/crates/openagents-desktop/src/shell.rs
+index d7505697418deee433dd627fe43aa21917acf70a..076631e6b74a93036b96f9efa5798f3a59f03433 100644
+--- a/crates/openagents-desktop/src/shell.rs
++++ b/crates/openagents-desktop/src/shell.rs
+@@ -3285,6 +3285,8 @@ mod image_fixtures {
+         let (mut app, now) = super::tests::chat_fixture(0);
+         let create = app.chat.as_mut().unwrap().new_chat();
+         app.send(vec![create], now);
++        // The image pipeline, with attachments turned on (#10095).
++        app.chat.as_mut().unwrap().set_attachments(true);
+         app.present();
+         let root = tempfile::tempdir().unwrap();
+         let image = Image::pixels(4, 4, vec![200; 4 * 4 * 4]).unwrap();
+@@ -3324,6 +3326,8 @@ mod image_fixtures {
+         let (mut app, now) = super::tests::chat_fixture(0);
+         let create = app.chat.as_mut().unwrap().new_chat();
+         app.send(vec![create], now);
++        // The image pipeline, with attachments turned on (#10095).
++        app.chat.as_mut().unwrap().set_attachments(true);
+         app.present();
+         app.text_input(TextInput::Commit("Keep this caption"), now);
+         let root = tempfile::tempdir().unwrap();
+@@ -3415,6 +3419,49 @@ mod image_fixtures {
+         );
+         assert_eq!(app.chat.as_ref().unwrap().images().len(), 3);
+     }
++
++    /// Attachments off (#10095, the shared switch the phone uses): the
++    /// composer has no attach control, a dropped image is dropped without
++    /// a notice, and a dropped document still puts its path in the words.
++    #[test]
++    fn the_desktop_is_text_only_while_attachments_are_off() {
++        const { assert!(!openagents_chat_app::coder_tab::ATTACHMENTS_ENABLED) };
++        let (mut app, now) = super::tests::chat_fixture(0);
++        let create = app.chat.as_mut().unwrap().new_chat();
++        app.send(vec![create], now);
++        app.present();
++        assert!(!app.chat.as_ref().unwrap().attachments_enabled());
++        for (width, height, scale) in [(1200.0, 840.0, 2.0), (760.0, 540.0, 1.0)] {
++            let (_, scene) = rust_native_desktop::capture(&mut app, width, height, scale);
++            assert!(scene.hits.iter().any(|hit| hit.key == "chat-send"));
++            for key in ["chat-attach", "chat-paste-image"] {
++                assert!(!scene.hits.iter().any(|hit| hit.key == key), "{key}");
++            }
++        }
++        let root = tempfile::tempdir().unwrap();
++        let image = Image::pixels(4, 4, vec![200; 4 * 4 * 4]).unwrap();
++        let png = root.path().join("shot.png");
++        std::fs::write(&png, image.bytes.as_slice()).unwrap();
++        assert!(app.dropped_file(png, now));
++        let until = Instant::now() + Duration::from_millis(300);
++        while Instant::now() < until {
++            app.tick(Instant::now());
++            std::thread::sleep(Duration::from_millis(5));
++        }
++        let chat = app.chat.as_ref().unwrap();
++        assert!(chat.images().is_empty());
++        assert_eq!(chat.notice(), None);
++        assert_eq!(chat.draft(), "");
++        let view = serde_json::to_string(app.view().view()).unwrap();
++        assert!(!view.contains("chat-attach") && !view.contains("image-previews"));
++        let notes = root.path().join("notes.md");
++        std::fs::write(&notes, b"# notes").unwrap();
++        assert!(app.dropped_file(notes.clone(), now));
++        assert_eq!(
++            app.chat.as_ref().unwrap().draft().trim(),
++            notes.display().to_string()
++        );
++    }
+ }
+ 
+ #[cfg(test)]
+@@ -4032,10 +4079,12 @@ mod chat_management {
+         );
+         for (width, height, scale) in [(1200.0, 840.0, 2.0), (760.0, 540.0, 1.0)] {
+             let (frame, scene) = rust_native_desktop::capture(&mut app, width, height, scale);
+-            for key in ["chat-attach", "chat-send", "chat-menu"] {
++            for key in ["chat-send", "chat-menu"] {
+                 let hit = scene.hits.iter().find(|h| h.key == key).unwrap();
+                 assert!(hit.rect.y + hit.rect.h <= height, "{key}");
+             }
++            // Text only (#10095): no attach control.
++            assert!(!scene.hits.iter().any(|h| h.key == "chat-attach"));
+             if let Some(path) = std::env::var_os("OPENAGENTS_LIST_CAPTURE_DIR") {
+                 let path = std::path::PathBuf::from(path);
+                 std::fs::create_dir_all(&path).unwrap();
+@@ -4814,11 +4863,16 @@ mod command_fixtures {
+                 let (_, scene) = rust_native_desktop::capture(&mut app, width, height, 1.0);
+                 let card = scene.bounds["chat-composer-card"];
+                 assert_eq!(card.h, expected);
+-                for node in ["chat-attach", "chat-send"] {
+-                    let rect = scene.hits.iter().find(|hit| hit.key == node).unwrap().rect;
+-                    assert!(rect.y >= card.y && rect.y + rect.h <= card.y + card.h);
++                let rect = scene
++                    .hits
++                    .iter()
++                    .find(|hit| hit.key == "chat-send")
++                    .unwrap()
++                    .rect;
++                assert!(rect.y >= card.y && rect.y + rect.h <= card.y + card.h);
++                for key in ["chat-attach", "chat-paste-image"] {
++                    assert!(!scene.hits.iter().any(|hit| hit.key == key), "{key}");
+                 }
+-                assert!(!scene.hits.iter().any(|hit| hit.key == "chat-paste-image"));
+                 assert_eq!(app.chat.as_ref().unwrap().draft(), draft);
+             }
+         }

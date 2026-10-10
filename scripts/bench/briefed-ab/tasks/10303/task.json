@@ -1,0 +1,18 @@
+{
+  "test_targets": [
+    "--test",
+    "terminal"
+  ],
+  "issue": 10303,
+  "title": "openagents-cli terminal welcome-card test depends on which coding agents are installed",
+  "body": "Reported by #10220 and #10296 agents: `openagents-cli` `tests/terminal.rs` welcome-card test passes or fails depending on which coding agents (codex/claude/grok/devin/opencode) are installed on the machine. Isolate the test from the host (fake PATH/HOME with a fixed set of agents) and assert the card for that fixed set; clean on Mac and Linux.",
+  "fix": "a49bee894dba5ac73d37f4b4a9141240f63b89a7",
+  "parent": "10f0a06d86f071b67253abb7d391346274d53782",
+  "package": "openagents-cli",
+  "source_files": [],
+  "test_files": [
+    "crates/openagents-cli/tests/terminal.rs"
+  ],
+  "test_names": [],
+  "fix_lines": 22
+}

@@ -1,0 +1,29 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 9904,
+  "title": "Publish the public content-free playtest report event (NIP-XP kind 3197) when a report is sent",
+  "body": "Follow-up to epic #9888 and #9885. NIP-XP's `playtest` rule accepts a contribution only when the tester signed a public, content-free playtest report (kind `3197`, renumbered from `3195` in #9900) that commits to the private report's digest. The app seals the private report to the triage key (NIP-17) but never publishes the `3197`, so no report can back a playtest award.\n\nScope: when a report is sent, the app also signs a `3197` with the tester's Verse world key (`nostr::xp::playtest::playtest_report`: build, platform, report kind, the SHA-256 of the NIP-17 rumor's exact content, no text) and publishes it to the OpenAgents relay; My reports shows whether it was published, and a failure is retried with the report. The triage inbox records the digest so a triager can find the matching public event.\n\nAcceptance: the published event's digest equals the digest of the rumor the triage key opens; the event parses under `parse_playtest_report` and carries no report text; nothing is published while the build has no triage key; tests; INVARIANTS row updated.",
+  "fix": "c9850f5c73394c23e34f4765f190b6b2775036c9",
+  "parent": "c4e2005174fd34c56381c776ecfe6f4adbdf1ddd",
+  "package": "openagents-mobile",
+  "source_files": [
+    "INVARIANTS.md",
+    "bins/openagents-ios/host/App/MobileBridge.swift",
+    "bins/openagents-ios/host/App/Playtest.swift",
+    "crates/openagents-mobile/src/playtest.rs",
+    "crates/playtest/src/report.rs",
+    "docs/game/playtesting.md"
+  ],
+  "test_files": [
+    "crates/openagents-mobile/src/playtest_tests.rs",
+    "crates/playtest/src/report/tests.rs"
+  ],
+  "test_names": [
+    "a_sent_report_publishes_its_content_free_record_signed_by_the_world_key",
+    "the_public_record_commits_to_the_opened_report_and_holds_no_text",
+    "without_the_triage_key_no_public_record_is_published"
+  ],
+  "fix_lines": 222
+}

@@ -1,0 +1,248 @@
+diff --git a/crates/openagents-chat-app/src/attachments.rs b/crates/openagents-chat-app/src/attachments.rs
+index bc56fc3b801f4240a36ec4d1bf67d19139e00beb..50bd3d55987ddd15ae5e5311a7316e1b527adf99 100644
+--- a/crates/openagents-chat-app/src/attachments.rs
++++ b/crates/openagents-chat-app/src/attachments.rs
+@@ -370,7 +370,18 @@ mod tests {
+             Some(Settled::Kept)
+         );
+         assert_eq!(drafts.get("talk:a").len(), 1);
+-        // The computer lane is a coding route too.
++        // The computer lane alone is not a coding route: that reply
++        // answered (#10079).
++        assert!(drafts.bind("talk:a", "r2"));
++        assert_eq!(
++            drafts.settle("talk:a", &turns, false, true),
++            Some(Settled::Kept)
++        );
++        // A dispatch-routed reply on the computer lane is.
++        turns.last_mut().unwrap().meta = Some(openagents_chat::router::Meta {
++            route: Some(openagents_chat::delegation::DISPATCH_ROUTE.into()),
++            ..Default::default()
++        });
+         assert!(drafts.bind("talk:a", "r2"));
+         assert_eq!(
+             drafts.settle("talk:a", &turns, false, true),
+diff --git a/crates/openagents-chat/src/delegation.rs b/crates/openagents-chat/src/delegation.rs
+index 2f7f0b154bc3e0fdbc52e0047fa9efb40a8991fd..ab2548c110105c192971ebd1ed4435fa688b8109 100644
+--- a/crates/openagents-chat/src/delegation.rs
++++ b/crates/openagents-chat/src/delegation.rs
+@@ -130,11 +149,19 @@ mod tests {
+         let mut plain = vec![Turn::user("hi"), Turn::assistant("Hello.", None)];
+         attach_runner(&mut plain, false, |_| panic!("no offer, no prediction"));
+         assert!(plain[1].meta.is_none());
+-        // The computer lane makes any reply an offer.
+-        attach_runner(&mut plain, true, |_| {
++        // A reply with no judgment does not defer to Coder, even on the
++        // computer lane (#10079).
++        attach_runner(&mut plain, true, |_| panic!("an answer, no prediction"));
++        assert!(plain[1].meta.is_none());
++        // The computer lane makes a dispatch-routed reply an offer.
++        let mut routed = vec![
++            Turn::user("run the tests"),
++            Turn::assistant("On it.", Some(dispatch_route())),
++        ];
++        attach_runner(&mut routed, true, |_| {
+             Some(Runner::NotSignedIn { providers: vec![] })
+         });
+-        assert!(plain[1].meta.as_ref().unwrap().runner.is_some());
++        assert!(routed[1].meta.as_ref().unwrap().runner.is_some());
+     }
+ 
+     /// The prediction is asked for the engine the reply's offer names,
+@@ -215,14 +242,70 @@ mod tests {
+             offers: vec![Offer::OpenScreen {
+                 screen: crate::router::Screen::Computers,
+             }],
+-            ..Meta::default()
++            ..dispatch_route()
+         };
+         assert!(offered(Some(&connect), true));
+-        assert!(offered(Some(&Meta::default()), true));
+-        assert!(offered(None, true));
++        assert!(offered(Some(&dispatch_route()), true));
++        assert!(!offered(Some(&dispatch_route()), false));
+         assert!(!offered(None, false));
+     }
+ 
++    fn dispatch_route() -> crate::router::Meta {
++        crate::router::Meta {
++            route: Some(DISPATCH_ROUTE.into()),
++            ..crate::router::Meta::default()
++        }
++    }
++
++    /// A reply that answered the question never starts Coder, even when
++    /// the worker judged the thread's lane a computer's (#10079): the
++    /// working directory answered from the desktop's context (route
++    /// `meta`, a canned answer), an account answer with its Connect a
++    /// computer screen, a model answer on a knowledge route, and a reply
++    /// with no judgment. A dispatch-routed reply on the computer lane, or
++    /// any `run_coder` offer, still does.
++    #[test]
++    fn a_reply_that_answered_does_not_start_coder() {
++        use crate::router::{Meta, Offer, Screen};
++        let working_directory = Meta {
++            tier: Some("canned".into()),
++            answer: Some("meta.limits_chat.here@1".into()),
++            route: Some("meta".into()),
++            ..Meta::default()
++        };
++        assert!(!defers(Some(&working_directory)));
++        assert!(!offered(Some(&working_directory), true));
++        let account = Meta {
++            route: Some("account".into()),
++            offers: vec![Offer::OpenScreen {
++                screen: Screen::Computers,
++            }],
++            ..Meta::default()
++        };
++        assert!(!offered(Some(&account), true));
++        let knowledge = Meta {
++            tier: Some("model".into()),
++            route: Some("codebase.kb".into()),
++            ..Meta::default()
++        };
++        assert!(!offered(Some(&knowledge), true));
++        assert!(!offered(Some(&Meta::default()), true));
++        assert!(!offered(None, true));
++        // Work: the dispatch route on the computer lane, or the offer.
++        let work = Meta {
++            tier: Some("model".into()),
++            ..dispatch_route()
++        };
++        assert!(defers(Some(&work)));
++        assert!(offered(Some(&work), true));
++        let offer = Meta {
++            route: Some("general".into()),
++            offers: vec![Offer::RunCoder],
++            ..Meta::default()
++        };
++        assert!(offered(Some(&offer), false));
++    }
++
+     #[test]
+     fn the_prompt_and_title_name_the_request() {
+         let turns = vec![
+diff --git a/crates/openagents-desktop/src/chat.rs b/crates/openagents-desktop/src/chat.rs
+index 319e938235bea5726376401b2e0cae071df9778b..f903d344da9913e5e6fd5d3701160e86d999920e 100644
+--- a/crates/openagents-desktop/src/chat.rs
++++ b/crates/openagents-desktop/src/chat.rs
+@@ -4233,6 +4233,11 @@ mod start_setting_tests {
+     /// A coding reply to a message sent from this window, on a computer
+     /// that can run Coder.
+     fn replied(asks_first: fn() -> bool) -> Panel {
++        replied_on(asks_first, openagents_chat::delegation::DISPATCH_ROUTE)
++    }
++
++    /// A reply on the computer lane whose judgment named `route`.
++    fn replied_on(asks_first: fn() -> bool, route: &str) -> Panel {
+         let mut panel = Panel::new(Instant::now());
+         panel.set_coder_asks_first(asks_first);
+         let chat = "c".repeat(32);
+@@ -4243,7 +4248,16 @@ mod start_setting_tests {
+             Snapshot {
+                 chat: Some(chat.clone()),
+                 computer: true,
+-                turns: vec![user, Turn::assistant("We'll dispatch Coder.", None)],
++                turns: vec![
++                    user,
++                    Turn::assistant(
++                        "We'll dispatch Coder.",
++                        Some(openagents_chat::router::Meta {
++                            route: Some(route.into()),
++                            ..Default::default()
++                        }),
++                    ),
++                ],
+                 ..Default::default()
+             },
+         );
+@@ -4268,6 +4282,16 @@ mod start_setting_tests {
+         assert!(asks.coder_run(&chat).is_some());
+     }
+ 
++    /// A reply that answered the question on the computer lane, such as
++    /// the working directory from the desktop's context (route `meta`),
++    /// starts nothing, even at once (#10079).
++    #[test]
++    fn a_reply_that_answered_starts_no_coder() {
++        let chat = "c".repeat(32);
++        let answered = replied_on(|| false, "meta");
++        assert!(answered.coder_run(&chat).is_none());
++    }
++
+     /// The window's settings file decides `coder.start` for the next coding
+     /// reply (#10070): Settings writes it, and the chat reads it each time.
+     #[test]
+diff --git a/crates/openagents-desktop/src/late_click_tests.rs b/crates/openagents-desktop/src/late_click_tests.rs
+index 3e77483faf70e9fb0e34d43fd08d27fc15c2f2c6..0162c1770b358da4f1e4b0951928fdda824cea74 100644
+--- a/crates/openagents-desktop/src/late_click_tests.rs
++++ b/crates/openagents-desktop/src/late_click_tests.rs
+@@ -277,7 +277,13 @@ fn choose_folder_asks_when_the_chat_updates_between_press_and_release() {
+         total: 2,
+         turns: vec![
+             Turn::user("fix the flaky test in openagents"),
+-            Turn::assistant("Ready for Coder.", None),
++            Turn::assistant(
++                "Ready for Coder.",
++                Some(openagents_chat::router::Meta {
++                    route: Some(openagents_chat::delegation::DISPATCH_ROUTE.into()),
++                    ..Default::default()
++                }),
++            ),
+         ],
+         ..Default::default()
+     };
+@@ -321,7 +327,13 @@ fn choose_folder_asks_when_the_chat_updates_between_press_and_release() {
+         total: 3,
+         turns: vec![
+             Turn::user("fix the flaky test in openagents"),
+-            Turn::assistant("Ready for Coder.", None),
++            Turn::assistant(
++                "Ready for Coder.",
++                Some(openagents_chat::router::Meta {
++                    route: Some(openagents_chat::delegation::DISPATCH_ROUTE.into()),
++                    ..Default::default()
++                }),
++            ),
+             Turn::assistant("Coder needs its project folder.", None),
+         ],
+         ..snapshot.clone()
+diff --git a/crates/openagents-desktop/src/shell.rs b/crates/openagents-desktop/src/shell.rs
+index 512145e2607463eadd7db5d98b82867ee46523b3..b183d5584b539c7796b5804387b2cec02b808ace 100644
+--- a/crates/openagents-desktop/src/shell.rs
++++ b/crates/openagents-desktop/src/shell.rs
+@@ -2794,7 +2794,13 @@ pub(super) mod card_fixtures {
+             total: 2,
+             turns: vec![
+                 Turn::user("fix the flaky test in openagents"),
+-                Turn::assistant("Ready for Coder.", None),
++                Turn::assistant(
++                    "Ready for Coder.",
++                    Some(openagents_chat::router::Meta {
++                        route: Some(openagents_chat::delegation::DISPATCH_ROUTE.into()),
++                        ..Default::default()
++                    }),
++                ),
+             ],
+             ..Default::default()
+         };
+diff --git a/crates/openagents-mobile/src/coder_tab_tests.rs b/crates/openagents-mobile/src/coder_tab_tests.rs
+index 69845f7f594a121d2d24e117d072a88292ce4fad..3cbb774a5f29fdbb692f5bd73560ec1122efda60 100644
+--- a/crates/openagents-mobile/src/coder_tab_tests.rs
++++ b/crates/openagents-mobile/src/coder_tab_tests.rs
+@@ -1066,7 +1066,13 @@ impl Hand {
+     fn judge(&self, lane: crate::basic_coder::Lane) {
+         let replies = self.replies.lock().unwrap();
+         let (_, reply) = replies.last().expect("a question");
+-        reply.lock().unwrap().lane = Some(lane);
++        let mut reply = reply.lock().unwrap();
++        reply.lane = Some(lane);
++        // The worker's judgment names a route with its lane; a computer
++        // reading that offers Coder is a dispatch (#10079).
++        if lane == crate::basic_coder::Lane::Computer {
++            reply.meta.route = Some(openagents_chat::delegation::DISPATCH_ROUTE.into());
++        }
+     }
+ 
+     fn asked(&self) -> Vec<Vec<String>> {

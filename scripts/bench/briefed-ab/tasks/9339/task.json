@@ -1,0 +1,28 @@
+{
+  "test_targets": [
+    "--test",
+    "api"
+  ],
+  "issue": 9339,
+  "title": "[Kev 2] crates/kev: request models, renderer, delimiter sanitize",
+  "body": "Part of #9337.\n\n## What to pull over\n\nFrom `kev/api.py` (pydantic shapes) and `kev/model.py:user_tokens`:\n\n- `SystemOneRequest`: `state` (string|object|array), `model`, `questions` map; `Noul`/`Choice`/`Score` question types with the TypeSafe criteria shapes and 255-option bound.\n- `render()`: structured values \u2192 labelled text, identical to the Python renderer (train and serve share one renderer).\n- `option_text()`, `to_record()`: questions \u2192 `{instr, options}` records plus per-question metadata (keys, legends).\n- `user_tokens()`: the `<|name|>` \u2192 `<\u00a6name\u00a6>` rewrite that makes delimiters unforgeable.\n- Answer types matching `crates/jev`'s `answers.rs` shapes so the wire contract is identical: `noul`, `choice`+probabilities+confidence, `score`+legend+probabilities+confidence.\n\n## Acceptance\n\n- New `crates/kev` workspace member; `cargo test -p kev` renders every corpus request to text identical to the Python reference (fixtures from the Kev-1 issue).\n- Validation refusals typed: >255 options, missing criteria, empty questions.\n\nGenerated with [Devin](https://devin.ai)",
+  "fix": "e2b18e17775dcf7ca51c3d5836e9674442f0c681",
+  "parent": "8b86694ada2a56b7e673e7eede69e1d41dac3cfd",
+  "package": "kev",
+  "source_files": [
+    "crates/kev/src/api.rs",
+    "crates/kev/src/error.rs",
+    "crates/kev/src/lib.rs",
+    "crates/kev/src/render.rs"
+  ],
+  "test_files": [
+    "crates/kev/tests/api.rs"
+  ],
+  "test_names": [
+    "every_corpus_request_reproduces_its_record",
+    "every_golden_answer_set_reproduces",
+    "sanitize_rewrites_delimiter_spans",
+    "validation_refuses_bad_requests"
+  ],
+  "fix_lines": 629
+}

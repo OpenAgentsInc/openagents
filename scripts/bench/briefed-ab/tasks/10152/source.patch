@@ -1,0 +1,355 @@
+diff --git a/crates/coder-terminal/src/components/run.rs b/crates/coder-terminal/src/components/run.rs
+index df91e3da9be2c8346833054346a9a26a2e83624d..c04fef3997c0d20f365c482cf2e0829ce309ae0c 100644
+--- a/crates/coder-terminal/src/components/run.rs
++++ b/crates/coder-terminal/src/components/run.rs
+@@ -52,13 +52,18 @@ pub enum RunRow {
+     /// The turn finished: "Coder finished · {n} file(s) changed · +{ins}
+     /// -{del}" (Full), the summary (ThreeQuarters, wrapped), each file
+     /// "  {status} {path} (+a -r)" (Half; "?" when unknown), then
+-    /// "worktree {path}" (Half).
++    /// "worktree {path}" (Half). Collapsed, a file with a patch adds
++    /// "Press Ctrl+O to see the changes." (Half) at the end; `expanded`,
++    /// each file's patch follows its row, clipped rather than wrapped,
++    /// its added and removed lines at ThreeQuarters and the rest at Half,
++    /// then "{n} more lines not shown" when the patch was cut.
+     Result {
+         summary: String,
+         files: Vec<FileRow>,
+         insertions: u64,
+         deletions: u64,
+         worktree: String,
++        expanded: bool,
+     },
+     /// The run failed, in its words (Full).
+     Failed { text: String },
+@@ -98,14 +103,21 @@ pub const GROUP_MARK: &str = "◈ ";
+ pub const CALL_MARK: &str = "◆ ";
+ 
+ /// One changed file in a finished run.
+-#[derive(Clone, Debug, PartialEq, Eq)]
++#[derive(Clone, Debug, Default, PartialEq, Eq)]
+ pub struct FileRow {
+     pub status: String,
+     pub path: String,
+     pub added: Option<u64>,
+     pub removed: Option<u64>,
++    /// The file's unified diff from its first hunk, when the run sent one.
++    pub patch: Option<String>,
++    /// Lines of the patch the run left out.
++    pub cut: u64,
+ }
+ 
++/// The hint under a collapsed result whose files carry patches.
++pub const SHOW_CHANGES: &str = "Press Ctrl+O to see the changes.";
++
+ /// Transcript lines for one run row at `width`, indented two cells under
+ /// the turn, long text wrapped with a hanging indent, output tail lines
+ /// clipped (not wrapped) with "…".
+@@ -180,6 +192,7 @@ pub fn lines(row: &RunRow, width: u16, ladder: Ladder) -> Vec<Line<'static>> {
+             insertions,
+             deletions,
+             worktree,
++            expanded,
+         } => {
+             let count = files.len();
+             let noun = if count == 1 { "file" } else { "files" };
+@@ -199,10 +212,20 @@ pub fn lines(row: &RunRow, width: u16, ladder: Ladder) -> Vec<Line<'static>> {
+                     count(file.removed)
+                 );
+                 block.text(&mut out, INDENT, "", &row, half);
++                if *expanded {
++                    block.patch(&mut out, file);
++                }
+             }
+             if !worktree.is_empty() {
+                 block.text(&mut out, 0, "", &format!("worktree {worktree}"), half);
+             }
++            if !*expanded
++                && files
++                    .iter()
++                    .any(|file| file.patch.is_some() || file.cut > 0)
++            {
++                block.text(&mut out, 0, "", SHOW_CHANGES, half);
++            }
+         }
+         RunRow::Failed { text } => block.text(&mut out, 0, "", text, full),
+         RunRow::Stopped { text } => block.text(&mut out, 0, "", text, three),
+@@ -368,6 +391,24 @@ impl Block {
+         }
+     }
+ 
++    /// A changed file's patch under its row, one clipped row per line,
++    /// then how many lines were left out.
++    fn patch(&self, out: &mut Vec<Line<'static>>, file: &FileRow) {
++        for line in file.patch.as_deref().unwrap_or("").lines() {
++            let at = if line.starts_with(['+', '-']) {
++                Intensity::ThreeQuarters
++            } else {
++                Intensity::Half
++            };
++            self.clipped(out, INDENT * 2, "", line, at);
++        }
++        if file.cut > 0 {
++            let noun = if file.cut == 1 { "line" } else { "lines" };
++            let note = format!("{} more {noun} not shown", file.cut);
++            self.clipped(out, INDENT * 2, "", &note, Intensity::Half);
++        }
++    }
++
+     /// `mark` then `text` on one row, clipped with "…" rather than wrapped.
+     fn clipped(
+         &self,
+diff --git a/crates/coder/src/task/issue_run.rs b/crates/coder/src/task/issue_run.rs
+index f105b17351a5e746f700b9c1c8a8985e5db9b40a..7aa606d80aaede899cb809e538ee77ede28a0191 100644
+--- a/crates/coder/src/task/issue_run.rs
++++ b/crates/coder/src/task/issue_run.rs
+@@ -1776,8 +1776,10 @@ fn changed_by(worktree: &Path, from: &str, to: &str) -> Vec<FileChange> {
+             status: status.to_owned(),
+             added: added.parse().ok(),
+             removed: removed.parse().ok(),
++            ..FileChange::default()
+         });
+     }
++    coder_events::attach_patches(&mut out, &super::review::patch(worktree, from, Some(to)));
+     out
+ }
+ 
+diff --git a/crates/coder/src/task/local.rs b/crates/coder/src/task/local.rs
+index b94ce860220141972d1a5557a82bb5a96622ee33..1d51d2a02d3a50ea0fd552f380d415529017039d 100644
+--- a/crates/coder/src/task/local.rs
++++ b/crates/coder/src/task/local.rs
+@@ -1545,6 +1545,7 @@ pub fn changes(worktree: &Path, base: &str) -> Vec<FileChange> {
+                 .unwrap_or_else(|| "modified".into()),
+             added: added.parse().ok(),
+             removed: removed.parse().ok(),
++            ..FileChange::default()
+         });
+     }
+     for path in git_out(worktree, &["ls-files", "--others", "--exclude-standard"])
+@@ -1564,9 +1565,11 @@ pub fn changes(worktree: &Path, base: &str) -> Vec<FileChange> {
+             status: "added".into(),
+             added: lines,
+             removed: lines.map(|_| 0),
++            ..FileChange::default()
+         });
+     }
+     out.sort_by(|a, b| a.path.cmp(&b.path));
++    coder_events::attach_patches(&mut out, &super::review::patch(worktree, base, None));
+     out
+ }
+ 
+diff --git a/crates/coder/src/task/review.rs b/crates/coder/src/task/review.rs
+index db74fc0659f6d8e478d2fbdc720a2e71f011b01f..f9b543ff4b28775b80d41bf15d09be89d9e7e0db 100644
+--- a/crates/coder/src/task/review.rs
++++ b/crates/coder/src/task/review.rs
+@@ -259,6 +259,28 @@ fn counts(worktree: &Path, base: &str, tree: &str) -> Result<Vec<FileCount>, Str
+     Ok(files)
+ }
+ 
++/// The most bytes of a diff read to give a result's files their patches.
++const PATCH_BYTES: usize = 512 * 1024;
++
++/// The unified diff from `base` to `to` in `worktree`, or to the
++/// worktree's content now (new files included) when `to` is `None`,
++/// bounded, for [`coder_events::attach_patches`]. Empty when Git cannot
++/// produce it.
++///
++/// [`coder_events::attach_patches`]: openagents_chat::coder_events::attach_patches
++pub(crate) fn patch(worktree: &Path, base: &str, to: Option<&str>) -> String {
++    let tree = match to {
++        Some(to) => to.to_owned(),
++        None => match head(worktree) {
++            Ok(head) => head.tree,
++            Err(_) => return String::new(),
++        },
++    };
++    bounded_diff(worktree, base, &tree, PATCH_BYTES)
++        .map(|(diff, _)| diff)
++        .unwrap_or_default()
++}
++
+ /// The unified diff from `base` to `tree`, kept up to `max` bytes as it
+ /// streams and cut at a line.
+ fn bounded_diff(
+diff --git a/crates/openagents-chat/src/coder_events.rs b/crates/openagents-chat/src/coder_events.rs
+index 31064db510717c292f2b2e93c3c40d1b30cf137c..1658c68aea2a8289381eb1be1b0dcfb8dd075cdd 100644
+--- a/crates/openagents-chat/src/coder_events.rs
++++ b/crates/openagents-chat/src/coder_events.rs
+@@ -605,7 +605,7 @@ impl Progress {
+ }
+ 
+ /// One file the turn changed in the worktree.
+-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
++#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+ pub struct FileChange {
+     pub path: String,
+     /// `added`, `modified`, `deleted`, or `renamed`.
+@@ -613,6 +613,78 @@ pub struct FileChange {
+     /// Lines added and removed; `None` for a binary file.
+     pub added: Option<u64>,
+     pub removed: Option<u64>,
++    /// The file's unified diff from its first hunk on, at most
++    /// [`PATCH_LINES`] lines; `None` when no patch was read. Older
++    /// clients ignore it.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub patch: Option<String>,
++    /// Lines of the patch left out to keep the event small.
++    #[serde(default, skip_serializing_if = "is_zero")]
++    pub patch_cut: u64,
++}
++
++#[allow(clippy::trivially_copy_pass_by_ref)]
++fn is_zero(n: &u64) -> bool {
++    *n == 0
++}
++
++/// The most lines of one file's patch a [`FileChange`] carries.
++pub const PATCH_LINES: usize = 400;
++/// The most patch lines one turn's [`FileChange`]s carry together.
++pub const PATCH_LINES_TOTAL: usize = 2_000;
++
++/// Gives each of `changes` its patch from `diff`, a whole unified diff
++/// (`git diff`) of the same change: the lines from the file's first hunk
++/// on, cut at [`PATCH_LINES`] per file and [`PATCH_LINES_TOTAL`] in all,
++/// with the count of lines left out. A file `diff` does not name, or a
++/// binary file, keeps no patch.
++pub fn attach_patches(changes: &mut [FileChange], diff: &str) {
++    let patches = split_diff(diff);
++    let mut left = PATCH_LINES_TOTAL;
++    for change in changes.iter_mut() {
++        let Some(lines) = patches
++            .iter()
++            .find(|(path, _)| *path == change.path)
++            .map(|(_, lines)| lines)
++        else {
++            continue;
++        };
++        if lines.is_empty() {
++            continue;
++        }
++        let keep = lines.len().min(PATCH_LINES).min(left);
++        left -= keep;
++        change.patch = (keep > 0).then(|| lines[..keep].join("\n"));
++        change.patch_cut = (lines.len() - keep) as u64;
++    }
++}
++
++/// A whole unified diff split by file: each file's new path (its old one
++/// when deleted) and its lines from the first hunk header on.
++fn split_diff(diff: &str) -> Vec<(String, Vec<&str>)> {
++    let mut out: Vec<(String, Vec<&str>)> = Vec::new();
++    let mut in_hunks = false;
++    for line in diff.lines() {
++        if let Some(header) = line.strip_prefix("diff --git ") {
++            let path = header
++                .rsplit_once(" b/")
++                .map_or(header, |(_, path)| path)
++                .trim_matches('"');
++            out.push((path.to_owned(), Vec::new()));
++            in_hunks = false;
++            continue;
++        }
++        let Some((_, lines)) = out.last_mut() else {
++            continue;
++        };
++        if line.starts_with("@@") {
++            in_hunks = true;
++        }
++        if in_hunks {
++            lines.push(line);
++        }
++    }
++    out
+ }
+ 
+ /// The turn finished.
+diff --git a/crates/openagents-terminal/src/app.rs b/crates/openagents-terminal/src/app.rs
+index 1d992c34ae35c083bd487c18bfc0e3459003571a..ba6238f788a51f5b10d49d811744aef4a8f7e909 100644
+--- a/crates/openagents-terminal/src/app.rs
++++ b/crates/openagents-terminal/src/app.rs
+@@ -479,12 +479,16 @@ impl App {
+         })]
+     }
+ 
+-    /// Expand every stretch of tool calls, or condense them all again.
++    /// Expand every stretch of tool calls and every run result's changes,
++    /// or condense them all again.
+     pub fn toggle_tools(&mut self) {
+         self.expanded = !self.expanded;
+         for row in self.transcript.lines_mut() {
+-            if let Row::Tools { expanded, .. } = row {
+-                *expanded = self.expanded;
++            match row {
++                Row::Tools { expanded, .. } | Row::Run(RunRow::Result { expanded, .. }) => {
++                    *expanded = self.expanded
++                }
++                _ => {}
+             }
+         }
+     }
+@@ -685,7 +689,10 @@ impl App {
+             });
+             return;
+         }
+-        if let Some(row) = rows::run_row(&line.event) {
++        if let Some(mut row) = rows::run_row(&line.event) {
++            if let RunRow::Result { expanded, .. } = &mut row {
++                *expanded = self.expanded;
++            }
+             self.push(Row::Run(row));
+         }
+     }
+@@ -851,7 +858,7 @@ pub fn help() -> Card {
+         ),
+         (
+             "Ctrl+O".to_owned(),
+-            "expand or condense tool calls".to_owned(),
++            "expand or condense tool calls and a run's changes".to_owned(),
+         ),
+         (
+             "Ctrl+S".to_owned(),
+diff --git a/crates/openagents-terminal/src/rows.rs b/crates/openagents-terminal/src/rows.rs
+index 4cb7cee0b7a130434cf6e9910c73547ff6e73707..bd758221f2476aa2704c51304c5bbd608329abfe 100644
+--- a/crates/openagents-terminal/src/rows.rs
++++ b/crates/openagents-terminal/src/rows.rs
+@@ -172,11 +172,14 @@ pub fn run_row(event: &CoderEvent) -> Option<RunRow> {
+                     path: file.path.clone(),
+                     added: file.added,
+                     removed: file.removed,
++                    patch: file.patch.clone(),
++                    cut: file.patch_cut,
+                 })
+                 .collect(),
+             insertions: result.insertions,
+             deletions: result.deletions,
+             worktree: result.worktree.clone(),
++            expanded: false,
+         },
+         CoderEvent::Failure(_) => RunRow::Failed {
+             text: coder_events::text(event).unwrap_or_default(),
+diff --git a/crates/openagents-terminal/src/slash.rs b/crates/openagents-terminal/src/slash.rs
+index 8b8db4b6f93db27706e08a7001a0ec993032ee3c..d3107adb4e41ceba391f13637461cc7b59b89808 100644
+--- a/crates/openagents-terminal/src/slash.rs
++++ b/crates/openagents-terminal/src/slash.rs
+@@ -62,7 +62,7 @@ impl Slash {
+             Slash::Settings => "show the Coder settings and where the file is",
+             Slash::Connect => "pair a phone with this computer by QR code",
+             Slash::Plugins => "list published plugins",
+-            Slash::Expand => "expand or condense tool calls (Ctrl+O)",
++            Slash::Expand => "expand or condense tool calls and a run's changes (Ctrl+O)",
+             Slash::Help => "show these commands and keys",
+             Slash::Quit => "close the screen; a Coder run keeps going",
+         }
+diff --git a/docs/terminal/README.md b/docs/terminal/README.md
+index 53949197cd1e32901f7e1022d1f1eb5a10161d0d..78521c659f70b64d6115d0b7d1157c222b6c558e 100644
+--- a/docs/terminal/README.md
++++ b/docs/terminal/README.md
+@@ -115,7 +115,7 @@ it.
+ | Esc | Stop the reply that is streaming, or stop the Coder run. Closes a list. |
+ | Ctrl+T | The thread list. |
+ | Ctrl+Y | Copy the last reply. Press again for each code block in it, last first. It copies through the terminal (OSC 52), so it works over SSH; in tmux, `set-clipboard on`. |
+-| Ctrl+O | Expand every Coder run's tool calls to each call and its output, or condense them again. |
++| Ctrl+O | Expand every Coder run's tool calls to each call and its output, and each run result's changed files to their diffs, or condense them again. |
+ | Ctrl+S | Keep this computer's chats in sync with your phone (install the host). |
+ | PageUp, PageDown | Scroll the transcript. |
+ | Up, Down | Move in the message, then through your earlier messages, kept across restarts. |

@@ -1,0 +1,722 @@
+diff --git a/crates/coder-terminal/src/components/mod.rs b/crates/coder-terminal/src/components/mod.rs
+index 499960a1c727968e489d937f2ee5de3cea869fc3..ddc29bfac411a4d46260d95250e1dae4e0276f55 100644
+--- a/crates/coder-terminal/src/components/mod.rs
++++ b/crates/coder-terminal/src/components/mod.rs
+@@ -13,6 +13,7 @@
+ //! - [`run`] draws one row of a Coder run. The caller maps its run events
+ //!   into [`run::RunRow`]s; the module knows no protocol.
+ //! - [`overlay`] draws a centered framed list over the screen.
++//! - [`rail`] draws the delegations under the composer, one row each.
+ //!
+ //! Transcript components return `Vec<Line<'static>>` whose rows are never
+ //! wider than the width they were given; the overlay draws into a
+@@ -21,11 +22,13 @@
+ pub mod card;
+ pub mod diff;
+ pub mod overlay;
++pub mod rail;
+ pub mod run;
+ pub mod turn;
+ 
+ pub use card::Card;
+ pub use overlay::{Item, ListOverlay};
++pub use rail::RailRow;
+ pub use run::{FileRow, RunRow, ToolRow};
+ pub use turn::Who;
+ 
+diff --git a/crates/openagents-terminal/src/app.rs b/crates/openagents-terminal/src/app.rs
+index d2dce9a34139fe6a7d378a9aea926fa577333da5..cb0de479a199d120aeb663f63e4af9d6ede57707 100644
+--- a/crates/openagents-terminal/src/app.rs
++++ b/crates/openagents-terminal/src/app.rs
+@@ -120,7 +120,7 @@ pub enum Action {
+     Quit,
+ }
+ 
+-type Wrap = Box<dyn Fn(&Row, usize) -> Vec<Line<'static>> + Send>;
++pub(crate) type Wrap = Box<dyn Fn(&Row, usize) -> Vec<Line<'static>> + Send>;
+ 
+ /// The screen's state.
+ pub struct App {
+@@ -211,6 +211,11 @@ pub struct App {
+     next_turn: Option<usize>,
+     /// The run's worktree, where the paths it names are.
+     pub worktree: Option<String>,
++    /// Each Coder run this thread started, for the rail under the
++    /// composer; a run's number is its place here, from one.
++    pub delegations: Vec<crate::rail::Delegation>,
++    /// The rail row the keyboard is on, by its number.
++    pub rail: Option<usize>,
+ }
+ 
+ impl App {
+@@ -258,6 +263,8 @@ impl App {
+             steering: 0,
+             next_turn: None,
+             worktree: None,
++            delegations: Vec::new(),
++            rail: None,
+         }
+     }
+ 
+@@ -296,10 +303,13 @@ impl App {
+         self.steering = 0;
+         self.next_turn = None;
+         self.worktree = None;
++        self.delegations.clear();
++        self.rail = None;
+     }
+ 
+     /// Add a row to the run view's log, and show its bottom.
+     fn push_run(&mut self, row: Row) {
++        self.track_row(&row);
+         self.run_log.push(row);
+         if let Some(view) = &mut self.run_view {
+             view.scroll = 0;
+@@ -351,7 +361,7 @@ impl App {
+     /// runs, and the live line's.
+     #[must_use]
+     pub fn animating(&self) -> bool {
+-        self.busy() || self.live_status().is_some()
++        self.busy() || self.live_status().is_some() || self.rail_animating()
+     }
+ 
+     /// Whether the run should be followed again once the client is free:
+@@ -374,6 +384,9 @@ impl App {
+             self.file_key(key);
+             return Vec::new();
+         }
++        if let Some(actions) = self.rail_key(key) {
++            return actions;
++        }
+         match (key.code, ctrl, alt) {
+             (KeyCode::Char('r'), true, _) => {
+                 self.toggle_run();
+@@ -686,6 +699,10 @@ impl App {
+                 Vec::new()
+             }
+             Draft::Command(slash) => self.command(slash),
++            Draft::Open(number) => {
++                self.open_delegation(number);
++                Vec::new()
++            }
+             Draft::Message(text) => self.send(text),
+         }
+     }
+@@ -719,6 +736,13 @@ impl App {
+                 self.toggle_run();
+                 Vec::new()
+             }
++            Slash::Open => {
++                match self.rail_numbers().as_slice() {
++                    [only] => self.open_delegation(*only),
++                    _ => self.open_delegation(0),
++                }
++                Vec::new()
++            }
+             Slash::Quit => vec![Action::Quit],
+         }
+     }
+@@ -727,6 +751,18 @@ impl App {
+     fn send(&mut self, text: String) -> Vec<Action> {
+         // The run view's composer talks to the run: an answer when it asks,
+         // else a message it reads at its next step.
++        // A run opened from the rail that is not the thread's current
++        // one takes the message the same way, in its own log.
++        if let Some(held) = self.viewed()
++            && self.task.as_deref() != Some(held.task.as_str())
++        {
++            let task = held.task.clone();
++            let number = self.run_view.and_then(|view| view.number).unwrap_or(1);
++            self.delegations[number - 1]
++                .log
++                .push(Row::Turn(Who::You, text.clone()));
++            return vec![Action::Steer { task, text }];
++        }
+         if self.run_view.is_some()
+             && !self.asked
+             && let Some(task) = self.task.clone()
+@@ -902,6 +938,7 @@ impl App {
+                     {
+                         self.task = Some(id.to_owned());
+                         self.running = true;
++                        self.delegated(id);
+                     }
+                 } else {
+                     self.starting = None;
+@@ -988,10 +1025,14 @@ impl App {
+             // still comes from them: a replay of a turn that ended must
+             // not leave the screen working with nothing coming.
+             self.replayed(&line.event);
++            let ended = self.finished(&line.event);
++            self.track(&line, false, ended);
+             return;
+         }
+         *seen = line.seq.max(*seen);
+         self.task = Some(line.task.clone());
++        let ended = self.finished(&line.event);
++        self.track(&line, true, ended);
+         match &line.event {
+             CoderEvent::Status(status) => {
+                 self.running = true;
+@@ -1070,6 +1111,16 @@ impl App {
+         }
+     }
+ 
++    /// Whether `event` ends its run's turn for good: not a turn a message
++    /// replaced, and not a question that waits for an answer.
++    fn finished(&self, event: &CoderEvent) -> bool {
++        event.ends_turn()
++            && !matches!(event, CoderEvent::Question(_) | CoderEvent::Approval(_))
++            && !self
++                .next_turn
++                .is_some_and(|next| openagents_chat::client::turn_of(event) < next)
++    }
++
+     /// Open the run view, or close it.
+     pub fn toggle_run(&mut self) {
+         if self.run_view.take().is_some() {
+@@ -1263,6 +1314,18 @@ impl App {
+         match self.phase {
+             _ if self.overlay.is_some() => "Esc closes the list".into(),
+             _ if self.file.is_some() => "Esc closes the file".into(),
++            _ if self.viewed().is_some() && !self.asked => {
++                let number = self.run_view.and_then(|view| view.number).unwrap_or(1);
++                let held = &self.delegations[number - 1];
++                let state = if held.running { "working" } else { "ended" };
++                format!(
++                    "Coder run {number} · {} · {state} · Enter sends it your message · Esc back",
++                    held.agent
++                )
++            }
++            _ if self.rail.is_some() => {
++                "Enter opens the run full screen · Up and Down move · Esc back".into()
++            }
+             _ if self.run_view.is_some() && !self.asked => {
+                 let state = if self.running { "working" } else { "ended" };
+                 format!("Coder run · {state} · Enter sends it your message · Esc back")
+@@ -1315,7 +1378,11 @@ impl App {
+ 
+ /// Adds a run event to `log`: it joins the open stretch of tool calls,
+ /// starts one, or draws its own row. Whether `log` changed.
+-fn grow(log: &mut Scrollback<Row, Line<'static>, Wrap>, line: &CoderLine, expanded: bool) -> bool {
++pub(crate) fn grow(
++    log: &mut Scrollback<Row, Line<'static>, Wrap>,
++    line: &CoderLine,
++    expanded: bool,
++) -> bool {
+     if let Some(Row::Tools { stretch, .. }) = log.last_mut()
+         && stretch.push(line.seq, &line.event)
+     {
+@@ -1336,7 +1403,7 @@ fn grow(log: &mut Scrollback<Row, Line<'static>, Wrap>, line: &CoderLine, expand
+     true
+ }
+ 
+-fn transcript(ladder: Ladder) -> Scrollback<Row, Line<'static>, Wrap> {
++pub(crate) fn transcript(ladder: Ladder) -> Scrollback<Row, Line<'static>, Wrap> {
+     let wrap: Wrap = Box::new(move |row: &Row, width: usize| {
+         rows::lines(row, u16::try_from(width).unwrap_or(u16::MAX), ladder)
+     });
+@@ -1402,6 +1469,14 @@ pub fn help() -> Card {
+             "Ctrl+R".to_owned(),
+             "the Coder run full screen; what you type there goes to the run".to_owned(),
+         ),
++        (
++            "Up".to_owned(),
++            "on an empty line, into the rail of Coder runs; Down back, Enter opens one".to_owned(),
++        ),
++        (
++            "Alt+1…9".to_owned(),
++            "open that Coder run full screen".to_owned(),
++        ),
+         (
+             "Mouse".to_owned(),
+             "drag to select and copy; click a file's path to read the file".to_owned(),
+diff --git a/crates/openagents-terminal/src/draw.rs b/crates/openagents-terminal/src/draw.rs
+index 4a2dfdb3c3e393cacd2c8e9595933f6c51fe2713..9fc6908c1460352b5f95d122da935ee1545560f8 100644
+--- a/crates/openagents-terminal/src/draw.rs
++++ b/crates/openagents-terminal/src/draw.rs
+@@ -3,7 +3,7 @@
+ //! from the white ladder on near-black.
+ 
+ use coder_terminal::components::overlay::{Item, ListOverlay};
+-use coder_terminal::components::{run, turn};
++use coder_terminal::components::{rail, run, turn};
+ use coder_terminal::{Composer, PROMPT, grok_spinner};
+ use ratatui::buffer::Buffer;
+ use ratatui::layout::Rect;
+@@ -60,16 +60,34 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
+     let tail = app.tail();
+     let busy = app.busy();
+     let prompt = if busy { spinner_char(app.tick) } else { PROMPT };
++    // The rail of Coder runs under the composer (#10169), leaving the
++    // transcript at least one row. The same cells as the transcript: two
++    // in from the left, two free at the right.
++    let rail_width = area.width.saturating_sub(3);
++    let rail_rows = if app.rail_shown() {
++        rail::lines(&app.rail_rows(), usize::from(rail_width), app.tick, ladder)
++    } else {
++        Vec::new()
++    };
++    // A run from the rail that is not the thread's current one: its own
++    // log, without the current run's live rows.
++    let other = app
++        .viewed()
++        .filter(|held| app.task.as_deref() != Some(held.task.as_str()))
++        .and(app.run_view.and_then(|view| view.number));
+     let mut composer = Composer::new(&mut app.editor, ladder)
+         .prompt(prompt)
+         .status(&status)
+         .tokens(&tail);
+     let box_height = composer.height(area.width).min(area.height);
++    let rail_height = u16::try_from(rail_rows.len())
++        .unwrap_or(u16::MAX)
++        .min(area.height.saturating_sub(box_height + 1));
+     let log = Rect::new(
+         area.x,
+         area.y,
+         area.width,
+-        area.height.saturating_sub(box_height),
++        area.height.saturating_sub(box_height + rail_height),
+     );
+     let composer_area = Rect::new(area.x, area.y + log.height, area.width, box_height);
+ 
+@@ -91,15 +109,21 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
+     if !app.partial.is_empty() && !viewing {
+         live.extend(turn::streaming(&app.partial, width, ladder));
+     }
+-    if let Some(progress) = &app.progress {
+-        live.extend(run::lines(progress, width, ladder));
++    if other.is_none() {
++        if let Some(progress) = &app.progress {
++            live.extend(run::lines(progress, width, ladder));
++        }
++        live.extend(working_line);
+     }
+-    live.extend(working_line);
+     let scroll = match app.run_view {
+         Some(view) => view.scroll,
+         None => app.scroll,
+     };
+-    let rows = if viewing {
++    let rows = if let Some(number) = other {
++        app.delegations[number - 1]
++            .log
++            .rows(usize::from(width), |_: &Row| true)
++    } else if viewing {
+         app.run_log.rows(usize::from(width), |_: &Row| true)
+     } else {
+         app.transcript.rows(usize::from(width), |_: &Row| true)
+@@ -123,6 +147,14 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
+     }
+ 
+     let caret = composer.render(composer_area, buf);
++    for (offset, line) in rail_rows.iter().take(usize::from(rail_height)).enumerate() {
++        buf.set_line(
++            area.x + 1,
++            composer_area.bottom() + offset as u16,
++            line,
++            rail_width,
++        );
++    }
+ 
+     if let Some(overlay) = &app.overlay {
+         let (title, items, selected, hint, empty) = match overlay {
+diff --git a/crates/openagents-terminal/src/lib.rs b/crates/openagents-terminal/src/lib.rs
+index abcf4cc2b2651d7e21059d587c995ab5d8273f7f..5534cf7d2baa235fd3de8a6e650c35a6c10d69cd 100644
+--- a/crates/openagents-terminal/src/lib.rs
++++ b/crates/openagents-terminal/src/lib.rs
+@@ -36,6 +36,7 @@ pub mod copy;
+ pub mod draw;
+ pub mod last;
+ pub mod prompts;
++pub mod rail;
+ pub mod rows;
+ pub mod screen;
+ pub mod slash;
+diff --git a/crates/openagents-terminal/src/rail.rs b/crates/openagents-terminal/src/rail.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..4fb17a50331094582f09a2c726bc0c88146e41f1
+--- /dev/null
++++ b/crates/openagents-terminal/src/rail.rs
+@@ -0,0 +1,258 @@
++//! The delegations: each Coder run this thread started, in the rail under
++//! the composer (#10169).
++//!
++//! Ported from Coder Terminal's delegation rail (0.4.0). A row shows its
++//! number, its agent, and what it is doing, from the run's own live status
++//! ("Thinking…", "Run cargo test"). Up from an empty composer moves into
++//! the rail and through it; Down moves back and returns to the composer;
++//! Enter opens the selected run full screen, the run view, with its
++//! steering composer. Alt+number and `/open <n>` open one directly. A
++//! finished run keeps its row for [`KEPT_AFTER_DONE`], then leaves the
++//! rail; `/open` still opens it by its number.
++
++use coder_terminal::Scrollback;
++use coder_terminal::components::rail::{MAX_ROWS, RailRow};
++use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
++use openagents_chat::coder_events::{self, CoderEvent, Line as CoderLine, StepKind};
++use ratatui::text::Line;
++
++use crate::app::{Action, App, Wrap};
++use crate::rows::{self, Row};
++use crate::view::RunView;
++
++/// How long a finished run keeps its row: 30 seconds of the 30 fps clock.
++pub const KEPT_AFTER_DONE: u64 = 30 * 30;
++
++/// One Coder run the thread started.
++pub struct Delegation {
++    /// Its Coder task.
++    pub task: String,
++    /// Who runs it, as the rail names it.
++    pub agent: String,
++    /// What it is doing now.
++    pub doing: String,
++    /// The tick `doing` began at, for its timer.
++    pub since: u64,
++    /// Its turn is running.
++    pub running: bool,
++    /// The tick it finished at.
++    pub ended: Option<u64>,
++    /// The run alone, every call with its output, for its full screen.
++    pub log: Scrollback<Row, Line<'static>, Wrap>,
++}
++
++impl App {
++    /// The delegation running `task`, added when it is new.
++    fn delegation(&mut self, task: &str) -> &mut Delegation {
++        if let Some(index) = self.delegations.iter().position(|held| held.task == task) {
++            return &mut self.delegations[index];
++        }
++        let agent = self.engine.clone().unwrap_or_else(|| "Coder".to_owned());
++        self.delegations.push(Delegation {
++            task: task.to_owned(),
++            agent,
++            doing: "Starting…".to_owned(),
++            since: self.tick,
++            running: true,
++            ended: None,
++            log: crate::app::transcript(self.ladder),
++        });
++        self.delegations.last_mut().expect("just pushed")
++    }
++
++    /// Coder accepted a run: it has a row from now on.
++    pub(crate) fn delegated(&mut self, task: &str) {
++        let tick = self.tick;
++        let held = self.delegation(task);
++        // Following the run again says so too; its timer keeps going.
++        if !held.running {
++            held.running = true;
++            held.ended = None;
++            held.since = tick;
++        }
++    }
++
++    /// One event of a run: where it stands and what it is doing. `fresh`
++    /// when the event was not shown before; `ended` whether its turn ended
++    /// for good.
++    pub(crate) fn track(&mut self, line: &CoderLine, fresh: bool, ended: bool) {
++        let tick = self.tick;
++        let held = self.delegation(&line.task);
++        let doing = match &line.event {
++            CoderEvent::CoderStarted(started) => {
++                held.agent = rows::provider(&started.provider);
++                Some(coder_events::starting(&started.provider))
++            }
++            CoderEvent::Status(status) => Some(status.text.clone()),
++            CoderEvent::Step(step)
++                if matches!(step.kind, StepKind::Command | StepKind::ToolCall) =>
++            {
++                step.text
++                    .lines()
++                    .map(str::trim)
++                    .find(|line| !line.is_empty())
++                    .map(str::to_owned)
++            }
++            _ => None,
++        };
++        // A follow that starts again replays the run from its first
++        // event: what it is doing comes only from events new here.
++        if let Some(doing) = doing.filter(|doing| fresh && *doing != held.doing) {
++            held.doing = doing;
++            held.since = tick;
++        }
++        if line.event.ends_turn() {
++            held.running = !ended;
++            held.ended = ended.then_some(tick);
++        } else if matches!(
++            line.event,
++            CoderEvent::CoderStarted(_) | CoderEvent::Status(_) | CoderEvent::Progress(_)
++        ) {
++            held.running = true;
++            held.ended = None;
++        }
++        if fresh {
++            crate::app::grow(&mut held.log, line, true);
++        }
++    }
++
++    /// A row of the thread's current run, in its delegation's log too.
++    pub(crate) fn track_row(&mut self, row: &Row) {
++        if let Some(task) = self.task.clone()
++            && let Some(held) = self.delegations.iter_mut().find(|held| held.task == task)
++        {
++            held.log.push(row.clone());
++        }
++    }
++
++    /// The numbers the rail shows, from one: the running runs and those
++    /// that finished in the last [`KEPT_AFTER_DONE`], at most
++    /// [`MAX_ROWS`], the running and the newest first to stay.
++    #[must_use]
++    pub fn rail_numbers(&self) -> Vec<usize> {
++        let mut numbers: Vec<usize> = (1..=self.delegations.len())
++            .filter(|number| {
++                let held = &self.delegations[number - 1];
++                held.running
++                    || held
++                        .ended
++                        .is_none_or(|ended| self.tick.saturating_sub(ended) <= KEPT_AFTER_DONE)
++            })
++            .collect();
++        numbers.sort_by_key(|number| {
++            (
++                !self.delegations[number - 1].running,
++                std::cmp::Reverse(*number),
++            )
++        });
++        numbers.truncate(MAX_ROWS);
++        numbers.sort_unstable();
++        numbers
++    }
++
++    /// The rail's rows, as [`coder_terminal::components::rail`] draws them.
++    #[must_use]
++    pub fn rail_rows(&self) -> Vec<RailRow> {
++        self.rail_numbers()
++            .into_iter()
++            .map(|number| {
++                let held = &self.delegations[number - 1];
++                RailRow {
++                    number,
++                    agent: held.agent.clone(),
++                    doing: held.doing.clone(),
++                    elapsed: held.running.then(|| {
++                        coder_terminal::grok_spinner::elapsed(self.tick.saturating_sub(held.since))
++                    }),
++                    selected: self.rail == Some(number),
++                }
++            })
++            .collect()
++    }
++
++    /// Whether the rail shows: it has rows and no full screen covers it.
++    #[must_use]
++    pub fn rail_shown(&self) -> bool {
++        self.run_view.is_none() && !self.rail_numbers().is_empty()
++    }
++
++    /// A key for the rail, when it takes it: Up and Down move, Enter
++    /// opens, Esc returns to the composer, and Alt+number opens one from
++    /// anywhere. Any other key returns to the composer and does what it
++    /// does there.
++    pub(crate) fn rail_key(&mut self, key: &KeyEvent) -> Option<Vec<Action>> {
++        if key.modifiers == KeyModifiers::ALT
++            && let KeyCode::Char(digit @ '1'..='9') = key.code
++        {
++            self.open_delegation(usize::from(digit as u8 - b'0'));
++            return Some(Vec::new());
++        }
++        if self.run_view.is_some() {
++            return None;
++        }
++        let visible = self.rail_numbers();
++        let at = self
++            .rail
++            .and_then(|number| visible.iter().position(|shown| *shown == number));
++        if at.is_none() {
++            self.rail = None;
++        }
++        if key.modifiers != KeyModifiers::NONE {
++            self.rail = None;
++            return None;
++        }
++        match (key.code, at) {
++            (KeyCode::Up, None) if !visible.is_empty() && self.editor.is_empty() => {
++                self.rail = Some(visible[0]);
++            }
++            (KeyCode::Up, Some(index)) => {
++                self.rail = Some(visible[(index + 1).min(visible.len() - 1)]);
++            }
++            (KeyCode::Down, Some(index)) => {
++                self.rail = index.checked_sub(1).map(|before| visible[before]);
++            }
++            (KeyCode::Enter, Some(index)) => {
++                self.rail = None;
++                self.open_delegation(visible[index]);
++            }
++            (KeyCode::Esc, Some(_)) => self.rail = None,
++            (_, Some(_)) => {
++                self.rail = None;
++                return None;
++            }
++            _ => return None,
++        }
++        Some(Vec::new())
++    }
++
++    /// Open delegation `number` full screen, or say there is none.
++    pub fn open_delegation(&mut self, number: usize) {
++        self.rail = None;
++        if number == 0 || number > self.delegations.len() {
++            self.note(match self.delegations.len() {
++                0 => "This thread has no Coder run yet.".to_owned(),
++                1 => "There is one Coder run: /open 1.".to_owned(),
++                runs => format!("There are {runs} Coder runs: /open 1 to /open {runs}."),
++            });
++            return;
++        }
++        self.run_view = Some(RunView {
++            scroll: 0,
++            number: Some(number),
++        });
++    }
++
++    /// The run the full screen shows, when it shows one of the rail's.
++    #[must_use]
++    pub fn viewed(&self) -> Option<&Delegation> {
++        let number = self.run_view?.number?;
++        self.delegations.get(number - 1)
++    }
++
++    /// Whether a rail row is animating: a running one's spinner, or a
++    /// finished one waiting to leave.
++    #[must_use]
++    pub fn rail_animating(&self) -> bool {
++        !self.rail_numbers().is_empty()
++    }
++}
+diff --git a/crates/openagents-terminal/src/slash.rs b/crates/openagents-terminal/src/slash.rs
+index 31d2d34680df4e66f408ae710403dbf051ba76df..640406f8b57f6620574ebfd93538c85645984130 100644
+--- a/crates/openagents-terminal/src/slash.rs
++++ b/crates/openagents-terminal/src/slash.rs
+@@ -2,7 +2,8 @@
+ //! of what the person types.
+ //!
+ //! A draft is a command only when it is exactly `/word`, a slash and
+-//! lowercase letters with nothing after them. Everything else, including
++//! lowercase letters with nothing after them, or `/open` and a number.
++//! Everything else, including
+ //! text that merely starts with a slash (`/usr/bin is missing`), goes to the
+ //! chat router. Nothing here reads the words of a message.
+ 
+@@ -20,13 +21,14 @@ pub enum Slash {
+     Import,
+     Expand,
+     Run,
++    Open,
+     Help,
+     Quit,
+ }
+ 
+ impl Slash {
+     /// Every command, in the order `/help` lists them.
+-    pub const ALL: [Slash; 13] = [
++    pub const ALL: [Slash; 14] = [
+         Slash::New,
+         Slash::Threads,
+         Slash::Stop,
+@@ -38,6 +40,7 @@ impl Slash {
+         Slash::Import,
+         Slash::Expand,
+         Slash::Run,
++        Slash::Open,
+         Slash::Help,
+         Slash::Quit,
+     ];
+@@ -56,6 +59,7 @@ impl Slash {
+             Slash::Import => "import",
+             Slash::Expand => "expand",
+             Slash::Run => "run",
++            Slash::Open => "open",
+             Slash::Help => "help",
+             Slash::Quit => "quit",
+         }
+@@ -79,6 +83,7 @@ impl Slash {
+             Slash::Run => {
+                 "open the Coder run full screen, to watch it and send it messages (Ctrl+R)"
+             }
++            Slash::Open => "open a Coder run from the rail full screen: /open 2 (Alt+2)",
+             Slash::Help => "show these commands and keys",
+             Slash::Quit => "close the screen; a Coder run keeps going",
+         }
+@@ -92,6 +97,8 @@ pub enum Draft {
+     Message(String),
+     /// A slash command.
+     Command(Slash),
++    /// `/open` and a run's number.
++    Open(usize),
+     /// `/word` that names no command.
+     Unknown(String),
+     /// Nothing to send.
+@@ -104,6 +111,12 @@ pub fn parse(draft: &str) -> Draft {
+     if text.is_empty() {
+         return Draft::Empty;
+     }
++    // The one command that takes an argument: `/open` and a number.
++    if let Some(number) = text.strip_prefix("/open ")
++        && let Ok(number) = number.trim().parse::<usize>()
++    {
++        return Draft::Open(number);
++    }
+     if let Some(word) = text.strip_prefix('/')
+         && !word.is_empty()
+         && word.bytes().all(|byte| byte.is_ascii_lowercase())
+diff --git a/crates/openagents-terminal/src/view.rs b/crates/openagents-terminal/src/view.rs
+index 5fa3d4aa4a020699a0347c9d19e188fbda96fd7b..15e5e41773ed3e9f2f7f8836434a33429717f25f 100644
+--- a/crates/openagents-terminal/src/view.rs
++++ b/crates/openagents-terminal/src/view.rs
+@@ -30,6 +30,9 @@ pub const FILE_MAX: u64 = 2 * 1024 * 1024;
+ pub struct RunView {
+     /// Rows scrolled back from the bottom.
+     pub scroll: usize,
++    /// The rail's run it shows, by its number; `None` for the thread's
++    /// current run (Ctrl+R).
++    pub number: Option<usize>,
+ }
+ 
+ /// A file, read only.
+diff --git a/docs/terminal/README.md b/docs/terminal/README.md
+index 5b3c0186627826507aa9e57ff92baed1067ec11d..a81b5c81d2f818e02dc59132d68a68ecc841fd54 100644
+--- a/docs/terminal/README.md
++++ b/docs/terminal/README.md
+@@ -148,7 +148,8 @@ it.
+ | Ctrl+O | Expand every Coder run's tool calls to each call and its output, and each run result's changed files to their diffs, or condense them again. |
+ | Ctrl+S | Keep this computer's chats in sync with your phone (install the host). |
+ | PageUp, PageDown | Scroll the transcript. |
+-| Up, Down | Move in the message, then through your earlier messages, kept across restarts. |
++| Up, Down | Move in the message, then through your earlier messages, kept across restarts. With Coder runs in the rail under the composer, Up on an empty line moves into the rail and through it, Down moves back to the composer, and Enter opens the selected run full screen. |
++| Alt+1 … Alt+9 | Open that Coder run from the rail full screen. |
+ | Ctrl+C | Clear the message; on an empty line, press it twice to quit. |
+ | Ctrl+D | Quit, on an empty line. |
+ | Mouse | Drag to select text; letting go copies it (OSC 52, as Ctrl+Y). Click a file's path in a reply or a run to read the file. The wheel scrolls. Most terminals still select their own way with Shift (Option in iTerm2) held. |
+@@ -174,6 +175,7 @@ including text that only starts with a slash, goes to OpenAgents.
+ | `/import` | Copy this computer's Claude Code and Codex sessions (`~/.claude`, `~/.codex`) into the host's threads, each once: the messages and text replies, without tool calls. The host only reads those folders. Needs the host. |
+ | `/expand` | Expand or condense the tool calls (also Ctrl+O). |
+ | `/run` | Open the Coder run full screen (also Ctrl+R). |
++| `/open N` | Open Coder run N from the rail full screen (also Alt+N). |
+ | `/help` | Show these commands and keys. |
+ | `/quit` | Close the screen; a Coder run keeps going. |
+ 
+@@ -210,6 +212,10 @@ of how much is complete. Runs have no step or time budget.
+   it. Grok Build, OpenCode, and Devin read instructions only when a turn
+   starts, so their turn stops and the next starts with your message. Esc goes
+   back to the chat; `/stop` stops the run.
++- **The rail.** Under the composer, one row per Coder run this thread
++  started: its number, its agent, and what it is doing now, with the
++  spinner and its timer while it runs. A finished run keeps its row for 30
++  seconds; `/open` still opens it by number after that.
+ - **A follow-up after a run** goes to the router with what the run did, so
+   more work continues the same run.
+ - **An issue** ("work on #10034") runs the issue flow in a process of its

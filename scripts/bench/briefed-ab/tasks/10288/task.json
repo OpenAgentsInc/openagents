@@ -1,0 +1,17 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10288,
+  "title": "microcoder repository tests (local_run, follow_up) fail on Linux (Boat)",
+  "body": "Reported by the #10279 agent: two or three `microcoder` `repository::tests` (`local_run`, `follow_up`) fail on Boat Linux at clean origin/main, after #10285 (47dd087f72) fixed the macOS local_run failure. Reproduce on Linux, find the platform/environment cause (installed engines, PATH, sandbox, OpenCode/Devin config), fix without weakening checks; suite clean on Linux and macOS.",
+  "fix": "a5d732a8175d2fb2605e1a2756754f5e3a711f2d",
+  "parent": "03ca1ae43d4d553300bacc00861cec3d11bbf22b",
+  "package": "microcoder",
+  "source_files": [],
+  "test_files": [
+    "crates/microcoder/src/repository/tests.rs"
+  ],
+  "test_names": [],
+  "fix_lines": 14
+}

@@ -1,0 +1,359 @@
+diff --git a/crates/verse-imported/src/imported/chamber_session.rs b/crates/verse-imported/src/imported/chamber_session.rs
+index d669219c74d6351f61e335cf9b1d97294e38bc6a..4426a43e59d146f1a186b99e2884610952deaf65 100644
+--- a/crates/verse-imported/src/imported/chamber_session.rs
++++ b/crates/verse-imported/src/imported/chamber_session.rs
+@@ -29,6 +29,10 @@ use web_time::Instant;
+ const MOVE_INTERVAL: Duration = Duration::from_millis(33);
+ /// Inputs sent but not yet answered; a full queue refuses new input.
+ const PENDING_LIMIT: usize = 64;
++/// How long a dead player waits before asking again after a respawn that
++/// did not return a new life, for example because something stood on the
++/// spawn point (#10559).
++pub const RESPAWN_RETRY: Duration = Duration::from_secs(2);
+ /// Notes held for an observer that has not drained them.
+ const NOTE_LIMIT: usize = 4096;
+ pub use controls::Held;
+@@ -157,6 +161,7 @@ pub struct Session {
+     frame_entry: Option<(LifeId, u64)>,
+     frame_entry_pending: bool,
+     respawn_attempts: Vec<LifeId>,
++    respawn_asked: Option<Instant>,
+     notes: Option<Vec<Note>>,
+     /// Snapshots applied since the session started.
+     pub snapshots: u64,
+@@ -303,6 +308,7 @@ impl Session {
+             frame_entry: None,
+             frame_entry_pending: false,
+             respawn_attempts: vec![],
++            respawn_asked: None,
+             notes: None,
+             snapshots: 0,
+             life_changes: 0,
+@@ -613,22 +619,31 @@ impl Session {
+         }
+     }
+ 
+-    /// Asks for a new character once per death.
++    /// Asks for a new character once per death, and again every
++    /// [`RESPAWN_RETRY`] while that life stays dead: the authority refuses a
++    /// respawn whose spawn point is obstructed.
+     pub fn respawn(&mut self) {
+         let Some(hud) = self.hud() else {
+             return;
+         };
+-        if hud.resources.hp != 0
+-            || self.respawn_attempts.len() >= 128
+-            || self.respawn_attempts.contains(&hud.life)
+-        {
++        if hud.resources.hp != 0 {
+             return;
+         }
+         let life = hud.life;
++        let retry = self.respawn_attempts.last() == Some(&life)
++            && self
++                .respawn_asked
++                .is_some_and(|at| at.elapsed() >= RESPAWN_RETRY);
++        if !retry && (self.respawn_attempts.len() >= 128 || self.respawn_attempts.contains(&life)) {
++            return;
++        }
+         let before = self.pending.len();
+         self.send(Input::Respawn);
+         if self.pending.len() > before {
+-            self.respawn_attempts.push(life);
++            if !retry {
++                self.respawn_attempts.push(life);
++            }
++            self.respawn_asked = Some(Instant::now());
+         }
+     }
+ 
+diff --git a/crates/verse-world/src/play.rs b/crates/verse-world/src/play.rs
+index 8bc03b2d293313ad93836885fadec58cabd5826c..45cf0742c10edfde0d39aae5dae6a0f366a36720 100644
+--- a/crates/verse-world/src/play.rs
++++ b/crates/verse-world/src/play.rs
+@@ -3429,14 +3429,15 @@ impl Game {
+             .iter()
+             .find(|a| a.model == "adventurer")
+             .ok_or("Missing adventurer spawn")?;
+-        let spawn = authored.position;
+         let yaw = authored.yaw;
+-        let mut character = physics::character::Character::new(spawn.as_dvec3());
++        let feet = self.respawn_feet(self.player_life(), authored.position.as_dvec3())?;
++        let spawn = feet.as_vec3();
++        let mut character = physics::character::Character::new(feet);
+         character.teleport(
+             &self.query_scene,
+             self.actor_filter(self.player_life()),
+             physics::character::Settings::default(),
+-            spawn.as_dvec3(),
++            feet,
+         )?;
+         let old = self.player_life();
+         let physical = physics::queries::Life {
+diff --git a/crates/verse-world/src/play/multiplayer.rs b/crates/verse-world/src/play/multiplayer.rs
+index 230c151d2a3779a1c481861b5a04f4081cedb2f2..f12971c6f855ea1633b7884e4d5484ab91912e2f 100644
+--- a/crates/verse-world/src/play/multiplayer.rs
++++ b/crates/verse-world/src/play/multiplayer.rs
+@@ -2,6 +2,8 @@
+ use super::*;
+ use crate::{Admission, Command, Controller, Intent};
+ use verse_engine::core::LifeId;
++/// How far from an obstructed spawn a respawn may stand, in meters.
++pub const RESPAWN_RADIUS: f64 = 3.;
+ 
+ #[derive(Clone, serde::Serialize, serde::Deserialize)]
+ pub struct Player {
+@@ -1310,13 +1312,14 @@ impl Game {
+         admission
+             .respawn()
+             .map_err(|e| format!("Respawn refused: {e:?}"))?;
+-        let mut character = physics::character::Character::new(p.spawn.as_dvec3());
++        let feet = self.respawn_feet(life, p.spawn.as_dvec3())?;
++        let mut character = physics::character::Character::new(feet);
+         if !self.colliders.is_empty() {
+             character.teleport(
+                 &self.query_scene,
+                 self.actor_filter(life),
+                 physics::character::Settings::default(),
+-                p.spawn.as_dvec3(),
++                feet,
+             )?;
+         }
+         let physical = physics::queries::Life {
+@@ -1330,13 +1333,16 @@ impl Game {
+         if blockers.remove(physical)? && self.navigation.is_some() {
+             self.replace_blockers(blockers)?;
+         }
++        let revived = feet.as_vec3();
+         self.simulation
+-            .revive_player(source, spawn.to_array(), std::f32::consts::PI)?;
++            .revive_player(source, revived.to_array(), std::f32::consts::PI)?;
+         self.clear_social_seat(life);
+         self.bodies.remove(physical);
+         self.spells.end_concentration(life.actor)?;
+         let next = admission.actor();
+         let mut p = Player::new(admission, source, spawn);
++        p.player = revived;
++        p.previous_player = revived;
+         p.definition = definition;
+         p.character = character;
+         self.additional_players.insert(life.actor, p);
+@@ -1348,6 +1354,53 @@ impl Game {
+         self.event(Some(next), crate::events::Kind::Respawn)?;
+         Ok(next)
+     }
++    /// Where a respawned adventurer stands: its spawn, or, while something
++    /// stands on the spawn, the nearest clear walkable cell on the same floor
++    /// within [`RESPAWN_RADIUS`] (#10559). The battle soak's frontline player
++    /// stayed dead for minutes because hostiles and corpses held its spawn.
++    pub(crate) fn respawn_feet(
++        &self,
++        life: LifeId,
++        spawn: glam::DVec3,
++    ) -> Result<glam::DVec3, String> {
++        if self.colliders.is_empty() {
++            return Ok(spawn);
++        }
++        let filter = self.actor_filter(life);
++        let settings = physics::character::Settings::default();
++        let clear = |feet: glam::DVec3| {
++            physics::character::Character::new(feet)
++                .teleport(&self.query_scene, filter, settings, feet)
++                .is_ok()
++        };
++        if clear(spawn) {
++            return Ok(spawn);
++        }
++        let obstructed = || "Character teleport endpoint is obstructed".to_string();
++        let Some(navigation) = &self.navigation else {
++            return Err(obstructed());
++        };
++        let distance =
++            |feet: &glam::DVec3| glam::DVec2::new(feet.x - spawn.x, feet.z - spawn.z).length();
++        let mut cells: Vec<_> = navigation
++            .nodes()
++            .iter()
++            .map(|cell| cell.feet)
++            .filter(|feet| {
++                (feet.y - spawn.y).abs() <= settings.step_height && distance(feet) <= RESPAWN_RADIUS
++            })
++            .collect();
++        cells.sort_by(|a, b| {
++            distance(a)
++                .total_cmp(&distance(b))
++                .then(a.x.total_cmp(&b.x))
++                .then(a.z.total_cmp(&b.z))
++        });
++        cells
++            .into_iter()
++            .find(|feet| clear(*feet))
++            .ok_or_else(obstructed)
++    }
+     pub(crate) fn shared_prone(&self, position: Vec3) -> bool {
+         self.primary.controls.prone(position, self.time)
+             || self
+diff --git a/crates/verse-world/src/prediction/local.rs b/crates/verse-world/src/prediction/local.rs
+index 2eddaa33211c340c85e5eef690a69c43b7552dd9..bb4430de40e021928d9769ce61f93b1f4c7ad326 100644
+--- a/crates/verse-world/src/prediction/local.rs
++++ b/crates/verse-world/src/prediction/local.rs
+@@ -30,6 +30,7 @@ pub struct Timing {
+     horizon_pauses: u64,
+     separating_steps: u64,
+     stale_crowd_steps: u64,
++    unsupported_confirmations: u64,
+     last_embedding: Option<String>,
+     render_floor: u64,
+     deferred_steps: Vec<u64>,
+@@ -97,6 +98,11 @@ pub struct Local {
+     fraction: f64,
+     character: Option<physics::character::Character>,
+     yaw: f32,
++    /// The walking yaw of the last retired movement input. Framed authority
++    /// moves each step by its interval segment's yaw; a confirmation's `yaw`
++    /// is the character's facing, which a cast turns toward its target.
++    carried_yaw: Option<f32>,
++    unsupported_confirmations: u64,
+     dirty: bool,
+     moving: bool,
+     motion_time: f32,
+@@ -136,6 +142,8 @@ impl Local {
+             fraction: 0.,
+             character: None,
+             yaw: 0.,
++            carried_yaw: None,
++            unsupported_confirmations: 0,
+             dirty: false,
+             moving: false,
+             motion_time: 0.,
+@@ -150,10 +158,19 @@ impl Local {
+         self.estimates.clear();
+         self.inputs.clear();
+         self.character = None;
++        self.carried_yaw = None;
+         self.fraction = 0.;
+         self.motion_time = 0.;
+         self.moving = false;
+     }
++    /// The yaw that drives steps no retained input covers.
++    pub(super) fn movement_yaw(&self, baseline: &Baseline) -> f32 {
++        if baseline.profile == movement::Profile::Frames {
++            self.carried_yaw.unwrap_or(baseline.yaw)
++        } else {
++            baseline.yaw
++        }
++    }
+     /// Counts frames that waited at the correction horizon for authority.
+     pub fn horizon_pauses(&self) -> u64 {
+         self.horizon_pauses
+@@ -169,6 +186,7 @@ impl Local {
+             horizon_pauses: self.horizon_pauses,
+             separating_steps: self.separating_steps,
+             stale_crowd_steps: self.stale_crowd_steps,
++            unsupported_confirmations: self.unsupported_confirmations,
+             last_embedding: self.last_embedding.clone(),
+             render_floor: self.render_floor,
+             deferred_steps: self.deferred_steps.iter().copied().collect(),
+@@ -210,6 +228,10 @@ impl Local {
+     pub fn stale_crowd_steps(&self) -> u64 {
+         self.stale_crowd_steps
+     }
++    /// Counts applied confirmations that waited for their support's shape.
++    pub fn unsupported_confirmations(&self) -> u64 {
++        self.unsupported_confirmations
++    }
+     pub fn last_embedding(&self) -> Option<&str> {
+         self.last_embedding.as_deref()
+     }
+@@ -246,6 +268,18 @@ impl Local {
+         {
+             return Ok(false);
+         }
++        // A confirmation can stand the character on a shape the client's
++        // scene has not received yet, such as a fresh corpse. Replaying from
++        // it would drop or carry the character by a support it cannot see, so
++        // it waits for the snapshot that brings the shape (#10559).
++        if baseline
++            .character
++            .support
++            .is_some_and(|support| self.collision.scene().pose(support).is_none())
++        {
++            self.unsupported_confirmations = self.unsupported_confirmations.saturating_add(1);
++            return Ok(false);
++        }
+         self.observe_inner(baseline, None, tick, observation)?;
+         Ok(true)
+     }
+@@ -375,6 +409,26 @@ impl Local {
+             }
+         }
+         let reset = self.context() != Some((baseline.life, baseline.epoch));
++        // Inputs this confirmation retires leave their walking yaw to the steps
++        // after it; the confirmation's own yaw is only the facing (#10559).
++        let carried_yaw = if reset {
++            None
++        } else {
++            self.inputs
++                .iter()
++                .filter(|i| i.sequence.is_some_and(|s| s <= baseline.applied_sequence))
++                .filter_map(|i| match i.intent {
++                    Intent::Move { yaw, .. } => Some(yaw),
++                    _ => None,
++                })
++                .last()
++                .or(self.carried_yaw)
++        };
++        let walking_yaw = if baseline.profile == movement::Profile::Frames {
++            carried_yaw.unwrap_or(baseline.yaw)
++        } else {
++            baseline.yaw
++        };
+         let blocking_geometry_matches =
+             geometry.is_none_or(|scene| self.movement_geometry_matches(scene, Some(baseline)));
+         let mut reconciliation = Reconciliation {
+@@ -417,7 +471,7 @@ impl Local {
+                     && reference.policy == baseline.policy
+                     && reference.held.axes(baseline.physics_step)
+                         == baseline.held.axes(baseline.physics_step)
+-                    && reference.yaw == baseline.yaw
++                    && reference.yaw == walking_yaw
+                 {
+                     let mut filter = Filter::blocking(baseline.life.instance);
+                     filter.ignore = Some(Life {
+@@ -621,13 +675,14 @@ impl Local {
+             self.yaw = baseline.yaw;
+             self.estimates.clear();
+         }
++        self.carried_yaw = carried_yaw;
+         if baseline.profile == movement::Profile::Frames {
+             self.estimates.insert(
+                 baseline.physics_step,
+                 Estimate {
+                     character: baseline.character,
+                     held: baseline.held,
+-                    yaw: baseline.yaw,
++                    yaw: walking_yaw,
+                     policy: baseline.policy,
+                 },
+             );
+@@ -1004,7 +1059,7 @@ impl Local {
+             // own clock; it cannot make the held pending time move retroactively.
+             let previous = character.feet;
+             let mut held = baseline.held;
+-            let mut yaw = baseline.yaw;
++            let mut yaw = self.movement_yaw(&baseline);
+             let mut jump = false;
+             for input in &self.inputs {
+                 let at = input.step.max(baseline.physics_step);
+diff --git a/crates/verse-world/src/prediction/local_frames.rs b/crates/verse-world/src/prediction/local_frames.rs
+index 84189e6a333e69cb52d352378148157210b07e10..0c84e5c36fe9fa9c36911594bae2d1a04c9246c6 100644
+--- a/crates/verse-world/src/prediction/local_frames.rs
++++ b/crates/verse-world/src/prediction/local_frames.rs
+@@ -81,7 +81,7 @@ impl Local {
+             return Err("Movement proposal is outside the confirmed prediction interval".into());
+         }
+         let mut held = baseline.held;
+-        let mut yaw = baseline.yaw;
++        let mut yaw = self.movement_yaw(&baseline);
+         for input in self.inputs.iter().filter(|i| i.step < start) {
+             if let Intent::Move { axes, yaw: next } = input.intent {
+                 held.refresh(axes, input.step)?;

@@ -1,0 +1,31 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10196,
+  "title": "Payments R12: `openagents.com/stats` page",
+  "body": "Design: [central receive and splits, section 7, \"Surfaces\"](https://github.com/OpenAgentsInc/openagents/blob/main/docs/payments/2026-10-02-central-receive-and-splits.md#surfaces). Depends on #10195.\n\n## Do\n- A server-rendered page in `crates/openagents-web/src/pages/` reading `/api/stats`: totals received and paid out, pending accruals, a table of plugins (calls, earned), a table of authors (paid out), 24 h and 30 d series, the reconciliation state, the time of the last event. Link to `/live`.\n- No new script beyond `script-src 'self'`; it works with JavaScript off.\n- Tests in `crates/openagents-web/src/tests.rs` with a stubbed stats backend.\n\n## Done when\n- The page renders from a fixture and links to `/live`.\n\n\nSize: **Coder-sized** (`openagents chat work --issues coder-sized`).\n\nPart of the central payments plan: https://github.com/OpenAgentsInc/openagents/blob/main/docs/payments/2026-10-02-central-receive-and-splits.md\n",
+  "fix": "3a46b3c415b9421e2b53ac513e1a9aff4d0fc758",
+  "parent": "cf6b04a3428ce89cc942abb2a69bcd6ed51b00d7",
+  "package": "openagents-web",
+  "source_files": [
+    "crates/openagents-web/README.md",
+    "crates/openagents-web/src/pages/live.rs",
+    "crates/openagents-web/src/pages/mod.rs",
+    "crates/openagents-web/src/upstream.rs",
+    "crates/openagents-web/static/site.css",
+    "docs/payments/2026-10-02-central-receive-and-splits.md"
+  ],
+  "test_files": [
+    "crates/openagents-web/src/pages/mod.rs",
+    "crates/openagents-web/src/pages/stats.rs",
+    "crates/openagents-web/src/tests.rs"
+  ],
+  "test_names": [
+    "amounts_are_exact_and_grouped",
+    "the_stats_page_renders_the_pay_hosts_numbers",
+    "the_stats_page_says_when_there_are_no_payments_or_no_pay_host",
+    "times_are_utc"
+  ],
+  "fix_lines": 700
+}

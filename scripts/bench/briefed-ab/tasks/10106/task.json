@@ -1,0 +1,44 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10106,
+  "title": "Website: bring back the homepage terminal chat, on the white theme, as product orientation only",
+  "body": "Owner, 2026-10-01: the previous openagents.com (private `coder` repo, `bins/coder-serve/src/homepage.rs` + `home_ask/` + `home_knowledge.rs`) had a terminal on `/` where a visitor could chat. Add that to the current site in `crates/openagents-web`, in our white-on-near-black theme, tied into the same OpenAgents chat as the phone and desktop. It must **not** connect to the desktop app, a computer, or Coder: it answers about OpenAgents (knowledge base, product orientation), knows it's on the website, and encourages downloading the desktop app (`/install`).\n\nPlan:\n- **Surface `web`** in the chat router (`crates/openagents-chat/src/router.rs`, `crates/coder/src/router.rs`). Web instructions: we're on the openagents.com website; no Coder, no computer; point to /install.\n- **Worker policy** (`crates/coder/src/router/policy.rs`): on the web only answer-family tiers (prepared answers, knowledge grounding, model), with no offers, cards, decks, or command proposals. Work, Gym, screen, wallet, and account routes become a model answer pointing to the desktop app. Refusals unchanged. Deploy the chat worker.\n- **Website**: a terminal on `/` (welcome card, typed rows, composer; `help`, `install`, `docs`, `clear`). Any other line is a question posted to `POST /ask`, which sends a NIP-CJ job through `openagents_chat::basic_coder::Relay` with a per-visitor key derived on the server, and streams the reply back as SSE. Per-visitor in-flight/per-minute limits on our side; the worker's per-key and daily quotas still apply. No accounts, no attachments.\n- Tests for the router surface, policy, and the `/ask` route; docs (`docs/deployment/openagents-web.md`, NIP/INVARIANTS rows as needed).\n\nThe site itself stays undeployed (openagents.com still serves from `coder`).",
+  "fix": "509575c549dbb182dc0a796068236d3c8ebed82f",
+  "parent": "3852fe67c50bbdd69463509ef46f98c115356076",
+  "package": "coder",
+  "source_files": [
+    "INVARIANTS.md",
+    "crates/coder/src/bin/coder-worker.rs",
+    "crates/coder/src/cli_route/gate.rs",
+    "crates/coder/src/router.rs",
+    "crates/coder/src/router/policy.rs",
+    "crates/openagents-chat/src/basic_coder.rs",
+    "crates/openagents-chat/src/router.rs",
+    "crates/openagents-web/Cargo.toml",
+    "crates/openagents-web/README.md",
+    "crates/openagents-web/src/lib.rs",
+    "crates/openagents-web/src/main.rs",
+    "crates/openagents-web/src/pages/home.rs",
+    "crates/openagents-web/static/ask.js",
+    "crates/openagents-web/static/site.css",
+    "docs/deployment/openagents-web.md"
+  ],
+  "test_files": [
+    "crates/coder/src/router/policy.rs",
+    "crates/openagents-web/src/ask.rs",
+    "crates/openagents-web/src/tests.rs"
+  ],
+  "test_names": [
+    "a_question_keeps_the_newest_turns_and_ends_with_the_visitor",
+    "a_question_must_end_with_the_visitor",
+    "a_question_streams_its_answer_as_the_website_and_names_the_visitor",
+    "a_visitor_asks_one_question_at_a_time_and_six_a_minute",
+    "each_visitor_signs_with_a_key_of_its_own_that_the_salt_hides",
+    "everyone_together_waits_on_at_most_the_in_flight_bound",
+    "only_a_cookie_this_site_could_set_names_a_visitor",
+    "the_website_answers_and_never_offers"
+  ],
+  "fix_lines": 1086
+}

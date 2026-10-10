@@ -1,0 +1,522 @@
+diff --git a/crates/physics/src/body.rs b/crates/physics/src/body.rs
+index 90800426f908852b6abfa0e38b07ae9ed06a3381..0c0091c1e17f7d23f11ad84fb4fded025049b220 100644
+--- a/crates/physics/src/body.rs
++++ b/crates/physics/src/body.rs
+@@ -35,6 +35,14 @@ pub struct Body {
+     /// Pose before the last world step, for render interpolation.
+     pub prev_pos: DVec3,
+     pub prev_orientation: DQuat,
++    /// Force accumulated for the next step, world frame, N. Cleared by the
++    /// step.
++    #[serde(default)]
++    pub force: DVec3,
++    /// Torque about the center of mass accumulated for the next step,
++    /// world frame, N m. Cleared by the step.
++    #[serde(default)]
++    pub torque: DVec3,
+ }
+ 
+ impl Body {
+@@ -51,6 +59,8 @@ impl Body {
+             omega: DVec3::ZERO,
+             prev_pos: pos,
+             prev_orientation: DQuat::IDENTITY,
++            force: DVec3::ZERO,
++            torque: DVec3::ZERO,
+         }
+     }
+ 
+@@ -99,6 +109,30 @@ impl Body {
+         self.orientation * (local / self.inertia)
+     }
+ 
++    /// Add a force, N, through the center of mass for the next step.
++    pub fn apply_force(&mut self, force: DVec3) {
++        self.force += force;
++    }
++
++    /// Add a force, N, applied at world point `at` for the next step: the
++    /// force plus its torque about the center of mass (Genesis
++    /// `apply_links_external_wrench`).
++    pub fn apply_force_at(&mut self, force: DVec3, at: DVec3) {
++        self.force += force;
++        self.torque += (at - self.pos).cross(force);
++    }
++
++    /// Add a torque, N m, world frame, for the next step.
++    pub fn apply_torque(&mut self, torque: DVec3) {
++        self.torque += torque;
++    }
++
++    /// Transform a body-frame point to the world frame.
++    #[must_use]
++    pub fn to_world(&self, local: DVec3) -> DVec3 {
++        self.pos + self.orientation * local
++    }
++
+     /// Apply an impulse `impulse`, N s, at world point `at`. Only dynamic
+     /// bodies respond.
+     pub fn apply_impulse_at(&mut self, impulse: DVec3, at: DVec3) {
+diff --git a/crates/physics/src/ledger.rs b/crates/physics/src/ledger.rs
+index 644967bf24c4edef26692f0ba2b1df0d367a9f5c..2a12d863f796c3376b1795adebddae276458b08c 100644
+--- a/crates/physics/src/ledger.rs
++++ b/crates/physics/src/ledger.rs
+@@ -98,6 +98,11 @@ pub struct Ledger {
+     pub origin: DVec3,
+     pub start: Momentum,
+     pub external: BTreeMap<String, Momentum>,
++    /// Sum of the magnitudes of every recorded impulse, linear and angular.
++    /// Terms can cancel (opposed thrusters), so the error is scaled by how
++    /// much momentum moved, not by the net.
++    #[serde(default)]
++    pub throughput: [f64; 2],
+ }
+ 
+ impl Ledger {
+@@ -107,6 +112,7 @@ impl Ledger {
+             origin,
+             start,
+             external: BTreeMap::new(),
++            throughput: [0.0; 2],
+         }
+     }
+ 
+@@ -118,6 +124,8 @@ impl Ledger {
+     /// Record external momentum under `term`.
+     pub fn add(&mut self, term: &str, momentum: Momentum) {
+         *self.external.entry(term.to_owned()).or_default() += momentum;
++        self.throughput[0] += momentum.linear.length();
++        self.throughput[1] += momentum.angular.length();
+     }
+ 
+     /// Sum of every external term.
+@@ -134,20 +142,19 @@ impl Ledger {
+         now - (self.start + self.external_total())
+     }
+ 
+-    /// The residual relative to the largest momentum in play. A floor of
+-    /// 1e-12 keeps a system at rest from dividing by zero.
++    /// The residual relative to the momentum in play: the larger of the
++    /// start, the present, and the impulse throughput. A floor of 1e-12
++    /// keeps a system at rest from dividing by zero.
+     #[must_use]
+     pub fn error(&self, now: Momentum) -> LedgerError {
+         let residual = self.residual(now);
+-        let scale = |f: fn(&Momentum) -> DVec3| {
+-            let terms = self.external.values().map(|m| f(m).length()).sum::<f64>();
+-            (f(&self.start).length() + terms)
+-                .max(f(&now).length())
+-                .max(1e-12)
+-        };
++        let scale =
++            |a: DVec3, b: DVec3, moved: f64| a.length().max(b.length()).max(moved).max(1e-12);
+         LedgerError {
+-            linear: residual.linear.length() / scale(|m| m.linear),
+-            angular: residual.angular.length() / scale(|m| m.angular),
++            linear: residual.linear.length()
++                / scale(self.start.linear, now.linear, self.throughput[0]),
++            angular: residual.angular.length()
++                / scale(self.start.angular, now.angular, self.throughput[1]),
+         }
+     }
+ }
+diff --git a/crates/physics/src/lib.rs b/crates/physics/src/lib.rs
+index bdaab99c57ee9a9aacba1a6a609608e10ab61511..55edd6a03ac98e70d467004133d30e37591fc92f 100644
+--- a/crates/physics/src/lib.rs
++++ b/crates/physics/src/lib.rs
+@@ -1,13 +1,15 @@
+ //! Zone-agnostic rigid-body physics for Verse.
+ //!
+ //! - [`body`]: rigid bodies with principal inertia, quaternion attitude,
+-//!   and torque-free rotation (Euler's equations).
++//!   momentum-conserving rotation, and force, torque, and impulse inputs.
+ //! - [`world`]: bodies advanced together in fixed steps under a
+ //!   caller-supplied acceleration [`Field`].
+ //! - [`clock`]: a [`FixedStep`] accumulator that turns frame time into
+ //!   whole steps and reports time it drops.
+ //! - [`ledger`]: linear and angular momentum with named external impulses,
+ //!   for conservation tests.
++//! - [`thrusters`]: body-mounted thrusters, a bounded allocator from a wanted
++//!   force and torque to throttles, and a vector PID controller.
+ //! - [`trace`]: sampled states and a tolerance comparison for replay tests.
+ //!
+ //! The crate has no rendering, networking, I/O, or zone knowledge. Zones
+@@ -17,11 +19,13 @@
+ pub mod body;
+ pub mod clock;
+ pub mod ledger;
++pub mod thrusters;
+ pub mod trace;
+ pub mod world;
+ 
+ pub use body::{Body, BodyKind};
+ pub use clock::FixedStep;
+ pub use ledger::{Ledger, LedgerError, Momentum};
++pub use thrusters::{Pid, Thruster, ThrusterSet, Wrench};
+ pub use trace::{Divergence, Tolerance, Trace, attitude_difference};
+ pub use world::{BodyId, Field, NoField, Uniform, World};
+diff --git a/crates/physics/src/world.rs b/crates/physics/src/world.rs
+index 7b6093e0ec9b6ceedb5f3797cbda48b1f0f24cc2..6ce20229acb7d857d983c94cd3d18f2cd38bdb52 100644
+--- a/crates/physics/src/world.rs
++++ b/crates/physics/src/world.rs
+@@ -91,18 +91,30 @@ impl World {
+         self.tick as f64 * self.dt
+     }
+ 
+-    /// Advance one step of `dt`: semi-implicit Euler for translation and
+-    /// torque-free RK4 for rotation.
++    /// Advance one step of `dt`. Accumulated forces and torques act as
++    /// impulses at the start of the step and are then cleared; translation is
++    /// semi-implicit Euler and rotation is the torque-free
++    /// [`Body::rotate`].
+     pub fn step(&mut self, field: &impl Field) {
+         let dt = self.dt;
+         for body in &mut self.bodies {
+             body.prev_pos = body.pos;
+             body.prev_orientation = body.orientation;
+             match body.kind {
+-                BodyKind::Static => continue,
+-                BodyKind::Dynamic => body.vel += field.accel(body.pos, body.vel) * dt,
++                BodyKind::Static => {
++                    body.force = DVec3::ZERO;
++                    body.torque = DVec3::ZERO;
++                    continue;
++                }
++                BodyKind::Dynamic => {
++                    body.vel +=
++                        (field.accel(body.pos, body.vel) + body.force * body.inverse_mass()) * dt;
++                    body.apply_angular_impulse(body.torque * dt);
++                }
+                 BodyKind::Kinematic => {}
+             }
++            body.force = DVec3::ZERO;
++            body.torque = DVec3::ZERO;
+             body.pos += body.vel * dt;
+             body.rotate(dt);
+         }
+diff --git a/crates/verse-lagrange/src/station.rs b/crates/verse-lagrange/src/station.rs
+index 1261ff997cd175b5b116712123f2b91affa7040e..f8b262667ce3062883ea5eee5b6485388d606579 100644
+--- a/crates/verse-lagrange/src/station.rs
++++ b/crates/verse-lagrange/src/station.rs
+@@ -6,7 +6,7 @@
+ //! the direction of Earth's orbital motion). Units are SI.
+ 
+ use glam::{DQuat, DVec3};
+-use physics::{Body, BodyId, BodyKind, FixedStep, Ledger, Momentum, World};
++use physics::{Body, BodyId, BodyKind, FixedStep, Ledger, Momentum, ThrusterSet, World};
+ use serde::{Deserialize, Serialize};
+ 
+ use crate::orbit::{StationOrbit, mean_motion};
+@@ -17,8 +17,21 @@ pub const G0: f64 = 9.806_65;
+ pub const DRY_MASS: f64 = 230.0;
+ /// Full nitrogen load, kg.
+ pub const PROPELLANT: f64 = 20.0;
+-/// Net thrust available along any commanded direction, N.
++/// Net thrust available along any commanded direction, N: four of the
++/// pack's thrusters at [`THRUSTER_FORCE`].
+ pub const THRUST: f64 = 40.0;
++/// Force of one pack thruster, N.
++pub const THRUSTER_FORCE: f64 = THRUST / 4.0;
++/// Half-extents of the box whose corners carry the pack's 24 thrusters,
++/// relative to the astronaut's center of mass, body frame, m.
++pub const PACK_HALF: DVec3 = DVec3::new(0.35, 0.45, 0.3);
++/// Attitude hold: natural frequency, rad/s, critically damped.
++pub const ATTITUDE_FREQUENCY: f64 = 1.5;
++/// Attitude errors and rates below these are left alone, rad and rad/s.
++pub const ATTITUDE_DEADBAND: f64 = 0.004;
++pub const RATE_DEADBAND: f64 = 0.002;
++/// Fastest turn the attitude hold commands, rad/s.
++pub const MAX_TURN_RATE: f64 = 0.6;
+ /// Cold nitrogen specific impulse, s.
+ pub const ISP: f64 = 70.0;
+ /// Flight-control speed limit relative to the station, m/s.
+@@ -317,6 +330,8 @@ pub struct Station {
+     pub clock: FixedStep,
+     /// The suited astronaut; its `pos` is the body center, 0.9 m above the boots.
+     pub astronaut: BodyId,
++    /// Commanded heading, rad; the pack's attitude hold turns the body to it.
++    /// The body's actual heading is [`Station::heading_yaw`].
+     pub yaw: f64,
+     pub propellant: f64,
+     pub parts: Vec<Part>,
+@@ -385,10 +400,40 @@ impl Station {
+             climb: 0.0,
+             plume_clock: 0.0,
+         };
++        station.face(std::f64::consts::PI);
+         station.reset_ledger();
+         station
+     }
+ 
++    /// The pack's thrusters: three at each corner of [`PACK_HALF`].
++    #[must_use]
++    pub fn pack() -> ThrusterSet {
++        ThrusterSet::box_corners(PACK_HALF, THRUSTER_FORCE)
++    }
++
++    /// Point the astronaut at `yaw` at once, at rest in rotation, and make
++    /// it the commanded heading. For spawning and scripted setups.
++    pub fn face(&mut self, yaw: f64) {
++        self.yaw = yaw;
++        let astronaut = self.astronaut_mut();
++        astronaut.orientation = DQuat::from_rotation_y(yaw);
++        astronaut.prev_orientation = astronaut.orientation;
++        astronaut.omega = DVec3::ZERO;
++    }
++
++    /// Unit direction the astronaut faces.
++    #[must_use]
++    pub fn facing(&self) -> DVec3 {
++        self.astronaut().orientation * DVec3::Z
++    }
++
++    /// The astronaut's actual heading about +Y, rad; +Z at zero.
++    #[must_use]
++    pub fn heading_yaw(&self) -> f64 {
++        let f = self.facing();
++        f.x.atan2(f.z)
++    }
++
+     /// The astronaut's body.
+     #[must_use]
+     pub fn astronaut(&self) -> &Body {
+@@ -528,13 +573,15 @@ impl Station {
+     /// Where the gloves are: in front of the chest.
+     #[must_use]
+     pub fn hands(&self) -> DVec3 {
+-        self.astronaut().pos + heading(self.yaw) * 1.0 + DVec3::Y * 0.2
++        self.astronaut().to_world(DVec3::new(0.0, 0.2, 1.0))
+     }
+ 
+     fn carry_point(&self, kind: PartKind) -> DVec3 {
+-        self.astronaut().pos
+-            + heading(self.yaw) * (1.0 + kind.size().z.max(kind.size().x) * 0.5)
+-            + DVec3::Y * 0.2
++        self.astronaut().to_world(DVec3::new(
++            0.0,
++            0.2,
++            1.0 + kind.size().z.max(kind.size().x) * 0.5,
++        ))
+     }
+ 
+     /// Ideal rocket equation for the propellant left, m/s.
+@@ -634,21 +681,13 @@ impl Station {
+             }
+         }
+         let error = desired - vel;
+-        let mut thrust = DVec3::ZERO;
+-        if error.length() > VELOCITY_DEADBAND && self.propellant > 0.0 {
+-            let wanted = error / dt;
+-            thrust = wanted.clamp_length_max(accel_limit);
+-            let used = (thrust.length() * mass / (ISP * G0) * dt).min(self.propellant);
+-            // Momentum-exact rocket step: the gas leaves at the exhaust
+-            // velocity relative to the pack, and the rest of the mass takes
+-            // the equal and opposite momentum.
+-            let exhaust = -thrust.normalize() * (ISP * G0);
+-            self.propellant -= used;
+-            self.astronaut_mut().vel -= exhaust * (used / (mass - used));
+-            // The ledger counts what the system receives: minus the gas.
+-            self.ledger
+-                .add_impulse("exhaust", -(vel + exhaust) * used, pos);
+-        }
++        let force = if error.length() > VELOCITY_DEADBAND {
++            (error / dt).clamp_length_max(accel_limit) * mass
++        } else {
++            DVec3::ZERO
++        };
++        let torque = self.attitude_torque();
++        let fired = self.fire(force, torque, dt);
+         let mass = self.mass();
+         self.astronaut_mut().mass = mass;
+         let (c2, tidal) = (self.orbit.l1.c2, self.tide);
+@@ -684,10 +723,75 @@ impl Station {
+             astronaut.vel *= mass / (mass + added);
+             astronaut.mass = mass + added;
+         }
+-        self.emit_plumes(thrust, dt);
++        self.emit_plumes(&fired, dt);
+         self.settle_parts();
+     }
+ 
++    /// World-frame torque the attitude hold wants: a critically damped
++    /// spring toward the commanded heading, level.
++    fn attitude_torque(&self) -> DVec3 {
++        let body = self.astronaut();
++        let mut error = DQuat::from_rotation_y(self.yaw) * body.orientation.inverse();
++        if error.w < 0.0 {
++            error = -error;
++        }
++        let (axis, angle) = error.to_axis_angle();
++        let rate = body.omega_world();
++        if angle < ATTITUDE_DEADBAND && rate.length() < RATE_DEADBAND {
++            return DVec3::ZERO;
++        }
++        // Rate-limited: turn toward the heading at most MAX_TURN_RATE, and
++        // damp the rate toward that. Unsaturated, this is w^2 angle - 2 w rate.
++        let w = ATTITUDE_FREQUENCY;
++        let wanted = axis * (angle * w / 2.0).min(MAX_TURN_RATE);
++        let accel = (wanted - rate) * (2.0 * w);
++        let local = body.orientation.inverse() * accel;
++        body.orientation * (local * body.inertia)
++    }
++
++    /// Fire the pack toward a world-frame `force` and `torque` within the
++    /// propellant left. The gas leaves each thruster at the exhaust velocity
++    /// relative to the pack; the ledger records what the system receives
++    /// (the thrust impulses, minus the gas's share of the pack's momentum).
++    /// Returns each firing thruster's world force and position.
++    fn fire(&mut self, force: DVec3, torque: DVec3, dt: f64) -> Vec<(DVec3, DVec3)> {
++        if self.propellant <= 0.0 || (force == DVec3::ZERO && torque == DVec3::ZERO) {
++            return Vec::new();
++        }
++        let pack = Self::pack();
++        let inverse = self.astronaut().orientation.inverse();
++        let mut throttles = pack.allocate(inverse * force, inverse * torque);
++        let burn = |throttles: &[f64]| {
++            pack.thrusters
++                .iter()
++                .zip(throttles)
++                .map(|(t, u)| t.max_force * u)
++                .sum::<f64>()
++                * dt
++                / (ISP * G0)
++        };
++        let mut used = burn(&throttles);
++        if used > self.propellant {
++            let scale = self.propellant / used;
++            throttles.iter_mut().for_each(|u| *u *= scale);
++            used = self.propellant;
++        }
++        if used <= 0.0 {
++            return Vec::new();
++        }
++        let (pos, vel) = (self.astronaut().pos, self.astronaut().vel);
++        self.propellant -= used;
++        let mass = self.mass();
++        let astronaut = self.astronaut_mut();
++        astronaut.mass = mass;
++        let fired = pack.apply(astronaut, &throttles);
++        self.ledger.add_impulse("exhaust", -vel * used, pos);
++        for (force, at) in &fired {
++            self.ledger.add_impulse("exhaust", *force * dt, *at);
++        }
++        fired
++    }
++
+     /// Momentum of the free system, about the station origin: the astronaut
+     /// with its propellant, and every part that is not stowed or installed.
+     /// A carried part moves with the astronaut.
+@@ -721,23 +825,27 @@ impl Station {
+         }
+     }
+ 
+-    fn emit_plumes(&mut self, thrust: DVec3, dt: f64) {
++    fn emit_plumes(&mut self, fired: &[(DVec3, DVec3)], dt: f64) {
+         for p in &mut self.plumes {
+             p.age += dt;
+         }
+         self.plumes.retain(|p| p.age < 0.35);
+         self.plume_clock -= dt;
+-        if thrust.length() < 1e-3 || self.plume_clock > 0.0 || self.plumes.len() >= 64 {
++        if self.plume_clock > 0.0 {
+             return;
+         }
+         self.plume_clock = 0.03;
+-        let exhaust = -thrust.normalize();
+-        let pack = self.astronaut().pos + DVec3::Y * 0.3 - heading(self.yaw) * 0.45;
+-        self.plumes.push(Plume {
+-            pos: (pack + exhaust * 0.5).to_array(),
+-            dir: exhaust.to_array(),
+-            age: 0.0,
+-        });
++        for (force, at) in fired {
++            if force.length() < 0.5 || self.plumes.len() >= 64 {
++                continue;
++            }
++            let exhaust = -force.normalize();
++            self.plumes.push(Plume {
++                pos: (*at + exhaust * 0.1).to_array(),
++                dir: exhaust.to_array(),
++                age: 0.0,
++            });
++        }
+     }
+ 
+     /// After a world step: hold the carried part at the hands, keep
+@@ -746,11 +854,11 @@ impl Station {
+         if let Some(i) = self.carried() {
+             let kind = self.parts[i].kind;
+             let at = self.carry_point(kind);
+-            let (vel, yaw) = (self.astronaut().vel, self.yaw);
++            let (vel, orientation) = (self.astronaut().vel, self.astronaut().orientation);
+             let body = &mut self.world[self.parts[i].body];
+             body.pos = at;
+             body.vel = vel;
+-            body.orientation = DQuat::from_rotation_y(yaw);
++            body.orientation = orientation;
+             body.omega = DVec3::ZERO;
+         }
+         for i in 0..self.parts.len() {
+diff --git a/crates/verse/src/zones/lagrange.rs b/crates/verse/src/zones/lagrange.rs
+index 5ffc291a634b623b7b03f3a2c043967bec2917f1..5735adabaa6e30cce5f9f9462a87f8ebbbb904c3 100644
+--- a/crates/verse/src/zones/lagrange.rs
++++ b/crates/verse/src/zones/lagrange.rs
+@@ -299,7 +299,7 @@ impl Lagrange {
+         let astronaut_pos = s.astronaut().interpolated(alpha).0;
+         let astronaut = astronaut_pos.as_vec3();
+         let carrying = s.parts.iter().any(|p| p.state == PartState::Carried);
+-        suit(&mut mesh, feet(astronaut_pos), s.yaw as f32, carrying);
++        suit(&mut mesh, feet(astronaut_pos), s.heading_yaw() as f32, carrying);
+         for p in &s.plumes {
+             let pos = DVec3::from(p.pos).as_vec3();
+             let dir = DVec3::from(p.dir).as_vec3();
+diff --git a/docs/verse/lagrange-1.md b/docs/verse/lagrange-1.md
+index 4df2de5684fdbed5de729627dc7e148e7469caf1..bffee550d12d0a04154e939116283a44589f7570 100644
+--- a/docs/verse/lagrange-1.md
++++ b/docs/verse/lagrange-1.md
+@@ -108,7 +108,9 @@ along Earth's orbital motion.
+ | --- | --- |
+ | Suited astronaut plus pack, dry | 230 kg |
+ | Nitrogen propellant | 20 kg |
+-| Thrust along any commanded direction | 40 N |
++| Thrusters | 24 at 10 N: three at each corner of a 0.7 × 0.9 × 0.6 m box around the center of mass |
++| Thrust along any commanded direction | 40 N (four thrusters) |
++| Attitude hold | 1.5 rad/s natural frequency, critically damped, turns at most 0.6 rad/s |
+ | Specific impulse (cold N₂) | 70 s |
+ | Flight-control speed limit | 2 m/s relative to the station |
+ | Minimum-impulse deadband | 4 mm/s |
+@@ -118,7 +120,12 @@ The pack is a hypothetical construction unit comparable to the Manned
+ Maneuvering Unit, not a model of a specific flight article. Its fly-by-wire
+ control law commands a velocity: joystick input asks for 2 m/s along the
+ commanded direction, and no input asks the pack to hold position. The pack
+-thrusts toward that command within the 40 N limit. Propellant use follows
++thrusts toward that command within the 40 N limit. The wanted force and the
++attitude hold's torque go to a thruster allocator (`physics::ThrusterSet`),
++which picks throttles for the 24 thrusters without firing opposed pairs, and
++each thruster pushes at its own mounting point, so an unbalanced firing turns
++the astronaut. The camera heading is a command: the body turns to it under
++the attitude hold, and plumes come from the thrusters that fire. Propellant use follows
+ ṁ = F / (Isp g₀), and the HUD's Δv reserve follows the ideal rocket equation
+ over the current total mass. With no propellant, there is no thrust and the
+ astronaut coasts. The airlock ring refills the tank at 2 kg/s when you are
+@@ -179,7 +186,9 @@ Drifting parts more than 120 m from the depot are reeled back by their tethers.
+ - Station-keeping cancels only the linear unstable mode, so it spends more Δv
+   than flight halo control and uses a smaller orbit.
+ - Local physics linearizes about L1 rather than about the moving station.
+-- The astronaut's attitude is held; only translation is simulated for the pack.
++- The attitude hold keeps the astronaut level; only heading is commanded.
++- The astronaut's inertia is a fixed 40 kg m² about every axis, and a carried
++  part does not add to it.
+ - Carried parts do not collide with the station.
+ - A carried part is placed at the hands each step, so carrying does not
+   conserve angular momentum.
+@@ -195,7 +204,8 @@ two years of controlled flight, microgravity magnitude, the rocket equation
+ and position hold, inelastic capture, latch conditions, collisions, frame-rate
+ independence, the frame step cap, save and restore, journal replay, and the
+ momentum ledger through coasting, burns, structure contact, the tether, and
+-the rigid-carry baseline.
++the rigid-carry baseline, attitude hold through a translation and a commanded
++turn, and plumes at the firing thrusters.
+ `cargo test -p physics` covers the shared rigid-body, clock, world, and trace
+ mechanisms.
+ `cargo test -p verse --lib zones` covers portal entry and return, flight, and

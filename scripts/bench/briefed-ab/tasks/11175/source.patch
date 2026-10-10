@@ -1,0 +1,139 @@
+diff --git a/crates/coder-new/Cargo.toml b/crates/coder-new/Cargo.toml
+index 6b63685fe6a9d286e93c22cd47de5a0510605251..270c7983e7121f24d9ab68ce0d8c10c51dc3f973 100644
+--- a/crates/coder-new/Cargo.toml
++++ b/crates/coder-new/Cargo.toml
+@@ -51,7 +51,7 @@ globset = "0.4"
+ ignore = "0.4"
+ regex = "1"
+ crc32fast = "1"
+-tokio = { version = "1", features = ["macros", "rt", "sync", "time", "process", "io-util", "signal"] }
++tokio = { version = "1", features = ["macros", "rt", "sync", "time", "process", "io-util", "signal", "net"] }
+ unicode-segmentation = "1"
+ unicode-width = "0.2"
+ 
+diff --git a/crates/coder-new/src/fleet_app.rs b/crates/coder-new/src/fleet_app.rs
+index a185864d38fe539ecdd02c744f12cf50ca038475..234513c7862f30e6631612472a466e5ebe6bb02f 100644
+--- a/crates/coder-new/src/fleet_app.rs
++++ b/crates/coder-new/src/fleet_app.rs
+@@ -48,6 +48,7 @@ impl App {
+             client,
+             model: self.plugins.model.clone(),
+             effort: self.plugins.options.reasoning.clone(),
++            search_key: Some((openrouter::BASE_URL.to_owned(), key.expose().to_owned())),
+         })
+     }
+ 
+diff --git a/crates/coder-new/src/live.rs b/crates/coder-new/src/live.rs
+index 2c59010d08dc366a7d2f2b802afa48f66f407652..16080c828703569dd642103bb6a6c005d31fbcd4 100644
+--- a/crates/coder-new/src/live.rs
++++ b/crates/coder-new/src/live.rs
+@@ -459,7 +459,7 @@ fn run_with_provider(
+                     };
+                     events(RuntimeEvent::Tool { name: tool.clone(), input: arguments.clone(), output: serde_json::Value::Null, running: true });
+                     let provider = if request.key.expose().is_empty() { None } else {
+-                        openrouter::Client::new(openrouter::Config::new(openrouter::ApiKey::new(request.key.expose()))).ok().map(|client| crate::plugin_tools::GenerationProvider { client, model, effort: options.reasoning })
++                        openrouter::Client::new(openrouter::Config::new(openrouter::ApiKey::new(request.key.expose()))).ok().map(|client| crate::plugin_tools::GenerationProvider { client, model, effort: options.reasoning, search_key: Some((openrouter::BASE_URL.to_owned(), request.key.expose().to_owned())) })
+                     };
+                     let result = execution.execute(&tool, arguments, provider, &cancel, &mut events).await;
+                     let output = match &result { Ok(value) => value.clone(), Err(error) => serde_json::json!({"error":error}) };
+diff --git a/crates/coder-new/src/plugin_tools.rs b/crates/coder-new/src/plugin_tools.rs
+index cdd3d4f1a82b1fae2f4a3c62c0ca277f0330256f..7388e373a8cdf08b88a1c5589079d797772184e4 100644
+--- a/crates/coder-new/src/plugin_tools.rs
++++ b/crates/coder-new/src/plugin_tools.rs
+@@ -56,6 +56,9 @@ pub struct GenerationProvider {
+     pub client: openrouter::Client,
+     pub model: String,
+     pub effort: Option<String>,
++    /// The chat's OpenRouter base URL and key, for `web_search` when no
++    /// Exa key is set (#11175).
++    pub search_key: Option<(String, String)>,
+ }
+ 
+ #[derive(Deserialize)]
+@@ -163,6 +166,7 @@ impl ExecutionSettings {
+         if self.shell {
+             definitions.push(bundled_runtime::run_tool_definition());
+             definitions.extend(crate::file_tools::definitions());
++            definitions.extend(crate::web_tools::definitions());
+         }
+         if self.memory.is_some() {
+             definitions.extend(crate::memory::Memory::tool_definitions());
+@@ -226,6 +230,7 @@ impl ExecutionSettings {
+         }
+         if self.shell {
+             guidance.push_str(crate::file_tools::INSTRUCTIONS);
++            guidance.push_str(crate::web_tools::INSTRUCTIONS);
+             guidance.push_str("The Run tool runs shell commands with full filesystem and network access by default. Follow the user's instructions and any explicit host approval policy; a rejected command stays rejected. Prefer foreground builds/tests so output streams live. Begin long commands with a descriptive shell comment. When waiting for background jobs, stream their logs and print periodic status rather than silently sleeping; in this repository use python3 scripts/wait-job-logs.py LOGDIR build tests --timeout 100.\n");
+         }
+         if self.registered(ToolBinding::Microcoder) {
+@@ -348,6 +353,24 @@ impl ExecutionSettings {
+             name if crate::file_tools::is_tool(name) && self.shell => {
+                 crate::file_tools::execute(name, arguments, &self.cwd)
+             }
++            "web_fetch" | "web_search" if self.shell => {
++                let call = async {
++                    if name == "web_fetch" {
++                        crate::web_tools::fetch(arguments).await
++                    } else {
++                        let searcher = crate::web_tools::Searcher::choose(
++                            provider
++                                .as_ref()
++                                .and_then(|provider| provider.search_key.clone()),
++                        );
++                        crate::web_tools::search(arguments, searcher.as_ref()).await
++                    }
++                };
++                tokio::select! {
++                    result = call => result,
++                    () = async { while !cancel.load(Ordering::Relaxed) { tokio::time::sleep(std::time::Duration::from_millis(50)).await; } } => Err("The web request was canceled.".into()),
++                }
++            }
+             "Run" if self.shell => {
+                 let args: RunArguments = serde_json::from_value(arguments)
+                     .map_err(|_| "Run requires a command and no other fields.")?;
+diff --git a/crates/coder-new/src/programmatic.rs b/crates/coder-new/src/programmatic.rs
+index f1199a8cedfc8adf7b63bf70f70889557e45cc9a..4a4995fb0334d95766c937c3182f84a3cdb23ef1 100644
+--- a/crates/coder-new/src/programmatic.rs
++++ b/crates/coder-new/src/programmatic.rs
+@@ -1316,6 +1316,7 @@ fn delegate(
+                 client,
+                 model: app.plugins.model.clone(),
+                 effort: app.plugins.options.reasoning.clone(),
++                search_key: Some((openrouter::BASE_URL.to_owned(), key.expose().to_owned())),
+             })
+         })
+         .transpose()
+diff --git a/crates/coder-new/src/provider.rs b/crates/coder-new/src/provider.rs
+index 05db8738ba45617f5a16756db7945948ea89123f..57c8126c6ccac4c84f479d2fde61153509037352 100644
+--- a/crates/coder-new/src/provider.rs
++++ b/crates/coder-new/src/provider.rs
+@@ -288,6 +288,7 @@ impl Provider {
+             client: self.chat.clone(),
+             model: model.into(),
+             effort: options.reasoning.clone(),
++            search_key: Some((self.base_url.clone(), self.key.expose().to_owned())),
+         };
+         loop {
+             if cancel.load(Ordering::Relaxed) {
+diff --git a/docs/kitchen-sink/orchestrator-parity.md b/docs/kitchen-sink/orchestrator-parity.md
+index a306af96aa4169acff8db1bf5f6610d03a8879ed..07a53b4c046a80b171262ec62d43dbad4597b398 100644
+--- a/docs/kitchen-sink/orchestrator-parity.md
++++ b/docs/kitchen-sink/orchestrator-parity.md
+@@ -36,7 +36,7 @@ This page lists each capability, where it stands on each surface today, what is
+ | Surface | Works | Partial | Missing |
+ | --- | --- | --- | --- |
+ | Website (live openagents.com) | 1 | 6 | 15 |
+-| Terminal (`coder`) | 8 | 9 | 5 |
++| Terminal (`coder`) | 9 | 9 | 4 |
+ | Apps (desktop / phone) | 2 | 9 | 11 |
+ 
+ The website count is low because much of the agent work is already built but answers only on localhost. `guard()` in `crates/openagents-web/src/lib.rs` keeps these routes local:
+@@ -73,7 +73,7 @@ Paths are under `crates/` unless shown otherwise.
+ | 13 | Analyse video and audio (probe, frames, transcription, A/V sync) | missing | missing: no ffmpeg or whisper tools (shell only if installed) | missing | No media tools; today's sync fix went the wrong way twice | `media` plugin: probe, frames, transcribe, av_offset (signed, against an independent reference), retime. See design (e) | [#11172](https://github.com/OpenAgentsInc/openagents/issues/11172) | Next week |
+ | 14 | Paste screenshots and images into the chat | missing: attach button commented out (`pages/chat.rs` `composer()`) | works: a pasted screenshot, a dropped path or an `@path` attaches; a model that takes images gets the image, any other gets a note with the file's path (`coder-new/src/attachments.rs`) | missing: off since 2026-10-01 (#10093/#10095); pipeline kept (`openagents-chat-app/src/attachments.rs`) | Images never reach a model | Send images to vision routes through the gateway; re-enable the composer pickers. See design (g) | [#11173](https://github.com/OpenAgentsInc/openagents/issues/11173), [#11174](https://github.com/OpenAgentsInc/openagents/issues/11174) | This weekend (coder), Monday (web, apps) |
+ | 15 | Attach local files and PDFs | missing | works: a dropped path or `@path` to an image or PDF attaches it (5 MB images, 20 MB PDFs) | missing | No file attachment | Path drop attaches in coder; web composer accepts PDFs and text files and stores them with the chat | [#11173](https://github.com/OpenAgentsInc/openagents/issues/11173), [#11174](https://github.com/OpenAgentsInc/openagents/issues/11174) | This weekend, Monday |
+-| 16 | Fetch web pages and search the web | missing: only the site's own docs at `/mcp/docs` | missing: only `curl` via `Run` | missing | No fetch or search tools | `web_fetch` and `web_search` tools shared by coder and web chat; refuse private IPs | [#11175](https://github.com/OpenAgentsInc/openagents/issues/11175) | This weekend |
++| 16 | Fetch web pages and search the web | missing: only the site's own docs at `/mcp/docs` | works: `web_fetch` (public http/https only, private addresses refused, 15-minute cache) and `web_search` through Exa with `EXA_API_KEY`, else the chat's OpenRouter key and its `web` plugin; results cite URLs (`coder-new/src/web_tools.rs`) | missing | No fetch or search tools | `web_fetch` and `web_search` tools shared by coder and web chat; refuse private IPs | [#11175](https://github.com/OpenAgentsInc/openagents/issues/11175) | This weekend |
+ | 17 | Memory that lasts across sessions | missing (ledger B10) | works: AGENTS.md/CLAUDE.md loaded nearest first plus `~/.openagents/AGENTS.md`; user and project notes with `remember`/`forget`/`recall` and `/memory` (`coder-new/src/memory.rs`); account sync is [#11182](https://github.com/OpenAgentsInc/openagents/issues/11182) | missing | No memory anywhere | Load AGENTS.md/CLAUDE.md; per-user and per-project memory entries synced to the account; Settings > Memory. See design (f) | [#11176](https://github.com/OpenAgentsInc/openagents/issues/11176) | This weekend |
+ | 18 | Background shells, wait loops, monitors | missing | partial: none in the TUI; host rules exist (`openagents background`, `openagents-cli/src/background.rs`) | partial. Desktop: Background page can pause and resume rules (`background_pane.rs`). Phone: watchers shown read-only (`computers_home.rs`) | The chat can't start a background command and be told when it ends | `Run` with background mode, a `monitor` tool, `/loop`. See design (h) | [#11177](https://github.com/OpenAgentsInc/openagents/issues/11177) | Monday |
+ | 19 | Scheduled tasks | missing: only the retention sweep | partial: host background rules | partial: view and pause only | Can't schedule a prompt | Scheduled prompts become host rules on a computer or Cloud environment; list and edit on web and in the apps | [#11177](https://github.com/OpenAgentsInc/openagents/issues/11177) | Monday |

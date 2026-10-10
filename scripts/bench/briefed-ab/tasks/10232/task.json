@@ -1,0 +1,33 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10232,
+  "title": "Router: local Coder runs carry frozen check suites so terminal routes can end verified",
+  "body": "Follow-up of #10207 (part of #10204). Phase 1 routes every terminal/CLI message through route-contract, but local runs (task::autostart grant, `requirements: None`) have no frozen independent check suites, so a live terminal Coder route projects `completed/unchecked`, never `verified`. The phase 1 fixtures prove the verified path through the task owner with requirements; this issue is to give local runs a checker (or the issue gate's) so the route record's check label is `verified` on real work. See docs/api/2026-10-02-agentic-execution-router.md, phase 1 exit evidence, 'What phase 1 does not do yet'.",
+  "fix": "36082b3eb97fbdd4c3017ca6d3fd044f734b3507",
+  "parent": "d7c76046dc74e660415dc0e70c7073b99d9e10d1",
+  "package": "coder",
+  "source_files": [
+    "crates/coder/src/task.rs",
+    "crates/coder/src/task/adapter.rs",
+    "crates/coder/src/task/autostart.rs",
+    "crates/coder/src/task/chat_client.rs",
+    "crates/microcoder/src/repository.rs",
+    "crates/microcoder/src/repository/recipe.rs",
+    "crates/openagents-chat/src/client.rs",
+    "docs/api/2026-10-02-agentic-execution-router.md"
+  ],
+  "test_files": [
+    "crates/coder/src/task/local_checks.rs",
+    "crates/coder/src/task/local_checks/tests.rs",
+    "crates/coder/src/task/owner/route_tests.rs"
+  ],
+  "test_names": [
+    "a_local_check_whose_owner_is_gone_is_not_waited_on",
+    "a_local_runs_listed_checks_end_its_route_verified_or_check_failed",
+    "a_local_suite_is_recognized_and_lists_its_commands",
+    "the_touched_packages_are_the_changed_and_new_files_packages"
+  ],
+  "fix_lines": 724
+}

@@ -1,0 +1,40 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10096,
+  "title": "Dev desktop build prompts for the login keychain password at launch (Verse key)",
+  "body": "Owner, 2026-10-01 08:29: launching a dev build (`target/release/openagents-desktop --no-login-agent`, main 9afc94bd92) showed **\"openagents-desktop wants to access key com.openagents.desktop.verse in your keychain\"** twice. The window reads the Verse world key at launch for the desktop Gym (#10060, `chat_gym::load` \u2192 `grid::store::world_key()`), and the keychain item is bound to the signed OpenAgents app, so any other binary triggers a password prompt \u2014 and it asks more than once.\n\nFix:\n1. **Never at launch.** Read the trainer/world key lazily: only when the person starts a hosted Gym run or opens Play on the Verse page. Opening the app or a chat never touches the keychain.\n2. **Dev builds never touch the release items.** A build that isn't the signed release (debug, or not signed with the Developer ID / a dev cargo build) uses a separate keychain service (e.g. `com.openagents.desktop.verse.dev`) or a file key under a dev home, so it can't prompt for or use the real key.\n3. **At most one prompt, ever.** If a read is denied or cancelled, remember that for the session and don't ask again; the Gym shows it can't run hosted without the key, plainly.\n4. Audit other keychain reads the window or host does at launch (host keys, adopt, device keys) for the same problem in dev builds.\n\nTest: a test that the launch path performs no keychain access; a dev-build test that uses the dev service. Add a gate check if feasible (the gate runs a dev binary \u2014 it should never touch the login keychain).",
+  "fix": "73bdf64c5846ee2a81beb86713898b44126ce3de",
+  "parent": "6fa9c31c52f6ab53131e16a5541db4ae1e5e9e37",
+  "package": "openagents-chat-app",
+  "source_files": [
+    "INVARIANTS.md",
+    "crates/openagents-chat-app/src/gym.rs",
+    "crates/openagents-desktop/README.md",
+    "crates/openagents-desktop/src/chat.rs",
+    "crates/openagents-desktop/src/chat_gym.rs",
+    "crates/openagents-desktop/src/grid/store.rs",
+    "crates/openagents-desktop/src/lib.rs",
+    "crates/openagents-desktop/src/migrate.rs",
+    "crates/openagents-desktop/src/worker.rs",
+    "docs/desktop/release.md",
+    "scripts/desktop/package-linux.sh",
+    "scripts/desktop/package-macos.sh"
+  ],
+  "test_files": [
+    "crates/openagents-chat-app/src/gym/tests.rs",
+    "crates/openagents-desktop/src/chat_gym.rs",
+    "crates/openagents-desktop/src/grid/store.rs",
+    "crates/openagents-desktop/src/gym_card_tests.rs",
+    "crates/openagents-desktop/src/worker.rs"
+  ],
+  "test_names": [
+    "a_denied_trainer_key_is_asked_for_once_and_said_plainly",
+    "a_dev_build_uses_its_own_keychain_service",
+    "a_failed_keychain_call_is_never_repeated_this_session",
+    "a_lazy_trainer_key_is_asked_for_once_by_a_hosted_start",
+    "the_trainer_key_is_read_only_when_a_hosted_run_starts"
+  ],
+  "fix_lines": 711
+}

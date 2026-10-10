@@ -1,0 +1,302 @@
+diff --git a/crates/coder/src/cli_route/tree.json b/crates/coder/src/cli_route/tree.json
+index 0ba288c01db381807ff3a6302271b2a9635bb3fd..4e8ed65f743ca97d537ca01aaa0b6124c6351831 100644
+--- a/crates/coder/src/cli_route/tree.json
++++ b/crates/coder/src/cli_route/tree.json
+@@ -119,7 +119,7 @@
+               "public-key"
+             ],
+             "usage": [
+-              "public-key"
++              "public-key [--control-socket PATH]"
+             ],
+             "forms": [
+               {
+@@ -127,6 +127,13 @@
+                   {
+                     "kind": "literal",
+                     "word": "public-key"
++                  },
++                  {
++                    "kind": "option",
++                    "name": "control-socket",
++                    "value": "PATH",
++                    "open": true,
++                    "optional": true
+                   }
+                 ]
+               }
+@@ -231,7 +238,7 @@
+               "list"
+             ],
+             "usage": [
+-              "list [--json]"
++              "list [--json] [--control-socket PATH]"
+             ],
+             "forms": [
+               {
+@@ -244,6 +251,13 @@
+                     "kind": "option",
+                     "name": "json",
+                     "optional": true
++                  },
++                  {
++                    "kind": "option",
++                    "name": "control-socket",
++                    "value": "PATH",
++                    "open": true,
++                    "optional": true
+                   }
+                 ]
+               }
+@@ -749,6 +763,14 @@
+           "optional": true,
+           "repeated": true
+         },
++        {
++          "kind": "option",
++          "name": "control-socket",
++          "value": "PATH",
++          "open": true,
++          "optional": true,
++          "repeated": true
++        },
+         {
+           "kind": "option",
+           "name": "rights",
+@@ -873,14 +895,6 @@
+           "optional": true,
+           "repeated": true
+         },
+-        {
+-          "kind": "option",
+-          "name": "control-socket",
+-          "value": "PATH",
+-          "open": true,
+-          "optional": true,
+-          "repeated": true
+-        },
+         {
+           "kind": "option",
+           "name": "keychain",
+@@ -1207,7 +1221,7 @@
+               "link"
+             ],
+             "usage": [
+-              "link INVITATION",
++              "link CODE",
+               "link --ssh USER@HOST"
+             ],
+             "forms": [
+@@ -1219,7 +1233,7 @@
+                   },
+                   {
+                     "kind": "positional",
+-                    "name": "INVITATION"
++                    "name": "CODE"
+                   }
+                 ]
+               },
+@@ -1238,7 +1252,7 @@
+                 ]
+               }
+             ],
+-            "summary": "Redeem a coder-host: invitation (QR text or paste).",
++            "summary": "Pair with a computer: its `openagents connect invite --text` code, or a coder-host: invitation (QR text or paste).",
+             "effect": "grants",
+             "runs_on": "screen",
+             "screen": "account.computers"
+@@ -2024,6 +2038,12 @@
+           "optional": true,
+           "repeated": true
+         },
++        {
++          "kind": "option",
++          "name": "text",
++          "optional": true,
++          "repeated": true
++        },
+         {
+           "kind": "option",
+           "name": "ssh",
+diff --git a/crates/openagents-cli/src/computer.rs b/crates/openagents-cli/src/computer.rs
+index a144488d3ec256e8b1b3185e99f030d0d1752d8a..c8ce1594be1b17a3824daf9e4690611428a74b0e 100644
+--- a/crates/openagents-cli/src/computer.rs
++++ b/crates/openagents-cli/src/computer.rs
+@@ -22,7 +22,8 @@ use coder::cli_route::tree::{Declared, Effect};
+ pub(crate) const USAGE: &str = "usage: openagents computer COMMAND [OPTIONS]
+   list [--wait SECONDS]     Every host this device knows, with its link and grant.
+   show HOST                 One host: grant, devices, pending enrollments, workspaces.
+-  link INVITATION           Redeem a coder-host: invitation (QR text or paste).
++  link CODE                 Pair with a computer: its `openagents connect invite --text`
++                            code, or a coder-host: invitation (QR text or paste).
+   link --ssh USER@HOST      Install or adopt a host over ssh and redeem its invitation.
+   approve HOST ENROLLMENT --code CODE [--rights standard|admin|all|LIST] [--days N]
+                             Approve a headless host's enrollment request.
+@@ -353,29 +354,90 @@ fn settle(live: &mut Live, seconds: u64) -> Result<Snapshot, String> {
+ pub(crate) fn connected(live: &mut Live, host: &str, args: &Args) -> Result<(), String> {
+     let seconds: u64 = args.number("wait", 15)?;
+     let deadline = std::time::Instant::now() + Duration::from_secs(seconds);
+-    let mut last = String::from("no link");
+     loop {
+         let snapshot = live.snapshot().map_err(|e| e.to_string())?;
+         let record = snapshot
+             .host(host)
+             .ok_or_else(|| format!("this device knows no host {host}"))?;
++        let name = host_name(record, host);
+         match record.link.as_ref().map(|link| &link.phase) {
+             Some(coder_link::Phase::Connected) => return Ok(()),
+             Some(coder_link::Phase::Blocked(reason)) => {
+-                return Err(format!("the link to {host} is blocked: {reason:?}"));
++                return Err(format!(
++                    "{name} can't be reached: {}",
++                    blocked_words(*reason)
++                ));
+             }
+-            Some(phase) => last = format!("{phase:?}"),
+-            None => {}
++            _ => {}
+         }
+         if std::time::Instant::now() >= deadline {
+-            return Err(format!(
+-                "{host} did not connect within {seconds}s (link {last}); pass --wait SECONDS to wait longer"
+-            ));
++            return Err(not_connected(record, &name, seconds, "--wait"));
+         }
+         std::thread::sleep(Duration::from_millis(200));
+     }
+ }
+ 
++/// The computer's label, or its key when it has none.
++pub(crate) fn host_name(record: &coder_computers::model::HostRecord, key: &str) -> String {
++    if record.label.is_empty() {
++        key.to_owned()
++    } else {
++        record.label.clone()
++    }
++}
++
++/// A link's phase in plain words.
++pub(crate) fn phase_words(phase: &coder_link::Phase) -> String {
++    use coder_link::Phase;
++    match phase {
++        Phase::Available => "not connecting".into(),
++        Phase::Offline => "this computer has no network".into(),
++        Phase::Connecting(_) => "connecting".into(),
++        Phase::Backoff { .. } => "retrying".into(),
++        Phase::Connected => "connected".into(),
++        Phase::Blocked(reason) => blocked_words(*reason).into(),
++    }
++}
++
++/// Why a blocked link can't connect, as a person reads it.
++pub(crate) fn blocked_words(reason: coder_link::BlockReason) -> &'static str {
++    use coder_link::BlockReason;
++    match reason {
++        BlockReason::Authentication => "it doesn't recognize this computer",
++        BlockReason::Revoked => "it removed this computer's access",
++        BlockReason::Incompatible => "it runs a version this one can't talk to; update both",
++        BlockReason::Configuration => "this computer's settings for it are invalid",
++    }
++}
++
++/// Why a host did not connect in time, and the next step. A host seals its
++/// presence to each device it admits, so a host that removed this computer
++/// looks exactly like one that is off: it publishes nothing here. Say both,
++/// and how to check and enroll again (#10368).
++pub(crate) fn not_connected(
++    record: &coder_computers::model::HostRecord,
++    name: &str,
++    seconds: u64,
++    flag: &str,
++) -> String {
++    let state = record.link.as_ref().map_or_else(
++        || "not connecting".to_owned(),
++        |link| phase_words(&link.phase),
++    );
++    if record.presence.is_some() {
++        return format!(
++            "{name} did not connect within {seconds}s ({state}); pass {flag} SECONDS to wait longer"
++        );
++    }
++    format!(
++        "{name} did not connect within {seconds}s ({state}). It has published nothing to this \
++         computer: it is off or offline, or it removed this computer. On {name}, `openagents \
++         connect devices` lists the devices it admits; if this one is gone, run `openagents \
++         connect invite --text` there and `openagents computer link CODE` here. Pass {flag} \
++         SECONDS to wait longer."
++    )
++}
++
+ fn dispatch(
+     output: &Output,
+     live: &mut Live,
+@@ -455,9 +517,20 @@ fn dispatch(
+             if invitation.is_empty() {
+                 return Err("INVITATION is required (argument or stdin)".into());
+             }
+-            let host = live
+-                .redeem_invitation(&invitation)
+-                .map_err(|e| e.to_string())?;
++            // A connect code (`openagents connect invite --text`, the code a
++            // phone pairs with) pairs as the phone does; a `coder-host:`
++            // invitation is redeemed on the relay it names.
++            let host = match coder_computers::connect::classify(&invitation)? {
++                coder_computers::connect::Scanned::Connect(code) => {
++                    runtime
++                        .block_on(live.pairing().pair(&code))
++                        .map_err(|failure| failure.message)?
++                        .host
++                }
++                coder_computers::connect::Scanned::HostInvitation(text) => {
++                    live.redeem_invitation(&text).map_err(|e| e.to_string())?
++                }
++            };
+             let snapshot = settle(live, 5)?;
+             let record = snapshot
+                 .host(&host)
+diff --git a/crates/openagents-cli/src/reach.rs b/crates/openagents-cli/src/reach.rs
+index 739f78faaf69d592261bd96d2a5bbb8299fc660a..1951515d94175b5452da21a2c38cd48f22f6cfa3 100644
+--- a/crates/openagents-cli/src/reach.rs
++++ b/crates/openagents-cli/src/reach.rs
+@@ -353,9 +353,12 @@ fn presence(output: &Output, live: &mut Live, args: &Args, timeout: Duration) ->
+         .host(&host)
+         .ok_or_else(|| format!("this device knows no host {host}"))?;
+     let Some(received) = &record.presence else {
+-        return Err(Refused(format!(
+-            "no presence sample for {host} within {}s; the host may be offline or the relay unreachable",
+-            timeout.as_secs()
++        let name = crate::computer::host_name(record, &host);
++        return Err(Refused(crate::computer::not_connected(
++            record,
++            &name,
++            timeout.as_secs(),
++            "--timeout",
+         )));
+     };
+     let verdict = received.judge(snapshot.now, Freshness::default());
+@@ -460,15 +463,20 @@ fn probe(
+     match phase {
+         Some(coder_link::Phase::Connected) => {}
+         Some(coder_link::Phase::Blocked(reason)) => {
+-            value["error"] = json!(format!("the link to {host} is blocked: {reason:?}"));
++            value["error"] = json!(format!(
++                "{} can't be reached: {}",
++                crate::computer::host_name(record, &host),
++                crate::computer::blocked_words(*reason)
++            ));
+             output.emit(&value, render_probe);
+             return Ok(out::EXIT_FAILURE);
+         }
+-        other => {
+-            value["error"] = json!(format!(
+-                "{host} did not connect within {}s (link {}); pass --timeout SECONDS to wait longer",
++        _ => {
++            value["error"] = json!(crate::computer::not_connected(
++                record,
++                &crate::computer::host_name(record, &host),
+                 timeout.as_secs(),
+-                other.map_or("none".to_owned(), |phase| format!("{phase:?}"))
++                "--timeout",
+             ));
+             output.emit(&value, render_probe);
+             return Ok(out::EXIT_FAILURE);

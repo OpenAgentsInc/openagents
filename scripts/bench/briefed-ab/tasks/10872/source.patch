@@ -1,0 +1,323 @@
+diff --git a/NEEDS_OWNER.md b/NEEDS_OWNER.md
+index 7f441d528a7e3432d817538afa2106b2e1e390bd..5cb5de47fdf59a4480c54bdef76a0a86b8d82f83 100644
+--- a/NEEDS_OWNER.md
++++ b/NEEDS_OWNER.md
+@@ -1852,3 +1852,17 @@ exercised by fixtures over scratch hosts. Owner-only steps remain:
+   provider and unit conversion, commission base and share, support owner
+   and hours, pipeline owner, sales domain and legal review, first-team
+   controls, and store release steps.
++
++## Sales floor report activation (REV-65, #10872)
++
++The report, escalations, and weekly draft work with no revenue, no financial
++adapter, and no delivery telemetry; absent inputs are labeled unknown or
++listed under `gaps`. Owner steps:
++
++- Run `openagents sales floor escalations --root DIR --credential FILE` on
++  the real sales root whenever the outbox is active; complaints and pauses
++  appear as `immediate`. No scheduler or notifier is installed by this code.
++- Decide whether a weekly draft is published; `sales floor weekly-draft`
++  never publishes, and `sales review` remains the exact owner decision.
++- Name the pipeline owner (deferred decision 7) before relying on the report
++  for the weekly review.
+diff --git a/crates/coder/src/cli_route/tree.json b/crates/coder/src/cli_route/tree.json
+index f58f492517acb36c339dc807075da8bde327a995..dfe9e58780602b27ff93923616001b7b9e0350f2 100644
+--- a/crates/coder/src/cli_route/tree.json
++++ b/crates/coder/src/cli_route/tree.json
+@@ -7868,6 +7868,101 @@
+             }
+           ]
+         },
++        {
++          "name": "floor",
++          "children": [
++            {
++              "name": "report",
++              "leaf": {
++                "path": [
++                  "sales",
++                  "floor",
++                  "report"
++                ],
++                "usage": [
++                  "floor report"
++                ],
++                "forms": [
++                  {
++                    "tokens": [
++                      {
++                        "kind": "literal",
++                        "word": "floor"
++                      },
++                      {
++                        "kind": "literal",
++                        "word": "report"
++                      }
++                    ]
++                  }
++                ],
++                "summary": "",
++                "effect": "read_only",
++                "runs_on": "connected_computer"
++              }
++            },
++            {
++              "name": "escalations",
++              "leaf": {
++                "path": [
++                  "sales",
++                  "floor",
++                  "escalations"
++                ],
++                "usage": [
++                  "floor escalations"
++                ],
++                "forms": [
++                  {
++                    "tokens": [
++                      {
++                        "kind": "literal",
++                        "word": "floor"
++                      },
++                      {
++                        "kind": "literal",
++                        "word": "escalations"
++                      }
++                    ]
++                  }
++                ],
++                "summary": "",
++                "effect": "read_only",
++                "runs_on": "connected_computer"
++              }
++            },
++            {
++              "name": "weekly-draft",
++              "leaf": {
++                "path": [
++                  "sales",
++                  "floor",
++                  "weekly-draft"
++                ],
++                "usage": [
++                  "floor weekly-draft"
++                ],
++                "forms": [
++                  {
++                    "tokens": [
++                      {
++                        "kind": "literal",
++                        "word": "floor"
++                      },
++                      {
++                        "kind": "literal",
++                        "word": "weekly-draft"
++                      }
++                    ]
++                  }
++                ],
++                "summary": "",
++                "effect": "read_only",
++                "runs_on": "connected_computer"
++              }
++            }
++          ]
++        },
+         {
+           "name": "meetings",
+           "children": [
+diff --git a/crates/coder/src/task/sales.rs b/crates/coder/src/task/sales.rs
+index 0451c6a3ca14968fc937b38301574976d8605862..057693a7d3e7ae9ecaba3af464a6dec8807f29cc 100644
+--- a/crates/coder/src/task/sales.rs
++++ b/crates/coder/src/task/sales.rs
+@@ -13,6 +13,7 @@ pub mod agents;
+ pub mod claims;
+ pub mod email;
+ pub mod expenses;
++pub mod floor;
+ pub mod intake;
+ pub mod meetings;
+ pub mod outbox;
+diff --git a/crates/coder/src/task/sales/expenses.rs b/crates/coder/src/task/sales/expenses.rs
+index e0bbdda4bf97105b5e8ea328706a49389ffc1e68..982da14c2de16f5e16be70dec5ab9f08de690639 100644
+--- a/crates/coder/src/task/sales/expenses.rs
++++ b/crates/coder/src/task/sales/expenses.rs
+@@ -389,6 +389,9 @@ impl Book {
+         Ok((sha, policy))
+     }
+     /// Original attribution only; this lookup grants no execution authority.
++    pub(super) fn reservations(&self) -> impl Iterator<Item = &Reservation> {
++        self.reservations.values()
++    }
+     pub(super) fn reservation(&self, id: &str) -> Option<&Reservation> {
+         self.reservations.get(id)
+     }
+diff --git a/crates/coder/src/task/sales/meetings.rs b/crates/coder/src/task/sales/meetings.rs
+index 14ab776a9c0e03be9a8633086991f1f6c3db6a47..397d018f605294c86d1883687989727cd9b764e0 100644
+--- a/crates/coder/src/task/sales/meetings.rs
++++ b/crates/coder/src/task/sales/meetings.rs
+@@ -142,6 +142,10 @@ pub(super) struct Book {
+     meetings: BTreeMap<String, Meeting>,
+ }
+ impl Book {
++    pub(super) fn meetings(&self) -> impl Iterator<Item = &Meeting> {
++        self.meetings.values()
++    }
++
+     pub(super) fn check(&self) -> Result<()> {
+         if self.slots.len() > MAX_SLOTS || self.meetings.len() > MAX_MEETINGS {
+             return Err("meeting book exceeds its bound".into());
+diff --git a/crates/openagents-cli/src/sales.rs b/crates/openagents-cli/src/sales.rs
+index c9957e7dd3ca7c15e121b5dc00990674ea670f5b..2ffe4976142a25f903f83d175c07aecf421eee9c 100644
+--- a/crates/openagents-cli/src/sales.rs
++++ b/crates/openagents-cli/src/sales.rs
+@@ -12,6 +12,8 @@ pub(crate) mod agents;
+ mod claims;
+ #[path = "sales_email.rs"]
+ mod email;
++#[path = "sales_floor.rs"]
++mod floor;
+ #[path = "sales_meetings.rs"]
+ mod meetings;
+ #[path = "sales_models.rs"]
+@@ -102,6 +104,9 @@ pub const USAGE: &str = "usage: openagents sales COMMAND --root DIR [--credentia
+         Apply a field-scoped change or propose a private draft.
+   agents memory
+         Read current opaque references and fixed nonidentifying summary fields.
++  floor report
++  floor escalations
++  floor weekly-draft
+   meetings slot --input FILE --expected-version N
+         Publish explicit finite owner availability.
+   meetings slots
+@@ -263,6 +268,9 @@ pub(crate) const EFFECTS: &[Declared] = &[
+     Declared::computer("paul pipeline", Effect::LocalWrite),
+     Declared::computer("paul research", Effect::LocalWrite),
+     Declared::computer("paul practice", Effect::ReadOnly),
++    Declared::computer("floor report", Effect::ReadOnly),
++    Declared::computer("floor escalations", Effect::ReadOnly),
++    Declared::computer("floor weekly-draft", Effect::ReadOnly),
+     Declared::computer("meetings slot", Effect::Grants),
+     Declared::computer("meetings slots", Effect::ReadOnly),
+     Declared::computer("meetings queue", Effect::ReadOnly),
+@@ -320,6 +328,9 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
+     if words.first().is_some_and(|w| w == "training") {
+         return training::run(output, &words[1..]);
+     }
++    if words.first().is_some_and(|w| w == "floor") {
++        return floor::run(output, &words[1..]);
++    }
+     if words.first().is_some_and(|w| w == "meetings") {
+         return meetings::run(output, &words[1..]);
+     }
+diff --git a/crates/openagents-cli/src/sales_floor.rs b/crates/openagents-cli/src/sales_floor.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..8bf7f7d984998f27bc1e1609f6aaa236b94b0202
+--- /dev/null
++++ b/crates/openagents-cli/src/sales_floor.rs
+@@ -0,0 +1,68 @@
++//! The owner's private floor report, escalations, and weekly draft. Reads only.
++use super::{Store, required};
++use crate::{Args, Output};
++use serde_json::Value;
++use std::path::Path;
++
++const USAGE: &str = "usage: openagents sales floor COMMAND --root DIR --credential FILE [--json]
++  report        Recompute stage, assignment, message, delivery, meeting, certification, and cost counts.
++  escalations   List open complaints, pauses, suspensions, authentication, budget, and adversary findings.
++  weekly-draft  Paul's weekly aggregate draft for owner review; it publishes nothing.
++Unknown values are labeled unknown. These commands read the owner's private records only.";
++
++pub(super) fn run(output: &Output, words: &[String]) -> u8 {
++    if words
++        .first()
++        .is_some_and(|s| matches!(s.as_str(), "help" | "--help" | "-h"))
++    {
++        println!("{USAGE}");
++        return 0;
++    }
++    let args = match parse(words) {
++        Ok(v) => v,
++        Err(e) => return output.usage("sales floor", &e, USAGE),
++    };
++    match execute(&args) {
++        Ok(v) => {
++            output.emit(&v, |v| serde_json::to_string_pretty(v).unwrap_or_default());
++            0
++        }
++        Err(e) => output.fail("sales floor", &e),
++    }
++}
++
++fn parse(words: &[String]) -> Result<Args, String> {
++    let args = Args::parse(words, &[])?;
++    if args.positional().len() != 1
++        || !matches!(
++            args.positional()[0].as_str(),
++            "report" | "escalations" | "weekly-draft"
++        )
++    {
++        return Err(USAGE.into());
++    }
++    if args
++        .option_names()
++        .iter()
++        .any(|n| !matches!(*n, "root" | "credential"))
++    {
++        return Err("unknown sales floor option".into());
++    }
++    required(&args, "root")?;
++    required(&args, "credential")?;
++    Ok(args)
++}
++
++fn execute(args: &Args) -> Result<Value, String> {
++    let mut store = Store::open(Path::new(required(args, "root")?))?;
++    let access = store.authenticate(&Store::read_credential(Path::new(required(
++        args,
++        "credential",
++    )?))?)?;
++    let value = match args.positional()[0].as_str() {
++        "report" => serde_json::to_value(store.floor_report(&access)?),
++        "escalations" => serde_json::to_value(store.floor_escalations(&access)?),
++        _ => serde_json::to_value(store.floor_weekly_draft(&access)?),
++    };
++    value.map_err(|_| "floor report serialization failed".to_string())
++}
+diff --git a/docs/sales/agent-sales-floor.md b/docs/sales/agent-sales-floor.md
+index 28e5711146a142211813c2a6b4296efc040a6af7..d78ddf8949e323640f306700210f1d32e65efceb 100644
+--- a/docs/sales/agent-sales-floor.md
++++ b/docs/sales/agent-sales-floor.md
+@@ -837,6 +837,32 @@ same records that Paul's office panel and the leaderboard read.
+ | Claims-check failures; certification pass rate | Whether the playbook and training work |
+ | Affiliate sign-ups that activate and pay; partner introductions accepted | Whether referrals and partners bring buyers |
+ 
++### The floor report (REV-65, #10872)
++
++`openagents sales floor report|escalations|weekly-draft --root DIR
++--credential FILE` is Wendy's private view: one projection recomputed from
++the canonical books on every read, so a restart or a replayed command
++cannot change a count. It reads only under the sales owner's credential.
++
++- `report` counts leads by stage, active assignments, next actions due and
++  overdue, drafts by review state, outbox proposals, approvals, and distinct
++  sent attempts, replies, meetings by phase, certifications by state, and
++  unresolved incidents and replies. Delivery evidence stays apart from send
++  counts: delivered, hard bounce, failed, unknown, opt-out, and complaint are
++  separate, and `telemetry_absent` is set when messages were sent but no
++  delivery observation exists. Costs show list-price reservations, billed
++  amounts only when every reservation is settled (otherwise `unknown` with a
++  reason), and reservation cost per qualified lead. Missing enrichment is
++  listed under `gaps`, never counted as zero.
++- `escalations` lists open complaints, unsupported sent claims, suppression
++  breaches, authentication failures, a paused outbox, budget breaches,
++  injection or credential material in replies as `immediate`; hard bounces,
++  suspended certifications, unknown model usage, and ambiguous opt-outs as
++  `review`. Each row carries the exact record reference.
++- `weekly-draft` is Paul's aggregate for the owner over the trailing seven
++  days with lessons and proposed next actions. `published` is always
++  `false`; publication stays an owner decision through `sales review`.
++
+ ## Costs
+ 
+ List prices from the code, as

@@ -1,0 +1,34 @@
+{
+  "test_targets": [
+    "--test",
+    "replay"
+  ],
+  "issue": 9901,
+  "title": "Exact-replay receipts for Wasm plugin invocations (Tassadar revival MVP)",
+  "body": "First slice of item 5 in [What to bring back from Tassadar](https://github.com/OpenAgentsInc/openagents/blob/main/docs/roadmap/2026-09-28-tassadar-revival.md#5-exact-replay-verification-for-deterministic-steps-r6): Tassadar's \"the trace is the receipt\" check, applied to the Wasm plugin host.\n\n## Problem\n\nEvery `plugin::invoke` result carries `verification: not_run`. Nothing records a digested invocation, so a second host can't check that a guest's output is what the guest actually returns for those inputs. The plugin docs list the invocation receipt, and recording the engine identity, as not built.\n\n## Scope\n\nIn `crates/plugin` only:\n\n1. **Invocation receipt** (`openagents.plugin-invocation-receipt.v1`). It records:\n   - the module digest, profile, operation, and invocation ID;\n   - a canonical digest of the input and of the granted snapshot and handles;\n   - the limits and the engine identity (Wasmtime version and the config flags the host sets);\n   - the outcome: the output status and output digest, or the typed host error;\n   - the fuel consumed.\n\n   It has strict JSON encoding and decoding, so a receipt can move between hosts.\n2. **`invoke_with_receipt`**. It runs a guest exactly as `invoke` does and returns the receipt beside the value. `invoke` itself does not change.\n3. **`replay(receipt, call)`**. It first checks that the supplied call matches every input digest in the receipt and that the engine identity matches. It then reruns the guest and compares the output digest and fuel consumed. The verdict uses the shared vocabulary:\n   - `passed` with verification class `exact_replay` when the outputs match;\n   - `failed` with the expected and actual digests when they differ;\n   - `unverifiable` with a reason when the inputs or the engine don't match.\n\n   Replay never upgrades a result it didn't rerun.\n4. **Tests.**\n   - Honest replay passes for the pure fixture and the three evidence guests.\n   - A tampered output digest, a tampered fuel count, and a tampered outcome each fail.\n   - A changed input, snapshot, module, limit, or engine each give `unverifiable`.\n   - A receipt survives an encode/decode round trip, and unknown fields are refused.\n   - Two runs of each evidence guest give identical receipts, apart from the invocation ID, which the caller supplies.\n5. **Docs.** Update `docs/extensions/plugins.md` (\"What is built\") and the revival proposal's item 5 status.\n\n## Out of scope\n\n- Wiring receipts into `crates/coder` program step records.\n- NIP-PRG, NIP-EXT, or shared-contract changes.\n- Relay transport of receipts.\n- A CLI.\n- The component verification classes of item 6.\n\n## Acceptance\n\n- `cargo test -p plugin` passes, and `cargo clippy -p plugin --all-targets` is clean.\n- The docs state exactly what the receipt proves: that the same bytes on the same engine gave the same output. It is not remote attestation, and it says nothing about correctness.\n",
+  "fix": "59ab5a28166ae2fd095bd409f54307db55e7d232",
+  "parent": "e7989aa4e166473c7355400f4ca0c4ce9c88fc6d",
+  "package": "plugin",
+  "source_files": [
+    "crates/plugin/src/engine.rs",
+    "crates/plugin/src/lib.rs",
+    "crates/plugin/src/replay.rs",
+    "crates/plugin/src/snapshot.rs",
+    "docs/extensions/plugins.md",
+    "docs/roadmap/2026-09-28-tassadar-revival.md"
+  ],
+  "test_files": [
+    "crates/plugin/tests/replay.rs"
+  ],
+  "test_names": [
+    "a_deterministic_host_error_replays_and_a_cancellation_does_not",
+    "a_receipt_round_trips_through_strict_json",
+    "a_tampered_outcome_or_fuel_count_fails",
+    "an_honest_replay_of_a_pure_guest_passes",
+    "different_inputs_or_engine_are_unverifiable_and_do_not_run",
+    "every_evidence_guest_gives_identical_receipts_and_replays_exactly",
+    "the_engine_identity_names_the_locked_wasmtime",
+    "the_input_digest_ignores_key_order"
+  ],
+  "fix_lines": 1051
+}

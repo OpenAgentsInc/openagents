@@ -1,0 +1,316 @@
+diff --git a/crates/coder-terminal/src/hairline.rs b/crates/coder-terminal/src/hairline.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..80711a96d5f4c7c3d3096ecde09dd31b99670ebe
+--- /dev/null
++++ b/crates/coder-terminal/src/hairline.rs
+@@ -0,0 +1,154 @@
++//! The hairline frame, and the text that rides its rules.
++//!
++//! Every terminal in this repository draws the same box: a one-cell rule
++//! around the content, and short labels set into the top and bottom rules
++//! rather than above or below them. [`frame`] draws the box and [`rail`]
++//! writes the labels, so a composer and a table of verdicts share one
++//! drawing rather than two that drift.
++//!
++//! Both take a ratatui [`Buffer`] and a [`Rect`], and both take a style per
++//! call: the frame is the geometry, and which step of the amber ladder it
++//! burns at is the caller's decision. Neither touches a cell inside the
++//! box, so what sits in the gutter between the wall and the text — a
++//! selection cursor, say — belongs to whoever draws the content.
++
++use ratatui::buffer::Buffer;
++use ratatui::layout::Rect;
++use ratatui::style::Style;
++use unicode_width::UnicodeWidthStr;
++
++/// The hairline: `─` rules top and bottom, `│` walls, corners `┌┐└┘`.
++///
++/// An area too small to hold a rule and two corners is left alone rather
++/// than half drawn.
++pub fn frame(area: Rect, buf: &mut Buffer, style: Style) {
++    if area.width < 2 || area.height < 2 {
++        return;
++    }
++    let (top, bottom) = (area.top(), area.bottom() - 1);
++    let (left, right) = (area.left(), area.right() - 1);
++    for x in left + 1..right {
++        buf[(x, top)].set_char('─').set_style(style);
++        buf[(x, bottom)].set_char('─').set_style(style);
++    }
++    for y in top + 1..bottom {
++        buf[(left, y)].set_char('│').set_style(style);
++        buf[(right, y)].set_char('│').set_style(style);
++    }
++    buf[(left, top)].set_char('┌').set_style(style);
++    buf[(right, top)].set_char('┐').set_style(style);
++    buf[(left, bottom)].set_char('└').set_style(style);
++    buf[(right, bottom)].set_char('┘').set_style(style);
++}
++
++/// Writes `left` and `right` into the rule at `offset`, each padded with a
++/// space on both sides so the text never touches a corner.
++///
++/// A rail wider than the room left is dropped rather than cut: the left
++/// rail is written first and takes what it needs, and the right rail draws
++/// only if what remains holds it whole. Each side carries its own style,
++/// because the two rails often say things of different weight — a view's
++/// name against a chain that failed to verify.
++pub fn rail(
++    area: Rect,
++    buf: &mut Buffer,
++    offset: u16,
++    left: Option<(&str, Style)>,
++    right: Option<(&str, Style)>,
++) {
++    let y = area.top() + offset;
++    if y >= buf.area.bottom() || area.width < 6 {
++        return;
++    }
++    // The room the two rails share: the width less the corners and the rule
++    // cell inside each.
++    let mut room = usize::from(area.width) - 4;
++    if let Some((text, style)) = left {
++        let named = format!(" {text} ");
++        let taken = named.width();
++        if taken <= room {
++            room -= taken;
++            buf.set_string(area.left() + 2, y, &named, style);
++        }
++    }
++    if let Some((text, style)) = right {
++        let named = format!(" {text} ");
++        let taken = named.width();
++        if taken <= room {
++            buf.set_string(area.right() - 2 - taken as u16, y, &named, style);
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use ratatui::style::{Color, Modifier};
++
++    fn text(buf: &Buffer) -> Vec<String> {
++        let area = buf.area;
++        (area.top()..area.bottom())
++            .map(|y| {
++                (area.left()..area.right())
++                    .map(|x| buf[(x, y)].symbol().to_owned())
++                    .collect()
++            })
++            .collect()
++    }
++
++    #[test]
++    fn the_frame_draws_its_rules_and_its_corners() {
++        let area = Rect::new(0, 0, 6, 3);
++        let mut buf = Buffer::empty(area);
++        frame(area, &mut buf, Style::new());
++        assert_eq!(text(&buf), ["┌────┐", "│    │", "└────┘"]);
++    }
++
++    #[test]
++    fn an_area_too_small_for_a_frame_is_left_alone() {
++        for (width, height) in [(0, 0), (1, 3), (3, 1), (1, 1)] {
++            let area = Rect::new(0, 0, width, height);
++            let mut buf = Buffer::empty(area);
++            frame(area, &mut buf, Style::new());
++            assert!(text(&buf).iter().all(|line| line.trim().is_empty()));
++        }
++    }
++
++    #[test]
++    fn each_rail_carries_its_own_style() {
++        let area = Rect::new(0, 0, 20, 3);
++        let mut buf = Buffer::empty(area);
++        frame(area, &mut buf, Style::new());
++        let loud = Style::new().add_modifier(Modifier::BOLD);
++        let quiet = Style::new().fg(Color::Indexed(94));
++        rail(area, &mut buf, 0, Some(("left", quiet)), Some(("right", loud)));
++        assert_eq!(text(&buf)[0], "┌─ left ─── right ─┐");
++        assert_eq!(buf[(3u16, 0u16)].fg, Color::Indexed(94));
++        assert!(buf[(14u16, 0u16)].modifier.contains(Modifier::BOLD));
++    }
++
++    #[test]
++    fn a_rail_the_rule_cannot_hold_whole_is_left_out() {
++        let area = Rect::new(0, 0, 12, 3);
++        let mut buf = Buffer::empty(area);
++        frame(area, &mut buf, Style::new());
++        rail(
++            area,
++            &mut buf,
++            0,
++            Some(("a name far too long", Style::new())),
++            Some(("fits", Style::new())),
++        );
++        let line = &text(&buf)[0];
++        assert!(!line.contains("name"), "{line}");
++        assert!(line.contains(" fits "), "{line}");
++    }
++
++    #[test]
++    fn a_rail_outside_the_buffer_draws_nothing() {
++        let area = Rect::new(0, 0, 20, 3);
++        let mut buf = Buffer::empty(area);
++        rail(area, &mut buf, 9, Some(("gone", Style::new())), None);
++        assert!(text(&buf).iter().all(|line| line.trim().is_empty()));
++    }
++}
+diff --git a/crates/coder-terminal/src/ladder.rs b/crates/coder-terminal/src/ladder.rs
+index 6093bb3b24b6d64c77a13738b34c0cdf3f5d5e7a..cac90a9c8ea2a7db69aa6dc5919cd8e98562a557 100644
+--- a/crates/coder-terminal/src/ladder.rs
++++ b/crates/coder-terminal/src/ladder.rs
+@@ -187,9 +240,50 @@ mod tests {
+             let style = ladder.style(loud);
+             assert!(style.fg.is_none());
+             assert!(!style.add_modifier.contains(Modifier::DIM));
++            assert!(!style.add_modifier.contains(Modifier::BOLD));
+         }
+     }
+ 
++    #[test]
++    fn a_colorless_table_can_ask_for_a_bold_top_step() {
++        let ladder = Ladder::new(Colors::None).when_colorless(Colorless::DimAndBold);
++        assert!(
++            ladder
++                .style(Intensity::Full)
++                .add_modifier
++                .contains(Modifier::BOLD)
++        );
++        // The rest of the ladder is untouched: the option moves one step.
++        assert_eq!(
++            ladder.style(Intensity::ThreeQuarters),
++            Style::new(),
++            "the third step stays plain"
++        );
++        for faint in [Intensity::Quarter, Intensity::Half] {
++            assert!(ladder.style(faint).add_modifier.contains(Modifier::DIM));
++        }
++        // The option is about `NO_COLOR` alone; a terminal with color reads
++        // the same either way.
++        for colors in [Colors::True, Colors::Indexed] {
++            assert_eq!(
++                Ladder::new(colors)
++                    .when_colorless(Colorless::DimAndBold)
++                    .style(Intensity::Full),
++                Ladder::new(colors).style(Intensity::Full)
++            );
++        }
++    }
++
++    #[test]
++    fn the_selection_tint_sits_just_above_the_field() {
++        assert_eq!(
++            Ladder::new(Colors::True).selection(),
++            rgb(crate::intensity::NEAR_BLACK_TINT)
++        );
++        assert_eq!(Ladder::new(Colors::Indexed).selection(), Color::Indexed(235));
++        assert_eq!(Ladder::new(Colors::None).selection(), Color::Reset);
++    }
++
+     #[test]
+     fn drain_color_keeps_modifiers() {
+         let style = Style::new()
+diff --git a/crates/gym/src/bin/gym_terminal.rs b/crates/gym/src/bin/gym_terminal.rs
+index 305c35b600fb5889784f1edd6dd15fad055b4583..b8bdb907e603ed560fc35d3ac6268baf984fb92b 100644
+--- a/crates/gym/src/bin/gym_terminal.rs
++++ b/crates/gym/src/bin/gym_terminal.rs
+@@ -187,7 +187,7 @@ mod tests {
+ 
+     #[test]
+     fn the_fixture_opens_with_no_door_and_no_network() {
+-        let app = App::new(Records::fixture(), Ladder::from_environment());
++        let app = App::new(Records::fixture(), ladder_from_environment());
+         let text = app.to_text(PRINT_WIDTH, PRINT_HEIGHT);
+         assert!(text.contains("fixture"), "{text}");
+         assert!(text.contains("scoreboard"), "{text}");
+diff --git a/crates/gym/src/tui.rs b/crates/gym/src/tui.rs
+index 05ce2f1c46a7801574f3f3bfda38fb52de3fcc72..aca8be8837ba0f26e5ce861c619077d3811d27bf 100644
+--- a/crates/gym/src/tui.rs
++++ b/crates/gym/src/tui.rs
+@@ -1822,13 +1647,15 @@ impl App {
+ #[cfg(test)]
+ mod tests {
+     use super::*;
++    use ratatui::style::{Color, Modifier};
+ 
++    /// The terminal as a reader with `NO_COLOR` set sees it.
+     fn app(records: Records) -> App {
+-        App::new(records, Ladder::new(Colors::None))
++        App::new(records, ladder(Colors::None))
+     }
+ 
+     fn colored(records: Records) -> App {
+-        App::new(records, Ladder::new(Colors::True))
++        App::new(records, ladder(Colors::True))
+     }
+ 
+     fn view_text(records: &Records, view: View) -> String {
+@@ -1850,8 +1677,10 @@ mod tests {
+         line.split_whitespace().collect()
+     }
+ 
+-    /// The color of the cell the first character of `needle` lands in.
+-    fn color_of(app: &App, needle: &str) -> Color {
++    /// The color and the modifiers of the cell the first character of
++    /// `needle` lands in. On a colorless terminal the color says nothing
++    /// and the modifiers carry the whole distinction, so both are read.
++    fn drawn(app: &App, needle: &str) -> (Color, Modifier) {
+         let area = Rect::new(0, 0, 120, 40);
+         let mut buf = Buffer::empty(area);
+         app.render(area, &mut buf);
+@@ -1862,12 +1691,18 @@ mod tests {
+             }
+             if let Some(index) = line.find(needle) {
+                 let column = line[..index].chars().count() as u16;
+-                return buf[(area.left() + column, y)].fg;
++                let cell = &buf[(area.left() + column, y)];
++                return (cell.fg, cell.modifier);
+             }
+         }
+         panic!("{needle} was not drawn");
+     }
+ 
++    /// The color of the cell the first character of `needle` lands in.
++    fn color_of(app: &App, needle: &str) -> Color {
++        drawn(app, needle).0
++    }
++
+     /// A door with nothing measured, so every metric column is unknown.
+     fn unmeasured_door() -> DoorScore {
+         DoorScore {
+@@ -2052,6 +1887,23 @@ mod tests {
+             "an unverifiable family took the failure mark: {unverifiable}"
+         );
+ 
++        // With no color the glyphs separate the two, and so does the
++        // weight: `Colorless::DimAndBold` is what keeps the loudest step
++        // from flattening into the plain one here.
++        let mut colorless = app(records.clone());
++        colorless.open(View::Families);
++        let (_, failed_weight) = drawn(&colorless, "✗ failed");
++        let (_, unverifiable_weight) = drawn(&colorless, "? unverifiable");
++        assert_ne!(
++            failed_weight, unverifiable_weight,
++            "a colorless terminal drew the two verdicts alike"
++        );
++        assert!(failed_weight.contains(Modifier::BOLD), "{failed_weight:?}");
++        assert!(
++            unverifiable_weight.contains(Modifier::DIM),
++            "{unverifiable_weight:?}"
++        );
++
+         let mut app = colored(records);
+         app.open(View::Families);
+         let failed = color_of(&app, "✗ failed");
+@@ -2314,7 +2166,7 @@ mod tests {
+                 ..DoorScore::default()
+             })
+             .collect();
+-        let mut app = App::new(records, Ladder::new(Colors::None));
++        let mut app = App::new(records, ladder(Colors::None));
+         app.handle_key(KeyLike::End);
+         let text = app.to_text(120, 12);
+         assert!(

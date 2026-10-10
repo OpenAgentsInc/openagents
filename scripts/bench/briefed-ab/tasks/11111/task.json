@@ -1,0 +1,42 @@
+{
+  "test_targets": [
+    "--lib",
+    "--test",
+    "inference_byok",
+    "--test",
+    "upstreams"
+  ],
+  "issue": 11111,
+  "title": "Inference gateway: bring your own Anthropic, OpenAI, and Google keys (direct adapters for pay: mine)",
+  "body": "Follow-up from #11067. Bring your own key on the API is built for OpenRouter and Vercel AI Gateway keys (sealed per workspace, pay: mine routes only to them). Anthropic (Messages API), OpenAI (Responses, native), and Google (Gemini API / Vertex with the user's credential) need adapters in crates/inference/src/upstream before their keys can be accepted; until then the provider-keys routes refuse them.\n\nSpec: docs/inference/gateway.md section 4 (User keys row) and section 13, P1 bring your own key as built.",
+  "fix": "656058b7a55366eb0ea48aed10f82379e8507cec",
+  "parent": "0a20163105d7cb820288508a0b3731a1a72d3cd3",
+  "package": "gateway",
+  "source_files": [
+    "crates/gateway/src/inference_byok.rs",
+    "crates/gateway/src/inference_openapi.rs",
+    "crates/inference/README.md",
+    "crates/inference/src/upstream/anthropic.rs",
+    "crates/inference/src/upstream/emit.rs",
+    "crates/inference/src/upstream/gemini.rs",
+    "crates/inference/src/upstream/mod.rs",
+    "crates/inference/src/upstream/openai.rs",
+    "crates/inference/src/upstream/responses.rs",
+    "docs/inference/gateway.md"
+  ],
+  "test_files": [
+    "crates/gateway/src/inference_byok.rs",
+    "crates/gateway/tests/inference_byok.rs",
+    "crates/inference/tests/upstreams.rs"
+  ],
+  "test_names": [
+    "anthropic_broken_streams_fail_before_and_after_output",
+    "anthropic_empty_tool_arguments_and_missing_usage_are_honest",
+    "anthropic_preserves_tool_history_and_refuses_unsigned_thinking",
+    "anthropic_streams_signed_thinking_tools_and_cumulative_usage",
+    "direct_gemini_uses_the_callers_header_and_native_codec",
+    "direct_openai_streams_responses_without_gateway_fields",
+    "direct_provider_keys_are_sealed_and_bound_to_the_tenant"
+  ],
+  "fix_lines": 951
+}

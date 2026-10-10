@@ -1,0 +1,25 @@
+diff --git a/crates/coder/src/task/local.rs b/crates/coder/src/task/local.rs
+index 280d562828a8b252b33992a7cc7b1d0d84ac1398..763d894b11b8eafbcc07433db0104b763f6e13e9 100644
+--- a/crates/coder/src/task/local.rs
++++ b/crates/coder/src/task/local.rs
+@@ -1142,7 +1142,7 @@ impl Local {
+             action: Action::Submit { intent },
+         };
+         let submitted = self.apply(&command).and_then(|()| {
+-            let store = Store::open(&self.store).map_err(|e| e.to_string())?;
++            let store = Store::open_for_owner(&self.store).map_err(|e| e.to_string())?;
+             store.show(&task).map_err(|e| e.to_string())
+         });
+         let submitted = match submitted {
+@@ -1389,7 +1389,10 @@ impl Local {
+ 
+     fn apply(&self, command: &Command) -> Result<(), String> {
+         let bytes = serde_json::to_vec(command).map_err(|e| e.to_string())?;
+-        let mut store = Store::open(&self.store).map_err(|e| e.to_string())?;
++        // Waits out a busy store instead of refusing: with the host, issue
++        // flows, and followers sharing one store, \`Store::open\`'s five
++        // seconds refused task creation outright (#10213).
++        let mut store = Store::open_for_owner(&self.store).map_err(|e| e.to_string())?;
+         store.apply(&bytes).map(|_| ()).map_err(|e| e.to_string())
+     }
+ 

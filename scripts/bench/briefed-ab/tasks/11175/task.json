@@ -1,0 +1,35 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 11175,
+  "title": "coder and web chat: web fetch and web search tools",
+  "body": "coder-new, microcoder, the CLI and the web chat have no fetch or search tool. Only `curl` via `Run` works.\n\nDo:\n- `web_fetch(url, prompt)` returns readable text/markdown with a size cap, refuses private IPs, and caches for 15 min.\n- `web_search(query)` goes through one provider behind the gateway.\n- Both run as coder tools and as web-chat tools. The chat cites fetched URLs.\n\nAcceptance:\n- [ ] Fetching a docs page and answering a question about it works in coder and on staging chat.\n- [ ] Private IPs are refused (test).\n\nPhase: This weekend. Parity doc: https://github.com/OpenAgentsInc/openagents/blob/main/docs/kitchen-sink/orchestrator-parity.md (row J). Part of the orchestrator-parity umbrella.\n",
+  "fix": "8ceb58980af6c707ad1d91d6a2fc52db6cc2146d",
+  "parent": "9856bc6aeb77b2c347eadf0e43f878b13c9f60f0",
+  "package": "coder-new",
+  "source_files": [
+    "crates/coder-new/Cargo.toml",
+    "crates/coder-new/src/fleet_app.rs",
+    "crates/coder-new/src/live.rs",
+    "crates/coder-new/src/plugin_tools.rs",
+    "crates/coder-new/src/programmatic.rs",
+    "crates/coder-new/src/provider.rs",
+    "docs/kitchen-sink/orchestrator-parity.md"
+  ],
+  "test_files": [
+    "crates/coder-new/src/brainstorm/native/tests.rs",
+    "crates/coder-new/src/lib.rs",
+    "crates/coder-new/src/plugin_tools.rs",
+    "crates/coder-new/src/provider.rs",
+    "crates/coder-new/src/web_tools.rs"
+  ],
+  "test_names": [
+    "a_page_becomes_readable_text_with_links_and_is_cached",
+    "private_addresses_credentials_and_odd_schemes_are_refused",
+    "redirects_are_checked_again_and_long_text_pages",
+    "search_returns_cited_results_from_exa_or_openrouter",
+    "web_tools_come_with_the_shell_and_refuse_private_addresses"
+  ],
+  "fix_lines": 1040
+}

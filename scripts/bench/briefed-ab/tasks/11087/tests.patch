@@ -1,0 +1,213 @@
+diff --git a/crates/inference/tests/run.rs b/crates/inference/tests/run.rs
+index b19d33243c245061731f5aefed1566137bbae690..876e69ce43339b8bed23e8f7436019f526651388 100644
+--- a/crates/inference/tests/run.rs
++++ b/crates/inference/tests/run.rs
+@@ -31,6 +31,8 @@ enum Script {
+     Status(u16),
+     /// Opens a stream and never sends a token.
+     Hang,
++    /// Opens a stream, waits this many ms, then answers "hello".
++    Slow(u64),
+     /// Sends its first token, then breaks.
+     BreakAfterFirst,
+ }
+@@ -155,6 +157,25 @@ impl Upstream for Stub {
+                     })));
+                     Box::pin(futures_util::stream::iter(events.into_iter().map(Ok)))
+                 }
++                Script::Slow(wait) => {
++                    let mut events = opening();
++                    events.push(event(json!({
++                        "type": "response.completed", "sequence_number": 3,
++                        "response": response("completed", json!([message("hello")]),
++                            json!({"input_tokens": 10, "output_tokens": 5,
++                                   "input_tokens_details": {"cached_tokens": 0},
++                                   "output_tokens_details": {"reasoning_tokens": 0},
++                                   "total_tokens": 15})),
++                    })));
++                    Box::pin(futures_util::stream::iter(events).enumerate().then(
++                        move |(index, event)| async move {
++                            if index == 0 {
++                                tokio::time::sleep(Duration::from_millis(wait)).await;
++                            }
++                            Ok(event)
++                        },
++                    ))
++                }
+                 Script::Hang => Box::pin(
+                     futures_util::stream::iter(vec![Ok(opening().remove(0))])
+                         .chain(futures_util::stream::pending()),
+@@ -188,6 +209,7 @@ fn classes(upstreams: &[&str]) -> ClassTable {
+             })
+             .collect(),
+         first_token_ms: 200,
++        last_ms: 1_500,
+         floor: None,
+     };
+     let mut table = ClassTable::default();
+@@ -438,3 +460,77 @@ async fn the_committed_attempt_records_ok_with_its_cost() {
+         .expect("rate");
+     assert_eq!(rate.attempts, 1);
+ }
++
++#[tokio::test]
++async fn a_slow_first_upstream_falls_back_to_a_fast_second() {
++    let slow = Stub::new("slow", Script::Slow(900));
++    let fast = Stub::new("fast", Script::Answer);
++    let (gateway, _meter) = gateway(&[slow.clone(), fast.clone()]);
++    let started = std::time::Instant::now();
++    let routed = gateway
++        .run(&request("openagents/chat"), &caller())
++        .await
++        .expect("routed");
++    // The first missed its 200 ms deadline; the second was last and fast.
++    assert!(started.elapsed() < Duration::from_millis(800));
++    assert_eq!(routed.upstream, "fast");
++    assert_eq!(
++        routed.attempts[0].reason.as_deref(),
++        Some("first_token_deadline")
++    );
++    assert_eq!(slow.calls(), 1);
++    let response = collect(routed.events).await.expect("response");
++    assert_eq!(response.output_text(), "hello");
++}
++
++#[tokio::test]
++async fn when_every_attempt_is_slow_the_last_runs_to_its_ceiling_and_answers() {
++    let a = Stub::new("a", Script::Slow(1_000));
++    let b = Stub::new("b", Script::Slow(600));
++    let (gateway, _meter) = gateway(&[a.clone(), b.clone()]);
++    let prepared = gateway
++        .prepare(&request("openagents/chat"), &caller())
++        .await
++        .expect("prepared");
++    let told = Arc::new(AtomicUsize::new(0));
++    let seen = told.clone();
++    let routed = gateway
++        .send_observed(&request("openagents/chat"), &caller(), prepared, &move |_| {
++            seen.fetch_add(1, Ordering::SeqCst);
++        })
++        .await
++        .expect("the last attempt waits past its 200 ms deadline");
++    assert_eq!(routed.upstream, "b");
++    assert_eq!(routed.attempts.len(), 2);
++    assert_eq!(a.calls(), 1);
++    // The person is told it is still working, once.
++    assert_eq!(told.load(Ordering::SeqCst), 1);
++    let response = collect(routed.events).await.expect("response");
++    assert_eq!(response.status, ResponseStatus::Completed);
++}
++
++#[tokio::test]
++async fn a_last_attempt_slower_than_its_ceiling_is_a_plain_failure() {
++    let a = Stub::new("a", Script::Hang);
++    let b = Stub::new("b", Script::Hang);
++    let (gateway, meter) = gateway(&[a, b]);
++    let started = std::time::Instant::now();
++    let error = gateway
++        .run(&request("openagents/chat"), &caller())
++        .await
++        .expect_err("failed");
++    assert!(started.elapsed() >= Duration::from_millis(1_500));
++    assert_eq!(error.kind.status(), 502);
++    assert_eq!(kept(&meter), 2);
++}
++
++#[tokio::test]
++async fn the_default_chat_class_has_a_fifteen_second_budget_and_an_eight_second_fallback() {
++    let table = ClassTable::default();
++    let chat = &table.classes[&TaskClass::Chat];
++    assert_eq!(chat.first_token_ms, 8_000);
++    assert!(chat.last_ms >= 15_000);
++    for entry in table.classes.values() {
++        assert!(entry.last_ms >= entry.first_token_ms);
++    }
++}
+diff --git a/crates/openagents-chat/src/basic_coder.rs b/crates/openagents-chat/src/basic_coder.rs
+index e61d70a83342324339a3225911c55d5444b62b4e..51f94179a1b9d7201512b25b5421df6a10ff75b6 100644
+--- a/crates/openagents-chat/src/basic_coder.rs
++++ b/crates/openagents-chat/src/basic_coder.rs
+@@ -1091,6 +1113,83 @@ mod tests {
+         );
+     }
+ 
++    /// Every chat failure line is plain words: no code, no parentheses, no
++    /// machine talk (#11031), whatever code the worker sent.
++    #[test]
++    fn every_chat_failure_line_is_plain_copy() {
++        let codes = [
++            "internal",
++            "timed_out",
++            "first_token_deadline",
++            "timeout",
++            "upstream_failed",
++            "no_route",
++            "not_admitted",
++            "unsupported_feature",
++            "limit_exceeded",
++            "busy",
++            "rate_limited",
++            "quota_exhausted",
++            "something_new_and_unknown",
++            "",
++        ];
++        let mut lines: Vec<String> = codes
++            .iter()
++            .map(|code| {
++                Failure::Refused {
++                    code: (*code).into(),
++                    message: "no first token in 8000 ms".into(),
++                    retry_after_ms: None,
++                }
++                .describe()
++            })
++            .collect();
++        lines.push(Failure::Silent.describe());
++        lines.push(Failure::Transport("connection reset".into()).describe());
++        lines.extend([
++            UNREACHED.into(),
++            TOO_SLOW.into(),
++            UNANSWERED.into(),
++            STILL_WORKING.into(),
++        ]);
++        for line in &lines {
++            assert!(
++                oa_copy::violations(line, &[]).is_empty(),
++                "machine talk in {line:?}"
++            );
++            for shown in codes.iter().filter(|code| code.contains('_') || **code == "internal") {
++                assert!(!line.contains(shown), "{shown} shown in {line:?}");
++            }
++            assert!(!line.contains('(') && !line.contains('_'), "{line:?}");
++        }
++        let said = |code: &str| {
++            Failure::Refused {
++                code: code.into(),
++                message: String::new(),
++                retry_after_ms: None,
++            }
++            .describe()
++        };
++        assert_eq!(said("internal"), UNANSWERED);
++        assert_eq!(said("timed_out"), "That took too long. Try again.");
++    }
++
++    /// The worker's slow-but-coming status marks the reply, and is no failure.
++    #[test]
++    fn a_still_working_status_marks_the_reply_slow() {
++        let (me, me_hex, worker, worker_public) = keys();
++        let request = "ab".repeat(32);
++        let reading = Reading::new(&me, &me_hex, &worker_public, &request);
++        let mut reply = Reply::default();
++        let status = json!({"v": 2, "type": "status", "status": "still_working"});
++        reading.take(
++            &answer(&worker, &me_hex, &request, CJ_CONVERSATION_FEEDBACK, status),
++            &mut reply,
++        );
++        assert!(reply.slow);
++        assert!(reply.failure.is_none() && !reply.ended());
++    }
++
+     /// The person's keys travel sealed: the body names `payer.keys` and
+     /// holds only ciphertext, which opens to the keys under the same
+     /// conversation key.

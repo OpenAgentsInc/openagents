@@ -1,0 +1,36 @@
+{
+  "test_targets": [
+    "--bins",
+    "--lib"
+  ],
+  "issue": 9905,
+  "title": "Read TestFlight feedback from App Store Connect into the playtest triage inbox",
+  "body": "Follow-up to epic #9888 (#9884; docs/game/playtesting.md open question 3). TestFlight's own feedback (screenshot feedback and crash feedback from **Send Beta Feedback**) reaches App Store Connect with the build, device, and OS, and nothing in this repository reads it.\n\nScope: `openagents playtest inbox` (or a sibling `openagents playtest testflight`) reads the App Store Connect API's beta feedback submissions for the OpenAgents app (app ID 6748620735) with an ASC API key (issuer, key ID, `.p8`, read from an env file, never printed), and drafts them like private reports: a code, a draft issue, and a `received` triage-log entry, deduplicated by the submission ID. TestFlight testers have no Nostr key, so a TestFlight entry can't back a playtest award by itself; the log says so.\n\nAcceptance: JWT signing (ES256) and response parsing are unit tested against fixtures; a live read against App Store Connect works with the owner's key; drafts land in the same drafts directory and log; docs/game/playtest-triage.md updated.",
+  "fix": "cf9d36741b77ed00cd747904920e74db5166ad2f",
+  "parent": "738d1b5248c700c5d520d00a92e5c7276aaec130",
+  "package": "openagents-cli",
+  "source_files": [
+    "crates/openagents-cli/Cargo.toml",
+    "crates/openagents-cli/src/playtest.rs",
+    "crates/playtest/src/lib.rs",
+    "crates/playtest/src/triage.rs",
+    "docs/cli/README.md",
+    "docs/game/playtest-triage.md",
+    "docs/game/playtesting.md"
+  ],
+  "test_files": [
+    "crates/openagents-cli/src/playtest/testflight.rs",
+    "crates/openagents-cli/src/playtest/testflight/tests.rs",
+    "crates/playtest/src/testflight.rs",
+    "crates/playtest/src/testflight/tests.rs"
+  ],
+  "test_names": [
+    "a_draft_never_quotes_the_comment_and_names_the_build",
+    "a_page_reads_the_feedback_and_keeps_no_tester_identity",
+    "credentials_come_from_an_env_file",
+    "new_submissions_are_drafted_once_with_their_attachments",
+    "testflight_entries_are_triaged_once_and_back_no_award",
+    "the_token_is_an_es256_jwt_for_app_store_connect"
+  ],
+  "fix_lines": 1014
+}

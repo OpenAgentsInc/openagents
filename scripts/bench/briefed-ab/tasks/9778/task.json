@@ -1,0 +1,30 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 9778,
+  "title": "Physics GP-1: zero-g momentum ledger",
+  "body": "Port the zero-gravity momentum ledger from Genesis `examples/ipc/ipc_momentum.py` as a reusable measurement. Roadmap: `docs/physics/2026-09-27-genesis-port-roadmap.md`.\n\n**Scope**\n- `physics::ledger`: total linear momentum and angular momentum about a point (orbital + spin) for a world, plus an accumulator for named external impulses (thrusters, exhaust).\n- Lagrange: `Station::ledger()`, a switch to turn the L1 tide off for ledger scenarios, and scenarios for coast, thruster burns (with the exhaust term), grab, carry, and release.\n\n**Accept**\n- Relative error under 1e-9 while coasting and a stated bound through every other scenario.\n- The carry/release baseline is recorded: the teleport carry and the preset spin on release violate angular momentum, and a test pins that until the soft grab (GP-4) fixes it.\n",
+  "fix": "56a2664a9487afec546d3b103aa990f1cccbdfcd",
+  "parent": "ade3d61631c093fbd9652bd56430496adc23d772",
+  "package": "physics",
+  "source_files": [
+    "crates/physics/src/body.rs",
+    "crates/physics/src/lib.rs",
+    "crates/verse-lagrange/src/station.rs",
+    "docs/verse/lagrange-1.md"
+  ],
+  "test_files": [
+    "crates/physics/src/ledger.rs",
+    "crates/verse-lagrange/src/tests.rs"
+  ],
+  "test_names": [
+    "a_coasting_system_keeps_its_momentum",
+    "burns_balance_against_their_exhaust",
+    "coasting_conserves_momentum",
+    "recorded_impulses_balance_and_unrecorded_ones_show",
+    "structure_and_the_safety_tether_are_named_external_terms",
+    "the_rigid_carry_baseline_breaks_angular_momentum"
+  ],
+  "fix_lines": 539
+}

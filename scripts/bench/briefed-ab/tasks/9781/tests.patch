@@ -1,0 +1,325 @@
+diff --git a/crates/physics/src/body.rs b/crates/physics/src/body.rs
+index 0c0091c1e17f7d23f11ad84fb4fded025049b220..3f290393a787d282e92921bf4df18c3c9ccfda31 100644
+--- a/crates/physics/src/body.rs
++++ b/crates/physics/src/body.rs
+@@ -251,4 +315,19 @@ mod tests {
+         assert!(flipped, "the Dzhanibekov flip appears");
+         assert!(major_drift < 1e-3);
+     }
++
++    #[test]
++    fn a_composite_of_two_bodies_uses_the_parallel_axis_theorem() {
++        let a = Body::new(2.0, DVec3::splat(1.0), DVec3::new(-1.0, 0.0, 0.0));
++        let mut b = Body::new(2.0, DVec3::splat(1.0), DVec3::new(1.0, 0.0, 0.0));
++        b.vel = DVec3::new(0.0, 0.0, 2.0);
++        let c = Composite::of([&a, &b]);
++        assert_eq!(c.mass, 4.0);
++        assert_eq!(c.com, DVec3::ZERO);
++        assert_eq!(c.vel, DVec3::new(0.0, 0.0, 1.0));
++        // About y: 1 + 1 + 2 * 2 * 1^2 = 6.
++        assert!((c.inertia.y_axis.y - 6.0).abs() < 1e-12);
++        // Each body carries 2 kg * 1 m/s at 1 m: 4 kg m^2/s about -y.
++        assert!((c.omega() - DVec3::new(0.0, -4.0 / 6.0, 0.0)).length() < 1e-12);
++    }
+ }
+diff --git a/crates/physics/src/tests.rs b/crates/physics/src/tests.rs
+index 869785a05d082e57bb933bf39933ccf8030b1966..7ae09cfabeb3e35294dabf9b810cb85fa1ed8438 100644
+--- a/crates/physics/src/tests.rs
++++ b/crates/physics/src/tests.rs
+@@ -374,3 +374,112 @@ fn a_small_stack_settles_and_stays() {
+         assert!(world[*b].pos.y > 0.1, "no sinking");
+     }
+ }
++
++/// The mouse-interaction grab as a soft weld: a pack grips a heavy part
++/// off-center while they move apart and spin relative to each other. The
++/// relative motion dies out without overshoot and momentum is exact.
++#[test]
++fn a_soft_grip_settles_critically_and_conserves_momentum() {
++    let mut world = World::new(1.0 / 120.0);
++    let mut pack = Body::new(250.0, DVec3::splat(40.0), DVec3::ZERO);
++    pack.vel = DVec3::new(0.3, 0.0, 0.0);
++    let pack = world.add(pack);
++    let mut part = Body::new(
++        450.0,
++        Body::box_inertia(450.0, DVec3::new(2.2, 2.2, 3.0)),
++        DVec3::new(0.0, 0.5, 2.5),
++    );
++    part.vel = DVec3::new(-0.2, 0.05, 0.1);
++    part.omega = DVec3::new(0.0, 0.3, 0.1);
++    let part = world.add(part);
++    let grip = world.add_joint(
++        crate::Joint::weld_here(&world, pack, part, DVec3::new(0.0, 0.2, 1.0))
++            .soft(6.0, 1.0)
++            .limited(2_000.0, 2_000.0),
++    );
++    let origin = DVec3::new(5.0, -3.0, 1.0);
++    let ledger = Ledger::new(origin, world.momentum(origin));
++    let relative = |world: &World| {
++        let joint = world.joint(grip).unwrap();
++        let (a, b) = joint.anchors(world);
++        let (pa, pb) = (&world[pack], &world[part]);
++        let va = pa.vel + pa.omega_world().cross(a - pa.pos);
++        let vb = pb.vel + pb.omega_world().cross(b - pb.pos);
++        (
++            (vb - va).length(),
++            (pb.omega_world() - pa.omega_world()).length(),
++        )
++    };
++    let (v0, w0) = relative(&world);
++    let mut last = (v0, w0);
++    let mut rebounds = 0;
++    for step in 0..360 {
++        world.step(&NoField);
++        let error = ledger.error(world.momentum(origin));
++        assert!(error.linear < 1e-12 && error.angular < 1e-12, "{error:?}");
++        let now = relative(&world);
++        // A critically damped response decays without ringing: after the
++        // first quarter second it never grows back by more than a sliver.
++        if step > 30 && now.0 > last.0 * 1.05 + 1e-4 {
++            rebounds += 1;
++        }
++        last = now;
++    }
++    assert_eq!(rebounds, 0, "the grip rang");
++    assert!(
++        last.0 < v0 * 1e-3 && last.1 < w0 * 1e-3,
++        "settled: {last:?}"
++    );
++    assert!(!world.joint(grip).unwrap().saturated);
++}
++
++/// Past its force limit a grip reports saturation and never transmits more.
++#[test]
++fn a_grip_saturates_at_its_limit() {
++    let mut world = World::new(1.0 / 120.0);
++    let hand = world.add(Body::new(250.0, DVec3::splat(40.0), DVec3::ZERO));
++    let mut part = Body::new(180.0, DVec3::splat(60.0), DVec3::new(0.0, 0.0, 1.5));
++    part.vel = DVec3::new(0.0, 0.0, 3.0);
++    let part = world.add(part);
++    let grip = world.add_joint(
++        crate::Joint::weld_here(&world, hand, part, DVec3::new(0.0, 0.0, 1.0))
++            .soft(6.0, 1.0)
++            .limited(400.0, 200.0),
++    );
++    world.step(&NoField);
++    let joint = world.joint(grip).unwrap();
++    assert!(joint.saturated);
++    assert!(joint.impulse.length() <= 400.0 * world.dt * (1.0 + 1e-9));
++    world.remove_joint(grip);
++    assert!(world.joint(grip).is_none());
++}
++
++/// `examples/rigid/closed_loop.py`'s connect: a hard point joint holds a
++/// pendulum's arm length under gravity.
++#[test]
++fn a_hard_point_joint_holds_a_pendulum() {
++    let mut world = World::new(0.005);
++    let pivot = world.add(Body::new(1.0, DVec3::ONE, DVec3::ZERO).with_kind(BodyKind::Static));
++    let bob = world.add(Body::new(
++        2.0,
++        DVec3::splat(0.02),
++        DVec3::new(1.0, 0.0, 0.0),
++    ));
++    world.add_joint(crate::Joint::new(
++        pivot,
++        DVec3::ZERO,
++        bob,
++        DVec3::new(-1.0, 0.0, 0.0),
++        crate::JointKind::Point,
++    ));
++    let g = Uniform(DVec3::new(0.0, -G, 0.0));
++    let mut worst: f64 = 0.0;
++    for _ in 0..800 {
++        world.step(&g);
++        let joint = world.joints().next().unwrap().1;
++        let (a, b) = joint.anchors(&world);
++        worst = worst.max(a.distance(b));
++    }
++    assert!(worst < 5e-3, "anchor gap {worst} m");
++    assert!(world[bob].pos.y < -0.5, "it swung down");
++}
+diff --git a/crates/verse-lagrange/src/tests.rs b/crates/verse-lagrange/src/tests.rs
+index 3b11890ac591dec87b34e0887dbbced6d631ad61..4d0f952e7fa79654d7b484f819afcfd2dc9abe44 100644
+--- a/crates/verse-lagrange/src/tests.rs
++++ b/crates/verse-lagrange/src/tests.rs
+@@ -137,7 +137,7 @@ fn the_pack_obeys_the_rocket_equation_and_holds_position() {
+ }
+ 
+ #[test]
+-fn carrying_mass_changes_acceleration_and_momentum_is_conserved() {
++fn carrying_mass_changes_acceleration_and_the_part_moves_with_the_grip() {
+     let mut station = Station::new();
+     station.astronaut_mut().pos = station::DEPOT + DVec3::new(2.5, 0.0, -5.0) - DVec3::Y * 0.2;
+     station.face(-std::f64::consts::FRAC_PI_2);
+@@ -146,23 +146,84 @@ fn carrying_mass_changes_acceleration_and_momentum_is_conserved() {
+     assert_eq!(kind, PartKind::MainEngine);
+     let loaded = station::THRUST / station.mass();
+     assert!(loaded < empty * 0.4, "the 450 kg engine slows the pack");
+-    // Release in free space: the part keeps the combined velocity and tumbles.
+-    station.astronaut_mut().vel = DVec3::new(0.3, 0.0, 0.0);
++    // Fly out of the rack with the engine: the grip drags it along.
++    let away = Command {
++        direction: DVec3::X,
++        yaw: station.yaw,
++        climb: false,
++    };
++    for _ in 0..(6 * 60) {
++        station.step(1.0 / 60.0, &away);
++    }
++    let engine = *station.body(&station.parts[0]);
++    let astronaut = *station.astronaut();
++    // Thrust through the pair's center of mass is capped by the steering
++    // torque budget, so a heavy load accelerates gently.
++    assert!(astronaut.vel.x > 0.05, "{}", astronaut.vel);
++    // The pair turns a little under the off-center load, so compare the
++    // direction of travel rather than whole velocities.
++    assert!(
++        (engine.vel.x - astronaut.vel.x).abs() < 0.01,
++        "held: {} vs {}",
++        engine.vel,
++        astronaut.vel
++    );
++    // Release in free space: the part keeps its own motion.
+     station.release().unwrap();
+-    let part = *station.body(station.parts.iter().find(|p| p.kind == kind).unwrap());
+-    assert_eq!(
+-        station.parts.iter().find(|p| p.kind == kind).unwrap().state,
+-        PartState::Drifting
++    assert_eq!(station.parts[0].state, PartState::Drifting);
++    assert_eq!(station.body(&station.parts[0]).vel, engine.vel);
++}
++
++#[test]
++fn capturing_a_drifting_part_conserves_momentum() {
++    let mut station = open_space();
++    station.propellant = 0.0;
++    station.astronaut_mut().vel = DVec3::new(-0.05, 0.0, 0.0);
++    let reach = station.hands() + DVec3::new(0.0, 0.0, 1.0);
++    release_part(
++        &mut station,
++        2,
++        reach,
++        DVec3::new(0.1, 0.02, 0.0),
++        DVec3::new(0.0, 0.05, 0.02),
++    );
++    station.reset_ledger();
++    station.grab().unwrap();
++    let mut worst = worst_error(&mut station, 4.0, &Command::default());
++    let truss = *station.body(&station.parts[2]);
++    let astronaut = *station.astronaut();
++    let error = station.ledger.error(station.momentum());
++    worst.linear = worst.linear.max(error.linear);
++    worst.angular = worst.angular.max(error.angular);
++    assert!(worst.linear < 1e-10 && worst.angular < 1e-10, "{worst:?}");
++    // The pair now moves as one: the truss's velocity at the grip matches the hands.
++    let grip = station.world.joint(station.grip.unwrap()).unwrap();
++    let (hand, held) = grip.anchors(&station.world);
++    let hand_vel = astronaut.vel + astronaut.omega_world().cross(hand - astronaut.pos);
++    let held_vel = truss.vel + truss.omega_world().cross(held - truss.pos);
++    assert!(
++        (hand_vel - held_vel).length() < 1e-3,
++        "{hand_vel} vs {held_vel}"
++    );
++}
++
++#[test]
++fn a_grip_pulled_past_its_limit_slips() {
++    let mut station = busy_station();
++    station.grab().unwrap();
++    // Something yanks the engine away at 3 m/s.
++    let id = station.parts[0].body;
++    station.world[id].vel = DVec3::new(0.0, 0.0, 3.0);
++    station.step(1.0 / 60.0, &Command::default());
++    assert_eq!(station.parts[0].state, PartState::Drifting);
++    assert!(station.grip.is_none());
++    assert!(
++        station
++            .message
++            .as_deref()
++            .unwrap_or_default()
++            .contains("slipped")
+     );
+-    assert_eq!(part.vel, DVec3::new(0.3, 0.0, 0.0));
+-    // Capture: momentum before equals momentum after.
+-    let mut station2 = station.clone();
+-    station2.astronaut_mut().vel = DVec3::new(-0.2, 0.0, 0.0);
+-    station2.astronaut_mut().pos = part.pos - station2.hands() + station2.astronaut().pos;
+-    let before = station2.astronaut().vel * station2.astronaut().mass + part.vel * part.mass;
+-    station2.grab().unwrap();
+-    let after = station2.astronaut().vel * station2.astronaut().mass;
+-    assert!((before - after).length() < 1e-9);
+ }
+ 
+ #[test]
+@@ -173,7 +234,7 @@ fn latching_requires_position_and_low_closing_speed() {
+     let kind = station.grab().unwrap();
+     // Place the held part right at its slot, moving too fast.
+     let offset = kind.slot() - station.body(&station.parts[0]).pos;
+-    station.astronaut_mut().pos += offset;
++    station.translate(offset);
+     station.step(
+         1.0 / 60.0,
+         &Command {
+@@ -182,10 +243,10 @@ fn latching_requires_position_and_low_closing_speed() {
+             climb: false,
+         },
+     );
+-    station.astronaut_mut().vel = DVec3::new(1.0, 0.0, 0.0);
++    station.set_velocity(DVec3::new(1.0, 0.0, 0.0));
+     assert!(!station.snapshot().latch_ready);
+     let mut slow = station.clone();
+-    slow.astronaut_mut().vel = DVec3::new(0.1, 0.0, 0.0);
++    slow.set_velocity(DVec3::new(0.1, 0.0, 0.0));
+     assert!(slow.snapshot().latch_ready);
+     slow.release().unwrap();
+     assert_eq!(slow.parts[0].state, PartState::Installed);
+@@ -424,21 +485,17 @@ fn structure_and_the_safety_tether_are_named_external_terms() {
+     assert!(worst.linear < 1e-9 && worst.angular < 1e-9, "{worst:?}");
+ }
+ 
+-/// Baseline for GP-4 (#9781): the carried part is teleported to the hands
+-/// and released with a preset spin, so a carry conserves linear momentum
+-/// but not angular momentum. The soft grab replaces this and flips the
+-/// angular assertion.
++/// With the soft grip, carrying and releasing conserve linear and angular
++/// momentum (the rigid carry that GP-1 pinned as a baseline did not).
+ #[test]
+-fn the_rigid_carry_baseline_breaks_angular_momentum() {
++fn carrying_conserves_momentum() {
+     let mut station = busy_station();
+     station.tide = false;
+     station.reset_ledger();
+     station.grab().unwrap();
+-    let grabbed = station.ledger.error(station.momentum());
+-    assert!(grabbed.linear < 1e-12, "capture is inelastic: {grabbed:?}");
+     let mut worst = worst_error(
+         &mut station,
+-        4.0,
++        6.0,
+         &Command {
+             direction: DVec3::new(0.2, 0.0, 1.0),
+             yaw: 0.9,
+@@ -449,8 +506,7 @@ fn the_rigid_carry_baseline_breaks_angular_momentum() {
+     let released = station.ledger.error(station.momentum());
+     worst.linear = worst.linear.max(released.linear);
+     worst.angular = worst.angular.max(released.angular);
+-    assert!(worst.linear < 1e-9, "{worst:?}");
+-    assert!(worst.angular > 1e-3, "baseline violation: {worst:?}");
++    assert!(worst.linear < 1e-9 && worst.angular < 1e-9, "{worst:?}");
+ }
+ 
+ #[test]
+diff --git a/crates/verse/src/zones/tests.rs b/crates/verse/src/zones/tests.rs
+index 9f208b7e49b7d2100404a064a9e4a955973294a5..c10907d129bd39ec55f17427038f12f15d0a2fd2 100644
+--- a/crates/verse/src/zones/tests.rs
++++ b/crates/verse/src/zones/tests.rs
+@@ -207,7 +207,7 @@ fn l1_flight_is_inertial_and_carries_parts_to_the_jig() {
+         let lagrange = runtime.zone_state.lagrange.as_mut().unwrap();
+         let station = &mut lagrange.station;
+         let part = station.body(&station.parts[0]).pos;
+-        station.astronaut_mut().pos += verse_lagrange::PartKind::MainEngine.slot() - part;
++        station.translate(verse_lagrange::PartKind::MainEngine.slot() - part);
+     }
+     runtime.tick(&InputState::default(), 1.0 / 60.0);
+     let ready = runtime.zone_snapshot(1.0);

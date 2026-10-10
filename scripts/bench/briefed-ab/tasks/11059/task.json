@@ -1,0 +1,34 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 11059,
+  "title": "Working computers: notice a silent turn, and stop retrying broken boots in a loop",
+  "body": "The working-computer lifecycle (`crates/coder-working-computer/src/decide.rs`) never stops a computer for being idle during a turn. Only the absolute bound stops a turn. If the engine inside crashes or hangs without reporting, the turn stays \"running\" and the computer stays up (and metered) until the absolute deadline. Nothing notices sooner. Repeated boot failures are also tried again with nothing slowing them down.\n\n## What background-agents does\n\n- The sandbox bridge sends a heartbeat every 30 s, and the control plane marks the sandbox stale after 90 s (three missed beats). See `packages/control-plane/src/sandbox/lifecycle/decisions.ts` and `packages/modal-infra/src/sandbox/bridge.py`.\n- A spawn circuit breaker opens after 3 failures within 5 minutes, so a broken image or provider outage does not create sandboxes in a loop.\n- Inactivity stops after 10 minutes. Connected viewers get one 5-minute extension and a warning.\n- The bridge WebSocket pings every 20 s with a 10 s timeout and reconnects with backoff of `2^n`, capped at 60 s.\n\n## Plan\n\n1. The turn owner records the time of the last engine event or heartbeat.\n2. `decide` adds a `Stale` stop reason when a turn has gone longer than a bound (90 s, configurable) without one. It recovers through the existing stop and reconciliation path, never by announcing success.\n3. Count boot failures per computer in a sliding window. After 3 in 5 minutes, refuse new creates with a plain message until the window passes.\n4. Add tests in `coder-working-computer`'s fake-provider tests for a silent engine, a recovered heartbeat and a breaker opening and closing.\n",
+  "fix": "87b8adc88b1b512b0c6c218d4f772a9f471336c8",
+  "parent": "8cb8f639d3bb48255777139f1f90a122a625abbd",
+  "package": "coder-environment-operator",
+  "source_files": [
+    "crates/coder-environment-operator/src/agent.rs",
+    "crates/coder-environment-setup/src/service.rs",
+    "crates/coder-working-computer/src/decide.rs",
+    "crates/coder-working-computer/src/driver.rs",
+    "crates/coder-working-computer/src/lib.rs",
+    "crates/coder-working-computer/src/transition.rs",
+    "docs/research/openinspect.md"
+  ],
+  "test_files": [
+    "crates/coder-environment-operator/src/tests.rs",
+    "crates/coder-environment-setup/src/tests.rs",
+    "crates/coder-working-computer/src/tests.rs"
+  ],
+  "test_names": [
+    "a_silent_setup_turn_stops_its_computer_and_waits",
+    "a_silent_turn_stops_and_a_beating_one_runs_on",
+    "a_turn_with_no_recorded_heartbeat_is_not_judged",
+    "failed_restores_count_toward_the_breaker",
+    "liveness_and_breaker_messages_are_plain",
+    "repeated_boot_failures_open_and_close_the_breaker"
+  ],
+  "fix_lines": 446
+}

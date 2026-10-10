@@ -1,0 +1,28 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 9346,
+  "title": "[Lev 1] Behavior measurement harness and the record",
+  "body": "Part of #9345.\n\nNothing in this workspace has measured Apple's model as a decision model. Measure it before designing against it.\n\n`SystemLanguageModel.default.availability` reports `available` on the development Mac (macOS 26.4, build 25E246, Swift 6.3.3, arm64), so every question below is answerable live.\n\n## What to measure\n\n- Is greedy decoding deterministic run to run, and across process restarts?\n- Does a fixed seed reproduce a sample exactly, within a session, across sessions, and across restarts?\n- How does sampling spread over a constrained option set relate to item difficulty, on items with known answers? This is the premise of the L2 estimator and the one result that can invalidate the whole design.\n- What is the context limit for a state plus one question, and what error comes back at the boundary?\n- Latency against state length and question count, and whether a per-question session pays the full state cost every time.\n- How often do guardrails fire on ordinary decision-shaped inputs, and does declaring the content-tagging use case change that?\n- Does the runtime report token counts worth putting in a `usage` object?\n\n## Acceptance\n\n- `docs/lev/measurements/<date>-behavior.md` commits the numbers, the exact commands, the OS build, and the base model signature.\n- The harness is rerunnable and in-repo.\n- `docs/lev/apple-fm-surface.md`'s \"what stays unmeasured\" section is emptied or explains what could not be measured and why.\n- If sampling spread carries no signal about difficulty, say so plainly in the record and stop the sequence for a design review.\n",
+  "fix": "35be68a033e282b4c560f7e368b2aad438c8e0f8",
+  "parent": "718ce4a3b75d4d7f7a8c603efaf29dc74050c459",
+  "package": "lev",
+  "source_files": [
+    "crates/lev/Cargo.toml",
+    "crates/lev/src/bin/lev_measure.rs",
+    "crates/lev/src/lib.rs",
+    "docs/lev/measurements/2026-09-19-behavior.md"
+  ],
+  "test_files": [
+    "crates/lev/src/estimator.rs"
+  ],
+  "test_names": [
+    "a_choice_answer_takes_the_leader",
+    "a_noul_answer_is_the_probability_of_yes",
+    "a_score_is_the_probability_weighted_mean",
+    "an_l2_estimate_carries_its_own_resolution",
+    "confidence_is_distance_above_uniform"
+  ],
+  "fix_lines": 827
+}

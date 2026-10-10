@@ -1,0 +1,233 @@
+diff --git a/crates/physics/src/tests.rs b/crates/physics/src/tests.rs
+index 7ae09cfabeb3e35294dabf9b810cb85fa1ed8438..95ce0fec6ede89eb4d5855c953a4fe821faef9bb 100644
+--- a/crates/physics/src/tests.rs
++++ b/crates/physics/src/tests.rs
+@@ -483,3 +483,89 @@ fn a_hard_point_joint_holds_a_pendulum() {
+     assert!(worst < 5e-3, "anchor gap {worst} m");
+     assert!(world[bob].pos.y < -0.5, "it swung down");
+ }
++
++/// A tether to a fixed anchor catches a body flying outward: it stops at the
++/// length, gains no energy, and the reported tension is the momentum change.
++#[test]
++fn a_tether_catches_without_adding_energy() {
++    let mut world = World::new(1.0 / 120.0);
++    let anchor = world.add(Body::new(1.0, DVec3::ONE, DVec3::ZERO).with_kind(BodyKind::Static));
++    let mut body = Body::new(250.0, DVec3::splat(40.0), DVec3::new(9.0, 0.0, 0.0));
++    body.vel = DVec3::new(3.0, 0.5, 0.0);
++    let body = world.add(body);
++    let tether = world.add_joint(crate::Joint::new(
++        anchor,
++        DVec3::ZERO,
++        body,
++        DVec3::ZERO,
++        crate::JointKind::Tether { length: 10.0 },
++    ));
++    let energy = |w: &World| 0.5 * w[body].mass * w[body].vel.length_squared();
++    let start = energy(&world);
++    let mut received = DVec3::ZERO;
++    let mut farthest: f64 = 0.0;
++    let momentum = world[body].momentum();
++    for _ in 0..240 {
++        world.step(&NoField);
++        received += world.joint(tether).unwrap().impulse;
++        farthest = farthest.max(world[body].pos.length());
++        assert!(energy(&world) <= start * (1.0 + 1e-9), "energy grew");
++    }
++    assert!(farthest < 10.01, "stretched to {farthest} m");
++    assert!(received.length() > 100.0, "the tether pulled");
++    assert!((world[body].momentum() - momentum - received).length() < 1e-9);
++}
++
++/// A hard weld to a fixed anchor holds a body in place when something
++/// strikes it.
++#[test]
++fn a_hard_weld_holds_under_impact() {
++    let mut world = World::new(1.0 / 120.0);
++    let anchor = world.add(Body::new(1.0, DVec3::ONE, DVec3::ZERO).with_kind(BodyKind::Static));
++    let held = world.add(Body::new(
++        450.0,
++        Body::box_inertia(450.0, DVec3::new(2.2, 2.2, 3.0)),
++        DVec3::new(0.0, 0.0, 5.0),
++    ));
++    world.add_collider(Collider::new(
++        held,
++        Shape::Cuboid {
++            half: DVec3::new(1.1, 1.1, 1.5),
++        },
++    ));
++    world.add_joint(crate::Joint::new(
++        anchor,
++        DVec3::new(0.0, 0.0, 5.0),
++        held,
++        DVec3::ZERO,
++        crate::JointKind::Weld {
++            relative: DQuat::IDENTITY,
++        },
++    ));
++    let mut hammer = Body::new(
++        180.0,
++        Body::box_inertia(180.0, DVec3::new(1.2, 1.2, 4.0)),
++        DVec3::new(4.0, 0.8, 5.0),
++    );
++    hammer.vel = DVec3::new(-2.0, 0.0, 0.0);
++    hammer.omega = DVec3::new(0.0, 0.5, 0.0);
++    let hammer = world.add(hammer);
++    world.add_collider(Collider::new(
++        hammer,
++        Shape::Cuboid {
++            half: DVec3::new(0.6, 0.6, 2.0),
++        },
++    ));
++    let mut worst: (f64, f64) = (0.0, 0.0);
++    for _ in 0..360 {
++        world.step(&NoField);
++        worst.0 = worst
++            .0
++            .max(world[held].pos.distance(DVec3::new(0.0, 0.0, 5.0)));
++        worst.1 = worst
++            .1
++            .max(world[held].orientation.angle_between(DQuat::IDENTITY));
++    }
++    assert!(world[hammer].vel.x > 0.0, "the hammer bounced off");
++    assert!(worst.0 < 0.01 && worst.1 < 0.5f64.to_radians(), "{worst:?}");
++}
+diff --git a/crates/verse-lagrange/src/tests.rs b/crates/verse-lagrange/src/tests.rs
+index 4d0f952e7fa79654d7b484f819afcfd2dc9abe44..9e10ba902cee78eec506dbff4aa26d924c02ffdb 100644
+--- a/crates/verse-lagrange/src/tests.rs
++++ b/crates/verse-lagrange/src/tests.rs
+@@ -473,7 +473,7 @@ fn structure_and_the_safety_tether_are_named_external_terms() {
+     assert!(station.ledger.external["structure"].linear.length() > 1.0);
+     assert!(worst.linear < 1e-9 && worst.angular < 1e-9, "{worst:?}");
+     let mut station = open_space();
+-    station.astronaut_mut().pos = DVec3::new(0.0, 0.0, station::EVA_RANGE - 1.0);
++    station.astronaut_mut().pos = station::AIRLOCK + DVec3::new(0.0, 0.0, station::EVA_RANGE - 1.0);
+     station.reset_ledger();
+     let outward = Command {
+         direction: DVec3::Z,
+@@ -658,3 +658,125 @@ fn free_parts_collide_with_each_other_and_conserve_momentum() {
+         "the truss struck the avionics bay"
+     );
+ }
++
++/// A held part at its slot, at rest, in `station`.
++fn at_slot() -> Station {
++    let mut station = busy_station();
++    let kind = station.grab().unwrap();
++    let offset = kind.slot() - station.body(&station.parts[0]).pos;
++    station.translate(offset);
++    station.set_velocity(DVec3::ZERO);
++    station
++}
++
++#[test]
++fn misaligned_or_spinning_docks_are_refused() {
++    let ready = at_slot();
++    assert!(ready.latch_ready());
++    // Half a turn about the keel still fits; a quarter turn does not.
++    for (turn, fits) in [
++        (std::f64::consts::PI, true),
++        (std::f64::consts::FRAC_PI_2, false),
++    ] {
++        let mut station = ready.clone();
++        let id = station.parts[0].body;
++        station.world[id].orientation = glam::DQuat::from_rotation_z(turn);
++        assert_eq!(station.latch_ready(), fits, "turned {turn} rad");
++    }
++    let mut tilted = ready.clone();
++    let id = tilted.parts[0].body;
++    tilted.world[id].orientation = glam::DQuat::from_rotation_x(20f64.to_radians());
++    tilted.release().unwrap();
++    assert_eq!(tilted.parts[0].state, PartState::Drifting);
++    assert!(
++        tilted
++            .message
++            .as_deref()
++            .unwrap_or_default()
++            .starts_with("Misaligned by 20")
++    );
++    let mut spinning = ready.clone();
++    let id = spinning.parts[0].body;
++    spinning.world[id].omega = DVec3::new(0.0, 0.0, 0.2);
++    spinning.release().unwrap();
++    assert_eq!(spinning.parts[0].state, PartState::Drifting);
++    assert!(
++        spinning
++            .message
++            .as_deref()
++            .unwrap_or_default()
++            .starts_with("Spinning")
++    );
++}
++
++#[test]
++fn a_latched_part_stays_welded_under_impact() {
++    let mut station = at_slot();
++    station.release().unwrap();
++    assert_eq!(station.parts[0].state, PartState::Installed);
++    let slot = PartKind::MainEngine.slot();
++    // Fly clear and let the weld settle the engine onto its seat.
++    station.translate(DVec3::new(0.0, 0.0, 30.0));
++    for _ in 0..60 {
++        station.step(1.0 / 60.0, &Command::default());
++    }
++    // Throw the aft keel truss into the engine at the pack's top speed.
++    release_part(
++        &mut station,
++        2,
++        slot + DVec3::new(4.0, 0.3, 0.0),
++        DVec3::new(-station::SPEED_LIMIT, 0.0, 0.0),
++        DVec3::new(0.0, 0.3, 0.0),
++    );
++    let mut worst: (f64, f64) = (0.0, 0.0);
++    for _ in 0..(4 * 60) {
++        station.step(1.0 / 60.0, &Command::default());
++        let engine = station.body(&station.parts[0]);
++        worst.0 = worst.0.max(engine.pos.distance(slot));
++        worst.1 = worst
++            .1
++            .max(engine.orientation.angle_between(glam::DQuat::IDENTITY));
++    }
++    assert!(
++        station.body(&station.parts[2]).vel.x > 0.0,
++        "the truss bounced off"
++    );
++    assert!(worst.0 < 0.01 && worst.1.to_degrees() < 0.5, "{worst:?}");
++}
++
++#[test]
++fn the_safety_tether_stops_the_astronaut_without_a_jump_or_energy() {
++    let mut station = open_space();
++    station.propellant = 0.0;
++    let out = DVec3::new(0.6, 0.0, 0.8);
++    station.astronaut_mut().pos = station::AIRLOCK + out * (station::EVA_RANGE - 2.0);
++    station.astronaut_mut().vel = out * 1.5;
++    station.reset_ledger();
++    let energy = |s: &Station| 0.5 * s.astronaut().mass * s.astronaut().vel.length_squared();
++    let start = energy(&station);
++    let momentum = station.momentum();
++    let mut last = station.astronaut().pos;
++    let mut farthest: f64 = 0.0;
++    for _ in 0..(6 * 60) {
++        station.step(1.0 / 60.0, &Command::default());
++        let pos = station.astronaut().pos;
++        // No teleport: each frame moves no farther than the speed allows.
++        assert!(
++            pos.distance(last) <= 1.5 / 60.0 + 1e-9,
++            "jumped {} m",
++            pos.distance(last)
++        );
++        last = pos;
++        farthest = farthest.max(pos.distance(station::AIRLOCK));
++        assert!(energy(&station) <= start * (1.0 + 1e-9), "energy grew");
++    }
++    // The tether arrests at most TETHER_TENSION, so a fast arrival
++    // stretches it a little rather than stopping in one step.
++    assert!(farthest < station::EVA_RANGE + 0.15, "{farthest} m");
++    let tension = station.ledger.external["tether"];
++    assert!(tension.linear.length() > 100.0);
++    // The recorded tension is the whole momentum change.
++    let change = station.momentum() - momentum;
++    assert!((change.linear - tension.linear).length() < 1e-9);
++    assert_eq!(station.message.as_deref(), Some("Safety tether taut"));
++}

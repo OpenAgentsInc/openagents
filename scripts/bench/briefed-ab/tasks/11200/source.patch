@@ -1,0 +1,182 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index d7f0f5092bd67a81a016080c809853061a03fdbd..ecea2b06b0ef39712422e1da3c66e88b853f3d30 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -2268,6 +2268,7 @@ dependencies = [
+  "glam",
+  "js-sys",
+  "oa-copy",
++ "verse-game",
+  "wasm-bindgen",
+  "web-sys",
+ ]
+@@ -16183,6 +16184,13 @@ dependencies = [
+  "tempfile",
+ ]
+ 
++[[package]]
++name = "verse-game"
++version = "0.1.0"
++dependencies = [
++ "sha2 0.10.9",
++]
++
+ [[package]]
+ name = "verse-gfx"
+ version = "0.1.0"
+diff --git a/crates/bunny-web/Cargo.toml b/crates/bunny-web/Cargo.toml
+index 8d73cc0023a889de8efc8c3976b77b01cf6dee6d..deb61219dc6e993f292d74cca278a4448850215d 100644
+--- a/crates/bunny-web/Cargo.toml
++++ b/crates/bunny-web/Cargo.toml
+@@ -15,6 +15,7 @@ autoplay = []
+ 
+ [dependencies]
+ bunny-rules = { path = "../bunny-rules" }
++verse-game = { path = "../verse-game" }
+ glam = "0.30.10"
+ 
+ # The page itself is browser-only; natively only the meshes, the scene and
+diff --git a/crates/bunny-web/src/app.rs b/crates/bunny-web/src/app.rs
+index 2f80768c021cfcc25337c6727ad88ca2c48e9ca7..c17c96b7ecb291ad492e766a46d87156293955f8 100644
+--- a/crates/bunny-web/src/app.rs
++++ b/crates/bunny-web/src/app.rs
+@@ -1308,15 +1308,9 @@ impl App {
+     }
+ }
+ 
++/// A key's game input, through the community-game input channel.
+ fn input_for(key: &str) -> Option<Input> {
+-    match key {
+-        "ArrowLeft" | "a" | "A" => Some(Input::Left),
+-        "ArrowRight" | "d" | "D" => Some(Input::Right),
+-        "ArrowUp" | "w" | "W" | " " => Some(Input::Jump),
+-        "ArrowDown" | "s" | "S" => Some(Input::Duck),
+-        "x" | "X" | "Backspace" => Some(Input::Back),
+-        _ => None,
+-    }
++    verse_game::GameInput::from_key(key).and_then(crate::zone::input)
+ }
+ 
+ fn listen<E: wasm_bindgen::convert::FromWasmAbi + 'static>(
+@@ -1531,17 +1525,8 @@ pub fn start() {
+                 return;
+             };
+             let (dx, dy) = (event.client_x() as f32 - x, event.client_y() as f32 - y);
+-            if event.time_stamp() - at > 600.0 || dx.abs().max(dy.abs()) < 24.0 {
+-                return;
+-            }
+-            let input = if dx.abs() > dy.abs() {
+-                Some(if dx < 0.0 { Input::Left } else { Input::Right })
+-            } else if dy > 0.0 {
+-                Some(Input::Back)
+-            } else {
+-                Some(Input::Jump)
+-            };
+-            if let Some(input) = input {
++            let swipe = verse_game::Swipe::default().read(dx, dy, event.time_stamp() - at);
++            if let Some(input) = swipe.and_then(crate::zone::input) {
+                 app.press(input);
+             }
+         });
+diff --git a/crates/bunny-web/src/copy.rs b/crates/bunny-web/src/copy.rs
+index 65a64dd9544040672c762c54151a7f501f29023c..d8bc055562f3920be24a472a2dff37ca42edaf12 100644
+--- a/crates/bunny-web/src/copy.rs
++++ b/crates/bunny-web/src/copy.rs
+@@ -5,7 +5,7 @@ pub const GOAL: &str = "Eat everything in the garden. Don't get caught.";
+ pub const KEYS: &str =
+     "\u{2190} \u{2192} dodge and turn \u{b7} \u{2191} jump \u{b7} \u{2193} duck \u{b7} X turn back";
+ pub const SWIPES: &str =
+-    "Swipe left or right to dodge and turn \u{b7} up to jump \u{b7} down to turn back";
++    "Swipe left or right to dodge and turn \u{b7} up to jump \u{b7} down to duck";
+ pub const PLAY: &str = "Play";
+ pub const PLAY_AGAIN: &str = "Play again";
+ pub const RESTART: &str = "Restart";
+diff --git a/crates/bunny-web/src/lib.rs b/crates/bunny-web/src/lib.rs
+index 6690ec8db21908500d8156ce78db5b356138d281..953819de5c818871d10da3231454153f51eae2e7 100644
+--- a/crates/bunny-web/src/lib.rs
++++ b/crates/bunny-web/src/lib.rs
+@@ -21,6 +21,7 @@ pub mod copy;
+ pub mod look;
+ pub mod mesh;
+ pub mod scene;
++pub mod zone;
+ 
+ #[cfg(target_arch = "wasm32")]
+ mod app;
+diff --git a/crates/verse-game/Cargo.toml b/crates/verse-game/Cargo.toml
+new file mode 100644
+index 0000000000000000000000000000000000000000..83a9154a4927566933ea320afbf0fdfb1c0cf54e
+--- /dev/null
++++ b/crates/verse-game/Cargo.toml
+@@ -0,0 +1,13 @@
++[package]
++name = "verse-game"
++version.workspace = true
++edition.workspace = true
++rust-version.workspace = true
++publish.workspace = true
++description = "The contract a Verse community game builds to: a generic game-input channel, a small HUD element set, a game-neutral replay envelope, and the step trait a host drives."
++
++[dependencies]
++sha2 = "0.10"
++
++[lints]
++workspace = true
+diff --git a/docs/verse/games/grow-little-bunny.md b/docs/verse/games/grow-little-bunny.md
+index 9601e1919557bc1ea6481d105e5ddc3244db7894..ab249da749d506315993b9d63b9f8020aff21dd0 100644
+--- a/docs/verse/games/grow-little-bunny.md
++++ b/docs/verse/games/grow-little-bunny.md
+@@ -1025,8 +1025,8 @@ flat-shaded models). Each phase below says how it maps onto that path.
+ | Phase | Issue | Status |
+ | --- | --- | --- |
+ | B1 | [#11198](https://github.com/OpenAgentsInc/openagents/issues/11198) | Done, 6c0de441c7 |
+-| B2 | [#11199](https://github.com/OpenAgentsInc/openagents/issues/11199) | Done (see below) |
+-| B3 | [#11200](https://github.com/OpenAgentsInc/openagents/issues/11200) | Not started |
++| B2 | [#11199](https://github.com/OpenAgentsInc/openagents/issues/11199) | Done, 67898d1470 |
++| B3 | [#11200](https://github.com/OpenAgentsInc/openagents/issues/11200) | Done in part, see below |
+ | B4 | [#11201](https://github.com/OpenAgentsInc/openagents/issues/11201) | Not started |
+ | B5 | [#11202](https://github.com/OpenAgentsInc/openagents/issues/11202) | Not started |
+ | B6 | [#11203](https://github.com/OpenAgentsInc/openagents/issues/11203) | Not started |
+@@ -1110,9 +1110,40 @@ Deviations, and why:
+ - **The pack format's line chunk and material fields** stay undone with the
+   pack itself (see B3 and B4).
+ 
+-### What's next
++### B3: the game contract
++
++- **`crates/verse-game`** (new, no renderer, builds for wasm32): the
++  generic game-input channel `GameInput` (Left, Right, Up, Down, Back, Use,
++  Pause) with the desktop key map and the swipe recognizer (24 px within
++  250 ms, dominant axis); the HUD element set (counter with ring, pips with
++  a growth bar, score with multiplier, ring timer, edge arrow with a state
++  mark, map lines and dots); the game-neutral replay envelope
++  `verse.game-replay.v1` with verification by re-running; and the
++  `CommunityGame` trait a host drives.
++- **`crates/bunny-web/src/zone.rs`** puts the game on that contract: Up
++  jumps, Down ducks, Back turns back; its HUD; its replays (a test plays the
++  bot through the contract and verifies the replay; another garden's is
++  refused). The page reads keys and swipes only through the channel; swipe
++  down now ducks, as the controls table says.
++Deviations, and why:
+ 
+-B3: the game contract.
++- **No zone trait inside `verse` yet.** Registering a zone outside `verse`
++  means replacing the app's `zones::State` match and the closed `Intent`
++  enum the iOS and Android validators mirror; that is a change to the
++  desktop and phone hosts, which this browser-first build doesn't use.
++  `CommunityGame` is the trait such a registration would take; wiring the
++  `verse` host to it is open (see What's next).
++- **The pack format did not move.** Moving `everglade_pack::format` into
++  its own crate was tried: the format moves cleanly, but Everglade adds
++  inherent methods to `ZonePack` (`decode_pinned`, `load_local`), which Rust
++  allows only in the type's own crate, and about forty files across
++  `verse`, `verse-bake`, `coder-mobile` and Everglade's tests and examples
++  call them. Turning them into an extension trait is a mechanical change
++  across the desktop app's build, left for when a community game needs a
++  pack (this one draws models made in code).
++- **No line chunk or `gray` and `chroma` fields in the pack format.**
++  Adding them changes the encoding, and so every pinned pack's digest;
++  they wait for the game's own pack (see B4).
+ 
+ ## Engine gaps
+ 

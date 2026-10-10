@@ -1,0 +1,243 @@
+diff --git a/crates/coder-computers/tests/connect_live.rs b/crates/coder-computers/tests/connect_live.rs
+index c6c2751d6072886674aa911a5a31ede849118048..105090d8c97e3a6bc0fe79ddc0a4f62abae57f1d 100644
+--- a/crates/coder-computers/tests/connect_live.rs
++++ b/crates/coder-computers/tests/connect_live.rs
+@@ -20,7 +20,7 @@ use coder_computers::connect::PairedOver;
+ use coder_computers::live::{Live, Locality, MemoryStore, Settings};
+ use coder_computers::model::Platform;
+ use coder_host::access::host::Host;
+-use coder_host::access::{RelayPolicy, Right, Rights};
++use coder_host::access::{RelayPolicy, Rights};
+ use coder_host::client::Route;
+ use coder_host::config::{Config, Iroh};
+ use coder_host::{Code, TaskCreate, TaskRef, Tasks};
+@@ -91,7 +91,9 @@ fn a_phone_pairs_over_loopback_iroh_then_creates_a_task_over_iroh() {
+     let addr = running.iroh_addr().expect("the host serves iroh");
+ 
+     // The code the desktop app would show.
+-    let rights = Rights::new([Right::Observe, Right::Operate]).unwrap();
++    // A connect code carries the pairing rights, and a phone keeps a grant
++    // only when it holds exactly those.
++    let rights = Rights::pairing();
+     let issued = store.invite(&relay, rights, now(), now() + 86_400).unwrap();
+     let code = ConnectCode::from_invitation(
+         CodeParts {
+@@ -203,7 +205,9 @@ fn a_phone_paired_on_the_relay_asks_for_its_chats_on_its_link() {
+         .block_on(coder_host::start(config, Arc::new(Recorder::default())))
+         .unwrap();
+     let addr = running.iroh_addr().expect("the host serves iroh");
+-    let rights = Rights::new([Right::Observe, Right::Operate]).unwrap();
++    // A connect code carries the pairing rights, and a phone keeps a grant
++    // only when it holds exactly those.
++    let rights = Rights::pairing();
+     let issued = store.invite(&relay, rights, now(), now() + 86_400).unwrap();
+     let code = ConnectCode::from_invitation(
+         CodeParts {
+diff --git a/crates/coder/src/product_kb/tests.rs b/crates/coder/src/product_kb/tests.rs
+index cdb3cdc71189bcf23521cb68b8ca5b35522c5f58..6281a969fda8fb16e58561284df7efe414453442 100644
+--- a/crates/coder/src/product_kb/tests.rs
++++ b/crates/coder/src/product_kb/tests.rs
+@@ -347,7 +347,10 @@ fn product_citations_are_taken_out_as_the_reply_streams() {
+             "Pair it [openagents.connect-computer] and go.",
+             "Pair it and go.",
+         ),
+-        ("Arrays like [1, 2] stay [openagents.cli@3]", "Arrays like [1, 2] stay"),
++        (
++            "Arrays like [1, 2] stay [openagents.cli@3]",
++            "Arrays like [1, 2] stay",
++        ),
+     ];
+     for (reply, want) in cases {
+         assert_eq!(tidy(reply), want, "{reply}");
+diff --git a/crates/coder/src/runtime.rs b/crates/coder/src/runtime.rs
+index 50bcddd1f350f85c858f495b97634d381f667581..ce6a5cb9053694efabe014e471da6c41c3de33ff 100644
+--- a/crates/coder/src/runtime.rs
++++ b/crates/coder/src/runtime.rs
+@@ -5644,14 +5644,21 @@ mod tests {
+             r#"[{"name": "judge", "kind": "decide", "question": "openagents.missing.v1", "bounds": {}}]"#,
+         );
+ 
+-        for (choice, expected) in [
++        // The question offers `none` and the one admitted program. A
++        // door answering over exactly those is held to them; one whose
++        // distribution names a program the question never offered is
++        // off the question's contract, and the SDK refuses it before
++        // this host reads a choice out of it.
++        let offered = json!({"ask-only": 0.7, "none": 0.3});
++        let unoffered = json!({"ask-only": 0.5, "needs-wording": 0.3, "none": 0.2});
++        for (choice, probabilities, expected) in [
+             // The registry resolved it, but admission never offered it:
+             // naming it is not a selection.
+-            ("needs-wording", None),
++            ("needs-wording", &unoffered, None),
+             // The one admitted program selects.
+-            ("ask-only", Some("ask-only")),
++            ("ask-only", &offered, Some("ask-only")),
+             // And none is an answer, not an error.
+-            ("none", None),
++            ("none", &offered, None),
+         ] {
+             let port = serve_answer(json!({
+                 "model": "stub",
+@@ -5660,7 +5667,7 @@ mod tests {
+                         "type": "choice",
+                         "choice": choice,
+                         "confidence": 0.9,
+-                        "probabilities": {"ask-only": 0.5, "needs-wording": 0.3, "none": 0.2}
++                        "probabilities": probabilities
+                     }
+                 }
+             }))
+@@ -5680,7 +5687,15 @@ mod tests {
+             match (runtime.select("run it", None).await, expected) {
+                 (Ok(Selected::Program(slug)), Some(wanted)) => assert_eq!(slug, wanted),
+                 (Ok(Selected::None), None) if choice == "none" => {}
+-                (Err(refused), None) => assert_eq!(refused.code, "no_program_chosen"),
++                (Err(refused), None) if choice == "needs-wording" => {
++                    assert_eq!(refused.code, "door_unavailable");
++                    assert!(
++                        refused
++                            .reason
++                            .contains("answers.program.probabilities.needs-wording"),
++                        "the refusal names the unoffered option: {refused:?}"
++                    );
++                }
+                 (answered, _) => panic!("{choice} answered {answered:?}"),
+             }
+         }
+diff --git a/crates/coder/tests/evidence_select.rs b/crates/coder/tests/evidence_select.rs
+index e06aabbefe310cb4531605f3e3d9772868b461fa..cdf6f948cad61ab8687070ed6b38a8e1bdc28d2c 100644
+--- a/crates/coder/tests/evidence_select.rs
++++ b/crates/coder/tests/evidence_select.rs
+@@ -310,10 +310,14 @@ async fn an_abstention_keeps_the_deterministic_order_and_records_it() {
+         logs.path(),
+         vec![Pick {
+             choice: "none",
++            // Over every option the question offered: a door that leaves
++            // one out is off the question's contract.
+             probabilities: vec![
+                 ("none", 0.9),
+-                ("alpha.rs (the whole file)", 0.05),
+-                ("beta.rs (the whole file)", 0.05),
++                ("alpha.rs (the whole file)", 0.03),
++                ("alpha.rs (lines 1-1)", 0.02),
++                ("beta.rs (the whole file)", 0.03),
++                ("beta.rs (lines 1-1)", 0.02),
+             ],
+         }],
+         Arc::clone(&seen),
+diff --git a/crates/coder/tests/headless.rs b/crates/coder/tests/headless.rs
+index 097def8e234c4953d20cf70f93e94f446d3668ea..7c7eb1ef190af39a057140d1465e8c1f98d7788f 100644
+--- a/crates/coder/tests/headless.rs
++++ b/crates/coder/tests/headless.rs
+@@ -35,6 +35,15 @@ const CREDENTIALS: [&str; 17] = [
+     "CODER_RELAY",
+ ];
+ 
++/// How long a test's stub door waits for the binary's first decision call.
++///
++/// The call is required either way; this only bounds the wait. The binary
++/// is a ~200 MB debug build and four of these tests start it at once. With
++/// a five-second bound, all four failed together now and then on a machine
++/// busy with other builds, each before its call arrived, while the same
++/// runs on a quiet machine make the call in under a second (#10069).
++const STARTUP: std::time::Duration = std::time::Duration::from_secs(60);
++
+ /// The binary with delegation off. An installed and signed-in Claude Code
+ /// or Codex on the machine running these tests would otherwise answer the
+ /// turn, and these tests measure the stub door.
+@@ -313,7 +322,7 @@ fn local_profile_routes_a_headless_turn_without_sending_a_provider_key() {
+     let url = format!("http://{}", listener.local_addr().unwrap());
+     listener.set_nonblocking(true).unwrap();
+     let server = std::thread::spawn(move || {
+-        let deadline = Instant::now() + Duration::from_secs(5);
++        let deadline = Instant::now() + STARTUP;
+         let mut socket = loop {
+             match listener.accept() {
+                 Ok((socket, _)) => break socket,
+@@ -395,7 +404,7 @@ fn a_routed_turn_records_the_functions_provenance() {
+     let url = format!("http://{}", listener.local_addr().unwrap());
+     listener.set_nonblocking(true).unwrap();
+     let server = std::thread::spawn(move || {
+-        let deadline = Instant::now() + Duration::from_secs(5);
++        let deadline = Instant::now() + STARTUP;
+         let mut socket = loop {
+             match listener.accept() {
+                 Ok((socket, _)) => break socket,
+@@ -470,7 +479,7 @@ fn hosted_profile_forwards_its_key_and_model() {
+     let url = format!("http://{}", listener.local_addr().unwrap());
+     listener.set_nonblocking(true).unwrap();
+     let server = std::thread::spawn(move || {
+-        let deadline = Instant::now() + Duration::from_secs(5);
++        let deadline = Instant::now() + STARTUP;
+         let mut socket = loop {
+             match listener.accept() {
+                 Ok((socket, _)) => break socket,
+@@ -557,7 +566,7 @@ fn a_door_refusing_permission_degrades_visibly() {
+     let url = format!("http://{}", listener.local_addr().unwrap());
+     listener.set_nonblocking(true).unwrap();
+     let server = std::thread::spawn(move || {
+-        let deadline = Instant::now() + Duration::from_secs(5);
++        let deadline = Instant::now() + STARTUP;
+         let mut socket = loop {
+             match listener.accept() {
+                 Ok((socket, _)) => break socket,
+diff --git a/crates/coder/tests/program_run.rs b/crates/coder/tests/program_run.rs
+index 07fc4d675a3b503c96db946b7ff8de5fb8165153..f1fa874043d7bd0267604286aa2dcac084963931 100644
+--- a/crates/coder/tests/program_run.rs
++++ b/crates/coder/tests/program_run.rs
+@@ -250,12 +250,7 @@ fn answers(asked: &Value, program: &str) -> Value {
+                 "type": "choice",
+                 "choice": program,
+                 "confidence": 0.83,
+-                "probabilities": {
+-                    "delegate-fan-out": 0.87,
+-                    "review-changes": 0.0,
+-                    "answer-question": 0.13,
+-                    "run-suite": 0.0
+-                }
++                "probabilities": over_offered(asked, program)
+             }}
+         });
+     }
+@@ -294,6 +289,30 @@ fn answers(asked: &Value, program: &str) -> Value {
+     json!({"model": "kev-latest", "answers": per_requirement})
+ }
+ 
++/// The selection's distribution over exactly the options the request
++/// offered, as a door that holds to the question answers it: most of the
++/// mass on `program`, the rest shared by every other option. Which
++/// programs are offered depends on what this host admits, so the stub
++/// reads them off the request rather than naming them.
++fn over_offered(asked: &Value, program: &str) -> Value {
++    let offered: Vec<&String> = asked
++        .pointer("/questions/program/criteria")
++        .and_then(Value::as_object)
++        .map(|criteria| criteria.keys().collect())
++        .unwrap_or_default();
++    let others = offered.iter().filter(|option| **option != program).count();
++    let mut probabilities = serde_json::Map::new();
++    for option in offered {
++        let share = if option == program {
++            if others == 0 { 1.0 } else { 0.87 }
++        } else {
++            0.13 / others as f64
++        };
++        probabilities.insert(option.clone(), json!(share));
++    }
++    Value::Object(probabilities)
++}
++
+ /// A runtime over the scratch machine, asking the stub door.
+ async fn runtime(root: &Path) -> Runtime {
+     let client = jev::Client::new(
+@@ -1340,6 +1359,9 @@ async fn agent(root: &Path, program: &'static str) -> Agent {
+         .with_repo(Repo::discover(root))
+         .with_survey(Survey::read_with(Some(root), root, &Trust::everything()))
+         .with_program_grant(Some("all"))
++        // Inside the scratch machine, where version control never looks,
++        // rather than the runstate store of whoever runs the tests.
++        .with_runstate(root.join(".git").join("runstate"))
+ }
+ 
+ /// The operator's sentence reaches the runtime, through the turn the

@@ -1,0 +1,37 @@
+{
+  "test_targets": [
+    "--lib",
+    "--test",
+    "source_script",
+    "--lib"
+  ],
+  "issue": 11058,
+  "title": "Source checkout: submodules, Git LFS, separate fetch timeouts, and expiring tokens",
+  "body": "Source materialization (`crates/coder-environment-setup/src/source.rs`) fetches the pinned commit with `--depth=1` through a per-process credential helper. As of this change the helper answers only `https://github.com`, and a failed fetch is tried once more. What only real repositories expose, and is still missing:\n\n- **Submodules** are never initialized, so a project with submodules gets empty directories and a build that fails later with a confusing error.\n- **Git LFS**: whether LFS files arrive as content or as pointer files depends on whether `git-lfs` happens to be installed on the image. This needs to be a decision we make.\n- **Timeouts**: the fetch runs under the command's single deadline. A large repository's slow pack transfer and a hung connection look the same, and both say `fetch`.\n- **Expiring tokens**: the helper reads one environment variable for the whole run. Installation tokens (#11056) last one hour, longer than some builds.\n\n## What background-agents does\n\n`packages/sandbox-runtime/src/sandbox_runtime/repository_sync.py`:\n\n- clones with `--depth 100 --branch <b>`;\n- times out at 300 s for a clone and 120 s for a fetch. On timeout it kills the process group and reports a separate `TIMED_OUT` outcome, not `FAILED`;\n- uses a credential helper with `credential.useHttpPath=true` that answers only for the exact host and asks a broker for a fresh token. The token is cached 0600 under `/run`, refreshed with 5 minutes left, serialized with `fcntl`, and never falls back to a stale token;\n- has no submodule or LFS handling and no retries. Those are gaps we should not copy.\n\n## Plan\n\n1. Report `timed-out` separately from `fetch` in `oa-source` (`timeout 300 git fetch \u2026`, exit 124). Raise the shallow-fetch bound for repositories GitHub reports above a size threshold.\n2. Submodules: after checkout, if `.gitmodules` exists, run `git submodule update --init --recursive --depth=1` through the same host-scoped helper. Report `submodules=yes|no|failed`. Submodules on hosts other than github.com fetch anonymously.\n3. LFS: if `.gitattributes` names `filter=lfs`, run `git lfs pull` when `git-lfs` is present and report `lfs=pulled`. Otherwise report `lfs=pointers` so the build knows.\n4. Credential broker for expiring tokens, together with #11056.\n\n## Acceptance\n\n- Real-git tests with local bare repositories cover a submodule (resolved), an LFS-tracked file without `git-lfs` (reported as pointers), and a fetch that hangs (reported as timed out within the bound).\n",
+  "fix": "99cf5d15687e0e0a60b376d4f59e2c410e453331",
+  "parent": "d2e0e67024fb057549c4202c820a37e21f56d1bb",
+  "package": "coder-environment-operator",
+  "source_files": [
+    "crates/coder-environment-build/src/service.rs",
+    "crates/coder-environment-operator/src/boat.rs",
+    "crates/coder-environment-operator/src/gce.rs",
+    "crates/coder-environment-setup/src/source.rs",
+    "crates/coder-working-computer/src/boat.rs",
+    "crates/coder-working-computer/src/gce.rs",
+    "crates/coder-working-computer/src/provider.rs",
+    "docs/research/openinspect.md"
+  ],
+  "test_files": [
+    "crates/coder-environment-operator/src/gce_tests.rs",
+    "crates/coder-environment-setup/tests/source_script.rs",
+    "crates/coder-working-computer/src/gce_tests.rs"
+  ],
+  "test_names": [
+    "a_hung_fetch_is_reported_as_timed_out_within_its_bound",
+    "each_command_step_gets_the_current_token",
+    "lfs_files_without_git_lfs_are_reported_as_pointers",
+    "submodules_are_initialized_at_their_recorded_commits",
+    "the_resolver_prefers_a_minted_file_over_the_environment"
+  ],
+  "fix_lines": 656
+}

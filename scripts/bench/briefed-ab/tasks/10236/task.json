@@ -1,0 +1,24 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10236,
+  "title": "Acceptance gate: delegate-grok check expects a shell command, but test delegations are now read-only",
+  "body": "Build 45's gate (scripts/release/acceptance.sh) failed `delegate-grok` on every run: Grok Build started in the project and finished, but the check requires it to run a shell command. Since feb4bc8270 a test delegation is a read-only question, so Grok uses its own list/read tools. Update the check to accept any tool call (or a read of the project) as evidence that Grok worked in the project, keeping the rest of the assertion. Test against a recorded Grok event stream.",
+  "fix": "f5e4aaba20de93b4073ebdf7a3eebde427826269",
+  "parent": "ca8a57ff8256a9a81396e955032e6792256829f1",
+  "package": "openagents-desktop",
+  "source_files": [
+    "crates/openagents-desktop/fixtures/grok-read-only.atif.jsonl",
+    "crates/openagents-desktop/src/acceptance.rs"
+  ],
+  "test_files": [
+    "crates/openagents-desktop/src/acceptance.rs"
+  ],
+  "test_names": [
+    "a_read_only_delegation_counts_grok_builds_own_tools",
+    "a_shell_command_still_counts",
+    "coder_decisions_and_unfinished_calls_are_not_grok_working"
+  ],
+  "fix_lines": 80
+}

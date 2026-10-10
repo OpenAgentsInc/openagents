@@ -1,0 +1,859 @@
+diff --git a/crates/gateway/src/inference_byok.rs b/crates/gateway/src/inference_byok.rs
+index 33e0d1fa5616fd11493b76bddab9da48b52604a5..9bfa8a95cd456c975499562ad704ab6ae3db41a4 100644
+--- a/crates/gateway/src/inference_byok.rs
++++ b/crates/gateway/src/inference_byok.rs
+@@ -1,7 +1,7 @@
+ //! Bring your own key on the inference API (`docs/inference/gateway.md`,
+ //! sections 4 and 9; #11067).
+ //!
+-//! A workspace keeps its own OpenRouter and Vercel AI Gateway keys here,
++//! A workspace keeps its own provider keys here,
+ //! sealed with [`oa_seal`] (AES-256-GCM under a keyring read from
+ //! `inference.byok.keyring`, a private file outside the registry, so a copy
+ //! of the registry holds only ciphertext). Each sealed key is bound to its
+@@ -19,7 +19,7 @@
+ //! Routes, for a signed-in workspace owner or admin (never an API key):
+ //! `GET /v1/workspaces/{ws}/provider-keys`, and `PUT` (`{"key": "..."}`)
+ //! or `DELETE /v1/workspaces/{ws}/provider-keys/{provider}`, where
+-//! `provider` is `openrouter` or `vercel`.
++//! `provider` is `openrouter`, `vercel`, `anthropic`, `openai`, or `google`.
+ 
+ use std::collections::BTreeMap;
+ use std::path::{Path, PathBuf};
+@@ -32,7 +32,6 @@ use axum::response::{IntoResponse, Response};
+ use axum::routing::{MethodRouter, get, put};
+ use inference::upstream::secret::Secret;
+ use inference::upstream::{Account, CostBasis, Upstream};
+-use model_access::Provider;
+ use oa_seal::{Keyring, Sealed};
+ use serde::{Deserialize, Serialize};
+ use serde_json::json;
+@@ -41,6 +40,37 @@ use zeroize::Zeroizing;
+ use crate::accounts::{accounts_store, member, member_account, principal, refused};
+ use crate::serve::ServeState;
+ 
++/// Providers supported by the API key store, separate from desktop keys.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum Provider {
++    OpenRouter,
++    Vercel,
++    Anthropic,
++    OpenAi,
++    Google,
++}
++
++impl Provider {
++    fn word(self) -> &'static str {
++        match self {
++            Self::OpenRouter => "openrouter",
++            Self::Vercel => "vercel",
++            Self::Anthropic => "anthropic",
++            Self::OpenAi => "openai",
++            Self::Google => "google",
++        }
++    }
++    fn name(self) -> &'static str {
++        match self {
++            Self::OpenRouter => "OpenRouter",
++            Self::Vercel => "Vercel AI Gateway",
++            Self::Anthropic => "Anthropic",
++            Self::OpenAi => "OpenAI",
++            Self::Google => "Google",
++        }
++    }
++}
++
+ pub const KEYS: &str = "/v1/workspaces/{workspace}/provider-keys";
+ pub const KEY: &str = "/v1/workspaces/{workspace}/provider-keys/{provider}";
+ 
+@@ -97,9 +127,13 @@ impl std::fmt::Debug for Keys {
+ /// The providers whose keys the gateway can route to: those with an
+ /// adapter here.
+ fn provider(word: &str) -> Option<Provider> {
+-    match Provider::parse(word).ok()? {
+-        provider @ (Provider::OpenRouter | Provider::Vercel) => Some(provider),
+-        Provider::TypeSafe => None,
++    match word.trim().to_ascii_lowercase().as_str() {
++        "openrouter" | "open-router" => Some(Provider::OpenRouter),
++        "vercel" | "ai-gateway" | "gateway" => Some(Provider::Vercel),
++        "anthropic" => Some(Provider::Anthropic),
++        "openai" => Some(Provider::OpenAi),
++        "google" => Some(Provider::Google),
++        _ => None,
+     }
+ }
+ 
+@@ -267,10 +301,16 @@ impl Keys {
+ 
+ /// An adapter on the caller's key, billed to no account of ours.
+ fn adapter(provider: Provider, key: Secret) -> Arc<dyn Upstream> {
+-    use inference::upstream::{openrouter, responses::ResponsesUpstream, vercel};
++    use inference::upstream::{
++        anthropic::Anthropic, gemini::Gemini, openai, openrouter, responses::ResponsesUpstream,
++        vercel,
++    };
+     let mut config = match provider {
+         Provider::Vercel => vercel::config(Some(key)),
+-        _ => openrouter::config(Some(key)),
++        Provider::OpenRouter => openrouter::config(Some(key)),
++        Provider::OpenAi => openai::config(Some(key)),
++        Provider::Anthropic => return Arc::new(Anthropic::new(key)),
++        Provider::Google => return Arc::new(Gemini::new(key)),
+     };
+     config.account = Account {
+         id: inference::run::CALLER_KEY.to_owned(),
+@@ -359,7 +399,9 @@ fn unknown_provider(word: &str) -> Response {
+     refused(
+         StatusCode::NOT_FOUND,
+         "unknown_provider",
+-        format!("`{shown}` isn't a provider whose key the API can use. Use openrouter or vercel."),
++        format!(
++            "`{shown}` isn't a provider whose key the API can use. Use openrouter, vercel, anthropic, openai, or google."
++        ),
+     )
+ }
+ 
+diff --git a/crates/gateway/src/inference_openapi.rs b/crates/gateway/src/inference_openapi.rs
+index d5cd77b2a8e93082f7908612dd6e6cb14cf643c5..2ec63864b8abf332e2f5d02bfe6849a27321345b 100644
+--- a/crates/gateway/src/inference_openapi.rs
++++ b/crates/gateway/src/inference_openapi.rs
+@@ -317,7 +317,10 @@ pub fn document(origin: &str, methods: &[MethodInfo]) -> Value {
+         &[("404", "No such key.")],
+     );
+     key_revoke["parameters"] = json!([workspace, key]);
+-    let provider = param("provider", "`openrouter` or `vercel`.");
++    let provider = param(
++        "provider",
++        "`openrouter`, `vercel`, `anthropic`, `openai`, or `google`.",
++    );
+     let mut own_list = keyed(
+         "listProviderKeys",
+         "The workspace's own provider keys: provider and fingerprint, never the key. Requests with `openagents.pay: \"mine\"` run on them.",
+diff --git a/crates/inference/README.md b/crates/inference/README.md
+index 2b9e1ca77685b5cab8e09a2546ede6b1d8ddff6f..55b941bab08340f6cf54843deb2a0075fb2499c9 100644
+--- a/crates/inference/README.md
++++ b/crates/inference/README.md
+@@ -28,6 +28,7 @@ does I/O. The router and the HTTP routes build on all three.
+ | `hosted` | Hosted tools: `openagents:web_search` as a function the model calls, the `WebSearch` trait, the Exa provider |
+ | `upstream::psionic` | `psionic-serve` as the `local` upstream: Open Responses to its `/v1/responses` types and back |
+ | `upstream::pylon` | Pylon provider registrations as `pylon:<pylon>` upstreams: NIP-CJ jobs through a `Jobs` transport, each answer's provider earning through `Earnings` |
++| `upstream::{anthropic,openai,gemini}` | Direct caller keys: Anthropic Messages, OpenAI Responses, and Gemini Developer API; workspace credentials only, with `standard` privacy until the caller's data terms are verified |
+ | `upstream::whole` | An answer that arrived whole, replayed as the spec's event stream |
+ | `upstream` | The `Upstream` trait (capabilities, privacy terms, price rows, billed account, `send`) and adapters for Vertex AI (native Gemini, prepaid Google credit), Z.ai (`glm-5.3-flash`, prepaid credit), the Pro door's proxy, OpenRouter, and the Vercel AI Gateway; key lookup (env, mounted file, Secret Manager); Google tokens; the first-token `Gate`; `AttemptMeter`, which reports each attempt as a `meter::Attempt` |
+ 
+diff --git a/crates/inference/src/upstream/anthropic.rs b/crates/inference/src/upstream/anthropic.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..dca52d411f119acefe39ba256ef0732ebf7f78e2
+--- /dev/null
++++ b/crates/inference/src/upstream/anthropic.rs
+@@ -0,0 +1,461 @@
++//! Anthropic Messages on the caller's key, translated to Open Responses.
++
++use std::collections::BTreeSet;
++
++use futures_util::StreamExt;
++use serde_json::{Value, json};
++
++use super::emit::{Emitter, Finish};
++use super::gate::Gate;
++use super::http::Frames;
++use super::secret::Secret;
++use super::{
++    Account, AttemptError, AttemptMeter, BoxFuture, Capabilities, CostBasis, ErrorClass,
++    EventStream, ModelRow, Price, PrivacyTerms, Sent, Upstream, check,
++};
++use crate::item::{ContentPart, Item, MessageContent, Role, ToolOutput};
++use crate::request::{CreateResponse, ReasoningEffort, Stop, Tool, ToolChoice, ToolChoiceMode};
++use crate::response::{IncompleteReason, Usage};
++
++pub struct Anthropic {
++    key: Secret,
++    pub url: String,
++    account: Account,
++    privacy: PrivacyTerms,
++    rows: Vec<ModelRow>,
++    http: reqwest::Client,
++}
++
++impl Anthropic {
++    pub fn new(key: Secret) -> Self {
++        Self {
++            key,
++            url: "https://api.anthropic.com/v1/messages".into(),
++            account: Account {
++                id: crate::run::CALLER_KEY.into(),
++                basis: CostBasis::PayAsYouGo,
++            },
++            privacy: PrivacyTerms::unverified(
++                "Anthropic: the caller's retention agreement is not verified",
++            ),
++            rows: vec![ModelRow {
++                id: "anthropic/claude-sonnet-5-5".into(),
++                upstream_model: "claude-sonnet-5-5".into(),
++                capabilities: Capabilities {
++                    tools: true,
++                    reasoning: true,
++                    reasoning_always_on: false,
++                    json_schema: false,
++                    images: true,
++                    context: 1_000_000,
++                    max_output: 128_000,
++                },
++                price: Price::micro(2_000_000, 200_000, 10_000_000),
++                price_source: "https://platform.claude.com/docs/en/models/overview (2026-10-09)",
++            }],
++            http: super::http::client(super::http::CONNECT_TIMEOUT),
++        }
++    }
++}
++
++fn unsupported(text: &str) -> AttemptError {
++    AttemptError::new(ErrorClass::Unsupported, text)
++}
++
++fn parts(content: &MessageContent) -> Result<Vec<Value>, AttemptError> {
++    match content {
++        MessageContent::Text(text) => Ok(vec![json!({"type": "text", "text": text})]),
++        MessageContent::Parts(parts) => parts
++            .iter()
++            .map(|part| {
++                if let Some(text) = part.text() {
++                    return Ok(json!({"type": "text", "text": text}));
++                }
++                if let ContentPart::InputImage(image) = part {
++                    let url = image
++                        .image_url
++                        .as_deref()
++                        .ok_or_else(|| unsupported("An image needs a URL."))?;
++                    let source = if let Some(data) = url.strip_prefix("data:") {
++                        let (mime, data) = data
++                            .split_once(";base64,")
++                            .ok_or_else(|| unsupported("Use a base64 image or an image URL."))?;
++                        json!({"type": "base64", "media_type": mime, "data": data})
++                    } else {
++                        json!({"type": "url", "url": url})
++                    };
++                    return Ok(json!({"type": "image", "source": source}));
++                }
++                Err(unsupported("Anthropic can't use this content type."))
++            })
++            .collect(),
++    }
++}
++
++fn push(messages: &mut Vec<Value>, role: &str, content: Vec<Value>) {
++    if let Some(last) = messages.last_mut().filter(|last| last["role"] == role) {
++        last["content"].as_array_mut().unwrap().extend(content);
++    } else {
++        messages.push(json!({"role": role, "content": content}));
++    }
++}
++
++/// Translates text, images, tool history, and signed thinking history.
++pub fn body(request: &CreateResponse, row: &ModelRow) -> Result<Value, AttemptError> {
++    if request.previous_response_id.is_some() {
++        return Err(unsupported("previous_response_id needs stored responses"));
++    }
++    if request
++        .text
++        .as_ref()
++        .and_then(|text| text.format.as_ref())
++        .is_some_and(|format| !matches!(format, crate::request::TextFormat::Text(_)))
++    {
++        return Err(unsupported("Anthropic can't use this output format."));
++    }
++    let mut system = request.instructions.clone().into_iter().collect::<Vec<_>>();
++    let mut messages = Vec::new();
++    for item in request.input_items() {
++        match item {
++            Item::Message(message) if matches!(message.role, Role::System | Role::Developer) => {
++                let content = parts(&message.content)?;
++                if content.iter().any(|part| part["type"] != "text") {
++                    return Err(unsupported("System instructions must be text."));
++                }
++                system.extend(
++                    content
++                        .iter()
++                        .filter_map(|part| part["text"].as_str().map(str::to_owned)),
++                );
++            }
++            Item::Message(message) => push(
++                &mut messages,
++                if message.role == Role::Assistant {
++                    "assistant"
++                } else {
++                    "user"
++                },
++                parts(&message.content)?,
++            ),
++            Item::FunctionCall(call) => {
++                let input: Value = serde_json::from_str(&call.arguments)
++                    .map_err(|_| unsupported("Tool arguments must be JSON."))?;
++                if !input.is_object() {
++                    return Err(unsupported("Tool arguments must be a JSON object."));
++                }
++                push(
++                    &mut messages,
++                    "assistant",
++                    vec![
++                        json!({"type": "tool_use", "id": call.call_id, "name": call.name, "input": input}),
++                    ],
++                );
++            }
++            Item::FunctionCallOutput(output) => {
++                let content = match &output.output {
++                    ToolOutput::Text(text) => vec![json!({"type": "text", "text": text})],
++                    ToolOutput::Parts(content) => parts(&MessageContent::Parts(content.clone()))?,
++                };
++                push(
++                    &mut messages,
++                    "user",
++                    vec![
++                        json!({"type": "tool_result", "tool_use_id": output.call_id, "content": content}),
++                    ],
++                );
++            }
++            Item::Reasoning(reasoning) => {
++                let Some(signature) = &reasoning.encrypted_content else {
++                    return Err(unsupported("Anthropic needs its signed thinking history."));
++                };
++                let text = reasoning
++                    .summary
++                    .iter()
++                    .filter_map(ContentPart::text)
++                    .collect::<String>();
++                push(
++                    &mut messages,
++                    "assistant",
++                    vec![json!({"type": "thinking", "thinking": text, "signature": signature})],
++                );
++            }
++            _ => return Err(unsupported("Anthropic can't use this input item.")),
++        }
++    }
++    let mut body = json!({"model": row.upstream_model, "max_tokens": request.max_output_tokens.unwrap_or(4096), "stream": true, "messages": messages});
++    if !system.is_empty() {
++        body["system"] = json!(system.join("\n\n"));
++    }
++    if let Some(value) = request.temperature {
++        body["temperature"] = json!(value);
++    }
++    if let Some(value) = request.top_p {
++        body["top_p"] = json!(value);
++    }
++    match &request.stop {
++        Some(Stop::One(stop)) => body["stop_sequences"] = json!([stop]),
++        Some(Stop::Many(stops)) => body["stop_sequences"] = json!(stops),
++        None => {}
++    }
++    let allowed = match &request.tool_choice {
++        Some(ToolChoice::AllowedTools { tools, .. }) => Some(tools),
++        _ => None,
++    };
++    let tools: Vec<_> = request.tools.as_deref().unwrap_or_default().iter().filter_map(|tool| match tool {
++        Tool::Function(tool) if allowed.is_none_or(|names| names.contains(&tool.name)) => Some(json!({"name": tool.name, "description": tool.description, "input_schema": tool.parameters.clone().unwrap_or_else(|| json!({"type": "object"}))})),
++        _ => None,
++    }).collect();
++    if !tools.is_empty() {
++        body["tools"] = json!(tools);
++        let choice = match &request.tool_choice {
++            Some(ToolChoice::Function { name }) => json!({"type": "tool", "name": name}),
++            Some(ToolChoice::Mode(mode)) | Some(ToolChoice::AllowedTools { mode, .. }) => {
++                json!({"type": match mode { ToolChoiceMode::None => "none", ToolChoiceMode::Required => "any", _ => "auto" }})
++            }
++            None => json!({"type": "auto"}),
++        };
++        body["tool_choice"] = choice;
++    }
++    if let Some(effort) = request.reasoning.as_ref().and_then(|r| r.effort.as_ref()) {
++        if matches!(effort, ReasoningEffort::None) {
++            body["thinking"] = json!({"type": "disabled"});
++        } else {
++            if matches!(
++                &request.tool_choice,
++                Some(ToolChoice::Function { .. })
++                    | Some(ToolChoice::Mode(ToolChoiceMode::Required))
++                    | Some(ToolChoice::AllowedTools {
++                        mode: ToolChoiceMode::Required,
++                        ..
++                    })
++            ) {
++                return Err(unsupported(
++                    "Anthropic can't combine thinking with a forced tool.",
++                ));
++            }
++            body["thinking"] = json!({"type": "adaptive"});
++            body["output_config"] = json!({"effort": match effort { ReasoningEffort::Minimal | ReasoningEffort::Low => "low", ReasoningEffort::Medium => "medium", _ => "high" }});
++        }
++    }
++    Ok(body)
++}
++
++impl Upstream for Anthropic {
++    fn name(&self) -> &str {
++        "anthropic"
++    }
++    fn account(&self) -> &Account {
++        &self.account
++    }
++    fn privacy(&self) -> &PrivacyTerms {
++        &self.privacy
++    }
++    fn models(&self) -> &[ModelRow] {
++        &self.rows
++    }
++    fn configured(&self) -> bool {
++        true
++    }
++    fn send<'a>(
++        &'a self,
++        request: &'a CreateResponse,
++        model: &'a str,
++    ) -> BoxFuture<'a, Result<Sent, AttemptError>> {
++        Box::pin(async move {
++            let row = check(self, request, model)?;
++            let body = body(request, row)?;
++            let meter = AttemptMeter::start(self, row);
++            let call = self
++                .http
++                .post(&self.url)
++                .header("x-api-key", self.key.expose())
++                .header("anthropic-version", "2023-06-01")
++                .header("accept", "text/event-stream")
++                .json(&body);
++            let frames = match super::http::open_stream(call, &[self.key.expose()]).await {
++                Ok(frames) => frames,
++                Err(error) => {
++                    meter.fail(&error);
++                    return Err(error);
++                }
++            };
++            meter.status(200);
++            let events = events(frames, Emitter::new(model, request), model);
++            Ok(Sent {
++                events: meter.wrap(events),
++                meter,
++            })
++        })
++    }
++}
++
++struct Reader {
++    frames: Frames,
++    emitter: Emitter,
++    gate: Gate,
++    usage: Value,
++    finish: Option<Finish>,
++    empty_calls: BTreeSet<String>,
++}
++
++impl Reader {
++    fn chunk(&mut self, data: &str) -> Result<(), AttemptError> {
++        let chunk: Value = serde_json::from_str(data)
++            .map_err(|_| AttemptError::new(ErrorClass::Decode, "Anthropic sent invalid JSON."))?;
++        let key = chunk["index"].as_u64().unwrap_or_default().to_string();
++        let mut events = Vec::new();
++        match chunk["type"].as_str().unwrap_or_default() {
++            "content_block_stop" => {
++                if self.empty_calls.remove(&key) {
++                    events.extend(self.emitter.call_arguments(&key, "{}"));
++                }
++                events.extend(self.emitter.end_block());
++            }
++            "message_start" => self.usage = chunk["message"]["usage"].clone(),
++            "content_block_start" => {
++                let block = &chunk["content_block"];
++                match block["type"].as_str().unwrap_or_default() {
++                    "text" => events.extend(
++                        self.emitter
++                            .text(block["text"].as_str().unwrap_or_default()),
++                    ),
++                    "tool_use" => {
++                        self.empty_calls.insert(key.clone());
++                        events.extend(self.emitter.call_start(
++                            &key,
++                            block["id"].as_str().unwrap_or_default(),
++                            block["name"].as_str().unwrap_or_default(),
++                        ));
++                        if let Some(input) =
++                            block["input"].as_object().filter(|input| !input.is_empty())
++                        {
++                            self.empty_calls.remove(&key);
++                            events.extend(
++                                self.emitter.call_arguments(&key, &json!(input).to_string()),
++                            );
++                        }
++                    }
++                    "thinking" => events.extend(
++                        self.emitter
++                            .reasoning_summary(block["thinking"].as_str().unwrap_or_default()),
++                    ),
++                    _ => return Err(unsupported("Anthropic sent an unsupported content block.")),
++                }
++            }
++            "content_block_delta" => {
++                let delta = &chunk["delta"];
++                match delta["type"].as_str().unwrap_or_default() {
++                    "text_delta" => events.extend(
++                        self.emitter
++                            .text(delta["text"].as_str().unwrap_or_default()),
++                    ),
++                    "input_json_delta" => {
++                        self.empty_calls.remove(&key);
++                        events.extend(self.emitter.call_arguments(
++                            &key,
++                            delta["partial_json"].as_str().unwrap_or_default(),
++                        ))
++                    }
++                    "thinking_delta" => events.extend(
++                        self.emitter
++                            .reasoning_summary(delta["thinking"].as_str().unwrap_or_default()),
++                    ),
++                    "signature_delta" => events.extend(
++                        self.emitter
++                            .reasoning_signature(delta["signature"].as_str().unwrap_or_default()),
++                    ),
++                    _ => {}
++                }
++            }
++            "message_delta" => {
++                if let Some(usage) = chunk["usage"].as_object() {
++                    if !self.usage.is_object() {
++                        self.usage = json!({});
++                    }
++                    for (name, value) in usage {
++                        self.usage[name] = value.clone();
++                    }
++                }
++                self.finish = Some(match chunk["delta"]["stop_reason"].as_str() {
++                    Some("max_tokens") => Finish::Incomplete(IncompleteReason::MaxOutputTokens),
++                    Some("refusal") => Finish::Incomplete(IncompleteReason::ContentFilter),
++                    Some("end_turn" | "stop_sequence" | "tool_use" | "pause_turn") => {
++                        Finish::Completed
++                    }
++                    _ => {
++                        return Err(AttemptError::new(
++                            ErrorClass::Decode,
++                            "Anthropic sent an unknown stop reason.",
++                        ));
++                    }
++                });
++            }
++            "message_stop" => {
++                let count = |name: &str| self.usage[name].as_u64().unwrap_or_default();
++                let cached = count("cache_read_input_tokens");
++                let write = count("cache_creation_input_tokens");
++                let mut usage = Usage::new(
++                    count("input_tokens") + cached + write,
++                    cached,
++                    count("output_tokens"),
++                    0,
++                );
++                usage
++                    .input_tokens_details
++                    .extra
++                    .insert("cache_write_tokens".into(), json!(write));
++                if self.usage["input_tokens"].is_u64() && self.usage["output_tokens"].is_u64() {
++                    self.emitter.usage(usage);
++                }
++                let finish = self.finish.take().ok_or_else(|| {
++                    AttemptError::new(ErrorClass::Decode, "Anthropic ended without a stop reason.")
++                })?;
++                events.extend(self.emitter.finish(finish));
++            }
++            "error" => {
++                return Err(AttemptError::new(
++                    ErrorClass::Upstream,
++                    "Anthropic couldn't finish this response.",
++                ));
++            }
++            _ => {}
++        }
++        for event in events {
++            self.gate.push(event);
++        }
++        Ok(())
++    }
++}
++
++/// Reads Messages SSE, preserving first-output failure behavior.
++pub fn events(frames: Frames, emitter: Emitter, model: &str) -> EventStream {
++    Box::pin(futures_util::stream::unfold(
++        Reader {
++            frames,
++            emitter,
++            gate: Gate::new(model, &[]),
++            usage: Value::Null,
++            finish: None,
++            empty_calls: BTreeSet::new(),
++        },
++        |mut reader| async move {
++            loop {
++                if let Some(event) = reader.gate.next() {
++                    return Some((event, reader));
++                }
++                if reader.gate.closed() {
++                    return None;
++                }
++                match reader.frames.next().await {
++                    None => reader.gate.end(),
++                    Some(Err(error)) => reader.gate.fail(error),
++                    Some(Ok(frame)) => {
++                        if let Err(error) = reader.chunk(&frame.data) {
++                            reader.gate.fail(error);
++                        }
++                    }
++                }
++            }
++        },
++    ))
++}
+diff --git a/crates/inference/src/upstream/emit.rs b/crates/inference/src/upstream/emit.rs
+index c8c68b95ac21aef0a6a10147735c87c36c9e8620..f1fdd4e3ecfeff5f86a73c29ea668cada4475406 100644
+--- a/crates/inference/src/upstream/emit.rs
++++ b/crates/inference/src/upstream/emit.rs
+@@ -388,6 +388,15 @@ impl Emitter {
+         out
+     }
+ 
++    /// Closes the current output at a native content-block boundary.
++    pub fn end_block(&mut self) -> Vec<Event> {
++        let mut out = Vec::new();
++        self.close_reasoning(&mut out);
++        self.close_message(&mut out);
++        self.close_calls(&mut out, ItemStatus::Completed);
++        out
++    }
++
+     /// The usage the terminal event will carry.
+     pub fn usage(&mut self, usage: Usage) {
+         self.response.usage = Some(usage);
+@@ -592,9 +601,6 @@ impl Emitter {
+             }
+             Finish::Failed(error) => self.response.error = Some(error),
+         }
+-        if self.response.usage.is_none() {
+-            self.response.usage = Some(Usage::default());
+-        }
+         let snapshot = self.response.clone();
+         out.push(self.event(EventBody::lifecycle(lifecycle, snapshot)));
+         out
+diff --git a/crates/inference/src/upstream/gemini.rs b/crates/inference/src/upstream/gemini.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..b5e183f29076ddfc711c87a17b50307213787050
+--- /dev/null
++++ b/crates/inference/src/upstream/gemini.rs
+@@ -0,0 +1,96 @@
++//! Gemini Developer API on the caller's key, sharing Vertex's native codec.
++
++use super::secret::Secret;
++use super::vertex::{self, Thinking};
++use super::{
++    Account, AttemptError, AttemptMeter, BoxFuture, CostBasis, ModelRow, PrivacyTerms, Sent,
++    Upstream, check,
++};
++
++pub struct Gemini {
++    key: Secret,
++    pub base_url: String,
++    account: Account,
++    privacy: PrivacyTerms,
++    rows: Vec<ModelRow>,
++    http: reqwest::Client,
++}
++
++impl Gemini {
++    pub fn new(key: Secret) -> Self {
++        Self {
++            key,
++            base_url: "https://generativelanguage.googleapis.com".into(),
++            account: Account {
++                id: crate::run::CALLER_KEY.into(),
++                basis: CostBasis::PayAsYouGo,
++            },
++            privacy: PrivacyTerms::unverified(
++                "Gemini: the caller's billing and data terms are not verified",
++            ),
++            rows: vertex::default_models()
++                .into_iter()
++                .map(|(row, _)| row)
++                .collect(),
++            http: super::http::client(super::http::CONNECT_TIMEOUT),
++        }
++    }
++}
++
++impl Upstream for Gemini {
++    fn name(&self) -> &str {
++        "google"
++    }
++    fn account(&self) -> &Account {
++        &self.account
++    }
++    fn privacy(&self) -> &PrivacyTerms {
++        &self.privacy
++    }
++    fn models(&self) -> &[ModelRow] {
++        &self.rows
++    }
++    fn configured(&self) -> bool {
++        true
++    }
++    fn send<'a>(
++        &'a self,
++        request: &'a crate::CreateResponse,
++        model: &'a str,
++    ) -> BoxFuture<'a, Result<Sent, AttemptError>> {
++        Box::pin(async move {
++            let row = check(self, request, model)?;
++            let thinking = if row.upstream_model.starts_with("gemini-2.5") {
++                Thinking::Budget
++            } else {
++                Thinking::Level
++            };
++            let body = vertex::body(request, row, thinking)?;
++            let meter = AttemptMeter::start(self, row);
++            let url = format!(
++                "{}/v1beta/models/{}:streamGenerateContent?alt=sse",
++                self.base_url.trim_end_matches('/'),
++                row.upstream_model
++            );
++            let call = self
++                .http
++                .post(url)
++                .header("x-goog-api-key", self.key.expose())
++                .header("accept", "text/event-stream")
++                .json(&body);
++            let frames = match super::http::open_stream(call, &[self.key.expose()]).await {
++                Ok(frames) => frames,
++                Err(error) => {
++                    meter.fail(&error);
++                    return Err(error);
++                }
++            };
++            meter.status(200);
++            let events = vertex::events(frames, super::emit::Emitter::new(model, request), model);
++            Ok(Sent {
++                events: meter.wrap(events),
++                meter,
++            })
++        })
++    }
++}
+diff --git a/crates/inference/src/upstream/mod.rs b/crates/inference/src/upstream/mod.rs
+index cca8562ca77ebc34d74a6083c4a1990353447e85..00c9d41deda01e81663721c3042ec60661a6a78b 100644
+--- a/crates/inference/src/upstream/mod.rs
++++ b/crates/inference/src/upstream/mod.rs
+@@ -42,12 +42,15 @@ use crate::meter::RateRow;
+ use crate::openagents::Privacy;
+ use crate::request::{CreateResponse, TextFormat, Tool, ToolChoice, ToolChoiceMode};
+ 
++pub mod anthropic;
+ pub mod chat;
+ pub mod emit;
+ pub mod gate;
++pub mod gemini;
+ pub mod google;
+ pub mod http;
+ pub mod measure;
++pub mod openai;
+ pub mod openrouter;
+ pub mod pro;
+ pub mod psionic;
+diff --git a/crates/inference/src/upstream/openai.rs b/crates/inference/src/upstream/openai.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..d6b9ec17448e953b6aad9d16526b94da67356a58
+--- /dev/null
++++ b/crates/inference/src/upstream/openai.rs
+@@ -0,0 +1,41 @@
++//! OpenAI's native Responses API on the caller's API key.
++
++use super::responses::{ResponsesConfig, ResponsesUpstream, no_fields};
++use super::secret::Secret;
++use super::{Account, CostBasis, ModelRow, PrivacyTerms};
++
++/// Native model ids and capabilities, using the existing OpenAI catalog.
++pub fn default_models() -> Vec<ModelRow> {
++    super::pro::default_models()
++        .into_iter()
++        .map(|mut row| {
++            row.upstream_model = row.id.trim_start_matches("openai/").to_owned();
++            row.capabilities.tools = true;
++            row.capabilities.images = true;
++            row.capabilities.json_schema = true;
++            row.price.cache_write = None;
++            row
++        })
++        .collect()
++}
++
++/// Settings for a caller's key. No ambient credentials are read.
++pub fn config(key: Option<Secret>) -> ResponsesConfig {
++    ResponsesConfig {
++        name: "openai",
++        url: "https://api.openai.com/v1/responses".into(),
++        key,
++        headers: Vec::new(),
++        account: Account {
++            id: crate::run::CALLER_KEY.into(),
++            basis: CostBasis::PayAsYouGo,
++        },
++        privacy: PrivacyTerms::unverified(
++            "OpenAI: the caller's retention agreement is not verified",
++        ),
++        privacy_fields: |_| no_fields(),
++        models: default_models(),
++    }
++}
++
++pub type OpenAi = ResponsesUpstream;
+diff --git a/crates/inference/src/upstream/responses.rs b/crates/inference/src/upstream/responses.rs
+index 5ca57271bbffec4d29e536e87aecb4e9a57e6698..b3b0f639d8d3410d39a70f48c18d7abddc5971d7 100644
+--- a/crates/inference/src/upstream/responses.rs
++++ b/crates/inference/src/upstream/responses.rs
+@@ -195,7 +195,7 @@ impl super::Upstream for ResponsesUpstream {
+             for (name, value) in &self.config.headers {
+                 call = call.header(name, value);
+             }
+-            let frames = match super::http::open_stream(call, &[]).await {
++            let frames = match super::http::open_stream(call, &[key.expose()]).await {
+                 Ok(frames) => frames,
+                 Err(error) => {
+                     meter.fail(&error);
+diff --git a/docs/inference/gateway.md b/docs/inference/gateway.md
+index 6e12345d11c8f4e6bd2f5d9e3d99bbda18fabc80..8599d7760b86b027f0469d4b7a10f2d34bb1e82d 100644
+--- a/docs/inference/gateway.md
++++ b/docs/inference/gateway.md
+@@ -791,13 +791,13 @@ P1 public API as built (#11065), local only until deployed:
+ P1 bring your own key as built (#11067):
+ 
+ - `inference.byok.keyring` names an `oa-seal` keyring (a private file
+-  outside the registry). A workspace's own OpenRouter and Vercel AI
+-  Gateway keys are sealed with it (AES-256-GCM, bound to the tenant and
++  outside the registry). A workspace's own OpenRouter, Vercel AI Gateway, Anthropic, OpenAI,
++  and Google keys are sealed with it (AES-256-GCM, bound to the tenant and
+   provider) in `inference-provider-keys.json` beside the registry
+   (`crates/gateway/src/inference_byok.rs`). Routes, for a signed-in owner
+   or admin and never an API key: `GET /v1/workspaces/{ws}/provider-keys`,
+   `PUT` (`{"key": "..."}`) and `DELETE
+-  /v1/workspaces/{ws}/provider-keys/{openrouter|vercel}`. Answers carry
++  /v1/workspaces/{ws}/provider-keys/{openrouter|vercel|anthropic|openai|google}`. Answers carry
+   the provider and `model_access::fingerprint` only; the key is never
+   logged or answered back.
+ - Every caller's `run::Caller::own` holds adapters on its tenant's keys,
+@@ -810,9 +810,12 @@ P1 bring your own key as built (#11067):
+   debited), and `GET /v1/usage/{id}` says `payer: "mine"`.
+ - Web Settings, API keys: add, replace, or remove your own OpenRouter and
+   Vercel AI Gateway keys (shown when the account service keeps them).
+-- Not yet: Anthropic, OpenAI, and Google keys, which need their own
+-  adapters (#11111); the desktop's locally stored keys are separate and
+-  stay on the person's computer.
++- Direct keys (#11111): `anthropic` uses Messages, `openai` uses native
++  Responses, and `google` uses Gemini's `streamGenerateContent`. Each
++  uses only the workspace's sealed key. Direct keys require
++  `openagents.privacy: "standard"`; a key does not establish a verified
++  zero-retention agreement. The desktop's locally stored keys are separate
++  and stay on the person's computer.
+ 
+ Issues, in build order:
+ 

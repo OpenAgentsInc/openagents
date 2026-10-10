@@ -1,0 +1,182 @@
+{
+  "issue": 10167,
+  "title": "Disk cleanup runs on triggers the rule doesn't name",
+  "body": "Found by a Codex review on CoderOS (thread 700865e6, 2026-10-02) of 5ae8d27af8 (#10156).\n\n`crates/background/src/runner.rs:99-120`: the runner evaluates cleanup at host start, when tasks end, and every interval regardless of `rule.triggers`. Removing `HostStart` or `TaskEnded` has no effect; removing `Interval` still schedules checks every 300 s through a fallback; an enabled rule with an empty trigger list can still delete files when disk is low.\n\nFix: gate each automatic evaluation on the configured trigger; schedule no interval checks when no interval is configured; keep explicit manual runs (`openagents background run`, `/background`) separate. Tests for each trigger removed.",
+  "base": "4705102273140a5f381fb75e17a29965662629c8",
+  "finder": "lite",
+  "plan": [
+    "Goal: Disk cleanup runs on triggers the rule doesn't name",
+    "Change the behavior where it lives, most likely in `crates/background/src/runner.rs`, `crates/background/src/run.rs`, `crates/background/src/rule.rs`.",
+    "Add or update a test that pins the new behavior, beside the code's existing tests.",
+    "Run `check:background`, then `test:background`, then `fmt`; stop when they pass."
+  ],
+  "files": [
+    {
+      "path": "crates/background/src/runner.rs",
+      "score": 30.1,
+      "lines": [
+        23,
+        42,
+        100,
+        107,
+        115,
+        120,
+        209
+      ],
+      "why": [
+        "the issue names `/background`",
+        "the issue names `crates/background/src/runner.rs`",
+        "has `HostStart`",
+        "has `TaskEnded`",
+        "has `Interval`"
+      ],
+      "excerpt": "--- lines 11-60 of 256 ---\n   11  use std::time::Duration;\n   12  \n   13  use crate::inuse::System;\n   14  use crate::paths::{self, Layout};\n   15  use crate::plan::{Env, Facts, observe};\n   16  use crate::run::{self, Cause, Report};\n   17  use crate::store::{self, State};\n   18  use crate::volume::Statvfs;\n   19  \n   20  /// A request to the runner.\n   21  enum Request {\n   22      Run { rule: String },\n   23      TaskEnded,\n   24  }\n   25  \n   26  /// Talks to a running runner.\n   27  #[derive(Clone)]\n   28  pub struct Handle {\n   29      sender: Sender<Request>,\n   30  }\n   31  \n   32  impl Handle {\n   33      /// Run `rule` now on the runner's thread. The result goes to the log\n   34      /// and the rule's state. (A dry run is computed where it is asked for:\n   35      /// it changes nothing, so it needs no runner.)\n   36      pub fn run(&self, rule: &str) {\n   37          let _ = self.sender.send(Request::Run { rule: rule.into() });\n   38      }\n   39  \n   40      /// A Coder task ended: check now.\n   41      pub fn task_ended(&self) {\n   42          let _ = self.sender.send(Request::TaskEnded);\n   43      }\n   44  }\n   45  \n   46  /// How the runner says what happened: the host prints it to its log.\n   47  pub type Say = Box<dyn Fn(&str) + Send>;\n   48  \n   49  /// Start the runner on its own thread.\n   50  #[must_use]\n   51  pub fn start(layout: Layout, facts: Option<Arc<dyn Facts>>, say: Say) -> Handle {\n   52      let (sender, receiver) = channel();\n   53      let _ = std::thread::Builder::new()\n   54          .name(\"background\".into())\n   55          .spawn(move || Runner::new(layout, facts, say).serve(&receiver));\n   56      Handle { sender }\n   57  }\n   58  \n   59  struct Runner {\n   60      layout: Layout,\n--- lines 88-138 of 256 ---\n   88                  Err(RecvTimeoutError::Disconnected) => return,\n   89                  Ok(Request::Run { rule }) => {\n   90                      // Another process is the runner; a request made here\n   91                      // still runs, under the run lock.\n   92                      self.manual(&rule);\n   93                  }\n   94                  _ => {}\n   95              }\n   96          };\n   97          let pid = std::process::id();\n   98          State::update(&self.layout, \"disk\", |state| state.runner = Some(pid));\n   99          std::thread::sleep(START_DELAY);\n  100          self.check(Cause::HostStart);\n  101          let mut next = paths::now() + self.interval();\n  102          let mut next_tasks = paths::now() + TASK_POLL.as_secs();\n  103          loop {\n  104              let wait = next.min(next_tasks).saturating_sub(paths::now()).max(1);\n  105              match requests.recv_timeout(Duration::from_secs(wait)) {\n  106                  Ok(Request::Run { rule }) => self.manual(&rule),\n  107                  Ok(Request::TaskEnded) => self.check(Cause::TaskEnded),\n  108                  Err(RecvTimeoutError::Timeout) => {}\n  109                  Err(RecvTimeoutError::Disconnected) => return,\n  110              }\n  111              let now = paths::now();\n  112              if now >= next_tasks {\n  113                  next_tasks = now + TASK_POLL.as_secs();\n  114                  if self.task_ended() {\n  115                      self.check(Cause::TaskEnded);\n  116                  }\n  117              }\n  118              if now >= next {\n  119                  next = now + self.interval();\n  120                  self.check(Cause::Interval);\n  121              }\n  122          }\n  123      }\n  124  \n  125      fn runner_lock(&self) -> Option<File> {\n  126          std::fs::create_dir_all(self.layout.background()).ok()?;\n  127          let file = File::options()\n  128              .read(true)\n  129              .write(true)\n  130              .create(true)\n  131              .truncate(false)\n  132              .open(self.layout.runner_lock())\n  133              .ok()?;\n  134          file.try_lock().ok().map(|()| file)\n  135      }\n  136  \n  137      fn interval(&self) -> u64 {\n  138          store::load(&self.layout, \"disk\")\n--- lines 197-227 of 256 ---\n  197              state.last_check = Some(now);\n  198              state.next_check = Some(now + rule.interval().unwrap_or(300));\n  199              state.free = fullest.map(|volume| volume.space.free);\n  200              state.total = fullest.map(|volume| volume.space.total);\n  201          });\n  202          let spaces: Vec<(u64, u64)> = volumes\n  203              .iter()\n  204              .map(|volume| (volume.space.free, volume.space.total))\n  205              .collect();\n  206          if decide(&rule, &spaces, state.last_run, now).is_none() {\n  207              return;\n  208          }\n  209          let cause = if cause == Cause::Interval {\n  210              Cause::Threshold\n  211          } else {\n  212              cause\n  213          };\n  214          let result = run::run(&env, &rule, cause, false, false);\n  215          self.finish(&rule.id, result);\n  216      }\n  217  \n  218      fn finish(&self, id: &str, result: Result<Report, String>) {\n  219          let report = match result {\n  220              Ok(report) => report,\n  221              Err(why) => {\n  222                  (self.say)(&format!(\"background {id}: {why}\"));\n  223                  return;\n  224              }\n  225          };\n  226          crate::view::remember(&self.layout, id, &report);\n  227          let notice = report.notice.clone();"
+    },
+    {
+      "path": "crates/background/src/run.rs",
+      "score": 23.81,
+      "lines": [
+        19,
+        21,
+        22,
+        23
+      ],
+      "why": [
+        "the issue names `/background`",
+        "has `openagents background run`",
+        "has `HostStart`",
+        "has `TaskEnded`",
+        "has `Interval`",
+        "has `/background`"
+      ],
+      "excerpt": "--- lines 7-41 of 452 ---\n    7  use serde::{Deserialize, Serialize};\n    8  \n    9  use crate::git::{self, Undo};\n   10  use crate::paths::{self, Layout, bytes, show};\n   11  use crate::plan::{self, Env, Evidence, Item, Kept, Plan, View};\n   12  use crate::rule::{Class, Rule};\n   13  use crate::store;\n   14  \n   15  /// What started a run.\n   16  #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]\n   17  #[serde(rename_all = \"snake_case\")]\n   18  pub enum Cause {\n   19      Interval,\n   20      Threshold,\n   21      TaskEnded,\n   22      HostStart,\n   23      /// Someone asked: `openagents background run`, `/background`, or\n   24      /// `background.run`.\n   25      Manual,\n   26  }\n   27  \n   28  #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]\n   29  #[serde(rename_all = \"snake_case\")]\n   30  pub enum Outcome {\n   31      Deleted,\n   32      /// A worktree removed with `git worktree remove`.\n   33      Removed,\n   34      /// A check failed right before deletion.\n   35      Skipped,\n   36      Failed,\n   37  }\n   38  \n   39  /// One action of a run.\n   40  #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]\n   41  pub struct Action {"
+    },
+    {
+      "path": "crates/background/src/rule.rs",
+      "score": 19.48,
+      "lines": [
+        2,
+        53,
+        58,
+        60,
+        234,
+        236,
+        237,
+        281,
+        324
+      ],
+      "why": [
+        "the issue names `/background`",
+        "has `HostStart`",
+        "has `TaskEnded`",
+        "has `Interval`",
+        "has `/background`"
+      ],
+      "excerpt": "--- lines 1-20 of 457 ---\n    1  //! The rule type: one JSON document per rule at\n    2  //! `~/.openagents/background/rules/<id>.json`, versioned and digested.\n    3  //!\n    4  //! Phase 1 ships one built-in rule, [`disk`]. A rule file that is absent\n    5  //! means the built-in defaults; editing it (`openagents background edit\n    6  //! disk`) writes the file, which then wins.\n    7  \n    8  use std::path::{Path, PathBuf};\n    9  \n   10  use serde::{Deserialize, Serialize};\n   11  use sha2::{Digest, Sha256};\n   12  \n   13  /// The schema every rule document carries.\n   14  pub const SCHEMA: &str = \"openagents.background.rule.v1\";\n   15  \n   16  /// One gigabyte, as the policy counts it (10^9 bytes).\n   17  pub const GB: u64 = 1_000_000_000;\n   18  \n   19  /// A durable, user-defined rule the host runs.\n   20  #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]\n--- lines 41-78 of 457 ---\n   41  \n   42  #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]\n   43  #[serde(tag = \"kind\", rename_all = \"snake_case\", deny_unknown_fields)]\n   44  pub enum Origin {\n   45      BuiltIn,\n   46      File { path: String },\n   47  }\n   48  \n   49  #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]\n   50  #[serde(tag = \"kind\", rename_all = \"snake_case\", deny_unknown_fields)]\n   51  pub enum Trigger {\n   52      /// A check every `every_secs`.\n   53      Interval { every_secs: u64 },\n   54      /// Free space falls below the goal's start threshold, checked on the\n   55      /// interval.\n   56      Threshold,\n   57      /// A Coder task ends.\n   58      TaskEnded,\n   59      /// The host starts.\n   60      HostStart,\n   61  }\n   62  \n   63  /// `max(bytes, percent of the volume)`.\n   64  #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]\n   65  #[serde(deny_unknown_fields)]\n   66  pub struct Level {\n   67      pub bytes: u64,\n   68      pub percent: u8,\n   69  }\n   70  \n   71  impl Level {\n   72      /// The bytes this level means on a volume of `total` bytes.\n   73      #[must_use]\n   74      pub fn of(self, total: u64) -> u64 {\n   75          let share = u128::from(total) * u128::from(self.percent) / 100;\n   76          self.bytes.max(u64::try_from(share).unwrap_or(u64::MAX))\n   77      }\n   78  }\n--- lines 222-255 of 457 ---\n  222  /// The built-in disk cleanup rule with the spec's default policy.\n  223  #[must_use]\n  224  pub fn disk() -> Rule {\n  225      Rule {\n  226          schema: SCHEMA.into(),\n  227          id: \"disk\".into(),\n  228          name: \"Disk cleanup\".into(),\n  229          version: 1,\n  230          origin: Origin::BuiltIn,\n  231          enabled: true,\n  232          paused_until: None,\n  233          triggers: vec![\n  234              Trigger::Interval { every_secs: 300 },\n  235              Trigger::Threshold,\n  236              Trigger::TaskEnded,\n  237              Trigger::HostStart,\n  238          ],\n  239          goal: Goal {\n  240              start: Level {\n  241                  bytes: 30 * GB,\n  242                  percent: 5,\n  243              },\n  244              stop: Level {\n  245                  bytes: 60 * GB,\n  246                  percent: 15,\n  247              },\n  248              emergency: Level {\n  249                  bytes: 10 * GB,\n  250                  percent: 1,\n  251              },\n  252              max_freed: 100 * GB,\n  253          },\n  254          actions: vec![\n  255              Action::DeleteCaches {\n--- lines 269-299 of 457 ---\n  269              checkout_days: 7,\n  270              keep: 0,\n  271              orphan_worktree_days: 7,\n  272              gate_idle_hours: 1,\n  273              report_only: Vec::new(),\n  274          },\n  275          safety: Safety {\n  276              allow: vec![\n  277                  \"~/.openagents/targets\".into(),\n  278                  \"~/.openagents/coder-one/target\".into(),\n  279                  \"~/.openagents/worktrees\".into(),\n  280                  \"~/.openagents/gate\".into(),\n  281                  \"~/.openagents/background/trash\".into(),\n  282                  \"~/work\".into(),\n  283              ],\n  284              deny: Vec::new(),\n  285              report: vec![\n  286                  \"~/.openagents/pylon\".into(),\n  287                  \"~/Library/Caches\".into(),\n  288                  \"/private/var/folders\".into(),\n  289              ],\n  290          },\n  291          cooldown_secs: 600,\n  292      }\n  293  }\n  294  \n  295  /// The built-in rules, by id.\n  296  #[must_use]\n  297  pub fn built_in(id: &str) -> Option<Rule> {\n  298      (id == \"disk\").then(disk)\n  299  }\n--- lines 312-328 of 457 ---\n  312      }\n  313  \n  314      /// Whether the rule runs on its triggers at `now`.\n  315      #[must_use]\n  316      pub fn active(&self, now: u64) -> bool {\n  317          self.enabled && self.paused_until.is_none_or(|until| until <= now)\n  318      }\n  319  \n  320      /// The check interval.\n  321      #[must_use]\n  322      pub fn interval(&self) -> Option<u64> {\n  323          self.triggers.iter().find_map(|trigger| match trigger {\n  324              Trigger::Interval { every_secs } => Some(*every_secs),\n  325              _ => None,\n  326          })\n  327      }\n  328  "
+    },
+    {
+      "path": "crates/background/Cargo.toml",
+      "score": 13.38,
+      "lines": [
+        7
+      ],
+      "why": [
+        "the issue names `/background`",
+        "has `/background`"
+      ],
+      "excerpt": "--- lines 1-19 of 19 ---\n    1  [package]\n    2  name = \"background\"\n    3  version.workspace = true\n    4  edition.workspace = true\n    5  rust-version.workspace = true\n    6  publish.workspace = true\n    7  description = \"Background processes: durable rules the host runs without a conversation, starting with the disk cleanup monitor (docs/background).\"\n    8  \n    9  [dependencies]\n   10  libc = \"0.2\"\n   11  serde = { version = \"1\", features = [\"derive\"] }\n   12  serde_json = \"1\"\n   13  sha2 = \"0.10\"\n   14  \n   15  [dev-dependencies]\n   16  tempfile = \"3\"\n   17  \n   18  [lints]\n   19  workspace = true"
+    },
+    {
+      "path": "crates/background/src/lib.rs",
+      "score": 13.38,
+      "lines": [
+        2
+      ],
+      "why": [
+        "the issue names `/background`",
+        "has `/background`"
+      ],
+      "excerpt": "--- lines 1-33 of 33 ---\n    1  //! Background processes: durable rules the host runs without a\n    2  //! conversation (docs/background/2026-10-02-background-processes.md).\n    3  //!\n    4  //! Phase 1 is the disk cleanup monitor, the built-in rule `disk`: when a\n    5  //! watched volume's free space falls below its start level, it deletes\n    6  //! disposable build caches and finished worktrees, in class order and least\n    7  //! recently used first, until the stop level, and never anything in use,\n    8  //! unsaved, denied, or reached through a link. No model is called.\n    9  //!\n   10  //! The crate has no host dependency: the host gives it the task store\n   11  //! ([`Facts`]) and starts [`runner::start`]; `openagents background` calls\n   12  //! [`run::run`] directly.\n   13  \n   14  #![cfg(unix)]\n   15  \n   16  pub mod git;\n   17  pub mod inuse;\n   18  pub mod paths;\n   19  pub mod plan;\n   20  pub mod rule;\n   21  pub mod run;\n   22  pub mod runner;\n   23  pub mod store;\n   24  pub mod view;\n   25  pub mod volume;\n   26  \n   27  pub use paths::{Layout, SLOTS};\n   28  pub use plan::{Env, Facts, Plan, TaskFact};\n   29  pub use rule::{Class, Rule};\n   30  pub use run::{Cause, Record, Report};\n   31  \n   32  #[cfg(test)]\n   33  mod tests;"
+    },
+    {
+      "path": "crates/background/src/git.rs",
+      "score": 12.0,
+      "lines": [],
+      "why": [
+        "the issue names `/background`"
+      ],
+      "excerpt": "--- lines 1-60 of 170 ---\n    1  //! The Git checks a worktree passes before it is removed, the removal\n    2  //! itself, and its undo.\n    3  \n    4  use std::path::{Path, PathBuf};\n    5  use std::process::Command;\n    6  \n    7  use serde::{Deserialize, Serialize};\n    8  \n    9  /// What recreates a removed worktree: its repository, branch, and commit.\n   10  #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]\n   11  #[serde(deny_unknown_fields)]\n   12  pub struct Undo {\n   13      pub repo: PathBuf,\n   14      pub path: PathBuf,\n   15      #[serde(default, skip_serializing_if = \"Option::is_none\")]\n   16      pub branch: Option<String>,\n   17      pub commit: String,\n   18  }\n   19  \n   20  fn git(dir: &Path, args: &[&str]) -> Result<String, String> {\n   21      let output = Command::new(\"git\")\n   22          .arg(\"-C\")\n   23          .arg(dir)\n   24          .args(args)\n   25          .env(\"GIT_TERMINAL_PROMPT\", \"0\")\n   26          .env(\"GIT_OPTIONAL_LOCKS\", \"0\")\n   27          .stdin(std::process::Stdio::null())\n   28          .output()\n   29          .map_err(|error| format!(\"git: {error}\"))?;\n   30      if output.status.success() {\n   31          Ok(String::from_utf8_lossy(&output.stdout)\n   32              .trim_end()\n   33              .to_owned())\n   34      } else {\n   35          Err(format!(\n   36              \"git {}: {}\",\n   37              args.first().copied().unwrap_or_default(),\n   38              String::from_utf8_lossy(&output.stderr).trim()\n   39          ))\n   40      }\n   41  }\n   42  \n   43  /// Whether Git ignores `path` inside the checkout `top`.\n   44  #[must_use]\n   45  pub fn ignored(top: &Path, path: &Path) -> bool {\n   46      let Ok(relative) = path.strip_prefix(top) else {\n   47          return false;\n   48      };\n   49      Command::new(\"git\")\n   50          .arg(\"-C\")\n   51          .arg(top)\n   52          .args([\"check-ignore\", \"-q\", \"--no-index\"])\n   53          .arg(relative)\n   54          .stdin(std::process::Stdio::null())\n   55          .stdout(std::process::Stdio::null())\n   56          .stderr(std::process::Stdio::null())\n   57          .status()\n   58          .is_ok_and(|status| status.success())\n   59  }\n   60  "
+    }
+  ],
+  "history": [],
+  "checks": [
+    {
+      "id": "check:background",
+      "argv": [
+        "cargo",
+        "check",
+        "-p",
+        "background",
+        "--tests",
+        "--message-format",
+        "short"
+      ],
+      "what": "compile background and its tests"
+    },
+    {
+      "id": "test:background",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "background"
+      ],
+      "filter": true,
+      "what": "run background's tests (pass a test-name filter to run fewer)"
+    },
+    {
+      "id": "fmt:background",
+      "argv": [
+        "cargo",
+        "fmt",
+        "-p",
+        "background"
+      ],
+      "what": "format background"
+    }
+  ],
+  "rules": [
+    "Product code is Rust. Do not add TypeScript.",
+    "The check for a change is `cargo test -p` for the crates you edited plus `cargo fmt`. Do not run clippy, release gates, or other crates' tests.",
+    "Never put machine talk (internal words like retained, projection, canonical, digest, lane) in text a user sees; say what happened in plain words. Each surface's tests run the `oa-copy` guard over user-visible text.",
+    "When a test fails only because a checked-in generated file is stale, regenerate it.",
+    "No new INVARIANTS rows, design notes, or long docs for a small change.",
+    "Fix stale or false user-facing copy you touch in the same change."
+  ],
+  "levers": {
+    "finder": "lite",
+    "briefing_files": 6,
+    "excerpt": "windows",
+    "excerpt_lines": 140,
+    "briefing_tokens": 14000,
+    "history": 2,
+    "plan": "deterministic",
+    "template": "v1",
+    "tools": "Read,Edit,Write,Grep,Glob",
+    "check_output": "smart",
+    "mcp": "checks",
+    "model": "claude-opus-5-5",
+    "effort": "default",
+    "max_turns": 0,
+    "timeout_secs": 1200,
+    "briefing_in": "system",
+    "build_cache": "warm",
+    "build_host": "coderos-4080",
+    "post_fmt": false,
+    "decomposition": "single",
+    "triage": "none",
+    "learning": "none"
+  },
+  "build_secs": 2.78,
+  "chars": 18967
+}

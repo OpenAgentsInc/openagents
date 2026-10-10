@@ -1,0 +1,227 @@
+diff --git a/crates/coder/src/task/adapter.rs b/crates/coder/src/task/adapter.rs
+index a4bde7d1d123ba808cea24c63902b41597c70778..b76528c67c9704b4772acf8e2feb455b805270d2 100644
+--- a/crates/coder/src/task/adapter.rs
++++ b/crates/coder/src/task/adapter.rs
+@@ -12,6 +12,7 @@ use serde_json::{Value, json};
+ use supervise::{Input, Job, Limits};
+ 
+ pub mod container;
++mod installs;
+ pub mod login;
+ 
+ pub const NAME: &str = "microcoder-repository";
+@@ -614,6 +615,9 @@ async fn group_settles(group: Option<i32>, wait: Duration, every: Duration) -> b
+ /// A single task owner. It is deliberately neither serializable nor cloneable.
+ pub struct Host {
+     target: Option<super::targets::Lease>,
++    /// Where software the run's agent installs lands (#10336): a private
++    /// prefix for a full-access run, removed when the run ends.
++    installs: Option<installs::Prefix>,
+     owner: owner::Owner,
+     task: Task,
+     admission: owner::Admission,
+@@ -985,9 +989,23 @@ impl Host {
+                 effect_id: owner::effect_id_for(&task),
+             })?;
+         }
++        let installs = if login_reading.is_some() {
++            let prefix = installs::Prefix::create()?;
++            trace.append(
++                &Step::said(
++                    Source::System,
++                    "Software this run installs lands in its own prefix, not the owner's.",
++                )
++                .noting("install_prefix", json!({"path": prefix.path()})),
++            )?;
++            Some(prefix)
++        } else {
++            None
++        };
+         let trace_bytes = std::fs::metadata(trace.path())?.len() as usize;
+         Ok(Self {
+             target,
++            installs,
+             owner,
+             task,
+             admission,
+@@ -1226,6 +1244,10 @@ impl Host {
+                         target.path.as_os_str().to_owned(),
+                     ));
+                 }
++                // Installs go to this run's own prefix (#10336).
++                if let Some(prefix) = &self.installs {
++                    prefix.apply(&mut environment.variables);
++                }
+                 // A relative local remote resolves against the main
+                 // checkout, not this worktree (#10333).
+                 let already = environment
+diff --git a/crates/openagents-chat/src/coder_events.rs b/crates/openagents-chat/src/coder_events.rs
+index 2ea797e8e5c529b7419b625db206a1131becc62f..9a26c4817d87b8c8d592765d550748512e8d456c 100644
+--- a/crates/openagents-chat/src/coder_events.rs
++++ b/crates/openagents-chat/src/coder_events.rs
+@@ -687,13 +687,18 @@ fn split_diff(diff: &str) -> Vec<(String, Vec<&str>)> {
+     out
+ }
+ 
+-/// Whether one shell command line installs software for the whole
+-/// computer rather than in the task's worktree: `pip install --user` (or
+-/// with `sudo` or `--break-system-packages`), `npm install -g`, `cargo install`, `brew install`, `gem install`,
+-/// `go install`, `apt(-get) install`. A bounded parse of the agent's own
+-/// commands, never of what the person asked (#10336).
++/// Where software one shell command line installs lands (#10336), or
++/// `None` when the line installs nothing outside the task's worktree. A
++/// bounded parse of the agent's own commands, never of what the person
++/// asked.
++///
++/// A full-access run points the usual per-user destinations at its own
++/// prefix (`pip install --user`, `npm install -g`, `cargo install`, `gem
++/// install`, `go install`), so those stay with the run. A system package
++/// manager, `sudo`, or `--break-system-packages` still changes the
++/// computer.
+ #[must_use]
+-pub fn installs_outside(line: &str) -> bool {
++pub fn install_reach(line: &str) -> Option<InstallReach> {
+     let words: Vec<&str> = line
+         .split(|c: char| c.is_whitespace() || c == ';' || c == '&' || c == '|')
+         .filter(|word| !word.is_empty())
+@@ -704,14 +709,28 @@ pub fn installs_outside(line: &str) -> bool {
+             .iter()
+             .any(|word| word.rsplit('/').next() == Some(name))
+     };
+-    let pip = program("pip") || program("pip3") || (has("-m") && has("pip"));
+-    (pip && has("install") && (has("--user") || has("sudo") || has("--break-system-packages")))
++    let pip = (program("pip") || program("pip3") || (has("-m") && has("pip"))) && has("install");
++    let system = (program("brew") && has("install"))
++        || ((program("apt") || program("apt-get") || program("dnf") || program("yum"))
++            && has("install"))
++        || (has("sudo") && has("install"))
++        || (pip && has("--break-system-packages"));
++    if system {
++        return Some(InstallReach::Computer);
++    }
++    let run = (pip && has("--user"))
+         || (program("npm") && has("install") && (has("-g") || has("--global")))
+         || (program("cargo") && has("install"))
+-        || (program("brew") && has("install"))
+         || (program("gem") && has("install"))
+-        || (program("go") && has("install"))
+-        || ((program("apt") || program("apt-get")) && has("install"))
++        || (program("go") && has("install"));
++    run.then_some(InstallReach::Run)
++}
++
++/// Where an install landed: in the run's own prefix, or on the computer.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum InstallReach {
++    Run,
++    Computer,
+ }
+ 
+ /// The turn finished.
+@@ -860,9 +879,9 @@ pub struct Mapper {
+     /// the answer of a turn the loop ended because its checks passed
+     /// before the agent wrote one (#10331).
+     checked: Option<String>,
+-    /// Commands this turn ran that install software for the whole
+-    /// computer, outside the task's worktree (#10336).
+-    outside: Vec<String>,
++    /// Commands this turn ran that install software outside the task's
++    /// worktree, and where it landed (#10336).
++    installs: Vec<(String, InstallReach)>,
+ }
+ 
+ impl Mapper {
+@@ -883,6 +902,19 @@ impl Mapper {
+         &self.reply
+     }
+ 
++    /// Notes each line of `command` that installs software outside the
++    /// worktree, once (#10336).
++    fn note_installs(installs: &mut Vec<(String, InstallReach)>, command: &str) {
++        for line in command.lines() {
++            let line = line.trim();
++            if let Some(reach) = install_reach(line)
++                && !installs.iter().any(|(seen, _)| seen == line)
++            {
++                installs.push((line.to_owned(), reach));
++            }
++        }
++    }
++
+     /// The turn's answer: Coder's reply, or, when the loop ended the turn
+     /// because the task's checks passed before the agent wrote one, what
+     /// the checks said (#10331).
+@@ -896,19 +928,32 @@ impl Mapper {
+         } else {
+             self.reply.clone()
+         };
+-        if self.outside.is_empty() {
++        if self.installs.is_empty() {
+             return answer;
+         }
+-        // What changed this computer outside the worktree, so the person
+-        // knows (#10336).
+-        let ran = self
+-            .outside
+-            .iter()
+-            .map(|command| format!("`{command}`"))
+-            .collect::<Vec<_>>()
+-            .join(", ");
+-        let note =
+-            format!("Outside its worktree, this turn installed software on this computer: {ran}.");
++        // What the turn installed and where, so the person knows (#10336).
++        let listed = |reach: InstallReach| {
++            self.installs
++                .iter()
++                .filter(|(_, held)| *held == reach)
++                .map(|(command, _)| format!("`{command}`"))
++                .collect::<Vec<_>>()
++                .join(", ")
++        };
++        let mut notes = Vec::new();
++        let computer = listed(InstallReach::Computer);
++        if !computer.is_empty() {
++            notes.push(format!(
++                "Outside its worktree, this turn installed software on this computer: {computer}."
++            ));
++        }
++        let run = listed(InstallReach::Run);
++        if !run.is_empty() {
++            notes.push(format!(
++                "This turn installed software just for this run, gone when it ends: {run}."
++            ));
++        }
++        let note = notes.join(" ");
+         if answer.trim().is_empty() {
+             note
+         } else {
+@@ -1104,13 +1149,7 @@ impl Mapper {
+                     self.streamed.clear();
+                     for command in action["commands"].as_array().into_iter().flatten() {
+                         if let Some(command) = command.as_str() {
+-                            for line in command.lines() {
+-                                if installs_outside(line)
+-                                    && !self.outside.iter().any(|seen| seen == line.trim())
+-                                {
+-                                    self.outside.push(line.trim().to_owned());
+-                                }
+-                            }
++                            Self::note_installs(&mut self.installs, command);
+                             events.push(with_call(
+                                 make(StepKind::Command, command),
+                                 Call {
+@@ -1210,6 +1249,14 @@ impl Mapper {
+                 if is_decision_call(call) {
+                     continue;
+                 }
++                // An engine's own shell calls (Claude, Codex, Grok Build)
++                // install software too (#10336).
++                if let Some(command) = ["command", "cmd"]
++                    .iter()
++                    .find_map(|name| call["arguments"][*name].as_str())
++                {
++                    Self::note_installs(&mut self.installs, command);
++                }
+                 let (line, mut typed) = tool_call(call, &step["extra"]);
+                 typed.failed = results.iter().any(|result| {
+                     result["source_call_id"] == call["tool_call_id"]

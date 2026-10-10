@@ -1,0 +1,1121 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 60b2494970a651054c65bc3f3ee684be4367135f..8a0a3db8c4bd271cab05cfb47e6c2f9538b1ab15 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -45,8 +45,10 @@ Two skills are vendored under `.agents/skills/`. Read and apply them:
+   conformance numbers live in `docs/kev/`; golden fixtures in
+   `crates/kev/fixtures/`; weights stay in `~/work/kev-artifacts/` out of git.
+ - `crates/coder-terminal` — the Coder terminal: the amber intensity ladder,
+-  the framed composer, and the shell they draw. The rebuild plan lives in
+-  `docs/coder/`.
++  the framed composer, and the shell they draw. It also holds the terminal
++  design system every other terminal here depends on — `Intensity`,
++  `Ladder`, `frame`, and `rail`. Extend it rather than copying it. The
++  rebuild plan lives in `docs/coder/`.
+ - `crates/coder` — the agent: `classify` routes each turn through Jev,
+   `generate` answers through an Open Responses door, and the `coder`
+   binary draws the conversation in the terminal.
+diff --git a/Cargo.lock b/Cargo.lock
+index 12814fc3b84dab86fe959109003a07a890aa3492..530888928e7f77d64c8dddf184e18847c14a3d4c 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -362,12 +362,6 @@ dependencies = [
+  "ug-metal",
+ ]
+ 
+-[[package]]
+-name = "cassowary"
+-version = "0.3.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "df8670b8c7b9dae1793364eafadf7239c40d669904660c5960d74cfd80b46a53"
+-
+ [[package]]
+ name = "castaway"
+ version = "0.2.4"
+@@ -421,12 +415,12 @@ name = "coder"
+ version = "0.1.0"
+ dependencies = [
+  "coder-terminal",
+- "crossterm 0.29.0",
++ "crossterm",
+  "futures-util",
+  "indexmap",
+  "jev",
+  "nostr",
+- "ratatui 0.30.2",
++ "ratatui",
+  "reqwest",
+  "secp256k1",
+  "serde",
+@@ -439,25 +433,11 @@ dependencies = [
+ name = "coder-terminal"
+ version = "0.1.0"
+ dependencies = [
+- "crossterm 0.29.0",
++ "crossterm",
+  "pulldown-cmark",
+- "ratatui 0.30.2",
++ "ratatui",
+  "unicode-segmentation",
+- "unicode-width 0.2.0",
+-]
+-
+-[[package]]
+-name = "compact_str"
+-version = "0.8.2"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "7fd622ebbb56a5b2ccb651b32b911cdeb2a9b4b11776b2473bf26a26a286244e"
+-dependencies = [
+- "castaway",
+- "cfg-if",
+- "itoa",
+- "rustversion",
+- "ryu",
+- "static_assertions",
++ "unicode-width",
+ ]
+ 
+ [[package]]
+@@ -483,7 +463,7 @@ checksum = "e96a4956774c13c126a8b5af4daa79384f4d826534c95a02d76afb39e2ab64e3"
+ dependencies = [
+  "encode_unicode",
+  "libc",
+- "unicode-width 0.2.0",
++ "unicode-width",
+  "windows-sys 0.61.2",
+ ]
+ 
+@@ -587,22 +567,6 @@ version = "0.8.23"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "a31eee39dddec8330830986fcd7625edb5a24ec90ea038215273bbc3adb08ac6"
+ 
+-[[package]]
+-name = "crossterm"
+-version = "0.28.1"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "829d955a0bb380ef178a640b91779e3987da38c9aea133b20614cfed8cdea9c6"
+-dependencies = [
+- "bitflags 2.13.2",
+- "crossterm_winapi",
+- "mio",
+- "parking_lot",
+- "rustix 0.38.44",
+- "signal-hook",
+- "signal-hook-mio",
+- "winapi",
+-]
+-
+ [[package]]
+ name = "crossterm"
+ version = "0.29.0"
+@@ -616,7 +580,7 @@ dependencies = [
+  "futures-core",
+  "mio",
+  "parking_lot",
+- "rustix 1.1.5",
++ "rustix",
+  "signal-hook",
+  "signal-hook-mio",
+  "winapi",
+@@ -1025,12 +989,6 @@ version = "1.0.7"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
+ 
+-[[package]]
+-name = "foldhash"
+-version = "0.1.5"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
+-
+ [[package]]
+ name = "foldhash"
+ version = "0.2.0"
+@@ -1425,10 +1383,11 @@ dependencies = [
+ name = "gym"
+ version = "0.1.0"
+ dependencies = [
+- "crossterm 0.28.1",
++ "coder-terminal",
++ "crossterm",
+  "indexmap",
+  "jev",
+- "ratatui 0.29.0",
++ "ratatui",
+  "serde",
+  "serde_json",
+  "sha2 0.10.9",
+@@ -1451,17 +1410,6 @@ dependencies = [
+  "zerocopy",
+ ]
+ 
+-[[package]]
+-name = "hashbrown"
+-version = "0.15.5"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
+-dependencies = [
+- "allocator-api2",
+- "equivalent",
+- "foldhash 0.1.5",
+-]
+-
+ [[package]]
+ name = "hashbrown"
+ version = "0.16.1"
+@@ -1470,7 +1418,7 @@ checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
+ dependencies = [
+  "allocator-api2",
+  "equivalent",
+- "foldhash 0.2.0",
++ "foldhash",
+  "serde",
+  "serde_core",
+ ]
+@@ -1483,7 +1431,7 @@ checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+ dependencies = [
+  "allocator-api2",
+  "equivalent",
+- "foldhash 0.2.0",
++ "foldhash",
+ ]
+ 
+ [[package]]
+@@ -1775,7 +1723,7 @@ checksum = "9433806cd6b4ec1aba79c021c7e4c58fb4c3b9977c085062e611ac929998fb0c"
+ dependencies = [
+  "console",
+  "portable-atomic",
+- "unicode-width 0.2.0",
++ "unicode-width",
+  "unit-prefix",
+  "web-time",
+ ]
+@@ -1808,15 +1756,6 @@ version = "2.12.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "791930b43c0d5973160d90a8f3894509f2b273430f5c5c73b668636d0287c5c0"
+ 
+-[[package]]
+-name = "itertools"
+-version = "0.13.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
+-dependencies = [
+- "either",
+-]
+-
+ [[package]]
+ name = "itertools"
+ version = "0.14.0"
+@@ -1958,12 +1897,6 @@ dependencies = [
+  "bitflags 2.13.2",
+ ]
+ 
+-[[package]]
+-name = "linux-raw-sys"
+-version = "0.4.15"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "d26c52dbd32dccf2d10cac7725f8eae5296885fb5703b261f7d0a0739ec807ab"
+-
+ [[package]]
+ name = "linux-raw-sys"
+ version = "0.12.1"
+@@ -1997,15 +1930,6 @@ version = "0.4.34"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
+ 
+-[[package]]
+-name = "lru"
+-version = "0.12.5"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "234cf4f4a04dc1f57e24b96cc0cd600cf2af460d4161ac5ecdd0af8e1f3b2a38"
+-dependencies = [
+- "hashbrown 0.15.5",
+-]
+-
+ [[package]]
+ name = "lru"
+ version = "0.18.4"
+@@ -2910,27 +2834,6 @@ dependencies = [
+  "rand_core 0.10.1",
+ ]
+ 
+-[[package]]
+-name = "ratatui"
+-version = "0.29.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "eabd94c2f37801c20583fc49dd5cd6b0ba68c716787c2dd6ed18571e1e63117b"
+-dependencies = [
+- "bitflags 2.13.2",
+- "cassowary",
+- "compact_str 0.8.2",
+- "crossterm 0.28.1",
+- "indoc",
+- "instability",
+- "itertools 0.13.0",
+- "lru 0.12.5",
+- "paste",
+- "strum 0.26.3",
+- "unicode-segmentation",
+- "unicode-truncate 1.1.0",
+- "unicode-width 0.2.0",
+-]
+-
+ [[package]]
+ name = "ratatui"
+ version = "0.30.2"
+@@ -2954,19 +2857,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "cbb175c433c8e28a809d1f5773a2ae96e68c0ce40db865cbab1020bf33ae479c"
+ dependencies = [
+  "bitflags 2.13.2",
+- "compact_str 0.9.1",
++ "compact_str",
+  "critical-section",
+  "hashbrown 0.17.1",
+- "itertools 0.14.0",
++ "itertools",
+  "kasuari",
+- "lru 0.18.4",
++ "lru",
+  "palette",
+  "serde",
+- "strum 0.28.0",
++ "strum",
+  "thiserror 2.0.20",
+  "unicode-segmentation",
+- "unicode-truncate 2.0.1",
+- "unicode-width 0.2.0",
++ "unicode-truncate",
++ "unicode-width",
+ ]
+ 
+ [[package]]
+@@ -2976,7 +2879,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "567584a3b0e6a8203c23de40b4861497266725eb5363dbfd18a1edd603cca9f0"
+ dependencies = [
+  "cfg-if",
+- "crossterm 0.29.0",
++ "crossterm",
+  "instability",
+  "ratatui-core",
+ ]
+@@ -3022,14 +2925,14 @@ dependencies = [
+  "hashbrown 0.17.1",
+  "indoc",
+  "instability",
+- "itertools 0.14.0",
++ "itertools",
+  "line-clipping",
+  "ratatui-core",
+  "serde",
+- "strum 0.28.0",
++ "strum",
+  "time",
+  "unicode-segmentation",
+- "unicode-width 0.2.0",
++ "unicode-width",
+ ]
+ 
+ [[package]]
+@@ -3058,7 +2961,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "2964d0cf57a3e7a06e8183d14a8b527195c706b7983549cd5462d5aa3747438f"
+ dependencies = [
+  "either",
+- "itertools 0.14.0",
++ "itertools",
+  "rayon",
+ ]
+ 
+@@ -3186,19 +3089,6 @@ dependencies = [
+  "semver",
+ ]
+ 
+-[[package]]
+-name = "rustix"
+-version = "0.38.44"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "fdb5bc1ae2baa591800df16c9ca78619bf65c0488b41b96ccec5d11220d8c154"
+-dependencies = [
+- "bitflags 2.13.2",
+- "errno",
+- "libc",
+- "linux-raw-sys 0.4.15",
+- "windows-sys 0.52.0",
+-]
+-
+ [[package]]
+ name = "rustix"
+ version = "1.1.5"
+@@ -3208,7 +3098,7 @@ dependencies = [
+  "bitflags 2.13.2",
+  "errno",
+  "libc",
+- "linux-raw-sys 0.12.1",
++ "linux-raw-sys",
+  "windows-sys 0.61.2",
+ ]
+ 
+@@ -3544,35 +3434,13 @@ version = "0.11.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
+ 
+-[[package]]
+-name = "strum"
+-version = "0.26.3"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "8fec0f0aef304996cf250b31b5a10dee7980c85da9d759361292b8bca5a18f06"
+-dependencies = [
+- "strum_macros 0.26.4",
+-]
+-
+ [[package]]
+ name = "strum"
+ version = "0.28.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
+ dependencies = [
+- "strum_macros 0.28.0",
+-]
+-
+-[[package]]
+-name = "strum_macros"
+-version = "0.26.4"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "4c6bee85a5a24955dc440386795aa378cd9cf82acd5f764469152d2270e581be"
+-dependencies = [
+- "heck",
+- "proc-macro2",
+- "quote",
+- "rustversion",
+- "syn 2.0.119",
++ "strum_macros",
+ ]
+ 
+ [[package]]
+@@ -3680,7 +3548,7 @@ dependencies = [
+  "fastrand",
+  "getrandom 0.4.3",
+  "once_cell",
+- "rustix 1.1.5",
++ "rustix",
+  "windows-sys 0.61.2",
+ ]
+ 
+@@ -3692,7 +3560,7 @@ checksum = "9048a889effe34a5cddee0af7f53285198b16dca3be510858d38dfdb3e62a04e"
+ dependencies = [
+  "bitflags 2.13.2",
+  "parking_lot",
+- "rustix 1.1.5",
++ "rustix",
+  "signal-hook",
+  "windows-sys 0.61.2",
+ ]
+@@ -3854,12 +3722,12 @@ checksum = "b238e22d44a15349529690fb07bd645cf58149a1b1e44d6cb5bd1641ff1a6223"
+ dependencies = [
+  "ahash",
+  "aho-corasick",
+- "compact_str 0.9.1",
++ "compact_str",
+  "dary_heap",
+  "derive_builder",
+  "esaxx-rs",
+  "getrandom 0.3.4",
+- "itertools 0.14.0",
++ "itertools",
+  "log",
+  "macro_rules_attribute",
+  "monostate",
+@@ -3886,14 +3754,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "7afbf6e88718afcc138bad01d6ccc3051dbbc3b2ce9793d8b8a3aeb610969cfc"
+ dependencies = [
+  "ahash",
+- "compact_str 0.9.1",
++ "compact_str",
+  "daachorse",
+  "dary_heap",
+  "derive_builder",
+  "esaxx-rs",
+  "getrandom 0.3.4",
+  "indicatif",
+- "itertools 0.14.0",
++ "itertools",
+  "log",
+  "macro_rules_attribute",
+  "monostate",
+@@ -4236,34 +4104,17 @@ version = "1.13.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
+ 
+-[[package]]
+-name = "unicode-truncate"
+-version = "1.1.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "b3644627a5af5fa321c95b9b235a72fd24cd29c648c2c379431e6628655627bf"
+-dependencies = [
+- "itertools 0.13.0",
+- "unicode-segmentation",
+- "unicode-width 0.1.14",
+-]
+-
+ [[package]]
+ name = "unicode-truncate"
+ version = "2.0.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "16b380a1238663e5f8a691f9039c73e1cdae598a30e9855f541d29b08b53e9a5"
+ dependencies = [
+- "itertools 0.14.0",
++ "itertools",
+  "unicode-segmentation",
+- "unicode-width 0.2.0",
++ "unicode-width",
+ ]
+ 
+-[[package]]
+-name = "unicode-width"
+-version = "0.1.14"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af"
+-
+ [[package]]
+ name = "unicode-width"
+ version = "0.2.0"
+diff --git a/crates/coder-terminal/src/composer.rs b/crates/coder-terminal/src/composer.rs
+index 05a3c4b750fb7437fe1ee41cd31873ecbac26818..c7395f2f097fccc629f4f1777636fe714b750cfe 100644
+--- a/crates/coder-terminal/src/composer.rs
++++ b/crates/coder-terminal/src/composer.rs
+@@ -6,6 +6,9 @@
+ //! ride the top rail, left and right; the token count rides the bottom
+ //! right. A rail the rule cannot hold whole is left out rather than cut.
+ //!
++//! The box and its rails are [`crate::hairline`]'s, which is the same
++//! drawing the Gym's table sits in.
++//!
+ //! The composer draws into a ratatui [`Buffer`]; the shell decides where the
+ //! box sits and, if it wants a real terminal cursor, uses the caret position
+ //! [`render`][Composer::render] returns.
+@@ -13,9 +16,9 @@
+ use ratatui::buffer::Buffer;
+ use ratatui::layout::Rect;
+ use ratatui::style::Style;
+-use unicode_width::UnicodeWidthStr;
+ 
+ use crate::editor::Editor;
++use crate::hairline::{frame, rail};
+ use crate::intensity::Intensity;
+ use crate::ladder::Ladder;
+ 
+@@ -117,8 +120,20 @@ impl<'a> Composer<'a> {
+         }
+         frame(area, buf, amber);
+ 
+-        rail(area, buf, 0, dim, self.status, self.location);
+-        rail(area, buf, height - 1, dim, None, self.tokens);
++        rail(
++            area,
++            buf,
++            0,
++            self.status.map(|text| (text, dim)),
++            self.location.map(|text| (text, dim)),
++        );
++        rail(
++            area,
++            buf,
++            height - 1,
++            None,
++            self.tokens.map(|text| (text, dim)),
++        );
+ 
+         let mut caret_at = (area.left() + 4, area.top() + 1);
+         for offset in 0..window.visible as u16 {
+@@ -156,54 +171,6 @@ fn inner_width(width: u16) -> usize {
+     usize::from(width).saturating_sub(GUTTER).max(1)
+ }
+ 
+-/// The hairline: `─` rules top and bottom, `│` walls, corners `┌┐└┘`.
+-fn frame(area: Rect, buf: &mut Buffer, style: Style) {
+-    let (top, bottom) = (area.top(), area.bottom() - 1);
+-    let (left, right) = (area.left(), area.right() - 1);
+-    for x in left + 1..right {
+-        buf[(x, top)].set_char('─').set_style(style);
+-        buf[(x, bottom)].set_char('─').set_style(style);
+-    }
+-    for y in top + 1..bottom {
+-        buf[(left, y)].set_char('│').set_style(style);
+-        buf[(right, y)].set_char('│').set_style(style);
+-    }
+-    buf[(left, top)].set_char('┌').set_style(style);
+-    buf[(right, top)].set_char('┐').set_style(style);
+-    buf[(left, bottom)].set_char('└').set_style(style);
+-    buf[(right, bottom)].set_char('┘').set_style(style);
+-}
+-
+-/// Writes `left` and `right` into the rule at `offset`, each padded with a
+-/// space on both sides so the text never touches a corner. A rail wider
+-/// than the room left is dropped rather than cut.
+-fn rail(
+-    area: Rect,
+-    buf: &mut Buffer,
+-    offset: u16,
+-    style: Style,
+-    left: Option<&str>,
+-    right: Option<&str>,
+-) {
+-    let y = area.top() + offset;
+-    // The room the two rails share: the width less the corners and the rule
+-    // cell inside each.
+-    let mut room = usize::from(area.width).saturating_sub(4);
+-    if let Some(named) = left.map(|text| format!(" {text} ")) {
+-        let taken = named.width();
+-        if taken <= room {
+-            room -= taken;
+-            buf.set_string(area.left() + 2, y, &named, style);
+-        }
+-    }
+-    if let Some(named) = right.map(|text| format!(" {text} ")) {
+-        let taken = named.width();
+-        if taken <= room {
+-            buf.set_string(area.right() - 2 - taken as u16, y, &named, style);
+-        }
+-    }
+-}
+-
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+diff --git a/crates/coder-terminal/src/ladder.rs b/crates/coder-terminal/src/ladder.rs
+index 6093bb3b24b6d64c77a13738b34c0cdf3f5d5e7a..cac90a9c8ea2a7db69aa6dc5919cd8e98562a557 100644
+--- a/crates/coder-terminal/src/ladder.rs
++++ b/crates/coder-terminal/src/ladder.rs
+@@ -4,8 +4,13 @@
+ //! `NO_COLOR` and knows none. The [`Ladder`] detects which and translates the
+ //! four amber tones into concrete colors — exact RGB, the nearest cube
+ //! entries, or plain dim text.
++//!
++//! One ladder serves every terminal in this repository. Where a surface
++//! needs a step to behave differently, it says so in a named option rather
++//! than in a second copy of the ladder: [`Colorless`] is the only such
++//! option so far.
+ 
+-use crate::intensity::{Intensity, NEAR_BLACK};
++use crate::intensity::{Intensity, NEAR_BLACK, NEAR_BLACK_TINT};
+ use ratatui::style::{Color, Modifier, Style};
+ 
+ /// The color depth the terminal supports.
+@@ -16,20 +21,52 @@ pub enum Colors {
+     True,
+     /// The 256-color palette — ambers render as their nearest cube entries.
+     Indexed,
+-    /// Color off (`NO_COLOR`) — tone falls back to `Modifier::DIM`.
++    /// Color off (`NO_COLOR`) — tone falls back to modifiers.
+     None,
+ }
+ 
++/// What tone becomes when the terminal has no color to say it with.
++///
++/// `NO_COLOR` takes the hue away and leaves the four steps to land on
++/// whatever attributes remain. Which attributes are enough depends on what
++/// the surface draws, so the caller chooses.
++#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
++pub enum Colorless {
++    /// The faint half dims and the rest stays plain.
++    ///
++    /// The composer's choice: prose is most of what it draws, and bold
++    /// prose behind a hairline frame reads as shouting.
++    #[default]
++    Dim,
++    /// The faint half dims, and `Full` goes bold.
++    ///
++    /// A table's choice. Where the loudest step carries a verdict — a
++    /// failed gate against an unverifiable one — leaving it plain draws the
++    /// two alike on a colorless terminal, and telling them apart is what
++    /// the column is for.
++    DimAndBold,
++}
++
+ /// How [`Intensity`] values become terminal colors.
+ #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+ pub struct Ladder {
+     colors: Colors,
++    colorless: Colorless,
+ }
+ 
+ impl Ladder {
+-    /// A ladder for the given color depth.
++    /// A ladder for the given color depth, dimming the faint half when
++    /// there is no color.
+     pub const fn new(colors: Colors) -> Self {
+-        Self { colors }
++        Self {
++            colors,
++            colorless: Colorless::Dim,
++        }
++    }
++
++    /// The same ladder, with a different answer to `NO_COLOR`.
++    pub const fn when_colorless(self, colorless: Colorless) -> Self {
++        Self { colorless, ..self }
+     }
+ 
+     /// The color depth this ladder serves.
+@@ -37,6 +74,11 @@ impl Ladder {
+         self.colors
+     }
+ 
++    /// What this ladder does when the terminal has no color.
++    pub const fn colorless(self) -> Colorless {
++        self.colorless
++    }
++
+     /// Detects the terminal's color depth from the environment.
+     ///
+     /// `NO_COLOR` wins first — its spec asks for no color at all. Otherwise
+@@ -61,40 +103,49 @@ impl Ladder {
+     /// The style an [`Intensity`] produces at this terminal.
+     ///
+     /// Under `Colors::None` the fainter half of the ladder dims rather than
+-    /// color: `Quarter` and `Half` carry `Modifier::DIM`, the rest stay plain.
++    /// colors: `Quarter` and `Half` carry `Modifier::DIM`. What `Full` does
++    /// there is [`Colorless`]'s to say.
+     pub fn style(self, intensity: Intensity) -> Style {
+         match self.colors {
+-            Colors::True => {
+-                let color = intensity.color();
+-                Style::new().fg(Color::Rgb(
+-                    (color >> 16) as u8,
+-                    (color >> 8) as u8,
+-                    color as u8,
+-                ))
+-            }
++            Colors::True => Style::new().fg(rgb(intensity.color())),
+             Colors::Indexed => Style::new().fg(indexed(intensity)),
+-            Colors::None => {
+-                if intensity <= Intensity::Half {
++            Colors::None => match (intensity, self.colorless) {
++                (Intensity::Quarter | Intensity::Half, _) => {
+                     Style::new().add_modifier(Modifier::DIM)
+-                } else {
+-                    Style::new()
+                 }
+-            }
++                (Intensity::Full, Colorless::DimAndBold) => {
++                    Style::new().add_modifier(Modifier::BOLD)
++                }
++                _ => Style::new(),
++            },
+         }
+     }
+ 
+     /// The near-black field the ambers sit on, at this terminal.
+     pub fn background(self) -> Color {
+         match self.colors {
+-            Colors::True => Color::Rgb(
+-                (NEAR_BLACK >> 16) as u8,
+-                (NEAR_BLACK >> 8) as u8,
+-                NEAR_BLACK as u8,
+-            ),
++            Colors::True => rgb(NEAR_BLACK),
+             Colors::Indexed => Color::Indexed(INDEXED_BACKGROUND),
+             Colors::None => Color::Reset,
+         }
+     }
++
++    /// The near-black tint a selected cell brightens to, at this terminal.
++    ///
++    /// A colorless terminal has no tint to give, so the field stays as it
++    /// is and the selection has to show some other way.
++    pub fn selection(self) -> Color {
++        match self.colors {
++            Colors::True => rgb(NEAR_BLACK_TINT),
++            Colors::Indexed => Color::Indexed(INDEXED_SELECTION),
++            Colors::None => Color::Reset,
++        }
++    }
++}
++
++/// A packed RGB value as a terminal color.
++pub const fn rgb(color: u32) -> Color {
++    Color::Rgb((color >> 16) as u8, (color >> 8) as u8, color as u8)
+ }
+ 
+ /// The indexed entry nearest to each amber on the 256-color cube.
+@@ -109,6 +160,8 @@ const fn indexed(intensity: Intensity) -> Color {
+ 
+ /// The indexed entry nearest to [`NEAR_BLACK`].
+ const INDEXED_BACKGROUND: u8 = 232;
++/// The indexed entry nearest to [`NEAR_BLACK_TINT`].
++const INDEXED_SELECTION: u8 = 235;
+ 
+ /// Strips foreground and background color from a style, keeping every other
+ /// attribute — glyphs, modifiers, and the like.
+diff --git a/crates/coder-terminal/src/lib.rs b/crates/coder-terminal/src/lib.rs
+index 8dd13c44acc0e3e9dc059aa011356b10df2f57be..5839be5b06d0e3ad77beffbdedf4595777eab766 100644
+--- a/crates/coder-terminal/src/lib.rs
++++ b/crates/coder-terminal/src/lib.rs
+@@ -8,6 +8,8 @@
+ //! - [`Ladder`] maps an [`Intensity`] to a concrete color for the terminal at
+ //!   hand: exact RGB when truecolor is available, the nearest cube entry under
+ //!   a 256-color palette, and dim text when color is off.
++//! - [`frame`] and [`rail`] draw the hairline box and the labels set into
++//!   its rules.
+ //! - [`Editor`] is the composer's multi-line editing model: caret, grapheme-
+ //!   correct motions, word deletes, soft-wrap, a scroll window, and prompt
+ //!   history.
+@@ -16,6 +18,7 @@
+ 
+ mod composer;
+ mod editor;
++pub mod hairline;
+ mod intensity;
+ mod keys;
+ mod ladder;
+@@ -25,9 +28,10 @@ mod wrap;
+ 
+ pub use composer::{CARET, Composer, GUTTER, PROMPT};
+ pub use editor::{Editor, ROWS_MAX, ROWS_MIN, Window};
++pub use hairline::{frame, rail};
+ pub use intensity::{Intensity, NEAR_BLACK, NEAR_BLACK_TINT};
+ pub use keys::{ComposerAction, handle_key};
+-pub use ladder::{Colors, Ladder, drain_color};
++pub use ladder::{Colorless, Colors, Ladder, drain_color, rgb};
+ pub use markdown::{Marked, Marks, Rendered};
+ pub use spinner::{
+     CYCLE, FRAMES, FRAMES_ASCII, SPINNER_COUNT, SPINNER_FRAME, frame_at, frame_for,
+diff --git a/crates/gym/Cargo.toml b/crates/gym/Cargo.toml
+index 9269bdb301fa1b0fe4d64bbfb499e245bcf6bb4e..76bd521241cf0f2bdcd03a54f4955aaf3dd099b0 100644
+--- a/crates/gym/Cargo.toml
++++ b/crates/gym/Cargo.toml
+@@ -9,7 +9,7 @@ publish = false
+ [features]
+ default = []
+ # The `gym` terminal and its dependencies.
+-tui = ["dep:ratatui", "dep:crossterm"]
++tui = ["dep:ratatui", "dep:crossterm", "dep:coder-terminal"]
+ 
+ [dependencies]
+ indexmap = { version = "2", features = ["serde"] }
+@@ -19,8 +19,11 @@ serde_json = { version = "1", features = ["preserve_order"] }
+ sha2 = "0.10"
+ thiserror = "2"
+ 
+-ratatui = { version = "0.29", optional = true }
+-crossterm = { version = "0.28", optional = true }
++# The terminal's design system — the amber ladder, the hairline frame, and
++# the rails — is `coder-terminal`'s, not a second copy of it.
++coder-terminal = { path = "../coder-terminal", optional = true }
++ratatui = { version = "0.30", optional = true }
++crossterm = { version = "0.29", optional = true }
+ 
+ [dev-dependencies]
+ tempfile = "3"
+diff --git a/crates/gym/src/bin/gym_terminal.rs b/crates/gym/src/bin/gym_terminal.rs
+index 305c35b600fb5889784f1edd6dd15fad055b4583..b8bdb907e603ed560fc35d3ac6268baf984fb92b 100644
+--- a/crates/gym/src/bin/gym_terminal.rs
++++ b/crates/gym/src/bin/gym_terminal.rs
+@@ -20,7 +20,7 @@ use crossterm::terminal::{
+     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+ };
+ use crossterm::{cursor, execute};
+-use gym::tui::{Action, App, KeyLike, Ladder, Records, View};
++use gym::tui::{Action, App, KeyLike, Records, View, ladder_from_environment};
+ use ratatui::Terminal;
+ use ratatui::backend::CrosstermBackend;
+ 
+@@ -67,7 +67,7 @@ Keys:
+ /// Writes every view to stdout, so the terminal can be read where no
+ /// terminal exists.
+ fn print() -> io::Result<()> {
+-    let mut app = App::new(Records::fixture(), Ladder::from_environment());
++    let mut app = App::new(Records::fixture(), ladder_from_environment());
+     let mut out = stdout().lock();
+     for view in View::ALL {
+         app.open(view);
+@@ -111,7 +111,7 @@ fn restore() {
+ 
+ /// The read loop: draw, wait for a key, repeat.
+ fn draw(terminal: &mut Terminal<CrosstermBackend<Stdout>>) -> io::Result<()> {
+-    let mut app = App::new(Records::fixture(), Ladder::from_environment());
++    let mut app = App::new(Records::fixture(), ladder_from_environment());
+     loop {
+         terminal.draw(|frame| {
+             let area = frame.area();
+diff --git a/crates/gym/src/tui.rs b/crates/gym/src/tui.rs
+index 05ce2f1c46a7801574f3f3bfda38fb52de3fcc72..aca8be8837ba0f26e5ce861c619077d3811d27bf 100644
+--- a/crates/gym/src/tui.rs
++++ b/crates/gym/src/tui.rs
+@@ -6,11 +6,15 @@
+ //! which candidates were kept, what one item actually looked like, and
+ //! whether the record itself still verifies.
+ //!
+-//! The design is carried from `crates/coder-terminal` and reimplemented
+-//! here, because that crate builds on a later ratatui than the Gym does. One
+-//! amber hue over a near-black field, four steps of brightness, and a
+-//! hairline frame with text riding its rules: [`Intensity`], [`Ladder`], and
+-//! [`frame`] are the same shapes under different types.
++//! The design is `crates/coder-terminal`'s and is depended on rather than
++//! copied: [`Intensity`], [`Ladder`], [`frame`], and [`rail`] are that
++//! crate's. One amber hue over a near-black field, four steps of
++//! brightness, and a hairline frame with text riding its rules.
++//!
++//! A table needs two things a composer does not, and both are marked where
++//! they happen: a loudest step that stays legible when the terminal has no
++//! color, in [`ladder`]; and a selection cursor in the frame's gutter,
++//! where the view's lines are drawn.
+ //!
+ //! Two rules outrank every layout decision in here:
+ //!
+@@ -33,7 +37,10 @@
+ 
+ use ratatui::buffer::Buffer;
+ use ratatui::layout::Rect;
+-use ratatui::style::{Color, Modifier, Style};
++use ratatui::style::Style;
++
++pub use coder_terminal::{Colorless, Colors, Intensity, Ladder, NEAR_BLACK, NEAR_BLACK_TINT, rgb};
++use coder_terminal::{frame, rail};
+ 
+ pub use records::{
+     Candidate, ChainStatus, DoorIdentity, DoorScore, FamilyVerdict, Outcome, Records, RowView,
+@@ -43,159 +50,23 @@ pub use records::{
+ /// What a value nobody measured looks like.
+ pub const DASH: &str = "—";
+ 
+-// ---------------------------------------------------------------------------
+-// The amber ladder
+-// ---------------------------------------------------------------------------
+-
+-/// One step of the amber ladder.
++/// The Gym's ladder over `colors`.
+ ///
+-/// The order is the ladder: `Quarter` is the faintest tone and `Full` the
+-/// brightest. The terminal speaks in one hue; tone carries every distinction
+-/// it draws.
+-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+-pub enum Intensity {
+-    /// 25% amber — receded: a rule, a digest, a column nobody reads twice.
+-    Quarter,
+-    /// 50% amber — quiet: headings, rails, the reason under a verdict.
+-    Half,
+-    /// 75% amber — present: the numbers, the rows, the prose.
+-    ThreeQuarters,
+-    /// 100% amber — loud: a failed gate, a broken chain, the current best.
+-    #[default]
+-    Full,
+-}
+-
+-impl Intensity {
+-    /// The ladder, faintest to brightest.
+-    pub const ALL: [Intensity; 4] = [
+-        Intensity::Quarter,
+-        Intensity::Half,
+-        Intensity::ThreeQuarters,
+-        Intensity::Full,
+-    ];
+-
+-    /// The amber of this step, as a packed RGB value.
+-    pub const fn color(self) -> u32 {
+-        match self {
+-            Intensity::Quarter => 0x463100,
+-            Intensity::Half => 0x835b00,
+-            Intensity::ThreeQuarters => 0xc18600,
+-            Intensity::Full => 0xffb000,
+-        }
+-    }
+-}
+-
+-/// The near-black field every amber tone sits on.
+-pub const NEAR_BLACK: u32 = 0x080600;
+-/// The near-black tint the selected row brightens to.
+-pub const NEAR_BLACK_TINT: u32 = 0x211700;
+-
+-/// The color depth the terminal supports.
+-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+-pub enum Colors {
+-    /// 24-bit RGB — the ambers render exactly.
+-    #[default]
+-    True,
+-    /// The 256-color palette — ambers render as their nearest cube entries.
+-    Indexed,
+-    /// Color off (`NO_COLOR`) — tone falls back to modifiers.
+-    None,
+-}
+-
+-/// How [`Intensity`] values become terminal colors.
+-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+-pub struct Ladder {
+-    colors: Colors,
+-}
+-
+-impl Ladder {
+-    /// A ladder for the given color depth.
+-    pub const fn new(colors: Colors) -> Self {
+-        Self { colors }
+-    }
+-
+-    /// The color depth this ladder serves.
+-    pub const fn colors(self) -> Colors {
+-        self.colors
+-    }
+-
+-    /// Detects the terminal's color depth from the environment.
+-    ///
+-    /// `NO_COLOR` wins first — its spec asks for no color at all. Otherwise
+-    /// `COLORTERM` decides: `truecolor` or `24bit` means the terminal knows
+-    /// RGB, anything else means the 256-color palette.
+-    pub fn from_environment() -> Self {
+-        Self::detected(|name| std::env::var(name).ok())
+-    }
+-
+-    /// Detects the color depth from a supplied environment lookup, so tests
+-    /// need not touch the process environment.
+-    pub fn detected(lookup: impl Fn(&str) -> Option<String>) -> Self {
+-        if lookup("NO_COLOR").is_some() {
+-            return Self::new(Colors::None);
+-        }
+-        match lookup("COLORTERM").as_deref() {
+-            Some("truecolor" | "24bit") => Self::new(Colors::True),
+-            _ => Self::new(Colors::Indexed),
+-        }
+-    }
+-
+-    /// The style an [`Intensity`] produces at this terminal.
+-    ///
+-    /// Under `Colors::None` the faint half of the ladder dims and the loud
+-    /// step goes bold, so a failed gate and a broken chain still separate
+-    /// from the rows around them on a terminal with no color at all.
+-    pub fn style(self, intensity: Intensity) -> Style {
+-        match self.colors {
+-            Colors::True => Style::new().fg(rgb(intensity.color())),
+-            Colors::Indexed => Style::new().fg(indexed(intensity)),
+-            Colors::None => match intensity {
+-                Intensity::Quarter | Intensity::Half => Style::new().add_modifier(Modifier::DIM),
+-                Intensity::ThreeQuarters => Style::new(),
+-                Intensity::Full => Style::new().add_modifier(Modifier::BOLD),
+-            },
+-        }
+-    }
+-
+-    /// The near-black field the ambers sit on, at this terminal.
+-    pub fn background(self) -> Color {
+-        match self.colors {
+-            Colors::True => rgb(NEAR_BLACK),
+-            Colors::Indexed => Color::Indexed(INDEXED_BACKGROUND),
+-            Colors::None => Color::Reset,
+-        }
+-    }
+-
+-    /// The tint the selected row sits on, at this terminal.
+-    pub fn selection(self) -> Color {
+-        match self.colors {
+-            Colors::True => rgb(NEAR_BLACK_TINT),
+-            Colors::Indexed => Color::Indexed(INDEXED_SELECTION),
+-            Colors::None => Color::Reset,
+-        }
+-    }
+-}
+-
+-/// A packed RGB value as a terminal color.
+-const fn rgb(color: u32) -> Color {
+-    Color::Rgb((color >> 16) as u8, (color >> 8) as u8, color as u8)
++/// It is the Coder terminal's ladder with one option taken differently.
++/// Under `NO_COLOR` the composer dims the faint half and leaves the rest
++/// plain, which is right for prose; a table of verdicts needs its loudest
++/// step to separate too, or a failed gate and an unverifiable one draw
++/// identically on a colorless terminal and the distinction the third
++/// verdict exists for is gone.
++pub fn ladder(colors: Colors) -> Ladder {
++    Ladder::new(colors).when_colorless(Colorless::DimAndBold)
+ }
+ 
+-/// The indexed entry nearest to each amber on the 256-color cube.
+-const fn indexed(intensity: Intensity) -> Color {
+-    match intensity {
+-        Intensity::Quarter => Color::Indexed(58),
+-        Intensity::Half => Color::Indexed(94),
+-        Intensity::ThreeQuarters => Color::Indexed(136),
+-        Intensity::Full => Color::Indexed(214),
+-    }
++/// The Gym's ladder, at whatever color depth the environment reports.
++pub fn ladder_from_environment() -> Ladder {
++    Ladder::from_environment().when_colorless(Colorless::DimAndBold)
+ }
+ 
+-/// The indexed entry nearest to [`NEAR_BLACK`].
+-const INDEXED_BACKGROUND: u8 = 232;
+-/// The indexed entry nearest to [`NEAR_BLACK_TINT`].
+-const INDEXED_SELECTION: u8 = 235;
+-
+ // ---------------------------------------------------------------------------
+ // Printing a measurement, or printing that there is none
+ // ---------------------------------------------------------------------------
+@@ -1223,6 +1094,13 @@ impl App {
+         for (offset, line) in body.iter().skip(scroll).take(room).enumerate() {
+             let y = top + offset as u16;
+             if Some(scroll + offset) == selected {
++                // The cursor the composer has no use for. A composer has
++                // one draft and the caret says where you are in it; a table
++                // has forty rows and needs to say which one the keys and
++                // the inspector will act on. It sits in the gutter between
++                // the wall and the text, which is the terminal's own cell
++                // and not the shared frame's: `frame` draws its rules and
++                // stops there.
+                 let tint = Style::new().bg(self.ladder.selection());
+                 for x in inner.left() - 1..inner.right() {
+                     buf[(x, y)].set_style(tint);
+@@ -1287,59 +1165,6 @@ impl App {
+     }
+ }
+ 
+-/// The hairline: `─` rules top and bottom, `│` walls, corners `┌┐└┘`.
+-fn frame(area: Rect, buf: &mut Buffer, style: Style) {
+-    if area.width < 2 || area.height < 2 {
+-        return;
+-    }
+-    let (top, bottom) = (area.top(), area.bottom() - 1);
+-    let (left, right) = (area.left(), area.right() - 1);
+-    for x in left + 1..right {
+-        buf[(x, top)].set_char('─').set_style(style);
+-        buf[(x, bottom)].set_char('─').set_style(style);
+-    }
+-    for y in top + 1..bottom {
+-        buf[(left, y)].set_char('│').set_style(style);
+-        buf[(right, y)].set_char('│').set_style(style);
+-    }
+-    buf[(left, top)].set_char('┌').set_style(style);
+-    buf[(right, top)].set_char('┐').set_style(style);
+-    buf[(left, bottom)].set_char('└').set_style(style);
+-    buf[(right, bottom)].set_char('┘').set_style(style);
+-}
+-
+-/// Writes `left` and `right` into the rule at `offset`, each padded with a
+-/// space on both sides so the text never touches a corner. A rail wider than
+-/// the room left is dropped rather than cut.
+-fn rail(
+-    area: Rect,
+-    buf: &mut Buffer,
+-    offset: u16,
+-    left: Option<(&str, Style)>,
+-    right: Option<(&str, Style)>,
+-) {
+-    let y = area.top() + offset;
+-    if y >= buf.area.bottom() || area.width < 6 {
+-        return;
+-    }
+-    let mut room = usize::from(area.width) - 4;
+-    if let Some((text, style)) = left {
+-        let named = format!(" {text} ");
+-        let taken = count(&named);
+-        if taken <= room {
+-            room -= taken;
+-            buf.set_string(area.left() + 2, y, &named, style);
+-        }
+-    }
+-    if let Some((text, style)) = right {
+-        let named = format!(" {text} ");
+-        let taken = count(&named);
+-        if taken <= room {
+-            buf.set_string(area.right() - 2 - taken as u16, y, &named, style);
+-        }
+-    }
+-}
+-
+ /// How many cells a string takes. Everything the terminal draws is one cell
+ /// wide, including the em dash and the box rules.
+ fn count(text: &str) -> usize {

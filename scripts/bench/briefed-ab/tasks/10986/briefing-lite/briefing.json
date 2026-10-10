@@ -1,0 +1,211 @@
+{
+  "issue": 10986,
+  "title": "Coder landing: cargo fmt drift in files the change did not touch strands the change",
+  "body": "When the issue flow's gate (`crates/coder/src/task/issue_run.rs`, `Gate::check`) runs `cargo fmt -p PACKAGE -- --check`, it reports every unformatted file in the package, including files the change never touched. On #10940 the change was green on its first rebase, then `main` moved and brought `d138fad182`, whose `kit_bake.rs` was not formatted; the second recheck went red on that file alone, the landing stranded the change on `coder/stranded-1eac219c`, and the issue was released. The change itself was formatted.\n\nFix: keep only the `Diff in PATH:LINE:` hunks of files in the staged change (`git diff --cached --name-only`); when none remain, count the package as formatted and say in the evidence that drift in untouched files was left alone. Drift that `main` carries belongs to `main`, not to the change being landed.\n\nFound while running #10940 through `openagents chat work --on boat`.\n",
+  "base": "7afd440fe81caaeb1609fbe857c8d5f15c4437a6",
+  "finder": "lite",
+  "plan": [
+    "Goal: Coder landing: cargo fmt drift in files the change did not touch strands the change",
+    "Change the behavior where it lives, most likely in `crates/coder/src/task/issue_run.rs`, `crates/verse-zone-everglade/src/zones/everglade_pack/kit_bake.rs`, `NEEDS_OWNER.md`.",
+    "Add or update a test that pins the new behavior, beside the code's existing tests.",
+    "Run `check:coder`, then `test:coder`, then `check:verse-zone-everglade`, then `test:verse-zone-everglade`, then `fmt`; stop when they pass."
+  ],
+  "files": [
+    {
+      "path": "crates/coder/src/task/issue_run.rs",
+      "score": 16.71,
+      "lines": [
+        1810,
+        2244,
+        2554,
+        2557
+      ],
+      "why": [
+        "the issue names `crates/coder/src/task/issue_run.rs`",
+        "has `--cached`",
+        "has `--name-only`",
+        "has `--on`",
+        "has `issue_run`"
+      ],
+      "excerpt": "--- lines 1798-1828 of 2589 ---\n 1798                              \"Coder asked a question instead of finishing: {}\",\n 1799                              clip(text.trim(), 600)\n 1800                          ),\n 1801                          None,\n 1802                      );\n 1803                  }\n 1804                  Turn::Failed(why) => return self.failed(&why, None),\n 1805              }\n 1806              if self.stopping() {\n 1807                  return self.stopped(\"Stopped by the person who started it.\");\n 1808              }\n 1809              let _ = local::git_out(self.worktree, &[\"add\", \"-A\"]);\n 1810              let staged = local::git_out(self.worktree, &[\"diff\", \"--cached\", \"--name-only\"])\n 1811                  .unwrap_or_default();\n 1812              if staged.trim().is_empty() {\n 1813                  return self.unchanged();\n 1814              }\n 1815              self.note(\"Running the repository's checks on the change.\");\n 1816              self.checked = self.work.checks.check(self.worktree, &self.work.policy);\n 1817              if self.stopping() {\n 1818                  return self.stopped(\"Stopped by the person who started it.\");\n 1819              }\n 1820              if self.checked.problems.is_empty() {\n 1821                  self.note(\"The checks pass.\");\n 1822                  break;\n 1823              }\n 1824              let count = self.checked.problems.len();\n 1825              let listed = clip(&self.checked.problems.join(\"; \"), 600);\n 1826              if self.rounds >= self.work.policy.fix_rounds {\n 1827                  self.note(format!(\n 1828                      \"The checks still find {count} problem(s) after {} fix turn(s): {listed}\",\n--- lines 2232-2262 of 2589 ---\n 2232              } else {\n 2233                  providers.join(\", \")\n 2234              },\n 2235              placement().run\n 2236          )\n 2237      }\n 2238  \n 2239      /// What the worktree changed from the branch it started on, as\n 2240      /// `git diff --stat` shows it; empty when nothing changed.\n 2241      fn diff_stat(&self) -> String {\n 2242          let _ = local::git_out(self.worktree, &[\"add\", \"-A\"]);\n 2243          let base = self.started_on();\n 2244          local::git_out(self.worktree, &[\"diff\", \"--cached\", \"--stat\", &base])\n 2245              .unwrap_or_default()\n 2246              .trim_end()\n 2247              .to_owned()\n 2248      }\n 2249  \n 2250      /// The commit the run's change starts from: where `HEAD` meets the\n 2251      /// branch, or the run's first base.\n 2252      fn started_on(&self) -> String {\n 2253          let upstream = format!(\"origin/{}\", self.work.branch);\n 2254          local::git_out(self.worktree, &[\"merge-base\", \"HEAD\", &upstream])\n 2255              .map(|base| base.trim().to_owned())\n 2256              .ok()\n 2257              .filter(|base| !base.is_empty())\n 2258              .unwrap_or_else(|| self.record.base.clone())\n 2259      }\n 2260  \n 2261      /// The comment's section linking this run's uploaded artifacts, with\n 2262      /// the change diffed from `base` (where the run started when `None`);\n--- lines 2542-2575 of 2589 ---\n 2542  fn clip(text: &str, max: usize) -> String {\n 2543      if text.len() <= max {\n 2544          return text.to_owned();\n 2545      }\n 2546      let mut end = max;\n 2547      while !text.is_char_boundary(end) {\n 2548          end -= 1;\n 2549      }\n 2550      format!(\"{}\u2026\", &text[..end])\n 2551  }\n 2552  \n 2553  #[cfg(test)]\n 2554  #[path = \"issue_run_tests.rs\"]\n 2555  mod tests;\n 2556  \n 2557  /// The variable `chat work --on boat|gce` sets on the machine it runs an\n 2558  /// issue's flow on, naming that placement for the issue's comments.\n 2559  pub const PLACEMENT_ENV: &str = \"OPENAGENTS_CODER_PLACEMENT\";\n 2560  \n 2561  /// Where the issue's comments say the run is.\n 2562  #[derive(Debug, Clone, Copy, PartialEq, Eq)]\n 2563  pub(crate) struct Placement {\n 2564      /// For the claim, said by the machine itself.\n 2565      pub claim: &'static str,\n 2566      /// For the evidence's run line.\n 2567      pub run: &'static str,\n 2568  }\n 2569  \n 2570  fn placement() -> Placement {\n 2571      placement_named(std::env::var(PLACEMENT_ENV).ok().as_deref())\n 2572  }\n 2573  \n 2574  pub(crate) fn placement_named(name: Option<&str>) -> Placement {\n 2575      match name {"
+    },
+    {
+      "path": "crates/verse-zone-everglade/src/zones/everglade_pack/kit_bake.rs",
+      "score": 8.0,
+      "lines": [],
+      "why": [
+        "the issue names `kit_bake.rs`"
+      ],
+      "excerpt": "--- lines 1-118 of 118 ---\n    1  //! The kit town's offline-baked light: the sky, sun, and lamp layers\n    2  //! `verse-bake --layers` bakes from the town with the licensed kit\n    3  //! installed ([`verse_pbr::pbr::baked_layers`]).\n    4  //!\n    5  //! The layers are derived from licensed geometry, so they ship the way the\n    6  //! kit pack does: built outside the repository, kept in the private bucket\n    7  //! and the zone cache, and pinned here by digest through the artifact queue\n    8  //! (`openagents artifact submit everglade-kit-bake`). They sit beside the kit\n    9  //! pack, not inside it, so the kit pack stays small for the web and\n   10  //! phones, and a layout change that rebakes the light doesn't rebuild the\n   11  //! kit.\n   12  //!\n   13  //! A loader offers the layers it finds ([`offer`]); the zone uses them only\n   14  //! when their scene digest matches the town it builds. Without layers, or\n   15  //! with layers for another scene, the town bakes its light at load as\n   16  //! before (`textured_bake::BakeJob`).\n   17  \n   18  use std::path::Path;\n   19  use std::sync::atomic::AtomicBool;\n   20  use std::sync::{Arc, Mutex};\n   21  \n   22  use verse_pbr::pbr::baked_layers::Layers;\n   23  \n   24  use super::kit::KIT_ORIGIN;\n   25  use super::pinned::PinnedFile;\n   26  \n   27  /// Exact content identity of the reviewed light layers, or empty while\n   28  /// none is published.\n   29  #[rustfmt::skip]\n   30  pub const KIT_BAKE_SHA256: &str = \"14ae7f75e9ce4f81483f6f44369753545cb2cab892177607438b3077ebbbae23\";\n   31  /// Transfer size of the reviewed light layers; zero while none is\n   32  /// published.\n   33  pub const KIT_BAKE_BYTES: u64 = 51682623;\n   34  // Retain previous reviewed digests here when changing KIT_BAKE_SHA256.\n   35  const KIT_BAKE_HISTORY: &[&str] = &[KIT_BAKE_SHA256];\n   36  /// Environment variable naming a local layer file for offline tools, such\n   37  /// as `everglade_capture`.\n   38  pub const LOCAL_ENV: &str = \"VERSE_KIT_BAKE\";\n   39  \n   40  /// The reviewed light layers and their source,\n   41  /// `<KIT_ORIGIN>/bake/<KIT_BAKE_SHA256>.vlay`.\n   42  #[must_use]\n   43  pub fn pinned() -> PinnedFile {\n   44      PinnedFile {\n   45          label: \"Everglade kit light layers\",\n   46          sha256: KIT_BAKE_SHA256,\n   47          bytes: KIT_BAKE_BYTES,\n   48          url: format!(\"{KIT_ORIGIN}/bake/{KIT_BAKE_SHA256}.vlay\"),\n   49          extension: \"vlay\",\n   50          temp_prefix: \".everglade-kit-bake-\",\n   51          history: KIT_BAKE_HISTORY,\n   52      }\n   53  }\n   54  \n   55  static OFFERED: Mutex<Option<Arc<Layers>>> = Mutex::new(None);\n   56  \n   57  /// Offers `layers` to the next town that bakes its light.\n   58  pub fn offer(layers: Layers) {\n   59      *OFFERED\n   60          .lock()\n   61          .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::new(layers));\n   62  }\n   63  \n   64  /// The layers last offered, if any.\n   65  #[must_use]\n   66  pub fn offered() -> Option<Arc<Layers>> {\n   67      OFFERED\n   68          .lock()\n   69          .unwrap_or_else(std::sync::PoisonError::into_inner)\n   70          .clone()\n   71  }\n   72  \n   73  /// Verifies the pinned digest, then decodes the layers.\n   74  ///\n   75  /// # Errors\n   76  ///\n   77  /// Returns a message when the bytes are not the pinned layers or fail to\n   78  /// decode.\n   79  pub fn decode_pinned(bytes: &[u8]) -> Result<Layers, String> {\n   80      pinned().verify(bytes)?;\n   81      Layers::decode(bytes)\n   82  }\n   83  \n   84  /// The pinned layers in `cache`, downloaded from [`KIT_ORIGIN`] when\n   85  /// `download` allows it.\n   86  ///\n   87  /// # Errors\n   88  ///\n   89  /// Returns a message when none are published, the cache holds none and\n   90  /// downloading is off, or the transfer or decoding fails.\n   91  pub fn fetch(cache: &Path, download: bool, cancel: &AtomicBool) -> Result<Layers, String> {\n   92      let file = pinned();\n   93      if file.bytes == 0 {\n   94          return Err(\"No kit light layers are published\".into());\n   95      }\n   96      if download {\n   97          return file.fetch(cache, cancel, &mut |_, _| (), decode_pinned);\n   98      }\n   99      let bytes = file.read_bounded(&cache.join(file.cache_name()))?;\n  100      decode_pinned(&bytes)\n  101  }\n  102  \n  103  /// Layers from a local file, for offline tools: the pinned layers, or,\n  104  /// while none are pinned or with the kit's unpinned switch set\n  105  /// ([`super::kit::UNPINNED_ENV`]), any layer file that decodes. The zone\n  106  /// still uses them only for the scene they were baked for.\n  107  ///\n  108  /// # Errors\n  109  ///\n  110  /// Returns a message when the file is unreadable, is not the pinned\n  111  /// layers, or fails to decode.\n  112  pub fn load_local(path: &Path) -> Result<Layers, String> {\n  113      let bytes = std::fs::read(path).map_err(|e| format!(\"{}: {e}\", path.display()))?;\n  114      if KIT_BAKE_BYTES == 0 || std::env::var_os(super::kit::UNPINNED_ENV).is_some() {\n  115          return Layers::decode(&bytes);\n  116      }\n  117      decode_pinned(&bytes)\n  118  }"
+    },
+    {
+      "path": "NEEDS_OWNER.md",
+      "score": 4.81,
+      "lines": [
+        66
+      ],
+      "why": [
+        "has `kit_bake.rs`",
+        "has `kit_bake`"
+      ],
+      "excerpt": "--- lines 54-84 of 2118 ---\n   54  \n   55  After the openagents.com deploy that serves the kit pack, open\n   56  `https://openagents.com/everglade?frames` on the reference laptop and\n   57  confirm about 60 frames per second on Stoop Lane and Main Street. On a\n   58  phone, open Everglade and confirm the town draws the kit, not its grey\n   59  proxies, and holds its frame rate. P3 now serves a 21,467,658-byte kit with\n   60  60.5 MiB of decoded textures; B4 (#10908) still needs web and phone tiers.\n   61  Repeat the physical-device measurements after that tier work.\n   62  \n   63  ## Upload the kit town's baked light layers (#10906)\n   64  \n   65  The kit town's light layers are pinned by `KIT_BAKE_SHA256` in\n   66  `crates/verse-zone-everglade/src/zones/everglade_pack/kit_bake.rs` and live\n   67  only in `~/.openagents/verse/private/medieval-town/bakes/` and the zone\n   68  cache. Desktops that download the kit fetch them from\n   69  `https://openagents.com/everglade/kit/bake/<KIT_BAKE_SHA256>.vlay`. Copy\n   70  the pinned file to `gs://openagentsgemini-verse-private-assets/bakes/`\n   71  and serve it at that path as the kit pack is served (the website image\n   72  does not copy it yet).\n   73  Until then, a desktop without the file in its cache bakes the town's light\n   74  at load as before.\n   75  \n   76  ## Admit the villagers' fuller days (town clock)\n   77  \n   78  The town clock now runs by default. On it, a daylight town hour is 4.25\n   79  real minutes, and the demo villagers stood still from 13:00 to 17:00: 17\n   80  real minutes with nobody moving. Branch `town-clock-routines` gives Mira,\n   81  Tobin, and Wren one or two short errands a half day, so some villager\n   82  walks in every five real minutes from 05:00 to 21:00, and stages their\n   83  proposals. Only you admit villagers. Check out the branch, run\n   84  `openagents verse town admit mira-baker --owner`, then `tobin-smith` and"
+    },
+    {
+      "path": "crates/openagents-web/cloudbuild.yaml",
+      "score": 4.81,
+      "lines": [
+        29
+      ],
+      "why": [
+        "has `kit_bake.rs`",
+        "has `kit_bake`"
+      ],
+      "excerpt": "--- lines 1-57 of 57 ---\n    1  # Builds and pushes the openagents.com website image. From the repository root:\n    2  #\n    3  #   gcloud builds submit --project openagentsgemini \\\n    4  #     --config crates/openagents-web/cloudbuild.yaml \\\n    5  #     --ignore-file crates/openagents-web/web.gcloudignore \\\n    6  #     --substitutions _TAG=$(git rev-parse --short=10 HEAD) .\n    7  #\n    8  # See docs/deployment/openagents-web.md for the deploy and the rollback.\n    9  steps:\n   10    # The pinned medieval kit pack (KIT_SHA256 in\n   11    # crates/verse-zone-everglade/src/zones/everglade_pack/kit.rs), from the\n   12    # private bucket into the build context, so /everglade/kit/ serves it.\n   13    # It never enters the repository. Without it the web build draws the\n   14    # kit's committed proxies.\n   15    - name: gcr.io/cloud-builders/gcloud\n   16      entrypoint: bash\n   17      args:\n   18        - -c\n   19        - |\n   20          set -e\n   21          sha=\"$$(sed -n 's/^pub const KIT_SHA256: &str = \"\\([0-9a-f]*\\)\";$$/\\1/p' crates/verse-zone-everglade/src/zones/everglade_pack/kit.rs)\"\n   22          mkdir -p crates/openagents-web/kit\n   23          if [ -n \"$$sha\" ]; then\n   24            gcloud storage cp \"gs://openagentsgemini-verse-private-assets/packs/$$sha.vtp\" crates/openagents-web/kit/ \\\n   25              || echo \"the kit pack $$sha is not in the bucket; the web build draws proxies\"\n   26          fi\n   27          # Reviewed layers are optional until pinned. A published pin must\n   28          # resolve to its exact private object before the image is built.\n   29          bake_pin=crates/verse-zone-everglade/src/zones/everglade_pack/kit_bake.rs\n   30          bake_sha=\"$$(sed -n 's/^pub const KIT_BAKE_SHA256: &str = \"\\([0-9a-f]*\\)\";$$/\\1/p' \"$$bake_pin\")\"\n   31          bake_bytes=\"$$(sed -n 's/^pub const KIT_BAKE_BYTES: u64 = \\([0-9]*\\);$$/\\1/p' \"$$bake_pin\")\"\n   32          mkdir -p crates/openagents-web/kit/bake\n   33          if [ -z \"$$bake_sha\" ]; then\n   34            test \"$$bake_bytes\" -eq 0\n   35          else\n   36            test \"$$bake_bytes\" -gt 0\n   37            bake_file=\"crates/openagents-web/kit/bake/$$bake_sha.vlay\"\n   38            gcloud storage cp \"gs://openagentsgemini-verse-private-assets/bakes/$$bake_sha.vlay\" \"$$bake_file\"\n   39            printf '%s  %s\\n' \"$$bake_sha\" \"$$bake_file\" | sha256sum -c -\n   40            test \"$$(wc -c < \"$$bake_file\")\" -eq \"$$bake_bytes\"\n   41          fi\n   42    - name: gcr.io/cloud-builders/docker\n   43      args:\n   44        - build\n   45        - -f\n   46        - crates/openagents-web/Dockerfile\n   47        - -t\n   48        - us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web:${_TAG}\n   49        - .\n   50  images:\n   51    - us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web:${_TAG}\n   52  substitutions:\n   53    _TAG: latest\n   54  options:\n   55    machineType: E2_HIGHCPU_32\n   56    logging: CLOUD_LOGGING_ONLY\n   57  timeout: 3600s"
+    },
+    {
+      "path": "scripts/release/coder.sh",
+      "score": 4.66,
+      "lines": [
+        348
+      ],
+      "why": [
+        "has `git diff --cached --name-only`",
+        "has `--cached`",
+        "has `--name-only`"
+      ],
+      "excerpt": "--- lines 336-366 of 786 ---\n  336    git -C \"$1\" ls-files -ci --exclude-standard 2>/dev/null |\n  337      while IFS= read -r _path; do\n  338        if [ -e \"$3/$_path\" ] || [ -L \"$3/$_path\" ]; then\n  339          (cd \"$3\" && GIT_DIR=$_gitdir GIT_WORK_TREE=$3 GIT_INDEX_FILE=$_index \\\n  340            git -c core.excludesFile=/dev/null add -f -- \"$_path\" 2>/dev/null || :)\n  341        fi\n  342      done\n  343    _got=$(GIT_DIR=$_gitdir GIT_INDEX_FILE=$_index git write-tree)\n  344    if [ \"$_got\" = \"$_want\" ]; then\n  345      rm -f \"$_index\"\n  346      return 0\n  347    fi\n  348    GIT_DIR=$_gitdir GIT_INDEX_FILE=$_index git diff --cached --name-only \"$2\" -- | head -20\n  349    rm -f \"$_index\"\n  350    return 1\n  351  }\n  352  \n  353  # `scripts/test-release-coder.sh` sources the functions above and stops\n  354  # here.\n  355  if [ \"${CODER_RELEASE_LIBRARY:-}\" = 1 ]; then\n  356    return 0\n  357  fi\n  358  \n  359  while [ $# -gt 0 ]; do\n  360    case \"$1\" in\n  361      --version) version=${2:-}; shift 2 ;;\n  362      --commit) commit_ref=${2:-}; shift 2 ;;\n  363      --targets) targets=${2:-}; shift 2 ;;\n  364      --channel) channel=${2:-}; shift 2 ;;\n  365      --publish) publish=1; shift ;;\n  366      --allow-partial) allow_partial=1; shift ;;"
+    },
+    {
+      "path": "scripts/release/terminal.sh",
+      "score": 4.66,
+      "lines": [
+        385
+      ],
+      "why": [
+        "has `git diff --cached --name-only`",
+        "has `--cached`",
+        "has `--name-only`"
+      ],
+      "excerpt": "--- lines 373-403 of 793 ---\n  373    git -C \"$1\" ls-files -ci --exclude-standard 2>/dev/null |\n  374      while IFS= read -r _path; do\n  375        if [ -e \"$3/$_path\" ] || [ -L \"$3/$_path\" ]; then\n  376          (cd \"$3\" && GIT_DIR=$_gitdir GIT_WORK_TREE=$3 GIT_INDEX_FILE=$_index \\\n  377            git -c core.excludesFile=/dev/null add -f -- \"$_path\" 2>/dev/null || :)\n  378        fi\n  379      done\n  380    _got=$(GIT_DIR=$_gitdir GIT_INDEX_FILE=$_index git write-tree)\n  381    if [ \"$_got\" = \"$_want\" ]; then\n  382      rm -f \"$_index\"\n  383      return 0\n  384    fi\n  385    GIT_DIR=$_gitdir GIT_INDEX_FILE=$_index git diff --cached --name-only \"$2\" -- | head -20\n  386    rm -f \"$_index\"\n  387    return 1\n  388  }\n  389  \n  390  # `scripts/test-release-terminal.sh` sources the functions above and stops\n  391  # here.\n  392  if [ \"${OPENAGENTS_RELEASE_LIBRARY:-}\" = 1 ]; then\n  393    return 0\n  394  fi\n  395  \n  396  while [ $# -gt 0 ]; do\n  397    case \"$1\" in\n  398      --version) version=${2:-}; shift 2 ;;\n  399      --commit) commit_ref=${2:-}; shift 2 ;;\n  400      --targets) targets=${2:-}; shift 2 ;;\n  401      --channel) channel=${2:-}; shift 2 ;;\n  402      --publish) publish=1; shift ;;\n  403      --allow-partial) allow_partial=1; shift ;;"
+    }
+  ],
+  "history": [
+    {
+      "commit": "919c441032",
+      "subject": "A coding request in a checkout whose origin isn't on GitHub runs as a task",
+      "file": "crates/coder/src/task/issue_run.rs",
+      "diff": "diff --git a/crates/coder/src/task/issue_run.rs b/crates/coder/src/task/issue_run.rs\nindex 4b8bac39d4..d485d702f1 100644\n--- a/crates/coder/src/task/issue_run.rs\n+++ b/crates/coder/src/task/issue_run.rs\n@@ -809,4 +809,15 @@ fn on_thread(request: &str, earlier: &str, workdir: &Path, pick: bool) -> Option\n /// # Errors\n /// GitHub cannot be read, or no open issue is free.\n+/// Whether `dir`'s checkout has an `origin` on GitHub, the only place\n+/// its issues can live. A missing remote, a local path, or another forge\n+/// is not (#10398).\n+#[must_use]\n+pub fn on_github(dir: &Path) -> bool {\n+    local::git_out(dir, &[\"remote\", \"get-url\", \"origin\"])\n+        .ok()\n+        .and_then(|url| super::publish::github_repository(url.trim()))\n+        .is_some()\n+}\n+\n pub fn pick_here(\n     tracker: &dyn Tracker,"
+    },
+    {
+      "commit": "3508a3f77a",
+      "subject": "Keep the artifact pin on one parseable line",
+      "file": "crates/verse-zone-everglade/src/zones/everglade_pack/kit_bake.rs",
+      "diff": "diff --git a/crates/verse-zone-everglade/src/zones/everglade_pack/kit_bake.rs b/crates/verse-zone-everglade/src/zones/everglade_pack/kit_bake.rs\nindex 143151c305..4757b7a648 100644\n--- a/crates/verse-zone-everglade/src/zones/everglade_pack/kit_bake.rs\n+++ b/crates/verse-zone-everglade/src/zones/everglade_pack/kit_bake.rs\n@@ -27,6 +27,6 @@ use super::pinned::PinnedFile;\n /// Exact content identity of the reviewed light layers, or empty while\n /// none is published.\n-pub const KIT_BAKE_SHA256: &str =\n-    \"14ae7f75e9ce4f81483f6f44369753545cb2cab892177607438b3077ebbbae23\";\n+#[rustfmt::skip]\n+pub const KIT_BAKE_SHA256: &str = \"14ae7f75e9ce4f81483f6f44369753545cb2cab892177607438b3077ebbbae23\";\n /// Transfer size of the reviewed light layers; zero while none is\n /// published."
+    }
+  ],
+  "checks": [
+    {
+      "id": "check:coder",
+      "argv": [
+        "cargo",
+        "check",
+        "-p",
+        "coder",
+        "--tests",
+        "--message-format",
+        "short"
+      ],
+      "what": "compile coder and its tests"
+    },
+    {
+      "id": "test:coder",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "coder"
+      ],
+      "filter": true,
+      "what": "run coder's tests (pass a test-name filter to run fewer)"
+    },
+    {
+      "id": "fmt:coder",
+      "argv": [
+        "cargo",
+        "fmt",
+        "-p",
+        "coder"
+      ],
+      "what": "format coder"
+    },
+    {
+      "id": "check:verse-zone-everglade",
+      "argv": [
+        "cargo",
+        "check",
+        "-p",
+        "verse-zone-everglade",
+        "--tests",
+        "--message-format",
+        "short"
+      ],
+      "what": "compile verse-zone-everglade and its tests"
+    },
+    {
+      "id": "test:verse-zone-everglade",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "verse-zone-everglade"
+      ],
+      "filter": true,
+      "what": "run verse-zone-everglade's tests (pass a test-name filter to run fewer)"
+    },
+    {
+      "id": "fmt:verse-zone-everglade",
+      "argv": [
+        "cargo",
+        "fmt",
+        "-p",
+        "verse-zone-everglade"
+      ],
+      "what": "format verse-zone-everglade"
+    }
+  ],
+  "rules": [
+    "Product code is Rust. Do not add TypeScript.",
+    "The check for a change is `cargo test -p` for the crates you edited plus `cargo fmt`. Do not run clippy, release gates, or other crates' tests.",
+    "Never put machine talk (internal words like retained, projection, canonical, digest, lane) in text a user sees; say what happened in plain words. Each surface's tests run the `oa-copy` guard over user-visible text.",
+    "When a test fails only because a checked-in generated file is stale, regenerate it.",
+    "No new INVARIANTS rows, design notes, or long docs for a small change.",
+    "Fix stale or false user-facing copy you touch in the same change.",
+    "- `crates/coder` \u2014 the agent: `classify` routes each turn through Jev, `generate` answers through an Open Responses door, and the `coder` binary draws the conversation in the terminal or, with `-p`, runs one turn from a script. Both modes run the same turn, `coder::turn::run`; keep it that way. `permit` is the host's answer to whether a turn runs commands at all, built from the route and the operator's setting before anything generates and narrowing from there; a reply becomes an executable plan only under a permit that runs one, so keep execution policy there rather than in what the model is told. `delegate_door` answers a turn through Microcoder's loop in process, on the first connected provider with capacity in the capacity book (the Codex login, then Claude Code's login, then, always last, Vertex through the OpenAgents cloud, which needs no token on the host; read `docs/coder/runtime"
+  ],
+  "levers": {
+    "finder": "lite",
+    "briefing_files": 6,
+    "excerpt": "windows",
+    "excerpt_lines": 140,
+    "briefing_tokens": 14000,
+    "history": 2,
+    "plan": "deterministic",
+    "template": "v1",
+    "tools": "Read,Edit,Write,Grep,Glob",
+    "check_output": "smart",
+    "mcp": "checks",
+    "model": "claude-opus-5-5",
+    "effort": "default",
+    "max_turns": 0,
+    "timeout_secs": 1200,
+    "briefing_in": "system",
+    "build_cache": "warm",
+    "build_host": "coderos-4080",
+    "post_fmt": false,
+    "decomposition": "single",
+    "triage": "none",
+    "learning": "none"
+  },
+  "build_secs": 5.64,
+  "chars": 23252
+}

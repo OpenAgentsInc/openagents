@@ -1,0 +1,167 @@
+diff --git a/crates/openagents-mobile/src/playtest_tests.rs b/crates/openagents-mobile/src/playtest_tests.rs
+index 5c7620e310599af57d681e96698d77776c897741..bec54f8e42d4537c8a60035246079e81942e1a5a 100644
+--- a/crates/openagents-mobile/src/playtest_tests.rs
++++ b/crates/openagents-mobile/src/playtest_tests.rs
+@@ -8,14 +8,21 @@ const TRIAGE: [u8; 32] = [4; 32];
+ struct Fake {
+     sent: Mutex<Vec<Event>>,
+     refuse: bool,
++    /// Refuse public records only.
++    refuse_public: Mutex<bool>,
++    auths: Mutex<Vec<SecretKey>>,
+ }
+ 
+ impl Relay for Fake {
+-    fn publish(&self, wrap: &Event, _auth: &SecretKey) -> Result<(), String> {
+-        if self.refuse {
++    fn publish(&self, wrap: &Event, auth: &SecretKey) -> Result<(), String> {
++        if self.refuse
++            || (wrap.kind == nostr::kinds::XP_PLAYTEST_REPORT
++                && *self.refuse_public.lock().unwrap())
++        {
+             return Err("offline".into());
+         }
+         self.sent.lock().unwrap().push(wrap.clone());
++        self.auths.lock().unwrap().push(*auth);
+         Ok(())
+     }
+ }
+@@ -77,7 +84,8 @@ fn a_report_is_sealed_to_the_triage_key_and_listed_with_its_code() {
+     assert!(packet.error.is_none(), "{:?}", packet.error);
+     playtest.wait();
+     let sent = relay.sent.lock().unwrap().clone();
+-    assert_eq!(sent.len(), 1);
++    // The private report, then its public record.
++    assert_eq!(sent.len(), 2);
+     let opened = report::open(&sent[0], &SecretKey::from_byte_array(TRIAGE).unwrap()).unwrap();
+     assert_eq!(opened.report.happened, "I couldn't find the Gym.");
+     assert_eq!(opened.report.context.build_label(), "1.0.0 (16)");
+@@ -113,7 +121,7 @@ fn without_the_triage_key_a_report_waits_on_the_phone_and_sends_later() {
+     let mut playtest = Playtest::new(Some(store), relay.clone(), Some(&key));
+     let _ = playtest.reports(Some(&world()));
+     playtest.wait();
+-    assert_eq!(relay.sent.lock().unwrap().len(), 1);
++    assert_eq!(relay.sent.lock().unwrap().len(), 2);
+     assert_eq!(playtest.reports(None).reports[0].status, Status::Sent);
+ }
+ 
+@@ -139,7 +147,7 @@ fn a_failed_send_is_kept_and_sent_again_from_my_reports() {
+     let mut playtest = Playtest::new(Some(store), relay.clone(), Some(&key));
+     let _ = playtest.reports(Some(&world()));
+     playtest.wait();
+-    assert_eq!(relay.sent.lock().unwrap().len(), 1);
++    assert_eq!(relay.sent.lock().unwrap().len(), 2);
+ }
+ 
+ #[test]
+@@ -205,6 +213,7 @@ fn the_task_id_is_attached_only_from_coder_when_ticked() {
+         .lock()
+         .unwrap()
+         .iter()
++        .filter(|event| event.kind == 1059)
+         .map(|wrap| report::open(wrap, &triage).unwrap().report.task)
+         .collect();
+     assert!(tasks.contains(&None) && tasks.contains(&Some("task-1".into())));
+@@ -309,3 +318,63 @@ fn reports_and_the_session_survive_a_relaunch_and_sent_bodies_are_erased() {
+     assert!(packet.session.on);
+     assert_eq!(packet.reports[0].status, Status::Sent);
+ }
++
++#[test]
++fn a_sent_report_publishes_its_content_free_record_signed_by_the_world_key() {
++    let relay = Arc::new(Fake::default());
++    *relay.refuse_public.lock().unwrap() = true;
++    let key = triage_hex();
++    let dir = tempfile::tempdir().unwrap();
++    let triage = SecretKey::from_byte_array(TRIAGE).unwrap();
++    {
++        let store = Cache::open(dir.path(), &world()).unwrap();
++        let mut playtest = Playtest::new(Some(store), relay.clone(), Some(&key));
++        let _ = playtest.send(
++            form(Tab::Verse, Route::Gym),
++            &world(),
++            None,
++            Platform::Android,
++        );
++        playtest.wait();
++        // The private report went; the public record didn't and waits.
++        let row = &playtest.reports(None).reports[0];
++        assert_eq!(row.status, Status::Sent);
++        assert!(!row.published);
++    }
++    assert_eq!(relay.sent.lock().unwrap().len(), 1);
++    *relay.refuse_public.lock().unwrap() = false;
++    // My reports publishes it on the next open, after a relaunch.
++    let store = Cache::open(dir.path(), &world()).unwrap();
++    let mut playtest = Playtest::new(Some(store), relay.clone(), Some(&key));
++    let _ = playtest.reports(Some(&world()));
++    playtest.wait();
++    assert!(playtest.reports(None).reports[0].published);
++    let sent = relay.sent.lock().unwrap().clone();
++    assert_eq!(sent.len(), 2);
++    let opened = report::open(&sent[0], &triage).unwrap();
++    let public = &sent[1];
++    let record = nostr::xp::playtest::parse_playtest_report(public).unwrap();
++    assert_eq!(public.pubkey, opened.tester);
++    assert_eq!(record.digest, opened.digest);
++    assert_eq!(record.platform, "android");
++    assert_eq!(record.kind, "confusing");
++    assert_eq!(record.build, "1.0.0 (16)");
++    assert!(!public.content.contains("Gym"));
++    // It was published as the world key, the key that signed it.
++    assert_eq!(relay.auths.lock().unwrap()[1], world());
++    // Once published, it isn't sent again.
++    let _ = playtest.reports(Some(&world()));
++    playtest.wait();
++    assert_eq!(relay.sent.lock().unwrap().len(), 2);
++}
++
++#[test]
++fn without_the_triage_key_no_public_record_is_published() {
++    let relay = Arc::new(Fake::default());
++    let (mut playtest, _dir) = setup(relay.clone(), None);
++    let _ = playtest.send(form(Tab::Verse, Route::Gym), &world(), None, Platform::Ios);
++    let _ = playtest.reports(Some(&world()));
++    playtest.wait();
++    assert!(relay.sent.lock().unwrap().is_empty());
++    assert!(!playtest.reports(None).reports[0].published);
++}
+diff --git a/crates/playtest/src/report/tests.rs b/crates/playtest/src/report/tests.rs
+index 9d3b854ab51df379359d5f4d8036e6ef80bf75ac..abf081288a31e87e505e63bc5e07ba914e86ef8d 100644
+--- a/crates/playtest/src/report/tests.rs
++++ b/crates/playtest/src/report/tests.rs
+@@ -188,3 +188,34 @@ fn a_message_without_the_marker_is_not_a_report() {
+ fn the_code_is_the_rumor_prefix_in_capitals() {
+     assert_eq!(code("1a2b3c4d5e6f"), "PT-1A2B3C4D");
+ }
++
++#[test]
++fn the_public_record_commits_to_the_opened_report_and_holds_no_text() {
++    let tester = key(3);
++    let triage = key(4);
++    let mut filed = report(Tab::Verse, Route::Gym);
++    filed.kind = Kind::FeltGood;
++    filed.context.platform = Platform::Android;
++    let sealed = wrap(&filed, &tester, &public(&triage), &random()).expect("sealed");
++    let opened = open(&sealed.wrap, &triage).expect("opened");
++
++    let record = nostr::xp::playtest::parse_playtest_report(&sealed.public).expect("a valid 3197");
++    assert_eq!(sealed.public.kind, nostr::kinds::XP_PLAYTEST_REPORT);
++    assert_eq!(sealed.public.pubkey, opened.tester);
++    assert_eq!(record.digest, opened.digest);
++    assert_eq!(record.digest, sealed.digest);
++    assert_eq!(record.build, "1.0.0 (15)");
++    assert_eq!(record.platform, "android");
++    assert_eq!(record.kind, "felt-good");
++    assert_eq!(record.script, None);
++    assert_eq!(sealed.public.created_at, filed.context.at);
++    for words in [
++        &filed.happened,
++        &filed.expected,
++        &filed.steps,
++        &filed.context.device,
++    ] {
++        assert!(!sealed.public.content.contains(words.as_str()));
++    }
++    assert!(!sealed.public.content.contains(&public(&triage).to_string()));
++}

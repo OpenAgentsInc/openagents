@@ -1,0 +1,751 @@
+diff --git a/NEEDS_OWNER.md b/NEEDS_OWNER.md
+index 213eb270db6c2490d3ce1b4df3a43e1087b01253..c93be3b29cdc1b1a6969626c2d10e86d32245df8 100644
+--- a/NEEDS_OWNER.md
++++ b/NEEDS_OWNER.md
+@@ -1978,4 +1978,20 @@ same customer store the installed client writes. Owner steps:
+   browser. Today they stay on the installed client, which holds the resident
+   wallet and the private purchase authorization; moving them is a separate
+   issue with its own authority design.
+-||||||| a9353683b3
++
++## REV-47 supplied-snapshot plugin step (#10854)
++
++The owner left the richer operation to the agent on 2026-10-04. Code lands
++one bounded profile: a paid `snapshot-read` step whose release names the
++files it reads, and whose buyer supplies exactly those files as UTF-8 text
++with the request (`openagents plugin purchase quote --file NAME=PATH`). The
++guest reads nothing else; the packet, quote, approval, and receipt bind the
++supplied snapshot's digest. Owner steps:
++
++- Qualify one paid supplied-snapshot purchase against a real provider and
++  wallet (`plugins/meeting-followup` with its `examples/meeting.md`), and
++  retain the receipt under `docs/payments/`.
++- Decide whether any paying buyer needs an effectful operation (a patch, a
++  fetch, a delivery). None is admitted; a release that declares one is
++  refused by the paid route and needs its own authority design.
++
+diff --git a/crates/coder/src/customer/plugins.rs b/crates/coder/src/customer/plugins.rs
+index 9b4aaf5e08c0558c9d96605fef3af48b6cab4d44..86b2ba7874657ed6ebf731a82602e1168e2c1088 100644
+--- a/crates/coder/src/customer/plugins.rs
++++ b/crates/coder/src/customer/plugins.rs
+@@ -21,6 +21,35 @@ pub struct Packet {
+     pub operation: String,
+     pub profile: String,
+     pub limits: Value,
++    /// Digest of the snapshot the guest is granted: the empty snapshot, or
++    /// the caller's supplied files.
++    #[serde(default = "empty_snapshot")]
++    pub snapshot: String,
++}
++/// The receipt digest of an empty snapshot with no handles.
++pub fn empty_snapshot() -> String {
++    plugin::snapshot_digest(
++        &plugin::Snapshot::default(),
++        &std::collections::BTreeMap::new(),
++    )
++}
++/// The body a plugin request sends: the quote digest, the supplied text,
++/// the supplied snapshot files when there are any, and the recovery
++/// commitment.
++pub fn request_body(
++    quote: &front::Quote,
++    request: &str,
++    files: &std::collections::BTreeMap<String, String>,
++    recovery_authorization: Option<&str>,
++) -> Vec<u8> {
++    let mut body = json!({"quote_digest":execution::quote_digest(quote),"request":request});
++    if !files.is_empty() {
++        body["snapshot"] = json!({"v": plugin::SUPPLIED_SNAPSHOT, "files": files});
++    }
++    if let Some(authorization) = recovery_authorization {
++        body["recovery_authorization"] = json!(authorization);
++    }
++    serde_json::to_vec(&body).expect("plugin request serializes")
+ }
+ /// A fresh native read identity from the selected credential and service.
+ #[derive(Clone, Debug, PartialEq, Eq)]
+@@ -54,12 +83,19 @@ pub struct Offer {
+ }
+ impl Offer {
+     pub fn body(&self, request: &str) -> Vec<u8> {
+-        let mut body =
+-            json!({"quote_digest":execution::quote_digest(&self.quote),"request":request});
+-        if let Some(authorization) = &self.recovery_authorization {
+-            body["recovery_authorization"] = json!(authorization);
+-        }
+-        serde_json::to_vec(&body).expect("plugin request serializes")
++        self.body_with(request, &std::collections::BTreeMap::new())
++    }
++    pub fn body_with(
++        &self,
++        request: &str,
++        files: &std::collections::BTreeMap<String, String>,
++    ) -> Vec<u8> {
++        request_body(
++            &self.quote,
++            request,
++            files,
++            self.recovery_authorization.as_deref(),
++        )
+     }
+     pub fn digest(&self) -> String {
+         digest_request(&serde_json::to_value(self).expect("plugin offer serializes"))
+@@ -69,7 +105,13 @@ impl Offer {
+             .as_str()
+             .unwrap_or_default()
+     }
+-    fn validate(&self, request: &str, selected: &Selection, now: u64) -> Result<()> {
++    fn validate(
++        &self,
++        request: &str,
++        files: &std::collections::BTreeMap<String, String>,
++        selected: &Selection,
++        now: u64,
++    ) -> Result<()> {
+         let url = reqwest::Url::parse(&self.url).map_err(|_| "Invalid plugin resource.")?;
+         let sum = self
+             .quote
+@@ -129,6 +171,10 @@ impl Offer {
+             || !matches!(self.packet.profile.as_str(), "pure" | "snapshot-read")
+             || self.packet.module.len() != 71
+             || self.packet.input.len() != 71
++            || self.packet.snapshot.len() != 71
++            || files.len() > plugin::SUPPLIED_ENTRIES
++            || files.values().map(String::len).sum::<usize>() > 64 * 1024
++            || (files.is_empty()) != (self.packet.snapshot == empty_snapshot())
+             || now >= self.expires_at_ms
+             || self
+                 .recovery_authorization
+@@ -138,7 +184,7 @@ impl Offer {
+             return Err("Plugin offer changes its exact resource, release, packet, total, payer, or expiry.".into());
+         }
+         let hash = binding_hash(
+-            &http_binding("POST", &self.url, &self.body(request), &[])
++            &http_binding("POST", &self.url, &self.body_with(request, files), &[])
+                 .map_err(|_| "Invalid plugin request binding.")?,
+         )
+         .map_err(|_| "Invalid plugin request hash.")?;
+@@ -234,7 +280,7 @@ impl Store {
+             .as_ref()
+             .ok_or("Original plugin approval is absent.")?;
+         validate_approval(approval, &p.offer, &p.selection, now)?;
+-        p.offer.validate(&p.request, &p.selection, now)?;
++        p.offer.validate(&p.request, &p.files, &p.selection, now)?;
+         task::verify_same_file(&path, &file)
+             .map_err(|_| "Buyer approval changed during admission.")?;
+         let current = std::fs::symlink_metadata(root).map_err(|_| "Buyer directory changed.")?;
+@@ -274,6 +320,8 @@ pub(super) struct Purchase {
+     selection: Selection,
+     offer: Offer,
+     request: String,
++    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
++    files: std::collections::BTreeMap<String, String>,
+     created_at_ms: u64,
+     approval: Option<Approval>,
+     phase: Phase,
+@@ -365,6 +413,7 @@ pub(super) fn check(book: &Book) -> Result<()> {
+             || p.offer
+                 .validate(
+                     &p.request,
++                    &p.files,
+                     &p.selection,
+                     p.offer.expires_at_ms.saturating_sub(1),
+                 )
+@@ -461,8 +510,7 @@ fn check_result(offer: &Offer, charge: &Charge, result: &Value) -> Result<()> {
+         || !receipt.required
+         || receipt.to_json()["profile"] != offer.packet.profile
+         || receipt.to_json()["limits"] != offer.packet.limits
+-        || receipt.snapshot
+-            != plugin::digest(plugin::canonical(&json!({"entries":[],"handles":{}})).as_bytes())
++        || receipt.snapshot != offer.packet.snapshot
+         || receipt.outcome
+             != (plugin::Outcome::Value {
+                 status: result["status"].as_str().unwrap_or_default().into(),
+@@ -548,6 +596,29 @@ impl Store {
+         current: Selection,
+         now: u64,
+         secret: Option<String>,
++    ) -> Result<View> {
++        self.quote_plugin_supplied(
++            id,
++            offer,
++            request,
++            std::collections::BTreeMap::new(),
++            current,
++            now,
++            secret,
++        )
++    }
++    /// Quote a purchase whose request also supplies the snapshot `files` the
++    /// guest reads; the offer's packet must already digest them.
++    #[allow(clippy::too_many_arguments)]
++    pub fn quote_plugin_supplied(
++        &mut self,
++        id: &str,
++        offer: Offer,
++        request: String,
++        files: std::collections::BTreeMap<String, String>,
++        current: Selection,
++        now: u64,
++        secret: Option<String>,
+     ) -> Result<View> {
+         if current.context.team_policy.is_some() {
+             return Err("This workspace has an active team policy; paid plugin execution is not a qualified route. Original financial recovery remains available.".into());
+@@ -583,7 +654,7 @@ impl Store {
+         {
+             return Err("Plugin quote needs current customer rights, a fresh identity, and resolved payer liability.".into());
+         }
+-        offer.validate(&request, &current, now)?;
++        offer.validate(&request, &files, &current, now)?;
+         let mut next = self.book.clone();
+         next.plugin_purchases.insert(
+             id.into(),
+@@ -591,6 +662,7 @@ impl Store {
+                 selection: current,
+                 offer,
+                 request,
++                files,
+                 created_at_ms: now,
+                 approval: None,
+                 phase: Phase::Quoted,
+@@ -640,7 +712,7 @@ impl Store {
+         {
+             return Err("Approve the exact reviewed plugin quote with its original customer and payer, once.".into());
+         }
+-        p.offer.validate(&p.request, current, now)?;
++        p.offer.validate(&p.request, &p.files, current, now)?;
+         let a = Approval {
+             quote: q,
+             approved_at_ms: now,
+@@ -705,14 +777,14 @@ impl Store {
+         {
+             return Err("Plugin purchase is unapproved, changed, or already attempted; it cannot pay again.".into());
+         }
+-        p.offer.validate(&p.request, current, now)?;
++        p.offer.validate(&p.request, &p.files, current, now)?;
+         validate_approval(
+             p.approval.as_ref().ok_or("Missing plugin approval.")?,
+             &p.offer,
+             current,
+             now,
+         )?;
+-        let result = (p.offer.clone(), p.offer.body(&p.request));
++        let result = (p.offer.clone(), p.offer.body_with(&p.request, &p.files));
+         let mut next = self.book.clone();
+         next.plugin_purchases.get_mut(id).unwrap().phase = Phase::Paying;
+         self.persist(next)?;
+@@ -721,6 +793,10 @@ impl Store {
+     pub fn plugin_request(&self, id: &str) -> Result<&str> {
+         Ok(&self.plugin(id)?.request)
+     }
++    /// The snapshot files the purchase's request supplied, if any.
++    pub fn plugin_files(&self, id: &str) -> Result<&std::collections::BTreeMap<String, String>> {
++        Ok(&self.plugin(id)?.files)
++    }
+     /// The caller authenticates the original customer before beginning payment.
+     pub fn plugin_invocation_authorization(
+         &self,
+@@ -893,7 +969,7 @@ impl Store {
+         }
+         // A reviewed rotation may read the original result. It cannot change
+         // the historical principal, alias, offer, or once-only payment fence.
+-        Ok((p.offer.clone(), p.offer.body(&p.request), p.recovery_secret.clone().ok_or("This older purchase has no private recovery authorization; retain its receipt for support.")?))
++        Ok((p.offer.clone(), p.offer.body_with(&p.request, &p.files), p.recovery_secret.clone().ok_or("This older purchase has no private recovery authorization; retain its receipt for support.")?))
+     }
+     /// Authenticate native reads even after canonical linkage is retired or revoked.
+     pub async fn plugin_native_reader(&self, id: &str) -> Result<NativeReader> {
+@@ -949,7 +1025,7 @@ impl Store {
+         {
+             return Err("Recovery needs current native read authentication, the original source, and exact resident binding.".into());
+         }
+-        Ok((p.offer.clone(), p.offer.body(&p.request), p.recovery_secret.clone().ok_or("This older purchase has no private recovery authorization; retain its receipt for support.")?))
++        Ok((p.offer.clone(), p.offer.body_with(&p.request, &p.files), p.recovery_secret.clone().ok_or("This older purchase has no private recovery authorization; retain its receipt for support.")?))
+     }
+     /// An exact resident lookup can recover a lost payment acknowledgment. It never pays.
+     pub fn plugin_recovered_charge(
+diff --git a/crates/openagents-cli/src/catalog.rs b/crates/openagents-cli/src/catalog.rs
+index 8a55735fe429e671678b83b761e2613cf54e35e1..ad919444970c9ff0fa478870ec7fe2e03cc06c23 100644
+--- a/crates/openagents-cli/src/catalog.rs
++++ b/crates/openagents-cli/src/catalog.rs
+@@ -62,8 +62,10 @@ pub(crate) const PRG_EFFECTS: &[Declared] = &[
+ pub(crate) const EXT_USAGE: &str = "usage: openagents plugin COMMAND [OPTIONS]
+   purchase quote --root DIR --purchase ID --plugin PUBKEY:SLUG --input FILE
+         --wallet-home DIR --max-msat N --max-fee-msat N [--relay URL] [--blossom URL]
++        [--file NAME=PATH]...
+         Resolve a supported signed release, disclose the supplied private text
+-        to the selected customer origin, and retain its exact unpaid invoice.
++        and exactly the files the release names to the selected customer
++        origin, and retain its exact unpaid invoice.
+   purchase approve --root DIR --purchase ID --digest DIGEST
+         Approve the reviewed customer, release, input, invoice, total, fee,
+         resident payer, and expiry after checking current authority and terms.
+diff --git a/crates/openagents-cli/src/pay_plugin.rs b/crates/openagents-cli/src/pay_plugin.rs
+index 3ca01ea7c9749de316bdfe77dce2a0b1474291c1..6a759d0859f52bc05f65833f9032173b32dde889 100644
+--- a/crates/openagents-cli/src/pay_plugin.rs
++++ b/crates/openagents-cli/src/pay_plugin.rs
+@@ -14,11 +14,19 @@
+ //! The executor runs the pinned release's packet once through
+ //! `plugin::invoke_with_receipt`: no workspace, no network, no host
+ //! effects. A `pure` guest gets the packet only; a `snapshot-read` guest
+-//! (such as `explain-error`) runs with an empty snapshot, so it reads
+-//! nothing but the request it was sent. A plugin whose program is anything
+-//! but one module step, or that requires capabilities, is refused with
+-//! `plugin_not_invocable` before a price is quoted, so it can never be
+-//! sold.
++//! that declares no `read` entries (such as `explain-error`) runs with an
++//! empty snapshot, so it reads nothing but the request it was sent. A
++//! `snapshot-read` guest that declares `read` entries (such as
++//! `meeting-followup`) runs the supplied-snapshot profile
++//! (`plugin::SUPPLIED_SNAPSHOT`): the caller sends exactly those entries as
++//! texts under `snapshot.files` in the JSON body, bounded by the release's
++//! `read_bytes` ceiling and `plugin::SUPPLIED_ENTRIES`, and the guest reads
++//! nothing else. The files are part of the signed request, so the quote,
++//! the approval, and the invocation receipt's `snapshot` digest all bind
++//! them; a missing, extra, or oversized file is refused before a price is
++//! quoted. A plugin whose program is anything but one module step, or that
++//! requires capabilities, is refused with `plugin_not_invocable` before a
++//! price is quoted, so it can never be sold.
+ 
+ use std::collections::{BTreeMap, HashMap};
+ use std::path::{Path, PathBuf};
+@@ -45,6 +53,50 @@ pub(crate) struct Packet {
+     pub input: Value,
+     pub request_key: Option<String>,
+     pub limits: plugin::Limits,
++    /// Snapshot entries the guest declared it reads; the caller supplies
++    /// exactly these. Empty for the one-guest envelope.
++    pub supplied: Vec<String>,
++}
++
++impl Packet {
++    /// The snapshot `files` grant this packet, or why they can't.
++    pub(crate) fn snapshot(
++        &self,
++        files: &BTreeMap<String, String>,
++    ) -> Result<plugin::Snapshot, String> {
++        if self.supplied.is_empty() {
++            if files.is_empty() {
++                return Ok(plugin::Snapshot::default());
++            }
++            return Err("this guest reads no supplied files; the supplied-snapshot profile is unavailable for it".into());
++        }
++        plugin::Snapshot::supplied(&self.supplied, files, self.limits.read_bytes)
++    }
++}
++
++/// The supplied files in an approved request body: `snapshot.files`, a
++/// text per entry name, under the pinned snapshot version.
++pub(crate) fn supplied_files(body: &Value) -> Result<BTreeMap<String, String>, String> {
++    let Some(snapshot) = body.get("snapshot") else {
++        return Ok(BTreeMap::new());
++    };
++    if snapshot["v"] != plugin::SUPPLIED_SNAPSHOT {
++        return Err(format!(
++            "the request's snapshot must be {}; other snapshot profiles are unavailable",
++            plugin::SUPPLIED_SNAPSHOT
++        ));
++    }
++    let files = snapshot["files"]
++        .as_object()
++        .ok_or("the request's snapshot.files must be an object of texts")?;
++    files
++        .iter()
++        .map(|(name, text)| {
++            text.as_str()
++                .map(|t| (name.clone(), t.to_owned()))
++                .ok_or_else(|| format!("the supplied file {name:?} is not a text"))
++        })
++        .collect()
+ }
+ 
+ /// A published plugin, resolved and pinned to one release.
+@@ -121,13 +173,24 @@ pub(crate) fn packet_from_program(program: &Value) -> Result<Packet, Unpriced> {
+     let name = step["name"].as_str().unwrap_or_default();
+     let binding = &program["binding"]["steps"][name];
+     let module = &binding["module"];
+-    if binding["bounds"]["captured_input"] == true
+-        || module["read"]
+-            .as_array()
+-            .is_some_and(|paths| !paths.is_empty())
+-    {
++    let supplied: Vec<String> = match &module["read"] {
++        Value::Null => vec![],
++        Value::Array(paths) => paths
++            .iter()
++            .map(|p| p.as_str().filter(|s| !s.is_empty()).map(str::to_owned))
++            .collect::<Option<_>>()
++            .ok_or_else(|| not_invocable("the guest's read entries must be names"))?,
++        _ => return Err(not_invocable("the guest's read entries are malformed")),
++    };
++    if supplied.len() > plugin::SUPPLIED_ENTRIES {
++        return Err(not_invocable(format!(
++            "the guest reads more than {} entries; this route supplies at most that many",
++            plugin::SUPPLIED_ENTRIES
++        )));
++    }
++    if binding["bounds"]["captured_input"] == true && supplied.is_empty() {
+         return Err(not_invocable(
+-            "the guest requires a captured workspace; this route supplies only the request and an empty snapshot",
++            "the guest requires a captured workspace but names no entries; this route supplies only named texts",
+         ));
+     }
+     let wasm = module["bytes_base64"]
+@@ -180,7 +243,7 @@ pub(crate) fn packet_from_program(program: &Value) -> Result<Packet, Unpriced> {
+             .as_object()
+             .ok_or_else(|| not_invocable("guest bounds must be an object"))?
+         {
+-            if key == "captured_input" && value == false {
++            if key == "captured_input" && value.is_boolean() {
+                 continue;
+             }
+             let ceiling = value
+@@ -229,6 +292,7 @@ pub(crate) fn packet_from_program(program: &Value) -> Result<Packet, Unpriced> {
+         input,
+         request_key,
+         limits,
++        supplied,
+     })
+ }
+ 
+@@ -263,13 +327,19 @@ impl Invoke {
+         let resolved = self.source.resolve(id)?;
+         if let Ok(body) = serde_json::from_slice::<Value>(&call.request.body)
+             && body.get("quote_digest").is_some()
+-            && !body["request"].is_string()
+         {
+-            return Err(refused(
+-                400,
+-                "plugin_input_invalid",
+-                "the approved plugin request must contain its supplied text in request",
+-            ));
++            if !body["request"].is_string() {
++                return Err(refused(
++                    400,
++                    "plugin_input_invalid",
++                    "the approved plugin request must contain its supplied text in request",
++                ));
++            }
++            let files = supplied_files(&body)
++                .and_then(|files| resolved.packet.snapshot(&files).map(|_| ()));
++            if let Err(why) = files {
++                return Err(refused(400, "plugin_input_invalid", why));
++            }
+         }
+         let price = self
+             .endpoint_msat
+@@ -319,7 +389,13 @@ impl RouteExecutor for Invoke {
+         let request = body["request"]
+             .as_str()
+             .ok_or("the approved request contains no supplied text")?;
+-        let ran = run(&resolved, request, call.payment_hash.unwrap_or("unpaid"))?;
++        let files = supplied_files(&body)?;
++        let ran = run(
++            &resolved,
++            request,
++            &files,
++            call.payment_hash.unwrap_or("unpaid"),
++        )?;
+         Ok(Served {
+             body: ran.to_string().into_bytes(),
+             content_type: Some("application/json".into()),
+@@ -327,10 +403,16 @@ impl RouteExecutor for Invoke {
+     }
+ }
+ 
+-/// Run `resolved`'s guest once on `request`, with no grant beyond the
+-/// packet, and return its value and receipt.
+-pub(crate) fn run(resolved: &Resolved, request: &str, invocation: &str) -> Result<Value, String> {
++/// Run `resolved`'s guest once on `request` and the supplied `files`, with
++/// no grant beyond the packet, and return its value and receipt.
++pub(crate) fn run(
++    resolved: &Resolved,
++    request: &str,
++    files: &BTreeMap<String, String>,
++    invocation: &str,
++) -> Result<Value, String> {
+     let packet = &resolved.packet;
++    let snapshot = packet.snapshot(files)?;
+     let input = match &packet.request_key {
+         Some(key) => plugin::scope::with_request(&packet.input, key, request)?,
+         None => packet.input.clone(),
+@@ -341,7 +423,7 @@ pub(crate) fn run(resolved: &Resolved, request: &str, invocation: &str) -> Resul
+         invocation,
+         operation: &packet.operation,
+         input: &input,
+-        snapshot: &plugin::Snapshot::default(),
++        snapshot: &snapshot,
+         handles: &BTreeMap::new(),
+         limits: packet.limits,
+         cancelled: Arc::new(AtomicBool::new(false)),
+diff --git a/crates/openagents-cli/src/plugin_purchase.rs b/crates/openagents-cli/src/plugin_purchase.rs
+index 22351e55d699ce2cc13082ac3831700aa8d65cff..ada329eeab1c47381544477abcd605c84adbffca 100644
+--- a/crates/openagents-cli/src/plugin_purchase.rs
++++ b/crates/openagents-cli/src/plugin_purchase.rs
+@@ -16,7 +16,7 @@ use openagents_x402::{
+     wire,
+ };
+ use serde_json::{Value, json};
+-use std::{path::Path, time::Duration};
++use std::{collections::BTreeMap, path::Path, time::Duration};
+ 
+ fn now() -> u64 {
+     openagents_x402::unix_now().saturating_mul(1000)
+@@ -37,6 +37,7 @@ fn parse(words: &[String]) -> Result<Args, String> {
+             "purchase",
+             "plugin",
+             "input",
++            "file",
+             "wallet-home",
+             "max-msat",
+             "max-fee-msat",
+@@ -115,13 +116,21 @@ fn source(root: &Path, offer: &Offer) -> pay_plugin::RegistrySource {
+         root.join("plugin-blobs"),
+     )
+ }
+-fn packet(resolved: &Resolved, request: &str) -> Result<Packet, String> {
++fn packet(
++    resolved: &Resolved,
++    request: &str,
++    files: &BTreeMap<String, String>,
++) -> Result<Packet, String> {
+     let p = &resolved.packet;
+     let input = match &p.request_key {
+         Some(k) => plugin::scope::with_request(&p.input, k, request)?,
+         None => p.input.clone(),
+     };
++    let snapshot = p
++        .snapshot(files)
++        .map_err(|why| format!("Supplied files do not match the signed release: {why}."))?;
+     Ok(Packet {
++        snapshot: plugin::snapshot_digest(&snapshot, &BTreeMap::new()),
+         module: plugin::digest(&p.wasm),
+         input: plugin::digest(plugin::canonical(&input).as_bytes()),
+         operation: p.operation.clone(),
+@@ -274,7 +283,12 @@ fn preview(transport: &dyn Transport, url: &str) -> Result<Quote, String> {
+     }
+     Ok(quote)
+ }
+-fn resolved(source: &dyn PluginSource, offer: &Offer, request: &str) -> Result<Packet, String> {
++fn resolved(
++    source: &dyn PluginSource,
++    offer: &Offer,
++    request: &str,
++    files: &BTreeMap<String, String>,
++) -> Result<Packet, String> {
+     let id = offer
+         .quote
+         .plugin
+@@ -287,7 +301,24 @@ fn resolved(source: &dyn PluginSource, offer: &Offer, request: &str) -> Result<P
+     {
+         return Err("Signed plugin release or author terms changed; review a new purchase.".into());
+     }
+-    packet(&r, request)
++    packet(&r, request, files)
++}
++/// `NAME=PATH` options: the snapshot entries the request supplies, read
++/// from private files, each at most the 32 KiB a request text may be.
++fn supplied_files(a: &Args) -> Result<BTreeMap<String, String>, String> {
++    let mut files = BTreeMap::new();
++    for option in a.options("file") {
++        let (name, path) = option
++            .split_once('=')
++            .filter(|(name, path)| !name.is_empty() && !path.is_empty())
++            .ok_or("Each --file is NAME=PATH.")?;
++        let text = String::from_utf8(Store::private_input(Path::new(path), 32 * 1024)?)
++            .map_err(|_| "Supplied files must be UTF-8 text.")?;
++        if files.insert(name.to_owned(), text).is_some() {
++            return Err("Each supplied file name appears once.".into());
++        }
++    }
++    Ok(files)
+ }
+ fn execute(a: &Args) -> Result<View, String> {
+     let root = Path::new(required(a, "root")?);
+@@ -317,6 +348,7 @@ fn execute(a: &Args) -> Result<View, String> {
+             32 * 1024,
+         )?)
+         .map_err(|_| "Plugin notes must be UTF-8 text.")?;
++        let files = supplied_files(a)?;
+         let (_, payer) = resident(Path::new(required(a, "wallet-home")?))?;
+         let max_msat = a.number::<u64>("max-msat", 0)?;
+         let max_fee_msat = a.number::<u64>("max-fee-msat", 0)?;
+@@ -352,6 +384,7 @@ fn execute(a: &Args) -> Result<View, String> {
+                 operation: String::new(),
+                 profile: String::new(),
+                 limits: Value::Null,
++                snapshot: String::new(),
+             },
+             payer,
+             max_msat,
+@@ -375,11 +408,11 @@ fn execute(a: &Args) -> Result<View, String> {
+         if offer.quote.plugin.as_deref() != Some(plugin) {
+             return Err("Preview identifies another plugin.".into());
+         }
+-        offer.packet = resolved(&source(root, &offer), &offer, &request)?;
++        offer.packet = resolved(&source(root, &offer), &offer, &request, &files)?;
+         if offer.quote.price_msat > max_msat {
+             return Err("Plugin total exceeds the approved maximum; no invoice was paid.".into());
+         }
+-        let body = offer.body(&request);
++        let body = offer.body_with(&request, &files);
+         offer.request_hash = binding_hash(
+             &http_binding("POST", &offer.url, &body, &[])
+                 .map_err(|_| "Invalid exact plugin binding.")?,
+@@ -442,7 +475,7 @@ fn execute(a: &Args) -> Result<View, String> {
+                 mode: binding.mode(),
+             });
+         }
+-        return store.quote_plugin_with_recovery(id, offer, request, current, at, Some(secret));
++        return store.quote_plugin_supplied(id, offer, request, files, current, at, Some(secret));
+     }
+     let view = store.plugin_view(id)?;
+     // Refuse a retry before opening even the payment transport.
+@@ -480,8 +513,9 @@ fn execute(a: &Args) -> Result<View, String> {
+         );
+     }
+     let supplied = store.plugin_request(id)?.to_owned();
++    let files = store.plugin_files(id)?.clone();
+     let source = source(root, &view.offer);
+-    let packet = resolved(&source, &view.offer, &supplied)?;
++    let packet = resolved(&source, &view.offer, &supplied, &files)?;
+     if packet != view.offer.packet || preview(&transport, &view.offer.url)? != view.offer.quote {
+         return Err(
+             "Plugin release, packet, or price changed; review and approve a new purchase.".into(),
+diff --git a/crates/plugin/src/lib.rs b/crates/plugin/src/lib.rs
+index 312a4308b24616272503ef5be0793a3da9c65816..333dba2eb195fa40aae128eb4dcf280026f0a71b 100644
+--- a/crates/plugin/src/lib.rs
++++ b/crates/plugin/src/lib.rs
+@@ -19,6 +19,9 @@ pub use engine::{
+ };
+ pub use replay::{
+     ENGINE, EXACT_REPLAY, InvocationReceipt, Outcome, RECEIPT_SCHEMA, Replay, canonical,
+-    invoke_with_receipt, replay,
++    invoke_with_receipt, replay, snapshot_digest,
++};
++pub use snapshot::{
++    Entry, SUPPLIED_ENTRIES, SUPPLIED_SNAPSHOT, SUPPLIED_VERSION, Snapshot, decode_base64,
++    derivative, encode_base64,
+ };
+-pub use snapshot::{Entry, Snapshot, decode_base64, derivative, encode_base64};
+diff --git a/crates/plugin/src/replay.rs b/crates/plugin/src/replay.rs
+index d9132dd02246a31ec7e29149a498134aac2f5788..6bea2ecee2445fd3837e4c8dd10cae36d21bdc5b 100644
+--- a/crates/plugin/src/replay.rs
++++ b/crates/plugin/src/replay.rs
+@@ -262,8 +262,9 @@ impl Inputs {
+ }
+ 
+ /// The digest of every entry in `snapshot`, in name order, and the handle
+-/// table.
+-fn snapshot_digest(snapshot: &Snapshot, handles: &BTreeMap<String, String>) -> String {
++/// table: the `snapshot` field of an invocation receipt.
++#[must_use]
++pub fn snapshot_digest(snapshot: &Snapshot, handles: &BTreeMap<String, String>) -> String {
+     let entries: Vec<Value> = snapshot
+         .entries()
+         .map(|(name, entry)| {
+diff --git a/crates/plugin/src/snapshot.rs b/crates/plugin/src/snapshot.rs
+index c87bc94b8095bda4419de220ab5e23889c06ec58..301dd5b6266dd45a015484cf3bbaf10a6ee26383 100644
+--- a/crates/plugin/src/snapshot.rs
++++ b/crates/plugin/src/snapshot.rs
+@@ -40,7 +40,73 @@ pub struct Snapshot {
+     entries: BTreeMap<String, Entry>,
+ }
+ 
++/// The version of a snapshot a caller supplies with its request: named
++/// UTF-8 texts, nothing captured from a workspace.
++pub const SUPPLIED_SNAPSHOT: &str = "openagents.plugin.supplied-snapshot.v1";
++/// The most entries a supplied snapshot may carry.
++pub const SUPPLIED_ENTRIES: usize = 8;
++/// The observation version every supplied entry records.
++pub const SUPPLIED_VERSION: &str = "supplied";
++
+ impl Snapshot {
++    /// A snapshot of caller-supplied texts, one complete file per entry.
++    ///
++    /// `names` are the entries the guest declared it reads; `files` must
++    /// name exactly those, each a text, and together stay within
++    /// `read_bytes` and [`SUPPLIED_ENTRIES`].
++    ///
++    /// # Errors
++    ///
++    /// Returns the first bound the supplied files break, as a sentence.
++    pub fn supplied(
++        names: &[String],
++        files: &BTreeMap<String, String>,
++        read_bytes: usize,
++    ) -> Result<Self, String> {
++        if names.is_empty() {
++            return Err("the guest reads no supplied file".into());
++        }
++        if names.len() > SUPPLIED_ENTRIES {
++            return Err(format!(
++                "the guest declares more than {SUPPLIED_ENTRIES} supplied files"
++            ));
++        }
++        let declared: std::collections::BTreeSet<&str> = names.iter().map(String::as_str).collect();
++        if declared.len() != names.len() {
++            return Err("the guest declares a supplied file twice".into());
++        }
++        let given: std::collections::BTreeSet<&str> = files.keys().map(String::as_str).collect();
++        if given != declared {
++            let mut want: Vec<&str> = declared.iter().copied().collect();
++            want.sort_unstable();
++            return Err(format!(
++                "the request must supply exactly these files: {}",
++                want.join(", ")
++            ));
++        }
++        let mut total = 0usize;
++        let mut snapshot = Self::default();
++        for (name, text) in files {
++            total = total.saturating_add(text.len());
++            if total > read_bytes {
++                return Err(format!(
++                    "the supplied files exceed the guest's {read_bytes}-byte read ceiling"
++                ));
++            }
++            snapshot
++                .insert(
++                    name,
++                    Entry::File {
++                        bytes: text.as_bytes().to_vec(),
++                        version: SUPPLIED_VERSION.into(),
++                        complete: true,
++                    },
++                )
++                .map_err(|_| format!("the supplied file name {name:?} is not a logical name"))?;
++        }
++        Ok(snapshot)
++    }
++
+     /// Insert `entry` under `name`.
+     ///
+     /// # Errors
+diff --git a/docs/plugins/README.md b/docs/plugins/README.md
+index 591c6fe4903c7048007ef65f54da039eddc67838..d5a4337f2214747923a6dbf61688f673ac2b9ad4 100644
+--- a/docs/plugins/README.md
++++ b/docs/plugins/README.md
+@@ -145,6 +145,23 @@ and recover stay on the installed client, and reloading a page cannot pay or
+ dispatch twice. Without `--customer`, the page says purchases are
+ unavailable.
+ 
++## Buy a step that reads files you supply
++
++A paid release may declare, in its program's `module.read`, up to eight
++logical file names its `snapshot-read` guest reads. To buy such a step,
++supply exactly those files with the request: `openagents plugin purchase
++quote ... --input FILE --file meeting.md=PATH`, then `approve` and `invoke`
++as for any purchase. The client sends the files as UTF-8 text in the request
++body (`snapshot.v = openagents.plugin.supplied-snapshot.v1`), the quote and
++approval digests cover them, and the invocation receipt's `snapshot` field is
++the digest of that supplied snapshot. The guest sees nothing but those bytes:
++no workspace, capability, network, process, or wallet. A missing, extra,
++renamed, or oversized file, a release that declares no names, or a release
++with any broader grant is refused before payment. Releases that read nothing
++keep their empty snapshot and their existing terms.
++`plugins/meeting-followup` is the example release; its fixture is
++`plugins/meeting-followup/examples/meeting.md`.
++
+ ## Inspect a curated publisher or service
+ 
+ On a Unix host, `openagents plugin discover --catalog FILE --mirror DIR --json`

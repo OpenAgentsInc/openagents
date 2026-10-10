@@ -1,0 +1,181 @@
+diff --git a/INVARIANTS.md b/INVARIANTS.md
+index 132868433dc45a80e5c0f01f9cff959d5f2b6fc8..949d5637ce4dcb2e5f4f7a74908308567c1d4dc2 100644
+--- a/INVARIANTS.md
++++ b/INVARIANTS.md
+@@ -78,7 +78,7 @@ See [the auto-start guide](docs/coder/runtime/host-autostart.md).
+ | A trainer's XP and level are a pure function of public signed NIP-XP events, the reader's trust list, and the named curve `trainer-curve-v1`. The OpenAgents app trusts the OpenAgents referee alone, re-checks every award against the evidence it names, and only reads: it never publishes, spends, or converts XP, and nothing pays. | New on 2026-09-28 ([#9847](https://github.com/OpenAgentsInc/openagents/issues/9847)). | `a_reproduction_shows_on_the_board_the_tag_and_the_card` in `crates/verse`; `the_preview_card_shows_level_three_under_the_named_curve` in `crates/openagents-mobile` |
+ | Under NIP-XP's `reproduce` rule, the reproducer is never the claimant, a reproduction's run record is never the claim's, and the referee signs an award only after checking the reproducer's run record file against the digest the reproduction names. | New on 2026-09-28. | `the_claimant_cant_reproduce_their_own_attempt`, `a_failed_copied_late_or_uncited_reproduction_is_refused` in `crates/nostr`; `a_claim_a_reproduction_and_its_award_level_up_the_reproducer` in `crates/microcoder` |
+ | A `per-awardee` quest version pays each distinct reproducer at most once and at most `max_awards` awards in all; only the reproducer's role carries XP, and a version with more live awards than its `max_awards`, or two live awards for one reproducer, counts for no one until the referee revokes the extras. | New on 2026-09-28 ([#9894](https://github.com/OpenAgentsInc/openagents/issues/9894)). It relaxes one award per quest version for `reproduce` quests that opt in, so a tutorial can pay every newcomer once. | `a_per_awardee_quest_states_its_max_and_pays_only_the_reproducer`, `a_per_awardee_award_is_keyed_to_its_reproducer` in `crates/nostr`; `a_per_awardee_quest_pays_each_reproducer_once_up_to_its_max`, `a_per_awardee_quest_pays_one_reproducer_once` in `crates/xp-ledger`; `a_per_awardee_tutorial_pays_each_reproducer_once_up_to_its_max` in `crates/microcoder` |
+-| Playtest XP never feeds the trainer level: `playtest` awards are signed by a separate playtest referee key, the app trusts only that key for its playtest card and titles (and none while `PLAYTEST_REFEREE` is unset), and a reader keeps playtest XP apart from the `trainer-curve-v1` total even when it trusts both referees. No playtest referee secret is generated or stored by the app or the repository; the owner creates it with `microcoder xp playtest-keygen`. | New on 2026-09-28 ([#9885](https://github.com/OpenAgentsInc/openagents/issues/9885)). | `playtest_awards_count_on_their_own_card_and_never_in_the_trainer_level` in `crates/verse`; `a_playtest_referee_accepts_a_testers_report_once` in `crates/microcoder` |
++| Playtest XP never feeds the trainer level: `playtest` awards are signed by a separate playtest referee key, the app trusts only that key for its playtest card and titles (and none while `PLAYTEST_REFEREE` is unset), and a reader keeps playtest XP apart from the `trainer-curve-v1` total even when it trusts both referees. No playtest referee secret is generated or stored by the app or the repository; the owner creates it with `microcoder xp playtest-keygen`. | New on 2026-09-28 ([#9885](https://github.com/OpenAgentsInc/openagents/issues/9885)). | `playtest_awards_count_on_their_own_card_and_never_in_the_trainer_level` in `crates/verse`; `a_playtest_referee_accepts_a_testers_report_once` in `crates/microcoder`; `openagents playtest award` signs only with the trusted playtest referee key and refuses while `PLAYTEST_REFEREE` is unset ([#9906](https://github.com/OpenAgentsInc/openagents/issues/9906)): `no_award_is_signed_without_the_playtest_referee_key` in `crates/playtest`, `without_the_playtest_referee_key_nothing_is_read_or_signed` in `crates/openagents-cli` |
+ | Under NIP-XP's `playtest` rule, the tester is never the triager, the moderator, or the referee; joining or installing earns nothing (no quest exists for it); one issue earns at most one report-class award per season from a referee; and a quest version over its `max_awards` counts none of its awards. | New on 2026-09-28 ([#9885](https://github.com/OpenAgentsInc/openagents/issues/9885)). | `the_rule_refuses_contributions_that_do_not_qualify`, `a_moderated_session_needs_the_moderators_record` in `crates/nostr`; `one_issue_earns_one_report_class_award_across_quests`, `a_quest_version_over_its_max_awards_counts_none` in `crates/knowledge` |
+ | The Verse world key (the trainer key) reaches the interface only in the direct reply to a `trainer` request with `reveal: true`, which the Trainer screen sends after the person taps **Reveal nsec** and confirms a warning. The app packet never carries it; the screen drops it when it closes or the app leaves the foreground, and copies it only on an explicit tap, to this device's pasteboard alone, expiring after 60 seconds (on Android, a clip marked sensitive that the app clears after 60 seconds, with screenshots blocked while the nsec shows). | New on 2026-09-28; Android the same day. It adds the first export path for the world key, so a trainer can sign a reproduction with the key over their head in the Grid. | `only_an_explicit_reveal_returns_the_trainer_nsec`, `the_preview_card_shows_level_three_under_the_named_curve` in `crates/openagents-mobile` |
+ 
+diff --git a/crates/openagents-cli/src/playtest.rs b/crates/openagents-cli/src/playtest.rs
+index 8b310db7855af2680dd4e5808deaf6e4125d4ede..ecb8955ee881003badf5a7d1d51706fff4d0d458 100644
+--- a/crates/openagents-cli/src/playtest.rs
++++ b/crates/openagents-cli/src/playtest.rs
+@@ -40,6 +40,13 @@ const USAGE: &str = "usage: openagents playtest COMMAND [OPTIONS]
+   session --tester KEY --script NAME --format unmoderated|moderated|group|diary
+         --build \"1.0.0 (15)\" [--code PT-…] [--moderator KEY]
+   log [--acceptances | --pending]
++  award (CODE | --issue N [--verified] | --script NAME --tester KEY)
++        --quest ID@VERSION [--session ID] [--triager KEY] [--commit SHA]
++        [--referee-key PATH] [--relay URL] [--repo OWNER/REPO] [--publish]
++                                Sign the NIP-XP playtest award for an accepted
++                                contribution with the playtest referee key;
++                                without --publish, show it. Off until the
++                                playtest referee key exists.
+   testflight [--asc-env FILE] [--app ID] [--since 2026-09-28]
+                                 Read TestFlight feedback (screenshots and
+                                 crashes) from App Store Connect and draft each
+@@ -66,7 +73,17 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
+     let Some((command, rest)) = words.split_first() else {
+         return output.usage("playtest", "a command is required", USAGE);
+     };
+-    let args = match Args::parse(rest, &["approve", "acceptances", "pending", "help"]) {
++    let args = match Args::parse(
++        rest,
++        &[
++            "approve",
++            "acceptances",
++            "pending",
++            "help",
++            "verified",
++            "publish",
++        ],
++    ) {
+         Ok(args) => args,
+         Err(message) => return output.usage("playtest", &message, USAGE),
+     };
+@@ -84,6 +101,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
+         "session" => session(&home, &args),
+         "log" => log(&home, &args),
+         "testflight" => testflight::run(&home, &args),
++        "award" => award::run(&home, &args),
+         other => return output.usage("playtest", &format!("unknown command `{other}`"), USAGE),
+     };
+     match result {
+@@ -630,6 +648,7 @@ fn log(home: &Path, args: &Args) -> Result<Value, Failure> {
+     Ok(json!({"entries": entries, "text": text}))
+ }
+ 
++mod award;
+ mod testflight;
+ 
+ #[cfg(test)]
+diff --git a/crates/playtest/src/lib.rs b/crates/playtest/src/lib.rs
+index ad4e41dfbc8966dd97b25ce1bd8689c15d15267c..f6cf7a1150d7a41aafb5742e9f5cb7b71e636fee 100644
+--- a/crates/playtest/src/lib.rs
++++ b/crates/playtest/src/lib.rs
+@@ -18,6 +18,10 @@
+ //! deduplicating by exact identity only, and keeps the append-only triage
+ //! log that records every acceptance with the tester's key.
+ //!
++//! **Awards** ([`award`]) join an accepted contribution in the triage log
++//! to the tester's public playtest report and a `playtest` quest, and are
++//! signed only with the playtest referee key.
++//!
+ //! **TestFlight feedback** ([`testflight`]) that App Store Connect holds
+ //! joins the same inbox as drafts and log entries, without the tester's
+ //! Apple identity; it backs no award.
+@@ -25,6 +29,7 @@
+ //! This crate has no network and no storage: the app and the triage tool
+ //! carry the events.
+ 
++pub mod award;
+ pub mod report;
+ pub mod session;
+ pub mod testflight;
+diff --git a/crates/playtest/src/triage.rs b/crates/playtest/src/triage.rs
+index d1bf48d8efd5e14959d206d434d9453e44b39841..9b7f5ca51a6cb4ea1e5d7f091e09555894190045 100644
+--- a/crates/playtest/src/triage.rs
++++ b/crates/playtest/src/triage.rs
+@@ -234,6 +234,10 @@ pub struct Acceptance {
+     pub fix_build: Option<String>,
+     #[serde(skip_serializing_if = "Option::is_none")]
+     pub verified: Option<Verified>,
++    /// The key that accepted it, hex: the triager who filed the report, or
++    /// the moderator who recorded the session. A playtest award names it.
++    #[serde(skip_serializing_if = "Option::is_none")]
++    pub triager: Option<String>,
+ }
+ 
+ /// The triage log, in order.
+@@ -438,7 +442,7 @@ impl Log {
+                     issue,
+                     contribution,
+                     severity,
+-                    ..
++                    triager,
+                 } => {
+                     let Some((tester, digest, build)) = received.get(code.as_str()) else {
+                         continue;
+@@ -456,6 +460,7 @@ impl Log {
+                         accepted_at: *at,
+                         fix_build: check.map(|c| c.0.to_owned()),
+                         verified: check.map(|c| c.1),
++                        triager: triager.clone(),
+                     };
+                     if let Some((fix_build, Verified::Yes, verified_at)) = check {
+                         out.push(Acceptance {
+@@ -475,6 +480,7 @@ impl Log {
+                     format,
+                     build,
+                     code,
++                    moderator,
+                     ..
+                 } => out.push(Acceptance {
+                     tester: tester.clone(),
+@@ -495,6 +501,7 @@ impl Log {
+                     accepted_at: *at,
+                     fix_build: None,
+                     verified: None,
++                    triager: moderator.clone(),
+                 }),
+                 _ => {}
+             }
+diff --git a/docs/game/playtest-triage.md b/docs/game/playtest-triage.md
+index 98a889668f2fc621d70d736f355827fd60427181..2e99bedd3684939a10f9b7c17b1d8618cc4e7cea 100644
+--- a/docs/game/playtest-triage.md
++++ b/docs/game/playtest-triage.md
+@@ -137,6 +137,36 @@ once per tester; and a verification names an issue filed from a report.
+ `log --acceptances` joins the log into the accepted contributions an award
+ needs: the tester's key, the contribution, the issue or script, the
+ severity, the build, the acceptance time, and for a verified fix the fixing
+-build. Once the NIP-XP `playtest` rule and the playtest referee key exist
+-([#9885](https://github.com/OpenAgentsInc/openagents/issues/9885)), awards
+-are signed from these rows.
++build.
++
++## Awards
++
++`award` signs the NIP-XP `playtest` award for one accepted contribution
++([#9906](https://github.com/OpenAgentsInc/openagents/issues/9906)):
++
++```sh
++openagents playtest award --issue 9950 --quest playtest-s1.bug@1            # dry run
++openagents playtest award --issue 9950 --quest playtest-s1.bug@1 --publish
++openagents playtest award --issue 9950 --verified --quest playtest-s1.verified-fix@1 --publish
++openagents playtest award --script session-2 --tester NPUB --quest playtest-s1.session-2@1 \
++  --session RECORD-ID --publish
++```
++
++It names the acceptance by report code, `--issue` (with `--verified` for a
++verified fix), or `--script` and `--tester`, then reads from the relay
++(`wss://relay.openagents.com` unless `--relay`) the referee's quest at
++`--quest`, the tester's public playtest report (kind `3197`, which the app
++publishes with every sent report, found by the tester's key and the accepted
++report's digest), the session record named by `--session`, and the referee's
++awards and revocations. It builds the award from the triage log's row, with
++the issue as `OWNER/REPO#N` (`--repo`), the severity, the triager
++(`--triager` if the log has none), and `--commit` for a design change;
++checks it against the NIP-XP `playtest` rule; and refuses a key that
++already has a live award or a quest version at its `max_awards`. Without
++`--publish` it prints the signed award and publishes nothing.
++
++The command is off until the playtest referee key exists: while
++`verse::xp::PLAYTEST_REFEREE` is unset it refuses before reading anything,
++and afterwards it signs only with that key (`--referee-key`, by default
++`~/.openagents/nostr/playtest-referee-key`). A TestFlight entry has no
++tester key, so it can't be awarded.

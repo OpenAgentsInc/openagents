@@ -1,0 +1,34 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 11173,
+  "title": "coder: pasted screenshots and image files reach the model",
+  "body": "Today a pasted `data:image` attaches, then the provider refuses it: \"This text-only provider cannot accept image attachments\" (`crates/coder-new/src/lib.rs:968`). A pasted file path is inserted as text.\n\nDo:\n- Send images to vision-capable routes through the gateway (input_image).\n- A dropped or pasted path to a png/jpg/pdf attaches it.\n- Pass images through to delegated Claude Code/Codex children.\n- Show a thumbnail chip in the composer.\n\nAcceptance:\n- [ ] Pasting a screenshot and asking \"what's wrong here\" gets an answer that describes the image.\n- [ ] The test covers path-drop and the size limit.\n\nPhase: This weekend. Parity doc: https://github.com/OpenAgentsInc/openagents/blob/main/docs/kitchen-sink/orchestrator-parity.md (row I1). Part of the orchestrator-parity umbrella.\n",
+  "fix": "63ec45f5fb105ad1eef867e6dc62c7edfcde756c",
+  "parent": "13a84cfa67fcd8a3d2f78116ed5ce494a695352b",
+  "package": "coder-new",
+  "source_files": [
+    "crates/coder-new/src/composer_state.rs",
+    "crates/coder-new/src/lib.rs",
+    "crates/coder-new/src/models.rs",
+    "crates/coder-new/src/provider.rs",
+    "crates/coder-new/src/ui.rs",
+    "docs/kitchen-sink/orchestrator-parity.md"
+  ],
+  "test_files": [
+    "crates/coder-new/src/attachments.rs",
+    "crates/coder-new/src/composer_state.rs",
+    "crates/coder-new/src/file_tools.rs",
+    "crates/coder-new/src/lib.rs",
+    "crates/coder-new/src/provider.rs"
+  ],
+  "test_names": [
+    "a_dropped_path_attaches_and_text_stays_text",
+    "a_dropped_screenshot_attaches_and_goes_out_as_a_saved_note_line",
+    "an_attached_screenshot_reaches_a_vision_model_and_a_note_reaches_others",
+    "saved_notes_expand_into_image_parts_only_from_the_attachment_folder",
+    "size_limits_and_kinds_are_enforced"
+  ],
+  "fix_lines": 808
+}

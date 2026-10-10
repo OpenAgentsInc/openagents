@@ -1,0 +1,472 @@
+diff --git a/INVARIANTS.md b/INVARIANTS.md
+index 0071e582f3f1c538f101befaecb668297607e160..20c71056224d74bdc50e717e3f812f98dea1db79 100644
+--- a/INVARIANTS.md
++++ b/INVARIANTS.md
+@@ -90,6 +90,7 @@ See [the auto-start guide](docs/coder/runtime/host-autostart.md).
+ | Desktop Play is explicit and joins only the phone's `verse-bare` Grid through the shared Rust scene. Watch, startup, chat, and pairing create no player. Its dedicated world key and Gym connection live in protected platform storage under `com.openagents.desktop.verse`, separate from every host, owner, pairing, and chat key; an unreadable identity is never replaced. Panel admission and execution grants remain shared with mobile. Escape, focus loss, hidden windows, modals, resize, and departure clear held input and release cursor capture. | New on 2026-09-30 ([#10038](https://github.com/OpenAgentsInc/openagents/issues/10038)). | `verse_surface` tests in `coder-mobile`; `grid_play_owns_input_and_releases_it_on_escape_focus_and_departure`, `grid::controls` and `grid::store` tests in `openagents-desktop`; `a_gpu_surface_stays_inside_nested_scroll_clips` in `rust-native-desktop` |
+ | A host serving chats hands a `coder-pair:` invitation to its read-only Coder chats only to a device that holds a current grant with `observe`: in its answer to a redemption on the iroh enroll ALPN, and in answer to NIP-HOST `chats.invite`, which the access layer admits only with `observe`. A refused device gets none, and a redemption on the relay carries none. The invitation admits only the host's Coder task store, as tailnet admission's does. Every pairing path (QR over iroh, nearby, a connect code on the relay) ends with the same usable chat pairing: the phone asks with `chats.invite` for each computer it may observe and holds no chat pairing for that lasts another day, so it also renews before the 29-day chat grant ends. | New on 2026-09-29 ([#9974](https://github.com/OpenAgentsInc/openagents/issues/9974)); `chats.invite` for every path and renewal on 2026-09-29 ([#9987](https://github.com/OpenAgentsInc/openagents/issues/9987)). | `a_phone_that_pairs_over_iroh_gets_a_chat_invitation_and_a_refused_one_does_not`, `a_phone_paired_over_iroh_reads_its_chats_and_renews_them_on_its_link`, `a_phone_that_redeems_a_code_on_the_relay_gets_its_chats_from_chats_invite`, and `a_host_that_serves_no_chats_refuses_chats_invite_as_unavailable` in `crates/coder-host/tests/iroh.rs`; `a_nearby_phone_reads_its_chats_with_an_invitation_from_chats_invite` in `crates/coder-host/tests/nearby.rs`; `a_phone_paired_on_the_relay_asks_for_its_chats_on_its_link` in `crates/coder-computers/tests/connect_live.rs`; `chats_invite_requires_observe_and_answers_only_a_chat_invitation` in `crates/coder-access/tests/wire.rs`; `crates/openagents-mobile/src/chat_invites.rs` tests |
+ | A host's chat threads reach a device only through NIP-HOST `thread.list` and `thread.read`, which the access layer admits only with `observe`, and `thread.send`, `thread.stop`, and `thread.run`, only with `operate`, on any link (iroh, the relay, CAP/CJ), under the same grant, epoch, and freshness checks as every other operation. They run the same chat service commands on the same store (`<host root>/basic-chats`) as the local operator socket, so a device never reaches the socket and a thread the desktop app or `openagents chat` started is the one the device reads. A thread answer carries titles, turns, the streaming reply, and a link to Coder work, and encodes in at most 48 KiB. Each turn may carry the router's offers, cards, and follow-up chips; the typed judgment (tier, answer, route, bank, and judgment text) stays on the host. A page over 48 KiB drops the oldest turns' extras before it drops turns. An older page with no extras means there are none. A send appends at most one message per send ID; other text under a held ID, a thread that is answering, and an archived thread refuse as `conflict`. A stop runs the chat service's own stop only while the thread is answering the message whose send ID it names, so it is idempotent per thread and send ID and a stale one never stops a later reply; the partial is kept as a reply marked stopped, and the words stay "Stopped receiving this reply. The hosted worker may still finish." A phone shows a stop control on a host's thread only after the host answered a no-op `thread.stop` (a fresh send ID) with `dispatched`: an older host, or a device without `operate`, gets no stop control, never a dead one. A tap on that stop, **Open Coder**, or **Stop Coder too** that names a view a newer render replaced still counts when the current view offers the same control, resolved against the current view; every other stale tap is ignored. Stopping a reply never stops a Coder task; that is offered separately, through the task's own stop. A thread's link to a Coder run `openagents chat` started on this computer (host `local`) names the host's own key only when the host's task owner holds that task and its local-run record for that thread, so the device opens, follows, and interrupts it through the normal task paths and grant checks; a run in another task store reaches the device only as `outside` (task, project, time), with no link, and the phone shows words and no Coder control for it. `outside` is omitted when absent. `thread.run` asks the host to start Coder for that thread through the same handoff the desktop uses, and its receipt names the task. It grants no execution authority beyond that handoff. An older host refuses it as `malformed` or `unsupported`. Thread reads are the one exception to reply retention: the host keeps no reply for them, so polling a streaming thread never grows the access store. | New on 2026-09-30 ([#10035](https://github.com/OpenAgentsInc/openagents/issues/10035)); `thread.stop` on 2026-09-30 ([#10039](https://github.com/OpenAgentsInc/openagents/issues/10039)); offers, cards, follow-ups, and `thread.run` on 2026-09-30 ([#10040](https://github.com/OpenAgentsInc/openagents/issues/10040)); local runs through the host on 2026-09-30 ([#10043](https://github.com/OpenAgentsInc/openagents/issues/10043)). | `a_paired_phone_reads_a_host_thread_and_continues_it`, `thread_reads_are_not_retained_so_polling_never_fills_the_store`, `a_phone_stops_a_host_threads_streaming_reply_and_the_owner_reads_it_stopped` in `crates/coder-host/tests/threads.rs`; `a_computers_streaming_reply_stops_from_the_phone_and_offers_to_stop_its_coder`, `an_older_computer_shows_no_stop_control_while_its_reply_streams` in `crates/openagents-mobile/src/coder_tab_tests.rs`; `a_streaming_reply_stops_through_the_computer_and_keeps_its_partial`, `an_older_computer_shows_no_stop_control` in `crates/openagents-chat-app/src/host_threads.rs`; `thread_reads_need_observe_sends_need_operate_and_reads_are_not_retained`, `thread_stop_needs_operate_names_a_send_id_and_is_retained` in `crates/coder-access/tests/wire.rs`; `a_page_fits_its_bound_keeping_the_newest_turns`, `extras_drop_before_turns_and_an_older_page_has_none` in `crates/coder-access/src/thread.rs`; `thread_run_needs_operate_and_is_retained` in `crates/coder-access/tests/wire.rs`; `a_phone_runs_coder_from_a_host_threads_offer` in `crates/coder-host/tests/threads.rs`; `a_host_threads_offer_is_read_back_and_run_starts_coder` in `crates/openagents-chat-app/src/host_threads.rs`; `a_host_thread_shows_the_same_run_coder_chip_and_follow_ups` in `crates/openagents-chat-app/src/coder_tab.rs`; `a_local_run_on_the_hosts_store_is_visible_and_stoppable_from_a_phone` in `crates/coder-host/tests/threads.rs`; `a_host_on_the_same_store_holds_the_local_run_and_a_phone_stops_it` in `crates/coder/src/task/local.rs`; `a_local_run_outside_the_host_is_named_only_when_present` in `crates/coder-access/src/thread.rs`; `a_local_run_outside_the_computers_host_is_said_plainly_with_no_dead_controls` in `crates/openagents-mobile/src/coder_tab_tests.rs` |
++| Threads `openagents chat` kept without a host (`<chat home>/threads`, under the chat home's own device key) move into this computer's host store (`<host root>/basic-chats`, re-encrypted under the host's key) only when that host starts as this user's own host (root `~/.openagents/host`, or `OPENAGENTS_CHAT_HOME` set) or when `openagents chat` finds a running host and sends the same-user control operation `chat_migrate`. A move keeps every thread's ID, title, times, turns with their router metadata and send IDs, lane, archived and pinned state, and Coder link, so the thread's ATIF export is unchanged. It never loses a thread: each thread becomes a durable record in the host's store before the chat home gets its marker (`threads-migrated.json`), and only then is the old store renamed `threads-moved-<time>`, never deleted; a thread the host already holds is left as it is; a record that can't be read stops the move before the marker. A second move is a no-op. A scratch store, a relative path, or a home another user owns (or a link) is never moved. | New on 2026-09-30 ([#10037](https://github.com/OpenAgentsInc/openagents/issues/10037)). Model boundary: a `--local` process writing to the old store while the host renames it may leave that one write in the renamed store, still readable with the chat home's key. | `threads_move_whole_and_their_export_is_unchanged`, `a_second_move_is_a_no_op`, `a_move_stopped_halfway_resumes_and_loses_nothing`, `a_thread_the_host_already_changed_is_left_as_it_is`, `scratch_stores_and_unreadable_records_are_never_moved` in `crates/openagents-chat/src/migrate.rs`; `threads_kept_without_a_host_join_it_at_start_and_when_the_command_asks` in `crates/coder-host/tests/control.rs` |
+ | A project picked on the local control socket that holds its own Git directory is admitted as a detached worktree of its current commit under the host root's `projects/`, made once and reused; Coder never writes in the person's own checkout, and the folder changes only by Git's record of the worktree. | New on 2026-09-29 ([#9974](https://github.com/OpenAgentsInc/openagents/issues/9974)). | `a_project_change_is_recorded_and_asks_the_host_to_start_again` in `crates/coder-host/tests/control.rs` |
+ | A settings change on the local control socket (a project added or removed, the auto-start switch) never loses the host or leaves the settings half changed. The host starts again to serve changed projects by re-executing the path it was started from, even after a rebuild replaced the file there (Linux names the running file `PATH (deleted)`), else `argv[0]` resolved, trying for a few seconds; if it still cannot, it exits with a failure, and the Linux user unit (`RestartSec=1`) or the Mac login agent (`ThrottleInterval` 1) starts it again within a second or two. The Linux unit never runs `coder` out of a directory a build overwrites: outside an installed location (`/usr`, `/opt`, the Nix store, an AppImage) it runs a copy of `coder` and `microcoder` in `~/.openagents/host/bin/<sha256>/` (folder `0700`, programs `0500`), named by their contents, so a new build is picked up the next time the app starts and never replaced under a running host; the unit's arguments and key source are unchanged. The desktop waits up to 30 seconds for the host to answer again after each change, shows the chosen folder with **Saving…** at once, and says a setting did not change only when the host did not answer in that time or refused. Choosing another folder is idempotent and resumable: after a failure partway, the next answer from the host finishes it (one project shown, the auto-start policy naming the label the host gave the new one with the switch carried over, no label the host no longer has), and every policy change runs `coder host autostart on --keep-engine` or `off`, keeping the owner's engine. | New on 2026-09-29 ([#10001](https://github.com/OpenAgentsInc/openagents/issues/10001)): on a Linux computer whose unit ran `target/release/coder`, a rebuild made the host's start-again fail with ENOENT, systemd brought it back 10 seconds later, and the window's 5-second retry left two projects and a policy naming the removed one. | `start_again_finds_the_program_a_rebuild_replaced` in `crates/coder-host/src/cli.rs`; `a_replaced_program_still_starts_again_after_a_project_change` in `crates/coder/tests/host_cli.rs`; `a_build_directorys_coder_runs_from_a_copy_named_by_its_contents`, `linux_unit_quotes_every_word`, `linux_login_agent_registers_and_unregisters` in `crates/openagents-desktop/src/platform/linux.rs`; `a_host_that_starts_again_after_each_change_still_swaps_the_project`, `a_swap_that_fails_partway_finishes_on_the_next_refresh`, `a_swap_is_given_up_after_its_tries` in `crates/openagents-desktop/src/model.rs`; `a_swap_whose_answer_was_lost_finishes_and_runs_again_harmlessly` in `crates/openagents-desktop/src/control.rs`; `auto_start_changes_run_the_hosts_own_command` in `crates/coder-host/tests/control.rs` |
+ | Nearby pairing admits a device only after the person clicks **Connect** on the computer while both screens show the same six-digit code; one pending request, five per ten minutes. The code is SHA-256 over both `EndpointId`s, both Nostr keys, and both nonces, the device's committed before it sees the host's; only the click signs a grant (origin `approval`, issuer the host) for the device key the exchange named, with the pairing grant (every right, as a QR code carries); **Don't connect**, a mismatch, a timeout, a busy host, or the rate limit gets no answer. The mDNS record (`_openagents._udp`) carries only the `EndpointId`, IP addresses, and a display label, and discovery never admits. | New on 2026-09-29 ([#9975](https://github.com/OpenAgentsInc/openagents/issues/9975)). | `no_grant_without_the_click`, `a_click_needs_the_shown_request`, `one_pending_request_and_five_per_ten_minutes`, and `the_rate_limit_holds_over_the_wire` in `crates/coder-host/src/serve/nearby_tests.rs`; `the_click_on_the_computer_grants_the_nearby_phone`, `dont_connect_grants_nothing`, and `the_phone_keeps_only_the_nearby_computers_approval` in `crates/coder-host/tests/nearby.rs`; `a_tapped_computer_shows_the_code_to_compare_then_connects` in `crates/openagents-mobile`; `a_nearby_phone_is_connected_only_by_the_click_on_its_prompt` in `crates/openagents-desktop`; `a_click_signs_an_approval_grant_the_device_accepts` and `only_the_pairing_rights_and_only_a_device_key` in `crates/coder-access/src/host/nearby.rs`; `a_machine_in_the_middle_with_its_own_keys_gets_different_codes`, `every_key_and_nonce_changes_the_code`, `a_reveal_that_does_not_open_the_commitment_is_refused`, and `the_advertisement_carries_only_addresses_and_the_label` in `crates/openagents-connect/src/nearby_tests.rs` |
+diff --git a/crates/coder-host/src/cli.rs b/crates/coder-host/src/cli.rs
+index 9dffbca67b33b8a5f162ab4f788d6ccc84c71f91..5853e04d4a0216c8da4e2ae6e623c1d722c21280 100644
+--- a/crates/coder-host/src/cli.rs
++++ b/crates/coder-host/src/cli.rs
+@@ -298,6 +298,23 @@ fn check_workspaces(workspaces: &BTreeMap<String, PathBuf>, root: &Path) -> Vec<
+     lines
+ }
+ 
++/// The chat home a host with `root` moves threads from at start:
++/// `OPENAGENTS_CHAT_HOME` when set, else `~/.openagents/chat` when `root` is
++/// this user's host root (`~/.openagents/host`), else none.
++fn chat_home(root: &Path) -> Option<PathBuf> {
++    if let Some(dir) = std::env::var_os("OPENAGENTS_CHAT_HOME").filter(|dir| !dir.is_empty()) {
++        return Some(PathBuf::from(dir));
++    }
++    let own = home(".openagents/host").ok()?;
++    let same = |a: &Path, b: &Path| match (a.canonicalize(), b.canonicalize()) {
++        (Ok(a), Ok(b)) => a == b,
++        _ => a == b,
++    };
++    same(root, &own)
++        .then(|| home(".openagents/chat").ok())
++        .flatten()
++}
++
+ fn home(relative: &str) -> Result<PathBuf> {
+     let home = std::env::var_os("HOME")
+         .map(PathBuf::from)
+@@ -662,6 +679,12 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
+     // The same override `openagents chat` honours, so a scratch host and the
+     // command reach one worker.
+     config.chat_door = crate::config::ChatDoor::from_env();
++    // The chat home `openagents chat` keeps threads in without a host; the
++    // host moves them into its own store at start. Only this user's own
++    // host does (the default root), or one the environment names a chat
++    // home for: a host under another root, as a test runs it, never moves
++    // the person's threads into a store it will throw away.
++    config.chat_home = chat_home(root);
+     // A phone that pairs with a connect code reads this host's Coder chats
+     // as a tailnet-admitted one does: the same observer and sources. When
+     // tailnet admission serves the observer, this only issues invitations.
+diff --git a/crates/coder-host/src/config.rs b/crates/coder-host/src/config.rs
+index b604c42d5f038d8dbbdd12a4015ec307438860b2..d584b52939f5df3b6131c749e5e614b5f220be9d 100644
+--- a/crates/coder-host/src/config.rs
++++ b/crates/coder-host/src/config.rs
+@@ -176,6 +176,11 @@ pub struct Config {
+     /// worker's key. `None` is the public worker on the OpenAgents relay;
+     /// tests name a local relay with a scripted worker.
+     pub chat_door: Option<ChatDoor>,
++    /// The chat home `openagents chat` keeps its threads in without a host
++    /// (`~/.openagents/chat`, or `OPENAGENTS_CHAT_HOME`). At start, a host
++    /// with a control socket moves those threads into its own store
++    /// (`openagents_chat::migrate`). `None`, as in tests, looks nowhere.
++    pub chat_home: Option<PathBuf>,
+ }
+ 
+ /// A chat worker other than the public one, as `openagents chat` takes it
+@@ -225,6 +230,7 @@ impl Config {
+             chats: None,
+             serve_chats: false,
+             chat_door: None,
++            chat_home: None,
+         }
+     }
+ 
+diff --git a/crates/coder-host/src/control/mod.rs b/crates/coder-host/src/control/mod.rs
+index a9ef771697ec0b3d576f8e9a72e5a7deda80f37d..d5c90f7020f76cb348e19d6ec64668d6cc29e0fa 100644
+--- a/crates/coder-host/src/control/mod.rs
++++ b/crates/coder-host/src/control/mod.rs
+@@ -286,6 +286,14 @@ fn host_refused(error: &Error) -> Reply {
+ fn answer(shared: &Shared, op: Op) -> Reply {
+     match op {
+         Op::Chat { command } => chat(shared, command),
++        Op::ChatMigrate { home } => match migrate_chats(shared, std::path::Path::new(&home)) {
++            Ok(report) => Reply::ChatMigrated {
++                moved: u32::try_from(report.moved).unwrap_or(u32::MAX),
++                present: u32::try_from(report.present).unwrap_or(u32::MAX),
++            },
++            Err(ChatRefusal::Unavailable(message)) => refused("unavailable", message),
++            Err(ChatRefusal::Chat(message)) => refused("chat", message),
++        },
+         Op::Task { .. } | Op::ImportTask { .. } => {
+             refused("unavailable", "task broker requires its own lane")
+         }
+@@ -957,7 +965,6 @@ pub(crate) enum ChatRefusal {
+     Chat(String),
+ }
+ 
+-/// Apply one chat service command to the host's threads: the store in
+ /// Whether Coder can start on this computer for the person at it, without
+ /// a registered project: set once by the program serving the host
+ /// (`coder::task::local::ready_here`). Unset, only a registered project
+@@ -977,22 +984,18 @@ fn computer_ready(shared: &Shared) -> bool {
+         || LOCAL_CODER.get().is_some_and(|ready| ready())
+ }
+ 
+-/// `<host root>/basic-chats`, opened on first use. The local operator
+-/// socket and a granted device's `thread.*` operations share it.
+-pub(crate) fn apply_chat(
++/// The host's threads: the store in `<host root>/basic-chats`, opened on
++/// first use.
++fn open_chats(
+     shared: &Shared,
+-    command: openagents_chat::service::Command,
+-) -> std::result::Result<openagents_chat::service::Snapshot, ChatRefusal> {
++    state: &mut Option<openagents_chat::basic_chats::BasicChats>,
++) -> std::result::Result<(), ChatRefusal> {
+     use openagents_chat::{
+         basic_chats::BasicChats,
+         basic_coder::{RELAY, Relay, WORKER},
+         cache::Cache,
+     };
+     let unavailable = |message: &str| ChatRefusal::Unavailable(message.into());
+-    let mut state = shared
+-        .chats
+-        .lock()
+-        .unwrap_or_else(|poison| poison.into_inner());
+     if state.is_none() {
+         let Some(control) = shared.config.control.as_ref() else {
+             return Err(unavailable("This host has no local chat storage."));
+@@ -1014,6 +1017,72 @@ pub(crate) fn apply_chat(
+             Some(store),
+         ));
+     }
++    Ok(())
++}
++
++/// Move the threads `openagents chat` kept without a host, in the chat
++/// home `home`, into the host's store (`openagents_chat::migrate`): once,
++/// crash-safe, keeping every ID. A home another user owns, or a scratch
++/// store, is refused; a home with nothing to move is a no-op.
++pub(crate) fn migrate_chats(
++    shared: &Shared,
++    home: &Path,
++) -> std::result::Result<openagents_chat::migrate::Report, ChatRefusal> {
++    use openagents_chat::migrate;
++    let refuse = |message: String| ChatRefusal::Chat(message);
++    if !home.is_absolute() {
++        return Err(refuse("the chat home must be an absolute path".into()));
++    }
++    if migrate::scratch(home) {
++        return Err(refuse("a scratch store is never migrated".into()));
++    }
++    if !migrate::pending(home) {
++        return Ok(migrate::Report::default());
++    }
++    #[cfg(unix)]
++    {
++        use std::os::unix::fs::MetadataExt;
++        let own = own_uid();
++        for path in [home.join(migrate::STORE), home.join("device.key")] {
++            let meta = std::fs::symlink_metadata(&path)
++                .map_err(|_| refuse(format!("cannot read {}", path.display())))?;
++            if meta.uid() != own || meta.file_type().is_symlink() {
++                return Err(refuse(format!(
++                    "{} belongs to another user or is a link",
++                    path.display()
++                )));
++            }
++        }
++    }
++    let mut state = shared
++        .chats
++        .lock()
++        .unwrap_or_else(|poison| poison.into_inner());
++    open_chats(shared, &mut state)?;
++    let chats = state.as_mut().expect("initialized chat state");
++    migrate::migrate(
++        home,
++        chats,
++        &shared.host_key,
++        std::time::SystemTime::now()
++            .duration_since(std::time::UNIX_EPOCH)
++            .map_or(0, |elapsed| elapsed.as_secs()),
++    )
++    .map_err(refuse)
++}
++
++/// Apply one chat service command to the host's threads
++/// (`<host root>/basic-chats`). The local operator socket and a granted
++/// device's `thread.*` operations share them.
++pub(crate) fn apply_chat(
++    shared: &Shared,
++    command: openagents_chat::service::Command,
++) -> std::result::Result<openagents_chat::service::Snapshot, ChatRefusal> {
++    let mut state = shared
++        .chats
++        .lock()
++        .unwrap_or_else(|poison| poison.into_inner());
++    open_chats(shared, &mut state)?;
+     let chats = state.as_mut().expect("initialized chat state");
+     chats.set_context(openagents_chat::router::Context {
+         surface: openagents_chat::router::Surface::Desktop,
+diff --git a/crates/coder-host/src/serve/mod.rs b/crates/coder-host/src/serve/mod.rs
+index 06276f58671976ab615596a1af35a2690b8953ac..612220cf005eebdf04ff873bc1bd4e32dcebf538 100644
+--- a/crates/coder-host/src/serve/mod.rs
++++ b/crates/coder-host/src/serve/mod.rs
+@@ -210,6 +210,11 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
+         None => None,
+     };
+     if let Some(bound) = control {
++        // Threads `openagents chat` kept without a host join this host's
++        // store before the socket answers, so the first list shows them.
++        if let Some(home) = shared.config.chat_home.clone() {
++            migrate_chat_home(&shared, &home);
++        }
+         tasks.push(tokio::spawn(crate::control::serve(shared.clone(), bound)));
+     }
+     if let Some((listener, _)) = websocket {
+diff --git a/crates/openagents-chat/src/basic_chats.rs b/crates/openagents-chat/src/basic_chats.rs
+index 42f4329ad79155e63ac8c52fd0573665f7be76f4..4a8e3d5fdd87d7f7f577430f737a29bf9d132b00 100644
+--- a/crates/openagents-chat/src/basic_chats.rs
++++ b/crates/openagents-chat/src/basic_chats.rs
+@@ -59,13 +59,13 @@ pub struct Summary {
+ }
+ 
+ #[derive(Clone, Debug, Default, Serialize, Deserialize)]
+-struct Saved {
+-    turns: Vec<Turn>,
++pub(crate) struct Saved {
++    pub(crate) turns: Vec<Turn>,
+     /// The record and its list metadata commit together. Older records omit it.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+-    summary: Option<Summary>,
++    pub(crate) summary: Option<Summary>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+-    lane: Option<Lane>,
++    pub(crate) lane: Option<Lane>,
+ }
+ 
+ /// A reply streaming into a conversation.
+@@ -936,6 +936,65 @@ impl BasicChats {
+         self.storage_error = self.storage_errors.values().next().cloned();
+     }
+ 
++    /// Take in a whole conversation kept elsewhere, as it is: its ID,
++    /// title, times, turns (with their router metadata and send IDs), lane,
++    /// and Coder link (`crate::migrate`). `Ok(false)` when this store
++    /// already holds it, in the list or as a record, which is left
++    /// untouched. On a failed write nothing is kept in memory, so a later
++    /// attempt writes it again.
++    pub(crate) fn adopt(
++        &mut self,
++        summary: Summary,
++        turns: Vec<Turn>,
++        lane: Option<Lane>,
++    ) -> Result<bool, String> {
++        let id = summary.id.clone();
++        let key = item(&id);
++        if self.corrupt_index {
++            return Err("This store's list can't be read.".into());
++        }
++        if self.get(&id).is_some() {
++            return Ok(false);
++        }
++        if let Some(store) = &self.store {
++            match store.read::<Saved>(&key) {
++                Ok(None) => {}
++                Ok(Some(_)) => return Ok(false),
++                Err(error) => return Err(error),
++            }
++        }
++        let at = self
++            .index
++            .iter()
++            .position(|row| row.updated <= summary.updated)
++            .unwrap_or(self.index.len());
++        self.index.insert(at, summary);
++        self.turns.insert(id.clone(), turns);
++        if let Some(lane) = lane {
++            self.lanes.insert(id.clone(), lane);
++        }
++        self.save(&id);
++        if let Some(error) = self.storage_errors.get(&key).cloned() {
++            self.index.retain(|row| row.id != id);
++            self.turns.remove(&id);
++            self.lanes.remove(&id);
++            self.dirty.remove(&id);
++            self.storage_errors.remove(&key);
++            self.storage_error = self.storage_errors.values().next().cloned();
++            return Err(error);
++        }
++        Ok(true)
++    }
++
++    #[cfg(test)]
++    pub(crate) fn set_turns_for_test(&mut self, id: &str, turns: Vec<Turn>, lane: Option<Lane>) {
++        self.turns.insert(id.to_owned(), turns);
++        if let Some(lane) = lane {
++            self.lanes.insert(id.to_owned(), lane);
++        }
++        self.save(id);
++    }
++
+     /// Retry interrupted writes without appending or resending a message.
+     pub fn flush_pending(&mut self) {
+         if self.dirty_used {
+@@ -967,7 +1026,7 @@ fn chat_turn(turn: &Turn) -> ChatTurn {
+ }
+ 
+ /// The store key of a conversation's turns.
+-fn item(id: &str) -> String {
++pub(crate) fn item(id: &str) -> String {
+     format!("basic-{id}")
+ }
+ 
+diff --git a/crates/openagents-chat/src/lib.rs b/crates/openagents-chat/src/lib.rs
+index ad956574ee18fdd6e54850e89b323dce51859ded..23541b03373271c9a980f44cf303890574281ea0 100644
+--- a/crates/openagents-chat/src/lib.rs
++++ b/crates/openagents-chat/src/lib.rs
+@@ -6,6 +6,7 @@ pub mod basic_link;
+ pub mod cache;
+ pub mod coder_events;
+ pub mod delegation;
++pub mod migrate;
+ pub mod router;
+ pub mod service;
+ pub mod thread;
+diff --git a/crates/openagents-cli/src/chat.rs b/crates/openagents-cli/src/chat.rs
+index 6aacbd4e55c1bcbf95dc6f7894340ced3759a887..67a9ee778839e9c6d7050864e3a2d514bdec33fe 100644
+--- a/crates/openagents-cli/src/chat.rs
++++ b/crates/openagents-cli/src/chat.rs
+@@ -68,7 +68,8 @@ computer's host runs (the OpenAgents app, or `openagents host serve
+ --control`), threads live in the host and the desktop app shows them;
+ --socket names another control socket and --local skips the host. Without a
+ host, threads live in ~/.openagents/chat/ under this command's own device
+-key (OPENAGENTS_CHAT_HOME overrides the directory). Coder tasks live in
++key (OPENAGENTS_CHAT_HOME overrides the directory); once a host runs here,
++they move into it, keeping their IDs (docs/cli/chat.md). Coder tasks live in
+ ~/.openagents/tasks (OPENAGENTS_TASKS overrides it), the store this
+ computer's host serves. --scratch uses a throwaway identity, thread store,
+ and task store in the system temporary directory; continue that thread with
+@@ -353,11 +354,13 @@ impl Backend {
+         {
+             match UnixStream::connect(&socket).await {
+                 Ok(stream) => {
+-                    return Ok(Self::Host {
++                    let host = Self::Host {
+                         stream,
+                         next: 1,
+                         socket,
+-                    });
++                    };
++                    host.migrate(&home()).await;
++                    return Ok(host);
+                 }
+                 Err(_) if named.is_some() => {
+                     return Err(failed(format!(
+@@ -373,6 +376,44 @@ impl Backend {
+         Self::local(home(), false, ready)
+     }
+ 
++    /// Ask the host to take in the threads this command kept without one
++    /// in `home` (`openagents_chat::migrate`), when there are any. The host
++    /// reads them with this command's device key and re-encrypts them in
++    /// its own store, keeping every ID; a second ask is a no-op. An older
++    /// host, or a refusal, leaves them where they are, still readable with
++    /// `--local`.
++    ///
++    /// It asks on a connection of its own: an older host ends a connection
++    /// that carried an operation it doesn't know.
++    async fn migrate(&self, home: &Path) {
++        let Self::Host { socket, .. } = self else {
++            return;
++        };
++        if !openagents_chat::migrate::pending(home) || openagents_chat::migrate::scratch(home) {
++            return;
++        }
++        let (Ok(home), Ok(mut stream)) = (home.canonicalize(), UnixStream::connect(socket).await)
++        else {
++            return;
++        };
++        let op = Op::ChatMigrate {
++            home: home.display().to_string(),
++        };
++        match control::call(&mut stream, &Request::new(1, op)).await {
++            Ok(Reply::ChatMigrated { moved, .. }) if moved > 0 => eprintln!(
++                "moved {moved} thread{} kept without a host into this computer's host",
++                if moved == 1 { "" } else { "s" }
++            ),
++            Ok(Reply::Refused { code, message }) if code != "malformed" => {
++                eprintln!(
++                    "threads in {} stay there for now: {message}",
++                    home.display()
++                );
++            }
++            _ => {}
++        }
++    }
++
+     /// The service in this process. `ready` says whether Coder can run on
+     /// this computer for this thread now, which the router is told.
+     fn local(home: PathBuf, scratch: bool, ready: bool) -> Result<Self, Failure> {
+diff --git a/crates/openagents-connect/src/control.rs b/crates/openagents-connect/src/control.rs
+index 21e45e47ce870739acdfb40a8ece2b6cf4bcece7..0f020d4f02993561afdf24c6a7d96f42c796b4b6 100644
+--- a/crates/openagents-connect/src/control.rs
++++ b/crates/openagents-connect/src/control.rs
+@@ -96,6 +96,11 @@ pub enum Op {
+     Chat {
+         command: openagents_chat::service::Command,
+     },
++    /// Move the threads `openagents chat` kept without a host, in the chat
++    /// home `home` (`<home>/threads`), into the host's own store, once
++    /// (`openagents_chat::migrate`). The host reads that home's device key
++    /// itself, and refuses a scratch store or a home another user owns.
++    ChatMigrate { home: String },
+     /// The host's identity, reachability, and counts.
+     Status {},
+     /// Create a host invitation and its `openagents-connect:` code. A QR
+@@ -174,6 +179,12 @@ pub enum Reply {
+     Chat {
+         snapshot: openagents_chat::service::Snapshot,
+     },
++    /// What `chat_migrate` did: threads written into the host's store
++    /// now, and threads it already held.
++    ChatMigrated {
++        moved: u32,
++        present: u32,
++    },
+     Status(Status),
+     /// `code` is the `openagents-connect:` text. It carries a bearer
+     /// capability: show it only in the code window.
+diff --git a/docs/cli/chat.md b/docs/cli/chat.md
+index 46f4fab85ddbf18ac05c26c351c891163945b13b..d42449333a7e27496fae53619f3770c68578f227 100644
+--- a/docs/cli/chat.md
++++ b/docs/cli/chat.md
+@@ -78,6 +78,33 @@ desktop use.
+    or real history. Continue, read, or export that thread with `--scratch
+    --thread ID`. It is for tests and smokes.
+ 
++### Threads kept without a host join the host
++
++When a host runs on this computer, threads kept in process join the host's
++store, so the desktop app (and a paired phone) shows them. It happens once,
++at two moments: when the host starts (only this user's own host, whose root
++is `~/.openagents/host`, or one started with `OPENAGENTS_CHAT_HOME` set),
++and when `openagents chat` finds a running host (control operation
++`chat_migrate`, on a connection of its own, so an older host that doesn't
++know it changes nothing). The host reads `~/.openagents/chat/threads` with
++the chat home's device key and re-encrypts each thread under its own key in
++`<host root>/basic-chats`. Every thread keeps its ID, title, times, turns
++with the router's metadata and send IDs, lane, archived and pinned state,
++and Coder link, so `openagents chat read` and `export` print the same thread
++and the same ATIF trajectory as before.
++
++The move is crash-safe: each thread is a durable record in the host's store
++before anything else changes, a thread the host already holds is left as it
++is, then the chat home gets a marker (`threads-migrated.json`: the host, the
++time, and every thread moved), and last the old store is renamed
++`threads-moved-<time>`, so it is never read again. Nothing is deleted: the
++renamed store keeps its encrypted files under the same device key. A move
++that stops halfway leaves `threads` where it was, and the next one skips
++the threads already moved. Moving twice is a no-op. After a move, `--local`
++starts an empty store; its new threads join the host the next time. A home
++another user owns is refused, and a scratch store (`--scratch`) is never
++moved.
++
+ `openagents doctor` shows which one a run would use, the host socket, the
+ chat home, and the command's public identity (never the key).
+ 

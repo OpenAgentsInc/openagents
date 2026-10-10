@@ -1,0 +1,105 @@
+{
+  "issue": 9918,
+  "title": "Flaky under load: verse ball::tests::the_step_stays_within_lagrange_budget",
+  "body": "A debug-build timing budget (worst physics step \u2264 5 ms) fails whenever the machine is loaded: worst step 11 ms seen on 2026-09-28, and several agents reported it failing under load and passing alone. A wall-clock budget in a debug unit test is not a reliable gate.\n\nAcceptance: keep the budget meaningful without flaking \u2014 e.g. measure it only in release (or behind an ignored/bench test), count work (steps, contacts, iterations) instead of time in the unit test, or compare against a calibration run; document the budget where it's enforced.",
+  "base": "a658823f34d26d07826ab84df22bb6cd378787f3",
+  "finder": "lite",
+  "plan": [
+    "Goal: Flaky under load: verse ball::tests::the_step_stays_within_lagrange_budget",
+    "Change the behavior where it lives, most likely in `crates/verse/src/ball.rs`.",
+    "Add or update a test that pins the new behavior, beside the code's existing tests.",
+    "Run `check:verse`, then `test:verse`, then `fmt`; stop when they pass."
+  ],
+  "files": [
+    {
+      "path": "crates/verse/src/ball.rs",
+      "score": 4.1,
+      "lines": [
+        807
+      ],
+      "why": [
+        "has `the_step_stays_within_lagrange_budget`"
+      ],
+      "excerpt": "--- lines 795-825 of 869 ---\n  795          body.omega = DVec3::Z * (-6.0 / RADIUS);\n  796          body.wake();\n  797          let mut player = PlayerController::new(Vec3::new(-30.0, 0.0, -30.0), 0.0);\n  798          idle(&mut ball, &mut player, 180);\n  799          let x = ball.body().pos.x;\n  800          assert!(\n  801              x < f64::from(wall.min[0]) - RADIUS + 0.05,\n  802              \"the wall stopped the ball: {x}\"\n  803          );\n  804      }\n  805  \n  806      #[test]\n  807      fn the_step_stays_within_lagrange_budget() {\n  808          let mut ball = Ball::new();\n  809          let mut player = PlayerController::new(crate::world::SPAWN, 0.0);\n  810          walk(&mut ball, &mut player, 120);\n  811          let mut worst = Duration::ZERO;\n  812          let mut total = Duration::ZERO;\n  813          let mut steps = 0;\n  814          for _ in 0..240 {\n  815              let from = player.pos;\n  816              player.update(&InputState::default(), FRAME, &[], crate::world::HALF);\n  817              ball.advance(from, &mut player, FRAME);\n  818              worst = worst.max(ball.world().stats.total);\n  819              total += ball.world().stats.total * ball.steps;\n  820              steps += ball.steps;\n  821          }\n  822          eprintln!(\n  823              \"ball step: mean {:?}, worst {:?} over {steps} steps\",\n  824              total / steps.max(1),\n  825              worst"
+    }
+  ],
+  "history": [
+    {
+      "commit": "d93825ae36",
+      "subject": "Draw no floor disc under the bare world's ball and blocks",
+      "file": "crates/verse/src/ball.rs",
+      "diff": "diff --git a/crates/verse/src/ball.rs b/crates/verse/src/ball.rs\nindex cada2a7340..cb88f4be0a 100644\n--- a/crates/verse/src/ball.rs\n+++ b/crates/verse/src/ball.rs\n@@ -13,6 +13,6 @@\n //! Lagrange 1, and the ball is drawn between its last two poses. The ball is\n //! drawn with physical materials under a studio [`Key`] light: a lacquered\n-//! octant pattern, so its rotation reads, and a pool of light on the floor\n-//! that catches its shadow.\n+//! octant pattern, so its rotation reads. Nothing is drawn on the floor\n+//! under it: the grid's lines alone ground it.\n \n use std::sync::OnceLock;\n@@ -64,5 +64,5 @@ const PLAYER_HEIGHT: f64 = 1.8;\n /// The fastest the player body is carried, m/s; a larger step is a teleport.\n const PLAYER_MAX_SPEED: f64 = 20.0;\n-/// Radius of the floor's pool of light around the ball, m.\n+/// How far around the ball its shadow region reaches, m.\n const POOL: f32 = 6.0;\n /// The largest half extent of one shadow region over the ball and the\n@@ -374,6 +374,6 @@ impl Ball {\n     }\n \n-    /// Adds the ball, its pool of light on the floor, and the studio light\n-    /// that shades them to `mesh`.\n+    /// Adds the ball and the blocks, and the studio light that shades them,\n+    /// to `mesh`. No floor is drawn under them.\n     pub fn draw(&self, mesh: &mut Mesh) {\n         let (pos, orientation) = self.pose();\n@@ -384,5 +384,4 @@ impl Ball {\n                 .map(|v| place(v, &transform, &Mat4::from_quat(orientation))),\n         );\n-        pool(&mut mesh.lit, Vec3::new(pos.x, 0.0, pos.z), POOL, -0.004);\n         self.blocks\n             .draw(&self.world, self.clock.alpha(), &mut mesh.lit);\n@@ -514,40 +513,4 @@ fn sphere() -> &'static [LitVertex] {\n }\n \n-/// A disc of stage floor under the ball whose response falls to nothing at\n-/// its rim, so the key light pools around the ball and fades into the\n-/// field, and the ball's shadow has a surface to fall on. It sits just below\n-/// the grid, whose lines stay on top.\n-pub(crate) fn pool(out: &mut Vec<LitVertex>, center: Vec3, radius: f32, depth: f32) {\n-    const RINGS: usize = 14;\n-    const SEGMENTS: usize = 64;\n-    let (color, metallic, roughness) = Surface::Stage.parameters();\n-    let code = Surface::Stage.code();\n-    let at = |ring: usize, segment: usize| {\n-        let r = radius * ring as f32 / RINGS as f32;\n-        let angle = std::f32::consts::TAU * segment as f32 / SEGMENTS as f32;\n-        let fade = (1.0 - (r / radius).powi(2)).max(0.0).powi(2);\n-        LitVertex {\n-            pos: (center + Vec3::new(r * angle.cos(), depth, r * angle.sin())).to_array(),\n-            normal: [0.0, 1.0, 0.0],\n-            tangent: [1.0, 0.0, 0.0],\n-            local: [r * angle.cos(), 0.0, r * angle.sin()],\n-            color,\n-            params: [metallic, roughness, code, fade],\n-        }\n-    };\n-    for ring in 0..RINGS {\n-        for segment in 0..SEGMENTS {\n-            let next = (segment + 1) % SEGMENTS;\n-            let quad = [\n-                at(ring, segment),\n-                at(ring + 1, segment),\n-                at(ring + 1, next),\n-                at(ring, next),\n-            ];\n-            out.extend([quad[0], quad[1], quad[2], quad[0], quad[2], quad[3]]);"
+    }
+  ],
+  "checks": [
+    {
+      "id": "check:verse",
+      "argv": [
+        "cargo",
+        "check",
+        "-p",
+        "verse",
+        "--tests",
+        "--message-format",
+        "short"
+      ],
+      "what": "compile verse and its tests"
+    },
+    {
+      "id": "test:verse",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "verse"
+      ],
+      "filter": true,
+      "what": "run verse's tests (pass a test-name filter to run fewer)"
+    },
+    {
+      "id": "fmt:verse",
+      "argv": [
+        "cargo",
+        "fmt",
+        "-p",
+        "verse"
+      ],
+      "what": "format verse"
+    }
+  ],
+  "rules": [
+    "Product code is Rust. Do not add TypeScript.",
+    "The check for a change is `cargo test -p` for the crates you edited plus `cargo fmt`. Do not run clippy, release gates, or other crates' tests.",
+    "Never put machine talk (internal words like retained, projection, canonical, digest, lane) in text a user sees; say what happened in plain words. Each surface's tests run the `oa-copy` guard over user-visible text.",
+    "When a test fails only because a checked-in generated file is stale, regenerate it.",
+    "No new INVARIANTS rows, design notes, or long docs for a small change.",
+    "Fix stale or false user-facing copy you touch in the same change.",
+    "- `crates/verse` \u2014 the shared Verse desktop/iOS world: a Tron-style city drawn in amber lines on the terminal's near-black field, and a third-person character with WoW-style movement and mouselook. The stack follows Ruins of Atlantis (`wgpu`, `winit`, `glam`, a custom renderer); the controller is reimplemented from its `client_core`, not copied. The global plaza uses `coder_ui::theme::Intensity`; a palette test protects its amber geometry. Separately loaded zones may have their own validated colors and atmosphere. Three plaza portals lead to local zones: Ruins loads a pinned asset pack only on entry and runs the original real-time Wizard Woods combat through `verse-ruins`; Lagrange 1 is a generated Sun\u2013Earth L1 construction station driven by `verse-lagrange`; the Physics Lab runs the `physics` crate's mechanisms live with HUD knobs (`docs/verse/physics-lab.md`). Read `docs/verse/zones.md"
+  ],
+  "levers": {
+    "finder": "lite",
+    "briefing_files": 6,
+    "excerpt": "windows",
+    "excerpt_lines": 140,
+    "briefing_tokens": 14000,
+    "history": 2,
+    "plan": "deterministic",
+    "template": "v1",
+    "tools": "Read,Edit,Write,Grep,Glob",
+    "check_output": "smart",
+    "mcp": "checks",
+    "model": "claude-opus-5-5",
+    "effort": "default",
+    "max_turns": 0,
+    "timeout_secs": 1200,
+    "briefing_in": "system",
+    "build_cache": "warm",
+    "build_host": "coderos-4080",
+    "post_fmt": false,
+    "decomposition": "single",
+    "triage": "none",
+    "learning": "none"
+  },
+  "build_secs": 0.78,
+  "chars": 7713
+}

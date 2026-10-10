@@ -1,0 +1,339 @@
+{
+  "issue": 10074,
+  "title": "openagents chat local run refused: \"the execution grant has an invalid shape\"",
+  "body": "## What happened (2026-10-01)\n\nAn agent ran `openagents chat` (CLI) in a scratch git worktree of this repo against the live chat worker **without** `--no-run`. The router replied `work.dispatch`, the CLI started Coder locally (the #10032 local-run path), and the launch was refused:\n\n> the execution grant has an invalid shape\n\n## Evidence so far\n\n- The message is `Grant::parse` in `crates/coder/src/task/owner.rs` failing serde deserialization. `Grant` and `adapter::Configuration` are `deny_unknown_fields`, and `adapter::Access` is a closed enum.\n- #10045 (b4d0acc8ea) added `Access::Toolchains`; every local run (`coder::task::local`) now writes `\"access\": \"toolchains\"` into the grant's adapter configuration.\n- The local run's engine comes from `coder::task::local::controller()` \u2192 `autostart::default_controller()`: `$OPENAGENTS_CODER_CONTROLLER`, else `microcoder` **beside the running exe**, else `~/.openagents/bin/microcoder`.\n- On the owner's machine, `~/.openagents/bin/microcoder` is a Sep 28 build (coder beside it is `358975bdbd`), from before #10045, so it does not know `toolchains`.\n- The shipping Mac app (`scripts/desktop/package-macos.sh`) puts the CLI at `Contents/Helpers/openagents` but `microcoder` at `Contents/MacOS/microcoder`. So the app's own CLI never finds the microcoder it ships with: it falls back to `~/.openagents/bin/microcoder` (stale or missing).\n\nOther suspects: recent changes #10066 (3e13917001), #10070 (1ebd5e20f7), #10067/68 (ebdec8d004), #10073 (92aef353b7).\n\n## Plan\n\nReproduce with a temp HOME and fresh `openagents` + `coder` + `microcoder` builds from origin/main, print which binaries each run uses, and decide between version skew and a grant-shape bug. Fix the resolution so a bundled CLI uses the engine that shipped with it, and add a regression test.\n",
+  "base": "50368770a3cf7361c0569089616658240ede89b0",
+  "finder": "lite",
+  "plan": [
+    "Goal: openagents chat local run refused: \"the execution grant has an invalid shape\"",
+    "Required: The message is `Grant::parse` in `crates/coder/src/task/owner.rs` failing serde deserialization. `Grant` and `adapter::Configuration` are `deny_unknown_fields`, and `adapter::Access` is a closed enum.",
+    "Required: #10045 (b4d0acc8ea) added `Access::Toolchains`; every local run (`coder::task::local`) now writes `\"access\": \"toolchains\"` into the grant's adapter configuration.",
+    "Required: The local run's engine comes from `coder::task::local::controller()` \u2192 `autostart::default_controller()`: `$OPENAGENTS_CODER_CONTROLLER`, else `microcoder` **beside the running exe**, else `~/.openagents/bin/microcoder`.",
+    "Required: On the owner's machine, `~/.openagents/bin/microcoder` is a Sep 28 build (coder beside it is `358975bdbd`), from before #10045, so it does not know `toolchains`.",
+    "Required: The shipping Mac app (`scripts/desktop/package-macos.sh`) puts the CLI at `Contents/Helpers/openagents` but `microcoder` at `Contents/MacOS/microcoder`. So the app's own CLI never finds the microcoder it ships with: it f",
+    "Change the behavior where it lives, most likely in `crates/coder/src/task/owner.rs`, `crates/coder/src/task/local.rs`, `crates/coder/src/task/autostart.rs`.",
+    "Add or update a test that pins the new behavior, next to the existing ones in `crates/microcoder/src/repository/tests.rs`.",
+    "Run `check:coder`, then `test:coder`, then `check:microcoder`, then `test:microcoder`, then `fmt`; stop when they pass."
+  ],
+  "files": [
+    {
+      "path": "crates/coder/src/task/owner.rs",
+      "score": 29.82,
+      "lines": [
+        143,
+        152,
+        331,
+        340,
+        343,
+        345,
+        359,
+        648
+      ],
+      "why": [
+        "the issue names `crates/coder/src/task/owner.rs`",
+        "has `the execution grant has an invalid shape`",
+        "has `Grant::parse`",
+        "has `adapter::Configuration`",
+        "has `adapter::Access`",
+        "has `Access::Toolchains`"
+      ],
+      "excerpt": "--- lines 131-170 of 925 ---\n  131      pub expected_revision: u64,\n  132      #[serde(default)]\n  133      pub expected_source_snapshot: Option<String>,\n  134      pub program: PathBuf,\n  135      pub arguments: Vec<String>,\n  136      pub write_workspace: bool,\n  137      pub wall_seconds: u64,\n  138      pub stream_bytes: usize,\n  139      pub memory_bytes: u64,\n  140      #[serde(default)]\n  141      pub requirements: Option<checks::Requirements>,\n  142      #[serde(default)]\n  143      pub adapter_configuration: Option<super::adapter::Configuration>,\n  144  }\n  145  \n  146  impl Grant {\n  147      pub fn parse(bytes: &[u8]) -> Result<Self, Error> {\n  148          let value = parse_strict_bounded(bytes, MAX_COMMAND_BYTES).map_err(|_| {\n  149              Error::InvalidCommand(\"the execution grant must be bounded strict JSON\")\n  150          })?;\n  151          let grant: Self = serde_json::from_value(value)\n  152              .map_err(|_| Error::InvalidCommand(\"the execution grant has an invalid shape\"))?;\n  153          grant.validate()?;\n  154          Ok(grant)\n  155      }\n  156  \n  157      fn validate(&self) -> Result<(), Error> {\n  158          if self.schema != GRANT_SCHEMA\n  159              || !identifier(&self.task_id, false)\n  160              || !hex_digest(&self.intent_digest)\n  161              || self\n  162                  .expected_source_snapshot\n  163                  .as_ref()\n  164                  .is_some_and(|digest| !hex_digest(digest))\n  165              || !self.program.is_absolute()\n  166              || self.arguments.len() > 128\n  167              || self.arguments.iter().any(|arg| arg.contains('\\0'))\n  168              || !(1..=3600).contains(&self.wall_seconds)\n  169              || !(1024..=1024 * 1024).contains(&self.stream_bytes)\n  170              || !(64 * 1024 * 1024..=8 * 1024 * 1024 * 1024).contains(&self.memory_bytes)\n--- lines 319-377 of 925 ---\n  319                  || if admission\n  320                      .grant\n  321                      .adapter_configuration\n  322                      .as_ref()\n  323                      .is_some_and(|config| config.container.is_some())\n  324                  {\n  325                      admission.network != \"container_network_none\"\n  326                          || admission.read_scope != \"workspace_host_reads_and_pinned_container_image\"\n  327                  } else if admission\n  328                      .grant\n  329                      .adapter_configuration\n  330                      .as_ref()\n  331                      .is_some_and(|config| config.access == super::adapter::Access::Full)\n  332                  {\n  333                      // The owner's full access: the host user's reads and\n  334                      // network, and nothing narrower claimed.\n  335                      admission.network != \"host_network\" || admission.read_scope != \"host_user\"\n  336                  } else if admission\n  337                      .grant\n  338                      .adapter_configuration\n  339                      .as_ref()\n  340                      .is_some_and(|config| config.access == super::adapter::Access::Toolchains)\n  341                  {\n  342                      // This computer's tools: the network, and reads of the\n  343                      // workspace, the system, and the derived toolchains.\n  344                      admission.network != \"host_network\"\n  345                          || admission.read_scope != \"workspace_system_and_toolchains\"\n  346                  } else {\n  347                      !matches!(\n  348                          admission.network.as_str(),\n  349                          \"external_ip_denied_localhost_allowed\" | \"network_namespace_isolated\"\n  350                      ) || admission.read_scope != \"workspace_and_system\"\n  351                  }\n  352                  || admission.authority != \"local_os_user\"\n  353                  || !admission\n  354                      .context\n  355                      .valid(task, admission.grant.requirements.as_ref())\n  356                  || admission.trace_file != task.trace_file(task.turn())\n  357                  || !hex_digest(&admission.source_snapshot)\n  358                  || !hex_digest(&admission.program_digest)\n  359                  || Grant::parse(admission.grant_request.as_bytes())? != admission.grant\n  360                  || digest_bytes(admission.grant_request.as_bytes()) != admission.grant_digest\n  361                  || !hex_digest(&admission.grant_digest)\n  362              {\n  363                  return Err(Error::InvalidTransition);\n  364              }\n  365              task.run = Some(Run {\n  366                  epoch: 1,\n  367                  admission: (**admission).clone(),\n  368                  effect_id: None,\n  369                  result: None,\n  370                  process_id: None,\n  371                  recovery_reason: None,\n  372                  check_report: None,\n  373              });\n  374              task.status = Status::Running;\n  375              task.execution = Execution::Running;\n  376          }\n  377          Event::EffectIntent { effect_id } => {\n--- lines 636-666 of 925 ---\n  636      Ok(ended.stdout.text.trim().into())\n  637  }\n  638  \n  639  /// The one effect a turn's run records before dispatch:\n  640  /// `<task>:<turn>:command`.\n  641  pub(super) fn effect_id_for(task: &Task) -> String {\n  642      format!(\"{}:{}:command\", task.task_id, task.turn())\n  643  }\n  644  \n  645  /// Execute a single explicitly granted bounded command. The calling process is\n  646  /// the owner, not a client connection. Use the detached CLI to outlive a client.\n  647  pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {\n  648      let grant = Grant::parse(bytes)?;\n  649      if grant.adapter_configuration.is_some() {\n  650          return Err(Error::InvalidCommand(\n  651              \"use the explicitly configured adapter entry point\",\n  652          ));\n  653      }\n  654      let (owner, task) = {\n  655          let store = Store::open_for_owner(directory)?;\n  656          let owner = Owner::acquire(&store, &grant.task_id)?;\n  657          let task = store.show(&grant.task_id)?;\n  658          if task.run.is_some() || task.status != Status::Queued {\n  659              return Err(Error::InvalidTransition);\n  660          }\n  661          if grant.intent_digest != task.intent_digest || grant.expected_revision != task.revision {\n  662              return Err(Error::RevisionMismatch);\n  663          }\n  664          (owner, task)\n  665      };\n  666      let workspace = Path::new(&task.intent.workspace.path).canonicalize()?;"
+    },
+    {
+      "path": "crates/coder/src/task/local.rs",
+      "score": 19.95,
+      "lines": [
+        3,
+        50,
+        53,
+        94,
+        105,
+        300,
+        337,
+        339,
+        347,
+        476,
+        490,
+        685,
+        959,
+        1588,
+        1589,
+        1721,
+        1744,
+        1754,
+        1861,
+        2086,
+        2087,
+        2088
+      ],
+      "why": [
+        "has `openagents chat`",
+        "has `adapter::Access`",
+        "has `Access::Toolchains`",
+        "has `autostart::default_controller`",
+        "has `$OPENAGENTS_CODER_CONTROLLER`",
+        "has `Configuration`"
+      ],
+      "excerpt": "--- lines 1-21 of 2293 ---\n    1  //! Coder on this computer, for the person sitting at it.\n    2  //!\n    3  //! When a person asks for coding from a terminal (`openagents chat`), or\n    4  //! from an app, on the computer they are using, nothing has to be paired or\n    5  //! registered first: the project is the Git checkout they are in, and the\n    6  //! providers are the coding agents signed in here. This module starts that\n    7  //! run and follows it, through exactly what a host's auto-start uses:\n    8  //!\n    9  //! - **The same start.** A task is submitted to a task store (by default\n   10  //!   `~/.openagents/tasks`, the store a host on this computer serves; see\n   11  //!   [`default_store`]) and started with an execution grant through\n   12  //!   [`Policy::launch`], so the same engine (`microcoder repository`), the\n   13  //!   same provider failover, and the same ATIF recording run it.\n   14  //! - **Its own worktree.** Coder never writes in the person's checkout.\n   15  //!   Each task gets a detached worktree of the checkout's `HEAD` under\n   16  //!   `worktrees/` beside the store; the checkout changes only by Git's\n   17  //!   record of the worktree. Uncommitted changes in the checkout are not\n   18  //!   carried over.\n   19  //! - **Providers detected here.** Codex, then Claude Code, each only when\n   20  //!   [`capacity::probe`] finds its login on this computer (no network, no\n   21  //!   credential read), skipping one with a refusal that still holds in the\n--- lines 38-71 of 2293 ---\n   38  //! so no device grant is involved; see the INVARIANTS row on local runs.\n   39  //! Nothing here reads or prints a credential.\n   40  \n   41  use std::collections::BTreeMap;\n   42  use std::path::{Path, PathBuf};\n   43  \n   44  use openagents_chat::coder_events::{\n   45      self, CoderEvent, FileChange, Line, Mapper, Passed, PassedOver, Runner, Started,\n   46  };\n   47  use serde::{Deserialize, Serialize};\n   48  use serde_json::{Value, json};\n   49  \n   50  use super::autostart::{self, Choice, Engine, Launch, Policy, Route, UsageProbe};\n   51  use super::capacity::{self, Connection, Provider};\n   52  use super::{\n   53      Action, COMMAND_SCHEMA, Command, RequestedConfiguration, Status, Store, TaskIntent, Workspace,\n   54      adapter, owner, settings, usage,\n   55  };\n   56  \n   57  /// The routes a local run admits by default, in preference order: Codex,\n   58  /// then Claude Code, with the models the desktop's auto-start switch\n   59  /// admits. The settings' `coder.providers` replaces them.\n   60  pub const ROUTES: [(Provider, &str); 2] = [\n   61      (Provider::Codex, \"gpt-6-luna\"),\n   62      (Provider::Claude, \"claude-opus-5-5\"),\n   63  ];\n   64  /// Names another task store than [`default_store`].\n   65  pub const STORE_VAR: &str = \"OPENAGENTS_TASKS\";\n   66  /// Names the engine (`microcoder`) instead of the one beside the running\n   67  /// program or in `~/.openagents/bin`.\n   68  pub const CONTROLLER_VAR: &str = \"OPENAGENTS_CODER_CONTROLLER\";\n   69  /// The record a local run keeps beside its task.\n   70  pub const RECORD_SCHEMA: &str = \"openagents.coder.local-run.v1\";\n   71  /// The host name a thread's binding gives a local run.\n--- lines 82-123 of 2293 ---\n   82  /// `~/.openagents/tasks`, the store `coder task` and a host on this\n   83  /// computer use by default.\n   84  #[must_use]\n   85  pub fn default_store() -> PathBuf {\n   86      if let Some(dir) = std::env::var_os(STORE_VAR).filter(|v| !v.is_empty()) {\n   87          return PathBuf::from(dir);\n   88      }\n   89      std::env::var_os(\"HOME\")\n   90          .map_or_else(|| PathBuf::from(\".\"), PathBuf::from)\n   91          .join(\".openagents/tasks\")\n   92  }\n   93  \n   94  /// The engine that runs a turn: `$OPENAGENTS_CODER_CONTROLLER`, else the\n   95  /// `microcoder` beside the running program or in `~/.openagents/bin`.\n   96  ///\n   97  /// # Errors\n   98  /// Names where it looked.\n   99  pub fn controller() -> Result<PathBuf, String> {\n  100      if let Some(path) = std::env::var_os(CONTROLLER_VAR).filter(|v| !v.is_empty()) {\n  101          return PathBuf::from(path)\n  102              .canonicalize()\n  103              .map_err(|_| format!(\"{CONTROLLER_VAR} names no file\"));\n  104      }\n  105      autostart::default_controller().and_then(|path| {\n  106          path.canonicalize()\n  107              .map_err(|_| \"the microcoder engine is missing\".into())\n  108      })\n  109  }\n  110  \n  111  /// A person's Git checkout.\n  112  #[derive(Clone, Debug, PartialEq, Eq)]\n  113  pub struct Checkout {\n  114      /// Its top level.\n  115      pub top: PathBuf,\n  116      /// Its folder's name, which names the project.\n  117      pub name: String,\n  118      /// The commit `HEAD` names.\n  119      pub head: String,\n  120  }\n  121  \n  122  pub(crate) fn git() -> std::process::Command {\n  123      let program = owner::GIT_PATHS\n--- lines 288-318 of 2293 ---\n  288  \n  289  /// The record of `task` in `store`, if a local run started it.\n  290  #[must_use]\n  291  pub fn record(store: &Path, task: &str) -> Option<Record> {\n  292      let bytes = std::fs::read(record_path(store, task)).ok()?;\n  293      serde_json::from_slice::<Record>(&bytes)\n  294          .ok()\n  295          .filter(|record| record.schema == RECORD_SCHEMA && record.task == task)\n  296  }\n  297  \n  298  fn save(store: &Path, record: &Record) -> Result<(), String> {\n  299      let bytes = serde_json::to_vec_pretty(record).map_err(|e| e.to_string())?;\n  300      autostart::write_private(&record_path(store, &record.task), &bytes)\n  301  }\n  302  \n  303  /// Starts, answers, and stops Coder runs on this computer.\n  304  pub struct Local {\n  305      store: PathBuf,\n  306      worktrees: PathBuf,\n  307      launcher: Box<dyn Launch>,\n  308      probe: fn(Provider) -> Connection,\n  309      now: fn() -> u64,\n  310      controller: Option<PathBuf>,\n  311      /// The person's settings, or why they could not be read: a run then\n  312      /// refuses rather than falling back to the defaults.\n  313      settings: Result<settings::Coder, String>,\n  314      max_steps: std::sync::atomic::AtomicUsize,\n  315  }\n  316  \n  317  impl std::fmt::Debug for Local {\n  318      fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n--- lines 325-336 of 2293 ---\n  325  impl Local {\n  326      /// Runs over the task store `store`, with worktrees beside it and the\n  327      /// engine started as a detached process.\n  328      #[must_use]\n  329      pub fn new(store: PathBuf) -> Self {\n  330          let worktrees = store.parent().map_or_else(\n  331              || store.join(\"worktrees\"),\n  332              |parent| parent.join(\"worktrees\"),\n  333          );\n  334          Local {\n  335              store,\n  336              worktrees,"
+    },
+    {
+      "path": "crates/coder/src/task/autostart.rs",
+      "score": 15.29,
+      "lines": [
+        5,
+        30,
+        34,
+        55,
+        57,
+        58,
+        59,
+        133,
+        134,
+        135,
+        370,
+        378,
+        394,
+        414,
+        432,
+        521,
+        593,
+        594,
+        779,
+        1750,
+        1791,
+        1793,
+        1994,
+        2036,
+        2064,
+        2171,
+        2195,
+        2247,
+        2609,
+        2642,
+        2728,
+        2732,
+        2734
+      ],
+      "why": [
+        "has `Grant::parse`",
+        "has `adapter::Configuration`",
+        "has `adapter::Access`",
+        "has `Access::Toolchains`",
+        "has `toolchains`",
+        "has `Configuration`"
+      ],
+      "excerpt": "--- lines 1-77 of 3524 ---\n    1  //! The owner's auto-start policy: start tasks that enrolled devices create.\n    2  //!\n    3  //! `task.create` from an enrolled device is an inert submission. This policy\n    4  //! is the one exception, and only the host's owner can turn it on, locally,\n    5  //! with `coder host autostart on`. It is off by default and off whenever its\n    6  //! file is missing or unreadable. While it is on, a task a device creates in\n    7  //! an allowlisted workspace is recorded as *eligible*, and the host starts it\n    8  //! through the configured engine with an execution grant the policy bounds:\n    9  //!\n   10  //! - **Workspaces**: only the labels the policy lists, each also admitted by\n   11  //!   the host's own settings. A device still never sends a path.\n   12  //! - **Concurrency**: at most `max_running` auto-started tasks run at once;\n   13  //!   the rest wait queued and start as earlier ones finish.\n   14  //! - **Engine**: one adapter (`microcoder-repository`), one controller\n   15  //!   executable, the admitted models in the owner's preference order, step\n   16  //!   and wall-clock limits, and the same filesystem boundary and supervisor\n   17  //!   as a hand-written grant.\n   18  //! - **Routes**: each start names the first admitted route whose provider\n   19  //!   has a local login and no recorded usage-limit refusal (see\n   20  //!   [`super::capacity`]); the other connected routes follow as the grant's\n   21  //!   fallbacks. When none has capacity, the task ends as `no_capacity` with\n   22  //!   the earliest reset instead of starting a run that cannot succeed.\n   23  //! - **Usage probes** (off unless the owner passes `--probe-usage`): the\n   24  //!   host also reads each admitted provider's usage windows (see\n   25  //!   [`super::usage`]) and prefers a route whose provider is below the\n   26  //!   policy's threshold. A probe is advisory: it never adds a route and\n   27  //!   never overrides a recorded refusal, and any probe failure leaves the\n   28  //!   refusal-only choice above.\n   29  //!\n   30  //! Every decision is appended to `autostart.jsonl` beside the policy:\n   31  //! eligible, started (with the grant digest and owner process), skipped, and\n   32  //! refused, plus each policy change. Turning the policy off stops new starts\n   33  //! at once; tasks already started keep running under their grants and can\n   34  //! be cancelled as usual. Read `docs/coder/runtime/host-autostart.md`.\n   35  \n   36  use std::collections::{BTreeMap, BTreeSet};\n   37  use std::io::Write;\n   38  use std::path::{Path, PathBuf};\n   39  use std::sync::{Arc, Mutex};\n   40  use std::time::Duration;\n   41  \n   42  use serde::{Deserialize, Serialize};\n   43  \n   44  use openagents_connect::control::{\n   45      EngineAccount, EngineReport, EngineRoute, RouteUsage, UsageWindow,\n   46  };\n   47  \n   48  use super::capacity::{self, Connection, Provider};\n   49  use super::usage;\n   50  use super::{Action, COMMAND_SCHEMA, Command, Status, Store, adapter, owner};\n   51  \n   52  pub use coder_host::StartCause;\n   53  \n   54  /// The policy file in the host root.\n   55  pub const POLICY_FILE: &str = \"autostart.json\";\n   56  /// The append-only record in the host root.\n   57  pub const JOURNAL_FILE: &str = \"autostart.jsonl\";\n   58  pub const POLICY_SCHEMA: &str = \"openagents.coder.host-autostart.v1\";\n   59  pub const ENTRY_SCHEMA: &str = \"openagents.coder.host-autostart-entry.v1\";\n   60  /// The most tasks a policy may run at once.\n   61  pub const MAX_RUNNING: u32 = 8;\n   62  /// The decision model a new policy names. The engine refuses a Jev reply\n   63  /// whose model differs from the admitted one, so this is an exact version,\n   64  /// never an alias such as `jev-latest`.\n   65  pub const DEFAULT_DECISION_MODEL: &str = \"jev-1.13.0\";\n   66  /// How long a started task may stay queued, waiting for its owner process\n   67  /// to admit it, before it stops counting against the concurrency bound.\n   68  const PENDING_GRACE: u64 = 120;\n   69  /// How long a started task may stay queued while its owner process still\n   70  /// runs before the host ends it as never started. An owner that has exited\n   71  /// without admitting the task ends it at the next sweep instead. It matches\n   72  /// [`StartCause::Timeout`]'s sentence.\n   73  const ADMISSION_DEADLINE: u64 = 600;\n   74  /// How many times the host launches an owner for one turn when the owner\n   75  /// stops without admitting it for a cause that may be transient.\n   76  const MAX_ATTEMPTS: usize = 2;\n   77  /// The most of a launch diagnostic the host reads, from its end.\n--- lines 121-153 of 3524 ---\n  121      /// every policy had before routes existed: the Codex login with `model`\n  122      /// and `effort`. When set, the first route's model is `model`.\n  123      #[serde(default, skip_serializing_if = \"Vec::is_empty\")]\n  124      pub routes: Vec<Route>,\n  125      /// Probe each admitted provider's usage windows before routing. Absent\n  126      /// means off: no credential is read for a probe and routing uses\n  127      /// recorded refusals only.\n  128      #[serde(default, skip_serializing_if = \"Option::is_none\")]\n  129      pub usage_probe: Option<UsageProbe>,\n  130      /// What each started task's commands may reach. Absent means the\n  131      /// filesystem boundary, so a policy written before this field keeps\n  132      /// its meaning; `full` is the owner's full access\n  133      /// (`coder host autostart on --full-access`).\n  134      #[serde(default, skip_serializing_if = \"adapter::Access::is_boundary\")]\n  135      pub access: adapter::Access,\n  136  }\n  137  \n  138  /// The owner's usage-probe setting.\n  139  #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]\n  140  #[serde(deny_unknown_fields)]\n  141  pub struct UsageProbe {\n  142      /// Utilization, in percent (1 to 100), at or above which routing\n  143      /// prefers another admitted route with capacity.\n  144      pub threshold_percent: u8,\n  145  }\n  146  \n  147  /// One admitted provider and model, in a policy's preference order.\n  148  #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]\n  149  #[serde(deny_unknown_fields)]\n  150  pub struct Route {\n  151      pub provider: Provider,\n  152      /// The exact model identity the provider reports.\n  153      pub model: String,\n--- lines 358-387 of 3524 ---\n  358              expected_revision: revision,\n  359              expected_source_snapshot: None,\n  360              program,\n  361              arguments: Vec::new(),\n  362              write_workspace: self.engine.write_workspace,\n  363              wall_seconds: self.engine.wall_seconds,\n  364              stream_bytes: 64 * 1024,\n  365              memory_bytes: self.engine.memory_bytes,\n  366              requirements: None,\n  367              adapter_configuration: Some(self.configuration(order)),\n  368          };\n  369          let bytes = serde_json::to_vec_pretty(&grant).map_err(|e| e.to_string())?;\n  370          owner::Grant::parse(&bytes).map_err(|e| format!(\"the grant is invalid: {e}\"))?;\n  371          let path = grants.join(format!(\"{task}-{revision}.grant.json\"));\n  372          write_private(&path, &bytes)?;\n  373          launcher.launch(&self.engine, &path, store)\n  374      }\n  375  \n  376      /// The grant configuration that starts on `order[0]` and falls back to\n  377      /// the rest. `order` must not be empty.\n  378      fn configuration(&self, order: &[Route]) -> adapter::Configuration {\n  379          let engine = &self.engine;\n  380          let route = |route: &Route| adapter::Route {\n  381              provider: route.provider.as_str().into(),\n  382              model: route.model.clone(),\n  383              // Devin, OpenCode, and Grok Build take no effort: their model\n  384              // names carry their own.\n  385              effort: (!matches!(\n  386                  route.provider,\n  387                  Provider::Devin | Provider::OpenCode | Provider::Grok"
+    },
+    {
+      "path": "scripts/desktop/package-macos.sh",
+      "score": 14.74,
+      "lines": [
+        4,
+        11,
+        271,
+        273
+      ],
+      "why": [
+        "the issue names `scripts/desktop/package-macos.sh`",
+        "has `scripts/desktop/package-macos.sh`",
+        "has `Contents/Helpers/openagents`",
+        "has `Contents/MacOS/microcoder`"
+      ],
+      "excerpt": "--- lines 1-29 of 419 ---\n    1  #!/usr/bin/env bash\n    2  # Packages OpenAgents for Mac as a signed, notarized, stapled .dmg.\n    3  #\n    4  #   scripts/desktop/package-macos.sh [options]\n    5  #\n    6  # Steps (docs/desktop/release.md has the full runbook):\n    7  #   1. Build universal (arm64 + x86_64) release binaries of the app\n    8  #      (`openagents-desktop`), `coder`, `microcoder`, and `openagents`, and glue each pair\n    9  #      with `lipo`.\n   10  #   2. Assemble OpenAgents.app: Contents/MacOS/{OpenAgents,coder,microcoder},\n   11  #      Contents/Helpers/openagents,\n   12  #      Info.plist, icon, and the host's launchd plist in\n   13  #      Contents/Library/LaunchAgents/.\n   14  #   3. Sign every executable, inner ones first, with the Developer ID\n   15  #      Application identity, the hardened runtime, a secure timestamp, and\n   16  #      entitlements (the app's and the embedded host's).\n   17  #   4. Notarize the app with `xcrun notarytool submit --wait` and staple it.\n   18  #   5. Build the .dmg (the app plus an Applications symlink to drag it onto),\n   19  #      sign it, notarize it, staple it.\n   20  #   6. Check: `codesign --verify --strict`, `spctl --assess` on the app and\n   21  #      the .dmg, and `stapler validate` on both.\n   22  #\n   23  # Options:\n   24  #   --app PATH          Package an already assembled .app instead of building\n   25  #                       one (skips steps 1-2). Any macOS .app works, e.g. the\n   26  #                       deck from scripts/bundle-openagents-deck.sh.\n   27  #   --out DIR           Where the .app and .dmg go\n   28  #                       (default: $CARGO_TARGET_DIR/desktop-release, or\n   29  #                       target/desktop-release).\n--- lines 259-291 of 419 ---\n  259    <key>LSMinimumSystemVersion</key><string>${MACOSX_DEPLOYMENT_TARGET:-13.0}</string>\n  260    <key>LSApplicationCategoryType</key><string>public.app-category.developer-tools</string>\n  261    <key>NSHighResolutionCapable</key><true/>\n  262    <key>NSLocalNetworkUsageDescription</key><string>OpenAgents lets your phone reach this Mac.</string>\n  263  </dict>\n  264  </plist>\n  265  PLIST\n  266    fi\n  267    exe=\"$(plist_get \"$app/Contents/Info.plist\" CFBundleExecutable)\"\n  268    exe=\"${exe:-OpenAgents}\"\n  269    cp \"$app_bin\" \"$app/Contents/MacOS/$exe\"\n  270    cp \"$coder_bin\" \"$app/Contents/MacOS/coder\"\n  271    cp \"$micro_bin\" \"$app/Contents/MacOS/microcoder\"\n  272    mkdir -p \"$app/Contents/Helpers\"\n  273    cp \"$cli_bin\" \"$app/Contents/Helpers/openagents\"\n  274  \n  275    if [[ -f \"$macos_dir/com.openagents.desktop.host.plist\" ]]; then\n  276      cp \"$macos_dir/com.openagents.desktop.host.plist\" \"$app/Contents/Library/LaunchAgents/\"\n  277    else\n  278      cat >\"$app/Contents/Library/LaunchAgents/com.openagents.desktop.host.plist\" <<'PLIST'\n  279  <?xml version=\"1.0\" encoding=\"UTF-8\"?>\n  280  <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n  281  <plist version=\"1.0\">\n  282  <dict>\n  283    <key>Label</key><string>com.openagents.desktop.host</string>\n  284    <key>BundleProgram</key><string>Contents/MacOS/coder</string>\n  285    <key>ProgramArguments</key>\n  286    <array><string>coder</string><string>host</string><string>serve</string><string>--keychain</string><string>--iroh</string><string>--control</string></array>\n  287    <key>RunAtLoad</key><true/>\n  288    <key>KeepAlive</key><true/>\n  289    <key>ProcessType</key><string>Interactive</string>\n  290  </dict>\n  291  </plist>"
+    },
+    {
+      "path": "crates/coder/src/task/settings.rs",
+      "score": 13.97,
+      "lines": [
+        2,
+        4,
+        11,
+        21,
+        41,
+        42,
+        225,
+        248,
+        272,
+        440,
+        483,
+        543,
+        546,
+        676
+      ],
+      "why": [
+        "has `openagents chat`",
+        "has `\"access\": \"toolchains\"`",
+        "has `adapter::Access`",
+        "has `Access::Toolchains`",
+        "has `coder::task::local`",
+        "has `toolchains`"
+      ],
+      "excerpt": "--- lines 1-60 of 781 ---\n    1  //! Local capability settings: what Coder may use on this computer when the\n    2  //! person at it asks for coding (`coder::task::local`).\n    3  //!\n    4  //! One file, read by `openagents chat`, the desktop, and a host on this\n    5  //! computer: `$OPENAGENTS_SETTINGS`, else `~/.openagents/settings.json`\n    6  //! ([`path`]). A missing file, or a missing field, means the default, and\n    7  //! the defaults are exactly what a computer does with no file at all\n    8  //! (#10032, #10045): Codex then Claude Code, a coding request runs at once,\n    9  //! a fresh usage reading at or above 90% passes a provider over, any Git\n   10  //! checkout is a project, and commands run in the filesystem boundary with\n   11  //! this computer's toolchains.\n   12  //!\n   13  //! ```json\n   14  //! {\n   15  //!   \"schema\": \"openagents.settings.v1\",\n   16  //!   \"coder\": {\n   17  //!     \"providers\": [\"codex\", \"claude\"],\n   18  //!     \"start\": \"at_once\",\n   19  //!     \"usage_threshold_percent\": 90,\n   20  //!     \"projects\": [],\n   21  //!     \"access\": \"toolchains\"\n   22  //!   }\n   23  //! }\n   24  //! ```\n   25  //!\n   26  //! A file that does not parse, or names a value outside its closed set, is\n   27  //! never read as the defaults: a local run then refuses and names the file,\n   28  //! so a broken opt-out never quietly becomes an opt-in. Other top-level\n   29  //! sections are kept as they are when the file is saved, so other settings\n   30  //! (the desktop's, #10021) can live beside these.\n   31  //!\n   32  //! [`Settings`] is the typed API; [`keys`], [`Settings::get`],\n   33  //! [`Settings::set`], and [`Settings::unset`] are the flat `coder.*` keys\n   34  //! `openagents settings` and a settings screen edit.\n   35  \n   36  use std::path::{Path, PathBuf};\n   37  \n   38  use serde::{Deserialize, Serialize};\n   39  use serde_json::{Map, Value, json};\n   40  \n   41  use super::adapter::Access;\n   42  use super::autostart::Route;\n   43  use super::capacity::Provider;\n   44  use super::usage;\n   45  \n   46  /// The file's schema.\n   47  pub const SCHEMA: &str = \"openagents.settings.v1\";\n   48  /// Names another settings file than `~/.openagents/settings.json`.\n   49  pub const PATH_VAR: &str = \"OPENAGENTS_SETTINGS\";\n   50  /// The most routes a local run admits: a first route and its fallbacks.\n   51  pub const MAX_PROVIDERS: usize = 1 + super::adapter::MAX_FALLBACKS;\n   52  /// The providers a local run can use, in their default order.\n   53  pub const PROVIDERS: [Provider; 5] = [\n   54      Provider::Codex,\n   55      Provider::Claude,\n   56      Provider::Grok,\n   57      Provider::OpenCode,\n   58      Provider::Devin,\n   59  ];\n   60  \n--- lines 213-290 of 781 ---\n  213  }\n  214  \n  215  /// Whether a coding request from a chat starts Coder at once or waits for\n  216  /// the person to accept the offer.\n  217  #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]\n  218  #[serde(rename_all = \"snake_case\")]\n  219  pub enum Start {\n  220      /// Coder starts as soon as the router judges the message is coding\n  221      /// work (#10032).\n  222      #[default]\n  223      AtOnce,\n  224      /// The reply offers Coder; it starts only when the person accepts\n  225      /// (`openagents chat run-coder`, or **Run Coder** in the app).\n  226      AskFirst,\n  227  }\n  228  \n  229  impl Start {\n  230      const fn as_str(self) -> &'static str {\n  231          match self {\n  232              Start::AtOnce => \"at_once\",\n  233              Start::AskFirst => \"ask_first\",\n  234          }\n  235      }\n  236  }\n  237  \n  238  fn default_providers() -> Vec<Choice> {\n  239      vec![Choice::new(Provider::Codex), Choice::new(Provider::Claude)]\n  240  }\n  241  \n  242  #[allow(clippy::unnecessary_wraps)]\n  243  fn default_threshold() -> Option<u8> {\n  244      Some(usage::DEFAULT_THRESHOLD_PERCENT)\n  245  }\n  246  \n  247  fn default_access() -> Access {\n  248      Access::Toolchains\n  249  }\n  250  \n  251  /// What Coder may use on this computer for a person's own runs.\n  252  #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]\n  253  #[serde(deny_unknown_fields)]\n  254  pub struct Coder {\n  255      /// The providers a run may use, first preferred; each only when it is\n  256      /// signed in here and has capacity. At least one, at most\n  257      /// [`MAX_PROVIDERS`].\n  258      #[serde(default = \"default_providers\")]\n  259      pub providers: Vec<Choice>,\n  260      /// Whether a coding request runs at once or asks first.\n  261      #[serde(default)]\n  262      pub start: Start,\n  263      /// Utilization (1 to 100 percent) at or above which a fresh usage\n  264      /// reading passes a provider over for a later one below it; `null`\n  265      /// ignores readings, so only a recorded refusal passes one over.\n  266      #[serde(default = \"default_threshold\")]\n  267      pub usage_threshold_percent: Option<u8>,\n  268      /// The folders whose Git checkouts count as projects, as absolute\n  269      /// paths. Empty: any Git checkout.\n  270      #[serde(default)]\n  271      pub projects: Vec<PathBuf>,\n  272      /// What a run's commands may reach: `toolchains` (the filesystem\n  273      /// boundary with this computer's developer tools), `full` (no sandbox,\n  274      /// as the person's own user), or `boundary` (the plain boundary).\n  275      #[serde(default = \"default_access\")]\n  276      pub access: Access,\n  277  }\n  278  \n  279  impl Default for Coder {\n  280      fn default() -> Self {\n  281          Coder {\n  282              providers: default_providers(),\n  283              start: Start::default(),\n  284              usage_threshold_percent: default_threshold(),\n  285              projects: Vec::new(),\n  286              access: default_access(),\n  287          }\n  288      }\n  289  }\n  290  \n--- lines 428-429 of 781 ---\n  428              .map_err(|why| format!(\"the settings in {} are not valid: {why}\", file.display()))?;\n  429          Ok(settings)"
+    },
+    {
+      "path": "crates/microcoder/src/repository/tests.rs",
+      "score": 12.75,
+      "lines": [
+        4,
+        6,
+        27,
+        36,
+        89,
+        122,
+        138,
+        444,
+        456,
+        477,
+        495,
+        610,
+        709,
+        756,
+        860,
+        1108,
+        1111,
+        1140,
+        1219,
+        1333,
+        1427,
+        1429,
+        1443,
+        1475,
+        1476,
+        1477,
+        1478,
+        1524,
+        1585,
+        1651,
+        1671,
+        1678,
+        1679,
+        2103,
+        2300,
+        2565,
+        2609
+      ],
+      "why": [
+        "has `openagents chat`",
+        "has `Grant::parse`",
+        "has `adapter::Access`",
+        "has `Access::Toolchains`",
+        "has `coder::task::local`",
+        "has `toolchains`"
+      ],
+      "excerpt": "--- lines 1-54 of 2955 ---\n    1  use super::*;\n    2  use crate::models::{Basis, NextAction};\n    3  use coder::task::adapter::Route as GrantRoute;\n    4  use coder::task::adapter::{CONFIG_SCHEMA, Configuration, NAME};\n    5  use coder::task::capacity::{self, Provider, Refusal};\n    6  use coder::task::{Action, Command, RequestedConfiguration, Store, TaskIntent, Workspace};\n    7  use std::cell::{Cell, RefCell};\n    8  use std::collections::VecDeque;\n    9  \n   10  /// The canonical system shell the owner admits: `/bin/bash`, or `/bin/sh`\n   11  /// where there is no `/bin/bash`, as on NixOS.\n   12  fn system_shell() -> std::path::PathBuf {\n   13      [\"/bin/bash\", \"/bin/sh\"]\n   14          .iter()\n   15          .find_map(|path| Path::new(path).canonicalize().ok())\n   16          .expect(\"a system shell\")\n   17  }\n   18  \n   19  pub(super) fn fixture() -> (tempfile::TempDir, std::path::PathBuf, Vec<u8>) {\n   20      fixture_with(\"fixture-model\", |_| {})\n   21  }\n   22  \n   23  /// A fixture task that requests `model`, with its grant's configuration\n   24  /// changed by `change`.\n   25  pub(super) fn fixture_with(\n   26      model: &str,\n   27      change: impl FnOnce(&mut Configuration),\n   28  ) -> (tempfile::TempDir, std::path::PathBuf, Vec<u8>) {\n   29      fixture_images(model, change, &[], \"Write result.txt containing output.\")\n   30  }\n   31  \n   32  /// [`fixture_with`], with `images` attached to the task as a device's\n   33  /// upload binds them: kept in the store's task media, named by the intent.\n   34  pub(super) fn fixture_images(\n   35      model: &str,\n   36      change: impl FnOnce(&mut Configuration),\n   37      images: &[coder::task::media::wire::Upload],\n   38      prompt: &str,\n   39  ) -> (tempfile::TempDir, std::path::PathBuf, Vec<u8>) {\n   40      let root = tempfile::tempdir().unwrap();\n   41      let repo = root.path().join(\"repo\");\n   42      let checkout = root.path().join(\"checkout\");\n   43      std::fs::create_dir(&repo).unwrap();\n   44      for args in [\n   45          vec![\"init\", \"-q\"],\n   46          vec![\n   47              \"-c\",\n   48              \"user.name=Fixture\",\n   49              \"-c\",\n   50              \"user.email=fixture@example.invalid\",\n   51              \"commit\",\n   52              \"--allow-empty\",\n   53              \"-qm\",\n   54              \"Fixture\",\n--- lines 77-156 of 2955 ---\n   77          schema: task::COMMAND_SCHEMA.into(),\n   78          command_id: \"submit-fixture\".into(),\n   79          task_id: \"fixture\".into(),\n   80          expected_revision: None,\n   81          action: Action::Submit {\n   82              intent: TaskIntent {\n   83                  title: \"Repository fixture\".into(),\n   84                  prompt: prompt.into(),\n   85                  workspace: Workspace {\n   86                      path: checkout.canonicalize().unwrap().display().to_string(),\n   87                      source_revision: None,\n   88                  },\n   89                  configuration: RequestedConfiguration {\n   90                      adapter: NAME.into(),\n   91                      model: Some(model.into()),\n   92                  },\n   93                  images: images.iter().map(|image| image.reference.clone()).collect(),\n   94              },\n   95          },\n   96      };\n   97      let mut inbox = Store::open(&store).unwrap();\n   98      // As a device sends them: chunk by chunk to the host's uploads, then\n   99      // bound to the task its `task.create` names.\n  100      let device = \"d\".repeat(64);\n  101      for image in images {\n  102          for chunk in image.chunks(0) {\n  103              coder::task::media::put(&store, &device, &chunk).unwrap();\n  104          }\n  105          coder::task::media::adopt(&store, &device, \"fixture\", &image.reference).unwrap();\n  106      }\n  107      inbox.apply(&serde_json::to_vec(&command).unwrap()).unwrap();\n  108      let task = inbox.show(\"fixture\").unwrap();\n  109      let grant = task::owner::Grant {\n  110          schema: task::owner::GRANT_SCHEMA.into(),\n  111          task_id: task.task_id,\n  112          intent_digest: task.intent_digest,\n  113          expected_revision: 1,\n  114          expected_source_snapshot: None,\n  115          program: system_shell(),\n  116          arguments: Vec::new(),\n  117          write_workspace: true,\n  118          wall_seconds: 8,\n  119          stream_bytes: 4096,\n  120          memory_bytes: 256 * 1024 * 1024,\n  121          requirements: None,\n  122          adapter_configuration: Some(Configuration {\n  123              schema: CONFIG_SCHEMA.into(),\n  124              provider: \"synthetic\".into(),\n  125              model: \"fixture-model\".into(),\n  126              effort: Some(\"medium\".into()),\n  127              generation_endpoint: \"in-process\".into(),\n  128              decision_endpoint: \"in-process\".into(),\n  129              decision_model: \"fixture-judge\".into(),\n  130              max_steps: 4,\n  131              acceptance: false,\n  132              route: \"never\".into(),\n  133              knowledge: \"off\".into(),\n  134              dollar_limit_micros: None,\n  135              expected_controller_digest: None,\n  136              container: None,\n  137              fallbacks: Vec::new(),\n  138              access: coder::task::adapter::Access::Boundary,\n  139          }),\n  140      };\n  141      let mut grant = grant;\n  142      if let Some(configuration) = grant.adapter_configuration.as_mut() {\n  143          change(configuration);\n  144      }\n  145      (root, store, serde_json::to_vec(&grant).unwrap())\n  146  }\n  147  \n  148  struct Generator {\n  149      actions: RefCell<VecDeque<NextAction>>,\n  150      model: &'static str,\n  151      calls: Cell<usize>,\n  152  }\n  153  fn generator(command: &str) -> Generator {\n  154      Generator {\n  155          actions: RefCell::new(VecDeque::from([\n  156              NextAction {\n--- lines 432-437 of 2955 ---\n  432          &JudgeFixture,\n  433      )\n  434      .await\n  435      .unwrap();\n  436      assert_ne!(result.execution, task::Execution::Finished);\n  437      assert!(!root.path().join(\"checkout/result.txt\").exists());"
+    }
+  ],
+  "history": [
+    {
+      "commit": "d70415ef8f",
+      "subject": "Let a task's own process wait out a busy task store",
+      "file": "crates/coder/src/task/owner.rs",
+      "diff": "diff --git a/crates/coder/src/task/owner.rs b/crates/coder/src/task/owner.rs\nindex 8b60bdbca9..0fb7ecb3c2 100644\n--- a/crates/coder/src/task/owner.rs\n+++ b/crates/coder/src/task/owner.rs\n@@ -471,5 +471,5 @@ impl Owner {\n \n     pub(super) fn record(&self, event: Event) -> Result<Task, Error> {\n-        Store::open(&self.dir)?.record(self, event, 1)\n+        Store::open_for_owner(&self.dir)?.record(self, event, 1)\n     }\n }\n@@ -499,5 +499,5 @@ pub async fn check(\n ) -> Result<Task, Error> {\n     let (owner, task) = {\n-        let mut store = Store::open(directory)?;\n+        let mut store = Store::open_for_owner(directory)?;\n         let owner = Owner::acquire(&store, id)?;\n         let task = store.record(&owner, Event::CheckIntent, 1)?;\n@@ -551,5 +551,5 @@ pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {\n     }\n     let (owner, task) = {\n-        let store = Store::open(directory)?;\n+        let store = Store::open_for_owner(directory)?;\n         let owner = Owner::acquire(&store, &grant.task_id)?;\n         let task = store.show(&grant.task_id)?;\n@@ -650,5 +650,5 @@ pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {\n     )?;\n     let effect_id = effect_id_for(&task);\n-    let state = Store::open(&owner.dir)?.show(&task.task_id)?;\n+    let state = Store::open_for_owner(&owner.dir)?.show(&task.task_id)?;\n     // A cancellation accepted before dispatch permits no effect.\n     let mut output_incomplete = false;\n@@ -680,5 +680,5 @@ pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {\n             .env(\"PATH\", SYSTEM_PATH);\n         let live = {\n-            let mut dispatch = Store::open(&owner.dir)?;\n+            let mut dispatch = Store::open_for_owner(&owner.dir)?;\n             if dispatch.show(&task.task_id)?.status == Status::CancelRequested {\n                 None\n@@ -714,5 +714,5 @@ pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {\n                     break Some(live.wait().await);\n                 }\n-                let state = Store::open(&owner.dir)?.show(&task.task_id)?;\n+                let state = Store::open_for_owner(&owner.dir)?.show(&task.task_id)?;\n                 if state.status == Status::CancelRequested {\n                     break Some(live.stop().await);"
+    }
+  ],
+  "checks": [
+    {
+      "id": "check:coder",
+      "argv": [
+        "cargo",
+        "check",
+        "-p",
+        "coder",
+        "--tests",
+        "--message-format",
+        "short"
+      ],
+      "what": "compile coder and its tests"
+    },
+    {
+      "id": "test:coder",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "coder"
+      ],
+      "filter": true,
+      "what": "run coder's tests (pass a test-name filter to run fewer)"
+    },
+    {
+      "id": "fmt:coder",
+      "argv": [
+        "cargo",
+        "fmt",
+        "-p",
+        "coder"
+      ],
+      "what": "format coder"
+    },
+    {
+      "id": "check:microcoder",
+      "argv": [
+        "cargo",
+        "check",
+        "-p",
+        "microcoder",
+        "--tests",
+        "--message-format",
+        "short"
+      ],
+      "what": "compile microcoder and its tests"
+    },
+    {
+      "id": "test:microcoder",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "microcoder"
+      ],
+      "filter": true,
+      "what": "run microcoder's tests (pass a test-name filter to run fewer)"
+    },
+    {
+      "id": "fmt:microcoder",
+      "argv": [
+        "cargo",
+        "fmt",
+        "-p",
+        "microcoder"
+      ],
+      "what": "format microcoder"
+    }
+  ],
+  "rules": [
+    "Product code is Rust. Do not add TypeScript.",
+    "The check for a change is `cargo test -p` for the crates you edited plus `cargo fmt`. Do not run clippy, release gates, or other crates' tests.",
+    "Never put machine talk (internal words like retained, projection, canonical, digest, lane) in text a user sees; say what happened in plain words. Each surface's tests run the `oa-copy` guard over user-visible text.",
+    "When a test fails only because a checked-in generated file is stale, regenerate it.",
+    "No new INVARIANTS rows, design notes, or long docs for a small change.",
+    "Fix stale or false user-facing copy you touch in the same change.",
+    "- `crates/coder` \u2014 the agent: `classify` routes each turn through Jev, `generate` answers through an Open Responses door, and the `coder` binary draws the conversation in the terminal or, with `-p`, runs one turn from a script. Both modes run the same turn, `coder::turn::run`; keep it that way. `permit` is the host's answer to whether a turn runs commands at all, built from the route and the operator's setting before anything generates and narrowing from there; a reply becomes an executable plan only under a permit that runs one, so keep execution policy there rather than in what the model is told. `delegate_door` answers a turn through Microcoder's loop in process, on the first connected provider with capacity in the capacity book (the Codex login, then Claude Code's login, then, always last, Vertex through the OpenAgents cloud, which needs no token on the host; read `docs/coder/runtime"
+  ],
+  "levers": {
+    "finder": "lite",
+    "briefing_files": 6,
+    "excerpt": "windows",
+    "excerpt_lines": 140,
+    "briefing_tokens": 14000,
+    "history": 2,
+    "plan": "deterministic",
+    "template": "v1",
+    "tools": "Read,Edit,Write,Grep,Glob",
+    "check_output": "smart",
+    "mcp": "checks",
+    "model": "claude-opus-5-5",
+    "effort": "default",
+    "max_turns": 0,
+    "timeout_secs": 1200,
+    "briefing_in": "system",
+    "build_cache": "warm",
+    "build_host": "coderos-4080",
+    "post_fmt": false,
+    "decomposition": "single",
+    "triage": "none",
+    "learning": "none"
+  },
+  "build_secs": 7.44,
+  "chars": 46617
+}

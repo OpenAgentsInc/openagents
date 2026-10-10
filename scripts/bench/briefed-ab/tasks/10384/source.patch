@@ -1,0 +1,732 @@
+diff --git a/crates/coder/src/cli_route/tree.json b/crates/coder/src/cli_route/tree.json
+index 1ea99960da6631a59dfbda87ea82ac36ea6463d9..b1cbbbd49f82606e56c74e38a5b8f3cd14f55099 100644
+--- a/crates/coder/src/cli_route/tree.json
++++ b/crates/coder/src/cli_route/tree.json
+@@ -5890,7 +5890,7 @@
+                 ]
+               }
+             ],
+-            "summary": "Each Coder task worktree here: its task and the task's state, size, whether removing it would lose anything (uncommitted, unpushed, or ignored files), and age; then the archived ones. Sizing walks every file; --no-size skips it.",
++            "summary": "Each Coder task worktree here: its task and the task's state, size, whether removing it would lose anything (uncommitted, unpushed, or ignored files), and age; then the archived ones. Sizing walks every file; --no-size skips it. Build slot sizes follow the archived ones.",
+             "effect": "read_only",
+             "runs_on": "connected_computer"
+           }
+diff --git a/crates/coder/src/task.rs b/crates/coder/src/task.rs
+index 76f3bc2d80de8def68fdf986af384621c1c40571..1a75591fef0c2d4a59ed172fa40837e97845a80a 100644
+--- a/crates/coder/src/task.rs
++++ b/crates/coder/src/task.rs
+@@ -473,6 +473,11 @@ pub enum Error {
+     /// Another task's run still holds the workspace's tree (#10124): its
+     /// owner or a process it recorded is alive, or its checks run.
+     WorkspaceBusy,
++    /// Builds wait instead of starting with insufficient disk space.
++    BuildDiskLow {
++        free: u64,
++        floor: u64,
++    },
+ }
+ 
+ impl Error {
+@@ -494,6 +499,7 @@ impl Error {
+             Self::UnsupportedPlatform => "unsupported_platform",
+             Self::ReopenRequired => "reopen_required",
+             Self::WorkspaceBusy => "workspace_busy",
++            Self::BuildDiskLow { .. } => "build_disk_low",
+         }
+     }
+ }
+@@ -523,6 +529,10 @@ impl std::fmt::Display for Error {
+             }
+             Self::ReopenRequired => formatter
+                 .write_str("a write failed; reopen the store before retrying the exact command"),
++            Self::BuildDiskLow { free, floor } => write!(
++                formatter,
++                "builds are waiting for disk space: {free} bytes free, {floor} required"
++            ),
+             Self::WorkspaceBusy => {
+                 formatter.write_str("another Coder task is still running in this project")
+             }
+diff --git a/crates/coder/src/task/adapter.rs b/crates/coder/src/task/adapter.rs
+index 6bda533a3733071e435f221e1976aa1afcc54e0f..6780a59c944e3ad5e5ec071ab494ed11a7126de2 100644
+--- a/crates/coder/src/task/adapter.rs
++++ b/crates/coder/src/task/adapter.rs
+@@ -787,10 +787,18 @@ impl Host {
+         // read as a busy task store (#10301).
+         let target = match configuration.access {
+             access if builds(access) => {
+-                match super::targets::Lease::acquire(&owner.dir, &git_directory) {
+-                    Ok(lease) => Some(lease),
+-                    Err(Error::Busy) => None,
+-                    Err(error) => return Err(error),
++                let started = Instant::now();
++                loop {
++                    match super::targets::Lease::acquire(&owner.dir, &git_directory) {
++                        Ok(lease) => break Some(lease),
++                        Err(Error::BuildDiskLow { .. })
++                            if started.elapsed() < Duration::from_secs(600) =>
++                        {
++                            tokio::time::sleep(Duration::from_secs(2)).await;
++                        }
++                        Err(Error::Busy) => break None,
++                        Err(error) => return Err(error),
++                    }
+                 }
+             }
+             _ => None,
+diff --git a/crates/coder/src/task/issue_run.rs b/crates/coder/src/task/issue_run.rs
+index 89f614dba116c9df215a8ed575d5c9a54754a0b8..4b8bac39d420676d8ccea03ccdf51cadb61ea040 100644
+--- a/crates/coder/src/task/issue_run.rs
++++ b/crates/coder/src/task/issue_run.rs
+@@ -859,24 +859,31 @@ impl Gate {
+     /// A build slot for checking `worktree`'s change, waiting up to
+     /// [`SLOT_WAIT`] while every slot is taken; `None` without a store, or
+     /// when no slot frees up in time.
+-    fn slot(&self, worktree: &Path) -> Option<super::targets::Lease> {
+-        let store = self.store.as_ref()?;
++    fn slot(&self, worktree: &Path) -> Result<Option<super::targets::Lease>, String> {
++        let Some(store) = self.store.as_ref() else {
++            return Ok(None);
++        };
+         let common = std::process::Command::new("git")
+             .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+             .current_dir(worktree)
+             .stdin(std::process::Stdio::null())
+             .output()
+-            .ok()
+-            .filter(|output| output.status.success())?;
++            .map_err(|error| error.to_string())?;
++        if !common.status.success() {
++            return Err("cannot find the checks' Git directory".into());
++        }
+         let common = PathBuf::from(String::from_utf8_lossy(&common.stdout).trim());
+         let started = std::time::Instant::now();
+         loop {
+             match super::targets::Lease::acquire(store, &common) {
+-                Ok(lease) => return Some(lease),
+-                Err(super::Error::Busy) if started.elapsed() < SLOT_WAIT => {
++                Ok(lease) => return Ok(Some(lease)),
++                Err(super::Error::Busy | super::Error::BuildDiskLow { .. })
++                    if started.elapsed() < SLOT_WAIT =>
++                {
+                     std::thread::sleep(std::time::Duration::from_secs(2));
+                 }
+-                Err(_) => return None,
++                Err(super::Error::Busy) => return Ok(None),
++                Err(error) => return Err(error.to_string()),
+             }
+         }
+     }
+@@ -903,7 +910,15 @@ impl Checks for Gate {
+         }));
+         // The checks build in one of the task store's build slots, held
+         // until they end, so they stay in the slot budget (#10293).
+-        let slot = self.slot(worktree);
++        let slot = match self.slot(worktree) {
++            Ok(slot) => slot,
++            Err(error) => {
++                return Checked {
++                    problems: vec![error],
++                    ran: Vec::new(),
++                };
++            }
++        };
+         let target = slot.as_ref().map(|lease| lease.path.as_path());
+         runtime.block_on(async {
+             let recorder = coder_delegate::record::Recorder::default();
+diff --git a/crates/coder/src/task/remote.rs b/crates/coder/src/task/remote.rs
+index 4f15b2a20f8022d41ca02e473b58cb5fb9591291..cba1c0f7cb2a6d2e9eb5095110a1fa847605cdfe 100644
+--- a/crates/coder/src/task/remote.rs
++++ b/crates/coder/src/task/remote.rs
+@@ -692,6 +692,7 @@ fn refusal(error: Error) -> Code {
+         | Error::Corrupt(_)
+         | Error::UnsafePath
+         | Error::Busy
++        | Error::BuildDiskLow { .. }
+         | Error::UnsupportedPlatform
+         | Error::ReopenRequired => Code::Unavailable,
+     }
+diff --git a/crates/coder/src/task/settings.rs b/crates/coder/src/task/settings.rs
+index 536fa8df5d1982dfc047356bd76131596b2d8e64..bdead615c01a76feaa255bd261d4bd5f8fc53d26 100644
+--- a/crates/coder/src/task/settings.rs
++++ b/crates/coder/src/task/settings.rs
+@@ -386,6 +386,15 @@ pub struct Coder {
+     /// under `toolchains` or `boundary` Codex runs the loop.
+     #[serde(default, skip_serializing_if = "CodexRuns::is_default")]
+     pub codex: CodexRuns,
++    /// The size, in GB, above which a released Coder build slot is pruned
++    /// (#10384): its incremental caches and older artifacts go, recent
++    /// ones stay. `None` uses the default, 25 GB.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub slot_cap_gb: Option<u64>,
++    /// The free disk, in GB, below which released slots are pruned and no
++    /// new slot starts (#10384). `None` uses the default, 10 GB.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub slot_free_gb: Option<u64>,
+ }
+ 
+ impl Default for Coder {
+@@ -401,6 +410,8 @@ impl Default for Coder {
+             shadow_budget_cents: None,
+             claude: ClaudeRuns::default(),
+             codex: CodexRuns::default(),
++            slot_cap_gb: None,
++            slot_free_gb: None,
+         }
+     }
+ }
+@@ -613,7 +624,7 @@ impl Default for Settings {
+ 
+ /// The flat keys [`Settings::get`] and [`Settings::set`] take.
+ #[must_use]
+-pub const fn keys() -> [&'static str; 11] {
++pub const fn keys() -> [&'static str; 13] {
+     [
+         "coder.providers",
+         "coder.disabled",
+@@ -625,6 +636,8 @@ pub const fn keys() -> [&'static str; 11] {
+         "coder.shadow_budget_usd",
+         "coder.claude",
+         "coder.codex",
++        "coder.slot_cap_gb",
++        "coder.slot_free_gb",
+         "models.payer",
+     ]
+ }
+@@ -724,6 +737,8 @@ impl Settings {
+             ))),
+             "coder.claude" => json!(coder.claude.as_str()),
+             "coder.codex" => json!(coder.codex.as_str()),
++            "coder.slot_cap_gb" => json!(coder.slot_cap_gb),
++            "coder.slot_free_gb" => json!(coder.slot_free_gb),
+             "models.payer" => json!(self.models.payer.as_str()),
+             _ => return Err(unknown(key)),
+         })
+@@ -835,6 +850,19 @@ impl Settings {
+             }
+             "coder.claude" => coder.claude = ClaudeRuns::parse(value)?,
+             "coder.codex" => coder.codex = CodexRuns::parse(value)?,
++            "coder.slot_cap_gb" | "coder.slot_free_gb" => {
++                let gb = match value.trim().trim_end_matches("GB").trim() {
++                    "default" | "null" | "none" => None,
++                    number => Some(number.parse::<u64>().map_err(|_| {
++                        format!("`{number}` is not a whole number of GB, or default")
++                    })?),
++                };
++                if key == "coder.slot_cap_gb" {
++                    coder.slot_cap_gb = gb;
++                } else {
++                    coder.slot_free_gb = gb;
++                }
++            }
+             _ => return Err(unknown(key)),
+         }
+         coder.validate()?;
+@@ -881,6 +909,8 @@ impl Settings {
+             "coder.shadow_budget_usd" => coder.shadow_budget_cents = default.shadow_budget_cents,
+             "coder.claude" => coder.claude = default.claude,
+             "coder.codex" => coder.codex = default.codex,
++            "coder.slot_cap_gb" => coder.slot_cap_gb = default.slot_cap_gb,
++            "coder.slot_free_gb" => coder.slot_free_gb = default.slot_free_gb,
+             "models.payer" => self.models.payer = model_access::Mode::Ours,
+             _ => return Err(unknown(key)),
+         }
+diff --git a/crates/coder/src/task/targets.rs b/crates/coder/src/task/targets.rs
+index 26abb78b968d2e364b20a156c8403d927987795f..a4adc8fe5869371eba90dbafd345cb8b86ed7b30 100644
+--- a/crates/coder/src/task/targets.rs
++++ b/crates/coder/src/task/targets.rs
+@@ -1,13 +1,69 @@
+ //! Reusable Cargo build slots outside task worktrees.
+ 
++use background::volume::{Statvfs, Volumes};
+ use std::fs::{File, OpenOptions};
++use std::io::{Read, Seek, Write};
++use std::os::unix::fs::OpenOptionsExt;
+ use std::path::{Path, PathBuf};
++use std::time::SystemTime;
+ 
+ use super::{Error, Store};
+ 
+ const SLOTS: usize = background::SLOTS;
+ const BUDGET: u64 = 64 * 1024 * 1024 * 1024;
+ 
++/// Slot limits, in decimal gigabytes. Environment overrides apply on admission.
++#[derive(Clone, Copy, Debug)]
++struct Policy {
++    cap: u64,
++    floor: u64,
++    keep: usize,
++}
++
++impl Policy {
++    /// The environment first, then `coder.slot_cap_gb` and
++    /// `coder.slot_free_gb` from this computer's settings, then the defaults.
++    fn from_env() -> Result<Self, Error> {
++        let coder = super::settings::load().map(|s| s.coder).unwrap_or_default();
++        Self::read(&|name| {
++            std::env::var(name).ok().or_else(|| {
++                match name {
++                    "OPENAGENTS_SLOT_CAP_GB" => coder.slot_cap_gb,
++                    "OPENAGENTS_SLOT_FREE_GB" => coder.slot_free_gb,
++                    _ => None,
++                }
++                .map(|gb| gb.to_string())
++            })
++        })
++    }
++
++    fn read(env: &impl Fn(&str) -> Option<String>) -> Result<Self, Error> {
++        let number = |name, default| -> Result<u64, Error> {
++            env(name).map_or(Ok(default), |value| {
++                value.parse().map_err(|_| {
++                    Error::InvalidCommand("slot limits must be nonnegative whole numbers")
++                })
++            })
++        };
++        let gb = |name, default| {
++            number(name, default)?
++                .checked_mul(1_000_000_000)
++                .ok_or(Error::InvalidCommand("slot limit is too large"))
++        };
++        let keep = number("OPENAGENTS_SLOT_KEEP_BUILDS", 3)?;
++        if !(1..=100).contains(&keep) {
++            return Err(Error::InvalidCommand(
++                "slot retention must be between 1 and 100 builds",
++            ));
++        }
++        Ok(Self {
++            cap: gb("OPENAGENTS_SLOT_CAP_GB", 25)?,
++            floor: gb("OPENAGENTS_SLOT_FREE_GB", 10)?,
++            keep: keep as usize,
++        })
++    }
++}
++
+ fn root(store: &Path) -> PathBuf {
+     background::task_targets(store)
+ }
+@@ -17,11 +73,22 @@ pub struct Lease {
+     pub path: PathBuf,
+     lock: File,
+     store: PathBuf,
++    policy: Policy,
++    cutoff: SystemTime,
+ }
+ 
+ impl Lease {
+     /// Take a free slot for the repository's common Git directory.
+     pub fn acquire(store: &Path, common: &Path) -> Result<Self, Error> {
++        Self::acquire_with(store, common, Policy::from_env()?, &Statvfs)
++    }
++
++    fn acquire_with(
++        store: &Path,
++        common: &Path,
++        policy: Policy,
++        volumes: &dyn Volumes,
++    ) -> Result<Self, Error> {
+         let common = common.canonicalize()?;
+         let project = common
+             .parent()
+@@ -34,17 +101,33 @@ impl Lease {
+         let project = format!("{project}-{tag}");
+         let root = root(store);
+         std::fs::create_dir_all(&root)?;
++        let free = volumes.space(&root)?.free;
++        if free < policy.floor {
++            // Reclaim idle caches before deciding to wait. Never build elsewhere
++            // to bypass this refusal.
++            maintain(&root, policy, volumes)?;
++            let free = volumes.space(&root)?.free;
++            if free < policy.floor {
++                return Err(Error::BuildDiskLow {
++                    free,
++                    floor: policy.floor,
++                });
++            }
++        }
+         for slot in 0..SLOTS {
+             let path = root.join(format!("{project}-slot-{slot}"));
+-            if let Some(lock) = lock(&path)? {
++            if let Some(mut lock) = lock(&path)? {
+                 if std::fs::symlink_metadata(&path).is_ok_and(|meta| !meta.is_dir()) {
+                     return Err(Error::UnsafePath);
+                 }
+                 std::fs::create_dir_all(&path)?;
++                let cutoff = remember_build(&mut lock, policy.keep)?;
+                 return Ok(Self {
+                     path,
+                     lock,
+                     store: store.to_owned(),
++                    policy,
++                    cutoff,
+                 });
+             }
+         }
+@@ -56,6 +139,14 @@ impl Drop for Lease {
+     fn drop(&mut self) {
+         // Touch the stable lock to record last use, including interrupted runs.
+         let _ = self.lock.set_modified(std::time::SystemTime::now());
++        // Keep the slot exclusively held until pruning ends, so the next run
++        // cannot compile beside deletion.
++        if let Err(error) = prune(&self.path, self.policy, self.cutoff, &Statvfs) {
++            eprintln!(
++                "coder: cannot prune build slot {}: {error}",
++                self.path.display()
++            );
++        }
+         let _ = self.lock.unlock();
+         let _ = cleanup(&self.store);
+     }
+@@ -99,7 +190,7 @@ fn legacy(store: &Path, workspace: &Path) -> PathBuf {
+     ))
+ }
+ 
+-/// Remove known ended tasks' legacy builds and trim idle slots to 64 GiB.
++/// Remove ended legacy builds, prune oversized idle slots, and trim the pool to 64 GiB.
+ /// Unknown or live tasks, symlinks, and locked slots are never deleted.
+ pub fn cleanup(store: &Path) -> Result<(), Error> {
+     let tasks = Store::open(store)?.list()?;
+@@ -114,6 +205,7 @@ pub fn cleanup(store: &Path) -> Result<(), Error> {
+             std::fs::remove_dir_all(path)?;
+         }
+     }
++    maintain(&root(store), Policy::from_env()?, &Statvfs)?;
+     trim(&root(store), BUDGET)
+ }
+ 
+@@ -159,18 +251,124 @@ fn real_dir(path: &Path) -> bool {
+ }
+ 
+ fn size(path: &Path) -> Result<u64, Error> {
+-    let meta = std::fs::symlink_metadata(path)?;
+-    if meta.is_file() {
+-        return Ok(meta.len());
++    Ok(background::view::slot_bytes(path)?)
++}
++
++// The stable lock also keeps the starts of the last N builds. A Cargo cache
++// hit does not update artifact mtimes; retaining several starts keeps recent
++// build variants warm while older artifacts can be rebuilt on demand.
++fn history(lock: &mut File) -> Result<Vec<u64>, Error> {
++    lock.rewind()?;
++    let mut text = String::new();
++    lock.take(16 * 1024).read_to_string(&mut text)?;
++    Ok(serde_json::from_str(&text).unwrap_or_default())
++}
++
++fn remember_build(lock: &mut File, keep: usize) -> Result<SystemTime, Error> {
++    let mut builds = history(lock)?;
++    builds.push(background::paths::now());
++    let skip = builds.len().saturating_sub(keep);
++    builds.drain(..skip);
++    lock.rewind()?;
++    lock.set_len(0)?;
++    lock.write_all(&serde_json::to_vec(&builds).unwrap())?;
++    Ok(std::time::UNIX_EPOCH + std::time::Duration::from_secs(builds[0]))
++}
++
++fn maintain(root: &Path, policy: Policy, volumes: &dyn Volumes) -> Result<(), Error> {
++    for slot in background::view::slots(root, false) {
++        let Some(mut held) = lock(&slot.path)? else {
++            continue;
++        };
++        let builds = history(&mut held)?;
++        let cutoff = std::time::UNIX_EPOCH
++            + std::time::Duration::from_secs(
++                builds
++                    .first()
++                    .copied()
++                    .unwrap_or_else(background::paths::now),
++            );
++        prune(&slot.path, policy, cutoff, volumes)?;
+     }
+-    if !meta.is_dir() {
+-        return Ok(0);
++    Ok(())
++}
++
++fn prune(
++    path: &Path,
++    policy: Policy,
++    cutoff: SystemTime,
++    volumes: &dyn Volumes,
++) -> Result<(), Error> {
++    if !real_dir(path) {
++        return Ok(());
++    }
++    if size(path)? <= policy.cap && volumes.space(path)?.free >= policy.floor {
++        return Ok(());
++    }
++    // Cargo supports custom profiles and cross-compilation target subfolders.
++    // Walk only real directories and never follow links into another tree.
++    let mut stack = vec![path.to_owned()];
++    while let Some(dir) = stack.pop() {
++        let cargo_lock = dir.join(".cargo-lock");
++        let _cargo = if cargo_lock.exists() {
++            let file = OpenOptions::new()
++                .read(true)
++                .write(true)
++                .custom_flags(libc::O_NOFOLLOW)
++                .open(&cargo_lock)?;
++            if file.try_lock().is_err() {
++                continue;
++            }
++            Some(file)
++        } else {
++            None
++        };
++        for entry in std::fs::read_dir(&dir)? {
++            let entry = entry?;
++            if !entry.file_type()?.is_dir() {
++                continue;
++            }
++            let child = entry.path();
++            if entry.file_name() == "incremental" {
++                std::fs::remove_dir_all(child)?;
++            } else if entry.file_name() == "deps" {
++                for artifact in std::fs::read_dir(child)? {
++                    let artifact = artifact?;
++                    let meta = std::fs::symlink_metadata(artifact.path())?;
++                    if meta.is_file() && meta.modified()? < cutoff {
++                        std::fs::remove_file(artifact.path())?;
++                    }
++                }
++            } else if !matches!(entry.file_name().to_str(), Some("build" | ".fingerprint")) {
++                stack.push(child);
++            }
++        }
+     }
+-    let mut bytes: u64 = 0;
+-    for entry in std::fs::read_dir(path)? {
+-        bytes = bytes.saturating_add(size(&entry?.path())?);
++    Ok(())
++}
++
++// Budget eviction removes the whole slot, so hold all profile locks, not
++// just the slot lease. A manually launched Cargo build may hold only its
++// profile lock.
++fn cargo_locks(path: &Path) -> Result<Vec<PathBuf>, Error> {
++    let mut paths = Vec::new();
++    let mut stack = vec![path.to_owned()];
++    while let Some(dir) = stack.pop() {
++        for entry in std::fs::read_dir(dir)? {
++            let entry = entry?;
++            if entry.file_name() == ".cargo-lock" {
++                paths.push(entry.path());
++            } else if entry.file_type()?.is_dir()
++                && !matches!(
++                    entry.file_name().to_str(),
++                    Some("deps" | "build" | "incremental" | ".fingerprint")
++                )
++            {
++                stack.push(entry.path());
++            }
++        }
+     }
+-    Ok(bytes)
++    Ok(paths)
+ }
+ 
+ fn trim(root: &Path, budget: u64) -> Result<(), Error> {
+@@ -207,6 +405,10 @@ fn trim(root: &Path, budget: u64) -> Result<(), Error> {
+         if !real_dir(&path) {
+             continue;
+         }
++        let locks = cargo_locks(&path)?;
++        let Ok(_cargo) = background::inuse::Held::take(&locks) else {
++            continue;
++        };
+         // Preserve compiled dependencies first; if that is insufficient, evict
+         // the idle slot. Live builds may temporarily exceed the budget.
+         let before = size(&path)?;
+diff --git a/crates/openagents-cli/src/screen.rs b/crates/openagents-cli/src/screen.rs
+index ae78b4b754e958b96710a8c0fdfb02e005f8bb87..f4307fd26dfafdc9553c7576cf71d38d4cab5725 100644
+--- a/crates/openagents-cli/src/screen.rs
++++ b/crates/openagents-cli/src/screen.rs
+@@ -654,7 +654,12 @@ impl Extras for ProgramExtras {
+ 
+     fn worktrees(&self) -> Result<Vec<openagents_terminal::WorktreeRow>, String> {
+         let store = coder::task::local::default_store();
+-        coder::task::worktrees::list(&store).map(|projects| worktree_rows(&projects))
++        let slots = background::view::slots(&background::task_targets(&store), true);
++        coder::task::worktrees::list(&store).map(|projects| {
++            let mut rows = worktree_rows(&projects);
++            rows.extend(slot_rows(&slots));
++            rows
++        })
+     }
+ 
+     fn archive_worktree(&self, task: &str) -> Result<String, String> {
+@@ -701,6 +706,22 @@ fn worktree_rows(
+     rows
+ }
+ 
++/// `/worktrees`: Coder's build slots after the projects, with their sizes
++/// (#10384). They are shared by every task, so `a` never archives one.
++fn slot_rows(slots: &[background::view::Slot]) -> Vec<openagents_terminal::WorktreeRow> {
++    slots
++        .iter()
++        .map(|slot| openagents_terminal::WorktreeRow {
++            task: None,
++            label: format!("Build slot {}", slot.name),
++            detail: slot
++                .bytes
++                .map_or_else(|| "size not read".to_owned(), coder::task::worktrees::human),
++            ended: false,
++        })
++        .collect()
++}
++
+ /// What an import did, in words.
+ fn imported_words(imported: u32, present: u32, skipped: u32) -> String {
+     let sessions = |count: u32| format!("{count} session{}", if count == 1 { "" } else { "s" });
+diff --git a/crates/openagents-cli/src/worktree.rs b/crates/openagents-cli/src/worktree.rs
+index 36316b427e28b5280a9d3dd83f0165faf0cdefe8..7f6e9273f9989fd34919b65b35d9039e462e5d22 100644
+--- a/crates/openagents-cli/src/worktree.rs
++++ b/crates/openagents-cli/src/worktree.rs
+@@ -23,7 +23,7 @@ pub(crate) const USAGE: &str = "usage: openagents worktree COMMAND [OPTIONS]
+                   state, size, whether removing it would lose anything
+                   (uncommitted, unpushed, or ignored files), and age; then
+                   the archived ones. Sizing walks every file; --no-size
+-                  skips it.
++                  skips it. Build slot sizes follow the archived ones.
+   archive NAME    Remove an ended task's worktree and keep what restores it.
+                   Refused when it holds anything not saved elsewhere.
+   archive NAME --force [--confirm NAME]
+@@ -204,8 +204,10 @@ fn ls(output: &Output, store: &Path, worktrees: &Path, sizes: bool) {
+             })
+         })
+         .collect();
+-    let value = json!({ "worktrees": rows, "archived": archived, "dir": worktrees });
+-    output.emit(&value, |_| render(worktrees, &rows, &archived));
++    let slots = background::view::slots(&background::task_targets(store), sizes);
++    let value =
++        json!({ "worktrees": rows, "archived": archived, "dir": worktrees, "slots": slots });
++    output.emit(&value, |_| render(worktrees, &rows, &archived, &slots));
+ }
+ 
+ /// "1 worktree", "2 worktrees".
+@@ -217,7 +219,12 @@ fn count(n: usize) -> String {
+     }
+ }
+ 
+-fn render(worktrees: &Path, rows: &[Value], archived: &[Value]) -> String {
++fn render(
++    worktrees: &Path,
++    rows: &[Value],
++    archived: &[Value],
++    slots: &[background::view::Slot],
++) -> String {
+     let text = |value: &Value, key: &str| value[key].as_str().unwrap_or("-").to_owned();
+     let mut out = Vec::new();
+     if rows.is_empty() {
+@@ -269,6 +276,7 @@ fn render(worktrees: &Path, rows: &[Value], archived: &[Value]) -> String {
+         }
+         out.push(crate::out::table(&table));
+     }
++    out.extend(background::view::slot_lines(slots));
+     out.join("\n")
+ }
+ 
+diff --git a/crates/openagents-terminal/src/app.rs b/crates/openagents-terminal/src/app.rs
+index 655fa2b772cb3732b917743eeecc08ae1aa610f8..e9af56ae069b0aa1a9f0154f26f1318652612eb3 100644
+--- a/crates/openagents-terminal/src/app.rs
++++ b/crates/openagents-terminal/src/app.rs
+@@ -854,7 +854,7 @@ impl App {
+                             }
+                             Some(crate::WorktreeRow { task: None, .. }) => {
+                                 self.note(
+-                                    "That row is a project. Move down to one of its ended tasks to archive that task's worktree.",
++                                    "That row isn't a task's worktree. Move to one of the ended tasks to archive its worktree.",
+                                 );
+                             }
+                             None => {}
+diff --git a/docs/cli/settings.md b/docs/cli/settings.md
+index dbd4e6a2d0272d661606df8e1e54fc2d6889ca32..3de1f7cf07c9578105e4f8258eefb2efc4f87248 100644
+--- a/docs/cli/settings.md
++++ b/docs/cli/settings.md
+@@ -45,6 +45,8 @@ this file to use an agent they have signed in to.
+ | `coder.shadow_budget_usd` | dollars (`5`, `2.50`), or `null` (`off`) | off (no cap) | The most the shadow baselines may cost in all, as the person sets it: once the recorded baselines reach it, no new one starts. |
+ | `coder.claude` | `session` or `loop` | `session` | How Claude Code takes a turn ([#10246](https://github.com/OpenAgentsInc/openagents/issues/10246)). `session`: one Claude Code session, briefed by Jev (probes, survey, knowledge, frozen checks), with the cost audit's lean settings: six tools (`Bash, Read, Edit, Write, Glob, Grep`), the trimmed system prompt, the five-minute prompt cache, and medium effort (low for a question). `loop`: Microcoder's step loop, one `claude -p` call per step. `session` is the default because it measured 0.61× raw Claude Code's cost (95% CI 0.57–0.65) at 21 of 21 passes, where the loop cost 1.68× ([measurement](../cost/2026-10-02-shadow-baseline-measurement.md#the-lean-session-arm-10246)). `session` applies under `coder.access` `full`; under `toolchains` or `boundary` Claude Code runs the loop, whose commands the host bounds. [`microcoder::repository::claude_session`](../../crates/microcoder/src/repository/claude_session.rs). |
+ | `coder.codex` | `session` or `loop` | `loop` | How Codex takes a turn ([#10250](https://github.com/OpenAgentsInc/openagents/issues/10250)). `session`: one `codex exec` session, briefed by Jev (probes, survey, knowledge, frozen checks), on the headless core system prompt (`model_instructions_file`) at the route's model and medium reasoning effort (low for a question), with Codex's own tools and per-session prompt cache. `loop`: Microcoder's step loop, one Codex request per step. `loop` stays the default because it measured 0.79× raw Codex's cost (95% CI 0.72–0.86) where the session measured 0.94× (0.88–1.00), at 21 of 21 passes each ([measurement](../cost/2026-10-02-shadow-baseline-measurement.md#the-codex-session-10250-built-measured-not-the-default)). `session` applies under `coder.access` `full`; under `toolchains` or `boundary` Codex runs the loop, whose commands the host bounds. [`microcoder::repository::codex_session`](../../crates/microcoder/src/repository/codex_session.rs). |
++| `coder.slot_cap_gb` | whole GB, or `default` | 25 | The size above which a released Coder build slot is pruned ([#10384](https://github.com/OpenAgentsInc/openagents/issues/10384)): its incremental caches and older artifacts go, the newest builds stay warm. `OPENAGENTS_SLOT_CAP_GB` overrides it for one process. |
++| `coder.slot_free_gb` | whole GB, or `default` | 10 | The free disk below which released slots are pruned and no new slot starts; a run waits for room, then builds in its own worktree ([#10384](https://github.com/OpenAgentsInc/openagents/issues/10384)). `OPENAGENTS_SLOT_FREE_GB` overrides it for one process. |
+ 
+ Migration: a file written before #10184 whose `coder.providers` left an agent
+ out (the old default was `codex,claude,grok`) reads as that order, and the
+diff --git a/docs/cli/worktree.md b/docs/cli/worktree.md
+index 2c932b80555285b86cfa4e9dc6ef7e42f5b4441d..0513c4fed150daa1d326bb8daabce1cf511d15fd 100644
+--- a/docs/cli/worktree.md
++++ b/docs/cli/worktree.md
+@@ -10,7 +10,7 @@ the [Paseo worktree gap analysis](../worktrees/2026-10-03-paseo-worktree-gap-ana
+ (#10296).
+ 
+ ```sh
+-openagents worktree ls                 # every task worktree, then the archived ones
++openagents worktree ls                 # task worktrees, archived ones, then build slot sizes
+ openagents worktree ls --no-size       # skip sizing (it walks every file)
+ openagents worktree archive NAME       # remove an ended task's worktree, keep what restores it
+ openagents worktree archive NAME --force --confirm NAME
+@@ -35,7 +35,11 @@ removing it would lose:
+ 
+ These are the same checks the background cleanup uses before it removes a
+ worktree (`background::git::removable`). Archived worktrees follow, with
+-their commit and when they went.
++their commit and when they went. Build slots follow, with one size per slot;
++JSON includes a `slots` array with `name`, `path`, and `bytes`. `--no-size`
++skips both worktree and slot sizing (`bytes` is `null`). The background
++watchers view shows the same slot sizes. For pruning limits and environment
++overrides, see [build slots](../coder/guides/tasks.md).
+ 
+ ## `archive`
+ 
+diff --git a/docs/coder/guides/tasks.md b/docs/coder/guides/tasks.md
+index 7f041961be99d8bd9cfd2016fd1f62815fd4a85a..7f1f53fc655a8f73526a584f36864da13813bce9 100644
+--- a/docs/coder/guides/tasks.md
++++ b/docs/coder/guides/tasks.md
+@@ -34,13 +34,38 @@ The [submit fixture](../fixtures/tasks/submit.json) names a synthetic
+ The [cancel fixture](../fixtures/tasks/cancel.json) targets revision `1`, the
+ revision of a newly queued task. Cancellation advances it to revision `2`.
+ 
+-Full-access repository runs lease one of four Cargo build slots per project
+-under `~/.openagents/targets/`, outside the worktree. Sequential tasks reuse
+-cached builds; simultaneous runs use separate locked slots. On host startup
+-and when a run releases its slot, Coder removes known ended tasks' legacy
+-build directories and trims idle slots to a total 64 GiB budget, removing
+-incremental caches first. Locked slots and unknown legacy directories remain;
+-live builds can temporarily exceed the budget.
++Full-access and toolchain repository runs lease one of four Cargo build slots
++per project under `~/.openagents/targets/`, outside the worktree. Issue-flow
++checks use the same slot pool. Sequential tasks reuse cached builds;
++simultaneous runs use separate locked slots. On host startup and when a run
++releases its slot, Coder removes known ended tasks' legacy build directories.
++
++On release, a slot over **25 GB**, or on a disk with less than **10 GB free**,
++loses its incremental caches and dependency artifacts older than the start
++of its last three leased builds. Debug, release, custom profiles, and
++cross-compilation directories are covered. Recent dependencies remain;
++without pressure, the entire cache stays warm. Slot and Cargo locks prevent
++pruning active builds, and pruning never follows symbolic links. The existing
++64 GiB total pool budget still evicts the oldest idle slots if partial pruning
++is insufficient. Live builds can temporarily exceed these limits.
++
++Set these environment variables on the host before starting Coder:
++
++- `OPENAGENTS_SLOT_CAP_GB`: per-slot pruning threshold, default `25`.
++- `OPENAGENTS_SLOT_FREE_GB`: minimum free disk space, default `10`.
++- `OPENAGENTS_SLOT_KEEP_BUILDS`: number of build starts retained, default `3`
++  (between `1` and `100`).
++
++Sizes use decimal GB. Build admission first tries to prune idle slots when
++free space is below the floor. Repository runs and issue-flow checks then
++wait up to ten minutes, retrying every two seconds. If space stays low, they
++report `build_disk_low` instead of building outside the slots. The floor is
++an admission check, not a reservation for a running build.
++
++`openagents worktree ls`, `openagents background list`, and the terminal's
++`/background` show each slot's size, including slots without a retained task.
++`worktree ls --no-size` skips slot sizing too. See
++[the worktree command](../../cli/worktree.md).
+ 
+ Without `--store`, the inbox uses `~/.openagents/tasks`. All successful
+ commands print JSON to standard output. Store and command refusals print

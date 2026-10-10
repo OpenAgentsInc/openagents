@@ -1,0 +1,44 @@
+{
+  "test_targets": [
+    "--lib",
+    "--test",
+    "control",
+    "--test",
+    "support",
+    "--lib"
+  ],
+  "issue": 10037,
+  "title": "Move threads kept without a host into the host when one appears",
+  "body": "Part of #10003.\n\nThreads made by `openagents chat` without a host live in `~/.openagents/chat/threads/`, with their own device key. When the desktop app or a host later runs on the same computer, those threads should join the host's store, so the desktop (and, via the phone-read issue, the phone) shows them.\n\nMigrate once, idempotently, keeping thread IDs, turns, times, router metadata and Coder links. Re-encrypt under the host's store. Leave a marker so the in-process store isn't read again. Never lose a thread if migration fails halfway.\n\n**Acceptance:** threads created without a host appear in `openagents chat threads` via the host, and in the desktop list, after the host starts. Migration twice is a no-op.\n",
+  "fix": "e40fde4028cdbd0a9c7a5dc04604a65bfa9a9de5",
+  "parent": "a934905d9c801ef3ee79ebda426566fefb27b136",
+  "package": "coder-host",
+  "source_files": [
+    "INVARIANTS.md",
+    "crates/coder-host/src/cli.rs",
+    "crates/coder-host/src/config.rs",
+    "crates/coder-host/src/control/mod.rs",
+    "crates/coder-host/src/serve/mod.rs",
+    "crates/openagents-chat/src/basic_chats.rs",
+    "crates/openagents-chat/src/lib.rs",
+    "crates/openagents-cli/src/chat.rs",
+    "crates/openagents-connect/src/control.rs",
+    "docs/cli/chat.md"
+  ],
+  "test_files": [
+    "crates/coder-host/src/serve/mod.rs",
+    "crates/coder-host/tests/control.rs",
+    "crates/coder-host/tests/support/connect.rs",
+    "crates/openagents-chat/src/migrate.rs",
+    "crates/openagents-connect/tests/control.rs"
+  ],
+  "test_names": [
+    "a_move_stopped_halfway_resumes_and_loses_nothing",
+    "a_second_move_is_a_no_op",
+    "a_thread_the_host_already_changed_is_left_as_it_is",
+    "scratch_stores_and_unreadable_records_are_never_moved",
+    "threads_kept_without_a_host_join_it_at_start_and_when_the_command_asks",
+    "threads_move_whole_and_their_export_is_unchanged"
+  ],
+  "fix_lines": 966
+}

@@ -1,0 +1,880 @@
+diff --git a/crates/coder/src/generate.rs b/crates/coder/src/generate.rs
+index 8dcee54b1ecd92b9f5fc82ef11cfa7e3ba7d1e69..c09a505ec14fb1c6c7b03e0fcbaa5268b80967c0 100644
+--- a/crates/coder/src/generate.rs
++++ b/crates/coder/src/generate.rs
+@@ -1164,6 +1164,8 @@ impl ResponsesDoor {
+             .http
+             .post(format!("{}/v1/responses", self.url))
+             .bearer_auth(&self.key)
++            // The inference gateway sends `openagents:route` only on request.
++            .header("x-openagents-events", "route,cost")
+             .json(&self.body(instructions, input))
+             .send();
+         let response = match tokio::time::timeout(self.patience.first_word, sent).await {
+diff --git a/crates/gateway/src/inference_routes.rs b/crates/gateway/src/inference_routes.rs
+index cb4cd22815b2986a667a17d17899648cd234c2f3..a20b03ff2a98928c7e3e6daeb955991e99979d24 100644
+--- a/crates/gateway/src/inference_routes.rs
++++ b/crates/gateway/src/inference_routes.rs
+@@ -204,6 +204,47 @@ pub(crate) fn request_id() -> String {
+     )
+ }
+ 
++/// The request header that asks for our stream events.
++pub const EVENTS_HEADER: &str = "x-openagents-events";
++
++/// Whether the caller asked for `openagents:route` and `openagents:cost`
++/// in the stream (`x-openagents-events: route,cost`, or any value but
++/// empty, `0`, or `false`).
++pub(crate) fn wants_events(headers: &HeaderMap) -> bool {
++    headers
++        .get(EVENTS_HEADER)
++        .and_then(|value| value.to_str().ok())
++        .map(str::trim)
++        .is_some_and(|value| {
++            !value.is_empty() && value != "0" && !value.eq_ignore_ascii_case("false")
++        })
++}
++
++/// A stream as a caller receives it. Our `openagents:` events are sent
++/// only to a caller that asked for them: the spec lets clients ignore
++/// prefixed events, but the Open Responses acceptance suite (and strict
++/// clients built like it) refuse any event type they don't know. The
++/// same facts ride in every answer's `openagents` object and headers.
++/// Sequence numbers stay consecutive.
++pub(crate) fn outgoing(events: inference::run::Events, ours: bool) -> inference::run::Events {
++    if ours {
++        return events;
++    }
++    let mut next = 0_u64;
++    Box::pin(events.filter_map(move |mut event| {
++        let kept = !matches!(
++            event.body,
++            inference::event::EventBody::Route(_) | inference::event::EventBody::Cost(_)
++        );
++        let out = kept.then(|| {
++            event.sequence_number = next;
++            next += 1;
++            event
++        });
++        async move { out }
++    }))
++}
++
+ pub(crate) fn error(error: &ApiError, request_id: &str) -> Response {
+     let status = StatusCode::from_u16(error.kind.status()).unwrap_or(StatusCode::BAD_GATEWAY);
+     let mut response = (status, axum::Json(json!({"error": error}))).into_response();
+@@ -374,8 +415,7 @@ async fn responses(
+         Err(refusal) => return error(&refusal, &id),
+     };
+     if stream {
+-        let frames = turn
+-            .events
++        let frames = outgoing(turn.events, wants_events(&headers_in))
+             .map(|event| encode_event(&event))
+             .chain(futures_util::stream::once(async { DONE_FRAME.to_owned() }));
+         let mut response = sse(frames);
+diff --git a/crates/gateway/src/inference_state.rs b/crates/gateway/src/inference_state.rs
+index 79feaccb6e5f7c9e7ed0ae8096f5ed5977855bd7..d9cc7a7b5c6500a04b4d960cff2037bbc6280211 100644
+--- a/crates/gateway/src/inference_state.rs
++++ b/crates/gateway/src/inference_state.rs
+@@ -238,7 +238,8 @@ pub(crate) async fn socket(
+         Err(refusal) => return error(&refusal, &caller.request_id),
+     };
+     let owner = owner(&state, &caller);
+-    upgrade.on_upgrade(move |socket| converse(socket, sessions, caller, owner))
++    let ours = crate::inference_routes::wants_events(&headers);
++    upgrade.on_upgrade(move |socket| converse(socket, sessions, caller, owner, ours))
+ }
+ 
+ async fn send_error(socket: &mut WebSocket, refusal: &ApiError) -> bool {
+@@ -249,7 +250,13 @@ async fn send_error(socket: &mut WebSocket, refusal: &ApiError) -> bool {
+ }
+ 
+ /// One connection: `response.create` messages in, one at a time.
+-async fn converse(mut socket: WebSocket, sessions: Arc<Sessions>, caller: Caller, owner: Owner) {
++async fn converse(
++    mut socket: WebSocket,
++    sessions: Arc<Sessions>,
++    caller: Caller,
++    owner: Owner,
++    ours: bool,
++) {
+     use futures_util::StreamExt;
+     let local = Local::new();
+     let opened = Instant::now();
+@@ -292,7 +299,7 @@ async fn converse(mut socket: WebSocket, sessions: Arc<Sessions>, caller: Caller
+             .await
+         {
+             Ok(turn) => {
+-                let mut events = turn.events;
++                let mut events = crate::inference_routes::outgoing(turn.events, ours);
+                 while let Some(event) = events.next().await {
+                     let Ok(text) = serde_json::to_string(&event) else {
+                         continue;
+diff --git a/crates/inference/src/response.rs b/crates/inference/src/response.rs
+index 46a9392d38592d8b1d16d7300251c29270330dc5..6f332fe481522bee24a9cd81216545403b1f6a5e 100644
+--- a/crates/inference/src/response.rs
++++ b/crates/inference/src/response.rs
+@@ -162,7 +162,7 @@ pub struct Response {
+     pub output: Vec<Item>,
+     #[serde(default)]
+     pub error: Option<ResponseError>,
+-    #[serde(default)]
++    #[serde(default, serialize_with = "tools_out")]
+     pub tools: Vec<Tool>,
+     #[serde(default)]
+     pub tool_choice: ToolChoice,
+diff --git a/crates/inference/src/run.rs b/crates/inference/src/run.rs
+index 304fd5994d9530de5a9a4bfa373c16d6d1285476..77e0397bd2dc6b7a106881546d2a2e19b05020a3 100644
+--- a/crates/inference/src/run.rs
++++ b/crates/inference/src/run.rs
+@@ -479,7 +479,13 @@ impl Gateway {
+                         upstream: candidate.upstream.clone(),
+                         class,
+                         attempts: tried,
+-                        events: committed(open.held, open.rest, info, row),
++                        events: committed(
++                            open.held,
++                            open.rest,
++                            info,
++                            row,
++                            request.reasoning.clone(),
++                        ),
+                     });
+                 }
+                 Err(failure) => {
+@@ -703,6 +709,7 @@ fn committed(
+     rest: EventStream,
+     info: ResponseInfo,
+     row: Option<meter::RateRow>,
++    reasoning: Option<crate::request::ReasoningConfig>,
+ ) -> Events {
+     let mut pending: VecDeque<EventBody> = VecDeque::new();
+     let mut routed = false;
+@@ -732,6 +739,7 @@ fn committed(
+         sequencer: Sequencer::new(),
+         info,
+         row,
++        reasoning,
+         last,
+         done: false,
+     };
+@@ -749,6 +757,10 @@ struct Pump {
+     sequencer: Sequencer,
+     info: ResponseInfo,
+     row: Option<meter::RateRow>,
++    /// The reasoning settings the caller sent. Every response we send
++    /// carries these, not the upstream's own words for them (Vercel's GLM
++    /// lane answers `effort: "max"`, which the spec does not name).
++    reasoning: Option<crate::request::ReasoningConfig>,
+     last: Option<Response>,
+     done: bool,
+ }
+@@ -829,7 +841,10 @@ impl Pump {
+ 
+     async fn next(&mut self) -> Option<Event> {
+         loop {
+-            if let Some(body) = self.pending.pop_front() {
++            if let Some(mut body) = self.pending.pop_front() {
++                if let Some(response) = lifecycle_response(&mut body) {
++                    response.reasoning.clone_from(&self.reasoning);
++                }
+                 return Some(self.sequencer.stamp(body));
+             }
+             if self.done {
+diff --git a/docs/inference/2026-10-09-acceptance-run.md b/docs/inference/2026-10-09-acceptance-run.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..0282b242a1effe667aece37fa1aaa2575a574e90
+--- /dev/null
++++ b/docs/inference/2026-10-09-acceptance-run.md
+@@ -0,0 +1,103 @@
++# Open Responses acceptance and OpenAI SDK runs (2026-10-09, #11068)
++
++Against a local gateway (`scripts/dev/inference-local.sh --gateway-only`,
++port 8795) built from `main` plus the fixes below, with a service key.
++Upstream keys came from `~/work/.secrets`; this run had OpenRouter and the
++Vercel AI Gateway configured (no Vertex, Z.ai, or Pro door keys), and the
++router sent every attempt through OpenRouter. The whole run cost about
++$0.02 of OpenRouter credit. Nothing here touched staging or production.
++
++## How to run it again
++
++```sh
++scripts/dev/inference-local.sh --gateway-only          # or a staging URL
++OPENAGENTS_API_KEY=oak_... scripts/dev/openresponses-acceptance.sh \
++    http://127.0.0.1:8790/v1 google/gemini-3.8-flash [--json out.json]
++OPENAGENTS_API_KEY=oak_... scripts/dev/openai-sdk-conformance.py \
++    --base-url http://127.0.0.1:8790/v1 --model google/gemini-3.8-flash
++# JavaScript: see the header of scripts/dev/openai-sdk-conformance.mjs
++```
++
++The acceptance suite is the upstream runner (`bin/compliance-test.ts` in
++[openresponses/openresponses](https://github.com/openresponses/openresponses),
++Apache-2.0), cloned at commit `1e33c10fb3c1` (2026-10-08) and run with bun.
++It is driven as an external runner; nothing of it is vendored.
++
++## Open Responses acceptance suite: 17 of 17
++
++| Test | `google/gemini-3.8-flash` | `zai/glm-5.3-flash` |
++| --- | --- | --- |
++| Basic Text Response | pass | pass |
++| Assistant Message Phase | pass | pass |
++| Response Output Phase Schema | pass | pass |
++| Streaming Response | pass | pass |
++| System Prompt | pass | pass |
++| Tool Calling | pass | pass |
++| Image Input | pass | `503 no_route` (GLM takes no images: correct) |
++| Multi-turn Conversation | pass | pass |
++| Compaction Endpoint | pass | pass |
++| Compaction Missing Required Model | pass | pass |
++| WebSocket Response | pass | pass |
++| WebSocket Sequential Responses | pass | pass |
++| WebSocket Continuation | pass | pass |
++| WebSocket Store False Reconnect Recovery | pass | pass |
++| WebSocket Missing Previous Response | pass | pass |
++| WebSocket Failed Continuation Evicts Cache | pass | pass |
++| WebSocket Compact New Chain | pass | pass |
++
++The first run failed 9 of 17 on Gemini. Fixes, all in this change:
++
++- **Our stream events.** `openagents:route` and `openagents:cost` failed
++  the suite's event validation on every streaming and WebSocket test. The
++  spec allows prefixed events and says clients must ignore ones they don't
++  know, but the suite (and strict clients built like it) refuse unknown
++  event types. They are now sent only when the caller asks
++  (`x-openagents-events: route,cost`), with sequence numbers kept
++  consecutive; the same facts ride in every answer's `openagents` object
++  and headers. The chat worker asks for them.
++- **Function tools in the response.** `ResponseResource.tools[]` requires
++  `description`, `parameters`, and `strict` (nullable). A response now
++  fills missing ones with `null`; the request still goes upstream as the
++  caller wrote it.
++- **Reasoning settings in the response.** The Vercel GLM lane answers
++  `reasoning.effort: "max"`, which the spec does not name. Every response
++  we send now carries the caller's own `reasoning` settings.
++
++## OpenAI SDK runs
++
++Python, `openai` 2.44.0, `scripts/dev/openai-sdk-conformance.py`, model
++`google/gemini-3.8-flash`: 15 of 15, one call per row of section 3's Chat
++Completions table.
++
++| Row | Result |
++| --- | --- |
++| `system` message, `user` text, `temperature`, `top_p`, `seed`, `user`, `max_tokens`, `usage`, `finish_reason: stop` | pass |
++| `developer` message, `max_completion_tokens`, `stop` | pass |
++| `stream` with `stream_options.include_usage` (deltas, finish, usage chunk) | pass |
++| `tools`, `tool_choice: required`, `parallel_tool_calls`, `finish_reason: tool_calls` | pass |
++| Named `tool_choice`, streamed tool call deltas | pass |
++| `assistant` `tool_calls` and `tool` messages in history | pass |
++| Multi-turn assistant history | pass |
++| `response_format: json_object` | pass |
++| `response_format: json_schema` (strict) | pass |
++| `user` `image_url` part | pass |
++| `reasoning_effort` | pass |
++| `max_tokens` reached: `finish_reason: length` | pass |
++| `n > 1` is `400` | pass |
++| Unknown model is `404 model_not_found` | pass |
++| `client.models.list()` | pass |
++
++JavaScript, `openai` 7.31.0, `scripts/dev/openai-sdk-conformance.mjs`:
++7 of 7 (`chat.completions.create` plain, streamed with usage, streamed tool
++calls; `responses.create` plain, streamed, function tool; `models.list`).
++
++Found on the way: Gemini 3.8 Flash through the router refuses
++`reasoning_effort: "none"` with a `400` (it can't turn thinking off), which
++reaches the caller as `400 invalid_request`; without a reasoning setting,
++a 16-token answer can be spent entirely on thinking and come back empty
++with `finish_reason: length`.
++
++Still to do: run both against staging before release and against
++production once deployed (the issue's standing requirement), and with a
++public key through `https://openagents.com/api/v1` once the website
++passes `/api/v1` to the gateway there.
+diff --git a/docs/inference/README.md b/docs/inference/README.md
+index bb69c3308c7b9808e976697f83d791a2ea97cd63..5da9ee0a00c4b6773496645747d01e573f27032e 100644
+--- a/docs/inference/README.md
++++ b/docs/inference/README.md
+@@ -6,6 +6,7 @@ for our apps and for outside developers.
+ | Document | What it covers |
+ | --- | --- |
+ | [The inference gateway (spec, 2026-10-09)](gateway.md) | Every place we call a model today; the Open Responses API we serve and the Chat Completions backup; upstream accounts and adapters (Vertex and the Google credit, Z.ai GLM-5.3 Flash, the Pro door, OpenRouter, Vercel, direct, BYOK, Pylon); credit-aware routing; measurement; keys and billing on the existing gateway; the public rate card; privacy; a feature comparison with OpenRouter; the public docs outline and Decisions guide; where the code goes; rollout; owner steps and open decisions. |
++| [Acceptance and SDK runs (2026-10-09)](2026-10-09-acceptance-run.md) | The Open Responses acceptance suite (17 of 17) and the OpenAI Python and JavaScript SDK runs against a local gateway, the fixes they needed, and how to run them again. |
+ 
+ Related: the [Pro inference door](../gateway/README.md), the
+ [decision gateway](../decision-models/service/gateway.md), the
+diff --git a/docs/inference/gateway.md b/docs/inference/gateway.md
+index 6fc5c205827dff480d152be885472e56679ade05..47eeb70f48c7792e2cd08ae92e90293e7ae3f79a 100644
+--- a/docs/inference/gateway.md
++++ b/docs/inference/gateway.md
+@@ -215,8 +215,8 @@ for any new item or event type.
+ | `openagents` response object | response body | `model` and `upstream` that answered, `attempts` (each upstream tried, outcome, milliseconds), `cost` (`upstream_usd`, `margin_usd`, `price_usd` as decimal dollar strings converted from the meter's integer micros, so no amount passes through a float; `price_sats` beside them). |
+ | `text.format` `json_object` | request body | Accepted on `/v1/responses` as an extension (the spec names `text` and `json_schema`), so a Chat Completions `response_format: json_object` keeps its meaning on both APIs. |
+ | `stop`, `seed`, `user` | request body | Carried as extension fields of the same names (they are not in Open Responses), so Chat Completions callers keep them; an upstream that does not support one ignores it. |
+-| `openagents:route` event | stream | Which model and upstream took the request, sent before the first output item. |
+-| `openagents:cost` event | stream | The cost object, sent before the terminal event. |
++| `openagents:route` event | stream | Which model and upstream took the request, sent before the first output item. Only when the request carries `x-openagents-events: route,cost`: the Open Responses acceptance suite refuses event types it does not know ([run](2026-10-09-acceptance-run.md)). |
++| `openagents:cost` event | stream | The cost object, sent before the terminal event. Only on request, as `openagents:route`. |
+ | Headers | every response | `x-request-id`, `x-openagents-model`, `x-openagents-upstream`, `x-openagents-cost-usd`. |
+ 
+ Model ids are `publisher/model` (`google/gemini-3.8-flash`,
+diff --git a/scripts/dev/openai-sdk-conformance.mjs b/scripts/dev/openai-sdk-conformance.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..34050e877fcc7842fac6d4a2edc4ff8083cc4c22
+--- /dev/null
++++ b/scripts/dev/openai-sdk-conformance.mjs
+@@ -0,0 +1,152 @@
++// The OpenAI JavaScript SDK against our Chat Completions and Responses
++// surfaces (#11068): plain, streamed, and tool calls, with only the base URL
++// and key changed. Needs the `openai` package where Node resolves it:
++//
++//   npm install --prefix /tmp/oa-sdk openai
++//   cp scripts/dev/openai-sdk-conformance.mjs /tmp/oa-sdk/
++//   OPENAGENTS_API_KEY=oak_... node /tmp/oa-sdk/openai-sdk-conformance.mjs \
++//       http://127.0.0.1:8790/v1 google/gemini-3.8-flash
++//
++// The key is read from the environment and never printed. Prints PASS or
++// FAIL per check; exits with the number of failures.
++import OpenAI from "openai";
++
++const [baseURL, model = "google/gemini-3.8-flash"] = process.argv.slice(2);
++if (!baseURL || !process.env.OPENAGENTS_API_KEY) {
++  console.error("usage: OPENAGENTS_API_KEY=... node openai-sdk-conformance.mjs BASE_URL [MODEL]");
++  process.exit(2);
++}
++const client = new OpenAI({ baseURL, apiKey: process.env.OPENAGENTS_API_KEY, maxRetries: 0 });
++const weather = {
++  type: "function",
++  function: {
++    name: "get_weather",
++    description: "The weather in a city.",
++    parameters: { type: "object", properties: { city: { type: "string" } }, required: ["city"] },
++  },
++};
++let failures = 0;
++async function check(name, fn) {
++  try {
++    const detail = await fn();
++    console.log(`PASS  ${name}  ${detail ?? ""}`);
++  } catch (error) {
++    failures += 1;
++    console.log(`FAIL  ${name}  ${error?.status ?? ""} ${error?.message ?? error}`);
++  }
++}
++const assert = (ok, what) => {
++  if (!ok) throw new Error(what);
++};
++
++await check("chat.completions.create", async () => {
++  const reply = await client.chat.completions.create({
++    model,
++    messages: [
++      { role: "system", content: "Answer with one word." },
++      { role: "user", content: "Say hello." },
++    ],
++    max_tokens: 200,
++  });
++  assert(reply.choices[0].message.content, "no content");
++  assert(reply.choices[0].finish_reason === "stop", reply.choices[0].finish_reason);
++  assert(reply.usage?.completion_tokens > 0, "no usage");
++  return JSON.stringify(reply.choices[0].message.content);
++});
++
++await check("chat.completions stream + include_usage", async () => {
++  const stream = await client.chat.completions.create({
++    model,
++    messages: [{ role: "user", content: "Count to three." }],
++    max_tokens: 200,
++    stream: true,
++    stream_options: { include_usage: true },
++  });
++  let text = "";
++  let finish = null;
++  let usage = null;
++  for await (const chunk of stream) {
++    if (chunk.choices[0]) {
++      text += chunk.choices[0].delta.content ?? "";
++      finish = chunk.choices[0].finish_reason ?? finish;
++    }
++    usage = chunk.usage ?? usage;
++  }
++  assert(text, "no text");
++  assert(finish === "stop", finish);
++  assert(usage?.completion_tokens > 0, "no usage chunk");
++  return JSON.stringify(text);
++});
++
++await check("chat.completions tools, streamed", async () => {
++  const stream = await client.chat.completions.create({
++    model,
++    messages: [{ role: "user", content: "Weather in Paris? Use the tool." }],
++    tools: [weather],
++    tool_choice: "required",
++    max_tokens: 300,
++    stream: true,
++  });
++  let name = "";
++  let args = "";
++  let finish = null;
++  for await (const chunk of stream) {
++    for (const call of chunk.choices[0]?.delta.tool_calls ?? []) {
++      name += call.function?.name ?? "";
++      args += call.function?.arguments ?? "";
++    }
++    finish = chunk.choices[0]?.finish_reason ?? finish;
++  }
++  assert(name === "get_weather", name);
++  JSON.parse(args);
++  assert(finish === "tool_calls", finish);
++  return `${name}(${args})`;
++});
++
++await check("responses.create", async () => {
++  const response = await client.responses.create({
++    model,
++    instructions: "Answer with one word.",
++    input: "Name a fruit.",
++    max_output_tokens: 200,
++  });
++  assert(response.status === "completed", response.status);
++  assert(response.output_text, "no output_text");
++  return JSON.stringify(response.output_text);
++});
++
++await check("responses.create stream", async () => {
++  const stream = await client.responses.create({ model, input: "Count to three.", stream: true });
++  let text = "";
++  let done = null;
++  for await (const event of stream) {
++    if (event.type === "response.output_text.delta") text += event.delta;
++    if (event.type === "response.completed") done = event.response.status;
++  }
++  assert(text, "no text");
++  assert(done === "completed", done);
++  return JSON.stringify(text);
++});
++
++await check("responses.create function tool", async () => {
++  const response = await client.responses.create({
++    model,
++    input: "Weather in Oslo? Use the tool.",
++    tools: [{ type: "function", ...weather.function }],
++    tool_choice: "required",
++  });
++  const call = response.output.find((item) => item.type === "function_call");
++  assert(call?.name === "get_weather", JSON.stringify(response.output));
++  JSON.parse(call.arguments);
++  return `${call.name}(${call.arguments})`;
++});
++
++await check("models.list", async () => {
++  const ids = [];
++  for await (const entry of client.models.list()) ids.push(entry.id);
++  assert(ids.includes(model), ids.join(","));
++  return `${ids.length} models`;
++});
++
++console.log(`\n${failures} failed (openai-node ${OpenAI.VERSION ?? ""})`);
++process.exit(failures);
+diff --git a/scripts/dev/openai-sdk-conformance.py b/scripts/dev/openai-sdk-conformance.py
+new file mode 100755
+index 0000000000000000000000000000000000000000..36ce4406341b6caa1013a4fe65e9a26ac6469417
+--- /dev/null
++++ b/scripts/dev/openai-sdk-conformance.py
+@@ -0,0 +1,360 @@
++#!/usr/bin/env python3
++"""The OpenAI Python SDK against our Chat Completions surface (#11068).
++
++One small request per row of docs/inference/gateway.md section 3's Chat
++Completions table, streaming and not, through the official `openai`
++package with only its base URL and key changed. Each check prints PASS or
++FAIL with what it saw; the exit code is the number of failures.
++
++    OPENAGENTS_API_KEY=oak_... scripts/dev/openai-sdk-conformance.py \\
++        --base-url http://127.0.0.1:8790/v1 --model google/gemini-3.8-flash
++
++The key is read from the environment and never printed. Requests are a few
++tokens each; the whole run is about fifteen calls.
++"""
++
++import argparse
++import base64
++import json
++import os
++import sys
++
++import openai
++
++# A 1x1 red PNG, so the image row costs almost nothing.
++PIXEL = base64.b64encode(
++    bytes.fromhex(
++        "89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de"
++        "0000000c4944415408d763f8cfc000000301010018dd8db00000000049454e44ae426082"
++    )
++).decode()
++
++WEATHER = {
++    "type": "function",
++    "function": {
++        "name": "get_weather",
++        "description": "The weather in a city.",
++        "parameters": {
++            "type": "object",
++            "properties": {"city": {"type": "string"}},
++            "required": ["city"],
++        },
++    },
++}
++
++
++class Run:
++    def __init__(self) -> None:
++        self.results: list[tuple[str, bool, str]] = []
++
++    def check(self, name: str, fn) -> None:
++        try:
++            detail = fn()
++            self.results.append((name, True, detail or ""))
++        except AssertionError as error:
++            self.results.append((name, False, f"assertion: {error}"))
++        except openai.APIStatusError as error:
++            self.results.append((name, False, f"HTTP {error.status_code}: {error.message}"))
++        except Exception as error:  # noqa: BLE001 - every failure is a row
++            self.results.append((name, False, f"{type(error).__name__}: {error}"))
++        ok, detail = self.results[-1][1], self.results[-1][2]
++        print(f"{'PASS' if ok else 'FAIL'}  {name}  {detail}", flush=True)
++
++
++def main() -> int:
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--base-url", required=True)
++    parser.add_argument("--model", default="google/gemini-3.8-flash")
++    parser.add_argument("--json", help="write the results here as JSON")
++    args = parser.parse_args()
++    key = os.environ.get("OPENAGENTS_API_KEY")
++    if not key:
++        print("Set OPENAGENTS_API_KEY.", file=sys.stderr)
++        return 2
++    client = openai.OpenAI(base_url=args.base_url, api_key=key, max_retries=0, timeout=90)
++    model = args.model
++    run = Run()
++
++    def text_reply():
++        reply = client.chat.completions.create(
++            model=model,
++            messages=[
++                {"role": "system", "content": "Answer with one word."},
++                {"role": "user", "content": "Say hello."},
++            ],
++            max_tokens=200,
++            temperature=0.2,
++            top_p=0.9,
++            seed=7,
++            user="conformance",
++        )
++        choice = reply.choices[0]
++        assert reply.object == "chat.completion", reply.object
++        assert choice.message.role == "assistant"
++        assert choice.message.content, "no content"
++        assert choice.finish_reason == "stop", choice.finish_reason
++        assert reply.usage and reply.usage.prompt_tokens > 0 and reply.usage.completion_tokens > 0
++        return f"{choice.message.content!r}, usage {reply.usage.prompt_tokens}/{reply.usage.completion_tokens}"
++
++    run.check("system + user text, temperature/top_p/seed/user, max_tokens, usage, finish stop", text_reply)
++
++    def developer_and_max_completion():
++        reply = client.chat.completions.create(
++            model=model,
++            messages=[
++                {"role": "developer", "content": "Reply in lowercase."},
++                {"role": "user", "content": "Name a color."},
++            ],
++            max_completion_tokens=200,
++            stop=["\n\n"],
++        )
++        assert reply.choices[0].message.content
++        return repr(reply.choices[0].message.content)
++
++    run.check("developer message, max_completion_tokens, stop", developer_and_max_completion)
++
++    def streamed():
++        stream = client.chat.completions.create(
++            model=model,
++            messages=[{"role": "user", "content": "Count to three."}],
++            max_tokens=200,
++            stream=True,
++            stream_options={"include_usage": True},
++        )
++        text, finish, usage, chunks = "", None, None, 0
++        for chunk in stream:
++            chunks += 1
++            assert chunk.object == "chat.completion.chunk", chunk.object
++            if chunk.choices:
++                delta = chunk.choices[0].delta
++                text += delta.content or ""
++                finish = chunk.choices[0].finish_reason or finish
++            if chunk.usage:
++                usage = chunk.usage
++        assert text, "no streamed text"
++        assert finish == "stop", finish
++        assert usage and usage.completion_tokens > 0, "no usage chunk"
++        return f"{chunks} chunks, {text!r}"
++
++    run.check("stream with include_usage: deltas, finish stop, usage chunk", streamed)
++
++    def tool_call():
++        reply = client.chat.completions.create(
++            model=model,
++            messages=[{"role": "user", "content": "What's the weather in Paris? Use the tool."}],
++            tools=[WEATHER],
++            tool_choice="required",
++            parallel_tool_calls=False,
++            max_tokens=300,
++        )
++        choice = reply.choices[0]
++        assert choice.finish_reason == "tool_calls", choice.finish_reason
++        call = choice.message.tool_calls[0]
++        assert call.type == "function" and call.function.name == "get_weather"
++        json.loads(call.function.arguments)
++        return f"{call.function.name}({call.function.arguments})"
++
++    run.check("tools + tool_choice required: tool_calls, finish tool_calls", tool_call)
++
++    def named_tool_streamed():
++        stream = client.chat.completions.create(
++            model=model,
++            messages=[{"role": "user", "content": "Weather in Oslo?"}],
++            tools=[WEATHER],
++            tool_choice={"type": "function", "function": {"name": "get_weather"}},
++            max_tokens=300,
++            stream=True,
++        )
++        name, arguments, finish = "", "", None
++        for chunk in stream:
++            if not chunk.choices:
++                continue
++            for call in chunk.choices[0].delta.tool_calls or []:
++                name += call.function.name or "" if call.function else ""
++                arguments += call.function.arguments or "" if call.function else ""
++            finish = chunk.choices[0].finish_reason or finish
++        assert name == "get_weather", name
++        json.loads(arguments)
++        assert finish == "tool_calls", finish
++        return f"{name}({arguments})"
++
++    run.check("named tool_choice, streamed tool call deltas", named_tool_streamed)
++
++    def tool_round_trip():
++        reply = client.chat.completions.create(
++            model=model,
++            messages=[
++                {"role": "user", "content": "What's the weather in Paris?"},
++                {
++                    "role": "assistant",
++                    "content": None,
++                    "tool_calls": [
++                        {
++                            "id": "call_1",
++                            "type": "function",
++                            "function": {"name": "get_weather", "arguments": '{"city":"Paris"}'},
++                        }
++                    ],
++                },
++                {"role": "tool", "tool_call_id": "call_1", "content": "Sunny, 21 C"},
++            ],
++            tools=[WEATHER],
++            max_tokens=200,
++        )
++        content = reply.choices[0].message.content or ""
++        assert "21" in content or "sunny" in content.lower(), content
++        return repr(content)
++
++    run.check("assistant tool_calls + tool message in history", tool_round_trip)
++
++    def multi_turn():
++        reply = client.chat.completions.create(
++            model=model,
++            messages=[
++                {"role": "user", "content": "My name is Ada."},
++                {"role": "assistant", "content": "Nice to meet you, Ada."},
++                {"role": "user", "content": "What is my name? One word."},
++            ],
++            max_tokens=200,
++        )
++        content = reply.choices[0].message.content or ""
++        assert "ada" in content.lower(), content
++        return repr(content)
++
++    run.check("multi-turn assistant history", multi_turn)
++
++    def json_object():
++        reply = client.chat.completions.create(
++            model=model,
++            messages=[{"role": "user", "content": "Return a JSON object with key a set to 1."}],
++            response_format={"type": "json_object"},
++            max_tokens=200,
++        )
++        value = json.loads(reply.choices[0].message.content)
++        assert isinstance(value, dict), value
++        return json.dumps(value)
++
++    run.check("response_format json_object", json_object)
++
++    def json_schema():
++        reply = client.chat.completions.create(
++            model=model,
++            messages=[{"role": "user", "content": "Pick a primary color."}],
++            response_format={
++                "type": "json_schema",
++                "json_schema": {
++                    "name": "color",
++                    "strict": True,
++                    "schema": {
++                        "type": "object",
++                        "properties": {"color": {"type": "string", "enum": ["red", "yellow", "blue"]}},
++                        "required": ["color"],
++                        "additionalProperties": False,
++                    },
++                },
++            },
++            max_tokens=200,
++        )
++        value = json.loads(reply.choices[0].message.content)
++        assert value.get("color") in ("red", "yellow", "blue"), value
++        return json.dumps(value)
++
++    run.check("response_format json_schema (strict)", json_schema)
++
++    def image():
++        reply = client.chat.completions.create(
++            model=model,
++            messages=[
++                {
++                    "role": "user",
++                    "content": [
++                        {"type": "text", "text": "What color is this one-pixel image? One word."},
++                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{PIXEL}"}},
++                    ],
++                }
++            ],
++            max_tokens=200,
++        )
++        content = reply.choices[0].message.content or ""
++        assert content, "no content"
++        return repr(content)
++
++    run.check("user image_url part", image)
++
++    def reasoning_effort():
++        reply = client.chat.completions.create(
++            model=model,
++            messages=[{"role": "user", "content": "What is 17 * 3? Number only."}],
++            reasoning_effort="low",
++            max_completion_tokens=2000,
++        )
++        content = reply.choices[0].message.content or ""
++        assert "51" in content, content
++        details = reply.usage.completion_tokens_details if reply.usage else None
++        reasoning = getattr(details, "reasoning_tokens", None) if details else None
++        return f"{content!r}, reasoning tokens {reasoning}"
++
++    run.check("reasoning_effort", reasoning_effort)
++
++    def length_finish():
++        reply = client.chat.completions.create(
++            model=model,
++            messages=[{"role": "user", "content": "Write a long paragraph about the sea."}],
++            # Gemini 3 through Vercel refuses `none` (400); low keeps the
++            # few tokens for the answer.
++            reasoning_effort="low",
++            max_tokens=16,
++        )
++        finish = reply.choices[0].finish_reason
++        assert finish == "length", finish
++        return finish
++
++    run.check("max_tokens reached: finish length", length_finish)
++
++    def n_above_one():
++        try:
++            client.chat.completions.create(
++                model=model, messages=[{"role": "user", "content": "hi"}], n=2, max_tokens=5
++            )
++        except openai.BadRequestError as error:
++            return f"400 as documented: {error.message}"
++        raise AssertionError("n=2 was accepted")
++
++    run.check("n > 1 is 400", n_above_one)
++
++    def unknown_model():
++        try:
++            client.chat.completions.create(
++                model="nobody/no-such-model", messages=[{"role": "user", "content": "hi"}]
++            )
++        except openai.NotFoundError as error:
++            return f"404: {error.message}"
++        raise AssertionError("an unknown model answered")
++
++    run.check("unknown model is 404", unknown_model)
++
++    def models_list():
++        ids = [model_.id for model_ in client.models.list()]
++        assert model in ids, ids[:10]
++        return f"{len(ids)} models"
++
++    run.check("models.list()", models_list)
++
++    failures = sum(1 for _, ok, _ in run.results if not ok)
++    print(f"\n{len(run.results) - failures} passed, {failures} failed (openai {openai.__version__})")
++    if args.json:
++        with open(args.json, "w", encoding="utf-8") as out:
++            json.dump(
++                {
++                    "sdk": f"openai-python {openai.__version__}",
++                    "model": model,
++                    "results": [{"check": n, "ok": ok, "detail": d} for n, ok, d in run.results],
++                },
++                out,
++                indent=2,
++            )
++    return failures
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/scripts/dev/openresponses-acceptance.sh b/scripts/dev/openresponses-acceptance.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..478fbc1375403aecd4c1495bdff2c452bb259d5e
+--- /dev/null
++++ b/scripts/dev/openresponses-acceptance.sh
+@@ -0,0 +1,30 @@
++#!/bin/sh
++# The Open Responses acceptance suite (https://www.openresponses.org/compliance)
++# against a gateway (#11068). The suite is the upstream repository's own
++# runner (Apache-2.0), cloned at a pinned commit into a scratch directory
++# and run with bun; nothing of it is vendored here.
++#
++#   OPENAGENTS_API_KEY=oak_... scripts/dev/openresponses-acceptance.sh \
++#       http://127.0.0.1:8790/v1 google/gemini-3.8-flash [--json results.json]
++#
++# The key is read from the environment and never printed. Other arguments
++# after the model pass through to the runner (--filter, --verbose, --json).
++set -eu
++
++base=${1:?usage: openresponses-acceptance.sh BASE_URL MODEL [runner options]}
++model=${2:?usage: openresponses-acceptance.sh BASE_URL MODEL [runner options]}
++shift 2
++: "${OPENAGENTS_API_KEY:?set OPENAGENTS_API_KEY}"
++commit=${OPENRESPONSES_COMMIT:-1e33c10fb3c19480751658eae966dad8e9c91514}
++work=${OPENRESPONSES_DIR:-${TMPDIR:-/tmp}/openresponses-$commit}
++
++if [ ! -d "$work/.git" ]; then
++    git clone -q https://github.com/openresponses/openresponses "$work"
++fi
++git -C "$work" fetch -q origin "$commit" 2>/dev/null || true
++git -C "$work" checkout -q "$commit"
++(cd "$work" && bun install --silent > /dev/null && bun run --silent generate:zod > /dev/null)
++
++cd "$work"
++OPENRESPONSES_API_KEY=$OPENAGENTS_API_KEY exec bun run bin/compliance-test.ts \
++    --base-url "$base" --model "$model" "$@"

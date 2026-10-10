@@ -1,0 +1,34 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 9827,
+  "title": "Physics: wake on kinematic contact, settle tall stacks, small thruster requests, body removal",
+  "body": "Gaps in `crates/physics` found while building the Physics Lab zone (#9793). The Lab works around each one; fix them in the crate so zones don't need to.\n\n1. **A moving kinematic body doesn't wake a sleeper.** `World::wake_touched` only wakes a sleeper when the other body is dynamic and awake. A scripted (kinematic) body that touches or is joined to a sleeper and moves leaves it asleep. In the Lab's soft-grip scene the held part slept while the kinematic hand swung 1.4 m away.\n2. **Stacks of five boxes never sleep.** They keep a slow twist of about 0.02 rad/s about the vertical, right at the sleep threshold. A stack of three sleeps. The twist should not be there, and a settled stack should sleep.\n3. **The thruster allocator drops small requests.** The first allocation phase's linear fuel penalty (`FUEL_WEIGHT`) returns zero throttle for torque requests under about 0.3 N m, which leaves about 1\u00b0 of steady attitude error.\n4. **Bodies cannot be removed from a world.** Scenes that loop have to rebuild the whole world.\n5. **Check:** the Lab reported that `apply_force` and `apply_torque` on a sleeping body are ignored. `Body::apply_force` wakes the body, so confirm with a test that a force applied through the public API to a sleeping body moves it.\n\nAcceptance: a test for each, the Lab's workarounds removed where they are no longer needed, and docs updated (`docs/verse/physics-lab.md`).\n",
+  "fix": "c0ee4ca58c308fff5b8116dc5fa953afc77a7713",
+  "parent": "8caf1ea19ac02ceb5fd9ad53bbc12c2ea15af536",
+  "package": "physics",
+  "source_files": [
+    "crates/physics/src/body.rs",
+    "crates/physics/src/contact.rs",
+    "crates/physics/src/thrusters.rs",
+    "crates/physics/src/world.rs",
+    "crates/verse-lagrange/examples/step_budget.rs",
+    "crates/verse/src/zones/lab/scenes.rs",
+    "docs/physics/2026-09-27-genesis-port-roadmap.md",
+    "docs/verse/physics-lab.md"
+  ],
+  "test_files": [
+    "crates/physics/src/tests.rs",
+    "crates/physics/src/thrusters.rs",
+    "crates/verse/src/zones/lab/tests.rs"
+  ],
+  "test_names": [
+    "a_force_on_a_sleeping_body_moves_it",
+    "a_moving_kinematic_body_wakes_what_it_touches_or_holds",
+    "removed_bodies_stop_interacting",
+    "small_requests_are_met_like_large_ones",
+    "tall_stacks_settle_and_sleep"
+  ],
+  "fix_lines": 430
+}

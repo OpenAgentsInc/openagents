@@ -1,0 +1,63 @@
+diff --git a/crates/coder-host/tests/control.rs b/crates/coder-host/tests/control.rs
+index f550b33bc7ab29776cb940661401f0ded9319f9d..1e7fdd78c8258bf1961e976e3c98479c5a6ec581 100644
+--- a/crates/coder-host/tests/control.rs
++++ b/crates/coder-host/tests/control.rs
+@@ -246,6 +246,29 @@ async fn the_socket_is_private_and_serves_only_this_user() {
+     assert_eq!(status.endpoint.len(), 64);
+     assert_eq!(status.label, "Studio Mac");
+     assert_eq!(status.devices, 0);
++    // Tailnet admission (#10125): none configured, then as the serving
++    // program records it.
++    let tailnet = || async { call(&host.socket, Op::TailnetStatus {}).await.unwrap() };
++    assert_eq!(
++        tailnet().await,
++        Reply::Tailnet {
++            address: None,
++            chats: false,
++            off: None
++        }
++    );
++    host.running.set_tailnet(coder_host::serve::Tailnet::On {
++        address: "100.64.0.9:47109".parse().unwrap(),
++        chats: true,
++    });
++    assert_eq!(
++        tailnet().await,
++        Reply::Tailnet {
++            address: Some("100.64.0.9:47109".into()),
++            chats: true,
++            off: None
++        }
++    );
+     // A second host cannot take a live socket.
+     let bound =
+         coder_host::control::socket::bind(&host.socket, coder_host::control::own_uid()).await;
+diff --git a/crates/openagents-connect/tests/control.rs b/crates/openagents-connect/tests/control.rs
+index b0a390dd8cafd55970037db32550e399cfaa7e95..121c2a5304f0f30cc08bb4c2e27b29975ad6ac6d 100644
+--- a/crates/openagents-connect/tests/control.rs
++++ b/crates/openagents-connect/tests/control.rs
+@@ -18,6 +18,7 @@ fn every_op() -> Vec<Op> {
+             task: "11".repeat(32),
+         },
+         Op::Status {},
++        Op::TailnetStatus {},
+         Op::InviteCreate {},
+         Op::InviteCancel {
+             invitation: "11".repeat(32),
+@@ -155,6 +156,16 @@ fn replies_round_trip() {
+             expires_at: 1_800_000_300,
+             rights: vec!["observe".into(), "operate".into()],
+         },
++        Reply::Tailnet {
++            address: Some("100.64.0.9:47109".into()),
++            chats: true,
++            off: None,
++        },
++        Reply::Tailnet {
++            address: None,
++            chats: false,
++            off: Some("tailscale is not running".into()),
++        },
+         Reply::Cancelled { count: 2 },
+         Reply::Devices {
+             devices: vec![Device {

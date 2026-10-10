@@ -1,0 +1,41 @@
+{
+  "test_targets": [
+    "--lib",
+    "--test",
+    "components",
+    "--lib"
+  ],
+  "issue": 10152,
+  "title": "OpenAgents Terminal: show what Coder changed (a per-file diff of a run's result)",
+  "body": "Top gap 1 and roadmap item 5 of [the Coder Terminal gap analysis](docs/terminal/2026-10-02-coder-terminal-gap-analysis.md#roadmap).\n\nWhen a Coder run finishes (or while it runs), the terminal shows only a one-line summary (\"2 files changed, +39 -1\"). Show the actual change: `crates/openagents-chat` (`coder_events`) carries each changed file's patch from the run's worktree, and `crates/coder-terminal`'s run component shows it per file (Ctrl+O on a run result expands it; collapsed by default), using the syntax highlighter from #10149 for the `diff` when it has landed, plain otherwise. Large patches are cut with a line saying how much was left out. The phone and desktop can show the same data later.\n\nDone when a run's result in `openagents terminal` expands to its per-file diff, with tests.",
+  "fix": "9f7492a785d052acc2a6eb8044f8f6fb112354ba",
+  "parent": "bd8fb38a78c1f7063e54971346dd09f6499d7184",
+  "package": "coder-terminal",
+  "source_files": [
+    "crates/coder-terminal/src/components/run.rs",
+    "crates/coder/src/task/issue_run.rs",
+    "crates/coder/src/task/local.rs",
+    "crates/coder/src/task/review.rs",
+    "crates/openagents-chat/src/coder_events.rs",
+    "crates/openagents-terminal/src/app.rs",
+    "crates/openagents-terminal/src/rows.rs",
+    "crates/openagents-terminal/src/slash.rs",
+    "docs/terminal/README.md"
+  ],
+  "test_files": [
+    "crates/coder-terminal/src/components/run.rs",
+    "crates/coder-terminal/tests/components.rs",
+    "crates/coder/src/task/issue_run_tests.rs",
+    "crates/coder/src/task/local.rs",
+    "crates/openagents-chat/src/coder_events.rs",
+    "crates/openagents-terminal/src/app_tests.rs"
+  ],
+  "test_names": [
+    "a_long_patch_is_cut_and_says_how_much",
+    "a_result_shows_its_patch_only_when_expanded",
+    "a_results_changes_expand_with_ctrl_o",
+    "an_old_result_without_patches_still_reads",
+    "each_file_gets_its_own_patch_from_its_first_hunk"
+  ],
+  "fix_lines": 344
+}

@@ -1,0 +1,31 @@
+{
+  "test_targets": [
+    "--test",
+    "conformance"
+  ],
+  "issue": 9344,
+  "title": "[Kev 7] Metal run, mechanism probes, docs",
+  "body": "Part of #9337. Final issue \u2014 closes the tracker.\n\n## What to pull over\n\n- Metal backend run of the full conformance suite on this machine; record per-backend tolerance bands.\n- All four mechanism probes through our stack: isolation (sibling secret at chance vs ~1.0 in state), packed-vs-separate delta, permutation argmax flips, boundary forgery.\n- `docs/kev/` updates: README status table flips to implemented, architecture.md notes the Rust landing zones, mesh-plan.md links the crate.\n- `MODEL_CARD`-equivalent local eval record committed for the admitted artifact.\n\n## Acceptance\n\n- `kev-serve` runs on Metal on this machine answering `/v1/systemone`.\n- Probe results documented in `docs/kev/` with exact commands.\n- Every issue in the sequence closed with its verification noted.\n\nGenerated with [Devin](https://devin.ai)",
+  "fix": "0fc8a95d90921a863433b19fc74c567d986ebb53",
+  "parent": "22d14da6abd1e8c093a02230f2ea61f800ab22b4",
+  "package": "kev",
+  "source_files": [
+    "AGENTS.md",
+    "crates/kev/Cargo.toml",
+    "crates/kev/fixtures/README.md",
+    "crates/kev/fixtures/eval.json",
+    "crates/kev/src/head.rs",
+    "crates/kev/src/model.rs",
+    "docs/kev/README.md",
+    "docs/kev/architecture.md",
+    "docs/kev/mesh-plan.md",
+    "docs/kev/port-roadmap.md"
+  ],
+  "test_files": [
+    "crates/kev/tests/conformance.rs"
+  ],
+  "test_names": [
+    "permutation_probe_reproduces"
+  ],
+  "fix_lines": 896
+}

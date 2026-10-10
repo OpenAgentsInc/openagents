@@ -1,0 +1,62 @@
+diff --git a/crates/coder/src/agent.rs b/crates/coder/src/agent.rs
+index 83291d4b0dcd21ba35dc200f3341bad252788e17..8af4ef83bd90f5fe4770b3e34c83264c45c49ee4 100644
+--- a/crates/coder/src/agent.rs
++++ b/crates/coder/src/agent.rs
+@@ -8,7 +8,7 @@
+ 
+ use std::collections::BTreeSet;
+ use std::env;
+-use std::path::Path;
++use std::path::{Path, PathBuf};
+ use std::time::Instant;
+ 
+ use atif::Decision;
+@@ -290,6 +290,9 @@ pub struct Agent {
+     /// named any — merged with `CODER_PROGRAMS` each time a program runs,
+     /// so a grant withdrawn between turns is not handed out anyway.
+     program_grant: Option<String>,
++    /// Where program runs record for recovery, when the caller named a
++    /// directory; otherwise the one [`crate::runstate::directory`] names.
++    runstate: Option<PathBuf>,
+     /// Why this session answers through the door it does, as the session
+     /// header and the trace say it.
+     door_reason: String,
+@@ -414,6 +417,7 @@ impl Agent {
+             trace_error,
+             survey: None,
+             program_grant: None,
++            runstate: None,
+             door_reason,
+             guidance,
+             defaults,
+@@ -435,6 +439,7 @@ impl Agent {
+             trace_error: None,
+             survey: None,
+             program_grant: None,
++            runstate: None,
+             door_reason: String::new(),
+             guidance: None,
+             defaults: None,
+@@ -517,6 +522,13 @@ impl Agent {
+         self
+     }
+ 
++    /// Record program runs in the runstate store at `dir` rather than the
++    /// one the environment names (`~/.openagents/runstate` by default).
++    pub fn with_runstate(mut self, dir: impl Into<PathBuf>) -> Self {
++        self.runstate = Some(dir.into());
++        self
++    }
++
+     /// What this machine can reach and what it could run, read once and
+     /// recorded to the trace the first time anything asks.
+     ///
+@@ -563,7 +575,7 @@ impl Agent {
+         let repository = self.repo.as_ref().map(|repo| repo.root().to_path_buf());
+         let survey = self.survey().clone();
+         let mut runtime = Runtime::using(survey, repository.as_deref()).asking(Some(door));
+-        if let Some(dir) = crate::runstate::directory() {
++        if let Some(dir) = self.runstate.clone().or_else(crate::runstate::directory) {
+             runtime = runtime.with_runstate(dir);
+         }
+         if let Some(defaults) = &self.defaults {

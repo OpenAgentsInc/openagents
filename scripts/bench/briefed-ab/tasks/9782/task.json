@@ -1,0 +1,30 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 9782,
+  "title": "Physics GP-5: weld latch, connect, and distance tether",
+  "body": "Port runtime weld/connect constraints (`rigid/suction_cup.py`, `rigid/closed_loop.py`) and constraint stiffness notes (`rigid/bolt_nut_self_screw.py`). Roadmap: `docs/physics/2026-09-27-genesis-port-roadmap.md`.\n\n**Scope**\n- `physics` joints: hard weld (point + orientation), connect (point), and a unilateral distance tether with a tension limit; add and remove at runtime; stiffness and iteration constants named.\n- Lagrange: latching requires position, orientation, and linear and angular relative speed under thresholds, then welds the part to the jig. The EVA safety tether is a distance constraint from the airlock that replaces the position clamp, with the clamp kept only as an emergency boundary. Parts get their depot tethers.\n\n**Accept**\n- Misaligned or spinning docks are refused.\n- A latched part stays fixed under impacts.\n- At the tether limit the astronaut neither teleports nor gains energy.\n- Recorded tension matches the momentum change.\n",
+  "fix": "136f756f4c81a8f0cf503364a99d54a741b9b43a",
+  "parent": "c1e93251b8acb9d6c3eb41029d273fb6fc4fefbb",
+  "package": "physics",
+  "source_files": [
+    "crates/physics/src/contact.rs",
+    "crates/physics/src/joint.rs",
+    "crates/verse-lagrange/src/station.rs",
+    "docs/verse/lagrange-1.md",
+    "docs/verse/zones.md"
+  ],
+  "test_files": [
+    "crates/physics/src/tests.rs",
+    "crates/verse-lagrange/src/tests.rs"
+  ],
+  "test_names": [
+    "a_hard_weld_holds_under_impact",
+    "a_latched_part_stays_welded_under_impact",
+    "a_tether_catches_without_adding_energy",
+    "misaligned_or_spinning_docks_are_refused",
+    "the_safety_tether_stops_the_astronaut_without_a_jump_or_energy"
+  ],
+  "fix_lines": 430
+}

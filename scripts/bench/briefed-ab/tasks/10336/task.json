@@ -1,0 +1,25 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10336,
+  "title": "Coding agents install packages into the person's own environment without saying so",
+  "body": "During `chat send \"Fix the bug in calc.py \u2026 Run the tests with python3 -m pytest -q\"` (full access, Codex), the agent ran `python3 -m pip install --user pytest` \u2014 a change outside the task worktree to the user's Python \u2014 and the turn summary only says \"1 file changed\". Either keep installs inside the task (a venv in the worktree / cache), or list changes made outside the worktree in the turn summary so the person knows.\n\nFound in the code shakeout (scratch repo ~/work/shakeout/scratch-code, binary built at eeae76ff5a).",
+  "fix": "fc89140ba81ff6458b633aacb027f61283a53384",
+  "parent": "eb9f48f57dfcea2d7a3f15a4de0eceb64d248bba",
+  "package": "coder",
+  "source_files": [
+    "crates/coder/src/task/adapter.rs",
+    "crates/openagents-chat/src/coder_events.rs"
+  ],
+  "test_files": [
+    "crates/coder/src/task/adapter/installs.rs",
+    "crates/openagents-chat/src/coder_events.rs"
+  ],
+  "test_names": [
+    "a_user_pip_install_stays_in_the_run_and_still_imports",
+    "an_engines_shell_call_that_installs_is_named",
+    "destinations_are_the_runs_and_the_persons_paths_are_kept"
+  ],
+  "fix_lines": 421
+}

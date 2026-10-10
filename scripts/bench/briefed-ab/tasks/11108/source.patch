@@ -1,0 +1,528 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 1292ac026474f6f641f98c2e98670c363b7909cf..9e8dfa3a97b24135033b392db02719ab25d72e04 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -131,14 +131,16 @@ steps in the workspace `NEEDS_OWNER.md`, say in the closing comment what the
+ owner still has to do, and close the issue. If the owner's step later finds a
+ defect, open a new issue for it.
+ 
+-Keep the OpenAgents project board
+-(<https://github.com/orgs/OpenAgentsInc/projects/19>, `docs/project-board.md`)
+-current: when you start an issue, claim it and run
+-`scripts/project-status.sh N in-progress`; when it is blocked, run
+-`scripts/project-status.sh N blocked --blocked-by "B"` naming the blocker; when
+-it is done, the closing commit closes it and the issue becomes Done
+-(`scripts/project-status.sh N done`, or `scripts/project-sync.sh`). A new issue
+-goes on the board with its blockers.
++Keep the project boards current on every project the issue is on (V1 Launch
++22, OpenAgents 19, ...) with the REST helper (#11108):
++`scripts/dev/issue-board.sh claim N` when you start (after `openagents issue
++claim N`), `scripts/dev/issue-board.sh block N "what it waits on"` when it is
++blocked, and `scripts/dev/issue-board.sh close N "closing comment"` to close
++it, which also moves it to Done. Coder's flows do the same via `coder::claim`.
++`scripts/dev/project-status-sync.sh 22` fixes drift;
++`scripts/project-status.sh N blocked --blocked-by "B"` records native blocker
++links (`docs/project-board.md`). A new issue goes on the board with its
++blockers.
+ 
+ The full workspace gate (`./scripts/verify-rust.sh --release`) is for full
+ releases only. Never require it before ordinary issue development, integration,
+diff --git a/crates/coder/src/claim.rs b/crates/coder/src/claim.rs
+index b0793fc9320ebc089d83103b9c45247048a058b2..b9db9c40beeb814bebf73e127c94b46c3a4d93da 100644
+--- a/crates/coder/src/claim.rs
++++ b/crates/coder/src/claim.rs
+@@ -12,7 +12,9 @@
+ //!
+ //! Releasing comments [`RELEASE_MARK`], removes that assignee, and moves
+ //! the status back to the first "ready" value the project has; landing
+-//! moves it to "done". An issue on no project gets the comment and the
++//! moves it to "done", and [`blocked`] to "blocked" with the reason as a
++//! comment (#11108). When the GraphQL limit is spent, [`Gh`] finds and
++//! moves the issue's items through the REST projects API instead. An issue on no project gets the comment and the
+ //! assignee only, so a repository without Projects behaves the same way
+ //! minus the board.
+ //!
+@@ -69,6 +71,8 @@ pub struct Project {
+     pub ready: Vec<String>,
+     /// The value a landed issue gets.
+     pub done: String,
++    /// The value an issue waiting on the owner or another issue gets.
++    pub blocked: String,
+     /// The project (by number, under the repository's owner) pickup
+     /// orders by. Without it, the one open project linked to the
+     /// repository, when there is exactly one.
+@@ -82,6 +86,7 @@ impl Default for Project {
+             in_progress: "In progress".into(),
+             ready: vec!["Ready".into(), "Todo".into()],
+             done: "Done".into(),
++            blocked: "Blocked".into(),
+             number: None,
+         }
+     }
+@@ -325,6 +330,33 @@ pub fn done<H: Hub + ?Sized>(
+     said
+ }
+ 
++/// Marks an issue that waits on the owner or another issue: `reason` as a
++/// "Blocked: ..." comment, and "blocked" on each project it is on. The
++/// claim and assignee stay, so nobody else picks it up meanwhile.
++pub fn blocked<H: Hub + ?Sized>(
++    hub: &H,
++    repository: &str,
++    number: u64,
++    reason: &str,
++    project: &Project,
++) -> Vec<String> {
++    let mut said = vec![
++        match hub.comment(repository, number, &format!("Blocked: {reason}")) {
++            Ok(()) => format!("Said why #{number} is blocked on the issue."),
++            Err(why) => format!("Could not comment why #{number} is blocked: {why}"),
++        },
++    ];
++    status(
++        hub,
++        repository,
++        number,
++        project,
++        std::slice::from_ref(&project.blocked),
++        &mut said,
++    );
++    said
++}
++
+ fn assignee<H: Hub + ?Sized>(
+     hub: &H,
+     repository: &str,
+@@ -837,6 +869,93 @@ const BOARD: &str = r"query($id: ID!, $field: String!, $cursor: String) {
+ const BOARD_PAGES: usize = 10;
+ 
+ impl Gh {
++    fn graphql_items(repository: &str, number: u64, field: &str) -> Result<Vec<Item>, String> {
++        let (owner, name) = split(repository)?;
++        let value = json(&gh(
++            None,
++            &[
++                "api",
++                "graphql",
++                "-f",
++                &format!("query={ITEMS_QUERY}"),
++                "-f",
++                &format!("owner={owner}"),
++                "-f",
++                &format!("name={name}"),
++                "-F",
++                &format!("number={number}"),
++                "-f",
++                &format!("field={field}"),
++            ],
++        )?)?;
++        Ok(items_of(&value))
++    }
++
++    /// The issue's items over REST, for when the GraphQL limit is spent:
++    /// each open project of the owner whose item search finds the issue,
++    /// with `field`'s value. One search per project, two more on a hit.
++    fn rest_items(repository: &str, number: u64, field: &str) -> Result<Vec<Item>, String> {
++        let (owner, _) = split(repository)?;
++        let (scope, pages) = ["orgs", "users"]
++            .iter()
++            .find_map(|scope| {
++                let path = format!("/{scope}/{owner}/projectsV2?per_page=100");
++                let text = gh(None, &["api", "--paginate", "--slurp", &path]).ok()?;
++                Some((*scope, serde_json::from_str::<Value>(&text).ok()?))
++            })
++            .ok_or_else(|| format!("cannot list {owner}'s projects"))?;
++        let projects = pages
++            .as_array()
++            .into_iter()
++            .flatten()
++            .filter_map(Value::as_array)
++            .flatten()
++            .filter(|project| project["state"].as_str() == Some("open"));
++        let mut found = Vec::new();
++        for project in projects {
++            let Some(project_number) = project["number"].as_u64() else {
++                continue;
++            };
++            let base = format!("/{scope}/{owner}/projectsV2/{project_number}");
++            let search = |field_id: Option<&str>| -> Option<Value> {
++                let items = format!("{base}/items");
++                let q = format!("q={number}");
++                let fields = field_id.map(|id| format!("fields[]={id}"));
++                let mut args = vec!["api", "-X", "GET", &items, "-f", "per_page=100", "-f", &q];
++                if let Some(fields) = &fields {
++                    args.extend(["-f", fields]);
++                }
++                serde_json::from_str(&gh(None, &args).ok()?).ok()
++            };
++            let Some(items) = search(None) else { continue };
++            if rest_item(&items, repository, number, field).is_none() {
++                continue;
++            }
++            let Some((field_id, options)) = gh(None, &["api", &format!("{base}/fields")])
++                .ok()
++                .and_then(|text| serde_json::from_str::<Value>(&text).ok())
++                .and_then(|fields| rest_field(&fields, field))
++            else {
++                continue;
++            };
++            let items = search(Some(&field_id)).unwrap_or(items);
++            let Some((item, status, status_at)) = rest_item(&items, repository, number, field)
++            else {
++                continue;
++            };
++            found.push(Item {
++                project: format!("{REST_PROJECT}{base}"),
++                project_title: project["title"].as_str().unwrap_or_default().into(),
++                item,
++                field: Some(field_id),
++                options,
++                status,
++                status_at,
++            });
++        }
++        Ok(found)
++    }
++
+     fn project_id(repository: &str, project: &Project) -> Result<Option<String>, String> {
+         let (owner, name) = split(repository)?;
+         if let Some(number) = project.number {
+@@ -960,25 +1079,10 @@ impl Hub for Gh {
+     }
+ 
+     fn items(&self, repository: &str, number: u64, field: &str) -> Result<Vec<Item>, String> {
+-        let (owner, name) = split(repository)?;
+-        let value = json(&gh(
+-            None,
+-            &[
+-                "api",
+-                "graphql",
+-                "-f",
+-                &format!("query={ITEMS_QUERY}"),
+-                "-f",
+-                &format!("owner={owner}"),
+-                "-f",
+-                &format!("name={name}"),
+-                "-F",
+-                &format!("number={number}"),
+-                "-f",
+-                &format!("field={field}"),
+-            ],
+-        )?)?;
+-        Ok(items_of(&value))
++        Gh::graphql_items(repository, number, field).or_else(|graphql| {
++            Gh::rest_items(repository, number, field)
++                .map_err(|rest| format!("{graphql} (and over REST: {rest})"))
++        })
+     }
+ 
+     fn set_status(&self, item: &Item, option: &str) -> Result<(), String> {
+@@ -986,6 +1090,22 @@ impl Hub for Gh {
+             .field
+             .as_deref()
+             .ok_or("the project has no status field")?;
++        if let Some(base) = item.project.strip_prefix(REST_PROJECT) {
++            return gh(
++                None,
++                &[
++                    "api",
++                    "-X",
++                    "PATCH",
++                    &format!("{base}/items/{}", item.item),
++                    "-F",
++                    &format!("fields[][id]={field}"),
++                    "-f",
++                    &format!("fields[][value]={option}"),
++                ],
++            )
++            .map(|_| ());
++        }
+         json(&gh(
+             None,
+             &[
+@@ -1136,6 +1256,76 @@ fn items_of(value: &Value) -> Vec<Item> {
+         .collect()
+ }
+ 
++/// Marks an [`Item`] found over REST: its `project` is this and then the
++/// project's REST path, and its ids are REST's numeric ones.
++const REST_PROJECT: &str = "rest:";
++
++/// A REST name, which is `{"raw": ..}` or a plain string.
++fn rest_name(value: &Value) -> Option<&str> {
++    value["raw"].as_str().or_else(|| value.as_str())
++}
++
++/// The single-select `field` of a REST project's fields answer: its id
++/// and its options (name, id). Names match without regard to case.
++fn rest_field(fields: &Value, field: &str) -> Option<(String, Vec<(String, String)>)> {
++    let found = fields.as_array()?.iter().find(|candidate| {
++        rest_name(&candidate["name"]).is_some_and(|name| name.eq_ignore_ascii_case(field))
++    })?;
++    let id = match &found["id"] {
++        Value::Number(id) => id.to_string(),
++        Value::String(id) => id.clone(),
++        _ => return None,
++    };
++    let options = found["options"]
++        .as_array()
++        .into_iter()
++        .flatten()
++        .filter_map(|option| {
++            Some((
++                rest_name(&option["name"])?.to_owned(),
++                option["id"].as_str()?.to_owned(),
++            ))
++        })
++        .collect();
++    Some((id, options))
++}
++
++/// The issue's item in a REST items answer: its id, `field`'s value when
++/// the answer carries it, and when the item last changed. A search for
++/// the number also finds issues that mention it and issues of other
++/// repositories; those are skipped.
++fn rest_item(
++    items: &Value,
++    repository: &str,
++    number: u64,
++    field: &str,
++) -> Option<(String, Option<String>, u64)> {
++    let suffix = format!("/repos/{}", repository.to_ascii_lowercase());
++    let item = items.as_array()?.iter().find(|item| {
++        item["content"]["number"].as_u64() == Some(number)
++            && item["content"]["repository_url"]
++                .as_str()
++                .is_some_and(|url| url.to_ascii_lowercase().ends_with(&suffix))
++    })?;
++    let status = item["fields"]
++        .as_array()
++        .into_iter()
++        .flatten()
++        .find(|value| {
++            rest_name(&value["name"]).is_some_and(|name| name.eq_ignore_ascii_case(field))
++        })
++        .and_then(|value| rest_name(&value["value"]["name"]))
++        .map(str::to_owned);
++    Some((
++        item["id"].as_u64()?.to_string(),
++        status,
++        item["updated_at"]
++            .as_str()
++            .and_then(iso_seconds)
++            .unwrap_or(0),
++    ))
++}
++
+ /// The repository's issues on one [`BOARD`] page, in project order.
+ fn board_of(items: &Value, repository: &str) -> Vec<Queued> {
+     items["nodes"]
+diff --git a/scripts/dev/issue-board.sh b/scripts/dev/issue-board.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..431a9518bf299a2eab77f565922c6cf517e689e4
+--- /dev/null
++++ b/scripts/dev/issue-board.sh
+@@ -0,0 +1,97 @@
++#!/usr/bin/env bash
++# Keep an issue's project Status in step with what an agent does to it
++# (#11108), on every open project of the repository's owner the issue is on:
++#
++#   scripts/dev/issue-board.sh claim N               Status -> In Progress
++#   scripts/dev/issue-board.sh block N "reason"      comments "Blocked: reason", Status -> Blocked
++#   scripts/dev/issue-board.sh close N ["comment"]   closes the issue (with the comment), Status -> Done
++#   scripts/dev/issue-board.sh set N "Status name"   any Status value, e.g. Todo
++#
++# Uses only the REST API, so it keeps working when other tools have spent the
++# GraphQL limit. A board that cannot be read or written is said and skipped;
++# only a failed close exits non-zero.
++# ISSUE_BOARD_REPO (default OpenAgentsInc/openagents) names the repository;
++# ISSUE_BOARD_PROJECTS ("22 19") limits the projects looked at.
++set -uo pipefail
++
++usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
++[[ $# -ge 2 ]] || usage
++verb=$1
++issue=${2#\#}
++[[ $issue =~ ^[0-9]+$ ]] || usage
++repo=${ISSUE_BOARD_REPO:-OpenAgentsInc/openagents}
++owner=${repo%%/*}
++
++say() { printf '%s\n' "$*"; }
++
++# Sets Status to "$1" (matched without regard to case) on each project.
++move() {
++  local target=$1 projects scope="orgs" number base hit item fields field option moved=0
++  if [[ -n ${ISSUE_BOARD_PROJECTS:-} ]]; then
++    projects=$ISSUE_BOARD_PROJECTS
++  elif ! projects=$(gh api --paginate "/orgs/$owner/projectsV2?per_page=100" \
++      --jq '.[]|select(.state=="open")|.number' 2>/dev/null); then
++    scope="users"
++    if ! projects=$(gh api --paginate "/users/$owner/projectsV2?per_page=100" \
++        --jq '.[]|select(.state=="open")|.number' 2>/dev/null); then
++      say "board: could not list $owner's projects; #$issue's Status stays as it is."
++      return 0
++    fi
++  fi
++  for number in $projects; do
++    base="/$scope/$owner/projectsV2/$number"
++    if ! hit=$(gh api -X GET "$base/items" -f per_page=100 -f "q=$issue" \
++        --jq ".[]|select(.content.number==$issue and ((.content.repository_url // \"\")|endswith(\"/repos/$repo\")))|.id" 2>/dev/null); then
++      say "board: could not read project $number; skipped."
++      continue
++    fi
++    item=${hit%%$'\n'*}
++    [[ -n $item ]] || continue
++    if ! fields=$(gh api "$base/fields" 2>/dev/null); then
++      say "board: could not read project $number's fields; skipped."
++      continue
++    fi
++    field=$(jq -r '.[]|select(.name=="Status")|.id' <<<"$fields" | head -n1)
++    option=$(jq -r --arg n "$target" '.[]|select(.name=="Status")|.options[]
++      |select(((.name.raw // .name)|ascii_downcase)==($n|ascii_downcase))|.id' <<<"$fields" | head -n1)
++    if [[ -z $field || -z $option ]]; then
++      say "board: project $number has no Status \"$target\"; skipped."
++      continue
++    fi
++    if gh api -X PATCH "$base/items/$item" --input - >/dev/null 2>&1 \
++        <<<"{\"fields\":[{\"id\":$field,\"value\":\"$option\"}]}"; then
++      say "board: #$issue -> $target on project $number."
++      moved=1
++    else
++      say "board: could not set #$issue to $target on project $number."
++    fi
++  done
++  [[ $moved == 1 ]] || say "board: #$issue is on no project with a Status \"$target\"."
++  return 0
++}
++
++case $verb in
++  claim) move "In Progress" ;;
++  block)
++    reason=${3:-}
++    [[ -n $reason ]] || { say "block needs a reason: what it waits on." >&2; exit 2; }
++    gh issue comment "$issue" -R "$repo" --body "Blocked: $reason" >/dev/null \
++      || say "Could not comment the block reason on #$issue."
++    move "Blocked"
++    ;;
++  close)
++    args=(issue close "$issue" -R "$repo" --reason completed)
++    [[ -n ${3:-} ]] && args+=(--comment "$3")
++    if ! gh "${args[@]}" >/dev/null; then
++      say "Could not close #$issue."
++      exit 1
++    fi
++    say "Closed #$issue."
++    move "Done"
++    ;;
++  set)
++    [[ -n ${3:-} ]] || usage
++    move "$3"
++    ;;
++  *) usage ;;
++esac
+diff --git a/scripts/dev/issue-board.test.sh b/scripts/dev/issue-board.test.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..0bce7e08dca4731df58a2ad481ad715d7fefef04
+--- /dev/null
++++ b/scripts/dev/issue-board.test.sh
+@@ -0,0 +1,100 @@
++#!/usr/bin/env bash
++# Tests scripts/dev/issue-board.sh against a fake `gh` (no live GitHub calls).
++# Run: scripts/dev/issue-board.test.sh
++set -euo pipefail
++here=$(cd "$(dirname "$0")" && pwd)
++tmp=$(mktemp -d)
++trap 'rm -rf "$tmp"' EXIT
++mkdir "$tmp/bin"
++export FAKE_LOG="$tmp/log"
++
++# The fake: project 22 holds #7 (and #70, whose title mentions 7); project 19
++# does not hold #7; project 5 cannot be read. PATCH on project 22 succeeds.
++cat >"$tmp/bin/gh" <<'FAKE'
++#!/usr/bin/env bash
++printf '%s\n' "$*" >>"$FAKE_LOG"
++jq_filter=; method=GET; path=
++args=("$@")
++for ((i = 0; i < ${#args[@]}; i++)); do
++  case ${args[i]} in
++    --jq) jq_filter=${args[i+1]} ;;
++    -X) method=${args[i+1]} ;;
++    /*) [[ -z $path ]] && path=${args[i]} ;;
++  esac
++done
++out() { if [[ -n $jq_filter ]]; then jq -r "$jq_filter"; else cat; fi; }
++case "$1 $2" in
++  "issue comment"|"issue close") [[ ${FAKE_CLOSE_FAILS:-} == 1 && $2 == close ]] && exit 1; exit 0 ;;
++esac
++case "$method $path" in
++  "GET /orgs/Acme/projectsV2?per_page=100")
++    echo '[{"number":22,"state":"open"},{"number":19,"state":"open"},{"number":5,"state":"open"},{"number":3,"state":"closed"}]' | out ;;
++  "GET /orgs/Acme/projectsV2/22/items")
++    echo '[{"id":900,"content":{"number":70,"repository_url":"https://api.github.com/repos/Acme/app"}},
++           {"id":901,"content":{"number":7,"repository_url":"https://api.github.com/repos/Acme/app"}},
++           {"id":902,"content":{"number":7,"repository_url":"https://api.github.com/repos/Acme/other"}}]' | out ;;
++  "GET /orgs/Acme/projectsV2/19/items") echo '[]' | out ;;
++  "GET /orgs/Acme/projectsV2/5/items") exit 1 ;;
++  "GET /orgs/Acme/projectsV2/22/fields")
++    echo '[{"id":11,"name":"Title"},{"id":42,"name":"Status","options":[
++      {"id":"t0","name":{"raw":"Todo"}},{"id":"p1","name":{"raw":"In Progress"}},
++      {"id":"b2","name":{"raw":"Blocked"}},{"id":"d3","name":{"raw":"Done"}}]}]' | out ;;
++  "PATCH /orgs/Acme/projectsV2/22/items/901") cat >>"$FAKE_LOG"; echo >>"$FAKE_LOG"; echo '{}' ;;
++  *) echo "unexpected: $*" >&2; exit 1 ;;
++esac
++FAKE
++chmod +x "$tmp/bin/gh"
++export PATH="$tmp/bin:$PATH" ISSUE_BOARD_REPO=Acme/app
++
++fail=0
++check() { # name, expected substring, text
++  if [[ $3 == *"$2"* ]]; then echo "ok   $1"; else echo "FAIL $1: wanted \"$2\" in:"; echo "$3"; fail=1; fi
++}
++absent() {
++  if [[ $3 != *"$2"* ]]; then echo "ok   $1"; else echo "FAIL $1: did not want \"$2\" in:"; echo "$3"; fail=1; fi
++}
++
++: >"$FAKE_LOG"
++said=$("$here/issue-board.sh" claim 7)
++check "claim moves the matching item" "board: #7 -> In Progress on project 22." "$said"
++check "claim says an unreadable project" "could not read project 5" "$said"
++check "claim patches item 901 with the option id" '{"fields":[{"id":42,"value":"p1"}]}' "$(cat "$FAKE_LOG")"
++absent "claim leaves #70 and the other repo's #7 alone" "items/900" "$(cat "$FAKE_LOG")"
++absent "claim skips the closed project" "projectsV2/3/" "$(cat "$FAKE_LOG")"
++
++: >"$FAKE_LOG"
++said=$("$here/issue-board.sh" block 7 "waits on the owner's key")
++check "block comments the reason" "issue comment 7 -R Acme/app --body Blocked: waits on the owner's key" "$(cat "$FAKE_LOG")"
++check "block moves to Blocked" '"value":"b2"' "$(cat "$FAKE_LOG")"
++check "block says it" "#7 -> Blocked on project 22." "$said"
++
++set +e
++"$here/issue-board.sh" block 7 >/dev/null 2>&1; code=$?
++set -e
++check "block without a reason is refused" "2" "$code"
++
++: >"$FAKE_LOG"
++said=$("$here/issue-board.sh" close 7 "Landed in abc123.")
++check "close closes with the comment" "issue close 7 -R Acme/app --reason completed --comment Landed in abc123." "$(cat "$FAKE_LOG")"
++check "close moves to Done" '"value":"d3"' "$(cat "$FAKE_LOG")"
++
++: >"$FAKE_LOG"
++said=$("$here/issue-board.sh" set 7 "todo")
++check "set matches without regard to case" '"value":"t0"' "$(cat "$FAKE_LOG")"
++
++said=$("$here/issue-board.sh" set 7 "In review")
++check "a missing value is said, not fatal" 'project 22 has no Status "In review"' "$said"
++
++: >"$FAKE_LOG"
++set +e
++said=$(FAKE_CLOSE_FAILS=1 "$here/issue-board.sh" close 7); code=$?
++set -e
++check "a failed close exits 1" "1" "$code"
++absent "a failed close leaves the board alone" "PATCH" "$(cat "$FAKE_LOG")"
++
++: >"$FAKE_LOG"
++said=$(ISSUE_BOARD_PROJECTS=19 "$here/issue-board.sh" claim 7)
++check "an issue on no listed project is said" "is on no project" "$said"
++absent "ISSUE_BOARD_PROJECTS skips the project listing" "per_page=100 --jq" "$(head -n1 "$FAKE_LOG")"
++
++exit $fail

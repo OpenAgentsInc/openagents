@@ -1,0 +1,37 @@
+diff --git a/crates/coder/src/task/publish_tests.rs b/crates/coder/src/task/publish_tests.rs
+index f67e8e55c05edec27d3cb4ef52823c9cf4896541..67591e2d52ca4a942bd49bcf9cdb400691b47478 100644
+--- a/crates/coder/src/task/publish_tests.rs
++++ b/crates/coder/src/task/publish_tests.rs
+@@ -172,6 +172,14 @@ impl Scratch {
+     }
+ }
+ 
++/// Waits up to ten seconds for `ready`; the caller asserts afterwards.
++fn settle(ready: impl Fn() -> bool) {
++    let until = std::time::Instant::now() + Duration::from_secs(10);
++    while !ready() && std::time::Instant::now() < until {
++        std::thread::sleep(Duration::from_millis(50));
++    }
++}
++
+ fn receives(log: &Path) -> usize {
+     std::fs::read_to_string(log)
+         .unwrap_or_default()
+@@ -481,11 +489,16 @@ fn an_uncertain_push_reconciles_by_reading_the_remote_without_pushing_twice() {
+     let commit = uncertain.commit.clone().unwrap();
+     let branch = uncertain.branch.clone().unwrap();
+     assert_eq!(forge.opened.load(Ordering::SeqCst), 0);
+-    // The ref did move before the hook ran.
++    // The ref did move before the hook ran. The remote side outlives the
++    // client it answered, so on a loaded machine its ref update and the
++    // hook's log line can land a moment after the client gave up: wait for
++    // them, then check exactly one receive.
++    settle(|| scratch.remote_tip(&branch).as_deref() == Some(commit.as_str()));
+     assert_eq!(
+         scratch.remote_tip(&branch).as_deref(),
+         Some(commit.as_str())
+     );
++    settle(|| receives(&log) >= 1);
+     assert_eq!(receives(&log), 1);
+     // Publishing again finds the commit on the remote and only opens the
+     // pull request; the remote receives nothing more.

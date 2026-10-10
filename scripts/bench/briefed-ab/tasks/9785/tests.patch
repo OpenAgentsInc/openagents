@@ -1,0 +1,463 @@
+diff --git a/crates/physics/src/oracle.rs b/crates/physics/src/oracle.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..3ceb6ed9629de933c6e247df9fbd12b261a88464
+--- /dev/null
++++ b/crates/physics/src/oracle.rs
+@@ -0,0 +1,148 @@
++//! Scenes shared with the offline Genesis oracle (`oracle/`, GP-8 #9785).
++//!
++//! A [`Scene`] is a plain description (bodies with one shape each, initial
++//! motion, materials, step length, and step count) that both this crate and
++//! `oracle/genesis_oracle.py` build. Each side writes a [`Trace`]; comparing
++//! them within stated tolerances is what a fidelity claim has to rest on.
++//! Gravity is zero, so the two engines' axis conventions do not matter.
++
++use glam::{DQuat, DVec3};
++use serde::{Deserialize, Serialize};
++
++use crate::{Body, BodyKind, Collider, Material, NoField, Shape, Trace, World};
++
++/// One body with one collider at its center of mass.
++#[derive(Clone, Debug, Serialize, Deserialize)]
++pub struct SceneBody {
++    pub fixed: bool,
++    pub mass: f64,
++    pub inertia: DVec3,
++    pub shape: Shape,
++    pub pos: DVec3,
++    pub orientation: DQuat,
++    pub vel: DVec3,
++    pub omega_world: DVec3,
++    pub material: Material,
++}
++
++#[derive(Clone, Debug, Serialize, Deserialize)]
++pub struct Scene {
++    pub name: String,
++    pub dt: f64,
++    pub steps: u32,
++    pub bodies: Vec<SceneBody>,
++}
++
++impl Scene {
++    /// Build the scene in a physics world.
++    #[must_use]
++    pub fn world(&self) -> World {
++        let mut world = World::new(self.dt);
++        for b in &self.bodies {
++            let mut body = Body::new(b.mass, b.inertia, b.pos);
++            body.orientation = b.orientation;
++            body.prev_orientation = b.orientation;
++            body.vel = b.vel;
++            body.omega = b.orientation.inverse() * b.omega_world;
++            if b.fixed {
++                body = body.with_kind(BodyKind::Static);
++            }
++            let id = world.add(body);
++            world.add_collider(Collider::new(id, b.shape).with_material(b.material));
++        }
++        world
++    }
++
++    /// Run the scene and record every step.
++    #[must_use]
++    pub fn run(&self) -> Trace {
++        let mut world = self.world();
++        let mut trace = Trace::default();
++        for _ in 0..self.steps {
++            world.step(&NoField);
++            trace.record(&world);
++        }
++        trace
++    }
++}
++
++/// The audit's experiment: a spinning 320 kg tank strikes a fixed panel's
++/// edge at 0.85 m/s.
++#[must_use]
++pub fn tank_into_panel() -> Scene {
++    let tank_material = Material {
++        friction: 0.4,
++        torsional: 0.0,
++        restitution: 0.3,
++    };
++    Scene {
++        name: "tank_into_panel".into(),
++        dt: 1.0 / 120.0,
++        steps: 360,
++        bodies: vec![
++            SceneBody {
++                fixed: true,
++                mass: 1.0,
++                inertia: DVec3::ONE,
++                shape: Shape::Cuboid {
++                    half: DVec3::new(3.0, 0.15, 2.0),
++                },
++                pos: DVec3::ZERO,
++                orientation: DQuat::IDENTITY,
++                vel: DVec3::ZERO,
++                omega_world: DVec3::ZERO,
++                material: Material::default(),
++            },
++            SceneBody {
++                fixed: false,
++                mass: 320.0,
++                inertia: Body::shell_inertia(320.0, 1.3, 3.6),
++                shape: Shape::Capsule {
++                    radius: 1.3,
++                    half_length: 0.5,
++                },
++                pos: DVec3::new(3.2, 2.0, 0.0),
++                orientation: DQuat::from_rotation_x(std::f64::consts::FRAC_PI_2),
++                vel: DVec3::new(-0.3, -0.8, 0.0),
++                omega_world: DVec3::new(0.05, 0.1, 0.4),
++                material: tank_material,
++            },
++        ],
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::Tolerance;
++
++    #[test]
++    fn scenes_round_trip_and_run_deterministically() {
++        let scene = tank_into_panel();
++        let json = serde_json::to_string(&scene).unwrap();
++        let back: Scene = serde_json::from_str(&json).unwrap();
++        back.run().compare(&scene.run(), Tolerance::EXACT).unwrap();
++    }
++
++    /// Compare against a Genesis trace written by `oracle/genesis_oracle.py`
++    /// into `PHYSICS_ORACLE_DIR`: the bar a fidelity claim would need. The
++    /// 2026-09-27 run does not meet it, because the restitution models
++    /// differ (see `oracle/README.md`), so no fidelity is claimed.
++    #[test]
++    #[ignore = "needs a Genesis trace from oracle/genesis_oracle.py"]
++    fn tank_into_panel_matches_genesis() {
++        let dir = std::env::var("PHYSICS_ORACLE_DIR").expect("set PHYSICS_ORACLE_DIR");
++        let path = std::path::Path::new(&dir).join("tank_into_panel.genesis.json");
++        let genesis: Trace = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
++        let tolerance = Tolerance {
++            pos: 0.05,
++            vel: 0.1,
++            angle: 0.05,
++            omega: 0.1,
++        };
++        tank_into_panel()
++            .run()
++            .compare(&genesis, tolerance)
++            .unwrap();
++    }
++}
+diff --git a/crates/physics/src/tests.rs b/crates/physics/src/tests.rs
+index 2331dd1305f3e79a044daecb34cf032f7e6b285e..4e8464ff79c44a3d6800f37efa6cecb5065df19f 100644
+--- a/crates/physics/src/tests.rs
++++ b/crates/physics/src/tests.rs
+@@ -881,3 +881,230 @@ fn debug_lines_show_contacts_and_joints() {
+     assert_eq!(count(crate::DebugKind::ContactNormal), 4);
+     assert_eq!(count(crate::DebugKind::Joint), 3);
+ }
++
++/// Deterministic pseudo-random numbers for randomized tests (SplitMix64),
++/// after the per-environment variation in Genesis
++/// `examples/rigid/domain_randomization.py` and `set_phys_attr.py`.
++struct Rng(u64);
++
++impl Rng {
++    fn next(&mut self) -> f64 {
++        self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
++        let mut z = self.0;
++        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
++        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
++        (z ^ (z >> 31)) as f64 / u64::MAX as f64
++    }
++
++    fn range(&mut self, lo: f64, hi: f64) -> f64 {
++        lo + (hi - lo) * self.next()
++    }
++
++    fn vec(&mut self, size: f64) -> DVec3 {
++        DVec3::new(
++            self.range(-size, size),
++            self.range(-size, size),
++            self.range(-size, size),
++        )
++    }
++
++    fn material(&mut self) -> Material {
++        Material {
++            friction: self.range(0.0, 1.0),
++            torsional: self.range(0.0, 0.05),
++            restitution: self.range(0.0, 1.0),
++        }
++    }
++
++    /// A random shape with a random collider offset from the center of mass.
++    fn collider(&mut self, body: crate::BodyId) -> Collider {
++        let shape = match (self.next() * 3.0) as u32 {
++            0 => Shape::Sphere {
++                radius: self.range(0.1, 1.0),
++            },
++            1 => Shape::Capsule {
++                radius: self.range(0.1, 0.8),
++                half_length: self.range(0.1, 1.5),
++            },
++            _ => Shape::Cuboid {
++                half: DVec3::new(
++                    self.range(0.1, 1.5),
++                    self.range(0.1, 1.5),
++                    self.range(0.1, 1.5),
++                ),
++            },
++        };
++        Collider::new(body, shape)
++            .at(self.vec(0.3), DQuat::from_scaled_axis(self.vec(1.5)))
++            .with_material(self.material())
++    }
++
++    fn body(&mut self, pos: DVec3) -> Body {
++        let mass = self.range(1.0, 500.0);
++        let size = DVec3::new(
++            self.range(0.2, 3.0),
++            self.range(0.2, 3.0),
++            self.range(0.2, 3.0),
++        );
++        let mut body = Body::new(mass, Body::box_inertia(mass, size), pos);
++        body.orientation = DQuat::from_scaled_axis(self.vec(3.0));
++        body.vel = self.vec(2.0);
++        body.omega = self.vec(1.0);
++        body
++    }
++}
++
++/// Randomized zero-g scenes: bodies of random mass, inertia, shape, center
++/// of mass offset, friction, and restitution thrown together. Momentum is
++/// exact, nothing goes non-finite, and restitution never adds energy beyond
++/// what the position correction can inject in a crowded pile.
++#[test]
++fn randomized_collisions_conserve_momentum() {
++    let mut rng = Rng(0x5eed_0001);
++    for case in 0..24 {
++        let mut world = World::new(1.0 / 120.0);
++        let n = 2 + (rng.next() * 5.0) as usize;
++        for i in 0..n {
++            let at = DVec3::new(
++                i as f64 * 2.5 - n as f64,
++                rng.range(-0.5, 0.5),
++                rng.range(-0.5, 0.5),
++            );
++            let mut body = rng.body(at);
++            // Aim everything at the middle so they meet.
++            body.vel = -at.normalize_or_zero() * rng.range(0.2, 2.0) + rng.vec(0.2);
++            let id = world.add(body);
++            let collider = rng.collider(id);
++            world.add_collider(collider);
++        }
++        let origin = rng.vec(5.0);
++        let ledger = Ledger::new(origin, world.momentum(origin));
++        let mut touched = false;
++        for _ in 0..360 {
++            world.step(&NoField);
++            touched |= !world.contacts.is_empty();
++            let error = ledger.error(world.momentum(origin));
++            assert!(
++                error.linear < 1e-9 && error.angular < 1e-9,
++                "case {case}: {error:?}"
++            );
++            assert!(
++                world
++                    .bodies()
++                    .iter()
++                    .all(|b| b.pos.is_finite() && b.vel.is_finite())
++            );
++        }
++        assert!(touched, "case {case} never collided");
++    }
++}
++
++/// Randomized friction: across random masses and coefficients, loads below
++/// the Coulomb limit hold and loads past it slip.
++#[test]
++fn randomized_friction_obeys_the_coulomb_limit() {
++    let mut rng = Rng(0x5eed_0002);
++    for case in 0..12 {
++        let material = Material {
++            friction: rng.range(0.2, 1.0),
++            torsional: 0.0,
++            restitution: 0.0,
++        };
++        let mass = rng.range(0.5, 200.0);
++        // Wide and low enough that even 1.1 of the limit at the center of
++        // mass cannot tip it (1.1 mu h < half width), so drift is sliding.
++        let half = DVec3::new(
++            rng.range(0.3, 0.5),
++            rng.range(0.05, 0.25),
++            rng.range(0.3, 0.5),
++        );
++        let drift = |load: f64| {
++            let mut world = World::new(0.01);
++            world.sleep.enabled = false;
++            ground(&mut world, material);
++            let block = world.add(Body::new(
++                mass,
++                Body::box_inertia(mass, half * 2.0),
++                DVec3::new(0.0, half.y, 0.0),
++            ));
++            world
++                .add_collider(Collider::new(block, Shape::Cuboid { half }).with_material(material));
++            let g = Uniform(DVec3::new(0.0, -G, 0.0));
++            for _ in 0..50 {
++                world.step(&g);
++            }
++            let start = world[block].pos;
++            for _ in 0..200 {
++                world[block].apply_force(DVec3::X * (load * material.friction * mass * G));
++                world.step(&g);
++            }
++            (world[block].pos - start).length()
++        };
++        assert!(
++            drift(0.9) < 5e-3,
++            "case {case}: held load slid {} (mu {:.3}, m {mass:.1}, half {half})",
++            drift(0.9),
++            material.friction
++        );
++        assert!(
++            drift(1.1) > 2e-2,
++            "case {case}: past the limit held {}",
++            drift(1.1)
++        );
++    }
++}
++
++/// Randomized soft grips and tethers: a grip at random stiffness and
++/// damping ratio at or above critical never rings and keeps momentum; a
++/// tether at random length never adds energy.
++#[test]
++fn randomized_joints_keep_their_invariants() {
++    let mut rng = Rng(0x5eed_0003);
++    for case in 0..16 {
++        let mut world = World::new(1.0 / 120.0);
++        let a = rng.body(DVec3::ZERO);
++        let a = world.add(a);
++        let gap = rng.range(1.0, 3.0);
++        let b = rng.body(DVec3::new(gap, 0.0, 0.0));
++        let b = world.add(b);
++        let at = DVec3::new(rng.range(0.0, 1.0), rng.range(-0.3, 0.3), 0.0);
++        let frequency = rng.range(2.0, 20.0);
++        world.add_joint(
++            crate::Joint::weld_here(&world, a, b, at).soft(frequency, rng.range(1.0, 2.0)),
++        );
++        let origin = rng.vec(3.0);
++        let ledger = Ledger::new(origin, world.momentum(origin));
++        for _ in 0..240 {
++            world.step(&NoField);
++            let error = ledger.error(world.momentum(origin));
++            assert!(
++                error.linear < 1e-9 && error.angular < 1e-9,
++                "case {case}: {error:?}"
++            );
++        }
++        let mut world = World::new(1.0 / 120.0);
++        let anchor = world.add(Body::new(1.0, DVec3::ONE, DVec3::ZERO).with_kind(BodyKind::Static));
++        let start_at = rng.range(1.0, 5.0);
++        let mut body = rng.body(DVec3::new(start_at, 0.0, 0.0));
++        body.omega = DVec3::ZERO;
++        let body = world.add(body);
++        world.add_joint(crate::Joint::new(
++            anchor,
++            DVec3::ZERO,
++            body,
++            DVec3::ZERO,
++            crate::JointKind::Tether {
++                length: rng.range(5.0, 8.0),
++            },
++        ));
++        let energy = |w: &World| 0.5 * w[body].mass * w[body].vel.length_squared();
++        let start = energy(&world);
++        for _ in 0..480 {
++            world.step(&NoField);
++            assert!(
++                energy(&world) <= start * (1.0 + 1e-9),
++                "case {case}: tether added energy"
++            );
++        }
++    }
++}
+diff --git a/crates/verse-lagrange/src/tests.rs b/crates/verse-lagrange/src/tests.rs
+index d7ab397f3a550b7cf39a19e462760f59e076372d..233cd2136a69a46e65af40d51332c4d620c68f3f 100644
+--- a/crates/verse-lagrange/src/tests.rs
++++ b/crates/verse-lagrange/src/tests.rs
+@@ -907,3 +907,57 @@ fn grabbing_closes_on_the_part_surface_facing_the_hands() {
+     let local = engine.orientation.inverse() * (held - engine.pos);
+     assert!((local.x - 1.1).abs() < 1e-6, "{local}");
+ }
++
++/// Randomized releases (GP-8): parts thrown at random speeds and spins
++/// toward the station structure and each other. The ledger balances, no
++/// part passes through structure, and nothing goes non-finite.
++#[test]
++fn randomized_releases_keep_the_ledger_and_stay_out_of_structure() {
++    let mut seed: u64 = 0x1a9_2a9e;
++    let mut next = || {
++        seed = seed
++            .wrapping_mul(6_364_136_223_846_793_005)
++            .wrapping_add(1_442_695_040_888_963_407);
++        (seed >> 11) as f64 / (1u64 << 53) as f64
++    };
++    for case in 0..8 {
++        let mut station = open_space();
++        station.propellant = 0.0;
++        for index in 0..PartKind::ALL.len() {
++            // Spaced 7 m apart so the parts start clear of each other.
++            let at = DVec3::new(
++                index as f64 * 7.0 - 17.5,
++                next() * 8.0 + 14.0,
++                next() * 20.0 - 10.0,
++            );
++            // Toward the truss and habitat, at up to the pack's top speed.
++            let toward = (DVec3::new(next() * 20.0 - 10.0, 6.0, next() * 10.0) - at).normalize();
++            let vel = toward * next() * station::SPEED_LIMIT;
++            let spin = DVec3::new(next() - 0.5, next() - 0.5, next() - 0.5) * 0.8;
++            release_part(&mut station, index, at, vel, spin);
++        }
++        station.reset_ledger();
++        for _ in 0..(15 * 60) {
++            station.step(1.0 / 60.0, &Command::default());
++            let error = station.ledger.error(station.momentum());
++            assert!(
++                error.linear < 1e-9 && error.angular < 1e-9,
++                "case {case}: {error:?}"
++            );
++            for c in &station.world.contacts {
++                assert!(
++                    c.separation > -0.05,
++                    "case {case}: penetrated {} m",
++                    c.separation
++                );
++            }
++        }
++        assert!(
++            station
++                .world
++                .bodies()
++                .iter()
++                .all(|b| b.pos.is_finite() && b.vel.is_finite())
++        );
++    }
++}
+diff --git a/crates/verse/src/zones/tests.rs b/crates/verse/src/zones/tests.rs
+index 2e6e53798a06388b1b99e178521242efc3f642cc..8202160a52173574cd4a3cf7ecc1e6c36a5458ff 100644
+--- a/crates/verse/src/zones/tests.rs
++++ b/crates/verse/src/zones/tests.rs
+@@ -236,6 +236,7 @@ fn l1_flight_is_inertial_and_carries_parts_to_the_jig() {
+             .any(|c| c.label == "Hide forces")
+     );
+     assert!(runtime.zone_snapshot(1.0).caption.contains(" g · spin "));
++    assert!(runtime.zone_snapshot(1.0).caption.contains(" ms · "));
+     // Map taps become autopilot targets rather than ground routes.
+     runtime.navigate_to([0.0, 10.0]).unwrap();
+     assert!(!runtime.navigation().is_active());

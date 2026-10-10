@@ -1,0 +1,28 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10055,
+  "title": "Dogfood: open a slide deck in the desktop app's animated slide viewer",
+  "body": "**Dogfood delegation target.** This issue is meant to be handed to one of our own dogfood agents (Coder, via the issue flow from chat, #10049) once delegation is ready. Humans and other agents should leave it for that unless the owner says otherwise. If it turns out too big for one delegated run, the agent should split it into the sub-issues below and do them one at a time.\n\n## What\n\nTurn the slide deck into a primitive the OpenAgents desktop app can open. When the user asks for a presentation (\"open the DevDays deck\", \"show me the presentation\"), a slide viewer pops up, looking good while it does, with a way to go full screen.\n\n## Today\n\n- `crates/openagents-deck` is a separate binary (`openagents-deck`). Its `Presenter` (`src/present.rs`) is a `rust_native_desktop::App` with its own window: slides, overview, notes, black screen, and keys.\n- Slides are Rust Native nodes (`src/compose.rs`, `src/slide.rs`, `src/script.rs`), and the decks are Markdown under `crates/openagents-deck/decks/`. The default deck is `three-devdays-later`.\n- The desktop app (`crates/openagents-desktop`, on `rust-native-desktop`) can't show a deck.\n\n## Wanted\n\n1. **Deck as a library primitive.** Pull the presenter state and painting out so a host app can embed it as a view or surface. The standalone `openagents-deck` binary keeps working as a thin wrapper around the same code, with no duplicate presenter.\n2. **A slide viewer in the desktop app.**\n   - It opens as a panel or overlay above the current screen and **animates open** (for example a short scale and fade from where it was triggered, about 200\u2013300 ms, eased), then animates closed the same way.\n   - It has previous/next controls, a slide counter, and keyboard navigation (arrows, space, Esc to close), all reusing the presenter's existing key handling.\n   - It has a **full-screen** option (a button plus a key such as `F`) that takes the slide edge to edge, with Esc returning to the viewer.\n   - It follows the current dark-only theme with gradations of white (no light mode, and no amber).\n3. **Opening from chat.** If a user asks to open, show, or present a deck, the viewer opens with that deck.\n   - Per the workspace rule, this must **not** be keyword or string matching. Route it through the existing typed tool/intent selection the chat uses: an `open_presentation { deck }` action or tool that the model selects, with the deck chosen from a typed list of the available decks.\n   - Deterministic parsing is fine only for the bounded deck id after the route is picked.\n4. **The list of decks** comes from the deck crate (the same `SCRIPTS`/`ASSETS` tables), not a second copy.\n\n## Acceptance\n\n- In the desktop app, asking in chat to open the Three DevDays Later presentation shows the viewer, which animates open. You can page through all its slides, go full screen and come back, and Esc closes it, animating closed.\n- `openagents-deck` still runs standalone, with the same slides and keys.\n- Tests:\n  - The presenter is driven headlessly: navigation, full-screen toggle, and open/close animation state over time.\n  - The chat action is selected and dispatched as a typed action, with a test that no string-matching path opens it.\n  - The existing deck snapshot tests still pass.\n- The screenshots (open mid-animation, viewer, full screen) are attached to the closing comment.\n\n## Constraints\n\n- Coordinate with the desktop Zeron-parity work (#10029) running in `~/work/openagents-desktop-chat`. Don't change menus, the palette, the sidebar, or the painter internals it owns: add the viewer as its own view.\n- Use `CARGO_PROFILE_DEV_DEBUG=0` and a per-issue `CARGO_TARGET_DIR`, and delete it afterward. Land on `main`.\n\n## Possible split\n\n1. Deck presenter as an embeddable library view (binary unchanged).\n2. Desktop slide viewer with the open/close animation and full screen.\n3. Typed `open_presentation` chat action wired to the viewer.\n",
+  "fix": "70b78c260cb69a0bb9fee8877168461868e9edf4",
+  "parent": "f4e6934f5bd772cad311ed96ec9fd29a62889be9",
+  "package": "openagents-deck",
+  "source_files": [
+    "crates/openagents-deck/src/lib.rs",
+    "crates/openagents-deck/src/present.rs"
+  ],
+  "test_files": [
+    "crates/openagents-deck/src/present.rs",
+    "crates/openagents-deck/src/viewer.rs"
+  ],
+  "test_names": [
+    "a_host_lays_out_and_paints_the_viewer",
+    "a_viewer_opens_by_id_and_refuses_an_unknown_one",
+    "escape_closes_what_is_open_then_the_viewer",
+    "next_and_previous_clamp_at_both_ends",
+    "the_decks_list_the_default_first",
+    "the_overview_cards_are_16_by_9_and_do_not_overlap"
+  ],
+  "fix_lines": 1029
+}

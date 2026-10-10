@@ -1,0 +1,22 @@
+{
+  "test_targets": [],
+  "issue": 9350,
+  "title": "[Lev 5] Suites and the calibration map",
+  "body": "Part of #9345. Depends on #9349. This is the first step whose output anyone may act on.\n\n## What to build\n\n- In-repo suites in the frozen format: checksummed, with separate training, calibration, development, and locked-test partitions and pinned revisions. Items are generated or authored in this repository, not pulled from an external checkout.\n- A calibration map from the L2 raw signal to a probability, fitted on the calibration partition, as a binned reliability table or an isotonic fit.\n- Scoring on the evaluation partition: accuracy, ten-bin ECE, NLL, Brier, confident-error rate at `p >= 0.9`, and resolution.\n- The mechanism probes as behavioral tests: isolation, order sensitivity, option-set integrity.\n- The calibration record defined in `docs/lev/calibration.md`, including the base signature and OS build it is valid for.\n\n## Acceptance\n\n- One question family has a fitted map, scored on a partition disjoint from the one it was fitted on.\n- The record refuses to validate when the serving base signature differs from the fitted one, proved by a test.\n- The numbers are published whether or not they are good.\n",
+  "fix": "e1f8677dd41b6013445d3dbc3e84468b63c1b216",
+  "parent": "45cb6ed3fef7a5d5df7ad3073a10b755cf86a839",
+  "package": "lev",
+  "source_files": [
+    "crates/lev/calibration/routing.json",
+    "crates/lev/calibration/severity.json",
+    "crates/lev/calibration/urgency.json",
+    "crates/lev/src/bin/lev_eval.rs",
+    "docs/lev/measurements/2026-09-19-suite-v2-scores.md",
+    "training/lev-adapter/README.md",
+    "training/lev-adapter/export.py",
+    "training/lev-adapter/train.py"
+  ],
+  "test_files": [],
+  "test_names": [],
+  "fix_lines": 359
+}

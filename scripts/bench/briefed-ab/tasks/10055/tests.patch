@@ -1,0 +1,648 @@
+diff --git a/crates/openagents-deck/src/present.rs b/crates/openagents-deck/src/present.rs
+index 1330eac510c534ab51504d1d97ca9212d31e6a54..c91ff87e32da41d4f30546e4f5c43349b24a9e91 100644
+--- a/crates/openagents-deck/src/present.rs
++++ b/crates/openagents-deck/src/present.rs
+@@ -563,7 +300,7 @@ mod tests {
+         p.key("o", false);
+         p.key("t", false);
+         p.key("Escape", false);
+-        assert!(!p.overview && !p.notes);
++        assert!(!p.viewer().overview() && !p.viewer().notes());
+         assert_eq!(p.fullscreen_request(true), None);
+         p.key("Escape", false);
+         assert_eq!(p.fullscreen_request(true), Some(false));
+@@ -583,29 +320,17 @@ mod tests {
+         let last = cells[2];
+         p.click(last.x + 5.0, last.y + 5.0);
+         assert_eq!(p.index(), 2);
+-        assert!(!p.overview);
++        assert!(!p.viewer().overview());
+     }
+ 
+     #[test]
+-    fn a_change_repaints_the_surface() {
++    fn a_change_repaints_the_surface_and_relabels_the_view() {
+         let mut p = presenter();
+         let before = p.surface_version(SURFACE);
++        let label = p.label();
+         p.key("ArrowRight", false);
+         assert_ne!(p.surface_version(SURFACE), before);
+-    }
+-
+-    #[test]
+-    fn the_overview_cards_are_16_by_9_and_do_not_overlap() {
+-        let cells = overview_cells(22, 1920.0, 1080.0);
+-        assert_eq!(cells.len(), 22);
+-        for (i, a) in cells.iter().enumerate() {
+-            assert!((a.w / a.h - WIDTH / HEIGHT).abs() < 0.01);
+-            assert!(a.x >= 0.0 && a.y >= 0.0 && a.x + a.w <= 1920.0 && a.y + a.h <= 1080.0);
+-            for b in &cells[i + 1..] {
+-                let apart =
+-                    a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y;
+-                assert!(apart, "{a:?} overlaps {b:?}");
+-            }
+-        }
++        assert_ne!(p.label(), label);
++        assert!(p.label().contains("Slide 2 of 3"));
+     }
+ }
+diff --git a/crates/openagents-deck/src/viewer.rs b/crates/openagents-deck/src/viewer.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..58ddec921422f6eda4652f526fcf3dfa057b4422
+--- /dev/null
++++ b/crates/openagents-deck/src/viewer.rs
+@@ -0,0 +1,594 @@
++//! The deck as a view another Rust Native app can embed.
++//!
++//! [`Viewer`] holds a presentation's state (the deck, the slide showing,
++//! the overview, the notes, the black screen, and the zoom) and paints it
++//! into whatever rectangle its host gives. A host opens one by deck id
++//! with [`Viewer::open`], lays it out with [`Viewer::layout`], paints it
++//! with [`Viewer::paint`], and feeds it keys with [`Viewer::key`], which
++//! says what the host should do next: nothing, close the viewer, change
++//! fullscreen, or quit. The `openagents-deck` window,
++//! [`crate::present::Presenter`], is a thin wrapper around the same type.
++
++use crate::compose::{self, Composed, Content, HEIGHT, WIDTH};
++use crate::slide::{Deck, SCRIPTS};
++use rust_native::layout::display::ColorRole;
++use rust_native::style::Color;
++use rust_native_desktop::rich::{self, Rich};
++use rust_native_desktop::text::Fonts;
++use rust_native_desktop::{Frame, PxRect, Theme};
++use std::fmt;
++
++/// The share of the area's height the slide keeps when the notes show.
++const SLIDE_SHARE_WITH_NOTES: f32 = 0.66;
++
++/// A deck the repository ships: the id [`Viewer::open`] takes, and the
++/// title a host shows for it.
++#[derive(Clone, Debug, PartialEq, Eq)]
++pub struct DeckEntry {
++    pub id: &'static str,
++    pub title: String,
++}
++
++/// The decks the repository ships, in the order they are filed: the
++/// default deck, `three-devdays-later`, first.
++pub fn decks() -> Vec<DeckEntry> {
++    SCRIPTS
++        .iter()
++        .map(|(id, _)| DeckEntry {
++            id,
++            title: Deck::named(id).map(|deck| deck.title()).unwrap_or_default(),
++        })
++        .collect()
++}
++
++/// A deck id the repository ships no script for.
++#[derive(Clone, Debug, PartialEq, Eq)]
++pub struct UnknownDeck(pub String);
++
++impl fmt::Display for UnknownDeck {
++    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
++        let known: Vec<&str> = SCRIPTS.iter().map(|(id, _)| *id).collect();
++        write!(
++            f,
++            "no deck named {}; the decks are: {}",
++            self.0,
++            known.join(", ")
++        )
++    }
++}
++
++impl std::error::Error for UnknownDeck {}
++
++/// What a key asks of the host.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum Outcome {
++    /// The key was not the viewer's; the host may use it.
++    Ignored,
++    /// The viewer took the key and repaints.
++    Handled,
++    /// Escape with nothing open: close the viewer (the standalone window
++    /// leaves fullscreen instead).
++    Close,
++    /// `f`: go fullscreen, or leave it.
++    ToggleFullscreen,
++    /// `q`: quit the presentation.
++    Quit,
++}
++
++/// A presentation that paints into a rectangle its host gives.
++pub struct Viewer {
++    deck: Deck,
++    slides: Vec<Composed>,
++    notes_laid: Vec<Rich>,
++    index: usize,
++    notes: bool,
++    overview: bool,
++    black: bool,
++    zoom: f32,
++    /// Digits typed toward a jump, waiting for enter.
++    typed: String,
++    /// Changes whenever the painting would.
++    version: u64,
++    /// The area the host laid the viewer out in, in the host's units;
++    /// clicks arrive in the same units.
++    area: PxRect,
++    fonts: Fonts,
++}
++
++impl Viewer {
++    /// A viewer on the deck filed under `id`, open on its first slide.
++    pub fn open(id: &str) -> Result<Viewer, UnknownDeck> {
++        Deck::named(id)
++            .map(|deck| Viewer::new(deck, 0))
++            .ok_or_else(|| UnknownDeck(id.to_string()))
++    }
++
++    /// A viewer on `deck`, open on slide `index` (from 0).
++    pub fn new(deck: Deck, index: usize) -> Viewer {
++        let slides: Vec<Composed> = (0..deck.len())
++            .map(|index| compose::compose(&deck, index))
++            .collect();
++        let notes_laid = deck
++            .slides
++            .iter()
++            .map(|slide| compose::notes(Some(slide), compose::COLUMN))
++            .collect();
++        let index = index.min(deck.len().saturating_sub(1));
++        Viewer {
++            index,
++            deck,
++            slides,
++            notes_laid,
++            notes: false,
++            overview: false,
++            black: false,
++            zoom: 1.0,
++            typed: String::new(),
++            version: 1,
++            area: PxRect {
++                x: 0.0,
++                y: 0.0,
++                w: WIDTH,
++                h: HEIGHT,
++            },
++            fonts: Fonts::new(),
++        }
++    }
++
++    /// Lays the viewer out in `area`, in the host's units. Clicks come in
++    /// the same units. Returns whether the area changed.
++    pub fn layout(&mut self, area: PxRect) -> bool {
++        if area == self.area {
++            return false;
++        }
++        self.area = area;
++        self.changed();
++        true
++    }
++
++    /// The area the viewer is laid out in.
++    pub fn area(&self) -> PxRect {
++        self.area
++    }
++
++    /// Shows the presenter's notes under the slide, or hides them.
++    pub fn show_notes(&mut self, on: bool) {
++        self.notes = on;
++        self.changed();
++    }
++
++    /// Opens the overview, or closes it.
++    pub fn show_overview(&mut self, on: bool) {
++        self.overview = on;
++        self.changed();
++    }
++
++    /// The slide showing, from 0.
++    pub fn index(&self) -> usize {
++        self.index
++    }
++
++    /// The deck.
++    pub fn deck(&self) -> &Deck {
++        &self.deck
++    }
++
++    /// Every slide, laid out.
++    pub fn slides(&self) -> &[Composed] {
++        &self.slides
++    }
++
++    /// Whether the notes show.
++    pub fn notes(&self) -> bool {
++        self.notes
++    }
++
++    /// Whether the overview shows.
++    pub fn overview(&self) -> bool {
++        self.overview
++    }
++
++    /// Whether the screen is black.
++    pub fn black(&self) -> bool {
++        self.black
++    }
++
++    /// Changes whenever the painting would, so a host repaints only then.
++    pub fn version(&self) -> u64 {
++        self.version
++    }
++
++    /// What the viewer says to assistive technology: the showing slide's
++    /// text, an image's alternative text included, and its place.
++    pub fn label(&self) -> String {
++        let mut label: Vec<String> = self
++            .slides
++            .get(self.index)
++            .map(|slide| {
++                slide
++                    .parts
++                    .iter()
++                    .filter(|part| part.kind != "foot")
++                    .map(|part| part.text.clone())
++                    .collect()
++            })
++            .unwrap_or_default();
++        label.push(format!("Slide {} of {}", self.index + 1, self.deck.len()));
++        label.join(". ").chars().take(4_000).collect()
++    }
++
++    fn changed(&mut self) {
++        self.version = self.version.wrapping_add(1);
++    }
++
++    /// Opens slide `index`, clamped to the deck.
++    fn go(&mut self, index: usize) {
++        self.index = index.min(self.deck.len().saturating_sub(1));
++        self.overview = false;
++        self.black = false;
++        self.changed();
++    }
++
++    /// Answers one key, `command` when cmd or ctrl is held.
++    pub fn key(&mut self, key: &str, command: bool) -> Outcome {
++        if command {
++            match key {
++                "=" | "+" => self.zoom = (self.zoom * 1.1).min(4.0),
++                "-" => self.zoom = (self.zoom / 1.1).max(0.25),
++                "0" => self.zoom = 1.0,
++                _ => return Outcome::Ignored,
++            }
++            self.changed();
++            return Outcome::Handled;
++        }
++        let columns = overview_columns(self.deck.len());
++        let mut outcome = Outcome::Handled;
++        match key {
++            "ArrowRight" | "Space" | " " | "PageDown" | "n" | "j" => self.go(self.index + 1),
++            "ArrowLeft" | "PageUp" | "p" | "k" => self.go(self.index.saturating_sub(1)),
++            "ArrowDown" if self.overview => {
++                self.go(self.index + columns);
++                self.overview = true;
++            }
++            "ArrowUp" if self.overview => {
++                self.go(self.index.saturating_sub(columns));
++                self.overview = true;
++            }
++            "Home" => self.go(0),
++            "End" => self.go(self.deck.len()),
++            "Enter" => {
++                if let Ok(number) = self.typed.parse::<usize>() {
++                    self.go(number.saturating_sub(1));
++                } else if self.overview {
++                    self.overview = false;
++                }
++                self.typed.clear();
++            }
++            "Escape" => {
++                if self.overview || self.notes || self.black || !self.typed.is_empty() {
++                    self.overview = false;
++                    self.notes = false;
++                    self.black = false;
++                    self.typed.clear();
++                } else {
++                    outcome = Outcome::Close;
++                }
++            }
++            "o" => self.overview = !self.overview,
++            "t" => self.notes = !self.notes,
++            "." | "b" => self.black = !self.black,
++            "f" => outcome = Outcome::ToggleFullscreen,
++            "q" => outcome = Outcome::Quit,
++            digit if !digit.is_empty() && digit.chars().all(|c| c.is_ascii_digit()) => {
++                self.typed.push_str(digit)
++            }
++            _ => return Outcome::Ignored,
++        }
++        self.changed();
++        outcome
++    }
++
++    /// A click at `x`, `y` in the host's units: on the overview, open the
++    /// slide under it; on a slide, go on.
++    pub fn click(&mut self, x: f32, y: f32) {
++        if !self.overview {
++            self.go(self.index + 1);
++            return;
++        }
++        let area = self.area;
++        if let Some(index) = overview_cells(self.deck.len(), area.w, area.h)
++            .iter()
++            .position(|cell| cell.contains(x - area.x, y - area.y))
++        {
++            self.go(index);
++        }
++    }
++
++    /// Paints the presentation into `rect` of `frame`, in pixels.
++    pub fn paint(&mut self, frame: &mut Frame, rect: PxRect) {
++        let previous = frame.clip_to(rect);
++        let theme = Theme::openagents();
++        frame.fill(rect, 0.0, theme.background);
++        if self.black {
++            frame.fill(rect, 0.0, Color::rgb(0, 0, 0));
++        } else if self.overview {
++            self.paint_overview(frame, rect);
++        } else {
++            let slide_height = if self.notes {
++                rect.h * SLIDE_SHARE_WITH_NOTES
++            } else {
++                rect.h
++            };
++            let scale = (rect.w / WIDTH).min(slide_height / HEIGHT) * self.zoom;
++            let x = rect.x + ((rect.w - WIDTH * scale) / 2.0).round();
++            let y = rect.y + ((slide_height - HEIGHT * scale) / 2.0).round();
++            if let Some(slide) = self.slides.get(self.index) {
++                paint_slide(frame, &mut self.fonts, slide, x, y, scale);
++            }
++            if self.notes {
++                self.paint_notes(frame, rect, slide_height, x, scale);
++            }
++            if !self.typed.is_empty() {
++                let go = compose::status(&format!("Go to {}", self.typed), 200.0);
++                go.paint(
++                    frame,
++                    &mut self.fonts,
++                    x + compose::MARGIN_X * scale,
++                    y + 12.0 * scale,
++                    scale,
++                    1.0,
++                    None,
++                );
++            }
++        }
++        frame.restore_clip(previous);
++    }
++
++    /// The notes under the slide, `top` pixels down `rect`.
++    fn paint_notes(&mut self, frame: &mut Frame, rect: PxRect, top: f32, x: f32, scale: f32) {
++        let Some(notes) = self.notes_laid.get(self.index) else {
++            return;
++        };
++        notes.paint(
++            frame,
++            &mut self.fonts,
++            x + compose::MARGIN_X * scale,
++            rect.y + top,
++            scale,
++            1.0,
++            Some(rect.y + rect.h - 8.0 * scale),
++        );
++    }
++
++    fn paint_overview(&mut self, frame: &mut Frame, rect: PxRect) {
++        let cells = overview_cells(self.deck.len(), rect.w, rect.h);
++        let theme = Theme::openagents();
++        for (index, cell) in cells.iter().enumerate() {
++            let Some(slide) = self.slides.get(index) else {
++                continue;
++            };
++            let scale = cell.w / WIDTH;
++            let (x, y) = (rect.x + cell.x, rect.y + cell.y);
++            let bounds = PxRect {
++                x,
++                y,
++                w: cell.w,
++                h: cell.h,
++            };
++            let previous = frame.clip_to(bounds);
++            paint_slide(frame, &mut self.fonts, slide, x, y, scale);
++            frame.restore_clip(previous);
++            let (color, width) = if index == self.index {
++                (theme.text, 2.0)
++            } else {
++                (rich::color(ColorRole::Border), 1.0)
++            };
++            let unit = (rect.w / 1000.0).max(1.0);
++            frame.stroke(bounds, 8.0 * unit, width * unit, color);
++        }
++    }
++}
++
++/// Paints `slide` with the canvas's top-left corner at `x`, `y` pixels,
++/// `scale` pixels a point.
++pub fn paint_slide(
++    frame: &mut Frame,
++    fonts: &mut Fonts,
++    slide: &Composed,
++    x: f32,
++    y: f32,
++    scale: f32,
++) {
++    for part in &slide.parts {
++        let (px, py) = (x + part.x * scale, y + part.y * scale);
++        match &part.content {
++            Content::Rich(rich) => {
++                rich.paint(frame, fonts, px, py, scale, part.magnification, None);
++            }
++            Content::Image {
++                image,
++                width,
++                height,
++                grow,
++            } => {
++                let area = PxRect {
++                    x: px,
++                    y: py,
++                    w: width * scale,
++                    h: height * scale,
++                };
++                // As large as fits, but never past `grow` screen pixels an
++                // image pixel (1 unless the slide asks for more), so a
++                // screenshot stays sharp.
++                let at = rust_native_desktop::image::fit(image.width, image.height, area, *grow);
++                rust_native_desktop::image::paint(frame, image, at);
++            }
++        }
++    }
++}
++
++/// A rectangle in whatever unit its caller uses.
++#[derive(Clone, Copy, Debug, PartialEq)]
++pub struct Cell {
++    pub x: f32,
++    pub y: f32,
++    pub w: f32,
++    pub h: f32,
++}
++
++impl Cell {
++    fn contains(&self, x: f32, y: f32) -> bool {
++        x >= self.x && x < self.x + self.w && y >= self.y && y < self.y + self.h
++    }
++}
++
++/// How many columns the overview lays `count` slides out in: the fewest
++/// that keep the grid no taller than it is wide.
++fn overview_columns(count: usize) -> usize {
++    let mut columns = 1;
++    while columns * columns < count {
++        columns += 1;
++    }
++    columns
++}
++
++/// Where each of `count` slides sits in the overview of a `width` by
++/// `height` area: a 16:9 card each, in rows, the grid centered.
++pub fn overview_cells(count: usize, width: f32, height: f32) -> Vec<Cell> {
++    if count == 0 {
++        return vec![];
++    }
++    let columns = overview_columns(count);
++    let rows = count.div_ceil(columns);
++    let gap = (width.min(height) * 0.02).max(4.0);
++    let card_w = ((width - gap * (columns as f32 + 1.0)) / columns as f32)
++        .min((height - gap * (rows as f32 + 1.0)) / rows as f32 * WIDTH / HEIGHT)
++        .max(1.0);
++    let card_h = card_w * HEIGHT / WIDTH;
++    let grid_w = columns as f32 * card_w + (columns as f32 - 1.0) * gap;
++    let grid_h = rows as f32 * card_h + (rows as f32 - 1.0) * gap;
++    let left = ((width - grid_w) / 2.0).round();
++    let top = ((height - grid_h) / 2.0).round();
++    (0..count)
++        .map(|index| Cell {
++            x: left + (index % columns) as f32 * (card_w + gap),
++            y: top + (index / columns) as f32 * (card_h + gap),
++            w: card_w,
++            h: card_h,
++        })
++        .collect()
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::slide::DEFAULT;
++
++    /// A viewer opens by deck id, and an unknown id is an error that
++    /// names the decks there are.
++    #[test]
++    fn a_viewer_opens_by_id_and_refuses_an_unknown_one() {
++        let viewer = Viewer::open("three-devdays-later").expect("the deck opens");
++        assert_eq!(viewer.deck().name, "three-devdays-later");
++        assert_eq!(viewer.index(), 0);
++        assert!(viewer.deck().len() > 1);
++        let error = Viewer::open("no-such-deck").err().expect("an unknown id");
++        assert_eq!(error, UnknownDeck("no-such-deck".to_string()));
++        assert!(error.to_string().contains("three-devdays-later"));
++    }
++
++    /// Next and previous move one slide and stop at both ends; first and
++    /// last jump to the ends.
++    #[test]
++    fn next_and_previous_clamp_at_both_ends() {
++        let mut viewer = Viewer::open(DEFAULT).expect("the deck opens");
++        let last = viewer.deck().len() - 1;
++        assert_eq!(viewer.key("ArrowLeft", false), Outcome::Handled);
++        assert_eq!(viewer.index(), 0, "the first slide stays");
++        viewer.key("ArrowRight", false);
++        assert_eq!(viewer.index(), 1);
++        viewer.key("ArrowLeft", false);
++        assert_eq!(viewer.index(), 0);
++        viewer.key("End", false);
++        assert_eq!(viewer.index(), last);
++        assert_eq!(viewer.key("ArrowRight", false), Outcome::Handled);
++        assert_eq!(viewer.index(), last, "the last slide stays");
++        viewer.key("ArrowLeft", false);
++        assert_eq!(viewer.index(), last - 1);
++        viewer.key("Home", false);
++        assert_eq!(viewer.index(), 0);
++        assert_eq!(viewer.key("x", false), Outcome::Ignored);
++    }
++
++    /// Escape first closes what is open, then asks the host to close.
++    #[test]
++    fn escape_closes_what_is_open_then_the_viewer() {
++        let mut viewer = Viewer::open(DEFAULT).expect("the deck opens");
++        viewer.key("o", false);
++        viewer.key("t", false);
++        assert_eq!(viewer.key("Escape", false), Outcome::Handled);
++        assert!(!viewer.overview() && !viewer.notes());
++        assert_eq!(viewer.key("Escape", false), Outcome::Close);
++        assert_eq!(viewer.key("f", false), Outcome::ToggleFullscreen);
++        assert_eq!(viewer.key("q", false), Outcome::Quit);
++    }
++
++    /// A host lays the viewer out in its own rectangle, paints it there,
++    /// and a click on the overview lands on the card under it.
++    #[test]
++    fn a_host_lays_out_and_paints_the_viewer() {
++        let mut viewer = Viewer::open(DEFAULT).expect("the deck opens");
++        let area = PxRect {
++            x: 100.0,
++            y: 50.0,
++            w: 320.0,
++            h: 180.0,
++        };
++        let before = viewer.version();
++        assert!(viewer.layout(area));
++        assert!(!viewer.layout(area), "the same area is no change");
++        assert_ne!(viewer.version(), before);
++        let mut frame = Frame::new(520, 280, Color::rgb(255, 0, 0));
++        viewer.paint(&mut frame, area);
++        let at = |x: usize, y: usize| {
++            let i = (y * 520 + x) * 4;
++            (frame.pixels[i], frame.pixels[i + 1], frame.pixels[i + 2])
++        };
++        assert_eq!(at(10, 10), (255, 0, 0), "outside the area is the host's");
++        assert_ne!(at(260, 140), (255, 0, 0), "inside the area is the deck's");
++        viewer.key("o", false);
++        let cells = overview_cells(viewer.deck().len(), area.w, area.h);
++        let third = cells[2];
++        viewer.click(area.x + third.x + 2.0, area.y + third.y + 2.0);
++        assert_eq!(viewer.index(), 2);
++        assert!(!viewer.overview());
++    }
++
++    /// The deck list comes from the shipped scripts, the default first,
++    /// each with its title.
++    #[test]
++    fn the_decks_list_the_default_first() {
++        let list = decks();
++        assert_eq!(list.len(), SCRIPTS.len());
++        assert_eq!(list[0].id, "three-devdays-later");
++        for entry in &list {
++            assert!(!entry.title.is_empty(), "{} has no title", entry.id);
++            assert!(Viewer::open(entry.id).is_ok());
++        }
++    }
++
++    #[test]
++    fn the_overview_cards_are_16_by_9_and_do_not_overlap() {
++        let cells = overview_cells(22, 1920.0, 1080.0);
++        assert_eq!(cells.len(), 22);
++        for (i, a) in cells.iter().enumerate() {
++            assert!((a.w / a.h - WIDTH / HEIGHT).abs() < 0.01);
++            assert!(a.x >= 0.0 && a.y >= 0.0 && a.x + a.w <= 1920.0 && a.y + a.h <= 1080.0);
++            for b in &cells[i + 1..] {
++                let apart =
++                    a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y;
++                assert!(apart, "{a:?} overlaps {b:?}");
++            }
++        }
++    }
++}

@@ -1,0 +1,15 @@
+{
+  "test_targets": [],
+  "issue": 3326,
+  "title": "Text overflow in command search pane",
+  "body": "<img width=\"555\" height=\"151\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/b0c5a2f4-fec6-4717-bfcc-2ec24aac9a64\" />\n\nMission Control and a couple others have longer descriptions that overflow outside the command search pane",
+  "fix": "977d670114f0270e6357373f99620df172339013",
+  "parent": "9f5b18b31fe314be0519b26a4935afa7b1cff76c",
+  "package": "wgpui",
+  "source_files": [
+    "crates/wgpui/src/components/hud/command_palette.rs"
+  ],
+  "test_files": [],
+  "test_names": [],
+  "fix_lines": 40
+}

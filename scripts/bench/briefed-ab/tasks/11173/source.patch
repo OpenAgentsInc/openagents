@@ -1,0 +1,207 @@
+diff --git a/crates/coder-new/src/composer_state.rs b/crates/coder-new/src/composer_state.rs
+index 8bb249545d070ce66c95a1c7a153d2e4c24fc88e..074f976f7822c0c2602b4fba82d5d9f733a0f3fe 100644
+--- a/crates/coder-new/src/composer_state.rs
++++ b/crates/coder-new/src/composer_state.rs
+@@ -28,6 +28,72 @@ impl crate::App {
+         self.assign_image_ids();
+     }
+ 
++    /// Attaches dropped or pasted files, or says why one cannot attach.
++    pub(crate) fn attach_paths(&mut self, paths: Vec<std::path::PathBuf>) {
++        for path in paths {
++            match crate::attachments::from_path(&path) {
++                Ok(_) => self.attach_image(path.display().to_string(), None),
++                Err(error) => {
++                    self.live.notice = Some(error);
++                    return;
++                }
++            }
++        }
++    }
++
++    /// Saves this prompt's attachments (pasted, dropped, and `@path` ones)
++    /// and adds one note line per attachment to the draft (#11173). Returns
++    /// how many were attached; on an error nothing changes.
++    pub(crate) fn attach_to_prompt(&mut self) -> Result<usize, String> {
++        use crate::attachments;
++        let cwd = self.cwd.clone().unwrap_or_else(|| {
++            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
++        });
++        let mut loaded = Vec::new();
++        for image in &self.composer.images {
++            loaded.push(if image.source.starts_with("data:") {
++                attachments::from_data_url(&image.source)?
++            } else {
++                attachments::from_path(std::path::Path::new(&image.source))?
++            });
++        }
++        for path in attachments::mentioned_paths(&self.draft.text, &cwd) {
++            if !self
++                .composer
++                .images
++                .iter()
++                .any(|image| std::path::Path::new(&image.source) == path)
++            {
++                loaded.push(attachments::from_path(&path)?);
++            }
++        }
++        if loaded.is_empty() {
++            return Ok(0);
++        }
++        if loaded.len() > attachments::MAX_ATTACHMENTS {
++            return Err(format!(
++                "A message can carry {} attachments at most.",
++                attachments::MAX_ATTACHMENTS
++            ));
++        }
++        let dir = self
++            .attachment_dir
++            .clone()
++            .or_else(attachments::default_dir)
++            .ok_or("Attachments need a home folder to be saved in.")?;
++        let mut notes = Vec::new();
++        for (index, attachment) in loaded.iter().enumerate() {
++            let path = attachment.save(&dir)?;
++            notes.push(attachments::note(attachment.label(), index + 1, &path));
++        }
++        if !self.draft.text.trim().is_empty() {
++            self.draft.text.push('\n');
++        }
++        self.draft.text.push_str(&notes.join("\n"));
++        self.composer.images.clear();
++        Ok(loaded.len())
++    }
++
+     pub(crate) fn assign_image_ids(&mut self) {
+         let mut used = self
+             .composer
+diff --git a/crates/coder-new/src/lib.rs b/crates/coder-new/src/lib.rs
+index aca9023d2e47a42a6d8362ac12b2062b0c99406d..8a35ce9be70974a54c6edc2be9d5cab0351c218f 100644
+--- a/crates/coder-new/src/lib.rs
++++ b/crates/coder-new/src/lib.rs
+@@ -6,6 +6,7 @@ pub mod acp_discovery;
+ pub mod agents;
+ pub mod appearance;
+ pub mod approval;
++pub mod attachments;
+ pub mod brainstorm;
+ pub mod bundled_runtime;
+ pub mod bundled_settings;
+diff --git a/crates/coder-new/src/models.rs b/crates/coder-new/src/models.rs
+index e85251c3db454f055b4e8211fdad8898af573a37..6c8cb8c460bd4e504bdc54d9f018a162d4c0951c 100644
+--- a/crates/coder-new/src/models.rs
++++ b/crates/coder-new/src/models.rs
+@@ -17,6 +17,23 @@ pub const SHORTLIST: [&str; 7] = [
+     "x-ai/grok-4.7",
+ ];
+ 
++/// Whether `model` takes images in a user message (#11173): the shortlist's
++/// vision models and the model families that all accept images. The free
++/// router and other models get a plain note with the file's path instead.
++#[must_use]
++pub fn accepts_images(model: &str) -> bool {
++    const FAMILIES: [&str; 6] = [
++        "openai/gpt-6",
++        "openai/gpt-5",
++        "openai/gpt-4o",
++        "anthropic/claude-",
++        "google/gemini-",
++        "x-ai/grok-4",
++    ];
++    let model = model.trim();
++    FAMILIES.iter().any(|family| model.starts_with(family))
++}
++
+ #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+ #[serde(deny_unknown_fields)]
+ pub struct GenerationOptions {
+diff --git a/crates/coder-new/src/provider.rs b/crates/coder-new/src/provider.rs
+index 311f100c049059c0fd7942351446b5b7e8b4d868..05db8738ba45617f5a16756db7945948ea89123f 100644
+--- a/crates/coder-new/src/provider.rs
++++ b/crates/coder-new/src/provider.rs
+@@ -256,11 +256,28 @@ impl Provider {
+         if !definitions.is_empty() {
+             history.push(json!({"role":"system","content":execution.instructions()}));
+         }
+-        history.extend(
+-            messages
+-                .iter()
+-                .map(|message| json!({"role":message.role,"content":message.content})),
+-        );
++        // Attachments (#11173): a vision model gets each noted image or PDF
++        // itself; any other model reads the note lines and why.
++        let vision = crate::models::accepts_images(model);
++        if messages
++            .iter()
++            .any(|message| message.role == "user" && crate::attachments::mentions(&message.content))
++        {
++            history.push(json!({"role":"system","content": if vision {
++                crate::attachments::VISION_NOTE
++            } else {
++                crate::attachments::TEXT_ONLY_NOTE
++            }}));
++        }
++        history.extend(messages.iter().map(|message| {
++            match (message.role == "user" && vision)
++                .then(|| crate::attachments::expand(&message.content))
++                .flatten()
++            {
++                Some(parts) => json!({"role":"user","content":parts}),
++                None => json!({"role":message.role,"content":message.content}),
++            }
++        }));
+         let started = Instant::now();
+         let mut joined = String::new();
+         let mut aggregate = Streamed::default();
+@@ -300,7 +317,7 @@ impl Provider {
+                     if definitions.is_empty() {
+                         request.messages = history.iter().filter_map(|message| Some(Message {
+                             role: message["role"].as_str()?.into(),
+-                            content: message["content"].as_str()?.into(),
++                            content: message["content"].as_str().or_else(|| message["content"][0]["text"].as_str())?.into(),
+                         })).collect();
+                         self.chat.stream_with_model(&request, &mut sink, model_callback).await.map(|reply| openrouter::ToolStreamed {reply, calls: vec![]})
+                     } else {
+diff --git a/crates/coder-new/src/ui.rs b/crates/coder-new/src/ui.rs
+index 67ca955200a407366ea51169c3831e14708fafd8..92d4d67b8d94da4dd0a3bf9bd3b77a5b79f3679a 100644
+--- a/crates/coder-new/src/ui.rs
++++ b/crates/coder-new/src/ui.rs
+@@ -1130,7 +1130,13 @@ fn composer_view(
+             frame.buffer_mut(),
+             0,
+             Some((
+-                &format!("{} image(s)", composer.images.len()),
++                &composer
++                    .images
++                    .iter()
++                    .enumerate()
++                    .map(|(index, image)| crate::attachments::chip_for(&image.source, index + 1))
++                    .collect::<Vec<_>>()
++                    .join("  "),
+                 Style::default().fg(t::GRAY),
+             )),
+             None,
+diff --git a/docs/kitchen-sink/orchestrator-parity.md b/docs/kitchen-sink/orchestrator-parity.md
+index 39d0219001ce2d8b167eac49ef37ad546a2d8b02..a306af96aa4169acff8db1bf5f6610d03a8879ed 100644
+--- a/docs/kitchen-sink/orchestrator-parity.md
++++ b/docs/kitchen-sink/orchestrator-parity.md
+@@ -36,7 +36,7 @@ This page lists each capability, where it stands on each surface today, what is
+ | Surface | Works | Partial | Missing |
+ | --- | --- | --- | --- |
+ | Website (live openagents.com) | 1 | 6 | 15 |
+-| Terminal (`coder`) | 6 | 11 | 5 |
++| Terminal (`coder`) | 8 | 9 | 5 |
+ | Apps (desktop / phone) | 2 | 9 | 11 |
+ 
+ The website count is low because much of the agent work is already built but answers only on localhost. `guard()` in `crates/openagents-web/src/lib.rs` keeps these routes local:
+@@ -71,8 +71,8 @@ Paths are under `crates/` unless shown otherwise.
+ | 11 | Run commands on your own computers | partial: replies to a synced Coder run on that computer (`coder_sync.rs`, `pages/chat.rs` `reply_to_coder`) | works: `openagents computer exec\|shell\|tail`, `openagents ssh`, `openagents host serve` (tailnet in `coder-host/src/tailnet.rs`) | works. Phone: remote terminal (`TerminalScreen.swift`/`.kt`); pairing by QR, code, SSH or Nearby. Desktop: is a host | Web can't run a command directly | Computer tools in web chat when a computer is linked | [#11171](https://github.com/OpenAgentsInc/openagents/issues/11171) | Monday |
+ | 12 | Screenshots and file transfer to and from computers | missing | missing: only `remote artifacts\|apply` for cloud jobs | missing | No screenshot, push or pull | `openagents computer screenshot\|push\|pull` over the host channel; inline images; phone Screenshot and Files | [#11171](https://github.com/OpenAgentsInc/openagents/issues/11171) | Monday |
+ | 13 | Analyse video and audio (probe, frames, transcription, A/V sync) | missing | missing: no ffmpeg or whisper tools (shell only if installed) | missing | No media tools; today's sync fix went the wrong way twice | `media` plugin: probe, frames, transcribe, av_offset (signed, against an independent reference), retime. See design (e) | [#11172](https://github.com/OpenAgentsInc/openagents/issues/11172) | Next week |
+-| 14 | Paste screenshots and images into the chat | missing: attach button commented out (`pages/chat.rs` `composer()`) | partial: paste attaches, then the provider refuses it (`coder-new/src/lib.rs:968`) | missing: off since 2026-10-01 (#10093/#10095); pipeline kept (`openagents-chat-app/src/attachments.rs`) | Images never reach a model | Send images to vision routes through the gateway; re-enable the composer pickers. See design (g) | [#11173](https://github.com/OpenAgentsInc/openagents/issues/11173), [#11174](https://github.com/OpenAgentsInc/openagents/issues/11174) | This weekend (coder), Monday (web, apps) |
+-| 15 | Attach local files and PDFs | missing | partial: a path is inserted as text; the model reads it with shell | missing | No file attachment | Path drop attaches in coder; web composer accepts PDFs and text files and stores them with the chat | [#11173](https://github.com/OpenAgentsInc/openagents/issues/11173), [#11174](https://github.com/OpenAgentsInc/openagents/issues/11174) | This weekend, Monday |
++| 14 | Paste screenshots and images into the chat | missing: attach button commented out (`pages/chat.rs` `composer()`) | works: a pasted screenshot, a dropped path or an `@path` attaches; a model that takes images gets the image, any other gets a note with the file's path (`coder-new/src/attachments.rs`) | missing: off since 2026-10-01 (#10093/#10095); pipeline kept (`openagents-chat-app/src/attachments.rs`) | Images never reach a model | Send images to vision routes through the gateway; re-enable the composer pickers. See design (g) | [#11173](https://github.com/OpenAgentsInc/openagents/issues/11173), [#11174](https://github.com/OpenAgentsInc/openagents/issues/11174) | This weekend (coder), Monday (web, apps) |
++| 15 | Attach local files and PDFs | missing | works: a dropped path or `@path` to an image or PDF attaches it (5 MB images, 20 MB PDFs) | missing | No file attachment | Path drop attaches in coder; web composer accepts PDFs and text files and stores them with the chat | [#11173](https://github.com/OpenAgentsInc/openagents/issues/11173), [#11174](https://github.com/OpenAgentsInc/openagents/issues/11174) | This weekend, Monday |
+ | 16 | Fetch web pages and search the web | missing: only the site's own docs at `/mcp/docs` | missing: only `curl` via `Run` | missing | No fetch or search tools | `web_fetch` and `web_search` tools shared by coder and web chat; refuse private IPs | [#11175](https://github.com/OpenAgentsInc/openagents/issues/11175) | This weekend |
+ | 17 | Memory that lasts across sessions | missing (ledger B10) | works: AGENTS.md/CLAUDE.md loaded nearest first plus `~/.openagents/AGENTS.md`; user and project notes with `remember`/`forget`/`recall` and `/memory` (`coder-new/src/memory.rs`); account sync is [#11182](https://github.com/OpenAgentsInc/openagents/issues/11182) | missing | No memory anywhere | Load AGENTS.md/CLAUDE.md; per-user and per-project memory entries synced to the account; Settings > Memory. See design (f) | [#11176](https://github.com/OpenAgentsInc/openagents/issues/11176) | This weekend |
+ | 18 | Background shells, wait loops, monitors | missing | partial: none in the TUI; host rules exist (`openagents background`, `openagents-cli/src/background.rs`) | partial. Desktop: Background page can pause and resume rules (`background_pane.rs`). Phone: watchers shown read-only (`computers_home.rs`) | The chat can't start a background command and be told when it ends | `Run` with background mode, a `monitor` tool, `/loop`. See design (h) | [#11177](https://github.com/OpenAgentsInc/openagents/issues/11177) | Monday |

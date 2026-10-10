@@ -1,0 +1,24 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 9886,
+  "title": "Grid: playtest titles and cosmetics on name tags",
+  "body": "No automatic tag: a key gets PLAYTESTER only from its first counted contribution award, never from joining the program. Read NIP-32 titles signed by the playtest referee through the mobile XP reader from #9847 phase 1, and draw: PLAYTESTER under the name tag, a ground ring for founding-playtester, marks for bug-hunter and fix-verifier, and a brief ball glow for raider. Opted-in keys only (published trainer profile); shapes, not colors. Depends on #9847.\nSpec: `docs/game/playtesting.md`, section Titles and cosmetics.\n\n\ud83e\udd16 Generated with [Claude Code](https://claude.com/claude-code)\n",
+  "fix": "38c2a7f9f074bf780f07c64b205e46127845f09e",
+  "parent": "8309d6199bd2b738647ef44c1fbef9d344c859bf",
+  "package": "coder-mobile",
+  "source_files": [
+    "crates/coder-mobile/src/verse_app.rs",
+    "crates/verse/src/ui.rs",
+    "docs/game/playtesting.md"
+  ],
+  "test_files": [
+    "crates/coder-mobile/src/verse_app.rs",
+    "crates/verse/src/xp/tests.rs"
+  ],
+  "test_names": [
+    "playtest_titles_draw_as_shapes_on_the_tag_the_ground_and_the_ball"
+  ],
+  "fix_lines": 297
+}

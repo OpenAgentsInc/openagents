@@ -1,0 +1,351 @@
+diff --git a/crates/physics/src/ledger.rs b/crates/physics/src/ledger.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..644967bf24c4edef26692f0ba2b1df0d367a9f5c
+--- /dev/null
++++ b/crates/physics/src/ledger.rs
+@@ -0,0 +1,220 @@
++//! Momentum bookkeeping, after Genesis `examples/ipc/ipc_momentum.py`: sum
++//! a system's momentum every step and check it against the start plus every
++//! external impulse. A closed system that changes its own momentum has a bug.
++
++use std::collections::BTreeMap;
++use std::ops::{Add, AddAssign, Sub};
++
++use glam::DVec3;
++use serde::{Deserialize, Serialize};
++
++use crate::body::Body;
++use crate::world::World;
++
++/// Linear momentum and angular momentum about a fixed origin.
++#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
++pub struct Momentum {
++    /// kg m/s.
++    pub linear: DVec3,
++    /// Orbital plus spin angular momentum, kg m^2/s.
++    pub angular: DVec3,
++}
++
++impl Momentum {
++    pub const ZERO: Self = Self {
++        linear: DVec3::ZERO,
++        angular: DVec3::ZERO,
++    };
++
++    /// A body's momentum about `origin`, counting its full mass. Callers
++    /// decide which bodies belong to the system.
++    #[must_use]
++    pub fn of(body: &Body, origin: DVec3) -> Self {
++        let linear = body.momentum();
++        Self {
++            linear,
++            angular: (body.pos - origin).cross(linear) + body.angular_momentum(),
++        }
++    }
++
++    /// An impulse `impulse` applied at `at`, about `origin`.
++    #[must_use]
++    pub fn impulse(impulse: DVec3, at: DVec3, origin: DVec3) -> Self {
++        Self {
++            linear: impulse,
++            angular: (at - origin).cross(impulse),
++        }
++    }
++}
++
++impl Add for Momentum {
++    type Output = Self;
++    fn add(self, other: Self) -> Self {
++        Self {
++            linear: self.linear + other.linear,
++            angular: self.angular + other.angular,
++        }
++    }
++}
++
++impl AddAssign for Momentum {
++    fn add_assign(&mut self, other: Self) {
++        *self = *self + other;
++    }
++}
++
++impl Sub for Momentum {
++    type Output = Self;
++    fn sub(self, other: Self) -> Self {
++        Self {
++            linear: self.linear - other.linear,
++            angular: self.angular - other.angular,
++        }
++    }
++}
++
++impl World {
++    /// Momentum of every non-static body about `origin`.
++    #[must_use]
++    pub fn momentum(&self, origin: DVec3) -> Momentum {
++        self.bodies()
++            .iter()
++            .filter(|b| b.moves())
++            .fold(Momentum::ZERO, |sum, b| sum + Momentum::of(b, origin))
++    }
++}
++
++/// Relative ledger error: residual size over the largest momentum involved.
++#[derive(Clone, Copy, Debug, PartialEq)]
++pub struct LedgerError {
++    pub linear: f64,
++    pub angular: f64,
++}
++
++/// A system's starting momentum and the named external impulses it has
++/// received since, such as thruster exhaust or contact with fixed structure.
++#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
++pub struct Ledger {
++    pub origin: DVec3,
++    pub start: Momentum,
++    pub external: BTreeMap<String, Momentum>,
++}
++
++impl Ledger {
++    #[must_use]
++    pub fn new(origin: DVec3, start: Momentum) -> Self {
++        Self {
++            origin,
++            start,
++            external: BTreeMap::new(),
++        }
++    }
++
++    /// Record an external impulse `impulse` applied at `at` under `term`.
++    pub fn add_impulse(&mut self, term: &str, impulse: DVec3, at: DVec3) {
++        self.add(term, Momentum::impulse(impulse, at, self.origin));
++    }
++
++    /// Record external momentum under `term`.
++    pub fn add(&mut self, term: &str, momentum: Momentum) {
++        *self.external.entry(term.to_owned()).or_default() += momentum;
++    }
++
++    /// Sum of every external term.
++    #[must_use]
++    pub fn external_total(&self) -> Momentum {
++        self.external
++            .values()
++            .fold(Momentum::ZERO, |sum, m| sum + *m)
++    }
++
++    /// What `now` has that the start and the external terms do not explain.
++    #[must_use]
++    pub fn residual(&self, now: Momentum) -> Momentum {
++        now - (self.start + self.external_total())
++    }
++
++    /// The residual relative to the largest momentum in play. A floor of
++    /// 1e-12 keeps a system at rest from dividing by zero.
++    #[must_use]
++    pub fn error(&self, now: Momentum) -> LedgerError {
++        let residual = self.residual(now);
++        let scale = |f: fn(&Momentum) -> DVec3| {
++            let terms = self.external.values().map(|m| f(m).length()).sum::<f64>();
++            (f(&self.start).length() + terms)
++                .max(f(&now).length())
++                .max(1e-12)
++        };
++        LedgerError {
++            linear: residual.linear.length() / scale(|m| m.linear),
++            angular: residual.angular.length() / scale(|m| m.angular),
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::body::BodyKind;
++    use crate::world::NoField;
++
++    fn tumbling_pair() -> World {
++        let mut world = World::new(1.0 / 120.0);
++        let size = DVec3::new(1.2, 2.0, 4.0);
++        let mut truss = Body::new(
++            180.0,
++            Body::box_inertia(180.0, size),
++            DVec3::new(3.0, 1.0, -2.0),
++        );
++        truss.vel = DVec3::new(0.4, -0.1, 0.25);
++        truss.omega = DVec3::new(0.3, 0.05, -0.2);
++        world.add(truss);
++        let mut tank = Body::new(320.0, Body::shell_inertia(320.0, 1.3, 3.6), DVec3::ZERO);
++        tank.vel = DVec3::new(-0.2, 0.0, 0.1);
++        tank.omega = DVec3::new(0.0, 0.8, 0.02);
++        world.add(tank);
++        world.add(
++            Body::new(1e6, DVec3::ONE, DVec3::new(50.0, 0.0, 0.0)).with_kind(BodyKind::Static),
++        );
++        world
++    }
++
++    #[test]
++    fn a_coasting_system_keeps_its_momentum() {
++        let mut world = tumbling_pair();
++        let origin = DVec3::new(1.0, 2.0, 3.0);
++        let ledger = Ledger::new(origin, world.momentum(origin));
++        let mut worst = LedgerError {
++            linear: 0.0,
++            angular: 0.0,
++        };
++        for _ in 0..(120 * 20) {
++            world.step(&NoField);
++            let error = ledger.error(world.momentum(origin));
++            worst.linear = worst.linear.max(error.linear);
++            worst.angular = worst.angular.max(error.angular);
++        }
++        assert!(worst.linear < 1e-12, "{worst:?}");
++        assert!(worst.angular < 1e-12, "{worst:?}");
++    }
++
++    #[test]
++    fn recorded_impulses_balance_and_unrecorded_ones_show() {
++        let mut world = tumbling_pair();
++        let origin = DVec3::ZERO;
++        let mut ledger = Ledger::new(origin, world.momentum(origin));
++        let kick = DVec3::new(30.0, -5.0, 12.0);
++        let at = world.bodies()[0].pos + DVec3::new(0.0, 0.9, 1.5);
++        world.bodies_mut()[0].apply_impulse_at(kick, at);
++        let before = ledger.error(world.momentum(origin));
++        assert!(before.linear > 1e-2 && before.angular > 1e-2, "{before:?}");
++        ledger.add_impulse("kick", kick, at);
++        let after = ledger.error(world.momentum(origin));
++        assert!(after.linear < 1e-12 && after.angular < 1e-12, "{after:?}");
++        for _ in 0..600 {
++            world.step(&NoField);
++        }
++        let later = ledger.error(world.momentum(origin));
++        assert!(later.linear < 1e-12 && later.angular < 1e-12, "{later:?}");
++    }
++}
+diff --git a/crates/verse-lagrange/src/tests.rs b/crates/verse-lagrange/src/tests.rs
+index 49faddbff351579f4ebaa2710d98ba7b5480a908..fb2f1aecc971c7a18e70b62d4750b375158a88db 100644
+--- a/crates/verse-lagrange/src/tests.rs
++++ b/crates/verse-lagrange/src/tests.rs
+@@ -334,3 +334,120 @@ fn a_recorded_session_replays_from_its_start_state() {
+     same_physics(&live, &replayed);
+     assert!(live.parts[0].state == PartState::Drifting);
+ }
++
++/// Far from structure, tide off, ledger fresh.
++fn open_space() -> Station {
++    let mut station = Station::new();
++    station.tide = false;
++    station.astronaut_mut().pos = DVec3::new(40.0, 30.0, 60.0);
++    station.reset_ledger();
++    station
++}
++
++fn worst_error(station: &mut Station, seconds: f64, command: &Command) -> physics::LedgerError {
++    let mut worst = physics::LedgerError {
++        linear: 0.0,
++        angular: 0.0,
++    };
++    for _ in 0..(seconds * 60.0) as usize {
++        station.step(1.0 / 60.0, command);
++        let error = station.ledger.error(station.momentum());
++        worst.linear = worst.linear.max(error.linear);
++        worst.angular = worst.angular.max(error.angular);
++    }
++    worst
++}
++
++#[test]
++fn coasting_conserves_momentum() {
++    let mut station = open_space();
++    // An empty pack cannot hold position, so the astronaut coasts too.
++    station.propellant = 0.0;
++    station.astronaut_mut().vel = DVec3::new(0.3, -0.1, 0.2);
++    // A tumbling truss released nearby.
++    let id = station.parts[2].body;
++    station.parts[2].state = PartState::Drifting;
++    station.world[id].kind = PartState::Drifting.body_kind();
++    station.world[id].pos = DVec3::new(30.0, 30.0, 50.0);
++    station.world[id].vel = DVec3::new(-0.05, 0.02, 0.1);
++    station.world[id].omega = DVec3::new(0.2, 0.9, -0.1);
++    station.reset_ledger();
++    let worst = worst_error(&mut station, 20.0, &Command::default());
++    assert!(worst.linear < 1e-12 && worst.angular < 1e-12, "{worst:?}");
++}
++
++#[test]
++fn burns_balance_against_their_exhaust() {
++    let mut station = open_space();
++    let mut worst = worst_error(
++        &mut station,
++        6.0,
++        &Command {
++            direction: DVec3::new(1.0, 0.5, -0.3),
++            yaw: 0.7,
++            climb: false,
++        },
++    );
++    station.fly_to(DVec3::new(20.0, 10.0, 40.0)).unwrap();
++    let hold = worst_error(&mut station, 20.0, &Command::default());
++    worst.linear = worst.linear.max(hold.linear);
++    worst.angular = worst.angular.max(hold.angular);
++    assert!(station.ledger.external["exhaust"].linear.length() > 1.0);
++    assert!(worst.linear < 1e-9 && worst.angular < 1e-9, "{worst:?}");
++}
++
++#[test]
++fn structure_and_the_safety_tether_are_named_external_terms() {
++    let mut station = Station::new();
++    station.tide = false;
++    station.astronaut_mut().pos = DVec3::new(0.0, 6.0, 24.0);
++    station.reset_ledger();
++    let into_airlock = Command {
++        direction: -DVec3::Z,
++        yaw: std::f64::consts::PI,
++        climb: false,
++    };
++    let worst = worst_error(&mut station, 10.0, &into_airlock);
++    assert!(station.ledger.external["structure"].linear.length() > 1.0);
++    assert!(worst.linear < 1e-9 && worst.angular < 1e-9, "{worst:?}");
++    let mut station = open_space();
++    station.astronaut_mut().pos = DVec3::new(0.0, 0.0, station::EVA_RANGE - 1.0);
++    station.reset_ledger();
++    let outward = Command {
++        direction: DVec3::Z,
++        yaw: 0.0,
++        climb: false,
++    };
++    let worst = worst_error(&mut station, 5.0, &outward);
++    assert!(station.ledger.external["tether"].linear.length() > 1.0);
++    assert!(worst.linear < 1e-9 && worst.angular < 1e-9, "{worst:?}");
++}
++
++/// Baseline for GP-4 (#9781): the carried part is teleported to the hands
++/// and released with a preset spin, so a carry conserves linear momentum
++/// but not angular momentum. The soft grab replaces this and flips the
++/// angular assertion.
++#[test]
++fn the_rigid_carry_baseline_breaks_angular_momentum() {
++    let mut station = busy_station();
++    station.tide = false;
++    station.reset_ledger();
++    station.grab().unwrap();
++    let grabbed = station.ledger.error(station.momentum());
++    assert!(grabbed.linear < 1e-12, "capture is inelastic: {grabbed:?}");
++    let mut worst = worst_error(
++        &mut station,
++        4.0,
++        &Command {
++            direction: DVec3::new(0.2, 0.0, 1.0),
++            yaw: 0.9,
++            climb: false,
++        },
++    );
++    station.release().unwrap();
++    let released = station.ledger.error(station.momentum());
++    worst.linear = worst.linear.max(released.linear);
++    worst.angular = worst.angular.max(released.angular);
++    assert!(worst.linear < 1e-9, "{worst:?}");
++    assert!(worst.angular > 1e-3, "baseline violation: {worst:?}");
++}

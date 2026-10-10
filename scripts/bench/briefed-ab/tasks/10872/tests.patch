@@ -1,0 +1,580 @@
+diff --git a/crates/coder/src/task/sales/floor.rs b/crates/coder/src/task/sales/floor.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..6c3f2bcb4ef421ab987338d782565174ba6c2b90
+--- /dev/null
++++ b/crates/coder/src/task/sales/floor.rs
+@@ -0,0 +1,476 @@
++//! The private floor report: one owner-only projection over the canonical
++//! sales books. Counts are recomputed from the records on every read, so a
++//! restart or a replayed command cannot inflate them, and anything the books
++//! do not know stays labeled unknown rather than zero.
++
++use super::{Access, Result, Stage, Store, agents, expenses, outbox, replies};
++use serde::{Deserialize, Serialize};
++use std::collections::{BTreeMap, BTreeSet};
++
++pub const REPORT_SCHEMA: &str = "openagents.sales-floor-report.v1";
++pub const ESCALATION_SCHEMA: &str = "openagents.sales-floor-escalations.v1";
++pub const WEEKLY_DRAFT_SCHEMA: &str = "openagents.sales-floor-weekly-draft.v1";
++const WEEK: u64 = 7 * 24 * 3600;
++
++/// A count the books hold, or an explicit statement that they cannot.
++#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
++#[serde(tag = "state", rename_all = "snake_case")]
++pub enum Measure {
++    Known { value: u64 },
++    Unknown { reason: String },
++}
++
++#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
++pub struct Messages {
++    pub drafted: u64,
++    pub owner_reviewed: u64,
++    pub rejected: u64,
++    pub proposed: u64,
++    pub approved: u64,
++    pub sent: u64,
++    pub replied: u64,
++}
++
++/// Delivery evidence, kept apart from send counts: an accepted message is
++/// not a delivered one, and an unknown delivery is neither success nor failure.
++#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
++pub struct Delivery {
++    pub delivered: u64,
++    pub hard_bounce: u64,
++    pub failed: u64,
++    pub unknown: u64,
++    pub opt_out: u64,
++    pub complaint: u64,
++    pub telemetry_absent: bool,
++}
++
++#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
++pub struct Costs {
++    pub reserved_estimate_usd_millionths: u64,
++    pub billed_usd_millionths: Measure,
++    pub reservations_unknown: u64,
++    pub reservations_breached: u64,
++    pub per_qualified_lead_usd_millionths: Measure,
++}
++
++#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
++pub struct Report {
++    pub schema: String,
++    pub generated_at: u64,
++    pub owner: String,
++    pub stages: BTreeMap<String, u64>,
++    pub leads: u64,
++    pub accepted_assignments: u64,
++    pub next_actions_due: u64,
++    pub next_actions_overdue: u64,
++    pub messages: Messages,
++    pub delivery: Delivery,
++    pub meetings: BTreeMap<String, u64>,
++    pub certification: BTreeMap<String, u64>,
++    pub unresolved_incidents: u64,
++    pub unresolved_replies: u64,
++    pub costs: Costs,
++    pub outbox_paused: bool,
++    pub gaps: Vec<String>,
++}
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
++#[serde(rename_all = "snake_case")]
++pub enum Severity {
++    Immediate,
++    Review,
++}
++
++/// One failure the owner reviews, with the exact record it comes from.
++#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
++pub struct Escalation {
++    pub severity: Severity,
++    pub kind: String,
++    pub reference: String,
++    pub at: u64,
++    pub detail: String,
++}
++
++#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
++pub struct Escalations {
++    pub schema: String,
++    pub generated_at: u64,
++    pub owner: String,
++    pub immediate: Vec<Escalation>,
++    pub review: Vec<Escalation>,
++}
++
++/// Paul's weekly aggregate for the owner. Never published by this code.
++#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
++pub struct WeeklyDraft {
++    pub schema: String,
++    pub period_start: u64,
++    pub period_end: u64,
++    pub report: Report,
++    pub lessons: Vec<String>,
++    pub proposed_next_actions: Vec<String>,
++    pub published: bool,
++}
++
++impl Store {
++    /// Recompute the private floor report from the canonical books.
++    pub fn floor_report(&mut self, owner: &Access) -> Result<Report> {
++        self.refresh()?;
++        self.admin(owner)?;
++        let now = (self.clock)();
++        Ok(self.project_floor(owner, now))
++    }
++
++    /// Open complaints, pauses, suspensions, authentication, budget, and
++    /// adversary findings, each bound to its record.
++    pub fn floor_escalations(&mut self, owner: &Access) -> Result<Escalations> {
++        self.refresh()?;
++        self.admin(owner)?;
++        let now = (self.clock)();
++        let mut all = Vec::new();
++        for incident in self.state.outbox.incidents.values() {
++            if incident.resolved_at.is_some() {
++                continue;
++            }
++            let (severity, kind) = match incident.kind {
++                outbox::IncidentKind::Complaint => (Severity::Immediate, "complaint"),
++                outbox::IncidentKind::UnsupportedSentClaim => {
++                    (Severity::Immediate, "unsupported_sent_claim")
++                }
++                outbox::IncidentKind::SuppressionBreach => {
++                    (Severity::Immediate, "suppression_breach")
++                }
++                outbox::IncidentKind::AuthenticationFailure => {
++                    (Severity::Immediate, "authentication_failure")
++                }
++                outbox::IncidentKind::HardBounce => (Severity::Review, "hard_bounce"),
++            };
++            all.push(Escalation {
++                severity,
++                kind: kind.into(),
++                reference: incident.reference_sha256.clone(),
++                at: incident.at,
++                detail: format!("outbox incident {}", incident.id),
++            });
++        }
++        if self.state.outbox.paused {
++            all.push(Escalation {
++                severity: Severity::Immediate,
++                kind: "outbox_paused".into(),
++                reference: format!("outbox-revision-{}", self.state.outbox.revision),
++                at: now,
++                detail: "outbound dispatch is paused until the owner restarts it".into(),
++            });
++        }
++        for record in self.state.agents.certificates.values() {
++            if record.certification.state == agents::CertState::Suspended {
++                all.push(Escalation {
++                    severity: Severity::Review,
++                    kind: "certification_suspended".into(),
++                    reference: record.certification.id.clone(),
++                    at: record.recorded_at,
++                    detail: format!("{} is suspended", record.certification.agent.name),
++                });
++            }
++        }
++        for reservation in self.state.expenses.reservations() {
++            match reservation.status {
++                expenses::Status::Breach => all.push(Escalation {
++                    severity: Severity::Immediate,
++                    kind: "budget_breach".into(),
++                    reference: reservation.id.clone(),
++                    at: reservation.admitted_at,
++                    detail: format!("{} exceeded its reservation", reservation.actor),
++                }),
++                expenses::Status::Unknown => all.push(Escalation {
++                    severity: Severity::Review,
++                    kind: "expense_unknown".into(),
++                    reference: reservation.id.clone(),
++                    at: reservation.admitted_at,
++                    detail: "model usage is unknown; new model work stays stopped".into(),
++                }),
++                _ => {}
++            }
++        }
++        for record in self.state.replies.records.values() {
++            let (severity, kind) = match record.safety {
++                replies::Safety::Injection => (Severity::Immediate, "reply_injection"),
++                replies::Safety::CredentialMaterial => {
++                    (Severity::Immediate, "reply_credential_material")
++                }
++                replies::Safety::AmbiguousOptOut if record.owner_label.is_none() => {
++                    (Severity::Review, "reply_ambiguous_opt_out")
++                }
++                _ => continue,
++            };
++            all.push(Escalation {
++                severity,
++                kind: kind.into(),
++                reference: record.id.clone(),
++                at: record.received_at,
++                detail: "inbound reply held for owner review".into(),
++            });
++        }
++        all.sort_by(|a, b| (a.severity, a.at, &a.reference).cmp(&(b.severity, b.at, &b.reference)));
++        let (immediate, review) = all
++            .into_iter()
++            .partition(|e| e.severity == Severity::Immediate);
++        Ok(Escalations {
++            schema: ESCALATION_SCHEMA.into(),
++            generated_at: now,
++            owner: owner.principal.clone(),
++            immediate,
++            review,
++        })
++    }
++
++    /// Paul's weekly aggregate draft over the trailing seven days.
++    pub fn floor_weekly_draft(&mut self, owner: &Access) -> Result<WeeklyDraft> {
++        let report = self.floor_report(owner)?;
++        let now = report.generated_at;
++        let mut lessons = Vec::new();
++        let mut proposed = Vec::new();
++        if report.messages.sent == 0 {
++            lessons.push(
++                "No message was sent this period; reply and delivery rates are not measurable."
++                    .into(),
++            );
++        }
++        if report.delivery.telemetry_absent {
++            lessons.push(
++                "Delivery telemetry is absent; sent counts say nothing about delivery.".into(),
++            );
++        }
++        if report.delivery.complaint > 0 || report.outbox_paused {
++            proposed
++                .push("Keep the floor paused until the owner reviews every open incident.".into());
++        }
++        if report.next_actions_overdue > 0 {
++            proposed.push(format!(
++                "Clear {} overdue next actions before proposing new outreach.",
++                report.next_actions_overdue
++            ));
++        }
++        if matches!(report.costs.billed_usd_millionths, Measure::Unknown { .. }) {
++            lessons.push(
++                "Actual model bills are unknown; only list-price reservations are counted.".into(),
++            );
++        }
++        if proposed.is_empty() {
++            proposed.push("Continue within the current caps; no change proposed.".into());
++        }
++        Ok(WeeklyDraft {
++            schema: WEEKLY_DRAFT_SCHEMA.into(),
++            period_start: now.saturating_sub(WEEK),
++            period_end: now,
++            report,
++            lessons,
++            proposed_next_actions: proposed,
++            published: false,
++        })
++    }
++
++    fn project_floor(&self, owner: &Access, now: u64) -> Report {
++        let state = &self.state;
++        let mut stages: BTreeMap<String, u64> = BTreeMap::new();
++        for stage in [
++            Stage::New,
++            Stage::Qualified,
++            Stage::Pilot,
++            Stage::Active,
++            Stage::Closed,
++        ] {
++            stages.insert(stage_name(stage).into(), 0);
++        }
++        let mut accepted_assignments = 0;
++        let mut due = 0;
++        let mut overdue = 0;
++        let mut messages = Messages::default();
++        let mut qualified = 0_u64;
++        for lead in state.leads.values() {
++            *stages
++                .entry(stage_name(lead.details.stage).into())
++                .or_default() += 1;
++            if !matches!(lead.details.stage, Stage::New) {
++                qualified += 1;
++            }
++            if let Some(next) = &lead.details.next {
++                if next.due_at < now {
++                    overdue += 1;
++                } else {
++                    due += 1;
++                }
++            }
++            accepted_assignments += lead
++                .agent_records
++                .assignments
++                .values()
++                .filter(|a| a.active && a.expires_at > now)
++                .count() as u64;
++            for draft in lead.agent_records.drafts.values() {
++                messages.drafted += 1;
++                match draft.state {
++                    agents::DraftState::OwnerReviewed => messages.owner_reviewed += 1,
++                    agents::DraftState::Rejected => messages.rejected += 1,
++                    agents::DraftState::Proposed => {}
++                }
++            }
++        }
++        let mut delivery = Delivery::default();
++        let mut sent_ids = BTreeSet::new();
++        for record in state.outbox.records.values() {
++            match record.phase {
++                outbox::Phase::Proposed => messages.proposed += 1,
++                outbox::Phase::Approved | outbox::Phase::DispatchIntent => messages.approved += 1,
++                outbox::Phase::Rejected | outbox::Phase::Cancelled | outbox::Phase::Invalidated => {
++                }
++                outbox::Phase::Accepted => {
++                    sent_ids.insert(&record.id);
++                }
++                outbox::Phase::Delivered => {
++                    sent_ids.insert(&record.id);
++                    delivery.delivered += 1;
++                }
++                outbox::Phase::Failed => {
++                    sent_ids.insert(&record.id);
++                    delivery.failed += 1;
++                }
++                outbox::Phase::HardBounce => {
++                    sent_ids.insert(&record.id);
++                    delivery.hard_bounce += 1;
++                }
++                outbox::Phase::Unknown | outbox::Phase::OwnerReported => {
++                    sent_ids.insert(&record.id);
++                    delivery.unknown += 1;
++                }
++            }
++        }
++        messages.sent = sent_ids.len() as u64;
++        let mut unresolved_replies = 0;
++        for record in state.replies.records.values() {
++            messages.replied += 1;
++            match record.safety {
++                replies::Safety::OptOut => delivery.opt_out += 1,
++                replies::Safety::HardBounce => delivery.hard_bounce += 1,
++                _ => {}
++            }
++            if record.owner_label.is_none()
++                && record
++                    .model_classification
++                    .as_ref()
++                    .is_none_or(|c| c.owner_review_required)
++            {
++                unresolved_replies += 1;
++            }
++        }
++        for incident in state.outbox.incidents.values() {
++            if incident.kind == outbox::IncidentKind::Complaint {
++                delivery.complaint += 1;
++            }
++        }
++        delivery.telemetry_absent = messages.sent > 0
++            && delivery.delivered + delivery.failed + delivery.hard_bounce + delivery.unknown == 0;
++        let mut meetings = BTreeMap::new();
++        for meeting in state.meetings.meetings() {
++            *meetings
++                .entry(format!("{:?}", meeting.phase).to_lowercase())
++                .or_default() += 1;
++        }
++        let mut certification = BTreeMap::new();
++        for record in state.agents.certificates.values() {
++            *certification
++                .entry(format!("{:?}", record.certification.state).to_lowercase())
++                .or_default() += 1;
++        }
++        let mut reserved = 0_u64;
++        let mut billed = 0_u64;
++        let mut any_billed = false;
++        let mut unknown = 0_u64;
++        let mut breached = 0_u64;
++        for reservation in state.expenses.reservations() {
++            reserved = reserved.saturating_add(reservation.maximum_usd_millionths);
++            match reservation.status {
++                expenses::Status::Unknown => unknown += 1,
++                expenses::Status::Breach => breached += 1,
++                _ => {}
++            }
++            for settlement in &reservation.settlements {
++                if let Some(amount) = settlement.billed_usd_millionths {
++                    any_billed = true;
++                    billed = billed.saturating_add(amount);
++                }
++            }
++        }
++        let billed_measure = if any_billed && unknown == 0 {
++            Measure::Known { value: billed }
++        } else if any_billed {
++            Measure::Unknown {
++                reason: format!("{unknown} reservations have unknown usage"),
++            }
++        } else {
++            Measure::Unknown {
++                reason: "no actual bill recorded".into(),
++            }
++        };
++        let per_lead = if qualified == 0 {
++            Measure::Unknown {
++                reason: "no qualified lead".into(),
++            }
++        } else {
++            Measure::Known {
++                value: reserved / qualified,
++            }
++        };
++        let mut gaps = Vec::new();
++        if state.outbox.activation.is_none() {
++            gaps.push("outbound is not activated; sends are fixtures or absent".into());
++        }
++        if state.leads.values().all(|l| l.service_sales.is_empty()) {
++            gaps.push("no service sale recorded; revenue enrichment absent".into());
++        }
++        Report {
++            schema: REPORT_SCHEMA.into(),
++            generated_at: now,
++            owner: owner.principal.clone(),
++            stages,
++            leads: state.leads.len() as u64,
++            accepted_assignments,
++            next_actions_due: due,
++            next_actions_overdue: overdue,
++            messages,
++            delivery,
++            meetings,
++            certification,
++            unresolved_incidents: state
++                .outbox
++                .incidents
++                .values()
++                .filter(|i| i.resolved_at.is_none())
++                .count() as u64,
++            unresolved_replies,
++            costs: Costs {
++                reserved_estimate_usd_millionths: reserved,
++                billed_usd_millionths: billed_measure,
++                reservations_unknown: unknown,
++                reservations_breached: breached,
++                per_qualified_lead_usd_millionths: per_lead,
++            },
++            outbox_paused: state.outbox.paused,
++            gaps,
++        }
++    }
++}
++
++fn stage_name(stage: Stage) -> &'static str {
++    match stage {
++        Stage::New => "new",
++        Stage::Qualified => "qualified",
++        Stage::Pilot => "pilot",
++        Stage::Active => "active",
++        Stage::Closed => "closed",
++    }
++}
++
++#[cfg(test)]
++#[path = "floor/tests.rs"]
++mod tests;
+diff --git a/crates/coder/src/task/sales/floor/tests.rs b/crates/coder/src/task/sales/floor/tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..56643c289a0f199dfd30b102e1b1b63f210b602b
+--- /dev/null
++++ b/crates/coder/src/task/sales/floor/tests.rs
+@@ -0,0 +1,92 @@
++use super::*;
++use crate::task::sales::Role;
++
++fn now() -> u64 {
++    1_800_000_000
++}
++
++fn fixture() -> (tempfile::TempDir, Store, Access, Access) {
++    let dir = tempfile::tempdir().unwrap();
++    let mut store = Store::open_with_clock(&dir.path().join("host"), now).unwrap();
++    let owner_file = dir.path().join("owner");
++    store.initialize("operator", &owner_file).unwrap();
++    let owner = store
++        .authenticate(&Store::read_credential(&owner_file).unwrap())
++        .unwrap();
++    let reader_file = dir.path().join("reader");
++    store
++        .issue(&owner, "reader", Role::Reader, &reader_file)
++        .unwrap();
++    let reader = store
++        .authenticate(&Store::read_credential(&reader_file).unwrap())
++        .unwrap();
++    (dir, store, owner, reader)
++}
++
++#[test]
++fn an_empty_floor_reports_unknowns_not_zero_success() {
++    let (_dir, mut store, owner, _) = fixture();
++    let report = store.floor_report(&owner).unwrap();
++    assert_eq!(report.leads, 0);
++    assert_eq!(report.messages.sent, 0);
++    assert!(!report.delivery.telemetry_absent);
++    assert!(matches!(
++        report.costs.billed_usd_millionths,
++        Measure::Unknown { .. }
++    ));
++    assert!(matches!(
++        report.costs.per_qualified_lead_usd_millionths,
++        Measure::Unknown { .. }
++    ));
++    assert!(report.gaps.iter().any(|g| g.contains("not activated")));
++    let again = store.floor_report(&owner).unwrap();
++    assert_eq!(report, again);
++}
++
++#[test]
++fn reads_need_the_owner() {
++    let (_dir, mut store, owner, reader) = fixture();
++    let e = store.floor_escalations(&owner).unwrap();
++    assert!(e.immediate.is_empty() && e.review.is_empty());
++    assert!(store.floor_report(&reader).is_err());
++    assert!(store.floor_escalations(&reader).is_err());
++    assert!(store.floor_weekly_draft(&reader).is_err());
++}
++
++#[test]
++fn the_weekly_draft_is_never_published() {
++    let (_dir, mut store, owner, _) = fixture();
++    let draft = store.floor_weekly_draft(&owner).unwrap();
++    assert!(!draft.published);
++    assert_eq!(draft.period_end - draft.period_start, 7 * 24 * 3600);
++    assert!(!draft.proposed_next_actions.is_empty());
++}
++
++#[test]
++fn a_complaint_escalates_once_however_often_it_is_recorded() {
++    let (_dir, mut store, owner, _) = fixture();
++    let incident = outbox::Incident {
++        id: "smtp-1".into(),
++        kind: outbox::IncidentKind::Complaint,
++        reference_sha256: "ab".repeat(32),
++        at: now() - 5,
++        resolved_at: None,
++    };
++    for _ in 0..3 {
++        store
++            .state
++            .outbox
++            .incidents
++            .insert(incident.id.clone(), incident.clone());
++    }
++    store.state.outbox.paused = true;
++    let report = store.project_floor(&owner, now());
++    assert_eq!(report.delivery.complaint, 1);
++    assert_eq!(report.unresolved_incidents, 1);
++    assert!(report.outbox_paused);
++    let e = store.floor_escalations(&owner).unwrap();
++    let kinds: Vec<&str> = e.immediate.iter().map(|x| x.kind.as_str()).collect();
++    assert_eq!(kinds, ["complaint", "outbox_paused"]);
++    assert_eq!(e.immediate[0].reference, "ab".repeat(32));
++    assert!(e.review.is_empty());
++}

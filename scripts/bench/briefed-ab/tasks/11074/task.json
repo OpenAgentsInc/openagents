@@ -1,0 +1,36 @@
+{
+  "test_targets": [
+    "--test",
+    "billing",
+    "--test",
+    "billing_stripe",
+    "--lib"
+  ],
+  "issue": 11074,
+  "title": "Pro plan: handle Stripe refunds and disputes on subscription charges",
+  "body": "#11072 (29032775fb) ignores Stripe refund and dispute events on subscription invoices. Handle charge.refunded / charge.dispute.created / charge.dispute.closed for Pro: a full refund ends or shortens the paid month as the contract says; a dispute marks the subscription at risk and pauses new paid months until it closes; won/lost outcomes recorded once. Plain messages in Settings. Test mode only.",
+  "fix": "f7fec45ce6033b69b9cbe180416cedbfc22a0b2f",
+  "parent": "3c2ea2c4635b25e3f3a025f7ceb6e01347f3e149",
+  "package": "gateway",
+  "source_files": [
+    "crates/gateway/src/billing.rs",
+    "crates/gateway/src/bin/billing-sandbox.rs",
+    "crates/gateway/src/subscriptions.rs",
+    "crates/openagents-web/src/plan.rs",
+    "crates/retail-cloud/src/environment.rs",
+    "crates/tenancy/src/billing.rs",
+    "docs/cloud/retail-environment-contract.md"
+  ],
+  "test_files": [
+    "crates/gateway/tests/billing.rs",
+    "crates/gateway/tests/billing_stripe.rs",
+    "crates/openagents-web/src/cloud/tests.rs",
+    "crates/tenancy/src/billing.rs"
+  ],
+  "test_names": [
+    "a_dispute_pauses_new_months_until_it_closes",
+    "a_full_refund_ends_the_month_and_a_partial_one_does_not",
+    "a_lost_dispute_is_found_through_its_charge_and_closes_the_month_once"
+  ],
+  "fix_lines": 1056
+}

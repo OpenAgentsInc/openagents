@@ -1,0 +1,32 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10907,
+  "title": "Everglade bake B3: time-of-day blending, lamp light at night, and destruction fallback",
+  "body": "Part of #10903; it needs B2.\n\n## Time of day\n\n- **Sun layer blend:** the town clock (crates/town-clock) blends between the two nearest baked sun positions each frame. The sky layer scales with the sky's brightness.\n- **Lamp layer:** fades in at dusk and out at dawn, on the same schedule that lights the lamps today. Street lamps now light the street, which closes the clock agent's \"lamps don't light anything\" gap.\n- **Night:** the darkest moment stays at least 10% as bright as noon, the existing floor.\n\n## Destruction\n\n- When carve or demolition breaks a piece, that piece and its neighbors in the support graph drop to dynamic lighting: today's per-vertex bake, recomputed for the changed pieces only and limited to a time budget. Their shadows don't stay floating.\n- **R** (restore) brings the baked look back.\n\n## Acceptance\n\n- A timelapse of the town clock shows smooth light through dawn, noon, dusk and night with no popping between sun positions.\n- A meteor hit capture shows no baked shadow left floating where a wall used to be.\n- Frame cost of the blend is measured and negligible.\n",
+  "fix": "720904b4c2f50cea380c7314421cace70f6626ce",
+  "parent": "1f16fad522a1a8c3217b3b76e3e3e0ce8afcede6",
+  "package": "verse-pbr",
+  "source_files": [
+    "crates/verse-pbr/src/pbr/baked_layers.rs",
+    "crates/verse-pbr/src/pbr/relight.rs",
+    "crates/verse-zone-everglade/src/zones/everglade/baked.rs",
+    "crates/verse-zone-everglade/src/zones/everglade/demolition/town.rs",
+    "crates/verse/Cargo.toml",
+    "crates/verse/examples/everglade_bake_timelapse.rs",
+    "crates/verse/examples/kit_visual_acceptance.rs",
+    "docs/verse/everglade-medieval-refactor.md",
+    "docs/verse/meteor-showcase-handoff.md"
+  ],
+  "test_files": [
+    "crates/verse-pbr/src/pbr/baked_layers.rs",
+    "crates/verse-pbr/src/pbr/relight.rs",
+    "crates/verse-zone-everglade/src/zones/everglade/mod.rs"
+  ],
+  "test_names": [
+    "a_new_base_keeps_the_gap_relit_and_returns_whole_on_restore",
+    "the_suns_blend_smoothly_between_their_directions"
+  ],
+  "fix_lines": 771
+}

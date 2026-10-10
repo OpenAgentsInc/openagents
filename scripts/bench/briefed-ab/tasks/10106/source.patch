@@ -1,0 +1,717 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 10d8f68180705cc9cfcd57b61750952edb37f389..cff8a65fd5070dfc3a02a39783257e22506b4a04 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -7501,9 +7501,12 @@ dependencies = [
+  "base64 0.22.1",
+  "coder",
+  "futures-util",
++ "openagents-chat",
+  "pulldown-cmark",
++ "secp256k1 0.31.1",
+  "serde",
+  "serde_json",
++ "sha2 0.10.9",
+  "tempfile",
+  "tokio",
+  "tower",
+diff --git a/INVARIANTS.md b/INVARIANTS.md
+index 7ebb2cd33101e85e4c1ae0ded4048233bc183a0e..fa68e07e0d32c4cc1ea336fa558236c4975a35ac 100644
+--- a/INVARIANTS.md
++++ b/INVARIANTS.md
+@@ -129,6 +129,7 @@ are in `docs/deployment/chat-worker.md`.
+ | Invariant | Status | Checked by |
+ | --- | --- | --- |
+ | No model API key ships in the OpenAgents app. The basic chat reaches a model only as a NIP-CJ conversation job signed by the device key and encrypted to the chat worker, whose door key stays in the worker's environment on its host; the job carries the conversation, instructions, a client name, the `opener` request for the worker's first response, the `router` request (`chat-router-v2`), a bounded `context` (`surface`, `computer_ready`, `app_build`, since #10077 `computer` and `project`, and since #10094 `coder_run`), and, in a chat with an open test-set draft, that `draft` (only when NIP-CJ's `parse_draft` reads it, at most 64 KiB) and its last try's `tried`, and `skip`, at most 32 public `3189` result IDs a check must not be offered (the trainer's own results and the ones it already checked, because the worker holds no trainer key; the worker reads it with `router::card::skip` exactly or drops it), and no credential, model choice, grant, key, host address, or amount. `computer` names where Coder runs, this device (`here`, from the desktop app or `openagents chat`, with its coding agents' readiness as `ready`, `not_signed_in`, or `limited`) or the phone's paired computer (`paired`), by the label the person gave it (at most 64 characters); `project` is the chat's project folder by name (at most 128 bytes) and, only beside `here`, its absolute path (at most 1024 bytes); a value past its bound or with a control character is left out, and the worker reads a path only beside `here`. These are the person's own data: the worker gives them only to the chat model's instructions and to its own reviewed answers' `chat.*` slots, never to a seam (personalization, embeddings, or Jev). `coder_run` is the chat's Coder run once its turn ended (never while it runs or waits for an answer): `ending` (`finished`, `failed`, `stopped`), `turn`, `engine`, `model`, its `summary` (at most 4 KiB), at most 32 changed `files`, and its last 16 `commands` (each one line of at most 200 bytes); the worker gives the summary, files, and commands only to the chat model's instructions, and Jev reads only how the run ended, as a fixed line (`router::CoderRun::marker`). The phone's kept relay connection (one NIP-42 connection while the Coder tab shows) carries only routing: each job still checks every answer as below. | New on 2026-09-28. Reinterpreted on 2026-09-28 ([#9920](https://github.com/OpenAgentsInc/openagents/issues/9920)): jobs ask for `opener`, and share one kept connection instead of one each. Extended on 2026-09-28 ([#9921](https://github.com/OpenAgentsInc/openagents/issues/9921)): jobs ask for `router` with the bounded `context`. Extended on 2026-09-29 ([#9939](https://github.com/OpenAgentsInc/openagents/issues/9939)): `chat-router-v2`, and the chat's `draft` and `tried`. Extended on 2026-09-29 ([#9941](https://github.com/OpenAgentsInc/openagents/issues/9941)): `skip`, after a new trainer was offered their own result to check. Extended on 2026-09-30 ([#10077](https://github.com/OpenAgentsInc/openagents/issues/10077)): `computer` and `project`, so a chat on a computer knows it is on one; the context now names the paired computer and the project folder, which it used to leave out. Extended on 2026-10-01 ([#10094](https://github.com/OpenAgentsInc/openagents/issues/10094)): `coder_run`, so a follow-up after a run is the router's, with what the run did. | `a_coder_run_is_bounded_and_typed` (`router`), `the_model_is_told_what_the_finished_run_did` (`coder-worker`), `a_coder_run_context_matches_the_worker_fixture` (`openagents-chat`), `the_computer_context_is_bounded_and_typed` (`router`), `the_model_is_told_where_the_chat_runs` (`coder-worker`), `a_checks_add_to_the_gym_speaks_of_the_check`, `adding_the_first_result_names_the_menu`, `a_skip_is_exact_hex_ids_or_nothing` (`crates/coder`), `a_basic_job_carries_no_credential`, `a_basic_job_asks_for_the_first_response`, `the_context_names_no_host_and_bounds_the_build`, `a_turn_asks_for_routing_with_a_bounded_context`, `the_draft_round_trips_through_the_phone_and_each_step_is_a_tap`, `messages_reuse_the_kept_connection`, `the_payload_keeps_the_newest_turns_within_its_bound` in `crates/openagents-mobile`; `a_computer_context_matches_the_worker_fixture`, `a_phone_names_its_computer_and_never_a_path` in `crates/openagents-chat`; `a_paired_phone_reads_a_host_thread_and_continues_it` in `crates/coder-host/tests/threads.rs`; `settings_change_the_local_run_and_the_defaults_change_nothing` in `crates/openagents-cli/tests/chat.rs` |
++| The openagents.com homepage terminal reaches OpenAgents only as the `web` surface: `POST /ask` sends a NIP-CJ conversation job to the chat worker through the relay, with the website's instructions (`basic_coder::INSTRUCTIONS_WEB`), `context.surface: web`, `computer_ready: false`, and no computer, project, Coder run, draft, credential, or key. It is signed with a key the server derives from the visitor's random `oa_visitor` cookie and a server secret, never sent to the browser, so the worker's per-key quota counts each visitor. On that surface the worker's policy (`router::policy::for_web`) serves only refusals, knowledge, the model, and prepared answers on the answer routes, each without an offer or card, and turns work, command, screen, wallet, account, Gym, deck, and capability routes into the model told `WEB_NOTE` (the OpenAgents app does that; openagents.com/install); grounding never falls back to a Coder offer, and the command gate withholds every command. The site holds each visitor to one question at a time and 6 a minute, and everyone to 32 waiting, beside the worker's quotas. The page draws only server-rendered Markdown (raw HTML as text). | New on 2026-10-01 ([#10106](https://github.com/OpenAgentsInc/openagents/issues/10106)), owner-directed: the old site's terminal returns as product orientation only. Model boundary: a worker release older than this one reads `web` as no surface and answers as a phone with no computer ("Connect one…"). | `the_website_answers_and_never_offers` (`router::policy`) in `crates/coder`; `a_question_streams_its_answer_as_the_website_and_names_the_visitor`, `a_question_must_end_with_the_visitor`, `every_public_page_answers_in_development` in `crates/openagents-web` (`tests`); `a_visitor_asks_one_question_at_a_time_and_six_a_minute`, `everyone_together_waits_on_at_most_the_in_flight_bound`, `each_visitor_signs_with_a_key_of_its_own_that_the_salt_hides` (`ask`) |
+ | A chat on a computer knows it is on one ([#10077](https://github.com/OpenAgentsInc/openagents/issues/10077)). When the turn's `context.computer` is `here`, the chat never tells the person to connect a computer unless they ask about adding another one: the model is told where the chat runs, the project folder, and that Coder runs here (`router::Context::note`); every prepared answer whose words assume no computer is `place = "away"` and its `.here` variant answers instead (`Bank::placed`, eligibility by place), so `dispatch.no_computer.here` says no coding agent can take the work here, with no offer; and a product answer tagged `off-computer` is never served whole. A question about the working directory or the project is answered from the context's project folder. A phone with a paired computer is told its name the same way; a phone with none still gets **Connect a computer**. The routes and their rubric are unchanged, so no routing reads the context's text. | New on 2026-09-30 ([#10077](https://github.com/OpenAgentsInc/openagents/issues/10077)). | `here_variants_show_only_on_a_computer` (`router::bank`), `an_off_computer_answer_is_never_whole_on_a_computer` (`router`), `the_set_asks_independent_typed_questions_and_validates` (`router::judge`), `on_a_computer_the_working_directory_is_the_project_folder`, `on_a_computer_dispatch_never_asks_to_connect_one`, `the_model_is_told_where_the_chat_runs`, `with_no_computer_the_offer_is_to_connect_one` (`coder-worker`) in `crates/coder` |
+ | A follow-up after a Coder run is the router's ([#10094](https://github.com/OpenAgentsInc/openagents/issues/10094)). While a chat's Coder run works, a message is Coder's (queued for its next turn, or stop and send), and while it asks, the message answers it; once its turn has ended (a result, a failure, or a stop), the desktop, the phone (a task chat started from a conversation, and a computer's thread), the host's threads, and `openagents chat` send the follow-up to the router with the run's result as `context.coder_run`, and the composer says "Message OpenAgents…". The router's typed route alone decides: a reply that hands the message to Coder (`delegation::offered`, #10073's precedence) continues the same task with that message as its next turn, in the same worktree (`coder_run::Run::continue_with`, the CLI's `chat_coder::start`, the phone's task command), and a reply that answered continues nothing. No text is read for it: the route question's rubric reads the worker's fixed line that the run ended. The person's message shows once, above the "Coder continued" card of the turn it started, and each Coder turn follows the chat reply that handed it (`Run::rows_anchored`). | New on 2026-10-01 ([#10094](https://github.com/OpenAgentsInc/openagents/issues/10094)). | `a_finished_run_routes_followups_and_continues_on_a_dispatch`, `a_later_turns_message_comes_before_its_card`, `turns_follow_the_chat_reply_that_started_them` (`coder_run`), `only_an_ended_turn_routes_a_follow_up` (`coder_tab`) in `crates/openagents-chat-app`; `after_a_finished_run_the_router_decides_and_a_dispatch_continues_the_task` in `crates/openagents-desktop`; `a_run_result_is_the_last_ended_turn` in `crates/openagents-chat`; the release gate's `followup-chat` and `followup-coder` |
+ | A worker off loopback that answers callers it has not named runs under a quota: per caller key at most `minute` jobs in any 60 seconds and `day` jobs per UTC day, at most `total` jobs per UTC day for every caller together, and no request past its byte bound. A refusal names `rate_limited`, `quota_exhausted`, or `limit_exceeded`, counts nothing, and carries the wait when waiting helps. The day's counts survive a restart; an unreadable count file stops the worker. `coder-worker --check` refuses an open worker off loopback with neither an allowlist nor a quota. | New on 2026-09-28. | `a_key_is_held_to_its_minute_then_its_day`, `every_key_together_is_held_to_the_total`, `a_large_request_is_refused_and_counts_nothing`, `the_day_survives_a_restart_and_ends_at_midnight`, `a_quota_meters_callers_off_the_allowlist`, `a_metered_request_past_its_bytes_is_refused`, `only_an_open_worker_off_loopback_is_refused_deployment` in `crates/coder` |
+diff --git a/crates/coder/src/bin/coder-worker.rs b/crates/coder/src/bin/coder-worker.rs
+index 24a92b7756aed01aa0a0f21b20f0ffab90fd0f92..4d602dcec4f65e3b0b4b6bc1ea82004e816271a8 100644
+--- a/crates/coder/src/bin/coder-worker.rs
++++ b/crates/coder/src/bin/coder-worker.rs
+@@ -2724,7 +2724,9 @@ fn proposal(seams: &Seams, ask: CliAsk) -> SeamCall {
+ /// The exploration dispatch a codebase question escalates to: the
+ /// no-computer answer when the device has none, else the explore stem.
+ fn explore(bank: &Bank, facts: &router::Facts, turn: &Turn) -> Option<Tier> {
+-    if turn.context.computer_ready == Some(false) {
++    // The website offers no Coder run (#10106).
++    if turn.context.computer_ready == Some(false) || turn.context.surface() == router::Surface::Web
++    {
+         return None;
+     }
+     let entry = bank.entry("dispatch.explore_stem")?;
+diff --git a/crates/coder/src/cli_route/gate.rs b/crates/coder/src/cli_route/gate.rs
+index 24985cfbcfbca02ea1738147a7eaa63171a983f8..db9a22ab55099717afd69725369c43661724b5bb 100644
+--- a/crates/coder/src/cli_route/gate.rs
++++ b/crates/coder/src/cli_route/gate.rs
+@@ -43,7 +43,8 @@ pub fn offered(leaf: &Leaf, surface: Surface) -> bool {
+ #[must_use]
+ pub fn runs_on(leaf: &Leaf, surface: Surface) -> RunsOn {
+     match surface {
+-        Surface::Phone => leaf.runs_on,
++        // The website proposes no command (`gate`); its place is the declared one.
++        Surface::Phone | Surface::Web => leaf.runs_on,
+         Surface::Desktop | Surface::Terminal => RunsOn::ThisDevice,
+     }
+ }
+diff --git a/crates/coder/src/router.rs b/crates/coder/src/router.rs
+index afaeda5fc8bf06243cfcbf812c864e6c69770656..6ea1398a5879785d9febcbfbe413c13c6c9fd3c1 100644
+--- a/crates/coder/src/router.rs
++++ b/crates/coder/src/router.rs
+@@ -518,6 +518,11 @@ pub enum Surface {
+     Phone,
+     Desktop,
+     Terminal,
++    /// The terminal on the openagents.com homepage (#10106): answers and
++    /// knowledge only. [`policy::decide`] serves it no offer, card, or
++    /// command, and turns work and screen routes into an answer that points
++    /// to the OpenAgents app.
++    Web,
+ }
+ 
+ impl Surface {
+@@ -528,13 +533,19 @@ impl Surface {
+             Surface::Phone => "phone",
+             Surface::Desktop => "desktop",
+             Surface::Terminal => "terminal",
++            Surface::Web => "web",
+         }
+     }
+ 
+     fn parse(word: &str) -> Option<Self> {
+-        [Surface::Phone, Surface::Desktop, Surface::Terminal]
+-            .into_iter()
+-            .find(|surface| surface.word() == word)
++        [
++            Surface::Phone,
++            Surface::Desktop,
++            Surface::Terminal,
++            Surface::Web,
++        ]
++        .into_iter()
++        .find(|surface| surface.word() == word)
+     }
+ }
+ 
+@@ -1338,7 +1349,7 @@ pub enum CliGate {
+ pub fn gate(effect: Effect, surface: Surface) -> CliGate {
+     match (effect, surface) {
+         (Effect::Spends | Effect::Secret, Surface::Phone) => CliGate::Screen(Screen::Wallet),
+-        (Effect::Spends | Effect::Secret, _) => CliGate::Withhold,
++        (Effect::Spends | Effect::Secret, _) | (_, Surface::Web) => CliGate::Withhold,
+         (Effect::ReadOnly, _) => CliGate::Offer,
+         (Effect::Grants, Surface::Phone) => CliGate::Screen(Screen::AccountComputers),
+         (_, Surface::Phone) => CliGate::Withhold,
+diff --git a/crates/coder/src/router/policy.rs b/crates/coder/src/router/policy.rs
+index e2ce735cc95e3456827c58d42e9807a9880dced0..43625893a804abd7368e5e8d8de0c0c157fba131 100644
+--- a/crates/coder/src/router/policy.rs
++++ b/crates/coder/src/router/policy.rs
+@@ -92,7 +92,7 @@
+ use super::bank::{Bank, Entry, Facts};
+ use super::capability::{Capability, Reach};
+ use super::judge::Routing;
+-use super::{Context, Corpus, Offer, Risk, RouteId, Surface};
++use super::{Context, Corpus, Offer, Risk, RouteFamily, RouteId, Surface};
+ use crate::first::Lane;
+ 
+ /// The least `route` probability for a whole prepared answer or `end`.
+@@ -633,9 +633,67 @@ fn missing(routing: &Routing, bank: &Bank, facts: &Facts) -> Option<Tier> {
+     })
+ }
+ 
++/// What the model is told on the website when the turn asked for
++/// something only the OpenAgents app does (#10106).
++pub const WEB_NOTE: &str = "This chat is on the openagents.com website, which only answers \
++questions about OpenAgents. The visitor asked for something the website cannot do (work on \
++code or a computer, a command, a screen, the wallet, an account, or the Gym). Say in one or two \
++sentences that the OpenAgents app does that, and that they can download it at \
++openagents.com/install; answer any question in the message about OpenAgents itself.";
++
+ /// The tier for `routing`. See the module documentation for the rules.
++/// On the website ([`Surface::Web`]) it is then held to [`for_web`].
+ #[must_use]
+ pub fn decide(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situation) -> Tier {
++    let tier = decide_anywhere(routing, bank, facts, situation);
++    if situation.context.surface() == Surface::Web {
++        for_web(routing, tier)
++    } else {
++        tier
++    }
++}
++
++/// The website's tiers (#10106): refusals, knowledge, the model, and
++/// prepared answers on the answer routes, each without an offer. Work,
++/// commands, screens, the Gym, decks, and capabilities become the model
++/// told [`WEB_NOTE`], since nothing on the website can act on them.
++#[must_use]
++pub fn for_web(routing: &Routing, tier: Tier) -> Tier {
++    let answers = matches!(
++        routing.route.family(),
++        Some(RouteFamily::Answers | RouteFamily::Boundaries) | None
++    ) && routing.route != RouteId::CapabilityMissing;
++    let web_model = || Tier::Model {
++        lead: None,
++        note: Some(WEB_NOTE),
++    };
++    match tier {
++        Tier::Refuse { .. } => tier,
++        _ if !answers => web_model(),
++        Tier::Grounded { .. } | Tier::Model { .. } => tier,
++        Tier::CannedFinal { answer, text, .. } if !dispatches(&answer) => Tier::CannedFinal {
++            answer,
++            text,
++            offer: None,
++        },
++        Tier::CannedStem {
++            answer,
++            stem,
++            generic_end,
++            personalize,
++            ..
++        } if !dispatches(&answer) => Tier::CannedStem {
++            answer,
++            stem,
++            generic_end,
++            offer: None,
++            personalize,
++        },
++        _ => web_model(),
++    }
++}
++
++fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situation) -> Tier {
+     if situation.mode == Mode::Legacy {
+         return canned(routing, facts, false).unwrap_or_else(|| model(routing));
+     }
+diff --git a/crates/openagents-chat/src/basic_coder.rs b/crates/openagents-chat/src/basic_coder.rs
+index a4ba908e106f5830b897664ef36aac1ab95b2670..532f521589fb4ce30e649ef7c35ca228ad5ab81a 100644
+--- a/crates/openagents-chat/src/basic_coder.rs
++++ b/crates/openagents-chat/src/basic_coder.rs
+@@ -62,9 +62,28 @@ When a request needs that, say so in one short sentence in our own words. Never
+ to connect a computer unless they ask about adding another one. Never name or describe buttons \
+ or screens: the app shows the right action itself.";
+ 
++/// [`INSTRUCTIONS`] for the terminal on the openagents.com homepage
++/// (#10106): a visitor learning what OpenAgents is, with no account,
++/// computer, or Coder behind the chat.
++pub const INSTRUCTIONS_WEB: &str = "We are OpenAgents, chatting with a visitor in the \
++terminal on the openagents.com website. Always speak as \"we\" and \"us\", never \"I\" or \
++\"me\". Answer directly and helpfully in our own words; use Markdown when it helps, and keep \
++answers short. Facts about this chat: it is on the website, so here we only answer questions \
++about OpenAgents: what it is, its apps, Coder, plugins, the Verse, pricing, and privacy. We \
++cannot run commands, read files, write code, or reach the visitor's computer or accounts from \
++the website. OpenAgents runs in the OpenAgents app for Mac, with OpenAgents for iPhone beside \
++it, and Coder, our coding agent, works on the visitor's own computer through that app. When a \
++visitor asks for work on code, files, or a machine, or for anything this website chat cannot \
++do, say in one or two sentences that the OpenAgents app does that and that they can download \
++it at openagents.com/install. When a question is not about OpenAgents, answer briefly, then \
++say this chat is here for questions about OpenAgents. Never name or describe buttons or screens.";
++
+ /// The instructions a turn sends for its context.
+ #[must_use]
+ pub fn instructions(context: &Context) -> &'static str {
++    if context.surface == crate::router::Surface::Web {
++        return INSTRUCTIONS_WEB;
++    }
+     if context.here() {
+         INSTRUCTIONS_ON_COMPUTER
+     } else {
+diff --git a/crates/openagents-chat/src/router.rs b/crates/openagents-chat/src/router.rs
+index 2c29259128b3660ddb416205dd573beebbf2aa76..4f870c91fedeb2fc6cc71ab443aef4ec4ebea1cb 100644
+--- a/crates/openagents-chat/src/router.rs
++++ b/crates/openagents-chat/src/router.rs
+@@ -47,6 +47,9 @@ pub enum Surface {
+     Desktop,
+     /// The `openagents chat` command running without a host.
+     Terminal,
++    /// The terminal on the openagents.com homepage (#10106): answers and
++    /// knowledge only, never Coder, a computer, or an offer.
++    Web,
+ }
+ impl Surface {
+     pub fn word(self) -> &'static str {
+@@ -54,6 +57,7 @@ impl Surface {
+             Self::Phone => "phone",
+             Self::Desktop => "desktop",
+             Self::Terminal => "terminal",
++            Self::Web => "web",
+         }
+     }
+ 
+@@ -63,6 +67,7 @@ impl Surface {
+             Self::Phone => "openagents-mobile",
+             Self::Desktop => "openagents-desktop",
+             Self::Terminal => "openagents-cli",
++            Self::Web => "openagents-web",
+         }
+     }
+ }
+diff --git a/crates/openagents-web/Cargo.toml b/crates/openagents-web/Cargo.toml
+index 000a84fafe092dec9d4b21be9a403ef16c84418e..f6d85f428448279659f65f16251bd1686ef9bf3f 100644
+--- a/crates/openagents-web/Cargo.toml
++++ b/crates/openagents-web/Cargo.toml
+@@ -11,10 +11,13 @@ axum = "0.8"
+ base64 = "0.22"
+ coder = { path = "../coder" }
+ futures-util = "0.3"
++openagents-chat = { path = "../openagents-chat" }
+ pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
+ serde = { version = "1", features = ["derive"] }
+ serde_json = "1"
+-tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }
++secp256k1 = { version = "0.31.1", features = ["rand"] }
++sha2 = "0.10"
++tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "sync", "time"] }
+ 
+ [dev-dependencies]
+ tempfile = "3"
+diff --git a/crates/openagents-web/README.md b/crates/openagents-web/README.md
+index 87aff0f3d69c580096a2d55974d05a6b04d28744..e951b28e5d517191a74b26c3b8f979278d5a4607 100644
+--- a/crates/openagents-web/README.md
++++ b/crates/openagents-web/README.md
+@@ -6,8 +6,10 @@ install page, and the landing page for the pairing QR code. It also serves a
+ local, read-only task browser at `/app`.
+ 
+ The site is drawn in four intensities of white on
+-near-black (`src/palette.rs`). No page runs a script, and every response
+-carries a content security policy that allows none.
++near-black (`src/palette.rs`). Only the homepage runs a script, its
++terminal (`static/ask.js`), under a policy that allows that one same-site
++script and requests to `/ask`; every other response carries a content
++security policy that allows none.
+ 
+ The pages follow the private Coder service's site (`bins/coder-serve` in
+ the `coder` repository), reimplemented here. openagents.com still deploys
+@@ -39,9 +41,10 @@ everything it serves is compiled in or read from this repository.
+ 
+ | Route | Source | Development server |
+ | --- | --- | --- |
+-| `/` | What OpenAgents is, one `[ Install OpenAgents ]` link, and a screenshot of the Verse (`static/verse-grid.jpg`, the Grid from above, captured from the live relay with `crates/verse/examples/overlook_capture.rs`) | Renders. |
++| `/` | What OpenAgents is, one `[ Install OpenAgents ]` link, the **Ask OpenAgents** terminal, and a screenshot of the Verse (`static/verse-grid.jpg`, the Grid from above, captured from the live relay with `crates/verse/examples/overlook_capture.rs`) | Renders. |
+ | `/install` | Everything OpenAgents is launching, in order: the notarized OpenAgents for Mac `.dmg` in `openagentsgemini-oa-updates`, the iPhone app on TestFlight, pairing by QR code, and signing in to Codex or Claude Code on the Mac so the phone can run Coder | Renders. |
+ | `/desktop` | Permanent redirect to `/install` | Redirects. |
++| `POST /ask` | The homepage terminal's questions (`src/ask.rs`, #10106): a NIP-CJ job to the OpenAgents chat worker through `relay.openagents.com`, surface `web`, signed with a key derived from the visitor's `oa_visitor` cookie and the server's secret (`OPENAGENTS_WEB_ASK_SALT`, random per process when unset). The worker answers about OpenAgents only and never offers Coder, a computer, a command, or a screen. One question at a time and 6 a minute per visitor, 32 waiting at once for everyone, besides the worker's quotas. Streams newline-delimited JSON | Answers from the live chat worker. |
+ | `/docs`, `/docs/{slug}` | `content/docs/*.md`, short guides in reading order, compiled in: what OpenAgents is, install, connecting a computer, chat, Coder, plugins (what they are, writing, testing, publishing and sharing), the Verse, privacy and security, and help | Renders. |
+ | `/terms`, `/privacy` | `content/legal/*.md`, the published text (2026-09-03), compiled in | Renders. |
+ | `/connect` | Landing page for `https://openagents.com/connect#<code>` | Renders; no script, no referrer. |
+@@ -85,7 +88,9 @@ cargo test -p openagents-web
+ 
+ The tests check that every public page answers `200` on a development
+ server with the header, the footer's links to the terms and the policy, and
+-no script; the homepage's single install link and its Verse screenshot;
++no script except the homepage terminal's; the homepage's single install
++link, its terminal, and its Verse screenshot; `/ask`'s stream, cookie,
++bounds, and limits, against an in-process door;
+ the install page and the `/desktop` redirect; that the legal pages carry the
+ published text; that every color in the stylesheet is a gray and that the
+ text steps meet WCAG AA; the `/connect` page's policy and the association
+diff --git a/crates/openagents-web/src/lib.rs b/crates/openagents-web/src/lib.rs
+index 29ab068d7e6b9bcb41628d4a24d8e58dc23cff3a..455fe7bb2e1a0bd4586fda59e329bffd7f1d9315 100644
+--- a/crates/openagents-web/src/lib.rs
++++ b/crates/openagents-web/src/lib.rs
+@@ -4,12 +4,14 @@
+ //! page, the terms and the privacy policy, the pairing link's landing page,
+ //! and profiles) and the local, read-only task browser at `/app`.
+ //!
+-//! No page runs a script. Pages that need the production account store
++//! Only the homepage runs a script: its terminal (`static/ask.js`), which
++//! posts questions to [`ask`] (#10106). Pages that need the production account store
+ //! read through [`backend::Backend`]; a
+ //! development server uses [`backend::Development`] and renders every page
+ //! without records or secrets. The design follows the private Coder
+ //! service's site, reimplemented here.
+ 
++pub mod ask;
+ pub mod backend;
+ mod layout;
+ mod markdown;
+@@ -46,6 +48,14 @@ pub struct Config {
+     /// browser answers only the local hosts.
+     pub public_hosts: Vec<String>,
+     pub backend: Arc<dyn Backend>,
++    /// Where the homepage terminal's questions are answered ([`ask`]).
++    pub chat: Arc<dyn ask::Chat>,
++    /// The server's secret the visitors' signing keys are derived from.
++    /// Random for each process unless set; a deployment with several
++    /// instances sets one, so a visitor keeps one key.
++    pub ask_salt: [u8; 32],
++    /// Whether the visitor cookie is marked `Secure` (served over HTTPS).
++    pub secure_cookies: bool,
+ }
+ 
+ impl Config {
+@@ -57,6 +67,9 @@ impl Config {
+             port: 4300,
+             public_hosts: Vec::new(),
+             backend: Arc::new(Development),
++            chat: Arc::new(ask::Worker),
++            ask_salt: secp256k1::rand::random(),
++            secure_cookies: false,
+         }
+     }
+ }
+@@ -67,6 +80,7 @@ pub(crate) struct App(Arc<Inner>);
+ 
+ pub(crate) struct Inner {
+     pub config: Config,
++    pub limits: Arc<ask::Limits>,
+ }
+ 
+ impl std::ops::Deref for App {
+@@ -78,7 +92,10 @@ impl std::ops::Deref for App {
+ 
+ /// The whole site.
+ pub fn router(config: Config) -> Router {
+-    let app = App(Arc::new(Inner { config }));
++    let app = App(Arc::new(Inner {
++        config,
++        limits: Arc::default(),
++    }));
+     let hosts = Hosts {
+         port: app.config.port,
+         public: app.config.public_hosts.clone(),
+@@ -87,9 +104,11 @@ pub fn router(config: Config) -> Router {
+         .route("/health", get(|| async { "ok" }))
+         .route("/static/site.css", get(stylesheet))
+         .route("/static/verse-grid.jpg", get(verse_grid))
++        .route("/static/ask.js", get(ask_script))
+         .route("/favicon.svg", get(favicon))
+         .route("/favicon.ico", get(favicon))
+         .merge(pages::routes())
++        .merge(ask::routes())
+         .merge(tasks::routes())
+         .fallback(not_found)
+         .layer(middleware::from_fn(move |request, next| {
+@@ -157,6 +176,18 @@ fn css() -> String {
+     )
+ }
+ 
++/// The homepage terminal's script.
++async fn ask_script() -> Response {
++    (
++        [
++            (header::CONTENT_TYPE, "text/javascript; charset=utf-8"),
++            (header::CACHE_CONTROL, "public, max-age=300"),
++        ],
++        include_str!("../static/ask.js"),
++    )
++        .into_response()
++}
++
+ async fn stylesheet() -> Response {
+     (
+         [
+diff --git a/crates/openagents-web/src/main.rs b/crates/openagents-web/src/main.rs
+index e125bbb5b0fe35f964f18630fb71fe581938385e..dda69a44c7027dbacedc740e3a9ebcf21c7ca31b 100644
+--- a/crates/openagents-web/src/main.rs
++++ b/crates/openagents-web/src/main.rs
+@@ -20,6 +20,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
+         }
+     }
+     config.port = listen.port();
++    // A public deployment is served over HTTPS behind its proxy.
++    config.secure_cookies = !config.public_hosts.is_empty();
++    // Instances that share visitors share the secret their keys come from.
++    if let Ok(salt) = std::env::var("OPENAGENTS_WEB_ASK_SALT") {
++        let bytes: Vec<u8> = (0..salt.len())
++            .step_by(2)
++            .filter_map(|at| salt.get(at..at + 2))
++            .filter_map(|pair| u8::from_str_radix(pair, 16).ok())
++            .collect();
++        config.ask_salt = bytes
++            .try_into()
++            .map_err(|_| "OPENAGENTS_WEB_ASK_SALT is not 64 hex characters")?;
++    }
+     let listener = tokio::net::TcpListener::bind(listen).await?;
+     println!("OpenAgents web is listening on http://{listen} (development backend)");
+     axum::serve(listener, openagents_web::router(config)).await?;
+diff --git a/crates/openagents-web/src/pages/home.rs b/crates/openagents-web/src/pages/home.rs
+index 334a10cd21269fc3b226beb9545b7a92757230f8..57e36a302304b1c5a257a29568e2a05900c1f748 100644
+--- a/crates/openagents-web/src/pages/home.rs
++++ b/crates/openagents-web/src/pages/home.rs
+@@ -1,5 +1,12 @@
+-//! The homepage: what OpenAgents is, one link to `/install`, and a
+-//! screenshot of the Verse.
++//! The homepage: what OpenAgents is, one link to `/install`, a terminal to
++//! ask OpenAgents about itself, and a screenshot of the Verse.
++//!
++//! The terminal (#10106) is the one script on the site, `static/ask.js`.
++//! `help`, `install`, `docs`, and `clear` are its commands, matched whole;
++//! any other line is a question for [`crate::ask`], which answers it from
++//! the same OpenAgents chat the apps use, as the website: about OpenAgents
++//! only, never Coder or a computer. Without the script the box says to
++//! turn scripts on and the install link still works.
+ //!
+ //! The image is the Grid, the OpenAgents Verse world, seen from above as
+ //! the desktop app's backdrop draws it, captured from the live relay with
+@@ -9,6 +16,7 @@
+ 
+ use axum::Router;
+ use axum::extract::State;
++use axum::http::{HeaderValue, header};
+ use axum::response::Response;
+ use axum::routing::get;
+ 
+@@ -52,6 +60,31 @@ your own machines, and Coder is the one that writes code.</p>",
+     out
+ }
+ 
++/// The homepage's policy: the site's, plus its one script and its
++/// questions to `/ask`.
++const HOME_POLICY: &str = "default-src 'none'; style-src 'self'; img-src 'self'; \
++script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; \
++frame-ancestors 'none'";
++
++/// The terminal: a welcome, the screen the answers land on, and the line
++/// a visitor types into.
++fn terminal() -> &'static str {
++    "<section class=\"box term\" aria-labelledby=\"term-title\">\
++<h2 class=\"box-title\" id=\"term-title\">Ask OpenAgents</h2>\
++<div class=\"term-screen\" id=\"term-screen\" role=\"log\" aria-live=\"polite\">\
++<p class=\"term-welcome\">Ask us anything about OpenAgents: the apps, Coder, plugins, \
++pricing, or privacy. Coder works on your own computer through the OpenAgents app for Mac. \
++Type <code>help</code> for commands.</p>\
++<noscript><p class=\"dim\">Turn on JavaScript to ask a question here, or \
++<a href=\"/install\">install OpenAgents</a>.</p></noscript></div>\
++<form class=\"term-line\" id=\"term-form\" action=\"/install\" method=\"get\">\
++<label class=\"term-prompt\" for=\"term-input\">&gt;</label>\
++<input id=\"term-input\" name=\"q\" type=\"text\" autocomplete=\"off\" \
++spellcheck=\"false\" maxlength=\"4000\" placeholder=\"Ask about OpenAgents\" \
++aria-label=\"Ask OpenAgents\"></form></section>\
++<script src=\"/static/ask.js\" defer></script>"
++}
++
+ /// The Verse screenshot.
+ fn grid() -> String {
+     format!(
+@@ -63,11 +96,16 @@ from above.</figcaption></figure>"
+ 
+ async fn home(State(app): State<App>) -> Response {
+     let credit = credit(app.config.backend.new_account_credit_cents());
+-    page(
++    let mut response = page(
+         "OpenAgents",
+         None,
+-        &format!("{}{}", intro(credit.as_deref()), grid()),
+-    )
++        &format!("{}{}{}", intro(credit.as_deref()), terminal(), grid()),
++    );
++    response.headers_mut().insert(
++        header::CONTENT_SECURITY_POLICY,
++        HeaderValue::from_static(HOME_POLICY),
++    );
++    response
+ }
+ 
+ #[cfg(test)]
+diff --git a/crates/openagents-web/static/ask.js b/crates/openagents-web/static/ask.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..109734433254cd5c2b8051811f37ed7ad42d87b7
+--- /dev/null
++++ b/crates/openagents-web/static/ask.js
+@@ -0,0 +1,150 @@
++// The homepage terminal (#10106). `help`, `install`, `docs`, and `clear`
++// are its commands, matched whole; any other line is a question posted to
++// /ask, whose answer streams back as newline-delimited JSON: {"html"} as it
++// grows (drawn by the server, raw HTML shown as text), then {"done","text"}
++// or {"error"}. The conversation lives in this page only.
++(function () {
++  "use strict";
++  var screen = document.getElementById("term-screen");
++  var form = document.getElementById("term-form");
++  var input = document.getElementById("term-input");
++  if (!screen || !form || !input || !window.fetch) return;
++  var turns = [];
++  var busy = false;
++
++  function row(cls, text) {
++    var p = document.createElement("p");
++    p.className = cls;
++    if (text !== undefined) p.textContent = text;
++    screen.appendChild(p);
++    screen.scrollTop = screen.scrollHeight;
++    return p;
++  }
++
++  function said(text) {
++    var p = row("term-said");
++    var mark = document.createElement("span");
++    mark.className = "term-mark";
++    mark.textContent = "> ";
++    p.appendChild(mark);
++    p.appendChild(document.createTextNode(text));
++  }
++
++  function linked(before, href, label) {
++    var p = row("term-out", before);
++    var a = document.createElement("a");
++    a.href = href;
++    a.textContent = label;
++    p.appendChild(a);
++  }
++
++  var commands = {
++    help: function () {
++      row("term-out", "help     what you can type here");
++      row("term-out", "install  get OpenAgents for Mac and iPhone");
++      row("term-out", "docs     guides to the apps and plugins");
++      row("term-out", "clear    empty the screen");
++      row("term-out", "Anything else is a question for OpenAgents.");
++    },
++    install: function () {
++      linked("OpenAgents for Mac, and for iPhone beside it: ", "/install", "openagents.com/install");
++    },
++    docs: function () {
++      linked("Guides to the apps and plugins: ", "/docs", "openagents.com/docs");
++    },
++    clear: function () {
++      screen.textContent = "";
++    }
++  };
++
++  function finish() {
++    busy = false;
++    input.disabled = false;
++    input.focus();
++  }
++
++  function ask(question) {
++    turns.push({ role: "user", text: question });
++    turns = turns.slice(-8);
++    var answer = document.createElement("div");
++    answer.className = "term-answer";
++    answer.textContent = "…";
++    screen.appendChild(answer);
++    screen.scrollTop = screen.scrollHeight;
++    busy = true;
++    input.disabled = true;
++    var failed = function (message) {
++      answer.className = "term-answer term-error";
++      answer.textContent = message;
++      turns.pop();
++      finish();
++    };
++    fetch("/ask", {
++      method: "POST",
++      credentials: "same-origin",
++      headers: { "Content-Type": "application/json" },
++      body: JSON.stringify({ turns: turns })
++    }).then(function (response) {
++      if (!response.ok || !response.body) {
++        return response.json().then(function (body) {
++          failed(body && body.error ? body.error : "We can't answer right now; try again soon.");
++        }, function () {
++          failed("We can't answer right now; try again soon.");
++        });
++      }
++      var reader = response.body.getReader();
++      var decoder = new TextDecoder();
++      var pending = "";
++      var ended = false;
++      var take = function (text) {
++        var message;
++        try { message = JSON.parse(text); } catch (e) { return; }
++        if (typeof message.html === "string") {
++          answer.innerHTML = message.html;
++          screen.scrollTop = screen.scrollHeight;
++        }
++        if (message.error) {
++          ended = true;
++          failed(message.error);
++        } else if (message.done) {
++          ended = true;
++          turns.push({ role: "assistant", text: message.text || "" });
++          finish();
++        }
++      };
++      var pump = function () {
++        return reader.read().then(function (chunk) {
++          if (chunk.done) {
++            if (pending) take(pending);
++            if (!ended) failed("We didn't get an answer; try asking again.");
++            return;
++          }
++          pending += decoder.decode(chunk.value, { stream: true });
++          var lines = pending.split("\n");
++          pending = lines.pop();
++          lines.forEach(take);
++          return pump();
++        });
++      };
++      return pump();
++    }).catch(function () {
++      failed("We can't reach OpenAgents right now; try again soon.");
++    });
++  }
++
++  form.addEventListener("submit", function (event) {
++    event.preventDefault();
++    if (busy) return;
++    var line = input.value.trim();
++    if (!line) return;
++    input.value = "";
++    said(line);
++    var command = commands[line.toLowerCase()];
++    if (command && Object.prototype.hasOwnProperty.call(commands, line.toLowerCase())) {
++      command();
++      screen.scrollTop = screen.scrollHeight;
++    } else {
++      ask(line);
++    }
++  });
++})();
+diff --git a/crates/openagents-web/static/site.css b/crates/openagents-web/static/site.css
+index 30b677e5bfa4fc599722c9fd0890caf9cbfb5105..926823c1ee176af42c294442ee286be45d279981 100644
+--- a/crates/openagents-web/static/site.css
++++ b/crates/openagents-web/static/site.css
+@@ -69,6 +69,23 @@ main:focus{outline:none}
+ .intro{margin:0 0 2rem}
+ .intro h1{font-size:2rem;margin:0 0 .75rem}
+ .lede{color:var(--w100);font-size:1.1rem;max-width:60ch}
++/* The homepage terminal: the screen the answers land on, then the line. */
++.term{padding-bottom:.5rem}
++.term-screen{max-height:min(28rem,55vh);overflow-y:auto;overscroll-behavior:contain;margin:0 0 .75rem}
++.term-screen p{margin:0 0 .5rem}
++.term-welcome{color:var(--w75)}
++.term-said{color:var(--w100);margin-top:1rem!important;white-space:pre-wrap;overflow-wrap:anywhere}
++.term-mark{color:var(--w50)}
++.term-out{color:var(--w75);white-space:pre-wrap}
++.term-answer{color:var(--w75);margin:0 0 .75rem;overflow-wrap:anywhere}
++.term-answer>:last-child{margin-bottom:0}
++.term-error{color:var(--w100);border-left:2px solid var(--w100);padding-left:1ch}
++.term-line{display:flex;align-items:center;gap:1ch;border-top:1px solid var(--w25);padding-top:.6rem}
++.term-prompt{color:var(--w100);font-weight:700}
++.term-line input{flex:1;min-width:0;background:transparent;border:0;color:var(--w100);font:inherit;padding:.25rem 0;caret-color:var(--w100)}
++.term-line input::placeholder{color:var(--w50)}
++.term-line input:focus-visible{outline:none}
++.term-line:focus-within{border-top-color:var(--w50)}
+ .shot{margin:0}
+ .shot img{display:block;width:100%;height:auto;border:1px solid var(--w25)}
+ .shot figcaption{color:var(--w50);font-size:.9rem;margin-top:.5rem}
+diff --git a/docs/deployment/openagents-web.md b/docs/deployment/openagents-web.md
+index aa2c6a3960437f033f0d3fdaf7c3531a3ab51048..a36481d8e8cf73356516c2d71cad8dc4ef7dd5fe 100644
+--- a/docs/deployment/openagents-web.md
++++ b/docs/deployment/openagents-web.md
+@@ -16,9 +16,17 @@ white on near-black instead of four intensities of amber.
+ These pages need nothing more than this repository and the public buckets:
+ 
+ - `/`, the homepage: what OpenAgents is, one `[ Install OpenAgents ]` link
+-  to `/install`, and a screenshot of the Verse. The terminal-style welcome
+-  card and the `/ask` box were removed on 2026-09-29 at the owner's
+-  direction.
++  to `/install`, the **Ask OpenAgents** terminal, and a screenshot of the
++  Verse. The old terminal and its `/ask` box were removed on 2026-09-29 and
++  brought back on 2026-10-01 at the owner's direction
++  ([#10106](https://github.com/OpenAgentsInc/openagents/issues/10106)), now
++  on the white theme and tied to the same OpenAgents chat worker the apps
++  use, as the `web` surface: answers and knowledge about OpenAgents only,
++  pointing to `/install` for anything the apps do; never Coder or a
++  computer. `help`, `install`, `docs`, and `clear` are its commands. A
++  deployment with several instances sets `OPENAGENTS_WEB_ASK_SALT` (64 hex
++  characters, a secret) so a visitor keeps one signing key; it needs no
++  model key, since the chat worker holds its own.
+ - `/install`: new. The one install page for everything being launched, in
+   order: the notarized OpenAgents for Mac `.dmg` in
+   `openagentsgemini-oa-updates`, the iPhone app on TestFlight, pairing by

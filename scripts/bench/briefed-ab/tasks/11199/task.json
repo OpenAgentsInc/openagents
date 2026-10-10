@@ -1,0 +1,31 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 11199,
+  "title": "Grow Little Bunny B2: the outline-gray look (screen-space edge pass, chroma rule, blob shadows)",
+  "body": "The npr.outline-gray.v1 presentation: a screen-space line pass over depth, normals and object ids, flat gray fills, colour only on chroma materials (checked in tests), blob shadows, line fade with distance, and Low/Medium/High tiers, with captures per tier.\n\nSpec: docs/verse/games/grow-little-bunny.md (Milestones, B2).",
+  "fix": "67898d1470235506ddda4771bad6c13aca9b5f6c",
+  "parent": "6c0de441c7441c56bcc933a71e0a43a5a2527381",
+  "package": "bunny-web",
+  "source_files": [
+    "crates/bunny-web/Cargo.toml",
+    "crates/bunny-web/src/app.rs",
+    "crates/bunny-web/src/lib.rs",
+    "crates/bunny-web/src/mesh.rs",
+    "crates/bunny-web/src/outline.rs",
+    "crates/bunny-web/src/scene.rs",
+    "docs/verse/games/grow-little-bunny.md"
+  ],
+  "test_files": [
+    "crates/bunny-web/src/look.rs",
+    "crates/bunny-web/src/mesh.rs",
+    "crates/bunny-web/src/scene.rs"
+  ],
+  "test_names": [
+    "chroma_is_zero_for_grays_and_high_for_orange",
+    "options_read_from_the_fragment",
+    "tiers_cap_the_pixel_ratio_and_scale_lines"
+  ],
+  "fix_lines": 767
+}

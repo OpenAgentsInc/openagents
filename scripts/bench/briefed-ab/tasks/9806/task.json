@@ -1,0 +1,36 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 9806,
+  "title": "Lagrange realism: HDR display output (EDR on iOS)",
+  "body": "Deferred from #9802 (candidate C13 in docs/research/unreal/2026-09-27-lagrange-realism-audit.md). The physical renderer tone-maps to an sRGB surface. HDR output needs an extended-range surface format, native layer configuration on iOS (CAMetalLayer EDR) and macOS, an output transform that targets display peak luminance (ITU-R BT.2100 / ACES 2.0 style), and validation on a physical device.",
+  "fix": "bcad8d8177bcff733a51a502f48a8bcf0c2aadd2",
+  "parent": "804e51a3fe9a467f0808aa81fa34dd6535683b48",
+  "package": "coder-mobile",
+  "source_files": [
+    "bins/coder-ios/host/App/VerseBridge.swift",
+    "bins/coder-ios/host/App/VerseSurface.swift",
+    "crates/coder-mobile/src/android.rs",
+    "crates/coder-mobile/src/verse_app.rs",
+    "crates/coder-mobile/src/verse_ffi.rs",
+    "crates/verse/Cargo.toml",
+    "crates/verse/examples/hdr_probe.rs",
+    "crates/verse/src/app.rs",
+    "crates/verse/src/edr.rs",
+    "crates/verse/src/lib.rs",
+    "crates/verse/src/pbr/gpu.rs",
+    "crates/verse/src/pbr/post.wgsl",
+    "crates/verse/src/render.rs",
+    "docs/research/unreal/2026-09-27-lagrange-realism-audit.md",
+    "docs/verse/README.md",
+    "docs/verse/lagrange-1.md"
+  ],
+  "test_files": [
+    "crates/coder-mobile/src/verse_app.rs",
+    "crates/coder-mobile/src/verse_ffi.rs",
+    "crates/verse/src/render.rs"
+  ],
+  "test_names": [],
+  "fix_lines": 529
+}

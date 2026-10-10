@@ -1,0 +1,34 @@
+{
+  "test_targets": [
+    "--lib",
+    "--test",
+    "gateway_postgres",
+    "--lib"
+  ],
+  "issue": 9523,
+  "title": "nostr-relay: implement OpenAgents discovery, privacy, and retention profiles",
+  "body": "Add the relay-side contracts for revised/new OpenAgents profiles while keeping execution admission in hosts. Generic event storage is not full profile conformance.\n\nSpecifications: [nips/openagents/README.md](https://github.com/OpenAgentsInc/openagents/blob/main/nips/openagents/README.md), [nips/openagents/NIP-CAP.md](https://github.com/OpenAgentsInc/openagents/blob/main/nips/openagents/NIP-CAP.md), [nips/openagents/NIP-PRG.md](https://github.com/OpenAgentsInc/openagents/blob/main/nips/openagents/NIP-PRG.md), [nips/openagents/NIP-EXT.md](https://github.com/OpenAgentsInc/openagents/blob/main/nips/openagents/NIP-EXT.md), [nips/openagents/NIP-RUN.md](https://github.com/OpenAgentsInc/openagents/blob/main/nips/openagents/NIP-RUN.md).\n\n## Acceptance\n\n- [ ] Implement validated public CAP/PRG/EXT definitions and discovery with portable single-letter t/x/e tags; document role-specific indexed queries.\n- [ ] Implement private CAP policy and RUN envelope admission, NIP-42 author publication, exact author/recipient read ACLs, and exclusions across REQ, IDs, COUNT, search, and live fanout.\n- [ ] Implement regular release/revocation/run-record retention and addressable heads without treating replacement, relay acknowledgment, or EOSE as execution or completeness evidence.\n- [ ] Validate kind/version/shape boundaries, body/tag consistency where plaintext is available, and configured size/rate/retention limits. Never pretend to validate encrypted program contents.\n- [ ] Use the existing binary/Postgres architecture, atomic policy/store paths, backup/restore, and cross-process visibility; introduce no private parallel service.\n- [ ] Advertise nip-cap-v1, nip-prg-v1, nip-ext-v1, and nip-run-v1 only for proven configured roles. Add public/private adversarial Postgres acceptance and operational retention documentation.\n\n## Boundaries and dependencies\n\nNew-protocol prerequisites: #9516, #9517, #9518, #9520, #9521.\n\nProduct code stays Rust. Use the shared crates and existing authority boundaries. Protocol text is the target; this issue is not complete until implementation and conformance evidence exist. Run checks appropriate to implementation changes, manually or on non-GitHub infrastructure.\n",
+  "fix": "7cd5cd970477ed76c0675ac77e130cffe95f1309",
+  "parent": "a2b98a41b4819140e73b12f81c874df937775e13",
+  "package": "nostr-relay",
+  "source_files": [
+    "crates/nostr-relay/src/gateway/config.rs",
+    "crates/nostr-relay/src/gateway/server.rs",
+    "crates/nostr-relay/src/gateway/wire.rs",
+    "crates/nostr/src/domain/block.rs",
+    "crates/nostr/src/lib.rs",
+    "crates/nostr/src/run.rs",
+    "docs/protocol/openagents-retention.md"
+  ],
+  "test_files": [
+    "crates/nostr-relay/src/gateway/wire.rs",
+    "crates/nostr-relay/tests/gateway_postgres.rs",
+    "crates/nostr/src/profile.rs"
+  ],
+  "test_names": [
+    "a_public_capability_definition_is_parsed_and_a_blob_is_not",
+    "openagents_profiles_stay_out_of_nip11_until_configured",
+    "private_policy_and_run_ciphertext_are_not_read_as_programs"
+  ],
+  "fix_lines": 391
+}

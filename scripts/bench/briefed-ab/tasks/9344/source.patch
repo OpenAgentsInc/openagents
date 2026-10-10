@@ -1,0 +1,1254 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 3ca3bfc7b0790badaec49367aa343479f7a346f7..ebdd579ca8c638a18c7034cb032d3faf649ca9ca 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -34,6 +34,11 @@ Two skills are vendored under `.agents/skills/`. Read and apply them:
+ ## Crates
+ 
+ - `crates/jev` — the Rust SDK for TypeSafe's System One API.
++- `crates/kev` — the Rust port of the kev decision model: packed prefill,
++  block-causal question isolation, pointer readout, and `kev-serve`, a
++  TypeSafe-compatible `POST /v1/systemone` server. Documentation and
++  conformance numbers live in `docs/kev/`; golden fixtures in
++  `crates/kev/fixtures/`; weights stay in `~/work/kev-artifacts/` out of git.
+ - `crates/coder-terminal` — the Coder terminal: the amber intensity ladder,
+   the framed composer, and the shell they draw. The rebuild plan lives in
+   `docs/coder/`.
+diff --git a/Cargo.lock b/Cargo.lock
+index 6d366481eda43032bd37ade935f0571c30b952ad..f97917f501be8de29cffc8bf95a916ffe92406ed 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -211,6 +211,12 @@ version = "2.13.2"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
+ 
++[[package]]
++name = "block"
++version = "0.1.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "0d8c1fef690941d3e7788d328517591fecc684c084084702d6ff1641e993699a"
++
+ [[package]]
+ name = "block-buffer"
+ version = "0.10.4"
+@@ -229,6 +235,15 @@ dependencies = [
+  "hybrid-array",
+ ]
+ 
++[[package]]
++name = "block2"
++version = "0.6.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "cdeb9d870516001442e364c5220d3574d2da8dc765554b4a617230d33fa58ef5"
++dependencies = [
++ "objc2",
++]
++
+ [[package]]
+ name = "bumpalo"
+ version = "3.20.3"
+@@ -280,25 +295,45 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "5ecb245093b0f791b89d3420c3df9c6d49c60ab63ba54db896bf8a3baf486706"
+ dependencies = [
+  "byteorder",
++ "candle-metal-kernels",
++ "candle-ug",
+  "float8",
+- "gemm",
++ "gemm 0.19.0",
+  "half",
+  "libc",
+  "libm",
+  "memmap2",
+  "num-traits",
+  "num_cpus",
++ "objc2-foundation",
++ "objc2-metal",
+  "rand 0.9.5",
+  "rand_distr",
+  "rayon",
+- "safetensors",
++ "safetensors 0.8.0",
+  "thiserror 2.0.20",
+  "tokenizers 0.22.2",
+- "yoke",
++ "yoke 0.8.3",
+  "zerocopy",
+  "zip",
+ ]
+ 
++[[package]]
++name = "candle-metal-kernels"
++version = "0.11.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "242e83c6acf639bb273c929d73c67a882bb4dd08a140f121096e19ba2f213d3e"
++dependencies = [
++ "block2",
++ "half",
++ "objc2",
++ "objc2-foundation",
++ "objc2-metal",
++ "once_cell",
++ "thiserror 2.0.20",
++ "tracing",
++]
++
+ [[package]]
+ name = "candle-nn"
+ version = "0.11.0"
+@@ -306,15 +341,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "eaa10b6ccc365b33210ce404fbf45e60d3e0bdac1004463cf1052e6ee1c1739a"
+ dependencies = [
+  "candle-core",
++ "candle-metal-kernels",
+  "half",
+  "libc",
+  "num-traits",
++ "objc2-metal",
+  "rayon",
+- "safetensors",
++ "safetensors 0.8.0",
+  "serde",
+  "thiserror 2.0.20",
+ ]
+ 
++[[package]]
++name = "candle-ug"
++version = "0.11.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "257411c33abf7d898a31ac20d80813dfe96ff09e23a73039e22ab293aea9b871"
++dependencies = [
++ "ug",
++ "ug-metal",
++]
++
+ [[package]]
+ name = "castaway"
+ version = "0.2.4"
+@@ -435,6 +482,33 @@ dependencies = [
+  "unicode-segmentation",
+ ]
+ 
++[[package]]
++name = "core-foundation"
++version = "0.9.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "91e195e091a93c46f7102ec7818a2aa394e1e1771c3ab4825963fa03e45afb8f"
++dependencies = [
++ "core-foundation-sys",
++ "libc",
++]
++
++[[package]]
++name = "core-foundation-sys"
++version = "0.8.7"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
++
++[[package]]
++name = "core-graphics-types"
++version = "0.1.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "45390e6114f68f718cc7a830514a96f903cccd70d02a8f6d9f643ac4ba45afaf"
++dependencies = [
++ "bitflags 1.3.2",
++ "core-foundation",
++ "libc",
++]
++
+ [[package]]
+ name = "cpufeatures"
+ version = "0.2.17"
+@@ -742,6 +816,16 @@ dependencies = [
+  "ctutils",
+ ]
+ 
++[[package]]
++name = "dispatch2"
++version = "0.3.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "1e0e367e4e7da84520dedcac1901e4da967309406d1e51017ae1abfb97adbd38"
++dependencies = [
++ "bitflags 2.13.2",
++ "objc2",
++]
++
+ [[package]]
+ name = "displaydoc"
+ version = "0.2.7"
+@@ -911,6 +995,33 @@ version = "0.2.0"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
+ 
++[[package]]
++name = "foreign-types"
++version = "0.5.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "d737d9aa519fb7b749cbc3b962edcf310a8dd1f4b67c91c4f83975dbdd17d965"
++dependencies = [
++ "foreign-types-macros",
++ "foreign-types-shared",
++]
++
++[[package]]
++name = "foreign-types-macros"
++version = "0.2.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ea5190182e6915eb873ddbc16e23b711b6eb1f9c00a0d0a3a91b5f6228475225"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "syn 3.0.6",
++]
++
++[[package]]
++name = "foreign-types-shared"
++version = "0.3.1"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "aa9a19cbb55df58761df49b23516a86d432839add4af60fc256da840f66ed35b"
++
+ [[package]]
+ name = "form_urlencoded"
+ version = "1.2.2"
+@@ -981,6 +1092,26 @@ dependencies = [
+  "slab",
+ ]
+ 
++[[package]]
++name = "gemm"
++version = "0.18.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ab96b703d31950f1aeddded248bc95543c9efc7ac9c4a21fda8703a83ee35451"
++dependencies = [
++ "dyn-stack",
++ "gemm-c32 0.18.2",
++ "gemm-c64 0.18.2",
++ "gemm-common 0.18.2",
++ "gemm-f16 0.18.2",
++ "gemm-f32 0.18.2",
++ "gemm-f64 0.18.2",
++ "num-complex",
++ "num-traits",
++ "paste",
++ "raw-cpuid",
++ "seq-macro",
++]
++
+ [[package]]
+ name = "gemm"
+ version = "0.19.0"
+@@ -988,12 +1119,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "aa0673db364b12263d103b68337a68fbecc541d6f6b61ba72fe438654709eacb"
+ dependencies = [
+  "dyn-stack",
+- "gemm-c32",
+- "gemm-c64",
+- "gemm-common",
+- "gemm-f16",
+- "gemm-f32",
+- "gemm-f64",
++ "gemm-c32 0.19.0",
++ "gemm-c64 0.19.0",
++ "gemm-common 0.19.0",
++ "gemm-f16 0.19.0",
++ "gemm-f32 0.19.0",
++ "gemm-f64 0.19.0",
++ "num-complex",
++ "num-traits",
++ "paste",
++ "raw-cpuid",
++ "seq-macro",
++]
++
++[[package]]
++name = "gemm-c32"
++version = "0.18.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "f6db9fd9f40421d00eea9dd0770045a5603b8d684654816637732463f4073847"
++dependencies = [
++ "dyn-stack",
++ "gemm-common 0.18.2",
+  "num-complex",
+  "num-traits",
+  "paste",
+@@ -1008,7 +1154,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "086936dbdcb99e37aad81d320f98f670e53c1e55a98bee70573e83f95beb128c"
+ dependencies = [
+  "dyn-stack",
+- "gemm-common",
++ "gemm-common 0.19.0",
++ "num-complex",
++ "num-traits",
++ "paste",
++ "raw-cpuid",
++ "seq-macro",
++]
++
++[[package]]
++name = "gemm-c64"
++version = "0.18.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "dfcad8a3d35a43758330b635d02edad980c1e143dc2f21e6fd25f9e4eada8edf"
++dependencies = [
++ "dyn-stack",
++ "gemm-common 0.18.2",
+  "num-complex",
+  "num-traits",
+  "paste",
+@@ -1023,12 +1184,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "20c8aeeeec425959bda4d9827664029ba1501a90a0d1e6228e48bef741db3a3f"
+ dependencies = [
+  "dyn-stack",
+- "gemm-common",
++ "gemm-common 0.19.0",
++ "num-complex",
++ "num-traits",
++ "paste",
++ "raw-cpuid",
++ "seq-macro",
++]
++
++[[package]]
++name = "gemm-common"
++version = "0.18.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "a352d4a69cbe938b9e2a9cb7a3a63b7e72f9349174a2752a558a8a563510d0f3"
++dependencies = [
++ "bytemuck",
++ "dyn-stack",
++ "half",
++ "libm",
+  "num-complex",
+  "num-traits",
++ "once_cell",
+  "paste",
++ "pulp 0.21.5",
+  "raw-cpuid",
++ "rayon",
+  "seq-macro",
++ "sysctl",
+ ]
+ 
+ [[package]]
+@@ -1045,13 +1227,31 @@ dependencies = [
+  "num-traits",
+  "once_cell",
+  "paste",
+- "pulp",
++ "pulp 0.22.3",
+  "raw-cpuid",
+  "rayon",
+  "seq-macro",
+  "sysctl",
+ ]
+ 
++[[package]]
++name = "gemm-f16"
++version = "0.18.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "cff95ae3259432f3c3410eaa919033cd03791d81cebd18018393dc147952e109"
++dependencies = [
++ "dyn-stack",
++ "gemm-common 0.18.2",
++ "gemm-f32 0.18.2",
++ "half",
++ "num-complex",
++ "num-traits",
++ "paste",
++ "raw-cpuid",
++ "rayon",
++ "seq-macro",
++]
++
+ [[package]]
+ name = "gemm-f16"
+ version = "0.19.0"
+@@ -1059,8 +1259,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "e3df7a55202e6cd6739d82ae3399c8e0c7e1402859b30e4cb780e61525d9486e"
+ dependencies = [
+  "dyn-stack",
+- "gemm-common",
+- "gemm-f32",
++ "gemm-common 0.19.0",
++ "gemm-f32 0.19.0",
+  "half",
+  "num-complex",
+  "num-traits",
+@@ -1070,6 +1270,21 @@ dependencies = [
+  "seq-macro",
+ ]
+ 
++[[package]]
++name = "gemm-f32"
++version = "0.18.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "bc8d3d4385393304f407392f754cd2dc4b315d05063f62cf09f47b58de276864"
++dependencies = [
++ "dyn-stack",
++ "gemm-common 0.18.2",
++ "num-complex",
++ "num-traits",
++ "paste",
++ "raw-cpuid",
++ "seq-macro",
++]
++
+ [[package]]
+ name = "gemm-f32"
+ version = "0.19.0"
+@@ -1077,7 +1292,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "02e0b8c9da1fbec6e3e3ab2ce6bc259ef18eb5f6f0d3e4edf54b75f9fd41a81c"
+ dependencies = [
+  "dyn-stack",
+- "gemm-common",
++ "gemm-common 0.19.0",
++ "num-complex",
++ "num-traits",
++ "paste",
++ "raw-cpuid",
++ "seq-macro",
++]
++
++[[package]]
++name = "gemm-f64"
++version = "0.18.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "35b2a4f76ce4b8b16eadc11ccf2e083252d8237c1b589558a49b0183545015bd"
++dependencies = [
++ "dyn-stack",
++ "gemm-common 0.18.2",
+  "num-complex",
+  "num-traits",
+  "paste",
+@@ -1092,7 +1322,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "056131e8f2a521bfab322f804ccd652520c79700d81209e9d9275bbdecaadc6a"
+ dependencies = [
+  "dyn-stack",
+- "gemm-common",
++ "gemm-common 0.19.0",
+  "num-complex",
+  "num-traits",
+  "paste",
+@@ -1356,7 +1586,7 @@ dependencies = [
+  "displaydoc",
+  "potential_utf",
+  "utf8_iter",
+- "yoke",
++ "yoke 0.8.3",
+  "zerofrom",
+  "zerovec",
+ ]
+@@ -1424,7 +1654,7 @@ dependencies = [
+  "displaydoc",
+  "icu_locale_core",
+  "writeable",
+- "yoke",
++ "yoke 0.8.3",
+  "zerofrom",
+  "zerotrie",
+  "zerovec",
+@@ -1617,6 +1847,16 @@ version = "0.2.189"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
+ 
++[[package]]
++name = "libloading"
++version = "0.8.9"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "d7c4b02199fee7c5d21a5ae7d8cfa79a6ef5bb2fc834d6e9058e89c825efdc55"
++dependencies = [
++ "cfg-if",
++ "windows-link",
++]
++
+ [[package]]
+ name = "libm"
+ version = "0.2.16"
+@@ -1715,6 +1955,15 @@ version = "0.2.3"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "fc04a4c58212d57930a24bf47d3fa87485264a3a054e9c10e042eb373573ad3c"
+ 
++[[package]]
++name = "malloc_buf"
++version = "0.0.6"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "62bb907fe88d54d8d9ce32a3cceab4218ed2f6b7d35617cafe9adf84e43919cb"
++dependencies = [
++ "libc",
++]
++
+ [[package]]
+ name = "matchit"
+ version = "0.8.4"
+@@ -1762,6 +2011,21 @@ dependencies = [
+  "autocfg",
+ ]
+ 
++[[package]]
++name = "metal"
++version = "0.29.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "7ecfd3296f8c56b7c1f6fbac3c71cefa9d78ce009850c45000015f206dc7fa21"
++dependencies = [
++ "bitflags 2.13.2",
++ "block",
++ "core-graphics-types",
++ "foreign-types",
++ "log",
++ "objc",
++ "paste",
++]
++
+ [[package]]
+ name = "mime"
+ version = "0.3.17"
+@@ -1864,6 +2128,30 @@ dependencies = [
+  "windows-sys 0.61.2",
+ ]
+ 
++[[package]]
++name = "num"
++version = "0.4.3"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "35bd024e8b2ff75562e5f34e7f4905839deb4b22955ef5e73d2fea1b9813cb23"
++dependencies = [
++ "num-bigint",
++ "num-complex",
++ "num-integer",
++ "num-iter",
++ "num-rational",
++ "num-traits",
++]
++
++[[package]]
++name = "num-bigint"
++version = "0.4.8"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "c89e69e7e0f03bea5ef08013795c25018e101932225a656383bd384495ecc367"
++dependencies = [
++ "num-integer",
++ "num-traits",
++]
++
+ [[package]]
+ name = "num-complex"
+ version = "0.4.6"
+@@ -1891,6 +2179,36 @@ dependencies = [
+  "syn 2.0.119",
+ ]
+ 
++[[package]]
++name = "num-integer"
++version = "0.1.47"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "7ce2d95d4b3734dc35aa2f45e1aa22cd416814592a4f9d9205e11affd5b8e10b"
++dependencies = [
++ "num-traits",
++]
++
++[[package]]
++name = "num-iter"
++version = "0.1.46"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "c92800bd69a1eac91786bcfe9da64a897eb72911b8dc3095decbd07429e8048b"
++dependencies = [
++ "num-integer",
++ "num-traits",
++]
++
++[[package]]
++name = "num-rational"
++version = "0.4.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "f83d14da390562dca69fc84082e73e548e1ad308d24accdedd2720017cb37824"
++dependencies = [
++ "num-bigint",
++ "num-integer",
++ "num-traits",
++]
++
+ [[package]]
+ name = "num-traits"
+ version = "0.2.19"
+@@ -1920,6 +2238,24 @@ dependencies = [
+  "libc",
+ ]
+ 
++[[package]]
++name = "objc"
++version = "0.2.7"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "915b1b472bc21c53464d6c8461c9d3af805ba1ef837e1cac254428f4a77177b1"
++dependencies = [
++ "malloc_buf",
++]
++
++[[package]]
++name = "objc2"
++version = "0.6.4"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "3a12a8ed07aefc768292f076dc3ac8c48f3781c8f2d5851dd3d98950e8c5a89f"
++dependencies = [
++ "objc2-encode",
++]
++
+ [[package]]
+ name = "objc2-core-foundation"
+ version = "0.3.2"
+@@ -1927,6 +2263,41 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "2a180dd8642fa45cdb7dd721cd4c11b1cadd4929ce112ebd8b9f5803cc79d536"
+ dependencies = [
+  "bitflags 2.13.2",
++ "dispatch2",
++ "objc2",
++]
++
++[[package]]
++name = "objc2-encode"
++version = "4.1.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "ef25abbcd74fb2609453eb695bd2f860d389e457f67dc17cafc8b8cbc89d0c33"
++
++[[package]]
++name = "objc2-foundation"
++version = "0.3.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "e3e0adef53c21f888deb4fa59fc59f7eb17404926ee8a6f59f5df0fd7f9f3272"
++dependencies = [
++ "bitflags 2.13.2",
++ "block2",
++ "libc",
++ "objc2",
++ "objc2-core-foundation",
++]
++
++[[package]]
++name = "objc2-metal"
++version = "0.3.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "a0125f776a10d00af4152d74616409f0d4a2053a6f57fa5b7d6aa2854ac04794"
++dependencies = [
++ "bitflags 2.13.2",
++ "block2",
++ "dispatch2",
++ "objc2",
++ "objc2-core-foundation",
++ "objc2-foundation",
+ ]
+ 
+ [[package]]
+@@ -2253,6 +2624,20 @@ dependencies = [
+  "unicase",
+ ]
+ 
++[[package]]
++name = "pulp"
++version = "0.21.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "96b86df24f0a7ddd5e4b95c94fc9ed8a98f1ca94d3b01bdce2824097e7835907"
++dependencies = [
++ "bytemuck",
++ "cfg-if",
++ "libm",
++ "num-complex",
++ "reborrow",
++ "version_check",
++]
++
+ [[package]]
+ name = "pulp"
+ version = "0.22.3"
+@@ -2748,6 +3133,16 @@ version = "1.0.23"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
+ 
++[[package]]
++name = "safetensors"
++version = "0.4.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "44560c11236a6130a46ce36c836a62936dc81ebf8c36a37947423571be0e55b6"
++dependencies = [
++ "serde",
++ "serde_json",
++]
++
+ [[package]]
+ name = "safetensors"
+ version = "0.8.0"
+@@ -3092,6 +3487,17 @@ dependencies = [
+  "futures-core",
+ ]
+ 
++[[package]]
++name = "synstructure"
++version = "0.13.2"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "728a70f3dbaf5bab7f0c4b1ac8d7ae5ea60a4b5549c8a5914361c99147a709d2"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "syn 2.0.119",
++]
++
+ [[package]]
+ name = "synstructure"
+ version = "0.14.0"
+@@ -3599,6 +4005,41 @@ version = "0.1.7"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "2896d95c02a80c6d6a5d6e953d479f5ddf2dfdb6a244441010e373ac0fb88971"
+ 
++[[package]]
++name = "ug"
++version = "0.5.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "76b761acf8af3494640d826a8609e2265e19778fb43306c7f15379c78c9b05b0"
++dependencies = [
++ "gemm 0.18.2",
++ "half",
++ "libloading",
++ "memmap2",
++ "num",
++ "num-traits",
++ "num_cpus",
++ "rayon",
++ "safetensors 0.4.5",
++ "serde",
++ "thiserror 1.0.69",
++ "tracing",
++ "yoke 0.7.5",
++]
++
++[[package]]
++name = "ug-metal"
++version = "0.5.0"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "9f7adf545a99a086d362efc739e7cf4317c18cbeda22706000fd434d70ea3d95"
++dependencies = [
++ "half",
++ "metal",
++ "objc",
++ "serde",
++ "thiserror 1.0.69",
++ "ug",
++]
++
+ [[package]]
+ name = "unicase"
+ version = "2.9.0"
+@@ -4113,6 +4554,18 @@ version = "0.6.4"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
+ 
++[[package]]
++name = "yoke"
++version = "0.7.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "120e6aef9aa629e3d4f52dc8cc43a015c7724194c97dfaf45180d2daf2b77f40"
++dependencies = [
++ "serde",
++ "stable_deref_trait",
++ "yoke-derive 0.7.5",
++ "zerofrom",
++]
++
+ [[package]]
+ name = "yoke"
+ version = "0.8.3"
+@@ -4120,10 +4573,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "709fe23a0424b6a435d82152b1bd3fdfb0833487d5fa90d05d42762a9891fef5"
+ dependencies = [
+  "stable_deref_trait",
+- "yoke-derive",
++ "yoke-derive 0.8.3",
+  "zerofrom",
+ ]
+ 
++[[package]]
++name = "yoke-derive"
++version = "0.7.5"
++source = "registry+https://github.com/rust-lang/crates.io-index"
++checksum = "2380878cad4ac9aac1e2435f3eb4020e8374b5f13c296cb75b4620ff8e229154"
++dependencies = [
++ "proc-macro2",
++ "quote",
++ "syn 2.0.119",
++ "synstructure 0.13.2",
++]
++
+ [[package]]
+ name = "yoke-derive"
+ version = "0.8.3"
+@@ -4133,7 +4598,7 @@ dependencies = [
+  "proc-macro2",
+  "quote",
+  "syn 3.0.6",
+- "synstructure",
++ "synstructure 0.14.0",
+ ]
+ 
+ [[package]]
+@@ -4174,7 +4639,7 @@ dependencies = [
+  "proc-macro2",
+  "quote",
+  "syn 3.0.6",
+- "synstructure",
++ "synstructure 0.14.0",
+ ]
+ 
+ [[package]]
+@@ -4190,7 +4655,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "4ea269c3bd32f0a32c321907a2ae912ba6f4649bb0fc764a15627e99a7095a3f"
+ dependencies = [
+  "displaydoc",
+- "yoke",
++ "yoke 0.8.3",
+  "zerofrom",
+ ]
+ 
+@@ -4200,7 +4665,7 @@ version = "0.11.8"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "bb0464e17806c1d976d5cba29399c7f08e516e279e2ba493f63123b5fca67dd8"
+ dependencies = [
+- "yoke",
++ "yoke 0.8.3",
+  "zerofrom",
+  "zerovec-derive",
+ ]
+diff --git a/crates/kev/Cargo.toml b/crates/kev/Cargo.toml
+index 233a0cd5356330ec5f739fd626851a196349e628..4b87f6068db1c42bc96a982328899adbbb390d2c 100644
+--- a/crates/kev/Cargo.toml
++++ b/crates/kev/Cargo.toml
+@@ -9,6 +9,8 @@ publish = false
+ [features]
+ # The `kev-serve` binary and its dependencies.
+ serve = ["dep:axum", "dep:tower-http", "dep:tokio"]
++# Apple Metal execution for the backbone.
++metal = ["candle-core/metal", "candle-nn/metal"]
+ 
+ [dependencies]
+ candle-core = "0.11"
+diff --git a/crates/kev/fixtures/README.md b/crates/kev/fixtures/README.md
+index ff7abdd8889b916b934d7f2eec2800a00fad9e3f..99110937a6cb264a9925cf9cd537eb16345937ca 100644
+--- a/crates/kev/fixtures/README.md
++++ b/crates/kev/fixtures/README.md
+@@ -29,7 +29,8 @@ tokenizer files into `--artifacts`. The Qwen2.5-0.5B base lives at
+ | Path | Holds |
+ | --- | --- |
+ | `requests/` | TypeSafe-shaped request bodies plus the `to_record()` output and per-question metadata the renderer must reproduce |
+-| `encodings/` | `encode()` records per request: `ids`, `seg`, `pos`, `opt`, `decide_idx`, `opt_idx` |
++| `encodings/` | `encode()` records with their source `record` embedded: `ids`, `seg`, `pos`, `opt`, `decide_idx`, `opt_idx`, `state_truncated` |
++| `eval.json` | The reference's held-out evaluation of this artifact (accuracy, ECE, temperature scaling, mechanism results); describes the weights, not the port |
+ | `golden/` | fp32 CPU per-question probability vectors, shaped answers, token counts |
+ | `probes/` | `isolation` (secret in sibling `0.056` / absent `0.056` / in state `0.997`), `packed_vs_separate` (max delta `2.21e-6`), `permutation` (4 orders of `support.department`), `forgery` (option count under fake delimiters) |
+ | `tokenizer.json` | Delimiter token ids and sanitized `user_tokens()` cases |
+diff --git a/crates/kev/fixtures/eval.json b/crates/kev/fixtures/eval.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..8f1088f080b5aaffbf081cda8b65bff765993966
+--- /dev/null
++++ b/crates/kev/fixtures/eval.json
+@@ -0,0 +1,208 @@
++{
++ "run": "runs/kev",
++ "holdout_sources": [],
++ "baseline_zero_shot_base": {
++  "agnews": {
++   "n": 150,
++   "acc": 0.8133333333333334,
++   "ece": 0.06872746845086417,
++   "mean_conf": 0.7705230579773585
++  },
++  "agnews_yn": {
++   "n": 300,
++   "acc": 0.78,
++   "ece": 0.1028619595368703,
++   "mean_conf": 0.7659800553321838
++  },
++  "sst5": {
++   "n": 150,
++   "acc": 0.37333333333333335,
++   "ece": 0.08330158472061158,
++   "mean_conf": 0.4375393835703532
++  },
++  "boolq": {
++   "n": 150,
++   "acc": 0.4266666666666667,
++   "ece": 0.27390830198923743,
++   "mean_conf": 0.7005749686559042
++  },
++  "yelp": {
++   "n": 150,
++   "acc": 0.31333333333333335,
++   "ece": 0.0428644096851349,
++   "mean_conf": 0.2963246401151021
++  },
++  "yelp_yn": {
++   "n": 150,
++   "acc": 0.8333333333333334,
++   "ece": 0.12900178631146747,
++   "mean_conf": 0.711561503012975
++  },
++  "mnli": {
++   "n": 150,
++   "acc": 0.46,
++   "ece": 0.2252740067243576,
++   "mean_conf": 0.6829265818993251
++  }
++ },
++ "baseline_zero_shot_instruct": {
++  "agnews": {
++   "n": 150,
++   "acc": 0.7866666666666666,
++   "ece": 0.1601808597644171,
++   "mean_conf": 0.9435027374823888
++  },
++  "agnews_yn": {
++   "n": 300,
++   "acc": 0.8533333333333334,
++   "ece": 0.06154396494229632,
++   "mean_conf": 0.791789368391037
++  },
++  "sst5": {
++   "n": 150,
++   "acc": 0.44666666666666666,
++   "ece": 0.3441617304086685,
++   "mean_conf": 0.7542105954885483
++  },
++  "boolq": {
++   "n": 150,
++   "acc": 0.6066666666666667,
++   "ece": 0.0836830314000448,
++   "mean_conf": 0.6903496980667114
++  },
++  "yelp": {
++   "n": 150,
++   "acc": 0.35333333333333333,
++   "ece": 0.07781609197457631,
++   "mean_conf": 0.3684885170062383
++  },
++  "yelp_yn": {
++   "n": 150,
++   "acc": 0.8333333333333334,
++   "ece": 0.06565124352773032,
++   "mean_conf": 0.8569089023272196
++  },
++  "mnli": {
++   "n": 150,
++   "acc": 0.43333333333333335,
++   "ece": 0.3897599758704503,
++   "mean_conf": 0.8230933092037837
++  }
++ },
++ "accuracy_calibration": {
++  "agnews": {
++   "n": 150,
++   "acc": 0.94,
++   "ece": 0.02787075857321425,
++   "nll": 0.21451582382221224,
++   "mean_conf": 0.9441667677958806
++  },
++  "agnews_yn": {
++   "n": 300,
++   "acc": 0.96,
++   "ece": 0.01691638271013903,
++   "nll": 0.10442558608399229,
++   "mean_conf": 0.9658287052313487
++  },
++  "sst5": {
++   "n": 150,
++   "acc": 0.5333333333333333,
++   "ece": 0.12093879044055943,
++   "nll": 1.169872780334628,
++   "mean_conf": 0.6458062372605006,
++   "score_mae_levels": 0.5936220041739337
++  },
++  "boolq": {
++   "n": 150,
++   "acc": 0.7533333333333333,
++   "ece": 0.13565061767896014,
++   "nll": 0.6336200484640118,
++   "mean_conf": 0.8791843442122141
++  },
++  "yelp": {
++   "n": 150,
++   "acc": 0.5533333333333333,
++   "ece": 0.11765717585881552,
++   "nll": 0.9509858549967819,
++   "mean_conf": 0.6709905091921489,
++   "score_mae_levels": 0.5347741969060735
++  },
++  "yelp_yn": {
++   "n": 150,
++   "acc": 0.8866666666666667,
++   "ece": 0.083875914812088,
++   "nll": 0.3330675296269493,
++   "mean_conf": 0.9531527554988861
++  },
++  "mnli": {
++   "n": 150,
++   "acc": 0.7466666666666667,
++   "ece": 0.09995454927285516,
++   "nll": 0.6312906145540002,
++   "mean_conf": 0.8385461642344793
++  },
++  "banking77": {
++   "n": 150,
++   "acc": 0.86,
++   "ece": 0.05680914471546812,
++   "nll": 0.5588821548329137,
++   "mean_conf": 0.9066748427351315
++  },
++  "ALL": {
++   "n": 1350,
++   "acc": 0.7992592592592592,
++   "ece": 0.0653030041080934,
++   "mean_conf": 0.8633532257102154
++  }
++ },
++ "temperature_scaling": {
++  "T": 1.4741506576538086,
++  "n_fit": 676,
++  "n_held": 674,
++  "before": {
++   "nll": 0.5052552819252014,
++   "ece": 0.05687867120483156
++  },
++  "after": {
++   "nll": 0.48128193616867065,
++   "ece": 0.031318123875191346
++  }
++ },
++ "permutation": {
++  "n": 81,
++  "argmax_flip_rate": 0.07407407407407407,
++  "mean_prob_spread": 0.06532220676811527,
++  "p90_prob_spread": 0.2485833764076233
++ },
++ "iia": {
++  "n": 86,
++  "mean_abs_logodds_shift": 0.13282728950854877,
++  "mean_shift": 0.0404207781784885,
++  "p90_abs_shift": 0.34304980440445876
++ },
++ "isolation": {
++  "sibling": {
++   "mean_p_code": 0.030429982068017124,
++   "min": 0.010374528355896473,
++   "max": 0.07068686187267303
++  },
++  "state": {
++   "mean_p_code": 0.9903109312057495,
++   "min": 0.9674482941627502,
++   "max": 0.99826979637146
++  },
++  "absent": {
++   "mean_p_code": 0.03043001419864595,
++   "min": 0.01037475187331438,
++   "max": 0.07068636268377304
++  }
++ },
++ "packed_vs_separate": {
++  "n_questions": 80,
++  "max_abs_prob_diff": 3.6954879760742188e-06,
++  "mean_abs_prob_diff": 2.1806145014124923e-07,
++  "packed_s": 2.3287577629089355,
++  "separate_s": 4.706204175949097,
++  "speedup": 2.020907563211043
++ }
++}
+\ No newline at end of file
+diff --git a/crates/kev/src/head.rs b/crates/kev/src/head.rs
+index 364b1fb82e46bfdfe41e19a54a72af33479912ba..310caea460d94873bb00779066390f0f2ca069fb 100644
+--- a/crates/kev/src/head.rs
++++ b/crates/kev/src/head.rs
+@@ -58,7 +58,7 @@ impl PointerHead {
+     pub fn logits(&self, h_decide: &Tensor, h_opts: &Tensor) -> candle_core::Result<Tensor> {
+         let key = self.k.forward(h_opts)?; // [K, dp]
+         let query = self.q.forward(h_decide)?; // [1, dp]
+-        key.matmul(&query.t()?)?
++        key.matmul(&query.t()?.contiguous()?)?
+             .squeeze(1)?
+             .affine(1.0 / (self.dp as f64).sqrt(), 0.0)
+     }
+diff --git a/crates/kev/src/model.rs b/crates/kev/src/model.rs
+index f8202193612b207e82754cd621fe4c3bea3c44b0..ac3fa6be5425690493791f06f6ac3461c3dd9d6b 100644
+--- a/crates/kev/src/model.rs
++++ b/crates/kev/src/model.rs
+@@ -138,19 +138,23 @@ impl Attention {
+             .v_proj
+             .forward(x)?
+             .reshape((len, self.n_kv_heads, self.head_dim))?;
+-        let q = rotary.apply(&q, pos)?.transpose(0, 1)?; // [n_h, len, hd]
+-        let k = rotary.apply(&k, pos)?.transpose(0, 1)?; // [n_kv, len, hd]
+-        let v = v.transpose(0, 1)?; // [n_kv, len, hd]
++        let q = rotary.apply(&q, pos)?.transpose(0, 1)?.contiguous()?; // [n_h, len, hd]
++        let k = rotary.apply(&k, pos)?.transpose(0, 1)?.contiguous()?; // [n_kv, len, hd]
++        let v = v.transpose(0, 1)?.contiguous()?; // [n_kv, len, hd]
+         let groups = self.n_heads / self.n_kv_heads;
+         let k = repeat_kv(&k, groups)?;
+         let v = repeat_kv(&v, groups)?;
++        // Metal's batched matmul requires contiguous operands.
+         let scores = q
+-            .matmul(&k.transpose(1, 2)?)?
++            .matmul(&k.transpose(1, 2)?.contiguous()?)?
+             .affine(1.0 / (self.head_dim as f64).sqrt(), 0.0)?; // [n_h, len, len]
+         let scores = scores.broadcast_add(mask)?;
+         let probs = candle_nn::ops::softmax_last_dim(&scores)?;
+         let out = probs.matmul(&v)?; // [n_h, len, hd]
+-        let out = out.transpose(0, 1)?.reshape((len, self.n_heads * self.head_dim))?;
++        let out = out
++            .transpose(0, 1)?
++            .contiguous()?
++            .reshape((len, self.n_heads * self.head_dim))?;
+         self.o_proj.forward(&out)
+     }
+ }
+diff --git a/docs/kev/README.md b/docs/kev/README.md
+index f9cb2323e59f9741dcf73a6044d35b25abad1482..f7448a5cd4fffe93abd0112107861034d87e7d31 100644
+--- a/docs/kev/README.md
++++ b/docs/kev/README.md
+@@ -1,11 +1,12 @@
+ # Kev
+ 
+-**Status:** port in progress. `kev` is Jared Palmer's open-source
+-reconstruction of a Jev-style decision model, tracked in this workspace as
+-`projects/repos/kev/` (manifest entry `jaredpalmer/kev` in
+-`~/work/projects/manifest.txt`). It is being ported into this repository as
+-`crates/kev`; [`port-roadmap.md`](port-roadmap.md) holds the issue sequence
+-and [`mesh-plan.md`](mesh-plan.md) the fleet path that follows.
++**Status:** ported. `kev` is Jared Palmer's open-source reconstruction of a
++Jev-style decision model, tracked in this workspace as `projects/repos/kev/`
++(manifest entry `jaredpalmer/kev` in `~/work/projects/manifest.txt`). The
++Rust port lives in `crates/kev` and answers `POST /v1/systemone` on CPU and
++Metal through `kev-serve`; [`port-roadmap.md`](port-roadmap.md) holds the
++issue sequence and the conformance measurements, and
++[`mesh-plan.md`](mesh-plan.md) holds the fleet path that follows.
+ 
+ ## What it is
+ 
+diff --git a/docs/kev/architecture.md b/docs/kev/architecture.md
+index f8a687b7ca041bce0921e9ad1c30c65c5a8cc396..a2ea15ffee4b0d9eed0b63ddc1a786c84bacfca9 100644
+--- a/docs/kev/architecture.md
++++ b/docs/kev/architecture.md
+@@ -2,7 +2,11 @@
+ 
+ **Status:** describes external code in `projects/repos/kev/` (upstream
+ `github.com/jaredpalmer/kev`). Everything on this page is implemented and
+-measured there; nothing on this page runs in this repository today.
++measured there, and as of the port sequence (openagents#9337) it also runs
++in this repository: `crates/kev/src/encode.rs` holds `encode()` and the
++branch mask, `model.rs`/`lora.rs` the backbone and adapter, `head.rs` the
++pointer readout, `decision.rs` the assembled model, `api.rs`/`render.rs`
++the TypeSafe shapes, and `serve.rs` the HTTP surface.
+ 
+ A kev checkpoint is two trained pieces on a frozen causal LM:
+ 
+diff --git a/docs/kev/mesh-plan.md b/docs/kev/mesh-plan.md
+index 24d387e6baa8e31be8cfa0b155b3b8e1507bef98..fad1205ef8a4eb131bfc864f5af1dd7724e8321b 100644
+--- a/docs/kev/mesh-plan.md
++++ b/docs/kev/mesh-plan.md
+@@ -1,11 +1,16 @@
+ # Decision models on the mesh
+ 
+-**Status:** proposed. Nothing on this page is implemented. It lays out the
+-path to serving and training kev-class decision models across the earn
+-mesh — Psionic owns execution and artifacts, Pylon nodes own the hardware,
+-Coder's fleet coordinator routes and verifies, and the service exposes a
+-TypeSafe-compatible `POST /v1/systemone` that fans out over that network.
+-Each phase names the surfaces it lands in and the evidence that proves it.
++**Status:** proposed. The local single-node half of this plan now exists:
++`crates/kev` runs the decision model in Rust and `kev-serve` answers
++`/v1/systemone` on this machine (see
++[`port-roadmap.md`](port-roadmap.md)). What follows — artifact admission,
++catalog rows, fleet fan-out, signed receipts, training dispatch — is not
++implemented. It lays out the path to serving and training kev-class
++decision models across the earn mesh — Psionic owns execution and
++artifacts, Pylon nodes own the hardware, Coder's fleet coordinator routes
++and verifies, and the service exposes a TypeSafe-compatible
++`POST /v1/systemone` that fans out over that network. Each phase names the
++surfaces it lands in and the evidence that proves it.
+ 
+ ## Why this workload fits the mesh
+ 
+diff --git a/docs/kev/port-roadmap.md b/docs/kev/port-roadmap.md
+index 3d9b19488a296ad93e7af8ae3b7ee98fe1cdd498..d718c8369a4a1c870f5b45c21281ec84a542354c 100644
+--- a/docs/kev/port-roadmap.md
++++ b/docs/kev/port-roadmap.md
+@@ -1,13 +1,11 @@
+ # Kev port roadmap
+ 
+-**Status:** in progress. The kev mechanism is being ported from the Python
++**Status:** implemented. The kev mechanism is ported from the Python
+ reference (`~/work/projects/repos/kev`, `jaredpalmer/kev`) into this
+ repository as `crates/kev`, a Rust implementation on
+ [candle](https://crates.io/crates/candle-core) with the TypeSafe
+-`/v1/systemone` wire contract. The work sequence is tracked by
+-[openagents#9337](https://github.com/OpenAgentsInc/openagents/issues/9337)
+-and the issues below; each one names what gets pulled over, where it lands,
+-and the evidence that proves it.
++`/v1/systemone` wire contract. Every issue in the sequence is closed; the
++measurements below are the recorded evidence.
+ 
+ The deprecated `psionic` repository informed earlier drafts of this plan.
+ Nothing is ported from there — the port pulls from the kev reference only.
+@@ -21,10 +19,10 @@ verifiable artifacts before the next consumes them.
+ | # | Issue | Pulls over | Lands in | Proved by |
+ | --- | --- | --- | --- | --- |
+ | 1 | [#9338](https://github.com/OpenAgentsInc/openagents/issues/9338) | Golden fixtures + converted artifacts from the Python reference | `crates/kev/fixtures/`, `~/work/kev-artifacts/` | `manifest.json` digests; rerunnable `gen_fixtures.py` |
+-| 2 | [#9339](https://github.com/OpenAgentsInc/openagents/issues/9339) | Request/answer models, `render()`, `to_record()`, `user_tokens()` sanitize | `crates/kev` `api.rs`, `render.rs` | Every corpus request renders byte-identical records and metadata |
+-| 3 | [#9340](https://github.com/OpenAgentsInc/openagents/issues/9340) | `encode()` packing: `seg`/`pos`/`opt`, `decide_idx`, `opt_idx`, block-causal mask | `crates/kev` `encode.rs`, `mask.rs` | Every `encodings/` fixture reproduced exactly |
+-| 4 | [#9341](https://github.com/OpenAgentsInc/openagents/issues/9341) | Qwen2.5-0.5B forward on candle + safetensors load + inference LoRA on all seven projections | `crates/kev` `model.rs` (candle backbone), `lora.rs` | Hidden states at decide/opt positions match reference within fp32 tolerance |
+-| 5 | [#9342](https://github.com/OpenAgentsInc/openagents/issues/9342) | `PointerHead` (two linear maps, scaled dot product, per-question softmax) + packed forward | `crates/kev` `head.rs`, `model.rs` | All `golden/` probabilities within tolerance; packed-vs-separate within `2.21e-6` fixture bound |
++| 2 | [#9339](https://github.com/OpenAgentsInc/openagents/issues/9339) | Request/answer models, `render()`, `to_record()`, `to_answers()`, `sanitize()` | `crates/kev` `api.rs`, `render.rs`, `error.rs` | Every corpus request renders byte-identical records and metadata |
++| 3 | [#9340](https://github.com/OpenAgentsInc/openagents/issues/9340) | `encode()` packing: `seg`/`pos`/`opt`, `decide_idx`, `opt_idx`, block-causal mask | `crates/kev` `encode.rs` | Every `encodings/` fixture reproduced exactly |
++| 4 | [#9341](https://github.com/OpenAgentsInc/openagents/issues/9341) | Qwen2.5-0.5B forward on candle + safetensors load + inference LoRA on all seven projections | `crates/kev` `model.rs`, `lora.rs` | Hidden states at decide/opt positions match reference within fp32 tolerance |
++| 5 | [#9342](https://github.com/OpenAgentsInc/openagents/issues/9342) | `PointerHead` (two linear maps, scaled dot product, per-question softmax) + packed forward | `crates/kev` `head.rs`, `decision.rs` | All `golden/` probabilities within tolerance; packed-vs-separate within `2.21e-6` fixture bound |
+ | 6 | [#9343](https://github.com/OpenAgentsInc/openagents/issues/9343) | `kev-serve` binary: `POST /v1/systemone`, `GET /v1/models`, typed refusals | `crates/kev` `serve.rs`, `src/bin/kev_serve.rs` | `jev` client round-trips all three question types unmodified |
+ | 7 | [#9344](https://github.com/OpenAgentsInc/openagents/issues/9344) | Metal run, all four mechanism probes, docs | this directory + `fixtures/` | Probe outputs committed; status table flips to implemented |
+ 
+@@ -41,9 +39,45 @@ any serving or backend work starts.
+   `config.json`, tokenizer files.
+ - `crates/kev/fixtures/manifest.json` — the sha256 of every file above.
+ 
++## Verification record
++
++Run from the workspace root. Tests that need weights read
++`KEV_ARTIFACT_DIR`/`KEV_BASE_DIR`, defaulting to
++`../../../kev-artifacts/kev-0.5b` and `qwen25-0.5b` beside the repository.
++
++```text
++cargo test -p kev --features serve --release
++KEV_TEST_DEVICE=metal cargo test -p kev --features metal --test conformance --release
++cargo build -p kev --features serve,metal --release --bin kev-serve
++target/release/kev-serve --adapter-dir ~/work/kev-artifacts/kev-0.5b \
++    --base-dir ~/work/kev-artifacts/qwen25-0.5b --port 8009 [--device metal]
++```
++
++Measured on this machine (Apple Silicon, fp32, candle 0.11):
++
++| Check | CPU | Metal | Reference |
++| --- | --- | --- | --- |
++| Golden probabilities, max abs delta | 4.1e-6 | 3.6e-6 | – |
++| Packed vs separate, max abs delta | 1.2e-6 | 7.2e-7 | 2.2e-6 |
++| Isolation, secret in sibling / absent / state | 0.056 / 0.056 / 0.997 | 0.056 / 0.056 / 0.997 | 0.056 / 0.056 / 0.997 |
++| Permutation argmax, four orders | `returns` ×4 | `returns` ×4 | `returns` ×4 |
++| Boundary forgery, option count | unchanged | unchanged | unchanged |
++| `/v1/systemone` latency, 79-token pack | 218 ms | 726 ms | – |
++
++The Metal path is slower than CPU at this size — the fp32 matmuls are small
++and Metal pays dispatch plus the contiguous copies its batched matmul
++requires. Both backends answer identically within the fp32 band.
++
++The reference's own held-out metrics for this artifact live in
++`crates/kev/fixtures/eval.json` (0.799 accuracy, 0.065 ECE, 0.031 after
++temperature scaling). They describe the weights, not this port — the port's
++evidence is conformance to the reference, measured above.
++
+ ## What this sequence does not cover
+ 
+ Fleet fan-out, earn admission, catalog rows, and the service door at
+ `openagents.com` are the separate program in [`mesh-plan.md`](mesh-plan.md).
+ This sequence ends at kev answering `/v1/systemone` on this machine from
+-openagents code, with the mechanism probes passing.
++openagents code, with the mechanism probes passing — which it now does.
++Training, larger checkpoints, and the `option_isolation` serving mode are
++follow-on work.

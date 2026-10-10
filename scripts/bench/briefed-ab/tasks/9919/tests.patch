@@ -1,0 +1,726 @@
+diff --git a/crates/coder/src/cloud.rs b/crates/coder/src/cloud.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..f6f8cb79a6981da689dc5ce54351790ac46651d9
+--- /dev/null
++++ b/crates/coder/src/cloud.rs
+@@ -0,0 +1,302 @@
++//! The OpenAgents cloud: Coder's no-setup fallback provider.
++//!
++//! A host with no Codex login, no Claude Code sign-in, or none with
++//! capacity still answers: Microcoder's loop generates each step through
++//! the OpenAgents cloud, the same serving path the OpenAgents app's basic
++//! chat uses. Each step is one NIP-CJ conversation job (kind `25900`),
++//! signed by the host's own Nostr key (`~/.openagents/nostr-secret`, the
++//! identity [`Identity::load`] keeps) and encrypted to the OpenAgents cloud
++//! worker, through `relay.openagents.com`. The worker is `coder-worker`
++//! open under a per-key quota (`coder::relay::quota`); it answers on the
++//! AI gateway's Gemini Flash lane, which the gateway serves from Vertex. The
++//! model credential, and every quota and abuse limit, live on the worker:
++//! nothing on the host is configured, and no provider token or Google
++//! credential is read here or anywhere on the host. INVARIANTS.md records
++//! that line.
++//!
++//! In the capacity book the cloud is [`Provider::Vertex`]. A worker's
++//! typed refusal (`rate_limited`, `quota_exhausted`, `busy`) becomes a
++//! capacity refusal with the worker's `retry_after_ms`
++//! ([`Refusal::cloud`]), so failover passes the cloud over until then and
++//! the no-capacity sentence names when it returns. Any other refusal, such
++//! as `limit_exceeded` for a step too large to send, is the step's error,
++//! reported in plain words.
++//!
++//! Read `docs/coder/runtime/cloud-fallback.md`.
++
++use std::sync::Arc;
++use std::time::Instant;
++
++use microcoder_loop::capacity::{CLOUD_ENDPOINT, Provider, Refusal};
++use microcoder_loop::failover::{Lane, unix_now};
++use microcoder_loop::models::{Basis, Generated, next_action_schema, parse_action};
++
++use crate::generate::{Door, Generate, GenerateError, Message, Meta, Role};
++use crate::relay::{Identity, RelayDoor, parse_pubkey};
++
++/// The relay the cloud's jobs travel through.
++pub const RELAY: &str = CLOUD_ENDPOINT;
++
++/// The OpenAgents cloud worker's public key: the same worker the
++/// OpenAgents app's basic chat talks to
++/// (`crates/openagents-mobile/src/basic_coder.rs`). It is public; the
++/// worker's secret and the model credential it spends stay on the worker's
++/// host.
++pub const WORKER: &str = "32c078952ff8b1f1d6f431e30fb240b0d1f91e30f977844557e8267390e3599b";
++
++/// The variable naming another cloud worker (npub or hex), for a staging
++/// worker or a test's loopback one.
++pub const WORKER_VAR: &str = "CODER_CLOUD_WORKER";
++
++/// The variable naming another relay for the cloud's jobs.
++pub const RELAY_VAR: &str = "CODER_CLOUD_RELAY";
++
++/// What the step's generation is called when the worker names no model.
++pub const MODEL: &str = "openagents-cloud";
++
++/// The door to the OpenAgents cloud, as this host's own key.
++///
++/// # Errors
++///
++/// A sentence when the worker override is not a public key or the host's
++/// Nostr identity cannot be loaded.
++pub fn door(env: &impl Fn(&str) -> Option<String>) -> Result<RelayDoor, String> {
++    let worker_text = env(WORKER_VAR).unwrap_or_else(|| WORKER.to_string());
++    let worker = parse_pubkey(&worker_text)
++        .ok_or_else(|| format!("{WORKER_VAR} must be an npub or 64 lowercase hex"))?;
++    let relay = env(RELAY_VAR).unwrap_or_else(|| RELAY.to_string());
++    Ok(RelayDoor::new(relay, worker, Identity::load()?))
++}
++
++/// The instructions a step sends: the loop's system text, then the reply
++/// shape, since a conversation job carries no response format.
++#[must_use]
++pub fn instructions(system: &str) -> String {
++    format!(
++        "{system}\n\nReply with exactly one JSON object and nothing else: no prose and no \
++         Markdown fence. It must match this JSON schema:\n{}",
++        next_action_schema()
++    )
++}
++
++/// Microcoder's lane through the OpenAgents cloud: one conversation job per
++/// step, whose reply is read as the step's action, keeping the capacity
++/// refusal the last one met.
++pub struct CloudLane<G = Door> {
++    door: Arc<G>,
++    refusal: std::cell::RefCell<Option<Refusal>>,
++    now: fn() -> u64,
++}
++
++impl<G> CloudLane<G> {
++    /// A lane over `door`: the cloud's relay door, or a test's stand-in.
++    #[must_use]
++    pub fn new(door: Arc<G>) -> Self {
++        CloudLane {
++            door,
++            refusal: std::cell::RefCell::new(None),
++            now: unix_now,
++        }
++    }
++
++    /// The same lane on another clock, for a test.
++    #[must_use]
++    pub fn clocked(mut self, now: fn() -> u64) -> Self {
++        self.now = now;
++        self
++    }
++}
++
++impl<G: Generate> microcoder_loop::models::Generate for CloudLane<G> {
++    async fn generate(&self, system: &str, prompt: &str) -> Generated {
++        let started = Instant::now();
++        let instructions = instructions(system);
++        let input = [Message {
++            role: Role::User,
++            text: prompt.to_string(),
++        }];
++        let mut model: Option<String> = None;
++        let mut retry_after_ms: Option<u64> = None;
++        let answered = self
++            .door
++            .generate(&instructions, &input, &mut |_| {}, &mut |meta| match meta {
++                Meta::Model(name) => model = Some(name),
++                Meta::RetryAfter(ms) => retry_after_ms = Some(ms),
++                Meta::Judgment(_) => {}
++            })
++            .await;
++        let (action, usage) = match answered {
++            Ok((text, usage)) => (parse_action(&text), usage),
++            Err(error) => {
++                if let GenerateError::Refused { code, .. } = &error {
++                    *self.refusal.borrow_mut() = Refusal::cloud(code, retry_after_ms, (self.now)());
++                }
++                (Err(failure(&error)), None)
++            }
++        };
++        let usage = usage.unwrap_or_default();
++        // The cloud bills this host nothing: the worker pays for the model.
++        Generated {
++            action,
++            model: model.unwrap_or_else(|| MODEL.to_string()),
++            prompt_tokens: usage.input_tokens,
++            completion_tokens: usage.output_tokens,
++            usd: Some(0.0),
++            known_usd: 0.0,
++            cost_unknown: None,
++            usd_upper: Some(0.0),
++            cost_basis: Basis::Billed,
++            milliseconds: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
++        }
++    }
++}
++
++impl<G: Generate> Lane for CloudLane<G> {
++    fn refusal(&self) -> Option<Refusal> {
++        self.refusal.borrow_mut().take()
++    }
++}
++
++/// A cloud failure in plain words, from its type and code.
++fn failure(error: &GenerateError) -> String {
++    match error {
++        GenerateError::Refused { code, message } => match code.as_str() {
++            "limit_exceeded" => format!(
++                "the OpenAgents cloud refused this step as too large (limit_exceeded): {message}"
++            ),
++            _ => format!("the OpenAgents cloud refused ({code}): {message}"),
++        },
++        GenerateError::Relay(why) => format!("the OpenAgents cloud's relay: {why}"),
++        GenerateError::Silent { reason, .. } => {
++            format!("the OpenAgents cloud did not answer: {reason}")
++        }
++        other => format!("the OpenAgents cloud: {other}"),
++    }
++}
++
++/// Where the cloud stands for `coder doctor`, in one clause.
++#[must_use]
++pub fn describe() -> String {
++    format!(
++        "the OpenAgents cloud (worker {}… on {}), signed by this host's key; no token",
++        &WORKER[..12],
++        Provider::Vertex.endpoint()
++    )
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::generate::Usage;
++    use microcoder_loop::capacity::Kind;
++    use microcoder_loop::models::Generate as _;
++
++    /// A stand-in cloud: answers with `text`, or refuses with `code` and a
++    /// wait, and keeps the instructions it was sent.
++    struct Fake {
++        answer: Result<String, (String, Option<u64>)>,
++        seen: std::sync::Mutex<Vec<String>>,
++    }
++
++    impl Generate for Fake {
++        async fn generate<'a>(
++            &'a self,
++            instructions: &'a str,
++            _input: &'a [Message],
++            _sink: &'a mut (dyn FnMut(&str) + Send),
++            meta: &'a mut (dyn FnMut(Meta) + Send),
++        ) -> Result<(String, Option<Usage>), GenerateError> {
++            self.seen.lock().unwrap().push(instructions.to_string());
++            match &self.answer {
++                Ok(text) => {
++                    meta(Meta::Model("the-cloud-model".into()));
++                    Ok((
++                        text.clone(),
++                        Some(Usage {
++                            input_tokens: 120,
++                            output_tokens: 30,
++                        }),
++                    ))
++                }
++                Err((code, wait)) => {
++                    if let Some(ms) = wait {
++                        meta(Meta::RetryAfter(*ms));
++                    }
++                    Err(GenerateError::Refused {
++                        code: code.clone(),
++                        message: "no".into(),
++                    })
++                }
++            }
++        }
++    }
++
++    fn lane(answer: Result<String, (String, Option<u64>)>) -> CloudLane<Fake> {
++        CloudLane::new(Arc::new(Fake {
++            answer,
++            seen: std::sync::Mutex::default(),
++        }))
++        .clocked(|| 1_000)
++    }
++
++    const ACTION: &str = r#"{"rationale":"say hi","commands":[],"view":[],"freeze_tests":false,"expand":[],"finished":true,"reply":"Hello.","ask":"none"}"#;
++
++    #[tokio::test]
++    async fn a_step_through_the_cloud_reads_the_reply_as_the_action() {
++        let lane = lane(Ok(format!("```json\n{ACTION}\n```")));
++        let generated = lane.generate("You are Microcoder.", "hello").await;
++        let action = generated.action.unwrap();
++        assert!(action.finished);
++        assert_eq!(action.reply, "Hello.");
++        assert_eq!(generated.model, "the-cloud-model");
++        assert_eq!(generated.prompt_tokens, 120);
++        // The host pays nothing.
++        assert_eq!(generated.usd, Some(0.0));
++        assert!(lane.refusal().is_none());
++        // The step asked for the action's shape.
++        let seen = lane.door.seen.lock().unwrap();
++        assert!(seen[0].starts_with("You are Microcoder."));
++        assert!(seen[0].contains("\"freeze_tests\""));
++    }
++
++    #[tokio::test]
++    async fn a_quota_refusal_is_a_typed_capacity_refusal_with_its_wait() {
++        let lane = lane(Err(("quota_exhausted".into(), Some(7_200_000))));
++        let generated = lane.generate("s", "p").await;
++        assert!(
++            generated
++                .action
++                .unwrap_err()
++                .contains("the OpenAgents cloud refused (quota_exhausted)")
++        );
++        let refusal = lane.refusal().unwrap();
++        assert_eq!(refusal.provider, Provider::Vertex);
++        assert_eq!(refusal.kind, Kind::UsageLimit);
++        assert_eq!(refusal.until, 1_000 + 7_200);
++        // Taken once.
++        assert!(lane.refusal().is_none());
++    }
++
++    #[tokio::test]
++    async fn a_rate_limit_holds_a_minute_and_a_too_large_step_is_only_an_error() {
++        let limited = lane(Err(("rate_limited".into(), None)));
++        limited.generate("s", "p").await;
++        assert_eq!(limited.refusal().unwrap().kind, Kind::RateLimit);
++        let large = lane(Err(("limit_exceeded".into(), None)));
++        let generated = large.generate("s", "p").await;
++        assert!(generated.action.unwrap_err().contains("too large"));
++        assert!(large.refusal().is_none());
++    }
++
++    #[test]
++    fn the_default_worker_is_a_public_key_and_the_door_needs_no_token() {
++        assert!(parse_pubkey(WORKER).is_some());
++        assert_eq!(RELAY, "wss://relay.openagents.com");
++        // A bad override is refused in words, before any key is loaded.
++        let bad = |name: &str| (name == WORKER_VAR).then(|| "nope".to_string());
++        match door(&bad) {
++            Err(why) => assert!(why.contains(WORKER_VAR), "{why}"),
++            Ok(_) => panic!("a worker that is not a key was accepted"),
++        }
++    }
++}
+diff --git a/crates/coder/src/delegate_door.rs b/crates/coder/src/delegate_door.rs
+index 59b2b6b654f6a694446fafdc42e33d65e09e6dd2..efe8ce21970ae8cba0da0c97dda463ea1e9a3abd 100644
+--- a/crates/coder/src/delegate_door.rs
++++ b/crates/coder/src/delegate_door.rs
+@@ -1945,23 +1980,18 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
+         assert_eq!(done.cost_usd, Some(0.0));
+     }
+ 
+-    /// The recorded Vertex quota refusal, observed at 2000.
+-    fn vertex_refusal() -> Refusal {
+-        Refusal::vertex(
+-            429,
+-            None,
+-            include_str!("../../microcoder-loop/fixtures/vertex/quota-exceeded.json"),
+-            2_000,
+-        )
+-        .unwrap()
++    /// The OpenAgents cloud's quota refusal, observed at 2000, with the
++    /// worker's wait of 41 seconds.
++    fn cloud_refusal() -> Refusal {
++        Refusal::cloud("quota_exhausted", Some(41_000), 2_000).unwrap()
+     }
+ 
+-    /// Vertex first, then Claude, both connected.
+-    fn vertex_then_claude() -> Vec<ProviderState> {
++    /// The cloud first, then Claude, both connected.
++    fn cloud_then_claude() -> Vec<ProviderState> {
+         vec![
+             ProviderState {
+                 provider: Provider::Vertex,
+-                model: microcoder::VERTEX_MODEL.to_string(),
++                model: microcoder::CLOUD_MODEL.to_string(),
+                 connection: Connection::Connected,
+                 refusal: None,
+             },
+@@ -1974,18 +2004,18 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
+         ]
+     }
+ 
+-    fn after_the_vertex_reset() -> u64 {
++    fn after_the_cloud_reset() -> u64 {
+         2_100
+     }
+ 
+     #[tokio::test]
+-    async fn a_vertex_refusal_mid_turn_is_recorded_and_the_next_provider_finishes() {
++    async fn a_cloud_refusal_mid_turn_is_recorded_and_the_next_provider_finishes() {
+         let dir = tempfile::tempdir().unwrap();
+         let script = vec![
+-            (Provider::Vertex, vec![Err(vertex_refusal())]),
++            (Provider::Vertex, vec![Err(cloud_refusal())]),
+             (Provider::Claude, vec![Ok(finish("Hello from Claude."))]),
+         ];
+-        let Some((door, _)) = microcoder_door(dir.path(), vertex_then_claude(), script) else {
++        let Some((door, _)) = microcoder_door(dir.path(), cloud_then_claude(), script) else {
+             return;
+         };
+         let done = door
+@@ -1994,33 +2024,33 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
+             .unwrap();
+         assert!(done.failure.is_none(), "{:?}", done.failure);
+         assert_eq!(done.text, "Hello from Claude.");
+-        // The book holds Vertex's quota refusal until its retry delay ends.
++        // The book holds the cloud's quota refusal until its wait ends.
+         let book = capacity::Book::load(&dir.path().join("tasks"));
+         let held = book.blocking(Provider::Vertex, 2_000).unwrap();
+         assert_eq!(held.kind, capacity::Kind::UsageLimit);
+         assert_eq!(held.until, 2_041);
+-        // The next turn skips Vertex without asking it, and says why.
++        // The next turn skips the cloud without asking it, and says why.
+         let providers = microcoder::providers(
+-            &microcoder::lineup(None, Some(microcoder::VERTEX_MODEL)),
++            &microcoder::lineup(None),
+             &dir.path().join("tasks"),
+             &|_| Connection::Connected,
+             2_000,
+         );
+-        let vertex = providers
++        let cloud = providers
+             .iter()
+             .find(|state| state.provider == Provider::Vertex)
+             .unwrap();
+-        assert!(!vertex.usable());
++        assert!(!cloud.usable());
+         assert!(
+-            vertex
+-                .describe()
+-                .starts_with("Vertex is out of its usage limit until 1970-01-01 00:34 UTC"),
++            cloud.describe().starts_with(
++                "the OpenAgents cloud is out of its usage limit until 1970-01-01 00:34 UTC"
++            ),
+             "{}",
+-            vertex.describe()
++            cloud.describe()
+         );
+         let script = vec![(Provider::Claude, vec![Ok(finish("Again."))])];
+         let door = DelegateDoor::new(
+-            Target::microcoder(vertex_then_claude()),
++            Target::microcoder(cloud_then_claude()),
+             None,
+             dir.path().join("work"),
+             None,
+@@ -2034,68 +2064,150 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
+             .await
+             .unwrap();
+         assert_eq!(done.text, "Again.");
+-        // After the reset, Vertex answers first again.
+-        let script = vec![(Provider::Vertex, vec![Ok(finish("From Vertex."))])];
++        // After the reset, the cloud answers first again.
++        let script = vec![(Provider::Vertex, vec![Ok(finish("From the cloud."))])];
+         let door = DelegateDoor::new(
+-            Target::microcoder(vertex_then_claude()),
++            Target::microcoder(cloud_then_claude()),
+             None,
+             dir.path().join("work"),
+             None,
+             String::new(),
+         )
+         .reading_capacity_in(dir.path().join("tasks"))
+-        .clocked(after_the_vertex_reset)
++        .clocked(after_the_cloud_reset)
+         .scripting(script);
+         let done = door
+             .answer("hello", "", true, false, &mut |_| {})
+             .await
+             .unwrap();
+-        assert_eq!(done.text, "From Vertex.");
++        assert_eq!(done.text, "From the cloud.");
+     }
+ 
+     #[test]
+-    fn vertex_joins_the_providers_only_when_configured() {
++    fn the_cloud_is_always_the_last_provider_and_needs_no_configuration() {
+         let dir = tempfile::tempdir().unwrap();
+-        let connected = |_: Provider| Connection::Connected;
+-        let names = |vertex: Option<&str>| {
+-            microcoder::providers(
+-                &microcoder::lineup(None, vertex),
+-                dir.path(),
+-                &connected,
+-                2_000,
+-            )
+-            .into_iter()
+-            .map(|state| (state.provider, state.model))
+-            .collect::<Vec<_>>()
+-        };
+-        assert_eq!(
+-            names(None).iter().map(|(p, _)| *p).collect::<Vec<_>>(),
+-            [Provider::Codex, Provider::Claude]
+-        );
+-        assert_eq!(
+-            names(Some("zai-org/glm-5-maas")).last().unwrap(),
+-            &(Provider::Vertex, "zai-org/glm-5-maas".to_string())
+-        );
+-        assert_eq!(microcoder::vertex_model(None, false), None);
++        let lineup = microcoder::lineup(None);
+         assert_eq!(
+-            microcoder::vertex_model(None, true).as_deref(),
+-            Some(microcoder::VERTEX_MODEL)
++            lineup.iter().map(|(p, _)| *p).collect::<Vec<_>>(),
++            [Provider::Codex, Provider::Claude, Provider::Vertex]
+         );
+         assert_eq!(
+-            microcoder::vertex_model(Some("zai-org/glm-5-maas".into()), false).as_deref(),
+-            Some("zai-org/glm-5-maas")
++            lineup.last().unwrap(),
++            &(Provider::Vertex, microcoder::CLOUD_MODEL.to_string())
+         );
+-        // Without a token, Vertex says why it can't be used.
++        // On a fresh host, with no login and nothing configured, the
++        // cloud is the provider a turn uses, so Microcoder is available.
++        let targets = targets(|_| None, None, dir.path(), &fresh_host, 2_000);
++        let microcoder = &targets[0];
++        assert!(microcoder.available());
++        assert_eq!(microcoder.provider().unwrap().provider, Provider::Vertex);
++        // Turned off, it says why it can't be used.
+         let state = ProviderState {
+             provider: Provider::Vertex,
+-            model: microcoder::VERTEX_MODEL.to_string(),
+-            connection: Connection::Missing("no Vertex access token".to_string()),
++            model: microcoder::CLOUD_MODEL.to_string(),
++            connection: capacity::cloud_connection(Some("off")),
+             refusal: None,
+         };
+         assert_eq!(
+             state.describe(),
+-            "Vertex can't be used (no Vertex access token)"
++            "the OpenAgents cloud can't be used (CODER_CLOUD=off turns the cloud fallback off)"
++        );
++    }
++
++    #[test]
++    fn the_cloud_answers_only_when_nothing_on_the_host_can() {
++        let dir = tempfile::tempdir().unwrap();
++        let chosen = |targets: &[Target]| choose(Mode::Auto, None, None, targets).unwrap();
++        // Microcoder has only the cloud: an authenticated Claude Code CLI
++        // answers instead.
++        let mut on_cloud = providers(false, false, false);
++        on_cloud.push(ProviderState {
++            provider: Provider::Vertex,
++            model: microcoder::CLOUD_MODEL.to_string(),
++            connection: Connection::Connected,
++            refusal: None,
++        });
++        let cli = all(on_cloud.clone(), true, false);
++        assert_eq!(chosen(&cli).chosen, Chosen::Delegate(cli[1].clone()));
++        // With no CLI either, the cloud answers.
++        let bare = all(on_cloud, false, false);
++        assert_eq!(chosen(&bare).chosen, Chosen::Delegate(bare[0].clone()));
++        // An own door key takes the cloud off Microcoder's providers, and
++        // the operator's door answers.
++        let keyed = targets(
++            |name| (name == "CODER_DOOR_KEY").then(|| "k".to_string()),
++            None,
++            dir.path(),
++            &fresh_host,
++            2_000,
++        );
++        assert!(!keyed[0].available());
++        assert!(
++            keyed[0]
++                .describe()
++                .contains("CODER_DOOR_KEY names this host's own door"),
++            "{}",
++            keyed[0].describe()
+         );
++        assert_eq!(chosen(&keyed).chosen, Chosen::Fallback);
++    }
++
++    /// A host with nothing configured: no Codex login, no Claude Code, and
++    /// the cloud needing nothing.
++    fn fresh_host(provider: Provider) -> Connection {
++        match provider {
++            Provider::Vertex => capacity::cloud_connection(None),
++            _ => Connection::Missing("not signed in".into()),
++        }
++    }
++
++    #[tokio::test]
++    async fn a_fresh_host_completes_a_turn_through_the_cloud_fallback() {
++        let dir = tempfile::tempdir().unwrap();
++        let workdir = dir.path().join("work");
++        std::fs::create_dir_all(&workdir).unwrap();
++        if let Err(why) = boundary_available(&workdir) {
++            eprintln!("skipped: {why}");
++            return;
++        }
++        let providers = microcoder::providers(
++            &microcoder::lineup(None),
++            &dir.path().join("tasks"),
++            &fresh_host,
++            2_000,
++        );
++        let reply = |action: &NextAction| serde_json::to_string(action).unwrap();
++        // The cloud's worker answers each step's job with the action as
++        // text: one command, then the answer.
++        let cloud = Door::Stub(StubGenerate::scripted(
++            vec![
++                reply(&running("printf hi")),
++                format!(
++                    "```json\n{}\n```",
++                    reply(&finish("Done through the cloud."))
++                ),
++            ],
++            "",
++        ));
++        let door = DelegateDoor::new(
++            Target::microcoder(providers),
++            None,
++            workdir,
++            None,
++            String::new(),
++        )
++        .reading_capacity_in(dir.path().join("tasks"))
++        .clocked(at_two_thousand)
++        .cloud_through(cloud);
++        let done = door
++            .answer("say hi", "", false, false, &mut |_| {})
++            .await
++            .unwrap();
++        assert!(done.failure.is_none(), "{:?}", done.failure);
++        assert_eq!(done.text, "Done through the cloud.");
++        assert_eq!(done.commands, 1);
++        // The host paid nothing for it.
++        assert_eq!(done.cost_usd, Some(0.0));
+     }
+ 
+     /// A Microcoder turn for the issue flow's tests, over `providers`, with
+@@ -2130,6 +2242,7 @@ echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turn
+             max_usd: microcoder::ISSUE_MAX_USD,
+             ask: false,
+             issues: true,
++            cloud: None,
+             now: at_two_thousand,
+         }
+     }
+diff --git a/crates/coder/tests/headless.rs b/crates/coder/tests/headless.rs
+index 71ff33c4f1582828a5bf5d4d8e07201a43c85ee1..36d9eeb1d4f0bf53d401b2f6fadc387ff5f5b107 100644
+--- a/crates/coder/tests/headless.rs
++++ b/crates/coder/tests/headless.rs
+@@ -290,6 +290,9 @@ fn malformed_decision_profiles_stop_headless_startup() {
+     let dir = tempfile::tempdir().unwrap();
+     let output = binary()
+         .env_clear()
++        // The cloud fallback would answer a host with nothing set up; these
++        // turns check the door the environment names.
++        .env("CODER_CLOUD", "off")
+         .current_dir(dir.path())
+         .env("HOME", dir.path())
+         .env("CODER_TRACE", "off")
+@@ -363,6 +366,9 @@ fn local_profile_routes_a_headless_turn_without_sending_a_provider_key() {
+     let dir = tempfile::tempdir().unwrap();
+     let output = binary()
+         .env_clear()
++        // The cloud fallback would answer a host with nothing set up; these
++        // turns check the door the environment names.
++        .env("CODER_CLOUD", "off")
+         .current_dir(dir.path())
+         .env("HOME", dir.path())
+         .env("CODER_TRACE", "off")
+@@ -419,6 +425,9 @@ fn a_routed_turn_records_the_functions_provenance() {
+     let trace = dir.path().join("turn.atif.jsonl");
+     let output = binary()
+         .env_clear()
++        // The cloud fallback would answer a host with nothing set up; these
++        // turns check the door the environment names.
++        .env("CODER_CLOUD", "off")
+         .current_dir(dir.path())
+         .env("HOME", dir.path())
+         .env("CODER_DECISION_PROFILE", "direct_local")
+@@ -518,6 +527,9 @@ fn hosted_profile_forwards_its_key_and_model() {
+     let dir = tempfile::tempdir().unwrap();
+     let output = binary()
+         .env_clear()
++        // The cloud fallback would answer a host with nothing set up; these
++        // turns check the door the environment names.
++        .env("CODER_CLOUD", "off")
+         .current_dir(dir.path())
+         .env("HOME", dir.path())
+         .env("CODER_TRACE", "off")
+@@ -574,6 +586,9 @@ fn a_door_refusing_permission_degrades_visibly() {
+     let dir = tempfile::tempdir().unwrap();
+     let output = binary()
+         .env_clear()
++        // The cloud fallback would answer a host with nothing set up; these
++        // turns check the door the environment names.
++        .env("CODER_CLOUD", "off")
+         .current_dir(dir.path())
+         .env("HOME", dir.path())
+         .env("CODER_DECISION_PROFILE", "direct_local")
+diff --git a/crates/coder/tests/relay_job.rs b/crates/coder/tests/relay_job.rs
+index b1f3790567e460b145da6ab6d9952c3099f451ac..7378fe2c1c623bd7a6dbc33cb05822a1b10e16a1 100644
+--- a/crates/coder/tests/relay_job.rs
++++ b/crates/coder/tests/relay_job.rs
+@@ -209,6 +209,7 @@ async fn a_job_turn_streams_feedback_and_a_result() {
+             &mut |meta| match meta {
+                 Meta::Judgment(line) => judgment = line,
+                 Meta::Model(name) => model = name,
++                Meta::RetryAfter(_) => {}
+             },
+         )
+         .await
+diff --git a/crates/microcoder-loop/src/capacity.rs b/crates/microcoder-loop/src/capacity.rs
+index fd7eef6d455c07a332b873058a762fbe19d578ed..b3d24665326e8499445e060b2087f876233dbbae 100644
+--- a/crates/microcoder-loop/src/capacity.rs
++++ b/crates/microcoder-loop/src/capacity.rs
+@@ -952,4 +1023,51 @@ mod tests {
+     fn utc_text_names_the_date_and_minute() {
+         assert_eq!(utc(1_791_050_823), "2026-10-03 18:07 UTC");
+     }
++
++    #[test]
++    fn the_cloud_worker_codes_are_capacity_refusals_with_their_waits() {
++        // A rate limit takes the worker's wait, rounded up to a second.
++        let limited = Refusal::cloud("rate_limited", Some(1_500), 1_000).unwrap();
++        assert_eq!(limited.provider, Provider::Vertex);
++        assert_eq!(limited.kind, Kind::RateLimit);
++        assert_eq!(limited.until, 1_002);
++        // Without a wait it holds one minute, the worker's window.
++        let busy = Refusal::cloud("busy", None, 1_000).unwrap();
++        assert_eq!(busy.kind, Kind::RateLimit);
++        assert_eq!(busy.until, 1_000 + CLOUD_UNKNOWN_RETRY);
++        // A spent day is a usage limit until the worker says, else UTC
++        // midnight, when its day resets.
++        let spent = Refusal::cloud("quota_exhausted", Some(3_600_000), 90_000).unwrap();
++        assert_eq!(spent.kind, Kind::UsageLimit);
++        assert_eq!(spent.until, 93_600);
++        let spent = Refusal::cloud("quota_exhausted", None, 90_000).unwrap();
++        assert_eq!(spent.until, 172_800);
++        // Codes that don't mean "not now" are not capacity refusals.
++        for code in [
++            "limit_exceeded",
++            "not_admitted",
++            "internal",
++            "RATE_LIMITED",
++            "",
++        ] {
++            assert_eq!(Refusal::cloud(code, Some(1_000), 1_000), None, "{code}");
++        }
++    }
++
++    #[test]
++    fn the_cloud_fallback_needs_nothing_on_the_host() {
++        // The invariant: the cloud fallback is connected from the setting
++        // alone, reading no token file and no Google credential; only
++        // CODER_CLOUD=off turns it off.
++        assert_eq!(cloud_connection(None), Connection::Connected);
++        assert_eq!(cloud_connection(Some("on")), Connection::Connected);
++        assert!(!cloud_connection(Some("off")).is_connected());
++        assert!(!cloud_connection(Some(" off ")).is_connected());
++        assert_eq!(Provider::Vertex.endpoint(), CLOUD_ENDPOINT);
++        assert!(CLOUD_ENDPOINT.starts_with("wss://"));
++        // The probe itself reads only the setting.
++        if std::env::var_os(CLOUD_VAR).is_none() {
++            assert_eq!(probe(Provider::Vertex), Connection::Connected);
++        }
++    }
+ }

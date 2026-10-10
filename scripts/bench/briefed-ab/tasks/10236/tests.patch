@@ -1,0 +1,69 @@
+diff --git a/crates/openagents-desktop/src/acceptance.rs b/crates/openagents-desktop/src/acceptance.rs
+index 118ca10e3e7be7fc4198acf2ebbe83e97c663a00..12b9663318c9911eb631acc75475beb70ee628de 100644
+--- a/crates/openagents-desktop/src/acceptance.rs
++++ b/crates/openagents-desktop/src/acceptance.rs
+@@ -1636,19 +1636,58 @@ fn push_main(gate: &mut Gate) -> Outcome {
+     }
+ }
+ 
+-/// The shell commands a Grok Build turn's trajectory shows completed: tool
+-/// calls with a `command` argument. Grok Build runs a read-only command
+-/// such as `ls` without asking, and asks for the rest, which the host
+-/// allows inside its boundary.
+-fn ran_commands(trajectory: &str) -> usize {
++/// The tool calls a Grok Build turn's trajectory shows completed: shell
++/// commands and Grok Build's own list, read and search tools alike, but
++/// not Coder's own decisions (Jev's `decision-…` calls) recorded in the
++/// same trajectory.
++fn grok_tool_calls(trajectory: &str) -> usize {
+     trajectory
+         .lines()
+         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+         .filter_map(|line| line.pointer("/step/call").cloned())
+-        .filter(|call| call["arguments"]["command"].is_string() && call["outcome"] == "Completed")
++        .filter(|call| {
++            call["outcome"] == "Completed"
++                && !call["id"]
++                    .as_str()
++                    .unwrap_or_default()
++                    .starts_with("decision-")
++        })
+         .count()
+ }
+ 
++#[cfg(test)]
++mod grok_tool_call_tests {
++    use super::grok_tool_calls;
++
++    /// A recorded read-only test delegation (#10236): Grok Build listed the
++    /// project and read four files, ran no shell command, and the
++    /// trajectory also holds Jev's decision.
++    const READ_ONLY: &str = include_str!("../fixtures/grok-read-only.atif.jsonl");
++
++    #[test]
++    fn a_read_only_delegation_counts_grok_builds_own_tools() {
++        assert_eq!(grok_tool_calls(READ_ONLY), 5);
++    }
++
++    #[test]
++    fn coder_decisions_and_unfinished_calls_are_not_grok_working() {
++        let decisions_only: String = READ_ONLY
++            .lines()
++            .filter(|line| !line.contains("\"call-"))
++            .map(|line| format!("{line}\n"))
++            .collect();
++        assert_eq!(grok_tool_calls(&decisions_only), 0);
++        let failed = READ_ONLY.replace("\"outcome\": \"Completed\"", "\"outcome\": \"Failed\"");
++        assert_eq!(grok_tool_calls(&failed), 0);
++    }
++
++    #[test]
++    fn a_shell_command_still_counts() {
++        let shell = r#"{"record":"step","step":{"source":"Agent","message":"","call":{"id":"call-1","name":"run","arguments":{"command":"ls"},"outcome":"Completed"}}}"#;
++        assert_eq!(grok_tool_calls(shell), 1);
++    }
++}
++
+ /// While Coder runs, the transcript's **Stop Coder** is as wide as its
+ /// words, as on the phone, not the transcript's width (#10091). Measured
+ /// during the first run an earlier scenario followed; alone, it starts one.

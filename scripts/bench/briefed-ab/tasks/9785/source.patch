@@ -1,0 +1,563 @@
+diff --git a/crates/physics/Cargo.toml b/crates/physics/Cargo.toml
+index abdac4f2cb82012d8b7fd017799e794e5bc44b58..15329c7a0a1d43a6b5d07d83968a849cd709893e 100644
+--- a/crates/physics/Cargo.toml
++++ b/crates/physics/Cargo.toml
+@@ -13,5 +13,8 @@ serde = { version = "1", features = ["derive"] }
+ [dev-dependencies]
+ serde_json = { version = "1", features = ["float_roundtrip"] }
+ 
++[[example]]
++name = "oracle_scenes"
++
+ [lints]
+ workspace = true
+diff --git a/crates/physics/examples/oracle_scenes.rs b/crates/physics/examples/oracle_scenes.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..da8da06029ec8a1be952a74c5e6a2cff202e06f3
+--- /dev/null
++++ b/crates/physics/examples/oracle_scenes.rs
+@@ -0,0 +1,58 @@
++//! Writes the Genesis oracle scenes (GP-8, #9785) and this crate's trace of
++//! each, for `oracle/genesis_oracle.py` to replay and compare.
++//!
++//! ```sh
++//! cargo run -p physics --example oracle_scenes -- target/oracle
++//! cargo run -p physics --example oracle_scenes -- target/oracle compare
++//! ```
++//!
++//! With `compare`, it reads each `<name>.genesis.json` and prints the largest
++//! difference from this crate's run per quantity.
++
++use std::path::PathBuf;
++
++use physics::oracle::{Scene, tank_into_panel};
++
++fn main() -> std::io::Result<()> {
++    let dir = PathBuf::from(
++        std::env::args()
++            .nth(1)
++            .unwrap_or_else(|| "target/oracle".into()),
++    );
++    std::fs::create_dir_all(&dir)?;
++    let compare = std::env::args().nth(2).as_deref() == Some("compare");
++    for scene in [tank_into_panel()] {
++        if compare {
++            let path = dir.join(format!("{}.genesis.json", scene.name));
++            let genesis: physics::Trace =
++                serde_json::from_str(&std::fs::read_to_string(path)?).expect("a trace");
++            let ours = scene.run();
++            let d = ours.max_difference(&genesis);
++            // After the impact settles: the second half of the run.
++            let half = |t: &physics::Trace| physics::Trace {
++                samples: t.samples[t.samples.len() / 2..].to_vec(),
++            };
++            let late = half(&ours).max_difference(&half(&genesis));
++            println!(
++                "{}: largest difference from Genesis: position {:.4} m, velocity {:.4} m/s, attitude {:.4} rad, body rate {:.4} rad/s",
++                scene.name, d.pos, d.vel, d.angle, d.omega
++            );
++            println!(
++                "  second half: velocity {:.4} m/s, body rate {:.4} rad/s",
++                late.vel, late.omega
++            );
++        } else {
++            write(&dir, &scene)?;
++        }
++    }
++    Ok(())
++}
++
++fn write(dir: &std::path::Path, scene: &Scene) -> std::io::Result<()> {
++    let scene_json = serde_json::to_string_pretty(scene).expect("scene serializes");
++    let trace_json = serde_json::to_string_pretty(&scene.run()).expect("trace serializes");
++    std::fs::write(dir.join(format!("{}.scene.json", scene.name)), scene_json)?;
++    std::fs::write(dir.join(format!("{}.rust.json", scene.name)), trace_json)?;
++    println!("wrote {} to {}", scene.name, dir.display());
++    Ok(())
++}
+diff --git a/crates/physics/oracle/README.md b/crates/physics/oracle/README.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..e0b70052805b38cea6610e4a749f17aeee101d00
+--- /dev/null
++++ b/crates/physics/oracle/README.md
+@@ -0,0 +1,54 @@
++# Genesis oracle
++
++Offline calibration for the `physics` crate (GP-8,
++[#9785](https://github.com/OpenAgentsInc/openagents/issues/9785)). Genesis is a
++reference only: no Verse build, test, or runtime depends on it.
++
++A scene in [`src/oracle.rs`](../src/oracle.rs) describes bodies, one shape
++each, initial motion, and materials, with gravity off so the engines' axis
++conventions do not matter. Both engines run it and write a trace; the
++difference between them is the evidence a fidelity claim must rest on.
++
++## Run
++
++Install Genesis from the pinned reference clone into a scratch virtual
++environment (about 2 GB with PyTorch), then:
++
++```sh
++cargo run -p physics --example oracle_scenes -- target/oracle
++python crates/physics/oracle/genesis_oracle.py target/oracle tank_into_panel
++cargo run -p physics --example oracle_scenes -- target/oracle compare
++PHYSICS_ORACLE_DIR=target/oracle cargo test -p physics -- --ignored oracle
++```
++
++`genesis_oracle.py` builds each scene as inline MJCF with the exact mass and
++inertia, at 64-bit precision on the CPU backend, with the elliptic friction
++cone.
++
++## What differs by design
++
++Genesis's rigid solver has soft, MuJoCo-style contacts with no restitution
++coefficient; `physics` uses restitution with a speculative margin. A bounce
++therefore differs, and so does everything after it. Compare the approach, the
++first contact time, and the direction of the impulse before comparing
++rebound speeds.
++
++## Results
++
++2026-09-27, Genesis `23671976` (v1.4.2 + 20) on an Apple M5 Max, CPU
++backend, `tank_into_panel` (a 320 kg tank spinning into a fixed panel's edge
++at 0.85 m/s):
++
++| Phase | Largest difference |
++| --- | --- |
++| Approach, ticks 1 to 8 | 1.7e-20 m: same frames, inertia, and initial motion |
++| First contact | Tick 9 here, tick 10 in Genesis: the speculative margin starts it a step early |
++| After the impact (second half of the run) | Velocity 0.18 m/s, body rate 0.012 rad/s |
++
++After the hit, the tangential velocity (-0.38 against -0.41 m/s) and the spin
++about the impact axis (0.230 against 0.218 rad/s) agree within about 8%. The
++rebound differs: 0.28 m/s here with restitution 0.3 against 0.11 m/s from
++Genesis's soft contact. The ignored test's bar (5 cm, 0.1 m/s) is not met, so
++no fidelity claim is made. Matching the rebound needs either a comparable
++restitution model on the Genesis side or a softness parameter here, which is
++follow-up work.
+diff --git a/crates/physics/oracle/genesis_oracle.py b/crates/physics/oracle/genesis_oracle.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..47b721b8cbb7f2c3a6800dbeead3f67dd4eb8e09
+--- /dev/null
++++ b/crates/physics/oracle/genesis_oracle.py
+@@ -0,0 +1,125 @@
++"""Replay a physics oracle scene in Genesis and write its trace.
++
++Reads `<dir>/<name>.scene.json` written by `cargo run -p physics --example
++oracle_scenes -- <dir>` and writes `<dir>/<name>.genesis.json` in the same
++trace format, for `physics::oracle` tests to compare. Offline tooling only:
++nothing in Verse depends on Genesis. See README.md.
++
++    python genesis_oracle.py <dir> tank_into_panel
++"""
++
++import json
++import os
++import sys
++import tempfile
++
++import numpy as np
++
++import genesis as gs
++
++
++def quat_wxyz(q):
++    x, y, z, w = q
++    return [w, x, y, z]
++
++
++def rotate(q_wxyz, v, inverse=False):
++    w, x, y, z = q_wxyz
++    if inverse:
++        x, y, z = -x, -y, -z
++    u = np.array([x, y, z])
++    v = np.asarray(v, dtype=float)
++    return v + 2.0 * np.cross(u, np.cross(u, v) + w * v)
++
++
++def geom(shape, material):
++    friction = material["friction"]
++    kind = shape["shape"]
++    if kind == "cuboid":
++        size = " ".join(str(h) for h in shape["half"])
++        return f'<geom type="box" size="{size}" friction="{friction} 0 0"/>'
++    if kind == "capsule":
++        return (
++            f'<geom type="capsule" size="{shape["radius"]} {shape["half_length"]}" '
++            f'friction="{friction} 0 0"/>'
++        )
++    return f'<geom type="sphere" size="{shape["radius"]}" friction="{friction} 0 0"/>'
++
++
++def mjcf(scene):
++    bodies = []
++    for i, b in enumerate(scene["bodies"]):
++        pos = " ".join(str(p) for p in b["pos"])
++        quat = " ".join(str(q) for q in quat_wxyz(b["orientation"]))
++        inertia = " ".join(str(v) for v in b["inertia"])
++        joint = "" if b["fixed"] else "<freejoint/>"
++        inertial = "" if b["fixed"] else f'<inertial pos="0 0 0" mass="{b["mass"]}" diaginertia="{inertia}"/>'
++        bodies.append(
++            f'<body name="b{i}" pos="{pos}" quat="{quat}">{joint}{inertial}{geom(b["shape"], b["material"])}</body>'
++        )
++    return (
++        '<mujoco model="oracle"><option gravity="0 0 0"/>'
++        f'<worldbody>{"".join(bodies)}</worldbody></mujoco>'
++    )
++
++
++def main():
++    directory, name = sys.argv[1], sys.argv[2]
++    with open(os.path.join(directory, f"{name}.scene.json")) as f:
++        scene = json.load(f)
++    gs.init(backend=gs.cpu, precision="64", logging_level="warning")
++    world = gs.Scene(
++        sim_options=gs.options.SimOptions(dt=scene["dt"], gravity=(0.0, 0.0, 0.0)),
++        rigid_options=gs.options.RigidOptions(
++            friction_cone=gs.friction_cone.elliptic,
++            enable_self_collision=True,
++        ),
++        show_viewer=False,
++    )
++    with tempfile.NamedTemporaryFile("w", suffix=".xml", delete=False) as f:
++        f.write(mjcf(scene))
++        path = f.name
++    entity = world.add_entity(gs.morphs.MJCF(file=path))
++    world.build()
++    free = [i for i, b in enumerate(scene["bodies"]) if not b["fixed"]]
++    links = {i: entity.get_link(f"b{i}") for i in range(len(scene["bodies"]))}
++    velocity = []
++    for i in free:
++        b = scene["bodies"][i]
++        velocity += list(b["vel"]) + list(b["omega_world"])
++    entity.set_dofs_velocity(np.array(velocity))
++    # Genesis's free-joint angular dofs may be body-frame; check and convert.
++    for i in free:
++        b = scene["bodies"][i]
++        got = np.asarray(links[i].get_ang()).reshape(-1)[:3]
++        if not np.allclose(got, b["omega_world"], atol=1e-9):
++            local = rotate(quat_wxyz(b["orientation"]), b["omega_world"], inverse=True)
++            velocity[6 * free.index(i) + 3 : 6 * free.index(i) + 6] = list(local)
++            entity.set_dofs_velocity(np.array(velocity))
++    samples = []
++    for tick in range(1, scene["steps"] + 1):
++        world.step()
++        bodies = []
++        for i, b in enumerate(scene["bodies"]):
++            link = links[i]
++            pos = np.asarray(link.get_pos()).reshape(-1)[:3]
++            q = np.asarray(link.get_quat()).reshape(-1)[:4]
++            vel = np.asarray(link.get_vel()).reshape(-1)[:3] if not b["fixed"] else np.zeros(3)
++            ang = np.asarray(link.get_ang()).reshape(-1)[:3] if not b["fixed"] else np.zeros(3)
++            bodies.append(
++                {
++                    "pos": pos.tolist(),
++                    "vel": vel.tolist(),
++                    "orientation": [q[1], q[2], q[3], q[0]],
++                    "omega": rotate(q, ang, inverse=True).tolist(),
++                }
++            )
++        samples.append({"tick": tick, "bodies": bodies})
++    out = os.path.join(directory, f"{name}.genesis.json")
++    with open(out, "w") as f:
++        json.dump({"samples": samples}, f)
++    print(f"wrote {out}")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/crates/physics/src/lib.rs b/crates/physics/src/lib.rs
+index d775bba4eba7b8706a5d5a7468bb41258017e2bd..ca329c321bcf0b473d1d0fd2ee04bb741b114d81 100644
+--- a/crates/physics/src/lib.rs
++++ b/crates/physics/src/lib.rs
+@@ -16,6 +16,7 @@
+ //!   whole steps and reports time it drops.
+ //! - [`ledger`]: linear and angular momentum with named external impulses,
+ //!   for conservation tests.
++//! - [`oracle`]: scenes shared with the offline Genesis oracle.
+ //! - [`sensors`]: raycasts, per-body contact force, an IMU, and debug lines
+ //!   for contacts and joints.
+ //! - [`thrusters`]: body-mounted thrusters, a bounded allocator from a wanted
+@@ -32,6 +33,7 @@ pub mod collision;
+ pub mod contact;
+ pub mod joint;
+ pub mod ledger;
++pub mod oracle;
+ pub mod sensors;
+ pub mod thrusters;
+ pub mod trace;
+diff --git a/crates/physics/src/trace.rs b/crates/physics/src/trace.rs
+index 88b5c21c98d57f834d21c2f68b45a4e29f81350b..77069b690b1b540e5f727bb195f77a4b01edbcfc 100644
+--- a/crates/physics/src/trace.rs
++++ b/crates/physics/src/trace.rs
+@@ -83,6 +83,24 @@ impl Trace {
+         });
+     }
+ 
++    /// Largest difference per quantity over matching samples and bodies
++    /// (by tick), for reporting how far two runs drift apart.
++    #[must_use]
++    pub fn max_difference(&self, other: &Self) -> Tolerance {
++        let mut worst = Tolerance::EXACT;
++        for (a, b) in self.samples.iter().zip(&other.samples) {
++            for (x, y) in a.bodies.iter().zip(&b.bodies) {
++                worst.pos = worst.pos.max(x.pos.distance(y.pos));
++                worst.vel = worst.vel.max(x.vel.distance(y.vel));
++                worst.angle = worst
++                    .angle
++                    .max(attitude_difference(x.orientation, y.orientation));
++                worst.omega = worst.omega.max(x.omega.distance(y.omega));
++            }
++        }
++        worst
++    }
++
+     /// Compare sample by sample.
+     ///
+     /// # Errors
+diff --git a/crates/verse-lagrange/examples/step_budget.rs b/crates/verse-lagrange/examples/step_budget.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..0ba7a59635efa4c737b13e3f47d2dff0f77c0d77
+--- /dev/null
++++ b/crates/verse-lagrange/examples/step_budget.rs
+@@ -0,0 +1,58 @@
++//! Physics step budget for Lagrange 1 (GP-8, #9785).
++//!
++//! Runs a busy scene for 30 simulated seconds and prints per-step wall-clock
++//! time: the astronaut carrying the engine under thrust and attitude
++//! control, with the other five parts thrown at the station and each other.
++//! Run it in release on the machine you want to measure:
++//!
++//! ```sh
++//! cargo run --release -p verse-lagrange --example step_budget
++//! ```
++
++use std::time::Instant;
++
++use glam::DVec3;
++use verse_lagrange::{Command, PartKind, PartState, Station, station};
++
++fn main() {
++    let mut station = Station::new();
++    station.astronaut_mut().pos = station::DEPOT + DVec3::new(2.5, 0.0, -5.0) - DVec3::Y * 0.2;
++    station.face(-std::f64::consts::FRAC_PI_2);
++    station.grab().expect("the engine is in reach");
++    for (i, index) in (1..PartKind::ALL.len()).enumerate() {
++        let id = station.parts[index].body;
++        station.parts[index].state = PartState::Drifting;
++        let collider = station.parts[index].collider;
++        station.world[id].kind = PartState::Drifting.body_kind();
++        station.world.collider_mut(collider).filter = PartState::Drifting.filter();
++        let at = DVec3::new(i as f64 * 5.0 - 10.0, 12.0, 4.0);
++        station.world[id].pos = at;
++        station.world[id].vel = (DVec3::new(0.0, 6.0, 5.0) - at).normalize() * station::SPEED_LIMIT;
++        station.world[id].omega = DVec3::new(0.1, 0.3, -0.2);
++    }
++    let command = Command {
++        direction: DVec3::new(0.3, 0.2, 1.0),
++        yaw: 0.5,
++        climb: false,
++    };
++    let steps = 30 * 120;
++    let mut times = Vec::with_capacity(steps);
++    let mut contacts = 0;
++    for _ in 0..steps {
++        let start = Instant::now();
++        station.advance(&command);
++        times.push(start.elapsed().as_secs_f64() * 1_000.0);
++        contacts = contacts.max(station.world.contacts.len());
++    }
++    times.sort_by(f64::total_cmp);
++    let mean = times.iter().sum::<f64>() / times.len() as f64;
++    let at = |q: f64| times[((times.len() - 1) as f64 * q) as usize];
++    println!(
++        "{steps} steps of {:.2} ms simulated: mean {mean:.3} ms, median {:.3} ms, p99 {:.3} ms, max {:.3} ms; up to {contacts} contact points; {} bodies awake at the end",
++        station::PHYSICS_DT * 1_000.0,
++        at(0.5),
++        at(0.99),
++        at(1.0),
++        station.world.stats.awake
++    );
++}
+diff --git a/crates/verse/src/zones/runtime.rs b/crates/verse/src/zones/runtime.rs
+index 9ea667e95a6da4f37c740fb5b4e8aba6c6e21704..4a3a4e792ab44b50d75272d0295b9ca3d235b23a 100644
+--- a/crates/verse/src/zones/runtime.rs
++++ b/crates/verse/src/zones/runtime.rs
+@@ -440,6 +440,12 @@ impl WorldRuntime {
+             if let Some(ahead) = s.proximity_m {
+                 sensed.push_str(&format!(" · {ahead:.1} m ahead"));
+             }
++            if lagrange.overlay {
++                sensed.push_str(&format!(
++                    " · step {:.2} ms · {} awake",
++                    s.step_ms, s.awake_bodies
++                ));
++            }
+             if s.impact_n > 1.0 {
+                 sensed.push_str(&format!(" · impact {:.0} N", s.impact_n));
+             }
+diff --git a/docs/physics/2026-09-27-genesis-port-roadmap.md b/docs/physics/2026-09-27-genesis-port-roadmap.md
+index 27ed718f0568bf6e241bfae265974d993997f468..0bd07099213e43f484cd297c4472cf8c97055091 100644
+--- a/docs/physics/2026-09-27-genesis-port-roadmap.md
++++ b/docs/physics/2026-09-27-genesis-port-roadmap.md
+@@ -6,6 +6,30 @@ Porting means **reimplementing the mechanism in Rust in the shared, zone-agnosti
+ 
+ Reference: [Genesis `236719768c72e8d0cefb1607565885fd2c1bab6b`](https://github.com/Genesis-Embodied-AI/Genesis/tree/236719768c72e8d0cefb1607565885fd2c1bab6b) (v1.4.2 + 20, Apache-2.0), cloned read-only at `projects/repos/Genesis` in the workspace. All 123 files under `examples/` were surveyed.
+ 
++## Progress
++
++All nine phases landed on 2026-09-27, in the shared
++[`physics`](../../crates/physics/src/lib.rs) crate with Lagrange 1 as the first
++consumer: GP-0 `ade3d61631`, GP-1 `56a2664a94`, GP-2 `e098cd7363`, GP-3
++`b52b5ea804`, GP-4 `c1e93251b8`, GP-5 `136f756f4c`, GP-6 `eb9c42383c`, GP-7
++`8e2a99608f`, and GP-8 (this change).
++
++- **Budget.** `cargo run --release -p verse-lagrange --example step_budget`
++  runs 30 s of a busy scene: the astronaut carrying the engine under thrust
++  and attitude control while five parts strike the station. On an Apple M5 Max
++  a step takes 0.018 ms on average and 0.054 ms at worst. The budget is 1 ms
++  per step on the slowest supported phone; the phone measurement is pending
++  with the owner (the **Forces** overlay shows the step time on device).
++- **Randomized invariants.** Seeded tests vary mass, inertia, shape, center
++  of mass offset, friction, restitution, joint stiffness, and tether length:
++  momentum is exact through collisions and joints, loads below the Coulomb
++  limit hold and past it slip, and tethers never add energy. A Lagrange test
++  throws every part at the station at random speeds and spins.
++- **Genesis oracle.** [`crates/physics/oracle/`](../../crates/physics/oracle/README.md)
++  replays the tank-into-panel scene in Genesis. Approach matches to rounding
++  and post-impact spin within about 5%, but the rebound differs because the
++  restitution models differ, so no fidelity is claimed yet.
++
+ ## Selection
+ 
+ Lagrange 1 is a six-part EVA assembly in microgravity at Sun–Earth L1: one astronaut with a thruster pack, drifting parts, a fixed station, a jig with slots, and a tether range. An example is worth porting when it demonstrates a mechanism that scene lacks today (see the gap table in the [audit](2026-09-27-genesis-for-verse-zones.md#what-exists-in-verse)): contact with torque, force at a point, constraint-based grasp/latch/tether, sleep, telemetry, or a conservation test.
+diff --git a/docs/research/unreal/AGENTS.md b/docs/research/unreal/AGENTS.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..140c1c4146fa84f91f8999ebb3ff637e83afa88e
+--- /dev/null
++++ b/docs/research/unreal/AGENTS.md
+@@ -0,0 +1,103 @@
++# Studying Unreal Engine source
++
++Rules for agents and people who read Unreal Engine source to improve our own
++code. Read this before opening any Unreal file, and follow it for every
++change that draws on what you read.
++
++This is an engineering policy, not legal advice. It records how we read the
++[Unreal Engine EULA](https://www.unrealengine.com/eula/unreal) as of
++2026-09-27. If Epic changes those terms, re-read them and update this file.
++
++## What the license allows
++
++- **Reading and private modification.** EULA §2 licenses a User to "privately
++  use, reproduce, display, perform, and modify" the Licensed Technology. Reading
++  Chaos to learn how it solves a problem falls within that license.
++- **Ideas are ours to reuse.** Copyright protects the code's expression. It
++  does not protect algorithms, data layouts, tuning ranges, or architecture.
++  We may write our own implementation of a technique we learned from Unreal.
++- **Short snippets for discussion.** §5(a)(ii) allows public posts of up to
++  30 lines, and only to discuss the snippet. Do not use that allowance in this
++  repo. It does not cover porting code in slices.
++
++## What it forbids
++
++- **No Unreal code in any of our repos.** `openagents` is public and
++  Apache-2.0. Under §4 and §5(a), Engine Code may go only to other Epic
++  licensees, through Epic's GitHub fork network or Fab. That rules out copied
++  lines, commented-out excerpts, and "reference" files.
++- **No transliterations.** A Rust port that follows an Unreal function's
++  structure, names, and control flow is a derivative work, whatever the
++  language. Our version must come from our own understanding and design.
++- **No Unreal content** such as Starter Content, MetaHuman data, or engine
++  shaders. Examples (the Samples and Templates folders) may be redistributed
++  under §5(b), but ask the owner before relying on that.
++- **No AI training input.** Under §6(e), Unreal source must not be training
++  input to a generative AI program. It also must not be prompt input to a
++  program that trains on its inputs. Before an agent session reads Unreal
++  source, confirm that the account or API terms behind it do not train on
++  inputs. If you cannot confirm this, do not read Unreal source in that
++  session.
++- **No combination with GPL-style code** (§6(c)). This matters only if
++  Unreal code were linked into something. Our policy of never bringing in
++  Unreal code already rules that out.
++
++## Where the source lives
++
++- Keep the clone **outside every tracked tree**. The owner's machine uses
++  `~/work/UnrealEngine` (ignored by the workspace root's `.gitignore`) or
++  `~/code/UnrealEngine`. Never clone into `projects/` or any child repo.
++  Their sync scripts and manifests treat `projects/` as redistributable
++  reference material.
++- Access requires an Epic account linked to GitHub, which accepts the EULA.
++  Only people who have accepted it may read the clone.
++- A sparse checkout of the physics sources is enough for the physics work:
++  `Engine/Source/Runtime/Experimental/{Chaos,ChaosCore,ChaosVehicles}`,
++  `Engine/Source/Runtime/PhysicsCore`, and
++  `Engine/Plugins/Experimental/ChaosVehiclesPlugin`.
++- Record the release and commit you studied in every research note.
++
++## How to study and port
++
++1. **Read with a question.** Start from a gap in our code: a failing test, a
++   missing mechanism, or a roadmap phase. Do not survey for its own sake.
++2. **Write a candidate in our own words** in a dated note in this folder, using
++   the template below. Describe the technique the way a paper would: the data,
++   the steps, and why it is stable or fast. No code, and no pseudo-code that
++   mirrors their functions line by line. Identifiers, cvar names, and file
++   paths are fine as pointers.
++3. **Find the public source.** Most of Chaos implements published work:
++   Müller and Macklin's XPBD papers, Catto's soft step, Gregorius and van den
++   Bergen on collision, Tonge on joints. Cite that source in the note and in
++   code comments. Permissively licensed engines (Box2D v3, Jolt, Rapier,
++   PhysX 5, Bullet) may be read and quoted under their own licenses. Prefer
++   them when they cover the same technique.
++4. **Implement from the note, not from the open file.** Close the Unreal
++   source before writing the Rust. Use our naming, our types, and our
++   module boundaries.
++5. **Prove it with our tests.** Every port lands with a test in the owning
++   crate, such as a momentum ledger, trace, or scenario. "Unreal does it this
++   way" is not evidence that it works for us.
++6. **Never commit excerpts.** Before a commit, check the diff for pasted
++   Unreal code or comments copied from Unreal. Commit messages, PR bodies,
++   and issues follow the same rule.
++
++## Candidate template
++
++```markdown
++### <Short name> — P1|P2|P3, S|M|L
++
++- **Unreal:** `Engine/…/File.cpp`, `IdentifierName` (UE <version>)
++- **Technique:** what it does and why, in our own words.
++- **Ours today:** `crates/<crate>/src/<file>.rs` — what exists and the gap.
++- **Why it matters:** the scene, test, or failure it would fix.
++- **Public reference:** paper, talk, or permissive engine to implement from.
++- **Status:** candidate | issue #… | landed in <commit> | rejected (reason)
++```
++
++Priority: **P1** adopt soon, **P2** later, **P3** note only. Size: **S** under
++a day, **M** a few days, **L** a phase of its own.
++
++Keep a candidate's status current. When one becomes work, open an issue and
++link it here. When it lands, record the commit. Rejected candidates stay in
++the note with their reason.
+diff --git a/docs/verse/lagrange-1.md b/docs/verse/lagrange-1.md
+index 1ef5c1634303679a2c7a70497108c65354cf50c3..4a19b93bc04424fcf7ef93d4f1ae23330f20694b 100644
+--- a/docs/verse/lagrange-1.md
++++ b/docs/verse/lagrange-1.md
+@@ -264,13 +264,15 @@ two years of controlled flight, microgravity magnitude, the rocket equation
+ and position hold, inelastic capture, latch conditions (position, speed,
+ spin, and alignment), a latched part under impact, the safety tether's arrest, latched parts
+ sleeping while free parts never do, the HUD's sensors, the grab point,
++randomized releases against the ledger and the structure,
+ collisions, frame-rate
+ independence, the frame step cap, save and restore, journal replay, and the
+ momentum ledger through coasting, burns, structure contact, the tether,
+ capture, and carrying, the grip slipping past its limit, attitude hold through a translation and a commanded
+ turn, plumes at the firing thrusters, a spinning tank glancing off a solar
+ array edge, and free parts colliding with each other.
+-`cargo test -p physics` covers the shared mechanisms, including box manifolds
++`cargo run --release -p verse-lagrange --example step_budget` reports the
++physics step time for a busy scene. `cargo test -p physics` covers the shared mechanisms, including box manifolds
+ through a scripted tilt, yaw, penetration, and slide sweep, friction
+ breakaway, torsional friction, tunneling, momentum through collisions, and a
+ small stack.

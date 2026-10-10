@@ -1,0 +1,287 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index ef51846fe2971d5e758b20725215c56714efbad2..f37b93cf89ddf4f67dafffcc63020988de59c364 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -5535,6 +5535,7 @@ dependencies = [
+  "openagents-x402",
+  "playtest",
+  "reqwest",
++ "ring",
+  "secp256k1 0.31.1",
+  "serde",
+  "serde_json",
+diff --git a/crates/openagents-cli/Cargo.toml b/crates/openagents-cli/Cargo.toml
+index 6aedda0762b646dcb0b9e8487d7fcfee64382a60..b6897e4a10b17faeb1aa21bf8d5215ab352d8b73 100644
+--- a/crates/openagents-cli/Cargo.toml
++++ b/crates/openagents-cli/Cargo.toml
+@@ -38,6 +38,8 @@ openagents-x402 = { path = "../x402" }
+ # The playtest triage inbox: reports, drafts, and the triage log.
+ playtest = { path = "../playtest" }
+ reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
++# ES256 App Store Connect API tokens for `playtest testflight`.
++ring = "0.17"
+ secp256k1 = { version = "0.31.1", features = ["rand"] }
+ serde = { version = "1", features = ["derive"] }
+ serde_json = "1"
+diff --git a/crates/openagents-cli/src/playtest.rs b/crates/openagents-cli/src/playtest.rs
+index e55920b44bf5395bd54be4e8dead21e141e02dc5..8b310db7855af2680dd4e5808deaf6e4125d4ede 100644
+--- a/crates/openagents-cli/src/playtest.rs
++++ b/crates/openagents-cli/src/playtest.rs
+@@ -40,6 +40,12 @@ const USAGE: &str = "usage: openagents playtest COMMAND [OPTIONS]
+   session --tester KEY --script NAME --format unmoderated|moderated|group|diary
+         --build \"1.0.0 (15)\" [--code PT-…] [--moderator KEY]
+   log [--acceptances | --pending]
++  testflight [--asc-env FILE] [--app ID] [--since 2026-09-28]
++                                Read TestFlight feedback (screenshots and
++                                crashes) from App Store Connect and draft each
++                                new one. The key comes from FILE or the
++                                ASC_API_KEY_ID, ASC_API_ISSUER_ID, and
++                                ASC_API_PRIVATE_KEY_PATH variables.
+ Files live in ~/.openagents/playtest (OPENAGENTS_PLAYTEST_HOME overrides):
+ log.jsonl, and drafts/CODE.md (edit it before filing), .json, .report.json,
+ and .jpg (private; never published).";
+@@ -77,6 +83,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
+         "verify" => verify(&home, &args),
+         "session" => session(&home, &args),
+         "log" => log(&home, &args),
++        "testflight" => testflight::run(&home, &args),
+         other => return output.usage("playtest", &format!("unknown command `{other}`"), USAGE),
+     };
+     match result {
+@@ -623,5 +630,7 @@ fn log(home: &Path, args: &Args) -> Result<Value, Failure> {
+     Ok(json!({"entries": entries, "text": text}))
+ }
+ 
++mod testflight;
++
+ #[cfg(test)]
+ mod tests;
+diff --git a/crates/playtest/src/lib.rs b/crates/playtest/src/lib.rs
+index 2df6e6872a65b1c6005b96211c9575354870bb0a..ad4e41dfbc8966dd97b25ce1bd8689c15d15267c 100644
+--- a/crates/playtest/src/lib.rs
++++ b/crates/playtest/src/lib.rs
+@@ -18,11 +18,16 @@
+ //! deduplicating by exact identity only, and keeps the append-only triage
+ //! log that records every acceptance with the tester's key.
+ //!
++//! **TestFlight feedback** ([`testflight`]) that App Store Connect holds
++//! joins the same inbox as drafts and log entries, without the tester's
++//! Apple identity; it backs no award.
++//!
+ //! This crate has no network and no storage: the app and the triage tool
+ //! carry the events.
+ 
+ pub mod report;
+ pub mod session;
++pub mod testflight;
+ pub mod triage;
+ 
+ /// The OpenAgents triage key, in hex, that reports are sealed to.
+diff --git a/crates/playtest/src/triage.rs b/crates/playtest/src/triage.rs
+index 8b0b52cb114ba0c5cd39ac21f21af8d5851df842..d1bf48d8efd5e14959d206d434d9453e44b39841 100644
+--- a/crates/playtest/src/triage.rs
++++ b/crates/playtest/src/triage.rs
+@@ -153,6 +153,20 @@ pub enum Entry {
+         #[serde(default, skip_serializing_if = "Option::is_none")]
+         moderator: Option<String>,
+     },
++    /// TestFlight feedback arrived from App Store Connect and was drafted.
++    /// It carries no tester identity and earns nothing.
++    Testflight {
++        at: u64,
++        /// `TF-1A2B3C4D`.
++        code: String,
++        /// The App Store Connect submission ID.
++        submission: String,
++        source: crate::testflight::Source,
++        /// `1.0.0 (16)`, as far as App Store Connect knew it.
++        build: String,
++        /// When the tester sent it, ISO 8601.
++        created: String,
++    },
+     /// The fix for an issue shipped, and the reporter checked it or not.
+     Verified {
+         at: u64,
+@@ -167,9 +181,10 @@ impl Entry {
+     #[must_use]
+     pub fn code(&self) -> Option<&str> {
+         match self {
+-            Self::Received { code, .. } | Self::Decided { code, .. } | Self::Filed { code, .. } => {
+-                Some(code)
+-            }
++            Self::Received { code, .. }
++            | Self::Decided { code, .. }
++            | Self::Filed { code, .. }
++            | Self::Testflight { code, .. } => Some(code),
+             Self::Session { code, .. } => code.as_deref(),
+             Self::Verified { .. } => None,
+         }
+@@ -273,12 +288,20 @@ impl Log {
+         })
+     }
+ 
+-    /// The received entry for `code`.
++    /// The received entry for `code`: a report, or TestFlight feedback.
+     #[must_use]
+     pub fn report(&self, code: &str) -> Option<&Entry> {
++        self.entries.iter().find(|entry| {
++            matches!(entry, Entry::Received { code: c, .. } | Entry::Testflight { code: c, .. } if c == code)
++        })
++    }
++
++    /// Whether the TestFlight submission `submission` is already logged.
++    #[must_use]
++    pub fn has_submission(&self, submission: &str) -> bool {
+         self.entries
+             .iter()
+-            .find(|entry| matches!(entry, Entry::Received { code: c, .. } if c == code))
++            .any(|e| matches!(e, Entry::Testflight { submission: s, .. } if s == submission))
+     }
+ 
+     /// Codes received with no decision or filing yet, in arrival order.
+@@ -292,7 +315,7 @@ impl Log {
+             .collect();
+         self.entries
+             .iter()
+-            .filter(|e| matches!(e, Entry::Received { .. }))
++            .filter(|e| matches!(e, Entry::Received { .. } | Entry::Testflight { .. }))
+             .filter_map(Entry::code)
+             .filter(|code| !handled.contains(code))
+             .collect()
+@@ -308,15 +331,26 @@ impl Log {
+     pub fn admit(&self, entry: &Entry) -> Result<(), String> {
+         match entry {
+             Entry::Received { .. } => Ok(()),
++            Entry::Testflight {
++                code, submission, ..
++            } => {
++                if self.has_submission(submission) || self.report(code).is_some() {
++                    Err(format!("{code} is already in the triage log"))
++                } else {
++                    Ok(())
++                }
++            }
+             Entry::Decided { code, .. } | Entry::Filed { code, .. } => {
+-                let Some(Entry::Received { tester, .. }) = self.report(code) else {
+-                    return Err(format!("no report {code} in the triage log"));
++                let tester = match self.report(code) {
++                    Some(Entry::Received { tester, .. }) => Some(tester),
++                    Some(_) => None,
++                    None => return Err(format!("no report {code} in the triage log")),
+                 };
+                 if !self.pending().contains(&code.as_str()) {
+                     return Err(format!("{code} is already decided or filed"));
+                 }
+                 if let Entry::Filed { issue, triager, .. } = entry {
+-                    if triager.as_deref() == Some(tester.as_str()) {
++                    if tester.is_some() && triager.as_ref() == tester {
+                         return Err("the triager can't accept their own report".into());
+                     }
+                     let taken = self
+@@ -366,7 +400,8 @@ impl Log {
+ 
+     /// Every accepted contribution, with the tester's key: each filed
+     /// report, each fix its reporter verified, and each recorded session.
+-    /// Duplicates, declines, and reports never decided don't appear.
++    /// Duplicates, declines, and reports never decided don't appear, and
++    /// neither does filed TestFlight feedback, which has no tester key.
+     #[must_use]
+     pub fn acceptances(&self) -> Vec<Acceptance> {
+         let mut received: BTreeMap<&str, (&str, &str, &str)> = BTreeMap::new();
+diff --git a/docs/cli/README.md b/docs/cli/README.md
+index 5154c4ba23b868de1a7d2715c68d6b237634c169..15992f097f66c28b294eb269f9b097fede67c8e3 100644
+--- a/docs/cli/README.md
++++ b/docs/cli/README.md
+@@ -1002,6 +1002,8 @@ each, `file` creates the `playtest` issue only with `--approve` (or records
+ one a person filed with `--issue`), `decide`, `verify`, and `session`
+ record the other outcomes, and `log --acceptances` lists the accepted
+ contributions that back playtest awards. `keygen --out PATH` creates the
+-triage key file (`0600`) and prints only its npub.
++triage key file (`0600`) and prints only its npub. `testflight` reads the
++app's TestFlight screenshot and crash feedback from App Store Connect with an
++App Store Connect API key and drafts each new submission the same way.
+ [docs/game/playtest-triage.md](../game/playtest-triage.md) covers the loop,
+ the files, and the triage log.
+diff --git a/docs/game/playtest-triage.md b/docs/game/playtest-triage.md
+index 48b8c2a89a35803414239a2f3b31ada8ea6071be..98a889668f2fc621d70d736f355827fd60427181 100644
+--- a/docs/game/playtest-triage.md
++++ b/docs/game/playtest-triage.md
+@@ -58,6 +58,9 @@ openagents playtest session --tester NPUB --script session-2 --format moderated
+ 
+ # Which accepted contributions back which awards.
+ openagents playtest log --acceptances --json
++
++# TestFlight feedback from App Store Connect (screenshots and crashes).
++openagents playtest testflight --asc-env ~/work/.secrets/appstoreconnect.env --since 2026-09-29
+ ```
+ 
+ `inbox` reads kind-1059 gift wraps addressed to the triage key from
+@@ -68,6 +71,33 @@ gift wrap ID, message ID, or content digest. It never guesses that two
+ different reports describe the same problem: that is the triager's call,
+ recorded with `decide --decision duplicate`.
+ 
++## TestFlight feedback
++
++`testflight` reads what TestFlight testers send with **Send Beta Feedback**
++or a shared screenshot, and crashes they chose to send, from App Store
++Connect ([#9905](https://github.com/OpenAgentsInc/openagents/issues/9905)).
++It signs a 20-minute App Store Connect API token (ES256) with the team's API
++key: `--asc-env FILE` names a file with `ASC_API_KEY_ID`, `ASC_API_ISSUER_ID`,
++and `ASC_API_PRIVATE_KEY_PATH` (the `.p8`), or the same variables come from
++the environment. The key is never printed. `--app` defaults to the
++OpenAgents app, `6748620735`; `--since` takes an ISO date and skips older
++submissions.
++
++Each submission the log doesn't hold yet gets a `TF-1A2B3C4D` code, a draft,
++and a `testflight` log entry (code, submission ID, `screenshot` or `crash`,
++build, and send time). Its screenshots (`drafts/CODE.jpg`,
++`drafts/CODE-2.jpg`, …), crash log (`drafts/CODE.crash.txt`), and the
++tester's comment (`drafts/CODE.testflight.json`) stay in the private drafts
++folder. Screenshot links expire after about a week, and old crash logs are
++no longer served, so the command counts what it couldn't download.
++
++The tester's Apple email and name are never read into a file or the log. A
++TestFlight draft never quotes the comment, because the tester wrote it to
++OpenAgents through Apple, not for a public issue: `file --approve` refuses
++it until a person writes the title and text in their own words. A TestFlight
++tester has no Nostr key, so a filed TestFlight entry is recorded but isn't
++among `log --acceptances` and backs no playtest award.
++
+ ## Drafts
+ 
+ A draft is written in the repository's issue style: the surface and a
+@@ -96,6 +126,7 @@ Each line is one event:
+ | `decided` | code, decision (`duplicate`, `not-reproducible`, `design`, `idea`, `declined`), reason, issue | Not filed as a new issue. Earns nothing. |
+ | `verified` | issue, fix build, `yes`, `no`, or `unverified` | The reporter checked the fix on the fixing build. |
+ | `session` | tester, script, format (`unmoderated`, `moderated`, `group`, `diary`), build, code, moderator | A completed script or diary week with an accepted report. |
++| `testflight` | code, submission ID, source (`screenshot` or `crash`), build, created | TestFlight feedback arrived from App Store Connect and was drafted. Earns nothing; filing it backs no award. |
+ 
+ Before appending, the command checks the entry against the log: a decision
+ or filing names a received report that is still waiting; each issue has one
+diff --git a/docs/game/playtesting.md b/docs/game/playtesting.md
+index 12ef95e82a423e27e55d488e7089528ecc877ed6..1734627f276890774143fdfda63d9800ef6b1052 100644
+--- a/docs/game/playtesting.md
++++ b/docs/game/playtesting.md
+@@ -178,7 +178,7 @@ Status words follow the [glossary](../glossary.md).
+ | The OpenAgents app on iOS (`com.openagents.app`) with four tabs: Coder, Verse (the Grid), Wallet, and Account ([README](../../bins/openagents-ios/README.md)) | Implemented. Version 1.0.0 builds 1 to 14 went to TestFlight on 2026-09-28; build 15 (`be94321643`) carries that day's fixes and follows build 14 to testers. |
+ | OpenAgents for Android ([`bins/openagents-android`](../../bins/openagents-android/README.md)), the same Rust library | Partial ([#9838](https://github.com/OpenAgentsInc/openagents/issues/9838)). Coder, Verse (with the Gym and RESULTS panels, `82663b935d`), Wallet (`e56d173480`, `e1aeec7413`; [#9861](https://github.com/OpenAgentsInc/openagents/issues/9861) closed), and Account work. Verified on the emulator only; a live tailnet chat, QR scanning, the terminal, and motion look haven't been checked on a device. Distributed as a signed release APK (1.0.0, version code 16, the iPhone build number) from a GitHub release that testers install by hand. |
+ | Public distribution | Planned for 2026-09-29: a public TestFlight link for iOS and a public APK download for Android (owner steps in the workspace's `NEEDS_OWNER.md`). |
+-| TestFlight's own feedback: a tester takes a screenshot or uses **Send Beta Feedback** in the TestFlight app, and it reaches App Store Connect with the build number, device, and OS. Crash reports reach it too. | Exists, from Apple. Nothing in this repository reads it. |
++| TestFlight's own feedback: a tester takes a screenshot or uses **Send Beta Feedback** in the TestFlight app, and it reaches App Store Connect with the build number, device, and OS. Crash reports reach it too. | Exists, from Apple. `openagents playtest testflight` reads it into the triage inbox as drafts and log entries, without the tester's Apple identity ([#9905](https://github.com/OpenAgentsInc/openagents/issues/9905), [triage](playtest-triage.md#testflight-feedback)). |
+ | The owner's build notes ("1.0.0 Build 13 Feedback") turned into commits by agents, followed by a build bump (for example `e84de16fd5`, `06d033d663`) | The current loop. It isn't written down anywhere except in commit history. |
+ | **Changelog** in Account (`crates/openagents-mobile/src/account.rs`) | Implemented. One entry per TestFlight build with a **What to test** line, from build 16 (`a4aa3013de`); a test ties the newest entry to the build number in `project.yml`. |
+ | **Report a problem**, **My reports**, and the opt-in **Playtest session** log in Account, and a long press on the tab bar (`crates/playtest`, `crates/openagents-mobile/src/playtest.rs`; iOS and Android) | Implemented in build 16 (`74f2f90be0`) on iOS, and on Android with the Account playtest card ([#9903](https://github.com/OpenAgentsInc/openagents/issues/9903)); Android reports name the `android` platform. Reports are sealed to the triage key, which the owner hasn't created yet, so until a build carries it reports wait on the phone. No telemetry: the app sends nothing but a report the tester files. |
+@@ -985,9 +985,10 @@ Tracked in epic [#9888](https://github.com/OpenAgentsInc/openagents/issues/9888)
+ 2. **Should playtest XP ever count toward the trainer level?** We say no.
+    Revisit if players read the two numbers as one anyway.
+ 3. **Does App Store Connect's TestFlight feedback reach a tool we can
+-   run?** Apple exposes screenshot and crash feedback in App Store Connect;
+-   check the current App Store Connect API before building the triage tool
+-   on it rather than on stage 1 reports.
++   run?** Yes: the App Store Connect API lists beta feedback screenshot and
++   crash submissions, and `openagents playtest testflight` reads them into
++   the triage inbox ([#9905](https://github.com/OpenAgentsInc/openagents/issues/9905)).
++   They carry no Nostr key, so they don't back playtest awards.
+ 4. **Android.** Android testers join from day 0 through the public APK.
+    When does it move to a Play Store testing track, and when does its Wallet
+    ([#9861](https://github.com/OpenAgentsInc/openagents/issues/9861)) reach

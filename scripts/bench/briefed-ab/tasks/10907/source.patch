@@ -1,0 +1,941 @@
+diff --git a/crates/verse-pbr/src/pbr/baked_layers.rs b/crates/verse-pbr/src/pbr/baked_layers.rs
+index 4e4151e9483c7e8131b03b202982787169acdad1..55744003919c0cfea71948c844e5114486d3588c 100644
+--- a/crates/verse-pbr/src/pbr/baked_layers.rs
++++ b/crates/verse-pbr/src/pbr/baked_layers.rs
+@@ -15,9 +15,10 @@
+ //!
+ //! The sky and sun layers also come as probe grids for characters. The
+ //! combination follows the issue's rule, sky × sky intensity + sun(t) +
+-//! lamps × lamp intensity: [`Layers::lights`] adds the nearest sun's bounce
+-//! to the sky's multiplier for the light texture, and the shader adds the
+-//! lamp layer ([`Layers::lamp_texels`]) times the frame's lamp intensity.
++//! lamps × lamp intensity: [`Layers::lights_blend`] adds the bounce of the
++//! two baked suns either side of the hour ([`Layers::sun_weights`]) to the
++//! sky's multiplier for the light texture, and the shader adds the lamp
++//! layer ([`Layers::lamp_texels`]) times the frame's lamp intensity.
+ //!
+ //! The file is `VLAY`, the format version and the header's length as
+ //! little-endian `u32`s, the header as JSON, and the layers deflated. Each
+@@ -491,16 +492,79 @@ impl Layers {
+         }
+     }
+ 
++    /// The baked suns to blend for a sun toward `dir`, with their weights
++    /// summing to one. The suns lie in the file in the order the sun
++    /// passes them; `dir` is placed on the nearest stretch between two
++    /// neighbors, by where it falls along the stretch, and each end weighs
++    /// as near as `dir` is to it. Before the first sun or past the last,
++    /// that sun alone. The weights move continuously with `dir`, so the
++    /// blend never pops as the hours pass (#10907).
++    #[must_use]
++    pub fn sun_weights(&self, dir: Vec3) -> Vec<(usize, f32)> {
++        let dir = dir.normalize_or(Vec3::Y);
++        let n = self.suns.len();
++        if n == 0 {
++            return Vec::new();
++        }
++        if n == 1 {
++            return vec![(0, 1.0)];
++        }
++        let angle = |k: usize| Vec3::from(self.suns[k].dir).angle_between(dir);
++        // Each stretch: where along it `dir` falls, 0 to 1, and how far off
++        // it, in radians.
++        let mut best: Option<(f32, usize, f32)> = None;
++        for i in 0..n - 1 {
++            let span = Vec3::from(self.suns[i].dir).angle_between(Vec3::from(self.suns[i + 1].dir));
++            let (a, b) = (angle(i), angle(i + 1));
++            let t = if span > 1e-6 {
++                ((a * a - b * b + span * span) / (2.0 * span * span)).clamp(0.0, 1.0)
++            } else {
++                0.0
++            };
++            let off = (a * a - (t * span) * (t * span)).max(0.0).sqrt();
++            let off = if t <= 0.0 {
++                a
++            } else if t >= 1.0 {
++                b
++            } else {
++                off
++            };
++            if best.is_none_or(|(o, _, _)| off < o - 1e-6) {
++                best = Some((off, i, t));
++            }
++        }
++        let Some((_, i, t)) = best else {
++            return vec![(0, 1.0)];
++        };
++        if t <= 0.0 {
++            vec![(i, 1.0)]
++        } else if t >= 1.0 {
++            vec![(i + 1, 1.0)]
++        } else {
++            vec![(i, 1.0 - t), (i + 1, t)]
++        }
++    }
++
+     /// The light texture's texels: the sky's multiplier plus sun `sun`'s
+     /// bounce times `ratio` ([`Self::sun_ratio`]), with the sky's open
+     /// fraction.
+     #[must_use]
+     pub fn lights(&self, sun: Option<usize>, ratio: f32) -> Vec<[u8; 4]> {
++        self.lights_blend(&sun.map(|k| vec![(k, 1.0)]).unwrap_or_default(), ratio)
++    }
++
++    /// [`Self::lights`] with the suns `suns` blended by their weights
++    /// ([`Self::sun_weights`]).
++    #[must_use]
++    pub fn lights_blend(&self, suns: &[(usize, f32)], ratio: f32) -> Vec<[u8; 4]> {
+         let table: [f32; 256] = std::array::from_fn(|b| {
+             let u = b as f32 / 255.0;
+             u * u * MAX_AMBIENT
+         });
+-        let sun = sun.and_then(|k| self.suns.get(k));
++        let suns: Vec<(&SunLayer, f32)> = suns
++            .iter()
++            .filter_map(|&(k, w)| Some((self.suns.get(k)?, w * ratio)))
++            .collect();
+         self.sky
+             .iter()
+             .enumerate()
+@@ -509,12 +573,14 @@ impl Layers {
+                     return sky;
+                 }
+                 let (mut m, open) = decode(sky);
+-                if let Some(t) = sun.and_then(|s| s.vertices.get(i)) {
+-                    m += Vec3::new(
+-                        table[t[0] as usize],
+-                        table[t[1] as usize],
+-                        table[t[2] as usize],
+-                    ) * ratio;
++                for (sun, scale) in &suns {
++                    if let Some(t) = sun.vertices.get(i) {
++                        m += Vec3::new(
++                            table[t[0] as usize],
++                            table[t[1] as usize],
++                            table[t[2] as usize],
++                        ) * *scale;
++                    }
+                 }
+                 encode(m, open)
+             })
+@@ -537,34 +603,62 @@ impl Layers {
+     /// `ratio`, against the reference light.
+     #[must_use]
+     pub fn probes(&self, sun: Option<usize>, ratio: f32) -> AmbientProbes {
+-        let sun_layer = sun.and_then(|k| self.suns.get(k));
++        self.probes_blend(&sun.map(|k| vec![(k, 1.0)]).unwrap_or_default(), ratio)
++    }
++
++    /// [`Self::probes`] with the suns `suns` blended by their weights.
++    #[must_use]
++    pub fn probes_blend(&self, suns: &[(usize, f32)], ratio: f32) -> AmbientProbes {
++        let layers: Vec<(&SunLayer, f32)> = suns
++            .iter()
++            .filter_map(|&(k, w)| Some((self.suns.get(k)?, w * ratio)))
++            .collect();
+         let data = self
+             .sky_probes
+             .iter()
+             .enumerate()
+             .map(|(i, sky)| {
+                 let mut p = *sky;
+-                if let Some(s) = sun_layer.and_then(|s| s.probes.get(i)) {
+-                    for (x, y) in p.iter_mut().zip(s) {
+-                        *x += y * ratio;
++                for (sun, scale) in &layers {
++                    if let Some(s) = sun.probes.get(i) {
++                        for (x, y) in p.iter_mut().zip(s) {
++                            *x += y * *scale;
++                        }
+                     }
+                 }
+                 p
+             })
+             .collect();
+         // Never zero and never tagged as a studio key's grid; changes with
+-        // the sun and its strength.
++        // the suns, their weights, and their strength.
+         let mut hash = 0xcbf2_9ce4_8422_2325u64;
++        let mut tag: Vec<u8> = Vec::new();
++        if suns.is_empty() {
++            tag.extend(u64::MAX.to_le_bytes());
++        }
++        for &(k, w) in suns {
++            tag.extend((k as u64).to_le_bytes());
++            if suns.len() > 1 {
++                tag.extend(w.to_bits().to_le_bytes());
++            }
++        }
+         for b in self
+             .scene
+             .bytes()
+-            .chain(sun.map_or(u64::MAX, |k| k as u64).to_le_bytes())
++            .chain(tag)
+             .chain(ratio.to_bits().to_le_bytes())
+         {
+             hash ^= u64::from(b);
+             hash = hash.wrapping_mul(0x0100_0000_01b3);
+         }
+-        let dir = sun_layer.map_or(Vec3::Y, |s| Vec3::from(s.dir));
++        // The light the probes answer to: toward the blended sun.
++        let dir = layers
++            .iter()
++            .map(|(s, _)| s)
++            .zip(suns)
++            .map(|(s, &(_, w))| Vec3::from(s.dir) * w)
++            .sum::<Vec3>()
++            .normalize_or(Vec3::Y);
+         AmbientProbes {
+             grid: ProbeGrid {
+                 origin: Vec3::from(self.probe_origin),
+diff --git a/crates/verse-pbr/src/pbr/relight.rs b/crates/verse-pbr/src/pbr/relight.rs
+index a9bc12a389908d5773550fd9d296ec32700a8ed5..0ee7bc290b4b6f90a19a0a359e0ef052f218a8da 100644
+--- a/crates/verse-pbr/src/pbr/relight.rs
++++ b/crates/verse-pbr/src/pbr/relight.rs
+@@ -72,8 +72,9 @@ pub struct Relighter {
+     triangles: Vec<u32>,
+     /// The merged vertices at each occluder's corners.
+     corners: Vec<[u32; 3]>,
+-    base_lights: Arc<Vec<[u8; 4]>>,
+-    base_probes: AmbientProbes,
++    /// The light to start from: what the bake delivered, or what replaced
++    /// it since ([`Self::rebase`]).
++    base: std::sync::RwLock<(Arc<Vec<[u8; 4]>>, AmbientProbes)>,
+ }
+ 
+ /// A relit scene: the light channel of every merged vertex, the probes,
+@@ -129,17 +130,40 @@ impl Relighter {
+             baker: SceneBaker::from_geometry(geometry, light, settings, 0),
+             triangles,
+             corners,
+-            base_lights,
+-            base_probes,
++            base: std::sync::RwLock::new((base_lights, base_probes)),
+         })
+     }
+ 
++    /// Replaces the light to start from, as when offline-baked layers are
++    /// combined again for another hour (#10907): the next relight lays the
++    /// recomputed light over it.
++    pub fn rebase(&self, lights: Arc<Vec<[u8; 4]>>, probes: AmbientProbes) {
++        if lights.len() == self.baker.vertex_count() {
++            *self
++                .base
++                .write()
++                .unwrap_or_else(std::sync::PoisonError::into_inner) = (lights, probes);
++        }
++    }
++
++    fn base_now(&self) -> (Arc<Vec<[u8; 4]>>, AmbientProbes) {
++        self.base
++            .read()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .clone()
++    }
++
+     /// The baked light and probes, as nothing hidden leaves them.
+     #[must_use]
+     pub fn base(&self) -> Relit {
++        let (lights, probes) = self.base_now();
++        Self::from_base(&lights, probes)
++    }
++
++    fn from_base(lights: &Arc<Vec<[u8; 4]>>, probes: AmbientProbes) -> Relit {
+         Relit {
+-            lights: self.base_lights.as_ref().clone(),
+-            probes: self.base_probes.clone(),
++            lights: lights.as_ref().clone(),
++            probes,
+             hidden: 0,
+             vertices: 0,
+             probes_relit: 0,
+@@ -152,15 +176,17 @@ impl Relighter {
+     /// set.
+     #[must_use]
+     pub fn relight(&self, hidden: &[u32], threads: usize, cancel: &AtomicBool) -> Option<Relit> {
++        let (base_lights, base_probes) = self.base_now();
++        let base = || Self::from_base(&base_lights, base_probes.clone());
+         if hidden.is_empty() {
+-            return Some(self.base());
++            return Some(base());
+         }
+         let skip: Vec<bool> = self
+             .triangles
+             .iter()
+             .map(|t| hidden.binary_search(t).is_ok())
+             .collect();
+-        let mut gone = vec![false; self.base_lights.len()];
++        let mut gone = vec![false; base_lights.len()];
+         let mut marked: HashSet<IVec3> = HashSet::new();
+         for (o, _) in skip.iter().enumerate().filter(|(_, s)| **s) {
+             let corners = self.corners[o].map(|i| self.baker.vertex_position(i as usize));
+@@ -173,7 +199,7 @@ impl Relighter {
+             // Only far levels of detail were hidden: nothing occludes less.
+             return Some(Relit {
+                 hidden: hidden.len(),
+-                ..self.base()
++                ..base()
+             });
+         }
+         let near = dilate(&marked, (REACH / CELL).ceil() as i32);
+@@ -190,7 +216,7 @@ impl Relighter {
+         let traced = run(probes.len(), threads, cancel, |k| {
+             self.baker.bake_probe(probes[k], skip)
+         })?;
+-        let mut out = self.base();
++        let mut out = base();
+         for (&i, light) in vertices.iter().zip(lights) {
+             out.lights[i] = light;
+         }
+@@ -206,7 +232,7 @@ impl Relighter {
+         let digest = hidden.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, &t| {
+             (h ^ u64::from(t)).wrapping_mul(0x0100_0000_01b3)
+         });
+-        out.probes.grid.version = (self.base_probes.grid.version ^ (digest << 1)) | 1;
++        out.probes.grid.version = (base_probes.grid.version ^ (digest << 1)) | 1;
+         out.hidden = hidden.len();
+         out.vertices = vertices.len();
+         out.probes_relit = relit;
+@@ -297,6 +323,8 @@ pub struct Relight {
+     cancel: Arc<AtomicBool>,
+     /// What the last relight recomputed.
+     last: Option<RelightStats>,
++    /// A new light to start from, waiting for the relighter to be built.
++    rebased: Option<(Arc<Vec<[u8; 4]>>, AmbientProbes)>,
+ }
+ 
+ impl Relight {
+@@ -321,6 +349,26 @@ impl Relight {
+             pending: None,
+             cancel,
+             last: None,
++            rebased: None,
++        }
++    }
++
++    /// Starts from `lights` and `probes` from now on, as when the light the
++    /// bake delivered is combined again for another hour, and lays the
++    /// relit light over them again ([`Relighter::rebase`]). Until the next
++    /// relight lands, nothing is delivered: the caller's light stays.
++    pub fn rebase(&mut self, lights: Arc<Vec<[u8; 4]>>, probes: AmbientProbes) {
++        match &self.state {
++            State::Ready(relighter) => {
++                relighter.rebase(lights, probes);
++                // Run again whatever the edits' revision.
++                self.seen = u64::MAX;
++            }
++            State::Failed => {
++                self.scene.baked.deliver_lights(lights.as_ref().clone());
++            }
++            #[cfg(not(target_arch = "wasm32"))]
++            State::Building(_) => self.rebased = Some((lights, probes)),
+         }
+     }
+ 
+@@ -391,7 +439,13 @@ impl Relight {
+         {
+             if let State::Building(receive) = &self.state {
+                 self.state = match receive.try_recv() {
+-                    Ok(Some(relighter)) => State::Ready(Arc::new(relighter)),
++                    Ok(Some(relighter)) => {
++                        if let Some((lights, probes)) = self.rebased.take() {
++                            relighter.rebase(lights, probes);
++                            self.seen = u64::MAX;
++                        }
++                        State::Ready(Arc::new(relighter))
++                    }
+                     Ok(None) | Err(std::sync::mpsc::TryRecvError::Disconnected) => State::Failed,
+                     Err(std::sync::mpsc::TryRecvError::Empty) => return None,
+                 };
+diff --git a/crates/verse-zone-everglade/src/zones/everglade/baked.rs b/crates/verse-zone-everglade/src/zones/everglade/baked.rs
+index 2012f1fe72a324ce465b7531f588faca56db6805..83a65c60709fbcf08430e72c7fe8b02e47b99580 100644
+--- a/crates/verse-zone-everglade/src/zones/everglade/baked.rs
++++ b/crates/verse-zone-everglade/src/zones/everglade/baked.rs
+@@ -2,13 +2,15 @@
+ //! shows, and how brightly its baked lamps burn
+ //! ([`crate::zones::everglade_pack::kit_bake`]).
+ //!
+-//! The sky layer stays as baked. The sun's bounce comes from the baked sun
+-//! direction nearest the key light, scaled by how strong the key is against
+-//! the sky; when the key moves nearer another baked direction, the town
+-//! combines the layers again off the main thread and delivers the new light
+-//! channel and probes. The lamp layer fades in from dusk to full night.
+-//! Blending between the baked suns as the hours pass is the next phase's
+-//! work (#10907).
++//! The sky layer stays as baked. The sun's bounce blends the two baked sun
++//! directions either side of the key light, weighted by how near each is
++//! ([`Layers::sun_weights`]), and scales with how strong the key is against
++//! the sky. As the hours pass the town combines the layers again off the
++//! main thread whenever the blend or the strength moves a step
++//! ([`STEP`]), so the light changes in steps too small to see rather than
++//! jumping from one baked sun to the next (#10907). The lamp layer fades in
++//! from dusk to full night. What destruction opens is relit over the
++//! combined light ([`crate::pbr::relight`]).
+ 
+ use std::sync::Arc;
+ 
+@@ -30,6 +32,42 @@ pub(super) fn choice(light: &time_of_day::Light) -> Option<LayerChoice> {
+     })
+ }
+ 
++/// The finest change of a sun's weight, or of the sun's strength against
++/// the sky, that combines the layers again: a sixty-fourth.
++pub const STEP: f32 = 1.0 / 64.0;
++
++/// What the layers are combined for: the suns, their weights, and the
++/// sun's strength, each held to [`STEP`]s.
++#[derive(Clone, Debug, PartialEq)]
++struct Mix {
++    suns: Vec<(usize, f32)>,
++    ratio: f32,
++}
++
++impl Mix {
++    fn of(layers: &Layers, light: &time_of_day::Light) -> Self {
++        let held = |v: f32| (v / STEP).round() * STEP;
++        let mut suns: Vec<(usize, f32)> = layers
++            .sun_weights(light.key_dir)
++            .into_iter()
++            .map(|(k, w)| (k, held(w)))
++            .filter(|&(_, w)| w > 0.0)
++            .collect();
++        suns.sort_by_key(|&(k, _)| k);
++        Self {
++            suns,
++            ratio: held(layers.sun_ratio(light.key_lux, light.sky_lux)),
++        }
++    }
++}
++
++/// The layers combined again: the light channel, one a merged vertex, and
++/// the probes.
++pub(super) struct Combined {
++    pub(super) lights: Vec<[u8; 4]>,
++    pub(super) probes: AmbientProbes,
++}
++
+ /// How brightly the baked lamps burn under `light`: off by day, rising
+ /// through dusk while the lamps light ([`time_of_day::Light::lamps_lit`]),
+ /// and full by night.
+@@ -42,12 +80,14 @@ pub fn lamp_intensity(light: &time_of_day::Light) -> f32 {
+ /// A town lit by offline-baked layers.
+ pub(super) struct BakedLight {
+     layers: Arc<Layers>,
+-    scene: Arc<TexturedScene>,
+-    sun: Option<usize>,
++    /// The scene the layers light.
++    pub(super) scene: Arc<TexturedScene>,
++    /// What the light the town shows was combined for, once it was.
++    mix: Option<Mix>,
+     /// Whether the bake job delivered the layers, rather than baking.
+     pub(super) active: bool,
+     #[cfg(not(target_arch = "wasm32"))]
+-    pending: Option<std::sync::mpsc::Receiver<(Option<usize>, AmbientProbes)>>,
++    pending: Option<(Mix, std::sync::mpsc::Receiver<Combined>)>,
+ }
+ 
+ impl BakedLight {
+@@ -55,26 +95,26 @@ impl BakedLight {
+         Self {
+             layers: choice.layers.clone(),
+             scene,
+-            sun: choice.sun,
++            mix: None,
+             active: false,
+             #[cfg(not(target_arch = "wasm32"))]
+             pending: None,
+         }
+     }
+ 
+-    /// Follows the key light: new probes once a recombination for another
+-    /// baked sun finishes.
++    /// Follows the hour: the layers combined again once a combination for
++    /// a new blend or strength finishes. The caller delivers the light.
+     #[cfg(not(target_arch = "wasm32"))]
+-    pub(super) fn update(&mut self, light: &time_of_day::Light) -> Option<AmbientProbes> {
++    pub(super) fn update(&mut self, light: &time_of_day::Light) -> Option<Combined> {
+         if !self.active {
+             return None;
+         }
+-        if let Some(pending) = &self.pending {
++        if let Some((mix, pending)) = &self.pending {
+             return match pending.try_recv() {
+-                Ok((sun, probes)) => {
+-                    self.sun = sun;
++                Ok(combined) => {
++                    self.mix = Some(mix.clone());
+                     self.pending = None;
+-                    Some(probes)
++                    Some(combined)
+                 }
+                 Err(std::sync::mpsc::TryRecvError::Empty) => None,
+                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+@@ -83,39 +123,106 @@ impl BakedLight {
+                 }
+             };
+         }
+-        let sun = self.layers.nearest_sun(light.key_dir);
+-        if sun == self.sun {
++        let mix = Mix::of(&self.layers, light);
++        if self.mix.as_ref() == Some(&mix) {
+             return None;
+         }
+-        let ratio = self.layers.sun_ratio(light.key_lux, light.sky_lux);
+-        let (layers, scene) = (self.layers.clone(), self.scene.clone());
++        let layers = self.layers.clone();
+         let (send, receive) = std::sync::mpsc::channel();
++        let job = mix.clone();
+         let spawned = std::thread::Builder::new()
+             .name("verse-light-layers".into())
+             .spawn(move || {
+-                scene.baked.deliver_lights(layers.lights(sun, ratio));
+-                let _ = send.send((sun, layers.probes(sun, ratio)));
++                let _ = send.send(Combined {
++                    lights: layers.lights_blend(&job.suns, job.ratio),
++                    probes: layers.probes_blend(&job.suns, job.ratio),
++                });
+             });
+         if spawned.is_ok() {
+-            self.pending = Some(receive);
++            self.pending = Some((mix, receive));
+         } else {
+-            // Without a thread, keep the sun the town shows.
+-            self.sun = sun;
++            // Without a thread, keep the light the town shows.
++            self.mix = Some(mix);
+         }
+         None
+     }
+ 
+     /// Browsers load no baked layers.
+     #[cfg(target_arch = "wasm32")]
+-    pub(super) fn update(&mut self, _: &time_of_day::Light) -> Option<AmbientProbes> {
++    pub(super) fn update(&mut self, _: &time_of_day::Light) -> Option<Combined> {
+         None
+     }
++
++    /// Whether the light the town shows is combined for `light`'s hour, or
++    /// the town doesn't use its layers.
++    pub(super) fn settled(&self, light: &time_of_day::Light) -> bool {
++        #[cfg(not(target_arch = "wasm32"))]
++        if self.pending.is_some() {
++            return false;
++        }
++        !self.active || self.mix.as_ref() == Some(&Mix::of(&self.layers, light))
++    }
+ }
+ 
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+ 
++    #[test]
++    fn the_blend_moves_in_small_steps_through_the_day() {
++        // The pinned bake's four suns, at 8:00, 12:00, 15:30, and 17:30.
++        let layers = Layers {
++            bake_key: String::new(),
++            scene: String::new(),
++            reference: verse_pbr::pbr::baked_layers::Reference {
++                sun: 100_000.0,
++                sky: 20_000.0,
++                ground: 5_000.0,
++            },
++            sky: Vec::new(),
++            sky_probes: Vec::new(),
++            suns: [8.0, 12.0, 15.5, 17.5]
++                .map(|h| verse_pbr::pbr::baked_layers::SunLayer {
++                    dir: time_of_day::Light::at_hours(h).key_dir.to_array(),
++                    vertices: Vec::new(),
++                    probes: Vec::new(),
++                })
++                .to_vec(),
++            lamps: Vec::new(),
++            probe_origin: [0.0; 3],
++            probe_cell: 1.0,
++            probe_dims: [0; 3],
++        };
++        let mut last: Option<Mix> = None;
++        let mut changes = 0;
++        for minute in (6 * 60)..(21 * 60) {
++            let light = time_of_day::Light::at_hours(minute as f32 / 60.0);
++            let mix = Mix::of(&layers, &light);
++            assert!(mix.suns.len() <= 2);
++            if let Some(last) = &last
++                && *last != mix
++            {
++                changes += 1;
++                // Each weight and the strength move at most a few steps a
++                // minute.
++                assert!(
++                    (mix.ratio - last.ratio).abs() <= 4.0 * STEP,
++                    "{last:?} {mix:?}"
++                );
++                let weight =
++                    |m: &Mix, k: usize| m.suns.iter().find(|s| s.0 == k).map_or(0.0, |s| s.1);
++                for k in 0..4 {
++                    assert!(
++                        (weight(&mix, k) - weight(last, k)).abs() <= 4.0 * STEP,
++                        "{minute}: {last:?} {mix:?}"
++                    );
++                }
++            }
++            last = Some(mix);
++        }
++        assert!(changes > 20, "{changes} changes through the day");
++    }
++
+     #[test]
+     fn baked_lamps_burn_at_night_and_rest_by_day() {
+         assert_eq!(lamp_intensity(&time_of_day::Light::at_hours(12.0)), 0.0);
+diff --git a/crates/verse-zone-everglade/src/zones/everglade/demolition/town.rs b/crates/verse-zone-everglade/src/zones/everglade/demolition/town.rs
+index 91f689cdffa1124d502e506022eb5d033dfd9868..0a9422be0149bb261a95f2ce78586b87f07e1600 100644
+--- a/crates/verse-zone-everglade/src/zones/everglade/demolition/town.rs
++++ b/crates/verse-zone-everglade/src/zones/everglade/demolition/town.rs
+@@ -986,12 +986,14 @@ impl Town {
+         placements: &[Placement],
+         world: Arc<TexturedScene>,
+     ) -> Result<Self, String> {
+-        Self::build(pack, placements, world, false, None)
++        Self::build(pack, placements, world, false, Some(&[]))
+     }
+ 
+     /// As [`Town::standalone`], with `houses` the zone's own kit houses:
+-    /// each claims the kit pieces on its lot as one building, in place of
+-    /// Everglade's town houses, whose lots may overlap the zone's.
++    /// each claims the kit pieces on its lot as one building. A standalone
++    /// town never takes Everglade's town houses, whose lots may overlap the
++    /// zone's ground: one standing where the Grove's tower stands made the
++    /// tower a single piece.
+     ///
+     /// # Errors
+     ///
+diff --git a/crates/verse/Cargo.toml b/crates/verse/Cargo.toml
+index 6d75d53f83362858e8d41166fc2968ece1b04ab2..195728903bba8eb53a6fb39cfa79f25c881d58fb 100644
+--- a/crates/verse/Cargo.toml
++++ b/crates/verse/Cargo.toml
+@@ -293,6 +293,10 @@ required-features = ["capture"]
+ name = "kit_light_acceptance"
+ required-features = ["capture"]
+ 
++[[example]]
++name = "everglade_bake_timelapse"
++required-features = ["capture"]
++
+ [[example]]
+ name = "crypt_lab"
+ required-features = ["capture"]
+diff --git a/crates/verse/examples/everglade_bake_timelapse.rs b/crates/verse/examples/everglade_bake_timelapse.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..caa9dfdb75576a7522e6017de48ac7daea9d3c81
+--- /dev/null
++++ b/crates/verse/examples/everglade_bake_timelapse.rs
+@@ -0,0 +1,253 @@
++//! The town's offline-baked light through a day and through a meteor
++//! strike (issue #10907), for acceptance with the licensed kit.
++//!
++//! Usage: `VERSE_KIT_PACK=KIT.vtp VERSE_KIT_BAKE=LAYERS.vlay
++//! everglade_bake_timelapse OUT_DIR`. Keep `OUT_DIR` outside Git: the
++//! frames show licensed geometry.
++//!
++//! From the street before Stoop Lane's first townhouse it pins the town
++//! clock from 5:00 to 23:00 a quarter hour at a time, lets the layers
++//! combine for each hour ([`zones::everglade::Everglade::settle_light`]),
++//! and writes each frame to `OUT_DIR/frames`. `report.json` holds each
++//! frame's mean luminance and the step from the frame before, so a jump
++//! between baked suns shows as an outlier, and the cost of the frames that
++//! delivered newly combined light against the frames that didn't.
++//!
++//! Then, at 17:30, it calls Meteor Swarm down on the townhouse, waits 40 s for
++//! the debris and the relight, and writes `meteor-before.png`,
++//! `meteor-after.png`, and, after `R`, `meteor-restored.png`. With
++//! `VERSE_PHOTO_DEBUG=2` every frame shows the diffuse ambient alone, so a
++//! floating baked shadow shows plainly.
++
++use std::path::{Path, PathBuf};
++
++use glam::Vec3;
++use verse::{
++    controller::InputState,
++    render::Offscreen,
++    runtime::WorldRuntime,
++    ui::{Atlas, UiBatch},
++    zones::{self, everglade_pack},
++};
++
++const WIDTH: u32 = 1280;
++const HEIGHT: u32 = 720;
++const DT: f32 = 1.0 / 60.0;
++
++fn write_png(path: &Path, rgba: &[u8]) -> Result<(), String> {
++    let file = std::fs::File::create(path).map_err(|e| format!("{}: {e}", path.display()))?;
++    let mut encoder = png::Encoder::new(file, WIDTH, HEIGHT);
++    encoder.set_color(png::ColorType::Rgba);
++    encoder.set_depth(png::BitDepth::Eight);
++    encoder
++        .write_header()
++        .and_then(|mut w| w.write_image_data(rgba))
++        .map_err(|e| e.to_string())
++}
++
++/// Mean luminance, 0 to 255, of the middle half of the frame.
++fn luminance(rgba: &[u8]) -> f64 {
++    let (w, h) = (WIDTH as usize, HEIGHT as usize);
++    let mut sum = 0.0;
++    let mut n = 0.0;
++    for y in h / 4..h * 3 / 4 {
++        for x in w / 4..w * 3 / 4 {
++            let o = (y * w + x) * 4;
++            sum += 0.2126 * f64::from(rgba[o])
++                + 0.7152 * f64::from(rgba[o + 1])
++                + 0.0722 * f64::from(rgba[o + 2]);
++            n += 1.0;
++        }
++    }
++    sum / n
++}
++
++fn main() -> Result<(), String> {
++    let out = PathBuf::from(std::env::args().nth(1).ok_or("Expected OUT_DIR")?);
++    // `meteor` as the second argument skips the day.
++    let day = std::env::args().nth(2).is_none_or(|a| a != "meteor");
++    std::fs::create_dir_all(out.join("frames")).map_err(|e| e.to_string())?;
++    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
++        .join("../..")
++        .join(everglade_pack::PACK_DIRECTORY)
++        .join(format!("{}.vtp", everglade_pack::PACK_SHA256));
++    let pack = everglade_pack::ZonePack::load_local(&path)?;
++    let mut runtime = WorldRuntime::new();
++    runtime.set_town_clock(town_clock::Clock::DAYTIME.pinned(Some(5.0)));
++    runtime.install_everglade(&pack);
++    if runtime.zone != zones::ZoneId::Everglade {
++        return Err("Everglade did not install".into());
++    }
++    runtime.settle_zone_light();
++    let layered = runtime
++        .everglade_zone_mut()
++        .is_some_and(|z| z.uses_baked_light());
++    eprintln!("baked layers in use: {layered}");
++    let (_, house) = zones::everglade::layout::city::kit_houses()
++        .into_iter()
++        .find(|(b, _)| b.name == "townhouse 1")
++        .ok_or("no townhouse 1")?;
++    let floor = house.floor();
++    let street = house.world([-8.0, house.depth / 2.0 + 10.0]);
++    let front = house.front().0;
++    let toward = (house.center[0] - street[0]).atan2(house.center[1] - street[1]);
++    runtime.set_spawn(Vec3::new(street[0], floor, street[1]), toward)?;
++    let eye = Vec3::new(street[0], floor + 5.0, street[1]);
++    let target = Vec3::new(front[0], floor + 3.0, front[1]);
++    runtime.set_shot(Some((eye, target)));
++    let atlas = Atlas::new(16.0);
++    let ui = UiBatch::default();
++    let atmosphere = runtime
++        .everglade_zone_mut()
++        .ok_or("no Everglade")?
++        .atmosphere();
++    let mut renderer = Offscreen::new(WIDTH, HEIGHT, &runtime.world.mesh, &atlas, atmosphere)?;
++    let aspect = WIDTH as f32 / HEIGHT as f32;
++    let idle = InputState::default();
++    let mut frames = Vec::new();
++    let mut last: Option<f64> = None;
++    let mut k = 0;
++    let mut hour = 5.0_f64;
++    while day && hour <= 23.0 + 1e-9 {
++        runtime.set_town_clock(town_clock::Clock::DAYTIME.pinned(Some(hour)));
++        runtime.tick(&idle, DT);
++        let settled = std::time::Instant::now();
++        runtime.settle_zone_light();
++        let settle_ms = settled.elapsed().as_secs_f64() * 1000.0;
++        // The light lands on this tick; the frame after it uploads it.
++        let ticked = std::time::Instant::now();
++        runtime.tick(&idle, DT);
++        let tick_ms = ticked.elapsed().as_secs_f64() * 1000.0;
++        runtime.set_shot(Some((eye, target)));
++        let dynamic = runtime.dynamic_mesh();
++        let pixels = renderer.render(runtime.view(aspect), &dynamic, &ui)?;
++        let (encode_ms, gpu_ms) = renderer.last_timing();
++        // Let exposure settle at this hour, as play would over seconds.
++        let mut pixels = pixels;
++        for _ in 0..12 {
++            runtime.tick(&idle, DT);
++            runtime.set_shot(Some((eye, target)));
++            let dynamic = runtime.dynamic_mesh();
++            pixels = renderer.render(runtime.view(aspect), &dynamic, &ui)?;
++        }
++        let (steady_encode, steady_gpu) = renderer.last_timing();
++        let lum = luminance(&pixels);
++        write_png(&out.join("frames").join(format!("{k:04}.png")), &pixels)?;
++        frames.push(serde_json::json!({
++            "hour": hour, "luminance": lum,
++            "step": last.map(|l| lum - l),
++            "settle_ms": settle_ms, "tick_ms": tick_ms,
++            "delivery_encode_ms": encode_ms, "delivery_gpu_ms": gpu_ms,
++            "steady_encode_ms": steady_encode, "steady_gpu_ms": steady_gpu,
++        }));
++        eprintln!(
++            "{hour:5.2} h  luminance {lum:6.2}  settle {settle_ms:7.1} ms  delivery encode {encode_ms:5.2} ms vs {steady_encode:5.2}"
++        );
++        last = Some(lum);
++        k += 1;
++        hour += 0.25;
++    }
++    // The baked light itself through the day, as the town combines it now
++    // (the suns blended) and as it did (the nearest sun alone): the mean
++    // change of the light channel's multiplier from one quarter hour to the
++    // next, over every 31st vertex. A jump between baked suns shows here
++    // whatever the view.
++    let mut layer_steps = Vec::new();
++    if let Some(layers) = everglade_pack::kit_bake::offered() {
++        let sample = |lights: &[[u8; 4]]| -> Vec<glam::Vec3> {
++            lights
++                .iter()
++                .step_by(31)
++                .map(|&l| verse::pbr::textured_bake::decode(l).0)
++                .collect()
++        };
++        let mut last: Option<(Vec<glam::Vec3>, Vec<glam::Vec3>)> = None;
++        let mut hour = 5.0_f32;
++        while hour <= 23.0 + 1e-6 {
++            let light = zones::everglade::time_of_day::Light::at_hours(hour);
++            let ratio = layers.sun_ratio(light.key_lux, light.sky_lux);
++            let blend = sample(&layers.lights_blend(&layers.sun_weights(light.key_dir), ratio));
++            let nearest = sample(&layers.lights(layers.nearest_sun(light.key_dir), ratio));
++            if let Some((b, n)) = &last {
++                let mean = |a: &[glam::Vec3], b: &[glam::Vec3]| {
++                    a.iter()
++                        .zip(b)
++                        .map(|(x, y)| (*x - *y).abs().element_sum() / 3.0)
++                        .sum::<f32>()
++                        / a.len().max(1) as f32
++                };
++                layer_steps.push(serde_json::json!({
++                    "hour": hour,
++                    "blended_step": mean(&blend, b),
++                    "nearest_step": mean(&nearest, n),
++                }));
++                eprintln!(
++                    "{hour:5.2} h  layer step blended {:.4}  nearest {:.4}",
++                    mean(&blend, b),
++                    mean(&nearest, n)
++                );
++            }
++            last = Some((blend, nearest));
++            hour += 0.25;
++        }
++    }
++    // A meteor strike on the townhouse at golden hour.
++    runtime.set_town_clock(town_clock::Clock::DAYTIME.pinned(Some(17.5)));
++    runtime.tick(&idle, DT);
++    runtime.settle_zone_light();
++    let mut still = |runtime: &mut WorldRuntime, name: &str| -> Result<(), String> {
++        runtime.set_shot(Some((eye, target)));
++        let mut pixels = Vec::new();
++        for _ in 0..12 {
++            runtime.tick(&idle, DT);
++            runtime.set_shot(Some((eye, target)));
++            let dynamic = runtime.dynamic_mesh();
++            pixels = renderer.render(runtime.view(aspect), &dynamic, &ui)?;
++        }
++        write_png(&out.join(format!("{name}.png")), &pixels)
++    };
++    still(&mut runtime, "meteor-before")?;
++    // The developer's destruction, as the dev bar turns it on.
++    runtime.set_dev_destruction(true)?;
++    if let Some(zone) = runtime.everglade_zone_mut() {
++        zone.set_free_casting();
++    }
++    runtime.set_shot(None);
++    runtime.tick(&idle, DT);
++    runtime.zone_intent(zones::Intent::MeteorSwarm)?;
++    let center = Vec3::new(house.center[0], floor, house.center[1]);
++    let clip = runtime.view(aspect).view_proj * center.extend(1.0);
++    let (x, y) = (0.5 + 0.5 * clip.x / clip.w, 0.5 - 0.5 * clip.y / clip.w);
++    let cast = runtime.demolition_aim(aspect, x, y) && runtime.demolition_confirm();
++    eprintln!("meteor cast: {cast}");
++    for _ in 0..(40.0 / DT) as usize {
++        runtime.tick(&idle, DT);
++    }
++    let wreck = runtime.everglade_wreckage();
++    runtime.settle_zone_light();
++    let relit = runtime.everglade_relit();
++    still(&mut runtime, "meteor-after")?;
++    runtime.zone_intent(zones::Intent::Rebuild)?;
++    runtime.tick(&idle, DT);
++    runtime.settle_zone_light();
++    still(&mut runtime, "meteor-restored")?;
++    let report = serde_json::json!({
++        "baked_layers_in_use": layered,
++        "adapter": renderer.adapter_info().name,
++        "frames": frames,
++        "layer_steps": layer_steps,
++        "meteor": {
++            "cast": cast,
++            "wreckage": wreck,
++            "relit": relit.map(|r| serde_json::json!({
++                "hidden_triangles": r.hidden, "vertices": r.vertices,
++                "probes": r.probes, "ms": r.ms,
++            })),
++        },
++    });
++    std::fs::write(
++        out.join("report.json"),
++        serde_json::to_vec_pretty(&report).map_err(|e| e.to_string())?,
++    )
++    .map_err(|e| e.to_string())
++}
+diff --git a/crates/verse/examples/kit_visual_acceptance.rs b/crates/verse/examples/kit_visual_acceptance.rs
+index 0d9050a49f1f2734eee6d17a0b234941771f273c..0b764202611a71eefa6f2058652f307853e52d78 100644
+--- a/crates/verse/examples/kit_visual_acceptance.rs
++++ b/crates/verse/examples/kit_visual_acceptance.rs
+@@ -228,7 +228,8 @@ fn damage() {
+     let (scene, _) = scene::build_painted(&pack, &placements, layout::paint).unwrap();
+     assert_eq!(scene.detail_groups.len(), 1);
+     let scene = Arc::new(scene);
+-    let mut town = Town::standalone(&pack, &placements, scene.clone()).unwrap();
++    let mut town =
++        Town::standalone_with_houses(&pack, &placements, scene.clone(), &[house]).unwrap();
+     town.set_numbers(false);
+     let world = Mesh {
+         textured: Some(scene.clone()),
+diff --git a/docs/verse/everglade-medieval-refactor.md b/docs/verse/everglade-medieval-refactor.md
+index d9baa944c8eec2969efde2099e6f6274c79efdd7..a69a24c239fecdd8b56a67244944c732e9a8b704 100644
+--- a/docs/verse/everglade-medieval-refactor.md
++++ b/docs/verse/everglade-medieval-refactor.md
+@@ -588,6 +588,21 @@ reimplemented from published papers.
+ - **B3 (#10907): time of day and destruction.** The town clock blends the
+   sun layers and fades the lamp layer in at dusk; a broken piece and its
+   neighbors fall back to dynamic light. Needs B2.
++  Landed October 9: the town blends the two baked suns either side of the
++  hour (`Layers::sun_weights`, continuous along the suns' order) at the
++  sun's strength, and combines the layers again on a worker whenever a
++  weight or the strength moves a sixty-fourth (`baked::STEP`, about 3.5
++  times a game hour). Through the day the light channel's mean change
++  between quarter hours stays at most 0.0098 (at dawn, from the strength),
++  where the nearest sun alone jumped 0.038, 0.034, and 0.033 at 10:00,
++  14:00, and 16:45. Combining takes about 24 ms on the worker; the frame
++  that uploads the new light costs about 1.7 ms more. Desktops relight
++  what breaks over the layers (`pbr::relight`, rebased when the hour's
++  light changes): a meteor on Stoop Lane's first townhouse hid 17,800
++  triangles and relit 151,958 vertices and 65 probes in 2.4 s on the
++  worker, the baked shade under the fallen houses gone; `R` restores the
++  layered light exactly. Phones keep their baked light. Measured with
++  `everglade_bake_timelapse` (private kit; its frames stay private).
+ - **B4 (#10908): tiers and measurement.** Half and quarter resolution for
+   web and phones, and the measured download, memory, frame, and load
+   costs. Needs B2 and P8.
+diff --git a/docs/verse/meteor-showcase-handoff.md b/docs/verse/meteor-showcase-handoff.md
+index c1e1966c063812580dbe0d7fbdac80f6af69006d..115b850b9633d921d29aec52e47a95f504fe6718 100644
+--- a/docs/verse/meteor-showcase-handoff.md
++++ b/docs/verse/meteor-showcase-handoff.md
+@@ -285,9 +285,8 @@ its worker, off the frame. Frame times did not change. With
+ floating shade gone from the standing wall
+ ([captures/meteor-showcase/relight-aftermath-ambient.jpg](captures/meteor-showcase/relight-aftermath-ambient.jpg),
+ committed proxies, before above and after below). `--restore-at` writes
+-`restored.png` with the baked light back. The Everglade town itself still
+-waits for B3 (#10907); offline-baked sun layers that change after a relight
+-replace it.
++`restored.png` with the baked light back. The Everglade town relights the same way
++since B3 (#10907), over its offline-baked layers.
+ 
+ ## Known issues
+ 

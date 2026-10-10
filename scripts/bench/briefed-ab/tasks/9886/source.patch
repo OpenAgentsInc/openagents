@@ -1,0 +1,321 @@
+diff --git a/crates/coder-mobile/src/verse_app.rs b/crates/coder-mobile/src/verse_app.rs
+index 41c011dca0b31a3a4d2691b7d35efb182cff2612..04d62e8ad287ed0f9ec951d3e955ccfbc2c3d80f 100644
+--- a/crates/coder-mobile/src/verse_app.rs
++++ b/crates/coder-mobile/src/verse_app.rs
+@@ -589,6 +589,24 @@ const STICK_RADIUS_POINTS: f32 = 56.0;
+ /// [`verse::xp::name_tag`] shows them.
+ #[cfg(test)]
+ const PLAYER_TAG_CHARS: usize = 8;
++/// A name tag's text color.
++const TAG_COLOR: [f32; 4] = [0.9, 0.9, 0.9, 1.0];
++/// Playtest title marks: a shape in gray, never a color.
++const TITLE_COLOR: [f32; 4] = [0.62, 0.62, 0.62, 1.0];
++const TITLE_PLAYTESTER: &str = "playtester";
++const TITLE_FOUNDING: &str = "founding-playtester";
++const TITLE_BUG_HUNTER: &str = "bug-hunter";
++const TITLE_FIX_VERIFIER: &str = "fix-verifier";
++const TITLE_RAIDER: &str = "raider";
++/// The founding playtester's ground ring, in meters.
++const FOUNDING_RING_RADIUS: f32 = 0.85;
++const GROUND_RING_SEGMENTS: usize = 32;
++/// The ball glows for a raider only while it moves at least this fast, in
++/// meters per second.
++const RAIDER_GLOW_SPEED: f64 = 0.3;
++/// How close, in meters past the ball's radius, a raider's feet are when
++/// pushing it.
++const RAIDER_TOUCH: f32 = 0.8;
+ /// Players farther than this, in meters, carry no tag.
+ const PLAYER_TAG_RANGE: f32 = 60.0;
+ /// Height of a player's tag above their feet, in meters, as on desktop.
+@@ -729,6 +747,11 @@ pub(crate) struct Scene {
+     xp: Option<verse::xp::Board>,
+     /// The last ledger it derived, kept across tab switches for the tags.
+     pub(crate) xp_snapshot: Option<verse::xp::Snapshot>,
++    /// The read-only playtest reader, trusting the playtest referee alone.
++    /// It never starts while [`verse::xp::PLAYTEST_REFEREE`] is unset.
++    playtest: Option<verse::xp::Board>,
++    /// Its last ledger: playtest titles, drawn as shapes on name tags.
++    pub(crate) playtest_snapshot: Option<verse::xp::Snapshot>,
+     pub frames: u64,
+     pub error: Option<String>,
+ }
+@@ -747,6 +770,23 @@ fn xp_preview(secret: secp256k1::SecretKey) -> Result<verse::xp::Snapshot, Strin
+     Ok(verse::xp::snapshot(&events, &trust))
+ }
+ 
++/// The playtest ledger the XP preview shows: a labeled fixture in which
++/// `secret`'s key holds every playtest title, from a throwaway playtest
++/// referee the preview alone trusts.
++fn playtest_preview(secret: secp256k1::SecretKey) -> Result<verse::xp::Snapshot, String> {
++    let referee = verse::xp::fixture::signer(0x91a7_7e57);
++    let player = verse::identity::Identity::from_secret("phone", secret)?.signer;
++    let at = std::time::SystemTime::now()
++        .duration_since(std::time::UNIX_EPOCH)
++        .map_or(1_790_000_000, |d| d.as_secs());
++    let events = verse::xp::fixture::playtest_events(&referee, &player, at);
++    let trust = verse::xp::XpTrust {
++        referees: std::collections::BTreeSet::from([referee.pubkey().to_owned()]),
++        runners: std::collections::BTreeSet::new(),
++    };
++    Ok(verse::xp::snapshot(&events, &trust))
++}
++
+ impl Scene {
+     pub fn new(config: Config) -> Result<Self, String> {
+         let secret = config
+@@ -890,6 +930,12 @@ impl Scene {
+             } else {
+                 None
+             },
++            playtest: None,
++            playtest_snapshot: if config.xp_preview {
++                Some(playtest_preview(secret)?)
++            } else {
++                None
++            },
+             frames: 0,
+             error: initial_error,
+         })
+@@ -918,6 +964,7 @@ impl Scene {
+             self.sprint = false;
+             self.session = None;
+             self.xp = None;
++            self.playtest = None;
+         } else if self.session.is_none()
+             && self.relay.is_some()
+             && !self.synthetic
+@@ -980,7 +1027,18 @@ impl Scene {
+                 verse::session::PUBLIC_RELAY,
+                 verse::xp::openagents_trust(),
+                 None,
+-                Some(signer),
++                Some(signer.clone()),
++            ));
++        }
++        if self.world.is_bare()
++            && self.playtest.is_none()
++            && let Some(trust) = verse::xp::playtest_trust()
++        {
++            self.playtest = Some(verse::xp::Board::start_with(
++                verse::session::PUBLIC_RELAY,
++                trust,
++                None,
++                Some(verse::identity::Identity::from_secret("phone", self.secret)?.signer),
+             ));
+         }
+         Ok(())
+@@ -990,6 +1048,7 @@ impl Scene {
+         self.presented_entities = verse::mesh::Mesh::default();
+         self.session = None;
+         self.xp = None;
++        self.playtest = None;
+         self.relay = None;
+         self.restore_spawn = false;
+         self.spawn_pending = false;
+@@ -1476,15 +1535,138 @@ impl Scene {
+             };
+             let tag = verse::xp::name_tag(self.xp_snapshot.as_ref(), pubkey);
+             let width = self.atlas.measure(&tag);
+-            ui.text(
++            let top = y - self.atlas.line;
++            ui.text(&self.atlas, x - width / 2.0, top, &tag, TAG_COLOR);
++            let titles = verse::xp::playtest_titles(self.playtest_snapshot.as_ref(), pubkey);
++            if !titles.is_empty() {
++                self.playtest_marks(&mut ui, &titles, [x, top], width, feet.to_array());
++            }
++        }
++        self.raider_glow(&mut ui);
++        ui
++    }
++
++    /// Playtest titles as shapes, never colors: **PLAYTESTER** under the
++    /// tag, a crosshair left of it for `bug-hunter`, a check right of it for
++    /// `fix-verifier`, and a thin ring on the ground under the avatar for
++    /// `founding-playtester`. `raider` shows on the ball
++    /// ([`Self::raider_glow`]).
++    fn playtest_marks(
++        &self,
++        ui: &mut verse::ui::UiBatch,
++        titles: &std::collections::BTreeSet<String>,
++        [x, top]: [f32; 2],
++        width: f32,
++        feet: [f32; 3],
++    ) {
++        let line = self.atlas.line;
++        let half = line * 0.32;
++        let stroke = (line * 0.09).max(1.0);
++        let middle = top + line * 0.5;
++        if titles.contains(TITLE_PLAYTESTER) {
++            let label = "PLAYTESTER";
++            let w = self.atlas.measure(label);
++            ui.text(&self.atlas, x - w / 2.0, top + line, label, TITLE_COLOR);
++        }
++        if titles.contains(TITLE_BUG_HUNTER) {
++            let cx = x - width / 2.0 - line * 0.6;
++            ui.ring(&self.atlas, cx, middle, half, stroke, TITLE_COLOR);
++            for [dx, dy] in [[1.0, 0.0], [-1.0, 0.0], [0.0, 1.0], [0.0, -1.0]] {
++                ui.line(
++                    &self.atlas,
++                    [cx + dx * half * 0.5, middle + dy * half * 0.5],
++                    [cx + dx * half * 1.4, middle + dy * half * 1.4],
++                    stroke,
++                    TITLE_COLOR,
++                );
++            }
++        }
++        if titles.contains(TITLE_FIX_VERIFIER) {
++            let left = x + width / 2.0 + line * 0.25;
++            let low = [left + half * 0.7, middle + half * 0.8];
++            ui.line(&self.atlas, [left, middle], low, stroke * 1.4, TITLE_COLOR);
++            ui.line(
+                 &self.atlas,
+-                x - width / 2.0,
+-                y - self.atlas.line,
+-                &tag,
+-                [0.9, 0.9, 0.9, 1.0],
++                low,
++                [left + half * 2.0, middle - half],
++                stroke * 1.4,
++                TITLE_COLOR,
++            );
++        }
++        if titles.contains(TITLE_FOUNDING) {
++            self.ground_ring(ui, feet, FOUNDING_RING_RADIUS, stroke, TITLE_COLOR);
++        }
++    }
++
++    /// A thin circle of radius `radius` meters on the ground at `center`,
++    /// drawn as projected strokes.
++    fn ground_ring(
++        &self,
++        ui: &mut verse::ui::UiBatch,
++        center: [f32; 3],
++        radius: f32,
++        stroke: f32,
++        color: [f32; 4],
++    ) {
++        let viewport = self.lifecycle.viewport();
++        let size = viewport.logical_size().map(|v| v * viewport.scale());
++        let view_proj = self.world.view(self.aspect()).view_proj;
++        let point = |i: usize| {
++            let a = i as f32 / GROUND_RING_SEGMENTS as f32 * std::f32::consts::TAU;
++            // A world point, in the type the player's position has.
++            let mut p = self.world.player.pos;
++            p.x = center[0] + radius * a.cos();
++            p.y = center[1] + 0.03;
++            p.z = center[2] + radius * a.sin();
++            verse::hud::project(view_proj, size, p)
++        };
++        for i in 0..GROUND_RING_SEGMENTS {
++            if let (Some(a), Some(b)) = (point(i), point(i + 1)) {
++                ui.line(&self.atlas, a, b, stroke, color);
++            }
++        }
++    }
++
++    /// The ball glows briefly, as a ring around it, while a player with
++    /// the `raider` title is pushing it: touching it as it moves.
++    fn raider_glow(&self, ui: &mut verse::ui::UiBatch) {
++        let Some(ball) = self.world.ball() else {
++            return;
++        };
++        let body = ball.body();
++        if body.vel.length() < RAIDER_GLOW_SPEED {
++            return;
++        }
++        let center = body.pos.as_vec3();
++        let reach = (verse::ball::RADIUS as f32) + RAIDER_TOUCH;
++        let mut players = vec![(self.public_key.clone(), self.world.player.pos)];
++        if let Some(session) = self.session.as_ref() {
++            players.extend(
++                session
++                    .crowd
++                    .shown(Instant::now())
++                    .into_iter()
++                    .filter(|shown| shown.role == "avatar")
++                    .map(|shown| (shown.pubkey, shown.pos)),
++            );
++        }
++        let pushing = players.iter().any(|(pubkey, feet)| {
++            let flat = (feet.x - center.x).hypot(feet.z - center.z);
++            flat <= reach
++                && verse::xp::playtest_titles(self.playtest_snapshot.as_ref(), pubkey)
++                    .contains(TITLE_RAIDER)
++        });
++        if pushing {
++            let floor = [center.x, center.y - verse::ball::RADIUS as f32, center.z];
++            let stroke = (self.atlas.line * 0.12).max(1.0);
++            self.ground_ring(
++                ui,
++                floor,
++                verse::ball::RADIUS as f32 * 1.35,
++                stroke,
++                TITLE_COLOR,
+             );
+         }
+-        ui
+     }
+ 
+     fn cancel_taps(&mut self) {
+@@ -1627,6 +1809,12 @@ impl Scene {
+                 self.xp_snapshot = Some(snapshot);
+             }
+         }
++        if let Some(board) = &mut self.playtest {
++            board.tick();
++            if let Some(snapshot) = board.snapshot.take() {
++                self.playtest_snapshot = Some(snapshot);
++            }
++        }
+         if self.results_open {
+             self.results.tick(f64::from(dt));
+         }
+diff --git a/crates/verse/src/ui.rs b/crates/verse/src/ui.rs
+index 2a3ee60ecdd2e2ec97b1564bc5505d8c9d67b83d..6aded189c96637f40efec4dd085de606da48db53 100644
+--- a/crates/verse/src/ui.rs
++++ b/crates/verse/src/ui.rs
+@@ -355,6 +355,24 @@ impl UiBatch {
+         }
+     }
+ 
++    /// A straight stroke from `a` to `b`, `w` pixels wide.
++    pub fn line(&mut self, atlas: &Atlas, a: [f32; 2], b: [f32; 2], w: f32, color: [f32; 4]) {
++        let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
++        let length = dx.hypot(dy);
++        if length <= f32::EPSILON {
++            return;
++        }
++        let (nx, ny) = (-dy / length * w / 2.0, dx / length * w / 2.0);
++        let v = |x: f32, y: f32| UiVertex {
++            pos: [x, y],
++            uv: atlas.solid,
++            color,
++        };
++        let (p0, p1) = (v(a[0] + nx, a[1] + ny), v(b[0] + nx, b[1] + ny));
++        let (p2, p3) = (v(b[0] - nx, b[1] - ny), v(a[0] - nx, a[1] - ny));
++        self.vertices.extend_from_slice(&[p0, p1, p2, p0, p2, p3]);
++    }
++
+     /// A circle outline of radius `r`, `t` pixels thick inward.
+     #[allow(clippy::too_many_arguments)]
+     pub fn ring(&mut self, atlas: &Atlas, cx: f32, cy: f32, r: f32, t: f32, color: [f32; 4]) {
+diff --git a/docs/game/playtesting.md b/docs/game/playtesting.md
+index a979c093bab2d847d4684ae94cb78283a4946d93..f278022dfc566931400693e8d297ab2a2a118ad1 100644
+--- a/docs/game/playtesting.md
++++ b/docs/game/playtesting.md
+@@ -574,6 +574,15 @@ leveling spec's [privacy](../verse/agent-trainer-leveling.md#privacy) rule
+ that boards and tags are opt-in. The Grid stays white and gray: every
+ cosmetic is a shape, not a color.
+ 
++Status (2026-09-28, [#9886](https://github.com/OpenAgentsInc/openagents/issues/9886)):
++the Grid draws these in `crates/coder-mobile` (`verse_app.rs`,
++`playtest_marks` and `raider_glow`) from `verse::xp::playtest_titles`,
++through a second read-only reader that trusts the playtest referee alone.
++It reads nothing until `PLAYTEST_REFEREE` holds the owner's key; the
++`--xp-preview` launch argument shows a labeled fixture with every title.
++The opt-in gate (a published trainer profile) isn't built yet: name tags
++show levels and titles for every key today, and #9895 adds the gate.
++
+ ### Anti-farming
+ 
+ The leveling spec's defenses apply. In addition, for playtesting:

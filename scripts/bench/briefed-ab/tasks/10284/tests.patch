@@ -1,0 +1,125 @@
+diff --git a/crates/coder/src/task/autostart.rs b/crates/coder/src/task/autostart.rs
+index 852277883c8ca6e7f50f11bc093aa2af18cef609..5c16344a93ec55c4d76adc2d124b62d92e5b6ce2 100644
+--- a/crates/coder/src/task/autostart.rs
++++ b/crates/coder/src/task/autostart.rs
+@@ -4642,15 +4642,29 @@ mod tests {
+         let temp = tempfile::tempdir().unwrap();
+         let copy = temp.path().join("openagents");
+         std::fs::copy(std::env::current_exe().unwrap(), &copy).unwrap();
+-        let output = std::process::Command::new(&copy)
+-            .args([
+-                "--exact",
+-                "task::autostart::tests::a_replaced_program_still_starts_itself",
+-                "--nocapture",
+-            ])
+-            .env(CHILD, "1")
+-            .output()
+-            .unwrap();
++        // A process another test forks while the copy is being written keeps
++        // its write descriptor until it execs, and Linux refuses to run a
++        // file open for writing ("Text file busy", #10284): wait that out.
++        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
++        let output = loop {
++            match std::process::Command::new(&copy)
++                .args([
++                    "--exact",
++                    "task::autostart::tests::a_replaced_program_still_starts_itself",
++                    "--nocapture",
++                ])
++                .env(CHILD, "1")
++                .output()
++            {
++                Err(error)
++                    if error.kind() == std::io::ErrorKind::ExecutableFileBusy
++                        && std::time::Instant::now() < deadline =>
++                {
++                    std::thread::sleep(std::time::Duration::from_millis(20));
++                }
++                result => break result.unwrap(),
++            }
++        };
+         let printed = String::from_utf8_lossy(&output.stdout);
+         assert!(output.status.success(), "{printed}");
+         assert!(!copy.exists());
+diff --git a/crates/coder/src/task/owner/route_tests.rs b/crates/coder/src/task/owner/route_tests.rs
+index 23491afdcf32988df254ecc42555f509b50e781c..b003b2bf2a399f10fab2d3c8e2423ff94ec586ca 100644
+--- a/crates/coder/src/task/owner/route_tests.rs
++++ b/crates/coder/src/task/owner/route_tests.rs
+@@ -22,7 +22,7 @@ use route_contract::record::RouteRecord;
+ use route_contract::route::{RefusalReason, RouteFamily};
+ use route_contract::snapshot::{CheckScope, Deliverable, Surface, WorkspaceBinding};
+ 
+-use super::tests::{fixture, requirements, settled};
++use super::tests::{fixture, requirements, run_checks, settled};
+ use super::*;
+ use crate::task::lifecycle;
+ 
+@@ -171,7 +171,6 @@ fn counted(workspace: &str) -> usize {
+ /// (unknown for this fixture's bounded command, never a stand-in zero).
+ #[tokio::test]
+ async fn a_routed_message_delivers_a_retained_patch_with_an_independent_check() {
+-    use crate::capability::Trust;
+     let (root, _workspace, mut grant) = fixture();
+     let dir = root.path().join("store");
+     grant.arguments[1] = format!("printf x >> {EFFECTS}; printf output > result.txt");
+@@ -187,7 +186,9 @@ async fn a_routed_message_delivers_a_retained_patch_with_an_independent_check()
+     let record = observed(&dir, &journal, "req-ok");
+     assert_eq!(record.state, Lifecycle::Completed);
+     assert_eq!(record.runs[0].projection.check, CheckLabel::Unchecked);
+-    let checked = check(&dir, "task-one", &Trust::everything()).await.unwrap();
++    // A process another test forked can hold the owner lock for a moment
++    // (#10230, #10284), so the check waits for it like the host does.
++    let checked = run_checks(&dir).await;
+     assert_eq!(checked.checks, Checks::Passed);
+     let record = observed(&dir, &journal, "req-ok");
+     assert_eq!(record.state, Lifecycle::Completed);
+diff --git a/crates/coder/src/task/owner/tests.rs b/crates/coder/src/task/owner/tests.rs
+index 51c9a151ac5d11168b42836eb426fcf528f814c8..758c5b13bbed1e138575ef06463bf49366505161 100644
+--- a/crates/coder/src/task/owner/tests.rs
++++ b/crates/coder/src/task/owner/tests.rs
+@@ -304,6 +304,25 @@ fn acquired(store: &Store, id: &str) -> Owner {
+     waiting(|| Owner::acquire(store, id))
+ }
+ 
++/// Wait until no process holds `id`'s owner lock. The probe holds the lock
++/// for no longer than one `flock` call, so a process forked afterwards
++/// cannot inherit it, unlike a held [`Owner`].
++pub(super) fn released(dir: &Path, id: &str) {
++    let path = dir.join(format!("owner-{id}.lock"));
++    let deadline = Instant::now() + Duration::from_secs(10);
++    loop {
++        let lock = std::fs::File::open(&path).unwrap();
++        match lock.try_lock() {
++            Ok(()) => return,
++            Err(std::fs::TryLockError::WouldBlock) if Instant::now() < deadline => {
++                drop(lock);
++                std::thread::sleep(Duration::from_millis(20));
++            }
++            Err(error) => panic!("the owner lock stayed held: {error:?}"),
++        }
++    }
++}
++
+ /// [`recover`] once no other owner holds `id`.
+ fn recovered(dir: &Path, id: &str) -> Task {
+     waiting(|| recover(dir, id))
+@@ -323,7 +342,7 @@ async fn executed(dir: &Path, bytes: &[u8]) -> Task {
+ }
+ 
+ /// [`check`] task-one once no other owner holds it.
+-async fn run_checks(dir: &Path) -> Task {
++pub(super) async fn run_checks(dir: &Path) -> Task {
+     let deadline = Instant::now() + Duration::from_secs(10);
+     loop {
+         match check(dir, "task-one", &crate::capability::Trust::everything()).await {
+@@ -546,6 +565,10 @@ async fn a_stuck_task_stops_from_any_device_and_says_why() {
+         let owner = acquired(&store, "task-one");
+         store.record(&owner, Event::OwnerLost, 2).unwrap();
+     }
++    // The stop settles the run only once its owner lock is free; a process
++    // another test forked while this test held it can keep it held for a
++    // moment (#10230, #10284).
++    released(&dir, "task-one");
+     let stuck = Store::open(&dir).unwrap().show("task-one").unwrap();
+     assert_eq!(stuck.status, Status::Unknown);
+     // A phone's, desktop's, or terminal's Stop (`task.command` interrupt).

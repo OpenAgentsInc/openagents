@@ -1,0 +1,285 @@
+diff --git a/crates/coder/src/task.rs b/crates/coder/src/task.rs
+index 003905b7e5cb486cd887de4c0b0641be62c2e93a..ffddc2502c76e6776870084e714e6b62cd4adcda 100644
+--- a/crates/coder/src/task.rs
++++ b/crates/coder/src/task.rs
+@@ -45,6 +45,7 @@ pub mod issue_run;
+ pub mod landing;
+ pub mod lifecycle;
+ pub mod local;
++pub mod local_checks;
+ pub mod media;
+ pub mod owner;
+ pub mod publish;
+diff --git a/crates/coder/src/task/adapter.rs b/crates/coder/src/task/adapter.rs
+index 964345741f50a8faa51746b422edf9df7830513d..70e6ed149fc0fbc650954dddecf3aafabb584f07 100644
+--- a/crates/coder/src/task/adapter.rs
++++ b/crates/coder/src/task/adapter.rs
+@@ -581,6 +581,10 @@ pub struct Host {
+     fault: RefCell<Option<String>>,
+     /// What the run cost, as the engine reported it ([`Host::cost`]).
+     cost: Cell<owner::Cost>,
++    /// The checks the delegate recipe froze for this turn
++    /// ([`Host::freeze_checks`]), which the run's independent check runs
++    /// again ([`super::local_checks`]).
++    frozen_checks: RefCell<Vec<String>>,
+ }
+ 
+ impl Host {
+@@ -887,9 +891,68 @@ impl Host {
+             output_incomplete: Cell::new(false),
+             fault: RefCell::new(None),
+             cost: Cell::new(owner::Cost::default()),
++            frozen_checks: RefCell::new(Vec::new()),
+         })
+     }
+ 
++    /// Name the checks the delegate recipe froze for this turn (#10208):
++    /// when the run ends, its independent check runs them again on the
++    /// exact candidate, with the touched packages' tests (#10232).
++    pub fn freeze_checks(&self, commands: &[String]) {
++        *self.frozen_checks.borrow_mut() = commands.to_vec();
++    }
++
++    /// The variables a local check's commands get (#10232): this run's
++    /// own tool `PATH` and toolchain variables, so `cargo` resolves as it
++    /// did for the engine while the check's `HOME` is scratch.
++    fn check_environment(&self) -> Vec<(String, std::ffi::OsString)> {
++        let mut variables: Vec<(String, std::ffi::OsString)> = Vec::new();
++        if let Some(toolchains) = &self.toolchains {
++            let entries = toolchains
++                .path
++                .iter()
++                .cloned()
++                .chain(std::env::split_paths(owner::SYSTEM_PATH));
++            variables.push((
++                "PATH".into(),
++                std::env::join_paths(entries).unwrap_or_default(),
++            ));
++            variables.extend(
++                toolchains
++                    .environment
++                    .iter()
++                    .map(|(name, value)| (name.clone(), value.clone().into_os_string())),
++            );
++        } else if let Some(Some(login)) = self.login.get() {
++            for (name, value) in &login.variables {
++                if let Some(name) = name.to_str()
++                    && matches!(name, "PATH" | "RUSTUP_HOME" | "CARGO_HOME")
++                {
++                    variables.push((name.to_owned(), value.clone()));
++                }
++            }
++        }
++        if !variables.iter().any(|(name, _)| name == "PATH")
++            && let Some(path) = std::env::var_os("PATH")
++        {
++            variables.push(("PATH".into(), path));
++        }
++        let home = std::env::var_os("HOME").map(PathBuf::from);
++        for (name, default) in [("RUSTUP_HOME", ".rustup"), ("CARGO_HOME", ".cargo")] {
++            if variables.iter().any(|(held, _)| held == name) {
++                continue;
++            }
++            let value = std::env::var_os(name)
++                .map(PathBuf::from)
++                .or_else(|| home.as_ref().map(|home| home.join(default)))
++                .filter(|path| path.is_dir());
++            if let Some(value) = value {
++                variables.push((name.to_owned(), value.into_os_string()));
++            }
++        }
++        variables
++    }
++
+     /// The private scratch directory of the command boundary.
+     fn scratch(&self) -> Result<&Path, Error> {
+         self.boundary
+@@ -1440,7 +1503,35 @@ impl Host {
+         };
+         result.priced(self.cost.get());
+         result.paid_by(&model_access::current());
+-        self.owner.record(owner::Event::Result { result })
++        // A local run's independent check (#10232): list what it runs
++        // before the result is recorded, so a reader that sees the result
++        // while this owner still holds the task knows a check follows.
++        let listed = if completed && self.fault.borrow().is_none() && !stopped {
++            self.admission
++                .grant
++                .requirements
++                .as_ref()
++                .and_then(|requirements| {
++                    super::local_checks::list(
++                        requirements,
++                        &self.admission.workspace,
++                        &self.admission.source_revision,
++                        &self.frozen_checks.borrow(),
++                        &self.check_environment(),
++                    )
++                })
++        } else {
++            None
++        };
++        let task = self.owner.record(owner::Event::Result { result })?;
++        if listed.is_some()
++            && task.status == Status::Finished
++            && task.execution == Execution::Finished
++            && !task.context_superseded()
++        {
++            return self.owner.record(owner::Event::CheckIntent);
++        }
++        Ok(task)
+     }
+ }
+ 
+diff --git a/crates/coder/src/task/autostart.rs b/crates/coder/src/task/autostart.rs
+index ee292bbbea5c32b3a6d91be137204e7b7c233643..228688f98aa1724996b23cb4c41134ed8280b8eb 100644
+--- a/crates/coder/src/task/autostart.rs
++++ b/crates/coder/src/task/autostart.rs
+@@ -412,6 +412,13 @@ impl Policy {
+             return Err("no route to start on".into());
+         }
+         let program = shell()?;
++        // A run that writes gets its independent check (#10232): the
++        // recipe's frozen checks and the touched packages' tests.
++        let requirements = if self.engine.write_workspace {
++            super::local_checks::requirements(grants, task, revision)?
++        } else {
++            None
++        };
+         let grant = owner::Grant {
+             schema: owner::GRANT_SCHEMA.into(),
+             task_id: task.into(),
+@@ -425,7 +432,7 @@ impl Policy {
+             wall_seconds: 0,
+             stream_bytes: 64 * 1024,
+             memory_bytes: self.engine.memory_bytes,
+-            requirements: None,
++            requirements,
+             adapter_configuration: Some(self.configuration(order)),
+         };
+         let bytes = serde_json::to_vec_pretty(&grant).map_err(|e| e.to_string())?;
+diff --git a/crates/coder/src/task/chat_client.rs b/crates/coder/src/task/chat_client.rs
+index 6c2ed338206e2eadb19a5fd2dbcef69aea54df14..6649e0dab97d1d23598976ec403f0bf1728c2628 100644
+--- a/crates/coder/src/task/chat_client.rs
++++ b/crates/coder/src/task/chat_client.rs
+@@ -356,6 +356,10 @@ impl Coder for Here {
+         super::lifecycle::observe(store, task)
+     }
+ 
++    fn checking(&self, store: &Path, task: &str) -> bool {
++        super::local_checks::pending(store, task)
++    }
++
+     /// `openagents ARGV` as a child of this program, as `openagents mcp
+     /// serve` runs a tool call: no input, stopped after
+     /// [`COMMAND_TIMEOUT`], what it printed kept to [`COMMAND_OUTPUT`].
+diff --git a/crates/microcoder/src/repository.rs b/crates/microcoder/src/repository.rs
+index f0f7ae7f7420ad25791cc43f7e6d8e7a0bff7846..7309402dd3b63d46a4da888a60b1ec171da16782 100644
+--- a/crates/microcoder/src/repository.rs
++++ b/crates/microcoder/src/repository.rs
+@@ -920,7 +920,7 @@ pub async fn execute(
+         ));
+         None
+     };
+-    run_stages_with(
++    let task = run_stages_with(
+         host,
+         book,
+         stages,
+@@ -930,7 +930,16 @@ pub async fn execute(
+         recipe,
+     )
+     .await
+-    .map_err(|error| Failure::run(error.to_string()))
++    .map_err(|error| Failure::run(error.to_string()))?;
++    // A local run's independent check, when the run's end listed one
++    // (#10232): the recipe's frozen checks and the touched packages' tests
++    // on the exact candidate, so the route ends verified or check_failed.
++    if task.checks == task::Checks::Running {
++        return task::local_checks::complete(directory, &task.task_id)
++            .await
++            .map_err(|error| Failure::run(error.to_string()));
++    }
++    Ok(task)
+ }
+ 
+ /// The stages that can take images, in order: the model loops (Codex and
+diff --git a/crates/microcoder/src/repository/recipe.rs b/crates/microcoder/src/repository/recipe.rs
+index 99ef73a7e4167767c9d3471cd57ebeec7963ab3c..882cb2fc81344a4c95dc3ad34b7e389026a4aeea 100644
+--- a/crates/microcoder/src/repository/recipe.rs
++++ b/crates/microcoder/src/repository/recipe.rs
+@@ -98,6 +98,14 @@ impl Recipe {
+             frozen,
+             results,
+         };
++        // The run's independent check runs them again when it ends (#10232).
++        host.freeze_checks(
++            &recipe
++                .frozen
++                .iter()
++                .map(|test| test.script.clone())
++                .collect::<Vec<_>>(),
++        );
+         let _ = host.append(&Step::said(Source::System, &recipe.summary()).noting(
+             "delegate_recipe",
+             json!({"run": recipe.prepared.record, "freezing": freezing,
+diff --git a/crates/openagents-chat/src/client.rs b/crates/openagents-chat/src/client.rs
+index 102d2c5e0fa06aeaf8b80af92386b2b122bf9a34..464f97bf270174ebac0e956d7ea65dd6e1d36af7 100644
+--- a/crates/openagents-chat/src/client.rs
++++ b/crates/openagents-chat/src/client.rs
+@@ -436,6 +436,11 @@ pub trait Coder: Send + Sync {
+     fn observe(&self, _store: &Path, _task: &str) -> Option<route_contract::record::Observation> {
+         None
+     }
++    /// Whether `task`'s independent check is still to come or under way
++    /// (#10232), so the route record waits for its verdict. Blocking.
++    fn checking(&self, _store: &Path, _task: &str) -> bool {
++        false
++    }
+     /// Run the `openagents` command `argv` on this computer. Blocking.
+     ///
+     /// # Errors
+@@ -1794,6 +1799,20 @@ impl Client {
+             .map(|run| run.task.clone())
+             .collect();
+         if !tasks.is_empty() {
++            // A run's independent check follows its end (#10232): the
++            // record keeps its verdict, not the moment before it.
++            loop {
++                let (coder, store, waiting) = (self.coder.clone(), self.store(id), tasks.clone());
++                let checking = tokio::task::spawn_blocking(move || {
++                    waiting.iter().any(|task| coder.checking(&store, task))
++                })
++                .await
++                .unwrap_or(false);
++                if !checking {
++                    break;
++                }
++                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
++            }
+             let (coder, store) = (self.coder.clone(), self.store(id));
+             let seen = tokio::task::spawn_blocking(move || {
+                 tasks
+diff --git a/docs/api/2026-10-02-agentic-execution-router.md b/docs/api/2026-10-02-agentic-execution-router.md
+index 8ac25d9d829be931c839f724cfe09a20bfbd8814..ccc915b3bceb7afa2911e19a8eaec24abbe1546d 100644
+--- a/docs/api/2026-10-02-agentic-execution-router.md
++++ b/docs/api/2026-10-02-agentic-execution-router.md
+@@ -516,9 +516,15 @@ router contract.
+   every family, plans, continuation without widening, command effects, issue
+   work, and the journal; `route-contract` tests the record's moves.
+ 
+-What phase 1 does not do yet: local runs carry no frozen check suites
+-(autostart's grant has none), so a live terminal run is labeled `unchecked`,
+-never `verified`, until they do; the issue flow is refined to `issue_work`
++Local runs' checks (#10232): every writing run's grant now carries one
++host-written suite, frozen and pinned by digest before the candidate exists
++(`coder::task::local_checks`). When the run ends its owner lists the
++recipe's frozen checks and `cargo test -p` for each Cargo package the run
++touched, records the check's intent, and runs the suite through the task
++owner's independent check on the exact candidate, read-only; the client
++waits for the verdict before it keeps the route record. A live terminal run
++so ends `verified` or `check_failed`, and stays `unchecked` only when there
++was nothing to run. What phase 1 does not do yet: the issue flow is refined to `issue_work`
+ after admission and still starts at once rather than as an offer; standing
+ rules have no reading on the wire (#10157), though their route result admits
+ and journals like any other.

@@ -1,0 +1,480 @@
+diff --git a/crates/background/src/view.rs b/crates/background/src/view.rs
+index 509b71cf75ebfb787246e89786baca0bac2220e9..a7602faf51cb48d5f7669d7b1453491cd2d49e31 100644
+--- a/crates/background/src/view.rs
++++ b/crates/background/src/view.rs
+@@ -275,6 +275,33 @@ pub fn date(secs: u64) -> String {
+ mod tests {
+     use crate::paths::Layout;
+ 
++    #[test]
++    fn slot_inventory_sizes_nested_files_once_and_renders_each_slot() {
++        let dir = tempfile::tempdir().unwrap();
++        let slot = dir.path().join("project-slot-0");
++        std::fs::create_dir_all(slot.join("debug/deps")).unwrap();
++        std::fs::write(slot.join("debug/deps/dependency"), [0; 100]).unwrap();
++        std::fs::hard_link(
++            slot.join("debug/deps/dependency"),
++            slot.join("debug/output"),
++        )
++        .unwrap();
++        let outside = dir.path().join("unknown");
++        std::fs::create_dir_all(&outside).unwrap();
++        std::fs::write(outside.join("artifact"), [0; 200]).unwrap();
++        std::os::unix::fs::symlink(&outside, slot.join("link")).unwrap();
++        std::os::unix::fs::symlink(&outside, dir.path().join("project-slot-1")).unwrap();
++        std::fs::write(dir.path().join("project-slot-0.lock"), "").unwrap();
++        let slots = super::slots(dir.path(), true);
++        assert_eq!(slots.len(), 1);
++        assert_eq!(slots[0].bytes, Some(100));
++        assert_eq!(
++            super::slot_lines(&slots),
++            ["Build slot project-slot-0 · 0 MB"]
++        );
++        assert_eq!(super::slots(dir.path(), false)[0].bytes, None);
++    }
++
+     #[test]
+     fn a_list_line_says_paused_and_when_the_last_result_was() {
+         let row = |enabled: bool, last: Option<(u64, &str)>| super::Row {
+@@ -335,3 +362,67 @@ mod tests {
+         assert_eq!(super::date(1_790_899_200), "2026-10-02");
+     }
+ }
++
++/// One reusable Cargo build slot, including slots of repositories with no tasks.
++#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
++pub struct Slot {
++    pub name: String,
++    pub path: std::path::PathBuf,
++    pub bytes: Option<u64>,
++}
++
++/// Read slot sizes without following links or creating any files.
++#[must_use]
++pub fn slots(root: &std::path::Path, sizes: bool) -> Vec<Slot> {
++    let Ok(entries) = std::fs::read_dir(root) else {
++        return Vec::new();
++    };
++    let mut out: Vec<_> = entries
++        .flatten()
++        .filter_map(|entry| {
++            let name = entry.file_name().into_string().ok()?;
++            name.rsplit_once("-slot-")?.1.parse::<usize>().ok()?;
++            crate::paths::real_dir(&entry.path()).then(|| Slot {
++                name,
++                bytes: sizes.then(|| slot_bytes(&entry.path()).ok()).flatten(),
++                path: entry.path(),
++            })
++        })
++        .collect();
++    out.sort_by(|a, b| a.name.cmp(&b.name));
++    out
++}
++
++/// File bytes in a slot; Cargo's hard-linked outputs count once.
++pub fn slot_bytes(path: &std::path::Path) -> std::io::Result<u64> {
++    use std::os::unix::fs::MetadataExt;
++    let mut seen = std::collections::HashSet::new();
++    let mut stack = vec![path.to_owned()];
++    let mut total: u64 = 0;
++    while let Some(path) = stack.pop() {
++        let meta = std::fs::symlink_metadata(&path)?;
++        if meta.is_dir() {
++            for entry in std::fs::read_dir(path)? {
++                stack.push(entry?.path());
++            }
++        } else if meta.is_file() && seen.insert((meta.dev(), meta.ino())) {
++            total = total.saturating_add(meta.len());
++        }
++    }
++    Ok(total)
++}
++
++/// Slot sizes shown after the background rule rows, without moving selection.
++#[must_use]
++pub fn slot_lines(slots: &[Slot]) -> Vec<String> {
++    slots
++        .iter()
++        .map(|slot| {
++            format!(
++                "Build slot {} · {}",
++                slot.name,
++                slot.bytes.map_or_else(|| "size not read".into(), bytes)
++            )
++        })
++        .collect()
++}
+diff --git a/crates/coder/src/task/issue_run_tests.rs b/crates/coder/src/task/issue_run_tests.rs
+index 26b24c72076a5324ac45cc453de86eb7f9f7d574..20a8608ccaa5f5fde2f2a6737b1344191e5eac5c 100644
+--- a/crates/coder/src/task/issue_run_tests.rs
++++ b/crates/coder/src/task/issue_run_tests.rs
+@@ -1104,17 +1104,23 @@ fn the_checks_build_in_a_slot_of_the_task_store() {
+         jev: None,
+         store: Some(store.clone()),
+     };
+-    let first = gate.slot(&repo).expect("a free slot");
++    let first = gate
++        .slot(&repo)
++        .expect("slot admission")
++        .expect("a free slot");
+     let root = store.parent().unwrap().join("targets");
+     assert!(first.path.starts_with(&root), "{}", first.path.display());
+     assert!(first.path.is_dir());
+     // A second check at the same time takes another slot, not the same one.
+-    let second = gate.slot(&repo).expect("another free slot");
++    let second = gate
++        .slot(&repo)
++        .expect("slot admission")
++        .expect("another free slot");
+     assert_ne!(first.path, second.path);
+     // Without a store the checks build where `confined` says.
+     let unslotted = Gate {
+         jev: None,
+         store: None,
+     };
+-    assert!(unslotted.slot(&repo).is_none());
++    assert!(unslotted.slot(&repo).unwrap().is_none());
+ }
+diff --git a/crates/coder/src/task/settings.rs b/crates/coder/src/task/settings.rs
+index 536fa8df5d1982dfc047356bd76131596b2d8e64..bdead615c01a76feaa255bd261d4bd5f8fc53d26 100644
+--- a/crates/coder/src/task/settings.rs
++++ b/crates/coder/src/task/settings.rs
+@@ -1382,6 +1412,31 @@ mod tests {
+         assert_eq!(edited.other["appearance"]["theme"], "dark");
+     }
+ 
++    /// Build slot limits are the defaults until the person sets them (#10384).
++    #[test]
++    fn slot_limits_default_until_set_and_go_back_on_default() {
++        let dir = tempfile::tempdir().unwrap();
++        let mut settings = Settings::default();
++        assert_eq!(settings.get("coder.slot_cap_gb").unwrap(), Value::Null);
++        settings
++            .set("coder.slot_cap_gb", "40 GB", dir.path())
++            .unwrap();
++        settings
++            .set("coder.slot_free_gb", "20", dir.path())
++            .unwrap();
++        assert_eq!(settings.coder.slot_cap_gb, Some(40));
++        assert_eq!(settings.coder.slot_free_gb, Some(20));
++        assert!(
++            settings
++                .set("coder.slot_cap_gb", "lots", dir.path())
++                .is_err()
++        );
++        settings
++            .set("coder.slot_cap_gb", "default", dir.path())
++            .unwrap();
++        assert_eq!(settings.coder.slot_cap_gb, None);
++    }
++
+     /// The shadow baseline is off unless the person turns it on (#10209),
+     /// and its budget is only the one they set.
+     #[test]
+diff --git a/crates/coder/src/task/targets.rs b/crates/coder/src/task/targets.rs
+index 26abb78b968d2e364b20a156c8403d927987795f..a4adc8fe5869371eba90dbafd345cb8b86ed7b30 100644
+--- a/crates/coder/src/task/targets.rs
++++ b/crates/coder/src/task/targets.rs
+@@ -228,6 +430,228 @@ fn trim(root: &Path, budget: u64) -> Result<(), Error> {
+ mod tests {
+     use super::*;
+ 
++    struct Free(u64);
++    impl Volumes for Free {
++        fn space(&self, _: &Path) -> std::io::Result<background::volume::Space> {
++            Ok(background::volume::Space {
++                device: 1,
++                free: self.0,
++                total: 1000,
++            })
++        }
++    }
++
++    fn tree(path: &Path) {
++        for profile in ["debug", "release", "aarch64-test/custom"] {
++            let profile = path.join(profile);
++            std::fs::create_dir_all(profile.join("deps")).unwrap();
++            std::fs::create_dir_all(profile.join("incremental")).unwrap();
++            std::fs::write(profile.join("incremental/cache"), [0; 20]).unwrap();
++            std::fs::write(profile.join("deps/stale.rlib"), [0; 10]).unwrap();
++            File::options()
++                .write(true)
++                .open(profile.join("deps/stale.rlib"))
++                .unwrap()
++                .set_modified(std::time::UNIX_EPOCH)
++                .unwrap();
++            std::fs::write(profile.join("deps/recent.rlib"), [0; 10]).unwrap();
++        }
++    }
++
++    #[test]
++    fn budget_eviction_keeps_slots_with_cargo_locks_in_any_profile() {
++        for profile in ["debug", "release", "aarch64-test/custom"] {
++            let dir = tempfile::tempdir().unwrap();
++            let root = dir.path().join("targets");
++            let slot = root.join("project-slot-0");
++            tree(&slot);
++            let cargo = File::create(slot.join(profile).join(".cargo-lock")).unwrap();
++            cargo.lock().unwrap();
++            trim(&root, 0).unwrap();
++            assert!(slot.join(profile).join("incremental/cache").exists());
++            drop(cargo);
++            trim(&root, 0).unwrap();
++            assert!(!slot.exists());
++        }
++    }
++
++    #[test]
++    fn policy_defaults_overrides_and_invalid_values() {
++        let defaults = Policy::read(&|_| None).unwrap();
++        assert_eq!(
++            (defaults.cap, defaults.floor, defaults.keep),
++            (25_000_000_000, 10_000_000_000, 3)
++        );
++        let custom = Policy::read(&|name| {
++            Some(
++                match name {
++                    "OPENAGENTS_SLOT_CAP_GB" => "7",
++                    "OPENAGENTS_SLOT_FREE_GB" => "2",
++                    _ => "5",
++                }
++                .into(),
++            )
++        })
++        .unwrap();
++        assert_eq!(
++            (custom.cap, custom.floor, custom.keep),
++            (7_000_000_000, 2_000_000_000, 5)
++        );
++        for value in ["bad", "-1", "18446744073709551615"] {
++            assert!(Policy::read(&|_| Some(value.into())).is_err());
++        }
++        assert!(
++            Policy::read(&|name| (name == "OPENAGENTS_SLOT_KEEP_BUILDS").then(|| "0".into()))
++                .is_err()
++        );
++    }
++
++    #[test]
++    fn pressure_prunes_incremental_and_old_deps_in_all_profiles_but_keeps_recent_deps() {
++        for (cap, free) in [(1, 100), (1000, 0)] {
++            let dir = tempfile::tempdir().unwrap();
++            tree(dir.path());
++            let cutoff = SystemTime::now() - std::time::Duration::from_secs(60);
++            prune(
++                dir.path(),
++                Policy {
++                    cap,
++                    floor: 10,
++                    keep: 3,
++                },
++                cutoff,
++                &Free(free),
++            )
++            .unwrap();
++            for profile in ["debug", "release", "aarch64-test/custom"] {
++                let profile = dir.path().join(profile);
++                assert!(!profile.join("incremental").exists());
++                assert!(!profile.join("deps/stale.rlib").exists());
++                assert!(profile.join("deps/recent.rlib").exists());
++            }
++        }
++    }
++
++    #[test]
++    fn below_limits_keeps_the_entire_build_warm() {
++        let dir = tempfile::tempdir().unwrap();
++        tree(dir.path());
++        let before = size(dir.path()).unwrap();
++        prune(
++            dir.path(),
++            Policy {
++                cap: 1000,
++                floor: 10,
++                keep: 3,
++            },
++            SystemTime::now(),
++            &Free(100),
++        )
++        .unwrap();
++        assert_eq!(size(dir.path()).unwrap(), before);
++        assert!(dir.path().join("debug/incremental/cache").exists());
++        assert!(dir.path().join("debug/deps/stale.rlib").exists());
++    }
++
++    #[test]
++    fn releasing_an_oversized_lease_prunes_before_reuse() {
++        let dir = tempfile::tempdir().unwrap();
++        let store = dir.path().join("tasks");
++        let common = dir.path().join("project/.git");
++        std::fs::create_dir_all(&common).unwrap();
++        let policy = Policy {
++            cap: 1,
++            floor: 0,
++            keep: 3,
++        };
++        let lease = Lease::acquire_with(&store, &common, policy, &Free(100)).unwrap();
++        let path = lease.path.clone();
++        tree(&path);
++        drop(lease);
++        assert!(!path.join("debug/incremental").exists());
++        assert!(!path.join("debug/deps/stale.rlib").exists());
++        assert!(path.join("debug/deps/recent.rlib").exists());
++        let lease = Lease::acquire_with(&store, &common, policy, &Free(100)).unwrap();
++        assert_eq!(lease.path, path);
++    }
++
++    #[test]
++    fn low_disk_does_not_start_even_a_warm_slot_or_overflow_slot_and_retries_when_free() {
++        let dir = tempfile::tempdir().unwrap();
++        let store = dir.path().join("tasks");
++        let common = dir.path().join("project/.git");
++        std::fs::create_dir_all(&common).unwrap();
++        let policy = Policy {
++            cap: 1000,
++            floor: 10,
++            keep: 3,
++        };
++        assert!(matches!(
++            Lease::acquire_with(&store, &common, policy, &Free(9)),
++            Err(Error::BuildDiskLow { free: 9, floor: 10 })
++        ));
++        assert!(background::view::slots(&root(&store), false).is_empty());
++        let lease = Lease::acquire_with(&store, &common, policy, &Free(10)).unwrap();
++        tree(&lease.path);
++        let live = lease.path.clone();
++        assert!(matches!(
++            Lease::acquire_with(&store, &common, policy, &Free(9)),
++            Err(Error::BuildDiskLow { .. })
++        ));
++        assert!(live.join("debug/incremental/cache").exists());
++        drop(lease);
++        assert!(Lease::acquire_with(&store, &common, policy, &Free(10)).is_ok());
++    }
++
++    #[test]
++    fn retention_keeps_only_the_last_n_build_starts_in_the_stable_lock() {
++        let dir = tempfile::tempdir().unwrap();
++        let mut lock = File::options()
++            .read(true)
++            .write(true)
++            .create_new(true)
++            .open(dir.path().join("lock"))
++            .unwrap();
++        lock.write_all(b"[1,2,3]").unwrap();
++        assert_eq!(
++            remember_build(&mut lock, 3).unwrap(),
++            std::time::UNIX_EPOCH + std::time::Duration::from_secs(2)
++        );
++        let builds = history(&mut lock).unwrap();
++        assert_eq!(builds.len(), 3);
++        assert_eq!(&builds[..2], &[2, 3]);
++    }
++
++    #[test]
++    fn pruning_never_follows_links_or_touches_a_cargo_locked_profile() {
++        let dir = tempfile::tempdir().unwrap();
++        let slot = dir.path().join("slot");
++        tree(&slot);
++        let outside = dir.path().join("outside");
++        std::fs::create_dir_all(&outside).unwrap();
++        std::fs::write(outside.join("keep"), [0; 20]).unwrap();
++        std::os::unix::fs::symlink(&outside, slot.join("linked-profile")).unwrap();
++        std::os::unix::fs::symlink(outside.join("keep"), slot.join("release/deps/link")).unwrap();
++        let cargo = File::create(slot.join("debug/.cargo-lock")).unwrap();
++        cargo.lock().unwrap();
++        prune(
++            &slot,
++            Policy {
++                cap: 0,
++                floor: 0,
++                keep: 3,
++            },
++            SystemTime::now(),
++            &Free(100),
++        )
++        .unwrap();
++        assert!(slot.join("debug/incremental/cache").exists());
++        assert!(slot.join("debug/deps/stale.rlib").exists());
++        assert!(!slot.join("release/deps/stale.rlib").exists());
++        assert!(outside.join("keep").exists());
++        assert!(slot.join("release/deps/link").is_symlink());
++    }
++
+     #[test]
+     fn sequential_tasks_reuse_and_concurrent_tasks_take_distinct_slots() {
+         let dir = tempfile::tempdir().unwrap();
+diff --git a/crates/openagents-cli/src/screen.rs b/crates/openagents-cli/src/screen.rs
+index ae78b4b754e958b96710a8c0fdfb02e005f8bb87..f4307fd26dfafdc9553c7576cf71d38d4cab5725 100644
+--- a/crates/openagents-cli/src/screen.rs
++++ b/crates/openagents-cli/src/screen.rs
+@@ -1412,3 +1433,31 @@ mod tests {
+         );
+     }
+ }
++
++#[cfg(test)]
++mod slot_row_tests {
++    #[test]
++    fn worktrees_lists_each_build_slot_with_its_size_and_never_archives_one() {
++        let slots = vec![
++            background::view::Slot {
++                name: "openagents-ab12-slot-0".into(),
++                path: "/x/openagents-ab12-slot-0".into(),
++                bytes: Some(26_000_000_000),
++            },
++            background::view::Slot {
++                name: "openagents-ab12-slot-1".into(),
++                path: "/x/openagents-ab12-slot-1".into(),
++                bytes: None,
++            },
++        ];
++        let rows = super::slot_rows(&slots);
++        assert_eq!(rows.len(), 2);
++        assert_eq!(rows[0].label, "Build slot openagents-ab12-slot-0");
++        assert_eq!(
++            rows[0].detail,
++            coder::task::worktrees::human(26_000_000_000)
++        );
++        assert_eq!(rows[1].detail, "size not read");
++        assert!(rows.iter().all(|row| row.task.is_none() && !row.ended));
++    }
++}
+diff --git a/crates/openagents-cli/src/worktree.rs b/crates/openagents-cli/src/worktree.rs
+index 36316b427e28b5280a9d3dd83f0165faf0cdefe8..7f6e9273f9989fd34919b65b35d9039e462e5d22 100644
+--- a/crates/openagents-cli/src/worktree.rs
++++ b/crates/openagents-cli/src/worktree.rs
+@@ -414,6 +422,24 @@ fn restore(output: &Output, store: &Path, name: &str) -> Result<(), String> {
+ mod tests {
+     use super::*;
+ 
++    #[test]
++    fn ls_draws_slot_sizes_even_without_worktrees_and_no_size_skips_them() {
++        let dir = tempfile::tempdir().unwrap();
++        let root = dir.path().join("targets");
++        std::fs::create_dir_all(root.join("project-slot-0/debug/deps")).unwrap();
++        std::fs::write(root.join("project-slot-0/debug/deps/cached"), [0; 100]).unwrap();
++        let slots = background::view::slots(&root, true);
++        let shown = render(&dir.path().join("worktrees"), &[], &[], &slots);
++        assert!(shown.contains("No task worktrees"));
++        assert!(shown.contains("Build slot project-slot-0 · 0 MB"));
++        let slots = background::view::slots(&root, false);
++        assert!(render(dir.path(), &[], &[], &slots).contains("size not read"));
++        assert_eq!(
++            serde_json::to_value(&slots).unwrap()[0]["bytes"],
++            Value::Null
++        );
++    }
++
+     #[test]
+     fn a_worktree_folder_names_its_task_by_the_first_twelve_characters() {
+         let tasks: BTreeMap<String, u8> = [
+@@ -456,7 +482,7 @@ mod tests {
+             "name": "openagents.spare-0123ab", "state": "spare", "bytes": null,
+             "age_seconds": 60, "unsaved": "nothing (Coder's spare)",
+         })];
+-        let text = render(Path::new("/w"), &rows, &[]);
++        let text = render(Path::new("/w"), &rows, &[], &[]);
+         assert!(text.starts_with("1 worktree in /w."), "{text}");
+         assert!(text.contains("nothing (Coder's spare)"), "{text}");
+         assert!(!text.contains("commits not on any remote"), "{text}");

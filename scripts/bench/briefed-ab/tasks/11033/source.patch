@@ -1,0 +1,331 @@
+diff --git a/crates/openagents-ui/src/catalog/shell.rs b/crates/openagents-ui/src/catalog/shell.rs
+index c16f744b2db7938d35bef603c5a26539ecf621eb..130f00c21b83ca7ede3ba250eee059e58d2ed910 100644
+--- a/crates/openagents-ui/src/catalog/shell.rs
++++ b/crates/openagents-ui/src/catalog/shell.rs
+@@ -8,9 +8,9 @@ use crate::content::CodeBlock;
+ use crate::icons::Icon;
+ use crate::overlays::MenuItem;
+ use crate::shell::{
+-    AccountMenu, AppShell, Breadcrumb, ChatList, Composer, ComposerAction, ComposerDropdown,
+-    ComposerPanel, Document, HxGet, LegalLinks, MainMode, Message, ModelPickerTrigger, NavItem,
+-    ScrollToBottom, Sidebar, SidebarSection, Theme, ThemeToggle,
++    AccountMenu, AppShell, Breadcrumb, ChatList, ChatStatus, Composer, ComposerAction,
++    ComposerDropdown, ComposerPanel, Document, HxGet, LegalLinks, MainMode, Message,
++    ModelPickerTrigger, NavItem, ScrollToBottom, Sidebar, SidebarSection, Theme, ThemeToggle,
+ };
+ 
+ /// The id `AppShell` gives its left panel. The page around the catalog has
+@@ -114,8 +114,17 @@ pub(super) fn app_shell(pane: Pane) -> Markup {
+         .section(
+             ChatList::new()
+                 .chat("Catalog review", "/ui#app-shell", true)
+-                .chat("Token audit", "/ui#colors", false)
+-                .chat("Icon sweep", "/ui#icons", false),
++                .item(
++                    NavItem::new("Fix the login redirect", "/ui#colors")
++                        .detail("acme/storefront · main")
++                        .trailing(ChatStatus::Working),
++                )
++                .item(
++                    NavItem::new("Upgrade the database driver", "/ui#icons")
++                        .detail("acme/api · deps-bump")
++                        .trailing(ChatStatus::PausedUntil("3:40 PM".into())),
++                )
++                .item(NavItem::new("Icon sweep", "/ui#icons").trailing(ChatStatus::Failed)),
+         )
+         .section(SidebarSection::new("Pinned").empty("Nothing pinned yet"))
+         .bottom(
+diff --git a/crates/openagents-ui/src/shell/layout.rs b/crates/openagents-ui/src/shell/layout.rs
+index a02c8bf3b761f12716b5b9d780e3baad6ea7ec84..82951240de2acb8c394df0b5db89e5b3d2e82baa 100644
+--- a/crates/openagents-ui/src/shell/layout.rs
++++ b/crates/openagents-ui/src/shell/layout.rs
+@@ -85,6 +85,7 @@ pub struct NavItem {
+     href: String,
+     icon: Option<Markup>,
+     current: bool,
++    detail: Option<String>,
+     trailing: Option<Markup>,
+     shortcut: Option<(String, String)>,
+     hx: Option<HxGet>,
+@@ -99,6 +100,7 @@ impl NavItem {
+             href: href.into(),
+             icon: None,
+             current: false,
++            detail: None,
+             trailing: None,
+             shortcut: None,
+             hx: None,
+@@ -129,7 +131,16 @@ impl NavItem {
+         self
+     }
+ 
+-    /// Trailing content such as a badge or a status indicator.
++    /// A quiet second line under the label, such as a chat's repository
++    /// and branch. Like the label, it is cut with an ellipsis.
++    #[must_use]
++    pub fn detail(mut self, detail: impl Into<String>) -> Self {
++        self.detail = Some(detail.into());
++        self
++    }
++
++    /// Trailing content such as a badge or a status indicator
++    /// ([`super::ChatStatus`] for a chat row).
+     #[must_use]
+     pub fn trailing(mut self, trailing: impl Render) -> Self {
+         self.trailing = Some(trailing.render());
+@@ -162,7 +173,14 @@ impl Render for NavItem {
+                     @if let Some(icon) = &self.icon {
+                         span class="oa-nav-item-icon" aria-hidden="true" { (icon) }
+                     }
+-                    span class="oa-nav-item-label" { (self.label) }
++                    @if let Some(detail) = &self.detail {
++                        span class="oa-nav-item-label oa-nav-item-label--stacked" {
++                            span class="oa-nav-item-title" { (self.label) }
++                            span class="oa-nav-item-detail" { (detail) }
++                        }
++                    } @else {
++                        span class="oa-nav-item-label" { (self.label) }
++                    }
+                     @if let Some(trailing) = &self.trailing {
+                         span class="oa-nav-item-trailing" { (trailing) }
+                     }
+diff --git a/crates/openagents-ui/src/shell/mod.rs b/crates/openagents-ui/src/shell/mod.rs
+index 775a263ddfeb50239d558e8bd27285d5c086d1c3..1b7f4ae27babb004a4a0af1dfe6f03f5f37acf84 100644
+--- a/crates/openagents-ui/src/shell/mod.rs
++++ b/crates/openagents-ui/src/shell/mod.rs
+@@ -31,6 +31,7 @@ mod composer;
+ mod glyph;
+ mod layout;
+ mod scroll;
++mod status;
+ mod theme;
+ mod thread;
+ 
+@@ -44,6 +45,7 @@ pub use layout::{
+     SIDEBAR_TOGGLE_ATTR, Sidebar, SidebarSection, sidebar_collapsed_from_cookie,
+ };
+ pub use scroll::{SCROLL_TAIL_ATTR, SCROLL_TO_BOTTOM_ATTR, ScrollToBottom};
++pub use status::ChatStatus;
+ pub use theme::{THEME_COOKIE, THEME_TOGGLE_ATTR, Theme, ThemeToggle};
+ pub use thread::{Message, MessageRole};
+ 
+diff --git a/crates/openagents-ui/src/shell/status.rs b/crates/openagents-ui/src/shell/status.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..8e7c54dc08aaea74b8a1e1d4e760ee25d57e25e3
+--- /dev/null
++++ b/crates/openagents-ui/src/shell/status.rs
+@@ -0,0 +1,73 @@
++//! The small status a chat row shows at its end (see `docs/web/sidebar.md`).
++//! Styles: the `oa-chat-status` rules in `static/components/shell.css`.
++
++use maud::{Markup, Render, html};
++
++/// What a chat is doing, in the words the sidebar shows. A chat with nothing
++/// going on shows no status at all; callers pass one only when it helps.
++///
++/// ```
++/// use maud::Render;
++/// use openagents_ui::shell::{ChatList, ChatStatus, NavItem};
++/// let html = ChatList::new()
++///     .item(
++///         NavItem::new("Fix the build", "/chat/1")
++///             .detail("openagents/openagents · main")
++///             .trailing(ChatStatus::Working),
++///     )
++///     .render()
++///     .into_string();
++/// assert!(html.contains(r#"data-status="working""#));
++/// assert!(html.contains("openagents/openagents · main"));
++/// ```
++#[derive(Clone, Debug, PartialEq, Eq)]
++pub enum ChatStatus {
++    /// An answer or a task is running now.
++    Working,
++    /// The chat needs the person: a question, an approval, or a sign-in.
++    WaitingForYou,
++    /// A task stopped for a usage limit and continues by itself; the text is
++    /// the time it continues, as the caller formats it ("3:40 PM").
++    PausedUntil(String),
++    /// A long task finished and the person has not opened the chat since.
++    Done,
++    /// The last answer or task did not finish.
++    Failed,
++}
++
++impl ChatStatus {
++    /// The `data-status` value the stylesheet colors by.
++    #[must_use]
++    pub fn key(&self) -> &'static str {
++        match self {
++            Self::Working => "working",
++            Self::WaitingForYou => "waiting",
++            Self::PausedUntil(_) => "paused",
++            Self::Done => "done",
++            Self::Failed => "failed",
++        }
++    }
++
++    /// The words shown.
++    #[must_use]
++    pub fn label(&self) -> String {
++        match self {
++            Self::Working => "Working".to_owned(),
++            Self::WaitingForYou => "Waiting for you".to_owned(),
++            Self::PausedUntil(time) => format!("Paused until {time}"),
++            Self::Done => "Done".to_owned(),
++            Self::Failed => "Failed".to_owned(),
++        }
++    }
++}
++
++impl Render for ChatStatus {
++    fn render(&self) -> Markup {
++        html! {
++            span class="oa-chat-status" data-status=(self.key()) {
++                span class="oa-chat-status-dot" aria-hidden="true" {}
++                span class="oa-chat-status-label" { (self.label()) }
++            }
++        }
++    }
++}
+diff --git a/crates/openagents-ui/static/components/shell.css b/crates/openagents-ui/static/components/shell.css
+index 21f97cceacdc24474be91e344e67a900a9e53447..190d3dbaf0477298d293460d9708261124ca447c 100644
+--- a/crates/openagents-ui/static/components/shell.css
++++ b/crates/openagents-ui/static/components/shell.css
+@@ -324,6 +324,75 @@ html:has(> body.oa-body) {
+   min-width: 0;
+ }
+ 
++/* A row with a second line (a chat's repository and branch). */
++.oa-nav-item-label--stacked {
++  display: flex;
++  flex-direction: column;
++}
++.oa-nav-item-title,
++.oa-nav-item-detail {
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++}
++.oa-nav-item-detail {
++  color: var(--color-text-tertiary);
++  font-size: var(--font-text-xs-size);
++  font-weight: var(--font-weight-normal);
++  line-height: var(--font-text-xs-line-height);
++}
++
++/* A chat's status at the end of its row: a dot and a few words. */
++.oa-chat-status {
++  display: inline-flex;
++  align-items: center;
++  gap: calc(var(--spacing) * 1);
++  color: var(--color-text-tertiary);
++  font-size: var(--font-text-xs-size);
++  line-height: var(--font-text-xs-line-height);
++  white-space: nowrap;
++}
++.oa-chat-status-dot {
++  flex: none;
++  width: 6px;
++  height: 6px;
++  border-radius: 50%;
++  background: currentcolor;
++}
++.oa-chat-status-label {
++  white-space: nowrap;
++}
++.oa-chat-status[data-status="working"] {
++  color: var(--color-text-info);
++}
++.oa-chat-status[data-status="working"] .oa-chat-status-dot {
++  animation: oa-chat-status-pulse 1.2s ease-in-out infinite;
++}
++.oa-chat-status[data-status="waiting"] {
++  color: var(--color-text-warning);
++}
++.oa-chat-status[data-status="done"] {
++  color: var(--color-text-success);
++}
++.oa-chat-status[data-status="failed"] {
++  color: var(--color-text-danger);
++}
++@keyframes oa-chat-status-pulse {
++  0%,
++  100% {
++    opacity: 1;
++  }
++
++  50% {
++    opacity: 0.3;
++  }
++}
++@media (prefers-reduced-motion: reduce) {
++  .oa-chat-status[data-status="working"] .oa-chat-status-dot {
++    animation: none;
++  }
++}
++
+ /* Bottom of the left panel: Docs (signed out), then the account. */
+ .oa-sidebar-footer {
+   display: flex;
+diff --git a/crates/openagents-web/src/pages/chat.rs b/crates/openagents-web/src/pages/chat.rs
+index 5eb372441ebb35d3721101a9cd7c1594fc62def0..4348da8d2ccdf36a84c8bfc22c79ddd026d2d16a 100644
+--- a/crates/openagents-web/src/pages/chat.rs
++++ b/crates/openagents-web/src/pages/chat.rs
+@@ -20,8 +20,8 @@ use openagents_ui::content::MarkdownRoot;
+ // use openagents_ui::icons::Icon;
+ // use openagents_ui::shell::{ComposerAction, ModelPickerTrigger};
+ use openagents_ui::shell::{
+-    Breadcrumb, ChatList, Composer, HxGet, Message as ThreadMessage, NavItem, ScrollToBottom,
+-    composer_panel_host,
++    Breadcrumb, ChatList, ChatStatus, Composer, HxGet, Message as ThreadMessage, NavItem,
++    ScrollToBottom, composer_panel_host,
+ };
+ use serde::Deserialize;
+ use sha2::{Digest, Sha256};
+@@ -821,8 +821,14 @@ pub(crate) async fn chat_list(
+         }
+     };
+     list.items(rows.iter().map(|row| {
+-        let item = NavItem::new(row.title.clone(), format!("/chat/{}", row.id))
++        let mut item = NavItem::new(row.title.clone(), format!("/chat/{}", row.id))
+             .current(current == Some(row.id.as_str()));
++        if let Some(detail) = row_detail(row) {
++            item = item.detail(detail);
++        }
++        if let Some(status) = row_status(row) {
++            item = item.trailing(status);
++        }
+         if hx {
+             item.hx(HxGet::new(format!("/chat/{}/workspace", row.id))
+                 .target("#chat-content")
+@@ -834,6 +840,29 @@ pub(crate) async fn chat_list(
+     }))
+ }
+ 
++/// A chat row's second line: the repository and branch it was started
++/// with. The list is the owner's own, so the names never reach anyone else.
++fn row_detail(chat: &Conversation) -> Option<String> {
++    let source = chat.selection.as_ref()?.repository.as_ref()?;
++    Some(if source.branch.is_empty() {
++        source.repository.clone()
++    } else {
++        format!("{} · {}", source.repository, source.branch)
++    })
++}
++
++/// A chat row's status: "Working" while an answer runs, "Failed" when the
++/// last one did not finish, and nothing otherwise (see `docs/web/sidebar.md`).
++fn row_status(chat: &Conversation) -> Option<ChatStatus> {
++    if chat.pending.is_some() {
++        return Some(ChatStatus::Working);
++    }
++    match chat.requests.last()?.outcome {
++        Outcome::Failed => Some(ChatStatus::Failed),
++        _ => None,
++    }
++}
++
+ /// The chat's hidden composer fields. With `oob` they replace the page's
+ /// copies, and the selector row (`selectors`, when the composer shows it,
+ /// see [`crate::composer::selectors_shown`]) is replaced too.

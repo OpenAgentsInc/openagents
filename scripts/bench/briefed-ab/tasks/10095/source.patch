@@ -1,0 +1,513 @@
+diff --git a/INVARIANTS.md b/INVARIANTS.md
+index 5c765491ccceb20174963b9c7efee3f685f36e41..f2111e5716b6b82d14b07887737d4376172b4d46 100644
+--- a/INVARIANTS.md
++++ b/INVARIANTS.md
+@@ -43,7 +43,7 @@ update this file in the same change and name the test that checks it.
+ | A Coder start honors the coding engine the person asked for. The chat router reads it as a typed Jev `engine` Choice over a closed list (Codex, Claude Code, Grok Build, OpenCode, Devin, or none), never by matching words, and a dispatch offer names it (NIP-CJ `run_coder` `engine`) only at `ENGINE_CONFIDENCE` (0.70); an unsure reading is no preference, and no other route's reply carries one. The desktop's local run, `openagents chat`, a host's `thread.run` or handoff, and the phone's **Run Coder** in its own chat (NIP-HOST `task.create` `engine`, sent only to a host whose presence advertises `task-engine`; an older host gets the request without it and runs its default) read it from the reply's typed offer (`openagents_chat::delegation::requested`), never from text, and put that engine's routes first (`Policy::preferring`). They fall back only when it is not signed in, is refused for a limit or near its usage threshold, or is not among the engines the owner's settings allow, and the start card and the prediction say so in plain words: "You asked for Claude Code; it reached its usage limit until …, so Codex is running." (for a phone's task, its summary headline while it runs, `coder_host::Note::Requested`). Every later turn of that task asks for it again. The engine is told the request is settled, never handed it as its task: every one of those surfaces starts from the same handoff (`openagents_chat::delegation::prompt`), whose routing section (`delegation::routing`) says the person asked for that engine, that OpenAgents already started the run, so the request is done (it is that engine, or that engine could not run here and the person was told why and which runs instead), that its job is the person's task, never starting another coding engine's command line (`claude`, `codex`, …) or asking for its login, and that a message asking for nothing beyond the delegation itself gets a small, harmless check of the project; each model step is told which engine it runs as (`microcoder::repository::engine_system`), after a failover too. Whether a message asks for more than the delegation is the engine's own reading, never matched from words. | New on 2026-09-30 ([#10076](https://github.com/OpenAgentsInc/openagents/issues/10076)); the phone's own chat the same day ([#10081](https://github.com/OpenAgentsInc/openagents/issues/10081)). Widened on 2026-10-01 ([#10084](https://github.com/OpenAgentsInc/openagents/issues/10084)): the release gate's "do a test delegation to claude" started Coder on Claude Code with the message as its only task, so it ran the `claude` command line in its sandbox, hit its login, and waited on a credentials question. Model boundary: a host's `thread.run` reads its run from the owner's auto-start policy, and its prediction from this computer's settings, which can differ, as before. | `a_dispatch_names_the_engine_the_person_asked_for` (`router::policy`), `the_engine_reading_is_a_listed_engine_or_nothing` (`router::judge`), `the_engine_the_person_asked_for_runs_first_or_says_why_not` (`task::local`), `a_preferred_provider_goes_first_only_when_admitted` (`task::autostart`) in `crates/coder`; `a_run_coder_engine_is_a_closed_word_or_absent` in `crates/nostr`; `a_runner_states_the_engine_the_person_asked_for`, `the_prediction_puts_the_requested_engine_first`, `a_run_coder_offer_keeps_the_engine_asked_for` in `crates/openagents-chat`; `a_start_carries_the_engine_the_person_asked_for` in `crates/openagents-chat-app`; `a_requested_engine_is_additive_and_closed` in `crates/coder-access`; `a_requested_engine_note_says_plainly_why_another_runs` and the phone's handoff in `a_phone_runs_coder_from_a_host_threads_offer` (`tests/threads.rs`) in `crates/coder-host`; `the_prompt_says_the_routing_is_done_and_what_the_task_is` (`delegation`) in `crates/openagents-chat`; `a_capacity_refusal_fails_over_to_the_next_admitted_route_and_is_recorded` (each step's engine) in `crates/microcoder`; `the_cli_handoff_tells_the_engine_the_routing_is_done` in `crates/openagents-cli`; `coder_offer_dispatch_and_binding_mount_at_default_and_minimum_sizes` in `crates/openagents-desktop`; `desktop_handoff_keeps_the_phone_prompt_project_policy_and_restart_identity` in `crates/coder/tests/desktop_local_coder.rs`; `a_phone_asks_the_computer_for_the_engine_the_person_named` in `crates/coder/tests/phone_engine.rs`; `run_coder_asks_the_computer_for_the_engine_the_offer_named` in `crates/openagents-mobile` |
+ | A local run that works a GitHub issue (the issue flow, `coder::task::issue_run`) starts only after the chat router judged the message is coding work and Jev chose the issue among the references the messages name; the reference is a bounded field. Its worktree is made from the fetched default branch (`origin/main` here), not the checkout's `HEAD`, and the checkout still changes only by Git's record of the worktree. It pushes only a change whose repository checks (the touched packages' tests in a write boundary with credentials withheld, the diff checks, and `cargo fmt --check` and Clippy when `.openagents/coder-issues.json` asks) passed on that exact change: a rebase onto a newer branch runs them again, and a red check, a conflict, a question, a failure ending, or a stop pushes nothing and leaves an honest comment (with how far the run got: the worktree's diff stat against its base) and the issue open. A turn that ends on its own step or time limit is continued in the same worktree, never a new one, only when the loop's own judgments of its last five judged steps average `progress` at least 0.5 and `repeating` below 0.5, and at most the policy's `continue_turns` times across the flow (default 2), so a flow runs at most `1 + fix_rounds + continue_turns` turns; a repeating, unjudged, or otherwise failed turn fails as before. A continuation changes no check, no landing rule, and no stop. It lands as the repository's policy says (`main`, or a pull request, the default without a policy), and closes the issue only after it landed on the default branch. GitHub is reached only through the person's own `gh`; nothing reads, stores, or prints a token. | New on 2026-09-30 ([#10049](https://github.com/OpenAgentsInc/openagents/issues/10049)), owner-directed: the owner delegates this repository's issues to Coder and this repository works on `main`. Relaxed on 2026-09-30 ([#10063](https://github.com/OpenAgentsInc/openagents/issues/10063)): a turn out of budget while progressing no longer ends the flow; before, every `loop_incomplete` failed it. Model boundary: the checks are the repository's targeted checks, not the release gate, a flow's process must outlive it (closing it mid-flow leaves the claim without an ending comment), and the progress signal is Jev's judgment, so a run Jev misjudges as progressing spends its continuation turns and then fails. | `an_issue_lands_on_main_with_evidence_and_closes`, `red_checks_push_nothing_and_say_why_on_the_issue`, `a_progressing_run_past_its_step_limit_continues_and_lands`, `a_repeating_run_past_its_step_limit_fails_without_continuing`, `continuation_turns_stop_at_the_policys_bound` in `crates/microcoder/src/repository/tests.rs`; `a_recent_claim_holds_until_it_is_released_or_old`, `the_last_ending_carries_the_issue_and_what_the_flow_did`, `this_repository_lands_on_main_with_its_checks`, `momentum_reads_the_last_judged_steps_and_the_ending`, `only_a_progressing_run_out_of_budget_continues_within_the_bound` in `crates/coder/src/task/issue_run_tests.rs` |
+ | An image reaches a Coder task only as its exact bytes on the computer that runs the task. A device sends it with NIP-HOST `artifact.put` (needs `operate`): sequential chunks of at most 32 KiB, each naming the image's SHA-256 digest, type, and size; only PNG and JPEG (by signature), at most 8 MiB an image and 4 a task, at most 8 unclaimed uploads a device, each dropped after a day. The host keeps uploads per device (`uploads/<device>/` in the task store), checks the whole image against its digest and type when the last byte arrives, and drops a mismatch. A chunk is idempotent where the host keeps it, so its reply is not retained (a resend answers what is held, a conflicting resend is refused). `task.create` names images only by digest; the host binds only complete images that same device sent (a retried create finds the task's copy), keeps them at `media/<task>/<hex>` (`0600`), and the task's intent names them, so the execution grant, which binds the intent's digest, admits exactly those bytes. A desktop chat's local run keeps them the same way (`Local::start_with_images`). The engine reads them back checked against their digests before any model call and passes them natively on every step: Codex as Responses `input_image` data URLs, Claude Code as `stream-json` base64 `image` blocks. Whole-agent routes (Devin, OpenCode, Grok Build) take no images: they are left out of an image task's routes with the reason recorded, and a task no remaining route can serve, or whose bytes differ, ends refused before any model call; a local run whose first route cannot take images is refused before anything is saved. Evidence records each image by digest, type, and size, never its bytes. | New on 2026-09-30 ([#10066](https://github.com/OpenAgentsInc/openagents/issues/10066)). | `chunks_carry_the_exact_bytes_and_validate`, `oversized_and_unsupported_images_are_refused_before_send`, `send_resumes_where_the_host_holds` in `crates/coder-access`; `chunks_reach_the_task_as_exact_bytes_and_retries_change_nothing`, `a_digest_or_type_mismatch_is_dropped_and_bounds_hold`, `attached_images_are_kept_with_the_task_and_named_by_its_intent` in `crates/coder`; the relay step of `host_serve_composes_access_reach_terminals_and_the_task_inbox` (`crates/coder/tests/host_serve.rs`) and `enroll_discover_connect_fall_back_catch_up_and_revoke` (`crates/coder-host`); `attached_images_reach_the_codex_engine_as_their_exact_bytes`, `a_task_whose_image_bytes_changed_is_refused_before_any_model_call`, `whole_agent_routes_are_left_out_of_a_task_with_images` in `crates/microcoder`; `attached_images_reach_claude_code_as_their_exact_bytes`, `evidence_keeps_digests_not_bytes` in `crates/microcoder-loop` |
+-| The hosted chat conversation (NIP-CJ) never carries an image. A send (typed, a follow-up, or a suggestion) from a chat whose draft holds images sends only its words to the router (`Session::submit`, the phone's `CoderTab::submit`; the wire `Send` has no image field) and binds the images, still in the draft, to that message by its request ID (`attachments::Drafts::bind`). The reply to that message settles them (`Drafts::settle`), judged only by the router's typed offer or the computer lane on a `work.dispatch`-routed reply (`openagents_chat::delegation::offered`), never by the words: a reply that offers Coder leaves them in the draft for the start it leads to (the desktop's `coder.start: at_once` start, or **Run Coder**); any other reply, or a stopped one, keeps them in the draft and says images go only to Coder. Routes that carry words only (a running Coder task's chat, a computer's own thread, the host's `RunCoder` handoff) refuse a send whose draft holds images and keep the words and images. A draft's images leave the device only with an explicit start of Coder from that chat (**Run Coder**, or the desktop's coding reply that starts it), to the computer that runs it (the phone's ready host over NIP-HOST, the desktop's own local run), both built from `attachments::Drafts::uploads`, which refuses an image that is not PNG or JPEG or over 8 MiB before anything is sent. The draft lets its images go only when the start is accepted; a refused start, a failed upload, or a lost answer keeps them (a retry after a lost answer may start a second task until G05 keeps submissions). | New on 2026-09-30 ([#10066](https://github.com/OpenAgentsInc/openagents/issues/10066)). Relaxed the same day ([#10070](https://github.com/OpenAgentsInc/openagents/issues/10070)): a send with images no longer refuses; it sends the words and binds the images, which still go only to Coder. Phone attachments are off as of 2026-10-01 ([#10093](https://github.com/OpenAgentsInc/openagents/issues/10093)): `coder_tab::ATTACHMENTS_ENABLED` is `false`, so the phone chat shows no attach control, never asks its host for a photo, drops an image handed to it without a notice, and sends a draft's words only (no images with the message or with **Run Coder**); the packet's `attachments` is `false`, so the iOS and Android hosts mount no photo picker and their composers paste text only. The pipeline above is unchanged and still serves the desktop; the phone's pipeline tests turn the switch on (`CoderTab::set_attachments`). Model boundary: the images in the draft when the start happens are the ones that go, so an image the person adds or removes after sending changes what goes; images bound in a chat not shown on the desktop settle when it is shown. | `validates_previews_and_preserves_drafts_when_the_route_is_text_only`, `a_coding_route_carries_the_exact_draft_bytes_and_keeps_the_draft`, `a_reply_settles_the_images_bound_to_its_message` in `crates/openagents-chat-app` (`attachments`), `a_send_with_images_sends_only_its_words_and_binds_the_images` (`session`); `one_send_with_words_and_a_screenshot_runs_coder_with_its_bytes`, `run_coder_delivers_the_drafts_images_and_keeps_them_when_refused_or_lost`, `unsupported_and_oversized_images_are_refused_before_send`, `attached_images_show_as_shared_image_nodes_and_are_not_dropped`, `the_phone_chat_is_text_only_with_no_attach_control`, `a_restored_draft_with_images_sends_its_words_only` in `crates/openagents-mobile`; `one_send_with_words_and_a_screenshot_starts_coder_with_its_bytes`, `a_reply_that_is_not_coding_keeps_the_images`, `ask_first_and_run_coder_carry_the_images_sent_with_the_message`, `a_run_carries_the_drafts_images_and_keeps_them_until_accepted` in `crates/openagents-desktop` (lib, `chat`); `a_chat_runs_start_keeps_the_screenshots_exact_bytes_for_the_engine` (bin, `worker`) |
++| The hosted chat conversation (NIP-CJ) never carries an image. A send (typed, a follow-up, or a suggestion) from a chat whose draft holds images sends only its words to the router (`Session::submit`, the phone's `CoderTab::submit`; the wire `Send` has no image field) and binds the images, still in the draft, to that message by its request ID (`attachments::Drafts::bind`). The reply to that message settles them (`Drafts::settle`), judged only by the router's typed offer or the computer lane on a `work.dispatch`-routed reply (`openagents_chat::delegation::offered`), never by the words: a reply that offers Coder leaves them in the draft for the start it leads to (the desktop's `coder.start: at_once` start, or **Run Coder**); any other reply, or a stopped one, keeps them in the draft and says images go only to Coder. Routes that carry words only (a running Coder task's chat, a computer's own thread, the host's `RunCoder` handoff) refuse a send whose draft holds images and keep the words and images. A draft's images leave the device only with an explicit start of Coder from that chat (**Run Coder**, or the desktop's coding reply that starts it), to the computer that runs it (the phone's ready host over NIP-HOST, the desktop's own local run), both built from `attachments::Drafts::uploads`, which refuses an image that is not PNG or JPEG or over 8 MiB before anything is sent. The draft lets its images go only when the start is accepted; a refused start, a failed upload, or a lost answer keeps them (a retry after a lost answer may start a second task until G05 keeps submissions). | New on 2026-09-30 ([#10066](https://github.com/OpenAgentsInc/openagents/issues/10066)). Relaxed the same day ([#10070](https://github.com/OpenAgentsInc/openagents/issues/10070)): a send with images no longer refuses; it sends the words and binds the images, which still go only to Coder. Phone attachments are off as of 2026-10-01 ([#10093](https://github.com/OpenAgentsInc/openagents/issues/10093)): `coder_tab::ATTACHMENTS_ENABLED` is `false`, so the phone chat shows no attach control, never asks its host for a photo, drops an image handed to it without a notice, and sends a draft's words only (no images with the message or with **Run Coder**); the packet's `attachments` is `false`, so the iOS and Android hosts mount no photo picker and their composers paste text only. Desktop attachments are off too as of 2026-10-01 ([#10095](https://github.com/OpenAgentsInc/openagents/issues/10095)), behind the same switch so both apps turn back on together: the desktop composer (`chat::Panel`) shows no attach control or image cards, opens no image picker, pastes text only (Command-V is the field's text paste), drops a dropped image without a notice (a dropped document or folder still puts its path in the words), and drops any images a draft still holds before a send, a Coder task's message, or a local Coder start, so a restored draft sends its words only. Attachments are off everywhere. The pipeline above is unchanged and kept for when the switch is turned back on; the phone's and the desktop's pipeline tests turn it on (`CoderTab::set_attachments`, `Panel::set_attachments`). Model boundary: the images in the draft when the start happens are the ones that go, so an image the person adds or removes after sending changes what goes; images bound in a chat not shown on the desktop settle when it is shown. | `validates_previews_and_preserves_drafts_when_the_route_is_text_only`, `a_coding_route_carries_the_exact_draft_bytes_and_keeps_the_draft`, `a_reply_settles_the_images_bound_to_its_message` in `crates/openagents-chat-app` (`attachments`), `a_send_with_images_sends_only_its_words_and_binds_the_images` (`session`); `one_send_with_words_and_a_screenshot_runs_coder_with_its_bytes`, `run_coder_delivers_the_drafts_images_and_keeps_them_when_refused_or_lost`, `unsupported_and_oversized_images_are_refused_before_send`, `attached_images_show_as_shared_image_nodes_and_are_not_dropped`, `the_phone_chat_is_text_only_with_no_attach_control`, `a_restored_draft_with_images_sends_its_words_only` in `crates/openagents-mobile`; `one_send_with_words_and_a_screenshot_starts_coder_with_its_bytes`, `a_reply_that_is_not_coding_keeps_the_images`, `ask_first_and_run_coder_carry_the_images_sent_with_the_message`, `a_run_carries_the_drafts_images_and_keeps_them_until_accepted`, `a_restored_draft_with_images_sends_its_words_only`, `run_coder_carries_no_images_while_attachments_are_off` in `crates/openagents-desktop` (lib, `chat`); `the_desktop_is_text_only_while_attachments_are_off` (bin, `shell`); the release gate's `ui-no-attach`; `a_chat_runs_start_keeps_the_screenshots_exact_bytes_for_the_engine` (bin, `worker`) |
+ | No Coder run, check, or take deletes, moves, or rewrites the person's engine credential file or the file a link names. Every Codex readiness check and every run resolve the login the same way, `$CODEX_HOME/auth.json` when `CODEX_HOME` is set, else `~/.codex/auth.json` (`codex_transport::codex::Login::default_path`), and a launcher that clears the engine's environment passes `CODEX_HOME` on. A take (`Login::take_copy`, `CODER_ONE_CODEX_LOGIN=take`, `microluna --take-login`) needs `CODEX_HOME` naming the run's private home (never `~/.codex`), removes only a regular file there, which is the run's own copy, and refuses a link, leaving the link and its target as they were. Claude Code's credential is only read (presence, or the typed token for a usage probe), never removed or rewritten. | New on 2026-09-30 ([#10083](https://github.com/OpenAgentsInc/openagents/issues/10083)): before, a take removed a link's target, the person's real login when `auth.json` was a dotfiles link, and the engine process never saw `CODEX_HOME`, so a run looked only in `~/.codex` after its readiness check had found the login under `CODEX_HOME`. | `a_linked_login_is_refused_and_neither_the_link_nor_its_file_is_touched`, `taking_the_runs_copy_removes_only_that_copy` in `crates/codex-transport`, `a_linked_login_stops_the_run_and_the_persons_file_stays`, `the_persons_own_login_is_never_taken`, `the_run_removes_its_copy_of_the_login_before_it_fails` in `crates/coder-one/tests/codex_login.rs`, `a_run_admitted_from_codex_home_finds_the_same_login` in `crates/coder/tests/codex_home.rs` |
+ 
+ See [the auto-start guide](docs/coder/runtime/host-autostart.md).
+diff --git a/bins/openagents-ios/docs/chat-later.md b/bins/openagents-ios/docs/chat-later.md
+index 2969c3124da181148f4b2a2e4017b560ae3e5ef1..24a08d27d3c760ca94c022cb69bd8e68368691e4 100644
+--- a/bins/openagents-ios/docs/chat-later.md
++++ b/bins/openagents-ios/docs/chat-later.md
+@@ -42,7 +42,7 @@ what each needs before it can work. None of them are built.
+ 
+ | Feature | What it needs |
+ | --- | --- |
+-| Photo attachments: library and camera pickers, drag and drop, an attachment strip, size limits | The image pipeline exists (NIP-HOST `artifact.put`, #10066 and #10070) and the desktop uses it. The phone shipped a photo picker on it, then turned attachments off on 2026-10-01 (#10093): its chat is text only until `coder_tab::ATTACHMENTS_ENABLED` is turned back on. |
++| Photo attachments: library and camera pickers, drag and drop, an attachment strip, size limits | The image pipeline exists (NIP-HOST `artifact.put`, #10066 and #10070). The phone and the desktop shipped attachments on it, then turned them off on 2026-10-01 (#10093, #10095): both chats are text only until `coder_tab::ATTACHMENTS_ENABLED` is turned back on. |
+ | Large pastes turned into attachments | The same attachment path, after phone attachments are back on. |
+ | Voice dictation with Apple speech recognition | Only native work and a microphone permission string; no backend change. |
+ | Model and traits picker | The host's auto-start policy fixes the model today (`coder host autostart --model`). A per-task model needs a `task.create` field the policy admits. |
+diff --git a/crates/openagents-chat-app/src/attachments.rs b/crates/openagents-chat-app/src/attachments.rs
+index 50bd3d55987ddd15ae5e5311a7316e1b527adf99..3ba137fd0c9df4f38351308b5b3ca5b3afe55abd 100644
+--- a/crates/openagents-chat-app/src/attachments.rs
++++ b/crates/openagents-chat-app/src/attachments.rs
+@@ -124,6 +124,10 @@ pub struct Drafts {
+     bound: BTreeMap<String, String>,
+ }
+ impl Drafts {
++    /// No conversation's draft holds an image or a binding.
++    pub fn is_empty(&self) -> bool {
++        self.images.values().all(Vec::is_empty) && self.bound.is_empty()
++    }
+     pub fn get(&self, chat: &str) -> &[Image] {
+         self.images.get(chat).map_or(&[], Vec::as_slice)
+     }
+diff --git a/crates/openagents-chat-app/src/coder_tab.rs b/crates/openagents-chat-app/src/coder_tab.rs
+index fb9166a3898aea879c8861d544e4058be7a6dc21..8428cd6569dcee5c5388bc074bda4425d03a80e1 100644
+--- a/crates/openagents-chat-app/src/coder_tab.rs
++++ b/crates/openagents-chat-app/src/coder_tab.rs
+@@ -455,14 +455,17 @@ pub struct CoderTab {
+ /// The most turns an open basic conversation shows at first.
+ const TALK_TURNS: usize = 200;
+ 
+-/// Phone attachments (#10093): off as of 2026-10-01, so the phone is text
+-/// only. The chat shows no attach control, never asks the host for a photo
++/// Attachments, everywhere (#10093 phone, #10095 desktop): off as of
++/// 2026-10-01, so the phone and the desktop are text only. The phone chat
++/// shows no attach control, never asks the host for a photo
+ /// ([`Go::PickImage`]), drops an image the host hands it
+ /// ([`CoderTab::attach_image`]) without a notice, and sends a draft's words
+ /// only, dropping any images it still holds. Hosts mount their photo picker
+-/// only while the packet says attachments are on. The shared image pipeline
+-/// (`crate::attachments`, #10066/#10070) is unchanged and still serves the
+-/// desktop; set this to `true` to turn phone attachments back on.
++/// only while the packet says attachments are on. The desktop composer reads
++/// this same switch: no attach control or image picker, text-only paste, a
++/// dropped image dropped, and a draft's words only. The shared image
++/// pipeline (`crate::attachments`, #10066/#10070) is unchanged; set this to
++/// `true` to turn attachments back on in both apps.
+ pub const ATTACHMENTS_ENABLED: bool = false;
+ 
+ impl CoderTab {
+diff --git a/crates/openagents-desktop/README.md b/crates/openagents-desktop/README.md
+index ddf0e13b08228b9ec0e79859c9f6fdfe7de5223f..df5cdc5e5ecfa8ce1a334036da68a4ee53ebf4a4 100644
+--- a/crates/openagents-desktop/README.md
++++ b/crates/openagents-desktop/README.md
+@@ -19,7 +19,7 @@ verification record; owner-only checks are in the workspace `NEEDS_OWNER.md`.
+ 
+ | Feature | Platforms | Limits | Record |
+ | --- | --- | --- | --- |
+-| Chat: persisted chats, streaming hosted replies, stop and retry, Markdown and code, image drafts, search, pin, archive, rename, command palette | macOS, Linux, Windows | Hosted chat sends text only; an image draft is kept and Send is refused | [closeout](../../docs/desktop/verification/2026-09-30-basic-chat-closeout/verification.md) |
++| Chat: persisted chats, streaming hosted replies, stop and retry, Markdown and code, search, pin, archive, rename, command palette | macOS, Linux, Windows | Text only: attachments are off as of 2026-10-01 ([#10095](https://github.com/OpenAgentsInc/openagents/issues/10095)). The composer has no attach control, a pasted or dropped image is dropped, and a dropped document puts only its path in the message | [closeout](../../docs/desktop/verification/2026-09-30-basic-chat-closeout/verification.md) |
+ | Coder from chat: live events, stop, steer, queue, questions, approvals, saved Codex and Claude Code sessions, engine and usage, **What changed** diff pane | macOS, Linux, Windows | Saved-session browsing reads `.codex` and `.claude` on macOS and Linux only; the diff pane is read-only | [local Coder](../../docs/desktop/local-coder.md) |
+ | Gym and evals in chat: the phone's cards and sheets, the shared hosted runner, runs kept in an encrypted store | Cards: macOS, Linux, Windows. Runner and saved runs: macOS, Linux | The trainer key is the Grid's world key, which Windows does not have (`chat_gym` is not built there) | [Gym cards](../../docs/desktop/verification/2026-09-30-gym-cards/verification.md) |
+ | Settings: Appearance (Reduce motion), Text size, Keyboard shortcuts, Notifications, Phones and computers, Archived chats | macOS, Linux, Windows | Dark only; there is no light theme. | [settings](../../docs/desktop/verification/2026-09-30-settings/README.md) |
+diff --git a/crates/openagents-desktop/src/acceptance.rs b/crates/openagents-desktop/src/acceptance.rs
+index 2bb4e822de6a1372612700c19fa32808b4cfc7f8..3c0bd913e4a76361652e7e4679b3190ada3aa346 100644
+--- a/crates/openagents-desktop/src/acceptance.rs
++++ b/crates/openagents-desktop/src/acceptance.rs
+@@ -50,7 +50,7 @@ pub const SCENARIOS: [&str; 17] = [
+     "delegate-claude",
+     "delegate-grok",
+     "ui-stop-coder",
+-    "image-to-coder",
++    "ui-no-attach",
+     "open-deck",
+     "ui-filter-sessions",
+     "ui-no-verse",
+@@ -184,7 +184,7 @@ pub fn run(dir: &Path, only: Option<&str>) -> Result<bool, String> {
+             "delegate-claude" => delegate_claude(&mut gate),
+             "delegate-grok" => delegate_grok(&mut gate),
+             "ui-stop-coder" => ui_stop_coder(&mut gate),
+-            "image-to-coder" => image_to_coder(&mut gate),
++            "ui-no-attach" => ui_no_attach(&mut gate),
+             "open-deck" => open_deck(&mut gate),
+             "ui-filter-sessions" => ui_filter(&mut gate),
+             "ui-no-verse" => ui_no_verse(&mut gate),
+@@ -1240,15 +1240,30 @@ fn contradicts_readings(gate: &Gate, reason: &str) -> Option<String> {
+     None
+ }
+ 
+-/// Text plus a PNG in one send: the words go to chat, the image's exact
+-/// bytes reach the Coder run (#10066, #10070).
+-fn image_to_coder(gate: &mut Gate) -> Outcome {
+-    if let Some(skip) = gate.need(true, false) {
+-        return skip;
++/// The desktop is text only (#10095, the switch the phone shares, #10093):
++/// the composer has no attach control, and an image dropped on the window
++/// or pasted is dropped quietly; the draft stays words only.
++fn ui_no_attach(gate: &mut Gate) -> Outcome {
++    if gate.panel().attachments_enabled() {
++        return Err("attachments are on: the desktop should be text only".into());
++    }
++    new_chat(gate, "ui-no-attach")?;
++    let mut problems = Vec::new();
++    for (file, width, height, scale) in [
++        ("composer-1200x840-2x", 1200.0, 840.0, 2.0),
++        ("composer-760x540-1x", 760.0, 540.0, 1.0),
++    ] {
++        let (_, scene) = gate.capture("ui-no-attach", file, width, height, scale);
++        if !scene.hits.iter().any(|hit| hit.key == "chat-send") {
++            problems.push(format!("no Send control ({file})"));
++        }
++        for key in ["chat-attach", "chat-paste-image"] {
++            if scene.hits.iter().any(|hit| hit.key == key) {
++                problems.push(format!("the composer shows {key} ({file})"));
++            }
++        }
+     }
+-    const ASK: &str =
+-        "Add one line to NOTES.md that says which two colors the attached image shows.";
+-    let chat = new_chat(gate, "image-to-coder")?;
++    // An image dropped on the window, as from the Finder.
+     let image = openagents_chat_app::attachments::Image::pixels(
+         64,
+         32,
+@@ -1262,72 +1277,44 @@ fn image_to_coder(gate: &mut Gate) -> Outcome {
+             })
+             .collect(),
+     )?;
+-    let path = gate.evidence("image-to-coder").join("attached.png");
++    let path = gate.evidence("ui-no-attach").join("dropped.png");
+     std::fs::write(&path, image.bytes.as_slice()).map_err(|e| e.to_string())?;
+-    let bytes = image.bytes.to_vec();
+     gate.app.dropped_file(path, Instant::now());
+-    if !pump(gate, Duration::from_secs(10), |gate| {
++    // A pasted image, through the composer's image paste (no clipboard is
++    // read while attachments are off).
++    gate.app.activate(
++        Intent::Chat {
++            action: openagents_desktop::chat_action::Action::PasteImage,
++        },
++        Instant::now(),
++    );
++    // Give a read the time it would take; nothing may arrive.
++    pump(gate, Duration::from_secs(3), |gate| {
+         !gate.panel().images().is_empty()
+-    }) {
+-        return Err("the dropped PNG never reached the draft".into());
++    });
++    let panel = gate.panel();
++    if !panel.images().is_empty() {
++        problems.push(format!(
++            "{} image(s) reached the draft",
++            panel.images().len()
++        ));
+     }
+-    let reply = send(gate, ASK)?;
+-    let seen = follow_run(gate, &chat, true);
+-    gate.save_chat("image-to-coder");
+-    let mut problems = Vec::new();
+-    // Only the words went to the hosted chat.
+-    let snapshot = gate.panel().state().cloned().unwrap_or_default();
+-    match snapshot
+-        .turns
+-        .iter()
+-        .rev()
+-        .find(|turn| turn.role == Role::User)
+-    {
+-        Some(turn) if turn.text.trim() == ASK => {}
+-        Some(turn) => problems.push(format!(
+-            "the chat got {:?}, not the words",
+-            excerpt(&turn.text)
+-        )),
+-        None => problems.push("the message is not in the chat".into()),
+-    }
+-    let _ = reply;
+-    let store = coder::task::local::default_store();
+-    match &seen.task {
+-        Some(task) => {
+-            let media = store.join(coder::task::media::MEDIA_DIR).join(task);
+-            let kept: Vec<Vec<u8>> = std::fs::read_dir(&media)
+-                .map(|entries| {
+-                    entries
+-                        .filter_map(Result::ok)
+-                        .filter_map(|entry| std::fs::read(entry.path()).ok())
+-                        .collect()
+-                })
+-                .unwrap_or_default();
+-            if !kept.contains(&bytes) {
+-                problems.push(format!(
+-                    "the task holds no byte-exact copy of the image ({} files in {})",
+-                    kept.len(),
+-                    media.display()
+-                ));
+-            }
+-        }
+-        None => problems.push(format!(
+-            "Coder did not start with the image: {}",
+-            seen.failure.clone().unwrap_or_default()
+-        )),
++    if let Some(notice) = panel.notice() {
++        problems.push(format!("a notice showed: {notice:?}"));
+     }
+-    if let Some(failure) = &seen.failure
+-        && seen.task.is_some()
++    if !panel.draft().is_empty() {
++        problems.push(format!("the draft took {:?}", excerpt(panel.draft())));
++    }
++    let (_, scene) = gate.capture("ui-no-attach", "after-drop-1200x840-2x", 1200.0, 840.0, 2.0);
++    if scene
++        .hits
++        .iter()
++        .any(|hit| hit.key.starts_with("image-remove-") || hit.key == "chat-attach")
+     {
+-        problems.push(format!("Coder: {failure}"));
++        problems.push("an image card or attach control shows after the drop".into());
+     }
+     if problems.is_empty() {
+-        Ok(format!(
+-            "words to chat, image ({} bytes) kept byte-exact with task {} on {}",
+-            bytes.len(),
+-            seen.task.unwrap_or_default(),
+-            seen.started.map(|s| s.provider).unwrap_or_default()
+-        ))
++        Ok("no attach control at 1200x840 or 760x540; a dropped PNG and an image paste were dropped quietly, draft empty; captures composer-*.png, after-drop-1200x840-2x.png".into())
+     } else {
+         Err(problems.join("; "))
+     }
+diff --git a/crates/openagents-desktop/src/chat.rs b/crates/openagents-desktop/src/chat.rs
+index 8354e917bb69c42d5bd5ebae45e04c6ead63168a..b9c8ae434af5523faa59b2ea01ffa1d26189b68d 100644
+--- a/crates/openagents-desktop/src/chat.rs
++++ b/crates/openagents-desktop/src/chat.rs
+@@ -129,6 +129,10 @@ pub struct Panel {
+     )>,
+     /// Dropped files waiting for the one being read ([`MAX_PENDING_DROPS`]).
+     pending_drops: std::collections::VecDeque<std::path::PathBuf>,
++    /// Whether the composer takes images: the phone's switch,
++    /// [`openagents_chat_app::coder_tab::ATTACHMENTS_ENABLED`], so both
++    /// apps turn attachments on and off together (#10095).
++    attachments: bool,
+     /// A change bound by hand, as a fixture does; otherwise the selected
+     /// task's or run's reviewer shows.
+     changes_bound: Option<openagents_chat_app::changes::Reviewer>,
+@@ -222,6 +226,7 @@ impl Panel {
+             waker: None,
+             image_input: None,
+             pending_drops: std::collections::VecDeque::new(),
++            attachments: openagents_chat_app::coder_tab::ATTACHMENTS_ENABLED,
+             changes_bound: None,
+             changes_open: false,
+             changes_scroll: 0.0,
+@@ -230,7 +235,42 @@ impl Panel {
+             gym_loading: None,
+         }
+     }
++    /// Whether the composer takes images: the shared
++    /// [`openagents_chat_app::coder_tab::ATTACHMENTS_ENABLED`] unless
++    /// [`Panel::set_attachments`] changed it. Off as of 2026-10-01 (#10095):
++    /// the desktop is text only, as the phone is (#10093).
++    pub fn attachments_enabled(&self) -> bool {
++        self.attachments
++    }
++
++    /// Turn image attachments on or off for this window; the image
++    /// pipeline's tests turn them on. Turning them off drops any images a
++    /// draft holds.
++    pub fn set_attachments(&mut self, on: bool) {
++        self.attachments = on;
++        self.text_only();
++    }
++
++    /// While attachments are off, drop any images a draft still holds, so
++    /// a draft (a restored one included) is words only and its send or
++    /// Coder start carries no images. Quiet: nothing to tell the person.
++    fn text_only(&mut self) {
++        if self.attachments {
++            return;
++        }
++        if !self.session.images.is_empty() {
++            self.session.images = openagents_chat_app::attachments::Drafts::default();
++            self.rows_dirty = true;
++        }
++        self.pending_drops.clear();
++    }
++
+     fn import_image(&mut self, source: crate::chat_images::Source) {
++        // Text only while attachments are off: no picker, no clipboard
++        // image, no dropped image (#10095).
++        if !self.attachments {
++            return;
++        }
+         if self.image_input.is_some() {
+             self.notice =
+                 Some("An image is already being imported. Try again when it finishes.".into());
+@@ -286,6 +326,11 @@ impl Panel {
+             }
+             return;
+         }
++        // Text only while attachments are off (#10095): a dropped image is
++        // dropped, quietly, and the draft stays words only.
++        if !self.attachments {
++            return;
++        }
+         // Several images dropped at once arrive one by one; each waits for
+         // the one before it.
+         if self.image_input.is_some() {
+@@ -605,6 +650,7 @@ impl Panel {
+         }
+         let at_ms = now.saturating_duration_since(self.born).as_millis() as u64;
+         self.poll_images(at_ms);
++        self.text_only();
+         self.search.poll_clipboard(at_ms);
+         self.command_query.poll_clipboard(at_ms);
+         if let Some((_, field)) = &mut self.rename {
+@@ -701,6 +747,8 @@ impl Panel {
+         if self.runs.contains_key(chat) {
+             return;
+         }
++        // Text only while attachments are off: the run carries no images.
++        self.text_only();
+         let Some(snapshot) = self.session.states.get(chat) else {
+             return;
+         };
+@@ -1010,6 +1058,9 @@ impl Panel {
+             TaskAction::Send | TaskAction::Queue | TaskAction::Steer
+         );
+         let submission = if submitted {
++            // Text only while attachments are off: a restored draft that
++            // still holds images sends its words alone.
++            self.text_only();
+             if let Some(reason) = self.session.images.text_only_refusal(&chat) {
+                 self.notice = Some(reason.into());
+                 return None;
+@@ -1686,6 +1737,9 @@ impl Panel {
+                 None
+             }
+             Action::Send => {
++                // Text only while attachments are off: a restored draft
++                // that still holds images sends its words alone.
++                self.text_only();
+                 if self.task().is_some() {
+                     return self.task_action(TaskAction::Send, view, now);
+                 }
+@@ -2387,6 +2441,8 @@ impl Panel {
+             key, command: true, ..
+         } = &event
+             && matches!(*key, "v" | "V")
++            // While attachments are off the field pastes text only.
++            && self.attachments
+             && self.field().is_some_and(|field| field.focused)
+         {
+             self.import_image(crate::chat_images::Source::Clipboard);
+@@ -3564,7 +3620,7 @@ impl Panel {
+             .or_else(|| run.map(Run::mode));
+         let task_ready = task.is_none_or(|task| task.summary.is_some());
+         let enabled = draft.as_ref().is_some_and(|text| !text.trim().is_empty())
+-            || !self.session.images.get(&id).is_empty();
++            || (self.attachments && !self.session.images.get(&id).is_empty());
+         let composer = Node {
+             key: "chat-composer".into(),
+             style: Style::default(),
+@@ -3592,7 +3648,9 @@ impl Panel {
+         };
+         // Reimplemented from Zeron's composer: quiet utilities on the left,
+         // one circular submission control on the right, and management in the header.
+-        let mut buttons = vec![
++        // The attach control shows only while attachments are on; the
++        // desktop is text only as of 2026-10-01 (#10095).
++        let attach = self.attachments.then(|| {
+             icon_button(
+                 "chat-attach",
+                 "Attach image",
+@@ -3600,9 +3658,9 @@ impl Panel {
+                 !busy,
+                 Glyph::Paperclip,
+                 false,
+-            ),
+-            text("chat-toolbar-space", "", TextRole::Status),
+-        ];
++            )
++        });
++        let mut buttons = vec![text("chat-toolbar-space", "", TextRole::Status)];
+         if let Some(run) = run
+             && run.active()
+         {
+@@ -3671,7 +3729,12 @@ impl Panel {
+             )
+         });
+         let mut previews = vec![];
+-        for image in self.session.images.get(&id) {
++        let images: &[openagents_chat_app::attachments::Image] = if self.attachments {
++            self.session.images.get(&id)
++        } else {
++            &[]
++        };
++        for image in images {
+             let short: String = image.name.chars().take(10).collect();
+             previews.push(stack(
+                 &format!("image-row-{}", image.id),
+@@ -3727,19 +3790,19 @@ impl Panel {
+                 .expect("valid composer metrics");
+         }
+         let mut card = if compact {
+-            let attach = buttons.remove(0);
+             buttons.remove(0); // Expanded-only flexible spacer.
+             let send = buttons.pop().expect("composer send control");
+-            let mut card = stack(
+-                "chat-composer-card",
+-                Axis::Horizontal,
+-                vec![attach, composer, send],
+-            );
++            let mut row: Vec<_> = attach.into_iter().collect();
++            row.extend([composer, send]);
++            let mut card = stack("chat-composer-card", Axis::Horizontal, row);
+             card.style.padding_start = Some(Space::Sm);
+             card.style.padding_end = Some(Space::Sm);
+             card.style.gap = Some(Space::Xs);
+             card
+         } else {
++            if let Some(attach) = attach {
++                buttons.insert(0, attach);
++            }
+             let mut toolbar = stack("chat-send-controls", Axis::Horizontal, buttons);
+             toolbar.style.padding_points = Some([2, 8, 8, 8]);
+             toolbar.style.min_height = Some(42);
+diff --git a/crates/openagents-mobile/src/account.rs b/crates/openagents-mobile/src/account.rs
+index ffc825ecaefd209526bb6af4a39b873b8ab1a694..4ea9f129850f54827bac9014688b42ad6f3ab28c 100644
+--- a/crates/openagents-mobile/src/account.rs
++++ b/crates/openagents-mobile/src/account.rs
+@@ -41,7 +41,7 @@ pub const CHANGELOG: &[Release] = &[
+         what_to_test: "On the Chat tab, in a new chat and in an open one, the message box should have no attach button above it. Copy a photo, then tap the message box twice: Paste should not be offered. Type a message and send it: it should send as before.",
+         items: &[Item {
+             title: "Text only",
+-            detail: "The phone chat takes text only for now. The attach button above the message box is gone, and a photo can't be added to a message by picking or pasting it. The desktop app still takes images.",
++            detail: "The phone chat takes text only for now. The attach button above the message box is gone, and a photo can't be added to a message by picking or pasting it. The desktop app is text only too.",
+         }],
+     },
+     Release {
+diff --git a/docs/desktop/verification/2026-09-30-images/verification.md b/docs/desktop/verification/2026-09-30-images/verification.md
+index 8b0dc78764826f0962410aaace5302e75a80fe6c..fd7ce35259297bc24612a37d52aabeb6ccb83811 100644
+--- a/docs/desktop/verification/2026-09-30-images/verification.md
++++ b/docs/desktop/verification/2026-09-30-images/verification.md
+@@ -37,8 +37,12 @@ images go to Coder when it starts."
+ 
+ On 2026-10-01 [#10093](https://github.com/OpenAgentsInc/openagents/issues/10093)
+ turned attachments off on the phone: its chat is text only, with no attach
+-control or photo picker, behind `coder_tab::ATTACHMENTS_ENABLED`. The desktop
+-behavior on this page is unchanged.
++control or photo picker, behind `coder_tab::ATTACHMENTS_ENABLED`. The same day
++[#10095](https://github.com/OpenAgentsInc/openagents/issues/10095) turned them
++off on the desktop behind the same switch: no attach control or image picker,
++a pasted or dropped image is dropped, and a draft sends its words only. The
++behavior on this page is kept in code and returns when the switch is turned
++back on.
+ 
+ ## Checks
+ 
+diff --git a/docs/glossary.md b/docs/glossary.md
+index 04dae4bf40a6c8b701b3a428d2e5bc1d21156684..6e27675c013737ac3a894c667bdf1d8007765bef 100644
+--- a/docs/glossary.md
++++ b/docs/glossary.md
+@@ -188,7 +188,7 @@ specifies the intended screens; this section names what the code ships.
+ | Chat with OpenAgents | Implemented | The chat every new conversation goes to by default, even with a computer ready. It needs no computer or sign-in: each message is a NIP-CJ conversation job the device key signs and NIP-44-encrypts to the chat worker. The assistant speaks as OpenAgents in the plural ("we"), answers from the chat router, and dispatches Coder only when a message needs a computer. It was called the *basic Coder* until 2026-09-28; measurements taken before then keep that name. See [the chat worker](deployment/chat-worker.md) and [the chat router](coder/design/2026-09-28-chat-router.md). |
+ | Thread | Defined | One conversation with OpenAgents: what the chat list shows as one entry, on the phone, the desktop, and the `openagents` CLI (`--thread ID`). A thread keeps its turns in order, including the router's answers, knowledge answers, and any Coder work it delegated. Each thread maps to one ATIF trajectory (`ATIF-v1.8`, `session_id` = the thread's ID), so a thread can be exported, replayed, and carried as [NIP-ATIF](../nips/openagents/NIP-ATIF.md). A thread's turns live in `openagents-chat`'s encrypted store (the host's, on a computer), and `openagents_chat::thread` renders any thread as its ATIF document: one step per turn, the router's judgment as a decision call, the served knowledge entry, and a link to Coder work it delegated. `openagents chat export --thread ID` prints it ([#10031](https://github.com/OpenAgentsInc/openagents/issues/10031), [guide](cli/chat.md)). A computer's threads (the desktop's and `openagents chat`'s) reach a paired phone over NIP-HOST `thread.list`, `thread.read`, and `thread.send` ([#10035](https://github.com/OpenAgentsInc/openagents/issues/10035)); the phone lists them beside its own, labelled with the computer, and a follow-up sent there appends to the host's thread. `thread.read` includes the router's offers, cards, and follow-up chips on each turn, inside the same 48 KiB page, dropping the oldest turns' extras first. The typed judgment stays on the host. `thread.run` (`operate`) asks that computer to start Coder for the thread through the host's handoff ([#10040](https://github.com/OpenAgentsInc/openagents/issues/10040)). The code and older notes say *chat* or *conversation* for the same thing. |
+ | Chat worker | Implemented | The `coder-worker` binary in quota mode that answers Chat with OpenAgents on `wss://relay.openagents.com`. Its public key is compiled into the app (`basic_coder::WORKER`); it calls `google/gemini-3.8-flash` through the Vercel AI Gateway and asks Jev for the router's judgment beside it. It is open to any key under a quota (6 jobs a minute and 40 a day per key, 3,000 a day in total) and runs under its own release on the Coder worker VM. See [the chat worker](deployment/chat-worker.md). |
+-| Coder chat | Implemented | A chat that runs Coder on a connected computer: tapping **Run Coder on** a computer, a chip under a reply the chat router placed on a computer, sends a NIP-HOST `task.create` with the conversation, and the host's auto-start policy runs it. Images attached to the chat's draft go with it as their exact bytes (`artifact.put` chunks, then `task.create` naming them by digest; PNG or JPEG, at most 8 MiB each and 4 a task), and Codex and Claude Code receive them as native image input; the hosted chat itself never carries images ([#10066](https://github.com/OpenAgentsInc/openagents/issues/10066)). On the phone attachments are off as of 2026-10-01: its chat is text only ([#10093](https://github.com/OpenAgentsInc/openagents/issues/10093)). The reply streams into the chat from the task's transcript. The phone lists only chats with OpenAgents and Coder chats; the separate Claude Code, Codex, OpenCode, and Devin history lists and their host mirrors were removed. See [OpenAgents for iOS](../bins/openagents-ios/README.md) and [the chat load benchmark](coder/runtime/chat-load-benchmark.md). |
++| Coder chat | Implemented | A chat that runs Coder on a connected computer: tapping **Run Coder on** a computer, a chip under a reply the chat router placed on a computer, sends a NIP-HOST `task.create` with the conversation, and the host's auto-start policy runs it. Images attached to the chat's draft go with it as their exact bytes (`artifact.put` chunks, then `task.create` naming them by digest; PNG or JPEG, at most 8 MiB each and 4 a task), and Codex and Claude Code receive them as native image input; the hosted chat itself never carries images ([#10066](https://github.com/OpenAgentsInc/openagents/issues/10066)). Attachments are off everywhere as of 2026-10-01: the phone's chat ([#10093](https://github.com/OpenAgentsInc/openagents/issues/10093)) and the desktop's ([#10095](https://github.com/OpenAgentsInc/openagents/issues/10095)) are text only, behind one switch (`coder_tab::ATTACHMENTS_ENABLED`); the image pipeline is kept for when it is turned back on. The reply streams into the chat from the task's transcript. The phone lists only chats with OpenAgents and Coder chats; the separate Claude Code, Codex, OpenCode, and Devin history lists and their host mirrors were removed. See [OpenAgents for iOS](../bins/openagents-ios/README.md) and [the chat load benchmark](coder/runtime/chat-load-benchmark.md). |
+ | Delegate session | Implemented | The OpenCode or Devin session a Coder task delegated to on an `opencode` or `devin` route, copied after each turn into the task directory as `<task>.delegate.<agent>.<session>.jsonl` and listed by the Coder catalog as that task's subagent. A device shows it inside the Coder chat, not as a separate chat. See [delegate sessions](../crates/coder-history/README.md#delegate-sessions). |
+ | Coder-only host | Implemented | `coder host` serves and watches only a grant's Coder task roots (`Host::coder_only`): an older grant that also names Codex, Claude, OpenCode, or Devin history lists only its Coder chats. The standalone `coder-connect` observer still reads Codex and Claude history for the Coder reader. See [saved harness history](../crates/coder-history/README.md). |
+ | Catalog index | Implemented | `coder-history`'s private file of each source's first-record reads (`catalog-index.json` in the host's observer directory), used only while a file keeps the identity and length it was read at, so a restarted host lists chats without reading every source again. See [saved harness history](../crates/coder-history/README.md#read-a-history). |
+diff --git a/docs/release/acceptance.md b/docs/release/acceptance.md
+index 3b3a624844e3b8f018dced88a6e320861eb03f7b..fb6c97681686c1e61ae1fc299660dfe03b474529 100644
+--- a/docs/release/acceptance.md
++++ b/docs/release/acceptance.md
+@@ -142,7 +142,7 @@ conversation run in the owner's order.
+ | `delegate-claude` | "do a test delegation to claude": the offer names Claude Code, Coder starts on Claude Code and finishes (the handoff tells it the routing is done, so it checks the project instead of running `claude` itself), the start card's limit words agree with the engine readings, and the message shows once. | #10076, #10073, #10084 |
+ | `delegate-grok` | "do a test delegation to grok", with no settings file: the offer names Grok Build, and real Grok Build starts in the linked-worktree project and finishes; the chat never says Grok Build is not allowed. | #10091, #10092 (Grok Build runs inside Coder's toolchains boundary) |
+ | `ui-stop-coder` | While Coder runs, the transcript's **Stop Coder** is as wide as its words (under 160 points and a third of the transcript), as the phone draws it. Measured during the first run an earlier scenario followed; run alone, it starts one. | #10091, #10075 |
+-| `image-to-coder` | One send with words and a PNG: only the words reach the chat, and the task holds a byte-exact copy of the image. Desktop only: the phone is text only as of 2026-10-01. | #10066, #10070, #10093 |
++| `ui-no-attach` | The desktop is text only: the composer has no attach control at 1200x840 and 760x540, and a PNG dropped on the window and an image paste are dropped quietly (no image card, no notice, the draft stays empty). It replaced `image-to-coder` when attachments were turned off everywhere on 2026-10-01. | #10093, #10095 |
+ | `open-deck` | "open the three devdays later deck" on the desktop gets a typed `open_presentation` offer for that deck, and the slide viewer opens when the reply arrives. | #10058, #10082 |
+ | `ui-filter-sessions` | **Filter sessions…** is hidden with fewer than five chats and shows with five. | #10072 |
+ | `ui-no-verse` | The Verse world never loads while a chat page shows, loads on the Verse page, and is released after. | #10071 |
+diff --git a/scripts/release/acceptance.sh b/scripts/release/acceptance.sh
+index 62aa4e5f60f4bdbe25d63e58f2477021e3287124..a56179f6420d4a28889025358e188dafb376b645 100755
+--- a/scripts/release/acceptance.sh
++++ b/scripts/release/acceptance.sh
+@@ -105,7 +105,7 @@ say() { echo "==> $*" >&2; }
+ 
+ # The desktop driver's scenarios, then the gate's own: ones this script
+ # runs itself with the build's binaries, outside the desktop window.
+-desktop_scenarios="who-are-you working-directory delegate-who delegate-now delegate-claude delegate-grok ui-stop-coder image-to-coder open-deck phone-claude ui-no-verse ui-placeholder ui-engines-sidebar ui-filter-sessions ui-chips route-map route-map-chat"
++desktop_scenarios="who-are-you working-directory delegate-who delegate-now delegate-claude delegate-grok ui-stop-coder ui-no-attach open-deck phone-claude ui-no-verse ui-placeholder ui-engines-sidebar ui-filter-sessions ui-chips route-map route-map-chat"
+ gate_scenarios="explain-error plugins-chat"
+ scenarios="$desktop_scenarios $gate_scenarios"
+ 

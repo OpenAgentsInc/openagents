@@ -1,0 +1,467 @@
+diff --git a/crates/openagents-web/content/docs/self-host.md b/crates/openagents-web/content/docs/self-host.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..32db82299eb35c1a9a4c3ec316d667787e5289bd
+--- /dev/null
++++ b/crates/openagents-web/content/docs/self-host.md
+@@ -0,0 +1,101 @@
++# Run your own OpenAgents
++
++Everything that runs openagents.com is open source under the Apache 2.0
++license, in [one repository](https://github.com/OpenAgentsInc/openagents).
++You can run your own copy with your own model keys: the website, the
++account service, the chat worker that writes the answers, and, if you want,
++your own relay.
++
++This guide hasn't yet been followed start to finish on a clean Linux
++machine. If a step fails, [open an issue](https://github.com/OpenAgentsInc/openagents/issues/new)
++with the step and what it printed. The full guide, with every option, is
++[docs/self-host.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/self-host.md).
++
++## The parts
++
++| Part | What it does | Needed |
++| --- | --- | --- |
++| Website | Pages, chat, sign-in, Settings | Yes |
++| Account service | GitHub sign-in and accounts; sends the chat worker's model calls to your keys | For sign-in |
++| Chat worker | Answers each chat message with a model | Yes |
++| Relay | Carries encrypted messages between the website and the chat worker | No: by default yours meet on relay.openagents.com, which only passes them along |
++
++## What you need
++
++- macOS or Linux, and Rust from [rustup.rs](https://rustup.rs).
++- On Debian or Ubuntu, the build packages:
++  `sudo apt-get install -y build-essential pkg-config git curl openssl lsof`
++- An [OpenRouter API key](https://openrouter.ai/keys) for the answers.
++- A [GitHub OAuth App](https://github.com/settings/applications/new) for
++  sign-in, with homepage `http://127.0.0.1:4301` and callback
++  `http://127.0.0.1:4301/auth/github/callback`.
++
++## Start it
++
++Get the code:
++
++```sh
++git clone https://github.com/OpenAgentsInc/openagents.git
++cd openagents
++```
++
++Write your private files. Replace the three values in angle brackets:
++
++```sh
++export OPENAGENTS_SECRETS="$HOME/.openagents-secrets"
++mkdir -p "$OPENAGENTS_SECRETS" && chmod 700 "$OPENAGENTS_SECRETS"
++umask 077
++cat > "$OPENAGENTS_SECRETS/github-oauth-local.json" <<EOF
++{"client_id": "<CLIENT_ID>", "client_secret": "<CLIENT_SECRET>", "token_encryption_key": "$(openssl rand -base64 32)"}
++EOF
++cat > "$OPENAGENTS_SECRETS/openagents-web-cloud-byo-keys.json" <<EOF
++{"schema": "openagents.seal.keyring.v1", "current": "k1", "keys": {"k1": "$(openssl rand -base64 32)"}}
++EOF
++echo 'OPENROUTER_API_KEY=<YOUR_OPENROUTER_KEY>' > "$OPENAGENTS_SECRETS/openrouter.env"
++```
++
++Build and start everything. The first build takes a while:
++
++```sh
++scripts/dev/full-local.sh start
++```
++
++Then open [127.0.0.1:4301](http://127.0.0.1:4301) on the same machine and
++send a message. Click **Log in** to sign in with GitHub. Stop everything
++with `scripts/dev/full-local.sh stop`.
++
++To use Coder in the terminal with your copy, run
++`~/.openagents/full-local/bin/coder login`.
++
++## Your own relay
++
++The relay needs Postgres. Build it and start it on port 8080:
++
++```sh
++sudo apt-get install -y postgresql
++sudo -u postgres createuser --pwprompt nostr-relay
++sudo -u postgres createdb --owner=nostr-relay nostr-relay
++cargo build --release -p nostr-relay --bin nostr-relay
++DATABASE_URL='postgres://nostr-relay:<DB_PASSWORD>@127.0.0.1:5432/nostr-relay' \
++NOSTR_RELAY_PORT=8080 \
++  "${CARGO_TARGET_DIR:-target}/release/nostr-relay"
++```
++
++Then restart the rest on it:
++
++```sh
++scripts/dev/full-local.sh stop
++FULL_LOCAL_RELAY=ws://127.0.0.1:8080 scripts/dev/full-local.sh start --no-build
++```
++
++## What's not covered yet
++
++- Projects (Connect GitHub), Environments, and paid plans need more setup
++  than this; the [full guide](https://github.com/OpenAgentsInc/openagents/blob/main/docs/self-host.md#what-this-setup-leaves-out)
++  says what each one needs.
++- This setup serves one machine. A public server also needs HTTPS and a
++  Google Cloud Storage bucket for chats; the
++  [full guide](https://github.com/OpenAgentsInc/openagents/blob/main/docs/self-host.md#putting-it-on-a-public-server)
++  lists what the code asks for.
++
++Next: [FAQ](/docs/faq).
+diff --git a/crates/openagents-web/content/docs/troubleshooting.md b/crates/openagents-web/content/docs/troubleshooting.md
+index e036872faa884051c6cce2961ac805d297095f12..f28231fb6357af750a725cb415d7e517e285c0f0 100644
+--- a/crates/openagents-web/content/docs/troubleshooting.md
++++ b/crates/openagents-web/content/docs/troubleshooting.md
+@@ -99,4 +99,4 @@ you see it first, and the Wallet and key screens never attach one.
+ **My reports** lists what you sent. You can also open an issue on
+ [GitHub](https://github.com/OpenAgentsInc/openagents/issues).
+ 
+-Next: [FAQ](/docs/faq).
++Next: [Run your own OpenAgents](/docs/self-host).
+diff --git a/crates/openagents-web/src/pages/content.rs b/crates/openagents-web/src/pages/content.rs
+index f121a83bd9e701017ceae9794bb8002df8fd53e6..ddb2b2e417f0e160f55894563e3cc9ea0bac71da 100644
+--- a/crates/openagents-web/src/pages/content.rs
++++ b/crates/openagents-web/src/pages/content.rs
+@@ -28,7 +28,7 @@ pub(crate) const TERMS: &str = include_str!("../../content/legal/terms.md");
+ pub(crate) const PRIVACY: &str = include_str!("../../content/legal/privacy.md");
+ 
+ /// The docs, by slug, in reading order.
+-pub(crate) const DOCS: [(&str, &str); 32] = [
++pub(crate) const DOCS: [(&str, &str); 33] = [
+     (
+         "what-is-openagents",
+         include_str!("../../content/docs/what-is-openagents.md"),
+@@ -106,6 +106,7 @@ pub(crate) const DOCS: [(&str, &str); 32] = [
+         "troubleshooting",
+         include_str!("../../content/docs/troubleshooting.md"),
+     ),
++    ("self-host", include_str!("../../content/docs/self-host.md")),
+     ("faq", include_str!("../../content/docs/faq.md")),
+     ("glossary", include_str!("../../content/docs/glossary.md")),
+ ];
+@@ -151,7 +152,7 @@ pub(crate) const SECTIONS: [(&str, &str, &str); 9] = [
+     ),
+     (
+         "Reference",
+-        "Settings, pricing, and fixes for common problems.",
++        "Settings, pricing, fixes for common problems, and running your own copy.",
+         "settings",
+     ),
+     (
+diff --git a/docs/dev/full-local.md b/docs/dev/full-local.md
+index dd6992fc2fb5ac8ca13640d271dee9033788fe61..c09254c48909fe0f334b599be1684fbfa1a23df0 100644
+--- a/docs/dev/full-local.md
++++ b/docs/dev/full-local.md
+@@ -24,6 +24,9 @@ scripts/dev/full-local.sh stop
+   `~/.openagents/full-local/logs/{gateway,worker,web}.log`.
+ - Binaries build into `~/work/openagents-target-fulllocal`. `start
+   --no-build` skips the build.
++- The website and the chat worker meet on `wss://relay.openagents.com`.
++  `FULL_LOCAL_RELAY=ws://127.0.0.1:8080 scripts/dev/full-local.sh start`
++  puts both on your own relay instead ([self-host guide](../self-host.md)).
+ - `/environments` is on when `~/work/.secrets/boat.env` and a Codex login
+   exist. Its setup machines are real Boat machines and cost money;
+   `FULL_LOCAL_ENVIRONMENTS=0 scripts/dev/full-local.sh start` turns it off.
+diff --git a/docs/kitchen-sink/ledger.md b/docs/kitchen-sink/ledger.md
+index 0a7503fa1269830e27b27da3863c6f2675f1c447..b51a1b031220a015111f8200b7b7b328f16aa9cc 100644
+--- a/docs/kitchen-sink/ledger.md
++++ b/docs/kitchen-sink/ledger.md
+@@ -190,7 +190,7 @@ test passes on production.
+ | K2 | Agents can read our docs through MCP. | N | Launching | Docs MCP server | 165, 168 | #11086 |
+ | K3 | Everything you can do in an app, you can do from the command line or API. | T N | Partial | `openagents-cli` over Nostr; `/docs/api` | 067, 085, 100, 203, 289 | — |
+ | K4 | All of it is open source and built in public. | all | Live | This repository | 001, 047, 125, 173, 242 | — |
+-| K5 | You can run your own copy of the whole thing. | N | Partial | Open source, but no self-host guide | 129, 242, 289 | — |
++| K5 | You can run your own copy of the whole thing. | N | Partial | `docs/self-host.md` and `/docs/self-host` (one machine; not yet run on a clean Linux machine; a public website still needs Google Cloud Storage) | 129, 242, 289 | #11133 |
+ | K6 | Agents can pay us with the payment method they already use, on Bitcoin: x402, MPP and L402 on Lightning, Nostr, and card through ACP, UCP, AP2 or Stripe; Taproot Assets stablecoins later. | N | Partial | Owner, 2026-10-09: Bitcoin and Bitcoin-based stablecoins only; no USDC, Base, Solana, EVM or Tempo (#11141 closed); Cashu not now (#11140 closed). x402 and the `Payment` scheme on Lightning built (gateway, pay front); the rest planned in [agent payments](../payments/agent-payments.md) | 062, 070 | #11085, #11136, #11139, #11142–#11145 |
+ | K7 | One open license: everything we publish is under Apache 2.0. | all | Live | `LICENSE` (Apache 2.0) | X only | — |
+ | K8 | Agents find every way to pay us where they look: OpenAPI, the API and AI catalogs, the agent card, `/.well-known/ucp`, `/.well-known/acp.json`, MCP, and Nostr. | N | Partial | `/docs/api/for-agents` and `/auth.md` name the methods; generated discovery is next | — | #11137, #11147 |
+diff --git a/docs/self-host.md b/docs/self-host.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..77b5fba1568b74355e8b39236a3f2a0cb20d7bf8
+--- /dev/null
++++ b/docs/self-host.md
+@@ -0,0 +1,226 @@
++# Run your own OpenAgents
++
++Everything that runs openagents.com is in this repository, under the
++Apache 2.0 license ([`LICENSE`](../LICENSE)). This guide runs your own copy
++from it, with your own model keys: the website, the account service and
++inference gateway, the chat worker that writes the answers, and, if you
++want, your own Nostr relay.
++
++The short web version is [openagents.com/docs/self-host](https://openagents.com/docs/self-host).
++
++**Status (2026-10-09).** Written from the code, not yet followed start to
++finish on a clean Linux machine. That run is the open half of #11133. If a
++step fails, open an issue with the step and the output.
++
++## The parts
++
++| Part | Built from | What it does | Needed |
++| --- | --- | --- | --- |
++| Website | `crates/openagents-web` (`openagents-web`) | The pages, the chat, sign-in, Settings, and the API Coder syncs chats through. | Yes |
++| Account service and inference gateway | `crates/gateway` (`gateway`), one process | GitHub sign-in, accounts and sessions; every model call from the chat worker, sent on to your model provider keys. | For sign-in. The script below always runs it. |
++| Chat worker | `crates/coder` (`coder-worker`) | Picks up each chat message, asks the model, and sends the answer back. | Yes |
++| Nostr relay | `crates/nostr-relay` (`nostr-relay`) | Carries messages between the website and the chat worker. | No. By default your website and worker meet on `wss://relay.openagents.com`; each message is encrypted for your worker, so that relay only passes it along. Run your own with step 5. |
++
++The website and the chat worker never talk directly: the website posts an
++encrypted job on the relay naming the worker's public key, and the worker
++answers on the same relay ([NIP-CJ](../nips/openagents/NIP-CJ.md)).
++
++## What you need
++
++- macOS or Linux. The commands below use Debian or Ubuntu package names.
++- Rust through [rustup](https://rustup.rs). The repository pins Rust
++  1.97.1 in `rust-toolchain.toml`; rustup installs it on the first build.
++- Build tools and the small programs the start script uses:
++
++  ```sh
++  sudo apt-get install -y build-essential pkg-config git curl openssl lsof
++  ```
++
++- An [OpenRouter](https://openrouter.ai/keys) API key. Chat answers go
++  through the gateway, whose chat route tries Google Vertex, then the
++  OpenAgents Pro door, then OpenRouter (`crates/inference/src/router.rs`).
++  Without Google credentials or a Pro key, OpenRouter answers. A Google
++  Cloud service account with Vertex AI also works
++  (`GOOGLE_APPLICATION_CREDENTIALS`, `VERTEX_PROJECT`, `VERTEX_LOCATION`).
++- A GitHub OAuth App for sign-in. Create it at
++  [github.com/settings/applications/new](https://github.com/settings/applications/new)
++  with homepage `http://127.0.0.1:4301` and callback
++  `http://127.0.0.1:4301/auth/github/callback`, then generate a client
++  secret.
++
++Optional keys:
++
++- `TYPESAFE_API_KEY`: a quick first line before the model's answer,
++  follow-up suggestions, and answers about OpenAgents itself from the
++  `knowledge/openagents` folder.
++- `AI_GATEWAY_API_KEY` (Vercel AI Gateway): the search behind those
++  answers about OpenAgents. Unless both keys are set, the model answers
++  those questions on its own.
++
++## 1. Get the code
++
++```sh
++git clone https://github.com/OpenAgentsInc/openagents.git
++cd openagents
++```
++
++## 2. Write your private files
++
++The start script reads private files from `$OPENAGENTS_SECRETS` (default
++`~/work/.secrets`). Keep the folder private and never commit it.
++
++```sh
++export OPENAGENTS_SECRETS="$HOME/.openagents-secrets"
++mkdir -p "$OPENAGENTS_SECRETS" && chmod 700 "$OPENAGENTS_SECRETS"
++umask 077
++
++# Your GitHub OAuth App, plus a key that encrypts GitHub tokens at rest.
++cat > "$OPENAGENTS_SECRETS/github-oauth-local.json" <<EOF
++{"client_id": "<CLIENT_ID>", "client_secret": "<CLIENT_SECRET>", "token_encryption_key": "$(openssl rand -base64 32)"}
++EOF
++
++# The key that encrypts Claude keys people save in Settings.
++cat > "$OPENAGENTS_SECRETS/openagents-web-cloud-byo-keys.json" <<EOF
++{"schema": "openagents.seal.keyring.v1", "current": "k1", "keys": {"k1": "$(openssl rand -base64 32)"}}
++EOF
++
++# Your model key.
++echo 'OPENROUTER_API_KEY=<YOUR_OPENROUTER_KEY>' > "$OPENAGENTS_SECRETS/openrouter.env"
++```
++
++Replace `<CLIENT_ID>`, `<CLIENT_SECRET>`, and `<YOUR_OPENROUTER_KEY>`. The
++optional keys go in `typesafe.env` (`TYPESAFE_API_KEY=...`) and
++`ai-gateway.env` (`AI_GATEWAY_API_KEY=...`) in the same folder. A key
++already exported in your shell wins over its file.
++
++## 3. Build and start everything
++
++```sh
++scripts/dev/full-local.sh start
++```
++
++This builds the four binaries and starts them, all on `127.0.0.1`
++([`scripts/dev/full-local.sh`](../scripts/dev/full-local.sh), more in
++[`docs/dev/full-local.md`](dev/full-local.md)). The first build compiles
++the whole workspace and takes a while; later starts take about two minutes,
++or seconds with `--no-build`. Build output goes to `$CARGO_TARGET_DIR`
++(default `~/work/openagents-target-fulllocal`).
++
++| What | Where |
++| --- | --- |
++| Website | <http://127.0.0.1:4301> (GitHub sign-in only comes back to this port) |
++| Gateway | `127.0.0.1:8791`; usage dashboard at `/admin/inference` with the token in `~/.openagents/full-local/admin.token` |
++| Chat worker | Joins the relay with its own new key; the website is told that key |
++| Accounts, chats, saved keys | `~/.openagents/full-local/` (`$FULL_LOCAL` moves it) |
++| Logs | `~/.openagents/full-local/logs/{gateway,worker,web}.log` |
++
++The script also tries the browser builds of the chat composer, the
++component catalog, and Grow Little Bunny. Those builds use tools a fresh
++machine won't have (the `openagents` command, the `wasm32-unknown-unknown`
++target, and `wasm-bindgen` at the version in `Cargo.lock`). When they fail,
++the site starts without them: the composer and the catalog fall back to
++plain HTML, and the game page can't be played.
++
++`scripts/dev/full-local.sh status` shows what runs;
++`scripts/dev/full-local.sh stop` stops it.
++
++## 4. Check it works
++
++1. Open <http://127.0.0.1:4301> and send a message. An answer streams in.
++2. Click **Log in**, then **Continue with GitHub**, and approve. You come
++   back signed in, with your chats moved to your account.
++3. To use Coder in the terminal against your copy, run
++   `~/.openagents/full-local/bin/coder login`. It is this checkout's Coder,
++   pointed at your website with its own sign-in and chats.
++
++If the answer never comes, read `logs/worker.log`: its first lines name the
++relay, the model route, and anything missing.
++
++## 5. Run your own relay (optional)
++
++The relay needs Postgres. It creates its tables on first start.
++
++```sh
++sudo apt-get install -y postgresql
++sudo -u postgres createuser --pwprompt nostr-relay
++sudo -u postgres createdb --owner=nostr-relay nostr-relay
++cargo build --release -p nostr-relay --bin nostr-relay
++DATABASE_URL='postgres://nostr-relay:<DB_PASSWORD>@127.0.0.1:5432/nostr-relay' \
++NOSTR_RELAY_PORT=8080 \
++  "${CARGO_TARGET_DIR:-target}/release/nostr-relay"
++```
++
++It listens on `127.0.0.1:8080` (`curl http://127.0.0.1:8080/health`). Point
++the website and the chat worker at it:
++
++```sh
++scripts/dev/full-local.sh stop
++FULL_LOCAL_RELAY=ws://127.0.0.1:8080 scripts/dev/full-local.sh start --no-build
++```
++
++Every relay setting is in
++[`docs/deployment/configuration.md`](deployment/configuration.md).
++
++## Each part on its own
++
++The script is the exact wiring; read its `start` function to run the parts
++separately or under your own service manager. In short:
++
++| Part | Build | Run |
++| --- | --- | --- |
++| Relay | `cargo build --release -p nostr-relay --bin nostr-relay` | `DATABASE_URL=... nostr-relay` |
++| Gateway | `cargo build --release -p gateway --bin gateway -p tenancy --example bootstrap_registry` | `bootstrap_registry` once to make the account registry and the worker's service key, then `gateway --config gateway.json` |
++| Chat worker | `cargo build --release -p coder --bin coder-worker` | `CODER_WORKER_SECRET=$(openssl rand -hex 32) CODER_RELAY=<relay> CODER_WORKER_OPEN=1 CODER_INFERENCE_URL=<gateway> CODER_INFERENCE_KEY=<service key> coder-worker`; it prints its public key on the `worker` line |
++| Website | `cargo build --release -p openagents-web --bin openagents-web` | `OPENAGENTS_WEB_CHAT_WORKER=<worker public key> OPENAGENTS_WEB_CHAT_RELAY=<relay> openagents-web --listen 127.0.0.1:4301 --chat-store <dir> --cloud-config cloud.json --github-oauth github-oauth.json` |
++
++What is optional:
++
++- **No gateway.** The worker can call a provider itself: set
++  `CODER_DOOR_KEY` to a Vercel AI Gateway key and/or `OPENROUTER_API_KEY`
++  instead of `CODER_INFERENCE_*`, as
++  [`deploy/coder-worker-chat.env.example`](../deploy/coder-worker-chat.env.example)
++  does. The website then runs without `--cloud-config` and
++  `--github-oauth`: chat works, sign-in doesn't.
++- **No sign-in.** Without `--cloud-config`, visitors chat without
++  accounts; their chats are tied to a browser cookie.
++- **No saved Claude keys.** Leave out `--cloud-byo` and
++  `--cloud-byo-keys`.
++
++## What this setup leaves out
++
++- **Projects (Connect GitHub)** needs a GitHub App as well as the OAuth
++  App, passed with `--github-app`; the script doesn't set one up. See
++  [`docs/auth/github.md`](auth/github.md).
++- **Environments** stay off unless a Boat key and a Codex login are
++  present. They start paid cloud machines.
++- **Plans and payments.** Settings shows the Pro plan with "Subscribing
++  isn't open on this server yet."
++
++## Putting it on a public server
++
++The script binds everything to `127.0.0.1` and is for one machine. For a
++public host, the code requires today:
++
++- **HTTPS in front.** Pass your host name with `--public-host`; the website
++  then sets secure cookies.
++- **Chats in a Google Cloud Storage bucket.** A public website refuses to
++  start with chats on local disk: pass `--chat-bucket` (or
++  `OPENAGENTS_WEB_CHAT_BUCKET`).
++- **`OPENAGENTS_WEB_ASK_SALT`**, 64 hex characters
++  (`openssl rand -hex 32`), shared by every copy of the website.
++- **A GitHub OAuth App for your domain**, callback
++  `https://<your host>/auth/github/callback`, set as `redirect_url` in the
++  gateway config and as `public_origin` in the website's cloud config.
++  Set `"open_signup": false` in the gateway config; the script turns it on
++  so local tests can make accounts without GitHub.
++
++The runbooks for each part on a server:
++
++- Relay: [`docs/deployment/runbook-debian-vps.md`](deployment/runbook-debian-vps.md)
++  (Debian, Postgres, systemd, Caddy or nginx for TLS).
++- Chat worker: [`deploy/README.md`](../deploy/README.md) and
++  [`docs/deployment/chat-worker.md`](deployment/chat-worker.md).
++- Gateway: [`docs/decision-models/service/deployment.md`](decision-models/service/deployment.md).
++- Website: [`docs/deployment/openagents-web.md`](deployment/openagents-web.md)
++  describes how openagents.com runs on Google Cloud Run. There is no
++  written guide yet for a public website off Google Cloud.
+diff --git a/scripts/dev/full-local.sh b/scripts/dev/full-local.sh
+index cef0f00bd8d3079e2065065323dba7a61130741e..f389c02528f412a568942c2f76533b1848fb6fba 100755
+--- a/scripts/dev/full-local.sh
++++ b/scripts/dev/full-local.sh
+@@ -14,8 +14,9 @@
+ #                  /v1/chat/completions) in one process, as in production.
+ #   chat worker    built from this checkout; every model call goes to the
+ #                  gateway above (CODER_INFERENCE_URL/KEY). It joins
+-#                  relay.openagents.com on its own fresh key and answers only
+-#                  the site below.
++#                  relay.openagents.com (or $FULL_LOCAL_RELAY, your own
++#                  relay) on its own fresh key and answers only the site
++#                  below.
+ #   website        127.0.0.1:$WEB_PORT (4301, the port the local GitHub OAuth
+ #                  App calls back to): chats on disk, sign-in through the
+ #                  gateway, Settings -> Claude (encrypted with
+@@ -42,6 +43,9 @@ state=${FULL_LOCAL:-$HOME/.openagents/full-local}
+ target=${CARGO_TARGET_DIR:-$HOME/work/openagents-target-fulllocal}
+ gateway_port=${GATEWAY_PORT:-8791}
+ web_port=${WEB_PORT:-4301}
++# The relay the website and the chat worker meet on. Set it to run your
++# own (docs/self-host.md), e.g. ws://127.0.0.1:8080.
++relay=${FULL_LOCAL_RELAY:-wss://relay.openagents.com}
+ run="$state/run"
+ logs="$state/logs"
+ export CARGO_TARGET_DIR="$target"
+@@ -152,6 +156,7 @@ status() {
+         echo
+         echo "Website:   http://127.0.0.1:$web_port"
+         echo "Gateway:   http://127.0.0.1:$gateway_port (admin token in $state/admin.token)"
++        echo "Relay:     $relay"
+         echo "Coder:     $state/bin/coder login   (then: $state/bin/coder, /sync on)"
+         echo "Logs:      $logs/{gateway,worker,web}.log"
+     fi
+@@ -193,7 +198,7 @@ start() {
+ 
+     mkdir -p "$state" "$run" "$logs"
+     chmod 700 "$state"
+-    printf 'web_port=%s\ngateway_port=%s\n' "$web_port" "$gateway_port" > "$run/ports"
++    printf 'web_port=%s\ngateway_port=%s\nrelay=%s\n' "$web_port" "$gateway_port" "$relay" > "$run/ports"
+     if [ "${1:-}" != "--no-build" ]; then
+         build
+     fi
+@@ -281,7 +286,7 @@ EOF
+         CODER_INFERENCE_KEY=$(cat "$state/service.key")
+         export CODER_WORKER_SECRET CODER_INFERENCE_KEY
+         export CODER_INFERENCE_URL="http://127.0.0.1:$gateway_port"
+-        export CODER_RELAY=wss://relay.openagents.com CODER_WORKER_OPEN=1 CODER_WORKER_JOBS=16
++        export CODER_RELAY="$relay" CODER_WORKER_OPEN=1 CODER_WORKER_JOBS=16
+         export CODER_WORKER_USAGE_DIR="$state/worker-usage"
+         export OPENAGENTS_PRODUCT_KNOWLEDGE="$root/knowledge/openagents"
+         export CODER_AI_GATEWAY_KEY="${AI_GATEWAY_API_KEY:-}" OPENAGENTS_PRODUCT_KB_EMBEDDINGS=gateway
+@@ -364,7 +369,7 @@ EOF
+         [ -s "$state/build/components/coder_components_web_bg.wasm" ] \
+             && set -- "$@" --components-build "$state/build/components"
+         [ -s "$state/build/bunny/bunny_web_bg.wasm" ] && set -- "$@" --bunny "$state/build/bunny"
+-        export OPENAGENTS_WEB_CHAT_WORKER="$key"
++        export OPENAGENTS_WEB_CHAT_WORKER="$key" OPENAGENTS_WEB_CHAT_RELAY="$relay"
+         cd "$state"
+         exec nohup "$target/debug/openagents-web" --listen "127.0.0.1:$web_port" \
+             --store "$state/tasks" --chat-store "$state/chats" \

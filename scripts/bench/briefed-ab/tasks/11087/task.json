@@ -1,0 +1,36 @@
+{
+  "test_targets": [
+    "--test",
+    "run",
+    "--lib"
+  ],
+  "issue": 11087,
+  "title": "First chat question fails with \"(internal)\" when the model is slow; gateway gives up at 8 s",
+  "body": "Found while testing scripts/dev/full-local.sh under load: the first free-form web chat question failed with \"We couldn't answer this time (internal).\" No first token arrived within the 8 s deadline.\n\n1. The chat shows an error code (machine talk). Replace with plain copy and keep the Try again action; add an oa-copy guard over every chat failure line.\n2. Gateway: the last planned attempt should run to a longer per-class ceiling instead of failing at the first-token deadline (earlier attempts still fall back at ~8 s for chat, never after a first token); surface a still-working status to the chat; stub-adapter tests for slow-then-fast, all-slow-last-answers, all-fail.",
+  "fix": "fdda00ca189301745b860fc499676932ff63508e",
+  "parent": "de519485167082e4a2f52307f80035d863f185fd",
+  "package": "inference",
+  "source_files": [
+    "crates/coder/src/bin/coder-worker.rs",
+    "crates/inference/src/router.rs",
+    "crates/inference/src/run.rs",
+    "crates/openagents-chat-app/src/coder_tab.rs",
+    "crates/openagents-chat/Cargo.toml",
+    "crates/openagents-chat/src/basic_chats.rs",
+    "crates/openagents-chat/src/basic_coder.rs",
+    "docs/inference/gateway.md"
+  ],
+  "test_files": [
+    "crates/inference/tests/run.rs",
+    "crates/openagents-chat/src/basic_coder.rs"
+  ],
+  "test_names": [
+    "a_last_attempt_slower_than_its_ceiling_is_a_plain_failure",
+    "a_slow_first_upstream_falls_back_to_a_fast_second",
+    "a_still_working_status_marks_the_reply_slow",
+    "every_chat_failure_line_is_plain_copy",
+    "the_default_chat_class_has_a_fifteen_second_budget_and_an_eight_second_fallback",
+    "when_every_attempt_is_slow_the_last_runs_to_its_ceiling_and_answers"
+  ],
+  "fix_lines": 346
+}

@@ -1,0 +1,555 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 5f03c184a1a17da23b0726b83d02db7a5f6da511..71dd567da086ee7c12b9ffcd5b937c81668c34c8 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -9677,6 +9677,20 @@ dependencies = [
+ name = "oa-copy"
+ version = "0.1.0"
+ 
++[[package]]
++name = "oa-seal"
++version = "0.1.0"
++dependencies = [
++ "aes-gcm",
++ "base64 0.22.1",
++ "getrandom 0.3.4",
++ "libc",
++ "serde",
++ "serde_json",
++ "tempfile",
++ "zeroize",
++]
++
+ [[package]]
+ name = "oa-tokens"
+ version = "0.1.0"
+@@ -10562,6 +10576,7 @@ dependencies = [
+  "nostr",
+  "oa-auth",
+  "oa-copy",
++ "oa-seal",
+  "openagents-chat",
+  "openagents-ui",
+  "openagents-wallet",
+diff --git a/crates/oa-seal/Cargo.toml b/crates/oa-seal/Cargo.toml
+new file mode 100644
+index 0000000000000000000000000000000000000000..538ad20f06cc7f352f453a52c941d7af428994d9
+--- /dev/null
++++ b/crates/oa-seal/Cargo.toml
+@@ -0,0 +1,22 @@
++[package]
++name = "oa-seal"
++version.workspace = true
++edition.workspace = true
++rust-version.workspace = true
++publish.workspace = true
++description = "Encryption at rest for small server-held secrets: AES-256-GCM under a named key from a keyring kept outside the data directory (#11041)."
++
++[dependencies]
++aes-gcm = { version = "0.10.3", default-features = false, features = ["aes", "alloc"] }
++base64 = "0.22"
++getrandom = "0.3"
++libc = "0.2"
++serde = { version = "1", features = ["derive"] }
++serde_json = "1"
++zeroize = "1.8"
++
++[dev-dependencies]
++tempfile = "3"
++
++[lints]
++workspace = true
+diff --git a/crates/openagents-web/Cargo.toml b/crates/openagents-web/Cargo.toml
+index d0d176b8966edffea097db855de34c5eec3bf8cd..3bdee12b194c107c223674106b20241cf8f96838 100644
+--- a/crates/openagents-web/Cargo.toml
++++ b/crates/openagents-web/Cargo.toml
+@@ -34,6 +34,7 @@ jev = { path = "../jev" }
+ libc = "0.2"
+ maud = { version = "=0.27.0", features = ["axum"] }
+ oa-auth = { path = "../oa-auth" }
++oa-seal = { path = "../oa-seal" }
+ openagents-chat = { path = "../openagents-chat" }
+ pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
+ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+diff --git a/crates/openagents-web/README.md b/crates/openagents-web/README.md
+index 9f5ac90479931f0e1f336b2e7ac834d9a4d78126..7c492daab72a6b00fd24737ed173cf9ea5c23210 100644
+--- a/crates/openagents-web/README.md
++++ b/crates/openagents-web/README.md
+@@ -179,7 +179,8 @@ the `Host` headers `127.0.0.1:4300` and `localhost:4300`.
+ | `--cloud-build DIRECTORY` | none | Accepted and unused since the old Cloud pages left; the site images still pass it. |
+ | `--cloud-config PRIVATE_JSON` | none | Explicit account-service origin, public origin, and protected CSRF key. Turns on `/sign-in` and `/settings`; native user sessions and current workspace membership scope each request. |
+ | `--cloud-hosts PRIVATE_JSON` | none | Protected account/workspace/epoch bindings to host-signed grants, device keys, and exact host routes and generations, kept for `/environments`. No host enrollment or task effect comes from sign-in. |
+-| `--cloud-byo PRIVATE_DIR` | none | An owner-only directory for customers' own Claude credentials (Anthropic API key, Bedrock, Vertex, or Foundry) behind **Settings → Claude → Manage** (`/settings/claude`). |
++| `--cloud-byo PRIVATE_DIR` | none | An owner-only directory for customers' own Claude credentials (Anthropic API key, Bedrock, Vertex, or Foundry) behind **Settings → Claude → Manage** (`/settings/claude`). Saved credentials are encrypted, so it needs a keyring (below). |
++| `--cloud-byo-keys PRIVATE_JSON` | none | The keyring that encrypts saved Claude credentials (#11041), an owner-only (`chmod 600`) file kept outside the `--cloud-byo` directory. Or put the same document in `OPENAGENTS_WEB_CLOUD_BYO_KEYS` (a Secret Manager secret on Cloud Run). `--cloud-byo` refuses to start without one. See [Bring your own Claude](../../docs/cloud/claude-code-byo.md#how-saved-credentials-are-kept). |
+ | `--everglade DIRECTORY` | none | The Everglade web build (`scripts/build-everglade-web.sh`'s output, `everglade_web.js` and `everglade_web_bg.wasm`) with the pinned pack under `pack/`, served at `/everglade`. Without it, `/everglade` says Everglade is unavailable. |
+ | `--pilot-config PRIVATE_JSON` | none | Explicit task root and create-only intake credential. `/pilot` answers 404; POST intake stays available to the configured pipeline. |
+ 
+diff --git a/crates/openagents-web/examples/cloud_session_fixture.rs b/crates/openagents-web/examples/cloud_session_fixture.rs
+index 92c42b6fa72d9a67a38028ab75989e5e9baecda8..04ab829df58319034b5c7573963e6b1d2f53f3ae 100644
+--- a/crates/openagents-web/examples/cloud_session_fixture.rs
++++ b/crates/openagents-web/examples/cloud_session_fixture.rs
+@@ -210,7 +210,15 @@ pub async fn serve(
+     std::fs::create_dir_all(&byo).map_err(|_| "fixture credential store failed")?;
+     std::fs::set_permissions(&byo, std::fs::Permissions::from_mode(0o700))
+         .map_err(|_| "fixture credential store failed")?;
+-    config.cloud_byo = Some(Arc::new(openagents_web::cloud::byo::Computers::open(&byo)?));
++    // A scratch keyring outside the store: saved credentials are encrypted
++    // at rest under it (#11041). It lives and dies with this fixture.
++    let keys = directory.join("byo-keys.json");
++    let (_, document) = oa_seal::Keyring::scratch("fixture")?;
++    private_file(&keys, document.as_bytes())?;
++    config.cloud_byo = Some(Arc::new(openagents_web::cloud::byo::Computers::open(
++        &byo,
++        oa_seal::Keyring::load(&keys)?,
++    )?));
+     config.cloud_hosts = hosts
+         .map(|path| openagents_web::cloud::hosts::Hosts::load(FilePath::new(path)))
+         .transpose()?
+diff --git a/crates/openagents-web/examples/github_auth_fixture.rs b/crates/openagents-web/examples/github_auth_fixture.rs
+index c2bf2fd35fbeb45069808ec379eedbde32a6c06d..0e4251d1e8fe61703f967ae88925a63a38c18319 100644
+--- a/crates/openagents-web/examples/github_auth_fixture.rs
++++ b/crates/openagents-web/examples/github_auth_fixture.rs
+@@ -123,7 +123,15 @@ async fn main() -> Result<(), String> {
+     std::fs::create_dir_all(&byo).map_err(|_| "fixture credential store failed")?;
+     std::fs::set_permissions(&byo, std::fs::Permissions::from_mode(0o700))
+         .map_err(|_| "fixture credential store failed")?;
+-    config.cloud_byo = Some(Arc::new(openagents_web::cloud::byo::Computers::open(&byo)?));
++    // A scratch keyring outside the store: saved credentials are encrypted
++    // at rest under it (#11041). It lives and dies with this fixture.
++    let keys = directory.join("byo-keys.json");
++    let (_, document) = oa_seal::Keyring::scratch("fixture")?;
++    private_file(&keys, document.as_bytes())?;
++    config.cloud_byo = Some(Arc::new(openagents_web::cloud::byo::Computers::open(
++        &byo,
++        oa_seal::Keyring::load(&keys)?,
++    )?));
+ 
+     println!(
+         "{}",
+diff --git a/crates/openagents-web/src/cloud/byo.rs b/crates/openagents-web/src/cloud/byo.rs
+index 71c129df2c40a2ca0858971bd8b25988ca47dd5a..edd57e4e214ecdcc65884b6a0e907695032b6327 100644
+--- a/crates/openagents-web/src/cloud/byo.rs
++++ b/crates/openagents-web/src/cloud/byo.rs
+@@ -77,10 +77,12 @@ pub struct Computers {
+ }
+ 
+ impl Computers {
+-    /// Open an operator-provisioned private directory (mode 0700).
+-    pub fn open(directory: &Path) -> Result<Self, String> {
++    /// Open an operator-provisioned private directory (mode 0700). Saved
++    /// credentials are encrypted under `keyring`, which must be kept
++    /// outside that directory.
++    pub fn open(directory: &Path, keyring: oa_seal::Keyring) -> Result<Self, String> {
+         Ok(Self {
+-            vault: Vault::open(directory)?,
++            vault: Vault::open(directory, keyring)?,
+         })
+     }
+ 
+diff --git a/crates/openagents-web/src/cloud/custody.rs b/crates/openagents-web/src/cloud/custody.rs
+index 04ddd7e1c45ef69861a5f0dbb2b897a3515dc0c1..faa3e8d309282f9e674e6e042504f1b02ce027a3 100644
+--- a/crates/openagents-web/src/cloud/custody.rs
++++ b/crates/openagents-web/src/cloud/custody.rs
+@@ -10,6 +10,17 @@
+ //! flow that may receive it), and material. A changed epoch or subject finds
+ //! no entry. Status shows only a digest; no API returns the key except
+ //! [`Vault::release`], which requires the exact digest the flow reviewed.
++//!
++//! On disk the key is encrypted (#11041): each entry file holds the key
++//! sealed with AES-256-GCM ([`oa_seal`]) under a key from a keyring that is
++//! loaded from outside the custody directory, with the entry's scope,
++//! digest, times, and terms bound as associated data. The entry names the
++//! keyring key it was sealed under, so keys rotate: an entry under an older
++//! key is resealed under the current one the next time it is read. An
++//! entry written before encryption (schema v1, the key in plain text) is
++//! sealed the first time it is read, and its plain-text bytes are
++//! overwritten with zeros before the sealed file replaces it. An entry that
++//! does not open (unknown key, wrong key, changed bytes) fails closed.
+ 
+ use serde::{Deserialize, Serialize};
+ use sha2::{Digest, Sha256};
+@@ -18,8 +29,12 @@ use std::io::{Read, Write};
+ use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+ use std::path::{Component, Path, PathBuf};
+ 
++/// The custody terms' schema, and the schema of an entry written before
++/// encryption at rest (its key in plain text; sealed on first read).
+ pub const SCHEMA: &str = "openagents.cloud.provider-key-custody.v1";
+-const ENTRY_MAX: u64 = 16 * 1024;
++/// The schema of an entry whose key is sealed.
++pub const SEALED_SCHEMA: &str = "openagents.cloud.provider-key-custody.v2";
++const ENTRY_MAX: u64 = 24 * 1024;
+ const KEY_MAX: usize = 8192;
+ 
+ /// The kind of customer-owned credential. Claude.ai plan logins are not a
+@@ -201,6 +216,71 @@ struct Entry {
+     key: String,
+ }
+ 
++/// An entry file: the metadata in clear (status needs no key) and the key
++/// sealed under the keyring, bound to that metadata.
++#[derive(Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++struct Record {
++    schema: String,
++    scope: Scope,
++    digest: String,
++    stored_at: u64,
++    expires_at: u64,
++    terms: String,
++    sealed: oa_seal::Sealed,
++}
++
++/// The metadata a sealed key is bound to.
++#[derive(Serialize)]
++struct Bound<'a> {
++    schema: &'a str,
++    scope: &'a Scope,
++    digest: &'a str,
++    stored_at: u64,
++    expires_at: u64,
++    terms: &'a str,
++}
++
++#[derive(Deserialize)]
++struct Head {
++    schema: String,
++}
++
++impl Entry {
++    fn key_digest(&self) -> String {
++        hex(&Sha256::digest(self.key.as_bytes()))
++    }
++
++    fn bound(&self) -> Result<Vec<u8>, CustodyError> {
++        serde_json::to_vec(&Bound {
++            schema: SEALED_SCHEMA,
++            scope: &self.scope,
++            digest: &self.digest,
++            stored_at: self.stored_at,
++            expires_at: self.expires_at,
++            terms: &self.terms,
++        })
++        .map_err(|_| CustodyError::Unavailable)
++    }
++
++    /// The sealed entry file's bytes.
++    fn seal(&self, keyring: &oa_seal::Keyring) -> Result<Vec<u8>, CustodyError> {
++        let sealed = keyring
++            .seal(&self.bound()?, self.key.as_bytes())
++            .map_err(|_| CustodyError::Unavailable)?;
++        serde_json::to_vec(&Record {
++            schema: SEALED_SCHEMA.into(),
++            scope: self.scope.clone(),
++            digest: self.digest.clone(),
++            stored_at: self.stored_at,
++            expires_at: self.expires_at,
++            terms: self.terms.clone(),
++            sealed,
++        })
++        .map_err(|_| CustodyError::Unavailable)
++    }
++}
++
+ impl Drop for Entry {
+     fn drop(&mut self) {
+         let mut bytes = std::mem::take(&mut self.key).into_bytes();
+@@ -209,18 +289,30 @@ impl Drop for Entry {
+ }
+ 
+ /// A private, operator-provisioned directory (owned by this user, mode 0700,
+-/// no symbolic links). Entry files are mode 0600 and never shared.
++/// no symbolic links). Entry files are mode 0600 and never shared, and the
++/// keys in them are sealed under `keyring`, which is kept elsewhere.
+ pub struct Vault {
+     root: PathBuf,
+     pin: (u64, u64),
++    keyring: oa_seal::Keyring,
+ }
+ 
+ impl Vault {
+-    pub fn open(root: &Path) -> Result<Self, String> {
++    /// Open custody over `root`, sealing under `keyring`. Custody never runs
++    /// without a keyring, and a keyring file inside `root` is refused: a
++    /// copy of the directory must not carry what opens it.
++    pub fn open(root: &Path, keyring: oa_seal::Keyring) -> Result<Self, String> {
+         let metadata = checked_directory(root).map_err(|_| "Key custody is unavailable.")?;
++        if keyring
++            .source()
++            .is_some_and(|source| source.starts_with(root))
++        {
++            return Err("The custody keyring must be kept outside the custody directory.".into());
++        }
+         Ok(Self {
+             root: root.into(),
+             pin: (metadata.dev(), metadata.ino()),
++            keyring,
+         })
+     }
+ 
+@@ -260,7 +352,7 @@ impl Vault {
+             terms: terms.into(),
+             key: key.into_delivery(),
+         };
+-        let mut bytes = serde_json::to_vec(&entry).map_err(|_| CustodyError::Unavailable)?;
++        let mut bytes = entry.seal(&self.keyring)?;
+         self.check()?;
+         let result = write_private(&self.root, &scope.file(), &bytes);
+         bytes.fill(0);
+@@ -274,19 +366,65 @@ impl Vault {
+         let Some(mut bytes) = read_private(&path, ENTRY_MAX)? else {
+             return Ok(None);
+         };
+-        let parsed = serde_json::from_slice::<Entry>(&bytes).ok();
++        let parsed = self.parse(&bytes);
+         bytes.fill(0);
+-        let entry = parsed.ok_or(CustodyError::Unavailable)?;
+-        if entry.schema != SCHEMA || entry.scope != *scope {
++        let (entry, reseal) = parsed?;
++        if entry.scope != *scope || entry.digest != entry.key_digest() {
+             return Err(CustodyError::Unavailable);
+         }
+         if entry.expires_at <= now {
+             erase(&path)?;
+             return Ok(None);
+         }
++        if reseal {
++            // A plain-text entry, or one under a retired key: seal it under
++            // the current key. The old bytes are zeroed before replacement.
++            let mut sealed = entry.seal(&self.keyring)?;
++            self.check()?;
++            let result = write_private(&self.root, &scope.file(), &sealed);
++            sealed.fill(0);
++            result?;
++        }
+         Ok(Some(entry))
+     }
+ 
++    /// Read an entry file, opening its sealed key. Also says whether it
++    /// should be resealed: plain text, or not under the current key.
++    fn parse(&self, bytes: &[u8]) -> Result<(Entry, bool), CustodyError> {
++        let head = serde_json::from_slice::<Head>(bytes).map_err(|_| CustodyError::Unavailable)?;
++        match head.schema.as_str() {
++            SCHEMA => {
++                let entry = serde_json::from_slice::<Entry>(bytes)
++                    .map_err(|_| CustodyError::Unavailable)?;
++                Ok((entry, true))
++            }
++            SEALED_SCHEMA => {
++                let record = serde_json::from_slice::<Record>(bytes)
++                    .map_err(|_| CustodyError::Unavailable)?;
++                let mut entry = Entry {
++                    schema: SCHEMA.into(),
++                    scope: record.scope,
++                    digest: record.digest,
++                    stored_at: record.stored_at,
++                    expires_at: record.expires_at,
++                    terms: record.terms,
++                    key: String::new(),
++                };
++                let mut plain = self
++                    .keyring
++                    .open(&entry.bound()?, &record.sealed)
++                    .map_err(|_| CustodyError::Unavailable)?;
++                entry.key = String::from_utf8(std::mem::take(&mut *plain)).map_err(|error| {
++                    let mut bytes = error.into_bytes();
++                    bytes.fill(0);
++                    CustodyError::Unavailable
++                })?;
++                Ok((entry, !self.keyring.is_current(&record.sealed)))
++            }
++            _ => Err(CustodyError::Unavailable),
++        }
++    }
++
+     pub fn status(&self, scope: &Scope, now: u64) -> Result<Option<Status>, CustodyError> {
+         Ok(self.load(scope, now)?.as_ref().map(status))
+     }
+@@ -334,7 +472,16 @@ pub(super) fn write_private(root: &Path, name: &str, bytes: &[u8]) -> Result<(),
+         let _ = erase(&next);
+         return Err(CustodyError::Unavailable);
+     }
+-    fs::rename(&next, root.join(name)).map_err(|_| CustodyError::Unavailable)?;
++    // The file being replaced may hold an older key (or, before encryption
++    // at rest, a plain-text one): zero its bytes before the rename unlinks it.
++    let target = root.join(name);
++    if fs::symlink_metadata(&target).is_ok()
++        && let Err(error) = zero(&target)
++    {
++        let _ = erase(&next);
++        return Err(error);
++    }
++    fs::rename(&next, &target).map_err(|_| CustodyError::Unavailable)?;
+     File::open(root)
+         .and_then(|directory| directory.sync_all())
+         .map_err(|_| CustodyError::Unavailable)
+@@ -385,6 +532,12 @@ fn status(entry: &Entry) -> Status {
+ /// Zero the bytes in place before unlinking, so a later reader of the
+ /// directory or a backup of the inode cannot recover the key.
+ fn erase(path: &Path) -> Result<(), CustodyError> {
++    zero(path)?;
++    fs::remove_file(path).map_err(|_| CustodyError::Unavailable)
++}
++
++/// Overwrite a private file's bytes with zeros in place and sync.
++fn zero(path: &Path) -> Result<(), CustodyError> {
+     let file = OpenOptions::new()
+         .write(true)
+         .custom_flags(libc::O_NOFOLLOW)
+@@ -398,8 +551,7 @@ fn erase(path: &Path) -> Result<(), CustodyError> {
+     let zeros = vec![0; metadata.len() as usize];
+     file.write_all(&zeros)
+         .and_then(|()| file.sync_all())
+-        .map_err(|_| CustodyError::Unavailable)?;
+-    fs::remove_file(path).map_err(|_| CustodyError::Unavailable)
++        .map_err(|_| CustodyError::Unavailable)
+ }
+ 
+ fn private_file(metadata: &fs::Metadata) -> bool {
+diff --git a/crates/openagents-web/src/main.rs b/crates/openagents-web/src/main.rs
+index 0b12742cf631d8c2bdb5cdbb9b230c6e667dfedf..03c465a7a1c82f9f7002fb755558b8986b822075 100644
+--- a/crates/openagents-web/src/main.rs
++++ b/crates/openagents-web/src/main.rs
+@@ -4,7 +4,7 @@ use std::path::PathBuf;
+ const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIRECTORY] [--listen ADDRESS] \
+ [--pay-host http://HOST:PORT] [--public-host HOST]... [--upstream http://HOST:PORT] \
+ [--chat-store DIRECTORY | --chat-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
+-[--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-byo PRIVATE_DIR] [--pilot-config PRIVATE_JSON] \
++[--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-byo PRIVATE_DIR [--cloud-byo-keys PRIVATE_JSON]] [--pilot-config PRIVATE_JSON] \
+ [--environments PRIVATE_JSON] [--github-oauth PRIVATE_JSON] [--github-redirect URL]";
+ 
+ #[tokio::main]
+@@ -19,6 +19,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
+     let mut chat_retention = std::env::var("OPENAGENTS_WEB_CHAT_RETENTION_DAYS").ok();
+     let mut github_oauth: Option<PathBuf> = None;
+     let mut github_redirect: Option<String> = None;
++    let mut cloud_byo: Option<PathBuf> = None;
++    let mut cloud_byo_keys: Option<PathBuf> = None;
+     let mut arguments = std::env::args().skip(1);
+     while let Some(option) = arguments.next() {
+         let value = arguments.next().ok_or(USAGE)?;
+@@ -54,11 +56,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
+                     openagents_web::cloud::hosts::Hosts::load(std::path::Path::new(&value))?,
+                 ));
+             }
+-            "--cloud-byo" => {
+-                config.cloud_byo = Some(std::sync::Arc::new(
+-                    openagents_web::cloud::byo::Computers::open(std::path::Path::new(&value))?,
+-                ));
+-            }
++            "--cloud-byo" => cloud_byo = Some(PathBuf::from(value)),
++            "--cloud-byo-keys" => cloud_byo_keys = Some(PathBuf::from(value)),
+             // The OAuth App's private file ({client_id, client_secret,
+             // token_encryption_key}); the web server reads the client id only.
+             "--github-oauth" => github_oauth = Some(PathBuf::from(value)),
+@@ -78,6 +77,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
+             _ => return Err(USAGE.into()),
+         }
+     }
++    // Saved own-Claude credentials are encrypted at rest (#11041) under a
++    // keyring kept outside the custody directory: a private file
++    // (--cloud-byo-keys) or the keyring document in
++    // OPENAGENTS_WEB_CLOUD_BYO_KEYS (a Secret Manager secret on Cloud Run).
++    // Custody refuses to start without one.
++    if let Some(directory) = cloud_byo {
++        let keyring = match (
++            cloud_byo_keys,
++            std::env::var("OPENAGENTS_WEB_CLOUD_BYO_KEYS"),
++        ) {
++            (Some(path), _) => oa_seal::Keyring::load(&path)?,
++            (None, Ok(document)) if !document.trim().is_empty() => {
++                let keyring = oa_seal::Keyring::parse(document.as_bytes());
++                let mut bytes = document.into_bytes();
++                bytes.fill(0);
++                keyring?
++            }
++            _ => {
++                return Err("--cloud-byo needs a keyring to encrypt saved keys: \
++--cloud-byo-keys PRIVATE_JSON or OPENAGENTS_WEB_CLOUD_BYO_KEYS"
++                    .into());
++            }
++        };
++        config.cloud_byo = Some(std::sync::Arc::new(
++            openagents_web::cloud::byo::Computers::open(&directory, keyring)?,
++        ));
++    } else if cloud_byo_keys.is_some() {
++        return Err("--cloud-byo-keys needs --cloud-byo".into());
++    }
+     if let Some(path) = github_oauth {
+         // The callback defaults to the Cloud origin's /auth/github/callback.
+         let redirect = match (github_redirect, config.cloud.as_deref()) {
+diff --git a/docs/cloud/claude-code-byo.md b/docs/cloud/claude-code-byo.md
+index ce1cab76c246708408cb4f7f8e8c9267b0c1c0f8..1e1490307c0a8058d5531e81cc13030ad022a937 100644
+--- a/docs/cloud/claude-code-byo.md
++++ b/docs/cloud/claude-code-byo.md
+@@ -133,8 +133,54 @@ October 8, 2026. Recheck both before each availability decision.
+   each boot or automated turn (never into a checkpoint, image, export, or
+   evidence); removal erases the entry, so running computers lose it at their
+   next start or turn and future computers never see it. The page is
+-  `/settings/claude` (enabled by `--cloud-byo PRIVATE_DIR`) and
+-  states that usage bills to the user's own Anthropic or cloud account.
++  `/settings/claude` (enabled by `--cloud-byo PRIVATE_DIR` with a keyring,
++  below) and states that usage bills to the user's own Anthropic or cloud
++  account.
++
++### How saved credentials are kept
++
++Fixed in [#11041](https://github.com/OpenAgentsInc/openagents/issues/11041).
++A saved credential is encrypted before it touches disk. A copy of the custody
++directory (a disk snapshot, a backup, a stolen volume) holds only ciphertext.
++
++- **The lock.** Each saved credential is encrypted with AES-256-GCM
++  (`crates/oa-seal`) under a key from a keyring. Each encryption uses a fresh
++  random nonce. The entry's owner, workspace, epoch, digest, dates, and
++  accepted terms stay readable so status needs no decryption. They are bound
++  to the ciphertext, so editing any of them makes the entry unreadable.
++- **Where the key lives.** Never in the custody directory. The server reads
++  the keyring from `--cloud-byo-keys PRIVATE_JSON` (a file owned by the server
++  user, `chmod 600`, not a symbolic link, and refused if it sits inside the
++  custody directory) or from the environment variable
++  `OPENAGENTS_WEB_CLOUD_BYO_KEYS` (for a Secret Manager secret on Cloud
++  Run). `--cloud-byo` refuses to start without one; there is no unencrypted
++  mode. The keyring document is:
++
++  ```json
++  {"schema":"openagents.seal.keyring.v1","current":"2026-10","keys":{"2026-10":"<32 random bytes, base64>"}}
++  ```
++
++  Make a key with `openssl rand -base64 32`.
++- **Rotation.** Each entry records the id of the key that sealed it. To
++  rotate, add a new key to `keys`, point `current` at it, and restart. Older
++  entries still open, and each is resealed under the new key the next time it
++  is read. Drop the old key only once nothing uses it. An entry sealed under
++  a key that is no longer in the keyring cannot be read: the person adds
++  their credential again.
++- **Older plain-text entries.** Entries saved before this change held the
++  credential in plain text. The first read seals them, and the plain-text
++  bytes are overwritten with zeros before the sealed file replaces them.
++- **Failing closed.** A wrong key, a missing key, or a changed byte makes the
++  entry unavailable. The server never falls back to plain text, never rewrites
++  an entry it could not open, and the owner's automated turns are refused
++  (not quietly moved to the plan login) until the person removes or re-adds
++  the credential.
++- **Kept from before.** Entry files are still owner-only (`0600`) in an
++  owner-only directory, written atomically and synced. A replaced or removed
++  entry's bytes are zeroed before it is unlinked. Keys in memory, including
++  the keyring, are zeroed when dropped and never printed.
++- **Local fixtures** (`cloud_session_fixture`, `github_auth_fixture`, and the
++  tests) make a throwaway keyring next to the custody directory.
+ 
+ ## Implemented (BYO-03, #11010)
+ 
+diff --git a/docs/cloud/coder-cloud-web-activation.md b/docs/cloud/coder-cloud-web-activation.md
+index bb96cef3ed909d32b7645ca21c4eb71fc45c3b53..36449da6afa32aa3aaf6a4dea44bf6e5b454e934 100644
+--- a/docs/cloud/coder-cloud-web-activation.md
++++ b/docs/cloud/coder-cloud-web-activation.md
+@@ -28,7 +28,7 @@ configuration is loaded. Otherwise its navigation entry reads **Unavailable**.
+ | `--cloud-retail PRIVATE_JSON` | Billing → Retail and Purchases (`retail.rs`, `retail/purchases.rs`, `custody.rs`) | The Retail lane is absent. |
+ | `--cloud-sales PRIVATE_JSON` | Sales, Sales modules, the sales floor, and the sales-owner part of Partners (`sales.rs`, `sales_views.rs`, `partners.rs`) | Sales is unavailable. Partners shows only the viewer's own account records. |
+ | `--cloud-team PRIVATE_JSON` | Team lanes listed in the owner's browser qualification (`team.rs`) | Team is unavailable. |
+-| `--cloud-byo PRIVATE_DIR` | Settings → Manage Claude credential (`byo.rs`) | The section is absent. |
++| `--cloud-byo PRIVATE_DIR` with `--cloud-byo-keys PRIVATE_JSON` (or `OPENAGENTS_WEB_CLOUD_BYO_KEYS`) | Settings → Manage Claude credential (`byo.rs`), encrypted at rest (#11041) | The section is absent. `--cloud-byo` without a keyring refuses to start. |
+ | `--everglade DIRECTORY` | The chamber renderer that Verse Join opens | Join is unavailable. Verse connections still show. |
+ 
+ Billing statements and decision resources (`billing.rs`) and Partners

@@ -1,0 +1,17 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 11051,
+  "title": "Flaky test: coder-new delegation_events channel_rejects_wrong_tokens_and_closes_unfinished_redacted_children",
+  "body": "Fails about one run in three locally: `crates/coder-new/src/delegation_events.rs:433` assertion left 0, right 2. Seen 2026-10-09 on main (6375bb2cab and later) while integrating #11045\u2013#11048; passes on rerun. Likely a timing race in the test's channel setup.",
+  "fix": "112f0cb2e347d0afc04cd86fb74add5322391cfc",
+  "parent": "771b6c71d9e26320cf936dd27ee3b3e040112048",
+  "package": "coder-new",
+  "source_files": [],
+  "test_files": [
+    "crates/coder-new/src/delegation_events.rs"
+  ],
+  "test_names": [],
+  "fix_lines": 19
+}

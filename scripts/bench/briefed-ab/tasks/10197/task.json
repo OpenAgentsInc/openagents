@@ -1,0 +1,30 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10197,
+  "title": "Payments R13: `openagents.com/live`: the Episode 289 flow picture driven by real payments",
+  "body": "Design: [central receive and splits, section 7](https://github.com/OpenAgentsInc/openagents/blob/main/docs/payments/2026-10-02-central-receive-and-splits.md#7-stats-and-the-live-view). Depends on #10195.\n\nOwner: \"like that simulation \u2026 but I want to see that real movement, like real plugin, real everything.\"\n\n## Do\n- `static/flow.js` (same-origin, canvas) and a page `/live` in `crates/openagents-web`: draw the snapshot topology (positions from the server, the same layout the desktop `routes-future` scene uses), then animate each streamed event: white request out along the path to its node, gold payment back to the hub, gold share on to the author, gold payout to the author's wallet, a ring for bonuses.\n- A totals ticker under the map; the time of the last event; no synthetic traffic, ever.\n- Match the desktop palette (`REQUEST` white, `PAYMENT` gold in `crates/openagents-desktop/src/route_future.rs`).\n- Works at phone width.\n\n## Done when\n- With a replayed fixture stream, a screenshot shows dots for each event type, and the page reconnects after the stream drops.\n\n\nSize: needs a full agent session.\n\nPart of the central payments plan: https://github.com/OpenAgentsInc/openagents/blob/main/docs/payments/2026-10-02-central-receive-and-splits.md\n",
+  "fix": "2ff8a6dbb5a1a480496898cf80b50a5208c3aec9",
+  "parent": "5dae61d58272027415c7777e644de98b19a3e580",
+  "package": "openagents-web",
+  "source_files": [
+    "crates/openagents-web/README.md",
+    "crates/openagents-web/src/lib.rs",
+    "crates/openagents-web/src/pages/live.rs",
+    "crates/openagents-web/src/pages/mod.rs",
+    "crates/openagents-web/src/upstream.rs",
+    "crates/openagents-web/static/flow.js",
+    "crates/openagents-web/static/flow.test.js",
+    "crates/openagents-web/static/site.css",
+    "docs/deployment/openagents-web.md",
+    "docs/payments/2026-10-02-central-receive-and-splits.md"
+  ],
+  "test_files": [
+    "crates/openagents-web/src/tests.rs"
+  ],
+  "test_names": [
+    "the_live_page_draws_the_flow_stream_on_the_route_map"
+  ],
+  "fix_lines": 716
+}

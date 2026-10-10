@@ -1,0 +1,766 @@
+diff --git a/crates/plugin/src/engine.rs b/crates/plugin/src/engine.rs
+index 7b1b2e01accddf45b25365dc1b247ab0d1b0afad..4aab55c62f78639d4cbdeccde90edea970ede6dd 100644
+--- a/crates/plugin/src/engine.rs
++++ b/crates/plugin/src/engine.rs
+@@ -33,7 +33,7 @@ pub enum Profile {
+ }
+ 
+ /// Ceilings for one invocation.
+-#[derive(Debug, Clone, Copy)]
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+ pub struct Limits {
+     /// Guest instruction fuel, including the start function.
+     pub fuel: u64,
+@@ -152,24 +152,35 @@ pub struct Call<'a> {
+ ///
+ /// Returns a typed host error. The instance is not reused after a trap.
+ pub fn invoke(call: Call<'_>) -> Result<GuestValue, HostError> {
++    metered(call).0
++}
++
++/// Run one guest and report the fuel it consumed, zero when it never
++/// started.
++pub(crate) fn metered(call: Call<'_>) -> (Result<GuestValue, HostError>, u64) {
+     if call.wasm.len() > call.limits.module_bytes {
+-        return Err(HostError::Limit("module bytes".into()));
++        return (Err(HostError::Limit("module bytes".into())), 0);
+     }
+     if call.cancelled.load(Ordering::SeqCst) {
+-        return Err(HostError::Cancelled);
++        return (Err(HostError::Cancelled), 0);
+     }
++    // `replay::ENGINE` names this configuration. Change both together.
+     let mut config = wasmtime::Config::new();
+     config.consume_fuel(true);
+     config.epoch_interruption(true);
+-    let engine = Engine::new(&config).map_err(|error| HostError::Failed(error.to_string()))?;
++    let engine = match Engine::new(&config) {
++        Ok(engine) => engine,
++        Err(error) => return (Err(HostError::Failed(error.to_string())), 0),
++    };
+     let cancelled = Arc::clone(&call.cancelled);
+     let done = AtomicBool::new(false);
+     std::thread::scope(|scope| {
+         let watcher = scope.spawn(|| interrupt_on_cancel(&engine, &cancelled, &done));
+-        let outcome = run_guest(&engine, call);
++        let mut fuel = 0;
++        let outcome = run_guest(&engine, call, &mut fuel);
+         done.store(true, Ordering::SeqCst);
+         watcher.thread().unpark();
+-        outcome
++        (outcome, fuel)
+     })
+ }
+ 
+@@ -185,7 +196,7 @@ fn interrupt_on_cancel(engine: &Engine, cancelled: &AtomicBool, done: &AtomicBoo
+     }
+ }
+ 
+-fn run_guest(engine: &Engine, call: Call<'_>) -> Result<GuestValue, HostError> {
++fn run_guest(engine: &Engine, call: Call<'_>, fuel: &mut u64) -> Result<GuestValue, HostError> {
+     let Call {
+         wasm,
+         profile,
+@@ -218,6 +229,30 @@ fn run_guest(engine: &Engine, call: Call<'_>) -> Result<GuestValue, HostError> {
+     store
+         .set_fuel(limits.fuel)
+         .map_err(|error| HostError::Failed(error.to_string()))?;
++    let outcome = drive(
++        &mut store, engine, &module, profile, invocation, operation, input, handles, limits,
++        &cancelled, required,
++    );
++    *fuel = limits.fuel - store.get_fuel().unwrap_or(limits.fuel).min(limits.fuel);
++    outcome
++}
++
++/// Instantiate the guest in `store`, pass the packet, and read the
++/// response.
++#[allow(clippy::too_many_arguments)]
++fn drive(
++    mut store: &mut Store<GuestState>,
++    engine: &Engine,
++    module: &Module,
++    profile: Profile,
++    invocation: &str,
++    operation: &str,
++    input: &Value,
++    handles: &BTreeMap<String, String>,
++    limits: Limits,
++    cancelled: &AtomicBool,
++    required: bool,
++) -> Result<GuestValue, HostError> {
+     // The epoch starts at zero and the watcher bumps it once, on cancel. A
+     // bump that landed before this deadline was set would not trap, so the
+     // flag is read again after it.
+@@ -232,7 +267,7 @@ fn run_guest(engine: &Engine, call: Call<'_>) -> Result<GuestValue, HostError> {
+             .func_wrap("oa_host", "call", host_call)
+             .map_err(|error| HostError::Failed(error.to_string()))?;
+     }
+-    let instance = linker.instantiate(&mut store, &module).map_err(map_trap)?;
++    let instance = linker.instantiate(&mut store, module).map_err(map_trap)?;
+     let memory = instance
+         .get_memory(&mut store, "memory")
+         .ok_or_else(|| HostError::Malformed("guest exports no memory".into()))?;
+diff --git a/crates/plugin/src/lib.rs b/crates/plugin/src/lib.rs
+index 2ace6a5a8f9137378ef727f144b8957f6f3f0e2e..3e51c8a58f7fd841f59a23ff8fe1f89a7c4ca5c9 100644
+--- a/crates/plugin/src/lib.rs
++++ b/crates/plugin/src/lib.rs
+@@ -3,13 +3,21 @@
+ //! A guest runs in a fresh instance with no ambient interface. Pure guests
+ //! receive only the packet. Snapshot-read guests may list and read handles
+ //! issued for that invocation.
++//!
++//! [`invoke_with_receipt`] also returns a digested [`InvocationReceipt`],
++//! and [`replay`] reruns an invocation and compares it with one.
+ 
+ mod engine;
+ mod memory;
++mod replay;
+ mod snapshot;
+ 
+ pub use engine::{
+     BuildReceipt, Call, GuestValue, HostError, Limits, Profile, build_receipt, digest, invoke,
+     representation,
+ };
++pub use replay::{
++    ENGINE, EXACT_REPLAY, InvocationReceipt, Outcome, RECEIPT_SCHEMA, Replay, canonical,
++    invoke_with_receipt, replay,
++};
+ pub use snapshot::{Entry, Snapshot, decode_base64, derivative, encode_base64};
+diff --git a/crates/plugin/src/replay.rs b/crates/plugin/src/replay.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..031c3a5231c1b6662dddb1caaf3503e6e1ebd019
+--- /dev/null
++++ b/crates/plugin/src/replay.rs
+@@ -0,0 +1,505 @@
++//! Invocation receipts and exact replay.
++//!
++//! A receipt records the digests of everything an invocation read and
++//! returned: the module, operation, input, snapshot, handles, limits, and
++//! engine, and then the outcome and the fuel it consumed. Another host
++//! holding the same bytes replays the invocation and compares. A match is
++//! `passed` with the verification class `exact_replay`.
++//!
++//! A replay proves that the same bytes on the same engine configuration
++//! produced the same output. It is not remote attestation. It says nothing
++//! about whether the output is correct. It reruns the guest on this host,
++//! so it is only as independent as this host is from the one that wrote the
++//! receipt.
++
++use std::collections::BTreeMap;
++use std::fmt::Write as _;
++use std::sync::atomic::Ordering;
++
++use nostr::contracts::parse_strict;
++use serde_json::{Map, Value, json};
++
++use crate::engine::{Call, GuestValue, HostError, Limits, Profile, digest, metered};
++use crate::snapshot::{Entry, Snapshot};
++
++/// The receipt's schema identifier.
++pub const RECEIPT_SCHEMA: &str = "openagents.plugin-invocation-receipt.v1";
++
++/// The engine and configuration [`crate::invoke`] runs guests on. A replay
++/// on a different engine is `unverifiable`, not `failed`.
++pub const ENGINE: &str = "wasmtime/48.0.2+consume_fuel+epoch_interruption";
++
++/// The verification class a passing replay reports.
++pub const EXACT_REPLAY: &str = "exact_replay";
++
++/// What an invocation ended with.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub enum Outcome {
++    /// The guest returned a value.
++    Value {
++        /// The status [`GuestValue`] carried.
++        status: String,
++        /// Digest of the canonical JSON of the value.
++        output: String,
++    },
++    /// The host returned a typed error.
++    Error {
++        /// `malformed`, `denied`, `limit`, `stale`, `failed`, `cancelled`,
++        /// or `refused`.
++        kind: String,
++        /// The host-authored detail for `limit` and `refused`; empty
++        /// otherwise, because other details can carry engine text.
++        detail: String,
++    },
++}
++
++impl Outcome {
++    fn of(result: &Result<GuestValue, HostError>) -> Self {
++        match result {
++            Ok(value) => Self::Value {
++                status: value.status.clone(),
++                output: digest(canonical(&value.value).as_bytes()),
++            },
++            Err(error) => {
++                let (kind, detail) = match error {
++                    HostError::Malformed(_) => ("malformed", String::new()),
++                    HostError::Denied(_) => ("denied", String::new()),
++                    HostError::Limit(detail) => ("limit", detail.clone()),
++                    HostError::Stale(_) => ("stale", String::new()),
++                    HostError::Failed(_) => ("failed", String::new()),
++                    HostError::Cancelled => ("cancelled", String::new()),
++                    HostError::Refused(detail) => ("refused", detail.clone()),
++                };
++                Self::Error {
++                    kind: kind.into(),
++                    detail,
++                }
++            }
++        }
++    }
++
++    fn describe(&self) -> String {
++        match self {
++            Self::Value { status, output } => format!("{status} {output}"),
++            Self::Error { kind, detail } if detail.is_empty() => format!("error {kind}"),
++            Self::Error { kind, detail } => format!("error {kind}: {detail}"),
++        }
++    }
++}
++
++/// The digested record of one invocation.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct InvocationReceipt {
++    /// Digest of the guest module bytes.
++    pub module: String,
++    /// Pure or snapshot-read.
++    pub profile: Profile,
++    /// Operation slug.
++    pub operation: String,
++    /// Host-generated invocation ID. It is part of the packet.
++    pub invocation: String,
++    /// Digest of the canonical JSON of the operation input.
++    pub input: String,
++    /// Digest of the granted snapshot and its handles.
++    pub snapshot: String,
++    /// Ceilings the invocation ran under.
++    pub limits: Limits,
++    /// Whether a guest refusal failed the invocation.
++    pub required: bool,
++    /// The engine identity, [`ENGINE`] on this host.
++    pub engine: String,
++    /// What the invocation ended with.
++    pub outcome: Outcome,
++    /// Guest fuel consumed, including the start function.
++    pub fuel_consumed: u64,
++}
++
++/// A replay's verdict, in the shared verification vocabulary.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub enum Replay {
++    /// The rerun matched the receipt's outcome and fuel.
++    Passed {
++        /// Always [`EXACT_REPLAY`].
++        class: &'static str,
++    },
++    /// The rerun ran on the receipt's inputs and diverged.
++    Failed {
++        /// `outcome` or `fuel_consumed`.
++        field: &'static str,
++        /// What the receipt recorded.
++        expected: String,
++        /// What the rerun produced.
++        actual: String,
++    },
++    /// The replay could not run on the receipt's inputs, so it proves
++    /// nothing either way.
++    Unverifiable {
++        /// Why, such as `input digest differs`.
++        reason: String,
++    },
++}
++
++impl Replay {
++    /// `passed`, `failed`, or `unverifiable`.
++    #[must_use]
++    pub fn verification(&self) -> &'static str {
++        match self {
++            Self::Passed { .. } => "passed",
++            Self::Failed { .. } => "failed",
++            Self::Unverifiable { .. } => "unverifiable",
++        }
++    }
++}
++
++/// Run one guest, as [`crate::invoke`] does, and return its receipt.
++///
++/// The value's verification stays `not_run`: a receipt is not a check.
++pub fn invoke_with_receipt(call: Call<'_>) -> (Result<GuestValue, HostError>, InvocationReceipt) {
++    let inputs = Inputs::of(&call);
++    let (result, fuel) = metered(call);
++    let receipt = inputs.receipt(Outcome::of(&result), fuel);
++    (result, receipt)
++}
++
++/// Rerun `call` and compare it with `receipt`.
++///
++/// The call must supply the same module, operation, invocation ID, input,
++/// snapshot, handles, limits, and requirement the receipt digests, on the
++/// same engine. Otherwise the verdict is `unverifiable` and the guest does
++/// not run.
++#[must_use]
++pub fn replay(receipt: &InvocationReceipt, call: Call<'_>) -> Replay {
++    if receipt.engine != ENGINE {
++        return unverifiable(format!("engine {} is not {ENGINE}", receipt.engine));
++    }
++    if matches!(&receipt.outcome, Outcome::Error { kind, .. } if kind == "cancelled") {
++        return unverifiable("the recorded invocation was cancelled".into());
++    }
++    let inputs = Inputs::of(&call);
++    let checks = [
++        ("module digest", receipt.module == inputs.module),
++        ("profile", receipt.profile == inputs.profile),
++        ("operation", receipt.operation == inputs.operation),
++        ("invocation", receipt.invocation == inputs.invocation),
++        ("input digest", receipt.input == inputs.input),
++        ("snapshot digest", receipt.snapshot == inputs.snapshot),
++        ("limits", receipt.limits == inputs.limits),
++        ("required", receipt.required == inputs.required),
++    ];
++    if let Some((name, _)) = checks.iter().find(|(_, same)| !same) {
++        return unverifiable(format!("{name} differs"));
++    }
++    let cancelled = std::sync::Arc::clone(&call.cancelled);
++    let (result, fuel) = metered(call);
++    if cancelled.load(Ordering::SeqCst) {
++        return unverifiable("the replay was cancelled".into());
++    }
++    let outcome = Outcome::of(&result);
++    if outcome != receipt.outcome {
++        return Replay::Failed {
++            field: "outcome",
++            expected: receipt.outcome.describe(),
++            actual: outcome.describe(),
++        };
++    }
++    if fuel != receipt.fuel_consumed {
++        return Replay::Failed {
++            field: "fuel_consumed",
++            expected: receipt.fuel_consumed.to_string(),
++            actual: fuel.to_string(),
++        };
++    }
++    Replay::Passed {
++        class: EXACT_REPLAY,
++    }
++}
++
++fn unverifiable(reason: String) -> Replay {
++    Replay::Unverifiable { reason }
++}
++
++/// The digested inputs of one call.
++struct Inputs {
++    module: String,
++    profile: Profile,
++    operation: String,
++    invocation: String,
++    input: String,
++    snapshot: String,
++    limits: Limits,
++    required: bool,
++}
++
++impl Inputs {
++    fn of(call: &Call<'_>) -> Self {
++        Self {
++            module: digest(call.wasm),
++            profile: call.profile,
++            operation: call.operation.to_string(),
++            invocation: call.invocation.to_string(),
++            input: digest(canonical(call.input).as_bytes()),
++            snapshot: snapshot_digest(call.snapshot, call.handles),
++            limits: call.limits,
++            required: call.required,
++        }
++    }
++
++    fn receipt(self, outcome: Outcome, fuel_consumed: u64) -> InvocationReceipt {
++        InvocationReceipt {
++            module: self.module,
++            profile: self.profile,
++            operation: self.operation,
++            invocation: self.invocation,
++            input: self.input,
++            snapshot: self.snapshot,
++            limits: self.limits,
++            required: self.required,
++            engine: ENGINE.into(),
++            outcome,
++            fuel_consumed,
++        }
++    }
++}
++
++/// The digest of every entry in `snapshot`, in name order, and the handle
++/// table.
++fn snapshot_digest(snapshot: &Snapshot, handles: &BTreeMap<String, String>) -> String {
++    let entries: Vec<Value> = snapshot
++        .entries()
++        .map(|(name, entry)| {
++            let body = match entry {
++                Entry::File {
++                    bytes,
++                    version,
++                    complete,
++                } => json!({
++                    "type": "file",
++                    "bytes": digest(bytes),
++                    "version": version,
++                    "complete": complete
++                }),
++                Entry::Directory { children } => json!({
++                    "type": "directory",
++                    "children": children
++                }),
++                Entry::Symlink { target } => json!({"type": "symlink", "target": target}),
++            };
++            json!([name, body])
++        })
++        .collect();
++    let handles: Map<String, Value> = handles
++        .iter()
++        .map(|(name, token)| (name.clone(), Value::String(token.clone())))
++        .collect();
++    let value = json!({"entries": entries, "handles": handles});
++    digest(canonical(&value).as_bytes())
++}
++
++/// JSON with object keys sorted at every level and no insignificant
++/// whitespace, so the digest doesn't depend on key order.
++#[must_use]
++pub fn canonical(value: &Value) -> String {
++    let mut out = String::new();
++    write_canonical(value, &mut out);
++    out
++}
++
++fn write_canonical(value: &Value, out: &mut String) {
++    match value {
++        Value::Object(object) => {
++            let mut keys: Vec<&String> = object.keys().collect();
++            keys.sort();
++            out.push('{');
++            for (index, key) in keys.iter().enumerate() {
++                if index > 0 {
++                    out.push(',');
++                }
++                out.push_str(&Value::String((*key).clone()).to_string());
++                out.push(':');
++                write_canonical(&object[*key], out);
++            }
++            out.push('}');
++        }
++        Value::Array(items) => {
++            out.push('[');
++            for (index, item) in items.iter().enumerate() {
++                if index > 0 {
++                    out.push(',');
++                }
++                write_canonical(item, out);
++            }
++            out.push(']');
++        }
++        scalar => {
++            let _ = write!(out, "{scalar}");
++        }
++    }
++}
++
++impl InvocationReceipt {
++    /// The receipt as JSON.
++    #[must_use]
++    pub fn to_json(&self) -> Value {
++        let outcome = match &self.outcome {
++            Outcome::Value { status, output } => {
++                json!({"type": "value", "status": status, "output": output})
++            }
++            Outcome::Error { kind, detail } => {
++                json!({"type": "error", "kind": kind, "detail": detail})
++            }
++        };
++        json!({
++            "schema": RECEIPT_SCHEMA,
++            "module": self.module,
++            "profile": profile_name(self.profile),
++            "operation": self.operation,
++            "invocation": self.invocation,
++            "input": self.input,
++            "snapshot": self.snapshot,
++            "limits": {
++                "fuel": self.limits.fuel,
++                "memory_bytes": self.limits.memory_bytes,
++                "output_bytes": self.limits.output_bytes,
++                "read_bytes": self.limits.read_bytes,
++                "module_bytes": self.limits.module_bytes
++            },
++            "required": self.required,
++            "engine": self.engine,
++            "outcome": outcome,
++            "fuel_consumed": self.fuel_consumed
++        })
++    }
++
++    /// Parse a receipt. Duplicate keys, unknown fields, missing fields,
++    /// and malformed digests are refused.
++    ///
++    /// # Errors
++    ///
++    /// Returns the first field that does not parse.
++    pub fn from_json(bytes: &[u8]) -> Result<Self, String> {
++        let value = parse_strict(bytes).map_err(|error| error.to_string())?;
++        let object = fields(
++            &value,
++            "receipt",
++            &[
++                "schema",
++                "module",
++                "profile",
++                "operation",
++                "invocation",
++                "input",
++                "snapshot",
++                "limits",
++                "required",
++                "engine",
++                "outcome",
++                "fuel_consumed",
++            ],
++        )?;
++        if text(object, "schema")? != RECEIPT_SCHEMA {
++            return Err("schema".into());
++        }
++        let profile = match text(object, "profile")? {
++            "pure" => Profile::Pure,
++            "snapshot-read" => Profile::SnapshotRead,
++            _ => return Err("profile".into()),
++        };
++        let limits = fields(
++            &object["limits"],
++            "limits",
++            &[
++                "fuel",
++                "memory_bytes",
++                "output_bytes",
++                "read_bytes",
++                "module_bytes",
++            ],
++        )?;
++        let size = |name: &str| -> Result<usize, String> {
++            usize::try_from(number(limits, name)?).map_err(|_| name.to_string())
++        };
++        let limits = Limits {
++            fuel: number(limits, "fuel")?,
++            memory_bytes: size("memory_bytes")?,
++            output_bytes: size("output_bytes")?,
++            read_bytes: size("read_bytes")?,
++            module_bytes: size("module_bytes")?,
++        };
++        let outcome = &object["outcome"];
++        let outcome = match outcome.get("type").and_then(Value::as_str) {
++            Some("value") => {
++                let fields = fields(outcome, "outcome", &["type", "status", "output"])?;
++                Outcome::Value {
++                    status: text(fields, "status")?.into(),
++                    output: sha256(fields, "output")?,
++                }
++            }
++            Some("error") => {
++                let fields = fields(outcome, "outcome", &["type", "kind", "detail"])?;
++                Outcome::Error {
++                    kind: text(fields, "kind")?.into(),
++                    detail: text(fields, "detail")?.into(),
++                }
++            }
++            _ => return Err("outcome".into()),
++        };
++        Ok(Self {
++            module: sha256(object, "module")?,
++            profile,
++            operation: text(object, "operation")?.into(),
++            invocation: text(object, "invocation")?.into(),
++            input: sha256(object, "input")?,
++            snapshot: sha256(object, "snapshot")?,
++            limits,
++            required: object["required"]
++                .as_bool()
++                .ok_or_else(|| "required".to_string())?,
++            engine: text(object, "engine")?.into(),
++            outcome,
++            fuel_consumed: number(object, "fuel_consumed")?,
++        })
++    }
++}
++
++fn profile_name(profile: Profile) -> &'static str {
++    match profile {
++        Profile::Pure => "pure",
++        Profile::SnapshotRead => "snapshot-read",
++    }
++}
++
++/// `value` as an object with exactly the keys `expected`.
++fn fields<'a>(
++    value: &'a Value,
++    name: &str,
++    expected: &[&str],
++) -> Result<&'a Map<String, Value>, String> {
++    let object = value.as_object().ok_or_else(|| name.to_string())?;
++    if object.len() != expected.len() || expected.iter().any(|key| !object.contains_key(*key)) {
++        return Err(format!("{name} fields"));
++    }
++    Ok(object)
++}
++
++fn text<'a>(object: &'a Map<String, Value>, name: &str) -> Result<&'a str, String> {
++    object[name].as_str().ok_or_else(|| name.to_string())
++}
++
++fn number(object: &Map<String, Value>, name: &str) -> Result<u64, String> {
++    object[name].as_u64().ok_or_else(|| name.to_string())
++}
++
++fn sha256(object: &Map<String, Value>, name: &str) -> Result<String, String> {
++    let digest = text(object, name)?;
++    let hex = digest
++        .strip_prefix("sha256:")
++        .ok_or_else(|| name.to_string())?;
++    if hex.len() != 64
++        || !hex
++            .bytes()
++            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
++    {
++        return Err(name.to_string());
++    }
++    Ok(digest.to_string())
++}
+diff --git a/crates/plugin/src/snapshot.rs b/crates/plugin/src/snapshot.rs
+index e5b1faaa11bdccae05b87993c94ec2ac7e47a75d..c87bc94b8095bda4419de220ab5e23889c06ec58 100644
+--- a/crates/plugin/src/snapshot.rs
++++ b/crates/plugin/src/snapshot.rs
+@@ -61,6 +61,13 @@ impl Snapshot {
+         self.entries.get(name)
+     }
+ 
++    /// Every entry, in name order.
++    pub fn entries(&self) -> impl Iterator<Item = (&str, &Entry)> {
++        self.entries
++            .iter()
++            .map(|(name, entry)| (name.as_str(), entry))
++    }
++
+     /// Metadata for `name`.
+     ///
+     /// # Errors
+diff --git a/docs/extensions/plugins.md b/docs/extensions/plugins.md
+index 57b9e13feff55893d8193c488b19900732192f92..dd80291778640b6644386e0b785a14119d4fa6d3 100644
+--- a/docs/extensions/plugins.md
++++ b/docs/extensions/plugins.md
+@@ -4,7 +4,8 @@ Status: partly implemented. The host core and the program `module` step
+ landed in #9519 on 2026-09-21, and step bounds, workspace snapshot grants,
+ and cancellation reached the `module` step on 2026-09-25. Three evidence
+ guests and the program that runs them landed in #9630 on 2026-09-25, off by
+-default and not yet measured. The rest of this
++default and not yet measured. Invocation receipts and exact replay landed
++in #9901 on 2026-09-28, in the host only. The rest of this
+ document is the target specification for typed operations, shared
+ evidence, and [program execution](programs.md);
+ [What is built](#what-is-built) says which parts exist today.
+@@ -74,6 +75,60 @@ because a guest doesn't verify its own output.
+ compiled against: the SHA-256 digests of the PDK source and the guest bytes,
+ and the profile the guest was built for.
+ 
++### Invocation receipts and exact replay
++
++`plugin::invoke_with_receipt` runs a guest exactly as `plugin::invoke`
++does and also returns an `openagents.plugin-invocation-receipt.v1`. The
++receipt records these fields:
++
++- the digest of the module bytes, the profile, the operation, and the
++  invocation ID;
++- the digest of the input's canonical JSON, with keys sorted at every level;
++- one digest over every snapshot entry, in name order, and the handle
++  table;
++- the limits, and whether a guest refusal fails the call;
++- the engine identity, `plugin::ENGINE`, which names the locked Wasmtime
++  version and the two configuration flags the host sets;
++- the outcome: the value's status and the digest of its canonical JSON, or
++  the host error's kind;
++- the fuel the guest consumed.
++
++The detail of a `limit` or `refused` error is recorded, because the host
++writes it. Other error details can carry engine text, so they aren't
++recorded. `InvocationReceipt::to_json` and `from_json` encode a receipt.
++Parsing refuses duplicate keys, unknown or missing fields, and malformed
++digests, so a receipt can move to another host.
++
++`plugin::replay` takes a receipt and a call. It checks, before running
++anything, that the call's module, profile, operation, invocation, input,
++snapshot, handles, limits, and requirement match the receipt's digests, and
++that the receipt names this host's engine. Then it reruns the guest and
++compares the outcome and the fuel. The verdict uses the shared
++verification words:
++
++| Verdict | When |
++| --- | --- |
++| `passed`, class `exact_replay` | The rerun's outcome and fuel match the receipt. A deterministic host error, such as running out of fuel, replays too. |
++| `failed` | The rerun used the receipt's inputs and diverged. The verdict names the field, `outcome` or `fuel_consumed`, and both values. |
++| `unverifiable` | An input or the engine differs, the receipt records a cancellation, or the replay was cancelled. The guest doesn't run, or its result isn't compared. |
++
++A pass proves that the same bytes on the same engine configuration gave
++the same output and consumed the same fuel. It isn't remote attestation,
++and it says nothing about whether the output is correct. It is only as
++independent as the replaying host is from the host that wrote the receipt.
++Upgrading Wasmtime changes `plugin::ENGINE`, so older receipts become
++`unverifiable` rather than being compared on a different engine. A guest
++that computes with floats can produce different NaN bit patterns on
++different architectures. Such a guest can replay as `failed` across
++machines, but it can't produce a false `passed`.
++
++`GuestValue::verification` stays `not_run`: recording a receipt isn't a
++check. `crates/plugin/tests/replay.rs` replays the pure fixture and the
++three evidence guests, tampers with each recorded field, and changes each
++input.
++
++### The program runtime
++
+ In `crates/coder`, the program runtime runs a `module` step through
+ `plugin::invoke` (`run_module` in `crates/coder/src/runtime.rs`), on the same
+ path the terminal and `coder -p` share. Admission refuses a `module` step
+@@ -149,10 +204,11 @@ The following aren't built yet:
+   bound on a guest is the run's deadline.
+ - The [host roles](#host-roles): evidence preparation, output processing,
+   and hook registration.
+-- The full [build provenance](#authoring-and-build-provenance) and the
++- The full [build provenance](#authoring-and-build-provenance) and the full
+   [invocation receipt](#invocation-receipt). The build receipt holds only the
+-  three fields above, and the run records a module step's output, not a
+-  digested invocation receipt.
++  three fields above. The host's invocation receipt has no program, step, or
++  call IDs, grants, or timing. The program runtime records a module step's
++  output and doesn't request a receipt or a replay.
+ - The authoring surface: no command initializes, packages, installs, or
+   lists a plugin. `scripts/build-plugin-guests.sh` builds and pins the
+   three evidence guests, and nothing else.
+diff --git a/docs/roadmap/2026-09-28-tassadar-revival.md b/docs/roadmap/2026-09-28-tassadar-revival.md
+index d8b91f1f1fee816f9aeaff5f999f99b993a12989..22a7f02658ef7b1aa98575dfcc89c6af285c55fb 100644
+--- a/docs/roadmap/2026-09-28-tassadar-revival.md
++++ b/docs/roadmap/2026-09-28-tassadar-revival.md
+@@ -194,6 +194,13 @@ Nothing in this item may weaken it.
+ 
+ ## 5. Exact-replay verification for deterministic steps (R6)
+ 
++**Status:** the host half landed in
++[#9901](https://github.com/OpenAgentsInc/openagents/issues/9901). `crates/plugin`
++now writes invocation receipts and replays them, as the
++[plugin docs](../extensions/plugins.md#invocation-receipts-and-exact-replay)
++describe. The program runtime doesn't request receipts yet, and no second
++host replays them yet.
++
+ This is the idea most specific to Tassadar: an exact computation is verified
+ by replaying it, and the verdict is a digest comparison, "the cheapest
+ verification grade that can exist". Tassadar applied it to transformer

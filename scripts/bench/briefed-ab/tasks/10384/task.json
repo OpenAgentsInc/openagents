@@ -1,0 +1,50 @@
+{
+  "test_targets": [
+    "--lib",
+    "--bins"
+  ],
+  "issue": 10384,
+  "title": "Coder build slots grow to 30\u201370 GB each and fill disks; prune them",
+  "body": "Observed 2026-10-03: on coderos-4080 (937 GB) each `~/.openagents/targets/*-slot-N` grows to 30\u201370 GB; with 3 parallel `chat work` batches the disk went from 145 GB free to <5 GB within an hour, twice; the Mac's `~/.openagents/targets` reached 126 GB in an hour. Slots accumulate artifacts of every commit/feature combination they build. Add slot hygiene: (1) after a run releases a slot, if the slot is over a size cap (default 25 GB, user-configurable) or free disk is under a floor, run `cargo sweep`-style pruning (delete artifacts older than the slot's last N builds / older than the current toolchain+lock), or clear the slot's `incremental` and stale `deps`; (2) when free disk is below a floor, don't start a new slot \u2014 wait or build smaller; (3) report slot sizes in `openagents worktree ls` / background view. Builds must stay warm for the common case. Tests with a fake slot tree. Related: #10291 (worktree removal), #10293 (slots).",
+  "fix": "acf2d7e79a914d928de1d8dfcc7f3b215493d002",
+  "parent": "659094865d7e3c578cf50059e54f9555ded73378",
+  "package": "background",
+  "source_files": [
+    "crates/coder/src/cli_route/tree.json",
+    "crates/coder/src/task.rs",
+    "crates/coder/src/task/adapter.rs",
+    "crates/coder/src/task/issue_run.rs",
+    "crates/coder/src/task/remote.rs",
+    "crates/coder/src/task/settings.rs",
+    "crates/coder/src/task/targets.rs",
+    "crates/openagents-cli/src/screen.rs",
+    "crates/openagents-cli/src/worktree.rs",
+    "crates/openagents-terminal/src/app.rs",
+    "docs/cli/settings.md",
+    "docs/cli/worktree.md",
+    "docs/coder/guides/tasks.md"
+  ],
+  "test_files": [
+    "crates/background/src/view.rs",
+    "crates/coder/src/task/issue_run_tests.rs",
+    "crates/coder/src/task/settings.rs",
+    "crates/coder/src/task/targets.rs",
+    "crates/openagents-cli/src/screen.rs",
+    "crates/openagents-cli/src/worktree.rs"
+  ],
+  "test_names": [
+    "below_limits_keeps_the_entire_build_warm",
+    "budget_eviction_keeps_slots_with_cargo_locks_in_any_profile",
+    "low_disk_does_not_start_even_a_warm_slot_or_overflow_slot_and_retries_when_free",
+    "ls_draws_slot_sizes_even_without_worktrees_and_no_size_skips_them",
+    "policy_defaults_overrides_and_invalid_values",
+    "pressure_prunes_incremental_and_old_deps_in_all_profiles_but_keeps_recent_deps",
+    "pruning_never_follows_links_or_touches_a_cargo_locked_profile",
+    "releasing_an_oversized_lease_prunes_before_reuse",
+    "retention_keeps_only_the_last_n_build_starts_in_the_stable_lock",
+    "slot_inventory_sizes_nested_files_once_and_renders_each_slot",
+    "slot_limits_default_until_set_and_go_back_on_default",
+    "worktrees_lists_each_build_slot_with_its_size_and_never_archives_one"
+  ],
+  "fix_lines": 804
+}

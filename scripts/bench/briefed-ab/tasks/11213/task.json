@@ -1,0 +1,37 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 11213,
+  "title": "Claude Agent SDK (Rust): SDK-hosted in-process MCP servers (tool + createSdkMcpServer)",
+  "body": "Add the Rust equivalent of the TS SDK's `tool()` + `createSdkMcpServer()` to `crates/claude_agent_sdk`: custom tools defined in Rust that run inside the host process.\n\n- `SdkMcpServer` builder (name, version, `.tool(name, description, input_schema, async handler)`), `ToolResult` with text, image and `is_error` content.\n- `QueryOptions::sdk_mcp_server` registers it in `initialize.sdkMcpServers` (plus `sdkMcpServerConfigs`, optional `sdkMcpServerManifests`).\n- Route `mcp_message` control requests to it and answer per JSON-RPC (initialize, tools/list, tools/call, ping, notifications).\n- `mcp__<server>__<tool>` names for `allowed_tools`.\n- Unit tests, fake-CLI tests, a live smoke example, PARITY.md and README.\n\nNeeded by the briefed agent in #11211.",
+  "fix": "27f24ae96687fbaa3cb4ae086c8a3c0f91c23391",
+  "parent": "a32a91947112860473b97d00c3f6c6be4813c70e",
+  "package": "claude_agent_sdk",
+  "source_files": [
+    "crates/claude_agent_sdk/PARITY.md",
+    "crates/claude_agent_sdk/README.md",
+    "crates/claude_agent_sdk/examples/sdk_mcp_tools.rs",
+    "crates/claude_agent_sdk/src/lib.rs",
+    "crates/claude_agent_sdk/src/options.rs",
+    "crates/claude_agent_sdk/src/protocol/control.rs",
+    "crates/claude_agent_sdk/src/query.rs"
+  ],
+  "test_files": [
+    "crates/claude_agent_sdk/src/mcp.rs",
+    "crates/claude_agent_sdk/src/query.rs"
+  ],
+  "test_names": [
+    "initialize_echoes_a_supported_version_and_names_the_server",
+    "names_manifest_and_replacement",
+    "notifications_and_responses_get_the_empty_ack",
+    "sdk_mcp_manifests_ride_in_initialize_when_asked",
+    "sdk_mcp_server_answers_list_and_call_over_mcp_message",
+    "sdk_mcp_server_name_cannot_shadow_a_process_server",
+    "tools_call_image_content_and_handler_errors",
+    "tools_call_runs_the_handler",
+    "tools_list_carries_schema_annotations_and_meta",
+    "unknown_tool_and_method_are_json_rpc_errors"
+  ],
+  "fix_lines": 1071
+}

@@ -1,0 +1,420 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index d45d183fb4a805eecd065f5b47b86a6be4c124b6..2a2fae79215b56e6cef06154be1e70458bdd3d84 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -10284,6 +10284,7 @@ dependencies = [
+  "model-access",
+  "nostr",
+  "nostr-transport",
++ "oa-copy",
+  "playtest",
+  "route-contract",
+  "rust-native",
+diff --git a/crates/coder/src/bin/coder-worker.rs b/crates/coder/src/bin/coder-worker.rs
+index 95f51222dcb31d79d75500912dab9496880720fc..cd79054b940a9a488ca9b4638c9cdcd2dacf0b85 100644
+--- a/crates/coder/src/bin/coder-worker.rs
++++ b/crates/coder/src/bin/coder-worker.rs
+@@ -2408,8 +2408,32 @@ impl Job {
+                         }
+                         instructions.push_str(first::MODEL_NOTE);
+                     }
+-                    self.generate(version, &instructions, &input, &publish, triage, &turn)
+-                        .await
++                    // A slow model is still working: past the primary's
++                    // first-word wait, tell the caller once, so the chat
++                    // shows that rather than a bare spinner.
++                    let generating =
++                        self.generate(version, &instructions, &input, &publish, triage, &turn);
++                    tokio::pin!(generating);
++                    let slow = tokio::time::sleep(coder::generate::PRIMARY_THINKING);
++                    tokio::pin!(slow);
++                    let mut told = false;
++                    loop {
++                        tokio::select! {
++                            done = &mut generating => break done,
++                            () = &mut slow, if !told => {
++                                told = true;
++                                // A failed notice never fails the turn.
++                                let _ = publish(
++                                    FEEDBACK_KIND,
++                                    json!({
++                                        "v": version,
++                                        "type": "status",
++                                        "status": "still_working",
++                                    }),
++                                );
++                            }
++                        }
++                    }
+                 }
+             }
+         };
+diff --git a/crates/inference/src/router.rs b/crates/inference/src/router.rs
+index 9bb67efdaea83d6a053b197e9ff1abca13404e4d..ec0397646f9861315ff4deb8b305ee0dd0e45eb0 100644
+--- a/crates/inference/src/router.rs
++++ b/crates/inference/src/router.rs
+@@ -163,6 +163,12 @@ pub struct ClassEntry {
+     pub models: Vec<ClassModel>,
+     /// Fall back when no output token arrives within this, ms.
+     pub first_token_ms: u64,
++    /// How long the last planned attempt may take to its first token, ms:
++    /// there is nothing left to fall back to, so a slow machine is waited
++    /// out rather than failed. Never below `first_token_ms`; 0 means
++    /// `first_token_ms`.
++    #[serde(default)]
++    pub last_ms: u64,
+     /// The Gym score a candidate needs, when scores exist for the class.
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub floor: Option<f64>,
+@@ -174,6 +180,9 @@ pub struct ClassTable {
+     pub classes: BTreeMap<TaskClass, ClassEntry>,
+     /// First-token deadline for a request naming a model id, ms.
+     pub model_first_token_ms: u64,
++    /// The last attempt's ceiling for a request naming a model id, ms.
++    #[serde(default)]
++    pub model_last_ms: u64,
+ }
+ 
+ impl Default for ClassTable {
+@@ -182,9 +191,10 @@ impl Default for ClassTable {
+     fn default() -> Self {
+         let flash = "google/gemini-3.8-flash";
+         let glm = "zai/glm-5.3-flash";
+-        let entry = |models: Vec<ClassModel>, first_token_ms: u64| ClassEntry {
++        let entry = |models: Vec<ClassModel>, first_token_ms: u64, last_ms: u64| ClassEntry {
+             models,
+             first_token_ms,
++            last_ms,
+             floor: None,
+         };
+         let classes = BTreeMap::from([
+@@ -197,6 +207,7 @@ impl Default for ClassTable {
+                         ClassModel::on("google/gemini-2.5-flash-lite", "vertex"),
+                     ],
+                     4_000,
++                    10_000,
+                 ),
+             ),
+             (
+@@ -208,6 +219,7 @@ impl Default for ClassTable {
+                         ClassModel::on(flash, "openrouter"),
+                     ],
+                     4_000,
++                    15_000,
+                 ),
+             ),
+             (
+@@ -219,6 +231,7 @@ impl Default for ClassTable {
+                         ClassModel::on(flash, "openrouter"),
+                     ],
+                     8_000,
++                    30_000,
+                 ),
+             ),
+             (
+@@ -230,6 +243,7 @@ impl Default for ClassTable {
+                         ClassModel::on(glm, "zai"),
+                     ],
+                     15_000,
++                    60_000,
+                 ),
+             ),
+             (
+@@ -237,6 +251,7 @@ impl Default for ClassTable {
+                 entry(
+                     vec![ClassModel::on(flash, "vertex"), ClassModel::on(glm, "zai")],
+                     15_000,
++                    60_000,
+                 ),
+             ),
+             (
+@@ -248,12 +263,14 @@ impl Default for ClassTable {
+                         ClassModel::on("google/gemini-3.8-pro", "openrouter"),
+                     ],
+                     30_000,
++                    90_000,
+                 ),
+             ),
+         ]);
+         Self {
+             classes,
+             model_first_token_ms: 8_000,
++            model_last_ms: 30_000,
+         }
+     }
+ }
+@@ -384,6 +401,10 @@ pub struct Plan {
+     pub attempts: Vec<Candidate>,
+     /// Fall back when no output token arrives within this, ms.
+     pub first_token_ms: u64,
++    /// The last attempt's ceiling for its first token, ms: never below
++    /// `first_token_ms`. Nothing is left to fall back to, so a slow
++    /// machine is waited out rather than failed.
++    pub last_ms: u64,
+     /// Candidates considered and dropped, with why.
+     pub dropped: Vec<(Candidate, Dropped)>,
+ }
+@@ -780,6 +801,11 @@ pub fn plan(request: &CreateResponse, context: &Context<'_>) -> Result<Plan, Api
+         first_token_ms: entry.map_or(context.classes.model_first_token_ms, |entry| {
+             entry.first_token_ms
+         }),
++        last_ms: entry
++            .map_or(context.classes.model_last_ms, |entry| entry.last_ms)
++            .max(entry.map_or(context.classes.model_first_token_ms, |entry| {
++                entry.first_token_ms
++            })),
+         dropped,
+     })
+ }
+diff --git a/crates/inference/src/run.rs b/crates/inference/src/run.rs
+index 77e0397bd2dc6b7a106881546d2a2e19b05020a3..7a5ad45d1920399fd56af0e527314d99720d59a9 100644
+--- a/crates/inference/src/run.rs
++++ b/crates/inference/src/run.rs
+@@ -127,6 +127,15 @@ pub trait Admitted: Send {
+ /// terminal event.
+ pub type Events = Pin<Box<dyn Stream<Item = Event> + Send>>;
+ 
++/// What a caller can show while a request waits for its first token.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum Progress {
++    /// The attempt (numbered from 1) passed its first-token deadline and is
++    /// the last one planned, so it keeps running toward its ceiling instead
++    /// of failing: tell the person it is still working.
++    StillWorking { attempt: u8, waited_ms: u64 },
++}
++
+ /// A planned request, not yet sent ([`Gateway::prepare`]).
+ #[derive(Clone, Debug)]
+ pub struct Prepared {
+@@ -424,6 +433,28 @@ impl Gateway {
+         request: &CreateResponse,
+         caller: &Caller,
+         prepared: Prepared,
++    ) -> Result<Routed, ApiError> {
++        self.send_observed(request, caller, prepared, &|_| {}).await
++    }
++
++    /// [`Gateway::send`], telling `observe` when the last planned attempt
++    /// outlives its first-token deadline and is given until the class's
++    /// ceiling ([`Progress::StillWorking`]).
++    ///
++    /// Every attempt but the last falls back at the class's first-token
++    /// deadline. The last has nothing to fall back to, so it runs to the
++    /// ceiling (`last_ms`) before it counts as a miss. Nothing switches
++    /// after a first token.
++    ///
++    /// # Errors
++    ///
++    /// As [`Gateway::send`].
++    pub async fn send_observed(
++        &self,
++        request: &CreateResponse,
++        caller: &Caller,
++        prepared: Prepared,
++        observe: &(dyn Fn(Progress) + Send + Sync),
+     ) -> Result<Routed, ApiError> {
+         let Prepared {
+             plan: planned,
+@@ -432,6 +463,11 @@ impl Gateway {
+         } = prepared;
+         let class = planned.class;
+         let deadline = Duration::from_millis(planned.first_token_ms);
++        let ceiling = Duration::from_millis(planned.last_ms).max(deadline);
++        let last = planned
++            .attempts
++            .iter()
++            .rposition(|candidate| self.upstream(&candidate.upstream).is_some());
+         let mut tried: Vec<ext::Attempt> = Vec::new();
+         for (index, candidate) in planned.attempts.iter().enumerate() {
+             let Some(upstream) = self.upstream(&candidate.upstream).cloned() else {
+@@ -454,7 +490,16 @@ impl Gateway {
+                 ..Attempt::default()
+             };
+             let started = Instant::now();
+-            match first_token(&*upstream, request, &candidate.model, deadline).await {
++            let extra = if last == Some(index) { ceiling } else { deadline };
++            let waiting = move || {
++                observe(Progress::StillWorking {
++                    attempt: number,
++                    waited_ms: u64::try_from(deadline.as_millis()).unwrap_or(u64::MAX),
++                });
++            };
++            match first_token(&*upstream, request, &candidate.model, deadline, extra, &waiting)
++                .await
++            {
+                 Ok(open) => {
+                     tried.push(ext::Attempt {
+                         model: candidate.model.clone(),
+@@ -622,12 +667,16 @@ fn is_first_token(body: &EventBody) -> bool {
+ }
+ 
+ /// Sends one attempt and reads it to its first output token, within
+-/// `deadline` of sending.
++/// `deadline` of sending, or within `ceiling` when this is the last
++/// attempt (`ceiling > deadline`); `waiting` runs when it outlives
++/// `deadline` and keeps going.
+ async fn first_token(
+     upstream: &dyn Upstream,
+     request: &CreateResponse,
+     model: &str,
+     deadline: Duration,
++    ceiling: Duration,
++    waiting: &(dyn Fn() + Send + Sync),
+ ) -> Result<Open, Failure> {
+     let measured: Mutex<Option<AttemptMeter>> = Mutex::new(None);
+     let reading = async {
+@@ -675,7 +724,19 @@ async fn first_token(
+     let taken = |measured: &Mutex<Option<AttemptMeter>>| {
+         measured.lock().ok().and_then(|mut slot| slot.take())
+     };
+-    match tokio::time::timeout(deadline, reading).await {
++    let bounded = async {
++        tokio::pin!(reading);
++        if ceiling > deadline {
++            if let Ok(done) = tokio::time::timeout(deadline, &mut reading).await {
++                return Ok(done);
++            }
++            waiting();
++            return tokio::time::timeout(ceiling - deadline, &mut reading).await;
++        }
++        tokio::time::timeout(deadline, &mut reading).await
++    };
++    let deadline = ceiling.max(deadline);
++    match bounded.await {
+         Ok(Ok((meter, held, rest))) => Ok(Open { meter, held, rest }),
+         Ok(Err((error, deadline))) => Err(Failure {
+             meter: taken(&measured),
+diff --git a/crates/openagents-chat-app/src/coder_tab.rs b/crates/openagents-chat-app/src/coder_tab.rs
+index 569b345f3e2751e990f17c6ddf17fd3182aab313..387410ff5d91770e23cd84d3efee1a90a98a4c45 100644
+--- a/crates/openagents-chat-app/src/coder_tab.rs
++++ b/crates/openagents-chat-app/src/coder_tab.rs
+@@ -3387,6 +3387,11 @@ impl CoderTab {
+         {
+             children.insert(0, back);
+         }
++        let working_label = if self.basic.still_working(id) {
++            crate::basic_coder::STILL_WORKING
++        } else {
++            "Working…"
++        };
+         let partial = self.basic.partial(id);
+         let turns = self.basic.turns(id);
+         let mut children = vec![header];
+@@ -3411,7 +3416,7 @@ impl CoderTab {
+                 body_suffix: "-md",
+                 streaming_key: format!("talk-m{}", turns.len()),
+                 working_key: "talk-working",
+-                working_label: "Working…",
++                working_label,
+                 failed_key: "talk-failed",
+                 status_style: Style {
+                     foreground: Some(gray()),
+diff --git a/crates/openagents-chat/Cargo.toml b/crates/openagents-chat/Cargo.toml
+index 8a8235ca2b680f6069d4dbbe5803a2c8e1f63afa..c66d92691a8af87a33b797e4f8fabf097beaed71 100644
+--- a/crates/openagents-chat/Cargo.toml
++++ b/crates/openagents-chat/Cargo.toml
+@@ -28,6 +28,7 @@ uuid = { version = "1", features = ["v4"] }
+ workbench = { path = "../workbench" }
+ 
+ [dev-dependencies]
++oa-copy = { path = "../oa-copy" }
+ tempfile = "3"
+ futures-util = "0.3"
+ tokio = { version = "1", features = ["test-util", "net"] }
+diff --git a/crates/openagents-chat/src/basic_chats.rs b/crates/openagents-chat/src/basic_chats.rs
+index c715c212ee05c64ae3d208575f270e4f954e1db5..ba72492f0be3390e896b0a1a8e0aa08de7dd4e8e 100644
+--- a/crates/openagents-chat/src/basic_chats.rs
++++ b/crates/openagents-chat/src/basic_chats.rs
+@@ -583,6 +583,13 @@ impl BasicChats {
+             .unwrap_or_default()
+     }
+ 
++    /// Whether the reply streaming into `id` is slow but still coming.
++    pub fn still_working(&self, id: &str) -> bool {
++        self.streams
++            .get(id)
++            .is_some_and(|stream| lock(&stream.reply).slow)
++    }
++
+     /// Start a conversation with `text` and ask for the reply.
+     pub fn start(&mut self, text: &str, now: u64) -> Option<String> {
+         self.start_tagged(text, now, None)
+diff --git a/crates/openagents-chat/src/basic_coder.rs b/crates/openagents-chat/src/basic_coder.rs
+index e61d70a83342324339a3225911c55d5444b62b4e..51f94179a1b9d7201512b25b5421df6a10ff75b6 100644
+--- a/crates/openagents-chat/src/basic_coder.rs
++++ b/crates/openagents-chat/src/basic_coder.rs
+@@ -212,6 +212,15 @@ pub enum Failure {
+ /// count: there is no usage limit (#10120), so no surface ever names one.
+ pub const UNREACHED: &str = "Couldn't reach OpenAgents; try again.";
+ 
++/// What the chat says when no model answered in time.
++pub const TOO_SLOW: &str = "That took too long. Try again.";
++
++/// What the chat says for a failure with no better plain words.
++pub const UNANSWERED: &str = "We couldn't answer this time. Try again.";
++
++/// What the chat shows while a slow answer is still coming.
++pub const STILL_WORKING: &str = "Still working on it…";
++
+ impl Failure {
+     /// What the chat says, from the refusal's code, never its words: a
+     /// worker's own message can name a provider's or an old quota's limit,
+@@ -240,7 +249,11 @@ impl Failure {
+                 "unsupported_feature" if model_access::current().is_mine() => {
+                     "OpenAgents chat can't use your keys yet. Switch to OpenAgents in Settings to chat now.".into()
+                 }
+-                _ => format!("We couldn't answer this time ({code}). Try again."),
++                // A model that was too slow, on this machine or ours.
++                "timed_out" | "first_token_deadline" | "timeout" => TOO_SLOW.into(),
++                // Any other code stays in logs and records: a person is
++                // never shown an error code.
++                _ => UNANSWERED.into(),
+             },
+             Failure::Silent => "We couldn't reply this time. Try again.".into(),
+             Failure::Transport(_) => "We couldn't reach the chat. Check your connection.".into(),
+@@ -358,8 +371,12 @@ pub struct Reply {
+     pub text: String,
+     pub done: bool,
+     pub failure: Option<Failure>,
++    /// The worker said the answer is slow but still coming
++    /// (`status: "still_working"`).
++    pub slow: bool,
+     /// The model the worker named, an attribution claim.
+     pub model: Option<String>,
++    /// The model the worker named, an attribution claim.
+     /// Where the worker's first-response judgment says the turn belongs.
+     pub lane: Option<Lane>,
+     /// A rank job's ordering: candidate IDs, most likely first.
+@@ -612,6 +629,11 @@ impl Reading {
+             // A card is a closed display record; NIP-CJ's parser reads it
+             // before the phone keeps it.
+             (CJ_CONVERSATION_FEEDBACK, Some("card")) => reply.meta.carded(&payload),
++            (CJ_CONVERSATION_FEEDBACK, Some("status"))
++                if payload["status"].as_str() == Some("still_working") =>
++            {
++                reply.slow = true;
++            }
+             (CJ_CONVERSATION_FEEDBACK, Some("status"))
+                 if payload["status"].as_str() == Some("error") =>
+             {
+diff --git a/docs/inference/gateway.md b/docs/inference/gateway.md
+index 47eeb70f48c7792e2cd08ae92e90293e7ae3f79a..86ee517d1f8fed01e32bf8a1bf292812cc3cc489 100644
+--- a/docs/inference/gateway.md
++++ b/docs/inference/gateway.md
+@@ -372,7 +372,15 @@ ordered list of (model, upstream) attempts.
+    on an HTTP error, a failure event, an empty stream, or no first token
+    within the class's deadline (the chat worker's 4 s and 8 s rules today).
+    After the first token, a failure is the caller's `response.failed`. At
+-   most three attempts.
++   most three attempts. The last planned attempt has nothing to fall back
++   to, so it runs to the class's ceiling (`last_ms`: chat 30 s, fast 15 s,
++   classify 10 s, code and long 60 s, reason 90 s, a named model 30 s)
++   rather than failing at the first-token deadline, and a caller that
++   passes an observer to `Gateway::send_observed` is told once
++   (`Progress::StillWorking`) when it outlives that deadline. The chat
++   worker sends the same notice as `status: still_working`, and the chat
++   shows "Still working on it…". Only when the ceiling passes does the
++   request fail, in plain words.
+ 
+ `openagents/auto` picks the task class with a typed judgment (Jev, as the
+ chat router does), never by matching keywords in the prompt.

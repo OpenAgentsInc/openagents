@@ -1,0 +1,755 @@
+diff --git a/crates/coder-host/src/serve/mod.rs b/crates/coder-host/src/serve/mod.rs
+index 06276f58671976ab615596a1af35a2690b8953ac..612220cf005eebdf04ff873bc1bd4e32dcebf538 100644
+--- a/crates/coder-host/src/serve/mod.rs
++++ b/crates/coder-host/src/serve/mod.rs
+@@ -888,3 +893,25 @@ mod hint_tests {
+         set.validate().unwrap();
+     }
+ }
++
++/// Move the threads kept in the chat home `home` without a host into this
++/// host's store, when there are any. A failure leaves them where they were
++/// (the next start, or `openagents chat`, tries again) and never stops the
++/// host.
++fn migrate_chat_home(shared: &Shared, home: &std::path::Path) {
++    if !openagents_chat::migrate::pending(home) {
++        return;
++    }
++    match crate::control::migrate_chats(shared, home) {
++        Ok(report) if report.moved > 0 => eprintln!(
++            "coder host: moved {} chat threads from {} into this host",
++            report.moved,
++            home.display()
++        ),
++        Ok(_) => {}
++        Err(error) => eprintln!(
++            "coder host: chat threads in {} stay there for now: {error:?}",
++            home.display()
++        ),
++    }
++}
+diff --git a/crates/coder-host/tests/control.rs b/crates/coder-host/tests/control.rs
+index 96f95c6514cb51198ceb9fa37814eb3b33e2f8e7..6f07c06900d3ffd68271d869f1f888ff85a66025 100644
+--- a/crates/coder-host/tests/control.rs
++++ b/crates/coder-host/tests/control.rs
+@@ -113,6 +113,116 @@ async fn local_chat_records_restore_through_the_private_socket_after_restart() {
+     running.shutdown().await;
+ }
+ 
++/// A thread as `openagents chat` keeps it without a host: a record in the
++/// chat home's own store, under the chat home's device key.
++#[cfg(unix)]
++fn keep_without_a_host(home: &std::path::Path, id: &str, title: &str, at: u64) {
++    use openagents_chat::basic_coder::Turn;
++    std::fs::create_dir_all(home).unwrap();
++    let key = home.join("device.key");
++    if !key.exists() {
++        std::fs::write(&key, "05".repeat(32)).unwrap();
++        std::fs::set_permissions(&key, std::fs::Permissions::from_mode(0o600)).unwrap();
++    }
++    let secret = secp256k1::SecretKey::from_byte_array([5; 32]).unwrap();
++    let cache = openagents_chat::cache::Cache::open(&home.join("threads"), &secret).unwrap();
++    let mut ask = Turn::user(format!("{title}?"));
++    ask.at = Some(at);
++    let mut answer = Turn::assistant(format!("An answer about {title}."), None);
++    answer.at = Some(at + 1);
++    cache
++        .write(
++            &format!("basic-{id}"),
++            &serde_json::json!({
++                "summary": {"id": id, "title": title, "started": at, "updated": at + 1},
++                "turns": [ask, answer],
++            }),
++        )
++        .unwrap();
++}
++
++#[cfg(unix)]
++async fn read_thread(socket: &std::path::Path, id: &str) -> openagents_chat::service::Snapshot {
++    let Reply::Chat { snapshot } = call(
++        socket,
++        Op::Chat {
++            command: openagents_chat::service::Command::Read {
++                chat: id.to_owned(),
++                before: None,
++            },
++        },
++    )
++    .await
++    .unwrap() else {
++        panic!("read {id}")
++    };
++    snapshot
++}
++
++#[cfg(unix)]
++#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
++async fn threads_kept_without_a_host_join_it_at_start_and_when_the_command_asks() {
++    let seed = tempfile::tempdir().unwrap();
++    let home = seed.path().join("chat");
++    let first = "1a".repeat(16);
++    keep_without_a_host(&home, &first, "Rain", 100);
++    let host = host_with(Options {
++        chat_home: Some(home.clone()),
++        ..Options::default()
++    })
++    .await;
++    // At start: the first list already shows it, under the same ID.
++    let snapshot = read_thread(&host.socket, &first).await;
++    assert_eq!(snapshot.turns.len(), 2);
++    assert_eq!(snapshot.turns[1].text, "An answer about Rain.");
++    assert_eq!(snapshot.chats[0].id, first);
++    assert_eq!(snapshot.chats[0].title, "Rain");
++    assert_eq!(
++        (snapshot.chats[0].started, snapshot.chats[0].updated),
++        (100, 101)
++    );
++    assert!(!home.join("threads").exists());
++    assert!(home.join("threads-migrated.json").is_file());
++
++    // A later `openagents chat --local` thread joins when the command asks.
++    let second = "2b".repeat(16);
++    keep_without_a_host(&home, &second, "Snow", 200);
++    let ask = || Op::ChatMigrate {
++        home: home.display().to_string(),
++    };
++    assert_eq!(
++        call(&host.socket, ask()).await.unwrap(),
++        Reply::ChatMigrated {
++            moved: 1,
++            present: 0
++        }
++    );
++    // Asking again changes nothing.
++    assert_eq!(
++        call(&host.socket, ask()).await.unwrap(),
++        Reply::ChatMigrated {
++            moved: 0,
++            present: 0
++        }
++    );
++    let snapshot = read_thread(&host.socket, &second).await;
++    assert_eq!(snapshot.turns.len(), 2);
++    let ids: Vec<&str> = snapshot.chats.iter().map(|row| row.id.as_str()).collect();
++    assert_eq!(ids, [second.as_str(), first.as_str()]);
++
++    // A scratch store, or a relative path, is never moved.
++    let scratch = std::env::temp_dir()
++        .join("openagents-chat-scratch")
++        .join("3c".repeat(16));
++    for home in [scratch.display().to_string(), "chat".into()] {
++        assert!(matches!(
++            call(&host.socket, Op::ChatMigrate { home }).await.unwrap(),
++            Reply::Refused { .. }
++        ));
++    }
++    host.running.shutdown().await;
++}
++
+ #[cfg(unix)]
+ fn mode(path: &std::path::Path) -> u32 {
+     std::fs::metadata(path).unwrap().permissions().mode() & 0o777
+diff --git a/crates/coder-host/tests/support/connect.rs b/crates/coder-host/tests/support/connect.rs
+index 94244cd914f2894d09b85ec9fd9f1fb2979c2228..dcc4f65cf55e17aea713172b1634ea8507e59e4e 100644
+--- a/crates/coder-host/tests/support/connect.rs
++++ b/crates/coder-host/tests/support/connect.rs
+@@ -66,6 +66,9 @@ pub struct Options {
+     pub chat_door: Option<coder_host::config::ChatDoor>,
+     /// The task owner. Unset, the host refuses task operations.
+     pub tasks: Option<Arc<dyn coder_host::Tasks>>,
++    /// The chat home whose threads the host moves in at start; none by
++    /// default, so a test never reads the person's own.
++    pub chat_home: Option<PathBuf>,
+ }
+ 
+ impl Default for Options {
+@@ -77,6 +80,7 @@ impl Default for Options {
+             chats: false,
+             chat_door: None,
+             tasks: None,
++            chat_home: None,
+         }
+     }
+ }
+@@ -105,6 +109,7 @@ pub async fn host_with(options: Options) -> Host {
+     });
+     config.label = "Studio Mac".into();
+     config.chat_door = options.chat_door;
++    config.chat_home = options.chat_home;
+     config.recheck_every = Duration::from_secs(30);
+     if options.workspace {
+         let checkout = temp.path().join("checkout");
+diff --git a/crates/openagents-chat/src/migrate.rs b/crates/openagents-chat/src/migrate.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..11cae09adf8d662fb38f95845fc4340d47ba66ef
+--- /dev/null
++++ b/crates/openagents-chat/src/migrate.rs
+@@ -0,0 +1,543 @@
++//! Moving threads kept without a host into the host's store.
++//!
++//! Without a host, `openagents chat` keeps its threads in its own encrypted
++//! store (`<chat home>/threads`, under `<chat home>/device.key`). When a
++//! host runs on the same computer, the host takes them into its own store
++//! (`<host root>/basic-chats`), re-encrypted under the host's key, so the
++//! desktop app and a paired phone show them. Each thread keeps its ID,
++//! title, times, turns with their router metadata and send IDs, lane, and
++//! Coder link.
++//!
++//! The move is crash-safe and idempotent:
++//!
++//! 1. Every thread is written into the host's store, one durable record at
++//!    a time. A thread the host already holds is left as it is, so a run
++//!    after a crash skips what the crashed run wrote.
++//! 2. The marker, `<chat home>/threads-migrated.json`, is written
++//!    atomically, naming the host and every thread moved.
++//! 3. The old store is renamed `threads-moved-<time>`, so it is never read
++//!    again. Its encrypted files stay there, under the same device key.
++//!
++//! Nothing is deleted. A crash before step 3 leaves `threads` in place and
++//! the next run repeats the steps, skipping the threads already moved. A
++//! later `openagents chat --local` starts a new `threads`, which the next
++//! host moves the same way. Scratch stores are never moved.
++
++use std::collections::BTreeMap;
++use std::fs;
++use std::io::Write;
++use std::path::{Path, PathBuf};
++
++use secp256k1::SecretKey;
++use serde::{Deserialize, Serialize};
++
++use crate::basic_chats::{BasicChats, Saved, Summary, item};
++use crate::basic_coder::Role;
++use crate::cache::Cache;
++
++/// The in-process store, inside the chat home.
++pub const STORE: &str = "threads";
++/// The marker the move leaves in the chat home.
++pub const MARKER: &str = "threads-migrated.json";
++/// The prefix of a moved store's new name.
++pub const MOVED: &str = "threads-moved-";
++/// The directory, under the system temporary directory, that holds every
++/// scratch store (`openagents chat --scratch`).
++pub const SCRATCH: &str = "openagents-chat-scratch";
++/// The most moves the marker remembers; the oldest go first.
++const MAX_RUNS: usize = 32;
++
++/// What a move did.
++#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
++pub struct Report {
++    /// Threads written into the host's store now.
++    pub moved: usize,
++    /// Threads the host already held, left as they were.
++    pub present: usize,
++    /// Where the old store went, when there was one.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub renamed: Option<PathBuf>,
++}
++
++/// One move, as the marker records it.
++#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
++pub struct Run {
++    /// The host's public key, lowercase hex.
++    pub host: String,
++    pub at: u64,
++    /// Every thread of the old store, now in the host's.
++    pub threads: Vec<String>,
++    /// The old store's new name, inside the chat home.
++    pub moved_to: String,
++}
++
++/// The marker's contents: every move, oldest first.
++#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
++pub struct Marker {
++    pub runs: Vec<Run>,
++}
++
++/// Whether `home` keeps threads a host has not taken in yet.
++#[must_use]
++pub fn pending(home: &Path) -> bool {
++    fs::symlink_metadata(home.join(STORE)).is_ok_and(|meta| meta.is_dir())
++}
++
++/// Whether `home` is, or is inside, a scratch store.
++#[must_use]
++pub fn scratch(home: &Path) -> bool {
++    let root = std::env::temp_dir().join(SCRATCH);
++    let canonical = |path: &Path| path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
++    home.starts_with(&root) || canonical(home).starts_with(canonical(&root))
++}
++
++/// The marker in `home`, when a move left one.
++///
++/// # Errors
++/// A marker that can't be read.
++pub fn marker(home: &Path) -> Result<Option<Marker>, String> {
++    match fs::read(home.join(MARKER)) {
++        Ok(bytes) => serde_json::from_slice(&bytes)
++            .map(Some)
++            .map_err(|_| format!("{} is not a migration marker", MARKER)),
++        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
++        Err(error) => Err(format!("cannot read {MARKER}: {error}")),
++    }
++}
++
++/// The device key `home/device.key` holds: 64 hexadecimal characters.
++///
++/// # Errors
++/// A missing or malformed key.
++pub fn device_key(home: &Path) -> Result<SecretKey, String> {
++    let text = fs::read_to_string(home.join("device.key"))
++        .map_err(|error| format!("cannot read the chat device key: {error}"))?;
++    let text = text.trim();
++    let bytes: Vec<u8> = (0..text.len())
++        .step_by(2)
++        .filter_map(|at| text.get(at..at + 2))
++        .filter_map(|pair| u8::from_str_radix(pair, 16).ok())
++        .collect();
++    let bytes: [u8; 32] = bytes
++        .try_into()
++        .map_err(|_| "the chat device key is malformed".to_owned())?;
++    SecretKey::from_byte_array(bytes).map_err(|_| "the chat device key is malformed".into())
++}
++
++/// Move the threads kept in `home` into `into`, the host `host`'s store,
++/// at `now`. A home with no threads to move is a no-op.
++///
++/// # Errors
++/// A scratch store, a key or record that can't be read (nothing is renamed
++/// then), or a write the host's store refused.
++pub fn migrate(home: &Path, into: &mut BasicChats, host: &str, now: u64) -> Result<Report, String> {
++    migrate_until(home, into, host, now, Stop::Never)
++}
++
++/// Where a test stops a move, as a crash would.
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub(crate) enum Stop {
++    Never,
++    /// After this many threads are written.
++    After(usize),
++    /// After the marker, before the rename.
++    BeforeRename,
++}
++
++pub(crate) fn migrate_until(
++    home: &Path,
++    into: &mut BasicChats,
++    host: &str,
++    now: u64,
++    stop: Stop,
++) -> Result<Report, String> {
++    if scratch(home) {
++        return Err("a scratch store is never migrated".into());
++    }
++    let store_path = home.join(STORE);
++    match fs::symlink_metadata(&store_path) {
++        Ok(meta) if meta.is_dir() => {}
++        Ok(_) => return Err(format!("{} is not a directory", store_path.display())),
++        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
++            return Ok(Report::default());
++        }
++        Err(error) => return Err(format!("cannot read {}: {error}", store_path.display())),
++    }
++    let secret = device_key(home)?;
++    let store = Cache::open(&store_path, &secret)?;
++    // The list, for records older than the summary they now carry.
++    let listed: BTreeMap<String, Summary> = store
++        .read::<Vec<Summary>>("basic-index")
++        .ok()
++        .flatten()
++        .unwrap_or_default()
++        .into_iter()
++        .map(|row| (row.id.clone(), row))
++        .collect();
++    let mut report = Report::default();
++    let mut threads = Vec::new();
++    for key in store
++        .keys("basic-")?
++        .into_iter()
++        .filter(|key| key.len() == 38)
++    {
++        let id = key["basic-".len()..].to_owned();
++        let saved: Saved = store
++            .read(&key)
++            .map_err(|error| format!("thread {id} can't be read: {error}"))?
++            .ok_or_else(|| format!("thread {id} went missing"))?;
++        if key != item(&id) {
++            continue;
++        }
++        let summary = match (saved.summary, listed.get(&id)) {
++            (Some(own), Some(row)) if row.updated > own.updated => row.clone(),
++            (Some(own), _) => own,
++            (None, Some(row)) => row.clone(),
++            (None, None) => untitled(&id, &saved.turns),
++        };
++        if summary.id != id {
++            return Err(format!("thread {id} names another thread"));
++        }
++        if stop == Stop::After(report.moved) {
++            return Err("stopped".into());
++        }
++        if into.adopt(summary, saved.turns, saved.lane)? {
++            report.moved += 1;
++        } else {
++            report.present += 1;
++        }
++        threads.push(id);
++    }
++    let moved_to = format!("{MOVED}{now}");
++    let mut marker = marker(home)?.unwrap_or_default();
++    marker.runs.push(Run {
++        host: host.to_owned(),
++        at: now,
++        threads,
++        moved_to: moved_to.clone(),
++    });
++    let skip = marker.runs.len().saturating_sub(MAX_RUNS);
++    marker.runs.drain(..skip);
++    write_atomic(home, MARKER, &marker)?;
++    if stop == Stop::BeforeRename {
++        return Err("stopped".into());
++    }
++    let mut target = home.join(&moved_to);
++    let mut attempt = 1;
++    while target.exists() {
++        target = home.join(format!("{moved_to}-{attempt}"));
++        attempt += 1;
++    }
++    fs::rename(&store_path, &target)
++        .map_err(|error| format!("cannot set the old store aside: {error}"))?;
++    sync_dir(home)?;
++    report.renamed = Some(target);
++    Ok(report)
++}
++
++/// A row for a record whose list entry is gone: titled by its first
++/// message, timed by its turns.
++fn untitled(id: &str, turns: &[crate::basic_coder::Turn]) -> Summary {
++    let title: String = turns
++        .iter()
++        .find(|turn| turn.role == Role::User)
++        .and_then(|turn| turn.text.lines().next())
++        .unwrap_or("Chat")
++        .chars()
++        .take(80)
++        .collect();
++    let times: Vec<u64> = turns.iter().filter_map(|turn| turn.at).collect();
++    Summary {
++        id: id.to_owned(),
++        title,
++        started: times.iter().copied().min().unwrap_or(0),
++        updated: times.iter().copied().max().unwrap_or(0),
++        coder: None,
++        archived: false,
++        pinned: false,
++        named: false,
++    }
++}
++
++fn write_atomic(home: &Path, name: &str, value: &impl Serialize) -> Result<(), String> {
++    let bytes = serde_json::to_vec_pretty(value).map_err(|_| "cannot encode the marker")?;
++    let temp = home.join(format!(".{name}.pending"));
++    let mut options = fs::OpenOptions::new();
++    options.write(true).create(true).truncate(true);
++    #[cfg(unix)]
++    {
++        use std::os::unix::fs::OpenOptionsExt;
++        options.mode(0o600);
++    }
++    let result = (|| {
++        let mut file = options.open(&temp)?;
++        file.write_all(&bytes)?;
++        file.sync_all()?;
++        fs::rename(&temp, home.join(name))
++    })();
++    if let Err(error) = result {
++        let _ = fs::remove_file(&temp);
++        return Err(format!("cannot write {name}: {error}"));
++    }
++    sync_dir(home)
++}
++
++fn sync_dir(dir: &Path) -> Result<(), String> {
++    fs::File::open(dir)
++        .and_then(|dir| dir.sync_all())
++        .map_err(|error| format!("cannot sync {}: {error}", dir.display()))
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::basic_chats::Spawned;
++    use crate::basic_coder::{Lane, Turn};
++    use crate::router::Meta;
++    use crate::service;
++
++    const HOST: &str = "hosthosthosthosthosthosthosthosthosthosthosthosthosthosthosthost";
++
++    fn key(byte: u8) -> SecretKey {
++        SecretKey::from_byte_array([byte; 32]).unwrap()
++    }
++
++    /// A chat home as `openagents chat` leaves it, with three threads:
++    /// one with router metadata, a lane, and a Coder link, one archived,
++    /// one pinned and renamed.
++    fn home_with_threads(dir: &Path) -> Vec<String> {
++        let home = dir.join("chat");
++        fs::create_dir_all(&home).unwrap();
++        fs::write(home.join("device.key"), "07".repeat(32)).unwrap();
++        let mut chats = BasicChats::new(
++            None,
++            None,
++            Some(Cache::open(&home.join(STORE), &key(7)).unwrap()),
++        );
++        let ids: Vec<String> = ["a", "b", "c"].iter().map(|c| c.repeat(32)).collect();
++        for (n, id) in ids.iter().enumerate() {
++            let at = 100 * (n as u64 + 1);
++            assert!(chats.create(id, at));
++            let meta: Meta = serde_json::from_value(serde_json::json!({
++                "tier": "basic", "answer": format!("bank-{n}@2"), "judgment": "a judgment"
++            }))
++            .unwrap();
++            let mut ask = Turn::user(format!("question {n}\nmore"));
++            ask.at = Some(at);
++            ask.request = Some(format!("{n}").repeat(32));
++            let mut answer = Turn::assistant(format!("answer {n}"), Some(meta));
++            answer.at = Some(at + 1);
++            answer.model = Some("model".into());
++            chats.set_turns_for_test(id, vec![ask, answer], (n == 0).then_some(Lane::Computer));
++        }
++        chats.spawned_in(
++            &ids[0],
++            &"d".repeat(64),
++            &"e".repeat(64),
++            Some("openagents"),
++            150,
++        );
++        chats.archive(&ids[1], 250);
++        chats.rename(&ids[2], "Named").unwrap();
++        chats.pin(&ids[2], true).unwrap();
++        assert!(chats.storage_error.is_none());
++        ids
++    }
++
++    fn host_store(dir: &Path) -> BasicChats {
++        BasicChats::new(
++            None,
++            None,
++            Some(Cache::open(&dir.join("basic-chats"), &key(9)).unwrap()),
++        )
++    }
++
++    fn source(dir: &Path) -> BasicChats {
++        BasicChats::new(
++            None,
++            None,
++            Some(Cache::open(&dir.join("chat").join(STORE), &key(7)).unwrap()),
++        )
++    }
++
++    fn atif(chats: &mut BasicChats, id: &str) -> serde_json::Value {
++        let thread =
++            crate::thread::collect(id, |command| service::apply(chats, command, 1_000)).unwrap();
++        let mut document = crate::thread::trajectory(&thread, "openagents test");
++        // The one field that is the time of the export, not the thread.
++        document["extra"]
++            .as_object_mut()
++            .unwrap()
++            .remove("exported_at");
++        document
++    }
++
++    #[test]
++    fn threads_move_whole_and_their_export_is_unchanged() {
++        let dir = tempfile::tempdir().unwrap();
++        let ids = home_with_threads(dir.path());
++        let mut before = source(dir.path());
++        let exports: Vec<_> = ids.iter().map(|id| atif(&mut before, id)).collect();
++        let rows = before.list().to_vec();
++        let mut turns = Vec::new();
++        for id in &ids {
++            turns.push(before.turns(id).to_vec());
++        }
++        let lane = before.lane(&ids[0]);
++        drop(before);
++
++        let mut host = host_store(dir.path());
++        let home = dir.path().join("chat");
++        let report = migrate(&home, &mut host, HOST, 5_000).unwrap();
++        assert_eq!((report.moved, report.present), (3, 0));
++        assert!(!pending(&home));
++        assert!(home.join(format!("{MOVED}5000")).is_dir());
++        let marked = marker(&home).unwrap().unwrap();
++        assert_eq!(marked.runs.len(), 1);
++        assert_eq!(marked.runs[0].host, HOST);
++        assert_eq!(marked.runs[0].threads.len(), 3);
++
++        // Re-encrypted under the host's key: the old key can't read it.
++        let raw = fs::read_to_string(
++            dir.path()
++                .join("basic-chats")
++                .join(format!("basic-{}.cache", ids[0])),
++        )
++        .unwrap();
++        assert!(!raw.contains("question 0"));
++        assert!(
++            Cache::open(&dir.path().join("basic-chats"), &key(7))
++                .unwrap()
++                .read::<Saved>(&item(&ids[0]))
++                .is_err()
++        );
++
++        // A restarted host reads the same rows, turns, lane, and export.
++        drop(host);
++        let mut host = host_store(dir.path());
++        assert_eq!(host.list(), rows.as_slice());
++        for (n, id) in ids.iter().enumerate() {
++            assert_eq!(host.turns(id), turns[n].as_slice());
++            assert_eq!(atif(&mut host, id), exports[n]);
++        }
++        assert_eq!(host.lane(&ids[0]), lane);
++        assert_eq!(
++            host.get(&ids[0]).unwrap().coder,
++            Some(Spawned {
++                host: "d".repeat(64),
++                task: "e".repeat(64),
++                project: Some("openagents".into()),
++                at: Some(150),
++            })
++        );
++        assert!(host.get(&ids[1]).unwrap().archived);
++        let named = host.get(&ids[2]).unwrap();
++        assert!(named.pinned && named.named && named.title == "Named");
++    }
++
++    #[test]
++    fn a_second_move_is_a_no_op() {
++        let dir = tempfile::tempdir().unwrap();
++        home_with_threads(dir.path());
++        let home = dir.path().join("chat");
++        let mut host = host_store(dir.path());
++        migrate(&home, &mut host, HOST, 5_000).unwrap();
++        let rows = host.list().to_vec();
++        let marked = marker(&home).unwrap();
++        assert_eq!(
++            migrate(&home, &mut host, HOST, 6_000).unwrap(),
++            Report::default()
++        );
++        assert_eq!(host.list(), rows.as_slice());
++        assert_eq!(marker(&home).unwrap(), marked);
++        // Even a restarted host on the same store changes nothing.
++        let mut again = host_store(dir.path());
++        assert_eq!(
++            migrate(&home, &mut again, HOST, 7_000).unwrap(),
++            Report::default()
++        );
++        assert_eq!(again.list(), rows.as_slice());
++    }
++
++    #[test]
++    fn a_move_stopped_halfway_resumes_and_loses_nothing() {
++        let dir = tempfile::tempdir().unwrap();
++        let ids = home_with_threads(dir.path());
++        let home = dir.path().join("chat");
++        let mut host = host_store(dir.path());
++        // A crash after one thread: the old store stays, with no marker.
++        assert!(migrate_until(&home, &mut host, HOST, 5_000, Stop::After(1)).is_err());
++        assert!(pending(&home));
++        assert!(marker(&home).unwrap().is_none());
++        assert_eq!(host.list().len(), 1);
++        // The restarted host finishes, skipping the thread already there.
++        drop(host);
++        let mut host = host_store(dir.path());
++        assert_eq!(host.list().len(), 1);
++        // A crash after the marker, before the rename.
++        assert!(migrate_until(&home, &mut host, HOST, 6_000, Stop::BeforeRename).is_err());
++        assert!(pending(&home));
++        assert_eq!(host.list().len(), 3);
++        drop(host);
++        let mut host = host_store(dir.path());
++        let report = migrate(&home, &mut host, HOST, 7_000).unwrap();
++        assert_eq!((report.moved, report.present), (0, 3));
++        assert!(!pending(&home));
++        let mut listed: Vec<String> = host.list().iter().map(|row| row.id.clone()).collect();
++        listed.sort();
++        assert_eq!(listed, ids);
++        for id in &ids {
++            assert_eq!(host.turns(id).len(), 2);
++        }
++        // The first run that wrote a thread and the old store's copy agree.
++        let mut old = BasicChats::new(
++            None,
++            None,
++            Some(Cache::open(report.renamed.as_ref().unwrap(), &key(7)).unwrap()),
++        );
++        for id in &ids {
++            assert_eq!(old.turns(id), host.turns(id));
++        }
++    }
++
++    #[test]
++    fn a_thread_the_host_already_changed_is_left_as_it_is() {
++        let dir = tempfile::tempdir().unwrap();
++        let ids = home_with_threads(dir.path());
++        let home = dir.path().join("chat");
++        let mut host = host_store(dir.path());
++        assert!(migrate_until(&home, &mut host, HOST, 5_000, Stop::After(1)).is_err());
++        let first = host.list()[0].id.clone();
++        host.rename(&first, "Changed on the host").unwrap();
++        migrate(&home, &mut host, HOST, 6_000).unwrap();
++        assert_eq!(host.get(&first).unwrap().title, "Changed on the host");
++        assert_eq!(host.list().len(), ids.len());
++    }
++
++    #[test]
++    fn scratch_stores_and_unreadable_records_are_never_moved() {
++        let scratch_home = std::env::temp_dir().join(SCRATCH).join("f".repeat(32));
++        let dir = tempfile::tempdir().unwrap();
++        let mut host = host_store(dir.path());
++        assert!(migrate(&scratch_home, &mut host, HOST, 1).is_err());
++        assert!(scratch(&scratch_home));
++
++        // A record under another key: nothing is renamed or marked.
++        home_with_threads(dir.path());
++        let home = dir.path().join("chat");
++        Cache::open(&home.join(STORE), &key(8))
++            .unwrap()
++            .write(&item(&"9".repeat(32)), &Saved::default())
++            .unwrap();
++        assert!(migrate(&home, &mut host, HOST, 2).is_err());
++        assert!(pending(&home));
++        assert!(marker(&home).unwrap().is_none());
++
++        // A home with nothing to move is a no-op.
++        let empty = dir.path().join("empty");
++        assert_eq!(
++            migrate(&empty, &mut host, HOST, 3).unwrap(),
++            Report::default()
++        );
++    }
++}
+diff --git a/crates/openagents-connect/tests/control.rs b/crates/openagents-connect/tests/control.rs
+index 2cdd6cc9fc7acfa5f10a4f1fa6b4de83eee404c3..adf4fa408191ea3a6ee07c502659a4f1ad24bc9b 100644
+--- a/crates/openagents-connect/tests/control.rs
++++ b/crates/openagents-connect/tests/control.rs
+@@ -46,6 +46,9 @@ fn every_op() -> Vec<Op> {
+             secret: "33".repeat(32),
+         },
+         Op::EngineStatus {},
++        Op::ChatMigrate {
++            home: "/Users/kai/.openagents/chat".into(),
++        },
+     ]
+ }
+ 
+@@ -194,6 +197,10 @@ fn replies_round_trip() {
+         Reply::Owner {
+             owner: "44".repeat(32),
+         },
++        Reply::ChatMigrated {
++            moved: 3,
++            present: 1,
++        },
+         Reply::Refused {
+             code: "forbidden".into(),
+             message: "that project is not a Git checkout".into(),

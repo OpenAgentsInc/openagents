@@ -1,0 +1,17 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 11054,
+  "title": "coder lib test two_principal_queue_reorder_and_release_keep_current_admission times out under full-suite load",
+  "body": "`crates/coder/src/task/remote_control_tests.rs::two_principal_queue_reorder_and_release_keep_current_admission` hits its 5-second call timeout when the full `cargo test -p coder --lib` runs under load, and passes when run alone. The fixed 5 s bound per host call is too tight for a loaded machine running the whole lib suite on a 2-worker runtime. Make it wait on the condition with a generous bound (or fix a real ordering race) and prove it with two full lib runs.",
+  "fix": "598f8667e294168c4cc22755718282afec07a5cf",
+  "parent": "d5d7ee9f252ac02dd32ac9ab8f2fbe76fddc7406",
+  "package": "coder",
+  "source_files": [],
+  "test_files": [
+    "crates/coder/src/task/remote_control_tests.rs"
+  ],
+  "test_names": [],
+  "fix_lines": 12
+}

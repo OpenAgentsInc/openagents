@@ -1,0 +1,31 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10237,
+  "title": "Coder issue runs on CoderOS die with \"owner process ended\"",
+  "body": "Two issue flows on CoderOS (#10189, #10181; runner binaries built from feb4bc8270 in ~/coder-runner, run via `chat work` from ~/openagents) failed with \"Coder stopped before finishing: owner process ended. Nothing was pushed\". Suspects: the host's idle restart (SIGUSR1 re-exec) or a binary replacement during the run killing or orphaning the detached `microcoder issue-flow` owner; the new per-task store (f99d5973b8) migration during the batch; OOM. Find the cause from the task records under ~/.openagents/tasks/task/ and the journal on coderos-4080, fix it so a detached owner survives host restarts and binary replacement (re-exec-safe paths, like #10228), and add a regression test.",
+  "fix": "3b5c7e6a7e4dd4374d26e5b9bf7723ec17ad48f1",
+  "parent": "422ea6b148414474308cf8526ececc78a50faf89",
+  "package": "atif",
+  "source_files": [
+    "crates/atif/src/log.rs",
+    "crates/coder/src/task/adapter.rs",
+    "crates/coder/src/task/autostart.rs",
+    "crates/coder/src/task/owner.rs",
+    "crates/microcoder/src/repository/launch.rs"
+  ],
+  "test_files": [
+    "crates/atif/src/log.rs",
+    "crates/coder/src/task/autostart.rs",
+    "crates/coder/src/task/owner/tests.rs",
+    "crates/microcoder/src/repository/tests.rs"
+  ],
+  "test_names": [
+    "a_full_disk_is_waited_out_or_recorded_never_left_to_the_settler",
+    "a_line_the_disk_cannot_hold_is_cut_back_off",
+    "a_replaced_program_still_starts_itself",
+    "an_owner_waits_out_a_full_disk_and_nothing_else"
+  ],
+  "fix_lines": 427
+}

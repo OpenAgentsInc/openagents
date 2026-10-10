@@ -1,0 +1,25 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 9354,
+  "title": "[Lev 9] Comparison and disposition across Jev, Kev, and Lev",
+  "body": "Part of #9345. Depends on #9352.\n\nScore Lev against Kev and hosted Jev on the same items, through the same contract, and publish the result.\n\nAll three implementations speak `POST /v1/systemone`, so one harness pointed at three base URLs produces the comparison. Items are in-repo.\n\n## What to build\n\n- A comparison harness that runs one suite against a `jev` client configured for each of the three doors.\n- A card in `docs/lev/` with accuracy, calibration, mechanism, and runtime numbers, and the failures recorded rather than omitted.\n\n## Acceptance\n\n- One table, same items, three columns.\n- A written disposition: which workloads Lev is admitted for, which it is refused for, and what would change the answer. A clear no is a successful outcome.\n- `docs/lev/README.md`'s status line updated to match reality.\n",
+  "fix": "095a7737c125535cca2fdea12d8a967881090862",
+  "parent": "0fc8a95d90921a863433b19fc74c567d986ebb53",
+  "package": "lev",
+  "source_files": [
+    "crates/lev/Cargo.toml",
+    "crates/lev/src/bin/lev_compare.rs",
+    "crates/lev/src/estimator.rs",
+    "crates/lev/src/schema.rs",
+    "crates/lev/src/serve.rs",
+    "docs/lev/architecture.md",
+    "docs/lev/measurements/2026-09-19-comparison.md"
+  ],
+  "test_files": [
+    "crates/lev/src/schema.rs"
+  ],
+  "test_names": [],
+  "fix_lines": 365
+}

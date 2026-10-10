@@ -1,0 +1,312 @@
+diff --git a/crates/openagents-desktop/src/slide_embeds.rs b/crates/openagents-desktop/src/slide_embeds.rs
+index 7f59b9226a9b44b453e420c9fd370c4014a8f260..538e7102436a5231fc37b6d325b2c482f5b73234 100644
+--- a/crates/openagents-desktop/src/slide_embeds.rs
++++ b/crates/openagents-desktop/src/slide_embeds.rs
+@@ -4,16 +4,16 @@
+ //!
+ //! There is no browser engine here, so each card is drawn from the source
+ //! the page is made from, read at build time: the essays' Markdown from
+-//! `docs/essays/`, and the download page's versions and commands from the
+-//! web crate's `pages/download.rs`. A card matches the repository it was
+-//! built from.
++//! `docs/essays/`, and the download page's Coder release and install
++//! commands from the web crate's `pages/download.rs`. A card matches the
++//! repository it was built from.
+ //!
+ //! An essay card has a header row (the GitHub mark, the repository, and
+ //! the file's path), the essay's title and date, its opening rendered
+ //! from the Markdown and fading out at the bottom, and the short URL at
+ //! the foot. The download card is a browser window with an address bar and
+-//! the page under it in the site's own monospace, white-on-near-black
+-//! look. A click on a card opens its URL in the browser; hovering
++//! the page under it in the site's own monospace: white on near-black, or
++//! black on near-white in Coder Light. A click on a card opens its URL in the browser; hovering
+ //! brightens it. The cards rise and fade in when the slide shows, one
+ //! after another, and show at once under Reduce motion.
+ 
+@@ -148,26 +148,26 @@ fn date(iso: &str) -> String {
+     }
+ }
+ 
+-/// What the download page offers, read from its source.
++/// What the download page offers, read from its source: Coder's release
++/// candidate and its installers (the page is Coder only since #11030).
+ #[derive(Clone, Debug, PartialEq)]
+ pub struct Download {
+-    pub mac_version: String,
+-    pub terminal_version: String,
+-    /// The Terminal install command for macOS and Linux.
++    /// Coder's release candidate (`CODER_VERSION`).
++    pub version: String,
++    /// The install command for macOS and Linux (`CODER_SH`).
+     pub sh: String,
+-    /// The Terminal install command for Windows, in PowerShell.
++    /// The install command for Windows, in PowerShell (`CODER_PS1`).
+     pub ps1: String,
+ }
+ 
+-/// The download page's versions and commands, from the web crate's
++/// The download page's version and commands, from the web crate's
+ /// `pages/download.rs` constants.
+ pub fn download() -> Download {
+     let constant = |name: &str| constant(DOWNLOAD_SOURCE, name).unwrap_or_default();
+     Download {
+-        mac_version: constant("MAC_VERSION"),
+-        terminal_version: constant("TERMINAL_VERSION"),
+-        sh: constant("TERMINAL_SH"),
+-        ps1: constant("TERMINAL_PS1"),
++        version: constant("CODER_VERSION"),
++        sh: constant("CODER_SH"),
++        ps1: constant("CODER_PS1"),
+     }
+ }
+ 
+@@ -218,7 +218,13 @@ pub fn url(scene: &str, index: usize) -> Option<String> {
+     }
+ }
+ 
++/// A gray at `level` of white on black in the dark look; in Coder Light the
++/// same step of black on white (#11028).
+ fn gray(level: u8) -> Color {
++    let level = match openagents_chat_app::visual::scheme() {
++        openagents_chat_app::visual::Scheme::Dark => level,
++        openagents_chat_app::visual::Scheme::Light => 255 - level,
++    };
+     Color::rgb(level, level, level)
+ }
+ 
+@@ -346,7 +352,10 @@ impl Embeds {
+     /// first tick only the slide's background shows, so the cards come in
+     /// from nothing (at once under Reduce motion).
+     pub fn paint(&mut self, frame: &mut Frame, slide: PxRect, scene: &'static str) {
+-        let background = Theme::openagents().background;
++        let background = openagents_chat_app::visual::pick(
++            Theme::openagents().background,
++            openagents_chat_app::visual::current().canvas,
++        );
+         frame.fill(slide, 0.0, background);
+         if self.scene != Some(scene) && !self.reduce_motion {
+             return;
+@@ -606,7 +615,10 @@ impl Embeds {
+         if bottom > y {
+             let magnification = 0.92;
+             let width = inner / k / magnification;
+-            let key = width.round() as u32;
++            // Laid out again when the width or the scheme changes.
++            let light =
++                openagents_chat_app::visual::scheme() == openagents_chat_app::visual::Scheme::Light;
++            let key = ((width.round() as u32) << 1) | u32::from(light);
+             let stale = self.openings[index]
+                 .as_ref()
+                 .is_none_or(|(laid, _)| *laid != key);
+@@ -621,7 +633,14 @@ impl Embeds {
+                 self.openings[index] =
+                     Rich::in_family(node, width, Theme::openagents().font_family)
+                         .ok()
+-                        .map(|rich| (key, rich));
++                        .map(|mut rich| {
++                            if light {
++                                let look = &openagents_chat_app::visual::Visual::LIGHT;
++                                rich.set_palette(&look.colors);
++                                rich.set_syntax_palette(look.syntax);
++                            }
++                            (key, rich)
++                        });
+             }
+             if let Some((_, rich)) = &self.openings[index] {
+                 let clip = frame.clip_to(PxRect {
+@@ -864,7 +883,7 @@ impl Embeds {
+             );
+         }
+         y += header + 28.0 * s;
+-        // <h1>Download OpenAgents</h1>
++        // <h1>Download Coder</h1>
+         let h1 = 19.6 * s;
+         runs(
+             &mut frame,
+@@ -872,116 +891,30 @@ impl Embeds {
+             x0,
+             y + (h1 * 1.3 - line) / 2.0,
+             h1,
+-            &[("Download OpenAgents", Weight::Bold, W100, false)],
++            &[("Download Coder", Weight::Bold, W100, false)],
+         );
+         y += h1 * 1.3 + 14.0 * s;
++        // <h2>Coder + OpenAgents CLI</h2> and the release candidate.
+         let h2 = 16.1 * s;
+-        let heading = |frame: &mut Option<&mut Frame>,
+-                       fonts: &mut Fonts,
+-                       y: &mut f32,
+-                       number: u8,
+-                       title: &str,
+-                       lead: &str| {
+-            let number = format!("[{number}]");
+-            runs(
+-                frame,
+-                fonts,
+-                x0,
+-                *y + (h2 * 1.3 - line) / 2.0,
+-                h2,
+-                &[
+-                    (number.as_str(), Weight::Bold, W50, false),
+-                    (" ", Weight::Bold, W100, false),
+-                    (title, Weight::Bold, W100, false),
+-                ],
+-            );
+-            *y += h2 * 1.3 + 3.5 * s;
+-            if !lead.is_empty() {
+-                runs(
+-                    frame,
+-                    fonts,
+-                    x0,
+-                    *y,
+-                    base,
+-                    &[(lead, Weight::Regular, W50, false)],
+-                );
+-                *y += line;
+-            }
+-            *y += 14.0 * s;
+-        };
+-        // [1] OpenAgents for Mac
+-        let lead = format!("Version {}.", download.mac_version);
+-        heading(
+-            &mut frame,
+-            &mut self.fonts,
+-            &mut y,
+-            1,
+-            "OpenAgents for Mac",
+-            &lead,
+-        );
+-        y += 10.5 * s - 14.0 * s;
+-        let row = 10.5 * s * 2.0 + line;
+-        rule(
+-            &mut frame,
+-            PxRect {
+-                x: x0,
+-                y,
+-                w: column,
+-                h: row,
+-            },
+-        );
+         runs(
+             &mut frame,
+             &mut self.fonts,
+-            x0 + 2.0 * ch,
+-            y + 10.5 * s,
+-            base,
+-            &[
+-                ("macOS", Weight::Bold, W100, false),
+-                (" ", Weight::Regular, W75, false),
+-                ("(Apple silicon and Intel)", Weight::Regular, W50, false),
+-            ],
+-        );
+-        let button = "[ Download .dmg ]";
+-        let button_w = self
+-            .fonts
+-            .advance(button, font(base, Weight::Regular, true));
+-        runs(
+-            &mut frame,
+-            &mut self.fonts,
+-            x0 + column - 2.0 * ch - button_w,
+-            y + 10.5 * s,
+-            base,
+-            &[(button, Weight::Regular, W100, false)],
++            x0,
++            y + (h2 * 1.3 - line) / 2.0,
++            h2,
++            &[("Coder + OpenAgents CLI", Weight::Bold, W100, false)],
+         );
+-        y += row + 14.0 * s;
++        y += h2 * 1.3 + 3.5 * s;
++        let lead = format!("Release candidate {}.", download.version);
+         runs(
+             &mut frame,
+             &mut self.fonts,
+             x0,
+             y,
+             base,
+-            &[
+-                ("macOS 13 or later. Open the ", Weight::Regular, W50, false),
+-                (".dmg", Weight::Regular, W100, false),
+-                (" and drag ", Weight::Regular, W50, false),
+-                ("OpenAgents", Weight::Bold, W50, false),
+-                (" onto ", Weight::Regular, W50, false),
+-                ("Applications", Weight::Bold, W50, false),
+-                (".", Weight::Regular, W50, false),
+-            ],
+-        );
+-        y += line + 14.0 * s + 35.0 * s - 14.0 * s;
+-        // [2] OpenAgents Terminal
+-        let lead = format!("Version {}.", download.terminal_version);
+-        heading(
+-            &mut frame,
+-            &mut self.fonts,
+-            &mut y,
+-            2,
+-            "OpenAgents Terminal",
+-            &lead,
++            &[(lead.as_str(), Weight::Regular, W50, false)],
+         );
++        y += line + 14.0 * s;
+         for (hint, command) in [
+             ("macOS and Linux:", download.sh.as_str()),
+             ("Windows, in PowerShell:", download.ps1.as_str()),
+@@ -992,7 +925,7 @@ impl Embeds {
+                 x0,
+                 y,
+                 base,
+-                &[(hint, Weight::Regular, W50, false)],
++                &[(hint, Weight::Regular, W75, false)],
+             );
+             y += line + 14.0 * s;
+             let pre = PxRect {
+@@ -1023,32 +956,32 @@ impl Embeds {
+             }
+             y += pre.h + 14.0 * s;
+         }
+-        y += 35.0 * s - 14.0 * s;
+-        // [3] Everything else
+-        heading(
++        // What the installers put on the computer.
++        runs(
+             &mut frame,
+             &mut self.fonts,
+-            &mut y,
+-            3,
+-            "Everything else",
+-            "",
++            x0,
++            y,
++            base,
++            &[
++                ("Installs ", Weight::Regular, W75, false),
++                ("coder", Weight::Regular, W100, false),
++                (", ", Weight::Regular, W75, false),
++                ("openagents", Weight::Regular, W100, false),
++                (", and ", Weight::Regular, W75, false),
++                ("microcoder", Weight::Regular, W100, false),
++                (" together.", Weight::Regular, W75, false),
++            ],
+         );
++        y += line + 28.0 * s;
++        // The closed disclosure with the release files.
+         runs(
+             &mut frame,
+             &mut self.fonts,
+             x0,
+             y,
+             base,
+-            &[
+-                (
+-                    "iPhone, Android, and OpenAgents for Linux and Windows: ",
+-                    Weight::Regular,
+-                    W75,
+-                    false,
+-                ),
+-                ("build from source", Weight::Regular, W100, true),
+-                (".", Weight::Regular, W75, false),
+-            ],
++            &[("Download binaries manually", Weight::Regular, W100, true)],
+         );
+         y += line + 28.0 * s;
+         y - area.y

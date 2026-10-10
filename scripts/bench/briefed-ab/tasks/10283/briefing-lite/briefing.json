@@ -1,0 +1,126 @@
+{
+  "issue": 10283,
+  "title": "Terminal: keep background-watcher notices (\"Disk almost full\" etc.) out of the transcript; show them in a watchers view",
+  "body": "Owner: \"i dont want to see 'Disk almost full' etc notifications in the transcript of the terminal, hide those somewhere else like user must hit left to see background watchers or something\". Background rule notices (disk cleanup, other watchers from crates/background) must not be inserted into the chat transcript. Put them in a background-watchers view the user opens on purpose (e.g. Left arrow from an empty input, or a key listed in the help/status line), with an unobtrusive indicator (a small count in the status line) when something new happened. Watcher start-up lists, run results and escalations all go there; nothing about background watchers appears in the transcript unless the user asks in chat. Snapshot tests for both.",
+  "base": "ec832a8d9ff8d2f6e0b4ea533968efedc4a762ec",
+  "finder": "lite",
+  "plan": [
+    "Goal: Terminal: keep background-watcher notices (\"Disk almost full\" etc.) out of the transcript; show them in a watchers view",
+    "Change the behavior where it lives, most likely in `crates/background/src/run.rs`, `docs/background/2026-10-02-background-processes.md`.",
+    "Add or update a test that pins the new behavior, next to the existing ones in `crates/background/src/tests.rs`.",
+    "Run `check:background`, then `test:background`, then `fmt`; stop when they pass."
+  ],
+  "files": [
+    {
+      "path": "crates/background/src/run.rs",
+      "score": 4.66,
+      "lines": [
+        471
+      ],
+      "why": [
+        "has `Disk almost full`"
+      ],
+      "excerpt": "--- lines 459-489 of 605 ---\n  459                  Outcome::Deleted | Outcome::Removed | Outcome::Trashed\n  460              )\n  461          })\n  462          .collect();\n  463      let free = observation.iter().map(|o| o.free_after).min()?;\n  464      let low = plan\n  465          .volumes\n  466          .iter()\n  467          .zip(observation)\n  468          .any(|(volume, o)| o.free_after < volume.start && volume.needed > 0);\n  469      if emergency {\n  470          return Some(format!(\n  471              \"Disk almost full ({} free). Cleaned everything allowed: {}.\",\n  472              bytes(free),\n  473              bytes(freed)\n  474          ));\n  475      }\n  476      let mut line = String::new();\n  477      if !done.is_empty() {\n  478          let mut counts: Vec<(Class, usize)> = Vec::new();\n  479          for action in &done {\n  480              match counts.iter_mut().find(|(class, _)| *class == action.class) {\n  481                  Some((_, count)) => *count += 1,\n  482                  None => counts.push((action.class, 1)),\n  483              }\n  484          }\n  485          let parts: Vec<String> = counts\n  486              .iter()\n  487              .map(|(class, count)| format!(\"{count} {}\", class.noun(*count)))\n  488              .collect();\n  489          line = if freed > 0 || counts.iter().any(|(class, _)| *class != Class::Judged) {"
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "score": 4.66,
+      "lines": [
+        610
+      ],
+      "why": [
+        "has `Disk almost full`"
+      ],
+      "excerpt": "--- lines 598-628 of 1018 ---\n  598      run::run(&env, &disk(), Cause::Manual, false, true).unwrap();\n  599      assert!(trash.exists());\n  600      let volumes = Fixed {\n  601          free: GB,\n  602          total: 1_000 * GB,\n  603      };\n  604      let env = Env {\n  605          volumes: &volumes,\n  606          ..env\n  607      };\n  608      let report = run::run(&env, &disk(), Cause::Threshold, false, false).unwrap();\n  609      assert!(!trash.parent().unwrap().exists());\n  610      assert!(report.notice.unwrap().starts_with(\"Disk almost full\"));\n  611  }\n  612  \n  613  /// A home with one ended task's target on a low volume, checked for\n  614  /// `cause` under `rule`: whether the target was deleted, and the run's\n  615  /// recorded trigger.\n  616  fn checked(rule: &Rule, cause: Cause) -> (bool, Option<Cause>) {\n  617      let home = Home::new();\n  618      let ended = home.layout.targets().join(\"openagents-aaaa-1111\");\n  619      target(&ended, 4096);\n  620      home.task(\"aaaa\", &home.layout.worktrees().join(\"a\"), &ended, true);\n  621      let facts = home.facts();\n  622      let volumes = low();\n  623      let env = env(&home, &facts, &volumes, &Idle);\n  624      let report = crate::runner::check(&env, rule, cause).map(Result::unwrap);\n  625      let trigger = report.and_then(|report| report.record).map(|r| r.trigger);\n  626      (!ended.exists(), trigger)\n  627  }\n  628  "
+    },
+    {
+      "path": "docs/background/2026-10-02-background-processes.md",
+      "score": 1.24,
+      "lines": [
+        294
+      ],
+      "why": [
+        "has `Disk almost full`"
+      ],
+      "excerpt": "--- lines 282-312 of 726 ---\n  282  5. **Age.** Lock and fingerprint modification times.\n  283  \n  284  Phase 1 needs no model. Phase 3 adds one judgment for directories no class\n  285  covers (below).\n  286  \n  287  ### What the user sees\n  288  \n  289  Notifications are one or two plain lines, sent only when something happens:\n  290  \n  291  - `Freed 84 GB: 3 build caches from ended tasks.`\n  292  - `Freed 41 GB: 2 old agent build folders, 6 finished worktrees. 312 GB free.`\n  293  - `Disk still low: 22 GB free. Largest not cleaned: ~/.openagents/pylon (47 GB), not a known cache.`\n  294  - `Disk almost full (9 GB free). Cleaned everything allowed: 12 GB.`\n  295  \n  296  A check that finds enough free space sends nothing. The terminal status line\n  297  shows `disk ok \u00b7 312 GB free` only in `/background`.\n  298  \n  299  ### Changing it in conversation\n  300  \n  301  Each request becomes a typed edit to the `disk` rule. The user sees the\n  302  change and the dry run before it applies.\n  303  \n  304  | The user says | The edit |\n  305  | --- | --- |\n  306  | \"only keep 2 agent target dirs\" | Class 2, agent target directories: `keep: 2` (the two most recently used stay, regardless of age). |\n  307  | \"never touch ~/.openagents/pylon\" | Add `~/.openagents/pylon` to the deny list. |\n  308  | \"keep 200 GB free\" | Start threshold `200 GB`; stop threshold raised to stay above it. |\n  309  | \"clean old build caches first\" | No change: that is already the order. The reply says so. |\n  310  | \"don't delete worktrees, just tell me\" | Class 3 set to report only. |\n  311  | \"pause disk cleanup until tomorrow\" | `enabled: false` with a resume time. |\n  312  "
+    }
+  ],
+  "history": [
+    {
+      "commit": "d7f0ab8c6c",
+      "subject": "Disk cleanup keeps a worktree that holds ignored files outside build caches",
+      "file": "crates/background/src/tests.rs",
+      "diff": "diff --git a/crates/background/src/tests.rs b/crates/background/src/tests.rs\nindex ad3fa5c396..3332dae146 100644\n--- a/crates/background/src/tests.rs\n+++ b/crates/background/src/tests.rs\n@@ -346,4 +346,45 @@ fn unsaved_worktrees_stay_and_a_clean_pushed_one_goes_and_comes_back() {\n }\n \n+#[test]\n+fn ignored_files_keep_a_worktree_and_ignored_caches_do_not() {\n+    let home = Home::new();\n+    let (repo, trees) = repo(&home, &[\"env\", \"private\", \"cache\"]);\n+    let [env_tree, private, cache] = [&trees[0], &trees[1], &trees[2]];\n+    std::fs::write(\n+        repo.join(\".git/info/exclude\"),\n+        \".env\\nprivate/\\ntarget/\\nnode_modules/\\n\",\n+    )\n+    .unwrap();\n+    std::fs::write(env_tree.join(\".env\"), \"SECRET=1\").unwrap();\n+    std::fs::create_dir_all(private.join(\"private\")).unwrap();\n+    std::fs::write(private.join(\"private/data\"), \"mine\").unwrap();\n+    std::fs::create_dir_all(cache.join(\"target/debug\")).unwrap();\n+    std::fs::write(cache.join(\"target/debug/out\"), \"built\").unwrap();\n+    std::fs::create_dir_all(cache.join(\"web/node_modules/x\")).unwrap();\n+    std::fs::write(cache.join(\"web/node_modules/x/index.js\"), \"\").unwrap();\n+    let facts = home.facts();\n+    let volumes = low();\n+    let env = env(&home, &facts, &volumes, &Idle);\n+    let dry = run::run(&env, &disk(), Cause::Manual, true, true).unwrap();\n+    let reasons: Vec<(PathBuf, String)> = dry\n+        .plan\n+        .kept\n+        .iter()\n+        .map(|kept| (kept.path.clone(), kept.why.clone()))\n+        .collect();\n+    assert!(\n+        reasons.contains(&(env_tree.clone(), \"holds ignored files: .env\".into())),\n+        \"{reasons:?}\"\n+    );\n+    assert!(\n+        reasons.contains(&(private.clone(), \"holds ignored files: private/\".into())),\n+        \"{reasons:?}\"\n+    );\n+    let real = run::run(&env, &disk(), Cause::Manual, false, true).unwrap();\n+    assert!(env_tree.join(\".env\").exists());\n+    assert!(private.join(\"private/data\").exists());\n+    assert!(!cache.exists(), \"{:?} {reasons:?}\", real.record);\n+}\n+\n #[test]\n fn symlinks_are_not_followed_and_other_volumes_are_refused() {"
+    }
+  ],
+  "checks": [
+    {
+      "id": "check:background",
+      "argv": [
+        "cargo",
+        "check",
+        "-p",
+        "background",
+        "--tests",
+        "--message-format",
+        "short"
+      ],
+      "what": "compile background and its tests"
+    },
+    {
+      "id": "test:background",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "background"
+      ],
+      "filter": true,
+      "what": "run background's tests (pass a test-name filter to run fewer)"
+    },
+    {
+      "id": "fmt:background",
+      "argv": [
+        "cargo",
+        "fmt",
+        "-p",
+        "background"
+      ],
+      "what": "format background"
+    }
+  ],
+  "rules": [
+    "Product code is Rust. Do not add TypeScript.",
+    "The check for a change is `cargo test -p` for the crates you edited plus `cargo fmt`. Do not run clippy, release gates, or other crates' tests.",
+    "Never put machine talk (internal words like retained, projection, canonical, digest, lane) in text a user sees; say what happened in plain words. Each surface's tests run the `oa-copy` guard over user-visible text.",
+    "When a test fails only because a checked-in generated file is stale, regenerate it.",
+    "No new INVARIANTS rows, design notes, or long docs for a small change.",
+    "Fix stale or false user-facing copy you touch in the same change."
+  ],
+  "levers": {
+    "finder": "lite",
+    "briefing_files": 6,
+    "excerpt": "windows",
+    "excerpt_lines": 140,
+    "briefing_tokens": 14000,
+    "history": 2,
+    "plan": "deterministic",
+    "template": "v1",
+    "tools": "Read,Edit,Write,Grep,Glob",
+    "check_output": "smart",
+    "mcp": "checks",
+    "model": "claude-opus-5-5",
+    "effort": "default",
+    "max_turns": 0,
+    "timeout_secs": 1200,
+    "briefing_in": "system",
+    "build_cache": "warm",
+    "build_host": "coderos-4080",
+    "post_fmt": false,
+    "decomposition": "single",
+    "triage": "none",
+    "learning": "none"
+  },
+  "build_secs": 1.13,
+  "chars": 9332
+}

@@ -1,0 +1,455 @@
+diff --git a/INVARIANTS.md b/INVARIANTS.md
+index 481c95cf1de1cd5f8dfd6cc1a37033d9d5304f94..bdc48b09ec9956cc19798e268f1f04b5b8e561ff 100644
+--- a/INVARIANTS.md
++++ b/INVARIANTS.md
+@@ -96,7 +96,7 @@ See [Coder on this computer](docs/desktop/local-coder.md#what-changed).
+ | Invariant | Status | Checked by |
+ | --- | --- | --- |
+ | Tailscale, SSH, a relay, an iroh connection, a QR scan, and nearby discovery only introduce devices. Rights come only from a host-signed NIP-HOST grant, and every invitation carries the rights its issuer set: a connect code from the desktop app, `openagents connect invite`, or `openagents connect --ssh`, and a nearby approval, carry the pairing grant: every right (`observe`, `operate`, `terminal`, `review`, `access_read`, `access_admin`), because the phone paired that way is the owner's own. An iroh `EndpointId` never admits anything: on `openagents/reach/1` the NIP-REACH handshake proves both Nostr keys and the grant check decides, as over TCP, and a key the host never enrolled reaches only `openagents/enroll/1`, where only a redemption of a retained invitation with its capability earns a signed reply. | New on 2026-09-27 ([#9731](https://github.com/OpenAgentsInc/openagents/issues/9731)). Extended to iroh, QR codes, and nearby discovery on 2026-09-29 ([#9969](https://github.com/OpenAgentsInc/openagents/issues/9969)). The old setup commands were removed on 2026-09-29 ([#9978](https://github.com/OpenAgentsInc/openagents/issues/9978)); the row stands for its replacements, which introduce devices the same way. Owner-directed on 2026-09-29 ([#9965](https://github.com/OpenAgentsInc/openagents/issues/9965)): every pairing grants full permission, and no screen or flag narrows it. The phone keeps only that grant: the narrower sets earlier codes carried are refused, owner-directed the same day since no computer still issues them. | `only_the_connect_code_rights_are_kept` in `crates/coder-host/src/client/iroh.rs`; `an_unknown_key_reaches_only_enrollment_and_a_grant_admits_only_its_device`, `a_phone_redeems_a_connect_code_over_iroh_and_a_second_phone_is_forbidden`, `a_terminal_opens_over_iroh_only_with_the_terminal_right`, `revocation_closes_an_open_iroh_channel_before_its_next_message` in `crates/coder-host/tests/iroh.rs` |
+-| A host with NIP-HOST tailnet admission on issues a single-use invitation, never a grant, only to a caller that its local `tailscale whois` names as the host machine's own untagged Tailscale user, with the rights the operator chose. Every other caller gets a refusal and no invitation. | New on 2026-09-27, owner-approved. It relaxes the row above only when the operator runs `coder host serve --tailnet-admission RIGHTS`: Tailscale identity then admits the device to an invitation, and the host still signs the grant on redemption. Off by default. On 2026-09-29 the owner kept it as an optional path alongside QR pairing and iroh; it is not deprecated. | `refuses_malformed_and_non_tailnet_callers_before_whois` and `parses_status_and_whois` in `crates/coder-host`; `live_tailnet_admission_adds_the_computer_and_its_chats` (ignored, live) in `crates/openagents-mobile` |
++| A host with NIP-HOST tailnet admission on issues a single-use invitation, never a grant, only to a caller that its local `tailscale whois` names as the host machine's own untagged Tailscale user, with the rights the operator chose. Every other caller gets a refusal and no invitation. The invitation is issued from the access store with the host key from the same key source the serving host signs with (the keychain under `--keychain`, `DIR` under `--keys DIR`, else the store's key file), and admission starts only when that key is the serving host's key; otherwise it stays off. The control socket's `tailnet_status` reports whether it serves and on which tailnet address, or why it is off. | New on 2026-09-27, owner-approved. It relaxes the row above only when the operator runs `coder host serve --tailnet-admission RIGHTS`: Tailscale identity then admits the device to an invitation, and the host still signs the grant on redemption. Off by default. On 2026-09-29 the owner kept it as an optional path alongside QR pairing and iroh; it is not deprecated. Reinterpreted on 2026-10-01 ([#10125](https://github.com/OpenAgentsInc/openagents/issues/10125)): a host serving with `--keychain` read the key from the store's file, found none, and left admission off; the key source and the serving-key check now hold for every key source. | `refuses_malformed_and_non_tailnet_callers_before_whois`, `parses_status_and_whois`, and `admission_uses_the_serving_hosts_key_source` in `crates/coder-host`; `the_socket_is_private_and_serves_only_this_user` (`tailnet_status`) in `crates/coder-host/tests/control.rs`; `live_tailnet_admission_adds_the_computer_and_its_chats` (ignored, live) in `crates/openagents-mobile` |
+ | A device key holds one NIP-HOST grant at a host: a new grant to a device (invitation redemption or approval) revokes that device's earlier grants in the same commit without advancing its epoch, and they leave the book once no retained invitation or enrollment names them; a request under a grant that left is refused and reads nothing. Grants other devices hold, including ones the device delegated, are untouched; an unredeemed invitation it issued moves to the new grant only from a grant live until then and only when the new grant holds `access_admin` and every invited right and outlives the invited grant, else it is refused as `revoked`. A dead grant never blocks a new one: while the book's 128 grants are full, the longest-dead unnamed grant leaves it; only 128 live or named grants refuse a new device. The one exception is renewal (the next row): a renewed grant stays admitted beside its renewal until its own expiry. | New on 2026-09-28 ([#9908](https://github.com/OpenAgentsInc/openagents/issues/9908)), after live test runs filled a host's grants with one fixed key. It narrows authority (a re-enrolled device loses its earlier grant, and commands it queued under that grant no longer run) and never extends a delegation past what the new grant could issue. | `a_device_that_enrolls_again_holds_one_grant`, `revoked_grants_never_block_a_new_enrollment`, `delegations_survive_their_issuer_enrolling_again` in `crates/coder-access` |
+ | A paired device never has to pair again while it keeps connecting: when a direct channel (TCP, WebSocket, or iroh) opens or runs under a current grant that the host or its owner issued and that has a quarter or less of its lifetime left, the host signs a new grant with the same device, relay, rights, epoch, origin, and lifetime (at most 30 days), sends it on the channel (`openagents.host-grant-renewal.v1`), and the channel follows it. The renewed grant stays admitted until its own expiry, so nothing already signed is cut off. A revoked, expired, or stale grant, a grant that is not the device's newest, and a grant a device delegated never renew; a device accepts a renewal only with the same terms (`Access::renewed`). | New on 2026-09-29 ([#9969](https://github.com/OpenAgentsInc/openagents/issues/9969)), owner-directed: a QR pairing lasts 30 days, and a monthly rescan is not acceptable. | `a_grant_renews_near_its_end_with_the_same_terms_and_the_device_accepts_it`, `a_revoked_device_never_renews_and_loses_both_grants`, `a_delegated_grant_does_not_renew` in `crates/coder-access`; `a_grant_near_its_end_is_renewed_on_the_channel_and_the_channel_follows_it` in `crates/coder-host/tests/iroh.rs` |
+ | A device clock up to 60 seconds behind or ahead of the host's pairs and is served: the host admits a request dated up to 60 seconds before the invitation or grant it names, and a device accepts a reply dated up to 60 seconds before its request. Expiry is still the host's clock, held strictly. | New on 2026-09-29 ([#9969](https://github.com/OpenAgentsInc/openagents/issues/9969)); it reinterprets the existing 60-second skew, which a request dated before its invitation did not get. | `a_phone_whose_clock_is_off_by_thirty_seconds_still_pairs_and_works` in `crates/coder-host/tests/iroh.rs` |
+diff --git a/crates/coder-host/src/cli.rs b/crates/coder-host/src/cli.rs
+index 5853e04d4a0216c8da4e2ae6e623c1d722c21280..382a267ea2dfa48a83487826bfd35a92dd557415 100644
+--- a/crates/coder-host/src/cli.rs
++++ b/crates/coder-host/src/cli.rs
+@@ -634,6 +634,8 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
+     let admission = match &tailnet {
+         Some(setting) => Some(crate::tailnet::Settings {
+             state: state.clone(),
++            // The key source the serving host signs with (#10125).
++            keys: connect.keys.clone(),
+             policy,
+             relay: relays
+                 .first()
+@@ -727,12 +729,20 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
+     }
+     if let Some(admission) = admission {
+         let chats = admission.chats.is_some();
+-        match crate::tailnet::start(admission).await {
+-            Ok(address) => eprintln!(
+-                "coder host: tailnet admission on {address}{}",
+-                if chats { " with chats" } else { "" }
+-            ),
+-            Err(error) => eprintln!("coder host: tailnet admission is off: {error}"),
++        match crate::tailnet::start(admission, running.host_key()).await {
++            Ok(address) => {
++                eprintln!(
++                    "coder host: tailnet admission on {address}{}",
++                    if chats { " with chats" } else { "" }
++                );
++                running.set_tailnet(crate::serve::Tailnet::On { address, chats });
++            }
++            Err(error) => {
++                eprintln!("coder host: tailnet admission is off: {error}");
++                running.set_tailnet(crate::serve::Tailnet::Off {
++                    reason: error.to_string(),
++                });
++            }
+         }
+     }
+     let restart = tokio::select! {
+diff --git a/crates/coder-host/src/control/mod.rs b/crates/coder-host/src/control/mod.rs
+index f85a1bee5115f3ce92d0899692c411cf4cd8d414..56f9084960654b3fea3fab36bcf9de79f32d6b73 100644
+--- a/crates/coder-host/src/control/mod.rs
++++ b/crates/coder-host/src/control/mod.rs
+@@ -300,6 +300,7 @@ fn answer(shared: &Shared, op: Op) -> Reply {
+         }
+         Op::TaskHistory { query } => tasks::history(shared, query),
+         Op::Status {} => status(shared),
++        Op::TailnetStatus {} => tailnet_status(shared),
+         Op::InviteCreate {} => invite(shared),
+         Op::InviteCancel { invitation } => {
+             match shared
+@@ -595,6 +596,32 @@ fn status(shared: &Shared) -> Reply {
+     })
+ }
+ 
++/// Tailnet admission as this process started it (#10125).
++fn tailnet_status(shared: &Shared) -> Reply {
++    let tailnet = shared
++        .tailnet
++        .lock()
++        .unwrap_or_else(std::sync::PoisonError::into_inner)
++        .clone();
++    match tailnet {
++        Some(crate::serve::Tailnet::On { address, chats }) => Reply::Tailnet {
++            address: Some(address.to_string()),
++            chats,
++            off: None,
++        },
++        Some(crate::serve::Tailnet::Off { reason }) => Reply::Tailnet {
++            address: None,
++            chats: false,
++            off: Some(reason),
++        },
++        None => Reply::Tailnet {
++            address: None,
++            chats: false,
++            off: None,
++        },
++    }
++}
++
+ /// The rights a connect code carries: [`Rights::pairing`], every right an
+ /// owner's phone uses. Nothing the person sets on screen changes them.
+ #[must_use]
+diff --git a/crates/coder-host/src/serve/mod.rs b/crates/coder-host/src/serve/mod.rs
+index 0a81ea65e9c8db33f6fb64661121eee537ac7cba..e21d0f4a663fdd69380cf8996836a126b9ab29c4 100644
+--- a/crates/coder-host/src/serve/mod.rs
++++ b/crates/coder-host/src/serve/mod.rs
+@@ -92,6 +92,18 @@ pub(crate) struct Shared {
+     /// presence loop; empty until the first reading, and always where the
+     /// serving program lists none.
+     pub(crate) engines: std::sync::Mutex<Vec<String>>,
++    /// Tailnet admission as the control socket's `tailnet_status` reports
++    /// it (#10125): `None` until the serving program says.
++    pub(crate) tailnet: std::sync::Mutex<Option<Tailnet>>,
++}
++
++/// Tailnet admission's state, as the serving program started it.
++#[derive(Clone, Debug, PartialEq, Eq)]
++pub enum Tailnet {
++    /// Serving on this tailnet address.
++    On { address: SocketAddr, chats: bool },
++    /// Configured, but it could not start.
++    Off { reason: String },
+ }
+ 
+ /// A running host.
+@@ -200,6 +212,7 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
+         grants_changed: tokio::sync::Notify::new(),
+         restart: tokio::sync::watch::channel(false).0,
+         engines: std::sync::Mutex::new(Vec::new()),
++        tailnet: std::sync::Mutex::new(None),
+     });
+ 
+     let (ready, relay_ready) = tokio::sync::oneshot::channel();
+@@ -306,6 +319,15 @@ impl Running {
+             .map(|iroh| iroh.endpoint.local_addr())
+     }
+ 
++    /// Record whether tailnet admission serves, for `tailnet_status`.
++    pub fn set_tailnet(&self, tailnet: Tailnet) {
++        *self
++            .shared
++            .tailnet
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(tailnet);
++    }
++
+     /// The control socket's path, when the host serves one.
+     #[must_use]
+     pub fn control_path(&self) -> Option<&Path> {
+diff --git a/crates/coder-host/src/tailnet.rs b/crates/coder-host/src/tailnet.rs
+index b2ba651ccfe1a737bab27f31bd4bdfd43f9551ef..e5f0e8520e35c5999a09f13b0c654ecb6f753c83 100644
+--- a/crates/coder-host/src/tailnet.rs
++++ b/crates/coder-host/src/tailnet.rs
+@@ -112,6 +112,11 @@ pub struct Chats {
+ pub struct Settings {
+     /// The host's access store.
+     pub state: PathBuf,
++    /// Where the host key lives when another program keeps it, such as the
++    /// desktop app's keychain (`serve --keychain` or `--keys DIR`): the same
++    /// source the serving host signs with (#10125). `None` reads the store's
++    /// own key file.
++    pub keys: Option<crate::serve::keys::Keys>,
+     pub policy: RelayPolicy,
+     /// The relay invitations name: the host's primary relay.
+     pub relay: String,
+@@ -123,6 +128,24 @@ pub struct Settings {
+     pub chats: Option<Chats>,
+ }
+ 
++#[cfg(feature = "host")]
++impl Settings {
++    /// The host's access store with its key from where the serving host
++    /// keeps it, so an invitation issued here names and is signed by the
++    /// same host key a device redeems it with.
++    #[must_use]
++    pub fn access(&self) -> coder_access::host::Host {
++        match &self.keys {
++            Some(keys) => coder_access::host::Host::with_keys(
++                &self.state,
++                self.policy,
++                Arc::new(crate::serve::keys::HostKey(keys.0.clone())),
++            ),
++            None => coder_access::host::Host::new(&self.state, self.policy),
++        }
++    }
++}
++
+ #[cfg(feature = "host")]
+ /// This machine on the tailnet.
+ #[derive(Clone, Debug, PartialEq, Eq)]
+@@ -281,10 +304,21 @@ pub fn is_tailnet(ip: IpAddr) -> bool {
+ #[cfg(feature = "host")]
+ /// Bind the admission listener on this machine's tailnet address and serve
+ /// it until the process stops. With chats, also serve read-only history.
++/// `serving` is the host key the running host signs with: admission starts
++/// only when its access store reads that same key, so no invitation names
++/// another identity.
+ ///
+ /// # Errors
+-/// Reports a missing Tailscale, or a listener that cannot bind.
+-pub async fn start(settings: Settings) -> Result<SocketAddr> {
++/// Reports a missing Tailscale, a host key that cannot be read or is not
++/// `serving`, or a listener that cannot bind.
++pub async fn start(settings: Settings, serving: &str) -> Result<SocketAddr> {
++    let access = settings.access();
++    let host_key = retry_busy(|| access.public_key())?;
++    if host_key != serving {
++        return Err(Error::Config(
++            "the access store's host key is not the serving host's".into(),
++        ));
++    }
+     let me = me(&settings.tailscale).await?;
+     let listener = TcpListener::bind(listen_address(&me, settings.port)?)
+         .await
+@@ -320,12 +354,12 @@ pub async fn start(settings: Settings) -> Result<SocketAddr> {
+             }
+         });
+     }
+-    let host_key = coder_access::host::Host::new(&settings.state, settings.policy).public_key()?;
+     let observer = settings.chats.as_ref().map(|chats| {
+         Arc::new(coder_connect::host::Host::new(&chats.observer, settings.policy).coder_only())
+     });
+     let shared = Arc::new(Shared {
+         settings,
++        access,
+         me,
+         host: host_key,
+         observer,
+@@ -359,8 +393,15 @@ pub async fn start(settings: Settings) -> Result<SocketAddr> {
+                     return;
+                 }
+                 let _ = tokio::time::timeout(EXCHANGE_LIMIT, async {
+-                    let reply =
+-                        answer(&line, peer.ip(), &shared.settings, &shared.me, &shared.host).await;
++                    let reply = answer(
++                        &line,
++                        peer.ip(),
++                        &shared.settings,
++                        &shared.access,
++                        &shared.me,
++                        &shared.host,
++                    )
++                    .await;
+                     let mut bytes = serde_json::to_vec(&reply).unwrap_or_default();
+                     bytes.push(b'\n');
+                     write.write_all(&bytes).await?;
+@@ -401,6 +442,8 @@ const OWNER_FOR: Duration = Duration::from_secs(10 * 60);
+ #[cfg(feature = "host")]
+ struct Shared {
+     settings: Settings,
++    /// The access store, holding the host key once read.
++    access: coder_access::host::Host,
+     me: Me,
+     host: String,
+     observer: Option<Arc<coder_connect::host::Host>>,
+@@ -517,7 +560,14 @@ fn refusal(owner: &Owner, me: &Me) -> Option<String> {
+ }
+ 
+ #[cfg(feature = "host")]
+-async fn answer(line: &[u8], peer: IpAddr, settings: &Settings, me: &Me, host: &str) -> Admission {
++async fn answer(
++    line: &[u8],
++    peer: IpAddr,
++    settings: &Settings,
++    access: &coder_access::host::Host,
++    me: &Me,
++    host: &str,
++) -> Admission {
+     let mut reply = Admission {
+         v: REPLY.into(),
+         host: host.into(),
+@@ -553,7 +603,6 @@ async fn answer(line: &[u8], peer: IpAddr, settings: &Settings, me: &Me, host: &
+     let Ok(now) = crate::unix_time() else {
+         return refuse(reply, "unavailable");
+     };
+-    let access = coder_access::host::Host::new(&settings.state, settings.policy);
+     let invitation = retry_busy(|| {
+         access.invite(
+             &settings.relay,
+@@ -673,6 +722,60 @@ mod tests {
+         assert!(parse_whois(&tagged).unwrap().tagged);
+     }
+ 
++    /// #10125: a host whose key another program keeps (`serve --keychain`
++    /// or `--keys DIR`) has no key file in its access store. Admission
++    /// reads the key from the same source the host signs with, issues
++    /// invitations under that key, and starts only when it is the serving
++    /// host's key.
++    #[tokio::test]
++    async fn admission_uses_the_serving_hosts_key_source() {
++        use crate::serve::keys::{FileKeySource, HostKey, Keys, owner};
++        let dir = tempfile::tempdir().unwrap();
++        let state = dir.path().join("coder-access");
++        let source: Arc<dyn crate::serve::keys::KeySource> =
++            Arc::new(FileKeySource::new(dir.path().join("keys")));
++        let serving = coder_access::host::Host::with_keys(
++            &state,
++            RelayPolicy::Production,
++            Arc::new(HostKey(source.clone())),
++        );
++        coder_access::host::ensure_parent(&state).unwrap();
++        let owner_key = coder_reach::pubkey(&owner(source.as_ref()).unwrap());
++        let host_key = serving.init(&owner_key).unwrap();
++        // The store's own key file is absent: the old read failed here.
++        assert!(
++            coder_access::host::Host::new(&state, RelayPolicy::Production)
++                .public_key()
++                .is_err()
++        );
++        let mut settings = Settings {
++            state,
++            keys: Some(Keys(source)),
++            policy: RelayPolicy::Production,
++            relay: "wss://relay.example".into(),
++            rights: Rights::standard(),
++            grant_secs: 3600,
++            port: 0,
++            tailscale: PathBuf::from("/nonexistent/tailscale"),
++            chats: None,
++        };
++        let access = settings.access();
++        assert_eq!(access.public_key().unwrap(), host_key);
++        let now = crate::unix_time().unwrap();
++        access
++            .invite(&settings.relay, Rights::standard(), now, now + 3600)
++            .unwrap();
++        // Another serving key: refused before Tailscale is asked.
++        let other = start(settings.clone(), &"0".repeat(64)).await.unwrap_err();
++        assert!(other.to_string().contains("serving host"), "{other}");
++        // The serving key: past the key check, to the missing Tailscale.
++        let missing = start(settings.clone(), &host_key).await.unwrap_err();
++        assert!(!missing.to_string().contains("serving host"), "{missing}");
++        // Without the key source the store cannot name its key at all.
++        settings.keys = None;
++        assert!(start(settings, &host_key).await.is_err());
++    }
++
+     #[test]
+     fn the_listener_binds_only_a_tailnet_address() {
+         let me = |ip: &str| Me {
+@@ -707,6 +810,7 @@ mod tests {
+         let shared = Shared {
+             settings: Settings {
+                 state: PathBuf::from("/nonexistent"),
++                keys: None,
+                 policy: RelayPolicy::Production,
+                 relay: "wss://relay.example".into(),
+                 rights: Rights::standard(),
+@@ -718,6 +822,7 @@ mod tests {
+             },
+             me,
+             host: "hostkey".into(),
++            access: coder_access::host::Host::new("/nonexistent", RelayPolicy::Production),
+             observer: None,
+             owners: std::sync::Mutex::default(),
+         };
+@@ -741,6 +846,7 @@ mod tests {
+     async fn refuses_malformed_and_non_tailnet_callers_before_whois() {
+         let settings = Settings {
+             state: PathBuf::from("/nonexistent"),
++            keys: None,
+             policy: RelayPolicy::Production,
+             relay: "wss://relay.example".into(),
+             rights: Rights::standard(),
+@@ -759,6 +865,7 @@ mod tests {
+             b"{}",
+             "100.64.0.2".parse().unwrap(),
+             &settings,
++            &settings.access(),
+             &me,
+             "hostkey",
+         )
+@@ -769,6 +876,7 @@ mod tests {
+             &line,
+             "192.168.1.2".parse().unwrap(),
+             &settings,
++            &settings.access(),
+             &me,
+             "hostkey",
+         )
+@@ -779,6 +887,7 @@ mod tests {
+             &line,
+             "100.64.0.2".parse().unwrap(),
+             &settings,
++            &settings.access(),
+             &me,
+             "hostkey",
+         )
+diff --git a/crates/openagents-cli/src/connect.rs b/crates/openagents-cli/src/connect.rs
+index d3cb330254ac07cb9aac274bbf8e6ddbf60fb8d6..750400ea403edd0e6ca0160e6bfe595d25329d1f 100644
+--- a/crates/openagents-cli/src/connect.rs
++++ b/crates/openagents-cli/src/connect.rs
+@@ -306,10 +306,34 @@ async fn status(output: &Output, socket: &Path, args: &[String]) -> Result<(), F
+     let Reply::Status(status) = host.call(Op::Status {}).await? else {
+         return Err(failed("the host answered another question"));
+     };
+-    let value = serde_json::to_value(&status).unwrap_or(Value::Null);
++    // Tailnet admission (#10125); a host older than it refuses the
++    // question, and the status reads as before.
++    let tailnet = match host.call(Op::TailnetStatus {}).await {
++        Ok(Reply::Tailnet {
++            address,
++            chats,
++            off,
++        }) => Some((address, chats, off)),
++        _ => None,
++    };
++    let mut value = serde_json::to_value(&status).unwrap_or(Value::Null);
++    let tailnet_line = match &tailnet {
++        Some((Some(address), chats, _)) => {
++            value["tailnet"] = json!({"address": address, "chats": chats});
++            format!(
++                "\ntailnet {address}{}",
++                if *chats { " with chats" } else { "" }
++            )
++        }
++        Some((None, _, Some(off))) => {
++            value["tailnet"] = json!({"off": off});
++            format!("\ntailnet off: {off}")
++        }
++        _ => String::new(),
++    };
+     output.emit(&value, |_| {
+         format!(
+-            "{}\n{}\nhost {}\nendpoint {}\nphones {}\nopen codes {}",
++            "{}\n{}\nhost {}\nendpoint {}\nphones {}\nopen codes {}{tailnet_line}",
+             if status.label.is_empty() {
+                 "This computer"
+             } else {
+diff --git a/crates/openagents-connect/src/control.rs b/crates/openagents-connect/src/control.rs
+index 5e223535714f5006d07aaac629efee8913af1356..c18289c9aed860a0a7df60b497f399ae77eabd11 100644
+--- a/crates/openagents-connect/src/control.rs
++++ b/crates/openagents-connect/src/control.rs
+@@ -111,6 +111,10 @@ pub enum Op {
+     ChatMigrate { home: String },
+     /// The host's identity, reachability, and counts.
+     Status {},
++    /// Whether tailnet admission serves, and where (#10125). A separate
++    /// operation, so a client older than it reads `status` unchanged; a
++    /// host older than it refuses it as `malformed`.
++    TailnetStatus {},
+     /// Create a host invitation and its `openagents-connect:` code. A QR
+     /// pairing grants every right an owner's phone uses: `observe`,
+     /// `operate`, `terminal`, `review`, `access_read`, and `access_admin`.
+@@ -200,6 +204,14 @@ pub enum Reply {
+         present: u32,
+     },
+     Status(Status),
++    /// Tailnet admission (#10125): `address` is the tailnet `IP:PORT` it
++    /// serves on; `off` says why it is not serving although configured.
++    /// Neither is set when the host has no tailnet admission configured.
++    Tailnet {
++        address: Option<String>,
++        chats: bool,
++        off: Option<String>,
++    },
+     /// `code` is the `openagents-connect:` text. It carries a bearer
+     /// capability: show it only in the code window.
+     Invite {

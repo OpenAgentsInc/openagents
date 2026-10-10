@@ -1,0 +1,71 @@
+diff --git a/crates/coder/src/claim_tests.rs b/crates/coder/src/claim_tests.rs
+index f23282458cb3ce97bdd2da6c4dff651e9e927cc2..666b7bf66be45c0e7b00ea2071fda00782235f03 100644
+--- a/crates/coder/src/claim_tests.rs
++++ b/crates/coder/src/claim_tests.rs
+@@ -221,6 +221,66 @@ fn the_items_answer_parses_status_options_and_time() {
+     );
+ }
+ 
++#[test]
++fn blocked_says_why_and_moves_to_blocked_keeping_the_claim() {
++    let github = Fake::with_project("octo", &["Todo", "In Progress", "Blocked", "Done"]);
++    github.issue(12, Some("Todo"), &[], &[]);
++    let project = Project::default();
++    claim(&github, REPO, 12, &body(), &project);
++    let said = blocked(
++        &github,
++        REPO,
++        12,
++        "waits on the owner's App Store key",
++        &project,
++    );
++    let state = github.state(12);
++    assert_eq!(state.status.as_deref(), Some("Blocked"));
++    assert_eq!(
++        state.assignees,
++        vec!["octo".to_owned()],
++        "the assignee stays"
++    );
++    assert_eq!(
++        state.comments.last().unwrap().body,
++        "Blocked: waits on the owner's App Store key"
++    );
++    assert!(said.contains(&"Moved #12 to \"Blocked\" on the project \"Board\".".to_owned()));
++    done(&github, REPO, 12, &project);
++    assert_eq!(github.state(12).status.as_deref(), Some("Done"));
++}
++
++#[test]
++fn the_rest_answers_find_the_issue_its_status_and_options() {
++    let fields: Value = serde_json::from_str(
++        r#"[{"id":1,"name":"Title"},
++            {"id":423676229,"name":"Status","data_type":"single_select","options":[
++              {"id":"ef9785a7","name":{"html":"Todo","raw":"Todo"}},
++              {"id":"4af1b929","name":{"html":"In Progress","raw":"In Progress"}},
++              {"id":"65989dc5","name":{"html":"Blocked","raw":"Blocked"}}]}]"#,
++    )
++    .unwrap();
++    let (id, options) = rest_field(&fields, "status").unwrap();
++    assert_eq!(id, "423676229");
++    assert_eq!(options[2], ("Blocked".to_owned(), "65989dc5".to_owned()));
++    assert_eq!(rest_field(&fields, "Priority"), None);
++
++    // A search for 11108 also finds #111080 and another repository's #11108.
++    let items: Value = serde_json::from_str(
++        r#"[{"id":5,"content":{"number":111080,"repository_url":"https://api.github.com/repos/Acme/App"}},
++            {"id":6,"content":{"number":11108,"repository_url":"https://api.github.com/repos/acme/other"}},
++            {"id":267147115,"updated_at":"2026-10-09T15:55:54Z",
++             "content":{"number":11108,"repository_url":"https://api.github.com/repos/Acme/App"},
++             "fields":[{"id":423676229,"name":"Status","value":{"id":"ef9785a7","name":{"raw":"Todo"}}}]}]"#,
++    )
++    .unwrap();
++    let (item, status, at) = rest_item(&items, "acme/app", 11108, "Status").unwrap();
++    assert_eq!(item, "267147115");
++    assert_eq!(status.as_deref(), Some("Todo"));
++    assert_eq!(at, iso_seconds("2026-10-09T15:55:54Z").unwrap());
++    assert_eq!(rest_item(&items, "acme/app", 42, "Status"), None);
++}
++
+ #[test]
+ fn the_board_answer_keeps_project_order_and_reads_blockers() {
+     let value: Value = serde_json::from_str(

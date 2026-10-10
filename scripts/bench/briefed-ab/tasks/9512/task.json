@@ -1,0 +1,26 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 9512,
+  "title": "coder: resolve and trust portable program and question packages",
+  "body": "<!-- openagents-project-triage:start -->\n## Project triage\n\nProject: [Coder as Decision Router Consumer](https://github.com/orgs/OpenAgentsInc/projects/16) \u00b7 Workstream: Portable programs \u00b7 Priority: P2 \u00b7 Readiness: Blocked.\n\nParent tracker: #9501.\n\nOpen prerequisites linked with native **blocked by** relationships: #9495, #9488, #9470.\n\nLocal lock/trust resolution can ship first. Full remote-catalog integration needs the relay/public discovery and catalog owners; discovery never grants execution permission.\n\n<!-- openagents-project-triage:end -->\n\n---\n\nMake Coder consume discoverable program/question/capability packages without turning discovery into executable authority.\n\nSpecification: [portable program registry](https://github.com/OpenAgentsInc/openagents/blob/main/docs/coder/coder-as-decision-router-consumer.md#portable-program-registry). Consumer tracker: #9501. Service tracker: #9481.\n\n## Acceptance\n\n- [ ] Define a versioned package/lock record for program, question, source, policy, and capability references with content digests, provenance, publisher identity, dependencies, and compatibility requirements.\n- [ ] Resolve local files first; add authenticated remote discovery/import through the supported public and relay catalogs. Verify digests and publisher trust before accepting updates.\n- [ ] Keep fetch/inspect separate from installation and execution. An imported package cannot approve its own probe, grant credentials, enable hosted disclosure, or widen filesystem/network access.\n- [ ] Provide explicit update/diff/rollback and offline cache behavior; pin the package for the lifetime of a run and refuse unresolved or incompatible dependencies.\n- [ ] Allow programs to use approved HTTP/local/relay capabilities while keeping machine-specific executable paths and secrets outside portable manifests.\n- [ ] Test tampering, stale/replaced advertisements, untrusted publishers, cyclic dependencies, revoked approval, and offline resolution.\n\n## Dependencies and boundaries\n\n#9470/#9488/#9495 own discovery/catalog publication; this issue owns Coder's resolver and trust boundary. Existing capability-trust approvals remain authoritative.\n\nProduct code remains Rust; reuse the repository's shared contracts and manual/non-GitHub verification. This issue describes planned work, not implemented behavior.\n",
+  "fix": "765037530453365a0c7674896d784ab1ec3b5a63",
+  "parent": "fcc0b46c9e95d6a03457db620618dfe53aee702d",
+  "package": "coder",
+  "source_files": [
+    "crates/coder/src/package.rs",
+    "docs/extensions/packages.md"
+  ],
+  "test_files": [
+    "crates/coder/src/package.rs"
+  ],
+  "test_names": [
+    "a_package_cannot_carry_a_secret_or_an_approval",
+    "a_replaced_file_is_refused_as_a_stale_advertisement",
+    "a_revoked_publisher_is_refused_even_when_the_package_trusted_it",
+    "a_run_holds_its_lock_until_it_finishes_and_then_can_roll_back",
+    "an_absent_remote_name_stays_unresolved_without_a_fetch"
+  ],
+  "fix_lines": 308
+}

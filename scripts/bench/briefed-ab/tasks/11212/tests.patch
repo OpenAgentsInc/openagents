@@ -1,0 +1,645 @@
+diff --git a/crates/claude_agent_sdk/src/protocol/tests.rs b/crates/claude_agent_sdk/src/protocol/tests.rs
+index 1faf9e82df29f58927b266ad0170a604d329d8ee..a8f01dee5052535382cd68febaad219b37fbe55f 100644
+--- a/crates/claude_agent_sdk/src/protocol/tests.rs
++++ b/crates/claude_agent_sdk/src/protocol/tests.rs
+@@ -272,6 +272,7 @@ mod tests {
+             session_id: "session-123".to_string(),
+             is_replay: None,
+             client_composed: Some(true),
++            agent_id: None,
+         };
+ 
+         let json = serde_json::to_value(&msg).unwrap();
+@@ -886,4 +887,279 @@ mod tests {
+             other => panic!("expected success with pending requests, got {other:?}"),
+         }
+     }
++
++    #[test]
++    fn test_0_3_292_subagent_messages_carry_agent_id() {
++        let assistant: SdkMessage = serde_json::from_value(json!({
++            "type": "assistant",
++            "message": {"role": "assistant", "content": []},
++            "parent_tool_use_id": "tu-1",
++            "agent_id": "task-7",
++            "subagent_type": "Explore",
++            "task_description": "Find the config",
++            "uuid": "a1",
++            "session_id": "s"
++        }))
++        .unwrap();
++        match assistant {
++            SdkMessage::Assistant(a) => {
++                assert_eq!(a.agent_id.as_deref(), Some("task-7"));
++                assert_eq!(a.subagent_type.as_deref(), Some("Explore"));
++                assert_eq!(a.task_description.as_deref(), Some("Find the config"));
++            }
++            other => panic!("expected assistant, got {other:?}"),
++        }
++        let user: SdkMessage = serde_json::from_value(json!({
++            "type": "user",
++            "message": {"role": "user", "content": "hi"},
++            "parent_tool_use_id": "tu-1",
++            "agent_id": "task-7",
++            "session_id": "s"
++        }))
++        .unwrap();
++        match user {
++            SdkMessage::User(u) => assert_eq!(u.agent_id.as_deref(), Some("task-7")),
++            other => panic!("expected user, got {other:?}"),
++        }
++    }
++
++    #[test]
++    fn test_inbound_user_messages_parse_typed_and_round_trip() {
++        // The CLI's user frames (tool results, replays) used to fall to
++        // `Unknown` because the enum tag consumed `type`.
++        let wire = json!({
++            "type": "user",
++            "message": {"role": "user", "content": [
++                {"type": "tool_result", "tool_use_id": "tu", "content": "ok"}
++            ]},
++            "parent_tool_use_id": null,
++            "isSynthetic": true,
++            "isReplay": true,
++            "tool_use_result": {"stdout": "ok"},
++            "uuid": "u1",
++            "session_id": "s"
++        });
++        let msg: SdkMessage = serde_json::from_value(wire.clone()).unwrap();
++        match &msg {
++            SdkMessage::User(u) => {
++                assert_eq!(u.is_synthetic, Some(true));
++                assert_eq!(u.is_replay, Some(true));
++                assert_eq!(u.uuid.as_deref(), Some("u1"));
++            }
++            other => panic!("expected user, got {other:?}"),
++        }
++        let text = serde_json::to_string(&msg).unwrap();
++        assert_eq!(text.matches("\"type\":\"user\"").count(), 1, "{text}");
++        assert_eq!(
++            serde_json::from_str::<serde_json::Value>(&text).unwrap(),
++            wire
++        );
++    }
++
++    #[test]
++    fn test_0_3_292_task_events_carry_run_and_parent_ids() {
++        match system(
++            "task_started",
++            json!({"task_id": "t2", "run_id": "r-01", "description": "d",
++                   "parent_task_id": "t1", "spawn_depth": 2}),
++        ) {
++            SdkMessage::System(SdkSystemMessage::TaskStarted(m)) => {
++                assert_eq!(m.run_id.as_deref(), Some("r-01"));
++                assert_eq!(m.parent_task_id.as_deref(), Some("t1"));
++            }
++            other => panic!("expected task_started, got {other:?}"),
++        }
++        match system(
++            "task_updated",
++            json!({"task_id": "t2", "run_id": "r-01", "patch": {"status": "running"}}),
++        ) {
++            SdkMessage::System(SdkSystemMessage::TaskUpdated(m)) => {
++                assert_eq!(m.run_id.as_deref(), Some("r-01"))
++            }
++            other => panic!("expected task_updated, got {other:?}"),
++        }
++        match system(
++            "task_progress",
++            json!({"task_id": "t2", "run_id": "r-01", "description": "d",
++                   "usage": {"total_tokens": 1, "tool_uses": 0, "duration_ms": 5}}),
++        ) {
++            SdkMessage::System(SdkSystemMessage::TaskProgress(m)) => {
++                assert_eq!(m.run_id.as_deref(), Some("r-01"))
++            }
++            other => panic!("expected task_progress, got {other:?}"),
++        }
++        match system(
++            "task_notification",
++            json!({"task_id": "t2", "run_id": "r-01", "status": "completed",
++                   "output_file": "/o", "summary": "done"}),
++        ) {
++            SdkMessage::System(SdkSystemMessage::TaskNotification(m)) => {
++                assert_eq!(m.run_id.as_deref(), Some("r-01"))
++            }
++            other => panic!("expected task_notification, got {other:?}"),
++        }
++        match system(
++            "background_tasks_changed",
++            json!({"tasks": [{"task_id": "t2", "run_id": "r-01", "task_type": "local_agent",
++                              "subagent_type": "general-purpose", "description": "d",
++                              "parent_task_id": "t1"}]}),
++        ) {
++            SdkMessage::System(SdkSystemMessage::BackgroundTasksChanged(m)) => {
++                let task = &m.tasks[0];
++                assert_eq!(task.run_id.as_deref(), Some("r-01"));
++                assert_eq!(task.subagent_type.as_deref(), Some("general-purpose"));
++                assert_eq!(task.parent_task_id.as_deref(), Some("t1"));
++                let wire = serde_json::to_value(task).unwrap();
++                assert_eq!(wire["parent_task_id"], "t1");
++            }
++            other => panic!("expected background_tasks_changed, got {other:?}"),
++        }
++    }
++
++    #[test]
++    fn test_0_3_295_rate_limit_overage_fields() {
++        let msg: SdkMessage = serde_json::from_value(json!({
++            "type": "rate_limit_event",
++            "rate_limit_info": {
++                "status": "allowed_warning",
++                "overageStatus": "allowed",
++                "overageResetsAt": 1760000000,
++                "overageDisabledReason": "out_of_credits",
++                "overageEnabled": true
++            },
++            "uuid": "u",
++            "session_id": "s"
++        }))
++        .unwrap();
++        match msg {
++            SdkMessage::RateLimitEvent(e) => {
++                let info = &e.rate_limit_info;
++                assert_eq!(info.status, "allowed_warning");
++                assert_eq!(info.overage_enabled, Some(true));
++                assert_eq!(info.overage_status.as_deref(), Some("allowed"));
++                assert_eq!(info.overage_resets_at, Some(1760000000));
++                assert_eq!(
++                    info.overage_disabled_reason.as_deref(),
++                    Some("out_of_credits")
++                );
++                let wire = serde_json::to_value(info).unwrap();
++                assert_eq!(wire["overageEnabled"], true);
++            }
++            other => panic!("expected rate_limit_event, got {other:?}"),
++        }
++    }
++
++    #[test]
++    fn test_0_3_295_text_block_citations_survive() {
++        let citation = json!({"type": "web_search_result_location", "url": "https://x",
++                              "title": "X", "cited_text": "c", "encrypted_index": "e"});
++        let assistant: SdkMessage = serde_json::from_value(json!({
++            "type": "assistant",
++            "message": {"role": "assistant", "content": [
++                {"type": "text", "text": "cited", "citations": [citation.clone()]}
++            ]},
++            "parent_tool_use_id": null,
++            "uuid": "a",
++            "session_id": "s"
++        }))
++        .unwrap();
++        let wire = serde_json::to_value(&assistant).unwrap();
++        assert_eq!(wire["message"]["content"][0]["citations"][0], citation);
++        let delta: SdkMessage = serde_json::from_value(json!({
++            "type": "stream_event",
++            "event": {"type": "content_block_delta", "index": 0,
++                      "delta": {"type": "citations_delta", "citation": citation.clone()}},
++            "parent_tool_use_id": null,
++            "uuid": "e",
++            "session_id": "s"
++        }))
++        .unwrap();
++        match delta {
++            SdkMessage::StreamEvent(e) => {
++                assert_eq!(e.event["delta"]["citation"], citation)
++            }
++            other => panic!("expected stream_event, got {other:?}"),
++        }
++    }
++
++    #[test]
++    fn test_0_3_296_startup_failure_reasons_stay_typed() {
++        for reason in ["org_config_required_unavailable", "org_config_refused"] {
++            let msg: SdkMessage = serde_json::from_value(json!({
++                "type": "result",
++                "subtype": "error_during_execution",
++                "duration_ms": 1, "duration_api_ms": 0, "is_error": true,
++                "num_turns": 0, "total_cost_usd": 0.0,
++                "usage": {"input_tokens": 0, "output_tokens": 0},
++                "modelUsage": {}, "permission_denials": [], "errors": ["refused"],
++                "startup_failure_reason": reason,
++                "uuid": "r", "session_id": "s"
++            }))
++            .unwrap();
++            match msg {
++                SdkMessage::Result(SdkResultMessage::ErrorDuringExecution(e)) => {
++                    assert_eq!(e.turn.startup_failure_reason.as_deref(), Some(reason))
++                }
++                other => panic!("expected error result, got {other:?}"),
++            }
++        }
++    }
++
++    fn rules(n: usize) -> Vec<PermissionRule> {
++        (0..n)
++            .map(|i| PermissionRule {
++                tool_name: format!("Tool{i}"),
++                rule_content: None,
++            })
++            .collect()
++    }
++
++    #[test]
++    fn test_0_3_295_oversized_updated_permissions_become_a_deny() {
++        let allow = |updates: Vec<PermissionUpdate>| PermissionResult::Allow {
++            updated_input: json!({}),
++            updated_permissions: Some(updates),
++            tool_use_id: Some("tu".into()),
++            decision_classification: None,
++        };
++        // One update holding 4,095 rules is 4,096 entries: at the limit.
++        let at_limit = allow(vec![PermissionUpdate::AddRules {
++            rules: rules(MAX_UPDATED_PERMISSIONS - 1),
++            behavior: PermissionBehavior::Allow,
++            destination: "session".into(),
++        }]);
++        assert_eq!(
++            at_limit.updated_permission_entries(),
++            MAX_UPDATED_PERMISSIONS
++        );
++        assert!(matches!(
++            at_limit.within_limits(),
++            PermissionResult::Allow { .. }
++        ));
++        // Rules and directories across updates count together.
++        let over = allow(vec![
++            PermissionUpdate::AddRules {
++                rules: rules(3000),
++                behavior: PermissionBehavior::Allow,
++                destination: "session".into(),
++            },
++            PermissionUpdate::AddDirectories {
++                directories: (0..1095).map(|i| format!("/d{i}")).collect(),
++                destination: "session".into(),
++            },
++        ]);
++        assert_eq!(over.updated_permission_entries(), 4097);
++        match over.within_limits() {
++            PermissionResult::Deny {
++                message,
++                tool_use_id,
++                ..
++            } => {
++                assert!(message.contains("4097"), "{message}");
++                assert_eq!(tool_use_id.as_deref(), Some("tu"));
++            }
++            other => panic!("expected deny, got {other:?}"),
++        }
++        assert_eq!(PermissionResult::deny("no").updated_permission_entries(), 0);
++    }
+ }
+diff --git a/crates/claude_agent_sdk/src/query.rs b/crates/claude_agent_sdk/src/query.rs
+index fab88a45f578f61ac8d737da9ac8959bd28055ec..920ba060abfb8017e725e25cec121b26e6d9fc41 100644
+--- a/crates/claude_agent_sdk/src/query.rs
++++ b/crates/claude_agent_sdk/src/query.rs
+@@ -770,12 +781,11 @@ mod tests {
+ 
+         assert!(args.contains(&"--output-format".to_string()));
+         assert!(args.contains(&"stream-json".to_string()));
+-        assert!(args.contains(&"--model".to_string()));
+-        assert!(args.contains(&"claude-sonnet-4-5-20250929".to_string()));
+-        assert!(args.contains(&"--max-turns".to_string()));
+-        assert!(args.contains(&"10".to_string()));
+-        assert!(args.contains(&"--max-budget-usd".to_string()));
+-        assert!(args.contains(&"1".to_string()));
++        // 0.3.295: a named option's value rides in its flag's argument.
++        assert!(args.contains(&"--model=claude-sonnet-4-5-20250929".to_string()));
++        assert!(args.contains(&"--max-turns=10".to_string()));
++        assert!(args.contains(&"--max-budget-usd=1".to_string()));
++        assert!(!args.contains(&"--model".to_string()));
+     }
+ 
+     #[test]
+@@ -787,14 +797,23 @@ mod tests {
+             skip_mcp_discovery: None,
+         }];
+         let args = options.build_args();
+-        assert!(args.windows(2).any(|w| w == ["--permission-mode", "auto"]));
+-        assert!(args.windows(2).any(|w| w == ["--fallback-model", "sonnet"]));
+-        assert!(args.windows(2).any(|w| w == ["--plugin-dir", "/tmp/plug"]));
++        assert!(args.contains(&"--permission-mode=auto".to_string()));
++        assert!(args.contains(&"--fallback-model=sonnet".to_string()));
++        assert!(args.contains(&"--plugin-dir=/tmp/plug".to_string()));
+     }
+ 
++    /// The value of `flag`, sent as `flag=value` or as `flag value`.
+     fn flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
+-        args.windows(2)
+-            .find_map(|w| (w[0] == flag).then(|| w[1].as_str()))
++        let joined = format!("{flag}=");
++        args.iter().enumerate().find_map(|(i, arg)| {
++            if let Some(value) = arg.strip_prefix(&joined) {
++                Some(value)
++            } else if arg == flag {
++                args.get(i + 1).map(String::as_str)
++            } else {
++                None
++            }
++        })
+     }
+ 
+     #[test]
+@@ -817,6 +836,7 @@ mod tests {
+                 tools: Some(vec!["Read".into()]),
+                 disallowed_tools: Some(vec!["Bash".into()]),
+                 model: Some(crate::options::AgentModel::Haiku),
++                auto_compact_window: Some(60_000),
+             },
+         );
+         options.sandbox = Some(crate::options::SandboxSettings {
+@@ -825,7 +845,9 @@ mod tests {
+             network: Some(crate::options::SandboxNetworkConfig {
+                 allow_local_binding: Some(true),
+                 allow_unix_sockets: Some(vec!["/tmp/sock".into()]),
++                ..Default::default()
+             }),
++            ..Default::default()
+         });
+         options.output_format = Some(OutputFormat {
+             format_type: "json_schema".into(),
+@@ -975,7 +997,7 @@ rl.on('line', (line) => {
+   try { msg = JSON.parse(line); } catch { return; }
+   if (msg.type === 'control_request' && msg.request) {
+     const payload = msg.request.subtype === 'initialize'
+-      ? JSON.parse('{"commands":[{"name":"help","description":"help"}],"agents":[],"output_style":"default","available_output_styles":["default"],"models":[{"value":"sonnet","displayName":"Sonnet"}],"account":{"email":"t@example.com"}}')
++      ? JSON.parse('{"commands":[{"name":"help","description":"help"}],"agents":[],"output_style":"default","available_output_styles":["default"],"models":[{"value":"sonnet","displayName":"Sonnet"}],"account":{"email":"t@example.com"},"claude_code_version":"2.1.296"}')
+       : { "echo": msg.request.subtype };
+     process.stdout.write(JSON.stringify({
+       type: 'control_response',
+@@ -1034,6 +1056,7 @@ readline.createInterface({ input: process.stdin });
+         assert_eq!(init["commands"][0]["name"], "help");
+         assert_eq!(init["account"]["email"], "t@example.com");
+         assert_eq!(query.supported_models().unwrap()[0]["value"], "sonnet");
++        assert_eq!(query.claude_code_version(), Some("2.1.296"));
+ 
+         // Wait for the fake to log both lines; dropping the query kills it.
+         let mut recorded = String::new();
+@@ -1258,10 +1281,15 @@ rl.on('line', (line) => {
+ 
+     /// Run the scripted fake with `frames` and return every stdin line it
+     /// logged once `settle` has passed.
+-    async fn run_scripted(
++    async fn run_scripted(frames: &[Value], options: QueryOptions, settle: Duration) -> Vec<Value> {
++        run_scripted_with(frames, options, settle, None).await
++    }
++
++    async fn run_scripted_with(
+         frames: &[Value],
+         mut options: QueryOptions,
+         settle: Duration,
++        permission_handler: Option<Arc<dyn PermissionHandler>>,
+     ) -> Vec<Value> {
+         let dir = unique_temp_dir();
+         let fake = write_executable(&dir, "fake-claude", FAKE_SCRIPTED);
+@@ -1283,7 +1311,9 @@ rl.on('line', (line) => {
+             .into_iter()
+             .collect(),
+         );
+-        let query = Query::new("hello", options, None).await.unwrap();
++        let query = Query::new("hello", options, permission_handler)
++            .await
++            .unwrap();
+         tokio::time::sleep(settle).await;
+         drop(query);
+         tokio::time::sleep(Duration::from_millis(50)).await;
+@@ -1576,7 +1606,12 @@ rl.on('line', (line) => {
+             "--enable-file-checkpointing",
+             "--permission-prompt-tool",
+         ] {
+-            assert!(!args.iter().any(|a| a == gone), "unexpected {gone}");
++            assert!(
++                !args
++                    .iter()
++                    .any(|a| a == gone || a.starts_with(&format!("{gone}="))),
++                "unexpected {gone}"
++            );
+         }
+         let settings: Value =
+             serde_json::from_str(flag_value(&args, "--settings").unwrap()).unwrap();
+@@ -1668,4 +1703,205 @@ rl.on('line', (line) => {
+         .unwrap();
+         assert_eq!(read["serverName"], "docs");
+     }
++
++    #[test]
++    fn build_args_send_values_in_the_flag_argument_as_0_3_295_does() {
++        let mut options = QueryOptions::new().model("-odd-model");
++        options.system_prompt = Some(SystemPromptConfig::Custom("-starts with a dash".into()));
++        options.tools = Some(crate::options::ToolsConfig::Names(Vec::new()));
++        options.resume = Some("sess".into());
++        options.managed_settings = Some("{\"a\":1}".into());
++        options.settings = Some(Value::String("/etc/claude.json".into()));
++        options
++            .extra_args
++            .insert("note".into(), Some("-dashed".into()));
++        options.extra_args.insert("plain".into(), Some("x".into()));
++        options.mcp_servers.insert(
++            "docs".into(),
++            crate::options::McpServerConfig::Http {
++                url: "https://docs".into(),
++                headers: None,
++            },
++        );
++        let args = options.build_args();
++        for joined in [
++            "--model=-odd-model",
++            "--system-prompt=-starts with a dash",
++            "--tools=",
++            "--resume=sess",
++            "--note=-dashed",
++        ] {
++            assert!(
++                args.iter().any(|a| a == joined),
++                "missing {joined}: {args:?}"
++            );
++        }
++        // The TS SDK keeps `--flag value` for these unless the value
++        // starts with a dash.
++        for (flag, value) in [
++            ("--managed-settings", r#"{"a":1}"#),
++            ("--settings", "/etc/claude.json"),
++            ("--plain", "x"),
++        ] {
++            assert!(
++                args.windows(2).any(|w| w[0] == flag && w[1] == value),
++                "expected {flag} {value}: {args:?}"
++            );
++        }
++        assert!(args.windows(2).any(|w| w[0] == "--mcp-config"));
++        // The stream-json transport flags stay as they are.
++        assert!(
++            args.windows(2)
++                .any(|w| w == ["--output-format", "stream-json"])
++        );
++    }
++
++    #[test]
++    fn agent_definition_carries_auto_compact_window() {
++        let mut options = QueryOptions::new();
++        options.agents.insert(
++            "small".into(),
++            crate::options::AgentDefinition {
++                description: "d".into(),
++                prompt: "p".into(),
++                auto_compact_window: Some(50_000),
++                ..Default::default()
++            },
++        );
++        let args = options.build_args();
++        let agents: Value = serde_json::from_str(flag_value(&args, "--agents").unwrap()).unwrap();
++        assert_eq!(agents["small"]["autoCompactWindow"], 50_000);
++        assert!(agents["small"].get("tools").is_none());
++    }
++
++    fn settings_of(options: &QueryOptions) -> Value {
++        serde_json::from_str(flag_value(&options.build_args(), "--settings").expect("--settings"))
++            .unwrap()
++    }
++
++    #[test]
++    fn sandbox_option_merges_into_an_inline_settings_sandbox_block() {
++        let mut options = QueryOptions::new();
++        options.settings = Some(serde_json::json!({
++            "model": "haiku",
++            "sandbox": {
++                "enabled": false,
++                "autoAllowBashIfSandboxed": true,
++                "failIfUnavailable": false,
++                "filesystem": {"denyRead": ["/secret"], "disabled": true},
++                "network": {"deniedDomains": ["a.com"], "httpProxyPort": 8080,
++                            "socksProxyPort": 1080, "allowLocalBinding": true},
++                "credentials": {"envVars": [{"name": "TOKEN", "mode": "mask"}]},
++                "ripgrep": {"command": "rg", "args": ["--x"]}
++            }
++        }));
++        let mut extra = serde_json::Map::new();
++        extra.insert("ripgrep".into(), serde_json::json!({"command": "/bin/rg"}));
++        options.sandbox = Some(crate::options::SandboxSettings {
++            enabled: Some(true),
++            filesystem: Some(serde_json::json!({"denyRead": ["/keys", "/secret"]})),
++            network: Some(crate::options::SandboxNetworkConfig {
++                denied_domains: Some(vec!["b.com".into()]),
++                ..Default::default()
++            }),
++            credentials: Some(serde_json::json!({"envVars": [{"name": "KEY", "mode": "deny"}]})),
++            extra,
++            ..Default::default()
++        });
++        let settings = settings_of(&options);
++        assert_eq!(settings["model"], "haiku");
++        let sandbox = &settings["sandbox"];
++        // The option's values win; values it does not set are kept.
++        assert_eq!(sandbox["enabled"], true);
++        assert_eq!(sandbox["autoAllowBashIfSandboxed"], true);
++        // The settings block set failIfUnavailable, so it is not defaulted.
++        assert_eq!(sandbox["failIfUnavailable"], false);
++        // Restriction lists combine.
++        assert_eq!(
++            sandbox["filesystem"]["denyRead"],
++            serde_json::json!(["/secret", "/keys"])
++        );
++        assert_eq!(
++            sandbox["network"]["deniedDomains"],
++            serde_json::json!(["a.com", "b.com"])
++        );
++        assert_eq!(
++            sandbox["credentials"]["envVars"].as_array().unwrap().len(),
++            2
++        );
++        // A filesystem restriction drops `disabled: true`; a domain
++        // restriction drops the proxy ports the option did not set.
++        assert!(sandbox["filesystem"].get("disabled").is_none());
++        assert!(sandbox["network"].get("httpProxyPort").is_none());
++        assert!(sandbox["network"].get("socksProxyPort").is_none());
++        assert_eq!(sandbox["network"]["allowLocalBinding"], true);
++        // ripgrep is replaced whole.
++        assert_eq!(
++            sandbox["ripgrep"],
++            serde_json::json!({"command": "/bin/rg"})
++        );
++    }
++
++    #[test]
++    fn sandbox_option_merges_into_inline_json_settings_text() {
++        let mut options = QueryOptions::new();
++        options.settings = Some(Value::String(
++            r#" {"sandbox": {"network": {"httpProxyPort": 9}}} "#.into(),
++        ));
++        options.sandbox = Some(crate::options::SandboxSettings {
++            enabled: Some(true),
++            ..Default::default()
++        });
++        assert!(options.validate(false).is_ok());
++        let sandbox = settings_of(&options)["sandbox"].clone();
++        assert_eq!(sandbox["enabled"], true);
++        assert_eq!(sandbox["failIfUnavailable"], true);
++        // No domain restriction, so the proxy port stays.
++        assert_eq!(sandbox["network"]["httpProxyPort"], 9);
++
++        options.settings = Some(Value::String("/etc/claude.json".into()));
++        assert!(matches!(
++            options.validate(false),
++            Err(Error::InvalidOptions(_))
++        ));
++    }
++
++    #[tokio::test]
++    async fn an_oversized_permission_answer_goes_out_as_a_deny() {
++        let frames = vec![serde_json::json!({
++            "type": "control_request",
++            "request_id": "cli-perm-big",
++            "request": {"subtype": "can_use_tool", "tool_name": "Bash", "input": {}, "tool_use_id": "tu-big"}
++        })];
++        let handler = crate::permissions::permission_handler(|_request| async {
++            Ok::<_, Error>(crate::protocol::PermissionResult::Allow {
++                updated_input: serde_json::json!({}),
++                updated_permissions: Some(vec![
++                    crate::protocol::PermissionUpdate::AddDirectories {
++                        directories: (0..crate::protocol::MAX_UPDATED_PERMISSIONS)
++                            .map(|i| format!("/d{i}"))
++                            .collect(),
++                        destination: "session".into(),
++                    },
++                ]),
++                tool_use_id: None,
++                decision_classification: None,
++            })
++        });
++        let lines = run_scripted_with(
++            &frames,
++            QueryOptions::new(),
++            Duration::from_millis(400),
++            Some(handler),
++        )
++        .await;
++        let reply = reply_to(&lines, "cli-perm-big").expect("can_use_tool reply");
++        assert_eq!(reply["response"]["response"]["behavior"], "deny");
++        assert!(
++            reply["response"]["response"]["message"]
++                .as_str()
++                .unwrap()
++                .contains("4097")
++        );
++    }
+ }
+diff --git a/crates/microcoder/src/repository/claude_sdk.rs b/crates/microcoder/src/repository/claude_sdk.rs
+index 0297b19944ef3bf80e1d79327a57bbe46607323b..97b7ce972ac95c9d0263adb1a9583db4a2a0bf9f 100644
+--- a/crates/microcoder/src/repository/claude_sdk.rs
++++ b/crates/microcoder/src/repository/claude_sdk.rs
+@@ -1303,12 +1303,12 @@ done
+         // settings files, and no API key in its environment.
+         let arguments = logged(&dir, "arguments").join("\n");
+         assert!(
+-            arguments.contains("--permission-prompt-tool stdio"),
++            arguments.contains("--permission-prompt-tool=stdio"),
+             "{arguments}"
+         );
+         assert!(arguments.contains("--setting-sources="), "{arguments}");
+         assert!(
+-            arguments.contains(&format!("--model {MODEL}")),
++            arguments.contains(&format!("--model={MODEL}")),
+             "{arguments}"
+         );
+         assert!(!arguments.contains("--resume"), "{arguments}");

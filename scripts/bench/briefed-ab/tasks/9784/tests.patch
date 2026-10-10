@@ -1,0 +1,314 @@
+diff --git a/crates/physics/src/tests.rs b/crates/physics/src/tests.rs
+index 4929e92207da5b5f4ce584665da600d6893f3d79..2331dd1305f3e79a044daecb34cf032f7e6b285e 100644
+--- a/crates/physics/src/tests.rs
++++ b/crates/physics/src/tests.rs
+@@ -708,3 +708,176 @@ fn a_settled_pile_sleeps_and_steps_cheaply() {
+         "no contacts solved while asleep"
+     );
+ }
++
++/// `sensors/lidar_teleop.py`'s raycaster against each shape, checked
++/// against geometry.
++#[test]
++fn raycasts_hit_each_shape_where_geometry_says() {
++    let mut world = World::new(0.01);
++    let ball = world
++        .add(Body::new(1.0, DVec3::ONE, DVec3::new(0.0, 0.0, 5.0)).with_kind(BodyKind::Static));
++    world.add_collider(Collider::new(ball, Shape::Sphere { radius: 1.0 }));
++    let mut crate_body =
++        Body::new(1.0, DVec3::ONE, DVec3::new(10.0, 0.0, 5.0)).with_kind(BodyKind::Static);
++    crate_body.orientation = DQuat::from_rotation_y(std::f64::consts::FRAC_PI_4);
++    let cube = world.add(crate_body);
++    world.add_collider(Collider::new(cube, Shape::Cuboid { half: DVec3::ONE }));
++    let rod = world
++        .add(Body::new(1.0, DVec3::ONE, DVec3::new(20.0, 0.0, 5.0)).with_kind(BodyKind::Static));
++    world.add_collider(
++        Collider::new(
++            rod,
++            Shape::Capsule {
++                radius: 0.5,
++                half_length: 2.0,
++            },
++        )
++        .at(
++            DVec3::ZERO,
++            DQuat::from_rotation_y(std::f64::consts::FRAC_PI_2),
++        ),
++    );
++    let all = |_: &Collider| true;
++    let hit = world.raycast(DVec3::ZERO, DVec3::Z, 100.0, &all).unwrap();
++    assert_eq!(hit.body, ball);
++    assert!((hit.distance - 4.0).abs() < 1e-12 && (hit.normal + DVec3::Z).length() < 1e-12);
++    // The cube is turned 45 degrees, so the ray meets an edge.
++    let hit = world
++        .raycast(DVec3::new(10.0, 0.0, 0.0), DVec3::Z, 100.0, &all)
++        .unwrap();
++    assert_eq!(hit.body, cube);
++    assert!(
++        (hit.distance - (5.0 - 2f64.sqrt())).abs() < 1e-9,
++        "{}",
++        hit.distance
++    );
++    // The rod lies along x: from above, the ray meets its side; along its
++    // axis, its end cap.
++    let hit = world
++        .raycast(DVec3::new(21.0, 10.0, 5.0), -DVec3::Y, 100.0, &all)
++        .unwrap();
++    assert!((hit.distance - 9.5).abs() < 1e-9 && (hit.normal - DVec3::Y).length() < 1e-9);
++    let hit = world
++        .raycast(DVec3::new(30.0, 0.0, 5.0), -DVec3::X, 100.0, &all)
++        .unwrap();
++    assert!((hit.distance - 7.5).abs() < 1e-9, "{}", hit.distance);
++    // Filters and range.
++    assert!(world.raycast(DVec3::ZERO, DVec3::Z, 3.0, &all).is_none());
++    let not_ball = |c: &Collider| c.body != ball;
++    assert!(
++        world
++            .raycast(DVec3::ZERO, DVec3::Z, 100.0, &not_ball)
++            .is_none()
++    );
++}
++
++/// `sensors/contact_force_go2.py`: a block at rest reads its weight, and in
++/// a head-on collision the summed contact force equals the momentum change.
++#[test]
++fn contact_force_reads_weight_and_impacts() {
++    let mut world = World::new(0.01);
++    world.sleep.enabled = false;
++    ground(&mut world, Material::default());
++    let half = DVec3::splat(0.2);
++    let block = world.add(Body::new(
++        5.0,
++        Body::box_inertia(5.0, half * 2.0),
++        DVec3::new(0.0, 0.2, 0.0),
++    ));
++    world.add_collider(Collider::new(block, Shape::Cuboid { half }));
++    let g = Uniform(DVec3::new(0.0, -G, 0.0));
++    for _ in 0..200 {
++        world.step(&g);
++    }
++    let (force, _) = world.contact_force(block);
++    assert!(
++        (force - DVec3::new(0.0, 5.0 * G, 0.0)).length() < 1e-6,
++        "{force}"
++    );
++    let mut world = World::new(0.01);
++    let mut a = Body::new(2.0, DVec3::splat(0.1), DVec3::new(-1.0, 0.0, 0.0));
++    a.vel = DVec3::new(1.5, 0.0, 0.0);
++    let a = world.add(a);
++    world.add_collider(
++        Collider::new(a, Shape::Sphere { radius: 0.2 }).with_material(Material {
++            restitution: 1.0,
++            ..Material::default()
++        }),
++    );
++    let b = world.add(Body::new(2.0, DVec3::splat(0.1), DVec3::new(1.0, 0.0, 0.0)));
++    world.add_collider(Collider::new(b, Shape::Sphere { radius: 0.2 }));
++    let before = world[b].momentum();
++    let mut felt = DVec3::ZERO;
++    for _ in 0..200 {
++        world.step(&NoField);
++        felt += world.contact_force(b).0 * world.dt;
++    }
++    assert!((world[b].momentum() - before - felt).length() < 1e-9);
++    assert!(
++        felt.x > 2.5,
++        "an elastic hit passes the momentum on: {felt}"
++    );
++    assert!(!world.debug_lines().is_empty() || world.contacts.is_empty());
++}
++
++/// `sensors/imu_franka.py`: the accelerometer reads thrust over mass, zero in
++/// free fall, and the gyro reads the body rate.
++#[test]
++fn the_imu_reads_thrust_free_fall_and_spin() {
++    let mut world = World::new(0.01);
++    let mut body = Body::new(250.0, DVec3::splat(40.0), DVec3::ZERO);
++    body.orientation = DQuat::from_rotation_y(0.7);
++    body.omega = DVec3::new(0.0, 0.3, 0.0);
++    let id = world.add(body);
++    let mut imu = crate::Imu::default();
++    let g = DVec3::new(0.0, -1.62, 0.0);
++    for i in 0..50 {
++        if i >= 10 {
++            world[id].apply_force(DVec3::new(40.0, 0.0, 0.0));
++        }
++        world.step(&Uniform(g));
++        let reading = imu.read(&world[id], g, world.dt);
++        if (2..10).contains(&i) {
++            assert!(
++                reading.specific_force.length() < 1e-9,
++                "free fall reads zero"
++            );
++        }
++        if i > 11 {
++            let world_frame = world[id].orientation * reading.specific_force;
++            assert!(
++                (world_frame - DVec3::new(0.16, 0.0, 0.0)).length() < 1e-9,
++                "{world_frame}"
++            );
++        }
++        assert!((reading.angular_rate - DVec3::new(0.0, 0.3, 0.0)).length() < 1e-9);
++    }
++}
++
++#[test]
++fn debug_lines_show_contacts_and_joints() {
++    let mut world = World::new(0.01);
++    world.sleep.enabled = false;
++    ground(&mut world, Material::default());
++    let half = DVec3::splat(0.2);
++    let block = world.add(Body::new(
++        5.0,
++        Body::box_inertia(5.0, half * 2.0),
++        DVec3::new(0.0, 0.2, 0.0),
++    ));
++    world.add_collider(Collider::new(block, Shape::Cuboid { half }));
++    let hook = world
++        .add(Body::new(1.0, DVec3::ONE, DVec3::new(0.0, 3.0, 0.0)).with_kind(BodyKind::Static));
++    world.add_joint(crate::Joint::new(
++        hook,
++        DVec3::ZERO,
++        block,
++        DVec3::ZERO,
++        crate::JointKind::Tether { length: 5.0 },
++    ));
++    world.step(&Uniform(DVec3::new(0.0, -G, 0.0)));
++    let lines = world.debug_lines();
++    let count = |k| lines.iter().filter(|l| l.kind == k).count();
++    assert_eq!(count(crate::DebugKind::ContactNormal), 4);
++    assert_eq!(count(crate::DebugKind::Joint), 3);
++}
+diff --git a/crates/verse-lagrange/src/tests.rs b/crates/verse-lagrange/src/tests.rs
+index f29aed53cfe1d73fc3ee50570131e9987a29b4c7..d7ab397f3a550b7cf39a19e462760f59e076372d 100644
+--- a/crates/verse-lagrange/src/tests.rs
++++ b/crates/verse-lagrange/src/tests.rs
+@@ -827,3 +827,83 @@ fn latched_parts_sleep_and_free_parts_never_do() {
+             < 0.01
+     );
+ }
++
++#[test]
++fn the_hud_reads_impact_g_load_spin_and_proximity() {
++    let mut station = Station::new();
++    station.tide = false;
++    // Facing the airlock (-z) from 6 m away, at rest.
++    station.astronaut_mut().pos = DVec3::new(0.0, 6.0, 23.5);
++    station.face(std::f64::consts::PI);
++    station.step(
++        1.0 / 60.0,
++        &Command {
++            direction: DVec3::ZERO,
++            yaw: station.yaw,
++            climb: false,
++        },
++    );
++    let s = station.snapshot();
++    let ahead = s.proximity_m.unwrap();
++    assert!(
++        (ahead - (23.5 - 17.0 - station::ASTRONAUT_RADIUS)).abs() < 0.5,
++        "{ahead}"
++    );
++    assert!(s.impact_n == 0.0 && s.g_load < 1e-9);
++    // Thrusting ahead reads the pack's acceleration: 40 N on about 250 kg.
++    let forward = Command {
++        direction: -DVec3::Z,
++        yaw: station.yaw,
++        climb: false,
++    };
++    station.step(1.0 / 60.0, &forward);
++    let g = station.snapshot().g_load;
++    let expected = station::THRUST / station.mass() / station::G0;
++    assert!((g - expected).abs() / expected < 0.05, "{g} vs {expected}");
++    // Hitting the airlock registers an impact; the lines show it.
++    let mut hit = 0.0_f64;
++    for _ in 0..(20 * 60) {
++        station.step(1.0 / 60.0, &forward);
++        hit = hit.max(station.snapshot().impact_n);
++    }
++    assert!(hit > 10.0, "{hit}");
++    assert!(
++        station
++            .debug_lines()
++            .iter()
++            .any(|l| l.kind == physics::DebugKind::Thrust)
++    );
++    // A commanded turn reads as spin.
++    station.step(
++        1.0 / 60.0,
++        &Command {
++            direction: DVec3::ZERO,
++            yaw: 0.0,
++            climb: false,
++        },
++    );
++    for _ in 0..30 {
++        station.step(
++            1.0 / 60.0,
++            &Command {
++                direction: DVec3::ZERO,
++                yaw: 0.0,
++                climb: false,
++            },
++        );
++    }
++    assert!(station.snapshot().spin_deg_s > 1.0);
++}
++
++#[test]
++fn grabbing_closes_on_the_part_surface_facing_the_hands() {
++    let mut station = busy_station();
++    station.grab().unwrap();
++    let grip = station.world.joint(station.grip.unwrap()).unwrap();
++    let (_, held) = grip.anchors(&station.world);
++    let engine = station.body(&station.parts[0]);
++    // The engine is a 2.2 m box: the grab point lies on its face toward the
++    // hands, 1.1 m from its center along x.
++    let local = engine.orientation.inverse() * (held - engine.pos);
++    assert!((local.x - 1.1).abs() < 1e-6, "{local}");
++}
+diff --git a/crates/verse/src/zones/mod.rs b/crates/verse/src/zones/mod.rs
+index c6589bf39ee75b53054dd0f64648f3f54fd06dd3..062a0d534db6dca92ff0c33514e9f5bc3952f6bf 100644
+--- a/crates/verse/src/zones/mod.rs
++++ b/crates/verse/src/zones/mod.rs
+@@ -145,6 +145,8 @@ pub enum Intent {
+     Fireball,
+     Grab,
+     Release,
++    /// Show or hide the physics overlay: contacts, joints, and thrust.
++    Forces,
+ }
+ #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+ #[serde(rename_all = "snake_case")]
+diff --git a/crates/verse/src/zones/tests.rs b/crates/verse/src/zones/tests.rs
+index c10907d129bd39ec55f17427038f12f15d0a2fd2..2e6e53798a06388b1b99e178521242efc3f642cc 100644
+--- a/crates/verse/src/zones/tests.rs
++++ b/crates/verse/src/zones/tests.rs
+@@ -215,6 +215,27 @@ fn l1_flight_is_inertial_and_carries_parts_to_the_jig() {
+     assert!(ready.controls.iter().any(|c| c.label == "Latch"));
+     runtime.zone_intent(Intent::Release).unwrap();
+     assert_eq!(runtime.zone_snapshot(1.0).station.unwrap().installed, 1);
++    // The forces overlay toggles and draws joint lines for the latch weld.
++    let before = runtime
++        .zone_state
++        .lagrange
++        .as_ref()
++        .unwrap()
++        .dynamic()
++        .lines
++        .len();
++    runtime.zone_intent(Intent::Forces).unwrap();
++    let lagrange = runtime.zone_state.lagrange.as_ref().unwrap();
++    assert!(lagrange.overlay);
++    assert!(lagrange.dynamic().lines.len() > before);
++    assert!(
++        runtime
++            .zone_snapshot(1.0)
++            .controls
++            .iter()
++            .any(|c| c.label == "Hide forces")
++    );
++    assert!(runtime.zone_snapshot(1.0).caption.contains(" g · spin "));
+     // Map taps become autopilot targets rather than ground routes.
+     runtime.navigate_to([0.0, 10.0]).unwrap();
+     assert!(!runtime.navigation().is_active());

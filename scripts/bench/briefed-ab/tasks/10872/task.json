@@ -1,0 +1,32 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10872,
+  "title": "REV-65: Report the private sales pipeline and escalate failures before revenue",
+  "body": "## Problem and result\n\nSales decisions need honest queue, delivery, cost, and failure visibility before the first sale. Add private operational reporting and immediate owner escalation, then enrich it with revenue/margin evidence when a paid lane exists rather than blocking reports on commercial qualification.\n\n## Source and scope\n\n[Revenue roadmap](https://github.com/OpenAgentsInc/openagents/blob/main/docs/sales/revenue-roadmap.md#parallel-sales-floor-build) REV-65 and [Sales-floor contract](https://github.com/OpenAgentsInc/openagents/blob/main/docs/sales/agent-sales-floor.md) define this slice. Project canonical [REV-53 (#10860)](https://github.com/OpenAgentsInc/openagents/issues/10860) records and [REV-58 (#10861)](https://github.com/OpenAgentsInc/openagents/issues/10861) reservations through `crates/coder/src/task/`, `crates/openagents-cli`, and existing agent panels. Wendy's future wrapper may consume the same report; use one host projection, not another analytics store.\n\n- [ ] Report stage counts, accepted assignments, next actions/dates, drafted/approved/sent/replied messages, meetings, certification, and unresolved work.\n- [ ] Keep confirmed delivery, bounce, unknown delivery, opt-out, complaint, and absent telemetry separate.\n- [ ] Expose list-price reservations/estimates, known actual bills, unknown cost, and model/sending cost per qualified lead.\n- [ ] Deliver complaints and pause/suspension/authentication/budget/adversary failures promptly to owner review with exact evidence references.\n- [ ] Produce Paul's weekly aggregate draft with lessons and proposed next actions; publishing remains an exact owner decision.\n\n## Acceptance\n\n- [ ] Private pipeline and critical escalation work with zero revenue and with financial adapters absent.\n- [ ] Projection totals reproduce canonical records after restart; duplicate attempts or replies do not inflate results.\n- [ ] Unknown expense or low-volume telemetry is labeled unknown, not zero or successful operation.\n- [ ] Financial enrichment distinguishes gross collections, earned OpenAgents revenue, top-ups, third-party shares, reversals, and full delivery/support costs.\n- [ ] A report cannot disclose another assignment or turn draft counts, pilot agreements, model claims, or XP into sales.\n\n## Dependencies\n\nMandatory: [REV-54 (#10865)](https://github.com/OpenAgentsInc/openagents/issues/10865) and [REV-58 (#10861)](https://github.com/OpenAgentsInc/openagents/issues/10861). Conditional: [REV-62 (#10869)](https://github.com/OpenAgentsInc/openagents/issues/10869)/[REV-63 (#10870)](https://github.com/OpenAgentsInc/openagents/issues/10870) supply outbound metrics; [REV-25 (#10832)](https://github.com/OpenAgentsInc/openagents/issues/10832)/[REV-26 (#10833)](https://github.com/OpenAgentsInc/openagents/issues/10833) supply financial/funnel enrichment. Their absence is visible and does not block pre-revenue reports. Shared public projections use [REV-71 (#10878)](https://github.com/OpenAgentsInc/openagents/issues/10878); no full Wendy agent or optional relay telemetry is required.\n\n## Verification\n\nTest projection recomputation, deduplication, unknown values, unauthorized reads, zero-revenue operation, and prompt failure alerts. Run formatting and targeted tests for edited canonical records, `coder`, CLI, and view crates. Use scratch `HOME`, host/task roots, file keys, and injected adapters; never touch the owner's host/keychain/units/pairing. Archive scratch Coder tasks. Run heavy Cargo commands through the build lease with a long-lived target directory. No GitHub workflows or full release gate.\n\n## Activation and closure\n\nKeep human-led R0/R1 independent. Close after scoped checks, merge, and required deploy pass. Track owner-only credentials, real-contact/funded qualification, legal/commercial decisions, and activation in `NEEDS_OWNER.md`; they never hold code-complete implementation open. Fixtures never authorize a campaign.\n\n## Roadmap and dependency registration\n\nStable roadmap ID: **REV-65**. [Unified revenue roadmap](https://github.com/OpenAgentsInc/openagents/blob/main/docs/sales/revenue-roadmap.md#build-issue-list).\n\nNative completion blockers: #10865, #10861\n\nRoadmap dependency scope, including conditional branches and reused foundations: [REV-54 (#10865)](https://github.com/OpenAgentsInc/openagents/issues/10865), [REV-58 (#10861)](https://github.com/OpenAgentsInc/openagents/issues/10861); [REV-62 (#10869)](https://github.com/OpenAgentsInc/openagents/issues/10869)/[REV-63 (#10870)](https://github.com/OpenAgentsInc/openagents/issues/10870) for outbound metrics; [REV-25 (#10832)](https://github.com/OpenAgentsInc/openagents/issues/10832)/[REV-26 (#10833)](https://github.com/OpenAgentsInc/openagents/issues/10833) for financial enrichment\n\nConditional integration branches are implemented when enabled; alternatives select one product lane. A reused closed foundation, optional relay telemetry, or owner-only activation is not a new native completion blocker. Claim this issue before implementation and maintain the project status. Close after scoped code/artifacts, focused checks, merge to main, and any required host deploy are complete; record owner-only qualification/activation in `NEEDS_OWNER.md`.\n\n<!-- openagents-revenue-roadmap: REV-65 -->\n",
+  "fix": "6c8d7755d308fd70e296f81823e0a0a203db7b0f",
+  "parent": "af28223570539c133b3506ec31a9c0ee342f2b1d",
+  "package": "coder",
+  "source_files": [
+    "NEEDS_OWNER.md",
+    "crates/coder/src/cli_route/tree.json",
+    "crates/coder/src/task/sales.rs",
+    "crates/coder/src/task/sales/expenses.rs",
+    "crates/coder/src/task/sales/meetings.rs",
+    "crates/openagents-cli/src/sales.rs",
+    "crates/openagents-cli/src/sales_floor.rs",
+    "docs/sales/agent-sales-floor.md"
+  ],
+  "test_files": [
+    "crates/coder/src/task/sales/floor.rs",
+    "crates/coder/src/task/sales/floor/tests.rs"
+  ],
+  "test_names": [
+    "a_complaint_escalates_once_however_often_it_is_recorded",
+    "an_empty_floor_reports_unknowns_not_zero_success",
+    "reads_need_the_owner",
+    "the_weekly_draft_is_never_published"
+  ],
+  "fix_lines": 790
+}

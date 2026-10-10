@@ -1,0 +1,865 @@
+diff --git a/crates/lev/Cargo.toml b/crates/lev/Cargo.toml
+index 2b817bedc1a41b6320a2849554e8f4be08992726..8d41228080d8c94d042667f816872d596feb0409 100644
+--- a/crates/lev/Cargo.toml
++++ b/crates/lev/Cargo.toml
+@@ -46,6 +46,10 @@ path = "src/bin/lev_permute.rs"
+ name = "lev-adapter-check"
+ path = "src/bin/lev_adapter_check.rs"
+ 
++[[bin]]
++name = "lev-seed-sweep"
++path = "src/bin/lev_seed_sweep.rs"
++
+ [[bin]]
+ name = "lev-render"
+ path = "src/bin/lev_render.rs"
+diff --git a/crates/lev/src/bin/lev_band.rs b/crates/lev/src/bin/lev_band.rs
+index 373aafbf6a0551f560870dba3b243689ca01e1fd..cc933f593bee4afa499d758d0785592b3bc4c90f 100644
+--- a/crates/lev/src/bin/lev_band.rs
++++ b/crates/lev/src/bin/lev_band.rs
+@@ -124,7 +124,7 @@ fn main() {
+             extensions: Extensions::default(),
+         };
+         let Ok(compiled) = compile(&request) else { continue };
+-        let Ok(raw) = l2_pool_adapted(&pool, &compiled["q"], 8, adapter.as_deref()) else {
++        let Ok(raw) = l2_pool_adapted(&pool, &compiled["q"], 8, 0, adapter.as_deref()) else {
+             continue;
+         };
+         // One extra greedy call for the band.
+@@ -186,7 +186,8 @@ fn l2_pool_adapted(
+     pool: &Pool,
+     compiled: &lev::schema::Compiled,
+     n: u64,
++    seed_base: u64,
+     adapter: Option<&str>,
+ ) -> lev::error::Result<lev::estimator::Raw> {
+-    lev::estimator::l2_pool_with(pool, compiled, n, adapter)
++    lev::estimator::l2_pool_with(pool, compiled, n, seed_base, adapter)
+ }
+diff --git a/crates/lev/src/bin/lev_seed_sweep.rs b/crates/lev/src/bin/lev_seed_sweep.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..01a934dde21191ad5b1168ec4ad18c176b572560
+--- /dev/null
++++ b/crates/lev/src/bin/lev_seed_sweep.rs
+@@ -0,0 +1,237 @@
++//! Measures how much an L2 estimate moves when only the seed block moves.
++//!
++//! The behavior record shows a seed reproducing its sample exactly, which is
++//! what makes an estimate replayable and also what removes every trace of
++//! trial-to-trial variance from a fixed seed set. Rerunning block 0 is not a
++//! second trial. Drawing block 1 is, because it shares no seed with block 0
++//! and nothing else about the question changed.
++//!
++//! The spread across blocks is this suite's own resampling variance: the
++//! difference a comparison has to beat before it is reporting anything but
++//! which seeds it happened to draw.
++//!
++//! Run it with the helper built:
++//!
++//! ```text
++//! ./scripts/build-lev-bridge.sh
++//! cargo run -p lev --bin lev-seed-sweep -- --bases 8 --items 24 \
++//!     > docs/lev/measurements/<date>-seed-variance.md
++//! ```
++
++use lev::api::{Extensions, SystemOneRequest};
++use lev::bridge::Pool;
++use lev::estimator::l2_pool_with;
++use lev::schema::compile;
++use lev::suite::{Item, Suite};
++
++const SUITE: &str = include_str!("../../suites/support-v2.json");
++
++/// One item answered from one seed block.
++struct Draw {
++    top: f64,
++    correct: bool,
++    choice: String,
++}
++
++fn spread(values: &[f64]) -> (f64, f64, f64, f64) {
++    let n = values.len() as f64;
++    let mean = values.iter().sum::<f64>() / n;
++    // The sample standard deviation: these blocks are a sample of the blocks
++    // that could have been drawn, not the whole population of them.
++    let variance = if values.len() < 2 {
++        0.0
++    } else {
++        values.iter().map(|value| (value - mean).powi(2)).sum::<f64>() / (n - 1.0)
++    };
++    let low = values.iter().copied().fold(f64::INFINITY, f64::min);
++    let high = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
++    (mean, variance.sqrt(), low, high)
++}
++
++fn draw(
++    pool: &Pool,
++    item: &Item,
++    samples: u64,
++    seed_base: u64,
++    adapter: Option<&str>,
++) -> Option<Draw> {
++    let request = SystemOneRequest {
++        state: item.state.clone(),
++        model: None,
++        questions: [("q".to_string(), item.question.clone())].into_iter().collect(),
++        extensions: Extensions::default(),
++    };
++    let compiled = compile(&request).ok()?;
++    let raw = l2_pool_with(pool, &compiled["q"], samples, seed_base, adapter).ok()?;
++    Some(Draw { top: raw.top(), correct: raw.choice == item.truth, choice: raw.choice })
++}
++
++fn main() {
++    let mut bases = 8_u64;
++    let mut samples = 8_u64;
++    let mut items = 24_usize;
++    let mut helpers = 4_usize;
++    let mut headline: Option<String> = None;
++    let mut adapter: Option<String> = None;
++    let mut args = std::env::args().skip(1);
++    while let Some(flag) = args.next() {
++        match flag.as_str() {
++            "--bases" => bases = args.next().and_then(|v| v.parse().ok()).unwrap_or(bases),
++            "--samples" => samples = args.next().and_then(|v| v.parse().ok()).unwrap_or(samples),
++            "--items" => items = args.next().and_then(|v| v.parse().ok()).unwrap_or(items),
++            "--helpers" => helpers = args.next().and_then(|v| v.parse().ok()).unwrap_or(helpers),
++            "--item" => headline = args.next(),
++            "--adapter" => adapter = args.next(),
++            other => {
++                eprintln!("unknown flag {other}");
++                std::process::exit(2);
++            }
++        }
++    }
++
++    let suite = Suite::load(SUITE).expect("the shipped suite loads");
++    // The evaluation split, thinned evenly so the sample spans every family
++    // rather than the first items of one.
++    let evaluation: Vec<&Item> = suite.split("evaluation").collect();
++    let stride = (evaluation.len() / items.max(1)).max(1);
++    let chosen: Vec<&Item> = evaluation.iter().copied().step_by(stride).take(items).collect();
++    let headline_item = match &headline {
++        Some(id) => chosen
++            .iter()
++            .chain(evaluation.iter())
++            .find(|item| &item.id == id)
++            .copied()
++            .unwrap_or_else(|| panic!("no item {id} in the suite")),
++        None => chosen[0],
++    };
++
++    let pool = match Pool::discover(helpers) {
++        Ok(pool) => pool,
++        Err(refusal) => {
++            eprintln!("no helper: {refusal}");
++            std::process::exit(2);
++        }
++    };
++    let availability = pool.availability().expect("availability answered");
++
++    println!("# The spread an L2 estimate carries across seed blocks\n");
++    println!(
++        "Generated by `cargo run -p lev --bin lev-seed-sweep`. Every number comes from the live \
++         on-device runtime on one machine.\n"
++    );
++    println!("| Run fact | Value |");
++    println!("| --- | --- |");
++    println!("| Availability | `{}` |", availability.status);
++    println!("| Suite | `{}`, {} items |", suite.name, suite.items.len());
++    println!("| Samples per estimate | {samples} |");
++    println!("| Seed blocks | {bases}, drawing seeds 0 to {} |", bases * samples - 1);
++    println!("| Items swept | {} from the evaluation split |", chosen.len());
++    println!("| Pool width | {} |", pool.width());
++    println!("| Adapter | {} |\n", adapter.as_deref().unwrap_or("none"));
++
++    // 1. One item, every block.
++    println!("## One item across every block\n");
++    println!("`{}`, truth `{}`.\n", headline_item.id, headline_item.truth);
++    println!("| Seed block | Seeds | Answer | Top share |");
++    println!("| --- | --- | --- | --- |");
++    let mut headline_tops = Vec::new();
++    for base in 0..bases {
++        let first = base * samples;
++        match draw(&pool, headline_item, samples, base, adapter.as_deref()) {
++            Some(drawn) => {
++                println!(
++                    "| {base} | {first}–{} | `{}` | {:.3} |",
++                    first + samples - 1,
++                    drawn.choice,
++                    drawn.top
++                );
++                headline_tops.push(drawn.top);
++            }
++            None => println!("| {base} | {first}–{} | `<refused>` | |", first + samples - 1),
++        }
++    }
++    let (mean, sd, low, high) = spread(&headline_tops);
++    println!(
++        "\nMean {mean:.3}, standard deviation {sd:.3}, range {low:.3} to {high:.3}, \
++         spread {:.3}.\n",
++        high - low
++    );
++
++    // 2. Every item, every block.
++    println!("## The suite across every block\n");
++    println!("| Seed block | Mean top share | Accuracy | Items scored |");
++    println!("| --- | --- | --- | --- |");
++    let mut per_item: Vec<Vec<f64>> = vec![Vec::new(); chosen.len()];
++    let mut per_item_choices: Vec<Vec<String>> = vec![Vec::new(); chosen.len()];
++    let mut block_means = Vec::new();
++    let mut block_accuracies = Vec::new();
++    for base in 0..bases {
++        let mut tops = Vec::new();
++        let mut correct = 0_usize;
++        let mut scored = 0_usize;
++        for (index, item) in chosen.iter().enumerate() {
++            let Some(drawn) = draw(&pool, item, samples, base, adapter.as_deref()) else {
++                continue;
++            };
++            tops.push(drawn.top);
++            per_item[index].push(drawn.top);
++            per_item_choices[index].push(drawn.choice);
++            correct += usize::from(drawn.correct);
++            scored += 1;
++        }
++        let mean = tops.iter().sum::<f64>() / tops.len() as f64;
++        let accuracy = correct as f64 / scored as f64;
++        println!("| {base} | {mean:.3} | {accuracy:.3} | {scored} |");
++        block_means.push(mean);
++        block_accuracies.push(accuracy);
++    }
++    let (mean, sd, low, high) = spread(&block_means);
++    println!(
++        "\nMean top share over blocks: {mean:.3}, standard deviation {sd:.4}, range {low:.3} to \
++         {high:.3}, spread {:.3}.",
++        high - low
++    );
++    let (mean, sd, low, high) = spread(&block_accuracies);
++    println!(
++        "\nAccuracy over blocks: {mean:.3}, standard deviation {sd:.4}, range {low:.3} to \
++         {high:.3}, spread {:.3}.\n",
++        high - low
++    );
++
++    // 3. What moved, item by item.
++    println!("## Which items moved\n");
++    println!("| Item | Blocks | Answers | Top share range |");
++    println!("| --- | --- | --- | --- |");
++    let mut flipped = 0_usize;
++    let mut ranges = Vec::new();
++    for (index, item) in chosen.iter().enumerate() {
++        let tops = &per_item[index];
++        if tops.is_empty() {
++            continue;
++        }
++        let (_, _, low, high) = spread(tops);
++        ranges.push(high - low);
++        let mut answers: Vec<&str> = Vec::new();
++        for choice in &per_item_choices[index] {
++            if !answers.contains(&choice.as_str()) {
++                answers.push(choice);
++            }
++        }
++        if answers.len() > 1 {
++            flipped += 1;
++        }
++        println!(
++            "| `{}` | {} | {} | {:.3} |",
++            item.id,
++            tops.len(),
++            answers.iter().map(|a| format!("`{a}`")).collect::<Vec<_>>().join(", "),
++            high - low
++        );
++    }
++    let (mean_range, _, _, widest) = spread(&ranges);
++    println!(
++        "\n{flipped} of {} items changed their answer across blocks. Mean within-item top-share \
++         range {mean_range:.3}, widest {widest:.3}.",
++        chosen.len()
++    );
++}
+diff --git a/crates/lev/src/bin/lev_serve.rs b/crates/lev/src/bin/lev_serve.rs
+index 7bbac0cf70366e2744c825b23a4a5c8676c0d26f..0877664e36d086fc209554e4712bb9a4c4b02a22 100644
+--- a/crates/lev/src/bin/lev_serve.rs
++++ b/crates/lev/src/bin/lev_serve.rs
+@@ -20,6 +20,7 @@ use lev::serve::{DEFAULT_SAMPLES, Door};
+ async fn main() {
+     let mut port = 11436_u16;
+     let mut samples = DEFAULT_SAMPLES;
++    let mut seed_base = 0_u64;
+     let mut helpers = 4_usize;
+     let mut adapter: Option<String> = None;
+     let mut args = std::env::args().skip(1);
+@@ -33,6 +34,12 @@ async fn main() {
+             "--samples" => {
+                 samples = args.next().and_then(|value| value.parse().ok()).unwrap_or(samples);
+             }
++            // Block 0 is the default and reproduces the recorded numbers.
++            // Another block answers with seeds this door has not drawn, which
++            // is what a confirmation run needs.
++            "--seed-base" => {
++                seed_base = args.next().and_then(|value| value.parse().ok()).unwrap_or(seed_base);
++            }
+             other => {
+                 eprintln!("unknown flag {other}");
+                 std::process::exit(2);
+@@ -50,7 +57,8 @@ async fn main() {
+     // Check the package before serving with it. A signature mismatch is a
+     // deployment error and the door should not start, rather than refusing
+     // every request at run time.
+-    let mut door = Door::new(pool, if adapter.is_some() { "lev-adapted" } else { "lev-base" }, samples);
++    let model = if adapter.is_some() { "lev-adapted" } else { "lev-base" };
++    let mut door = Door::new(pool, model, samples).with_seed_base(seed_base);
+     if let Some(path) = adapter {
+         match lev::adapter::Package::open(&path) {
+             Ok(package) => {
+@@ -71,7 +79,8 @@ async fn main() {
+         .await
+         .expect("the port is free");
+     eprintln!(
+-        "lev-serve on http://127.0.0.1:{port}, {samples} samples per question across {} helpers",
++        "lev-serve on http://127.0.0.1:{port}, {samples} samples per question from seed block \
++         {seed_base} across {} helpers",
+         door.pool_width()
+     );
+     axum::serve(listener, door.router()).await.expect("the server runs");
+diff --git a/crates/lev/src/estimator.rs b/crates/lev/src/estimator.rs
+index ebcd8f873813c348b47793eab1ccf9f32a6e8507..4d7353c1f0ff9be1a5f2cdbae68b64fcf9869909 100644
+--- a/crates/lev/src/estimator.rs
++++ b/crates/lev/src/estimator.rs
+@@ -10,7 +10,9 @@
+ //!   `confidence`. L1 is an internal fast path for callers that want a typed
+ //!   choice and nothing else.
+ //! - **L2** takes `N` seeded samples and counts them. Its resolution is
+-//!   `1/N`, which is carried with the estimate rather than rounded away.
++//!   `1/N`, which is carried with the estimate rather than rounded away. The
++//!   seeds come from a block a caller names, because a fixed seed set has no
++//!   trial-to-trial variance to average over; see [`seed_block`].
+ //! - **L3** takes one call that also selects an ordered certainty band.
+ //!
+ //! None of these is a calibrated predictive distribution, and that is the
+@@ -65,6 +67,8 @@ pub struct Raw {
+     pub resolution: f64,
+     /// The seeds that produced it, in order.
+     pub seeds: Vec<u64>,
++    /// The block those seeds were drawn from.
++    pub seed_base: u64,
+     /// The certainty band, for L3.
+     pub band: Option<String>,
+     /// Draws the runtime refused, usually on a guardrail.
+@@ -93,21 +97,49 @@ pub fn l1(bridge: &mut Bridge, compiled: &Compiled) -> Result<Raw> {
+         frequency: IndexMap::new(),
+         resolution: 1.0,
+         seeds: Vec::new(),
++        seed_base: 0,
+         band: None,
+         refused: 0,
+         latency_ms: outcome.latency_ms.unwrap_or_default(),
+     })
+ }
+ 
+-/// Runs `n` seeded samples and counts them.
++/// The block of seeds `seed_base` names, for an ensemble of `n` draws.
++///
++/// Block `b` draws `b * n .. b * n + n`, so two different bases never share
++/// a seed, and block 0 draws `0..n` — the seeds every number in
++/// `docs/lev/measurements/` was produced with.
+ ///
+-/// The seeds are `0..n`, recorded with the estimate so the same numbers can
+-/// be produced again. Whether the runtime honors a seed is a measured fact,
+-/// not an assumption; see `docs/lev/measurements/`.
+-pub fn l2(bridge: &mut Bridge, compiled: &Compiled, n: u64) -> Result<Raw> {
++/// The block exists because a seed reproduces its sample: 16 of 16 in one
++/// process and across a fresh one, in the behavior record under
++/// `docs/lev/measurements/`. That is what makes an L2 estimate replayable,
++/// and it also means that running the same block again is not a fresh trial.
++/// It is the same arithmetic. A caller that wants independent evidence — a
++/// confirmation run, a resampling spread, an effect size — asks for a block
++/// it has not drawn yet.
++pub fn seed_block(seed_base: u64, n: u64) -> Result<std::ops::Range<u64>> {
+     if n == 0 {
+         return Err(Refusal::new(RefusalCode::InvalidRequest, "an ensemble draws at least one sample"));
+     }
++    let overflow = || {
++        Refusal::new(
++            RefusalCode::InvalidRequest,
++            format!("seed base {seed_base} over {n} samples runs past the seed space"),
++        )
++    };
++    let start = seed_base.checked_mul(n).ok_or_else(overflow)?;
++    let end = start.checked_add(n).ok_or_else(overflow)?;
++    Ok(start..end)
++}
++
++/// Runs `n` seeded samples and counts them.
++///
++/// The seeds are the block [`seed_block`] gives for `seed_base`, recorded
++/// with the estimate so the same numbers can be produced again. Whether the
++/// runtime honors a seed is a measured fact, not an assumption; see
++/// `docs/lev/measurements/`.
++pub fn l2(bridge: &mut Bridge, compiled: &Compiled, n: u64, seed_base: u64) -> Result<Raw> {
++    let block = seed_block(seed_base, n)?;
+     let mut counts: IndexMap<String, u64> = compiled
+         .options
+         .iter()
+@@ -124,7 +156,7 @@ pub fn l2(bridge: &mut Bridge, compiled: &Compiled, n: u64) -> Result<Raw> {
+     // outright refuses the question.
+     let mut refused = 0_u64;
+     let mut last: Option<Refusal> = None;
+-    for seed in 0..n {
++    for seed in block {
+         let call = Call::decide(compiled, Sampling::Random { seed, temperature: None });
+         let outcome = match bridge.decide(&call) {
+             Ok(outcome) => outcome,
+@@ -155,7 +187,7 @@ pub fn l2(bridge: &mut Bridge, compiled: &Compiled, n: u64) -> Result<Raw> {
+             Refusal::new(RefusalCode::Guardrail, "every draw was refused")
+         }));
+     }
+-    let mut raw = finish(Estimator::L2, counts, drawn, seeds, None, latency);
++    let mut raw = finish(Estimator::L2, counts, drawn, seeds, seed_base, None, latency);
+     raw.refused = refused;
+     Ok(raw)
+ }
+@@ -166,8 +198,8 @@ pub fn l2(bridge: &mut Bridge, compiled: &Compiled, n: u64) -> Result<Raw> {
+ /// only difference is that the draws run concurrently. The same seeds produce
+ /// the same estimate either way, which `tests/pool.rs` checks rather than
+ /// assumes.
+-pub fn l2_pool(pool: &Pool, compiled: &Compiled, n: u64) -> Result<Raw> {
+-    l2_pool_with(pool, compiled, n, None)
++pub fn l2_pool(pool: &Pool, compiled: &Compiled, n: u64, seed_base: u64) -> Result<Raw> {
++    l2_pool_with(pool, compiled, n, seed_base, None)
+ }
+ 
+ /// Runs `n` seeded samples across a pool, optionally through an adapter.
+@@ -175,12 +207,12 @@ pub fn l2_pool_with(
+     pool: &Pool,
+     compiled: &Compiled,
+     n: u64,
++    seed_base: u64,
+     adapter: Option<&str>,
+ ) -> Result<Raw> {
+-    if n == 0 {
+-        return Err(Refusal::new(RefusalCode::InvalidRequest, "an ensemble draws at least one sample"));
+-    }
+-    let calls: Vec<Call> = (0..n)
++    let block = seed_block(seed_base, n)?;
++    let first = block.start;
++    let calls: Vec<Call> = block
+         .map(|seed| {
+             let call = Call::decide(compiled, Sampling::Random { seed, temperature: None });
+             match adapter {
+@@ -198,7 +230,7 @@ pub fn l2_pool_with(
+     let mut refused = 0_u64;
+     let mut last: Option<Refusal> = None;
+ 
+-    for (seed, outcome) in outcomes.into_iter().enumerate() {
++    for (index, outcome) in outcomes.into_iter().enumerate() {
+         match outcome {
+             Ok(outcome) => {
+                 let choice = outcome.choice.ok_or_else(|| {
+@@ -211,7 +243,7 @@ pub fn l2_pool_with(
+                     )
+                 })?;
+                 *slot += 1;
+-                seeds.push(seed as u64);
++                seeds.push(first + index as u64);
+                 // The lanes overlap, so this sums helper time rather than
+                 // wall clock. Wall clock is what the caller measures.
+                 latency += outcome.latency_ms.unwrap_or_default();
+@@ -229,7 +261,7 @@ pub fn l2_pool_with(
+         return Err(last
+             .unwrap_or_else(|| Refusal::new(RefusalCode::Guardrail, "every draw was refused")));
+     }
+-    let mut raw = finish(Estimator::L2, counts, drawn, seeds, None, latency);
++    let mut raw = finish(Estimator::L2, counts, drawn, seeds, seed_base, None, latency);
+     raw.refused = refused;
+     Ok(raw)
+ }
+@@ -250,7 +282,8 @@ pub fn l3(bridge: &mut Bridge, compiled: &Compiled) -> Result<Raw> {
+     if let Some(slot) = counts.get_mut(&choice) {
+         *slot = 1;
+     }
+-    Ok(finish(Estimator::L3, counts, 1, Vec::new(), outcome.band, outcome.latency_ms.unwrap_or_default()))
++    let latency = outcome.latency_ms.unwrap_or_default();
++    Ok(finish(Estimator::L3, counts, 1, Vec::new(), 0, outcome.band, latency))
+ }
+ 
+ fn finish(
+@@ -258,6 +291,7 @@ fn finish(
+     counts: IndexMap<String, u64>,
+     n: u64,
+     seeds: Vec<u64>,
++    seed_base: u64,
+     band: Option<String>,
+     latency_ms: f64,
+ ) -> Raw {
+@@ -277,6 +311,7 @@ fn finish(
+         frequency,
+         resolution: 1.0 / total,
+         seeds,
++        seed_base,
+         band,
+         refused: 0,
+         latency_ms,
+diff --git a/crates/lev/src/serve.rs b/crates/lev/src/serve.rs
+index 571eb1975a20477c473dd562213c46356d5d4e93..063320e9fb05c22225df33bd3d516d57585f39e6 100644
+--- a/crates/lev/src/serve.rs
++++ b/crates/lev/src/serve.rs
+@@ -37,6 +37,7 @@ pub struct Door {
+     pool: Pool,
+     model: String,
+     samples: u64,
++    seed_base: u64,
+     adapter: Option<String>,
+ }
+ 
+@@ -44,7 +45,20 @@ impl Door {
+     /// Builds a door over a pool of helper processes.
+     #[must_use]
+     pub fn new(pool: Pool, model: impl Into<String>, samples: u64) -> Self {
+-        Self { pool, model: model.into(), samples: samples.max(1), adapter: None }
++        Self { pool, model: model.into(), samples: samples.max(1), seed_base: 0, adapter: None }
++    }
++
++    /// Draws every question from a different block of seeds.
++    ///
++    /// Block 0 is the default and reproduces the recorded numbers. A door
++    /// asked for another block answers the same questions with seeds it has
++    /// not drawn before, which is the only honest way to get a fresh trial
++    /// out of a runtime whose seeds reproduce exactly. A caller comparing two
++    /// doors should move this together with nothing else.
++    #[must_use]
++    pub fn with_seed_base(mut self, seed_base: u64) -> Self {
++        self.seed_base = seed_base;
++        self
+     }
+ 
+     /// Serves every call through a `.fmadapter` package.
+@@ -124,6 +138,7 @@ async fn models(State(door): State<Arc<Door>>) -> Response {
+             "unavailable_reason": reason,
+             "estimator": Estimator::L2.label(),
+             "samples": door.samples,
++            "seed_base": door.seed_base,
+             "pool_width": door.pool.width(),
+             "resolution": 1.0 / door.samples as f64,
+             "adapter": door.adapter,
+@@ -182,8 +197,14 @@ fn answer_request(door: &Door, request: &SystemOneRequest) -> crate::error::Resu
+     let mut answers = IndexMap::new();
+     let mut estimates = IndexMap::new();
+     for (id, question) in &compiled {
+-        let raw = l2_pool_with(&door.pool, question, door.samples, door.adapter.as_deref())
+-            .map_err(|refusal| with_question(refusal, id))?;
++        let raw = l2_pool_with(
++            &door.pool,
++            question,
++            door.samples,
++            door.seed_base,
++            door.adapter.as_deref(),
++        )
++        .map_err(|refusal| with_question(refusal, id))?;
+         let typed = answer(question.kind, &raw.frequency, &question.legend)
+             .map_err(|refusal| with_question(refusal, id))?;
+         answers.insert(id.clone(), typed);
+@@ -193,7 +214,8 @@ fn answer_request(door: &Door, request: &SystemOneRequest) -> crate::error::Resu
+                 json!({
+                     "estimator": raw.estimator.label(),
+                     "samples": door.samples,
+-            "pool_width": door.pool.width(),
++                    "pool_width": door.pool.width(),
++                    "seed_base": raw.seed_base,
+                     "seeds": raw.seeds,
+                     "resolution": raw.resolution,
+                     "refused_draws": raw.refused,
+diff --git a/docs/lev/architecture.md b/docs/lev/architecture.md
+index 4349b2b497e53ac3c2576ef35be72eda8a2a8816..18f1b4f493e02a6b1c0c740b6d49411a968312dc 100644
+--- a/docs/lev/architecture.md
++++ b/docs/lev/architecture.md
+@@ -68,6 +68,16 @@ temperature and `N` distinct seeds. The empirical frequency over the option
+ set is a distribution.
+ 
+ - It is reproducible, because the seeds are recorded.
++- The seeds are a *block*, not a constant. Block `b` draws
++  `b * N .. b * N + N`, so two blocks never share a seed, and block 0 draws
++  the seeds every recorded number was produced with. The block exists
++  because reproducibility has a cost: a seed reproduces its sample exactly,
++  so rerunning the same seeds is not a second trial, and a comparison that
++  reran them would be calling one measurement two pieces of evidence. A
++  fresh trial is a block nobody has drawn yet. Eight blocks over one suite
++  move accuracy by 2 points and the raw top share by 3, which is the floor
++  under any comparison on this door:
++  [`measurements/2026-09-19-seed-variance.md`](measurements/2026-09-19-seed-variance.md).
+ - Its resolution is `1/N`. At `N = 16` the finest distinction the estimator
+   can draw is 0.0625, which is coarser than the two decimal places the
+   System One contract reports. Either the door reports at the estimator's
+diff --git a/docs/lev/measurements/2026-09-19-seed-variance.md b/docs/lev/measurements/2026-09-19-seed-variance.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..8b4385734c7b8551a9d6e401b7503c45ff435996
+--- /dev/null
++++ b/docs/lev/measurements/2026-09-19-seed-variance.md
+@@ -0,0 +1,265 @@
++# The spread an L2 estimate carries across seed blocks
++
++Generated by `cargo run -p lev --bin lev-seed-sweep`. Every number comes from the live on-device runtime on one machine.
++
++The exact command:
++
++```text
++./scripts/build-lev-bridge.sh
++cargo run --release -p lev --bin lev-seed-sweep -- \
++    --bases 8 --samples 8 --items 98 --helpers 4
++```
++
++An L2 estimate draws a *block* of seeds: block `b` draws `b * N .. b * N + N`,
++so no two blocks share a seed. Block 0 draws `0..8`, which is the block every
++other number in this directory was produced with. Because a seed reproduces
++its sample exactly, rerunning block 0 returns the same arithmetic rather than
++a second trial, so a fresh trial means a block nobody has drawn yet. This run
++draws eight of them over the same 98 evaluation items and asks how much the
++answer moves when the seeds are the only thing that changed.
++
++| Run fact | Value |
++| --- | --- |
++| Availability | `available` |
++| Suite | `support-v2`, 196 items |
++| Samples per estimate | 8 |
++| Seed blocks | 8, drawing seeds 0 to 63 |
++| Items swept | 98 from the evaluation split |
++| Pool width | 4 |
++| Adapter | none |
++
++## One item across every block
++
++`routing/001`, truth `billing`.
++
++| Seed block | Seeds | Answer | Top share |
++| --- | --- | --- | --- |
++| 0 | 0–7 | `billing` | 1.000 |
++| 1 | 8–15 | `billing` | 1.000 |
++| 2 | 16–23 | `billing` | 1.000 |
++| 3 | 24–31 | `billing` | 1.000 |
++| 4 | 32–39 | `billing` | 1.000 |
++| 5 | 40–47 | `billing` | 1.000 |
++| 6 | 48–55 | `billing` | 1.000 |
++| 7 | 56–63 | `billing` | 1.000 |
++
++Mean 1.000, standard deviation 0.000, range 1.000 to 1.000, spread 0.000.
++
++## The suite across every block
++
++| Seed block | Mean top share | Accuracy | Items scored |
++| --- | --- | --- | --- |
++| 0 | 0.871 | 0.765 | 98 |
++| 1 | 0.886 | 0.796 | 98 |
++| 2 | 0.930 | 0.796 | 98 |
++| 3 | 0.895 | 0.796 | 98 |
++| 4 | 0.898 | 0.745 | 98 |
++| 5 | 0.940 | 0.796 | 98 |
++| 6 | 0.878 | 0.786 | 98 |
++| 7 | 0.852 | 0.765 | 98 |
++
++Mean top share over blocks: 0.894, standard deviation 0.0294, range 0.852 to 0.940, spread 0.088.
++
++Accuracy over blocks: 0.781, standard deviation 0.0197, range 0.745 to 0.796, spread 0.051.
++
++## Which items moved
++
++| Item | Blocks | Answers | Top share range |
++| --- | --- | --- | --- |
++| `routing/001` | 8 | `billing` | 0.000 |
++| `routing/003` | 8 | `billing` | 0.000 |
++| `routing/005` | 8 | `billing` | 0.000 |
++| `routing/007` | 8 | `billing` | 0.000 |
++| `routing/009` | 8 | `billing` | 0.000 |
++| `routing/011` | 8 | `sales` | 0.125 |
++| `routing/013` | 8 | `billing` | 0.250 |
++| `routing/015` | 8 | `billing` | 0.000 |
++| `routing/017` | 8 | `billing` | 0.000 |
++| `routing/019` | 8 | `billing` | 0.000 |
++| `routing/021` | 8 | `technical` | 0.000 |
++| `routing/023` | 8 | `technical` | 0.000 |
++| `routing/025` | 8 | `technical` | 0.000 |
++| `routing/027` | 8 | `technical` | 0.000 |
++| `routing/029` | 8 | `technical` | 0.000 |
++| `routing/031` | 8 | `technical` | 0.000 |
++| `routing/033` | 8 | `technical` | 0.000 |
++| `routing/035` | 8 | `technical` | 0.000 |
++| `routing/037` | 8 | `technical` | 0.000 |
++| `routing/039` | 8 | `technical` | 0.000 |
++| `routing/041` | 8 | `sales`, `technical` | 0.250 |
++| `routing/043` | 8 | `sales` | 0.000 |
++| `routing/045` | 8 | `sales` | 0.000 |
++| `routing/047` | 8 | `sales` | 0.000 |
++| `routing/049` | 8 | `sales` | 0.000 |
++| `routing/051` | 8 | `technical` | 0.250 |
++| `routing/053` | 8 | `sales` | 0.125 |
++| `routing/055` | 8 | `sales` | 0.000 |
++| `routing/057` | 8 | `sales` | 0.000 |
++| `routing/059` | 8 | `technical`, `sales` | 0.250 |
++| `routing/061` | 8 | `billing` | 0.000 |
++| `routing/063` | 8 | `technical` | 0.000 |
++| `routing/065` | 8 | `billing` | 0.000 |
++| `routing/067` | 8 | `technical` | 0.000 |
++| `routing/069` | 8 | `technical` | 0.000 |
++| `routing/071` | 8 | `technical` | 0.000 |
++| `routing/073` | 8 | `billing` | 0.000 |
++| `routing/075` | 8 | `sales` | 0.125 |
++| `routing/077` | 8 | `technical` | 0.000 |
++| `routing/079` | 8 | `billing` | 0.000 |
++| `routing/081` | 8 | `technical`, `sales` | 0.375 |
++| `routing/083` | 8 | `billing` | 0.000 |
++| `routing/085` | 8 | `technical` | 0.000 |
++| `routing/087` | 8 | `technical` | 0.000 |
++| `routing/089` | 8 | `technical` | 0.000 |
++| `routing/091` | 8 | `sales`, `technical` | 0.375 |
++| `routing/093` | 8 | `billing` | 0.000 |
++| `routing/095` | 8 | `technical` | 0.000 |
++| `routing/097` | 8 | `sales`, `billing` | 0.250 |
++| `routing/099` | 8 | `sales` | 0.125 |
++| `urgency/001` | 8 | `yes` | 0.250 |
++| `urgency/003` | 8 | `yes`, `no` | 0.375 |
++| `urgency/005` | 8 | `no` | 0.250 |
++| `urgency/007` | 8 | `no` | 0.250 |
++| `urgency/009` | 8 | `yes` | 0.250 |
++| `urgency/011` | 8 | `yes` | 0.125 |
++| `urgency/013` | 8 | `no`, `yes` | 0.375 |
++| `urgency/015` | 8 | `yes` | 0.000 |
++| `urgency/017` | 8 | `yes` | 0.125 |
++| `urgency/019` | 8 | `yes` | 0.250 |
++| `urgency/021` | 8 | `no` | 0.000 |
++| `urgency/023` | 8 | `no` | 0.000 |
++| `urgency/025` | 8 | `no` | 0.250 |
++| `urgency/027` | 8 | `no` | 0.000 |
++| `urgency/029` | 8 | `no` | 0.000 |
++| `urgency/031` | 8 | `yes` | 0.250 |
++| `urgency/033` | 8 | `no`, `yes` | 0.375 |
++| `urgency/035` | 8 | `no` | 0.000 |
++| `urgency/037` | 8 | `no` | 0.125 |
++| `urgency/039` | 8 | `no` | 0.000 |
++| `urgency/041` | 8 | `no` | 0.125 |
++| `urgency/043` | 8 | `no` | 0.000 |
++| `urgency/045` | 8 | `no`, `yes` | 0.250 |
++| `urgency/047` | 8 | `no`, `yes` | 0.375 |
++| `urgency/049` | 8 | `no`, `yes` | 0.500 |
++| `urgency/051` | 8 | `no` | 0.000 |
++| `urgency/053` | 8 | `no` | 0.000 |
++| `urgency/055` | 8 | `yes` | 0.500 |
++| `urgency/057` | 8 | `no` | 0.000 |
++| `urgency/059` | 8 | `no`, `yes` | 0.250 |
++| `severity/001` | 8 | `0`, `1` | 0.250 |
++| `severity/003` | 8 | `2`, `1` | 0.375 |
++| `severity/005` | 8 | `1`, `0`, `2` | 0.250 |
++| `severity/007` | 8 | `0`, `1` | 0.250 |
++| `severity/009` | 8 | `1`, `0` | 0.375 |
++| `severity/011` | 8 | `0` | 0.250 |
++| `severity/013` | 8 | `2`, `1` | 0.250 |
++| `severity/015` | 8 | `1`, `0` | 0.250 |
++| `severity/017` | 8 | `1`, `0` | 0.375 |
++| `severity/019` | 8 | `2`, `1` | 0.250 |
++| `severity/021` | 8 | `1`, `2` | 0.375 |
++| `severity/023` | 8 | `2`, `1` | 0.375 |
++| `severity/025` | 8 | `2`, `1` | 0.375 |
++| `severity/027` | 8 | `2` | 0.000 |
++| `severity/029` | 8 | `2` | 0.125 |
++| `severity/031` | 8 | `2` | 0.375 |
++| `severity/033` | 8 | `2` | 0.000 |
++| `severity/035` | 8 | `2` | 0.125 |
++
++24 of 98 items changed their answer across blocks. Mean within-item top-share range 0.126, widest 0.500.
++
++## Seed base 0 still reproduces the record
++
++Before the sweep, a door at seed base 0 was scored against `support-v2`
++through `lev-eval`, the same path that produced
++[`2026-09-19-suite-v2-scores.md`](2026-09-19-suite-v2-scores.md):
++
++| Set | Accuracy | ECE | Brier | NLL | Confident errors | Items |
++| --- | --- | --- | --- | --- | --- | --- |
++| evaluation, raw | 0.77 | 0.106 | 0.154 | 1.952 | 6 | 98 |
++| evaluation, admitted maps only | 0.77 | 0.065 | 0.153 | 0.713 | 1 | 98 |
++
++Every digit matches the recorded run, including all three family rows. The
++seed block is a parameter now, and its default changes nothing.
++
++## What this implies
++
++Written after the run, against the numbers above.
++
++**The suite's own resampling variance is about 2 accuracy points.** Over
++eight blocks the accuracy of one unchanged door on 98 unchanged items runs
++0.745 to 0.796, with a standard deviation of 0.0197. The mean top share, the
++raw signal a calibration map is fitted on, runs 0.852 to 0.940 with a
++standard deviation of 0.0294. Nothing about the door, the suite, the items,
++or the machine differed between those blocks. Only the seeds did.
++
++**That sets the smallest effect this suite can detect.** Comparing two doors
++measured on one block each, the difference carries both blocks' noise:
++`sqrt(2) x 0.0197`, about 0.028 on accuracy. A difference worth calling real
++at two standard deviations is therefore **0.056 accuracy, 7.2% relative to
++the 0.781 mean**. On the raw top share the same arithmetic gives 0.083,
++which is 9.3% relative. Below that, a comparison is reporting which seeds it
++drew.
++
++Averaging blocks buys resolution at a linear cost, because the noise falls
++as `1/sqrt(k)`:
++
++| Blocks per side | Two-sigma detectable accuracy difference | Calls per side |
++| --- | --- | --- |
++| 1 | 0.056 | 784 |
++| 2 | 0.040 | 1,568 |
++| 4 | 0.028 | 3,136 |
++| 8 | 0.020 | 6,272 |
++
++Resolving a 2-point accuracy difference on this suite needs eight blocks a
++side, about 12,500 calls. This run drew 6,272 of them in 20 minutes on four
++helpers, so that comparison costs about 40 minutes of device time. That is
++the price of the claim, and it should be paid deliberately or the claim
++should be weaker.
++
++**The Gym's inherited 10% threshold is the right order and the wrong
++derivation.** The acceptance rule in [`../../gym.md`](../../gym.md) asks for
++at least a 10% improvement in mean tool calls, prompt tokens, or wall time,
++and rejects a per-task regression above 10%. Those numbers came from a
++container benchmark measuring a different quantity on a different substrate.
++Carried onto this suite, 10% relative accuracy is 0.078, about 2.8 standard
++deviations of the paired noise — safe, but by coincidence rather than by
++measurement. On the raw signal 10% relative is 0.089, only 2.1 standard
++deviations, so the same rule is close to the floor there. A threshold should
++be stated as a multiple of the measured block-to-block standard deviation of
++the metric it gates, and this run is where that number comes from for a
++decision-model suite.
++
++**Seed noise is not the whole story, and it is the smaller half.** These
++blocks hold the item set fixed, so the spread above is seed resampling
++alone. The item set is itself a sample: the binomial standard error of an
++accuracy near 0.78 on 98 items is about 0.042, twice the seed noise. A win
++that survives a fresh seed block has been shown to be more than a lucky
++draw; it has not been shown to generalize to items the suite does not
++contain. Those are two different claims and a confirmation stage can only
++support the first.
++
++**The movement is concentrated, not evenly spread.** 24 of 98 items changed
++their answer across blocks, and the mean within-item top-share range is
++0.126 — one draw in eight at `N = 8`. By family:
++
++| Family | Items | Changed answer | Any movement | Mean top-share range |
++| --- | --- | --- | --- | --- |
++| `routing` | 50 | 5 | 11 | 0.050 |
++| `urgency` | 30 | 7 | 19 | 0.175 |
++| `severity` | 18 | 12 | 16 | 0.257 |
++
++Thirty-nine of the fifty `routing` items, including the headline item above,
++return the same unanimous answer in all eight blocks, while two thirds of
++the `severity` items answer differently depending on the seeds. This is the
++same shape the behavior record found in
++[`2026-09-19-behavior.md`](2026-09-19-behavior.md): the model is either
++unanimous or genuinely undecided, with little in between. Suite-level noise
++comes from a minority of items flipping, not from every item wobbling, so a
++suite weighted toward one family carries a different noise floor from this
++one. A threshold derived here applies to this suite at this mix.
++
++**Block 0 was a slightly unlucky draw.** Its accuracy, 0.765, sits below the
++eight-block mean of 0.781 and near the bottom of the range. Every published
++Lev number rests on that block. It is not wrong — it is one honest draw —
++but it is a draw, and the record should be read as 0.78 plus or minus 0.02
++rather than as a property of the door.

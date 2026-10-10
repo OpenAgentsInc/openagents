@@ -1,0 +1,476 @@
+diff --git a/crates/physics/src/body.rs b/crates/physics/src/body.rs
+index 1a7c2ae0baa519cf49f7af73ef2d55b26efaf861..21251ee2f6aa33fc09f9f8cf45541c3c90ad09d5 100644
+--- a/crates/physics/src/body.rs
++++ b/crates/physics/src/body.rs
+@@ -50,6 +50,10 @@ pub struct Body {
+     /// How long the body has been slow enough to sleep, s.
+     #[serde(default)]
+     pub sleep_time: f64,
++    /// Removed from its world with [`crate::World::remove_body`]: fixed,
++    /// without colliders or joints, and outside momentum sums.
++    #[serde(default)]
++    pub removed: bool,
+ }
+ 
+ impl Body {
+@@ -70,6 +74,7 @@ impl Body {
+             torque: DVec3::ZERO,
+             sleeping: false,
+             sleep_time: 0.0,
++            removed: false,
+         }
+     }
+ 
+diff --git a/crates/physics/src/contact.rs b/crates/physics/src/contact.rs
+index 2108970647e5e5d6e0998f3a26c99e3594f04a2e..2bc354ee29d08c11cb3cb58d9cfd333e3087f4a0 100644
+--- a/crates/physics/src/contact.rs
++++ b/crates/physics/src/contact.rs
+@@ -4,6 +4,10 @@
+ //! and torsional friction about the normal (Genesis
+ //! `examples/rigid/friction_breakaway.py`, `torsional_grasp.py`).
+ //!
++//! Each contact point starts from the impulses it carried last step (warm
++//! starting, matched by collider pair and position), so tall stacks converge
++//! and settle instead of creeping.
++//!
+ //! Impulses act equally and oppositely at each contact point, so contacts
+ //! between moving bodies conserve linear and angular momentum.
+ 
+@@ -45,6 +49,22 @@ impl Default for SolverSettings {
+     }
+ }
+ 
++/// A contact point's accumulated impulses from the last step, kept to warm
++/// start the next one. Matched by collider pair and position.
++#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
++pub struct WarmContact {
++    pub a: ColliderId,
++    pub b: ColliderId,
++    pub point: DVec3,
++    pub normal: f64,
++    /// World-frame tangential impulse, so it survives a change of basis.
++    pub tangent: DVec3,
++    pub twist: f64,
++}
++
++/// A cached contact matches a new one within this distance, m.
++const WARM_RADIUS: f64 = 0.02;
++
+ /// What one contact point did in the last step.
+ #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+ pub struct ContactReport {
+@@ -362,6 +382,15 @@ impl World {
+                 let tangents = basis(c.normal);
+                 let twist_k = c.normal.dot(ma.inverse_inertia * c.normal)
+                     + c.normal.dot(mb.inverse_inertia * c.normal);
++                // Warm start from last step's nearest point on this pair.
++                let warm = self
++                    .warm
++                    .iter()
++                    .filter(|w| w.a == manifold.a && w.b == manifold.b)
++                    .map(|w| (w.point.distance_squared(c.point), w))
++                    .filter(|(d, _)| *d <= WARM_RADIUS * WARM_RADIUS)
++                    .min_by(|x, y| x.0.total_cmp(&y.0))
++                    .map(|(_, w)| *w);
+                 rows.push(Row {
+                     a,
+                     b,
+@@ -378,9 +407,11 @@ impl World {
+                     target,
+                     friction,
+                     torsional,
+-                    normal_impulse: 0.0,
+-                    tangent_impulse: [0.0; 2],
+-                    twist_impulse: 0.0,
++                    normal_impulse: warm.map_or(0.0, |w| w.normal),
++                    tangent_impulse: warm.map_or([0.0; 2], |w| {
++                        [w.tangent.dot(tangents[0]), w.tangent.dot(tangents[1])]
++                    }),
++                    twist_impulse: warm.map_or(0.0, |w| w.twist),
+                     report: ContactReport {
+                         a: manifold.a,
+                         b: manifold.b,
+@@ -395,6 +426,18 @@ impl World {
+                 });
+             }
+         }
++        // Apply the warm-start impulses before iterating; the iterations can
++        // take them back, since each row's accumulated impulse starts there.
++        for row in &rows {
++            let impulse = row.normal * row.normal_impulse
++                + row.tangents[0] * row.tangent_impulse[0]
++                + row.tangents[1] * row.tangent_impulse[1];
++            motions[row.a].push(-impulse, row.ra);
++            motions[row.b].push(impulse, row.rb);
++            let twist = row.normal * row.twist_impulse;
++            motions[row.a].twist(-twist);
++            motions[row.b].twist(twist);
++        }
+         let (mut tethers, mut blocks) = self.joint_groups(&motions, dt);
+         for _ in 0..settings.iterations {
+             for block in &mut blocks {
+@@ -470,6 +513,18 @@ impl World {
+                 body.omega = body.orientation.inverse() * motion.omega;
+             }
+         }
++        self.warm = rows
++            .iter()
++            .map(|row| WarmContact {
++                a: row.report.a,
++                b: row.report.b,
++                point: row.report.point,
++                normal: row.normal_impulse,
++                tangent: row.tangents[0] * row.tangent_impulse[0]
++                    + row.tangents[1] * row.tangent_impulse[1],
++                twist: row.twist_impulse,
++            })
++            .collect();
+         rows.into_iter()
+             .map(|row| ContactReport {
+                 impulse: row.normal * row.normal_impulse
+diff --git a/crates/physics/src/thrusters.rs b/crates/physics/src/thrusters.rs
+index 38515a2cce8e13d31db6c1c7191c1a7e719286a2..acc2aeef1f655365456fcb763b3ff18837b3405c 100644
+--- a/crates/physics/src/thrusters.rs
++++ b/crates/physics/src/thrusters.rs
+@@ -39,7 +39,7 @@ pub struct ThrusterSet {
+ /// deterministic.
+ const SWEEPS: usize = 256;
+ /// Linear fuel penalty in the first allocation phase, relative to the
+-/// largest thruster column's squared norm.
++/// largest thruster column's norm times the size of the request.
+ const FUEL_WEIGHT: f64 = 0.01;
+ 
+ impl ThrusterSet {
+@@ -112,7 +112,11 @@ impl ThrusterSet {
+         let mut throttles = vec![0.0; columns.len()];
+         let mut residual = [force, torque / arm];
+         let mut active = vec![true; columns.len()];
+-        for penalty in [FUEL_WEIGHT * biggest, 0.0] {
++        // The fuel penalty scales with the request, so a small request is
++        // treated like a large one instead of falling under a fixed
++        // threshold.
++        let request = (residual[0].length_squared() + residual[1].length_squared()).sqrt();
++        for penalty in [FUEL_WEIGHT * biggest.sqrt() * request, 0.0] {
+             for _ in 0..SWEEPS {
+                 let mut moved: f64 = 0.0;
+                 for ((u, c), on) in throttles.iter_mut().zip(&columns).zip(&active) {
+diff --git a/crates/physics/src/world.rs b/crates/physics/src/world.rs
+index 395eafed70cca773ed42069a5bb04d5f0a57b4c0..b39600f8f8b9d7462812a5045e0cb09d3c169a97 100644
+--- a/crates/physics/src/world.rs
++++ b/crates/physics/src/world.rs
+@@ -11,7 +11,8 @@ use crate::contact::{ContactReport, SolverSettings};
+ use crate::joint::Joint;
+ use crate::ledger::Momentum;
+ 
+-/// Index of a body in its world. Bodies are never removed, so ids stay valid.
++/// Index of a body in its world. Removing a body leaves its slot in place,
++/// so ids stay valid and are never reused.
+ #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+ pub struct BodyId(pub u32);
+ 
+@@ -72,6 +73,10 @@ pub struct World {
+     /// What each contact point did in the last step.
+     #[serde(skip)]
+     pub contacts: Vec<ContactReport>,
++    /// Last step's contact impulses, which warm start the next step's
++    /// solve. Saved with the world so a restored world continues exactly.
++    #[serde(default)]
++    pub(crate) warm: Vec<crate::contact::WarmContact>,
+     /// Bodies put to sleep in the last step, with the momentum about the
+     /// world origin that stopping them removed (tiny, and taken up by the
+     /// fixed bodies the island rests on).
+@@ -143,6 +148,7 @@ impl World {
+             joints: Vec::new(),
+             sleep: SleepSettings::default(),
+             contacts: Vec::new(),
++            warm: Vec::new(),
+             slept: Vec::new(),
+             stats: StepStats::default(),
+         }
+@@ -213,6 +219,7 @@ impl World {
+             Vec::new()
+         } else {
+             let base = self.solver.margin;
++            self.wake_near_kinematic(base);
+             let bodies = &self.bodies;
+             manifolds = self.detect(&|a, b| {
+                 let reach = |c: &Collider| {
+@@ -250,6 +257,33 @@ impl World {
+         self.stats.total = started.elapsed();
+     }
+ 
++    /// Remove a body: it becomes fixed and inert, its colliders stop
++    /// colliding, and its joints are removed, waking what they held. Its id
++    /// stays valid and is not reused.
++    pub fn remove_body(&mut self, id: BodyId) {
++        let joints: Vec<crate::joint::JointId> = self
++            .joints()
++            .filter(|(_, j)| j.a == id || j.b == id)
++            .map(|(joint, _)| joint)
++            .collect();
++        for joint in joints {
++            self.remove_joint(joint);
++        }
++        for collider in &mut self.colliders {
++            if collider.body == id {
++                collider.filter = crate::collision::Filter::NONE;
++            }
++        }
++        let body = &mut self[id];
++        body.kind = BodyKind::Static;
++        body.vel = DVec3::ZERO;
++        body.omega = DVec3::ZERO;
++        body.force = DVec3::ZERO;
++        body.torque = DVec3::ZERO;
++        body.sleeping = false;
++        body.removed = true;
++    }
++
+     /// Wake a body.
+     pub fn wake(&mut self, id: BodyId) {
+         self[id].wake();
+@@ -278,15 +312,61 @@ impl World {
+         );
+         for (a, b) in pairs {
+             for (sleeper, other) in [(a, b), (b, a)] {
+-                let other_body = &self.bodies[other];
+-                if self.bodies[sleeper].sleeping && other_body.responds() && self.moving(other_body)
+-                {
++                if self.bodies[sleeper].sleeping && self.pushes(other) {
+                     self.bodies[sleeper].wake();
+                 }
+             }
+         }
+     }
+ 
++    /// Whether body `i` can disturb a sleeper: an awake dynamic body that is
++    /// moving, or a kinematic body its owner is moving.
++    fn pushes(&self, i: usize) -> bool {
++        let body = &self.bodies[i];
++        match body.kind {
++            BodyKind::Dynamic => body.responds() && self.moving(body),
++            BodyKind::Kinematic => body.vel != DVec3::ZERO || body.omega != DVec3::ZERO,
++            BodyKind::Static => false,
++        }
++    }
++
++    /// Wake sleepers whose colliders come within `margin` of a moving
++    /// kinematic body's. Detection skips pairs where neither side can
++    /// respond, so without this a scripted body would pass through a
++    /// sleeper instead of pushing it.
++    fn wake_near_kinematic(&mut self, margin: f64) {
++        let movers: Vec<usize> = (0..self.bodies.len())
++            .filter(|&i| self.bodies[i].kind == BodyKind::Kinematic && self.pushes(i))
++            .collect();
++        if movers.is_empty() {
++            return;
++        }
++        let bound = |c: &Collider, world: &Self| (c.pose(world).0, c.shape.bound());
++        let mut wake = Vec::new();
++        for mover in &self.colliders {
++            if !movers.contains(&(mover.body.0 as usize)) {
++                continue;
++            }
++            let (pa, ra) = bound(mover, self);
++            let reach = self[mover.body].vel.length() * self.dt + margin;
++            for other in &self.colliders {
++                if other.body == mover.body
++                    || !self[other.body].sleeping
++                    || !mover.filter.allows(other.filter)
++                {
++                    continue;
++                }
++                let (pb, rb) = bound(other, self);
++                if pa.distance(pb) <= ra + rb + reach {
++                    wake.push(other.body);
++                }
++            }
++        }
++        for id in wake {
++            self[id].wake();
++        }
++    }
++
+     /// Advance sleep timers and put settled islands to sleep.
+     fn settle(&mut self, manifolds: &[crate::collision::Manifold]) {
+         let n = self.bodies.len();
+diff --git a/crates/verse-lagrange/examples/step_budget.rs b/crates/verse-lagrange/examples/step_budget.rs
+index 0ba7a59635efa4c737b13e3f47d2dff0f77c0d77..83abfe5d66a35f17e9fff50ec461b434657312c1 100644
+--- a/crates/verse-lagrange/examples/step_budget.rs
++++ b/crates/verse-lagrange/examples/step_budget.rs
+@@ -38,10 +38,15 @@ fn main() {
+     let steps = 30 * 120;
+     let mut times = Vec::with_capacity(steps);
+     let mut contacts = 0;
++    let (mut detect, mut solve, mut world_total) = (0.0, 0.0, 0.0);
+     for _ in 0..steps {
+         let start = Instant::now();
+         station.advance(&command);
+         times.push(start.elapsed().as_secs_f64() * 1_000.0);
++        let st = station.world.stats;
++        detect += st.detect.as_secs_f64();
++        solve += st.solve.as_secs_f64();
++        world_total += st.total.as_secs_f64();
+         contacts = contacts.max(station.world.contacts.len());
+     }
+     times.sort_by(f64::total_cmp);
+@@ -55,4 +60,11 @@ fn main() {
+         at(1.0),
+         station.world.stats.awake
+     );
++    let per_step = |seconds: f64| seconds * 1_000.0 / steps as f64;
++    println!(
++        "rigid-body world: {:.3} ms per step (detect {:.3}, solve {:.3}); the rest is the station's own work",
++        per_step(world_total),
++        per_step(detect),
++        per_step(solve)
++    );
+ }
+diff --git a/crates/verse/src/zones/lab/scenes.rs b/crates/verse/src/zones/lab/scenes.rs
+index a3c4fecb173a67f30709a517572c25865127cb88..8f03cce6764ef6201501e717e05546bd9fd33ab0 100644
+--- a/crates/verse/src/zones/lab/scenes.rs
++++ b/crates/verse/src/zones/lab/scenes.rs
+@@ -209,7 +209,7 @@ const STACK_KNOBS: &[KnobDef] = &[
+         id: "count",
+         label: "Boxes",
+         options: &[1.0, 3.0, 5.0, 8.0, 12.0],
+-        default: 1,
++        default: 2,
+         live: false,
+         format: plain,
+     },
+@@ -917,9 +917,8 @@ impl Scene {
+                     set: ThrusterSet::box_corners(half, 25.0),
+                     throttles: vec![0.0; 24],
+                     position: Pid::new(4.0, 0.4, 4.0),
+-                    // Stiff enough that errors above about a degree clear the
+-                    // allocator's fuel deadband. No integral: it winds up
+-                    // while recovering from a tumble.
++                    // No integral: it winds up while recovering from a
++                    // tumble.
+                     attitude: Pid::new(64.0, 0.0, 16.0),
+                     home,
+                     target: (home, 0.0),
+@@ -984,9 +983,6 @@ impl Scene {
+                 if t >= settle {
+                     let mu = v("friction");
+                     *load = v("load") * mu * self.world[*block].mass * G;
+-                    // A pushed body is not at rest; `apply_force` alone
+-                    // does not wake a sleeper.
+-                    self.world.wake(*block);
+                     self.world[*block].apply_force(DVec3::X * *load);
+                     if start.is_none() {
+                         *start = Some(self.world[*block].pos);
+@@ -1003,7 +999,6 @@ impl Scene {
+             } => {
+                 if t >= 0.5 {
+                     *torque = v("torque");
+-                    self.world.wake(*ball);
+                     self.world[*ball].apply_torque(DVec3::Y * *torque);
+                     if start.is_none() {
+                         *start = Some(self.world[*ball].orientation);
+@@ -1057,7 +1052,7 @@ impl Scene {
+                 self.world.sleep.enabled = sleep;
+                 step_world(&mut self.world, gravity);
+             }
+-            Rig::SoftGrip { hand, part, joint } => {
++            Rig::SoftGrip { hand, joint, .. } => {
+                 // The hand holds still for two seconds, then sways.
+                 let omega = std::f64::consts::TAU / 4.0;
+                 let sway = if t >= 2.0 {
+@@ -1066,11 +1061,6 @@ impl Scene {
+                     0.0
+                 };
+                 self.world[*hand].vel = DVec3::X * sway;
+-                // A moving kinematic body does not wake a sleeper joined to
+-                // it, so the hand wakes its part itself.
+-                if sway != 0.0 {
+-                    self.world.wake(*part);
+-                }
+                 if let Some(joint) = self.world.joint_mut(*joint) {
+                     joint.spring = Some(physics::Spring {
+                         frequency: std::f64::consts::TAU * v("frequency"),
+@@ -1138,7 +1128,6 @@ impl Scene {
+                 // Body-frame torque from the principal inertia.
+                 let torque = body.inertia * (body.orientation.inverse() * spin);
+                 *throttles = set.allocate(force, torque);
+-                self.world.wake(*craft);
+                 set.apply(&mut self.world[*craft], throttles);
+                 step_world(&mut self.world, gravity);
+             }
+diff --git a/docs/physics/2026-09-27-genesis-port-roadmap.md b/docs/physics/2026-09-27-genesis-port-roadmap.md
+index 0bd07099213e43f484cd297c4472cf8c97055091..63637ba263695b129edce1934fb04045ddec1d8a 100644
+--- a/docs/physics/2026-09-27-genesis-port-roadmap.md
++++ b/docs/physics/2026-09-27-genesis-port-roadmap.md
+@@ -17,7 +17,9 @@ consumer: GP-0 `ade3d61631`, GP-1 `56a2664a94`, GP-2 `e098cd7363`, GP-3
+ - **Budget.** `cargo run --release -p verse-lagrange --example step_budget`
+   runs 30 s of a busy scene: the astronaut carrying the engine under thrust
+   and attitude control while five parts strike the station. On an Apple M5 Max
+-  a step takes 0.018 ms on average and 0.054 ms at worst. The budget is 1 ms
++  a step took 0.018 ms on average and 0.054 ms at worst when GP-8 landed. After
++  the ropes, plume impingement, and flexing arrays of #9801, it takes about
++  0.28 ms, of which the rigid-body world is 0.012 ms. The budget is 1 ms
+   per step on the slowest supported phone; the phone measurement is pending
+   with the owner (the **Forces** overlay shows the step time on device).
+ - **Randomized invariants.** Seeded tests vary mass, inertia, shape, center
+diff --git a/docs/verse/physics-lab.md b/docs/verse/physics-lab.md
+index 10e0587329caf0fdc287cca533d913f1dc6ef862..417d6d4cb4afedd0480d0e34ceaea186fb941457 100644
+--- a/docs/verse/physics-lab.md
++++ b/docs/verse/physics-lab.md
+@@ -126,35 +126,27 @@ With **Overlay** on, the lab draws the lines from `World::debug_lines`:
+ contact normals (magenta), contact impulses (yellow), joints (green, or red at
+ their limit), plus a cross at each contact point and joint anchor.
+ 
+-## Physics API gaps and findings
+-
+-The lab uses `crates/physics` as it stands on `main` and does not change it.
+-It works around these gaps in the zone:
+-
+-- **Detection needs a responding body.** `World::detect` skips pairs in which
+-  neither body can respond. The manifold scenario scripts a dynamic stand-in
+-  that it never steps, as the crate's own manifold test does.
+-- **Loads do not wake sleepers.** `Body::apply_force` and `Body::apply_torque`
+-  on a sleeping body are ignored. The lab wakes each body it pushes (the
+-  friction box, the torsion ball, and the craft) every step.
+-- **Moving kinematic bodies do not wake sleepers.** A sleeper joined to a
+-  moving kinematic body stays asleep, because only an awake dynamic body wakes
+-  what it touches. The soft grip's part slept while the hand was still and then
+-  stayed put as the hand swung away. The lab wakes the part while the hand
+-  moves.
+-- **The thruster allocator has a deadband.** Its first-phase fuel penalty
+-  returns zero throttles for small requests: below roughly 0.3 N·m of torque
+-  on the lab's craft. A soft attitude loop stalls several degrees off target, and an
+-  integral term winds up during tumble recovery and then cancels the
+-  proportional term. The lab uses stiff proportional-derivative gains, which
+-  leave about 1° of error.
+-- **Tall stacks creep in yaw.** A straight stack of five 0.4 m boxes rotates
+-  about the vertical at about 0.02 rad/s at the default settings. That rate
+-  sits at the sleep threshold, so the stack never sleeps. A stack of three
+-  sleeps. The stack scenario starts with three boxes; choose five or more to
+-  see the creep.
+-- **Bodies cannot be removed.** Scenarios that fire or drop objects on a loop
+-  rebuild the world instead.
++## Physics API notes
++
++The lab uses `crates/physics` as it stands on `main`. Building it surfaced
++gaps that are now fixed in the crate
++([#9827](https://github.com/OpenAgentsInc/openagents/issues/9827)):
++
++- A moving kinematic body wakes the sleepers it touches or holds, so the soft
++  grip's part follows the swaying hand.
++- The thruster allocator scales its fuel penalty with the request, so small
++  torques are met; the craft holds attitude within 0.3°.
++- Contacts warm start from the last step, so tall stacks settle and sleep. The
++  stack scenario starts with five boxes; eight also sleep.
++- `World::remove_body` takes a body out of collisions, joints, and momentum.
++  The looping scenarios still rebuild their world, which also resets their
++  timing.
++
++Forces and torques applied through `Body::apply_force` and
++`Body::apply_torque` wake a sleeper; the lab relies on that. One constraint
++remains by design: `World::detect` skips pairs in which neither body can
++respond, so the manifold scenario scripts a dynamic stand-in that it never
++steps, as the crate's own manifold test does.
+ 
+ ## Tests and capture
+ 

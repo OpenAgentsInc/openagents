@@ -1,0 +1,25 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 11108,
+  "title": "Coder and agents keep the project board's Status in step when they claim and close issues",
+  "body": "Owner, 2026-10-09: #11087 closed but stayed 'In Progress' on project 22. When Coder (openagents chat \"work on #N\") or our agents claim an issue it should set the issue's project Status to In Progress on every project the issue is in, Blocked with a reason when it waits on the owner, and Done when it closes. Until then scripts/dev/project-status-sync.sh fixes drift, and the project's built-in 'Item closed \u2192 Done' workflow should be enabled (NEEDS_OWNER).",
+  "fix": "0224c0474b450fde54c05be321196867cc255619",
+  "parent": "b50bc2ceb867df6eaa5c78a13d13e484494dbeb2",
+  "package": "coder",
+  "source_files": [
+    "AGENTS.md",
+    "crates/coder/src/claim.rs",
+    "scripts/dev/issue-board.sh",
+    "scripts/dev/issue-board.test.sh"
+  ],
+  "test_files": [
+    "crates/coder/src/claim_tests.rs"
+  ],
+  "test_names": [
+    "blocked_says_why_and_moves_to_blocked_keeping_the_claim",
+    "the_rest_answers_find_the_issue_its_status_and_options"
+  ],
+  "fix_lines": 505
+}

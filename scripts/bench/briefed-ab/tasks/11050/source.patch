@@ -1,0 +1,351 @@
+diff --git a/crates/openagents-web/src/chat_store.rs b/crates/openagents-web/src/chat_store.rs
+index a5b764b03f5dabad55c274d631c800ddddedb9f5..b4f05ef028b05bad9c58941c616c70127f14ca71 100644
+--- a/crates/openagents-web/src/chat_store.rs
++++ b/crates/openagents-web/src/chat_store.rs
+@@ -96,8 +96,19 @@ pub(crate) struct Terminal {
+     /// isn't queued twice. At most [`MAX_REPLY_IDS`].
+     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+     pub reply_ids: Vec<String>,
++    /// Messages added on the website while the computer was offline: the
++    /// person's words and the answers of runs on a Cloud computer
++    /// (#11050). Coder's own copy doesn't have them, so each upload keeps
++    /// them after Coder's transcript. At most [`MAX_CONTINUED`].
++    #[serde(default, skip_serializing_if = "Vec::is_empty")]
++    pub continued: Vec<Message>,
+ }
+ 
++/// The most messages a Coder chat keeps from runs on a Cloud computer.
++pub(crate) const MAX_CONTINUED: usize = 64;
++/// The longest such message, in bytes (an answer is cut to fit).
++pub(crate) const MAX_CONTINUED_BYTES: usize = 256 * 1024;
++
+ /// A reply typed on the website for a Coder chat (#11048).
+ #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+ #[serde(deny_unknown_fields)]
+@@ -246,6 +257,9 @@ pub(crate) struct ChatTask {
+ #[serde(rename_all = "lowercase")]
+ pub(crate) enum TaskKind {
+     Claude,
++    /// A Coder chat continued on a Cloud computer while its own computer
++    /// was offline (#11050): the run's answer joins the transcript.
++    Continue,
+ }
+ 
+ /// A task's last known state, as the run reports it.
+@@ -332,7 +346,7 @@ pub(crate) struct CloudRequest {
+     pub request: String,
+ }
+ 
+-#[derive(Clone, Debug, Serialize, Deserialize)]
++#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+ pub(crate) struct Message {
+     pub role: Role,
+     pub text: String,
+@@ -890,6 +904,7 @@ impl Store {
+             terminal.working_unix = None;
+             terminal.replies.clear();
+             terminal.reply_ids.clear();
++            terminal.continued.clear();
+             terminal.deleted_unix = Some(now_unix());
+         }
+         self.compare_and_swap(loaded, &next).await.map(|_| true)
+@@ -1539,6 +1554,11 @@ fn validate_conversation(conversation: &Conversation) -> Result<(), Error> {
+             })
+             || terminal.reply_ids.len() > MAX_REPLY_IDS
+             || !terminal.reply_ids.iter().all(|id| valid_id(id))
++            || terminal.continued.len() > MAX_CONTINUED
++            || terminal
++                .continued
++                .iter()
++                .any(|message| message.text.len() > MAX_CONTINUED_BYTES)
+             || !conversation.requests.is_empty()
+             || conversation.pending.is_some())
+     {
+diff --git a/crates/openagents-web/src/coder_sync.rs b/crates/openagents-web/src/coder_sync.rs
+index 222e4a5ad27160def714de185b1ed5bf7f1438f6..b26133fd29c5a9ad89d9b2d13570ecd515128700 100644
+--- a/crates/openagents-web/src/coder_sync.rs
++++ b/crates/openagents-web/src/coder_sync.rs
+@@ -244,6 +244,7 @@ pub(crate) async fn save(
+                     deleted_unix: None,
+                     replies: Vec::new(),
+                     reply_ids: Vec::new(),
++                    continued: Vec::new(),
+                 }),
+                 environment: None,
+                 tasks: Vec::new(),
+@@ -277,7 +278,7 @@ pub(crate) async fn save(
+         if current.title == terminal.title {
+             next.title = title.clone();
+         }
+-        next.messages = messages.clone();
++        next.messages = with_continued(&messages, terminal);
+         next.revision += 1;
+         next.updated_unix = now_unix();
+         if let Some(terminal) = &mut next.terminal {
+@@ -299,6 +300,18 @@ pub(crate) async fn save(
+     Err(Error::Conflict)
+ }
+ 
++/// Coder's transcript, then the messages added on the website by runs on
++/// a Cloud computer (#11050), which Coder's own copy doesn't have, newest
++/// [`MAX_MESSAGES`] kept.
++fn with_continued(messages: &[Message], terminal: &Terminal) -> Vec<Message> {
++    let mut all = messages.to_vec();
++    all.extend(terminal.continued.iter().cloned());
++    if all.len() > MAX_MESSAGES {
++        all.drain(..all.len() - MAX_MESSAGES);
++    }
++    all
++}
++
+ /// Coder says it is replying (`working`) or idle.
+ pub(crate) async fn set_status(
+     store: &Store,
+diff --git a/crates/openagents-web/src/lib.rs b/crates/openagents-web/src/lib.rs
+index 820323572e27826874682a2ffc1a581aaac1abbc..c8212369ba00fc79b232fbff93da6b572c71dd74 100644
+--- a/crates/openagents-web/src/lib.rs
++++ b/crates/openagents-web/src/lib.rs
+@@ -268,7 +268,9 @@ async fn guard(hosts: Hosts, mut request: Request, next: Next) -> Response {
+         || path == "/environments"
+         || path.starts_with("/environments/")
+         // Running Claude Code in an environment from a chat (#11037).
+-        || (path.starts_with("/chat/") && path.ends_with("/claude"));
++        || (path.starts_with("/chat/") && path.ends_with("/claude"))
++        // Continuing a Coder chat on a Cloud computer (#11050).
++        || (path.starts_with("/chat/") && path.ends_with("/continue"));
+     // Intake requests can carry contact content. An unconfigured host must
+     // refuse them locally rather than forwarding them to another service.
+     let intake = path == "/pilot" || path.starts_with("/pilot/");
+diff --git a/crates/openagents-web/src/pages/chat.rs b/crates/openagents-web/src/pages/chat.rs
+index 0c9fc074ef78506c494b3cd3ef1d6cef764433c4..16786c3f864a687bcbf68de77e4a234c4b6da25b 100644
+--- a/crates/openagents-web/src/pages/chat.rs
++++ b/crates/openagents-web/src/pages/chat.rs
+@@ -56,6 +56,7 @@ pub(crate) fn routes() -> Router<App> {
+         .merge(delete_all::routes())
+         .merge(live::routes())
+         .merge(work::routes())
++        .merge(continued::routes())
+         .layer(DefaultBodyLimit::max(64 * 1024))
+ }
+ 
+@@ -475,8 +476,9 @@ async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
+ /// A chat synced from Coder (#11047): the transcript, and a composer
+ /// whose replies Coder on that computer takes and answers (#11048) while
+ /// it is online ([`crate::coder_sync::online`]); otherwise one line saying
+-/// where it runs. Rows are plain links here, since a web chat can't load
+-/// into this composer.
++/// where it runs, and, when the chat's project has a saved environment,
++/// Continue on a Cloud computer (#11050, [`continued`]). Rows are plain
++/// links here, since a web chat can't load into this composer.
+ async fn show_terminal(
+     app: &App,
+     headers: &HeaderMap,
+@@ -484,17 +486,15 @@ async fn show_terminal(
+     computer: &str,
+ ) -> Response {
+     let id = &chat.id;
+-    let online = app
+-        .config
+-        .chat_store
+-        .computers(&chat.owner)
+-        .await
+-        .is_ok_and(|computers| crate::coder_sync::online(&computers, computer));
++    let online = continued::online(app, chat).await;
+     let dock = if online {
+         terminal_composer(app, chat, computer)
++    } else if continued::offer(app, headers, chat, online).await.is_some() {
++        html! { (terminal_note(computer)) (continued::button(chat)) }
+     } else {
+         terminal_note(computer)
+     };
++    let links = work::links(app, headers);
+     let page = UiPage::new(chat.title.clone())
+         .path(format!("/chat/{id}"))
+         .app()
+@@ -502,7 +502,7 @@ async fn show_terminal(
+         .head(crate::chat_html::head())
+         .sidebar_section(chat_list(app, &chat.owner, Some(id.as_str()), false, false).await)
+         .content(html! {
+-            div #chat-content.oa-thread-view hx-history="false" { (content(chat, None, html! {}, false)) }
++            div #chat-content.oa-thread-view hx-history="false" { (content(chat, None, html! {}, links)) }
+         })
+         .composer(dock);
+     crate::chat_html::protect(page.respond(headers))
+diff --git a/crates/openagents-web/src/pages/chat_work.rs b/crates/openagents-web/src/pages/chat_work.rs
+index 9a0f6f2b485790d574d125f40c3f7356923045b6..043b124a79e670f8fc382358c47862592223d703 100644
+--- a/crates/openagents-web/src/pages/chat_work.rs
++++ b/crates/openagents-web/src/pages/chat_work.rs
+@@ -70,7 +70,7 @@ pub(super) struct Offer {
+ }
+ 
+ impl Offer {
+-    fn label(&self) -> String {
++    pub(super) fn label(&self) -> String {
+         match self.version {
+             Some(n) => format!("{} v{n}", self.repository),
+             None => self.repository.clone(),
+@@ -80,7 +80,10 @@ impl Offer {
+ 
+ /// The repository a chat is about: its project's, else the one its
+ /// composer selected.
+-fn repository<'a>(chat: &'a Conversation, projects: Option<&'a Sidebar>) -> Option<&'a str> {
++pub(super) fn repository<'a>(
++    chat: &'a Conversation,
++    projects: Option<&'a Sidebar>,
++) -> Option<&'a str> {
+     chat.project
+         .as_deref()
+         .and_then(|id| projects?.project(id))
+@@ -222,6 +225,14 @@ fn status(state: TaskState) -> TaskStatus {
+     }
+ }
+ 
++/// What a task row is called.
++fn task_label(kind: TaskKind) -> &'static str {
++    match kind {
++        TaskKind::Claude => "Claude Code",
++        TaskKind::Continue => "Cloud computer",
++    }
++}
++
+ /// The tasks that started after the chat's first `at` messages, as rows.
+ /// `links` adds each run's address (see [`links`]).
+ pub(super) fn rows(chat: &Conversation, at: usize, links: bool) -> Markup {
+@@ -233,7 +244,7 @@ pub(super) fn rows(chat: &Conversation, at: usize, links: bool) -> Markup {
+     };
+     html! {
+         @for task in chat.tasks.iter().filter(|task| task.after_message.min(count) == at) {
+-            @let row = TaskRow::new("Claude Code", status(task.state))
++            @let row = TaskRow::new(task_label(task.kind), status(task.state))
+                 .detail(task.title.clone())
+                 .id(format!("chat-task-{}", task.id));
+             @if links && !gone(task) {
+@@ -256,28 +267,49 @@ pub(super) fn state(run: RunState) -> TaskState {
+     }
+ }
+ 
+-/// The chat with its unfinished tasks' states as `read` reports them
+-/// (state and version), or `None` when nothing changed. A run `read` can't
+-/// find keeps its last state.
++/// What reading a run found.
++#[derive(Clone, Debug, PartialEq, Eq)]
++pub(super) struct Seen {
++    pub state: TaskState,
++    pub version: Option<u64>,
++    /// Claude Code's answer, once it has one.
++    pub reply: Option<String>,
++}
++
++/// The chat with its unfinished tasks' states as `read` reports them, or
++/// `None` when nothing changed. A run `read` can't find keeps its last
++/// state. A Coder chat continued on a Cloud computer (#11050) gets the
++/// run's answer as its next message when the run is done, in the same
++/// write, so the answer lands once.
+ pub(super) fn observe(
+     chat: &Conversation,
+-    read: impl Fn(&str, &str) -> Option<(TaskState, Option<u64>)>,
++    read: impl Fn(&str, &str) -> Option<Seen>,
+ ) -> Option<Conversation> {
+     let mut next = chat.clone();
+     let mut changed = false;
++    let mut answers = Vec::new();
+     for task in next.tasks.iter_mut().filter(|task| !task.state.finished()) {
+-        let Some((state, version)) = read(&task.environment, &task.id) else {
++        let Some(seen) = read(&task.environment, &task.id) else {
+             continue;
+         };
+-        if task.state != state {
+-            task.state = state;
++        if task.state != seen.state {
++            task.state = seen.state;
+             changed = true;
++            if task.kind == TaskKind::Continue
++                && seen.state == TaskState::Done
++                && let Some(reply) = seen.reply.filter(|reply| !reply.trim().is_empty())
++            {
++                answers.push(reply);
++            }
+         }
+-        if version.is_some() && task.version != version {
+-            task.version = version;
++        if seen.version.is_some() && task.version != seen.version {
++            task.version = seen.version;
+             changed = true;
+         }
+     }
++    for answer in answers {
++        super::continued::add_message(&mut next, Role::Assistant, &answer);
++    }
+     changed.then_some(next)
+ }
+ 
+@@ -291,9 +323,11 @@ pub(super) async fn sync(app: &App, loaded: Loaded) -> Loaded {
+         return loaded;
+     }
+     let Some(mut next) = observe(&loaded.conversation, |environment, run| {
+-        studio
+-            .claude_run(environment, run)
+-            .map(|run| (state(run.state), run.version))
++        studio.claude_run(environment, run).map(|run| Seen {
++            state: state(run.state),
++            version: run.version,
++            reply: run.reply.or_else(|| said(&run.events)),
++        })
+     }) else {
+         return loaded;
+     };
+@@ -306,9 +340,22 @@ pub(super) async fn sync(app: &App, loaded: Loaded) -> Loaded {
+     }
+ }
+ 
++/// What Claude Code said last in a run's events, when the run recorded no
++/// answer of its own.
++fn said(events: &[serde_json::Value]) -> Option<String> {
++    use coder_environment_operator::studio::claude::{Step, transcript};
++    transcript(events)
++        .into_iter()
++        .rev()
++        .find_map(|step| match step {
++            Step::Said(text) if !text.trim().is_empty() => Some(text),
++            _ => None,
++        })
++}
++
+ /// Follows the chat's running tasks until they finish, writing each change
+ /// (so the sidebar and the chat update with nobody watching the run).
+-fn watch(app: App, owner: String, id: String) {
++pub(super) fn watch(app: App, owner: String, id: String) {
+     tokio::spawn(async move {
+         let ends = tokio::time::Instant::now() + Duration::from_secs(RUN_SECONDS + 900);
+         while tokio::time::Instant::now() < ends {
+@@ -326,7 +373,7 @@ fn watch(app: App, owner: String, id: String) {
+ }
+ 
+ /// A task's title: the prompt's first line, cut.
+-fn title(prompt: &str) -> String {
++pub(super) fn title(prompt: &str) -> String {
+     let line = prompt
+         .lines()
+         .map(str::trim)
+diff --git a/docs/web/sidebar.md b/docs/web/sidebar.md
+index 69c920a312b90d5ebb382b692dfb9560dbef4f15..0e02e02345112083cf602003cb02f9f09dfd48ba 100644
+--- a/docs/web/sidebar.md
++++ b/docs/web/sidebar.md
+@@ -72,8 +72,15 @@ acme/storefront · fix-login · Node 20 v3
+   on <computer>.") until Coder takes it, runs the turn there, and syncs the
+   answer back (#11048). Otherwise "This chat runs in Coder on <computer>.
+   To reply here, open Coder there with /sync on." stands in place of the
+-  composer. Deleting it on the web deletes it in Coder the next time Coder
+-  checks.
++  composer. When the chat is in a project whose repository has a saved
++  environment (local address, environments and an Anthropic key set up,
++  like #11037), the offline note adds **Continue on a Cloud computer**
++  (`/chat/{id}/continue`, #11050, `pages/chat_continued.rs`): the person's
++  message joins the chat, Claude Code runs in that environment's saved
++  version with the chat so far in its prompt, the thread shows a "Cloud
++  computer" task row, and the run's answer joins the chat when it is done.
++  Coder's next upload keeps those messages after its own transcript.
++  Deleting it on the web deletes it in Coder the next time Coder checks.
+ - Long-running tasks (phase 3) add a thin progress line under the row only
+   when the task reports steps ("3 of 7"); never a fake percentage.
+ - Collapsed to the rail (or the closed narrow panel), rows hide like other

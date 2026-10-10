@@ -1,0 +1,41 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 11212,
+  "title": "Claude Agent SDK (Rust): parity with TS SDK 0.3.296",
+  "body": "Bring `crates/claude_agent_sdk` from TS Claude Agent SDK 0.3.289 to 0.3.296 (Claude Code 2.1.296).\n\nPort every wire, type, and option change in the 0.3.290 to 0.3.296 CHANGELOG: `claude_code_version` in the initialize response, `autoCompactWindow` on AgentDefinition, `overageEnabled` on rate-limit info, subagent `agent_id`, task `run_id` and `parent_task_id`, the `--flag=value` argument form, sandbox merge semantics, and the 4,096 `updatedPermissions` denial rule. Update `UPSTREAM_SDK_VERSION`, PARITY.md, and the README; `scripts/check-claude-sdk-parity.sh latest` must exit 0.\n",
+  "fix": "bce6f4f2128809e15c96bd6e8a59b2a6fadce43d",
+  "parent": "8c0a84a9ef7e548e6e4118a77e5c813e22a0ccf9",
+  "package": "claude_agent_sdk",
+  "source_files": [
+    "crates/claude_agent_sdk/PARITY.md",
+    "crates/claude_agent_sdk/README.md",
+    "crates/claude_agent_sdk/examples/smoke.rs",
+    "crates/claude_agent_sdk/src/lib.rs",
+    "crates/claude_agent_sdk/src/options.rs",
+    "crates/claude_agent_sdk/src/protocol/control.rs",
+    "crates/claude_agent_sdk/src/protocol/messages.rs",
+    "crates/claude_agent_sdk/src/query.rs"
+  ],
+  "test_files": [
+    "crates/claude_agent_sdk/src/protocol/tests.rs",
+    "crates/claude_agent_sdk/src/query.rs",
+    "crates/microcoder/src/repository/claude_sdk.rs"
+  ],
+  "test_names": [
+    "agent_definition_carries_auto_compact_window",
+    "an_oversized_permission_answer_goes_out_as_a_deny",
+    "build_args_send_values_in_the_flag_argument_as_0_3_295_does",
+    "sandbox_option_merges_into_an_inline_settings_sandbox_block",
+    "sandbox_option_merges_into_inline_json_settings_text",
+    "test_0_3_292_subagent_messages_carry_agent_id",
+    "test_0_3_292_task_events_carry_run_and_parent_ids",
+    "test_0_3_295_oversized_updated_permissions_become_a_deny",
+    "test_0_3_295_rate_limit_overage_fields",
+    "test_0_3_295_text_block_citations_survive",
+    "test_0_3_296_startup_failure_reasons_stay_typed",
+    "test_inbound_user_messages_parse_typed_and_round_trip"
+  ],
+  "fix_lines": 1057
+}

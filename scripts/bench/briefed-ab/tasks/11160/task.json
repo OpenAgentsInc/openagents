@@ -1,0 +1,26 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 11160,
+  "title": "API keys: scopes people can set (picker on Settings, scopes on key creation, narrow default)",
+  "body": "`tenancy::keys` supports `scopes {models, actions}` (actions checked: inference, models, balance, billing, accounts), but the website's key form and the API make only unscoped keys, and the action names don't cover traces, keys, runs, or plugins.\n\nFix: the public scope set in docs/api/design.md section 2.7 (responses, models:read, usage:read, traces, threads, runs, plugins, keys, billing, workspace), mapped from today's actions; a picker on Settings, API keys; `scopes` on `POST /v1/workspaces/{ws}/keys`; new keys default to `responses models:read usage:read`; existing keys keep working.\n\nSee docs/api/design.md, section 2.7, section 6 item 6, section 8 step 4.\n",
+  "fix": "4896c2dd83481e5db29e7d81ab0183d800e0070c",
+  "parent": "4ac0edb20d5a32a31b31e4bde455e05cba8d5781",
+  "package": "tenancy",
+  "source_files": [
+    "crates/gateway/src/accounts.rs",
+    "crates/gateway/src/inference_openapi.rs",
+    "crates/jev/src/account_management.rs",
+    "crates/jev/src/lib.rs",
+    "crates/openagents-web/src/api_keys.rs",
+    "crates/tenancy/src/keys.rs"
+  ],
+  "test_files": [
+    "crates/tenancy/src/keys.rs"
+  ],
+  "test_names": [
+    "public_scope_names_admit_the_service_actions_they_stand_for"
+  ],
+  "fix_lines": 349
+}

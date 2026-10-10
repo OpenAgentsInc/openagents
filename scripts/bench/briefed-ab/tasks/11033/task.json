@@ -1,0 +1,28 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 11033,
+  "title": "Web sidebar: a second line and a status on chat rows",
+  "body": "Design: [docs/web/sidebar.md](https://github.com/OpenAgentsInc/openagents/blob/main/docs/web/sidebar.md) (phase 1).\n\nChat rows in the web sidebar show only a title. Give each row a quiet second line and a small status, using data that already exists.\n\n**Scope**\n- `openagents-ui`: `NavItem::detail(text)` renders a second line under the label (ellipsis, tertiary text); new `shell::ChatStatus` (Working, Waiting for you, Paused until <time>, Done, Failed) renders a dot plus words at the row's end. CSS in `static/components/shell.css`, catalog specimen, tests.\n- `openagents-web` `pages::chat::chat_list`: line 2 = `repository \u00b7 branch` from the chat's `Selection::repository`; status = Working while `pending` is set, Failed when the last request's outcome is `failed`, otherwise nothing.\n\n**Acceptance**\n- A chat started with a repository selected shows `owner/repo \u00b7 branch` under its title; a chat without one has no second line.\n- A chat with an answer in progress shows \"Working\" (pulsing dot, static under reduced motion); a failed last answer shows \"Failed\".\n- The collapsed rail and the closed narrow panel hide both lines, as they hide labels today.\n- `cargo test -p openagents-ui` and the chat page tests pass; the copy guard passes.\n",
+  "fix": "d8a4ac810d124817da97df6b89bf08390b490208",
+  "parent": "1bbecb68227d8460f8b87e2f5a3bfdf89b0861fc",
+  "package": "openagents-ui",
+  "source_files": [
+    "crates/openagents-ui/src/catalog/shell.rs",
+    "crates/openagents-ui/src/shell/layout.rs",
+    "crates/openagents-ui/src/shell/mod.rs",
+    "crates/openagents-ui/src/shell/status.rs",
+    "crates/openagents-ui/static/components/shell.css",
+    "crates/openagents-web/src/pages/chat.rs"
+  ],
+  "test_files": [
+    "crates/openagents-ui/src/shell/tests.rs",
+    "crates/openagents-web/src/pages/chat_tests.rs"
+  ],
+  "test_names": [
+    "chat_rows_carry_a_detail_line_and_a_plain_status",
+    "sidebar_rows_show_the_repository_and_a_plain_status"
+  ],
+  "fix_lines": 308
+}

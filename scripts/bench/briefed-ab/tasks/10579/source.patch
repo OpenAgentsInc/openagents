@@ -1,0 +1,1251 @@
+diff --git a/bins/openagents-android/host/app/src/main/java/com/openagents/app/MainActivity.kt b/bins/openagents-android/host/app/src/main/java/com/openagents/app/MainActivity.kt
+index 6c2eaa9b75de3460bfff6823077498e14b4c0152..f72e42c22c530ffb170140f0082df6afb41e3d78 100644
+--- a/bins/openagents-android/host/app/src/main/java/com/openagents/app/MainActivity.kt
++++ b/bins/openagents-android/host/app/src/main/java/com/openagents/app/MainActivity.kt
+@@ -146,6 +146,7 @@ class MainActivity : ComponentActivity() {
+     private lateinit var worldRetry: TextView
+     private lateinit var worldControls: LinearLayout
+     private lateinit var panels: VersePanels
++    private lateinit var studio: VerseStudio
+ 
+     private var cameraCallback: ((Boolean) -> Unit)? = null
+     private val cameraPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+@@ -250,6 +251,7 @@ class MainActivity : ComponentActivity() {
+             val density = resources.displayMetrics.density
+             world.setHudInsets(bars.top / density, 0f, 0f, 0f)
+             panels.setTopInset(bars.top)
++            studio.setTopInset(bars.top)
+             WindowInsetsCompat.CONSUMED
+         }
+ 
+@@ -261,6 +263,7 @@ class MainActivity : ComponentActivity() {
+                         bridge.packet?.objectOrNull("computers_home") == null -> bridge.computersGo("home")
+                     tab == AppTab.ACCOUNT && route != null -> open(null)
+                     tab == AppTab.VERSE && panels.showing -> panels.back()
++                    tab == AppTab.VERSE && studio.showing -> studio.back()
+                     tab != AppTab.CODER -> select(AppTab.CODER)
+                     else -> { isEnabled = false; onBackPressedDispatcher.onBackPressed(); isEnabled = true }
+                 }
+@@ -380,6 +383,7 @@ class MainActivity : ComponentActivity() {
+         val gymPreview = BuildConfig.DEBUG && intent.getBooleanExtra("gym_preview", false)
+         world = VerseSurface(this, gymPreview, xpPreview) { packet, _ ->
+             if (::panels.isInitialized) panels.update(packet)
++            if (::studio.isInitialized) studio.update(packet)
+             if (tab == AppTab.VERSE) renderVerse()
+         }
+         if (BuildConfig.DEBUG) intent.getStringExtra("verse_script")?.let { world.script = VerseScript.parse(it) }
+@@ -406,6 +410,9 @@ class MainActivity : ComponentActivity() {
+         worldControls = controls
+         page.addView(controls, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
+             setMargins(dp(16), dp(16), dp(16), dp(16)) })
++        // Everglade's studio: its connection line, Interact, and panel.
++        studio = VerseStudio(this, world, { bridge.studioComputer() }) { host, done -> bridge.studioLinks(host, done) }
++        page.addView(studio.root, FrameLayout.LayoutParams(-1, -1))
+         page.addView(panels.root, FrameLayout.LayoutParams(-1, -1))
+     }
+ 
+@@ -417,7 +424,8 @@ class MainActivity : ComponentActivity() {
+         cameraButton.alpha = if (world.motionAvailable) 1f else 0.4f
+         // The Gym and results panels show their own errors and hide the
+         // camera controls.
+-        worldControls.visibility = if (panels.showing) View.GONE else View.VISIBLE
++        worldControls.visibility = if (panels.showing || studio.showing) View.GONE else View.VISIBLE
++        studio.setBoardOpen(panels.showing)
+         val problem = world.nativeError ?: world.snapshot?.textOrNull("error") ?: world.motionError
+         worldStatus.text = problem ?: ""
+         worldStatus.visibility = if (problem == null) View.GONE else View.VISIBLE
+@@ -720,6 +728,8 @@ class MainActivity : ComponentActivity() {
+             }
+         }
+         val packet = bridge.packet
++        // A computer that comes online connects Everglade's studio.
++        if (::studio.isInitialized) studio.sync()
+         if (::connect.isInitialized) connect.update(packet?.objectOrNull("connect"))
+         mount(coderRenderer, coderContent, fixture ?: packet?.objectOrNull("coder"))
+         renderGym(packet?.objectOrNull("gym"))
+diff --git a/bins/openagents-android/host/app/src/main/java/com/openagents/app/MobileBridge.kt b/bins/openagents-android/host/app/src/main/java/com/openagents/app/MobileBridge.kt
+index 531f41b0351dd3f9828cb229e2076a12183b1b62..6d20119728a423a1c98e6b23f8a8b2d3d4f2a679 100644
+--- a/bins/openagents-android/host/app/src/main/java/com/openagents/app/MobileBridge.kt
++++ b/bins/openagents-android/host/app/src/main/java/com/openagents/app/MobileBridge.kt
+@@ -375,6 +375,32 @@ class MobileBridge(private val context: Context, private val computersFixture: B
+     fun refreshComputers() = send(json("op" to "computers_refresh"))
+     fun snapshot() = send(json("op" to "snapshot"))
+ 
++    /**
++     * The paired computer Everglade's studio acts through: the first one the
++     * Computers list shows online, as its host key and name.
++     */
++    fun studioComputer(): Pair<String, String>? {
++        val rows = packet?.objectOrNull("computers_home")?.optJSONArray("rows") ?: return null
++        return rows.objects().firstOrNull { it.optString("tone") == "online" }
++            ?.let { it.getString("host") to it.optString("name") }
++    }
++
++    /**
++     * Takes the app's link to the paired computer [host] for the studio, on
++     * the worker, and hands [done] its token on the main thread (null when
++     * the app is not running). The Verse surface connects with it.
++     */
++    fun studioLinks(host: String, done: (Long?) -> Unit) {
++        if (disposed) return done(null)
++        worker.execute {
++            val token = runCatching {
++                check(handle != 0L) { failure ?: "OpenAgents has not started." }
++                OpenAgentsNative.studioLinks(handle, host)
++            }.getOrNull()
++            main.post { if (!disposed) done(token) }
++        }
++    }
++
+     /** An activation on a surface: `computers`, `coder`, `tailnet`, or `terminal`. */
+     fun activate(surface: String, view: JSONObject, node: String) =
+         send(json("op" to "${surface}_activate", "instance" to view.getString("instance"),
+diff --git a/bins/openagents-android/host/app/src/main/java/com/openagents/app/OpenAgentsNative.kt b/bins/openagents-android/host/app/src/main/java/com/openagents/app/OpenAgentsNative.kt
+index 9b6287193b1f389753b55ee180f7ae653e64ee6d..becc56f8011191af8b769dcc6c04aa8af0528308 100644
+--- a/bins/openagents-android/host/app/src/main/java/com/openagents/app/OpenAgentsNative.kt
++++ b/bins/openagents-android/host/app/src/main/java/com/openagents/app/OpenAgentsNative.kt
+@@ -32,4 +32,15 @@ object OpenAgentsNative {
+     @JvmStatic external fun verseDetach(handle: Long)
+     @JvmStatic external fun verseCall(handle: Long, request: String): String
+     @JvmStatic external fun verseDestroy(handle: Long)
++    /**
++     * On the app worker: takes the app's link to the paired computer [host]
++     * for Everglade's studio and answers a token for [verseStudioConnect].
++     */
++    @JvmStatic external fun studioLinks(handle: Long, host: String): Long
++    /**
++     * On the main thread: connects the world's studio through the link taken
++     * under [token]. Answers `{"connected":true,"rights":[...]}` or
++     * `{"connected":false,"error":"..."}`.
++     */
++    @JvmStatic external fun verseStudioConnect(handle: Long, token: Long): String
+ }
+diff --git a/bins/openagents-android/host/app/src/main/java/com/openagents/app/VerseScript.kt b/bins/openagents-android/host/app/src/main/java/com/openagents/app/VerseScript.kt
+index 24aa98ef1662ac054b9c8d8ab12f0a79f3e4b581..e5dd4e0429055d1ac18317ab23d886977cef9eb9 100644
+--- a/bins/openagents-android/host/app/src/main/java/com/openagents/app/VerseScript.kt
++++ b/bins/openagents-android/host/app/src/main/java/com/openagents/app/VerseScript.kt
+@@ -10,9 +10,11 @@ import org.json.JSONObject
+  * `look` drags the view, `turn` holds the look stick right, `walkpinch`
+  * holds the stick while two other fingers pinch in, `board` and `results`
+  * tap the Gym's boards where the last packet placed them, `r=do:value`
+- * sends a results choice, `gym` asks for the Gym board, and `wait` does
+- * nothing. Each step runs for 90 frames after a one-second settle. Debug
+- * builds only.
++ * sends a results choice, `gym` asks for the Gym board, `everglade` enters
++ * Everglade, `station=podium` stands at that station, `interact` sends
++ * Everglade's Interact, `s=text` sends text into the open studio panel,
++ * `closestudio` closes it, and `wait` does nothing. Each step runs for 90
++ * frames after a one-second settle. Debug builds only.
+  */
+ class VerseScript private constructor(private val steps: ArrayDeque<String>) {
+     private var frame = 0
+@@ -60,6 +62,11 @@ class VerseScript private constructor(private val steps: ArrayDeque<String>) {
+             current == "board" -> tap(world.snapshot?.objectOrNull("gym"))
+             current == "results" -> tap(world.snapshot?.objectOrNull("results"))
+             current == "gym" -> if (t == 0) world.send(json("action" to "interact_gym"))
++            current == "everglade" -> if (t == 0) world.send(json("action" to "enter_everglade"))
++            current == "interact" -> if (t == 0) world.send(json("action" to "zone", "intent" to "interact"))
++            current == "closestudio" -> if (t == 0) world.send(json("action" to "close_studio"))
++            current.startsWith("station=") -> if (t == 0) world.send(json("action" to "go_station", "station" to current.removePrefix("station=")))
++            current.startsWith("s=") -> if (t == 0) world.send(json("action" to "studio_text", "text" to current.removePrefix("s=")))
+             current.startsWith("r=") -> if (t == 0) world.results(command(current.removePrefix("r=")))
+         }
+         if (t >= 89) { steps.removeFirst(); frame = 30 }
+diff --git a/bins/openagents-android/host/app/src/main/java/com/openagents/app/VerseStudio.kt b/bins/openagents-android/host/app/src/main/java/com/openagents/app/VerseStudio.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..d18d35c4aef5bd8beabd6a3d3cc4632120331098
+--- /dev/null
++++ b/bins/openagents-android/host/app/src/main/java/com/openagents/app/VerseStudio.kt
+@@ -0,0 +1,222 @@
++// Everglade's Agent Studio on the Verse tab, as in the iOS Verse tab: one
++// line about the studio's connection to a paired computer, Interact while a
++// station is in reach, and the station's panel, which Rust draws as a Rust
++// Native view, with a field whose text Rust sends as the panel says. Rust
++// owns the panel, the grant's rights, and every intent; this only connects
++// the studio, mounts the view, and forwards activations and text.
++package com.openagents.app
++
++import android.content.Context
++import android.os.Handler
++import android.os.Looper
++import android.text.InputType
++import android.view.Gravity
++import android.view.View
++import android.view.inputmethod.InputMethodManager
++import android.widget.EditText
++import android.widget.FrameLayout
++import android.widget.LinearLayout
++import org.json.JSONObject
++
++class VerseStudio(
++    private val context: Context,
++    private val world: VerseSurface,
++    /** The paired computer the studio acts through, as its host key and name. */
++    private val computer: () -> Pair<String, String>?,
++    /** Takes the app's link to a computer on the app worker (`MobileBridge.studioLinks`). */
++    private val links: (String, (Long?) -> Unit) -> Unit,
++) {
++    private val main = Handler(Looper.getMainLooper())
++    /** Fills the Verse page; only its children take touches. */
++    val root = FrameLayout(context)
++    private val panel = context.column().apply {
++        setPadding(context.dp(12), context.dp(10), context.dp(12), context.dp(12))
++        background = context.rounded(0xF70A0A0A.toInt(), 16f, 0x8CFFFFFF.toInt())
++        isClickable = true // Touches on the panel stay off the world.
++        visibility = View.GONE
++        tag = "verse-studio-panel"
++    }
++    private val content = FrameLayout(context)
++    private val renderer = NativeRenderer(context, { view, node -> activate(view, node) })
++    private val loading = context.label("Loading studio…", 14f, Palette.SECONDARY, key = "verse-studio-loading")
++    private val error = context.label("", 13f, Palette.SECONDARY, key = "verse-studio-error").apply { visibility = View.GONE }
++    private val field = EditText(context).apply {
++        hint = "Answer or message"
++        setTextColor(Palette.PRIMARY); setHintTextColor(Palette.SECONDARY)
++        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
++        maxLines = 4
++        background = context.rounded(Palette.RAISED, 10f, Palette.BORDER)
++        setPadding(context.dp(10), context.dp(8), context.dp(10), context.dp(8))
++        tag = "verse-studio-text"
++    }
++    private val send = context.pill("Send", "verse-studio-send", primary = true) { sendText() }
++    private val interact = context.pill("Interact", "verse-interact") {
++        world.send(json("action" to "zone", "intent" to "interact"))
++    }.apply { visibility = View.GONE }
++    private val statusText = context.label("", 12f, Palette.SECONDARY, key = "verse-studio-status")
++    private val retry = context.label("Try again", 12f, Palette.PRIMARY, key = "verse-studio-retry", bold = true).apply {
++        setPadding(context.dp(10), 0, 0, 0)
++        setOnClickListener { attempt = null; failed = false; sync() }
++    }
++    private val status = context.row().apply {
++        gravity = Gravity.CENTER_VERTICAL
++        background = context.rounded(0x8C000000.toInt(), 14f)
++        setPadding(context.dp(12), context.dp(6), context.dp(12), context.dp(6))
++        visibility = View.GONE
++        addView(statusText); addView(retry)
++    }
++
++    private var open = false
++    private var view: JSONObject? = null
++    private var requested = -1L
++    private var interactLabel: String? = null
++    private var inEverglade = false
++    private var statusLine: String? = null
++    private var failed = false
++    /** The computer and world handle the studio connected through, or last failed with. */
++    private var attempt: String? = null
++    private var connecting = false
++    private var insetTop = 0
++    private var boardOpen = false
++
++    /** The studio panel covers the world. */
++    val showing get() = open
++
++    init {
++        val composer = context.row().apply { gravity = Gravity.BOTTOM }
++        composer.addView(field, LinearLayout.LayoutParams(0, -2, 1f))
++        composer.addView(send, LinearLayout.LayoutParams(-2, -2).apply { marginStart = context.dp(8) })
++        panel.addView(content, LinearLayout.LayoutParams(-1, 0, 1f))
++        panel.addView(error, LinearLayout.LayoutParams(-1, -2).apply { topMargin = context.dp(6) })
++        panel.addView(composer, LinearLayout.LayoutParams(-1, -2).apply { topMargin = context.dp(8) })
++        root.addView(panel, FrameLayout.LayoutParams(-1, -1))
++        root.addView(status, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL))
++        root.addView(interact, FrameLayout.LayoutParams(-2, -2, Gravity.END or Gravity.CENTER_VERTICAL).apply {
++            marginEnd = context.dp(16) })
++        place()
++    }
++
++    fun setTopInset(value: Int) { if (insetTop != value) { insetTop = value; place() } }
++
++    private fun place() {
++        val margin = context.dp(12)
++        (panel.layoutParams as FrameLayout.LayoutParams).apply {
++            setMargins(margin, insetTop + margin, margin, context.dp(16))
++            panel.layoutParams = this
++        }
++        (status.layoutParams as FrameLayout.LayoutParams).apply {
++            topMargin = insetTop + margin
++            status.layoutParams = this
++        }
++    }
++
++    /** The system Back gesture closes the panel. */
++    fun back() { world.send(json("action" to "close_studio")) }
++
++    /** Applies a world packet. */
++    fun update(packet: JSONObject?) {
++        packet ?: return
++        val zone = packet.objectOrNull("zone")
++        val everglade = zone != null && zone.optString("id") == "everglade" && zone.optString("state") == "idle"
++        interactLabel = zone?.optJSONArray("controls")?.objects()
++            ?.firstOrNull { it.optString("action") == "interact" && it.optBoolean("enabled") }
++            ?.optString("label")
++        val nextOpen = packet.optBoolean("studio_open")
++        if (!nextOpen) { view = null; requested = -1 }
++        else packet.objectOrNull("studio_view")?.takeIf { it.optString("schema") == "rust-native.view.v2" }
++            ?.let { view = it; requested = it.optLong("revision") }
++        // Rust rebuilds the panel as the studio changes; a frame carries only
++        // its revision, so ask for the view when it changed.
++        if (nextOpen) {
++            val revision = packet.optLong("studio_revision", -1)
++            if (revision >= 0 && view?.optLong("revision") != revision && requested != revision) {
++                requested = revision
++                main.post { if (open) world.send(json("action" to "studio_view")) }
++            }
++        }
++        if (nextOpen != open) {
++            open = nextOpen
++            panel.visibility = if (open) View.VISIBLE else View.GONE
++            if (!open) {
++                renderer.clear(); content.removeAllViews(); field.setText("")
++                context.getSystemService(InputMethodManager::class.java)?.hideSoftInputFromWindow(field.windowToken, 0)
++            }
++        }
++        if (open) {
++            val shown = view
++            try {
++                if (shown != null) renderer.mount(content, shown)
++                else if (loading.parent == null) { renderer.clear(); content.removeAllViews(); content.addView(loading) }
++            } catch (failure: Exception) {
++                renderer.clear(); content.removeAllViews()
++                content.addView(context.label(failure.message ?: "This panel couldn't be shown.", 14f, Palette.SECONDARY))
++            }
++            val problem = packet.textOrNull("error")
++            error.text = problem ?: ""
++            error.visibility = if (problem == null) View.GONE else View.VISIBLE
++        }
++        if (everglade != inEverglade) { inEverglade = everglade; sync() }
++        render()
++    }
++
++    /** Whether the Gym's boards' panels are open, which hide the studio's controls. */
++    fun setBoardOpen(value: Boolean) { if (boardOpen != value) { boardOpen = value; render() } }
++
++    private fun render() {
++        val label = interactLabel
++        interact.visibility = if (label != null && !open && !boardOpen) View.VISIBLE else View.GONE
++        if (label != null) {
++            interact.text = label
++            interact.contentDescription = "Interact: $label. Opens this station's studio panel."
++        }
++        val line = statusLine
++        status.visibility = if (inEverglade && line != null && !open && !boardOpen) View.VISIBLE else View.GONE
++        statusText.text = line ?: ""
++        retry.visibility = if (failed) View.VISIBLE else View.GONE
++    }
++
++    /**
++     * Connects Everglade's studio to the paired computer while the player is
++     * in Everglade, once per computer and world. Rust answers the grant's
++     * rights, or why it could not connect.
++     */
++    fun sync() {
++        val handle = world.handleId
++        if (!inEverglade || connecting || handle == 0L) return
++        val target = computer()
++        if (target == null) {
++            if (attempt == null) say("No computer is online for the studio. Check Account > Computers.", false)
++            return
++        }
++        val key = "${target.first}@$handle"
++        if (key == attempt) return
++        attempt = key; connecting = true
++        say("Connecting the studio to ${target.second}…", false)
++        links(target.first) { token ->
++            connecting = false
++            val reply = token?.let { world.connectStudio(it) }
++            if (reply?.optBoolean("connected") == true) {
++                val rights = reply.optJSONArray("rights")?.let { list ->
++                    (0 until list.length()).joinToString(", ") { list.getString(it) }
++                }.orEmpty()
++                say("Studio on ${target.second}" + if (rights.isEmpty()) "" else ": $rights", false)
++            } else {
++                say(reply?.textOrNull("error") ?: "The studio couldn't connect to ${target.second}.", true)
++            }
++        }
++    }
++
++    private fun say(line: String, failure: Boolean) { statusLine = line; failed = failure; render() }
++
++    private fun activate(view: JSONObject, node: String) {
++        world.send(json("action" to "studio_activate", "instance" to view.getString("instance"),
++            "revision" to view.getLong("revision"), "node" to node))
++    }
++
++    private fun sendText() {
++        val text = field.text.toString().trim()
++        if (text.isEmpty() || text.toByteArray().size > 60_000) return
++        val result = world.send(json("action" to "studio_text", "text" to text))
++        if (result != null && result.textOrNull("error") == null) field.setText("")
++    }
++}
+diff --git a/bins/openagents-android/host/app/src/main/java/com/openagents/app/VerseSurface.kt b/bins/openagents-android/host/app/src/main/java/com/openagents/app/VerseSurface.kt
+index 7055e11a4b14ad4c087c7f703ab6dbd16db7c949..89b6c893e36df39187357d0639fdc693c664a40b 100644
+--- a/bins/openagents-android/host/app/src/main/java/com/openagents/app/VerseSurface.kt
++++ b/bins/openagents-android/host/app/src/main/java/com/openagents/app/VerseSurface.kt
+@@ -172,8 +172,13 @@ class VerseSurface(context: Context, private val gymPreview: Boolean, private va
+         if (handle == 0L) return null
+         return try {
+             val encoded = request.toString()
+-            // A Gym connection code is the one large request.
+-            val limit = if (request.optString("action") == "gym_configure") 98_304 else 4096
++            // A Gym connection code and a plan typed at the podium are the
++            // large requests.
++            val limit = when (request.optString("action")) {
++                "gym_configure" -> 98_304
++                "studio_text" -> 65_536
++                else -> 4096
++            }
+             require(encoded.toByteArray().size <= limit) { "The world request is too large." }
+             val result = packet(OpenAgentsNative.verseCall(handle, encoded), "coder.verse.v1")
+             require(result.getJSONArray("position").length() == 3 &&
+@@ -236,6 +241,20 @@ class VerseSurface(context: Context, private val gymPreview: Boolean, private va
+         return true
+     }
+ 
++    /** The world's Rust handle ID, or 0 before it starts; a new world gets a new ID. */
++    val handleId get() = handle
++
++    /**
++     * Connects the world's Everglade studio through the computer link the app
++     * worker took under [token] (`MobileBridge.studioLinks`). Answers Rust's
++     * reply: the grant's rights, or why it could not connect.
++     */
++    fun connectStudio(token: Long): JSONObject? {
++        if (handle == 0L || disposed) return null
++        return try { JSONObject(OpenAgentsNative.verseStudioConnect(handle, token)) }
++        catch (failure: Exception) { json("connected" to false, "error" to (failure.message ?: "The studio couldn't connect.")) }
++    }
++
+     /** Walks into the Gym and opens its EVALS board on the next frame. */
+     fun goToEvals() { pendingEvals = true; if (running) send(json("action" to "go_evals")).also { pendingEvals = it?.optBoolean("evals_open") != true } }
+     private var pendingEvals = false
+diff --git a/bins/openagents-ios/host/App/AppTabs.swift b/bins/openagents-ios/host/App/AppTabs.swift
+index f37c9dd0264a8480b875c30452eb45292e3dd700..7a45e756ebcc89d8918ae44165d84d65203687d8 100644
+--- a/bins/openagents-ios/host/App/AppTabs.swift
++++ b/bins/openagents-ios/host/App/AppTabs.swift
+@@ -92,7 +92,8 @@ struct AppTabs: View {
+         TabView(selection: $tab) {
+             CoderTab(bridge: bridge)
+                 .tabIcon(.coder)
+-            VerseTab(selected: tab == .verse) { bridge.gymTrain() }
++            VerseTab(selected: tab == .verse, studioComputer: bridge.studioComputer,
++                     connectStudio: bridge.studioConnect) { bridge.gymTrain() }
+                 .tabIcon(.verse)
+             WalletTab(bridge: bridge)
+                 .tabIcon(.wallet)
+diff --git a/bins/openagents-ios/host/App/MobileBridge.swift b/bins/openagents-ios/host/App/MobileBridge.swift
+index d7c4831841edf4e1ce3aed4c47c3dca672dd6695..1accae4c089a27f03a99f82f044e37cf2c08abf2 100644
+--- a/bins/openagents-ios/host/App/MobileBridge.swift
++++ b/bins/openagents-ios/host/App/MobileBridge.swift
+@@ -97,6 +97,13 @@ struct ComputersHome: Decodable, Equatable {
+     let add_other: String
+ }
+ 
++/// A paired computer Everglade's studio can act through: its host key and
++/// its name on the Computers list.
++struct StudioComputer: Equatable {
++    let host: String
++    let name: String
++}
++
+ /// Account > Your keys (BYOK, #10176), as Rust shows it. Never a key: each
+ /// row has its last four characters and its last test.
+ struct ProviderKeysState: Decodable, Equatable {
+@@ -584,6 +591,40 @@ final class MobileBridge: ObservableObject {
+         send(["op": "\(surface)_activate", "instance": view.instance, "revision": view.revision, "node": node])
+     }
+ 
++    /// The paired computer Everglade's studio acts through: the first
++    /// computer the Computers list shows online, with its name.
++    var studioComputer: StudioComputer? {
++        packet?.computers_home?.rows.first { $0.tone == "online" }
++            .map { StudioComputer(host: $0.host, name: $0.name) }
++    }
++
++    /// Connects the Verse world's Everglade studio to the paired computer
++    /// `host` (`openagents_verse_studio_connect`). The call needs the app
++    /// handle with no other call running and the Verse handle on the main
++    /// thread, so it holds this bridge's queue and runs on the main thread.
++    /// `verse` answers the world's live handle then, or nil once it is gone.
++    /// `done` gets Rust's JSON reply on the main thread, or nil.
++    func studioConnect(host: String, verse: @escaping () -> UnsafeMutableRawPointer?,
++                       done: @escaping (Data?) -> Void) {
++        let key = Data(host.utf8)
++        guard let handle, !key.isEmpty, key.count <= 256 else { return done(nil) }
++        queue.async {
++            let data: Data? = DispatchQueue.main.sync {
++                MainActor.assumeIsolated {
++                    guard let world = verse() else { return nil }
++                    return key.withUnsafeBytes { bytes -> Data? in
++                        let buffer = openagents_verse_studio_connect(
++                            world, handle, bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count)
++                        defer { openagents_mobile_buffer_free(buffer) }
++                        guard let pointer = buffer.data, buffer.len > 0 else { return nil }
++                        return Data(bytes: pointer, count: buffer.len)
++                    }
++                }
++            }
++            DispatchQueue.main.async { done(data) }
++        }
++    }
++
+     /// Hand Rust the Spark wallet's seed from Keychain. Rust ignores a
+     /// repeat. The Mutinynet test wallet's key, which this replaced, is
+     /// deleted.
+diff --git a/bins/openagents-ios/host/App/OpenAgentsMobile.h b/bins/openagents-ios/host/App/OpenAgentsMobile.h
+index 7b9c124e601c9b06f079ee08b5be187e21b2c92e..1eefda41c44b8104500c8bebc6a5c0e976858709 100644
+--- a/bins/openagents-ios/host/App/OpenAgentsMobile.h
++++ b/bins/openagents-ios/host/App/OpenAgentsMobile.h
+@@ -44,5 +44,11 @@ void *openagents_verse_create(void *layer, const uint8_t *configuration, size_t
+ OpenAgentsMobileBuffer openagents_verse_create_error(void);
+ OpenAgentsMobileBuffer openagents_verse_call(void *handle, const uint8_t *request, size_t length);
+ void openagents_verse_destroy(void *handle);
++// Connects the world's Everglade studio to the paired computer whose host key
++// is the UTF-8 `host`, under the grant the app handle holds for it. Answers
++// {"connected":true,"rights":[...]} or {"connected":false,"error":"..."}.
++// Call it on the main thread while no other call uses the app handle.
++OpenAgentsMobileBuffer openagents_verse_studio_connect(void *verse, void *app, const uint8_t *host,
++                                                       size_t length);
+ 
+ #endif
+diff --git a/bins/openagents-ios/host/App/VerseTab.swift b/bins/openagents-ios/host/App/VerseTab.swift
+index d783eebdfdcc8f665a4105f960880efa41bc1086..35633cb34e9a8e7ec79000d954a902abb65d45d3 100644
+--- a/bins/openagents-ios/host/App/VerseTab.swift
++++ b/bins/openagents-ios/host/App/VerseTab.swift
+@@ -62,6 +62,28 @@ struct WorldPacket: Decodable {
+     let evals_view: EvalsView?
+     /// Compare notes is on, for the host to remember.
+     let gym_notes: Bool?
++    /// The zone the player is in and the controls it offers there, such as
++    /// Everglade's Interact at a station.
++    let zone: ZonePacket?
++    /// Everglade's Agent Studio panel: open, the view revision Rust holds,
++    /// and the Rust Native view itself in answer to the studio requests.
++    let studio_open: Bool?
++    let studio_revision: UInt64?
++    let studio_view: NativeView?
++
++    struct ZonePacket: Decodable {
++        /// `plaza`, `everglade`, and so on.
++        let id: String
++        /// `idle`, `loading`, or `failed`.
++        let state: String
++        let controls: [Control]
++
++        struct Control: Decodable {
++            let label: String
++            let action: String
++            let enabled: Bool
++        }
++    }
+ 
+     struct GymPacket: Decodable {
+         let inside: Bool
+@@ -93,6 +115,13 @@ struct WorldPacket: Decodable {
+     }
+ }
+ 
++/// Rust's answer to connecting the studio: the grant's rights, or why not.
++private struct StudioConnectReply: Decodable {
++    let connected: Bool
++    let rights: [String]?
++    let error: String?
++}
++
+ /// The world connection's state: offline, paused, connecting, connected, or
+ /// retrying.
+ struct WorldConnectionPacket: Decodable {
+@@ -121,6 +150,24 @@ final class VerseWorld: ObservableObject {
+     @Published private(set) var evalsAnchor = CGPoint(x: 0.5, y: 0.5)
+     @Published private(set) var evalsView: EvalsView?
+     private var evalsRequestedRevision: UInt64?
++    /// The player is in Everglade, loaded.
++    @Published private(set) var inEverglade = false
++    /// Everglade's Interact control while a station is in reach: the label
++    /// names the station's panel, such as Decisions.
++    @Published private(set) var interactLabel: String?
++    /// Everglade's Agent Studio panel is open, with Rust's view of it.
++    @Published private(set) var studioOpen = false
++    @Published private(set) var studioView: NativeView?
++    private var studioRequestedRevision: UInt64?
++    /// One line about the studio's connection: the computer and its rights,
++    /// or why it did not connect.
++    @Published private(set) var studioStatus: String?
++    /// The last connect failed; Try again connects again.
++    @Published private(set) var studioFailed = false
++    /// The computer and world handle the studio is connected through, or
++    /// last failed with, so a frame never connects twice.
++    private var studioAttempt: String?
++    private var studioConnecting = false
+     /// Where the Compare notes switch is saved between launches.
+     static let gymNotesKey = "verse.gymNotes"
+     let motionDriver = DeviceMotionDriver(source: CoreMotionSource())
+@@ -161,6 +208,65 @@ final class VerseWorld: ObservableObject {
+     /// Walks into the Gym before the EVALS board and opens it.
+     func goToEvals() { send(["action": "go_evals"]) }
+ 
++    /// Everglade's Interact: opens the panel of the station in reach.
++    func interact() { send(["action": "zone", "intent": "interact"]) }
++
++    /// A studio panel control was activated. The event names the node only;
++    /// Rust resolves it against its current view.
++    func activateStudio(_ node: String) {
++        guard let view = studioView else { return }
++        send(["action": "studio_activate", "instance": view.instance,
++              "revision": view.revision, "node": node])
++    }
++
++    func closeStudio() { send(["action": "close_studio"]) }
++
++    /// Text typed into the open studio panel: an answer, a message, or a
++    /// change request, as the panel says. False when Rust refused it; the
++    /// reason is the world's error.
++    func studioText(_ text: String) -> Bool {
++        guard let packet = send(["action": "studio_text", "text": text]) else { return false }
++        return packet.error == nil
++    }
++
++    /// Connects Everglade's studio to `computer` while the player is in
++    /// Everglade, once per computer and world handle. Rust answers the
++    /// grant's rights or why it could not connect.
++    func syncStudio(_ computer: StudioComputer?, connect: @escaping VerseTab.StudioConnect) {
++        guard inEverglade, !studioConnecting, let handle = surface?.nativeHandle else { return }
++        guard let computer else {
++            if studioAttempt == nil {
++                studioStatus = "No computer is online for the studio. Check Account > Computers."
++            }
++            return
++        }
++        let attempt = "\(computer.host)@\(UInt(bitPattern: handle))"
++        guard attempt != studioAttempt else { return }
++        studioAttempt = attempt
++        studioConnecting = true
++        studioStatus = "Connecting the studio to \(computer.name)…"
++        connect(computer.host, { [weak self] in self?.surface?.nativeHandle }) { [weak self] data in
++            guard let self else { return }
++            self.studioConnecting = false
++            let reply = data.flatMap { try? JSONDecoder().decode(StudioConnectReply.self, from: $0) }
++            if let reply, reply.connected {
++                let rights = (reply.rights ?? []).joined(separator: ", ")
++                self.studioStatus = "Studio on \(computer.name)" + (rights.isEmpty ? "" : ": \(rights)")
++                self.studioFailed = false
++            } else {
++                self.studioStatus = reply?.error ?? "The studio could not connect to \(computer.name)."
++                self.studioFailed = true
++            }
++        }
++    }
++
++    /// Try again after a failed connect.
++    func retryStudio(_ computer: StudioComputer?, connect: @escaping VerseTab.StudioConnect) {
++        studioAttempt = nil
++        studioFailed = false
++        syncStudio(computer, connect: connect)
++    }
++
+     /// The saved Gym connection for this world key, if any.
+     func storedGymCode() -> String? {
+         do { return try VerseGymConnection.load() }
+@@ -252,6 +358,30 @@ final class VerseWorld: ObservableObject {
+                 self.send(["action": "evals_view"])
+             }
+         }
++        let zone = packet.zone
++        let everglade = zone?.id == "everglade" && zone?.state == "idle"
++        if inEverglade != everglade { inEverglade = everglade }
++        let interact = zone?.controls.first { $0.action == "interact" && $0.enabled }?.label
++        if interactLabel != interact { interactLabel = interact }
++        let studioOpen = packet.studio_open == true
++        if self.studioOpen != studioOpen { self.studioOpen = studioOpen }
++        if !studioOpen {
++            if studioView != nil { studioView = nil }
++            studioRequestedRevision = nil
++        } else if let view = packet.studio_view, view.schema == "rust-native.view.v2" {
++            studioView = view
++            studioRequestedRevision = view.revision
++        }
++        // Rust rebuilds the panel as the studio changes; a frame carries only
++        // its revision, so ask for the view when it changed.
++        if studioOpen, let revision = packet.studio_revision, studioView?.revision != revision,
++           studioRequestedRevision != revision {
++            studioRequestedRevision = revision
++            DispatchQueue.main.async { [weak self] in
++                guard let self, self.studioOpen else { return }
++                self.send(["action": "studio_view"])
++            }
++        }
+         if let notes = packet.gym_notes, UserDefaults.standard.bool(forKey: Self.gymNotesKey) != notes {
+             UserDefaults.standard.set(notes, forKey: Self.gymNotesKey)
+         }
+@@ -269,14 +399,28 @@ final class VerseWorld: ObservableObject {
+ }
+ 
+ struct VerseTab: View {
++    /// Connects the world's studio to a paired computer by host key
++    /// (`MobileBridge.studioConnect`): the host, the world's live handle
++    /// when the call runs, and Rust's JSON reply.
++    typealias StudioConnect = (String, @escaping () -> UnsafeMutableRawPointer?,
++                               @escaping (Data?) -> Void) -> Void
++
+     /// The Verse tab is selected.
+     let selected: Bool
++    /// The paired computer Everglade's studio acts through, if one is online.
++    let studioComputer: StudioComputer?
++    let connectStudio: StudioConnect
+     /// Train Coder on the Gym's board: opt into the Gym on the Chat tab.
+     let train: () -> Void
+     @StateObject private var world = VerseWorld()
+     @Environment(\.scenePhase) private var phase
++    /// What the person types into the open studio panel.
++    @State private var studioDraft = ""
++    /// How far the software keyboard reaches up from the screen's bottom.
++    @State private var keyboard: CGFloat = 0
+ 
+     private var active: Bool { selected && phase == .active }
++    private var boardOpen: Bool { world.gymOpen || world.resultsOpen || world.evalsOpen }
+ 
+     var body: some View {
+         GeometryReader { outer in
+@@ -305,18 +449,23 @@ struct VerseTab: View {
+                                     VerseEvalsPanel(world: world, train: train) { world.send(["action": "close_evals"]) }
+                                 }
+                             }.ignoresSafeArea()
++                        } else if world.studioOpen {
++                            GeometryReader { full in
++                                studioPanel(size: full.size, safe: safe)
++                            }.ignoresSafeArea()
+                         }
+                     }
+                 // Bottom center, between the movement stick at the bottom
+                 // left and the look stick at the bottom right.
+-                if !world.gymOpen && !world.resultsOpen && !world.evalsOpen {
++                if !boardOpen && !world.studioOpen {
+                     controls
+                         .padding(.bottom, 12)
+                 }
+             }
+             .overlay(alignment: .top) {
+-                // The Gym, results, and EVALS panels show their own errors.
+-                if let error = world.error, !world.gymOpen, !world.resultsOpen, !world.evalsOpen {
++                // The Gym, results, EVALS, and studio panels show their own
++                // errors.
++                if let error = world.error, !boardOpen, !world.studioOpen {
+                     VStack(spacing: 8) {
+                         Text(error).font(.callout).textSelection(.enabled)
+                             .accessibilityIdentifier("verse-error")
+@@ -324,10 +473,118 @@ struct VerseTab: View {
+                     }
+                     .padding(.top, 12)
+                     .padding(.horizontal, 16)
++                } else if world.inEverglade, !boardOpen, !world.studioOpen, let status = world.studioStatus {
++                    studioStatus(status)
++                        .padding(.top, 12)
++                        .padding(.horizontal, 16)
++                }
++            }
++            .overlay(alignment: .trailing) {
++                // Interact sits on the right edge, clear of the sticks and
++                // Everglade's hotbar, while a station is in reach.
++                if let label = world.interactLabel, !boardOpen, !world.studioOpen {
++                    Button { world.interact() } label: {
++                        Text(label).font(.callout.weight(.semibold))
++                            .padding(.horizontal, 14).padding(.vertical, 10)
++                    }
++                    .buttonStyle(.borderedProminent)
++                    .tint(.white.opacity(0.18))
++                    .disabled(!active)
++                    .accessibilityLabel("Interact: \(label)")
++                    .accessibilityHint("Opens this station's studio panel.")
++                    .accessibilityIdentifier("verse-interact")
++                    .padding(.trailing, safe.trailing + 16)
+                 }
+             }
+         }
+         .background(Color.black.ignoresSafeArea())
++        .onAppear { world.syncStudio(studioComputer, connect: connectStudio) }
++        .onChange(of: world.inEverglade) { _, _ in world.syncStudio(studioComputer, connect: connectStudio) }
++        .onChange(of: studioComputer) { _, _ in world.syncStudio(studioComputer, connect: connectStudio) }
++        .onChange(of: world.studioOpen) { _, open in if !open { studioDraft = "" } }
++        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
++            guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
++            keyboard = max(0, UIScreen.main.bounds.height - frame.minY)
++        }
++        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
++            keyboard = 0
++        }
++    }
++
++    /// The studio connection's line in Everglade, with Try again after a
++    /// failed connect.
++    private func studioStatus(_ status: String) -> some View {
++        HStack(spacing: 10) {
++            Text(status).font(.caption).foregroundStyle(.white.opacity(0.8))
++                .multilineTextAlignment(.center)
++                .accessibilityIdentifier("verse-studio-status")
++            if world.studioFailed {
++                Button("Try again") { world.retryStudio(studioComputer, connect: connectStudio) }
++                    .font(.caption.weight(.semibold))
++                    .accessibilityIdentifier("verse-studio-retry")
++            }
++        }
++        .padding(.horizontal, 12).padding(.vertical, 6)
++        .background(.black.opacity(0.55), in: Capsule())
++    }
++
++    /// Everglade's Agent Studio panel: Rust's view mounted as is, with its
++    /// own close control, and a field whose text Rust sends as the panel
++    /// says (an answer, a message, or a change request). It stays above the
++    /// keyboard.
++    private func studioPanel(size: CGSize, safe: EdgeInsets) -> some View {
++        let top = safe.top + 12
++        let bottom = max(safe.bottom, keyboard) + 16
++        let bounds = CGRect(x: safe.leading + 12, y: top,
++                            width: max(1, size.width - safe.leading - safe.trailing - 24),
++                            height: max(120, size.height - top - bottom))
++        let width = min(bounds.width, 540)
++        return VStack(spacing: 0) {
++            // The view's list scrolls its own rows.
++            Group {
++                if let view = world.studioView {
++                    NativeRenderer(node: view.root, revision: view.revision,
++                                   followTarget: nil, followChanged: nil) { key in
++                        world.activateStudio(key)
++                    }
++                } else {
++                    ProgressView("Loading studio…")
++                        .padding(.top, 24)
++                        .accessibilityIdentifier("verse-studio-loading")
++                }
++            }
++            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
++            if let error = world.error {
++                Text(error).font(.caption).foregroundStyle(.white.opacity(0.8))
++                    .frame(maxWidth: .infinity, alignment: .leading)
++                    .padding(.horizontal, 12).padding(.top, 6)
++                    .accessibilityIdentifier("verse-studio-error")
++            }
++            HStack(alignment: .bottom, spacing: 8) {
++                TextField("Answer or message", text: $studioDraft, axis: .vertical)
++                    .lineLimit(1...4)
++                    .textFieldStyle(.roundedBorder)
++                    .accessibilityIdentifier("verse-studio-text")
++                Button("Send") { sendStudioText() }
++                    .buttonStyle(.borderedProminent)
++                    .disabled(studioDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
++                    .accessibilityIdentifier("verse-studio-send")
++            }
++            .padding(10)
++        }
++        .frame(width: width, height: bounds.height, alignment: .top)
++        .background(Color(white: 0.04).opacity(0.97), in: RoundedRectangle(cornerRadius: 16))
++        .clipShape(RoundedRectangle(cornerRadius: 16))
++        .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.55), lineWidth: 1))
++        .accessibilityIdentifier("verse-studio-panel")
++        .position(x: bounds.midX, y: bounds.midY)
++        .frame(width: size.width, height: size.height)
++    }
++
++    private func sendStudioText() {
++        let text = studioDraft.trimmingCharacters(in: .whitespacesAndNewlines)
++        guard !text.isEmpty, text.utf8.count <= 60_000 else { return }
++        if world.studioText(text) { studioDraft = "" }
+     }
+ 
+     /// A board's panel over the world, with a leader line from the board it
+@@ -638,10 +895,19 @@ final class VerseWorldView: UIView {
+         #endif
+     }
+ 
++    /// The world's live Rust handle, for connecting its studio.
++    fileprivate var nativeHandle: UnsafeMutableRawPointer? { handle }
++
+     @discardableResult
+     func send(_ request: [String: Any]) -> WorldPacket? {
+-        // A Gym connection code is the one large request.
+-        let limit = request["action"] as? String == "gym_configure" ? 96 * 1024 : 4096
++        // A Gym connection code and a plan typed at the podium are the large
++        // requests.
++        let limit: Int
++        switch request["action"] as? String {
++        case "gym_configure": limit = 96 * 1024
++        case "studio_text": limit = 64 * 1024
++        default: limit = 4096
++        }
+         guard let handle,
+               let input = try? JSONSerialization.data(withJSONObject: request),
+               input.count <= limit else { return nil }
+@@ -895,8 +1161,12 @@ final class VerseWorldView: UIView {
+ /// `r=attempt:<id>`, `r=filter:beats`, `r=caveats`, `r=trace`,
+ /// `r=tab:agent`, `r=step`, `r=seek:0.5`, `r=play`, `r=back`), `evals` taps
+ /// the EVALS board (`walk,walk,walk,left` first), `goevals` walks straight to
+-/// it as See the board does, `e=notes:on` switches Compare notes, and `wait`
+-/// does nothing for a step.
++/// it as See the board does, `e=notes:on` switches Compare notes, `everglade`
++/// enters Everglade, `station=podium` stands at that station, `interact`
++/// sends Everglade's Interact (the studio panel opens once the studio is
++/// connected to a paired computer), `s=text` sends `text` into the open
++/// studio panel, `closestudio` closes it, and `wait` does nothing for a
++/// step.
+ /// Debug and simulator builds only.
+ @MainActor
+ private final class VerseWorldScript {
+@@ -951,6 +1221,12 @@ private final class VerseWorldScript {
+         case ("walkpinch", 89): view.pointer(pointer, phase: "up", at: CGPoint(x: stick.x, y: stick.y - 56))
+         case ("recenter", 0): view.send(["action": "recenter_camera"])
+         case ("everglade", 0): view.send(["action": "enter_everglade"])
++        case ("interact", 0): view.send(["action": "zone", "intent": "interact"])
++        case ("closestudio", 0): view.send(["action": "close_studio"])
++        case (let place, 0) where place.hasPrefix("station="):
++            view.send(["action": "go_station", "station": String(place.dropFirst("station=".count))])
++        case (let text, 0) where text.hasPrefix("s="):
++            view.send(["action": "studio_text", "text": String(text.dropFirst(2))])
+         case ("turn", 0): view.pointer(pointer, phase: "down", at: look)
+         case ("turn", 1): view.pointer(pointer, phase: "move", at: CGPoint(x: look.x + 40, y: look.y))
+         case ("turn", 80): view.pointer(pointer, phase: "up", at: CGPoint(x: look.x + 40, y: look.y))
+diff --git a/crates/coder-mobile/src/verse_app.rs b/crates/coder-mobile/src/verse_app.rs
+index dd52179a5587811530113f0ab061a5a3e2a3bfe2..be67a547e8fd9d39fddad1ef08eea57c429b9e74 100644
+--- a/crates/coder-mobile/src/verse_app.rs
++++ b/crates/coder-mobile/src/verse_app.rs
+@@ -106,6 +106,11 @@ pub(crate) enum Request {
+     /// Load and enter Everglade from the Grid without walking to its arch,
+     /// for scripted checks (`--verse-script everglade`).
+     EnterEverglade,
++    /// Stand at Everglade's station `station` (its map landmark ID, such as
++    /// `podium`), for scripted checks (`--verse-script station=podium`).
++    GoStation {
++        station: String,
++    },
+     HudInsets {
+         top: f32,
+         right: f32,
+@@ -2093,6 +2098,7 @@ impl Scene {
+                 Ok(())
+             }
+             Request::EnterEverglade => self.world.enter_everglade(),
++            Request::GoStation { station } => self.go_station(&station),
+             Request::RecenterCamera => {
+                 self.reset_motion();
+                 self.world.camera.yaw_offset = 0.0;
+@@ -2463,6 +2469,21 @@ impl Scene {
+         self.studio.as_ref().map(|open| open.view.view().clone())
+     }
+ 
++    /// Stands the player at Everglade's station `id`, for scripted checks.
++    fn go_station(&mut self, id: &str) -> Result<(), String> {
++        if self.world.zone != verse::zones::ZoneId::Everglade || self.world.zone_loading() {
++            return Err("Enter Everglade first".into());
++        }
++        let at = verse::zones::everglade::STATIONS
++            .iter()
++            .find(|station| station.id == id)
++            .ok_or("Everglade has no such station")?
++            .at;
++        self.world.cancel_navigation();
++        self.reset_motion();
++        self.world.place_player([at[0], 0.0, at[1]].into(), 0.0)
++    }
++
+     /// Opens the panel of the Everglade station in reach. Called only after
+     /// the shared runtime admitted the Interact intent where the player
+     /// stands.
+@@ -2710,9 +2731,14 @@ impl Scene {
+     fn zone_snapshot(&self) -> verse::zones::Snapshot {
+         let mut snapshot = self.world.zone_snapshot(self.aspect());
+         if self.world.is_bare() {
+-            // The OpenAgents app has no studio panel to open at a station.
+-            snapshot.controls.retain(|control| {
+-                !matches!(control.action, ZoneIntent::Interact | ZoneIntent::Return)
++            // The OpenAgents app offers a station's studio panel only once
++            // its host connected the studio to a paired computer
++            // (`connect_studio`); the return arch replaces Return.
++            let studio = self.world.studio().has_source();
++            snapshot.controls.retain(|control| match control.action {
++                ZoneIntent::Return => false,
++                ZoneIntent::Interact => studio,
++                _ => true,
+             });
+         }
+         let size = self.lifecycle.viewport().logical_size();
+@@ -2789,8 +2815,11 @@ impl Scene {
+         {
+             return Err("Return to the world to use the portal".into());
+         }
+-        if intent == ZoneIntent::Interact && self.world.is_bare() {
+-            return Err("This app has no studio panel".into());
++        if intent == ZoneIntent::Interact
++            && self.world.is_bare()
++            && !self.world.studio().has_source()
++        {
++            return Err("Connect a computer to use the studio".into());
+         }
+         if intent == ZoneIntent::Enter {
+             let portal = self.world.zone_snapshot(self.aspect()).portal;
+diff --git a/crates/openagents-mobile/src/android.rs b/crates/openagents-mobile/src/android.rs
+index 79ca87ca68098d9d246c9502e6b9160b6d1a8446..b6a25df4691724366c853ba3df862d4862036d25 100644
+--- a/crates/openagents-mobile/src/android.rs
++++ b/crates/openagents-mobile/src/android.rs
+@@ -225,6 +225,44 @@ pub(crate) fn surface_config(text: &str) -> Result<SurfaceConfig, BridgeError> {
+     Ok(config)
+ }
+ 
++/// The links to paired computers the app's worker took for Everglade's
++/// studio, by token, until the main thread connects a Verse handle with one
++/// (`crate::studio`). An app handle lives on the worker and a Verse handle
++/// on the main thread, so no one call can reach both. At most
++/// [`MAX_HANDLES`] wait; a newer one drops the oldest.
++static STUDIO_LINKS: std::sync::Mutex<
++    std::collections::BTreeMap<i64, Result<crate::studio::Links, String>>,
++> = std::sync::Mutex::new(std::collections::BTreeMap::new());
++static NEXT_STUDIO_TOKEN: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(1);
++
++/// On the app's worker: takes `app`'s link to the paired computer `host`,
++/// or the reason it has none, and answers a token for
++/// [`take_studio_links`].
++#[cfg_attr(not(target_os = "android"), allow(dead_code))]
++pub(crate) fn hold_studio_links(app: &App, host: &str) -> i64 {
++    let links = crate::studio::links(app, host);
++    let token = NEXT_STUDIO_TOKEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++    let mut held = STUDIO_LINKS
++        .lock()
++        .unwrap_or_else(std::sync::PoisonError::into_inner);
++    while held.len() >= MAX_HANDLES {
++        held.pop_first();
++    }
++    held.insert(token, links);
++    token
++}
++
++/// On the main thread: the link [`hold_studio_links`] took under `token`,
++/// once.
++#[cfg_attr(not(target_os = "android"), allow(dead_code))]
++pub(crate) fn take_studio_links(token: i64) -> Result<crate::studio::Links, String> {
++    STUDIO_LINKS
++        .lock()
++        .unwrap_or_else(std::sync::PoisonError::into_inner)
++        .remove(&token)
++        .unwrap_or_else(|| Err("Try connecting the studio again".into()))
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+diff --git a/crates/openagents-mobile/src/android/exports.rs b/crates/openagents-mobile/src/android/exports.rs
+index c58c5f970e88b83a8a9aa3d299e4d63efa5a29e4..ea0f12bd96b706be095508741b7c5a154d141f30 100644
+--- a/crates/openagents-mobile/src/android/exports.rs
++++ b/crates/openagents-mobile/src/android/exports.rs
+@@ -1,8 +1,8 @@
+ //! Android's JNI exports. See the parent module for the contract.
+ use super::{
+     BridgeError, MAX_CONFIG_BYTES, MAX_HANDLES, MAX_REQUEST_BYTES, MAX_VERSE_CONFIG_BYTES,
+-    MAX_VERSE_REQUEST_BYTES, create_app, editors, error, guarded, packet_text, respond,
+-    surface_config, transcripts,
++    MAX_VERSE_REQUEST_BYTES, create_app, editors, error, guarded, hold_studio_links, packet_text,
++    respond, surface_config, take_studio_links, transcripts,
+ };
+ use crate::App;
+ use coder_mobile::VerseHandle;
+@@ -406,6 +406,68 @@ pub extern "system" fn Java_com_openagents_app_OpenAgentsNative_verseCall<'local
+         .resolve::<ThrowRuntimeExAndDefault>()
+ }
+ 
++/// On the app's worker: takes the app's link to the paired computer whose
++/// host key is `host` for Everglade's studio, and answers a token for
++/// `verseStudioConnect`. A missing link is not an error here; the connect
++/// call answers its reason.
++#[unsafe(no_mangle)]
++pub extern "system" fn Java_com_openagents_app_OpenAgentsNative_studioLinks<'local>(
++    mut unowned: EnvUnowned<'local>,
++    _class: JClass<'local>,
++    handle: i64,
++    host: JString<'local>,
++) -> i64 {
++    unowned
++        .with_env(|env| -> Result<_, BridgeError> {
++            main_thread(false)?;
++            let host = input(env, &host, 256)?;
++            guarded(|| {
++                APPS.with(|apps| {
++                    let apps = apps
++                        .try_borrow()
++                        .map_err(|_| error("An app call is already in progress"))?;
++                    let app = apps
++                        .get(&handle)
++                        .ok_or_else(|| error("App handle is stale or belongs to another thread"))?;
++                    Ok(hold_studio_links(app, &host))
++                })
++            })
++        })
++        .resolve::<ThrowRuntimeExAndDefault>()
++}
++
++/// On the main thread: connects the Verse handle's Everglade studio through
++/// the link `studioLinks` took under `token`, as
++/// `openagents_verse_studio_connect` does. Answers
++/// `{"connected":true,"rights":[...]}` or `{"connected":false,"error":"..."}`.
++#[unsafe(no_mangle)]
++pub extern "system" fn Java_com_openagents_app_OpenAgentsNative_verseStudioConnect<'local>(
++    mut unowned: EnvUnowned<'local>,
++    _class: JClass<'local>,
++    handle: i64,
++    token: i64,
++) -> JString<'local> {
++    unowned
++        .with_env(|env| -> Result<_, BridgeError> {
++            main_thread(true)?;
++            let bytes = guarded(|| {
++                VERSES.with(|verses| {
++                    let mut verses = verses
++                        .try_borrow_mut()
++                        .map_err(|_| error("A Verse call is already in progress"))?;
++                    let verse = verses.get_mut(&handle).ok_or_else(|| {
++                        error("Verse handle is stale or belongs to another thread")
++                    })?;
++                    let result =
++                        crate::studio::connect_through(&mut verse.handle, take_studio_links(token));
++                    Ok(crate::studio::reply(result))
++                })
++            })?;
++            output(env, bytes)
++        })
++        .resolve::<ThrowRuntimeExAndDefault>()
++}
++
+ #[unsafe(no_mangle)]
+ pub extern "system" fn Java_com_openagents_app_OpenAgentsNative_verseDestroy<'local>(
+     mut unowned: EnvUnowned<'local>,
+diff --git a/crates/openagents-mobile/src/studio.rs b/crates/openagents-mobile/src/studio.rs
+index b93eb64fc5421d2b47f45c2c9d89a82f1b8f897c..c27ec0b4918002466fc1ab2268e956dd0089e028 100644
+--- a/crates/openagents-mobile/src/studio.rs
++++ b/crates/openagents-mobile/src/studio.rs
+@@ -10,8 +10,12 @@
+ //!
+ //! The host calls [`openagents_verse_studio_connect`] with its Verse handle,
+ //! its app handle, and the computer's host key, as it lists the computer
+-//! on the Computers screen. Text the person types into an open studio
+-//! panel goes to the Verse handle as `{"action":"studio_text","text":...}`.
++//! on the Computers screen. The Android host makes the same call in two
++//! steps, since its app and Verse handles live on different threads: it
++//! takes the computer's link on the app's worker, then connects the Verse
++//! handle on the main thread (`crate::android`). Text the person types into
++//! an open studio panel goes to the Verse handle as
++//! `{"action":"studio_text","text":...}`.
+ use crate::{App, OpenAgentsMobileBuffer, buffer};
+ use coder_mobile::VerseHandle;
+ use serde::Serialize;
+@@ -49,6 +53,44 @@ impl Reply {
+     }
+ }
+ 
++/// A paired computer's supervised NIP-HOST link and the runtime that runs
++/// its calls, as [`App::studio_links`] hands them out.
++pub(crate) type Links = (
++    coder_computers::terminal::session::Links,
++    tokio::runtime::Handle,
++);
++
++/// The link `app`'s live Computers client keeps to the paired computer
++/// `host`, for [`connect_through`].
++///
++/// # Errors
++/// A plain sentence: no computer is named, or the app has no live
++/// Computers client.
++pub(crate) fn links(app: &App, host: &str) -> Result<Links, String> {
++    let host = host.trim();
++    if host.is_empty() {
++        return Err("Choose a computer for the studio".into());
++    }
++    app.studio_links(host)
++        .ok_or_else(|| "This phone has no live connection to its computers".into())
++}
++
++/// Connects `verse`'s Everglade studio to the paired computer `links`
++/// reaches. Returns the grant's rights.
++///
++/// # Errors
++/// `links` failed, or the computer is not connected now.
++pub(crate) fn connect_through(
++    verse: &mut VerseHandle,
++    links: Result<Links, String>,
++) -> Result<Vec<&'static str>, String> {
++    let (links, runtime) = links?;
++    let rights = verse
++        .connect_studio(links, runtime)
++        .map_err(|error| coder_computers::describe(&error))?;
++    Ok(rights.into_iter().map(|right| right.as_str()).collect())
++}
++
+ /// Connects `verse`'s Everglade studio to the paired computer `host`
+ /// through `app`'s live Computers client. Returns the grant's rights.
+ ///
+@@ -60,17 +102,12 @@ pub(crate) fn connect(
+     app: &App,
+     host: &str,
+ ) -> Result<Vec<&'static str>, String> {
+-    let host = host.trim();
+-    if host.is_empty() {
+-        return Err("Choose a computer for the studio".into());
+-    }
+-    let (links, runtime) = app
+-        .studio_links(host)
+-        .ok_or("This phone has no live connection to its computers")?;
+-    let rights = verse
+-        .connect_studio(links, runtime)
+-        .map_err(|error| coder_computers::describe(&error))?;
+-    Ok(rights.into_iter().map(|right| right.as_str()).collect())
++    connect_through(verse, links(app, host))
++}
++
++/// The JSON reply a connect call answers: the rights, or the reason.
++pub(crate) fn reply(result: Result<Vec<&'static str>, String>) -> Vec<u8> {
++    serde_json::to_vec(&Reply::of(result)).unwrap_or_default()
+ }
+ 
+ /// Connects the Verse handle's Everglade studio to the paired computer
+@@ -98,7 +135,7 @@ pub unsafe extern "C" fn openagents_verse_studio_connect(
+             Ok(host) => connect(unsafe { &mut *verse }, unsafe { &*app }, host),
+             Err(_) => Err("The computer's key is not text".into()),
+         };
+-        serde_json::to_vec(&Reply::of(result)).unwrap_or_default()
++        reply(result)
+     }))
+     .map(buffer)
+     .unwrap_or_else(|_| buffer(vec![]))
+diff --git a/docs/verse/mobile.md b/docs/verse/mobile.md
+index 6b332e10fcd5180d0918e041b1d6496588bf4dca..84a8c02c956520ef25e0c432f8f44dc7c86e3695 100644
+--- a/docs/verse/mobile.md
++++ b/docs/verse/mobile.md
+@@ -215,8 +215,21 @@ pack first.
+   Levitation holds altitude while you move; Up and Down adjust it by 1.5 m,
+   up to 18 m above the ground. Land descends gently at 2 m/s. The bar works
+   while you hold a stick and disappears on returning to the Grid.
+-  The OpenAgents app has no studio panel, so it offers no **Interact** at a
+-  station; Coder's phones keep theirs.
++- **The studio.** In Everglade, the app connects the Agent Studio to the
++  first computer that **Account > Computers** shows online, under the grant
++  the phone holds for it (`openagents_verse_studio_connect` on iOS; on
++  Android, `studioLinks` on the app worker and then `verseStudioConnect` on
++  the main thread). A line at the top says which computer and rights the
++  studio uses, or why it could not connect, with **Try again**. Without a
++  connected computer, the app offers no **Interact**. With one, an
++  **Interact** button on the right edge, labeled with the station's panel,
++  opens that station's panel. The panel is the Rust Native view described
++  in [Everglade](#everglade), with a text field below it: what you type is
++  sent as `studio_text`, which answers the podium's first decision,
++  messages seats, or requests changes at the merge station. **Back to
++  world**, or Android's Back gesture, closes it. For simulator checks,
++  `--verse-script everglade,station=podium,interact,s=text` enters
++  Everglade, stands at the podium, opens its panel, and sends `text`.
+ - **Returning.** The return arch, lettered **THE GRID**, stands 7 m behind
+   Everglade's spawn. Walking through it comes back 3.5 m in front of the Grid's Everglade arch, facing away from
+   it, and presence rejoins `verse-bare` there.
+@@ -487,7 +500,8 @@ decision or messages seats; with `review`, the merge station offers
+ answer shows as the panel's first row.
+ See [Everglade](everglade.md).
+ 
+-The OpenAgents app's bare world reaches no zone for now; its
++The OpenAgents app's bare world reaches Everglade through its walk-in arch,
++with the studio connected to a paired computer; its
+ [walk-in portal](#the-grids-portal-to-lagrange-1) to Lagrange 1 is hidden.
+ 
+ Plaza presence and Gym observation pause while loading or visiting a zone,

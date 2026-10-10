@@ -1,0 +1,65 @@
+diff --git a/crates/coder/src/task.rs b/crates/coder/src/task.rs
+index b0424ccb6449f5b9f8c4651acde5309661f0016a..d94461c2cd44a64627aff375e39b71fe77070e57 100644
+--- a/crates/coder/src/task.rs
++++ b/crates/coder/src/task.rs
+@@ -926,6 +926,14 @@ impl Store {
+     fn lock_task(&self, id: &str) -> Result<File, Error> {
+         let path = self.dir.join(TASK_DIR).join(format!("{id}.lock"));
+         let lock = open_lock(&path)?;
++        #[cfg(test)]
++        match lock.try_lock() {
++            Ok(()) => lock.unlock()?,
++            Err(std::fs::TryLockError::WouldBlock) => {
++                TASK_LOCK_WAITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++            }
++            Err(std::fs::TryLockError::Error(_)) => {}
++        }
+         take_lock(&lock, self.wait)?;
+         verify_same_file(&path, &lock)?;
+         Ok(lock)
+@@ -1058,6 +1066,12 @@ pub fn present(dir: &Path) -> bool {
+     dir.join(STORE_FILE).is_file() || dir.join(LEGACY_STORE_FILE).is_file()
+ }
+ 
++/// How many times this process found a task's write lock held by another
++/// writer: what writers of different tasks must never do.
++#[cfg(test)]
++pub(crate) static TASK_LOCK_WAITS: std::sync::atomic::AtomicU64 =
++    std::sync::atomic::AtomicU64::new(0);
++
+ /// Wait up to `wait` for `lock`'s exclusive OS lock.
+ fn take_lock(lock: &File, wait: Duration) -> Result<(), Error> {
+     let started = Instant::now();
+diff --git a/crates/coder/src/task/spare.rs b/crates/coder/src/task/spare.rs
+index 90c922e92a76495ae6492e8f86fee0c4929b8a48..f2b3177669265d2297e2037545b880fe0131a4a5 100644
+--- a/crates/coder/src/task/spare.rs
++++ b/crates/coder/src/task/spare.rs
+@@ -63,6 +63,13 @@ pub fn path(worktrees: &Path, top: &Path, name: &str) -> PathBuf {
+     worktrees.join(format!("{name}.spare-{}", key(top)))
+ }
+ 
++/// Whether the project's spare is there and finished: no preparation holds
++/// its lock, so Git's record of it is repaired.
++#[must_use]
++pub fn ready(worktrees: &Path, top: &Path, name: &str) -> bool {
++    path(worktrees, top, name).exists() && !held(&lock_path(worktrees, top, name))
++}
++
+ fn lock_path(worktrees: &Path, top: &Path, name: &str) -> PathBuf {
+     worktrees.join(format!(".{name}.spare-{}.lock", key(top)))
+ }
+@@ -92,10 +99,12 @@ pub fn take(
+ ) -> Option<PathBuf> {
+     let spare = path(worktrees, top, name);
+     // A spare being made now is ready sooner than a fresh worktree would
+-    // be, and making both at once slows each.
++    // be, and making both at once slows each. A spare already renamed into
++    // place is still being made until its maker repairs Git's record and
++    // lets go of the lock: Git rewrites its `.git` file then (#10286).
+     let lock = lock_path(worktrees, top, name);
+     let waiting = std::time::Instant::now();
+-    while !spare.exists() && held(&lock) && waiting.elapsed() < WAIT {
++    while held(&lock) && waiting.elapsed() < WAIT {
+         std::thread::sleep(Duration::from_millis(50));
+     }
+     // The rename is the claim: only one start can make it.

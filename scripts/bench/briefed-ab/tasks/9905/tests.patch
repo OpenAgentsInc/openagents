@@ -1,0 +1,922 @@
+diff --git a/crates/openagents-cli/src/playtest/testflight.rs b/crates/openagents-cli/src/playtest/testflight.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..d6e6742e7e72cda5a5692b24f103fe5895b9bf85
+--- /dev/null
++++ b/crates/openagents-cli/src/playtest/testflight.rs
+@@ -0,0 +1,371 @@
++//! `openagents playtest testflight`: TestFlight feedback from App Store
++//! Connect into the triage inbox (`docs/game/playtest-triage.md`).
++//!
++//! It signs an App Store Connect API token (ES256, 20 minutes) with the
++//! team's API key, lists the app's beta feedback screenshot and crash
++//! submissions, and for each submission the triage log doesn't hold yet
++//! writes a draft (never quoting the tester's comment), the screenshots,
++//! and the crash log into the private drafts folder, then appends a
++//! `testflight` log entry. The tester's Apple identity is never read into
++//! a draft, a file, or the log. The key is read from a `.p8` file and is
++//! never printed.
++
++use std::path::{Path, PathBuf};
++use std::time::Duration;
++
++use base64::Engine as _;
++use playtest::testflight::{self, Feedback, Source};
++use playtest::triage::Entry;
++use serde_json::{Value, json};
++
++use super::{Failure, drafts, load, now, private_dir, private_file, usage};
++use crate::Args;
++
++/// The OpenAgents app's App Store Connect ID.
++pub const APP_ID: &str = "6748620735";
++const API: &str = "https://api.appstoreconnect.apple.com";
++/// Pages read per source, 50 submissions each.
++const MAX_PAGES: usize = 20;
++
++/// An App Store Connect API key.
++pub struct Credentials {
++    pub key_id: String,
++    pub issuer: String,
++    /// The `.p8` file's PEM text.
++    pub private_key: String,
++}
++
++impl std::fmt::Debug for Credentials {
++    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
++        f.debug_struct("Credentials")
++            .field("key_id", &self.key_id)
++            .field("issuer", &self.issuer)
++            .finish_non_exhaustive()
++    }
++}
++
++/// Reads `KEY=VALUE` lines, skipping comments and blanks.
++fn env_file(path: &Path) -> Result<Vec<(String, String)>, String> {
++    let text =
++        std::fs::read_to_string(path).map_err(|e| format!("reading {}: {e}", path.display()))?;
++    Ok(text
++        .lines()
++        .map(str::trim)
++        .filter(|l| !l.is_empty() && !l.starts_with('#'))
++        .filter_map(|l| l.trim_start_matches("export ").split_once('='))
++        .map(|(k, v)| {
++            (
++                k.trim().to_owned(),
++                v.trim().trim_matches(['"', '\'']).to_owned(),
++            )
++        })
++        .collect())
++}
++
++fn expand(path: &str) -> PathBuf {
++    match (path.strip_prefix("~/"), std::env::var_os("HOME")) {
++        (Some(rest), Some(home)) => PathBuf::from(home).join(rest),
++        _ => PathBuf::from(path),
++    }
++}
++
++/// The key from `--asc-env FILE`, else from `ASC_API_KEY_ID`,
++/// `ASC_API_ISSUER_ID`, and `ASC_API_PRIVATE_KEY_PATH` in the environment.
++///
++/// # Errors
++///
++/// A setting that is missing, or a key file that can't be read.
++pub fn credentials(env: Option<&Path>) -> Result<Credentials, String> {
++    let from_file = env.map(env_file).transpose()?.unwrap_or_default();
++    let get = |name: &str| {
++        from_file
++            .iter()
++            .find(|(k, _)| k == name)
++            .map(|(_, v)| v.clone())
++            .or_else(|| std::env::var(name).ok())
++            .filter(|v| !v.is_empty())
++            .ok_or_else(|| format!("{name} isn't set (give --asc-env FILE or set it)"))
++    };
++    let path = expand(&get("ASC_API_PRIVATE_KEY_PATH")?);
++    let private_key = std::fs::read_to_string(&path)
++        .map_err(|e| format!("reading the App Store Connect key {}: {e}", path.display()))?;
++    Ok(Credentials {
++        key_id: get("ASC_API_KEY_ID")?,
++        issuer: get("ASC_API_ISSUER_ID")?,
++        private_key,
++    })
++}
++
++/// The DER bytes of a PEM `PRIVATE KEY` block.
++fn pem_der(pem: &str) -> Result<Vec<u8>, String> {
++    let body: String = pem
++        .lines()
++        .map(str::trim)
++        .filter(|l| !l.starts_with("-----"))
++        .collect();
++    base64::engine::general_purpose::STANDARD
++        .decode(body.as_bytes())
++        .map_err(|_| "the App Store Connect key isn't a PEM private key".to_owned())
++}
++
++/// An App Store Connect API token valid from `now` for 20 minutes: a JWT
++/// signed ES256 with the API key.
++///
++/// # Errors
++///
++/// When the key isn't a P-256 PKCS#8 key.
++pub fn token(credentials: &Credentials, now: u64) -> Result<String, String> {
++    use ring::signature::{ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair};
++    let random = ring::rand::SystemRandom::new();
++    let der = pem_der(&credentials.private_key)?;
++    let pair = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, &der, &random)
++        .map_err(|_| "the App Store Connect key isn't a P-256 key".to_owned())?;
++    let encode = |value: &Value| {
++        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(value.to_string().as_bytes())
++    };
++    let header = json!({"alg": "ES256", "kid": credentials.key_id, "typ": "JWT"});
++    let claims = json!({
++        "iss": credentials.issuer, "iat": now, "exp": now + 20 * 60,
++        "aud": "appstoreconnect-v1",
++    });
++    let signing = format!("{}.{}", encode(&header), encode(&claims));
++    let signature = pair
++        .sign(&random, signing.as_bytes())
++        .map_err(|_| "signing the App Store Connect token failed".to_owned())?;
++    Ok(format!(
++        "{signing}.{}",
++        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(signature.as_ref())
++    ))
++}
++
++/// Reads App Store Connect with one token.
++struct Client {
++    http: reqwest::Client,
++    token: String,
++    runtime: tokio::runtime::Runtime,
++}
++
++impl Client {
++    fn new(token: String) -> Result<Self, String> {
++        Ok(Self {
++            http: reqwest::Client::builder()
++                .timeout(Duration::from_secs(30))
++                .build()
++                .map_err(|e| format!("starting HTTP: {e}"))?,
++            token,
++            runtime: tokio::runtime::Builder::new_current_thread()
++                .enable_all()
++                .build()
++                .map_err(|e| format!("starting the runtime: {e}"))?,
++        })
++    }
++
++    fn get(&self, url: &str) -> Result<Value, String> {
++        self.runtime.block_on(async {
++            let response = self
++                .http
++                .get(url)
++                .bearer_auth(&self.token)
++                .send()
++                .await
++                .map_err(|e| format!("App Store Connect: {}", e.without_url()))?;
++            let status = response.status();
++            let body: Value = response
++                .json()
++                .await
++                .map_err(|_| format!("App Store Connect answered {status} without JSON"))?;
++            if !status.is_success() {
++                let detail = body["errors"][0]["detail"]
++                    .as_str()
++                    .or_else(|| body["errors"][0]["title"].as_str())
++                    .unwrap_or("no detail");
++                return Err(format!("App Store Connect answered {status}: {detail}"));
++            }
++            Ok(body)
++        })
++    }
++
++    fn bytes(&self, url: &str) -> Result<Vec<u8>, String> {
++        self.runtime.block_on(async {
++            let response = self
++                .http
++                .get(url)
++                .send()
++                .await
++                .map_err(|e| format!("downloading a screenshot: {}", e.without_url()))?;
++            if !response.status().is_success() {
++                return Err(format!(
++                    "a screenshot download answered {}",
++                    response.status()
++                ));
++            }
++            response
++                .bytes()
++                .await
++                .map(|b| b.to_vec())
++                .map_err(|e| format!("downloading a screenshot: {}", e.without_url()))
++        })
++    }
++}
++
++/// Every submission of `source` for `app`, newest first.
++fn list(client: &Client, app: &str, source: Source) -> Result<Vec<Feedback>, String> {
++    let mut url = Some(format!(
++        "{API}/v1/apps/{app}/{}?limit=50&include=build&fields[builds]=version",
++        source.resource()
++    ));
++    let mut out = Vec::new();
++    for _ in 0..MAX_PAGES {
++        let Some(next) = url.take() else { break };
++        let page = testflight::parse_page(source, &client.get(&next)?)?;
++        out.extend(page.feedback);
++        url = page.next.filter(|n| n.starts_with(API));
++    }
++    Ok(out)
++}
++
++/// What one `testflight` run did.
++#[derive(Debug, Default, PartialEq, Eq)]
++pub struct Ingested {
++    pub new: Vec<String>,
++    pub repeats: usize,
++    /// Screenshots or crash logs that couldn't be downloaded.
++    pub missing: usize,
++}
++
++/// Writes a draft and its attachments for each submission the log doesn't
++/// hold, and appends its `testflight` entry. `fetch` reads an attachment:
++/// a screenshot by URL, or a crash log by `crash:SUBMISSION-ID`.
++pub fn ingest(
++    home: &Path,
++    feedback: &[Feedback],
++    at: u64,
++    fetch: &mut dyn FnMut(&str) -> Result<Vec<u8>, String>,
++) -> Result<Ingested, String> {
++    let mut log = load(home)?;
++    let dir = drafts(home);
++    private_dir(&dir)?;
++    let mut result = Ingested::default();
++    for item in feedback {
++        if log.has_submission(&item.id) {
++            result.repeats += 1;
++            continue;
++        }
++        let code = item.code();
++        let draft = testflight::draft(item);
++        private_file(&dir.join(format!("{code}.md")), draft.markdown().as_bytes())?;
++        let meta = json!({"code": code, "labels": draft.labels, "submission": item.id, "source": item.source});
++        private_file(
++            &dir.join(format!("{code}.json")),
++            meta.to_string().as_bytes(),
++        )?;
++        let mut private = item.clone();
++        private.images.iter_mut().for_each(|i| i.url.clear());
++        private_file(
++            &dir.join(format!("{code}.testflight.json")),
++            serde_json::to_string_pretty(&private)
++                .unwrap_or_default()
++                .as_bytes(),
++        )?;
++        for (index, image) in item.images.iter().enumerate() {
++            let name = if index == 0 {
++                format!("{code}.jpg")
++            } else {
++                format!("{code}-{}.jpg", index + 1)
++            };
++            match fetch(&image.url) {
++                Ok(bytes) => private_file(&dir.join(name), &bytes)?,
++                Err(_) => result.missing += 1,
++            }
++        }
++        if item.source == Source::Crash {
++            match fetch(&format!("crash:{}", item.id)) {
++                Ok(bytes) => private_file(&dir.join(format!("{code}.crash.txt")), &bytes)?,
++                Err(_) => result.missing += 1,
++            }
++        }
++        super::append(
++            home,
++            &mut log,
++            Entry::Testflight {
++                at,
++                code: code.clone(),
++                submission: item.id.clone(),
++                source: item.source,
++                build: item.build_label(),
++                created: item.created.clone(),
++            },
++        )?;
++        result.new.push(code);
++    }
++    Ok(result)
++}
++
++pub fn run(home: &Path, args: &Args) -> Result<Value, Failure> {
++    let credentials = credentials(args.option("asc-env").map(Path::new))?;
++    let app = args.option("app").unwrap_or(APP_ID).to_owned();
++    if app.is_empty() || !app.chars().all(|c| c.is_ascii_digit()) {
++        return Err(usage("--app takes the numeric App Store Connect app ID"));
++    }
++    let client = Client::new(token(&credentials, now())?)?;
++    let mut feedback = list(&client, &app, Source::Screenshot)?;
++    feedback.extend(list(&client, &app, Source::Crash)?);
++    // ISO 8601 dates in UTC compare as text.
++    if let Some(since) = args.option("since") {
++        feedback.retain(|f| f.created.as_str() >= since);
++    }
++    let log = load(home)?;
++    // Marketing versions, looked up once per build, for new submissions.
++    let mut versions: std::collections::BTreeMap<String, Option<String>> =
++        std::collections::BTreeMap::new();
++    for item in feedback.iter_mut().filter(|f| !log.has_submission(&f.id)) {
++        let Some(build) = item.build_id.clone() else {
++            continue;
++        };
++        let version =
++            versions.entry(build.clone()).or_insert_with(|| {
++                client
++                .get(&format!(
++                    "{API}/v1/builds/{build}/preReleaseVersion?fields[preReleaseVersions]=version"
++                ))
++                .ok()
++                .and_then(|v| v["data"]["attributes"]["version"].as_str().map(str::to_owned))
++            });
++        item.app_version.clone_from(version);
++    }
++    feedback.sort_by(|a, b| a.created.cmp(&b.created));
++    let mut fetch = |what: &str| -> Result<Vec<u8>, String> {
++        if let Some(id) = what.strip_prefix("crash:") {
++            let body = client.get(&format!(
++                "{API}/v1/{}/{id}/crashLog",
++                Source::Crash.resource()
++            ))?;
++            body["data"]["attributes"]["logText"]
++                .as_str()
++                .map(|t| t.as_bytes().to_vec())
++                .ok_or_else(|| "the crash log has no text".to_owned())
++        } else {
++            client.bytes(what)
++        }
++    };
++    let result = ingest(home, &feedback, now(), &mut fetch)?;
++    Ok(json!({
++        "app": app,
++        "read": feedback.len(),
++        "new": result.new,
++        "repeats": result.repeats,
++        "missing_attachments": result.missing,
++        "drafts": drafts(home).display().to_string(),
++        "text": format!(
++            "{} TestFlight submissions read: {} new, {} already in the log{}.{}",
++            feedback.len(), result.new.len(), result.repeats,
++            if result.missing == 0 { String::new() } else { format!(", {} screenshots or crash logs no longer available", result.missing) },
++            if result.new.is_empty() { String::new() } else {
++                format!("\nWrite each draft in your own words in {}, then file or decide it:\n  {}", drafts(home).display(), result.new.join("\n  "))
++            }
++        ),
++    }))
++}
++
++#[cfg(test)]
++mod tests;
+diff --git a/crates/openagents-cli/src/playtest/testflight/tests.rs b/crates/openagents-cli/src/playtest/testflight/tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..5c8a909615dcc71504460bfde923ceeb8bc011df
+--- /dev/null
++++ b/crates/openagents-cli/src/playtest/testflight/tests.rs
+@@ -0,0 +1,149 @@
++use base64::Engine as _;
++use playtest::testflight::{Image, Source};
++use ring::signature::{
++    ECDSA_P256_SHA256_FIXED, ECDSA_P256_SHA256_FIXED_SIGNING, EcdsaKeyPair, KeyPair as _,
++    UnparsedPublicKey,
++};
++
++use super::*;
++
++fn test_key() -> (Credentials, Vec<u8>) {
++    let random = ring::rand::SystemRandom::new();
++    let pkcs8 = EcdsaKeyPair::generate_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, &random).unwrap();
++    let pair = EcdsaKeyPair::from_pkcs8(&ECDSA_P256_SHA256_FIXED_SIGNING, pkcs8.as_ref(), &random)
++        .unwrap();
++    let body = base64::engine::general_purpose::STANDARD.encode(pkcs8.as_ref());
++    let pem = format!("-----BEGIN PRIVATE KEY-----\n{body}\n-----END PRIVATE KEY-----\n");
++    (
++        Credentials {
++            key_id: "TESTKEY123".into(),
++            issuer: "00000000-0000-0000-0000-000000000000".into(),
++            private_key: pem,
++        },
++        pair.public_key().as_ref().to_vec(),
++    )
++}
++
++fn part(token: &str, index: usize) -> Value {
++    let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
++        .decode(token.split('.').nth(index).unwrap())
++        .unwrap();
++    serde_json::from_slice(&bytes).unwrap()
++}
++
++#[test]
++fn the_token_is_an_es256_jwt_for_app_store_connect() {
++    let (credentials, public) = test_key();
++    let jwt = token(&credentials, 1_790_000_000).unwrap();
++    assert_eq!(
++        part(&jwt, 0),
++        json!({"alg": "ES256", "kid": "TESTKEY123", "typ": "JWT"})
++    );
++    let claims = part(&jwt, 1);
++    assert_eq!(claims["aud"], "appstoreconnect-v1");
++    assert_eq!(claims["iss"], credentials.issuer);
++    assert_eq!(claims["exp"], 1_790_000_000 + 1_200);
++    let (signing, signature) = jwt.rsplit_once('.').unwrap();
++    let signature = base64::engine::general_purpose::URL_SAFE_NO_PAD
++        .decode(signature)
++        .unwrap();
++    assert_eq!(signature.len(), 64, "JWS ES256 is r || s");
++    UnparsedPublicKey::new(&ECDSA_P256_SHA256_FIXED, public)
++        .verify(signing.as_bytes(), &signature)
++        .expect("the signature verifies");
++    // The key never shows in debug output.
++    assert!(!format!("{credentials:?}").contains("PRIVATE KEY"));
++    let broken = Credentials {
++        private_key: "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----".into(),
++        ..credentials
++    };
++    assert!(token(&broken, 0).is_err());
++}
++
++#[test]
++fn credentials_come_from_an_env_file() {
++    let dir = tempfile::tempdir().unwrap();
++    let (key, _) = test_key();
++    let p8 = dir.path().join("AuthKey_TEST.p8");
++    std::fs::write(&p8, &key.private_key).unwrap();
++    let env = dir.path().join("asc.env");
++    std::fs::write(
++        &env,
++        format!(
++            "# App Store Connect\nASC_API_KEY_ID=TESTKEY123\nASC_API_ISSUER_ID=\"issuer-1\"\nASC_API_PRIVATE_KEY_PATH={}\nOTHER=x\n",
++            p8.display()
++        ),
++    )
++    .unwrap();
++    let read = credentials(Some(&env)).unwrap();
++    assert_eq!(read.key_id, "TESTKEY123");
++    assert_eq!(read.issuer, "issuer-1");
++    assert!(token(&read, 5).is_ok());
++}
++
++fn feedback(id: &str, source: Source) -> Feedback {
++    Feedback {
++        id: id.into(),
++        source,
++        created: "2026-09-28T14:40:18.809Z".into(),
++        comment: Some("The door didn't open.".into()),
++        device: "iPhone18_2".into(),
++        os_version: "26.6.2".into(),
++        build: Some("16".into()),
++        build_id: Some("b".into()),
++        app_version: Some("1.0.0".into()),
++        images: if source == Source::Screenshot {
++            vec![Image {
++                url: "https://tf-feedback.example/1.jpg?Signature=secret".into(),
++                width: 10,
++                height: 20,
++            }]
++        } else {
++            vec![]
++        },
++    }
++}
++
++#[test]
++fn new_submissions_are_drafted_once_with_their_attachments() {
++    let home = tempfile::tempdir().unwrap();
++    let items = [
++        feedback("sub-1", Source::Screenshot),
++        feedback("sub-2", Source::Crash),
++    ];
++    let mut fetch = |what: &str| -> Result<Vec<u8>, String> {
++        Ok(if what.starts_with("crash:") {
++            b"Incident Identifier: X".to_vec()
++        } else {
++            b"\xff\xd8jpeg".to_vec()
++        })
++    };
++    let first = ingest(home.path(), &items, 100, &mut fetch).unwrap();
++    assert_eq!(first.new.len(), 2);
++    let dir = drafts(home.path());
++    let screenshot = &first.new[0];
++    assert!(dir.join(format!("{screenshot}.jpg")).exists());
++    assert!(dir.join(format!("{}.crash.txt", first.new[1])).exists());
++    let draft = std::fs::read_to_string(dir.join(format!("{screenshot}.md"))).unwrap();
++    assert!(!draft.contains("door"));
++    // The private record keeps the comment but not the signed image link.
++    let private =
++        std::fs::read_to_string(dir.join(format!("{screenshot}.testflight.json"))).unwrap();
++    assert!(private.contains("door") && !private.contains("Signature"));
++    let log = load(home.path()).unwrap();
++    assert_eq!(log.pending().len(), 2);
++    // A second read finds them in the log.
++    let again = ingest(home.path(), &items, 200, &mut fetch).unwrap();
++    assert!(again.new.is_empty());
++    assert_eq!(again.repeats, 2);
++    // A failed download is counted, and the entry is still drafted.
++    let mut failing = |_: &str| -> Result<Vec<u8>, String> { Err("expired".into()) };
++    let third = ingest(
++        home.path(),
++        &[feedback("sub-3", Source::Screenshot)],
++        300,
++        &mut failing,
++    )
++    .unwrap();
++    assert_eq!((third.new.len(), third.missing), (1, 1));
++}
+diff --git a/crates/playtest/src/testflight.rs b/crates/playtest/src/testflight.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..9c46ee75c110f60c066714192e5e0aac86018444
+--- /dev/null
++++ b/crates/playtest/src/testflight.rs
+@@ -0,0 +1,265 @@
++//! TestFlight feedback from App Store Connect, as triage inbox entries.
++//!
++//! A TestFlight tester sends feedback with **Send Beta Feedback** or by
++//! sharing a screenshot, and a crash can carry a comment too. App Store
++//! Connect keeps both as beta feedback submissions (screenshot and crash).
++//! `openagents playtest testflight` reads them with the App Store Connect
++//! API; this module turns one API page into [`Feedback`] values and each
++//! into an issue draft, with no network.
++//!
++//! A submission names the tester's Apple account (email and name). None of
++//! it is kept: [`Feedback`] has no field for it. A TestFlight tester has no
++//! Nostr key, so an accepted TestFlight entry is recorded in the triage log
++//! but backs no playtest award ([`crate::triage::Log::acceptances`] leaves
++//! it out). The tester's comment was written to OpenAgents through Apple,
++//! not for a public issue, so a draft never quotes it: the triager writes
++//! the issue in their own words.
++
++use serde::{Deserialize, Serialize};
++use serde_json::Value;
++use sha2::{Digest, Sha256};
++
++use crate::triage::{Draft, LABEL, PARAPHRASE};
++
++/// The label TestFlight drafts carry besides `playtest` and the build.
++pub const SOURCE_LABEL: &str = "source:testflight";
++
++/// Which kind of submission it is.
++#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
++#[serde(rename_all = "kebab-case")]
++pub enum Source {
++    /// Feedback with one or more screenshots.
++    Screenshot,
++    /// A crash the tester chose to send, with its crash log.
++    Crash,
++}
++
++impl Source {
++    /// The App Store Connect resource type.
++    #[must_use]
++    pub fn resource(self) -> &'static str {
++        match self {
++            Self::Screenshot => "betaFeedbackScreenshotSubmissions",
++            Self::Crash => "betaFeedbackCrashSubmissions",
++        }
++    }
++}
++
++/// One screenshot's temporary download link.
++#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
++pub struct Image {
++    pub url: String,
++    pub width: u32,
++    pub height: u32,
++}
++
++/// One TestFlight submission, without the tester's identity.
++#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
++pub struct Feedback {
++    /// The submission's App Store Connect ID.
++    pub id: String,
++    pub source: Source,
++    /// ISO 8601, as App Store Connect gives it.
++    pub created: String,
++    /// The tester's comment, private.
++    pub comment: Option<String>,
++    /// `iPhone18_2`.
++    pub device: String,
++    pub os_version: String,
++    /// The build number (`CFBundleVersion`), such as `16`.
++    pub build: Option<String>,
++    /// The App Store Connect build ID, to look up its version.
++    #[serde(skip)]
++    pub build_id: Option<String>,
++    /// The marketing version, such as `1.0.0`, once looked up.
++    pub app_version: Option<String>,
++    /// Screenshot links; they expire, so the command downloads them.
++    pub images: Vec<Image>,
++}
++
++impl Feedback {
++    /// `1.0.0 (16)`, or as much of it as is known.
++    #[must_use]
++    pub fn build_label(&self) -> String {
++        match (&self.app_version, &self.build) {
++            (Some(version), Some(build)) => format!("{version} ({build})"),
++            (None, Some(build)) => format!("build {build}"),
++            _ => "an unknown build".into(),
++        }
++    }
++
++    /// `TF-1A2B3C4D`: from the SHA-256 of the submission ID, so it never
++    /// collides with a report code by accident and repeats for the same
++    /// submission.
++    #[must_use]
++    pub fn code(&self) -> String {
++        code(&self.id)
++    }
++}
++
++/// The triage code for the submission with App Store Connect ID `id`.
++#[must_use]
++pub fn code(id: &str) -> String {
++    let hash = Sha256::digest(id.as_bytes());
++    format!(
++        "TF-{}",
++        hash.iter()
++            .take(4)
++            .map(|b| format!("{b:02X}"))
++            .collect::<String>()
++    )
++}
++
++fn text(value: &Value, key: &str) -> Option<String> {
++    value
++        .get(key)
++        .and_then(Value::as_str)
++        .map(str::to_owned)
++        .filter(|s| !s.trim().is_empty())
++}
++
++/// One page of submissions: the feedback on it and the next page's link.
++#[derive(Clone, Debug, Default, PartialEq, Eq)]
++pub struct Page {
++    pub feedback: Vec<Feedback>,
++    pub next: Option<String>,
++}
++
++/// Reads one App Store Connect list response of `source` submissions,
++/// requested with `include=build`, keeping no tester identity.
++///
++/// # Errors
++///
++/// When the response isn't a JSON:API list of that resource.
++pub fn parse_page(source: Source, body: &Value) -> Result<Page, String> {
++    let data = body
++        .get("data")
++        .and_then(Value::as_array)
++        .ok_or("the App Store Connect response has no data list")?;
++    let builds: Vec<(&str, String)> = body
++        .get("included")
++        .and_then(Value::as_array)
++        .into_iter()
++        .flatten()
++        .filter(|item| item["type"] == "builds")
++        .filter_map(|item| {
++            Some((
++                item["id"].as_str()?,
++                item["attributes"]["version"].as_str()?.to_owned(),
++            ))
++        })
++        .collect();
++    let mut feedback = Vec::new();
++    for item in data {
++        if item["type"] != source.resource() {
++            return Err(format!("expected {} items", source.resource()));
++        }
++        let id = text(item, "id").ok_or("a submission has no id")?;
++        let attributes = &item["attributes"];
++        let build_id = item["relationships"]["build"]["data"]["id"]
++            .as_str()
++            .map(str::to_owned);
++        let build = build_id.as_deref().and_then(|b| {
++            builds
++                .iter()
++                .find(|(id, _)| *id == b)
++                .map(|(_, v)| v.clone())
++        });
++        let images = attributes["screenshots"]
++            .as_array()
++            .into_iter()
++            .flatten()
++            .filter_map(|shot| {
++                Some(Image {
++                    url: shot["url"].as_str()?.to_owned(),
++                    width: u32::try_from(shot["width"].as_u64()?).ok()?,
++                    height: u32::try_from(shot["height"].as_u64()?).ok()?,
++                })
++            })
++            .collect();
++        feedback.push(Feedback {
++            id,
++            source,
++            created: text(attributes, "createdDate").unwrap_or_default(),
++            comment: text(attributes, "comment"),
++            device: text(attributes, "deviceModel").unwrap_or_else(|| "unknown device".into()),
++            os_version: text(attributes, "osVersion").unwrap_or_default(),
++            build,
++            build_id,
++            app_version: None,
++            images,
++        });
++    }
++    Ok(Page {
++        feedback,
++        next: body["links"]["next"].as_str().map(str::to_owned),
++    })
++}
++
++/// `playtest`, `source:testflight`, and the build label when it is known.
++#[must_use]
++pub fn labels(feedback: &Feedback) -> Vec<String> {
++    let mut labels = vec![LABEL.to_owned(), SOURCE_LABEL.to_owned()];
++    if let (Some(version), Some(build)) = (&feedback.app_version, &feedback.build) {
++        labels.push(format!("build:{version}-{build}"));
++    }
++    labels
++}
++
++/// Drafts the GitHub issue for a submission. It never quotes the comment
++/// and never embeds a screenshot or the crash log: the triager writes the
++/// title and text, and the attachments stay in the private drafts folder.
++#[must_use]
++pub fn draft(feedback: &Feedback) -> Draft {
++    let what = match feedback.source {
++        Source::Screenshot => "screenshot feedback",
++        Source::Crash => "a crash",
++    };
++    let mut attachments = Vec::new();
++    if !feedback.images.is_empty() {
++        attachments.push(format!(
++            "- {} screenshot(s) are in the private drafts folder; they aren't published.",
++            feedback.images.len()
++        ));
++    }
++    if feedback.source == Source::Crash {
++        attachments.push(
++            "- The crash log is in the private drafts folder; quote only the frames you need."
++                .into(),
++        );
++    }
++    if feedback.comment.is_some() {
++        attachments.push("- The tester's comment is in the private drafts folder.".into());
++    }
++    let body = format!(
++        "TestFlight feedback `{code}` ({what}), sent from OpenAgents {build} on iOS {os} ({device}) on {created}.\n\n\
++         Severity: P? (P0 loses money, leaks a key, or bricks the app; P1 blocks a scripted task; P2 hurts with a way around; P3 polish).\n\n\
++         ## What happened\n\n{PARAPHRASE}\n\n\
++         ## Expected\n\n{PARAPHRASE}\n\n\
++         ## Steps\n\n{PARAPHRASE}\n\n\
++         ## Attachments\n\n{attachments}\n\n\
++         TestFlight feedback comes through Apple without a Nostr key, so it can't back a playtest award by itself.\n",
++        code = feedback.code(),
++        build = feedback.build_label(),
++        os = feedback.os_version,
++        device = feedback.device,
++        created = feedback.created,
++        attachments = if attachments.is_empty() {
++            "- None.".to_owned()
++        } else {
++            attachments.join("\n")
++        },
++    );
++    Draft {
++        code: feedback.code(),
++        title: format!(
++            "testflight: {what} on {} (write a title)",
++            feedback.build_label()
++        ),
++        body,
++        labels: labels(feedback),
++    }
++}
++
++#[cfg(test)]
++mod tests;
+diff --git a/crates/playtest/src/testflight/tests.rs b/crates/playtest/src/testflight/tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..d0c61da2606a28a4c30a21c4b890c1078cdff21c
+--- /dev/null
++++ b/crates/playtest/src/testflight/tests.rs
+@@ -0,0 +1,113 @@
++use serde_json::json;
++
++use super::*;
++use crate::triage::{Contribution, Entry, Log};
++
++/// The shape App Store Connect returns, with made-up values and the
++/// tester fields it always includes.
++fn screenshot_page() -> Value {
++    json!({
++        "data": [{
++            "type": "betaFeedbackScreenshotSubmissions",
++            "id": "AB2nFgx8example",
++            "attributes": {
++                "createdDate": "2026-09-28T14:40:18.809Z",
++                "comment": "The Gym door didn't open.",
++                "email": "tester@example.com",
++                "deviceModel": "iPhone18_2",
++                "osVersion": "26.6.2",
++                "appPlatform": "IOS",
++                "screenshots": [{"url": "https://tf-feedback.example/1.jpg", "width": 1320, "height": 2868,
++                                  "expirationDate": "2026-10-04T00:00:00Z"}]
++            },
++            "relationships": {
++                "tester": {"data": {"type": "betaTesters", "id": "f4d4-tester"}},
++                "build": {"data": {"type": "builds", "id": "a779-build"}}
++            }
++        }],
++        "included": [
++            {"type": "betaTesters", "id": "f4d4-tester",
++             "attributes": {"firstName": "Ada", "lastName": "Lovelace", "email": "tester@example.com"}},
++            {"type": "builds", "id": "a779-build", "attributes": {"version": "16"}}
++        ],
++        "links": {"next": "https://api.appstoreconnect.apple.com/v1/apps/1/betaFeedbackScreenshotSubmissions?cursor=Mg"}
++    })
++}
++
++#[test]
++fn a_page_reads_the_feedback_and_keeps_no_tester_identity() {
++    let page = parse_page(Source::Screenshot, &screenshot_page()).unwrap();
++    assert_eq!(page.feedback.len(), 1);
++    assert!(page.next.as_deref().unwrap().ends_with("cursor=Mg"));
++    let feedback = &page.feedback[0];
++    assert_eq!(feedback.build.as_deref(), Some("16"));
++    assert_eq!(feedback.build_id.as_deref(), Some("a779-build"));
++    assert_eq!(feedback.images.len(), 1);
++    assert_eq!(
++        feedback.comment.as_deref(),
++        Some("The Gym door didn't open.")
++    );
++    let kept = serde_json::to_string(feedback).unwrap();
++    for identity in ["tester@example.com", "Ada", "Lovelace", "f4d4-tester"] {
++        assert!(!kept.contains(identity), "{identity}");
++    }
++    assert!(parse_page(Source::Crash, &screenshot_page()).is_err());
++    assert!(parse_page(Source::Crash, &json!({"errors": []})).is_err());
++}
++
++#[test]
++fn a_draft_never_quotes_the_comment_and_names_the_build() {
++    let mut feedback = parse_page(Source::Screenshot, &screenshot_page())
++        .unwrap()
++        .feedback
++        .remove(0);
++    feedback.app_version = Some("1.0.0".into());
++    let draft = draft(&feedback);
++    assert!(!draft.body.contains("Gym door"));
++    assert!(draft.body.contains(PARAPHRASE));
++    assert!(draft.title.ends_with("(write a title)"));
++    assert!(draft.body.contains("OpenAgents 1.0.0 (16)"));
++    assert_eq!(
++        draft.labels,
++        ["playtest", "source:testflight", "build:1.0.0-16"]
++    );
++    assert!(draft.code.starts_with("TF-") && draft.code.len() == 11);
++    assert_eq!(draft.code, code("AB2nFgx8example"));
++}
++
++#[test]
++fn testflight_entries_are_triaged_once_and_back_no_award() {
++    let feedback = parse_page(Source::Screenshot, &screenshot_page())
++        .unwrap()
++        .feedback
++        .remove(0);
++    let entry = Entry::Testflight {
++        at: 10,
++        code: feedback.code(),
++        submission: feedback.id.clone(),
++        source: feedback.source,
++        build: feedback.build_label(),
++        created: feedback.created.clone(),
++    };
++    let mut log = Log::default();
++    log.admit(&entry).unwrap();
++    log.entries.push(entry.clone());
++    assert!(log.admit(&entry).is_err(), "a submission is logged once");
++    assert!(log.has_submission(&feedback.id));
++    assert_eq!(log.pending(), [feedback.code().as_str()]);
++    let filed = Entry::Filed {
++        at: 20,
++        code: feedback.code(),
++        issue: 9950,
++        contribution: Contribution::Feedback,
++        severity: None,
++        triager: Some("ab".repeat(32)),
++    };
++    log.admit(&filed).unwrap();
++    log.entries.push(filed);
++    assert!(log.pending().is_empty());
++    assert!(log.acceptances().is_empty());
++    // The log reads back what it wrote.
++    let text: String = log.entries.iter().map(Log::line).collect();
++    assert_eq!(Log::parse(&text).unwrap(), log);
++}

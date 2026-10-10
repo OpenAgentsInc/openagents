@@ -1,0 +1,317 @@
+diff --git a/crates/openagents-cli/src/pay_plugin.rs b/crates/openagents-cli/src/pay_plugin.rs
+index 3ca01ea7c9749de316bdfe77dce2a0b1474291c1..6a759d0859f52bc05f65833f9032173b32dde889 100644
+--- a/crates/openagents-cli/src/pay_plugin.rs
++++ b/crates/openagents-cli/src/pay_plugin.rs
+@@ -937,13 +1019,22 @@ pub(crate) mod tests {
+             "plugin_not_invocable"
+         );
+ 
+-        let captured = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/meeting-followup");
++        let supplied = packet(&meeting_followup_dir()).unwrap();
++        assert_eq!(supplied.supplied, vec!["meeting.md".to_string()]);
++        assert_eq!(supplied.profile, plugin::Profile::SnapshotRead);
++        let mut captured_unnamed: Value = serde_json::from_str(
++            &std::fs::read_to_string(meeting_followup_dir().join("programs/meeting-followup.json"))
++                .unwrap(),
++        )
++        .unwrap();
++        captured_unnamed["binding"]["steps"]["action_items"]["module"]["read"] = json!([]);
++        let unnamed = packet(package_with_program(&captured_unnamed, "meeting-followup").path())
++            .err()
++            .unwrap();
+         assert!(
+-            packet(&captured)
+-                .err()
+-                .unwrap()
+-                .message
+-                .contains("captured workspace")
++            unnamed.message.contains("captured workspace"),
++            "{}",
++            unnamed.message
+         );
+ 
+         let mut substituted = explain.clone();
+@@ -1008,4 +1099,217 @@ pub(crate) mod tests {
+                 .contains("blossom")
+         );
+     }
++
++    fn meeting_followup_dir() -> PathBuf {
++        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/meeting-followup")
++    }
++
++    fn package_with_program(program: &Value, name: &str) -> tempfile::TempDir {
++        let dir = tempfile::tempdir().unwrap();
++        let source: Value = serde_json::from_str(
++            &std::fs::read_to_string(meeting_followup_dir().join("package.json")).unwrap(),
++        )
++        .unwrap();
++        let mut package = source;
++        let text = serde_json::to_string_pretty(program).unwrap();
++        package["program"]["digest"] = json!(coder::package::digest(&text));
++        std::fs::create_dir_all(dir.path().join("programs")).unwrap();
++        std::fs::write(dir.path().join("package.json"), package.to_string()).unwrap();
++        std::fs::write(dir.path().join(format!("programs/{name}.json")), &text).unwrap();
++        dir
++    }
++
++    const FOLLOWUP: &str = "meeting-followup";
++
++    fn meeting_followup(fee_msat: u64) -> Arc<Resolved> {
++        Arc::new(Resolved {
++            id: FOLLOWUP.into(),
++            release: "0.1.0".into(),
++            author: AUTHOR.into(),
++            fee_msat,
++            packet: packet(&meeting_followup_dir()).unwrap(),
++        })
++    }
++
++    fn meeting() -> &'static str {
++        include_str!("../../../plugins/meeting-followup/examples/meeting.md")
++    }
++
++    fn supplied_body(
++        front: &Front<FileReplayStore>,
++        target: &str,
++        files: Value,
++    ) -> (Response, String) {
++        let probe =
++            json!({"request": "{}", "snapshot": {"v": plugin::SUPPLIED_SNAPSHOT, "files": files}});
++        let (preview, _) = front.handle(&post(target, &probe.to_string(), vec![]), NOW);
++        let body = json_body(&preview);
++        let mut full = probe;
++        full["quote_digest"] = body["quote_digest"].clone();
++        (preview, full.to_string())
++    }
++
++    fn paid(
++        front: &Front<FileReplayStore>,
++        receiver: &FakeReceiver,
++        target: &str,
++        input: &str,
++    ) -> (Response, String) {
++        let (challenge, _) = front.handle(&post(target, input, vec![]), NOW);
++        assert_eq!(
++            challenge.status,
++            402,
++            "{}",
++            String::from_utf8_lossy(&challenge.body)
++        );
++        let required =
++            decode_payment_required(header(&challenge, PAYMENT_REQUIRED).unwrap()).unwrap();
++        let accepted = required.accepts[0].clone();
++        let invoice = accepted.extra["invoice"].as_str().unwrap().to_string();
++        let mut proof = Map::new();
++        proof.insert("preimage".into(), json!(receiver.pay(&invoice)));
++        let signature = openagents_x402::wire::encode_header(&PaymentPayload {
++            x402_version: 2,
++            resource: None,
++            accepted,
++            payload: proof,
++            extensions: None,
++        })
++        .unwrap();
++        let (response, _) = front.handle(
++            &post(
++                target,
++                input,
++                vec![(PAYMENT_SIGNATURE.into(), signature.clone())],
++            ),
++            NOW,
++        );
++        (response, signature)
++    }
++
++    #[test]
++    fn a_supplied_snapshot_guest_reads_exactly_the_named_texts_once() {
++        let dir = tempfile::tempdir().unwrap();
++        let receiver = Arc::new(FakeReceiver {
++            counter: AtomicU64::new(0),
++            preimages: Mutex::new(HashMap::new()),
++        });
++        let sink = Arc::new(LedgerSink::in_memory());
++        let front = front_with(
++            dir.path(),
++            receiver.clone(),
++            sink,
++            Arc::new(OnePlugin(meeting_followup(1_000))),
++        );
++        let target = format!("/v1/plugins/{FOLLOWUP}/invoke");
++
++        // No snapshot at all: refused before a price, as an input error.
++        let (none, event) = front.handle(&post(&target, r#"{"request":"{}"}"#, vec![]), NOW);
++        assert_eq!(none.status, 409);
++        let (none, _) = front.handle(
++            &post(
++                &target,
++                &json!({"quote_digest": json_body(&none)["quote_digest"], "request": "{}"})
++                    .to_string(),
++                vec![],
++            ),
++            NOW,
++        );
++        assert_eq!(none.status, 400, "{}", String::from_utf8_lossy(&none.body));
++        assert!(String::from_utf8_lossy(&none.body).contains("meeting.md"));
++        assert_ne!(event.outcome, "executed");
++
++        // A wrong name, an extra name, a non-text, or an oversized file: refused.
++        for files in [
++            json!({"notes.md": meeting()}),
++            json!({"meeting.md": meeting(), "extra.md": "x"}),
++            json!({"meeting.md": 7}),
++            json!({"meeting.md": "a".repeat(65_537)}),
++        ] {
++            let (_, input) = supplied_body(&front, &target, files);
++            let (refusal, _) = front.handle(&post(&target, &input, vec![]), NOW);
++            assert_eq!(
++                refusal.status,
++                400,
++                "{}",
++                String::from_utf8_lossy(&refusal.body)
++            );
++        }
++        // Another snapshot version is unavailable.
++        let other = json!({"quote_digest": "", "request": "{}", "snapshot": {"v": "other", "files": {"meeting.md": meeting()}}});
++        let (refusal, _) = front.handle(&post(&target, &other.to_string(), vec![]), NOW);
++        assert_eq!(refusal.status, 400);
++        assert!(String::from_utf8_lossy(&refusal.body).contains(plugin::SUPPLIED_SNAPSHOT));
++
++        // Exactly the declared file: priced, paid once, executed, and the
++        // receipt binds the supplied snapshot rather than the empty one.
++        let (preview, input) = supplied_body(&front, &target, json!({"meeting.md": meeting()}));
++        assert_eq!(
++            preview.status,
++            409,
++            "{}",
++            String::from_utf8_lossy(&preview.body)
++        );
++        let (ran, signature) = paid(&front, &receiver, &target, &input);
++        assert_eq!(ran.status, 200, "{}", String::from_utf8_lossy(&ran.body));
++        let ran = json_body(&ran);
++        assert_eq!(ran["status"], "ok");
++        assert_eq!(ran["receipt"]["profile"], "snapshot-read");
++        let mut files = BTreeMap::new();
++        files.insert("meeting.md".to_string(), meeting().to_string());
++        let snapshot = plugin::Snapshot::supplied(&["meeting.md".into()], &files, 65_536).unwrap();
++        assert_eq!(
++            ran["receipt"]["snapshot"],
++            json!(plugin::snapshot_digest(&snapshot, &BTreeMap::new()))
++        );
++        assert_ne!(
++            ran["receipt"]["snapshot"],
++            json!(plugin::snapshot_digest(
++                &plugin::Snapshot::default(),
++                &BTreeMap::new()
++            ))
++        );
++        assert!(
++            ran["value"].to_string().contains("source_line") || !ran["value"].is_null(),
++            "{}",
++            ran["value"]
++        );
++
++        // Replaying the spent proof is refused: no second charge, no second run.
++        let (again, event) = front.handle(
++            &post(&target, &input, vec![(PAYMENT_SIGNATURE.into(), signature)]),
++            NOW,
++        );
++        assert_eq!(
++            again.status,
++            402,
++            "{}",
++            String::from_utf8_lossy(&again.body)
++        );
++        assert_ne!(event.outcome, "executed");
++    }
++
++    #[test]
++    fn the_one_guest_release_gains_no_supplied_snapshot() {
++        let dir = tempfile::tempdir().unwrap();
++        let receiver = Arc::new(FakeReceiver {
++            counter: AtomicU64::new(0),
++            preimages: Mutex::new(HashMap::new()),
++        });
++        let front = front(dir.path(), receiver, Arc::new(LedgerSink::in_memory()));
++        let target = format!("/v1/plugins/{ID}/invoke");
++        let (_, input) = supplied_body(&front, &target, json!({"meeting.md": meeting()}));
++        let (refusal, _) = front.handle(&post(&target, &input, vec![]), NOW);
++        assert_eq!(
++            refusal.status,
++            400,
++            "{}",
++            String::from_utf8_lossy(&refusal.body)
++        );
++        assert!(String::from_utf8_lossy(&refusal.body).contains("unavailable"));
++        // Without files the existing envelope is unchanged.
++        let plain = approved(&front, &target, ERROR);
++        let (challenge, _) = front.handle(&post(&target, &plain, vec![]), NOW);
++        assert_eq!(challenge.status, 402);
++    }
+ }
+diff --git a/crates/openagents-cli/src/plugin_purchase/tests.rs b/crates/openagents-cli/src/plugin_purchase/tests.rs
+index 9c85554b7871af752c68abe8a8c1abc6e9105094..a6339fd2634724ca2758b6591dc9ee65c529b85b 100644
+--- a/crates/openagents-cli/src/plugin_purchase/tests.rs
++++ b/crates/openagents-cli/src/plugin_purchase/tests.rs
+@@ -369,6 +369,7 @@ impl Harness {
+                 operation: String::new(),
+                 profile: String::new(),
+                 limits: Value::Null,
++                snapshot: String::new(),
+             },
+             payer: Payer {
+                 home: root.path().join("wallet"),
+@@ -384,7 +385,13 @@ impl Harness {
+             commercial: None,
+             shared: None,
+         };
+-        offer.packet = resolved(source.as_ref(), &offer, request).unwrap();
++        offer.packet = resolved(
++            source.as_ref(),
++            &offer,
++            request,
++            &std::collections::BTreeMap::new(),
++        )
++        .unwrap();
+         let body = offer.body(request);
+         offer.request_hash =
+             binding_hash(&http_binding("POST", &offer.url, &body, &[]).unwrap()).unwrap();
+diff --git a/crates/plugin/src/snapshot.rs b/crates/plugin/src/snapshot.rs
+index c87bc94b8095bda4419de220ab5e23889c06ec58..301dd5b6266dd45a015484cf3bbaf10a6ee26383 100644
+--- a/crates/plugin/src/snapshot.rs
++++ b/crates/plugin/src/snapshot.rs
+@@ -354,3 +420,34 @@ mod tests {
+         assert_eq!(derivative(bytes, *complete, false).unwrap(), b"hello");
+     }
+ }
++
++#[cfg(test)]
++mod supplied_tests {
++    use super::*;
++
++    fn files(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
++        pairs
++            .iter()
++            .map(|(k, v)| (k.to_string(), v.to_string()))
++            .collect()
++    }
++
++    #[test]
++    fn supplied_snapshots_hold_exactly_the_declared_texts_within_bounds() {
++        let names = vec!["meeting.md".to_string()];
++        let ok = Snapshot::supplied(&names, &files(&[("meeting.md", "hello")]), 5).unwrap();
++        assert!(matches!(
++            ok.get("meeting.md"),
++            Some(Entry::File { complete: true, version, bytes }) if version == SUPPLIED_VERSION && bytes == b"hello"
++        ));
++        assert!(Snapshot::supplied(&names, &files(&[("meeting.md", "hello!")]), 5).is_err());
++        assert!(Snapshot::supplied(&names, &files(&[("other.md", "x")]), 5).is_err());
++        assert!(Snapshot::supplied(&names, &files(&[]), 5).is_err());
++        assert!(Snapshot::supplied(&[], &files(&[]), 5).is_err());
++        assert!(Snapshot::supplied(&["../x".into()], &files(&[("../x", "x")]), 5).is_err());
++        let many: Vec<String> = (0..=SUPPLIED_ENTRIES).map(|i| format!("f{i}")).collect();
++        let given: BTreeMap<String, String> =
++            many.iter().map(|n| (n.clone(), String::new())).collect();
++        assert!(Snapshot::supplied(&many, &given, 5).is_err());
++    }
++}

@@ -1,0 +1,35 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10095,
+  "title": "Desktop: text only \u2014 no attachments",
+  "body": "Owner, 2026-10-01: the desktop is text only too, like the phone (#10093, `ATTACHMENTS_ENABLED`). Hide the attach (paperclip) control and every way to attach on the desktop: picker, paste of images, drag and drop of files/images; drafts accept text only; a restored draft with images sends its words only. Use the same switch as the phone (or a desktop switch next to it) so both turn back on together; keep the image pipeline code. Update the release gate: `image-to-coder` becomes a check that the desktop has no attach control and drops a pasted/dropped image. Update docs/INVARIANTS/glossary notes from #10093 (\"phone attachments off\") to say attachments are off everywhere. Owner also put the desktop in **development mode**: verify with debug builds and the gate's `--bin-dir` mode; do not package or install a release app.",
+  "fix": "de4943c63a32cd1af0a554eaf0a1fc75fe88e42a",
+  "parent": "2ea22d1df094044f4d7f7839dc5fc4ce8683d029",
+  "package": "openagents-desktop",
+  "source_files": [
+    "INVARIANTS.md",
+    "bins/openagents-ios/docs/chat-later.md",
+    "crates/openagents-chat-app/src/attachments.rs",
+    "crates/openagents-chat-app/src/coder_tab.rs",
+    "crates/openagents-desktop/README.md",
+    "crates/openagents-desktop/src/acceptance.rs",
+    "crates/openagents-desktop/src/chat.rs",
+    "crates/openagents-mobile/src/account.rs",
+    "docs/desktop/verification/2026-09-30-images/verification.md",
+    "docs/glossary.md",
+    "docs/release/acceptance.md",
+    "scripts/release/acceptance.sh"
+  ],
+  "test_files": [
+    "crates/openagents-desktop/src/chat.rs",
+    "crates/openagents-desktop/src/shell.rs"
+  ],
+  "test_names": [
+    "a_restored_draft_with_images_sends_its_words_only",
+    "run_coder_carries_no_images_while_attachments_are_off",
+    "the_desktop_is_text_only_while_attachments_are_off"
+  ],
+  "fix_lines": 387
+}

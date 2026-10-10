@@ -1,0 +1,25 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 11133,
+  "title": "Self-host guide: run your own OpenAgents (web, API, relay) from the public repo",
+  "body": "From the Kitchen Sink X-archive pass (#11125, docs/kitchen-sink/twitter.md, item 8). Posts promise 'open access always \u2026 no rugpull possible' and that anyone can run their own copy. Ledger K5 is Partial: the code is open, but there is no guide.\n\n- docs/self-host.md (and a page on openagents.com/docs): what you need, how to run the web app, account service, inference gateway, and Nostr relay from the public repo, with your own model keys.\n- One command or script per component where possible; what's optional.\n- Tested by someone following it on a clean Linux machine.\n\nDone when: a clean-machine run reaches a working chat with the guide alone.\n\nLedger: K5, K4, K7. Phase: late October.",
+  "fix": "96e8c4e0284f089cd59c759a2596ed670506896a",
+  "parent": "e9b1525b23168c0865ebf4928bf811b17ac213f2",
+  "package": "openagents-web",
+  "source_files": [
+    "crates/openagents-web/content/docs/self-host.md",
+    "crates/openagents-web/content/docs/troubleshooting.md",
+    "crates/openagents-web/src/pages/content.rs",
+    "docs/dev/full-local.md",
+    "docs/kitchen-sink/ledger.md",
+    "docs/self-host.md",
+    "scripts/dev/full-local.sh"
+  ],
+  "test_files": [
+    "crates/openagents-web/src/tests.rs"
+  ],
+  "test_names": [],
+  "fix_lines": 357
+}

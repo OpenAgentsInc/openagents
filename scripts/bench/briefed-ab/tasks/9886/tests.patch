@@ -1,0 +1,90 @@
+diff --git a/crates/coder-mobile/src/verse_app.rs b/crates/coder-mobile/src/verse_app.rs
+index 41c011dca0b31a3a4d2691b7d35efb182cff2612..04d62e8ad287ed0f9ec951d3e955ccfbc2c3d80f 100644
+--- a/crates/coder-mobile/src/verse_app.rs
++++ b/crates/coder-mobile/src/verse_app.rs
+@@ -4061,6 +4249,72 @@ mod tests {
+         assert!(preview.player_tags().vertices.len() > plain_vertices);
+     }
+ 
++    #[test]
++    fn playtest_titles_draw_as_shapes_on_the_tag_the_ground_and_the_ball() {
++        // No playtest referee key exists yet, so a live scene reads none.
++        assert!(verse::xp::playtest_trust().is_none());
++        let mut scene = Scene::new(Config {
++            xp_preview: true,
++            ..bare_config(None)
++        })
++        .unwrap();
++        scene.activate(true).unwrap();
++        scene.update(1.0).unwrap();
++        assert!(scene.playtest.is_none());
++        let key = scene.public_key.clone();
++        let titles = verse::xp::playtest_titles(scene.playtest_snapshot.as_ref(), &key);
++        assert_eq!(
++            titles.iter().map(String::as_str).collect::<Vec<_>>(),
++            [
++                "bug-hunter",
++                "fix-verifier",
++                "founding-playtester",
++                "playtester",
++                "raider"
++            ]
++        );
++        // Playtest XP never reaches the level on the tag.
++        assert_eq!(
++            verse::xp::name_tag(scene.xp_snapshot.as_ref(), &key),
++            format!("{} · lv 3", &key[..8])
++        );
++        let marked = scene.player_tags().vertices;
++        let snapshot = scene.playtest_snapshot.take();
++        let plain = scene.player_tags().vertices;
++        // PLAYTESTER under the tag, a crosshair, a check, and a ground ring.
++        assert!(marked.len() >= plain.len() + "PLAYTESTER".len() * 6 + GROUND_RING_SEGMENTS * 6);
++        // Shapes, not colors: every mark is gray.
++        assert!(marked[plain.len()..].iter().all(|v| {
++            let [r, g, b, _] = v.color;
++            r == g && g == b
++        }));
++        scene.playtest_snapshot = snapshot;
++        // A player without titles gets none.
++        assert!(
++            verse::xp::playtest_titles(scene.playtest_snapshot.as_ref(), &"ab".repeat(32))
++                .is_empty()
++        );
++
++        // Walking into the ball as a raider makes it glow while it moves.
++        let [sx, sy] = scene.stick_center();
++        scene.pointer(2, PointerPhase::Down, sx, sy).unwrap();
++        scene.pointer(2, PointerPhase::Move, sx, sy - 80.0).unwrap();
++        let mut glowed = false;
++        for frame in 1..=210 {
++            scene.update(1.0 + f64::from(frame) / 60.0).unwrap();
++            let mut ui = verse::ui::UiBatch::default();
++            scene.raider_glow(&mut ui);
++            glowed |= !ui.vertices.is_empty();
++        }
++        scene.pointer(2, PointerPhase::Up, sx, sy - 80.0).unwrap();
++        assert!(glowed);
++        // Without the title, pushing the ball draws nothing extra.
++        scene.playtest_snapshot = None;
++        let mut ui = verse::ui::UiBatch::default();
++        scene.raider_glow(&mut ui);
++        assert!(ui.vertices.is_empty());
++    }
++
+     #[test]
+     fn pinching_all_the_way_in_on_the_grid_enters_first_person() {
+         let mut grid = bare_scene();
+diff --git a/crates/verse/src/xp/tests.rs b/crates/verse/src/xp/tests.rs
+index 5591db35cd6d84e498d8601149185c126d16ade5..13da83b9ef29c63b14d3697916d518a31609c71f 100644
+--- a/crates/verse/src/xp/tests.rs
++++ b/crates/verse/src/xp/tests.rs
+@@ -306,7 +306,7 @@ fn missing_names_a_reproductions_claim_and_reproduction() {
+ 
+ #[test]
+ fn playtest_awards_count_on_their_own_card_and_never_in_the_trainer_level() {
+-    let referee = fixture::signer(0x9_1a7);
++    let referee = fixture::signer(0x91a7);
+     let tester = fixture::signer(0x7e_57);
+     let at = 1_790_000_000;
+     let events = fixture::playtest_events(&referee, &tester, at);

@@ -1,0 +1,91 @@
+diff --git a/crates/coder-computers/src/tests.rs b/crates/coder-computers/src/tests.rs
+index 69dd99c63e09e42e9e777429a2862646a314d64b..7ce54ca1e9940a919735fcf4b9ef4af000b8bf7c 100644
+--- a/crates/coder-computers/src/tests.rs
++++ b/crates/coder-computers/src/tests.rs
+@@ -261,6 +261,7 @@ fn host(enrollment: Enrollment, link: Option<Status>) -> HostRecord {
+         devices: DeviceList::NotLoaded,
+         enrollments: Vec::new(),
+         workspaces: None,
++        watchers: None,
+     }
+ }
+ 
+@@ -1989,3 +1990,34 @@ fn publishing_a_change_needs_operate_and_reading_it_needs_observe() {
+     ));
+     assert!(fixed.calls().is_empty(), "nothing was published");
+ }
++
++/// A host's `background.list` answer names the watchers running: rules on,
++/// readable, and not paused, first letter lowercased, as the computer's own
++/// terminal and desktop name them.
++#[test]
++fn background_list_names_the_running_watchers() {
++    let list = serde_json::json!([
++        {"id": "disk-cleanup", "name": "Disk cleanup", "version": 1, "digest": "d",
++         "enabled": true, "state": {}},
++        {"id": "logs", "name": "Logs", "version": 1, "digest": "d",
++         "enabled": true, "paused_until": 500, "state": {}},
++        {"id": "old", "name": "Old", "version": 1, "digest": "d",
++         "enabled": true, "paused_until": 50, "state": {}},
++        {"id": "off", "name": "Off", "version": 1, "digest": "d",
++         "enabled": false, "state": {}},
++        {"id": "bad", "name": "bad", "version": 0, "digest": "",
++         "enabled": false, "state": {}, "error": "unreadable"},
++    ]);
++    assert_eq!(
++        crate::model::watchers(&list, 100),
++        Some(vec!["disk cleanup".to_owned(), "old".to_owned()])
++    );
++    assert_eq!(
++        crate::model::watchers(&serde_json::json!([]), 100),
++        Some(vec![])
++    );
++    assert_eq!(
++        crate::model::watchers(&serde_json::json!({"queued": "x"}), 100),
++        None
++    );
++}
+diff --git a/crates/openagents-cli/src/reach.rs b/crates/openagents-cli/src/reach.rs
+index 141fba89c0e5d6595a86951a9cafa0bb8c50fde8..024635ffd7c18c81e421d669ef751eb9dfd4d07d 100644
+--- a/crates/openagents-cli/src/reach.rs
++++ b/crates/openagents-cli/src/reach.rs
+@@ -562,6 +562,7 @@ mod tests {
+             devices: DeviceList::NotLoaded,
+             enrollments: Vec::new(),
+             workspaces: None,
++            watchers: None,
+         }
+     }
+ 
+diff --git a/crates/openagents-mobile/src/computers_home.rs b/crates/openagents-mobile/src/computers_home.rs
+index a0f1d0ddf89179eb0c2d45983c6b77260a3217cb..685c9b7e7ec9fea2315e885f44f0b67bb23823e6 100644
+--- a/crates/openagents-mobile/src/computers_home.rs
++++ b/crates/openagents-mobile/src/computers_home.rs
+@@ -419,6 +434,27 @@ mod tests {
+         assert_eq!(menu(row(&home, "Travel mini"))[0], "switch_on");
+     }
+ 
++    #[test]
++    fn an_online_computer_names_its_background_watchers_and_others_say_nothing() {
++        let (mut app, _dir) = app();
++        let home = packet(&mut app, Request::Snapshot);
++        // The same words the terminal and desktop show.
++        assert_eq!(
++            row(&home, "Studio Mac")["watchers"],
++            "1 background watcher · disk cleanup"
++        );
++        assert_eq!(
++            row(&home, "Studio Mac")["watchers"].as_str(),
++            openagents_chat_app::watchers::line(&["disk cleanup".into()]).as_deref()
++        );
++        // Home NAS said it runs one, but it is offline now: nothing.
++        assert!(row(&home, "Home NAS")["watchers"].is_null());
++        // Hosts that never said, and every other row: nothing.
++        for name in ["Build server", "Old laptop", "Lab box", "Travel mini"] {
++            assert!(row(&home, name)["watchers"].is_null(), "{name}");
++        }
++    }
++
+     #[test]
+     fn a_host_that_draws_the_shared_screens_whole_gets_them_unchanged() {
+         let dir = tempfile::tempdir().expect("temp dir");

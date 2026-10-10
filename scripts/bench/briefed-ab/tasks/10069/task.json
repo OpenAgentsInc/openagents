@@ -1,0 +1,32 @@
+{
+  "test_targets": [
+    "--test",
+    "connect_live",
+    "--lib",
+    "--test",
+    "evidence_select",
+    "--test",
+    "headless",
+    "--test",
+    "program_run"
+  ],
+  "issue": 10069,
+  "title": "Six coder tests fail on main: runtime selection, evidence_select, program_run",
+  "body": "Several agents on 2026-09-30/10-01 found these failing on `main` independent of their changes:\n\n- `runtime::tests::a_selection_is_held_to_the_offered_programs` (gets `door_unavailable` where it expects `no_program_chosen`)\n- `evidence_select` (1 test)\n- `program_run` (4 tests)\n\nLikely related to the Jev/decision door changes (#10048 5710e1311c, #10064 5ed35bf130), where a test that expected a local stand-in now resolves a hosted door or none. Find the cause, fix the code or the tests (whichever is wrong; don't weaken a real check), and make `cargo test -p coder` green. Tests must never reach live services unless opt-in.",
+  "fix": "109f6aacdace4c89cd233ecc2f4377b0931485c8",
+  "parent": "3e139170012829d05ac94e3f44994bb68927cf30",
+  "package": "coder-computers",
+  "source_files": [
+    "crates/coder/src/agent.rs"
+  ],
+  "test_files": [
+    "crates/coder-computers/tests/connect_live.rs",
+    "crates/coder/src/product_kb/tests.rs",
+    "crates/coder/src/runtime.rs",
+    "crates/coder/tests/evidence_select.rs",
+    "crates/coder/tests/headless.rs",
+    "crates/coder/tests/program_run.rs"
+  ],
+  "test_names": [],
+  "fix_lines": 117
+}

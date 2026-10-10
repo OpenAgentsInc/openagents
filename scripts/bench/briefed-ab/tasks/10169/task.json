@@ -1,0 +1,37 @@
+{
+  "test_targets": [
+    "--lib",
+    "--test",
+    "pty"
+  ],
+  "issue": 10169,
+  "title": "Terminal: a rail of running delegations under the input bar, Up/Down to select, Enter for full screen",
+  "body": "Owner, 2026-10-02: port Coder Terminal's delegation rail into OpenAgents Terminal, ASAP.\n\nCoder Terminal (`~/work/coder`, 0.4.0 release notes `docs/releases/0.4.0.md` \"A rail under the composer\"; code `bins/coder-terminal/src/delegation_panel.rs`, `delegation.rs`, `delegation_steer.rs`, `panels.rs`, tests `delegation_panel_tests.rs`, `delegation_screen_tests.rs`):\n- Running delegations (Coder runs / engine sessions this thread or session started) appear in a rail below the input bar: each with its number, its agent (Codex, Claude Code, Grok Build\u2026), and a short summary of what it is doing.\n- Up moves from the input bar into the rail and through it; Down returns to the input bar.\n- Enter on a delegation opens it full screen (its live steps and output, scrollable while it streams; reuse the existing full-screen run view from #10150, Ctrl+R/`/run`, with its steering composer). Alt+number / `/open <n>` open one directly.\n\nNot wanted: Coder Terminal's in-transcript presentation of each delegation's tools. The transcript stays as it is now (grok-build's presentation).\n\nDone when several running delegations show in the rail, keyboard navigation works, and Enter opens the full-screen view, with tests (including the pty end-to-end test).",
+  "fix": "89fc3c06158ba2c8644f7284a2d960c08eef2228",
+  "parent": "97d42cf8cd09aa455535b1568733f1647d595627",
+  "package": "coder-terminal",
+  "source_files": [
+    "crates/coder-terminal/src/components/mod.rs",
+    "crates/openagents-terminal/src/app.rs",
+    "crates/openagents-terminal/src/draw.rs",
+    "crates/openagents-terminal/src/lib.rs",
+    "crates/openagents-terminal/src/rail.rs",
+    "crates/openagents-terminal/src/slash.rs",
+    "crates/openagents-terminal/src/view.rs",
+    "docs/terminal/README.md"
+  ],
+  "test_files": [
+    "crates/coder-terminal/src/components/rail.rs",
+    "crates/openagents-terminal/src/app_tests.rs",
+    "crates/openagents-terminal/src/slash.rs",
+    "crates/openagents-terminal/tests/pty.rs"
+  ],
+  "test_names": [
+    "a_narrow_rail_cuts_the_summary_first",
+    "a_row_reads_number_agent_doing_and_timer",
+    "alt_and_a_number_or_open_and_a_number_opens_one",
+    "running_runs_show_in_the_rail_under_the_composer",
+    "up_moves_into_the_rail_down_returns_and_enter_opens_full_screen"
+  ],
+  "fix_lines": 763
+}

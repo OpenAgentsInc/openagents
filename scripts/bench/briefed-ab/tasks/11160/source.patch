@@ -1,0 +1,509 @@
+diff --git a/crates/gateway/src/accounts.rs b/crates/gateway/src/accounts.rs
+index de0e37c65cf5ea2ccefef02862f99a7dad9900f9..73214cf66be431c7fe31cc24d08a0fb107890abd 100644
+--- a/crates/gateway/src/accounts.rs
++++ b/crates/gateway/src/accounts.rs
+@@ -183,6 +183,20 @@ pub(crate) fn refused(
+         .into_response()
+ }
+ 
++/// [`refused`] naming the request field at fault (`error.param`).
++fn refused_param(
++    status: StatusCode,
++    code: &'static str,
++    param: &'static str,
++    message: impl Into<String>,
++) -> Response {
++    (
++        status,
++        Json(json!({"error": {"code": code, "param": param, "message": message.into()}})),
++    )
++        .into_response()
++}
++
+ /// A success document under the surface's schema tag.
+ pub(crate) fn answered(status: StatusCode, fields: Value) -> Response {
+     let mut body = fields;
+@@ -268,7 +282,18 @@ fn registry(state: &ServeState) -> Result<Registry, Response> {
+ /// is a valid credential with no account surface, which is a distinct
+ /// answer from a bad one.
+ pub(crate) fn principal(state: &ServeState, headers: &HeaderMap) -> Result<Principal, Response> {
+-    let principal = principal_unbound(state, headers)?;
++    principal_for(state, headers, "accounts")
++}
++
++/// [`principal`] for a route an `oak_` key reaches with the scope that
++/// admits `action` (#11160): `accounts` for the workspace routes, `keys`
++/// for key management.
++pub(crate) fn principal_for(
++    state: &ServeState,
++    headers: &HeaderMap,
++    action: &str,
++) -> Result<Principal, Response> {
++    let principal = principal_unbound(state, headers, action)?;
+     if let Some(expected) = headers.get("x-openagents-team-account") {
+         if headers.get_all("x-openagents-team-account").iter().count() != 1
+             || expected.to_str().ok() != principal.account()
+@@ -283,7 +308,11 @@ pub(crate) fn principal(state: &ServeState, headers: &HeaderMap) -> Result<Princ
+     Ok(principal)
+ }
+ 
+-fn principal_unbound(state: &ServeState, headers: &HeaderMap) -> Result<Principal, Response> {
++fn principal_unbound(
++    state: &ServeState,
++    headers: &HeaderMap,
++    action: &str,
++) -> Result<Principal, Response> {
+     let token = bearer(headers)?;
+     if token.starts_with("sess_") {
+         let sessions = sessions_store(state)?;
+@@ -329,12 +358,16 @@ fn principal_unbound(state: &ServeState, headers: &HeaderMap) -> Result<Principa
+     if authenticated
+         .scopes
+         .as_ref()
+-        .is_some_and(|scopes| !scopes.permits_action("accounts"))
++        .is_some_and(|scopes| !scopes.permits_action(action))
+     {
+         return Err(refused(
+             StatusCode::FORBIDDEN,
+             "out_of_scope",
+-            "Your API key's scope doesn't allow account actions.",
++            if action == "keys" {
++                "Your API key's scope doesn't allow managing keys (`keys`)."
++            } else {
++                "Your API key's scope doesn't allow account actions (`workspace`)."
++            },
+         ));
+     }
+     let accounts = accounts_store(state)?;
+@@ -2292,7 +2325,7 @@ async fn keys_list(
+     headers: HeaderMap,
+     Path(workspace): Path<String>,
+ ) -> Response {
+-    let principal = match principal(&state, &headers) {
++    let principal = match principal_for(&state, &headers, "keys") {
+         Ok(principal) => principal,
+         Err(response) => return response,
+     };
+@@ -2368,7 +2401,7 @@ async fn key_issue(
+     Path(workspace): Path<String>,
+     Json(body): Json<Value>,
+ ) -> Response {
+-    let principal = match principal(&state, &headers) {
++    let principal = match principal_for(&state, &headers, "keys") {
+         Ok(principal) => principal,
+         Err(response) => return response,
+     };
+@@ -2407,15 +2440,41 @@ async fn key_issue(
+             }
+         },
+     };
++    // `scopes` is a list of the public scope names (docs/api/design.md
++    // section 2.7, #11160), or the older `{models, actions}` object. A key
++    // made without one gets the narrow default (`responses models:read
++    // usage:read`); keys made before this keep their reach.
+     let scopes = match body.get("scopes") {
+-        None | Some(Value::Null) => None,
++        None | Some(Value::Null) => Some(keys::Scopes::default_for_new_keys()),
++        Some(Value::Array(names)) => {
++            let names: Option<Vec<&str>> = names.iter().map(Value::as_str).collect();
++            match names
++                .filter(|names| !names.is_empty())
++                .and_then(keys::Scopes::public)
++            {
++                Some(scopes) => Some(scopes),
++                None => {
++                    return refused_param(
++                        StatusCode::BAD_REQUEST,
++                        "invalid_scope",
++                        "scopes",
++                        format!(
++                            "`scopes` must list one or more of: {}.",
++                            keys::PUBLIC_SCOPES.join(", ")
++                        ),
++                    );
++                }
++            }
++        }
+         Some(value) => match serde_json::from_value::<keys::Scopes>(value.clone()) {
+             Ok(scopes) => Some(scopes),
+             Err(error) => {
+                 return refused(
+                     StatusCode::BAD_REQUEST,
+                     "invalid_request",
+-                    format!("`scopes` must name `models` and `actions` lists: {error}"),
++                    format!(
++                        "`scopes` must be a list of scope names, or name `models` and `actions` lists: {error}"
++                    ),
+                 );
+             }
+         },
+@@ -2489,7 +2548,7 @@ pub(crate) fn key_context(
+     workspace: &str,
+     key_id: &str,
+ ) -> Result<KeyContext, Response> {
+-    let principal = principal(state, headers)?;
++    let principal = principal_for(state, headers, "keys")?;
+     let account = member_account(&principal)?.to_string();
+     let membership = member(state, &account, workspace)?;
+     let accounts = accounts_store(state)?;
+diff --git a/crates/gateway/src/inference_openapi.rs b/crates/gateway/src/inference_openapi.rs
+index f2530b78f8565c012bfccb5e67b2922a014dc8eb..a28dd61532673a7e6690ca053a8d53a0988631a6 100644
+--- a/crates/gateway/src/inference_openapi.rs
++++ b/crates/gateway/src/inference_openapi.rs
+@@ -319,6 +319,17 @@ pub fn document(origin: &str, methods: &[MethodInfo]) -> Value {
+         &[("403", "Not allowed to make keys here.")],
+     );
+     key_issue["parameters"] = json!([workspace.clone()]);
++    key_issue["requestBody"] = json!({"required": false, "content": {"application/json": {"schema": {
++        "type": "object",
++        "properties": {
++            "name": {"type": "string", "description": "So you can tell your keys apart."},
++            "scopes": {
++                "type": "array",
++                "items": {"type": "string", "enum": tenancy::keys::PUBLIC_SCOPES},
++                "description": "What the key may do. Left out: `responses`, `models:read`, `usage:read`. Scopes only narrow; a key can never change its own scopes or limits."
++            }
++        }
++    }}}});
+     let mut key_revoke = keyed(
+         "revokeKey",
+         "Revoke a key now.",
+diff --git a/crates/jev/src/account_management.rs b/crates/jev/src/account_management.rs
+index 2d05917035097b934c93367248720c96ee77006b..db0ca7e5eaede1cf3f56dd7d43e5ebccdc203919 100644
+--- a/crates/jev/src/account_management.rs
++++ b/crates/jev/src/account_management.rs
+@@ -42,6 +42,21 @@ pub struct KeyRecord {
+     pub status: Option<String>,
+     #[serde(default)]
+     pub created: Option<String>,
++    /// What the key may do: `{models, actions}`, the actions being the
++    /// public scope names (`responses`, `models:read`, ...) or the older
++    /// action names. `None`: everything its workspace may do (a key made
++    /// before scopes).
++    #[serde(default)]
++    pub scopes: Option<KeyScopes>,
++}
++
++/// A key's scope as the gateway lists it.
++#[derive(Debug, Clone, Default, Deserialize)]
++pub struct KeyScopes {
++    #[serde(default)]
++    pub models: Option<Vec<String>>,
++    #[serde(default)]
++    pub actions: Option<Vec<String>>,
+ }
+ 
+ /// One of a workspace's own provider keys, as the gateway lists it.
+@@ -457,9 +472,26 @@ impl Account<'_> {
+ 
+     /// Issue a new API key on the workspace, bound to the caller's account.
+     /// The secret is in the grant only.
++    /// A key made without scopes gets the gateway's narrow default
++    /// (`responses models:read usage:read`).
+     pub async fn issue_key(&self, workspace: &str, name: &str) -> Result<KeyGrant> {
++        self.issue_key_scoped(workspace, name, &[]).await
++    }
++
++    /// [`Self::issue_key`] with the public scopes the person picked
++    /// (docs/api/design.md section 2.7). Empty: the gateway's default.
++    pub async fn issue_key_scoped(
++        &self,
++        workspace: &str,
++        name: &str,
++        scopes: &[&str],
++    ) -> Result<KeyGrant> {
+         identifier(workspace)?;
+-        let body = serde_json::to_vec(&serde_json::json!({"name": name}))
++        let mut request = serde_json::json!({"name": name});
++        if !scopes.is_empty() {
++            request["scopes"] = serde_json::json!(scopes);
++        }
++        let body = serde_json::to_vec(&request)
+             .map_err(|_| Error::Config("Key request encoding failed.".into()))?;
+         self.key_mutation(&format!("/v1/workspaces/{workspace}/keys"), Some(body))
+             .await
+diff --git a/crates/jev/src/lib.rs b/crates/jev/src/lib.rs
+index a37f47b08d114d0752d8b2d61091ed76e9a09be4..28e919ed209ad476c073072fb1ae613835b30f7c 100644
+--- a/crates/jev/src/lib.rs
++++ b/crates/jev/src/lib.rs
+@@ -289,13 +289,13 @@ pub use account::{
+     CardFundingSnapshot, CardFundingView, CommissionAcceptance, CommissionAgreement,
+     CommissionInput, CommissionPublication, CommissionView, GatewaySession, InvitationGrant,
+     JoinedCustomerStatement, JoinedStatementQuery, JoinedStatementView, KeyGrant, KeyIdentity,
+-    KeyRecord, Position, ProviderKeyRecord, PurchaseActivity, PurchaseActivityItem, PurchaseCost,
+-    PurchaseReceipt, RecoveryGrant, ReferralCapture, ReferralEvidence, ReferralIdentity,
+-    ReferralIntroduction, ReferralKind, ReferralLink, ReferralRecord, ReferralSource,
+-    ReferralSuccessor, SessionBudget, SessionGrant, SessionInfo, SessionView, Team, TeamAccess,
+-    TeamInvitation, TeamInvitationSummary, TeamMember, TeamPolicyView, TeamRole, TeamWorkspace,
+-    TeamWorkspaceIdentity, UsageCost, UsageQuery, UsageTotals, UsageUnits, UsageView,
+-    WorkspaceAttribution, WorkspaceIdentity, WorkspaceRef, WorkspaceView,
++    KeyRecord, KeyScopes, Position, ProviderKeyRecord, PurchaseActivity, PurchaseActivityItem,
++    PurchaseCost, PurchaseReceipt, RecoveryGrant, ReferralCapture, ReferralEvidence,
++    ReferralIdentity, ReferralIntroduction, ReferralKind, ReferralLink, ReferralRecord,
++    ReferralSource, ReferralSuccessor, SessionBudget, SessionGrant, SessionInfo, SessionView, Team,
++    TeamAccess, TeamInvitation, TeamInvitationSummary, TeamMember, TeamPolicyView, TeamRole,
++    TeamWorkspace, TeamWorkspaceIdentity, UsageCost, UsageQuery, UsageTotals, UsageUnits,
++    UsageView, WorkspaceAttribution, WorkspaceIdentity, WorkspaceRef, WorkspaceView,
+ };
+ pub use answers::{
+     Answer, ChoiceAnswer, MASS_TOLERANCE, NoulAnswer, RawResponse, ScoreAnswer, SystemOneResponse,
+diff --git a/crates/openagents-web/src/api_keys.rs b/crates/openagents-web/src/api_keys.rs
+index 95b7e763f20f0b667b4453381ae46e658ef4effe..c719db11cfc6cb6f9f523351dca5d3c5f8726031 100644
+--- a/crates/openagents-web/src/api_keys.rs
++++ b/crates/openagents-web/src/api_keys.rs
+@@ -1,7 +1,8 @@
+ //! `/settings/api-keys` (#11065): the signed-in person's API keys for the
+ //! OpenAgents API (`docs/inference/gateway.md`, section 7). They make a
+-//! key, with an optional monthly spending limit they choose, see the
+-//! secret once, and revoke keys. The keys are the account service's
++//! key, with an optional monthly spending limit they choose and what it may
++//! do (#11160: calling and listing models and reading usage unless they
++//! pick more), see the secret once, and revoke keys. The keys are the account service's
+ //! `oak_` keys on the person's own workspace; nothing about a key's secret
+ //! is kept or shown here after it is made.
+ 
+@@ -12,7 +13,7 @@ use axum::response::{IntoResponse, Redirect, Response};
+ use maud::{Markup, html};
+ use openagents_ui::actions::{Button, ButtonType, ButtonVariant, Color};
+ use openagents_ui::content::MarkdownRoot;
+-use openagents_ui::forms::{Field, Input, InputType};
++use openagents_ui::forms::{Checkbox, Field, Input, InputType};
+ use serde::Deserialize;
+ 
+ use crate::App;
+@@ -81,6 +82,54 @@ struct Row {
+     name: String,
+     created: String,
+     active: bool,
++    /// What the key may do, in words; empty for a key made before scopes,
++    /// which may do everything its workspace may.
++    can: String,
++}
++
++/// What a key may do, as the form offers it (#11160, docs/api/design.md
++/// section 2.7): the form field, the scope, the words, and whether a new
++/// key has it unless the person unticks it. Only scopes a key can use
++/// today are offered.
++const SCOPE_CHOICES: [(&str, &str, &str, bool); 6] = [
++    ("scope_responses", "responses", "Call models", true),
++    (
++        "scope_models",
++        "models:read",
++        "List models and prices",
++        true,
++    ),
++    (
++        "scope_usage",
++        "usage:read",
++        "Read its usage and your balance",
++        true,
++    ),
++    ("scope_keys", "keys", "Make and revoke keys", false),
++    ("scope_billing", "billing", "Plans and top-ups", false),
++    (
++        "scope_workspace",
++        "workspace",
++        "Members and workspace settings",
++        false,
++    ),
++];
++
++/// A key's scopes in words, as the list shows them.
++fn scope_words(scopes: Option<&jev::KeyScopes>) -> String {
++    let Some(actions) = scopes.and_then(|scopes| scopes.actions.as_ref()) else {
++        return String::new();
++    };
++    let words: Vec<&str> = SCOPE_CHOICES
++        .iter()
++        .filter(|(_, scope, _, _)| actions.iter().any(|action| action == scope))
++        .map(|(_, _, words, _)| *words)
++        .collect();
++    if words.is_empty() {
++        "Limited".to_owned()
++    } else {
++        words.join(", ")
++    }
+ }
+ 
+ pub(crate) async fn keys(State(app): State<App>, headers: HeaderMap) -> Response {
+@@ -108,6 +157,7 @@ pub(crate) async fn keys(State(app): State<App>, headers: HeaderMap) -> Response
+                 .status
+                 .as_deref()
+                 .is_none_or(|status| status == "active"),
++            can: scope_words(key.scopes.as_ref()),
+             id: key.id,
+         })
+         .collect();
+@@ -179,6 +229,7 @@ fn keys_content(rows: &[Row], make: (&str, &str), revoke: (&str, &str)) -> Marku
+                             span class="oa-settings-hint" {
+                                 @if row.active { "Works" } @else { "Paused" }
+                                 @if !row.created.is_empty() { " · made " (row.created) }
++                                @if !row.can.is_empty() { " · " (row.can) }
+                             }
+                         }
+                         div class="oa-settings-control" {
+@@ -212,6 +263,12 @@ fn keys_content(rows: &[Row], make: (&str, &str), revoke: (&str, &str)) -> Marku
+                         .inputmode("decimal")
+                         .aria(limit.aria()),
+                 ))
++                fieldset class="oa-settings-scopes" {
++                    legend { "What the key may do" }
++                    @for (field, _, words, on) in SCOPE_CHOICES {
++                        p { (Checkbox::new(field, words).value("on").checked(on)) }
++                    }
++                }
+                 p { (Button::new("Make key").kind(ButtonType::Submit)) }
+             }
+         }
+@@ -393,6 +450,38 @@ pub(crate) struct MakeForm {
+     name: String,
+     #[serde(default)]
+     limit: String,
++    #[serde(default)]
++    scope_responses: Option<String>,
++    #[serde(default)]
++    scope_models: Option<String>,
++    #[serde(default)]
++    scope_usage: Option<String>,
++    #[serde(default)]
++    scope_keys: Option<String>,
++    #[serde(default)]
++    scope_billing: Option<String>,
++    #[serde(default)]
++    scope_workspace: Option<String>,
++}
++
++impl MakeForm {
++    /// The scopes ticked on the form, in [`SCOPE_CHOICES`] order.
++    fn scopes(&self) -> Vec<&'static str> {
++        let ticked = [
++            &self.scope_responses,
++            &self.scope_models,
++            &self.scope_usage,
++            &self.scope_keys,
++            &self.scope_billing,
++            &self.scope_workspace,
++        ];
++        SCOPE_CHOICES
++            .iter()
++            .zip(ticked)
++            .filter(|(_, ticked)| ticked.is_some())
++            .map(|((_, scope, _, _), _)| *scope)
++            .collect()
++    }
+ }
+ 
+ /// Dollars typed in the form, as a decimal string the account service
+@@ -462,8 +551,15 @@ pub(crate) async fn make(
+     } else {
+         name
+     };
++    let scopes = form.scopes();
++    if scopes.is_empty() {
++        return problem(
++            StatusCode::BAD_REQUEST,
++            "Pick at least one thing the key may do.",
++        );
++    }
+     let account = viewer.client().account();
+-    let grant = match account.issue_key(&workspace, &name).await {
++    let grant = match account.issue_key_scoped(&workspace, &name, &scopes).await {
+         Ok(grant) => grant,
+         Err(_) => return unreachable_service(),
+     };
+diff --git a/crates/tenancy/src/keys.rs b/crates/tenancy/src/keys.rs
+index f77024782b7db76d1e857462700bbb699d98c13f..84591a3bc82847a466a387c06a5a94a34757aa50 100644
+--- a/crates/tenancy/src/keys.rs
++++ b/crates/tenancy/src/keys.rs
+@@ -92,12 +92,87 @@ impl Scopes {
+             .is_none_or(|models| models.contains(door))
+     }
+ 
+-    /// Whether the scope admits an action — same rule.
++    /// Whether the scope admits an action — same rule. A key may name the
++    /// service's actions (`inference`, `accounts`, ...) or the public scope
++    /// names people pick ([`PUBLIC_SCOPES`]); each public scope admits the
++    /// actions [`scope_actions`] lists.
+     #[must_use]
+     pub fn permits_action(&self, action: &str) -> bool {
+-        self.actions
+-            .as_ref()
+-            .is_none_or(|actions| actions.contains(action))
++        self.actions.as_ref().is_none_or(|actions| {
++            actions.contains(action)
++                || actions
++                    .iter()
++                    .any(|scope| scope_actions(scope).contains(&action))
++        })
++    }
++
++    /// A key scoped to the public scope names `names` (docs/api/design.md
++    /// section 2.7), every door its tenant's binding allows. `None` when
++    /// a name isn't one of [`PUBLIC_SCOPES`].
++    #[must_use]
++    pub fn public<'a>(names: impl IntoIterator<Item = &'a str>) -> Option<Self> {
++        let mut actions = BTreeSet::new();
++        for name in names {
++            if !PUBLIC_SCOPES.contains(&name) {
++                return None;
++            }
++            actions.insert(name.to_owned());
++        }
++        Some(Self {
++            models: None,
++            actions: Some(actions),
++        })
++    }
++
++    /// The scope a new key gets when its maker names none:
++    /// [`DEFAULT_SCOPES`].
++    #[must_use]
++    pub fn default_for_new_keys() -> Self {
++        Self::public(DEFAULT_SCOPES.iter().copied()).unwrap_or_default()
++    }
++}
++
++/// The scopes people can give an `oak_` key (docs/api/design.md section
++/// 2.7, #11160). Scopes only narrow: a key never reaches more than its
++/// tenant's binding and its owner's limits allow.
++pub const PUBLIC_SCOPES: &[&str] = &[
++    "responses",
++    "models:read",
++    "usage:read",
++    "traces",
++    "traces:read",
++    "threads",
++    "threads:read",
++    "runs",
++    "runs:read",
++    "plugins",
++    "keys",
++    "billing",
++    "workspace",
++];
++
++/// What a new key may do when its maker picks nothing: call models, list
++/// them, and read its own usage.
++pub const DEFAULT_SCOPES: &[&str] = &["responses", "models:read", "usage:read"];
++
++/// The service actions one public scope admits. The older action names
++/// stay valid on keys made before the public names: `inference` is
++/// `responses`, `accounts` is `workspace` (and, as it always did, key
++/// management).
++#[must_use]
++pub fn scope_actions(scope: &str) -> &'static [&'static str] {
++    match scope {
++        "responses" => &["inference", "responses"],
++        "models:read" => &["models", "models:read"],
++        "usage:read" => &["balance", "usage:read"],
++        "billing" => &["billing", "balance"],
++        "workspace" => &["accounts", "workspace"],
++        "keys" => &["keys"],
++        "accounts" => &["keys"],
++        "traces" => &["traces", "traces:read"],
++        "threads" => &["threads", "threads:read"],
++        "runs" => &["runs", "runs:read"],
++        _ => &[],
+     }
+ }
+ 

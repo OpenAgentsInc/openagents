@@ -1,0 +1,448 @@
+diff --git a/crates/coder-environment-operator/src/agent.rs b/crates/coder-environment-operator/src/agent.rs
+index 7856e84bc10e3b4926bfe283699072069a7db533..7dff1bef9f4bf8277be677aa880ce92956b4608e 100644
+--- a/crates/coder-environment-operator/src/agent.rs
++++ b/crates/coder-environment-operator/src/agent.rs
+@@ -38,8 +38,8 @@ use coder_environment_verify::plan::{
+     Assertions, Check, CheckKind, CheckPlan, Idempotence, PLAN_SCHEMA, SourceStep, Startup,
+ };
+ use coder_environment_verify::service::VerifyRequest;
+-use coder_working_computer::Principal;
+ use coder_working_computer::provider::{Commands, Images};
++use coder_working_computer::{HEARTBEAT_EVERY_MS, Principal};
+ use codex_transport::{Reply, Request, Transport, TransportError};
+ use serde::{Deserialize, Serialize};
+ use serde_json::{Value, json};
+@@ -298,7 +298,27 @@ impl<P: Commands + Images, T: Transport> Agent<P, T> {
+     /// Run the setup as far as it can go now: until it waits for the
+     /// person, is ready to save, is saved, or failed. Returns the state it
+     /// stopped in (also retained).
+-    pub async fn run(&self, brief: &Brief, mut state: State) -> State {
++    ///
++    /// While it runs, the setup turn's computer hears a heartbeat every
++    /// [`HEARTBEAT_EVERY_MS`] however long a step takes, so only a loop
++    /// that is gone leaves the turn silent (#11059).
++    pub async fn run(&self, brief: &Brief, state: State) -> State {
++        let session = state.session();
++        let beat = async {
++            let mut every = tokio::time::interval(Duration::from_millis(HEARTBEAT_EVERY_MS));
++            every.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
++            loop {
++                every.tick().await;
++                let _ = self.owners.setup.heartbeat(&session, now_ms()).await;
++            }
++        };
++        tokio::select! {
++            state = self.steps(brief, state) => state,
++            _ = beat => unreachable!("the heartbeat never ends"),
++        }
++    }
++
++    async fn steps(&self, brief: &Brief, mut state: State) -> State {
+         loop {
+             match state.phase.clone() {
+                 Phase::Starting => self.start(brief, &mut state).await,
+diff --git a/crates/coder-environment-setup/src/service.rs b/crates/coder-environment-setup/src/service.rs
+index 193f36ccd3fdb67fee5037f650d41634e79049da..61ee4c893505eab0bfed249cc6dab2a01d567321 100644
+--- a/crates/coder-environment-setup/src/service.rs
++++ b/crates/coder-environment-setup/src/service.rs
+@@ -172,8 +172,15 @@ pub struct Setup<P> {
+     root: PathBuf,
+     custody: Custody,
+     live: Mutex<BTreeMap<String, Recorder>>,
++    /// Sessions this owner process has visited: the first visit after a
++    /// start counts as a heartbeat, so a restart is not a silent turn.
++    visited: Mutex<BTreeSet<String>>,
+ }
+ 
++/// What a setup whose turn went silent says while it waits (#11059).
++pub const STALLED: &str = "The setup stopped responding, so its computer was stopped. \
++Its files are kept. Send a message to pick up where it left off.";
++
+ fn fingerprint(value: &Value) -> String {
+     digest(&serde_json::to_vec(value).expect("request encodes"))
+ }
+@@ -195,6 +202,7 @@ impl<P: Commands> Setup<P> {
+             root: root.into(),
+             custody,
+             live: Mutex::new(BTreeMap::new()),
++            visited: Mutex::new(BTreeSet::new()),
+         }
+     }
+ 
+@@ -1077,8 +1085,50 @@ impl<P: Commands> Setup<P> {
+         Ok(s)
+     }
+ 
++    /// The turn's owner (the setup agent) is alive. Nothing to do when no
++    /// turn runs; a busy computer record is skipped until the next beat.
++    pub async fn heartbeat(&self, id: &str, now_ms: u64) -> Result<()> {
++        let s = self.sessions.read(id)?;
++        if s.state.terminal() {
++            return Ok(());
++        }
++        let Some(generation) = s.generation else {
++            return Ok(());
++        };
++        match self
++            .computers
++            .heartbeat(&s.computer, generation, now_ms)
++            .await
++        {
++            Ok(())
++            | Err(coder_working_computer::store::StoreError::Refused(_))
++            | Err(coder_working_computer::store::StoreError::Busy) => Ok(()),
++            Err(e) => Err(e.into()),
++        }
++    }
++
++    /// A turn whose owner went silent: stop its command, stop the computer
++    /// (its files stay with it), and wait for the person with a plain
++    /// message. Nothing is announced as done.
++    async fn stalled(&self, id: &str, now_ms: u64) -> Result<SetupSession> {
++        let s = self.sessions.read(id)?;
++        if let Some(c) = s.active_command() {
++            let command = c.id.clone();
++            let _ = self.stop(id, &command, now_ms).await;
++        }
++        self.computers.tick(&s.computer, false, now_ms).await?;
++        let lease = self.sessions.lease(id)?;
++        Ok(lease.apply(
++            &Op::Paused {
++                question: STALLED.into(),
++            },
++            now_ms,
++        )?)
++    }
++
+     /// A timer visit: past the session deadline the setup is cancelled;
+-    /// a command past its own deadline is stopped.
++    /// a turn whose owner went silent ends ([`STALLED`]); a command past
++    /// its own deadline is stopped.
+     pub async fn tick(&self, id: &str, now_ms: u64) -> Result<SetupSession> {
+         let s = self.sessions.read(id)?;
+         if s.state.terminal() {
+@@ -1096,6 +1146,12 @@ impl<P: Commands> Setup<P> {
+                 )
+                 .await;
+         }
++        let first = self.visited.lock().expect("visited").insert(id.to_owned());
++        if first {
++            self.heartbeat(id, now_ms).await?;
++        } else if self.computers.store.read(&s.computer)?.turn_silent(now_ms) {
++            return self.stalled(id, now_ms).await;
++        }
+         if let Some(c) = s.active_command()
+             && now_ms >= c.deadline_ms
+         {
+diff --git a/crates/coder-working-computer/src/decide.rs b/crates/coder-working-computer/src/decide.rs
+index 6402c9a4f5dd79347948fdf6c22d70769aee2f59..f36f4341423b9e9f168320674e1678307cb86529 100644
+--- a/crates/coder-working-computer/src/decide.rs
++++ b/crates/coder-working-computer/src/decide.rs
+@@ -4,6 +4,15 @@
+ //! tick. It never dispatches while a checkpoint is fenced, never replaces a
+ //! resource whose create outcome is unknown (it repeats the same idempotent
+ //! operation identity), and never treats an unknown stop as stopped.
++//!
++//! Liveness: a running turn whose owner stopped beating for
++//! [`Computer::stale_ms`] stops as [`StopReason::Stale`] through the same
++//! stop path as any other stop. Nothing bounds how long a live turn runs
++//! besides the absolute bound the computer was admitted with.
++//!
++//! Circuit breaker: after [`BREAKER_FAILURES`] failed boots within
++//! [`BREAKER_WINDOW_MS`], a prompt that would boot again is refused with a
++//! plain message until the window passes.
+ 
+ use crate::*;
+ 
+@@ -71,6 +80,18 @@ pub enum Decision {
+     Inspect,
+ }
+ 
++/// The refusal while the breaker is open, in plain words.
++pub fn breaker_message(c: &Computer, now_ms: u64) -> Option<String> {
++    let until = c.breaker_open_until(now_ms)?;
++    let minutes = until.saturating_sub(now_ms).div_ceil(60_000).max(1);
++    Some(format!(
++        "This computer failed to start {BREAKER_FAILURES} times in the last {} minutes, so it \
++         isn't trying again yet. It can try again in {minutes} minute{}.",
++        BREAKER_WINDOW_MS / 60_000,
++        if minutes == 1 { "" } else { "s" }
++    ))
++}
++
+ fn create_operation(c: &Computer) -> String {
+     format!("{}-create-{}", c.id, c.creates.len() + 1)
+ }
+@@ -150,6 +171,10 @@ pub fn decide(c: &Computer, trigger: Trigger, now_ms: u64) -> Decision {
+         Phase::Turn { .. } if absolute_passed => Decision::Stop {
+             reason: StopReason::Absolute,
+         },
++        // A turn whose owner went silent ends; a live one runs on.
++        Phase::Turn { .. } if c.turn_silent(now_ms) => Decision::Stop {
++            reason: StopReason::Stale,
++        },
+         Phase::Turn { .. } if prompt => Decision::Wait(WaitReason::TurnRunning),
+         Phase::Turn { .. } => Decision::Skip,
+         // The fence: a queued prompt first finishes this turn's checkpoint.
+@@ -168,7 +193,9 @@ pub fn decide(c: &Computer, trigger: Trigger, now_ms: u64) -> Decision {
+         }
+         Phase::Stopped => {
+             let b = boot.expect("stopped has a boot");
+-            if prompt {
++            if prompt && let Some(message) = breaker_message(c, now_ms) {
++                Decision::Refuse(message)
++            } else if prompt {
+                 Decision::Restore {
+                     checkpoint: c.latest_checkpoint().map(|k| k.id.clone()),
+                 }
+@@ -198,6 +225,9 @@ pub fn decide(c: &Computer, trigger: Trigger, now_ms: u64) -> Decision {
+         }
+         Phase::Failed { .. } => {
+             let Some(a) = live_create(c) else {
++                if prompt && let Some(message) = breaker_message(c, now_ms) {
++                    return Decision::Refuse(message);
++                }
+                 return if prompt {
+                     Decision::Create {
+                         operation: create_operation(c),
+diff --git a/crates/coder-working-computer/src/driver.rs b/crates/coder-working-computer/src/driver.rs
+index b706ebdae69dc3eb73fb69e3a78cb99edbac0f86..5283358c9225ce83d9d1d57942aa7bb730084f03 100644
+--- a/crates/coder-working-computer/src/driver.rs
++++ b/crates/coder-working-computer/src/driver.rs
+@@ -79,6 +79,14 @@ impl<P: Provider> Driver<P> {
+         self.settle(&lease, Trigger::Tick, now_ms).await
+     }
+ 
++    /// The running turn's owner is alive ([`HEARTBEAT_EVERY_MS`]). Refused
++    /// when this generation's turn is not the one running.
++    pub async fn heartbeat(&self, id: &str, generation: u64, now_ms: u64) -> Result<()> {
++        let lease = self.store.lease(id)?;
++        lease.apply(&Command::Heartbeat { generation }, now_ms)?;
++        Ok(())
++    }
++
+     /// Stop the computer now (owner request), keeping its checkpoint.
+     pub async fn stop(&self, id: &str, now_ms: u64) -> Result<Settled> {
+         let lease = self.store.lease(id)?;
+diff --git a/crates/coder-working-computer/src/lib.rs b/crates/coder-working-computer/src/lib.rs
+index f6dad1573f01056e6fb2536fe2ea5855fcf061e3..29ec4ff1e726036eab02930dbfc058b9e4de9c75 100644
+--- a/crates/coder-working-computer/src/lib.rs
++++ b/crates/coder-working-computer/src/lib.rs
+@@ -47,6 +47,20 @@ pub const MAX_CHECKPOINTS: usize = 4096;
+ pub const MAX_CREATES: usize = 64;
+ pub const MAX_SERVICES: usize = 16;
+ pub const MAX_REASON_BYTES: usize = 1024;
++/// How often a turn's owner says it is alive ([`Command::Heartbeat`]).
++pub const HEARTBEAT_EVERY_MS: u64 = 30_000;
++/// A turn whose owner has not said it is alive for this long (three missed
++/// beats) is silent: its process is gone or hung, and the computer stops
++/// ([`StopReason::Stale`]). This judges a dead owner, never a long turn: a
++/// live owner keeps beating however long the turn runs.
++pub const STALE_AFTER_MS: u64 = 90_000;
++/// Failed boots within [`BREAKER_WINDOW_MS`] that stop new boots until the
++/// window passes, so a broken image or a provider outage does not create
++/// machines in a loop.
++pub const BREAKER_FAILURES: usize = 3;
++pub const BREAKER_WINDOW_MS: u64 = 5 * 60_000;
++/// Boot failure times retained per computer.
++const MAX_BOOT_FAILURES: usize = 8;
+ 
+ /// Credentials OpenAgents never accepts, stores, or injects: a user's
+ /// Claude.ai sign-in lives only inside that user's computer
+@@ -207,6 +221,8 @@ pub enum StopReason {
+     Absolute,
+     FailedBoot,
+     Owner,
++    /// The running turn's owner stopped saying it is alive.
++    Stale,
+ }
+ 
+ #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+@@ -292,6 +308,10 @@ pub struct TurnFence {
+     pub dispatched: u64,
+     /// Last generation whose turn completed.
+     pub completed: u64,
++    /// When the running turn's owner last said it is alive (its start
++    /// counts). Zero for a record from before heartbeats: never judged.
++    #[serde(default)]
++    pub heartbeat_ms: u64,
+ }
+ 
+ #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+@@ -360,6 +380,20 @@ pub struct Computer {
+     pub checkpoints: Vec<Checkpoint>,
+     #[serde(default, skip_serializing_if = "Option::is_none")]
+     pub deletion: Option<Fact>,
++    /// How long a running turn may go without a heartbeat before it is
++    /// silent ([`STALE_AFTER_MS`] for chat and setup computers, whose turn
++    /// owner beats). Zero never judges: builders and verifiers, whose job
++    /// owners follow each command's own exit, and records from before
++    /// heartbeats.
++    #[serde(default, skip_serializing_if = "is_zero")]
++    pub stale_ms: u64,
++    /// When recent boots failed, newest last (at most a few).
++    #[serde(default, skip_serializing_if = "Vec::is_empty")]
++    pub boot_failures: Vec<u64>,
++}
++
++fn is_zero(v: &u64) -> bool {
++    *v == 0
+ }
+ 
+ /// What a new computer is asked to be.
+@@ -485,6 +519,8 @@ impl Computer {
+             boots: vec![],
+             checkpoints: vec![],
+             deletion: None,
++            stale_ms: STALE_AFTER_MS,
++            boot_failures: vec![],
+         };
+         c.validate()?;
+         Ok(c)
+@@ -507,6 +543,7 @@ impl Computer {
+             environment: environment.into(),
+             build: build.into(),
+         };
++        c.stale_ms = 0;
+         c.validate()?;
+         Ok(c)
+     }
+@@ -525,6 +562,7 @@ impl Computer {
+         }
+         let mut c = Self::new(spec, now_ms)?;
+         c.purpose = purpose;
++        c.stale_ms = 0;
+         c.validate()?;
+         Ok(c)
+     }
+@@ -661,6 +699,31 @@ impl Computer {
+     }
+ 
+     /// The live provider resource, if one was created and not deleted.
++    /// Whether the running turn has gone silent at `now_ms`.
++    pub fn turn_silent(&self, now_ms: u64) -> bool {
++        matches!(self.phase, Phase::Turn { .. })
++            && self.stale_ms > 0
++            && self.turn.heartbeat_ms > 0
++            && now_ms >= self.turn.heartbeat_ms.saturating_add(self.stale_ms)
++    }
++
++    /// While [`BREAKER_FAILURES`] boots failed within the last
++    /// [`BREAKER_WINDOW_MS`], when a new boot may be tried again.
++    pub fn breaker_open_until(&self, now_ms: u64) -> Option<u64> {
++        let recent: Vec<u64> = self
++            .boot_failures
++            .iter()
++            .copied()
++            .filter(|t| now_ms < t.saturating_add(BREAKER_WINDOW_MS))
++            .collect();
++        if recent.len() < BREAKER_FAILURES {
++            return None;
++        }
++        // The window closes when enough of these failures age out.
++        let pivot = recent[recent.len() - BREAKER_FAILURES];
++        Some(pivot.saturating_add(BREAKER_WINDOW_MS))
++    }
++
+     pub fn resource(&self) -> Option<&str> {
+         self.creates
+             .iter()
+diff --git a/crates/coder-working-computer/src/transition.rs b/crates/coder-working-computer/src/transition.rs
+index 123f99bd7eddf036e712ba95573f78dcf586814f..da2f9dd475b09a45527ac81ee57c2b6d32a43841 100644
+--- a/crates/coder-working-computer/src/transition.rs
++++ b/crates/coder-working-computer/src/transition.rs
+@@ -42,6 +42,10 @@ pub enum Command {
+     StartTurn {
+         generation: u64,
+     },
++    /// The running turn's owner is alive.
++    Heartbeat {
++        generation: u64,
++    },
+     /// The fence: the computer quiesces for this generation's checkpoint.
+     FinishTurn {
+         generation: u64,
+@@ -223,6 +227,12 @@ fn maybe_awake(c: &mut Computer, now: u64) {
+         touch(c, now);
+     }
+ }
++/// Count a failed boot toward the breaker.
++fn boot_failed(c: &mut Computer, now: u64) {
++    c.boot_failures.push(now);
++    let extra = c.boot_failures.len().saturating_sub(MAX_BOOT_FAILURES);
++    c.boot_failures.drain(..extra);
++}
+ fn latest_create_mut(c: &mut Computer) -> Option<&mut CreateAttempt> {
+     c.creates.last_mut()
+ }
+@@ -289,7 +299,10 @@ pub fn apply(c: &Computer, command: &Command, now_ms: u64) -> Result<Applied, Re
+                     new_boot(&mut n, value.clone(), BootOrigin::Created, now);
+                     n.phase = Phase::Booting;
+                 }
+-                Outcome::Failed { reason: r } => n.phase = Phase::Failed { reason: reason(r) },
++                Outcome::Failed { reason: r } => {
++                    boot_failed(&mut n, now);
++                    n.phase = Phase::Failed { reason: reason(r) }
++                }
+                 Outcome::Unknown { reason: r } => {
+                     n.phase = Phase::Unknown {
+                         reason: format!("create: {}", reason(r)),
+@@ -358,6 +371,7 @@ pub fn apply(c: &Computer, command: &Command, now_ms: u64) -> Result<Applied, Re
+                         at_ms: now,
+                     });
+                     b.stop_reason = Some(StopReason::FailedBoot);
++                    boot_failed(&mut n, now);
+                     n.phase = Phase::Stopped;
+                 }
+                 Outcome::Unknown { reason: r } => {
+@@ -379,6 +393,7 @@ pub fn apply(c: &Computer, command: &Command, now_ms: u64) -> Result<Applied, Re
+             }
+             n.boot_mut().unwrap().credentials = Some(fact_of(outcome, Clone::clone, now));
+             if let Outcome::Failed { reason: r } = outcome {
++                boot_failed(&mut n, now);
+                 n.phase = Phase::Failed {
+                     reason: format!("credentials: {}", reason(r)),
+                 };
+@@ -429,12 +444,29 @@ pub fn apply(c: &Computer, command: &Command, now_ms: u64) -> Result<Applied, Re
+                 });
+             }
+             n.turn.dispatched = *generation;
++            n.turn.heartbeat_ms = now;
+             n.phase = Phase::Turn {
+                 generation: *generation,
+             };
+             touch(&mut n, now);
+             true
+         }
++        Command::Heartbeat { generation } => {
++            let Phase::Turn { generation: g } = c.phase else {
++                return Err(wrong(c));
++            };
++            if g != *generation {
++                return Err(Refusal::StaleGeneration {
++                    fence: g,
++                    observed: *generation,
++                });
++            }
++            if now <= c.turn.heartbeat_ms {
++                return Ok(Applied::Unchanged);
++            }
++            n.turn.heartbeat_ms = now;
++            true
++        }
+         Command::FinishTurn { generation } => {
+             match c.phase {
+                 Phase::Turn { generation: g } if g == *generation => {}
+diff --git a/docs/research/openinspect.md b/docs/research/openinspect.md
+index 42a073d678eb95f9e8482b19a0a0999da64a25fe..b6131138ac461db2e2b5afe9db5008125157531a 100644
+--- a/docs/research/openinspect.md
++++ b/docs/research/openinspect.md
+@@ -489,7 +489,7 @@ exposes.
+ | Environment commits | — | `/commits/{branch}` read the whole commit, every changed file and patch | `Accept: application/vnd.github.sha`, 40 bytes |
+ | Clone auth | Host-scoped credential helper backed by a broker (refreshes with 5 minutes left; never uses a stale token); token kept out of the sandbox environment | Per-process helper answered **any** host, so a setup command's Git dependency on another host received the GitHub token | Answers only `https://github.com` |
+ | Clone shape | `--depth 100 --branch`; 300 s clone / 120 s fetch limits with a separate `TIMED_OUT` outcome; no retries, no submodules, no LFS | `--depth=1` fetch of the exact pin, no retry | One retry; 300 s fresh / 120 s existing-checkout bound per attempt, reported as `timed-out`; submodules recursive at depth 1 through the GitHub-only helper; LFS pulled when `git-lfs` is present, else reported as pointers; credential values re-read per command step (GCE) or per boot (Boat), from `OA_CREDENTIAL_DIR` when a minter keeps it ([#11058](https://github.com/OpenAgentsInc/openagents/issues/11058)) |
+-| Sandbox liveness | Heartbeat every 30 s, stale at 90 s; spawn circuit breaker (3 failures in 5 minutes); idle 10 minutes with one 5-minute extension for viewers | Idle and absolute bounds; a silent turn holds the computer until the absolute bound | Planned in [#11059](https://github.com/OpenAgentsInc/openagents/issues/11059) |
++| Sandbox liveness | Heartbeat every 30 s, stale at 90 s; spawn circuit breaker (3 failures in 5 minutes); idle 10 minutes with one 5-minute extension for viewers | Idle and absolute bounds; a silent turn holds the computer until the absolute bound | Setup agent beats every 30 s; a turn silent 90 s stops its command and computer (files kept) and waits for the person; 3 failed boots in 5 minutes refuse a new boot until the window passes; builders and verifiers follow their commands' exits instead ([#11059](https://github.com/OpenAgentsInc/openagents/issues/11059)) |
+ | Shared budget | Stale-while-revalidate repository-list cache (fresh 5 minutes, kept 1 hour) | Composer reads `api.github.com` anonymously (60 per hour per server IP, shared by every visitor) | Composer reads with the person's connected GitHub, anonymously only without one, and says when the shared limit is spent; repository pages and branch lists cached the same way (fresh 5 minutes, kept 1 hour, stale served while refreshing); one API version everywhere ([#11057](https://github.com/OpenAgentsInc/openagents/issues/11057)) |
+ | Tests | Token parsing, nullable fields, archived exclusion. No multi-page, 401-retry or rate-limit tests | Tiny objects, one page, no `Link`, no failures | See below |
+ 

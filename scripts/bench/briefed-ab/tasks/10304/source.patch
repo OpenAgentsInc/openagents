@@ -1,0 +1,342 @@
+diff --git a/crates/background/src/git.rs b/crates/background/src/git.rs
+index 34008c1a3fe37737e484804e6dc3aac731e4f639..5bea4590e09a08da7237e00fbce00d9763567aba 100644
+--- a/crates/background/src/git.rs
++++ b/crates/background/src/git.rs
+@@ -114,12 +114,97 @@ pub fn removable(path: &Path) -> Result<Undo, String> {
+ /// # Errors
+ /// Why it must stay.
+ pub fn removable_with(path: &Path, published: Option<&str>) -> Result<Undo, String> {
++    let local = local_state(path, published, false)?;
++    let tips: Vec<&str> = vec![local.head.as_str(), local.commit.as_str()];
++    let unpushed = unpushed(path, &tips)?;
++    if tips.iter().any(|tip| unpushed.contains(*tip)) {
++        return Err("commits not on any remote".into());
++    }
++    let stashes = git(path, &["stash", "list", "--format=%P %gs"]).unwrap_or_default();
++    finish(local, &stashes)
++}
++
++/// [`removable`] for many worktrees at once, in `paths`' order, for a
++/// listing (#10304). The checks are the same; Git runs for several
++/// worktrees at a time, and what a repository answers for all its
++/// worktrees (which commits are on no remote, its stashes) is asked once
++/// per repository instead of once per worktree.
++#[must_use]
++pub fn removable_all(paths: &[PathBuf]) -> Vec<Result<Undo, String>> {
++    let locals = crate::pool::map(paths, |path| local_state(path, None, true));
++    // One `rev-list` and one `stash list` per repository.
++    let mut repos: std::collections::BTreeMap<PathBuf, (PathBuf, Vec<String>)> =
++        std::collections::BTreeMap::new();
++    for (path, local) in paths.iter().zip(&locals) {
++        if let Ok(local) = local {
++            repos
++                .entry(local.common.clone())
++                .or_insert_with(|| (path.clone(), Vec::new()))
++                .1
++                .push(local.head.clone());
++        }
++    }
++    let repos: Vec<(PathBuf, PathBuf, Vec<String>)> = repos
++        .into_iter()
++        .map(|(common, (path, tips))| (common, path, tips))
++        .collect();
++    let facts = crate::pool::map(&repos, |(_, path, tips)| {
++        let stashes = git(path, &["stash", "list", "--format=%P %gs"]).unwrap_or_default();
++        let tips: Vec<&str> = tips.iter().map(String::as_str).collect();
++        (unpushed(path, &tips), stashes)
++    });
++    let facts: std::collections::BTreeMap<&PathBuf, _> = repos
++        .iter()
++        .map(|(common, _, _)| common)
++        .zip(facts)
++        .collect();
++    locals
++        .into_iter()
++        .map(|local| {
++            let local = local?;
++            let (unpushed, stashes) = &facts[&local.common];
++            let unpushed = unpushed.as_ref().map_err(Clone::clone)?;
++            if unpushed.contains(&local.head) {
++                return Err("commits not on any remote".into());
++            }
++            finish(local, stashes)
++        })
++        .collect()
++}
++
++/// What one worktree says of itself: it passed the checks that need only
++/// it (linked, clean or exactly its published commit, no ignored file
++/// outside a cache).
++struct Local {
++    path: PathBuf,
++    head: String,
++    /// `HEAD`, or the published commit that holds its content.
++    commit: String,
++    branch: Option<String>,
++    common: PathBuf,
++}
++
++/// `quick` first asks Git about tracked files alone, which does not walk
++/// the folders: a tracked change already decides "uncommitted changes"
++/// (with no published commit, the answer the full check gives first), so
++/// the walk for untracked and ignored files is skipped.
++fn local_state(path: &Path, published: Option<&str>, quick: bool) -> Result<Local, String> {
+     let dot = path.join(".git");
+     match std::fs::symlink_metadata(&dot) {
+         Ok(meta) if meta.is_file() => {}
+         Ok(_) => return Err("a full checkout, not a worktree".into()),
+         Err(_) => return Err("not a Git worktree".into()),
+     }
++    if quick
++        && published.is_none()
++        && !git(
++            path,
++            &["status", "--porcelain", "--untracked-files=no", "-z"],
++        )?
++        .is_empty()
++    {
++        return Err("uncommitted changes".into());
++    }
+     // `--ignored=matching` names an ignored directory once (`target/`)
+     // without walking it, and every ignored file outside one.
+     let status = git(
+@@ -166,37 +251,64 @@ pub fn removable_with(path: &Path, published: Option<&str>) -> Result<Undo, Stri
+         }
+         return Err(format!("holds ignored files: {why}"));
+     }
+-    let head = git(path, &["rev-parse", "HEAD"])?;
+-    let commit = saved_at.map_or_else(|| head.clone(), str::to_owned);
+-    for tip in [&head, &commit] {
+-        let unpushed = git(path, &["rev-list", tip, "--not", "--remotes"])?;
+-        if !unpushed.is_empty() {
+-            return Err("commits not on any remote".into());
+-        }
+-    }
+-    let branch = git(path, &["symbolic-ref", "-q", "--short", "HEAD"])
+-        .ok()
+-        .filter(|branch| !branch.is_empty());
++    // The common directory, `HEAD`, and its branch in one call.
++    let facts = git(
++        path,
++        &[
++            "rev-parse",
++            "--path-format=absolute",
++            "--git-common-dir",
++            "HEAD",
++            "--symbolic-full-name",
++            "HEAD",
++        ],
++    )?;
++    let mut lines = facts.lines();
++    let (Some(common), Some(head), symbolic) = (lines.next(), lines.next(), lines.next()) else {
++        return Err("git rev-parse: unexpected output".into());
++    };
++    let branch = symbolic
++        .and_then(|name| name.strip_prefix("refs/heads/"))
++        .filter(|branch| !branch.is_empty())
++        .map(str::to_owned);
++    let head = head.to_owned();
++    Ok(Local {
++        path: path.to_owned(),
++        commit: saved_at.map_or_else(|| head.clone(), str::to_owned),
++        head,
++        branch,
++        common: PathBuf::from(common),
++    })
++}
++
++/// The commits of `tips` (and their history) on no remote. A tip is on no
++/// remote exactly when it is in this set: a tip some remote has brings its
++/// whole history with it.
++fn unpushed(path: &Path, tips: &[&str]) -> Result<std::collections::HashSet<String>, String> {
++    let mut args = vec!["rev-list"];
++    args.extend(tips.iter().copied());
++    args.extend(["--not", "--remotes"]);
++    Ok(git(path, &args)?.lines().map(str::to_owned).collect())
++}
++
++/// The checks after a worktree's own: no stash was made on it. Returns
++/// what recreates it.
++fn finish(local: Local, stashes: &str) -> Result<Undo, String> {
+     // A stash is the repository's, not the worktree's: keep the worktree
+     // when any stash was made on its branch (or, detached, on its commit).
+-    let stashes = git(path, &["stash", "list", "--format=%P %gs"]).unwrap_or_default();
+     for line in stashes.lines() {
+         let base = line.split(' ').next().unwrap_or_default();
+-        let made_here = match &branch {
++        let made_here = match &local.branch {
+             Some(branch) => line
+                 .to_lowercase()
+                 .contains(&format!("on {branch}:").to_lowercase()),
+-            None => base == commit && line.contains("(no branch)"),
++            None => base == local.commit && line.contains("(no branch)"),
+         };
+         if made_here {
+             return Err("a stash was made on it".into());
+         }
+     }
+-    let common = git(
+-        path,
+-        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+-    )?;
+-    let common = PathBuf::from(common);
++    let common = local.common;
+     let repo = if common.file_name().is_some_and(|name| name == ".git") {
+         common.parent().map(Path::to_owned).unwrap_or(common)
+     } else {
+@@ -204,9 +316,9 @@ pub fn removable_with(path: &Path, published: Option<&str>) -> Result<Undo, Stri
+     };
+     Ok(Undo {
+         repo,
+-        path: path.to_owned(),
+-        branch,
+-        commit,
++        path: local.path,
++        branch: local.branch,
++        commit: local.commit,
+     })
+ }
+ 
+diff --git a/crates/background/src/lib.rs b/crates/background/src/lib.rs
+index ae50cd88389dfbba2f9fb10eb2e7f279f4266504..74725ac9e231e222fb38c1056fe72191893ef407 100644
+--- a/crates/background/src/lib.rs
++++ b/crates/background/src/lib.rs
+@@ -37,6 +37,7 @@ pub mod judged;
+ pub mod paths;
+ pub mod plan;
+ pub mod plugins;
++pub mod pool;
+ pub mod rule;
+ pub mod run;
+ pub mod runner;
+diff --git a/crates/coder/src/task/worktrees.rs b/crates/coder/src/task/worktrees.rs
+index f25b69b9d64a96ba69a116d29561f8d8f3ce5c76..3a67bce90415d12ec3d31720cdd737d566c9cadc 100644
+--- a/crates/coder/src/task/worktrees.rs
++++ b/crates/coder/src/task/worktrees.rs
+@@ -44,24 +44,30 @@ pub fn list(store: &Path) -> Result<Vec<Project>, String> {
+     let tasks = Store::open_waiting(store, std::time::Duration::from_secs(30))
+         .and_then(|store| store.list())
+         .map_err(|error| error.to_string())?;
++    let found: Vec<(String, Worktree)> = tasks
++        .iter()
++        .filter_map(|task| {
++            let record = super::local::record(store, &task.task_id)?;
++            let path = PathBuf::from(&record.worktree);
++            path.is_dir().then(|| {
++                (
++                    task.intent.workspace.path.clone(),
++                    Worktree {
++                        task: task.task_id.clone(),
++                        bytes: 0,
++                        path,
++                        ended: task.ended(),
++                    },
++                )
++            })
++        })
++        .collect();
++    // Sizing walks every file: several worktrees at a time (#10304).
++    let sizes = background::pool::map(&found, |(_, worktree)| size(&worktree.path));
+     let mut projects: BTreeMap<String, Vec<Worktree>> = BTreeMap::new();
+-    for task in &tasks {
+-        let Some(record) = super::local::record(store, &task.task_id) else {
+-            continue;
+-        };
+-        let path = PathBuf::from(&record.worktree);
+-        if !path.is_dir() {
+-            continue;
+-        }
+-        projects
+-            .entry(task.intent.workspace.path.clone())
+-            .or_default()
+-            .push(Worktree {
+-                task: task.task_id.clone(),
+-                bytes: size(&path),
+-                path,
+-                ended: task.ended(),
+-            });
++    for ((project, mut worktree), bytes) in found.into_iter().zip(sizes) {
++        worktree.bytes = bytes;
++        projects.entry(project).or_default().push(worktree);
+     }
+     let mut out: Vec<Project> = projects
+         .into_iter()
+diff --git a/crates/openagents-cli/src/worktree.rs b/crates/openagents-cli/src/worktree.rs
+index 8cb3370ecbfab6819ed550050eb42566bbf0ead0..e59e861ca8ab136383dd24cd476e352abbe67b38 100644
+--- a/crates/openagents-cli/src/worktree.rs
++++ b/crates/openagents-cli/src/worktree.rs
+@@ -156,46 +156,35 @@ fn ls(output: &Output, store: &Path, worktrees: &Path, sizes: bool) {
+         }
+     }
+     found.sort();
+-    // Sizing walks every file and the Git checks run Git: eight at a time.
++    // The Git checks run several worktrees at a time and ask each
++    // repository once what it answers for all of them (#10304); sizing
++    // walks every file, so it runs several at a time too.
++    let paths: Vec<PathBuf> = found.iter().map(|(_, path)| path.clone()).collect();
++    let saved = git::removable_all(&paths);
++    let sized: Vec<u64> = if sizes {
++        background::pool::map(&paths, |path| {
++            paths::measure(path, &home).map_or(0, |measure| measure.bytes)
++        })
++    } else {
++        vec![0; paths.len()]
++    };
+     let mut rows = Vec::with_capacity(found.len());
+-    for chunk in found.chunks(8) {
+-        let measured: Vec<(String, u64)> = std::thread::scope(|scope| {
+-            let handles: Vec<_> = chunk
+-                .iter()
+-                .map(|(_, path)| {
+-                    let home = &home;
+-                    scope.spawn(move || {
+-                        let saved = match git::removable(path) {
+-                            Ok(_) => "nothing unsaved".to_owned(),
+-                            Err(why) => why,
+-                        };
+-                        let size = if sizes {
+-                            paths::measure(path, home).map_or(0, |measure| measure.bytes)
+-                        } else {
+-                            0
+-                        };
+-                        (saved, size)
+-                    })
+-                })
+-                .collect();
+-            handles
+-                .into_iter()
+-                .map(|handle| handle.join().unwrap_or_else(|_| ("unknown".into(), 0)))
+-                .collect()
+-        });
+-        for ((name, path), (saved, size)) in chunk.iter().zip(measured) {
+-            let task = task_of(name, &tasks);
+-            rows.push(json!({
+-                "name": name,
+-                "path": path,
+-                "kind": if spare(name) { "spare" } else { "task" },
+-                "task": task.map(|task| task.task_id.clone()),
+-                "state": if spare(name) { "spare".to_owned() } else { state(task) },
+-                "bytes": sizes.then_some(size),
+-                "unsaved": saved,
+-                "age_seconds": now.saturating_sub(paths::touched_worktree(path)),
+-            }));
+-        }
++    for (((name, path), saved), size) in found.iter().zip(saved).zip(sized) {
++        let saved = match saved {
++            Ok(_) => "nothing unsaved".to_owned(),
++            Err(why) => why,
++        };
++        let task = task_of(name, &tasks);
++        rows.push(json!({
++            "name": name,
++            "path": path,
++            "kind": if spare(name) { "spare" } else { "task" },
++            "task": task.map(|task| task.task_id.clone()),
++            "state": if spare(name) { "spare".to_owned() } else { state(task) },
++            "bytes": sizes.then_some(size),
++            "unsaved": saved,
++            "age_seconds": now.saturating_sub(paths::touched_worktree(path)),
++        }));
+     }
+     let archived: Vec<Value> = shared::archived(store)
+         .into_iter()

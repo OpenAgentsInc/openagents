@@ -1,0 +1,37 @@
+diff --git a/crates/tenancy/src/keys.rs b/crates/tenancy/src/keys.rs
+index f77024782b7db76d1e857462700bbb699d98c13f..84591a3bc82847a466a387c06a5a94a34757aa50 100644
+--- a/crates/tenancy/src/keys.rs
++++ b/crates/tenancy/src/keys.rs
+@@ -800,6 +875,32 @@ mod tests {
+         assert!(open.permits_model("anything") && open.permits_action("anything"));
+     }
+ 
++    #[test]
++    fn public_scope_names_admit_the_service_actions_they_stand_for() {
++        let default = Scopes::default_for_new_keys();
++        assert!(default.permits_action("inference"));
++        assert!(default.permits_action("models"));
++        assert!(default.permits_action("balance"));
++        assert!(!default.permits_action("accounts"));
++        assert!(!default.permits_action("keys"));
++        assert!(!default.permits_action("billing"));
++        assert!(default.permits_model("any-door"));
++        let traces = Scopes::public(["traces:read"]).unwrap();
++        assert!(traces.permits_action("traces:read") && !traces.permits_action("traces"));
++        let writer = Scopes::public(["traces"]).unwrap();
++        assert!(writer.permits_action("traces:read") && writer.permits_action("traces"));
++        let admin = Scopes::public(["workspace", "keys"]).unwrap();
++        assert!(admin.permits_action("accounts") && admin.permits_action("keys"));
++        assert!(Scopes::public(["everything"]).is_none());
++        // A key made before the public names keeps its reach.
++        let older = Scopes {
++            models: None,
++            actions: Some(BTreeSet::from(["accounts".to_owned()])),
++        };
++        assert!(older.permits_action("accounts") && older.permits_action("keys"));
++        assert!(!older.permits_action("inference"));
++    }
++
+     #[test]
+     fn a_paused_key_refuses_and_resumes_a_revoked_one_never_does() {
+         let (dir, manifest) = installed();

@@ -1,0 +1,23 @@
+{
+  "test_targets": [
+    "--bins"
+  ],
+  "issue": 10368,
+  "title": "computer/reach/study can't reach an online desktop-app host (coderos-4080 stays Backoff/Unreachable)",
+  "body": "Found in shakeout round 2 (binary 38fbc3d0d9, macOS).\n\ncoderos-4080 runs the desktop host service (`com.openagents.desktop.host.service`); on coderos `openagents connect status` says \"Online. Your phone can reach this computer.\" with an iroh endpoint and tailnet 100.74.238.61:47109. From the Mac, which is enrolled with it (`rights observe,operate,terminal,review,access_read`):\n\n```\n$ openagents computer list --wait 20\nalias  label         link                             rights   route  host\n-      coderos-4080  Backoff { until: Moment(2271) }  observe,\u2026  -    93235bef\u2026\n$ openagents computer exec 93235bef --timeout 10 -- uname -a\nopenagents computer: 93235bef\u2026 did not connect within 15s (link Backoff { until: Moment(20845) }); pass --wait SECONDS to wait longer\n$ openagents reach presence 93235bef\nopenagents reach: no presence sample for 93235bef\u2026 within 15s; the host may be offline or the relay unreachable\n$ openagents reach probe 93235bef\nloopback refused\n\u2026 did not connect within 15s\n$ openagents study status 93235bef ~/gym-efficiency   # same failure\n```\n`--json computer show` reports `last_failure: Unreachable`, `online: false`, `route: null`.\n\nExpected: a host your phone reaches (iroh/tailnet) is reachable from `computer`, `reach` and `study` on an enrolled computer (same transports as the app), or the error says why (e.g. host doesn't publish presence on the relay; enable X) with a next step.",
+  "fix": "a8c8dfc3697d9dbbdd6094404f543556472166ed",
+  "parent": "aeb120a028d517bb8731683a908729a893428384",
+  "package": "openagents-cli",
+  "source_files": [
+    "crates/coder/src/cli_route/tree.json",
+    "crates/openagents-cli/src/computer.rs",
+    "crates/openagents-cli/src/reach.rs"
+  ],
+  "test_files": [
+    "crates/openagents-cli/src/computer.rs"
+  ],
+  "test_names": [
+    "a_silent_host_names_both_causes_and_the_way_back"
+  ],
+  "fix_lines": 216
+}

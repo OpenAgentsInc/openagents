@@ -1,0 +1,176 @@
+diff --git a/crates/verse-pbr/src/pbr/baked_layers.rs b/crates/verse-pbr/src/pbr/baked_layers.rs
+index 4e4151e9483c7e8131b03b202982787169acdad1..55744003919c0cfea71948c844e5114486d3588c 100644
+--- a/crates/verse-pbr/src/pbr/baked_layers.rs
++++ b/crates/verse-pbr/src/pbr/baked_layers.rs
+@@ -673,6 +767,46 @@ mod tests {
+         assert_eq!(decode_lamp([0; 4]), Vec3::ZERO);
+     }
+ 
++    #[test]
++    fn the_suns_blend_smoothly_between_their_directions() {
++        let layers = sample();
++        // At a baked sun, that sun alone; halfway, half each; the weights
++        // move continuously between them.
++        assert_eq!(layers.sun_weights(Vec3::Y), vec![(0, 1.0)]);
++        let half = layers.sun_weights(Vec3::new(1.0, 1.0, 0.0));
++        assert_eq!(half.len(), 2);
++        assert!((half[0].1 - 0.5).abs() < 1e-4 && (half[1].1 - 0.5).abs() < 1e-4);
++        let mut last = 1.0;
++        for step in 0..=90 {
++            let a = (step as f32).to_radians();
++            let w = layers.sun_weights(Vec3::new(a.sin(), a.cos(), 0.0));
++            let first = w.iter().find(|(k, _)| *k == 0).map_or(0.0, |x| x.1);
++            assert!(
++                first <= last + 1e-4 && (last - first) < 0.03,
++                "{step}: {w:?}"
++            );
++            assert!((w.iter().map(|x| x.1).sum::<f32>() - 1.0).abs() < 1e-5);
++            last = first;
++        }
++        assert!(last < 1e-3);
++        // Past the last sun, away from the others: the last alone.
++        assert_eq!(
++            layers.sun_weights(Vec3::new(1.0, -0.2, 0.0)),
++            vec![(1, 1.0)]
++        );
++        // The blend's light lies between the two suns' lights.
++        let (a, b) = (layers.lights(Some(0), 1.0), layers.lights(Some(1), 1.0));
++        let mid = layers.lights_blend(&half, 1.0);
++        for i in 0..mid.len() {
++            let (x, y, m) = (decode(a[i]).0, decode(b[i]).0, decode(mid[i]).0);
++            assert!(m.cmpge(x.min(y) - 0.02).all() && m.cmple(x.max(y) + 0.02).all());
++        }
++        assert_ne!(
++            layers.probes_blend(&half, 1.0).grid.version,
++            layers.probes(Some(0), 1.0).grid.version
++        );
++    }
++
+     #[test]
+     fn the_nearest_sun_adds_its_bounce_in_proportion_to_its_strength() {
+         let layers = sample();
+@@ -697,6 +831,11 @@ mod tests {
+             probes.grid.version,
+             layers.probes(Some(1), 0.5).grid.version
+         );
++        // One sun weighted wholly is that sun.
++        assert_eq!(
++            layers.lights_blend(&[(0, 1.0)], 0.7),
++            layers.lights(Some(0), 0.7)
++        );
+         let lamps = layers.lamp_texels();
+         assert_eq!(lamps.len(), 50);
+         assert_eq!(lamps[40], [9, 9, 9, 9]);
+diff --git a/crates/verse-pbr/src/pbr/relight.rs b/crates/verse-pbr/src/pbr/relight.rs
+index a9bc12a389908d5773550fd9d296ec32700a8ed5..0ee7bc290b4b6f90a19a0a359e0ef052f218a8da 100644
+--- a/crates/verse-pbr/src/pbr/relight.rs
++++ b/crates/verse-pbr/src/pbr/relight.rs
+@@ -667,6 +721,45 @@ mod tests {
+         assert!(at(&scene, &restored, Vec3::ZERO) < 0.4);
+     }
+ 
++    #[test]
++    fn a_new_base_keeps_the_gap_relit_and_returns_whole_on_restore() {
++        let scene = Arc::new(shelter());
++        let (lights, probes) = baked(&scene);
++        let mut relight = Relight::start(
++            scene.clone(),
++            LIGHT,
++            settings(),
++            lights.clone(),
++            probes.clone(),
++        );
++        relight.settle();
++        hide_roof(&scene);
++        relight.settle();
++        scene.baked.take();
++        // Another hour's light, darker everywhere: far ground takes it, and
++        // the ground under the fallen roof stays relit, open to the sky.
++        let darker: Vec<[u8; 4]> = lights
++            .iter()
++            .map(|l| [l[0] / 2, l[1] / 2, l[2] / 2, l[3]])
++            .collect();
++        let darker = Arc::new(darker);
++        relight.rebase(darker.clone(), probes.clone());
++        assert!(!relight.settled());
++        relight.settle();
++        let delivered = scene.baked.take().unwrap();
++        let away = Vec3::new(15.0, 0.0, 15.0);
++        assert_eq!(at(&scene, &delivered, away), at(&scene, &darker, away));
++        assert!(at(&scene, &delivered, Vec3::ZERO) > 0.95);
++        // Restored, the new light exactly.
++        for range in &scene.index_ranges()[1] {
++            scene
++                .edits
++                .write(range.first, scene.range_indices(1, range));
++        }
++        relight.settle();
++        assert_eq!(scene.baked.take().unwrap(), *darker);
++    }
++
+     #[test]
+     fn a_cancelled_relight_returns_nothing() {
+         let scene = shelter();
+diff --git a/crates/verse-zone-everglade/src/zones/everglade/mod.rs b/crates/verse-zone-everglade/src/zones/everglade/mod.rs
+index b9a6b317dad471ebeab9ef804e94aab863a4e9b0..e0d80039565473b83ed25a2fad5be6ce8acbd7ff 100644
+--- a/crates/verse-zone-everglade/src/zones/everglade/mod.rs
++++ b/crates/verse-zone-everglade/src/zones/everglade/mod.rs
+@@ -361,7 +361,9 @@ impl Everglade {
+             bake: None,
+             probes: None,
+             baked: None,
+-            relights: false,
++            // Desktops relight what breaks; a phone keeps its baked light
++            // rather than hold a second copy of the town's geometry.
++            relights: !cfg!(any(target_os = "ios", target_os = "android")),
+             relight_from: None,
+             relight: None,
+             extra_blocks: Vec::new(),
+@@ -796,9 +798,9 @@ impl Everglade {
+     /// probes near the gaps are traced again without the broken pieces, so
+     /// no baked shade floats where a wall stood and rubble takes the light
+     /// of the open lot, and when they are restored the baked light returns.
+-    /// Call it before [`Self::bake_light`]. The Meteor Showcase does
+-    /// (issue #10938); the town waits for its bake's destruction fallback
+-    /// (#10907).
++    /// Call it before [`Self::bake_light`]. Desktops relight by default,
++    /// the town over its offline-baked layers too (#10907); the Meteor
++    /// Showcase asks explicitly (#10938).
+     pub fn relight_destruction(&mut self) {
+         self.relights = true;
+     }
+@@ -1542,9 +1544,17 @@ impl Everglade {
+             self.probes = Some(Arc::new(probes));
+         }
+         if self.bake.is_none()
+-            && let Some(probes) = self.baked.as_mut().and_then(|b| b.update(&self.light))
++            && let Some(combined) = self.baked.as_mut().and_then(|b| b.update(&self.light))
+         {
+-            self.probes = Some(Arc::new(probes));
++            // What destruction opened stays relit over the new hour's light
++            // (#10907); without a relight the light goes straight to the
++            // renderer.
++            if let Some(relight) = &mut self.relight {
++                relight.rebase(Arc::new(combined.lights), combined.probes.clone());
++            } else if let Some(baked) = &self.baked {
++                baked.scene.baked.deliver_lights(combined.lights);
++            }
++            self.probes = Some(Arc::new(combined.probes));
+         }
+     }
+ 
+@@ -1835,6 +1845,14 @@ impl Everglade {
+             }
+         }
+         self.poll_bake();
++        // The baked layers combined for this hour, then relit over.
++        for _ in 0..3_000 {
++            if self.baked.as_ref().is_none_or(|b| b.settled(&self.light)) {
++                break;
++            }
++            std::thread::sleep(std::time::Duration::from_millis(5));
++            self.poll_bake();
++        }
+         if let Some(probes) = self.relight.as_mut().and_then(relight::Relight::settle) {
+             self.probes = Some(Arc::new(probes));
+         }

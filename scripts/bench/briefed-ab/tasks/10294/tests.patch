@@ -1,0 +1,535 @@
+diff --git a/crates/coder/src/task/worktrees.rs b/crates/coder/src/task/worktrees.rs
+index 40e874b4a8b26dafb2db030dc05b8e1ea60746d5..f25b69b9d64a96ba69a116d29561f8d8f3ce5c76 100644
+--- a/crates/coder/src/task/worktrees.rs
++++ b/crates/coder/src/task/worktrees.rs
+@@ -302,12 +411,30 @@ mod tests {
+         );
+         assert!(!worktree.exists());
+         assert!(list(&store).unwrap().is_empty());
++        let gone = archived(&store);
++        assert_eq!(gone.len(), 1);
++        assert_eq!(gone[0].task, "t1");
++        assert_eq!(gone[0].path, worktree);
+         assert!(
+             restore(&store, "t1")
+                 .unwrap()
+                 .starts_with("Restored the worktree")
+         );
+         assert!(worktree.join("README").exists());
++        assert!(archived(&store).is_empty());
++
++        // With the person's confirmation, unsaved files go for good and
++        // the worktree archives; the committed state comes back.
++        std::fs::write(worktree.join("notes"), "mine").unwrap();
++        std::fs::write(worktree.join("README"), "changed").unwrap();
++        discard_unsaved(&store, "t1").unwrap();
++        assert!(!worktree.join("notes").exists());
++        archive(&store, "t1").unwrap();
++        restore(&store, "t1").unwrap();
++        assert_eq!(
++            std::fs::read_to_string(worktree.join("README")).unwrap(),
++            "hi"
++        );
+     }
+ 
+     #[test]
+diff --git a/crates/openagents-cli/src/main.rs b/crates/openagents-cli/src/main.rs
+index 17dc7e9e1cd0086d53da315b4e714adb12ca1991..709a2a03b5c184f7a4c4c494780d73c3f1660ef9 100644
+--- a/crates/openagents-cli/src/main.rs
++++ b/crates/openagents-cli/src/main.rs
+@@ -73,6 +73,8 @@ mod terminal;
+ mod tree;
+ #[cfg(unix)]
+ mod wallet;
++#[cfg(unix)]
++mod worktree;
+ mod world;
+ #[cfg(unix)]
+ mod x402;
+@@ -111,6 +113,8 @@ Coder:
+   settings     What Coder may use on this computer: providers, ask first, and more.
+   service      Install, update, and roll back the resident host service.
+   background   The host's background rules, built in and from plugins turned on here.
++  worktree     Coder's task worktrees here: list them with size and what removing
++               would lose, archive an ended task's, and restore an archived one.
+   ssh          Start or adopt a host over SSH and tunnel to it.
+   boat         Build and test this checkout's change on a Boat sandbox, not here.
+   shadow       What a sample of Coder runs would have cost through the raw engine
+@@ -280,6 +284,8 @@ fn main() -> ExitCode {
+         "service" => service::run(&output, &rest),
+         #[cfg(unix)]
+         "background" => background::run(&output, &rest),
++        #[cfg(unix)]
++        "worktree" | "worktrees" => worktree::run(&output, &rest),
+         "settings" => settings::run(&output, &rest),
+         "boat" => boat_run::run(&output, &rest),
+         "shadow" => shadow::run(&output, &rest),
+@@ -298,7 +304,8 @@ fn main() -> ExitCode {
+         // service manager, the resident wallet, Unix file modes, and the
+         // system ssh's process groups.
+         #[cfg(not(unix))]
+-        "background" | "connect" | "labor" | "service" | "ssh" | "wallet" | "x402" | "pay" => {
++        "background" | "worktree" | "worktrees" | "connect" | "labor" | "service" | "ssh"
++        | "wallet" | "x402" | "pay" => {
+             eprintln!("openagents {command}: not available on Windows; run it from macOS or Linux");
+             EXIT_FAILURE
+         }
+diff --git a/crates/openagents-cli/src/worktree.rs b/crates/openagents-cli/src/worktree.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..8cb3370ecbfab6819ed550050eb42566bbf0ead0
+--- /dev/null
++++ b/crates/openagents-cli/src/worktree.rs
+@@ -0,0 +1,453 @@
++//! `openagents worktree`: the Coder task worktrees on this computer
++//! (docs/worktrees/2026-10-03-paseo-worktree-gap-analysis.md, P2.1). `ls`
++//! shows each with its task's state, size, whether removing it would lose
++//! anything, and age; `archive` and `restore` are the same as the
++//! terminal's /worktrees ([`coder::task::worktrees`], #10296): archiving
++//! removes an ended task's worktree and keeps what recreates it at the same
++//! commit.
++
++use std::collections::BTreeMap;
++use std::io::{BufRead, IsTerminal, Write};
++use std::path::{Path, PathBuf};
++
++use background::{git, paths};
++use coder::task::{Store, Task, worktrees as shared};
++use serde_json::{Value, json};
++
++use crate::{Args, Output};
++#[cfg(test)]
++use coder::cli_route::tree::{Declared, Effect};
++
++pub(crate) const USAGE: &str = "usage: openagents worktree COMMAND [OPTIONS]
++  ls [--no-size]  Each Coder task worktree here: its task and the task's
++                  state, size, whether removing it would lose anything
++                  (uncommitted, unpushed, or ignored files), and age; then
++                  the archived ones. Sizing walks every file; --no-size
++                  skips it.
++  archive NAME    Remove an ended task's worktree and keep what restores it.
++                  Refused when it holds anything not saved elsewhere.
++  archive NAME --force [--confirm NAME]
++                  Delete its uncommitted, untracked, and ignored files for
++                  good, then archive it; asks you to type its name (or
++                  takes --confirm NAME). Commits not on a remote still
++                  keep it.
++  restore NAME    Recreate an archived worktree at its path, at the commit
++                  it was on.
++Every command takes --tasks DIR (the Coder task store, default
++$OPENAGENTS_TASKS or ~/.openagents/tasks); the worktrees are the
++`worktrees` folder beside it. NAME is the folder name `ls` shows, or its
++path, or a task identity (or its start). A running task's worktree and a
++project's spare are never archived.";
++
++/// What each command above does and where the phone runs it, for the
++/// chat router's command tree (`coder::cli_route::tree`).
++#[cfg(test)]
++pub(crate) const EFFECTS: &[Declared] = &[
++    Declared::computer("ls", Effect::ReadOnly),
++    Declared::computer("archive", Effect::LocalWrite),
++    Declared::computer("restore", Effect::LocalWrite),
++];
++
++pub fn run(output: &Output, words: &[String]) -> u8 {
++    let Some((command, rest)) = words.split_first() else {
++        return output.usage("worktree", "a command is required", USAGE);
++    };
++    if matches!(command.as_str(), "--help" | "-h" | "help") {
++        println!("{USAGE}");
++        return 0;
++    }
++    let args = match Args::parse(rest, &["force", "no-size"]) {
++        Ok(args) => args,
++        Err(message) => return output.usage("worktree", &message, USAGE),
++    };
++    let store = args
++        .option("tasks")
++        .map_or_else(coder::task::local::default_store, PathBuf::from);
++    let worktrees = background::task_worktrees(&store);
++    let name = args.positional().first().cloned();
++    let result = match (command.as_str(), name) {
++        ("ls" | "list", _) => {
++            ls(output, &store, &worktrees, !args.switch("no-size"));
++            Ok(())
++        }
++        ("archive", Some(name)) => archive(output, &store, &worktrees, &name, &args),
++        ("restore", Some(name)) => restore(output, &store, &name),
++        ("archive" | "restore", None) => {
++            return output.usage("worktree", &format!("{command} needs a NAME"), USAGE);
++        }
++        (other, _) => {
++            return output.usage("worktree", &format!("unknown command `{other}`"), USAGE);
++        }
++    };
++    match result {
++        Ok(()) => 0,
++        Err(message) => output.fail("worktree", &message),
++    }
++}
++
++/// The task a worktree folder belongs to: Coder names it
++/// `PROJECT-TASK12`, the task identity's first twelve characters.
++fn task_of<'a, T>(name: &str, tasks: &'a BTreeMap<String, T>) -> Option<&'a T> {
++    let (_, short) = name.rsplit_once('-')?;
++    if short.len() != 12 {
++        return None;
++    }
++    tasks
++        .range(short.to_owned()..)
++        .next()
++        .filter(|(id, _)| id.starts_with(short))
++        .map(|(_, task)| task)
++}
++
++fn tasks(store: &Path) -> BTreeMap<String, Task> {
++    // Opening creates a store; a computer that never ran Coder has none.
++    if !store.is_dir() {
++        return BTreeMap::new();
++    }
++    Store::open(store)
++        .and_then(|store| store.list())
++        .map(|tasks| {
++            tasks
++                .into_iter()
++                .map(|task| (task.task_id.clone(), task))
++                .collect()
++        })
++        .unwrap_or_default()
++}
++
++fn state(task: Option<&Task>) -> String {
++    match task {
++        None => "no task".into(),
++        Some(task) if task.ended() => "ended".into(),
++        Some(task) => serde_json::to_value(task.status)
++            .ok()
++            .and_then(|value| value.as_str().map(str::to_owned))
++            .unwrap_or_else(|| "unknown".into())
++            .replace('_', " "),
++    }
++}
++
++fn age(seconds: u64) -> String {
++    match seconds {
++        s if s < 3600 => format!("{}m", s / 60),
++        s if s < 86_400 => format!("{}h", s / 3600),
++        s => format!("{}d", s / 86_400),
++    }
++}
++
++fn spare(name: &str) -> bool {
++    name.contains(".spare-")
++}
++
++fn ls(output: &Output, store: &Path, worktrees: &Path, sizes: bool) {
++    let tasks = tasks(store);
++    let home = std::env::var_os("HOME").map_or_else(|| PathBuf::from("/"), PathBuf::from);
++    let now = paths::now();
++    let mut found = Vec::new();
++    if let Ok(entries) = std::fs::read_dir(worktrees) {
++        for entry in entries.flatten() {
++            let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
++                continue;
++            };
++            let path = entry.path();
++            if !name.starts_with('.') && paths::real_dir(&path) {
++                found.push((name, path));
++            }
++        }
++    }
++    found.sort();
++    // Sizing walks every file and the Git checks run Git: eight at a time.
++    let mut rows = Vec::with_capacity(found.len());
++    for chunk in found.chunks(8) {
++        let measured: Vec<(String, u64)> = std::thread::scope(|scope| {
++            let handles: Vec<_> = chunk
++                .iter()
++                .map(|(_, path)| {
++                    let home = &home;
++                    scope.spawn(move || {
++                        let saved = match git::removable(path) {
++                            Ok(_) => "nothing unsaved".to_owned(),
++                            Err(why) => why,
++                        };
++                        let size = if sizes {
++                            paths::measure(path, home).map_or(0, |measure| measure.bytes)
++                        } else {
++                            0
++                        };
++                        (saved, size)
++                    })
++                })
++                .collect();
++            handles
++                .into_iter()
++                .map(|handle| handle.join().unwrap_or_else(|_| ("unknown".into(), 0)))
++                .collect()
++        });
++        for ((name, path), (saved, size)) in chunk.iter().zip(measured) {
++            let task = task_of(name, &tasks);
++            rows.push(json!({
++                "name": name,
++                "path": path,
++                "kind": if spare(name) { "spare" } else { "task" },
++                "task": task.map(|task| task.task_id.clone()),
++                "state": if spare(name) { "spare".to_owned() } else { state(task) },
++                "bytes": sizes.then_some(size),
++                "unsaved": saved,
++                "age_seconds": now.saturating_sub(paths::touched_worktree(path)),
++            }));
++        }
++    }
++    let archived: Vec<Value> = shared::archived(store)
++        .into_iter()
++        .map(|entry| {
++            json!({
++                "name": entry.path.file_name().map(|name| name.to_string_lossy()),
++                "path": entry.path,
++                "task": entry.task,
++                "commit": entry.commit,
++                "age_seconds": now.saturating_sub(entry.at),
++            })
++        })
++        .collect();
++    let value = json!({ "worktrees": rows, "archived": archived, "dir": worktrees });
++    output.emit(&value, |_| render(worktrees, &rows, &archived));
++}
++
++fn render(worktrees: &Path, rows: &[Value], archived: &[Value]) -> String {
++    let text = |value: &Value, key: &str| value[key].as_str().unwrap_or("-").to_owned();
++    let mut out = Vec::new();
++    if rows.is_empty() {
++        out.push(format!("No task worktrees in {}.", worktrees.display()));
++    } else {
++        let sized = rows.iter().any(|row| row["bytes"].is_u64());
++        let total: u64 = rows.iter().filter_map(|row| row["bytes"].as_u64()).sum();
++        out.push(if sized {
++            format!(
++                "{} worktrees in {}, {}.",
++                rows.len(),
++                worktrees.display(),
++                paths::bytes(total)
++            )
++        } else {
++            format!("{} worktrees in {}.", rows.len(), worktrees.display())
++        });
++        let mut table = vec![
++            ["NAME", "STATE", "SIZE", "AGE", "IF REMOVED"]
++                .map(str::to_owned)
++                .to_vec(),
++        ];
++        for row in rows {
++            table.push(vec![
++                text(row, "name"),
++                text(row, "state"),
++                row["bytes"]
++                    .as_u64()
++                    .map_or_else(|| "-".to_owned(), paths::bytes),
++                age(row["age_seconds"].as_u64().unwrap_or(0)),
++                text(row, "unsaved"),
++            ]);
++        }
++        out.push(crate::out::table(&table));
++    }
++    if !archived.is_empty() {
++        out.push(format!(
++            "\nArchived ({}): restore with openagents worktree restore NAME",
++            archived.len()
++        ));
++        let mut table = vec![["NAME", "COMMIT", "ARCHIVED"].map(str::to_owned).to_vec()];
++        for entry in archived {
++            let commit = text(entry, "commit");
++            table.push(vec![
++                text(entry, "name"),
++                commit.chars().take(10).collect(),
++                format!("{} ago", age(entry["age_seconds"].as_u64().unwrap_or(0))),
++            ]);
++        }
++        out.push(crate::out::table(&table));
++    }
++    out.join("\n")
++}
++
++/// The worktree folder `name` names: a folder name in `worktrees`, or a
++/// path to one of them.
++fn resolve(worktrees: &Path, name: &str) -> Result<(String, PathBuf), String> {
++    let candidate = Path::new(name);
++    let folder = if candidate.components().count() > 1 {
++        let path = candidate
++            .canonicalize()
++            .map_err(|_| format!("{name}: no such worktree"))?;
++        let parent = worktrees
++            .canonicalize()
++            .unwrap_or_else(|_| worktrees.to_owned());
++        if path.parent() != Some(parent.as_path()) {
++            return Err(format!("{name} is not in {}", worktrees.display()));
++        }
++        path.file_name()
++            .and_then(|name| name.to_str())
++            .ok_or_else(|| format!("{name}: no such worktree"))?
++            .to_owned()
++    } else {
++        name.to_owned()
++    };
++    if folder.starts_with('.') || folder.contains('/') {
++        return Err(format!("`{name}` is not a worktree name"));
++    }
++    Ok((folder.clone(), worktrees.join(folder)))
++}
++
++fn archive(
++    output: &Output,
++    store: &Path,
++    worktrees: &Path,
++    name: &str,
++    args: &Args,
++) -> Result<(), String> {
++    let tasks = tasks(store);
++    let (label, task) = match resolve(worktrees, name) {
++        Ok((folder, path)) if paths::real_dir(&path) => {
++            if spare(&folder) {
++                return Err(format!("{folder} is a project's spare; Coder manages it"));
++            }
++            let task = task_of(&folder, &tasks)
++                .ok_or_else(|| format!("{folder} belongs to no task in {}", store.display()))?;
++            (folder, task)
++        }
++        _ => {
++            let task = by_task(name, &tasks)?;
++            (task.task_id[..12.min(task.task_id.len())].to_owned(), task)
++        }
++    };
++    let force = args.switch("force");
++    if force {
++        confirm(&label, args.option("confirm"))?;
++    }
++    if force {
++        shared::discard_unsaved(store, &task.task_id)?;
++    }
++    let words = shared::archive(store, &task.task_id).map_err(|why| {
++        if force {
++            why
++        } else {
++            format!("{why} Save or push that work, or archive it with --force to delete it.")
++        }
++    })?;
++    output.emit(
++        &json!({ "archived": task.task_id, "forced": force, "message": words }),
++        |_| format!("{words} Restore it with: openagents worktree restore {label}"),
++    );
++    Ok(())
++}
++
++/// The task whose identity starts with `prefix` (at least 6 characters).
++fn by_task<'a>(prefix: &str, tasks: &'a BTreeMap<String, Task>) -> Result<&'a Task, String> {
++    if prefix.len() < 6 {
++        return Err(format!("no worktree `{prefix}`"));
++    }
++    let mut found = tasks
++        .range(prefix.to_owned()..)
++        .take_while(|(id, _)| id.starts_with(prefix))
++        .map(|(_, task)| task);
++    match (found.next(), found.next()) {
++        (Some(task), None) => Ok(task),
++        (Some(_), Some(_)) => Err(format!("`{prefix}` names more than one task")),
++        (None, _) => Err(format!("no worktree or task `{prefix}`")),
++    }
++}
++
++/// `--force` deletes unsaved files for good: the person types the
++/// worktree's name, here or as `--confirm NAME`.
++fn confirm(name: &str, given: Option<&str>) -> Result<(), String> {
++    if let Some(given) = given {
++        return if given == name {
++            Ok(())
++        } else {
++            Err(format!("--confirm must be the worktree's name, {name}"))
++        };
++    }
++    let stdin = std::io::stdin();
++    if !stdin.is_terminal() {
++        return Err(format!(
++            "--force deletes {name}'s unsaved files for good; add --confirm {name}"
++        ));
++    }
++    eprint!("This deletes {name}'s unsaved files for good. Type its name to go on: ");
++    let _ = std::io::stderr().flush();
++    let mut line = String::new();
++    stdin
++        .lock()
++        .read_line(&mut line)
++        .map_err(|error| error.to_string())?;
++    if line.trim() == name {
++        Ok(())
++    } else {
++        Err("not confirmed; nothing was removed".into())
++    }
++}
++
++fn restore(output: &Output, store: &Path, name: &str) -> Result<(), String> {
++    let records = shared::archived(store);
++    let matches: Vec<_> = records
++        .iter()
++        .filter(|entry| {
++            entry.path.file_name().is_some_and(|folder| folder == name)
++                || (name.len() >= 6 && entry.task.starts_with(name))
++        })
++        .collect();
++    let entry = match matches.as_slice() {
++        [entry] => *entry,
++        [] => return Err(format!("no archived worktree `{name}`")),
++        _ => return Err(format!("`{name}` names more than one archived worktree")),
++    };
++    let words = shared::restore(store, &entry.task)?;
++    output.emit(
++        &json!({ "restored": entry.task, "path": entry.path, "commit": entry.commit }),
++        |_| words.clone(),
++    );
++    Ok(())
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn a_worktree_folder_names_its_task_by_the_first_twelve_characters() {
++        let tasks: BTreeMap<String, u8> = [
++            ("0123456789aa00".to_owned(), 1),
++            ("0123456789ab00".to_owned(), 2),
++            ("0123456789ac00".to_owned(), 3),
++        ]
++        .into();
++        assert_eq!(task_of("openagents-0123456789ab", &tasks), Some(&2));
++        assert_eq!(task_of("my-project-0123456789ac", &tasks), Some(&3));
++        assert_eq!(task_of("openagents-0123456789ff", &tasks), None);
++        assert_eq!(task_of("openagents.spare-0123ab", &tasks), None);
++    }
++
++    #[test]
++    fn names_resolve_inside_the_worktrees_folder_only() {
++        let dir = tempfile::tempdir().unwrap();
++        let worktrees = dir.path().join("worktrees");
++        std::fs::create_dir_all(worktrees.join("proj-0123456789ab")).unwrap();
++        let (name, path) = resolve(&worktrees, "proj-0123456789ab").unwrap();
++        assert_eq!(name, "proj-0123456789ab");
++        assert_eq!(path, worktrees.join("proj-0123456789ab"));
++        let full = worktrees.join("proj-0123456789ab");
++        assert_eq!(resolve(&worktrees, full.to_str().unwrap()).unwrap().0, name);
++        assert!(resolve(&worktrees, dir.path().to_str().unwrap()).is_err());
++        assert!(resolve(&worktrees, ".archived").is_err());
++    }
++
++    #[test]
++    fn force_needs_the_name_typed_exactly() {
++        assert!(confirm("proj-0123456789ab", Some("proj-0123456789ab")).is_ok());
++        assert!(confirm("proj-0123456789ab", Some("proj")).is_err());
++    }
++
++    #[test]
++    fn ages_read_as_minutes_hours_and_days() {
++        assert_eq!(age(120), "2m");
++        assert_eq!(age(7200), "2h");
++        assert_eq!(age(3 * 86_400), "3d");
++    }
++}

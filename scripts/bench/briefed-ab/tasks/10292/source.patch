@@ -1,0 +1,104 @@
+diff --git a/crates/background/src/builtins.rs b/crates/background/src/builtins.rs
+index d0c2fd05c6fff31b95d9770523303a854540a24b..fe5437b42f4e48be5b169b72c7720b238ebe6a60 100644
+--- a/crates/background/src/builtins.rs
++++ b/crates/background/src/builtins.rs
+@@ -1,6 +1,7 @@
+ //! The other built-in background processes (phase 3), in the spec's
+ //! order, and the steps their actions take. Each ships off, except
+-//! keeping `~/openagents` on `main` on CoderOS; a person turns one on with
++//! keeping `~/openagents` on `main` on CoderOS and pruning stale Coder
++//! worktrees on CoderOS and cloud pool hosts (#10292); a person turns one on with
+ //! `openagents background resume ID`, `/background`, or the desktop's
+ //! Background settings, and edits it like any rule.
+ //!
+@@ -37,6 +38,26 @@ pub fn on_coderos() -> bool {
+     Path::new("/etc/coderos").is_dir()
+ }
+ 
++/// The file a cloud pool host's setup writes (a GCE pool VM, a Boat
++/// sandbox from the Coder host template): `scripts/cloud/coder-host-setup.sh`
++/// and the pool host agent create it.
++pub const POOL_HOST_MARKER: &str = "/etc/openagents/pool-host";
++
++/// Whether this computer is a cloud pool host.
++#[must_use]
++pub fn on_pool_host() -> bool {
++    Path::new(POOL_HOST_MARKER).is_file()
++}
++
++/// Whether this computer is a host that runs Coder for others to come
++/// back to: CoderOS or a cloud pool host, not a person's own computer.
++/// Stale worktree pruning ships on there (#10292); disk cleanup stays a
++/// person's choice everywhere.
++#[must_use]
++pub fn coder_host() -> bool {
++    on_coderos() || on_pool_host()
++}
++
+ fn base(id: &str, name: &str) -> Rule {
+     let mut rule = disk();
+     rule.id = id.into();
+@@ -65,6 +86,7 @@ pub fn rule(id: &str) -> Option<Rule> {
+     Some(match id {
+         "worktrees" => {
+             let mut rule = base(id, "Stale worktree pruning");
++            rule.enabled = coder_host();
+             rule.triggers = vec![Trigger::Daily { at: "03:30".into() }];
+             rule.actions = vec![Action::PruneWorktrees];
+             rule.goal.start = Level {
+diff --git a/crates/openagents-cli/src/cloud.rs b/crates/openagents-cli/src/cloud.rs
+index af425414e16edecb3979b10de69233ed60a2342f..b654ca0ed4649b25ba415c31a2870630e0fa218f 100644
+--- a/crates/openagents-cli/src/cloud.rs
++++ b/crates/openagents-cli/src/cloud.rs
+@@ -464,6 +464,9 @@ pub(crate) const HOST_AGENT: &str = r#"#!/bin/bash
+ set -u
+ install -d -o coder -g coder /home/coder/.oa-pool /home/coder/.oa-pool/runs /home/coder/.oa-pool/bin
+ touch /home/coder/.oa-pool/busy && chown coder:coder /home/coder/.oa-pool/busy
++# A pool host: stale Coder worktree pruning ships on (#10292). Images baked
++# before that lack the marker the setup script now writes.
++install -d -m 0755 /etc/openagents && touch /etc/openagents/pool-host
+ cat >/usr/local/bin/oa-pool-idle <<'IDLE'
+ #!/bin/bash
+ # Deletes this VM once no pool run has been alive for oa-pool-idle-minutes.
+diff --git a/docs/background/2026-10-02-background-processes.md b/docs/background/2026-10-02-background-processes.md
+index 3b76267ae842ec1ede7dbe40646a06c2f1a34e77..57f5d2c2f3ad5b4fcaf353c69f055b5e2dcc2b80 100644
+--- a/docs/background/2026-10-02-background-processes.md
++++ b/docs/background/2026-10-02-background-processes.md
+@@ -383,7 +383,11 @@ judgment.
+ 
+ 1. **Disk cleanup monitor** (rule; Jev for unknown directories in phase 3).
+ 2. **Stale worktree pruning** (rule): remove ended tasks' clean, pushed
+-   worktrees after 7 days even when the disk is fine.
++   worktrees after 7 days even when the disk is fine. Daily at 03:30. Ships
++   on for CoderOS (`/etc/coderos`) and cloud pool hosts
++   (`/etc/openagents/pool-host`, written by `scripts/cloud/coder-host-setup.sh`
++   and the GCE pool host agent); off on a person's own computer (#10292).
++   Disk cleanup stays opt-in everywhere.
+ 3. **Stale issue-claim release** (rule): release a Coder issue claim whose
+    task ended or has not run for 6 hours, and comment why.
+ 4. **Keep `~/openagents` on `main` on CoderOS** (rule): fast-forward when the
+diff --git a/scripts/cloud/coder-host-setup.sh b/scripts/cloud/coder-host-setup.sh
+index f6240acbcc53555230c33eacf3f57e2b58f354fb..8ed56cfe8a905d6ec780d7528857dbe652e3dbec 100755
+--- a/scripts/cloud/coder-host-setup.sh
++++ b/scripts/cloud/coder-host-setup.sh
+@@ -17,6 +17,8 @@
+ #     (`claude`), Grok Build (`grok`). None is logged in. No credential of
+ #     any kind is written by this script; logins come later, per host.
+ #   - a clone of OpenAgentsInc/openagents at the requested revision
++#   - /etc/openagents/pool-host, which turns stale worktree pruning on by
++#     default (the `worktrees` background rule)
+ #   - with --warm: a warm Cargo target for openagents-cli, microcoder and
+ #     coder (their libraries, binaries and test targets) in the Coder target
+ #     slot the task runner leases first, and the release `openagents`
+@@ -90,6 +92,11 @@ if ! id "$user" >/dev/null 2>&1; then
+   as_root useradd --create-home --shell /bin/bash "$user"
+ fi
+ home="$(getent passwd "$user" | cut -d: -f6)"
++
++# Mark this machine as a cloud pool host. The background rules read it:
++# stale Coder worktree pruning ships on here, as on CoderOS (#10292).
++as_root install -d -m 0755 /etc/openagents
++as_root touch /etc/openagents/pool-host
+ repo_dir="${repo_dir:-$home/openagents}"
+ 
+ # Run a command as the host user with a login-like environment.

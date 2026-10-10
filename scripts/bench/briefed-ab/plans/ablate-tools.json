@@ -1,0 +1,68 @@
+{
+  "frozen": "2026-10-10",
+  "issues": [
+    10074,
+    10228,
+    10258,
+    10273,
+    10295,
+    10301,
+    10986,
+    10289,
+    10248,
+    10298,
+    10299,
+    10369,
+    10201,
+    10370,
+    10179,
+    10893,
+    10283,
+    10167,
+    10349,
+    10181,
+    11118
+  ],
+  "issue_selection": "the 21 issues of plans/s2.json (validated before any S2 result); none dropped after results",
+  "reps": 3,
+  "levers": {
+    "interface": true,
+    "model": "claude-opus-5-5",
+    "effort": "default",
+    "timeout_secs": 1200,
+    "finder": "finder",
+    "template": "v3"
+  },
+  "pins": {
+    "agent_sha256": "bdfc4dbbe020402f14fc69c510abab1eb8b1903551361a1f254c762432ad1ab7",
+    "agent_source": "crates/briefed-agent at 6518b03bbd (same source as c34036f3a5), built on the environment",
+    "claude_version": "2.1.295 (Claude Code)",
+    "judge_model": "claude-opus-5-5",
+    "host": "oa-dev-env-2 (GCE c3-standard-22 spot, 300 GB): agents, worktrees and builds on one machine (AB_HOST=local), one build checkout, prewarm per issue, incremental builds off, 600 s per command, hidden tests 300 s",
+    "login": "the owner's Claude Code subscription token from Secret Manager (dev-env-session.sh)"
+  },
+  "outcome": "accepted = the fix commit's own tests pass on the change (remote/eval.sh: cargo exit 0 and every named test passed) AND the blind judge accepts (score >= 4). Never from the agent's own report.",
+  "analysis": {
+    "unit": "issue; repeats clustered",
+    "comparison": "each arm against B0, which runs in the same plan, on the same issues, in a balanced seeded order",
+    "primary": "success difference (arm - B0) in accepted = fix's tests pass and blind judge accepts, mean over issues, 95% CI from 10000 issue-level bootstrap resamples (seed 11211); reported before cost",
+    "cost": "cost per accepted from known list-price costs; the change against B0 with an issue-level bootstrap CI; unknown costs counted, never 0",
+    "decision": "a lever is kept only if its success CI's lower bound is above -0.05 AND its cost per accepted is lower than B0's with the reduction CI's lower bound above 0; otherwise it is reported as not shown. No arm or issue is dropped after results.",
+    "time": "median and p90 wall time per arm",
+    "tools": "per tool: calls per run, share of runs, tokens in and out per call, seconds per call, acted-on rate"
+  },
+  "harness_failures": "a trial that hits the login's usage limit is discarded and rerun when the login answers (no outcome was observed); nothing else is rerun or excluded.",
+  "order": "issues in a seeded random order; per issue each rep rotates the arm order from a seeded start",
+  "tag": "ab-tools",
+  "seed": 20261011,
+  "arms": [
+    "B0",
+    "Bbash",
+    "Brelated",
+    "Boutline",
+    "Bfinish"
+  ],
+  "workers": 3,
+  "budget_usd": 250,
+  "question": "Tier 1 tools (docs/inference/briefed-agent-tools.md), one at a time on B0: Bash instead of verify; + related; + outline/read_symbol; + finish."
+}

@@ -1,0 +1,223 @@
+diff --git a/crates/background/src/lib.rs b/crates/background/src/lib.rs
+index cb202497514c33850d4f363c5dbf4524f46cfcfb..ae50cd88389dfbba2f9fb10eb2e7f279f4266504 100644
+--- a/crates/background/src/lib.rs
++++ b/crates/background/src/lib.rs
+@@ -45,7 +45,7 @@ pub mod store;
+ pub mod view;
+ pub mod volume;
+ 
+-pub use paths::{Layout, SLOTS};
++pub use paths::{Layout, SLOTS, task_store, task_targets, task_worktrees};
+ pub use plan::{Env, Facts, Plan, TaskFact};
+ pub use rule::{Class, Rule};
+ pub use run::{Cause, Record, Report};
+diff --git a/crates/background/src/paths.rs b/crates/background/src/paths.rs
+index 8b497694093af9bd4d8c60c764895c069ecd5738..ec5a77125f8e04b65d949c0ac8bb4206ea7cc352 100644
+--- a/crates/background/src/paths.rs
++++ b/crates/background/src/paths.rs
+@@ -12,6 +12,32 @@ use crate::rule::{Rule, expand};
+ /// A slot numbered past this is left over and belongs to class 1.
+ pub const SLOTS: usize = 4;
+ 
++/// Names another task store than `~/.openagents/tasks`; Coder reads the
++/// same variable ([`crates/coder` `task::local::STORE_VAR`]).
++pub const STORE_VAR: &str = "OPENAGENTS_TASKS";
++
++/// The task store on this computer: `$OPENAGENTS_TASKS`, else
++/// `HOME/.openagents/tasks`. Coder and the background runner both use it,
++/// so they agree on where tasks, worktrees and target slots live.
++#[must_use]
++pub fn task_store(home: &Path) -> PathBuf {
++    std::env::var_os(STORE_VAR)
++        .filter(|dir| !dir.is_empty())
++        .map_or_else(|| home.join(".openagents/tasks"), PathBuf::from)
++}
++
++/// The folder Coder makes task worktrees in: beside the task store.
++#[must_use]
++pub fn task_worktrees(store: &Path) -> PathBuf {
++    store.parent().unwrap_or(store).join("worktrees")
++}
++
++/// The folder Coder keeps Cargo target slots in: beside the task store.
++#[must_use]
++pub fn task_targets(store: &Path) -> PathBuf {
++    store.parent().unwrap_or(store).join("targets")
++}
++
+ /// The places one run reads and writes. Built from a canonical home, so a
+ /// path built from it has no symbolic link in it unless one is on disk.
+ #[derive(Clone, Debug)]
+@@ -25,7 +51,7 @@ pub struct Layout {
+ 
+ impl Layout {
+     /// The layout under `home`, with the task store at `store` (default
+-    /// `~/.openagents/tasks`).
++    /// `~/.openagents/tasks`; [`Layout::from_env`] reads [`task_store`]).
+     ///
+     /// # Errors
+     /// The home cannot be resolved.
+@@ -43,7 +69,8 @@ impl Layout {
+         })
+     }
+ 
+-    /// This user's layout, from `HOME`.
++    /// This user's layout, from `HOME`, with the task store Coder uses
++    /// ([`task_store`]: `$OPENAGENTS_TASKS`, else `~/.openagents/tasks`).
+     ///
+     /// # Errors
+     /// `HOME` is unset, relative, or unreadable.
+@@ -52,7 +79,8 @@ impl Layout {
+             .map(PathBuf::from)
+             .filter(|home| home.is_absolute())
+             .ok_or_else(|| std::io::Error::other("HOME must be an absolute path"))?;
+-        Self::new(&home, None)
++        let store = task_store(&home);
++        Self::new(&home, Some(store))
+     }
+ 
+     #[must_use]
+@@ -120,13 +148,15 @@ impl Layout {
+     pub fn enabled_plugins(&self) -> PathBuf {
+         self.extensions().join("enabled.json")
+     }
++    /// Coder's target slots, beside the task store ([`task_targets`]).
+     #[must_use]
+     pub fn targets(&self) -> PathBuf {
+-        self.openagents.join("targets")
++        task_targets(&self.store)
+     }
++    /// Coder's task worktrees, beside the task store ([`task_worktrees`]).
+     #[must_use]
+     pub fn worktrees(&self) -> PathBuf {
+-        self.openagents.join("worktrees")
++        task_worktrees(&self.store)
+     }
+     #[must_use]
+     pub fn coder_one_target(&self) -> PathBuf {
+@@ -190,15 +220,34 @@ impl Layout {
+         deny
+     }
+ 
+-    /// The rule's allow roots, expanded.
++    /// The rule's allow roots, expanded. A rule names Coder's folders as
++    /// `~/.openagents/targets` and `~/.openagents/worktrees`; those roots
++    /// mean wherever this layout's task store keeps them.
+     #[must_use]
+     pub fn allow(&self, rule: &Rule) -> Vec<PathBuf> {
+-        rule.safety
++        let targets = self.openagents.join("targets");
++        let worktrees = self.openagents.join("worktrees");
++        let mut roots = Vec::new();
++        for root in rule
++            .safety
+             .allow
+             .iter()
+             .chain(rule.classes.judged.iter().map(|judged| &judged.path))
+-            .map(|root| expand(root, &self.home))
+-            .collect()
++        {
++            let root = expand(root, &self.home);
++            let moved = if root == targets {
++                Some(self.targets())
++            } else if root == worktrees {
++                Some(self.worktrees())
++            } else {
++                None
++            };
++            if let Some(moved) = moved.filter(|moved| *moved != root) {
++                roots.push(moved);
++            }
++            roots.push(root);
++        }
++        roots
+     }
+ 
+     /// Why `path` may not be deleted under `rule`, or `None` when it may:
+diff --git a/crates/coder/src/task/local.rs b/crates/coder/src/task/local.rs
+index 744d8cf1f2764fd0ffcd5515c79cdb07895e86d2..fc6373cc454e16e58dd9ab92eef51b23461359e2 100644
+--- a/crates/coder/src/task/local.rs
++++ b/crates/coder/src/task/local.rs
+@@ -67,7 +67,7 @@ pub const ROUTES: [(Provider, &str); 3] = [
+     (Provider::Grok, acp_client::grok::DEFAULT_MODEL),
+ ];
+ /// Names another task store than [`default_store`].
+-pub const STORE_VAR: &str = "OPENAGENTS_TASKS";
++pub const STORE_VAR: &str = background::paths::STORE_VAR;
+ /// Names the engine (`microcoder`) instead of the one beside the running
+ /// program or in `~/.openagents/bin`.
+ pub const CONTROLLER_VAR: &str = "OPENAGENTS_CODER_CONTROLLER";
+@@ -88,12 +88,9 @@ const ADMISSION_WAIT: u64 = 120;
+ /// computer use by default.
+ #[must_use]
+ pub fn default_store() -> PathBuf {
+-    if let Some(dir) = std::env::var_os(STORE_VAR).filter(|v| !v.is_empty()) {
+-        return PathBuf::from(dir);
+-    }
+-    std::env::var_os("HOME")
+-        .map_or_else(|| PathBuf::from("."), PathBuf::from)
+-        .join(".openagents/tasks")
++    background::task_store(
++        &std::env::var_os("HOME").map_or_else(|| PathBuf::from("."), PathBuf::from),
++    )
+ }
+ 
+ /// The engine that runs a turn: `$OPENAGENTS_CODER_CONTROLLER`, else the
+@@ -412,10 +409,7 @@ impl Local {
+     /// engine started as a detached process.
+     #[must_use]
+     pub fn new(store: PathBuf) -> Self {
+-        let worktrees = store.parent().map_or_else(
+-            || store.join("worktrees"),
+-            |parent| parent.join("worktrees"),
+-        );
++        let worktrees = background::task_worktrees(&store);
+         Local {
+             store,
+             worktrees,
+diff --git a/crates/coder/src/task/targets.rs b/crates/coder/src/task/targets.rs
+index 6b9319ef140beb542052c7251d9df372ceb796ed..26abb78b968d2e364b20a156c8403d927987795f 100644
+--- a/crates/coder/src/task/targets.rs
++++ b/crates/coder/src/task/targets.rs
+@@ -9,7 +9,7 @@ const SLOTS: usize = background::SLOTS;
+ const BUDGET: u64 = 64 * 1024 * 1024 * 1024;
+ 
+ fn root(store: &Path) -> PathBuf {
+-    store.parent().unwrap_or(store).join("targets")
++    background::task_targets(store)
+ }
+ 
+ /// A slot held for the entire run. The stable lock file is never removed.
+diff --git a/crates/openagents-desktop/src/background_pane.rs b/crates/openagents-desktop/src/background_pane.rs
+index f10168a1abcef4bed2e19ec03178cbe82a899779..80841346dc9f83bcde957631f5e1b1768ec9be04 100644
+--- a/crates/openagents-desktop/src/background_pane.rs
++++ b/crates/openagents-desktop/src/background_pane.rs
+@@ -112,12 +112,11 @@ pub fn latest(layout: &background::Layout) -> Option<(u64, String)> {
+         .max_by_key(|(at, _)| *at)
+ }
+ 
+-/// This user's layout, from `HOME`.
++/// This user's layout, from `HOME` and the task store Coder uses.
+ #[cfg(unix)]
+ #[must_use]
+ pub fn here() -> Option<background::Layout> {
+-    let home = std::env::var_os("HOME")?;
+-    background::Layout::new(std::path::Path::new(&home), None).ok()
++    background::Layout::from_env().ok()
+ }
+ 
+ #[cfg(all(test, unix))]
+diff --git a/crates/openagents-desktop/src/worker.rs b/crates/openagents-desktop/src/worker.rs
+index acf0707e01c770a9ea645b87689f2c5aefe55452..18f750edaffc650811e35e0b7ef439f6a91920d8 100644
+--- a/crates/openagents-desktop/src/worker.rs
++++ b/crates/openagents-desktop/src/worker.rs
+@@ -465,8 +465,7 @@ impl HostLane {
+     fn watchers(&self) -> Vec<String> {
+         #[cfg(unix)]
+         if self.fake.is_none()
+-            && let Some(home) = std::env::var_os("HOME")
+-            && let Ok(layout) = background::Layout::new(std::path::Path::new(&home), None)
++            && let Ok(layout) = background::Layout::from_env()
+         {
+             return background::view::watchers(&layout);
+         }

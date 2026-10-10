@@ -1,0 +1,382 @@
+diff --git a/crates/coder-terminal/src/components/rail.rs b/crates/coder-terminal/src/components/rail.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..82f56ec5138a67dd341e4a2e234193903c7abc50
+--- /dev/null
++++ b/crates/coder-terminal/src/components/rail.rs
+@@ -0,0 +1,138 @@
++//! The rail of delegations under the composer: one row per Coder run the
++//! thread started, with its number, its agent, and what it is doing.
++//!
++//! Ported from Coder Terminal's delegation rail (`bins/coder-terminal/src/
++//! delegation_panel.rs`, 0.4.0 "A rail under the composer"). A running row
++//! leads with grok-build's spinner and ends with the timer of what it is
++//! doing; a finished one leads with a dot and ends with "done". The
++//! selected row leads with a chevron and draws at full white. Pure: the
++//! caller says what each row is and the tick, and gets one line per row.
++
++use std::time::Duration;
++
++use ratatui::text::{Line, Span};
++
++use super::{cells, cut, sanitize};
++use crate::{Intensity, Ladder, grok_spinner};
++
++/// The most rows the rail draws.
++pub const MAX_ROWS: usize = 5;
++
++/// One delegation as the rail shows it.
++#[derive(Clone, Debug, PartialEq, Eq)]
++pub struct RailRow {
++    /// Its number, from one: what Alt+number and `/open` take.
++    pub number: usize,
++    /// Who runs it: "Codex", "Claude Code", "Grok Build".
++    pub agent: String,
++    /// What it is doing now, as its live status says: "Thinking…",
++    /// "Run cargo test".
++    pub doing: String,
++    /// How long it has been doing that; `None` once it finished.
++    pub elapsed: Option<Duration>,
++    /// The keyboard is on this row.
++    pub selected: bool,
++}
++
++/// One line per row, each at most `width` cells.
++#[must_use]
++pub fn lines(rows: &[RailRow], width: usize, tick: u64, ladder: Ladder) -> Vec<Line<'static>> {
++    rows.iter()
++        .map(|row| line(row, width, tick, ladder))
++        .collect()
++}
++
++fn line(row: &RailRow, width: usize, tick: u64, ladder: Ladder) -> Line<'static> {
++    let running = row.elapsed.is_some();
++    let text = ladder.style(if row.selected {
++        Intensity::Full
++    } else if running {
++        Intensity::ThreeQuarters
++    } else {
++        Intensity::Half
++    });
++    let dim = ladder.style(Intensity::Half);
++    let pointer = if row.selected { "›" } else { " " };
++    let (mark, mark_style) = if running {
++        (grok_spinner::frame(tick), grok_spinner::style(ladder))
++    } else {
++        ("·", dim)
++    };
++    let lead = format!("{} {} · ", row.number, sanitize(&row.agent));
++    let end = match row.elapsed {
++        Some(elapsed) => grok_spinner::timer(elapsed),
++        None => "done".to_owned(),
++    };
++    // pointer, space, mark, space: four cells before the number.
++    let room = width.saturating_sub(4);
++    let lead = cut(&lead, room);
++    let left = room.saturating_sub(cells(&lead));
++    let end = if cells(&end) + 1 <= left {
++        end
++    } else {
++        String::new()
++    };
++    let doing = cut(
++        &sanitize(&row.doing),
++        left.saturating_sub(if end.is_empty() { 0 } else { cells(&end) + 2 }),
++    );
++    let gap = left.saturating_sub(cells(&doing) + cells(&end));
++    let mut spans = vec![
++        Span::styled(pointer.to_owned(), text),
++        Span::raw(" "),
++        Span::styled(mark.to_owned(), mark_style),
++        Span::raw(" "),
++        Span::styled(lead, text),
++        Span::styled(doing, text),
++    ];
++    if !end.is_empty() {
++        spans.push(Span::raw(" ".repeat(gap)));
++        spans.push(Span::styled(end, mark_style));
++    }
++    Line::from(spans)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::Colors;
++
++    fn text(line: &Line<'_>) -> String {
++        line.spans
++            .iter()
++            .map(|span| span.content.as_ref())
++            .collect()
++    }
++
++    fn row(number: usize, running: bool, selected: bool) -> RailRow {
++        RailRow {
++            number,
++            agent: "Codex".into(),
++            doing: "Run cargo test".into(),
++            elapsed: running.then(|| Duration::from_secs(12)),
++            selected,
++        }
++    }
++
++    #[test]
++    fn a_row_reads_number_agent_doing_and_timer() {
++        let ladder = Ladder::new(Colors::None);
++        let shown = lines(&[row(1, true, false), row(2, false, true)], 40, 0, ladder);
++        assert_eq!(text(&shown[0]), "  ⠋ 1 Codex · Run cargo test         12s");
++        assert_eq!(text(&shown[1]), "› · 2 Codex · Run cargo test        done");
++        for line in &shown {
++            assert!(cells(&text(line)) <= 40);
++        }
++    }
++
++    #[test]
++    fn a_narrow_rail_cuts_the_summary_first() {
++        let ladder = Ladder::new(Colors::None);
++        for width in 0..30 {
++            let shown = lines(&[row(3, true, false)], width, 0, ladder);
++            assert!(cells(&text(&shown[0])) <= width.max(4), "{width}");
++        }
++        let shown = lines(&[row(3, true, false)], 22, 0, ladder);
++        assert_eq!(text(&shown[0]), "  ⠋ 3 Codex · Run  12s");
++    }
++}
+diff --git a/crates/openagents-terminal/src/app_tests.rs b/crates/openagents-terminal/src/app_tests.rs
+index e420423b118c08e683872386129a0e165be2f838..d67dcd3379babe55dce0d6072353823f61d0d752 100644
+--- a/crates/openagents-terminal/src/app_tests.rs
++++ b/crates/openagents-terminal/src/app_tests.rs
+@@ -1387,3 +1387,181 @@ fn a_computer_lane_reply_without_an_offer_shows_no_enter_to_run_coder() {
+     // What the screen offers is what `run-coder` accepts.
+     assert!(openagents_chat::delegation::offered(Some(&meta), true));
+ }
++
++fn of(task: &str, seq: u64, event: CoderEvent) -> Event {
++    Event::Line(Box::new(CoderLine {
++        seq,
++        task: task.into(),
++        thread: Some("a".repeat(32)),
++        event,
++    }))
++}
++
++fn started_on(provider: &str) -> CoderEvent {
++    let CoderEvent::CoderStarted(mut started) = started() else {
++        unreachable!()
++    };
++    started.provider = provider.into();
++    CoderEvent::CoderStarted(started)
++}
++
++fn status(text: &str) -> CoderEvent {
++    CoderEvent::Status(openagents_chat::coder_events::Status {
++        turn: 1,
++        step_id: 1,
++        text: text.into(),
++    })
++}
++
++/// Three runs the thread started, each with what it is doing.
++fn three_runs() -> App {
++    let mut app = app();
++    app.event(of("t1", 1, started_on("codex")));
++    app.event(of("t1", 2, status("Run cargo test")));
++    app.event(of("t2", 1, started_on("claude")));
++    app.event(of("t2", 2, status("Thinking…")));
++    app.event(of("t3", 1, started_on("grok")));
++    app.event(of("t3", 2, output(2, "ls", "a\nb").as_line_event()));
++    app
++}
++
++trait LineEvent {
++    fn as_line_event(self) -> CoderEvent;
++}
++
++impl LineEvent for Event {
++    fn as_line_event(self) -> CoderEvent {
++        match self {
++            Event::Line(line) => line.event,
++            _ => unreachable!(),
++        }
++    }
++}
++
++/// The whole frame as text, row by row.
++fn frame(app: &mut App, width: u16, height: u16) -> String {
++    let area = ratatui::layout::Rect::new(0, 0, width, height);
++    let mut buf = ratatui::buffer::Buffer::empty(area);
++    crate::draw::draw(app, area, &mut buf);
++    (0..height)
++        .map(|y| {
++            (0..width)
++                .map(|x| buf[(x, y)].symbol())
++                .collect::<String>()
++                .trim_end()
++                .to_owned()
++        })
++        .collect::<Vec<_>>()
++        .join("\n")
++}
++
++#[test]
++fn running_runs_show_in_the_rail_under_the_composer() {
++    let mut app = three_runs();
++    assert_eq!(app.rail_numbers(), vec![1, 2, 3]);
++    let rows = app.rail_rows();
++    assert_eq!(rows[0].agent, "Codex");
++    assert_eq!(rows[0].doing, "Run cargo test");
++    assert_eq!(rows[1].doing, "Thinking…");
++    assert!(rows.iter().all(|row| row.elapsed.is_some()));
++    let shown = frame(&mut app, 60, 14);
++    eprintln!("{shown}");
++    let lines: Vec<&str> = shown.lines().collect();
++    // The rail is the last three rows, under the composer's frame.
++    assert!(lines[11].contains("1 Codex · Run cargo test"), "{shown}");
++    assert!(lines[12].contains("2 Claude Code · Thinking…"), "{shown}");
++    assert!(lines[13].contains("3 Grok"), "{shown}");
++    // Text starts two cells in, and two cells stay free at the right.
++    assert!(lines[11].starts_with("   "), "{shown}");
++    assert!(
++        lines[11..].iter().all(|line| line.chars().count() <= 58),
++        "{shown}"
++    );
++    // A run that finished keeps its row for a while, then leaves.
++    app.event(of(
++        "t2",
++        3,
++        CoderEvent::Stopped(Stopped {
++            turn: 1,
++            message: "Stopped.".into(),
++        }),
++    ));
++    assert_eq!(app.rail_rows()[1].elapsed, None);
++    app.tick += crate::rail::KEPT_AFTER_DONE + 1;
++    assert_eq!(app.rail_numbers(), vec![1, 3]);
++}
++
++#[test]
++fn up_moves_into_the_rail_down_returns_and_enter_opens_full_screen() {
++    let mut app = three_runs();
++    // A draft keeps Up for the composer.
++    app.editor.insert_str("draft");
++    app.key(&key(KeyCode::Up), 80);
++    assert_eq!(app.rail, None);
++    app.editor.take();
++    app.key(&key(KeyCode::Up), 80);
++    assert_eq!(app.rail, Some(1));
++    assert!(app.status().starts_with("Enter opens the run full screen"));
++    app.key(&key(KeyCode::Up), 80);
++    app.key(&key(KeyCode::Up), 80);
++    app.key(&key(KeyCode::Up), 80);
++    assert_eq!(app.rail, Some(3));
++    app.key(&key(KeyCode::Down), 80);
++    assert_eq!(app.rail, Some(2));
++    app.key(&key(KeyCode::Down), 80);
++    app.key(&key(KeyCode::Down), 80);
++    assert_eq!(app.rail, None);
++    // Enter on a row opens that run, not the thread's current one.
++    app.key(&key(KeyCode::Up), 80);
++    app.key(&key(KeyCode::Up), 80);
++    assert!(app.key(&key(KeyCode::Enter), 80).is_empty());
++    assert_eq!(app.run_view.and_then(|view| view.number), Some(2));
++    assert_eq!(app.rail, None);
++    assert!(
++        app.status()
++            .starts_with("Coder run 2 · Claude Code · working"),
++        "{}",
++        app.status()
++    );
++    // Its full screen is its log alone; what is typed steers it.
++    assert_eq!(
++        typed(&mut app, "use spaces"),
++        vec![Action::Steer {
++            task: "t2".into(),
++            text: "use spaces".into()
++        }]
++    );
++    let view = frame(&mut app, 60, 14);
++    assert!(view.contains("use spaces"), "{view}");
++    assert!(!view.contains("Run cargo test"), "{view}");
++    // Esc goes back; Esc in the rail returns to the composer.
++    app.key(&key(KeyCode::Esc), 80);
++    assert!(app.run_view.is_none());
++    app.key(&key(KeyCode::Up), 80);
++    app.key(&key(KeyCode::Esc), 80);
++    assert_eq!(app.rail, None);
++    assert!(app.running, "Esc in the rail stops nothing");
++    // A typed key leaves the rail and goes to the composer.
++    app.key(&key(KeyCode::Up), 80);
++    app.key(&key(KeyCode::Char('x')), 80);
++    assert_eq!(app.rail, None);
++    assert_eq!(app.editor.text(), "x");
++}
++
++#[test]
++fn alt_and_a_number_or_open_and_a_number_opens_one() {
++    let mut app = three_runs();
++    let alt = KeyEvent {
++        modifiers: KeyModifiers::ALT,
++        ..key(KeyCode::Char('3'))
++    };
++    app.key(&alt, 80);
++    assert_eq!(app.run_view.and_then(|view| view.number), Some(3));
++    app.key(&key(KeyCode::Esc), 80);
++    assert!(typed(&mut app, "/open 1").is_empty());
++    assert_eq!(app.run_view.and_then(|view| view.number), Some(1));
++    app.key(&key(KeyCode::Esc), 80);
++    assert!(typed(&mut app, "/open 7").is_empty());
++    assert!(app.run_view.is_none());
++    assert!(shown(&mut app).contains("There are 3 Coder runs: /open 1 to /open 3."));
++}
+diff --git a/crates/openagents-terminal/src/slash.rs b/crates/openagents-terminal/src/slash.rs
+index 31d2d34680df4e66f408ae710403dbf051ba76df..640406f8b57f6620574ebfd93538c85645984130 100644
+--- a/crates/openagents-terminal/src/slash.rs
++++ b/crates/openagents-terminal/src/slash.rs
+@@ -130,6 +143,9 @@ mod tests {
+             );
+         }
+         assert_eq!(parse("/nope"), Draft::Unknown("/nope".into()));
++        assert_eq!(parse("/open 2"), Draft::Open(2));
++        assert_eq!(parse(" /open  12 "), Draft::Open(12));
++        assert_eq!(parse("/open two"), Draft::Message("/open two".into()));
+         assert_eq!(parse(""), Draft::Empty);
+         assert_eq!(parse("   "), Draft::Empty);
+     }
+diff --git a/crates/openagents-terminal/tests/pty.rs b/crates/openagents-terminal/tests/pty.rs
+index 0b86a82ed047fa5cdc51de260f34a17973be5a33..c1e283d7455292793b48b46c55bd8997da00e8df 100644
+--- a/crates/openagents-terminal/tests/pty.rs
++++ b/crates/openagents-terminal/tests/pty.rs
+@@ -716,6 +716,33 @@ fn the_screen_end_to_end() {
+         "the run works in a worktree of the scratch repository"
+     );
+ 
++    // The rail under the composer lists the run: its number, its agent,
++    // and what it is doing (#10169). Up moves into it, Enter opens it
++    // full screen, Esc comes back.
++    let rail = session.wait("the rail", &["1 Codex · cargo test"]);
++    eprintln!("==== rail ====\n{rail}\n");
++    session.send(b"\x1b[A");
++    session.wait(
++        "the rail selected",
++        &["› ", "Enter opens the run full screen"],
++    );
++    session.send(b"\r");
++    let opened = session.wait(
++        "the run opened from the rail",
++        &["Coder run 1 · Codex · working", "test adds ... FAILED"],
++    );
++    assert!(!opened.contains("1 Codex · cargo test"), "{opened}");
++    session.send(b"\x1b");
++    session.wait("the chat again", &["1 Codex · cargo test"]);
++    // Alt+1 opens it directly.
++    session.send(b"\x1b1");
++    session.wait(
++        "the run opened with Alt+1",
++        &["Coder run 1 · Codex · working"],
++    );
++    session.send(b"\x1b");
++    session.wait("the chat again", &["1 Codex · cargo test"]);
++
+     // Ctrl+R: the run full screen, each command with its output, without
+     // the chat's reply; its composer sends the run a message.
+     session.send(b"\x12");

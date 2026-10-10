@@ -1,0 +1,226 @@
+diff --git a/crates/atif/src/log.rs b/crates/atif/src/log.rs
+index 502c1fa2c686d51e589a8f2d41bcdf0dcfcde7c0..395f49119b2d19d7ec6aaecb245022f1df216027 100644
+--- a/crates/atif/src/log.rs
++++ b/crates/atif/src/log.rs
+@@ -611,6 +645,68 @@ mod tests {
+     use super::*;
+     use crate::document::{Call, Outcome, Source};
+ 
++    /// A writer that takes `room` bytes, then refuses as a full disk does.
++    struct Full {
++        bytes: Vec<u8>,
++        position: u64,
++        room: usize,
++    }
++
++    impl Write for Full {
++        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
++            let free = self.room.saturating_sub(self.bytes.len());
++            if free == 0 {
++                return Err(io::Error::from_raw_os_error(28));
++            }
++            let taken = free.min(bytes.len());
++            self.bytes.extend_from_slice(&bytes[..taken]);
++            self.position = self.bytes.len() as u64;
++            Ok(taken)
++        }
++
++        fn flush(&mut self) -> io::Result<()> {
++            Ok(())
++        }
++    }
++
++    impl Seek for Full {
++        fn seek(&mut self, to: SeekFrom) -> io::Result<u64> {
++            self.position = match to {
++                SeekFrom::Start(at) => at,
++                SeekFrom::End(_) | SeekFrom::Current(_) => self.bytes.len() as u64,
++            };
++            Ok(self.position)
++        }
++    }
++
++    impl Truncate for Full {
++        fn cut(&mut self, length: u64) -> io::Result<()> {
++            self.bytes.truncate(length as usize);
++            Ok(())
++        }
++
++        fn sync(&mut self) -> io::Result<()> {
++            Ok(())
++        }
++    }
++
++    #[test]
++    fn a_line_the_disk_cannot_hold_is_cut_back_off() {
++        // #10237: a full disk took half a step; the next step must not be
++        // glued onto it.
++        let mut file = Full {
++            bytes: b"{\"a\":1}\n".to_vec(),
++            position: 0,
++            room: 12,
++        };
++        let error = write_whole(&mut file, b"{\"step\":\"long\"}\n").unwrap_err();
++        assert_eq!(error.raw_os_error(), Some(28));
++        assert_eq!(file.bytes, b"{\"a\":1}\n");
++        file.room = 64;
++        write_whole(&mut file, b"{\"b\":2}\n").unwrap();
++        assert_eq!(file.bytes, b"{\"a\":1}\n{\"b\":2}\n");
++    }
++
+     fn a_session() -> Session {
+         Session::opening(
+             &session_id(document::now_ms()),
+diff --git a/crates/coder/src/task/autostart.rs b/crates/coder/src/task/autostart.rs
+index 228688f98aa1724996b23cb4c41134ed8280b8eb..641525cad320aaed8f674cf841e6c2ed98de2bcc 100644
+--- a/crates/coder/src/task/autostart.rs
++++ b/crates/coder/src/task/autostart.rs
+@@ -4469,6 +4489,53 @@ mod tests {
+         assert_eq!(find(), Some(installed));
+     }
+ 
++    /// #10237: a program whose file a rebuild replaced still finds and
++    /// starts itself. A copy of this test binary removes its own file, then
++    /// reports what [`running_program`] gives it.
++    #[cfg(target_os = "linux")]
++    #[test]
++    fn a_replaced_program_still_starts_itself() {
++        const CHILD: &str = "OPENAGENTS_TEST_RUNNING_PROGRAM";
++        if std::env::var_os(CHILD).is_some() {
++            let exe = std::env::current_exe().unwrap();
++            std::fs::remove_file(&exe).unwrap();
++            let (named, image) = running_program().unwrap();
++            let bytes = std::fs::read(&image).unwrap();
++            let started = std::process::Command::new(&image)
++                .arg("--list")
++                .output()
++                .unwrap();
++            println!(
++                "NAMED={} IMAGE={} READ={} STARTED={}",
++                named.display(),
++                image.display(),
++                !bytes.is_empty(),
++                started.status.success()
++            );
++            return;
++        }
++        let temp = tempfile::tempdir().unwrap();
++        let copy = temp.path().join("openagents");
++        std::fs::copy(std::env::current_exe().unwrap(), &copy).unwrap();
++        let output = std::process::Command::new(&copy)
++            .args([
++                "--exact",
++                "task::autostart::tests::a_replaced_program_still_starts_itself",
++                "--nocapture",
++            ])
++            .env(CHILD, "1")
++            .output()
++            .unwrap();
++        let printed = String::from_utf8_lossy(&output.stdout);
++        assert!(output.status.success(), "{printed}");
++        assert!(!copy.exists());
++        let expected = format!(
++            "NAMED={} IMAGE=/proc/self/exe READ=true STARTED=true",
++            copy.display()
++        );
++        assert!(printed.contains(&expected), "{printed}");
++    }
++
+     /// #10074: the Mac app's `openagents` CLI lives in `Contents/Helpers`
+     /// and its `microcoder` in `Contents/MacOS`. The CLI must run that
+     /// engine, not an older `~/.openagents/bin` copy that refuses a newer
+diff --git a/crates/coder/src/task/owner/tests.rs b/crates/coder/src/task/owner/tests.rs
+index 664c21373f49f76dce4040997b2f73bb4fe39019..51c9a151ac5d11168b42836eb426fcf528f814c8 100644
+--- a/crates/coder/src/task/owner/tests.rs
++++ b/crates/coder/src/task/owner/tests.rs
+@@ -1144,3 +1144,44 @@ fn a_run_record_names_its_payer_by_fingerprint_only() {
+     let read: ResultRecord = serde_json::from_value(value).unwrap();
+     assert_eq!(read, result);
+ }
++
++/// #10237: an owner whose disk filled waits for the host's cleanup rather
++/// than exiting, which left its run to be ended as "owner process ended".
++#[test]
++fn an_owner_waits_out_a_full_disk_and_nothing_else() {
++    let full = || Error::Io(std::io::Error::from(std::io::ErrorKind::StorageFull));
++    assert!(storage_full(&full()));
++    assert!(storage_full(&Error::Io(std::io::Error::from(
++        std::io::ErrorKind::QuotaExceeded
++    ))));
++    assert!(!storage_full(&Error::Io(std::io::Error::other("other"))));
++    assert!(!storage_full(&Error::Busy));
++    #[cfg(unix)]
++    assert!(io_storage_full(&std::io::Error::from_raw_os_error(
++        libc::ENOSPC
++    )));
++
++    let step = std::time::Duration::from_millis(1);
++    let mut attempts = 0;
++    let recorded = wait_out_full_disk(std::time::Duration::from_secs(60), step, || {
++        attempts += 1;
++        if attempts < 3 {
++            Err(full())
++        } else {
++            Ok(attempts)
++        }
++    });
++    assert_eq!(recorded.unwrap(), 3);
++
++    let mut attempts = 0;
++    let refused = wait_out_full_disk(std::time::Duration::from_secs(60), step, || {
++        attempts += 1;
++        Err::<(), _>(Error::Corrupt("not a full disk"))
++    });
++    assert!(matches!(refused, Err(Error::Corrupt(_))));
++    assert_eq!(attempts, 1);
++
++    // The wait is bounded: past it, the full disk is the answer.
++    let gave_up = wait_out_full_disk(std::time::Duration::ZERO, step, || Err::<(), _>(full()));
++    assert!(gave_up.is_err_and(|error| storage_full(&error)));
++}
+diff --git a/crates/microcoder/src/repository/tests.rs b/crates/microcoder/src/repository/tests.rs
+index 6586a81be5f50fee110e271eb581ed54d7c7c2ec..cdc5fd8511cba186630728292057b922bda5ea18 100644
+--- a/crates/microcoder/src/repository/tests.rs
++++ b/crates/microcoder/src/repository/tests.rs
+@@ -268,6 +268,41 @@ async fn existing_loop_uses_common_owner_boundary_atif_and_retained_artifacts()
+     assert!(Host::admit(&store, &grant).await.is_err());
+ }
+ 
++/// #10237: a disk that fills while a run keeps its evidence no longer ends
++/// the engine before it records a result, which left the run to be ended
++/// as "owner process ended". A full disk that clears is waited out; one
++/// that stays full ends the run as `disk_full`, its result recorded.
++#[tokio::test]
++async fn a_full_disk_is_waited_out_or_recorded_never_left_to_the_settler() {
++    let (_root, store, grant) = fixture();
++    let host = Host::admit(&store, &grant).await.unwrap();
++    host.fill_disk(3, Duration::from_secs(60));
++    host.append(&atif::Step::said(
++        atif::Source::System,
++        "kept after the wait",
++    ))
++    .unwrap();
++    host.fill_disk(usize::MAX, Duration::ZERO);
++    assert!(
++        host.append(&atif::Step::said(atif::Source::System, "lost"))
++            .is_err()
++    );
++    let task = host.finish("model_finished", true, json!({})).unwrap();
++    let run = task.run.as_ref().unwrap();
++    let result = run.result.as_ref().unwrap();
++    assert_eq!(result.ending, coder::task::adapter::DISK_FULL);
++    assert_ne!(result.ending, coder::task::owner::OWNER_ENDED);
++    assert_eq!(result.exit_code, Some(1));
++    assert!(result.output_incomplete && result.group_clear);
++    assert_eq!(task.status, task::Status::Finished);
++    assert_eq!(task.execution, task::Execution::Failed);
++    // Nothing is left for the settler to end.
++    let mut opened = Store::open(&store).unwrap();
++    assert!(opened.settle("fixture").unwrap().is_none());
++    let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
++    assert!(trace.contains("kept after the wait") && !trace.contains("\"lost\""));
++}
++
+ /// Why a run has no Jev, as a step's judgment says it.
+ const NO_JEV: &str = "Jev is unreachable: the fixture has no service";
+ 

@@ -1,0 +1,27 @@
+{
+  "test_targets": [
+    "--test",
+    "control"
+  ],
+  "issue": 10125,
+  "title": "Host: tailnet admission is off under --keychain (\"host access artifact or transport check failed\")",
+  "body": "Found on #10118 running the Mac host from a development build (scripts/desktop/dev-host.sh, same keychain keys): the host log says `tailnet admission is off: host access: Conflict/Unavailable: host access artifact or transport check failed`. tailnet.rs reads the host key with `coder_access::host::Host::new(&settings.state, ...)` (the file store) while `--keychain` keeps it in the login keychain. The phone still pairs and works over the relay/iroh; only the tailnet direct path is off. An older log (Sep 29) shows tailnet admission working. Not verified whether the installed app's host (a4688ee8b0) had the same error.",
+  "fix": "9ce2ea5b5d61dffdb310887ab50b88ee3c77b6bd",
+  "parent": "e03b0597f0d04d1915b7750806b68dee7f1f90f6",
+  "package": "coder-host",
+  "source_files": [
+    "INVARIANTS.md",
+    "crates/coder-host/src/cli.rs",
+    "crates/coder-host/src/control/mod.rs",
+    "crates/coder-host/src/serve/mod.rs",
+    "crates/coder-host/src/tailnet.rs",
+    "crates/openagents-cli/src/connect.rs",
+    "crates/openagents-connect/src/control.rs"
+  ],
+  "test_files": [
+    "crates/coder-host/tests/control.rs",
+    "crates/openagents-connect/tests/control.rs"
+  ],
+  "test_names": [],
+  "fix_lines": 270
+}

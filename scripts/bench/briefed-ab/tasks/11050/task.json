@@ -1,0 +1,36 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 11050,
+  "title": "Continue a Coder chat on a Cloud computer from the website",
+  "body": "Follow-up to #11048, which built replies that go to Coder on your own computer. This is the second option: when your computer is offline, continue the chat on a Cloud computer with the repository's saved environment (#11037 runs Claude Code there already). Needs: picking the environment, carrying the transcript into the run, and syncing the answer back into the same chat.",
+  "fix": "6b95de03c846de635c67aa04b5d71a88ec8c7b14",
+  "parent": "a44dedbb2a594b39da9c78c27a8496bb810a8d95",
+  "package": "openagents-web",
+  "source_files": [
+    "crates/openagents-web/src/chat_store.rs",
+    "crates/openagents-web/src/coder_sync.rs",
+    "crates/openagents-web/src/lib.rs",
+    "crates/openagents-web/src/pages/chat.rs",
+    "crates/openagents-web/src/pages/chat_work.rs",
+    "docs/web/sidebar.md"
+  ],
+  "test_files": [
+    "crates/openagents-web/src/coder_sync.rs",
+    "crates/openagents-web/src/pages/chat.rs",
+    "crates/openagents-web/src/pages/chat_continued.rs",
+    "crates/openagents-web/src/pages/chat_tests.rs",
+    "crates/openagents-web/src/pages/chat_work.rs"
+  ],
+  "test_names": [
+    "an_answer_holding_a_credential_is_not_shown_and_sizes_stay_bounded",
+    "continuing_stays_on_the_local_address_and_needs_environments",
+    "messages_added_by_a_cloud_computer_stay_after_coder_uploads_again",
+    "only_an_offline_idle_coder_chat_may_continue",
+    "the_message_and_the_answer_land_in_the_chat_once",
+    "the_offer_and_its_page_read_plainly",
+    "the_run_reads_the_chat_so_far_newest_first_to_fit"
+  ],
+  "fix_lines": 872
+}

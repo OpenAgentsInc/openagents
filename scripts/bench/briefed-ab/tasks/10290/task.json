@@ -1,0 +1,30 @@
+{
+  "test_targets": [
+    "--lib",
+    "--test",
+    "task_store_env"
+  ],
+  "issue": 10290,
+  "title": "Background cleanup finds worktrees/targets from the task store (OPENAGENTS_TASKS), like Coder",
+  "body": "P1.1: `background::Layout` hardcodes `~/.openagents/{worktrees,targets}` while Coder follows `$OPENAGENTS_TASKS`. Derive both from one shared function; test with OPENAGENTS_TASKS set.\n\nFrom the Paseo worktree gap analysis (docs/worktrees/2026-10-03-paseo-worktree-gap-analysis.md, 61580a0aec), phase 1 (disk).",
+  "fix": "97267865ed5ebb0fa0f076fa31151d2608071aa3",
+  "parent": "37c0d8ac9bcb97f45998d912002d162bd66a7f90",
+  "package": "background",
+  "source_files": [
+    "crates/background/src/lib.rs",
+    "crates/background/src/paths.rs",
+    "crates/coder/src/task/local.rs",
+    "crates/coder/src/task/targets.rs",
+    "crates/openagents-desktop/src/background_pane.rs",
+    "crates/openagents-desktop/src/worker.rs"
+  ],
+  "test_files": [
+    "crates/background/src/paths.rs",
+    "crates/background/tests/task_store_env.rs"
+  ],
+  "test_names": [
+    "coders_folders_sit_beside_any_task_store_and_rules_follow_them",
+    "the_runner_finds_coders_folders_where_openagents_tasks_puts_them"
+  ],
+  "fix_lines": 159
+}

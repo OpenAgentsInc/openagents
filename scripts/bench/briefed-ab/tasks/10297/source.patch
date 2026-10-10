@@ -1,0 +1,171 @@
+diff --git a/crates/coder/src/task.rs b/crates/coder/src/task.rs
+index 1fdc6661fb4fc48d2e544d152aa3bd3760c1b272..a78b5498baade5e5023de712ef9b39bc0945cecc 100644
+--- a/crates/coder/src/task.rs
++++ b/crates/coder/src/task.rs
+@@ -62,6 +62,7 @@ pub(crate) mod targets;
+ pub use targets::facts as background_facts;
+ pub mod usage;
+ pub mod view;
++pub mod worktree_hooks;
+ /// Per-engine steering semantics; see [`coder_delegate::steering`].
+ pub use coder_delegate::steering;
+ /// The most turns one task can take. A follow-up past it is refused.
+diff --git a/crates/coder/src/task/local.rs b/crates/coder/src/task/local.rs
+index fc6373cc454e16e58dd9ab92eef51b23461359e2..5e5f09e67795834f196b1b5fd5419eb8b7c04992 100644
+--- a/crates/coder/src/task/local.rs
++++ b/crates/coder/src/task/local.rs
+@@ -146,6 +146,13 @@ pub fn default_branch(top: &Path) -> String {
+     .unwrap_or_else(|| "main".to_owned())
+ }
+ 
++/// Where a worktree hook's output for `name` (a task, or a worktree)
++/// goes: `<store>/hooks/<name>.<stage>.log`.
++#[must_use]
++pub fn hooks_log(store: &Path, name: &str, stage: &str) -> PathBuf {
++    store.join("hooks").join(format!("{name}.{stage}.log"))
++}
++
+ pub(crate) fn git_out(dir: &Path, args: &[&str]) -> Result<String, String> {
+     let output = git()
+         .arg("-C")
+@@ -260,6 +267,9 @@ pub struct Timings {
+     pub worktree_ms: u64,
+     /// The worktree was the project's spare ([`super::spare`]).
+     pub spare: bool,
++    /// The repository's worktree setup ([`super::worktree_hooks`]).
++    #[serde(default)]
++    pub setup_ms: u64,
+     /// The task saved in the store.
+     pub submit_ms: u64,
+     /// The grant and the engine's launch.
+@@ -293,6 +303,10 @@ pub struct Record {
+     /// same way.
+     #[serde(default, skip_serializing_if = "Shape::is_plain")]
+     pub shape: Shape,
++    /// The repository's worktree setup, when it has one
++    /// ([`super::worktree_hooks`]).
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub hooks: Option<super::worktree_hooks::Ran>,
+ }
+ 
+ /// How a run of a dispatch plan starts (#10183). The plain shape is a run
+@@ -1141,6 +1155,22 @@ impl Local {
+                 worktree
+             }
+         };
++        // The repository's own setup, in the task's worktree and before
++        // its engine starts; a spare never has it (#10297).
++        let setting_up = Instant::now();
++        let hooks = match super::worktree_hooks::setup(
++            &checkout.top,
++            &worktree,
++            &checkout.head,
++            &hooks_log(&self.store, &task, "setup"),
++        ) {
++            Ok(ran) => ran,
++            Err(why) => {
++                self.remove_worktree(&checkout.top, &worktree);
++                return Err(why);
++            }
++        };
++        timings.setup_ms = millis(setting_up);
+         let submitting = Instant::now();
+         let model = order[0].model.clone();
+         let intent = TaskIntent {
+@@ -1186,6 +1216,7 @@ impl Local {
+             ends: BTreeMap::new(),
+             requested: requested.map(|provider| provider.as_str().to_owned()),
+             shape,
++            hooks: (hooks != super::worktree_hooks::Ran::default()).then_some(hooks),
+         };
+         timings.submit_ms = millis(submitting);
+         let launching = Instant::now();
+@@ -1452,7 +1483,18 @@ impl Local {
+             .map_err(|_| "Coder's worktree is missing".into())
+     }
+ 
++    /// Remove a worktree this start made, after the repository's own
++    /// teardown ([`super::worktree_hooks::teardown`]).
+     fn remove_worktree(&self, top: &Path, worktree: &Path) {
++        let name = worktree.file_name().map_or_else(
++            || "worktree".into(),
++            |name| name.to_string_lossy().into_owned(),
++        );
++        let _ = super::worktree_hooks::teardown(
++            top,
++            worktree,
++            &hooks_log(&self.store, &name, "teardown"),
++        );
+         let _ = git_out(
+             top,
+             &[
+diff --git a/docs/worktrees/hooks.md b/docs/worktrees/hooks.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..2d21ace8a9dceb04487662132cb57eb46b39415d
+--- /dev/null
++++ b/docs/worktrees/hooks.md
+@@ -0,0 +1,64 @@
++# Worktree setup and teardown hooks
++
++Coder runs every task in a worktree of its own. A fresh worktree has the
++repository's tracked files and nothing else: no `.env`, no installed
++dependencies, no local configuration. A repository says how to make one ready
++in a committed `.openagents/worktree.json` (#10297, modelled on Paseo's
++`paseo.json` `worktree.setup`/`teardown`; see
++[the gap analysis](2026-10-03-paseo-worktree-gap-analysis.md)):
++
++```json
++{
++  "setup": ["cp \"$OPENAGENTS_SOURCE_CHECKOUT/.env\" .env", "npm ci"],
++  "teardown": "docker compose down",
++  "timeout_seconds": 900
++}
++```
++
++- `setup` and `teardown` are each a command or a list of commands. They run
++  one after another with `/bin/sh -c` in the worktree, with standard input
++  closed, and stop at the first command that fails.
++- `timeout_seconds` is optional. Without it there is no time limit.
++- Unknown keys make the file invalid, and its hooks are skipped.
++
++## Environment
++
++| Variable | Value |
++| --- | --- |
++| `OPENAGENTS_SOURCE_CHECKOUT` | The checkout the worktree came from, to copy local files from |
++| `OPENAGENTS_WORKTREE` | The worktree |
++| `OPENAGENTS_WORKTREE_PORT` | A port that was free when the worktree was set up. It is kept for that worktree (in its Git administrative directory), so teardown sees the same one |
++
++## When they run
++
++- **Setup** runs once per task: after the task has its worktree (a spare it
++  took, or a fresh one) and before the engine starts. Spares are never set up,
++  so they stay free of ignored files. Follow-up turns reuse the worktree as it
++  is. A failing setup ends the start with the command, its exit, the end of
++  its output, and the log path, and the worktree is removed.
++- **Teardown** runs before Coder removes a worktree
++  (`coder::task::worktree_hooks::teardown`, the hook point for removal and
++  archive). A teardown that fails keeps the worktree.
++- Output goes to `<task store>/hooks/<task>.setup.log` and
++  `<task store>/hooks/<worktree>.teardown.log`.
++- The time setup took is recorded in the start's timings (`setup_ms`), and
++  what ran (or why it was skipped) in the task's local record (`hooks`).
++
++## Never the source checkout
++
++The hooks run outside the engine's boundary, as you would run them yourself,
++but under the worktree's source guard (`sandbox-exec` on macOS, `bwrap` on
++Linux): they may read the source checkout, never write it. Where the guard
++can't be enforced (no `bwrap`, another platform) a repository's hooks don't
++run; the task still starts, and its local record (`hooks.skipped`) says why.
++
++## Trust
++
++Only the repository's own committed configuration runs: the file as committed
++at the source checkout's `HEAD`, the commit you have checked out.
++
++- Uncommitted edits to the file never run.
++- A task whose commit carries a different file, such as a pull request from a
++  fork that adds or changes setup, is not trusted. Its hooks are skipped and
++  the reason is recorded.
++- Teardown applies the same rule to the worktree's own `HEAD`.

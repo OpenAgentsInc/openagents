@@ -1,0 +1,30 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 11075,
+  "title": "Verse battle soak: corrections just over 1 m, the frontline player stalling, and confirmations on unreceived corpses",
+  "body": "Follow-up to #10559 (closed as done). The ten-minute 20-player soaks (bench/verse/2026-10-09/battle-soak-600-parallel-sync/) still miss the soak's own gates on: five single corrections of 1.06\u20131.39 m with 4\u20135 unconfirmed inputs on open ground (suspected crowd contacts: the client sees other players ~200 ms late; untested); player 19 (frontline) not moving for 80% of snapshots in the GPU-timed run; once, a confirmation that stands the player on a corpse the client hasn't received yet.",
+  "fix": "eac78fb1d06a2bae826b0a8c4419f006128663b5",
+  "parent": "94c8be7008b8d42ad5ab121cc39e3894179f1478",
+  "package": "verse-imported",
+  "source_files": [
+    "crates/verse-imported/src/imported/chamber_session.rs",
+    "crates/verse-world/src/play.rs",
+    "crates/verse-world/src/play/multiplayer.rs",
+    "crates/verse-world/src/prediction/local.rs",
+    "crates/verse-world/src/prediction/local_frames.rs"
+  ],
+  "test_files": [
+    "crates/verse-imported/src/imported/chamber_session_tests.rs",
+    "crates/verse-world/src/play.rs",
+    "crates/verse-world/src/play/framed_movement.rs",
+    "crates/verse-world/src/prediction/local.rs"
+  ],
+  "test_names": [
+    "a_cast_facing_yaw_never_replays_confirmed_travel_against_a_later_crowd",
+    "a_confirmation_on_an_unseen_support_waits_for_its_shape",
+    "an_obstructed_spawn_respawns_at_the_nearest_clear_cell"
+  ],
+  "fix_lines": 455
+}

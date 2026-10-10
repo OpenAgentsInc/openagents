@@ -1,0 +1,30 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10079,
+  "title": "Chat answered from context and still started Coder",
+  "body": "Owner, 2026-09-30 22:51, Mac app 716609e238, desktop: \"What's the working directory right now?\" got a full answer from the new surface context (#10077: \"The current working directory is /Users/\u2026/openagents-host-tasks\"), and Coder **also** started (\"Coder started on Codex\u2026\"). A reply that answers the question must not start Coder. Per #10073's precedence, the computer-lane reading starts Coder when no other typed action wins; now that the worker can answer local-state questions from context, that reading must not trigger a start for a question the reply answered. Fix the decision (typed, no keyword matching) in the shared rule, on the worker and/or client, with tests; recalibrate/redeploy the chat worker if the router changes (bounded Jev spend). Live check: \"what's the working directory\" on a desktop surface \u2192 answer only; \"run the tests in this repo\" \u2192 Coder starts.",
+  "fix": "30b7a816022d71f554627429f9db35612be69dd3",
+  "parent": "8e590650c2ea23eccb5ba8cd0f318ddbda3fefac",
+  "package": "openagents-chat-app",
+  "source_files": [
+    "INVARIANTS.md",
+    "crates/openagents-chat/src/delegation.rs",
+    "docs/cli/chat.md",
+    "docs/coder/design/2026-09-28-chat-router.md"
+  ],
+  "test_files": [
+    "crates/openagents-chat-app/src/attachments.rs",
+    "crates/openagents-chat/src/delegation.rs",
+    "crates/openagents-desktop/src/chat.rs",
+    "crates/openagents-desktop/src/late_click_tests.rs",
+    "crates/openagents-desktop/src/shell.rs",
+    "crates/openagents-mobile/src/coder_tab_tests.rs"
+  ],
+  "test_names": [
+    "a_reply_that_answered_does_not_start_coder",
+    "a_reply_that_answered_starts_no_coder"
+  ],
+  "fix_lines": 194
+}

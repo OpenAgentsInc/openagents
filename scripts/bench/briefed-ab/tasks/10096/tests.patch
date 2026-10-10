@@ -1,0 +1,271 @@
+diff --git a/crates/openagents-chat-app/src/gym/tests.rs b/crates/openagents-chat-app/src/gym/tests.rs
+index b85c8a0e8f47f3be5f44da7817f9aa4820c67b25..b3a2c89eb3d0efa0091ef564f3b466c5c695eb42 100644
+--- a/crates/openagents-chat-app/src/gym/tests.rs
++++ b/crates/openagents-chat-app/src/gym/tests.rs
+@@ -2234,3 +2234,83 @@ mod desktop {
+         assert!(desktop.session.cards.gym.sheet.is_none());
+     }
+ }
++
++/// A Gym that reads its trainer key only when a hosted run needs it
++/// (#10096, the desktop): building it asks for nothing, a hosted start
++/// waits and asks once, the key starts the waiting run and opens the store
++/// with this session's run kept; a denied key refuses in one plain line
++/// and nothing asks again.
++#[test]
++fn a_lazy_trainer_key_is_asked_for_once_by_a_hosted_start() {
++    let runtime = tokio::runtime::Builder::new_current_thread()
++        .enable_all()
++        .build()
++        .unwrap();
++    let draft = Some(json!({"tests": []}));
++    let lazy = |runner: &Runner| {
++        let mut gym = Gym::new(
++            None,
++            Some(Arc::new(runner.clone()) as Arc<dyn Hosted>),
++            Some(runtime.handle().clone()),
++        );
++        gym.wait_for_world();
++        gym
++    };
++
++    // The key arrives: the waiting run starts on the runner and is kept.
++    let runner = Runner::default();
++    let mut gym = lazy(&runner);
++    assert!(!gym.wants_world(), "nothing asks at launch");
++    let effect = gym.start(
++        "t",
++        1,
++        &try_offer(),
++        "map",
++        Purpose::Try,
++        draft.clone(),
++        None,
++        None,
++    );
++    assert_eq!(effect, Effect::None);
++    assert!(gym.wants_world());
++    assert!(gym.runs()[0].running());
++    runtime.block_on(tokio::task::yield_now());
++    assert!(runner.runs().is_empty(), "nothing is sent without the key");
++    let dir = tempfile::tempdir().unwrap();
++    let world = SecretKey::from_byte_array([0x42; 32]).unwrap();
++    gym.attach_store(Cache::open(&dir.path().join("gym"), &world).unwrap());
++    gym.set_world(world);
++    assert!(!gym.wants_world());
++    runtime.block_on(tokio::task::yield_now());
++    assert_eq!(runner.runs().len(), 1);
++    assert_eq!(gym.runs().len(), 1);
++    let reopened = Gym::new(
++        Cache::open(&dir.path().join("gym"), &world).ok(),
++        None,
++        None,
++    );
++    assert_eq!(reopened.runs().len(), 1, "the session's run was saved");
++
++    // The key is denied: the run refuses plainly, and a second start
++    // refuses at once without asking.
++    let runner = Runner::default();
++    let mut gym = lazy(&runner);
++    gym.start(
++        "t",
++        1,
++        &try_offer(),
++        "map",
++        Purpose::Try,
++        draft.clone(),
++        None,
++        None,
++    );
++    gym.world_unavailable("No trainer key: the keychain said no.");
++    assert!(!gym.wants_world());
++    assert!(matches!(&gym.runs()[0].state,
++        RunState::Refused { why, .. } if why == "No trainer key: the keychain said no."));
++    gym.start("t", 2, &try_offer(), "map", Purpose::Try, draft, None, None);
++    assert!(!gym.wants_world(), "a denied key is never asked for again");
++    assert!(matches!(&gym.runs()[1].state, RunState::Refused { .. }));
++    assert!(runner.runs().is_empty());
++}
+diff --git a/crates/openagents-desktop/src/chat_gym.rs b/crates/openagents-desktop/src/chat_gym.rs
+index 5f787c5eeec61d0bec7205e1d029fe2a694ea817..3557b5ef32f4437a8f1dfdd7bdb91a202d7a92cc 100644
+--- a/crates/openagents-desktop/src/chat_gym.rs
++++ b/crates/openagents-desktop/src/chat_gym.rs
+@@ -129,9 +193,9 @@ mod tests {
+     /// Nothing loads until the real window configures it, so tests and the
+     /// fake host never read the keychain.
+     #[test]
+-    fn an_unconfigured_window_reads_no_trainer() {
++    fn an_unconfigured_window_has_no_trainer() {
+         assert!(HOME.get().is_none());
+-        assert!(load(Arc::new(|| {})).is_none());
++        assert!(launch(Arc::new(|| {})).is_none());
+     }
+ 
+     #[test]
+diff --git a/crates/openagents-desktop/src/grid/store.rs b/crates/openagents-desktop/src/grid/store.rs
+index 7e24be1571b7f3ec4566ad446a01879aeeed4b1d..272d2260e3ecc09649f2183f637a6883177fa3e3 100644
+--- a/crates/openagents-desktop/src/grid/store.rs
++++ b/crates/openagents-desktop/src/grid/store.rs
+@@ -232,6 +282,36 @@ mod tests {
+         assert_eq!(Some(secret), *saved.borrow());
+         assert_ne!(SERVICE, "com.openagents.desktop");
+     }
++    /// A dev build (every test build, and any build without the packaging
++    /// scripts' flag) keeps its own items, never the release app's.
++    #[test]
++    fn a_dev_build_uses_its_own_keychain_service() {
++        // Tests are dev builds unless built with the packaging flag.
++        let release = crate::RELEASE;
++        assert!(!release, "tests are never built as the release");
++        assert_eq!(SERVICE, "com.openagents-dev.desktop.verse");
++        assert!(!SERVICE.starts_with("com.openagents.desktop"));
++        assert_eq!(service(true), "com.openagents.desktop.verse");
++        assert!(crate::release_flag(Some("1")));
++        for other in [None, Some(""), Some("0"), Some("true"), Some("11")] {
++            assert!(!crate::release_flag(other));
++        }
++    }
++    /// A denied or cancelled read is remembered: nothing asks again.
++    #[test]
++    fn a_failed_keychain_call_is_never_repeated_this_session() {
++        let latch = Latch::new();
++        let calls = std::cell::Cell::new(0);
++        let call = |answer: Result<Option<String>, String>| {
++            calls.set(calls.get() + 1);
++            answer
++        };
++        assert_eq!(latch.guard(|| call(Ok(None))), Ok(None));
++        assert!(latch.guard(|| call(Err("Denied.".into()))).is_err());
++        let again = latch.guard(|| call(Ok(Some("key".into()))));
++        assert!(again.unwrap_err().starts_with("Denied."));
++        assert_eq!(calls.get(), 2, "the call after a denial never ran");
++    }
+     #[test]
+     fn connection_files_are_bounded_regular_files() {
+         let dir = tempfile::tempdir().unwrap();
+diff --git a/crates/openagents-desktop/src/gym_card_tests.rs b/crates/openagents-desktop/src/gym_card_tests.rs
+index 020c1edb5122b2012a4f6292af558cc3862d72b0..a37609cfac3e5148f6f99e7c40e32f8ce59cc65a 100644
+--- a/crates/openagents-desktop/src/gym_card_tests.rs
++++ b/crates/openagents-desktop/src/gym_card_tests.rs
+@@ -402,3 +402,108 @@ fn the_route_map_offer_opens_the_map_page() {
+     assert!(app.map_view().is_some(), "the tap opens the Map page");
+     assert_eq!(app.navigation.as_ref().unwrap().page, Page::Map);
+ }
++
++/// The tool card with START THE TEST on a desktop whose chat Gym reads
++/// its trainer key lazily (#10096) through `read`, counting each read.
++#[cfg(not(windows))]
++fn lazy_chat(
++    home: &std::path::Path,
++    runner: Arc<StandIn>,
++    runtime: &tokio::runtime::Runtime,
++    read: openagents_desktop::chat_gym::ReadKey,
++) -> DesktopApp {
++    let mut meta = Meta::default();
++    meta.carded(&fixture("tool"));
++    meta.offers.extend(Offer::parse(&fixture("start")));
++    let mut app = chat_with("We'd try Project map.", meta);
++    let gym = openagents_desktop::chat_gym::lazy(runner, runtime.handle().clone());
++    let trainer =
++        openagents_desktop::chat_gym::Trainer::new(home.to_path_buf(), read, Arc::new(|| {}));
++    app.chat.as_mut().unwrap().use_gym_trainer(gym, trainer);
++    app.present();
++    app
++}
++
++/// Opening the app and its chat never reads the trainer key: the first
++/// hosted start reads it once, then runs (#10096).
++#[cfg(not(windows))]
++#[test]
++fn the_trainer_key_is_read_only_when_a_hosted_run_starts() {
++    let home = tempfile::tempdir().unwrap();
++    let runtime = tokio::runtime::Runtime::new().unwrap();
++    let runner = Arc::new(StandIn {
++        finish: true,
++        ..StandIn::default()
++    });
++    let reads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
++    let counted = reads.clone();
++    let read: openagents_desktop::chat_gym::ReadKey = Arc::new(move || {
++        counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
++        Ok(secp256k1::SecretKey::from_byte_array([0x42; 32]).unwrap())
++    });
++    let mut app = lazy_chat(home.path(), runner.clone(), &runtime, read);
++    for _ in 0..5 {
++        let _ = app.chat.as_mut().unwrap().tick(Instant::now());
++    }
++    app.present();
++    assert_eq!(
++        reads.load(std::sync::atomic::Ordering::SeqCst),
++        0,
++        "launch reads no key"
++    );
++    assert!(click(&mut app, "START THE TEST").is_none());
++    until(&mut app, |gym| gym.latest_result().is_some());
++    assert_eq!(reads.load(std::sync::atomic::Ordering::SeqCst), 1);
++    assert_eq!(runner.started.lock().unwrap().len(), 1);
++    // The run was saved under the key, as a reopen finds it.
++    let reopened = hosted_chat(home.path(), Arc::new(StandIn::default()), &runtime);
++    assert!(
++        reopened
++            .chat
++            .as_ref()
++            .unwrap()
++            .gym()
++            .latest_result()
++            .is_some()
++    );
++}
++
++/// A denied or cancelled read is asked once: the run says so plainly, and
++/// starting again never asks again (#10096).
++#[cfg(not(windows))]
++#[test]
++fn a_denied_trainer_key_is_asked_for_once_and_said_plainly() {
++    let home = tempfile::tempdir().unwrap();
++    let runtime = tokio::runtime::Runtime::new().unwrap();
++    let runner = Arc::new(StandIn::default());
++    let reads = Arc::new(std::sync::atomic::AtomicUsize::new(0));
++    let counted = reads.clone();
++    let read: openagents_desktop::chat_gym::ReadKey = Arc::new(move || {
++        counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
++        Err("denied".into())
++    });
++    let mut app = lazy_chat(home.path(), runner.clone(), &runtime, read);
++    assert!(click(&mut app, "START THE TEST").is_none());
++    let refused = |gym: &openagents_chat_app::gym::Gym| {
++        gym.runs().last().is_some_and(|run| {
++            matches!(&run.state, openagents_chat_app::gym::RunState::Refused { why, .. }
++                if why == openagents_desktop::chat_gym::NO_KEY)
++        })
++    };
++    until(&mut app, refused);
++    assert_eq!(reads.load(std::sync::atomic::Ordering::SeqCst), 1);
++    for _ in 0..5 {
++        let _ = app.chat.as_mut().unwrap().tick(Instant::now());
++    }
++    assert_eq!(
++        reads.load(std::sync::atomic::Ordering::SeqCst),
++        1,
++        "never asked again"
++    );
++    assert!(runner.started.lock().unwrap().is_empty());
++    let shown = text(&app);
++    assert!(
++        shown.contains("Restart OpenAgents to be asked again"),
++        "{shown}"
++    );
++}
+diff --git a/crates/openagents-desktop/src/worker.rs b/crates/openagents-desktop/src/worker.rs
+index f8b6918591059c993d480e7e198cf887b032307d..898d97c1ec0659b70ea82fc44ac5b5996f4598a4 100644
+--- a/crates/openagents-desktop/src/worker.rs
++++ b/crates/openagents-desktop/src/worker.rs
+@@ -959,7 +977,7 @@ mod tests {
+         let home = dir.path().join("home");
+         std::fs::create_dir(&home).unwrap();
+         let fake = FakeHost::new("Studio Mac", 1_790_000_000);
+-        let context = Context::new(Box::new(fake), None, None, Some(coder), home);
++        let context = Context::new(Box::new(fake), None, None, Some(coder), home).released();
+         let (wakes, woke) = channel();
+         let worker = Worker::start(
+             context,

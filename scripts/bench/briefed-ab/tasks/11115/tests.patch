@@ -1,0 +1,255 @@
+diff --git a/crates/coder-new/src/bundled_runtime.rs b/crates/coder-new/src/bundled_runtime.rs
+index df14fbf3f12acadbd9e885671edffb4e599c028c..2f8c1e40d40b1f885d231b58c15ebdad7a75888b 100644
+--- a/crates/coder-new/src/bundled_runtime.rs
++++ b/crates/coder-new/src/bundled_runtime.rs
+@@ -2734,6 +2765,62 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":5,"output_tokens
+         assert_eq!(result.usd, Some(0.0));
+     }
+ 
++    #[test]
++    fn a_judged_step_reaches_the_run_as_jevs_estimate_and_only_jevs() {
++        let mut events = Vec::new();
++        {
++            let mut push = |event: RuntimeEvent| events.push(event);
++            let sink = RefCell::new(&mut push as &mut dyn FnMut(RuntimeEvent));
++            let mut observer = MicrocoderEvents {
++                emit: &sink,
++                reply: String::new(),
++                model: None,
++                tokens: 0,
++                redaction_keys: &[],
++            };
++            let judged = |judgment| Event::Judged { step: 3, judgment };
++            observer.event(
++                1.0,
++                &judged(microcoder_loop::models::Judgment {
++                    scores: vec![(microcoder_loop::models::COMPLETE.into(), 0.4)],
++                    ..Default::default()
++                }),
++            );
++            // No Jev, or a failed call: the step alone, never a number.
++            observer.event(
++                2.0,
++                &judged(microcoder_loop::models::Judgment {
++                    error: Some("Jev is not configured; no decision was made.".into()),
++                    ..Default::default()
++                }),
++            );
++            observer.event(3.0, &judged(microcoder_loop::models::Judgment::default()));
++        }
++        let progress: Vec<_> = events
++            .iter()
++            .map(|event| match event {
++                RuntimeEvent::Progress { step, complete } => (*step, *complete),
++                other => panic!("unexpected {other:?}"),
++            })
++            .collect();
++        assert_eq!(progress, [(3, Some(0.4)), (3, None), (3, None)]);
++        assert_eq!(
++            RuntimeEvent::progress_line(3, Some(0.4)),
++            "step 3 · ≈40% done"
++        );
++        assert_eq!(RuntimeEvent::progress_line(3, None), "step 3");
++        assert_eq!(
++            RuntimeEvent::progress_line(9, Some(1.7)),
++            "step 9 · ≈100% done"
++        );
++        // A synced or delegated stream carries the same event back.
++        let value = json!({"event":"progress","step":3,"complete":0.4});
++        assert!(matches!(
++            crate::delegation_events::decode(&value, 0),
++            Some(RuntimeEvent::Progress { step: 3, complete: Some(c) }) if (c - 0.4).abs() < 1e-9
++        ));
++    }
++
+     #[test]
+     fn gateway_context_keeps_the_task_and_latest_results_without_splitting_unicode() {
+         let prompt = format!(
+diff --git a/crates/coder-new/src/bundled_settings.rs b/crates/coder-new/src/bundled_settings.rs
+index 048e22115e0402f428717a7ad64207d892f482c2..8570537eb19c249a8e4b8956de3fe1caabd13b64 100644
+--- a/crates/coder-new/src/bundled_settings.rs
++++ b/crates/coder-new/src/bundled_settings.rs
+@@ -952,6 +964,21 @@ mod tests {
+         settings.paste(text);
+     }
+ 
++    #[test]
++    fn jev_without_a_key_is_built_in_and_a_saved_key_shows_its_own_state() {
++        if !keyless_jev() {
++            // OPENAGENTS_JEV_HOSTED=off on this computer: nothing to show.
++            return;
++        }
++        let mut settings = BundledSettings::default();
++        settings.set_live(true);
++        assert_eq!(settings.status("jev"), "Built in");
++        assert_eq!(settings.connection_label(), "Built in · no key needed");
++        settings.set_jev_environment(Some(ApiKey::new("direct-fixture")), None);
++        assert_eq!(settings.status("jev"), "Configured");
++        assert_eq!(settings.connection_label(), "Not checked");
++    }
++
+     #[test]
+     fn gateway_changes_require_a_new_key_and_cancel_restores_saved_verification() {
+         let temporary = tempfile::tempdir().unwrap();
+diff --git a/crates/coder-new/src/jev_plugin.rs b/crates/coder-new/src/jev_plugin.rs
+index bf8430a1e5a0d52eb50e5e1dd63f2d2f2d56e402..cf49b55dd074f66ea00609d16c3dcd8b3dca73d1 100644
+--- a/crates/coder-new/src/jev_plugin.rs
++++ b/crates/coder-new/src/jev_plugin.rs
+@@ -451,6 +506,61 @@ mod tests {
+         (endpoint, handle)
+     }
+ 
++    #[test]
++    fn no_key_resolves_to_the_hosted_service_and_a_key_here_wins() {
++        let home = tempfile::tempdir().unwrap();
++        let none = |_: &str| None;
++        assert!(keyless_available(&none));
++        // No key anywhere: the hosted decision service, signed by a key
++        // made on first use, and no TypeSafe key on this computer.
++        let client = keyless_client(&none, home.path(), jev::defaults::MODEL).unwrap();
++        assert_eq!(jev_hosted::via(&client), "hosted");
++        assert!(home.path().join(jev_hosted::KEY_FILE).exists());
++        // This computer's own TypeSafe key is used before the hosted service.
++        let own = |name: &str| (name == "TYPESAFE_API_KEY").then(|| "fixture-own-key".into());
++        let client = keyless_client(&own, home.path(), jev::defaults::MODEL).unwrap();
++        assert_eq!(jev_hosted::via(&client), "direct");
++        // Turned off on this computer: no Jev, and the reason, never a key.
++        let off = |name: &str| (name == jev_hosted::HOSTED_VAR).then(|| "off".into());
++        assert!(!keyless_available(&off));
++        let error = keyless_client(&off, home.path(), jev::defaults::MODEL).unwrap_err();
++        assert!(error.starts_with("Jev is unavailable"), "{error}");
++        // The hosted service fronts TypeSafe's door, so another door's model
++        // falls back to Jev's default.
++        assert_eq!(keyless_model(DEFAULT_ENDPOINT, "jev-1.13.0"), "jev-1.13.0");
++        assert_eq!(
++            keyless_model(GATEWAY_ENDPOINT, GATEWAY_MODEL),
++            jev::defaults::MODEL
++        );
++    }
++
++    #[test]
++    fn a_saved_key_wins_over_the_built_in_service() {
++        let settings = crate::plugin_tools::ExecutionSettings {
++            prompt_inbox: None,
++            boat: Default::default(),
++            gce: crate::cloud_settings::Configuration::gce(),
++            cloud_root: "fixture-state".into(),
++            remote_targets: Default::default(),
++            microcoder: false,
++            cli: false,
++            acp: false,
++            jev_enabled: true,
++            jev_key: Some(model_access::ApiKey::new("fixture-saved-key")),
++            redaction_keys: vec![],
++            jev_model: jev::defaults::MODEL.into(),
++            jev_endpoint: DEFAULT_ENDPOINT.into(),
++            agents: vec![],
++            cwd: std::path::PathBuf::from("/unused"),
++            instructions: None,
++            shell: false,
++            brainstorm: None,
++            disclosure_desk: None,
++        };
++        let client = settings.jev_client().unwrap().unwrap();
++        assert_eq!(jev_hosted::via(&client), "direct");
++    }
++
+     #[test]
+     fn rejects_unknown_fields_and_invalid_question_shapes_before_dispatch() {
+         let mut unknown = arguments();
+diff --git a/crates/coder-new/src/lib.rs b/crates/coder-new/src/lib.rs
+index 7fd184c1503a0317cfeeff23c6fb70ead2541c82..8c8e51cba131e85c43696d2f44dca933cc6452ff 100644
+--- a/crates/coder-new/src/lib.rs
++++ b/crates/coder-new/src/lib.rs
+@@ -204,6 +204,7 @@ impl App {
+                     task: task.clone(),
+                     running: true,
+                     output: serde_json::Value::Null,
++                    progress: None,
+                 });
+                 self.delegations.push(live::Delegation {
+                     id: id.clone(),
+@@ -299,6 +300,15 @@ impl App {
+                 output,
+                 running,
+             } => child.chat.tool(name, input, output, running),
++            bundled_runtime::RuntimeEvent::Progress { step, complete } => {
++                if let Some(live::Entry::Delegation { progress, .. }) =
++                    self.live.entries.iter_mut().find(|entry| {
++                        matches!(entry, live::Entry::Delegation { id: previous, .. } if previous == &id)
++                    })
++                {
++                    *progress = Some((step, complete));
++                }
++            }
+             bundled_runtime::RuntimeEvent::Delegation { .. } => {}
+         }
+         if self.selected_agent == Some(index) {
+diff --git a/crates/coder-new/src/trajectory.rs b/crates/coder-new/src/trajectory.rs
+index 6b2e26870c0a3e57107534f9b7edfb80c83c2661..9cf5f3d64fc2266cceaf3053d95462a3d9b76fcf 100644
+--- a/crates/coder-new/src/trajectory.rs
++++ b/crates/coder-new/src/trajectory.rs
+@@ -675,6 +678,7 @@ mod tests {
+             task: "Review the parser".into(),
+             running: false,
+             output: json!({"reply":"Reviewed"}),
++            progress: None,
+         });
+         app.delegations.push(crate::live::Delegation {
+             id: "child".into(),
+diff --git a/crates/coder-new/tests/transcript_runtime.rs b/crates/coder-new/tests/transcript_runtime.rs
+index 089fe4319f8211b4ef26f892a8d304fdcbcc4eb2..c65e41caf699549fffd5a9961aafb4c5e9d385fc 100644
+--- a/crates/coder-new/tests/transcript_runtime.rs
++++ b/crates/coder-new/tests/transcript_runtime.rs
+@@ -741,3 +741,51 @@ fn fallback_attribution_drops_options_the_fallback_did_not_receive() {
+         Some("google/gemini-2.5-flash")
+     );
+ }
++
++#[test]
++fn a_judged_step_shows_jevs_estimate_on_the_run_row_and_never_a_budget() {
++    let mut app = live_app();
++    app.live.busy = true;
++    begin_delegation(&mut app);
++    // Jev has judged nothing yet: the row says the run is going, no share.
++    let text = canvas(&draw(&mut app, 110, 24));
++    assert!(text.contains("Review the fixture implementation · Running"));
++    assert!(!text.contains("% done"));
++
++    // A step Jev could not judge shows the step alone, never a made-up share.
++    delegation(
++        &mut app,
++        RuntimeEvent::Progress {
++            step: 1,
++            complete: None,
++        },
++    );
++    let text = canvas(&draw(&mut app, 110, 24));
++    assert!(text.contains("Review the fixture implementation · step 1"));
++    assert!(!text.contains("% done"));
++
++    delegation(
++        &mut app,
++        RuntimeEvent::Progress {
++            step: 3,
++            complete: Some(0.4),
++        },
++    );
++    let text = canvas(&draw(&mut app, 110, 24));
++    assert!(text.contains("Review the fixture implementation · step 3 · ≈40% done"));
++    assert!(!text.contains(" of "), "no step budget: {text}");
++
++    // The ended run shows its outcome, not a stale estimate.
++    delegation(
++        &mut app,
++        tool(
++            "microcoder",
++            Value::Null,
++            json!({"reply":"Reviewed."}),
++            false,
++        ),
++    );
++    let text = canvas(&draw(&mut app, 110, 24));
++    assert!(text.contains("Review the fixture implementation · Done"));
++    assert!(!text.contains("% done"));
++}

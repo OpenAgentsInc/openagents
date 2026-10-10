@@ -1,0 +1,249 @@
+diff --git a/bins/openagents-android/host/app/src/main/java/com/openagents/app/AccountScreens.kt b/bins/openagents-android/host/app/src/main/java/com/openagents/app/AccountScreens.kt
+index 5b1fd533157f8843111cfdebafe578a1b08e0c9b..e2e70c451f17f4aa204befd6c8271314e8770435 100644
+--- a/bins/openagents-android/host/app/src/main/java/com/openagents/app/AccountScreens.kt
++++ b/bins/openagents-android/host/app/src/main/java/com/openagents/app/AccountScreens.kt
+@@ -478,9 +478,10 @@ internal class AccountScreens(private val activity: MainActivity, private val br
+         addView(activity.column().apply {
+             add(activity.label(name, 16f))
+             add(activity.label(row.getString("status"), 14f, Palette.SECONDARY), 2)
++            row.textOrNull("watchers")?.let { add(activity.label(it, 13f, Palette.SECONDARY), 2) }
+         }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = activity.dp(12) })
+         addView(activity.text("›", 22f, Palette.TERTIARY))
+-        contentDescription = "$name, ${row.getString("status")}"
++        contentDescription = listOfNotNull(name, row.getString("status"), row.textOrNull("watchers")).joinToString(", ")
+         val host = row.getString("host")
+         val menu = row.optJSONArray("menu")?.objects() ?: emptyList()
+         setOnClickListener { bridge.openComputer(host) }
+diff --git a/bins/openagents-ios/host/App/MobileBridge.swift b/bins/openagents-ios/host/App/MobileBridge.swift
+index 4849134178634131c7b145797690424dcc01b67d..db6a4af31561b47c52d455fe281e4e39520987a8 100644
+--- a/bins/openagents-ios/host/App/MobileBridge.swift
++++ b/bins/openagents-ios/host/App/MobileBridge.swift
+@@ -77,6 +77,9 @@ struct ComputersHome: Decodable, Equatable {
+         let status: String
+         /// `online`, `pending`, `offline`, or `alert`.
+         let tone: String
++        /// "1 background watcher · disk cleanup" for an online computer
++        /// that runs any; otherwise absent.
++        let watchers: String?
+         let menu: [Item]
+         var id: String { host }
+     }
+diff --git a/bins/openagents-ios/host/App/OpenAgentsApp.swift b/bins/openagents-ios/host/App/OpenAgentsApp.swift
+index 81880e9107eb38239137c7cb18564bae5867c454..39242cceb0cc8076210bdd4b364334769d9987bb 100644
+--- a/bins/openagents-ios/host/App/OpenAgentsApp.swift
++++ b/bins/openagents-ios/host/App/OpenAgentsApp.swift
+@@ -268,6 +268,9 @@ private struct ComputerRow: View {
+             VStack(alignment: .leading, spacing: 2) {
+                 Text(row.name).foregroundStyle(.white)
+                 Text(row.status).font(.subheadline).foregroundStyle(.secondary)
++                if let watchers = row.watchers {
++                    Text(watchers).font(.footnote).foregroundStyle(.secondary)
++                }
+             }
+             Spacer(minLength: 8)
+             Image(systemName: "chevron.right")
+diff --git a/crates/coder-computers/src/live.rs b/crates/coder-computers/src/live.rs
+index f963aa03e3eb1e9f1cf36804aad983a89ca4aad4..e33cf83302bb2b6ea00c511b2ee07f0b016a80fa 100644
+--- a/crates/coder-computers/src/live.rs
++++ b/crates/coder-computers/src/live.rs
+@@ -406,6 +406,8 @@ struct HostLive {
+     activity: Vec<ActivitySummary>,
+     /// The host's `workspace.list` answer, with `operate`.
+     workspaces: Option<Vec<String>>,
++    /// The background watchers its `background.list` names, with `observe`.
++    watchers: Option<Vec<String>>,
+     /// The connection the last catch-up read, and when it finished.
+     caught_up: Option<(u64, Instant)>,
+     catching_up: bool,
+@@ -1376,6 +1378,19 @@ async fn catch_up(
+             _ => None,
+         }
+     };
++    // A host without a background runner (or one that predates
++    // `background.*`) refuses it; the list then says nothing of watchers.
++    let watchers = async {
++        if !rights.contains(Right::Observe) {
++            return None;
++        }
++        match link.call(Operation::ListBackground {}).await {
++            Ok(Outcome::Background { background }) => {
++                crate::model::watchers(&background, (shared.settings.now)())
++            }
++            _ => None,
++        }
++    };
+     let enrollments = async {
+         if !rights.contains(Right::AccessAdmin) {
+             return None;
+@@ -1384,8 +1399,8 @@ async fn catch_up(
+             .await
+             .ok()
+     };
+-    let (presence, summaries, (devices, revoked), workspaces, enrollments) =
+-        tokio::join!(reach, summaries, devices, workspaces, enrollments);
++    let (presence, summaries, (devices, revoked), workspaces, watchers, enrollments) =
++        tokio::join!(reach, summaries, devices, workspaces, watchers, enrollments);
+     let compatibility = presence
+         .as_ref()
+         .map(|received| Compatibility::judge(&received.presence, &client));
+@@ -1414,6 +1429,7 @@ async fn catch_up(
+             if workspaces.is_some() {
+                 live.workspaces = workspaces;
+             }
++            live.watchers = watchers;
+         }
+     }
+     if revoked {
+@@ -1609,6 +1625,7 @@ impl ComputersService for Live {
+                         })
+                         .collect(),
+                     workspaces: live.workspaces.clone(),
++                    watchers: live.watchers.clone(),
+                 }
+             })
+             .collect();
+@@ -1637,6 +1654,7 @@ impl ComputersService for Live {
+                     devices: DeviceList::NotLoaded,
+                     enrollments: Vec::new(),
+                     workspaces: None,
++                    watchers: None,
+                 });
+             }
+         }
+diff --git a/crates/coder-computers/src/model.rs b/crates/coder-computers/src/model.rs
+index 9a88ea43fdbaee2ccfa0befc3bfa55f10e53e769..6ce46aade47bd6720276013c864063236a9b8b08 100644
+--- a/crates/coder-computers/src/model.rs
++++ b/crates/coder-computers/src/model.rs
+@@ -343,6 +343,10 @@ pub struct HostRecord {
+     /// `workspace.list` answered. `None` until read, or when the host does
+     /// not list them; ordering work then asks for a label instead.
+     pub workspaces: Option<Vec<String>>,
++    /// The background watchers the host runs, by name ("disk cleanup"), as
++    /// its `background.list` answered (see [`watchers`]). `None` until read,
++    /// or when the host runs no background runner.
++    pub watchers: Option<Vec<String>>,
+ }
+ 
+ impl HostRecord {
+@@ -598,3 +602,37 @@ pub fn right_label(right: Right) -> &'static str {
+         Right::AccessAdmin => "Manage access",
+     }
+ }
++
++/// The background watchers in a host's `background.list` answer, by name:
++/// the rules that are on, readable, and not paused at `now`, with the first
++/// letter lowercased ("disk cleanup"). The host answers `background.list`
++/// only while its runner runs, so these are the ones running. The same rule
++/// as `background::view::watchers` on the computer itself.
++#[must_use]
++pub fn watchers(list: &serde_json::Value, now: u64) -> Option<Vec<String>> {
++    #[derive(serde::Deserialize)]
++    struct Row {
++        name: String,
++        enabled: bool,
++        #[serde(default)]
++        paused_until: Option<u64>,
++        #[serde(default)]
++        error: Option<String>,
++    }
++    let rows: Vec<Row> = serde_json::from_value(list.clone()).ok()?;
++    Some(
++        rows.into_iter()
++            .filter(|row| {
++                row.error.is_none()
++                    && row.enabled
++                    && row.paused_until.is_none_or(|until| until <= now)
++            })
++            .map(|row| {
++                let mut chars = row.name.chars();
++                chars.next().map_or_else(String::new, |first| {
++                    first.to_lowercase().chain(chars).collect()
++                })
++            })
++            .collect(),
++    )
++}
+diff --git a/crates/coder-computers/src/synthetic.rs b/crates/coder-computers/src/synthetic.rs
+index 23a4ca44e84f7b6896f56901beef20751b69680e..bfc5186294acb9c52c101e322f7349c5ccca1261 100644
+--- a/crates/coder-computers/src/synthetic.rs
++++ b/crates/coder-computers/src/synthetic.rs
+@@ -168,10 +168,12 @@ impl Synthetic {
+             devices: DeviceList::NotLoaded,
+             enrollments: Vec::new(),
+             workspaces: None,
++            watchers: None,
+         };
+         let mut studio = record(0xa1, "Studio Mac", enrolled(Rights::all()));
+         studio.route = Some(Class::Lan);
+         studio.workspaces = Some(vec!["openagents".into(), "scratch".into()]);
++        studio.watchers = Some(vec!["disk cleanup".into()]);
+         studio.devices = DeviceList::Loaded {
+             as_of: at - 90,
+             devices: vec![
+@@ -206,6 +208,9 @@ impl Synthetic {
+         };
+         let mut old = record(0xa4, "Old laptop", enrolled(standard.clone()));
+         old.compatibility = Compatibility::HostOutOfDate;
++        // Read while it was online; it is offline now.
++        let mut nas = record(0xa3, "Home NAS", enrolled(standard.clone()));
++        nas.watchers = Some(vec!["disk cleanup".into()]);
+         let mut lab = record(0xa5, "Lab box", Enrollment::NotEnrolled);
+         lab.enrollments.push(PendingEnrollment {
+             enrollment: "synthetic-enrollment".into(),
+@@ -222,7 +227,7 @@ impl Synthetic {
+                 supervisor: supervise(Script::Connecting),
+             },
+             Host {
+-                record: record(0xa3, "Home NAS", enrolled(standard.clone())),
++                record: nas,
+                 supervisor: supervise(Script::Backoff(Failure::Unreachable)),
+             },
+             Host {
+@@ -409,6 +414,7 @@ impl Synthetic {
+             devices: DeviceList::NotLoaded,
+             enrollments: Vec::new(),
+             workspaces: None,
++            watchers: None,
+         };
+         let key = record.key.clone();
+         self.hosts.push(Host {
+diff --git a/crates/openagents-mobile/src/computers_home.rs b/crates/openagents-mobile/src/computers_home.rs
+index a0f1d0ddf89179eb0c2d45983c6b77260a3217cb..685c9b7e7ec9fea2315e885f44f0b67bb23823e6 100644
+--- a/crates/openagents-mobile/src/computers_home.rs
++++ b/crates/openagents-mobile/src/computers_home.rs
+@@ -72,6 +72,10 @@ pub struct Row {
+     pub name: String,
+     pub status: String,
+     pub tone: Tone,
++    /// The background watchers an online computer runs, the line the
++    /// terminal and desktop show: "1 background watcher · disk cleanup".
++    /// `None` when it runs none, is not online, or has not said.
++    pub watchers: Option<String>,
+     pub menu: Vec<Item>,
+ }
+ 
+@@ -171,6 +175,16 @@ pub fn short_status(host: &HostRecord, now: u64) -> (String, Tone) {
+ 
+ fn row(snapshot: &Snapshot, caps: Capabilities, host: &HostRecord) -> Row {
+     let (status, tone) = short_status(host, snapshot.now);
++    let watchers = matches!(
++        HostStatus::derive(host, snapshot.now),
++        HostStatus::Online { .. }
++    )
++    .then(|| {
++        host.watchers
++            .as_deref()
++            .and_then(openagents_chat_app::watchers::line)
++    })
++    .flatten();
+     let key = host.key.as_str();
+     let mut menu = vec![];
+     let offer = |menu: &mut Vec<Item>, choice, label, confirm, action: Option<Action>| {
+@@ -274,6 +288,7 @@ fn row(snapshot: &Snapshot, caps: Capabilities, host: &HostRecord) -> Row {
+         name: host.label.clone(),
+         status,
+         tone,
++        watchers,
+         menu,
+     }
+ }

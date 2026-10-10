@@ -1,0 +1,22 @@
+{
+  "test_targets": [],
+  "issue": 9567,
+  "title": "Coder One: measure the controller's contribution with matched targeted tests",
+  "body": "## Goal\n\nFind out whether Coder One's controller (Jev briefing, checks, support, repair, escalation) adds passes or saves cost when the executor settings are the same, on a targeted task set, before any further suite runs.\n\n## Why\n\nThe 26-task comparison (11 vs 9 passes, 45% cheaper) changed effort, tools, system prompt, and cache lifetime along with the controller. The matched pilot held those fixed and found no measurable controller benefit on two tasks (6/6 plain vs 5/6 Coder). See https://github.com/OpenAgentsInc/openagents/blob/main/docs/terminal-bench/2026-09-23-what-we-have-learned.md, lesson 1.\n\n## Work\n\n1. Add a fair baseline arm: Claude Code on Opus 5.5 at medium effort with the same six tools, system prompt, and five-minute cache as Coder One.\n2. Pick about 10 targeted tasks: the tasks other agents solve at least 80% of the time that we fail, plus a few we pass.\n3. Run both arms, 3 attempts each, interleaved, using the fast loop from the iteration-time issue.\n4. Report passes with intervals, cost, and time per arm and per task, and attribute differences to controller components using the invocation records.\n\n## Acceptance\n\nA table stating, with its uncertainty, whether the controller changes pass rate or cost on these tasks, published in docs/terminal-bench/. No full suite.",
+  "fix": "13191836c7449f107011dd16f62c625bf0173eb0",
+  "parent": "1430255e3d3fe73e9690330a3017382d1760685c",
+  "package": "coder-one",
+  "source_files": [
+    "bench/terminal-bench/profiles/agents.json",
+    "bench/terminal-bench/tbench/matched.py",
+    "crates/coder-one/policies/matched-opus-medium-v8.json",
+    "crates/coder-one/src/policy.rs",
+    "docs/terminal-bench/2026-09-23-matched-controller-targeted.md"
+  ],
+  "test_files": [
+    "bench/terminal-bench/tests/test_agents.py",
+    "bench/terminal-bench/tests/test_matched.py"
+  ],
+  "test_names": [],
+  "fix_lines": 493
+}

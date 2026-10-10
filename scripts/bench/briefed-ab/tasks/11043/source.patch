@@ -1,0 +1,55 @@
+diff --git a/crates/coder/src/bin/coder-worker.rs b/crates/coder/src/bin/coder-worker.rs
+index 5673f75881e0deff53730ea4b57e0055728695f7..61b312cbdcc320fb0e9de2406bbc5a9bdfb0ce0a 100644
+--- a/crates/coder/src/bin/coder-worker.rs
++++ b/crates/coder/src/bin/coder-worker.rs
+@@ -25,10 +25,16 @@
+ //! export CODER_WORKER_SECRET=<64 hex or nsec>
+ //! export CODER_RELAY=wss://relay.openagents.com
+ //! export CODER_DOOR_KEY=…            # the door the worker answers through
+-//! export CODER_WORKER_MODEL=glm      # the lane this worker runs
++//! export CODER_WORKER_MODEL=gemini   # the gateway lane this worker runs
++//! export OPENROUTER_API_KEY=…         # the primary every turn asks first
+ //! coder-worker --once
+ //! ```
+ //!
++//! That is the shipped chat worker's configuration
++//! (`deploy/coder-worker-chat.env.example`): every turn asks the OpenRouter
++//! primary (Space Bunny Alpha) first, and the gateway's `gemini` lane
++//! answers any turn the primary does not.
++//!
+ //! The lane is the worker's own. [`coder::generate::WORKER_MODEL_VAR`]
+ //! outranks `CODER_MODEL` because the model a service pays for is not
+ //! automatically the model a local user would pick, and one constant
+diff --git a/crates/coder/src/router/personalize.rs b/crates/coder/src/router/personalize.rs
+index 45502321fc0237d2256fda36480d677acd5b934f..5bc4eef98472fb31d2a0afa6d5084d504d378a37 100644
+--- a/crates/coder/src/router/personalize.rs
++++ b/crates/coder/src/router/personalize.rs
+@@ -20,8 +20,10 @@
+ //! - the prompt: [`INSTRUCTIONS`] and [`prompt_text`], which carries the
+ //!   [`Ask`]'s route, stem, and message and nothing else;
+ //! - two measured providers, streamed: an OpenRouter model
+-//!   ([`OpenRouterLane`], the default) and the gateway door's `glm` lane
+-//!   ([`GatewayLane`]), chosen by [`PROVIDER_VAR`];
++//!   ([`OpenRouterLane`], the default, which the shipped chat worker runs)
++//!   and the gateway door's `glm` lane ([`GatewayLane`]), chosen by
++//!   [`PROVIDER_VAR`]. Either is only the personalization model; the chat
++//!   itself answers on the worker's own primary and lane;
+ //! - [`check`], which tidies what the model wrote (quotes, a repeated
+ //!   stem, a missing period) and refuses what the instructions forbid and
+ //!   the router's validator does not look for ("we", a button, a time,
+diff --git a/docs/deployment/chat-worker.md b/docs/deployment/chat-worker.md
+index 2e27898de52d2cf200836e936330040ca16d42a8..340a6c33a36f7bc42b04bed6b3d3311c919c55c0 100644
+--- a/docs/deployment/chat-worker.md
++++ b/docs/deployment/chat-worker.md
+@@ -156,7 +156,10 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
+     ([the chat router design](../coder/design/2026-09-28-chat-router.md#implemented-and-measured-2026-09-28));
+     `openrouter:<model>` names another model. `gateway` (or
+     `gateway:<lane>`) uses the door key and URL the worker already has and
+-    the `glm` lane, about twice as slow. `off` or unset turns it off.
++    the `glm` lane, about twice as slow; that lane writes only the stem's
++    ending, not the chat's answer, which stays on Space Bunny Alpha then
++    Gemini. `off` or unset turns it off. The shipped chat environment sets
++    `openrouter`.
+   - With `openrouter`, `OPENROUTER_API_KEY` is required in the chat
+     environment file (`/etc/coder-worker/coder-worker-chat.env`), beside the
+     gateway key: the owner's OpenRouter key, which the worker never logs.

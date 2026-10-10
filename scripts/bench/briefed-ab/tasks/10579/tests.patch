@@ -1,0 +1,111 @@
+diff --git a/crates/coder-mobile/src/bare_presence_tests.rs b/crates/coder-mobile/src/bare_presence_tests.rs
+index aaa722c4265d360b0209a8495feae78a4c04bc99..abb6b382d3c04369c7546b4b0d67dbd1b719c427 100644
+--- a/crates/coder-mobile/src/bare_presence_tests.rs
++++ b/crates/coder-mobile/src/bare_presence_tests.rs
+@@ -422,7 +422,8 @@ fn the_everglade_arch_loads_its_pack_pauses_presence_and_the_return_rejoins() {
+     assert!(scene.session.is_none());
+     assert_eq!(scene.packet().connection.state, "local_zone");
+ 
+-    // At a station the app offers no studio panel, since it has none.
++    // At a station the app offers no studio panel until its host connects
++    // the studio to a computer.
+     let podium = verse::zones::everglade::STATIONS
+         .iter()
+         .find(|s| s.id == "podium")
+diff --git a/crates/coder-mobile/src/studio_tests.rs b/crates/coder-mobile/src/studio_tests.rs
+index 03e2e7a616e59967e84f7b44cc9379cb22258949..4bcf2aa498da6fc3a90ee4b225bb9a168f94e804 100644
+--- a/crates/coder-mobile/src/studio_tests.rs
++++ b/crates/coder-mobile/src/studio_tests.rs
+@@ -159,6 +159,66 @@ fn interact(scene: &mut Scene) -> Result<(), String> {
+     })
+ }
+ 
++/// The OpenAgents app's bare world offers Interact at a station only once
++/// its host connected the studio to a computer, and then opens the panel.
++#[test]
++fn the_bare_world_offers_interact_only_with_a_studio_source() {
++    let mut scene = Scene::new(Config {
++        world_offline: true,
++        ..crate::verse_ffi::bare_config(800, 1200, 2.0, false, None)
++    })
++    .unwrap();
++    scene.activate(true).unwrap();
++    scene.world.install_everglade(pack());
++    assert!(scene.world.is_bare());
++    assert_eq!(scene.world.zone, ZoneId::Everglade);
++    scene.reset_zone_inputs();
++    // The scripted checks' `station=podium` stands the player there.
++    assert!(
++        scene
++            .action(Request::GoStation {
++                station: "nowhere".into()
++            })
++            .is_err()
++    );
++    scene
++        .action(Request::GoStation {
++            station: "podium".into(),
++        })
++        .unwrap();
++    scene.update(1.0).unwrap();
++    scene.update(1.02).unwrap();
++    assert!(scene.world.studio_panel_here().is_some());
++    let offered = |scene: &Scene| {
++        scene
++            .zone_snapshot()
++            .controls
++            .iter()
++            .any(|control| control.action == ZoneIntent::Interact && control.enabled)
++    };
++    assert!(!offered(&scene));
++    assert!(interact(&mut scene).is_err());
++    assert!(scene.studio.is_none());
++
++    scene
++        .world
++        .set_studio_source(Box::new(Once(Some(studio()))));
++    assert!(offered(&scene));
++    interact(&mut scene).unwrap();
++    assert_eq!(
++        scene.studio.as_ref().map(|open| open.kind.clone()),
++        Some(verse::zones::everglade::studio::PanelKind::Decisions)
++    );
++    // Return stays the arch's job in the bare world.
++    assert!(
++        !scene
++            .zone_snapshot()
++            .controls
++            .iter()
++            .any(|control| control.action == ZoneIntent::Return)
++    );
++}
++
+ #[test]
+ fn interact_opens_the_station_panel_and_pauses_the_world() {
+     let mut scene = in_everglade(station("podium"));
+diff --git a/crates/openagents-mobile/src/android.rs b/crates/openagents-mobile/src/android.rs
+index 79ca87ca68098d9d246c9502e6b9160b6d1a8446..b6a25df4691724366c853ba3df862d4862036d25 100644
+--- a/crates/openagents-mobile/src/android.rs
++++ b/crates/openagents-mobile/src/android.rs
+@@ -290,6 +328,21 @@ mod tests {
+         assert!(packet["computers_home"].is_null());
+     }
+ 
++    #[test]
++    fn a_held_studio_link_is_taken_once() {
++        let dir = tempfile::tempdir().expect("temp dir");
++        let app = create_app(&config(&dir)).expect("app");
++        let token = hold_studio_links(&app, "  ");
++        assert_eq!(
++            take_studio_links(token).err().as_deref(),
++            Some("Choose a computer for the studio")
++        );
++        assert_eq!(
++            take_studio_links(token).err().as_deref(),
++            Some("Try connecting the studio again")
++        );
++    }
++
+     #[test]
+     fn malformed_and_oversized_input_is_refused() {
+         let dir = tempfile::tempdir().expect("temp dir");

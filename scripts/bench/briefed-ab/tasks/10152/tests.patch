@@ -1,0 +1,284 @@
+diff --git a/crates/coder-terminal/src/components/run.rs b/crates/coder-terminal/src/components/run.rs
+index df91e3da9be2c8346833054346a9a26a2e83624d..c04fef3997c0d20f365c482cf2e0829ce309ae0c 100644
+--- a/crates/coder-terminal/src/components/run.rs
++++ b/crates/coder-terminal/src/components/run.rs
+@@ -465,6 +506,47 @@ mod tests {
+         assert_eq!(cells(&lines[1]), 20);
+     }
+ 
++    #[test]
++    fn a_result_shows_its_patch_only_when_expanded() {
++        let mut row = RunRow::Result {
++            summary: String::new(),
++            files: vec![FileRow {
++                status: "modified".into(),
++                path: "a.rs".into(),
++                added: Some(1),
++                removed: Some(1),
++                patch: Some("@@ -1 +1 @@\n-old\n+new".into()),
++                cut: 1,
++            }],
++            insertions: 1,
++            deletions: 1,
++            worktree: String::new(),
++            expanded: false,
++        };
++        assert_eq!(
++            text(&row, 80),
++            [
++                "  Coder finished · 1 file changed · +1 -1",
++                "    modified a.rs (+1 -1)",
++                "  Press Ctrl+O to see the changes.",
++            ]
++        );
++        if let RunRow::Result { expanded, .. } = &mut row {
++            *expanded = true;
++        }
++        assert_eq!(
++            text(&row, 80),
++            [
++                "  Coder finished · 1 file changed · +1 -1",
++                "    modified a.rs (+1 -1)",
++                "      @@ -1 +1 @@",
++                "      -old",
++                "      +new",
++                "      1 more line not shown",
++            ]
++        );
++    }
++
+     #[test]
+     fn nothing_is_wider_than_the_width() {
+         let row = RunRow::Result {
+@@ -474,10 +556,13 @@ mod tests {
+                 path: "crates/a/very/long/path/to/a/file.rs".into(),
+                 added: Some(3),
+                 removed: None,
++                patch: Some("@@ -1 +1 @@\n-a very long removed line of code\n+x".into()),
++                cut: 12,
+             }],
+             insertions: 3,
+             deletions: 0,
+             worktree: "/tmp/worktree".into(),
++            expanded: true,
+         };
+         for width in [0u16, 1, 2, 5, 12, 40] {
+             for line in lines(&row, width, Ladder::default()) {
+diff --git a/crates/coder-terminal/tests/components.rs b/crates/coder-terminal/tests/components.rs
+index 963d08d74ae9bb9a990638605a0a440cb2c36775..3df18c9a155ca284c21a3fafe0e33d0d20af48f0 100644
+--- a/crates/coder-terminal/tests/components.rs
++++ b/crates/coder-terminal/tests/components.rs
+@@ -191,17 +191,20 @@ fn run_rows() -> Vec<RunRow> {
+                     path: "crates/coder-terminal/src/wrap.rs".into(),
+                     added: Some(12),
+                     removed: Some(3),
++                    ..FileRow::default()
+                 },
+                 FileRow {
+                     status: "A".into(),
+                     path: "crates/coder-terminal/tests/wrap.rs".into(),
+                     added: None,
+                     removed: None,
++                    ..FileRow::default()
+                 },
+             ],
+             insertions: 40,
+             deletions: 3,
+             worktree: "/Users/me/work/openagents-coder-1".into(),
++            expanded: false,
+         },
+         RunRow::Failed {
+             text: "the provider refused the request".into(),
+diff --git a/crates/coder/src/task/issue_run_tests.rs b/crates/coder/src/task/issue_run_tests.rs
+index a5ddb1b711094384e95ef6942658b80c1a58704e..d759719604e57e67be33c228fc380d0d8c2bc1e3 100644
+--- a/crates/coder/src/task/issue_run_tests.rs
++++ b/crates/coder/src/task/issue_run_tests.rs
+@@ -180,6 +180,7 @@ fn result() -> CoderEvent {
+             status: "modified".into(),
+             added: Some(3),
+             removed: Some(1),
++            ..FileChange::default()
+         }],
+         insertions: 0,
+         deletions: 0,
+diff --git a/crates/coder/src/task/local.rs b/crates/coder/src/task/local.rs
+index b94ce860220141972d1a5557a82bb5a96622ee33..1d51d2a02d3a50ea0fd552f380d415529017039d 100644
+--- a/crates/coder/src/task/local.rs
++++ b/crates/coder/src/task/local.rs
+@@ -3166,20 +3169,34 @@ mod tests {
+             cut.completeness,
+             coder_host::access::review::Completeness::Truncated { .. }
+         ));
++        // Each file carries its patch from its first hunk, new files too.
++        assert_eq!(found[0].patch.as_deref(), Some("@@ -1 +1,2 @@\n one\n+two"));
+         assert_eq!(
+-            found,
++            found[1].patch.as_deref(),
++            Some("@@ -0,0 +1,2 @@\n+x\n+y\n\\ No newline at end of file")
++        );
++        assert_eq!(
++            found
++                .into_iter()
++                .map(|file| FileChange {
++                    patch: None,
++                    ..file
++                })
++                .collect::<Vec<_>>(),
+             vec![
+                 FileChange {
+                     path: "a.txt".into(),
+                     status: "modified".into(),
+                     added: Some(1),
+-                    removed: Some(0)
++                    removed: Some(0),
++                    ..FileChange::default()
+                 },
+                 FileChange {
+                     path: "new.txt".into(),
+                     status: "added".into(),
+                     added: Some(2),
+-                    removed: Some(0)
++                    removed: Some(0),
++                    ..FileChange::default()
+                 },
+             ]
+         );
+diff --git a/crates/openagents-chat/src/coder_events.rs b/crates/openagents-chat/src/coder_events.rs
+index 31064db510717c292f2b2e93c3c40d1b30cf137c..1658c68aea2a8289381eb1be1b0dcfb8dd075cdd 100644
+--- a/crates/openagents-chat/src/coder_events.rs
++++ b/crates/openagents-chat/src/coder_events.rs
+@@ -1535,6 +1607,67 @@ mod tests {
+     use super::*;
+     use serde_json::json;
+ 
++    fn change(path: &str) -> FileChange {
++        FileChange {
++            path: path.into(),
++            status: "modified".into(),
++            added: Some(1),
++            removed: Some(1),
++            ..FileChange::default()
++        }
++    }
++
++    #[test]
++    fn each_file_gets_its_own_patch_from_its_first_hunk() {
++        let diff = "diff --git a/a.rs b/a.rs\nindex 1..2 100644\n--- a/a.rs\n+++ b/a.rs\n\
++                    @@ -1 +1 @@\n-old\n+new\n\
++                    diff --git a/b c.md b/b c.md\nnew file mode 100644\n--- /dev/null\n\
++                    +++ b/b c.md\n@@ -0,0 +1 @@\n+hi\n\
++                    diff --git a/pic.png b/pic.png\nBinary files differ\n";
++        let mut changes = vec![
++            change("a.rs"),
++            change("b c.md"),
++            change("pic.png"),
++            change("gone"),
++        ];
++        attach_patches(&mut changes, diff);
++        assert_eq!(changes[0].patch.as_deref(), Some("@@ -1 +1 @@\n-old\n+new"));
++        assert_eq!(changes[1].patch.as_deref(), Some("@@ -0,0 +1 @@\n+hi"));
++        assert_eq!(changes[2].patch, None);
++        assert_eq!(changes[3].patch, None);
++        assert!(changes.iter().all(|c| c.patch_cut == 0));
++    }
++
++    #[test]
++    fn a_long_patch_is_cut_and_says_how_much() {
++        let body: String = (0..PATCH_LINES + 50).map(|n| format!("+{n}\n")).collect();
++        let one = format!("diff --git a/a b/a\n@@ -0,0 +1 @@\n{body}");
++        let diff = (0..6)
++            .map(|n| one.replace("a/a b/a", &format!("a/{n} b/{n}")))
++            .collect::<String>();
++        let mut changes: Vec<FileChange> = (0..6).map(|n| change(&n.to_string())).collect();
++        attach_patches(&mut changes, &diff);
++        assert_eq!(
++            changes[0].patch.as_deref().unwrap().lines().count(),
++            PATCH_LINES
++        );
++        assert_eq!(changes[0].patch_cut, 51);
++        let kept: usize = changes
++            .iter()
++            .map(|c| c.patch.as_deref().map_or(0, |p| p.lines().count()))
++            .sum();
++        assert_eq!(kept, PATCH_LINES_TOTAL);
++        assert_eq!(changes[5].patch_cut, (PATCH_LINES + 51) as u64);
++    }
++
++    #[test]
++    fn an_old_result_without_patches_still_reads() {
++        let old = json!({"path": "a.rs", "status": "modified", "added": 1, "removed": 0});
++        let read: FileChange = serde_json::from_value(old.clone()).unwrap();
++        assert_eq!(read.patch, None);
++        assert_eq!(serde_json::to_value(&read).unwrap(), old);
++    }
++
+     /// Grok Build's tool calls as the owner saw them on 2026-10-01
+     /// (#10113): kind `other`, its typed arguments, and its own title. Each
+     /// is a readable step line, and an unknown tool a short one, never JSON.
+@@ -1827,6 +1960,7 @@ mod tests {
+                 status: "added".into(),
+                 added: Some(9),
+                 removed: Some(0),
++                ..FileChange::default()
+             }],
+             "/w",
+             "/s/t.1.atif.jsonl",
+@@ -2282,6 +2416,7 @@ mod tests {
+                         status: "added".into(),
+                         added: Some(3),
+                         removed: Some(0),
++                        ..FileChange::default()
+                     }],
+                     insertions: 3,
+                     deletions: 0,
+diff --git a/crates/openagents-terminal/src/app_tests.rs b/crates/openagents-terminal/src/app_tests.rs
+index 6437a02a4419a54bc5039e6f6445359e20bcd9f5..9aa70c794f6670510bf6b3ad0045fa0570a12d5b 100644
+--- a/crates/openagents-terminal/src/app_tests.rs
++++ b/crates/openagents-terminal/src/app_tests.rs
+@@ -687,3 +687,46 @@ fn ctrl_y_copies_the_last_reply_then_its_code_blocks() {
+     app.key(&key(KeyCode::Char('x')), 80);
+     assert_eq!(copy(&mut app), vec![Action::Copy(reply.into())]);
+ }
++
++/// A run's result shows its files collapsed; Ctrl+O shows each file's
++/// patch under it (#10152), and condenses it again.
++#[test]
++fn a_results_changes_expand_with_ctrl_o() {
++    use openagents_chat::coder_events::{FileChange, Finished};
++    let mut app = app();
++    app.event(line(1, started()));
++    app.event(line(
++        2,
++        CoderEvent::Result(Finished {
++            turn: 1,
++            summary: "I renamed it.".into(),
++            files_changed: vec![FileChange {
++                path: "src/lib.rs".into(),
++                status: "modified".into(),
++                added: Some(1),
++                removed: Some(1),
++                patch: Some("@@ -1 +1 @@\n-pub fn old() {}\n+pub fn new() {}".into()),
++                patch_cut: 0,
++            }],
++            insertions: 1,
++            deletions: 1,
++            worktree: "/w".into(),
++            trajectory: "/t".into(),
++            issue: None,
++        }),
++    ));
++    let collapsed = shown(&mut app);
++    assert!(
++        collapsed.contains("modified src/lib.rs (+1 -1)"),
++        "{collapsed}"
++    );
++    assert!(collapsed.contains("Press Ctrl+O to see the changes."));
++    assert!(!collapsed.contains("pub fn new"));
++    app.key(&ctrl('o'), 80);
++    let expanded = shown(&mut app);
++    assert!(expanded.contains("-pub fn old() {}"), "{expanded}");
++    assert!(expanded.contains("+pub fn new() {}"));
++    assert!(!expanded.contains("Press Ctrl+O"));
++    app.key(&ctrl('o'), 80);
++    assert_eq!(shown(&mut app), collapsed);
++}

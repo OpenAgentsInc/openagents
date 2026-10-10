@@ -1,0 +1,470 @@
+diff --git a/crates/physics/src/contact.rs b/crates/physics/src/contact.rs
+index 98a01c3a31270a68756e0578c2e0671245b20ed6..6079c56f6fb31a471c0f1f458d429c056ac42205 100644
+--- a/crates/physics/src/contact.rs
++++ b/crates/physics/src/contact.rs
+@@ -435,15 +435,19 @@ impl World {
+             }
+         }
+         for (index, row) in &tethers {
++            let point = self.bodies()[row.b].pos + row.rb;
+             if let Some(joint) = self.joints[*index].as_mut() {
+                 joint.impulse = row.dir * row.impulse;
++                joint.point = point;
+                 joint.angular_impulse = DVec3::ZERO;
+                 joint.saturated = row.lower.is_finite() && row.impulse <= row.lower * (1.0 - 1e-9);
+             }
+         }
+         for block in &blocks {
++            let point = self.bodies()[block.b].pos + block.rb;
+             if let Some(joint) = self.joints[block.joint].as_mut() {
+                 joint.impulse = DVec3::new(block.impulse[0], block.impulse[1], block.impulse[2]);
++                joint.point = point;
+                 joint.angular_impulse =
+                     DVec3::new(block.impulse[3], block.impulse[4], block.impulse[5]);
+                 joint.saturated = block.saturated();
+@@ -477,6 +481,10 @@ impl World {
+         for (index, joint) in self.joints.iter().enumerate() {
+             let Some(joint) = joint else { continue };
+             let (a, b) = (joint.a.0 as usize, joint.b.0 as usize);
++            if motions[a].inverse_mass == 0.0 && motions[b].inverse_mass == 0.0 {
++                // Neither side can move: nothing to solve.
++                continue;
++            }
+             let (pa, pb) = joint.anchors(self);
+             // Point and weld impulses act at the anchors' midpoint, so the
+             // pair is equal, opposite, and collinear: momentum is exact even
+diff --git a/crates/physics/src/joint.rs b/crates/physics/src/joint.rs
+index 769d006f5b9921abd13ec6398ff7b4ddb8243e3c..74bb8ef0d7563ea110b97fc2d8310b069945db17 100644
+--- a/crates/physics/src/joint.rs
++++ b/crates/physics/src/joint.rs
+@@ -66,6 +66,9 @@ pub struct Joint {
+     /// Impulse on `b` in the last step, N s; `a` received the opposite.
+     #[serde(default)]
+     pub impulse: DVec3,
++    /// World point where `impulse` acted on `b`, m.
++    #[serde(default)]
++    pub point: DVec3,
+     /// Angular impulse on `b` in the last step, N m s.
+     #[serde(default)]
+     pub angular_impulse: DVec3,
+@@ -88,6 +91,7 @@ impl Joint {
+             max_force: f64::INFINITY,
+             max_torque: f64::INFINITY,
+             impulse: DVec3::ZERO,
++            point: DVec3::ZERO,
+             angular_impulse: DVec3::ZERO,
+             saturated: false,
+         }
+diff --git a/crates/verse-lagrange/src/station.rs b/crates/verse-lagrange/src/station.rs
+index f87ecb72da763348b47739347924a53689e496e5..b1064e24f545a176e3a71f02e3304b87d67a3ac3 100644
+--- a/crates/verse-lagrange/src/station.rs
++++ b/crates/verse-lagrange/src/station.rs
+@@ -8,7 +8,7 @@
+ use glam::{DQuat, DVec3};
+ use physics::{
+     Body, BodyId, BodyKind, Collider, ColliderId, Composite, Filter, FixedStep, Joint, JointId,
+-    Ledger, Material, Momentum, Shape, ThrusterSet, World,
++    JointKind, Ledger, Material, Momentum, Shape, ThrusterSet, World,
+ };
+ use serde::{Deserialize, Serialize};
+ 
+@@ -45,8 +45,14 @@ pub const ISP: f64 = 70.0;
+ pub const SPEED_LIMIT: f64 = 2.0;
+ /// Velocity errors below this are left alone (minimum impulse), m/s.
+ pub const VELOCITY_DEADBAND: f64 = 0.004;
+-/// Safety tether range from the station center of mass, m.
++/// Length of the safety tether from the airlock, m.
+ pub const EVA_RANGE: f64 = 140.0;
++/// Largest tension the safety tether and the part lines hold, N.
++pub const TETHER_TENSION: f64 = 3_000.0;
++/// Beyond the tether length by this much, the emergency boundary returns
++/// the astronaut or reels a part in, m. The tether itself normally stops
++/// them first.
++pub const TETHER_MARGIN: f64 = 2.0;
+ /// Refill port reach at the airlock, m.
+ pub const REFILL_RANGE: f64 = 3.5;
+ /// Refill rate at the airlock, kg/s.
+@@ -56,6 +62,11 @@ pub const GRAB_RANGE: f64 = 3.0;
+ /// Latch capture distance, m, and maximum closing speed, m/s.
+ pub const LATCH_RANGE: f64 = 1.6;
+ pub const LATCH_SPEED: f64 = 0.35;
++/// Latch alignment limit, rad (15 degrees). A part may also latch turned
++/// half a turn about its keel.
++pub const LATCH_ANGLE: f64 = 15.0 * std::f64::consts::PI / 180.0;
++/// Largest spin rate that latches, rad/s.
++pub const LATCH_SPIN: f64 = 0.05;
+ /// Orbital seconds per local second. The local rigid-body clock is real time.
+ pub const ORBIT_WARP: f64 = 3_600.0;
+ /// Parts that drift farther than this from the depot are reeled back, m.
+@@ -238,6 +249,11 @@ pub struct Part {
+     pub body: BodyId,
+     pub collider: ColliderId,
+     pub state: PartState,
++    /// Line from the depot that keeps the part within [`PART_TETHER`].
++    pub line: JointId,
++    /// Weld to the jig once latched.
++    #[serde(default)]
++    pub latch: Option<JointId>,
+ }
+ 
+ impl PartState {
+@@ -245,8 +261,9 @@ impl PartState {
+     #[must_use]
+     pub const fn body_kind(self) -> BodyKind {
+         match self {
+-            Self::Stowed | Self::Installed => BodyKind::Static,
+-            Self::Carried | Self::Drifting => BodyKind::Dynamic,
++            Self::Stowed => BodyKind::Static,
++            // A latched part is welded to the jig, so impacts load the weld.
++            Self::Carried | Self::Drifting | Self::Installed => BodyKind::Dynamic,
+         }
+     }
+ 
+@@ -386,6 +403,8 @@ pub struct Snapshot {
+     pub can_grab: bool,
+     pub latch_ready: bool,
+     pub latch_distance_m: Option<f64>,
++    /// Alignment error of the carried part from its latch, degrees.
++    pub latch_angle_deg: Option<f64>,
+     pub refilling: bool,
+     /// A station-keeping burn fired within the last second.
+     pub keeping_active: bool,
+@@ -421,6 +440,11 @@ pub struct Station {
+     /// The glove's grip on the carried part.
+     #[serde(default)]
+     pub grip: Option<JointId>,
++    /// A fixed body at the station origin that carries the tether, line, and
++    /// jig anchors.
++    pub anchor: BodyId,
++    /// The astronaut's safety tether from the airlock.
++    pub tether: JointId,
+     /// Apply the L1 tidal field to local bodies. Off only for conservation
+     /// tests, since the rotating-frame field is an external force.
+     #[serde(default = "enabled")]
+@@ -480,6 +504,17 @@ impl Station {
+                 .with_material(SURFACE),
+             );
+         }
++        let anchor = world.add(Body::new(1.0, DVec3::ONE, DVec3::ZERO).with_kind(BodyKind::Static));
++        let tether = world.add_joint(
++            Joint::new(
++                anchor,
++                AIRLOCK,
++                astronaut,
++                DVec3::ZERO,
++                JointKind::Tether { length: EVA_RANGE },
++            )
++            .limited(TETHER_TENSION, 0.0),
++        );
+         let parts = PartKind::ALL
+             .iter()
+             .map(|&kind| {
+@@ -492,11 +527,25 @@ impl Station {
+                         .with_filter(PartState::Stowed.filter())
+                         .with_material(SURFACE),
+                 );
++                let line = world.add_joint(
++                    Joint::new(
++                        anchor,
++                        DEPOT,
++                        body,
++                        DVec3::ZERO,
++                        JointKind::Tether {
++                            length: PART_TETHER,
++                        },
++                    )
++                    .limited(TETHER_TENSION, 0.0),
++                );
+                 Part {
+                     kind,
+                     body,
+                     collider,
+                     state: PartState::Stowed,
++                    line,
++                    latch: None,
+                 }
+             })
+             .collect();
+@@ -516,6 +565,8 @@ impl Station {
+             pilot: Command::default(),
+             journal: None,
+             grip: None,
++            anchor,
++            tether,
+             tide: true,
+             ledger: Ledger::default(),
+             climb: 0.0,
+@@ -595,6 +646,29 @@ impl Station {
+             })
+     }
+ 
++    /// Record the pull of the safety tether and the part lines on the free
++    /// system as the `tether` term, and say when the safety tether is taut.
++    fn account_tethers(&mut self) {
++        let mut lines = vec![(self.tether, self.astronaut)];
++        lines.extend(self.parts.iter().map(|p| (p.line, p.body)));
++        for (id, body) in lines {
++            if !self.in_system(body) {
++                continue;
++            }
++            let Some(joint) = self.world.joint(id) else {
++                continue;
++            };
++            if joint.impulse == DVec3::ZERO {
++                continue;
++            }
++            let (impulse, at) = (joint.impulse, joint.point);
++            self.ledger.add_impulse("tether", impulse, at);
++            if id == self.tether {
++                self.message = Some("Safety tether taut".into());
++            }
++        }
++    }
++
+     /// Record contact impulses between the free system and fixed bodies
+     /// (station structure, racked and latched parts) as the `structure` term.
+     fn account_contacts(&mut self) {
+@@ -772,7 +846,7 @@ impl Station {
+ 
+     /// Fly the pack toward `target` under the same speed and thrust limits.
+     pub fn fly_to(&mut self, target: DVec3) -> Result<(), String> {
+-        if !target.is_finite() || target.length() > EVA_RANGE {
++        if !target.is_finite() || target.distance(AIRLOCK) > EVA_RANGE {
+             return Err("That point is beyond the safety tether".into());
+         }
+         self.target = Some(target);
+@@ -858,17 +932,19 @@ impl Station {
+         });
+         self.account_contacts();
+         self.check_grip();
++        self.account_tethers();
++        // Emergency boundary: only if the tether gave way past its tension.
+         let before = self.momentum();
+         let astronaut = &mut self.world[self.astronaut];
+-        let range = astronaut.pos.length();
+-        if range > EVA_RANGE {
+-            let out = astronaut.pos / range;
+-            astronaut.pos = out * EVA_RANGE;
++        let out = astronaut.pos - AIRLOCK;
++        let range = out.length();
++        if range > EVA_RANGE + TETHER_MARGIN {
++            let out = out / range;
++            astronaut.pos = AIRLOCK + out * (EVA_RANGE + TETHER_MARGIN);
+             let radial = astronaut.vel.dot(out);
+             if radial > 0.0 {
+                 astronaut.vel -= out * radial;
+             }
+-            self.message = Some("Safety tether taut".into());
+         }
+         self.account("tether", before);
+         let (pos, vel) = (self.astronaut().pos, self.astronaut().vel);
+@@ -1014,7 +1090,7 @@ impl Station {
+         }
+     }
+ 
+-    /// After a world step: reel in drifting parts that stray.
++    /// After a world step: reel in a drifting part whose line gave way.
+     fn settle_parts(&mut self) {
+         for i in 0..self.parts.len() {
+             if self.parts[i].state != PartState::Drifting {
+@@ -1023,7 +1099,7 @@ impl Station {
+             let kind = self.parts[i].kind;
+             let before = self.momentum();
+             let body = &mut self.world[self.parts[i].body];
+-            if body.pos.distance(DEPOT) > PART_TETHER {
++            if body.pos.distance(DEPOT) > PART_TETHER + TETHER_MARGIN {
+                 *body = Body::new(kind.mass(), kind.inertia(), kind.stowage());
+                 self.set_state(i, PartState::Stowed);
+                 self.message = Some(format!(
+@@ -1135,6 +1211,42 @@ impl Station {
+         }
+     }
+ 
++    /// How far the carried part is from latching: distance to its slot, m;
++    /// alignment error, rad (the nearer of the slot's two keel-symmetric
++    /// orientations); speed, m/s; and spin, rad/s. Also the orientation it
++    /// would latch at.
++    #[must_use]
++    pub fn latch_error(&self) -> Option<(f64, f64, f64, f64, DQuat)> {
++        let part = &self.parts[self.carried()?];
++        let body = self.body(part);
++        let (angle, seat) = [
++            DQuat::IDENTITY,
++            DQuat::from_rotation_z(std::f64::consts::PI),
++        ]
++        .into_iter()
++        .map(|q| (body.orientation.angle_between(q), q))
++        .min_by(|a, b| a.0.total_cmp(&b.0))?;
++        Some((
++            body.pos.distance(part.kind.slot()),
++            angle,
++            body.vel.length(),
++            body.omega.length(),
++            seat,
++        ))
++    }
++
++    /// Whether releasing now would latch the carried part.
++    #[must_use]
++    pub fn latch_ready(&self) -> bool {
++        self.latch_error()
++            .is_some_and(|(distance, angle, speed, spin, _)| {
++                distance <= LATCH_RANGE
++                    && angle <= LATCH_ANGLE
++                    && speed <= LATCH_SPEED
++                    && spin <= LATCH_SPIN
++            })
++    }
++
+     /// Distance from the carried part to its latch, m.
+     #[must_use]
+     pub fn latch_distance(&self) -> Option<f64> {
+@@ -1146,19 +1258,21 @@ impl Station {
+     /// into the jig; otherwise it floats free with its own motion.
+     pub fn release(&mut self) -> Result<PartKind, String> {
+         let index = self.carried().ok_or("Nothing is held")?;
+-        let distance = self.latch_distance().unwrap_or(f64::MAX);
++        let (distance, angle, speed, spin, seat) = self.latch_error().ok_or("Nothing is held")?;
+         let kind = self.parts[index].kind;
+-        let vel = self.world[self.parts[index].body].vel;
++        let ready = self.latch_ready();
+         self.let_go();
+-        let id = self.parts[index].body;
+-        if distance <= LATCH_RANGE && vel.length() <= LATCH_SPEED {
++        if ready {
+             let before = self.momentum();
+             self.set_state(index, PartState::Installed);
+-            let body = &mut self.world[id];
+-            body.pos = kind.slot();
+-            body.vel = DVec3::ZERO;
+-            body.orientation = DQuat::IDENTITY;
+-            body.omega = DVec3::ZERO;
++            let weld = Joint::new(
++                self.anchor,
++                kind.slot(),
++                self.parts[index].body,
++                DVec3::ZERO,
++                JointKind::Weld { relative: seat },
++            );
++            self.parts[index].latch = Some(self.world.add_joint(weld));
+             self.account("latch", before);
+             let installed = self
+                 .parts
+@@ -1178,13 +1292,18 @@ impl Station {
+             // The part keeps the motion the grip left it: its own velocity
+             // and spin.
+             self.set_state(index, PartState::Drifting);
+-            self.message = Some(if distance <= LATCH_RANGE {
++            let name = kind.name().to_lowercase();
++            self.message = Some(if distance > LATCH_RANGE {
++                format!("The {name} floats free")
++            } else if speed > LATCH_SPEED {
++                format!("Too fast to latch; the {name} floats free")
++            } else if spin > LATCH_SPIN {
++                format!("Spinning too fast to latch; the {name} floats free")
++            } else {
+                 format!(
+-                    "Too fast to latch; the {} floats free",
+-                    kind.name().to_lowercase()
++                    "Misaligned by {:.0} degrees; the {name} floats free",
++                    angle.to_degrees()
+                 )
+-            } else {
+-                format!("The {} floats free", kind.name().to_lowercase())
+             });
+         }
+         Ok(kind)
+@@ -1210,7 +1329,7 @@ impl Station {
+             delta_v_remaining_m_s: self.delta_v_remaining(),
+             speed_m_s: self.astronaut().vel.length(),
+             mass_kg: self.mass(),
+-            range_m: self.astronaut().pos.length(),
++            range_m: self.astronaut().pos.distance(AIRLOCK),
+             carrying,
+             installed: self
+                 .parts
+@@ -1220,10 +1339,8 @@ impl Station {
+             total: self.parts.len(),
+             next_part: self.next_part(),
+             can_grab,
+-            latch_ready: latch_distance.is_some_and(|d| d <= LATCH_RANGE)
+-                && self
+-                    .carried()
+-                    .is_some_and(|i| self.body(&self.parts[i]).vel.length() <= LATCH_SPEED),
++            latch_ready: self.latch_ready(),
++            latch_angle_deg: self.latch_error().map(|e| e.1.to_degrees()),
+             latch_distance_m: latch_distance,
+             refilling: self.refilling,
+             keeping_active: self.keeping_glow > 0.0,
+diff --git a/docs/verse/lagrange-1.md b/docs/verse/lagrange-1.md
+index 6c91d37062e4fe2178ae5e534e566b5c6e50a4a7..bf599d63d356c8a07cd1a423f78e6c11d69796bd 100644
+--- a/docs/verse/lagrange-1.md
++++ b/docs/verse/lagrange-1.md
+@@ -114,7 +114,7 @@ along Earth's orbital motion.
+ | Specific impulse (cold N₂) | 70 s |
+ | Flight-control speed limit | 2 m/s relative to the station |
+ | Minimum-impulse deadband | 4 mm/s |
+-| Safety tether range | 140 m from the station's center |
++| Safety tether | 140 m from the airlock, holds 3 kN |
+ 
+ The pack is a hypothetical construction unit comparable to the Manned
+ Maneuvering Unit, not a model of a specific flight article. Its fly-by-wire
+@@ -142,8 +142,8 @@ on slows the pack slightly.
+ the station origin of the free system: the astronaut with its propellant and
+ every carried or drifting part. `Station::ledger` (a `physics::Ledger`) records
+ every external impulse by name: `exhaust`, `structure` (contact with fixed
+-station structure), `tether`, `reel` (a stray part reeled in), and `latch` (a
+-part joining the station). With the tidal field off (`Station::tide = false`),
++station structure), `tether` (the safety tether and the parts' depot lines),
++`reel` (a stray part reeled in), and `latch` (a part joining the station). With the tidal field off (`Station::tide = false`),
+ the momentum always equals the ledger start plus those terms, through
+ grabbing, carrying, and releasing.
+ 
+@@ -198,7 +198,19 @@ and holds attitude with their combined inertia, and it spends at most 15 N m
+ of torque on that aim, so a heavy part far from the hands accelerates gently.
+ Releasing a part away from its slot leaves it drifting with its own velocity
+ and spin.
+-Drifting parts more than 120 m from the depot are reeled back by their tethers.
++Each part has a 120 m line from the depot, and the astronaut a 140 m safety
++tether from the airlock. Both are tether joints: slack inside their length,
++they pull only, arrest at most 3 kN, and never add energy, so a fast arrival
++stretches the line a few centimeters rather than stopping in one step. Past
++the length plus 2 m, an emergency boundary still returns the astronaut or
++reels the part back to the rack.
++
++Releasing a part latches it when it is within 1.6 m of its slot, within 15
++degrees of the slot's orientation (or of that orientation turned half a turn
++about the keel), moving below 0.35 m/s, and turning below 0.05 rad/s. The
++latch is a hard weld from the jig to the part, so the part settles onto its
++seat and stays there when something strikes it. Otherwise the release message
++names the first condition that failed.
+ 
+ ## Approximations
+ 
+@@ -223,7 +235,9 @@ Drifting parts more than 120 m from the depot are reeled back by their tethers.
+ `cargo test -p verse-lagrange` covers L1's location and linear constants, the
+ exact unstable eigenvector, Jacobi conservation and uncontrolled divergence,
+ two years of controlled flight, microgravity magnitude, the rocket equation
+-and position hold, inelastic capture, latch conditions, collisions, frame-rate
++and position hold, inelastic capture, latch conditions (position, speed,
++spin, and alignment), a latched part under impact, the safety tether's arrest,
++collisions, frame-rate
+ independence, the frame step cap, save and restore, journal replay, and the
+ momentum ledger through coasting, burns, structure contact, the tether,
+ capture, and carrying, the grip slipping past its limit, attitude hold through a translation and a commanded
+diff --git a/docs/verse/zones.md b/docs/verse/zones.md
+index 6d4d4987ba362ea162bf55cb09c0bbb70d28a4e4..d45e44a5663f6690b0e3362e50a148cabc7fe08a 100644
+--- a/docs/verse/zones.md
++++ b/docs/verse/zones.md
+@@ -73,8 +73,9 @@ two-thirds. Propellant refills at the airlock ring.
+ 
+ **Grab** takes the next part at the depot or a free-floating part within reach.
+ Carry it to its outlined slot on the keel jig. When the part is within 1.6 m of
+-the slot and closing below 0.35 m/s, the control reads **Latch** and releasing
+-locks it in. Releasing elsewhere lets it drift and tumble as a free rigid body.
++the slot, aligned within 15 degrees, moving below 0.35 m/s, and turning below
++0.05 rad/s, the control reads **Latch** and releasing welds it to the jig.
++Releasing elsewhere lets it drift and tumble as a free rigid body.
+ Six parts complete the keel: main engine, propellant tank, two keel trusses, RCS
+ pod, and avionics bay. [Lagrange 1](lagrange-1.md) documents the physics.
+ 

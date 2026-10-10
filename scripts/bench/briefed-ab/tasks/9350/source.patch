@@ -1,0 +1,553 @@
+diff --git a/crates/lev/calibration/routing.json b/crates/lev/calibration/routing.json
+index 30db8cd6efd26fc54aae05bbf8553cec9ce7b137..0d3488cdcea42bb758c5d87b848fc34b8b5b285f 100644
+--- a/crates/lev/calibration/routing.json
++++ b/crates/lev/calibration/routing.json
+@@ -2,62 +2,50 @@
+   "family": "routing",
+   "estimator": "l2",
+   "samples": 8,
+-  "suite": "support-v1",
+-  "suite_digest": "35dfdf43c43c036049905845f4a8999e8d41abc9bf29a2a8ec827b65d830700e",
++  "suite": "support-v2",
++  "suite_digest": "6877c24bf261d5bdcb0550824c20f017c7bb5095aac22dbf5f4c6ef47b789368",
+   "os_build": "25E246",
+   "fitted": "2026-09-19",
+   "map": {
+     "bins": [
+       {
+         "lo": 0.0,
+-        "hi": 0.2,
+-        "fitted": 0.9166666666666666,
++        "hi": 0.3333333333333333,
++        "fitted": 0.86,
+         "count": 0
+       },
+       {
+-        "lo": 0.2,
+-        "hi": 0.4,
+-        "fitted": 0.9166666666666666,
+-        "count": 0
+-      },
+-      {
+-        "lo": 0.4,
+-        "hi": 0.6,
+-        "fitted": 0.9166666666666666,
+-        "count": 0
++        "lo": 0.3333333333333333,
++        "hi": 0.6666666666666666,
++        "fitted": 0.625,
++        "count": 3
+       },
+       {
+-        "lo": 0.6,
+-        "hi": 0.8,
+-        "fitted": 0.9166666666666666,
+-        "count": 0
+-      },
+-      {
+-        "lo": 0.8,
++        "lo": 0.6666666666666666,
+         "hi": 1.0,
+-        "fitted": 0.8846153846153846,
+-        "count": 12
++        "fitted": 0.8645833333333334,
++        "count": 47
+       }
+     ],
+-    "base_rate": 0.9166666666666666,
+-    "fitted_on": 12
++    "base_rate": 0.86,
++    "fitted_on": 50
+   },
+   "raw_metrics": {
+-    "accuracy": 1.0,
+-    "ece": 0.03125,
+-    "brier": 0.01171875,
+-    "nll": 0.039166969103811296,
+-    "confident_errors": 0,
+-    "items": 12
++    "accuracy": 0.82,
++    "ece": 0.13999999999999999,
++    "brier": 0.135,
++    "nll": 2.8596412441202044,
++    "confident_errors": 5,
++    "items": 50
+   },
+   "calibrated_metrics": {
+-    "accuracy": 1.0,
+-    "ece": 0.11271367521367494,
+-    "brier": 0.012782845715538033,
+-    "nll": 0.11963641000044052,
++    "accuracy": 0.82,
++    "ece": 0.024374999999999994,
++    "brier": 0.13306640624999996,
++    "nll": 0.43107367569485483,
+     "confident_errors": 0,
+-    "items": 12
++    "items": 50
+   },
+-  "admitted": false,
+-  "verdict": "refused: ECE 0.031 to 0.113, Brier 0.012 to 0.013; the raw signal was already better"
++  "admitted": true,
++  "verdict": "admitted: ECE 0.140 to 0.024, log loss 2.860 to 0.431, Brier 0.135 to 0.133 on held-out items"
+ }
+diff --git a/crates/lev/calibration/severity.json b/crates/lev/calibration/severity.json
+index f225c2c69f561a1a8c140344a44724a72398085a..d354c4fa18b656e3fbdc1682ee9b896b6ee94dca 100644
+--- a/crates/lev/calibration/severity.json
++++ b/crates/lev/calibration/severity.json
+@@ -2,62 +2,44 @@
+   "family": "severity",
+   "estimator": "l2",
+   "samples": 8,
+-  "suite": "support-v1",
+-  "suite_digest": "35dfdf43c43c036049905845f4a8999e8d41abc9bf29a2a8ec827b65d830700e",
++  "suite": "support-v2",
++  "suite_digest": "6877c24bf261d5bdcb0550824c20f017c7bb5095aac22dbf5f4c6ef47b789368",
+   "os_build": "25E246",
+   "fitted": "2026-09-19",
+   "map": {
+     "bins": [
+       {
+         "lo": 0.0,
+-        "hi": 0.2,
+-        "fitted": 0.8333333333333334,
+-        "count": 0
++        "hi": 0.5,
++        "fitted": 0.25,
++        "count": 1
+       },
+       {
+-        "lo": 0.2,
+-        "hi": 0.4,
+-        "fitted": 0.8333333333333334,
+-        "count": 0
+-      },
+-      {
+-        "lo": 0.4,
+-        "hi": 0.6,
+-        "fitted": 0.8333333333333334,
+-        "count": 0
+-      },
+-      {
+-        "lo": 0.6,
+-        "hi": 0.8,
+-        "fitted": 0.625,
+-        "count": 3
+-      },
+-      {
+-        "lo": 0.8,
++        "lo": 0.5,
+         "hi": 1.0,
+-        "fitted": 0.875,
+-        "count": 3
++        "fitted": 0.8611111111111112,
++        "count": 17
+       }
+     ],
+     "base_rate": 0.8333333333333334,
+-    "fitted_on": 6
++    "fitted_on": 18
+   },
+   "raw_metrics": {
+     "accuracy": 0.6666666666666666,
+-    "ece": 0.1875,
+-    "brier": 0.2421875,
+-    "nll": 0.6470825029211084,
++    "ece": 0.09722222222222221,
++    "brier": 0.171875,
++    "nll": 0.487443898057318,
+     "confident_errors": 0,
+-    "items": 6
++    "items": 18
+   },
+   "calibrated_metrics": {
+     "accuracy": 0.6666666666666666,
+-    "ece": 0.13194444444444442,
+-    "brier": 0.18431712962962962,
+-    "nll": 0.5362531189889002,
++    "ece": 0.12592592592592575,
++    "brier": 0.2158744855967078,
++    "nll": 0.6408530486387586,
+     "confident_errors": 0,
+-    "items": 6
++    "items": 18
+   },
+   "admitted": false,
+-  "verdict": "refused: fitted on 6 items, below the floor of 8"
++  "verdict": "refused: ECE 0.097 to 0.126, short of the 10% reduction a map has to earn"
+ }
+diff --git a/crates/lev/calibration/urgency.json b/crates/lev/calibration/urgency.json
+index c93fb6f5006acfd0e02afe6ae3a6f77abd08e675..a5e47ff0fbec2948bd504a9d42a2329a99f41b8a 100644
+--- a/crates/lev/calibration/urgency.json
++++ b/crates/lev/calibration/urgency.json
+@@ -2,62 +2,44 @@
+   "family": "urgency",
+   "estimator": "l2",
+   "samples": 8,
+-  "suite": "support-v1",
+-  "suite_digest": "35dfdf43c43c036049905845f4a8999e8d41abc9bf29a2a8ec827b65d830700e",
++  "suite": "support-v2",
++  "suite_digest": "6877c24bf261d5bdcb0550824c20f017c7bb5095aac22dbf5f4c6ef47b789368",
+   "os_build": "25E246",
+   "fitted": "2026-09-19",
+   "map": {
+     "bins": [
+       {
+         "lo": 0.0,
+-        "hi": 0.2,
+-        "fitted": 1.0,
++        "hi": 0.5,
++        "fitted": 0.7666666666666667,
+         "count": 0
+       },
+       {
+-        "lo": 0.2,
+-        "hi": 0.4,
+-        "fitted": 1.0,
+-        "count": 0
+-      },
+-      {
+-        "lo": 0.4,
+-        "hi": 0.6,
+-        "fitted": 1.0,
+-        "count": 0
+-      },
+-      {
+-        "lo": 0.6,
+-        "hi": 0.8,
+-        "fitted": 1.0,
+-        "count": 0
+-      },
+-      {
+-        "lo": 0.8,
++        "lo": 0.5,
+         "hi": 1.0,
+-        "fitted": 0.9444444444444444,
+-        "count": 8
++        "fitted": 0.7580645161290323,
++        "count": 30
+       }
+     ],
+-    "base_rate": 1.0,
+-    "fitted_on": 8
++    "base_rate": 0.7666666666666667,
++    "fitted_on": 30
+   },
+   "raw_metrics": {
+-    "accuracy": 0.75,
+-    "ece": 0.21875,
+-    "brier": 0.21484375,
+-    "nll": 0.6286851113098719,
+-    "confident_errors": 0,
+-    "items": 8
++    "accuracy": 0.7333333333333333,
++    "ece": 0.12916666666666665,
++    "brier": 0.1734375,
++    "nll": 1.3190075337141483,
++    "confident_errors": 1,
++    "items": 30
+   },
+   "calibrated_metrics": {
+-    "accuracy": 0.75,
+-    "ece": 0.20138888888888895,
+-    "brier": 0.22492283950617284,
+-    "nll": 0.7583169481240091,
+-    "confident_errors": 2,
+-    "items": 8
++    "accuracy": 0.7333333333333333,
++    "ece": 0.02473118279569886,
++    "brier": 0.19616718695802982,
++    "nll": 0.5815460901637928,
++    "confident_errors": 0,
++    "items": 30
+   },
+   "admitted": false,
+-  "verdict": "refused: ECE 0.219 to 0.201, Brier 0.215 to 0.225; the raw signal was already better"
++  "verdict": "refused: ECE improved 0.129 to 0.025 but Brier rose 0.173 to 0.196, past the 10% the binning is allowed to cost"
+ }
+diff --git a/crates/lev/src/bin/lev_eval.rs b/crates/lev/src/bin/lev_eval.rs
+index b4326411bcc8de7d29bfec957ae3edbd738336cb..2755f819509e495e1276e0d9fed187e2cd25e70d 100644
+--- a/crates/lev/src/bin/lev_eval.rs
++++ b/crates/lev/src/bin/lev_eval.rs
+@@ -237,8 +237,12 @@ async fn main() {
+                         admitted,
+                         verdict,
+                     };
+-                    let _ = std::fs::create_dir_all(dir);
+-                    let path = format!("{dir}/{family}.json");
++                    // Namespaced by door: three doors scoring the same suite
++                    // would otherwise overwrite each other's records, and the
++                    // last one to run would silently win.
++                    let slug = name.replace([' ', '(', ')'], "_");
++                    let _ = std::fs::create_dir_all(format!("{dir}/{slug}"));
++                    let path = format!("{dir}/{slug}/{family}.json");
+                     match serde_json::to_string_pretty(&record) {
+                         Ok(text) => {
+                             if let Err(error) = std::fs::write(&path, text + "\n") {
+diff --git a/docs/lev/measurements/2026-09-19-suite-v2-scores.md b/docs/lev/measurements/2026-09-19-suite-v2-scores.md
+index 06b8ab7313c97d607b4161d81abdb3de6db883e2..7125d5e044dc0dede9bb0ab5149c5144b0b503d1 100644
+--- a/docs/lev/measurements/2026-09-19-suite-v2-scores.md
++++ b/docs/lev/measurements/2026-09-19-suite-v2-scores.md
+@@ -6,3 +6,96 @@ Support-desk judgments authored in this repository. Three families with difficul
+ 
+ ## jev (hosted)
+ 
++| Set | Accuracy | ECE | Brier | NLL | Confident errors | Items |
++| --- | --- | --- | --- | --- | --- | --- |
++| evaluation, raw | 0.94 | 0.078 | 0.044 | 0.158 | 0 | 98 |
++| evaluation, admitted maps only | 0.94 | 0.078 | 0.044 | 0.158 | 0 | 98 |
++
++| Family | Fitted on | Raw ECE | Mapped ECE | Raw NLL | Mapped NLL | Raw Brier | Mapped Brier | Accuracy | Verdict |
++| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
++| `routing` | 50 | 0.060 | 0.020 | 0.122 | 0.214 | 0.039 | 0.055 | 0.94 | refused: ECE improved 0.060 to 0.020 but log loss rose 0.122 to 0.214, so the map bought calibration by hedging |
++| `severity` | 18 | 0.050 | 0.023 | 0.127 | 0.219 | 0.034 | 0.053 | 0.94 | refused: ECE improved 0.050 to 0.023 but log loss rose 0.127 to 0.219, so the map bought calibration by hedging |
++| `urgency` | 30 | 0.167 | 0.014 | 0.238 | 0.246 | 0.059 | 0.062 | 0.93 | refused: ECE improved 0.167 to 0.014 but log loss rose 0.238 to 0.246, so the map bought calibration by hedging |
++
++## kev-0.5b
++
++| Set | Accuracy | ECE | Brier | NLL | Confident errors | Items |
++| --- | --- | --- | --- | --- | --- | --- |
++| evaluation, raw | 0.72 | 0.092 | 0.188 | 0.561 | 2 | 98 |
++| evaluation, admitted maps only | 0.72 | 0.092 | 0.188 | 0.561 | 2 | 98 |
++
++| Family | Fitted on | Raw ECE | Mapped ECE | Raw NLL | Mapped NLL | Raw Brier | Mapped Brier | Accuracy | Verdict |
++| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
++| `routing` | 50 | 0.120 | 0.046 | 0.502 | 0.525 | 0.170 | 0.172 | 0.78 | refused: ECE improved 0.120 to 0.046 but log loss rose 0.502 to 0.525, so the map bought calibration by hedging |
++| `severity` | 18 | 0.187 | 0.171 | 0.625 | 0.671 | 0.218 | 0.239 | 0.67 | refused: ECE 0.187 to 0.171, short of the 10% reduction a map has to earn |
++| `urgency` | 30 | 0.157 | 0.005 | 0.622 | 0.637 | 0.199 | 0.222 | 0.67 | refused: ECE improved 0.157 to 0.005 but log loss rose 0.622 to 0.637, so the map bought calibration by hedging |
++
++## lev
++
++| Set | Accuracy | ECE | Brier | NLL | Confident errors | Items |
++| --- | --- | --- | --- | --- | --- | --- |
++| evaluation, raw | 0.77 | 0.106 | 0.154 | 1.952 | 6 | 98 |
++| evaluation, admitted maps only | 0.77 | 0.065 | 0.153 | 0.713 | 1 | 98 |
++
++| Family | Fitted on | Raw ECE | Mapped ECE | Raw NLL | Mapped NLL | Raw Brier | Mapped Brier | Accuracy | Verdict |
++| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
++| `routing` | 50 | 0.140 | 0.024 | 2.860 | 0.431 | 0.135 | 0.133 | 0.82 | admitted: ECE 0.140 to 0.024, log loss 2.860 to 0.431, Brier 0.135 to 0.133 on held-out items |
++| `severity` | 18 | 0.097 | 0.126 | 0.487 | 0.641 | 0.172 | 0.216 | 0.67 | refused: ECE 0.097 to 0.126, short of the 10% reduction a map has to earn |
++| `urgency` | 30 | 0.129 | 0.025 | 1.319 | 0.582 | 0.173 | 0.196 | 0.73 | refused: ECE improved 0.129 to 0.025 but Brier rose 0.173 to 0.196, past the 10% the binning is allowed to cost |
++
++
++## What this run establishes
++
++Written after the run, against the numbers above.
++
++**Lev has a calibrated question family for the first time.** The `routing`
++map cleared the admission gate: ECE 0.140 to 0.024, log loss 2.860 to 0.431,
++Brier 0.135 to 0.133 — better calibrated, far better on log loss, and no
++sharpness lost. Fitted on 50 items, scored on 48 it never saw.
++
++Across the whole evaluation split, with only admitted maps applied:
++
++| | Raw | Calibrated |
++| --- | --- | --- |
++| ECE | 0.106 | **0.065** |
++| Log loss | 1.952 | **0.713** |
++| Brier | 0.154 | 0.153 |
++| Confident errors | 6 | **1** |
++
++Five of six confident errors gone is the number that matters for a workflow.
++A confident error is the failure a threshold cannot catch, and it fell
++because the map stopped the estimator reporting 1.00 on items a 50-item bin
++says are right about four times in five.
++
++**Two families still fail, for opposite reasons.** `severity` was fitted on
++18 items and its map made calibration worse, which is the small-sample
++failure the first suite showed throughout — it needs more items, not a better
++method. `urgency` is the interesting one: its map cut ECE from 0.129 to
++0.025, a fivefold improvement, and was refused anyway because Brier rose from
++0.173 to 0.196, past the tenth the gate allows binning to cost.
++
++That refusal is worth sitting with. The gate was already widened once, after
++it rejected maps on a 0.02 Brier move, and widening it a second time to
++admit this one would be moving the goalposts rather than fixing a rule. The
++honest reading is that `urgency`'s map buys calibration by flattening
++confident answers, and the Brier rise is the cost of that flattening showing
++up where ECE cannot see it. The fix is more items, which is the same fix
++`severity` needs.
++
++**The harder suite separated the doors properly.** On the 52-item suite Lev
++scored 0.85 and kev-0.5b 0.88. On 196 items with a third of them near a
++boundary, Lev is 0.77 and kev-0.5b 0.72, against hosted Jev's 0.94. The
++earlier numbers were compressed by easy items.
++
++**Hosted Jev's maps are all refused**, and that is a compliment to Jev rather
++than a failure of the gate: at a raw ECE of 0.078 there is not a tenth of
++improvement left for a binned table to find.
++
++### What changes in the product
++
++`routing` — the largest family, and the one Lev is actually admitted for —
++now has a fitted map with a record naming the suite digest, the base
++signature, and the scores on held-out items. A door serving that family can
++report a probability with something behind it. `severity` and `urgency`
++continue to refuse with `uncalibrated`, which is now a per-family answer
++rather than a blanket one.
+diff --git a/training/lev-adapter/README.md b/training/lev-adapter/README.md
+index 4659c86428da64a8134ad99877db9b74c2de54be..2c6417f7e4f3d4f7d8b30dd39140be448f1fce31 100644
+--- a/training/lev-adapter/README.md
++++ b/training/lev-adapter/README.md
+@@ -36,6 +36,24 @@ ignored by git.
+ `~/code/adapter_training_toolkit_v26_0_0`, then `~/Downloads`, and honors
+ `LEV_TOOLKIT_ROOT`.
+ 
++Take version **26.0.0**. The two betas are withdrawn, and 26.0.0 is the last
++release for OS 26 — Apple states it is not compatible with OS 27 and later,
++which is the base-signature treadmill in concrete form.
++
++Its own requirements: Apple silicon with at least 32 GB, or a Linux GPU
++machine, and Python 3.11 or later. It brings its own pinned dependencies:
++
++```sh
++cd training/lev-adapter/toolkit
++python3.11 -m venv .venv && . .venv/bin/activate
++pip install -r requirements.txt
++```
++
++Deploying an adapter inside a shipped app additionally needs the Foundation
++Models Framework Adapter Entitlement, which the Account Holder requests.
++Local training and local serving through `Adapter(fileURL:)` do not, which is
++everything this lane does today.
++
+ ## The base model signature, and why it governs everything
+ 
+ An adapter is pinned to one base model. The base ships with the operating
+diff --git a/training/lev-adapter/export.py b/training/lev-adapter/export.py
+index 0313b48e2a67fc8386a81d57c5ea84e63762a29b..d4dd10a43a4f8e580ef152ef935d3bd903a070f3 100755
+--- a/training/lev-adapter/export.py
++++ b/training/lev-adapter/export.py
+@@ -37,6 +37,11 @@ def verify(package: pathlib.Path):
+ def main():
+     parser = argparse.ArgumentParser(description=__doc__)
+     parser.add_argument("--run", default="runs/lev-v1")
++    parser.add_argument(
++        "--checkpoint",
++        help="the trained checkpoint; defaults to adapter-final.pt inside --run",
++    )
++    parser.add_argument("--draft-checkpoint", help="only if a draft model was trained")
+     parser.add_argument("--out")
+     parser.add_argument("--name", default="lev")
+     parser.add_argument("--toolkit")
+@@ -46,6 +51,19 @@ def main():
+     run = pathlib.Path(args.run)
+     out = pathlib.Path(args.out) if args.out else run / f"{args.name}.fmadapter"
+ 
++    # Apple's exporter takes the checkpoint file, not the directory holding
++    # it. Passing the directory is the easy mistake and it fails late.
++    checkpoint = (
++        pathlib.Path(args.checkpoint) if args.checkpoint else run / "adapter-final.pt"
++    )
++    if not checkpoint.exists():
++        print(
++            f"no checkpoint at {checkpoint}. Training writes adapter-final.pt into\n"
++            f"--checkpoint-dir; pass --checkpoint if yours is elsewhere.",
++            file=sys.stderr,
++        )
++        return 2
++
+     command = [
+         sys.executable,
+         "-m",
+@@ -53,10 +71,12 @@ def main():
+         "--adapter-name",
+         args.name,
+         "--checkpoint",
+-        str(run.resolve()),
++        str(checkpoint.resolve()),
+         "--output-dir",
+-        str(out.parent.resolve()),
++        str(out.parent.resolve()) + "/",
+     ]
++    if args.draft_checkpoint:
++        command += ["--draft-checkpoint", str(pathlib.Path(args.draft_checkpoint).resolve())]
+     print(" ".join(command), file=sys.stderr)
+     result = subprocess.run(command, cwd=root, check=False)
+     if result.returncode != 0:
+diff --git a/training/lev-adapter/train.py b/training/lev-adapter/train.py
+index e692ee6b9b396d464761261bb408043ceb467665..e6475a907eb7d6d6f945a54631b20659fce6a892 100755
+--- a/training/lev-adapter/train.py
++++ b/training/lev-adapter/train.py
+@@ -22,15 +22,20 @@ import time
+ 
+ import toolkit
+ 
++# Flags match Apple's documented `examples.train_adapter` CLI exactly. The
++# toolkit owns rank and seed; they are not exposed there, so they are not
++# passed.
+ DEFAULTS = {
+-    # Apple's exporter records the rank in metadata; 32 is the toolkit's own
+-    # default and there is no evidence yet to move it.
+-    "rank": 32,
+-    # 52 items is a small corpus. More epochs on less data overfits, and the
+-    # evaluation split is the only thing that can tell us, so start low.
++    # Apple documents 5. 98 training records is a small corpus and more
++    # epochs on less data overfits, so start one below and let the evaluation
++    # split decide.
+     "epochs": 4,
++    # Apple documents 1e-3. Kev's research log found the single largest
++    # quality effect it measured was that too high a rate erodes the base
++    # knowledge the task depends on, so this starts an order lower and moves
++    # only on evidence.
+     "learning_rate": 1e-4,
+-    "seed": 0,
++    "batch_size": 4,
+ }
+ 
+ 
+@@ -39,10 +44,9 @@ def main():
+     parser.add_argument("--data", default="data", help="directory holding train.jsonl and valid.jsonl")
+     parser.add_argument("--out", default="runs/lev-v1")
+     parser.add_argument("--toolkit", help="toolkit root, or set LEV_TOOLKIT_ROOT")
+-    parser.add_argument("--rank", type=int, default=DEFAULTS["rank"])
+     parser.add_argument("--epochs", type=int, default=DEFAULTS["epochs"])
+     parser.add_argument("--learning-rate", type=float, default=DEFAULTS["learning_rate"])
+-    parser.add_argument("--seed", type=int, default=DEFAULTS["seed"])
++    parser.add_argument("--batch-size", type=int, default=DEFAULTS["batch_size"])
+     args = parser.parse_args()
+ 
+     root = toolkit.find(args.toolkit)
+@@ -72,15 +76,13 @@ def main():
+         "--eval-data",
+         str(valid.resolve()),
+         "--checkpoint-dir",
+-        str(out.resolve()),
+-        "--rank",
+-        str(args.rank),
++        str(out.resolve()) + "/",
+         "--epochs",
+         str(args.epochs),
+         "--learning-rate",
+         str(args.learning_rate),
+-        "--seed",
+-        str(args.seed),
++        "--batch-size",
++        str(args.batch_size),
+     ]
+ 
+     record = {
+@@ -88,10 +90,9 @@ def main():
+         "device_signature_prefix": prefix,
+         "command": command,
+         "recipe": {
+-            "rank": args.rank,
+             "epochs": args.epochs,
+             "learning_rate": args.learning_rate,
+-            "seed": args.seed,
++            "batch_size": args.batch_size,
+         },
+         "data": {
+             "train": str(train.resolve()),
+@@ -105,8 +106,9 @@ def main():
+     (out / "run.json").write_text(json.dumps(record, indent=1) + "\n")
+     print(json.dumps(record, indent=1), file=sys.stderr)
+ 
+-    # The toolkit's example entry point is versioned; if it moved, say so
+-    # rather than failing with an import error the operator has to decode.
++    # The toolkit's example entry point is versioned. This matches the
++    # published 26.0.0 CLI; if it moves, say so rather than failing with an
++    # import error the operator has to decode.
+     result = subprocess.run(command, cwd=root, check=False)
+     if result.returncode != 0:
+         print(

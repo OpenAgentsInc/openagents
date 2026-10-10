@@ -1,0 +1,19 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10284,
+  "title": "Flaky coder task tests: a_stuck_task_stops_from_any_device_and_says_why (+2 others)",
+  "body": "Seen while fixing #10248 (5c221e67dd) on Boat: `task::owner::tests::a_stuck_task_stops_from_any_device_and_says_why` failed 3/4 full-suite runs with the change and 1/3 on a clean checkout. `a_replaced_program_still_starts_itself` and `a_routed_message_delivers_a_retained_patch_with_an_independent_check` each failed once in a 3-run batch. Find the timing/shared-state cause (parallel tests sharing HOME/task store, fixed sleeps, port/socket reuse) and make them deterministic; run the coder task suite 10\u00d7 clean.",
+  "fix": "39b8ea189455cb78851b28018bb6a7b6de610223",
+  "parent": "28f746de54264f5a27fb229b3b16159a0c5c2761",
+  "package": "coder",
+  "source_files": [],
+  "test_files": [
+    "crates/coder/src/task/autostart.rs",
+    "crates/coder/src/task/owner/route_tests.rs",
+    "crates/coder/src/task/owner/tests.rs"
+  ],
+  "test_names": [],
+  "fix_lines": 64
+}

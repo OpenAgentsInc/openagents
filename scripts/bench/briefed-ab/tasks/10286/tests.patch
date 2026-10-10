@@ -1,0 +1,67 @@
+diff --git a/crates/coder/src/task/local.rs b/crates/coder/src/task/local.rs
+index b085714ef3f12b672477680b8d7f4f6cbb34380f..599500086449779d20949bfbae1540fa67b06a6b 100644
+--- a/crates/coder/src/task/local.rs
++++ b/crates/coder/src/task/local.rs
+@@ -2561,9 +2561,11 @@ mod tests {
+         // Git knows the worktree at the task's path, not the spare's.
+         let listed = git_out(&top, &["worktree", "list", "--porcelain"]).unwrap();
+         assert!(listed.contains(&record.worktree), "{listed}");
+-        // A new spare follows, at the commit the start used.
++        // A new spare follows, at the commit the start used. It is there
++        // once its maker has repaired Git's record of it and let go.
++        let checkout = run.project(&top).unwrap();
+         let deadline = Instant::now() + Duration::from_secs(60);
+-        while !spare.join("a.txt").exists() {
++        while !spare::ready(&run.worktrees, &checkout.top, &checkout.name) {
+             assert!(Instant::now() < deadline, "no new spare");
+             std::thread::sleep(Duration::from_millis(100));
+         }
+diff --git a/crates/coder/src/task/tests.rs b/crates/coder/src/task/tests.rs
+index e5601ca8283224e2f19ddd7eb719a48abaf08af0..b58bc9becbfcc789cc3bf1fa7e8ae87ce2eb8b74 100644
+--- a/crates/coder/src/task/tests.rs
++++ b/crates/coder/src/task/tests.rs
+@@ -719,6 +719,10 @@ fn concurrent_writer_child() {
+         assert_eq!(receipt.revision, round + 1);
+     }
+     println!("slowest-micros {}", slowest.as_micros());
++    println!(
++        "task-lock-waits {}",
++        super::TASK_LOCK_WAITS.load(std::sync::atomic::Ordering::Relaxed)
++    );
+ }
+ 
+ #[test]
+@@ -748,6 +752,7 @@ fn processes_writing_different_tasks_never_wait_on_each_other() {
+         })
+         .collect();
+     let mut slowest = 0u128;
++    let mut waits = 0u64;
+     for child in children {
+         let output = child.wait_with_output().unwrap();
+         let stdout = String::from_utf8_lossy(&output.stdout);
+@@ -764,11 +769,22 @@ fn processes_writing_different_tasks_never_wait_on_each_other() {
+             .parse()
+             .unwrap();
+         slowest = slowest.max(micros);
++        waits += stdout
++            .lines()
++            .find_map(|line| line.split("task-lock-waits ").nth(1))
++            .unwrap_or_else(|| panic!("the child reports its task lock waits: {stdout}"))
++            .trim()
++            .parse::<u64>()
++            .unwrap();
+     }
+     println!("slowest open+apply across {PROCESSES} processes: {slowest} us");
+-    // No process waited out another's write: each operation is one small
+-    // file replacement and one identity append.
+-    assert!(slowest < 1_000_000, "{slowest} us");
++    // No process waited out another's write: each task has its own write
++    // lock, so no writer ever found one held. Only the identity append is
++    // shared, one small write under the stable lock. Time is not the check:
++    // on a loaded machine one durable write alone can take a second
++    // (#10286); the bound only catches a writer stuck behind another.
++    assert_eq!(waits, 0, "a writer waited on another task's write lock");
++    assert!(slowest < 30_000_000, "{slowest} us");
+     let tasks = Store::open(dir.path()).unwrap().list().unwrap();
+     assert_eq!(tasks.len(), PROCESSES);
+     assert!(tasks.iter().all(|task| task.revision == ROUNDS + 1));

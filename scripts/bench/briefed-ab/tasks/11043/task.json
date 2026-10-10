@@ -1,0 +1,17 @@
+{
+  "test_targets": [],
+  "issue": 11043,
+  "title": "Chat worker header comment names the wrong model lane",
+  "body": "**What it says:** The `coder-worker` header example sets `export CODER_WORKER_MODEL=glm      # the lane this worker runs` (`crates/coder/src/bin/coder-worker.rs:28`).\n\n**What the code does:** The chat worker's shipped config uses `CODER_WORKER_MODEL=gemini` (`deploy/coder-worker-chat.env.example:61`), the default lane is Gemini (`crates/coder/src/generate.rs:118`), and every turn asks Space Bunny Alpha first. A reader copying the example gets the GLM lane, which is not what the chat runs. `crates/coder/src/router/personalize.rs:23` and `docs/deployment/chat-worker.md:145` also call the gateway's `glm` lane the one used for personalization without saying it is not the chat model.\n\n**Fix:** Change the example to `gemini`, and add a line that the chat also asks the OpenRouter primary first. Re-check the other two mentions.",
+  "fix": "b29d95a1d26657e8cd51741072dacaf7e35d76ad",
+  "parent": "6a9a824b05e3548bd908c4dc5a0f0eae4ddc1e40",
+  "package": "coder",
+  "source_files": [
+    "crates/coder/src/bin/coder-worker.rs",
+    "crates/coder/src/router/personalize.rs",
+    "docs/deployment/chat-worker.md"
+  ],
+  "test_files": [],
+  "test_names": [],
+  "fix_lines": 19
+}

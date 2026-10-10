@@ -1,0 +1,26 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10304,
+  "title": "openagents worktree ls takes ~30 s with 32 worktrees",
+  "body": "From #10294 (eeae76ff5a): `openagents worktree ls --no-size` takes ~30 s on the Mac because the unsaved check runs git serially across 32 worktrees. Run checks in parallel (bounded), use cheaper git calls (`git status --porcelain=v2 -z --ignored=matching` once per worktree, skip ignored scan for ls unless asked), and show rows as they arrive. Target < 3 s for 32 worktrees. Same for the terminal's /worktrees.",
+  "fix": "04f70a1ca67232f78a90d2d6f74357fe86c713d0",
+  "parent": "fb768097d586c993425b4246bac732586e1457a7",
+  "package": "background",
+  "source_files": [
+    "crates/background/src/git.rs",
+    "crates/background/src/lib.rs",
+    "crates/coder/src/task/worktrees.rs",
+    "crates/openagents-cli/src/worktree.rs"
+  ],
+  "test_files": [
+    "crates/background/src/pool.rs",
+    "crates/background/src/tests.rs"
+  ],
+  "test_names": [
+    "checking_many_worktrees_at_once_agrees_with_checking_each",
+    "keeps_order_and_runs_every_item"
+  ],
+  "fix_lines": 366
+}

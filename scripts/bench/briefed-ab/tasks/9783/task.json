@@ -1,0 +1,31 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 9783,
+  "title": "Physics GP-6: island sleep with a microgravity rule",
+  "body": "Port island sleep (`rigid/hibernation.py`) with a microgravity rule. Roadmap: `docs/physics/2026-09-27-genesis-port-roadmap.md`.\n\n**Scope**\n- Islands from contacts and joints among non-static bodies. An island sleeps after staying under its speed thresholds for N steps, and only if it touches a static body. It wakes on contact with an awake body, applied force, joint change, or a direct call.\n- Stats: awake body count and step time.\n- Lagrange: installed parts sleep. Free-drifting parts never do.\n\n**Accept**\n- A slowly drifting body never sleeps.\n- A settled body sleeps, wakes on contact, and resumes with identical state.\n- A 50-body stress scene steps measurably faster once settled.\n",
+  "fix": "eb9c42383c9088b8ef5ad308f87f145469bb58e5",
+  "parent": "24fc83269a6e66f948dbc04029b41daaf36ea23e",
+  "package": "physics",
+  "source_files": [
+    "crates/physics/src/body.rs",
+    "crates/physics/src/collision.rs",
+    "crates/physics/src/joint.rs",
+    "crates/physics/src/lib.rs",
+    "crates/physics/src/world.rs",
+    "crates/verse-lagrange/src/station.rs",
+    "docs/verse/lagrange-1.md"
+  ],
+  "test_files": [
+    "crates/physics/src/tests.rs",
+    "crates/verse-lagrange/src/tests.rs"
+  ],
+  "test_names": [
+    "a_settled_body_sleeps_and_wakes_on_contact_force_or_joint",
+    "a_settled_pile_sleeps_and_steps_cheaply",
+    "a_slowly_drifting_body_never_sleeps",
+    "latched_parts_sleep_and_free_parts_never_do"
+  ],
+  "fix_lines": 506
+}

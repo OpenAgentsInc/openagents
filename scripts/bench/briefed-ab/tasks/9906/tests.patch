@@ -1,0 +1,875 @@
+diff --git a/crates/openagents-cli/src/playtest/award.rs b/crates/openagents-cli/src/playtest/award.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..a8ecca3088d2b5650375880bfbfc820e1498164a
+--- /dev/null
++++ b/crates/openagents-cli/src/playtest/award.rs
+@@ -0,0 +1,234 @@
++//! `openagents playtest award`: sign a NIP-XP playtest award from an
++//! accepted contribution in the triage log (`docs/game/playtest-triage.md`).
++//!
++//! It picks the acceptance (a filed report by its code or issue, a
++//! verified fix, or a session), reads the `playtest` quest, the tester's
++//! public playtest report (kind `3197`, found by the tester's key and the
++//! accepted report's digest), any session record, and the referee's
++//! published awards from the relay, then builds and checks the award with
++//! [`playtest::award`]. Without `--publish` it prints the award; with it,
++//! it publishes it. Every path first refuses unless the key is the
++//! playtest referee this build trusts (`verse::xp::PLAYTEST_REFEREE`),
++//! which is unset until the owner creates the key.
++
++use std::path::{Path, PathBuf};
++use std::time::{Duration, Instant};
++
++use nostr::domain::{Event, RelaySigner};
++use playtest::award;
++use playtest::triage::Acceptance;
++use serde_json::{Value, json};
++
++use super::{DEFAULT_REPO, Failure, load, public_key, usage};
++use crate::Args;
++
++/// What selects the acceptance and shapes the award.
++pub struct Request {
++    pub code: Option<String>,
++    pub issue: Option<u64>,
++    pub verified: bool,
++    pub script: Option<String>,
++    pub tester: Option<String>,
++    /// The quest's address, `<id>@<version>`.
++    pub quest: String,
++    pub session: Option<String>,
++    pub triager: Option<String>,
++    pub repo: String,
++    pub commit: Option<String>,
++}
++
++/// The one acceptance `request` names.
++fn select(acceptances: Vec<Acceptance>, request: &Request) -> Result<Acceptance, String> {
++    let found: Vec<Acceptance> = acceptances
++        .into_iter()
++        .filter(|a| {
++            let verified = a.contribution == "verified-fix";
++            if let Some(script) = &request.script {
++                a.script.as_ref() == Some(script) && request.tester.as_ref() == Some(&a.tester)
++            } else if let Some(code) = &request.code {
++                a.code.as_ref() == Some(code) && verified == request.verified && a.script.is_none()
++            } else {
++                request.issue.is_some()
++                    && a.issue == request.issue
++                    && verified == request.verified
++                    && a.script.is_none()
++            }
++        })
++        .collect();
++    match <[Acceptance; 1]>::try_from(found) {
++        Ok([one]) => Ok(one),
++        Err(found) if found.is_empty() => {
++            Err("no accepted contribution in the triage log matches; see `openagents playtest log --acceptances`".into())
++        }
++        Err(_) => Err("more than one accepted contribution matches; name it by its code".into()),
++    }
++}
++
++/// Builds and signs the award for `request` as `referee`, reading events
++/// with `fetch`. `expected` is the playtest referee the build trusts.
++///
++/// # Errors
++///
++/// The referee gate, a missing event, or a refusal from the playtest rule.
++pub fn sign(
++    home: &Path,
++    request: &Request,
++    referee: &RelaySigner,
++    expected: Option<&str>,
++    fetch: &mut dyn FnMut(Value) -> Result<Vec<Event>, String>,
++) -> Result<(Event, String), String> {
++    let me = referee.pubkey().to_owned();
++    award::referee(&me, expected)?;
++    let mut acceptance = select(load(home)?.acceptances(), request)?;
++    if let Some(triager) = &request.triager {
++        acceptance.triager = Some(triager.clone());
++    }
++    let quests = fetch(json!({
++        "kinds": [nostr::kinds::XP_QUEST], "authors": [me], "#d": [request.quest],
++    }))?;
++    let quest = quests
++        .iter()
++        .find(|q| nostr::xp::parse_quest(q).is_ok())
++        .ok_or_else(|| format!("no quest {} from this referee on the relay", request.quest))?;
++    let reports = fetch(json!({
++        "kinds": [nostr::kinds::XP_PLAYTEST_REPORT], "authors": [acceptance.tester],
++    }))?;
++    let report = award::find_report(&acceptance, &reports)
++        .ok_or("the tester's public playtest report for this acceptance isn't on the relay yet")?;
++    let session = match &request.session {
++        Some(id) => Some(
++            fetch(json!({"ids": [id], "kinds": [nostr::kinds::XP_PLAYTEST_SESSION]}))?
++                .into_iter()
++                .find(|e| &e.id == id)
++                .ok_or_else(|| format!("session record {id} isn't on the relay"))?,
++        ),
++        None => None,
++    };
++    let plan = award::plan(
++        &acceptance,
++        quest,
++        report,
++        session.as_ref(),
++        &request.repo,
++        request.commit.as_deref(),
++    )?;
++    let existing = fetch(json!({
++        "kinds": [nostr::kinds::XP_AWARD, nostr::kinds::XP_REVOCATION], "authors": [me],
++    }))?;
++    award::admit(&plan, &existing)?;
++    let signed = referee.sign(
++        super::now().max(acceptance.accepted_at),
++        plan.unsigned.kind,
++        plan.unsigned.tags,
++        plan.unsigned.content,
++    );
++    Ok((signed, plan.key))
++}
++
++fn referee_key(args: &Args) -> Result<RelaySigner, Failure> {
++    let path = args.option("referee-key").map(PathBuf::from).or_else(|| {
++        std::env::var_os("HOME")
++            .map(|home| PathBuf::from(home).join(".openagents/nostr/playtest-referee-key"))
++    });
++    let path = path.ok_or_else(|| usage("--referee-key PATH is required"))?;
++    if !path.exists() {
++        return Err(Failure::Failed(format!(
++            "there's no playtest referee key at {}; the owner creates it once with `microcoder xp playtest-keygen`",
++            path.display()
++        )));
++    }
++    let identity = coder::relay::Identity::load_from(&path).map_err(Failure::Failed)?;
++    Ok(identity.signer().clone())
++}
++
++pub fn run(home: &Path, args: &Args) -> Result<Value, Failure> {
++    // The production path is off until the owner creates the key.
++    if verse::xp::PLAYTEST_REFEREE.is_none() {
++        return Err(Failure::Failed(award::NO_REFEREE.into()));
++    }
++    let number = |name: &str| {
++        args.option(name)
++            .map(|v| {
++                v.trim_start_matches('#')
++                    .parse::<u64>()
++                    .map_err(|_| usage(format!("--{name} takes a number")))
++            })
++            .transpose()
++    };
++    let request = Request {
++        code: args.positional().first().map(|c| c.to_ascii_uppercase()),
++        issue: number("issue")?,
++        verified: args.switch("verified"),
++        script: args.option("script").map(str::to_owned),
++        tester: args.option("tester").map(public_key).transpose()?,
++        quest: args
++            .option("quest")
++            .ok_or_else(|| usage("--quest ID@VERSION is required"))?
++            .to_owned(),
++        session: args.option("session").map(str::to_owned),
++        triager: args.option("triager").map(public_key).transpose()?,
++        repo: args.option("repo").unwrap_or(DEFAULT_REPO).to_owned(),
++        commit: args.option("commit").map(str::to_owned),
++    };
++    if request.code.is_none() && request.issue.is_none() && request.script.is_none() {
++        return Err(usage(
++            "name the acceptance: a report CODE, --issue N, or --script NAME --tester KEY",
++        ));
++    }
++    let signer = referee_key(args)?;
++    let relay = args.option("relay").unwrap_or(playtest::RELAY).to_owned();
++    let timeout = Duration::from_secs(args.number("timeout", 20u64).map_err(usage)?);
++    let mut client = crate::relay::Client::connect(&relay, signer.clone());
++    let mut fetch = |filter: Value| -> Result<Vec<Event>, String> {
++        let mut events = Vec::new();
++        let read = |client: &mut crate::relay::Client, events: &mut Vec<Event>| {
++            client.subscribe(vec![filter.clone()], false, timeout, |e| {
++                events.push(e.clone());
++            })
++        };
++        if let Err(error) = read(&mut client, &mut events) {
++            if !error.contains("auth-required") || !client.authenticate(Instant::now() + timeout) {
++                return Err(error);
++            }
++            read(&mut client, &mut events)?;
++        }
++        Ok(events)
++    };
++    let result = sign(
++        home,
++        &request,
++        &signer,
++        verse::xp::PLAYTEST_REFEREE,
++        &mut fetch,
++    );
++    let (signed, key) = match result {
++        Ok(done) => done,
++        Err(error) => {
++            client.close();
++            return Err(Failure::Failed(error));
++        }
++    };
++    if !args.switch("publish") {
++        client.close();
++        return Ok(json!({
++            "dry_run": true, "key": key, "award": signed,
++            "text": format!("Would publish award {} for {key} on {relay}. Nothing was published; re-run with --publish.", signed.id),
++        }));
++    }
++    let published = client.publish(signed.clone(), timeout);
++    client.close();
++    let published = published.map_err(Failure::Failed)?;
++    if !published.accepted {
++        return Err(Failure::Failed(format!(
++            "{relay} refused the award: {}",
++            published.message
++        )));
++    }
++    Ok(json!({
++        "key": key, "award": signed.id, "relay": relay,
++        "text": format!("Published award {} for {key} on {relay}.", signed.id),
++    }))
++}
++
++#[cfg(test)]
++mod tests;
+diff --git a/crates/openagents-cli/src/playtest/award/tests.rs b/crates/openagents-cli/src/playtest/award/tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..c598f234f3393d81002cc3f34b064f9a9b09a3b5
+--- /dev/null
++++ b/crates/openagents-cli/src/playtest/award/tests.rs
+@@ -0,0 +1,209 @@
++use playtest::report::{self, Context, Kind, Platform, Randomness, Report};
++use playtest::session::{Route, Tab};
++use playtest::triage::{Contribution, Entry, Severity};
++use secp256k1::{Secp256k1, SecretKey};
++
++use super::*;
++
++const AT: u64 = 1_790_000_000;
++
++fn key(byte: u8) -> SecretKey {
++    SecretKey::from_byte_array([byte; 32]).unwrap()
++}
++
++fn signer(secret: &SecretKey) -> RelaySigner {
++    RelaySigner::from_secret_hex(&secret.display_secret().to_string()).unwrap()
++}
++
++fn hex(secret: &SecretKey) -> String {
++    secret.x_only_public_key(&Secp256k1::new()).0.to_string()
++}
++
++fn quest(referee: &SecretKey) -> Event {
++    let spec = json!({
++        "id": "playtest-s1.bug", "version": 1,
++        "season": {"id": "playtest-s1", "opens_at": AT - 1_000, "closes_at": AT + 2_419_200},
++        "title": "Reproducible bug report", "objective": "Report a bug a triager can reproduce.",
++        "acceptance": {"rule": "playtest", "contribution": "bug", "builds": ["1.0.0 (16)"],
++                       "severities": ["p2"], "max_awards": 50},
++        "reference": null, "award": {"tester": 20, "triager": 0},
++    });
++    let parts = nostr::xp::quest(&spec).unwrap();
++    signer(referee).sign(AT - 500, parts.kind, parts.tags, parts.content)
++}
++
++/// Writes a triage log with one report filed as a P2 bug on #9950, and
++/// returns the tester's public record.
++fn filed(home: &Path, tester: &SecretKey, triager: &str) -> Event {
++    let report = Report {
++        schema: report::SCHEMA.into(),
++        context: Context {
++            app_version: "1.0.0".into(),
++            build: "16".into(),
++            platform: Platform::Android,
++            device: "Pixel 9".into(),
++            os_version: "16".into(),
++            tab: Tab::Verse,
++            route: Route::Gym,
++            at: AT,
++        },
++        kind: Kind::Bug,
++        happened: "The ball went through the wall.".into(),
++        expected: String::new(),
++        steps: String::new(),
++        quote: false,
++        task: None,
++        session: None,
++        screenshot: None,
++        notes: vec![],
++    };
++    let triage = key(3);
++    let random = Randomness {
++        wrapper: key(9),
++        seal_nonce: [1; 32],
++        wrap_nonce: [2; 32],
++        seal_earlier: 1,
++        wrap_earlier: 2,
++    };
++    let sealed = report::wrap(
++        &report,
++        tester,
++        &triage.x_only_public_key(&Secp256k1::new()).0,
++        &random,
++    )
++    .unwrap();
++    let opened = report::open(&sealed.wrap, &triage).unwrap();
++    let mut log = load(home).unwrap();
++    super::super::append(home, &mut log, Entry::received(&opened, AT + 10)).unwrap();
++    super::super::append(
++        home,
++        &mut log,
++        Entry::Filed {
++            at: AT + 100,
++            code: opened.code,
++            issue: 9950,
++            contribution: Contribution::Bug,
++            severity: Some(Severity::P2),
++            triager: Some(triager.to_owned()),
++        },
++    )
++    .unwrap();
++    sealed.public
++}
++
++fn request() -> Request {
++    Request {
++        code: None,
++        issue: Some(9950),
++        verified: false,
++        script: None,
++        tester: None,
++        quest: "playtest-s1.bug@1".into(),
++        session: None,
++        triager: None,
++        repo: "OpenAgentsInc/openagents".into(),
++        commit: None,
++    }
++}
++
++#[test]
++fn a_filed_report_becomes_a_signed_award_with_a_test_referee_key() {
++    let home = tempfile::tempdir().unwrap();
++    let (referee, tester, triager) = (key(1), key(2), key(4));
++    let public = filed(home.path(), &tester, &hex(&triager));
++    let quest = quest(&referee);
++    let mut filters = Vec::new();
++    let mut fetch = |filter: Value| -> Result<Vec<Event>, String> {
++        filters.push(filter.clone());
++        let kinds = filter["kinds"][0].as_u64().unwrap_or_default();
++        Ok(match u16::try_from(kinds).unwrap() {
++            nostr::kinds::XP_QUEST => vec![quest.clone()],
++            nostr::kinds::XP_PLAYTEST_REPORT => vec![public.clone()],
++            _ => vec![],
++        })
++    };
++    let (award, award_key) = sign(
++        home.path(),
++        &request(),
++        &signer(&referee),
++        Some(&hex(&referee)),
++        &mut fetch,
++    )
++    .unwrap();
++    assert_eq!(
++        award_key,
++        "playtest:playtest-s1:report:OpenAgentsInc/openagents#9950"
++    );
++    assert_eq!(award.pubkey, hex(&referee));
++    let parsed = nostr::xp::parse_award(&award).unwrap();
++    nostr::xp::bind_quest(&parsed, &quest).unwrap();
++    assert_eq!(parsed.awardees[0].pubkey, hex(&tester));
++    assert_eq!(parsed.evidence[0].id, public.id);
++    // It asked for the tester's reports and the referee's own awards.
++    assert!(filters.iter().any(|f| f["authors"][0] == hex(&tester)));
++    assert!(
++        filters
++            .iter()
++            .any(|f| f["kinds"][0] == nostr::kinds::XP_AWARD)
++    );
++
++    // Once that award is on the relay, the contribution doesn't pay again.
++    let mut again = |filter: Value| -> Result<Vec<Event>, String> {
++        let kinds = filter["kinds"][0].as_u64().unwrap_or_default();
++        Ok(match u16::try_from(kinds).unwrap() {
++            nostr::kinds::XP_QUEST => vec![quest.clone()],
++            nostr::kinds::XP_PLAYTEST_REPORT => vec![public.clone()],
++            nostr::kinds::XP_AWARD => vec![award.clone()],
++            _ => vec![],
++        })
++    };
++    let refused = sign(
++        home.path(),
++        &request(),
++        &signer(&referee),
++        Some(&hex(&referee)),
++        &mut again,
++    );
++    assert!(refused.unwrap_err().contains("pays once"));
++}
++
++#[test]
++fn without_the_playtest_referee_key_nothing_is_read_or_signed() {
++    let home = tempfile::tempdir().unwrap();
++    let (referee, tester) = (key(1), key(2));
++    let _ = filed(home.path(), &tester, &hex(&key(4)));
++    let mut calls = 0;
++    let mut fetch = |_: Value| -> Result<Vec<Event>, String> {
++        calls += 1;
++        Ok(vec![])
++    };
++    let refused = sign(home.path(), &request(), &signer(&referee), None, &mut fetch);
++    assert_eq!(refused.unwrap_err(), award::NO_REFEREE);
++    // A key that isn't the trusted referee is refused too.
++    let wrong = sign(
++        home.path(),
++        &request(),
++        &signer(&key(7)),
++        Some(&hex(&referee)),
++        &mut fetch,
++    );
++    assert!(wrong.is_err());
++    assert_eq!(calls, 0);
++}
++
++#[test]
++fn the_acceptance_is_named_exactly() {
++    let home = tempfile::tempdir().unwrap();
++    let _ = filed(home.path(), &key(2), &hex(&key(4)));
++    let accepted = load(home.path()).unwrap().acceptances();
++    let mut by_issue = request();
++    assert_eq!(
++        select(accepted.clone(), &by_issue).unwrap().issue,
++        Some(9950)
++    );
++    by_issue.issue = Some(1);
++    assert!(select(accepted.clone(), &by_issue).is_err());
++    let mut verified = request();
++    verified.verified = true;
++    assert!(select(accepted, &verified).is_err(), "not verified yet");
++}
+diff --git a/crates/playtest/src/award.rs b/crates/playtest/src/award.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..1032bb16d1bd1c9acd9009f6f119a1815733f990
+--- /dev/null
++++ b/crates/playtest/src/award.rs
+@@ -0,0 +1,166 @@
++//! Playtest awards from triage-log acceptances.
++//!
++//! An accepted contribution in the triage log ([`Acceptance`]) names the
++//! tester's key and the digest of their private report. The tester's app
++//! published a content-free NIP-XP playtest report (kind `3197`) that
++//! commits to the same digest. [`plan`] joins the two with a `playtest`
++//! quest and builds the NIP-XP award the playtest referee signs, after
++//! [`nostr::xp::playtest_award`] checks the rule. [`admit`] refuses an
++//! award whose rule-derived key already has a live award from the referee
++//! or whose quest version is out of `max_awards`.
++//!
++//! Signing is gated on the playtest referee key: [`referee`] refuses every
++//! key while the build's `PLAYTEST_REFEREE` is unset, so the production
++//! path stays off until the owner creates that key. Tests pass their own
++//! expected key.
++
++use std::collections::BTreeSet;
++
++use nostr::domain::Event;
++use nostr::kb::Unsigned;
++use nostr::xp;
++
++use crate::session;
++use crate::triage::Acceptance;
++
++/// The refusal while no playtest referee key exists.
++pub const NO_REFEREE: &str = "the playtest referee key doesn't exist yet (PLAYTEST_REFEREE is unset), so playtest awards aren't signed; the owner creates it with `microcoder xp playtest-keygen`";
++
++/// Checks that `referee` (hex) is the playtest referee this build trusts.
++///
++/// # Errors
++///
++/// [`NO_REFEREE`] while `expected` is `None`, or a mismatch.
++pub fn referee(referee: &str, expected: Option<&str>) -> Result<(), String> {
++    match expected {
++        None => Err(NO_REFEREE.into()),
++        Some(key) if key.eq_ignore_ascii_case(referee) => Ok(()),
++        Some(_) => Err("this key isn't the playtest referee this build trusts".into()),
++    }
++}
++
++/// The tester's public playtest report for `acceptance`, among `events`:
++/// signed by the tester and committing to the accepted report's digest.
++#[must_use]
++pub fn find_report<'a>(acceptance: &Acceptance, events: &'a [Event]) -> Option<&'a Event> {
++    let digest = acceptance.digest.as_deref()?;
++    events.iter().find(|event| {
++        event.pubkey == acceptance.tester
++            && xp::playtest::parse_playtest_report(event).is_ok_and(|r| r.digest == digest)
++    })
++}
++
++/// An award ready for the referee to sign.
++#[derive(Clone, Debug)]
++pub struct Plan {
++    /// The rule-derived uniqueness key.
++    pub key: String,
++    /// `30193:<referee>:<address>`.
++    pub coordinate: String,
++    pub max_awards: u64,
++    pub unsigned: Unsigned,
++}
++
++/// Builds the award for `acceptance` from its `quest`, the tester's public
++/// `report`, and, for a moderated or group session, the moderator's
++/// `session` record. `repo` is `owner/repo` for the issue; `commit` is the
++/// commit that shipped a `design` change.
++///
++/// # Errors
++///
++/// A sentence naming what doesn't match: the quest's contribution, the
++/// report's signer or digest, a missing triager, or the NIP-XP rule.
++pub fn plan(
++    acceptance: &Acceptance,
++    quest: &Event,
++    report: &Event,
++    session: Option<&Event>,
++    repo: &str,
++    commit: Option<&str>,
++) -> Result<Plan, String> {
++    let parsed = xp::parse_quest(quest).map_err(|e| format!("the quest: {e}"))?;
++    let rule = parsed
++        .acceptance
++        .playtest
++        .as_ref()
++        .ok_or("the quest's rule isn't playtest")?;
++    if rule.contribution != acceptance.contribution {
++        return Err(format!(
++            "the quest pays for `{}`, and this acceptance is `{}`",
++            rule.contribution, acceptance.contribution
++        ));
++    }
++    let public = xp::playtest::parse_playtest_report(report)
++        .map_err(|e| format!("the public report: {e}"))?;
++    if report.pubkey != acceptance.tester {
++        return Err("the public report isn't signed by the accepted tester".into());
++    }
++    if acceptance.digest.as_deref() != Some(public.digest.as_str()) {
++        return Err("the public report commits to a different private report".into());
++    }
++    let triager = acceptance
++        .triager
++        .as_deref()
++        .ok_or("the triage log doesn't name who accepted it; record it with --triager")?;
++    let fields = xp::PlaytestAward {
++        issue: acceptance.issue.map(|n| format!("{repo}#{n}")),
++        severity: acceptance.severity.map(|s| session::name(&s)),
++        commit: commit.map(str::to_owned),
++    };
++    let key = xp::playtest::key(&parsed, &acceptance.tester, fields.issue.as_deref())
++        .map_err(|e| e.to_string())?;
++    let unsigned = xp::playtest_award(
++        quest,
++        report,
++        session,
++        triager,
++        &fields,
++        acceptance.accepted_at,
++    )
++    .map_err(|e| format!("not accepted by the playtest rule: {e}"))?;
++    Ok(Plan {
++        key,
++        coordinate: xp::coordinate(&quest.pubkey, &parsed.address),
++        max_awards: rule.max_awards,
++        unsigned,
++    })
++}
++
++/// Checks `plan` against the referee's published awards and revocations
++/// (`existing`): its key has no live award, and its quest version has
++/// fewer live awards than `max_awards`.
++///
++/// # Errors
++///
++/// A sentence naming the award already there or the limit.
++pub fn admit(plan: &Plan, existing: &[Event]) -> Result<(), String> {
++    let revoked: BTreeSet<String> = existing
++        .iter()
++        .filter_map(|e| xp::parse_revocation(e).ok())
++        .map(|r| r.award.id)
++        .collect();
++    let live: Vec<(&Event, xp::Award)> = existing
++        .iter()
++        .filter(|e| !revoked.contains(&e.id))
++        .filter_map(|e| xp::parse_award(e).ok().map(|a| (e, a)))
++        .collect();
++    if let Some((event, _)) = live.iter().find(|(_, a)| a.key == plan.key) {
++        return Err(format!(
++            "{} already has award {}; a contribution pays once",
++            plan.key, event.id
++        ));
++    }
++    let used = live
++        .iter()
++        .filter(|(_, a)| a.coordinate == plan.coordinate)
++        .count() as u64;
++    if used >= plan.max_awards {
++        return Err(format!(
++            "the quest version already has {used} live awards, its max_awards"
++        ));
++    }
++    Ok(())
++}
++
++#[cfg(test)]
++mod tests;
+diff --git a/crates/playtest/src/award/tests.rs b/crates/playtest/src/award/tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..1e5ba421ba40b0f76c9407bbbdb820aea0c1dcf9
+--- /dev/null
++++ b/crates/playtest/src/award/tests.rs
+@@ -0,0 +1,242 @@
++use nostr::domain::RelaySigner;
++use secp256k1::{Secp256k1, SecretKey};
++use serde_json::{Value, json};
++
++use super::*;
++use crate::report::{self, Context, Kind, Platform, Randomness, Report};
++use crate::session::{Route, Tab};
++use crate::triage::{Contribution, Entry, Log, Severity};
++
++const AT: u64 = 1_790_000_000;
++
++fn key(byte: u8) -> SecretKey {
++    SecretKey::from_byte_array([byte; 32]).unwrap()
++}
++
++fn hex(secret: &SecretKey) -> String {
++    secret.x_only_public_key(&Secp256k1::new()).0.to_string()
++}
++
++fn signer(secret: &SecretKey) -> RelaySigner {
++    RelaySigner::from_secret_hex(&secret.display_secret().to_string()).unwrap()
++}
++
++fn sign(secret: &SecretKey, at: u64, parts: Unsigned) -> Event {
++    signer(secret).sign(at, parts.kind, parts.tags, parts.content)
++}
++
++fn quest(referee: &SecretKey, contribution: &str, max_awards: u64) -> Event {
++    let mut acceptance = json!({
++        "rule": "playtest", "contribution": contribution,
++        "builds": ["1.0.0 (15)", "1.0.0 (16)"], "max_awards": max_awards,
++    });
++    if contribution == "bug" {
++        acceptance["severities"] = json!(["p2", "p3"]);
++    }
++    let spec: Value = json!({
++        "id": format!("playtest-s1.{contribution}"),
++        "version": 1,
++        "season": {"id": "playtest-s1", "opens_at": AT - 1_000, "closes_at": AT + 2_419_200},
++        "title": "Reproducible bug report",
++        "objective": "Report a bug a triager can reproduce.",
++        "acceptance": acceptance,
++        "reference": null,
++        "award": {"tester": 20, "triager": 0},
++    });
++    sign(referee, AT - 500, xp::quest(&spec).unwrap())
++}
++
++/// A tester files a report; the triage key opens it; the triager files it
++/// as a P2 bug on #9950. Returns the acceptance and the tester's public
++/// record.
++fn accepted(tester: &SecretKey, triage: &SecretKey, triager: &str) -> (Acceptance, Event) {
++    let filed = Report {
++        schema: report::SCHEMA.into(),
++        context: Context {
++            app_version: "1.0.0".into(),
++            build: "16".into(),
++            platform: Platform::Ios,
++            device: "iPhone17,1".into(),
++            os_version: "26.0".into(),
++            tab: Tab::Verse,
++            route: Route::Gym,
++            at: AT,
++        },
++        kind: Kind::Bug,
++        happened: "The ball went through the wall.".into(),
++        expected: "It bounces.".into(),
++        steps: "Push it hard.".into(),
++        quote: false,
++        task: None,
++        session: None,
++        screenshot: None,
++        notes: vec![],
++    };
++    let random = Randomness {
++        wrapper: key(9),
++        seal_nonce: [1; 32],
++        wrap_nonce: [2; 32],
++        seal_earlier: 60,
++        wrap_earlier: 120,
++    };
++    let triage_public = triage.x_only_public_key(&Secp256k1::new()).0;
++    let sealed = report::wrap(&filed, tester, &triage_public, &random).unwrap();
++    let opened = report::open(&sealed.wrap, triage).unwrap();
++    let mut log = Log::default();
++    for entry in [
++        Entry::received(&opened, AT + 10),
++        Entry::Filed {
++            at: AT + 100,
++            code: opened.code.clone(),
++            issue: 9950,
++            contribution: Contribution::Bug,
++            severity: Some(Severity::P2),
++            triager: Some(triager.to_owned()),
++        },
++    ] {
++        log.admit(&entry).unwrap();
++        log.entries.push(entry);
++    }
++    (log.acceptances().remove(0), sealed.public)
++}
++
++#[test]
++fn an_award_from_a_triage_log_acceptance_passes_the_playtest_rule() {
++    let (referee_key, tester, triage, triager) = (key(1), key(2), key(3), key(4));
++    let (acceptance, public) = accepted(&tester, &triage, &hex(&triager));
++    let quest = quest(&referee_key, "bug", 200);
++    // The public record is found by the tester and the digest.
++    let other = sign(
++        &tester,
++        AT,
++        xp::playtest::playtest_report("1.0.0 (16)", "ios", "bug", &"0".repeat(64), None).unwrap(),
++    );
++    let events = [other, public.clone()];
++    assert_eq!(find_report(&acceptance, &events).unwrap().id, public.id);
++
++    referee(&hex(&referee_key), Some(&hex(&referee_key))).unwrap();
++    let plan = plan(
++        &acceptance,
++        &quest,
++        &public,
++        None,
++        "OpenAgentsInc/openagents",
++        None,
++    )
++    .unwrap();
++    assert_eq!(
++        plan.key,
++        "playtest:playtest-s1:report:OpenAgentsInc/openagents#9950"
++    );
++    admit(&plan, &[]).unwrap();
++    let award = sign(&referee_key, AT + 200, plan.unsigned.clone());
++    let parsed = xp::parse_award(&award).unwrap();
++    xp::bind_quest(&parsed, &quest).unwrap();
++    assert_eq!(parsed.awardees[0].pubkey, hex(&tester));
++    assert_eq!(parsed.awardees[0].xp, 20);
++    assert_eq!(parsed.awardees[1].pubkey, hex(&triager));
++    assert_eq!(parsed.accepted_at, AT + 100);
++    let fields = parsed.playtest.unwrap();
++    assert_eq!(
++        fields.issue.as_deref(),
++        Some("OpenAgentsInc/openagents#9950")
++    );
++    assert_eq!(fields.severity.as_deref(), Some("p2"));
++
++    // The same key pays once; a revoked award frees it.
++    assert!(
++        admit(&plan, std::slice::from_ref(&award))
++            .unwrap_err()
++            .contains("pays once")
++    );
++    let revocation = sign(
++        &referee_key,
++        AT + 300,
++        xp::revocation(&award, "Issued in error.").unwrap(),
++    );
++    admit(&plan, &[award.clone(), revocation]).unwrap();
++    // A quest version out of max_awards takes no more.
++    let full = super::plan(
++        &acceptance,
++        &quest_with_max(&referee_key, 1),
++        &public,
++        None,
++        "OpenAgentsInc/openagents",
++        None,
++    )
++    .unwrap();
++    let first = sign(&referee_key, AT + 200, full.unsigned.clone());
++    let mut other_key = full.clone();
++    other_key.key = "playtest:playtest-s1:report:OpenAgentsInc/openagents#1".into();
++    assert!(
++        admit(&other_key, &[first])
++            .unwrap_err()
++            .contains("max_awards")
++    );
++}
++
++fn quest_with_max(referee: &SecretKey, max: u64) -> Event {
++    quest(referee, "bug", max)
++}
++
++#[test]
++fn no_award_is_signed_without_the_playtest_referee_key() {
++    let referee_key = key(1);
++    assert_eq!(referee(&hex(&referee_key), None).unwrap_err(), NO_REFEREE);
++    assert!(referee(&hex(&referee_key), Some(&hex(&key(5)))).is_err());
++}
++
++#[test]
++fn a_mismatched_acceptance_is_refused() {
++    let (referee_key, tester, triage, triager) = (key(1), key(2), key(3), key(4));
++    let (acceptance, public) = accepted(&tester, &triage, &hex(&triager));
++    let repo = "OpenAgentsInc/openagents";
++    // A quest for another contribution.
++    let feedback = quest(&referee_key, "feedback", 10);
++    assert!(
++        plan(&acceptance, &feedback, &public, None, repo, None)
++            .unwrap_err()
++            .contains("pays for")
++    );
++    let quest = quest(&referee_key, "bug", 10);
++    // A record signed by someone else, or for another private report.
++    let forged = sign(
++        &key(7),
++        AT,
++        xp::playtest::playtest_report(
++            "1.0.0 (16)",
++            "ios",
++            "bug",
++            acceptance.digest.as_deref().unwrap(),
++            None,
++        )
++        .unwrap(),
++    );
++    assert!(
++        plan(&acceptance, &quest, &forged, None, repo, None)
++            .unwrap_err()
++            .contains("accepted tester")
++    );
++    let other = sign(
++        &tester,
++        AT,
++        xp::playtest::playtest_report("1.0.0 (16)", "ios", "bug", &"1".repeat(64), None).unwrap(),
++    );
++    assert!(
++        plan(&acceptance, &quest, &other, None, repo, None)
++            .unwrap_err()
++            .contains("different private report")
++    );
++    // No triager recorded.
++    let mut unknown = acceptance.clone();
++    unknown.triager = None;
++    assert!(plan(&unknown, &quest, &public, None, repo, None).is_err());
++    // The tester can't be the triager: the rule refuses it.
++    let mut own = acceptance;
++    own.triager = Some(hex(&tester));
++    assert!(
++        plan(&own, &quest, &public, None, repo, None)
++            .unwrap_err()
++            .contains("playtest rule")
++    );
++}

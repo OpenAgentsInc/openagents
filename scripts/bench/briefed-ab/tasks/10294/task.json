@@ -1,0 +1,30 @@
+{
+  "test_targets": [
+    "--lib",
+    "--bins"
+  ],
+  "issue": 10294,
+  "title": "openagents worktree ls|archive|restore",
+  "body": "P2.1: list task worktrees with task state, size, dirty/unpushed, age; archive uses git::removable (or --force with typed confirmation); restore recreates detached at the recorded commit (record from #10291).\n\nFrom the Paseo worktree gap analysis (docs/worktrees/2026-10-03-paseo-worktree-gap-analysis.md, 61580a0aec).",
+  "fix": "eeae76ff5ade777c12c49f660b1ce145206a39dd",
+  "parent": "1de8bdf13f1f64054a928ddd844705f8eda70594",
+  "package": "coder",
+  "source_files": [
+    "crates/coder/src/cli_route/tree.json",
+    "crates/coder/src/task/worktrees.rs",
+    "crates/openagents-cli/src/tree.rs",
+    "docs/cli/worktree.md"
+  ],
+  "test_files": [
+    "crates/coder/src/task/worktrees.rs",
+    "crates/openagents-cli/src/main.rs",
+    "crates/openagents-cli/src/worktree.rs"
+  ],
+  "test_names": [
+    "a_worktree_folder_names_its_task_by_the_first_twelve_characters",
+    "ages_read_as_minutes_hours_and_days",
+    "force_needs_the_name_typed_exactly",
+    "names_resolve_inside_the_worktrees_folder_only"
+  ],
+  "fix_lines": 807
+}

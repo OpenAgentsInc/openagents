@@ -1,0 +1,20 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 9597,
+  "title": "Docs: explain mini-tasks and how they relate to TB4",
+  "body": "## Goal\nA short explanation, in the docs and in the Gym's mini-task view, of what Coder One mini-tasks are, how they're graded, how long they take, what they cost, and how they relate to Terminal-Bench 4.0 tasks: a fast local screen, not a benchmark result.\n\nSource: episode 288 (`docs/transcripts/288.md`).\n\n\ud83e\udd16 Generated with [Claude Code](https://claude.com/claude-code)\n",
+  "fix": "ab1af819d58538e5df2c53a12c8a32b03fd42d11",
+  "parent": "7c5b53f41401e1da5ddfc3b04b9fcb9631d42c93",
+  "package": "gym",
+  "source_files": [
+    "crates/gym/src/coder_minitasks.rs",
+    "docs/coder/guides/coder-one-minitasks.md"
+  ],
+  "test_files": [
+    "crates/gym/src/coder_minitasks.rs"
+  ],
+  "test_names": [],
+  "fix_lines": 36
+}

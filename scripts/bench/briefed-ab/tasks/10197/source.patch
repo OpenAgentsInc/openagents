@@ -1,0 +1,811 @@
+diff --git a/crates/openagents-web/README.md b/crates/openagents-web/README.md
+index 6c501896ac15634269e1b2cbf54d3bd77f16dd24..0ad9437e2a64133463159bacb2707e468ddf87ed 100644
+--- a/crates/openagents-web/README.md
++++ b/crates/openagents-web/README.md
+@@ -6,10 +6,12 @@ download page, and the landing page for the pairing QR code. It also serves a
+ local, read-only task browser at `/app`.
+ 
+ The site is drawn in four intensities of white on
+-near-black (`src/palette.rs`). Only the homepage runs a script, its
+-terminal (`static/ask.js`), under a policy that allows that one same-site
+-script and requests to `/ask`; every other response carries a content
+-security policy that allows none.
++near-black (`src/palette.rs`). Two pages run a script, each under a
++policy that allows its one same-site script and same-origin requests: the
++homepage's terminal (`static/ask.js`, requests to `/ask`) and `/live`'s
++map (`static/flow.js`, requests to `/api/flow/*`, drawn on a canvas in the
++desktop map's colors); every other response carries a content security
++policy that allows none.
+ 
+ The pages follow the private Coder service's site (`bins/coder-serve` in
+ the `coder` repository), reimplemented here. openagents.com still deploys
+@@ -46,6 +48,7 @@ everything it serves is compiled in or read from this repository.
+ | `/install`, `/desktop` | Permanent redirect (`308`) to `/download`, so older links keep working | Redirects. |
+ | `POST /ask` | The homepage terminal's questions (`src/ask.rs`, #10106): a NIP-CJ job to the OpenAgents chat worker through `relay.openagents.com`, surface `web`, signed with a key derived from the visitor's `oa_visitor` cookie and the server's secret (`OPENAGENTS_WEB_ASK_SALT`, random per process when unset). The worker answers about OpenAgents only and never offers Coder, a computer, a command, or a screen. One question at a time and 6 a minute per visitor, 32 waiting at once for everyone, besides the worker's quotas. Streams newline-delimited JSON | Answers from the live chat worker. |
+ | `/docs`, `/docs/{slug}` | `content/docs/*.md`, short guides in reading order, compiled in: what OpenAgents is, download (`/docs/install` redirects to `/docs/download`), connecting a computer, chat, Coder, plugins (what they are, writing, testing, publishing and sharing), the Verse, the Grid (with its screenshot, `static/verse-grid.jpg`, captured from the live relay with `crates/verse/examples/overlook_capture.rs`), privacy and security, and help | Renders. |
++| `/live` | `src/pages/live.rs` and `static/flow.js` (#10197): the route map drawn from the pay host's flow snapshot, each streamed event animated as the desktop deck's `routes-live` scene does (white request out, gold payment back, gold share to the author, gold payout to the wallet, a ring for a bonus), a totals ticker, the last event's time, and the recent events. Reads `/api/flow/snapshot` and `/api/flow/stream` on this origin (#10195); never draws synthetic traffic. The mapping's tests are `static/flow.test.js` (`node --test`) | Says the flow stream is unreachable until `/api/flow/*` answers. |
+ | `/terms`, `/privacy` | `content/legal/*.md`, the published text (2026-09-03), compiled in | Renders. |
+ | `/connect` | Landing page for `https://openagents.com/connect#<code>` | Renders; no script, no referrer. |
+ | `/.well-known/apple-app-site-association`, `/.well-known/assetlinks.json` | Universal link and App Link claims for `/connect` | Serves. |
+@@ -88,7 +91,7 @@ cargo test -p openagents-web
+ 
+ The tests check that every public page answers `200` on a development
+ server with the header, the footer's links to the terms and the policy, and
+-no script except the homepage terminal's; the homepage's single download
++no script except the homepage terminal's and `/live`'s map; the homepage's single download
+ link and its terminal; The Grid guide's screenshot; `/ask`'s stream, cookie,
+ bounds, and one-at-a-time rule, against an in-process door;
+ the download page and the `/install`, `/desktop`, and `/docs/install` redirects; that the legal pages carry the
+diff --git a/crates/openagents-web/src/lib.rs b/crates/openagents-web/src/lib.rs
+index 02ca111c54a4273791fec2871afe7c6f4b5e671e..812919e851a8e0f6d948992fc0d398a855dad7c8 100644
+--- a/crates/openagents-web/src/lib.rs
++++ b/crates/openagents-web/src/lib.rs
+@@ -4,8 +4,9 @@
+ //! page, the terms and the privacy policy, the pairing link's landing page,
+ //! and profiles) and the local, read-only task browser at `/app`.
+ //!
+-//! Only the homepage runs a script: its terminal (`static/ask.js`), which
+-//! posts questions to [`ask`] (#10106). Pages that need the production account store
++//! Two pages run a script: the homepage's terminal (`static/ask.js`), which
++//! posts questions to [`ask`] (#10106), and `/live`'s map of the flow
++//! stream (`static/flow.js`, #10197). Pages that need the production account store
+ //! read through [`backend::Backend`]; a
+ //! development server uses [`backend::Development`] and renders every page
+ //! without records or secrets. The design follows the private Coder
+@@ -114,6 +115,7 @@ pub fn router(config: Config) -> Router {
+         .route("/static/site.css", get(stylesheet))
+         .route("/static/verse-grid.jpg", get(verse_grid))
+         .route("/static/ask.js", get(ask_script))
++        .route("/static/flow.js", get(flow_script))
+         .route("/favicon.svg", get(favicon))
+         .route("/favicon.ico", get(favicon))
+         .merge(pages::routes())
+@@ -206,6 +208,18 @@ async fn ask_script() -> Response {
+         .into_response()
+ }
+ 
++/// The `/live` page's map (#10197).
++async fn flow_script() -> Response {
++    (
++        [
++            (header::CONTENT_TYPE, "text/javascript; charset=utf-8"),
++            (header::CACHE_CONTROL, "public, max-age=300"),
++        ],
++        include_str!("../static/flow.js"),
++    )
++        .into_response()
++}
++
+ async fn stylesheet() -> Response {
+     (
+         [
+diff --git a/crates/openagents-web/src/pages/live.rs b/crates/openagents-web/src/pages/live.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..419c80862ffcd14ecbda2bfecceb62cada3bb04b
+--- /dev/null
++++ b/crates/openagents-web/src/pages/live.rs
+@@ -0,0 +1,71 @@
++//! `/live`: the Episode 289 route-map picture driven by real payments
++//! (#10197).
++//!
++//! The page is a canvas (`static/flow.js`, the site's second script) that
++//! draws the route map from the pay host's `/flow/snapshot` topology and
++//! animates each event from `/flow/stream` as the desktop deck's
++//! `routes-live` scene does: a white request out to its node, a gold
++//! payment back to the router, a gold share on to the author, a gold
++//! payout to the author's wallet, and a ring for a bonus
++//! (`docs/payments/2026-10-02-central-receive-and-splits.md`, section 7).
++//! Both are same-origin under `/api/flow/`, which this server proxies to
++//! the pay host (#10195). A totals ticker and the time of the last event
++//! sit under the map. Nothing is synthetic: with no stream the page says
++//! so and draws no dots.
++
++use axum::Router;
++use axum::http::{HeaderValue, header};
++use axum::response::Response;
++use axum::routing::get;
++
++use crate::App;
++use crate::layout::page;
++
++/// Where the page reads the snapshot and the stream.
++pub(crate) const SNAPSHOT: &str = "/api/flow/snapshot";
++pub(crate) const STREAM: &str = "/api/flow/stream";
++
++pub(crate) fn routes() -> Router<App> {
++    Router::new().route("/live", get(live))
++}
++
++/// The page's policy: the site's, plus its one script and its reads of
++/// the flow endpoints on this origin.
++const LIVE_POLICY: &str = "default-src 'none'; style-src 'self'; img-src 'self'; \
++script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; \
++frame-ancestors 'none'";
++
++fn body() -> String {
++    format!(
++        "<section class=\"live\" aria-labelledby=\"live-title\">\
++<h1 id=\"live-title\">Live</h1>\
++<p class=\"lede\">Payments, plugin calls, payouts, and Coder runs on OpenAgents as they \
++happen, on the route map. Nothing here is simulated.</p>\
++<div class=\"flow\" id=\"flow\" data-snapshot=\"{SNAPSHOT}\" data-stream=\"{STREAM}\">\
++<canvas id=\"flow-map\" role=\"img\" aria-label=\"The route map with live traffic\"></canvas>\
++</div>\
++<p class=\"flow-status\" id=\"flow-status\" aria-live=\"polite\">Connecting to the flow \
++stream.</p>\
++<dl class=\"flow-totals\" id=\"flow-totals\">\
++<div><dt>Received</dt><dd id=\"flow-received\">\u{2014}</dd></div>\
++<div><dt>Paid out</dt><dd id=\"flow-paid\">\u{2014}</dd></div>\
++<div><dt>Calls</dt><dd id=\"flow-calls\">\u{2014}</dd></div></dl>\
++<p class=\"dim\">White dots are calls and runs going out from the router. Gold dots are \
++payments coming back, shares going on to a plugin's author, and payouts to the author's \
++wallet; a gold dot with a ring is a bonus. Payers show only as a daily alias.</p>\
++<h2>Recent events</h2>\
++<ol class=\"flow-recent\" id=\"flow-recent\"><li class=\"dim\">None yet.</li></ol>\
++<noscript><p class=\"dim\">Turn on JavaScript to see the live map.</p></noscript>\
++</section>\
++<script src=\"/static/flow.js\" defer></script>"
++    )
++}
++
++async fn live() -> Response {
++    let mut response = page("Live", None, &body());
++    response.headers_mut().insert(
++        header::CONTENT_SECURITY_POLICY,
++        HeaderValue::from_static(LIVE_POLICY),
++    );
++    response
++}
+diff --git a/crates/openagents-web/src/pages/mod.rs b/crates/openagents-web/src/pages/mod.rs
+index 91457b7a658f96c9e3e809c09dea111b3717c46a..908db4dcb9b255e60b39bc0f35acea41566193d2 100644
+--- a/crates/openagents-web/src/pages/mod.rs
++++ b/crates/openagents-web/src/pages/mod.rs
+@@ -4,6 +4,7 @@ mod connect;
+ mod content;
+ mod download;
+ mod home;
++mod live;
+ mod profile;
+ 
+ use axum::Router;
+@@ -20,6 +21,7 @@ pub(crate) use download::{MAC_DMG, SOURCE, TERMINAL_PS1, TERMINAL_SH};
+ pub(crate) fn routes() -> Router<App> {
+     Router::new()
+         .merge(home::routes())
++        .merge(live::routes())
+         .merge(content::routes())
+         .merge(download::routes())
+         .merge(connect::routes())
+diff --git a/crates/openagents-web/src/upstream.rs b/crates/openagents-web/src/upstream.rs
+index 514a248ac32c528c588fb74e25d2e5bb38ad173b..872af66787261e560aac978c8aca4ff4a26e452a 100644
+--- a/crates/openagents-web/src/upstream.rs
++++ b/crates/openagents-web/src/upstream.rs
+@@ -33,7 +33,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
+ 
+ /// The paths this site answers itself, exactly or as a prefix. `/app`, the
+ /// local task browser, is never proxied; the host guard keeps it local.
+-const OWNED_EXACT: [&str; 18] = [
++const OWNED_EXACT: [&str; 20] = [
+     "/",
+     "/download",
+     "/install",
+@@ -42,6 +42,7 @@ const OWNED_EXACT: [&str; 18] = [
+     "/terms",
+     "/privacy",
+     "/connect",
++    "/live",
+     "/ask",
+     "/health",
+     "/app",
+@@ -49,6 +50,7 @@ const OWNED_EXACT: [&str; 18] = [
+     "/.well-known/assetlinks.json",
+     "/static/site.css",
+     "/static/ask.js",
++    "/static/flow.js",
+     "/static/verse-grid.jpg",
+     "/favicon.svg",
+     "/favicon.ico",
+diff --git a/crates/openagents-web/static/flow.js b/crates/openagents-web/static/flow.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..877bd2e91b73786b691a05ead95042868c916e40
+--- /dev/null
++++ b/crates/openagents-web/static/flow.js
+@@ -0,0 +1,402 @@
++// /live (#10197): the route map with OpenAgents' real traffic. It reads
++// the pay host's public flow events (openagents.flow-event.v1, section 7 of
++// docs/payments/2026-10-02-central-receive-and-splits.md) through this
++// site's /api/flow/snapshot and /api/flow/stream, draws the snapshot's
++// topology (positions from the same route_map layout the desktop uses), and
++// animates each streamed event the way the desktop deck's `routes-live`
++// scene does (crates/openagents-desktop/src/route_live.rs):
++//
++//   call, run  white, from the router out to the node
++//   payment    gold, from the node back to the router
++//   share      gold, from the router out past the node to its author
++//   payout     gold, from the router straight to the author's wallet
++//   bonus      gold with a ring, out to the author
++//
++// Events on one node wait for the one before to land. Nothing is made up:
++// the snapshot's events are history (counted and listed, not animated), and
++// with no stream the page says so and draws no dots. After a drop it
++// reconnects, backing off, and skips events it has already seen.
++//
++// The mapping is plain functions, exported for `node --test` under
++// static/flow.test.js; the page wiring runs only in a browser.
++(function (root) {
++  "use strict";
++
++  var REQUEST = "rgb(236,240,255)";
++  var PAYMENT = "rgb(255,206,84)";
++  var TRIP = 1.6;
++  var SHARE = 2.0;
++  var PAYOUT = 1.4;
++  var MAX_WAIT = 3.0;
++  var AUTHOR = 34;
++  var WALLET = 64;
++
++  // The desktop's node colors (crates/openagents-chat-app/src/visual.rs).
++  var KIND_COLOR = {
++    front: "rgb(229,229,229)",
++    family: "rgb(128,128,136)",
++    route: "rgb(124,134,255)",
++    answer: "rgb(77,196,180)",
++    knowledge: "rgb(132,196,98)",
++    model: "rgb(150,164,186)",
++    coder: "rgb(186,140,255)",
++    engine: "rgb(230,121,180)",
++    plugin: "rgb(242,162,72)",
++    screen: "rgb(224,204,96)"
++  };
++  // Base radii in world units (route_map::layout::radius at weight 0.5).
++  var KIND_RADIUS = {
++    front: 34, family: 22, route: 16, coder: 20, model: 14,
++    plugin: 12, engine: 10, answer: 7, knowledge: 7, screen: 7
++  };
++
++  // The snapshot's topology as {nodes, index}: each node {id, kind,
++  // parent (an index or -1), x, y}. Accepts a bare array or {nodes}, a
++  // parent by id or index, and a position as {position:{x,y}} or x, y.
++  function topology(raw) {
++    var list = Array.isArray(raw) ? raw : (raw && raw.nodes) || [];
++    var index = {};
++    var nodes = list.map(function (n, i) {
++      index[n.id] = i;
++      var p = n.position || n;
++      return { id: String(n.id), kind: String(n.kind || ""), parentRef: n.parent,
++        x: Number(p.x) || 0, y: Number(p.y) || 0, parent: -1 };
++    });
++    nodes.forEach(function (n) {
++      var ref = n.parentRef;
++      if (typeof ref === "number" && ref >= 0 && ref < nodes.length) n.parent = ref;
++      else if (typeof ref === "string" && ref in index) n.parent = index[ref];
++      delete n.parentRef;
++    });
++    return { nodes: nodes, index: index };
++  }
++
++  function find(map, id) {
++    return id in map.index ? map.index[id] : -1;
++  }
++
++  // The node an event's dot runs to: its node by id; a short plugin name
++  // (`plugin:explain-error`) finds `plugin:crates/plugin-explain-error`;
++  // otherwise Coder for plugins, hosted resources, and runs, else the router.
++  function target(map, event) {
++    var node = String(event.node || "");
++    var at = find(map, node);
++    if (at >= 0) return at;
++    var name = node.indexOf("plugin:") === 0 ? node.slice(7) : (event.plugin || "");
++    if (name) {
++      for (var i = 0; i < map.nodes.length; i++) {
++        var n = map.nodes[i];
++        if (n.kind !== "plugin" || n.id.indexOf("plugin:") !== 0) continue;
++        var dir = n.id.slice(7);
++        var last = dir.split("/").pop();
++        if (last === name || last === "plugin-" + name) return i;
++      }
++    }
++    var near = -1;
++    var resource = event.resource;
++    if (resource === "plugin" || resource === "hosted_resource" || resource === "coder" ||
++        event.type === "run") near = find(map, "coder");
++    if (near < 0) near = find(map, "front");
++    return near < 0 ? 0 : near;
++  }
++
++  function pathTo(map, leaf) {
++    var path = [leaf];
++    var at = map.nodes[leaf].parent;
++    var guard = 0;
++    while (at >= 0 && guard++ < 64) {
++      path.push(at);
++      at = map.nodes[at].parent;
++    }
++    return path.reverse();
++  }
++
++  // A stop: a node index, or {past: index, distance}.
++  function legs(map, event) {
++    if (!map.nodes.length) return [];
++    var leaf = target(map, event);
++    var out = pathTo(map, leaf);
++    var back = out.slice().reverse();
++    var toAuthor = out.concat([{ past: leaf, distance: AUTHOR }]);
++    function leg(stops, color, ring, seconds) {
++      return { stops: stops, color: color, ring: ring, seconds: seconds };
++    }
++    switch (event.type) {
++      case "call":
++      case "run": return [leg(out, REQUEST, false, TRIP)];
++      case "payment": return [leg(back, PAYMENT, false, TRIP)];
++      case "share": return [leg(toAuthor, PAYMENT, false, SHARE)];
++      case "bonus": return [leg(toAuthor, PAYMENT, true, SHARE)];
++      case "payout": return [leg([out[0], { past: leaf, distance: WALLET }], PAYMENT, false, PAYOUT)];
++      default: return [];
++    }
++  }
++
++  function place(map, stop) {
++    if (typeof stop === "number") return { x: map.nodes[stop].x, y: map.nodes[stop].y };
++    var n = map.nodes[stop.past];
++    var from = n.parent >= 0 ? map.nodes[n.parent] : { x: 0, y: 0 };
++    var dx = n.x - from.x, dy = n.y - from.y;
++    var length = Math.sqrt(dx * dx + dy * dy);
++    if (length < 0.001) return { x: n.x + stop.distance, y: n.y };
++    return { x: n.x + dx / length * stop.distance, y: n.y + dy / length * stop.distance };
++  }
++
++  function along(map, stops, t) {
++    if (!stops.length) return { x: 0, y: 0 };
++    if (stops.length === 1) return place(map, stops[0]);
++    var hops = stops.length - 1;
++    var at = Math.min(Math.max(t, 0) * hops, hops - 0.0001);
++    var hop = Math.floor(at);
++    var a = place(map, stops[hop]), b = place(map, stops[hop + 1]);
++    var f = at - hop;
++    return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f };
++  }
++
++  // Schedules events into flights on one clock, in seconds.
++  function Schedule() {
++    this.ready = {};
++    this.flights = [];
++  }
++  Schedule.prototype.push = function (map, event, now) {
++    var leaf = target(map, event);
++    var self = this;
++    legs(map, event).forEach(function (leg) {
++      var ready = leaf in self.ready ? self.ready[leaf] : now;
++      var start = Math.min(Math.max(ready, now), now + MAX_WAIT);
++      self.ready[leaf] = start + leg.seconds;
++      self.flights.push({ seq: event.seq, leg: leg, start: start });
++    });
++  };
++  Schedule.prototype.land = function (now) {
++    this.flights = this.flights.filter(function (f) { return f.start + f.leg.seconds > now; });
++  };
++  Schedule.prototype.pulses = function (map, now, still) {
++    var out = [];
++    this.flights.forEach(function (f) {
++      var t = (now - f.start) / Math.max(f.leg.seconds, 0.01);
++      if (t < 0 || t >= 1) return;
++      var at = along(map, f.leg.stops, still ? 1 : t);
++      out.push({ x: at.x, y: at.y, color: f.leg.color, ring: f.leg.ring,
++        radius: f.leg.color === PAYMENT ? 3.2 : 3.0 });
++    });
++    return out;
++  };
++
++  // Counts one event into the totals.
++  function count(totals, event) {
++    var amount = Number(event.amount_sats) || 0;
++    if (event.type === "call") totals.calls += 1;
++    else if (event.type === "payment") totals.received_sats += amount;
++    else if (event.type === "payout") totals.paid_out_sats += amount;
++  }
++
++  function grouped(n) {
++    return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
++  }
++
++  function utc(ms) {
++    var d = new Date(Number(ms) || 0);
++    function two(n) { return n < 10 ? "0" + n : String(n); }
++    return d.getUTCFullYear() + "-" + two(d.getUTCMonth() + 1) + "-" + two(d.getUTCDate()) +
++      " " + two(d.getUTCHours()) + ":" + two(d.getUTCMinutes()) + ":" + two(d.getUTCSeconds()) + " UTC";
++  }
++
++  // One event as a recent-list line: public fields only.
++  function describe(event) {
++    var what = event.plugin || event.node || "";
++    var words = { call: "call", payment: "payment", share: "author share",
++      payout: "payout", bonus: "bonus", run: "Coder run" }[event.type] || event.type;
++    var amount = event.amount_sats != null ? " · " + grouped(event.amount_sats) + " sats" : "";
++    return utc(event.at).slice(11, 19) + "  " + words + amount + (what ? " · " + what : "");
++  }
++
++  var api = { topology: topology, target: target, pathTo: pathTo, legs: legs, place: place,
++    along: along, Schedule: Schedule, count: count, grouped: grouped, utc: utc,
++    describe: describe, REQUEST: REQUEST, PAYMENT: PAYMENT, TRIP: TRIP, SHARE: SHARE,
++    PAYOUT: PAYOUT, MAX_WAIT: MAX_WAIT, AUTHOR: AUTHOR, WALLET: WALLET };
++  if (typeof module === "object" && module.exports) module.exports = api;
++  if (typeof document === "undefined") return;
++
++  // The page.
++  var box = document.getElementById("flow");
++  var canvas = document.getElementById("flow-map");
++  var statusLine = document.getElementById("flow-status");
++  var recent = document.getElementById("flow-recent");
++  if (!box || !canvas || !canvas.getContext || !window.fetch) return;
++  var context = canvas.getContext("2d");
++  var still = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
++  var map = { nodes: [], index: {} };
++  var schedule = new Schedule();
++  var totals = { received_sats: 0, paid_out_sats: 0, calls: 0 };
++  var lastSeq = 0;
++  var lastAt = null;
++  var state = "connecting";
++  var source = null;
++  var wait = 2000;
++  var started = performance.now();
++  var shown = [];
++
++  function clock() { return (performance.now() - started) / 1000; }
++
++  function say() {
++    var last = lastAt != null ? "last event " + utc(lastAt) : "no events yet";
++    statusLine.textContent =
++      state === "live" ? "Live · " + last :
++      state === "down" ? "The flow stream is unreachable · " + last + ". Retrying." :
++      state === "again" ? "The flow stream dropped · " + last + ". Reconnecting." :
++      "Connecting to the flow stream.";
++    document.getElementById("flow-received").textContent = grouped(totals.received_sats) + " sats";
++    document.getElementById("flow-paid").textContent = grouped(totals.paid_out_sats) + " sats";
++    document.getElementById("flow-calls").textContent = grouped(totals.calls);
++  }
++
++  function remember(event) {
++    shown.unshift(describe(event));
++    shown = shown.slice(0, 12);
++    recent.textContent = "";
++    shown.forEach(function (text) {
++      var li = document.createElement("li");
++      li.textContent = text;
++      recent.appendChild(li);
++    });
++  }
++
++  function take(event, animate) {
++    if (!event || typeof event !== "object") return;
++    var seq = Number(event.seq) || 0;
++    if (seq && seq <= lastSeq) return;
++    lastSeq = Math.max(lastSeq, seq);
++    lastAt = event.at;
++    remember(event);
++    if (!animate) return;
++    count(totals, event);
++    schedule.push(map, event, clock());
++  }
++
++  function snapshot() {
++    return fetch(box.getAttribute("data-snapshot"), { headers: { Accept: "application/json" } })
++      .then(function (response) {
++        if (!response.ok) throw new Error("snapshot " + response.status);
++        return response.json();
++      })
++      .then(function (snap) {
++        if (snap.topology) map = topology(snap.topology);
++        var t = snap.totals || {};
++        totals = { received_sats: Number(t.received_sats) || 0,
++          paid_out_sats: Number(t.paid_out_sats) || 0, calls: Number(t.calls) || 0 };
++        (snap.events || []).slice().sort(function (a, b) { return a.seq - b.seq; })
++          .forEach(function (event) { take(event, false); });
++      });
++  }
++
++  function down() {
++    state = "down";
++    schedule.flights = [];
++    if (source) { source.close(); source = null; }
++    say();
++    setTimeout(connect, wait);
++    wait = Math.min(wait * 2, 30000);
++  }
++
++  function connect() {
++    state = state === "down" ? "down" : "connecting";
++    say();
++    snapshot().then(function () {
++      source = new EventSource(box.getAttribute("data-stream"));
++      source.onopen = function () { state = "live"; wait = 2000; say(); };
++      source.onmessage = function (message) {
++        var event;
++        try { event = JSON.parse(message.data); } catch (e) { return; }
++        state = "live";
++        take(event, true);
++        say();
++      };
++      // The browser retries a dropped stream by itself, sending the last
++      // id; one it gave up on is closed, so start over.
++      source.onerror = function () {
++        if (!source || source.readyState === 2) down();
++        else { state = "again"; say(); }
++      };
++    }).catch(down);
++  }
++
++  // Drawing.
++  var view = { scale: 1, x: 0, y: 0, ratio: 1, w: 0, h: 0 };
++  function fit() {
++    var ratio = window.devicePixelRatio || 1;
++    var w = canvas.clientWidth, h = canvas.clientHeight;
++    if (canvas.width !== Math.round(w * ratio) || canvas.height !== Math.round(h * ratio)) {
++      canvas.width = Math.round(w * ratio);
++      canvas.height = Math.round(h * ratio);
++    }
++    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
++    map.nodes.forEach(function (n) {
++      var r = (KIND_RADIUS[n.kind] || 8) + WALLET;
++      minX = Math.min(minX, n.x - r); maxX = Math.max(maxX, n.x + r);
++      minY = Math.min(minY, n.y - r); maxY = Math.max(maxY, n.y + r);
++    });
++    if (minX > maxX) { minX = -1; maxX = 1; minY = -1; maxY = 1; }
++    var margin = 12;
++    var scale = Math.min((w - 2 * margin) / (maxX - minX), (h - 2 * margin) / (maxY - minY));
++    view = { scale: scale, ratio: ratio, w: w, h: h,
++      x: w / 2 - (minX + maxX) / 2 * scale, y: h / 2 - (minY + maxY) / 2 * scale };
++  }
++
++  function screen(p) { return { x: view.x + p.x * view.scale, y: view.y + p.y * view.scale }; }
++
++  function dot(p, r, color, alpha) {
++    context.globalAlpha = alpha;
++    context.fillStyle = color;
++    context.beginPath();
++    context.arc(p.x, p.y, r, 0, Math.PI * 2);
++    context.fill();
++  }
++
++  function draw() {
++    fit();
++    context.setTransform(view.ratio, 0, 0, view.ratio, 0, 0);
++    context.clearRect(0, 0, view.w, view.h);
++    context.fillStyle = "rgb(6,6,6)";
++    context.fillRect(0, 0, view.w, view.h);
++    // As the map shrinks, nodes grow a little so they read (as the deck).
++    var boost = Math.min(Math.max(Math.sqrt(0.55 / Math.max(view.scale, 0.01)), 1), 2.2);
++    context.lineWidth = 1;
++    context.strokeStyle = "rgba(255,255,255,0.15)";
++    context.globalAlpha = 1;
++    map.nodes.forEach(function (n) {
++      if (n.parent < 0) return;
++      var a = screen(map.nodes[n.parent]), b = screen(n);
++      context.beginPath();
++      context.moveTo(a.x, a.y);
++      context.lineTo(b.x, b.y);
++      context.stroke();
++    });
++    map.nodes.forEach(function (n) {
++      var r = Math.max((KIND_RADIUS[n.kind] || 8) * view.scale * boost, 1.5);
++      dot(screen(n), r, KIND_COLOR[n.kind] || "rgb(128,128,136)", 1);
++    });
++    var now = clock();
++    schedule.land(now);
++    if (state === "live" || state === "again") {
++      schedule.pulses(map, now, still).forEach(function (p) {
++        var at = screen(p);
++        dot(at, p.radius * 2.6, p.color, 0.18);
++        dot(at, p.radius, p.color, 1);
++        if (p.ring) {
++          context.globalAlpha = 1;
++          context.strokeStyle = p.color;
++          context.beginPath();
++          context.arc(at.x, at.y, p.radius * 2.4, 0, Math.PI * 2);
++          context.stroke();
++        }
++      });
++    }
++    context.globalAlpha = 1;
++    window.requestAnimationFrame(draw);
++  }
++
++  say();
++  connect();
++  window.requestAnimationFrame(draw);
++})(this);
+diff --git a/crates/openagents-web/static/flow.test.js b/crates/openagents-web/static/flow.test.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..6e55c76127715fc9689f0125ed4c7c0617b8082f
+--- /dev/null
++++ b/crates/openagents-web/static/flow.test.js
+@@ -0,0 +1,114 @@
++// The event-to-animation mapping of static/flow.js (#10197), the same table
++// the desktop deck's `routes-live` scene follows
++// (crates/openagents-desktop/src/route_live.rs). Run: node --test
++// crates/openagents-web/static/flow.test.js (the crate's tests run it when
++// node is installed). Not served.
++"use strict";
++var test = require("node:test");
++var assert = require("node:assert");
++var fs = require("node:fs");
++var path = require("node:path");
++var flow = require("./flow.js");
++
++// The committed map's shape around Coder, with the snapshot's wire form:
++// parents by id, positions as {position:{x,y}}.
++var map = flow.topology([
++  { id: "front", kind: "front", parent: null, position: { x: 0, y: 0 } },
++  { id: "family:work", kind: "family", parent: "front", position: { x: -100, y: 0 } },
++  { id: "route:work.dispatch", kind: "route", parent: "family:work", position: { x: -200, y: 0 } },
++  { id: "coder", kind: "coder", parent: "route:work.dispatch", position: { x: -300, y: 0 } },
++  { id: "plugin:crates/plugin-explain-error", kind: "plugin", parent: "coder", position: { x: -400, y: 30 } },
++  { id: "plugin:crates/plugin-repo-map", kind: "plugin", parent: "coder", position: { x: -400, y: -30 } },
++  { id: "engine:codex", kind: "engine", parent: "coder", position: { x: -400, y: 0 } }
++]);
++var fixture = fs.readFileSync(
++  path.join(__dirname, "../../../docs/payments/fixtures/flow-stream.jsonl"), "utf8")
++  .split("\n").filter(Boolean).map(function (line) { return JSON.parse(line); });
++
++function id(i) { return map.nodes[i].id; }
++
++test("the topology reads parents by id or index", function () {
++  assert.strictEqual(map.nodes[3].parent, 2);
++  var byIndex = flow.topology({ nodes: [{ id: "a", kind: "front", parent: null, x: 1, y: 2 },
++    { id: "b", kind: "route", parent: 0, x: 3, y: 4 }] });
++  assert.strictEqual(byIndex.nodes[1].parent, 0);
++  assert.deepStrictEqual(flow.place(byIndex, 0), { x: 1, y: 2 });
++});
++
++test("an event's node finds its place on the map", function () {
++  assert.strictEqual(id(flow.target(map, { type: "call", resource: "plugin", node: "plugin:explain-error" })),
++    "plugin:crates/plugin-explain-error");
++  assert.strictEqual(id(flow.target(map, { type: "call", node: "engine:codex" })), "engine:codex");
++  assert.strictEqual(id(flow.target(map, { type: "call", resource: "plugin", node: "plugin:new-one" })), "coder");
++  assert.strictEqual(id(flow.target(map, { type: "run", resource: "coder", node: "coder" })), "coder");
++  assert.strictEqual(id(flow.target(map, { type: "call", resource: "route", node: "route:x" })), "front");
++});
++
++test("each event type sends its dot", function () {
++  var leg = function (type) {
++    var legs = flow.legs(map, { type: type, resource: "plugin", node: "plugin:repo-map" });
++    assert.strictEqual(legs.length, 1, type);
++    return legs[0];
++  };
++  var plugin = map.index["plugin:crates/plugin-repo-map"];
++  var call = leg("call");
++  assert.strictEqual(call.color, flow.REQUEST);
++  assert.deepStrictEqual(call.stops, [0, 1, 2, 3, plugin]);
++  var payment = leg("payment");
++  assert.strictEqual(payment.color, flow.PAYMENT);
++  assert.deepStrictEqual(payment.stops, [plugin, 3, 2, 1, 0]);
++  var share = leg("share");
++  assert.strictEqual(share.color, flow.PAYMENT);
++  assert.strictEqual(share.ring, false);
++  assert.deepStrictEqual(share.stops[share.stops.length - 1], { past: plugin, distance: flow.AUTHOR });
++  var bonus = leg("bonus");
++  assert.strictEqual(bonus.ring, true);
++  assert.deepStrictEqual(bonus.stops, share.stops);
++  var payout = leg("payout");
++  assert.deepStrictEqual(payout.stops, [0, { past: plugin, distance: flow.WALLET }]);
++  assert.strictEqual(flow.legs(map, { type: "run", resource: "coder", node: "coder" })[0].color, flow.REQUEST);
++  assert.deepStrictEqual(flow.legs(map, { type: "refund", node: "front" }), []);
++  assert.deepStrictEqual(flow.legs(flow.topology([]), { type: "call", node: "front" }), []);
++});
++
++test("the author and the wallet sit past the node, away from its parent", function () {
++  var plugin = map.index["plugin:crates/plugin-repo-map"];
++  var author = flow.place(map, { past: plugin, distance: flow.AUTHOR });
++  var wallet = flow.place(map, { past: plugin, distance: flow.WALLET });
++  assert.ok(author.x < -400 && wallet.x < author.x);
++  var gap = Math.hypot(author.x + 400, author.y + 30);
++  assert.ok(Math.abs(gap - flow.AUTHOR) < 0.01, String(gap));
++});
++
++test("a payment waits for its call to land, and landed dots go", function () {
++  var schedule = new flow.Schedule();
++  fixture.slice(0, 3).forEach(function (event) { schedule.push(map, event, 10); });
++  var starts = schedule.flights.map(function (f) { return f.start; });
++  assert.deepStrictEqual(starts, [10, 10 + flow.TRIP, 10 + flow.MAX_WAIT]);
++  schedule.push(map, fixture[3], 10);
++  assert.strictEqual(schedule.flights[3].start, 10);
++  var mid = schedule.pulses(map, 10.8, false);
++  assert.strictEqual(mid.length, 2);
++  assert.ok(mid.every(function (p) { return p.color === flow.REQUEST; }));
++  assert.ok(schedule.pulses(map, 10 + flow.TRIP + 0.5, false).some(function (p) { return p.color === flow.PAYMENT; }));
++  // Reduced motion: each dot sits where it lands.
++  var plugin = map.index["plugin:crates/plugin-explain-error"];
++  var still = schedule.pulses(map, 10.1, true)[0];
++  var end = flow.place(map, plugin);
++  assert.ok(Math.hypot(still.x - end.x, still.y - end.y) < 0.1);
++  schedule.land(100);
++  assert.strictEqual(schedule.flights.length, 0);
++});
++
++test("the fixture counts its totals and reads plainly", function () {
++  var totals = { received_sats: 0, paid_out_sats: 0, calls: 0 };
++  fixture.forEach(function (event) { flow.count(totals, event); });
++  assert.deepStrictEqual(totals, { received_sats: 64, paid_out_sats: 40, calls: 4 });
++  assert.strictEqual(flow.grouped(1234567), "1,234,567");
++  assert.strictEqual(flow.utc(1791043200123), "2026-10-03 16:00:00 UTC");
++  assert.strictEqual(flow.describe(fixture[1]), "16:00:00  payment · 31 sats · explain-error");
++  // Nothing private in a line: no payer alias.
++  fixture.forEach(function (event) {
++    assert.ok(flow.describe(event).indexOf("caller-") < 0);
++  });
++});
+diff --git a/crates/openagents-web/static/site.css b/crates/openagents-web/static/site.css
+index fb9151acc6045c8d0aa5b5879294d6dd5d7f1a50..c64315ad9ebe84c8c0fda195655240bc9f102310 100644
+--- a/crates/openagents-web/static/site.css
++++ b/crates/openagents-web/static/site.css
+@@ -2,7 +2,7 @@
+    white on near-black. `src/palette.rs` writes the :root block above this
+    file, so every color here is a custom property from that ladder. Boxes
+    are drawn with one-cell borders and a title set into the top rule, the
+-   way a terminal box is. No script runs on any page. */
++   way a terminal box is. Only the homepage terminal and /live run a script. */
+ 
+ *{box-sizing:border-box}
+ html{background:var(--bg);color:var(--w75);font-family:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;font-size:14px;line-height:1.5;-webkit-text-size-adjust:100%}
+@@ -143,10 +143,22 @@ details summary{cursor:pointer;color:var(--w75)}
+ .status{color:var(--w50);text-transform:lowercase}
+ .detail pre{white-space:pre-wrap;overflow-wrap:anywhere}
+ 
++/* /live: the route map with the flow stream's real traffic, drawn on a
++   canvas by static/flow.js; the totals under it. */
++.flow{position:relative;border:1px solid var(--w25);aspect-ratio:16/10;margin:0 0 .75rem;background:var(--bg)}
++.flow canvas{display:block;width:100%;height:100%}
++.flow-status{color:var(--w100);margin:0 0 .75rem}
++.flow-totals{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1ch;margin:0 0 1rem}
++.flow-totals dt{color:var(--w50)}
++.flow-totals dd{color:var(--w100);margin:0;font-size:1.1rem}
++.flow-recent{list-style:none;padding:0;margin:0 0 1rem}
++.flow-recent li{border-bottom:1px solid var(--w25);padding:.25rem 0;overflow-wrap:anywhere}
++
+ @media (max-width:640px){
+   html{font-size:13px}
+   .site-header nav,.site-footer,main{width:calc(100% - 32px)}
+   .grid2{grid-template-columns:1fr}
+   .facts{grid-template-columns:repeat(2,minmax(0,1fr))}
+   .box{padding:1.25rem 1.5ch 1rem}
++  .flow{aspect-ratio:1/1}
+ }
+diff --git a/docs/deployment/openagents-web.md b/docs/deployment/openagents-web.md
+index 7305521926093b1f469cf434a1daa51b685ba7fd..bc72e51edab6707a2438eb3bbaf614c4a25d4a97 100644
+--- a/docs/deployment/openagents-web.md
++++ b/docs/deployment/openagents-web.md
+@@ -49,6 +49,12 @@ and the privacy policy) and no backend code,
+ prompts, endpoints, or secrets. The site is now drawn in four intensities of
+ white on near-black instead of four intensities of amber.
+ 
++`/live` (#10197) is on `main` but not deployed: it reads
++`/api/flow/snapshot` and `/api/flow/stream` on this origin, which this
++server proxies to the pay host once #10195 lands. Until then it says the
++flow stream is unreachable. Deploy it with the next site build after
++#10195 is live.
++
+ ## Ported and complete
+ 
+ These pages need nothing more than this repository and the public buckets:
+diff --git a/docs/payments/2026-10-02-central-receive-and-splits.md b/docs/payments/2026-10-02-central-receive-and-splits.md
+index 998e90cb701e27050e91e34e5ab9ec47475c2627..8431a66a9aec4054226b6c44193ca1512f0717ff 100644
+--- a/docs/payments/2026-10-02-central-receive-and-splits.md
++++ b/docs/payments/2026-10-02-central-receive-and-splits.md
+@@ -418,6 +418,18 @@ when they published the plugin under it (public already), otherwise as
+   node id, and its pulses run along `path_to(leaf)`. Episode decks can show
+   `routes-future` (the projection) and `routes-live` (today) side by side.
+ 
++Status (2026-10-02): `/live` (`crates/openagents-web/src/pages/live.rs`,
++`static/flow.js`, #10197) and the deck scene `routes-live`
++(`crates/openagents-desktop/src/route_live.rs`, the Episode 289 deck's
++sixth slide, #10198) are on `main`, built against the schema above and the
++fixture `docs/payments/fixtures/flow-stream.jsonl`. Both map events to dots
++by the same table (tested in `route_live.rs` and `static/flow.test.js`),
++resolve a short plugin node (`plugin:explain-error`) to the map's
++`plugin:crates/plugin-explain-error`, and say the stream is unreachable
++until `/api/flow/*` answers (#10195). The desktop reads
++`https://openagents.com/api/flow` unless `OPENAGENTS_FLOW_URL` names another
++base or `file:PATH` to replay a fixture.
++
+ ## 8. End-to-end demo
+ 
+ The first real flow, in order:

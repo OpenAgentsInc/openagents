@@ -1,0 +1,59 @@
+diff --git a/crates/openagents-desktop/src/slide_embeds.rs b/crates/openagents-desktop/src/slide_embeds.rs
+index 7f59b9226a9b44b453e420c9fd370c4014a8f260..538e7102436a5231fc37b6d325b2c482f5b73234 100644
+--- a/crates/openagents-desktop/src/slide_embeds.rs
++++ b/crates/openagents-desktop/src/slide_embeds.rs
+@@ -1145,27 +1078,39 @@ mod tests {
+         assert_eq!(url(DOWNLOAD, 1), None);
+     }
+ 
+-    /// The download card shows the page's own versions and commands, and
+-    /// every fixed phrase it draws is still in the page's source.
++    /// The download card shows the page's own Coder release and install
++    /// commands, and every fixed phrase it draws is still in the page's
++    /// source (#11030).
+     #[test]
+     fn the_download_card_matches_the_page() {
+         let download = download();
+-        assert!(download.mac_version.starts_with("1.0.0"));
+-        assert!(download.terminal_version.starts_with("1.0.0"));
+-        assert!(download.sh.starts_with("curl -fsSL https://") && download.sh.ends_with("| sh"));
+-        assert!(download.ps1.starts_with("irm https://") && download.ps1.ends_with("| iex"));
++        assert!(
++            download.version.starts_with("1.0.0"),
++            "{}",
++            download.version
++        );
++        assert!(
++            download.sh.starts_with("curl -fsSL https://") && download.sh.ends_with("| bash"),
++            "{}",
++            download.sh
++        );
++        assert!(
++            download.ps1.starts_with("irm https://") && download.ps1.ends_with("| iex"),
++            "{}",
++            download.ps1
++        );
+         for phrase in [
+-            "Download OpenAgents",
+-            "OpenAgents for Mac",
+-            "OpenAgents Terminal",
+-            "Everything else",
+-            "(Apple silicon and Intel)",
+-            "[ Download .dmg ]",
+-            "macOS 13 or later. Open the",
++            "Download Coder",
++            "Coder + OpenAgents CLI",
++            "Release candidate ",
+             "macOS and Linux:",
+             "Windows, in PowerShell:",
+-            "iPhone, Android, and OpenAgents for Linux and Windows:",
+-            "build from source",
++            "Installs ",
++            "\"coder\"",
++            "\"openagents\"",
++            "\"microcoder\"",
++            " together.",
++            "Download binaries manually",
+         ] {
+             assert!(DOWNLOAD_SOURCE.contains(phrase), "{phrase}");
+         }

@@ -1,0 +1,51 @@
+{
+  "test_targets": [
+    "--lib",
+    "--test",
+    "headless",
+    "--test",
+    "relay_job",
+    "--lib"
+  ],
+  "issue": 9919,
+  "title": "Vertex through the OpenAgents cloud as the no-setup fallback provider",
+  "body": "Owner (2026-09-28): Vertex must go through **our cloud service**. No one should ever have to supply a Vertex token. It's the fallback when a user has nothing else configured (no Claude Code, Codex, Devin, or OpenCode with capacity).\n\n#9891 (f3d4f0dc3a) added Vertex as a third provider in Microcoder's capacity book, but it expects a Vertex token on the host and a NEEDS_OWNER step to add one. Replace that:\n\n- The Vertex route calls the OpenAgents cloud (the existing Worker/gateway, or whatever serving path #9914 chooses for the conversation-first basic chat \u2014 share it), authenticated by the device/host identity the user already has, with per-user quotas and abuse limits server-side. No Google credentials on any user machine or in any app.\n- It is the default fallback when nothing else is configured or has capacity, including on a fresh host with no provider CLIs logged in.\n- Remove the Vertex-token owner step from the workspace NEEDS_OWNER.md and any token-reading code path on hosts.\n- Record the invariant (no provider token on user machines for the cloud fallback) in INVARIANTS.md with tests.\n\nAcceptance: a host with no provider configured completes a Coder task through the cloud fallback; quota refusal is typed and fails over or reports plainly; tests; docs in docs/coder/.",
+  "fix": "4a9074b1f223c850a91e48abd064c4483430abd7",
+  "parent": "7c1d286f7ab2175e2312c93077c34aff0eadb429",
+  "package": "coder",
+  "source_files": [
+    "AGENTS.md",
+    "INVARIANTS.md",
+    "crates/coder/src/checkup.rs",
+    "crates/coder/src/delegate_door.rs",
+    "crates/coder/src/delegate_door/microcoder.rs",
+    "crates/coder/src/generate.rs",
+    "crates/coder/src/lib.rs",
+    "crates/coder/src/relay.rs",
+    "crates/microcoder-loop/src/capacity.rs",
+    "crates/microcoder-loop/src/failover.rs",
+    "crates/microcoder-loop/src/vertex.rs",
+    "docs/coder/runtime/README.md",
+    "docs/coder/runtime/cloud-fallback.md",
+    "docs/coder/runtime/delegate-door.md",
+    "docs/coder/runtime/host-autostart.md"
+  ],
+  "test_files": [
+    "crates/coder/src/cloud.rs",
+    "crates/coder/src/delegate_door.rs",
+    "crates/coder/tests/headless.rs",
+    "crates/coder/tests/relay_job.rs",
+    "crates/microcoder-loop/src/capacity.rs"
+  ],
+  "test_names": [
+    "a_fresh_host_completes_a_turn_through_the_cloud_fallback",
+    "a_quota_refusal_is_a_typed_capacity_refusal_with_its_wait",
+    "a_rate_limit_holds_a_minute_and_a_too_large_step_is_only_an_error",
+    "a_step_through_the_cloud_reads_the_reply_as_the_action",
+    "the_cloud_answers_only_when_nothing_on_the_host_can",
+    "the_cloud_fallback_needs_nothing_on_the_host",
+    "the_cloud_worker_codes_are_capacity_refusals_with_their_waits",
+    "the_default_worker_is_a_public_key_and_the_door_needs_no_token"
+  ],
+  "fix_lines": 1039
+}

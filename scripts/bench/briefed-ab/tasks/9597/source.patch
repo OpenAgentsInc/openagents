@@ -1,0 +1,46 @@
+diff --git a/crates/gym/src/coder_minitasks.rs b/crates/gym/src/coder_minitasks.rs
+index 5c287797a800cca605c9fdb28126d373017acc02..aa0e1b09dbe6d111035e324b89ca3175c71c2dbf 100644
+--- a/crates/gym/src/coder_minitasks.rs
++++ b/crates/gym/src/coder_minitasks.rs
+@@ -325,6 +325,19 @@ pub fn lines(runs: &[Run], errors: &[String], selected: Option<usize>) -> Vec<St
+             .iter()
+             .map(|error| format!("Could not read: {error}")),
+     );
++    // The explanation follows the rows, so the selected row keeps its line.
++    lines.extend(
++        [
++            "",
++            "Mini-tasks reproduce one failure family each, locally.",
++            "A grader checks the resulting state or behavior after each episode.",
++            "They are a fast local screen, not Terminal-Bench 4.0 tasks or benchmark results.",
++            "Scripted runs take about 1 second and cost $0 in model usage.",
++            "A modeled Opus run takes about 22 seconds and costs about $0.054.",
++            "Measured live runs: docs/coder/guides/coder-one-minitasks.md",
++        ]
++        .map(str::to_owned),
++    );
+     if let Some(run) = selected.and_then(|index| runs.get(index)) {
+         lines.push(String::new());
+         lines.extend(run.detail_lines());
+diff --git a/docs/coder/guides/coder-one-minitasks.md b/docs/coder/guides/coder-one-minitasks.md
+index 949cbbf34105767d137d9e964fb939db095bccb8..60b0c6f2679d91af0ce4e814d8c74234814c19d2 100644
+--- a/docs/coder/guides/coder-one-minitasks.md
++++ b/docs/coder/guides/coder-one-minitasks.md
+@@ -6,6 +6,17 @@ in about a second and with no model or container. Run the same task with
+ Claude Code or Codex to see whether a real executor uses what the
+ components give it.
+ 
++Mini-tasks are small, local reproductions of a failure family, each with its
++own task-specific grader. They are a fast local screen for component behavior,
++not Terminal-Bench 4.0 tasks or benchmark results. The grader runs after the
++episode, checks the resulting workspace or behavior against that task's
++criteria, and does not guide the episode. For example, `log-severity` checks
++the CSV counts against each log line's severity field; `cancel-cleanup` checks
++that both tasks finish cleanup after an interrupt. A scripted run takes about
++a second and costs $0 in model usage. The comparison below models an Opus run
++at about 22 seconds and $0.054 per run (22 seconds × $0.00244 per second); this is
++an estimate, not a measured live run's bill.
++
+ This is rung 2 and rung 3 of the ladder in
+ [Coder as a tunable system](../../optimization/coder-components.md#test-each-component-in-isolation):
+ components alone come first, in the

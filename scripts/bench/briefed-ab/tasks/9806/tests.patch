@@ -1,0 +1,78 @@
+diff --git a/crates/coder-mobile/src/verse_app.rs b/crates/coder-mobile/src/verse_app.rs
+index 1f960e89d5402f02094d823ae88c799fca90177e..998ee570b79a11fe665ccdddd93d4024d8ef8236 100644
+--- a/crates/coder-mobile/src/verse_app.rs
++++ b/crates/coder-mobile/src/verse_app.rs
+@@ -2108,6 +2123,7 @@ mod tests {
+             door_preferences: None,
+             zone_cache_directory: None,
+             computer_hud: true,
++            hdr: false,
+         })
+         .unwrap()
+     }
+@@ -2333,6 +2349,7 @@ mod tests {
+             door_preferences: None,
+             zone_cache_directory: None,
+             computer_hud: true,
++            hdr: false,
+         })
+         .unwrap()
+     }
+@@ -2405,6 +2422,7 @@ mod tests {
+             door_preferences: Some(saved.clone()),
+             zone_cache_directory: None,
+             computer_hud: true,
++            hdr: false,
+         })
+         .unwrap();
+         restored.activate(true).unwrap();
+diff --git a/crates/coder-mobile/src/verse_ffi.rs b/crates/coder-mobile/src/verse_ffi.rs
+index 3bcad99ca65e6011375e5dd9229f2d233098cb3a..211c4cfb6f9ac572f9b064ec65d5fa7f5378c2fd 100644
+--- a/crates/coder-mobile/src/verse_ffi.rs
++++ b/crates/coder-mobile/src/verse_ffi.rs
+@@ -280,6 +288,7 @@ mod tests {
+             door_preferences: None,
+             zone_cache_directory: None,
+             computer_hud: true,
++            hdr: false,
+         })
+         .unwrap();
+         let mut handle = VerseHandle {
+@@ -320,7 +329,12 @@ mod tests {
+         handle.detach_renderer().unwrap();
+         assert!(!handle.scene.lifecycle.active());
+         assert!(handle.call(Request::Active { active: true }).is_err());
+-        handle.call(Request::Frame { timestamp: 5000.0 }).unwrap();
++        handle
++            .call(Request::Frame {
++                timestamp: 5000.0,
++                headroom: None,
++            })
++            .unwrap();
+         handle.detach_renderer().unwrap();
+         let after: serde_json::Value =
+             serde_json::from_slice(&handle.call_bytes(br#"{"action":"snapshot"}"#).unwrap())
+diff --git a/crates/verse/src/render.rs b/crates/verse/src/render.rs
+index 5727d9747d75be1d5a221d61fd76e52b081dd388..0b974e79a23d4aa9252a277334f8bbe4bd156692 100644
+--- a/crates/verse/src/render.rs
++++ b/crates/verse/src/render.rs
+@@ -1360,7 +1502,8 @@ mod tests {
+         assert!(
+             RenderOptions {
+                 sample_count: 2,
+-                max_extent: 8192
++                max_extent: 8192,
++                hdr: false,
+             }
+             .validate()
+             .is_err()
+@@ -1368,7 +1511,8 @@ mod tests {
+         assert!(
+             RenderOptions {
+                 sample_count: 1,
+-                max_extent: 0
++                max_extent: 0,
++                hdr: false,
+             }
+             .validate()
+             .is_err()

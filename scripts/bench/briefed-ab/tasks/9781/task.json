@@ -1,0 +1,36 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 9781,
+  "title": "Physics GP-4: soft point grab",
+  "body": "Port the soft point grab from the Genesis mouse-interaction viewer plugin: an implicit, critically damped spring impulse at the grabbed point, with pendulum-swing damping. Roadmap: `docs/physics/2026-09-27-genesis-port-roadmap.md`.\n\n**Scope**\n- `physics` joint: soft point/orientation hold between two bodies, set by frequency and damping ratio with force and torque limits, solved with the implicit softness and bias formula.\n- Lagrange: grabbing raycasts from the hands to the part, stores the hit point, and holds the part with the soft grip. Carried parts are dynamic, and the astronaut feels the load. No preset spin on release. The grip breaks above its limit.\n\n**Accept**\n- Grab \u2192 rotate \u2192 release conserves momentum, flipping the GP-1 baseline.\n- An off-center grab swings and settles without overshoot.\n- Exceeding the grip limit releases the part.\n- The capture test is rewritten against the constraint.\n",
+  "fix": "c1e93251b8acb9d6c3eb41029d273fb6fc4fefbb",
+  "parent": "d40d606509cab1b06f556c6385085818bfdff194",
+  "package": "physics",
+  "source_files": [
+    "crates/physics/src/body.rs",
+    "crates/physics/src/collision.rs",
+    "crates/physics/src/contact.rs",
+    "crates/physics/src/joint.rs",
+    "crates/physics/src/lib.rs",
+    "crates/physics/src/world.rs",
+    "crates/verse-lagrange/src/station.rs",
+    "docs/verse/lagrange-1.md"
+  ],
+  "test_files": [
+    "crates/physics/src/body.rs",
+    "crates/physics/src/tests.rs",
+    "crates/verse-lagrange/src/tests.rs",
+    "crates/verse/src/zones/tests.rs"
+  ],
+  "test_names": [
+    "a_composite_of_two_bodies_uses_the_parallel_axis_theorem",
+    "a_grip_pulled_past_its_limit_slips",
+    "a_grip_saturates_at_its_limit",
+    "a_hard_point_joint_holds_a_pendulum",
+    "a_soft_grip_settles_critically_and_conserves_momentum",
+    "capturing_a_drifting_part_conserves_momentum"
+  ],
+  "fix_lines": 1131
+}

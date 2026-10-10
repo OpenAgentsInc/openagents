@@ -1,0 +1,21 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10286,
+  "title": "Flaky coder tests on macOS: processes_writing_different_tasks_never_wait_on_each_other, a_start_takes_the_spare_at_its_commit_and_a_new_one_is_made",
+  "body": "Follow-up to #10284 (39b8ea1894, which fixed fd-inheritance flakes: a child process briefly holding another test's lock/binary). These two each failed once in 6 macOS runs of the coder task suite. Find the cause (likely the same inherited-fd/lock pattern, or timing on the spare checkout) and make them deterministic; 10 clean runs on macOS and Linux.",
+  "fix": "5a7b318a53af4f0a5e554951c4b039b29e688921",
+  "parent": "021f1c5b5326afe6db22ce1b8c876e3ccbbb32a5",
+  "package": "coder",
+  "source_files": [
+    "crates/coder/src/task.rs",
+    "crates/coder/src/task/spare.rs"
+  ],
+  "test_files": [
+    "crates/coder/src/task/local.rs",
+    "crates/coder/src/task/tests.rs"
+  ],
+  "test_names": [],
+  "fix_lines": 55
+}

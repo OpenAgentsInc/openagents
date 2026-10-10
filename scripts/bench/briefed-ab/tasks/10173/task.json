@@ -1,0 +1,32 @@
+{
+  "test_targets": [
+    "--lib",
+    "--bins",
+    "--lib"
+  ],
+  "issue": 10173,
+  "title": "Phone: show the background watchers a computer runs on Computers",
+  "body": "Follow-up to #10172. The terminal and desktop now show `N background watcher(s) \u00b7 disk cleanup` at startup. The phone's Computers list (`crates/openagents-mobile/src/computers_home.rs`) shows each computer's status (\"Online\") but has no background data: it would need a NIP-HOST `background.list` read (observe right) per online computer in `coder-mobile`'s snapshot, parsed into names, then the same line from `openagents_chat_app::watchers::line` under the computer's status. Larger than the startup line, so tracked separately.",
+  "fix": "5afcb8fbbb4800239b7bf3de0b0c231dc5f0c283",
+  "parent": "0079a3c2f219e10eae8656ca430ec00626881374",
+  "package": "coder-computers",
+  "source_files": [
+    "bins/openagents-android/host/app/src/main/java/com/openagents/app/AccountScreens.kt",
+    "bins/openagents-ios/host/App/MobileBridge.swift",
+    "bins/openagents-ios/host/App/OpenAgentsApp.swift",
+    "crates/coder-computers/src/live.rs",
+    "crates/coder-computers/src/model.rs",
+    "crates/coder-computers/src/synthetic.rs",
+    "crates/openagents-mobile/src/computers_home.rs"
+  ],
+  "test_files": [
+    "crates/coder-computers/src/tests.rs",
+    "crates/openagents-cli/src/reach.rs",
+    "crates/openagents-mobile/src/computers_home.rs"
+  ],
+  "test_names": [
+    "an_online_computer_names_its_background_watchers_and_others_say_nothing",
+    "background_list_names_the_running_watchers"
+  ],
+  "fix_lines": 146
+}

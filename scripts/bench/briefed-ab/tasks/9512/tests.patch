@@ -1,0 +1,134 @@
+diff --git a/crates/coder/src/package.rs b/crates/coder/src/package.rs
+index 66bc07b4c508a4096544b984ce2d6b647f602a3b..040477892f9759e09bb2f580e599c79b58a00304 100644
+--- a/crates/coder/src/package.rs
++++ b/crates/coder/src/package.rs
+@@ -1187,4 +1349,129 @@ mod tests {
+         assert!(extension_transition(tombstone, InstallStep::Reactivate).is_err());
+         assert_eq!(extension_active_pin("lock-a", "lock-b"), "lock-a");
+     }
++
++    #[test]
++    fn a_revoked_publisher_is_refused_even_when_the_package_trusted_it() {
++        let (dir, program) = staged();
++        let mut friend = package("friend-pkg", &program);
++        friend.publisher = "friend".to_string();
++        stage_package(dir.path(), &friend);
++
++        let mut package = package("root-pkg", &program);
++        package.trusted_publishers = vec!["friend".to_string()];
++        package.requires = vec![Dependency {
++            package: "friend-pkg".to_string(),
++            publisher: Some("friend".to_string()),
++            version: None,
++            digest: None,
++        }];
++        let mut revoked = BTreeSet::new();
++        revoked.insert("friend".to_string());
++
++        let refusal = Package::resolve_against(dir.path(), &package, &revoked).unwrap_err();
++        assert_eq!(
++            refusal,
++            Refusal::Revoked {
++                publisher: "friend".to_string()
++            }
++        );
++        assert!(Package::resolve(dir.path(), &package).is_ok());
++
++        let mut root_revoked = BTreeSet::new();
++        root_revoked.insert(package.publisher.clone());
++        let root = Package::resolve_against(dir.path(), &package, &root_revoked).unwrap_err();
++        assert_eq!(
++            root,
++            Refusal::Revoked {
++                publisher: package.publisher.clone()
++            }
++        );
++    }
++
++    #[test]
++    fn a_replaced_file_is_refused_as_a_stale_advertisement() {
++        let (dir, program) = staged();
++        let resolved = Package::resolve(dir.path(), &package("root-pkg", &program)).unwrap();
++        stage(
++            dir.path(),
++            "programs/main.json",
++            r#"{"v":1,"slug":"main","steps":[{"name":"one","kind":"query","bounds":{"limit":1}}]}"#,
++        );
++        let mut stale = package("root-pkg", &program);
++        stale.program.digest = resolved.program.digest.clone();
++        let refusal = Package::resolve(dir.path(), &stale).unwrap_err();
++        assert!(matches!(refusal, Refusal::Digest { .. }), "{refusal}");
++    }
++
++    #[test]
++    fn an_absent_remote_name_stays_unresolved_without_a_fetch() {
++        let (dir, program) = staged();
++        let mut package = package("root-pkg", &program);
++        package.provenance = "wss://relay.example/packages/ghost".to_string();
++        package.requires = vec![Dependency {
++            package: "ghost".to_string(),
++            publisher: None,
++            version: None,
++            digest: None,
++        }];
++        let refusal = Package::resolve(dir.path(), &package).unwrap_err();
++        assert_eq!(
++            refusal,
++            Refusal::Unresolved {
++                component: "packages/ghost".to_string()
++            }
++        );
++    }
++
++    #[test]
++    fn a_run_holds_its_lock_until_it_finishes_and_then_can_roll_back() {
++        let (dir, program) = staged();
++        let held_lock = Package::resolve(dir.path(), &package("root-pkg", &program)).unwrap();
++        let mut other = package("other-pkg", &program);
++        other.slug = "other-pkg".to_string();
++        let proposed = Package::resolve(dir.path(), &other).unwrap();
++        let mut held = HeldLock::open(&held_lock);
++        assert!(held.consider(&held_lock).is_ok());
++        assert_eq!(
++            held.consider(&proposed).unwrap_err(),
++            Refusal::Pinned {
++                held: held_lock.digest()
++            }
++        );
++        assert!(held.rollback(&proposed).is_err());
++        held.finish();
++        assert_eq!(
++            held.rollback(&proposed).unwrap().digest(),
++            proposed.digest()
++        );
++        assert!(held.rollback(&held_lock).is_err());
++    }
++
++    #[test]
++    fn a_package_cannot_carry_a_secret_or_an_approval() {
++        let (dir, program) = staged();
++        let mut record = serde_json::to_value(package("root-pkg", &program)).unwrap();
++        record["secret"] = json!("oak_live_key");
++        record["probe"] = json!("approved");
++        let path = dir.path().join("packages/smuggled.json");
++        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
++        std::fs::write(&path, record.to_string()).unwrap();
++        let error = Package::load(&path).unwrap_err();
++        assert!(error.contains("unknown field"), "{error}");
++
++        let mut host = package("root-pkg", &program);
++        host.summary = "key at /Users/me/.ssh/id_rsa".to_string();
++        let error = host.validate().unwrap_err();
++        assert!(error.contains("host path or a secret"), "{error}");
++
++        host.summary.clear();
++        host.publisher = "nsec1notakey".to_string();
++        let error = host.validate().unwrap_err();
++        assert!(error.contains("publisher"), "{error}");
++
++        host.publisher = "openagents".to_string();
++        host.trusted_publishers = vec!["~/secrets/token".to_string()];
++        let error = host.validate().unwrap_err();
++        assert!(error.contains("trusted_publishers"), "{error}");
++    }
+ }

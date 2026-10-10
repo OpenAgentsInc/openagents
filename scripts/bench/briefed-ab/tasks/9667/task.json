@@ -1,0 +1,34 @@
+{
+  "test_targets": [
+    "--bins",
+    "--test",
+    "client"
+  ],
+  "issue": 9667,
+  "title": "crates/openrouter: a Rust OpenRouter client for structured output",
+  "body": "Part of the Microcoder plan, #9666.\n\n## Goal\n\nAdd `crates/openrouter`: a small Rust client for OpenRouter's chat completions API, focused on one job \u2014 send a prompt and get back a JSON object that matches a schema the caller gives. It's a reimplementation, in Rust, of the parts of OpenRouter's official TypeScript SDK (https://github.com/OpenRouterTeam/typescript-sdk, Apache-2.0) that this needs. Say so in the commit message.\n\n## In scope\n\n- **Client configuration.** The API key from `OPENROUTER_API_KEY`, or else `api_key` in `~/.openagents/openrouter.json` (the file `scripts/ember.sh` already reads). Base URL `https://openrouter.ai/api/v1`, overridable for tests. The optional attribution headers `HTTP-Referer` and `X-Title`. The key never appears in a `Debug` string, a log line, an error, or a test fixture.\n- **One call: `POST /chat/completions`, not streamed.** Request types for what Microcoder sends: `model`, `messages` (system and user text), `response_format` with `type: \"json_schema\"` and `json_schema: { name, schema, strict }` (the TypeScript SDK's `ChatFormatJsonSchemaConfig` and `ChatJsonSchemaConfig`), `temperature`, `max_tokens`, and an optional reasoning effort.\n- **A typed structured result.** `structured::<T: DeserializeOwned>(request, schema) -> Result<Structured<T>, Error>`, which parses the first choice's message content into `T`, and returns it with the raw text, the model OpenRouter actually used, the finish reason, and usage (prompt, completion, and reasoning tokens, and OpenRouter's reported `cost` in dollars when present).\n- **Typed errors**, following the SDK's error set: bad request, unauthorized, payment required, forbidden, not found, request timeout, payload too large, unprocessable entity, too many requests, server errors, and gateway errors, each with OpenRouter's error message. Plus separate errors for connection failures, timeouts, and a response that isn't valid JSON or doesn't match the schema, with an excerpt of the text.\n- **Retries** on 429 and 5xx, honoring `Retry-After`, with a small bounded count and backoff. No retry on 4xx other than 429.\n- **Tests** against a local fake server: a structured success, a schema mismatch, each error class, a retried 429, and a check that the key never appears in any error or `Debug` output.\n\n## Out of scope\n\nStreaming, the Responses API, tools and function calling, embeddings, images, models and credits listings, keys, OAuth, and every other SDK module. They can be added later if Microcoder needs them.\n\n## Notes\n\n- `crates/microluna/src/openrouter.rs` (commit 6990fe9ee7, issue #9665) already calls OpenRouter's Responses API for Microluna. This crate is separate and simpler; Microluna isn't changed.\n- OpenRouter serves GPT-6 Luna as `openai/gpt-6-luna`.\n",
+  "fix": "ee6968734d6b06da48d3e82a457538e6ce7db905",
+  "parent": "3396479ac1c31831c53f956e1b811a01e9beb18d",
+  "package": null,
+  "source_files": [
+    "crates/openrouter/Cargo.toml",
+    "crates/openrouter/examples/ping.rs"
+  ],
+  "test_files": [
+    "crates/openrouter/src/lib.rs",
+    "crates/openrouter/tests/client.rs"
+  ],
+  "test_names": [
+    "a_bad_request_is_not_retried",
+    "a_fenced_reply_is_unwrapped",
+    "a_provider_error_inside_a_200_is_an_error",
+    "a_rate_limit_is_retried_after_its_wait",
+    "a_reply_that_misses_the_schema_is_a_schema_error",
+    "a_request_serializes_as_openrouter_expects",
+    "a_structured_reply_parses_with_its_usage_and_cost",
+    "an_error_status_keeps_its_class_and_message_and_never_the_key",
+    "statuses_map_to_the_sdk_error_classes",
+    "the_key_never_prints"
+  ],
+  "fix_lines": 999
+}

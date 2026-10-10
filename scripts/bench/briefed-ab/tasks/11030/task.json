@@ -1,0 +1,19 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 11030,
+  "title": "Desktop slide test reads download constants the download page no longer has",
+  "body": "openagents-desktop `slide_embeds::tests::the_download_card_matches_the_page` fails on main: `slide_embeds::download()` parses `MAC_VERSION`, `TERMINAL_VERSION`, `TERMINAL_SH` and `TERMINAL_PS1` from `crates/openagents-web/src/pages/download.rs`, but 0a15818d70 (\"Show only Coder downloads on the download page\") removed those constants. Point the download slide at the page's current content (CODER_VERSION and the Coder files) or drop the Mac/Terminal card, and update the test.",
+  "fix": "93dedf72c8d467a7ec43f8b39e4fd7c3e0f81ec7",
+  "parent": "954f76721b2d476c9bff8907ce65e86c51330fea",
+  "package": "openagents-desktop",
+  "source_files": [
+    "crates/openagents-desktop/src/slide_embeds.rs"
+  ],
+  "test_files": [
+    "crates/openagents-desktop/src/slide_embeds.rs"
+  ],
+  "test_names": [],
+  "fix_lines": 241
+}

@@ -1,0 +1,37 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10297,
+  "title": "Per-repo worktree.setup / worktree.teardown hooks",
+  "body": "P3.1: add worktree.setup / worktree.teardown to .openagents/ repo config, run in the background after create and before the engine starts, with OPENAGENTS_SOURCE_CHECKOUT, OPENAGENTS_WORKTREE, OPENAGENTS_WORKTREE_PORT; outside the source guard but never writing the source checkout; skipped for untrusted sources; spares stay ignored-file-free, setup runs after claim; teardown before removal/archive.\n\nFrom the Paseo worktree gap analysis (docs/worktrees/2026-10-03-paseo-worktree-gap-analysis.md, 61580a0aec).",
+  "fix": "82be23cec192785ea80e4e85a4ed9b595ff958e2",
+  "parent": "97267865ed5ebb0fa0f076fa31151d2608071aa3",
+  "package": "coder",
+  "source_files": [
+    "crates/coder/src/task.rs",
+    "crates/coder/src/task/local.rs",
+    "docs/worktrees/hooks.md"
+  ],
+  "test_files": [
+    "crates/coder/src/task/issue_run_tests.rs",
+    "crates/coder/src/task/publish_tests.rs",
+    "crates/coder/src/task/worktree_hooks.rs",
+    "crates/coder/src/task/worktree_hooks_tests.rs"
+  ],
+  "test_names": [
+    "a_commit_that_adds_hooks_the_branch_lacks_is_not_trusted",
+    "a_commit_that_changes_the_hooks_is_not_trusted",
+    "a_failing_command_stops_setup_and_says_which",
+    "a_file_that_is_not_hooks_is_skipped_not_run",
+    "a_repository_time_limit_ends_a_command_that_runs_on",
+    "a_repository_without_hooks_does_nothing",
+    "a_repository_without_teardown_tears_down_nothing",
+    "only_the_committed_file_runs",
+    "setup_makes_the_worktree_ready_from_the_source_checkout",
+    "setup_never_writes_the_source_checkout",
+    "standard_input_is_closed_so_a_prompt_cannot_wait",
+    "teardown_runs_with_the_worktrees_port_and_a_failure_keeps_it"
+  ],
+  "fix_lines": 814
+}

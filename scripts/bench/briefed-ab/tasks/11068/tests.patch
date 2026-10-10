@@ -1,0 +1,112 @@
+diff --git a/crates/gateway/tests/inference_routes.rs b/crates/gateway/tests/inference_routes.rs
+index 120c4944f79925c17259abcdaf87492a16b12245..48d2829856ff4587355139bfb9104f5ff706278a 100644
+--- a/crates/gateway/tests/inference_routes.rs
++++ b/crates/gateway/tests/inference_routes.rs
+@@ -251,13 +251,36 @@ async fn service_keys_get_both_apis_and_every_attempt_is_metered() {
+     assert_eq!(body["openagents"]["attempts"][0]["outcome"], "fallback");
+     assert_eq!(body["openagents"]["attempts"][1]["outcome"], "ok");
+ 
+-    // Open Responses, streamed: route before output, cost before the end,
+-    // then [DONE].
++    // Open Responses, streamed, without asking for our events: only the
++    // spec's events, numbered from zero with no gaps.
++    let plain = post(
++        &d,
++        "/v1/responses",
++        json!({"model": "openagents/chat", "input": "hi", "stream": true}),
++    )
++    .send()
++    .await
++    .unwrap()
++    .text()
++    .await
++    .unwrap();
++    assert!(!plain.contains("openagents:"), "{plain}");
++    let numbers: Vec<u64> = plain
++        .lines()
++        .filter_map(|line| line.strip_prefix("data: "))
++        .filter_map(|data| serde_json::from_str::<Value>(data).ok())
++        .filter_map(|event| event["sequence_number"].as_u64())
++        .collect();
++    assert_eq!(numbers, (0..numbers.len() as u64).collect::<Vec<_>>());
++
++    // Asking for them: route before output, cost before the end, then
++    // [DONE].
+     let streamed = post(
+         &d,
+         "/v1/responses",
+         json!({"model": "openagents/chat", "input": "hi", "stream": true}),
+     )
++    .header("x-openagents-events", "route,cost")
+     .send()
+     .await
+     .unwrap();
+@@ -301,7 +324,7 @@ async fn service_keys_get_both_apis_and_every_attempt_is_metered() {
+     assert!(text.contains("\"content\":\"hello\""), "{text}");
+     assert!(text.trim_end().ends_with("data: [DONE]"), "{text}");
+ 
+-    // Four requests, two attempts each, all in the meter.
++    // Five requests, two attempts each, all in the meter.
+     let status: Value = reqwest::Client::new()
+         .get(format!("{}/v1/admin/inference/status", d.address))
+         .bearer_auth("admin-secret")
+@@ -311,7 +334,7 @@ async fn service_keys_get_both_apis_and_every_attempt_is_metered() {
+         .json()
+         .await
+         .unwrap();
+-    assert_eq!(status["records"]["kept"], 8, "{status}");
++    assert_eq!(status["records"]["kept"], 10, "{status}");
+     let up_account = status["accounts"]
+         .as_array()
+         .unwrap()
+diff --git a/crates/inference/src/response.rs b/crates/inference/src/response.rs
+index 46a9392d38592d8b1d16d7300251c29270330dc5..6f332fe481522bee24a9cd81216545403b1f6a5e 100644
+--- a/crates/inference/src/response.rs
++++ b/crates/inference/src/response.rs
+@@ -323,3 +323,46 @@ impl Response {
+         Ok(())
+     }
+ }
++
++/// A response's tools as the spec's `ResponseResource` requires them: a
++/// function tool always carries `description`, `parameters`, and `strict`
++/// (`null` when the request left them out). A request's tools are sent
++/// upstream as the caller wrote them; only the response fills the gaps.
++fn tools_out<S: serde::Serializer>(tools: &[Tool], serializer: S) -> Result<S::Ok, S::Error> {
++    use serde::ser::{Error, SerializeSeq};
++    let mut seq = serializer.serialize_seq(Some(tools.len()))?;
++    for tool in tools {
++        let mut value = serde_json::to_value(tool).map_err(S::Error::custom)?;
++        if let (Tool::Function(_), Some(fields)) = (tool, value.as_object_mut()) {
++            for key in ["description", "parameters", "strict"] {
++                fields.entry(key).or_insert(Value::Null);
++            }
++        }
++        seq.serialize_element(&value)?;
++    }
++    seq.end()
++}
++
++#[cfg(test)]
++mod tools_tests {
++    use super::*;
++
++    #[test]
++    fn a_responses_function_tools_carry_every_required_field() {
++        let request: CreateResponse = serde_json::from_value(serde_json::json!({
++            "model": "m",
++            "tools": [{"type": "function", "name": "get_weather"}]
++        }))
++        .unwrap();
++        let response = Response::from_request("resp_1", 1, "m", &request);
++        let value = serde_json::to_value(&response).unwrap();
++        let tool = &value["tools"][0];
++        assert_eq!(tool["type"], "function");
++        for key in ["description", "parameters", "strict"] {
++            assert!(tool.get(key).is_some_and(Value::is_null), "{key}: {tool}");
++        }
++        // The request itself still goes upstream as written.
++        let sent = serde_json::to_value(&request).unwrap();
++        assert!(sent["tools"][0].get("strict").is_none());
++    }
++}

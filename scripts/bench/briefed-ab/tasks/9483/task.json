@@ -1,0 +1,45 @@
+{
+  "test_targets": [
+    "--test",
+    "common",
+    "--test",
+    "relay_worker",
+    "--test",
+    "serve",
+    "--lib"
+  ],
+  "issue": 9483,
+  "title": "decision-api: schedule bounded inference batches and separate capacity lanes",
+  "body": "<!-- openagents-project-triage:start -->\n## Project triage\n\nProject: [Decision Router](https://github.com/orgs/OpenAgentsInc/projects/15) \u00b7 Workstream: Classification and scale \u00b7 Priority: P2 \u00b7 Readiness: Ready.\n\nParent tracker: #9481.\n\nOpen prerequisites: none.\n\nLanded prerequisites retained as native dependency links: #9474, #9467, #9468.\n\nUse the landed receipt schema from #9471. Optional #9459/#9460 model optimizations are not prerequisites for bounded scheduling or the measured serial/packed comparison.\n\n<!-- openagents-project-triage:end -->\n\n---\n\nDeliver measured throughput for many independent states without conflating a bulk HTTP payload with efficient model execution.\n\nSpecification: [batch execution and durable jobs](https://github.com/OpenAgentsInc/openagents/blob/main/docs/decision-models/decision-api.md#batch-execution-and-durable-jobs). Product tracker: #9481. This is planned work; the specification does not establish availability.\n\n## Acceptance\n\n- [ ] Separate model/checkpoint selection, interactive or bulk capacity, and review policy. A capacity choice cannot silently replace an artifact or change the question semantics.\n- [ ] Implement context-aware packing and bounded backend concurrency, preserving item/question isolation, stable reconstruction, and tenant boundaries. Publish which adapters support actual batched execution.\n- [ ] Bound queue size, token/option/question work, memory estimates, per-tenant concurrency, deadlines, and dedicated allocations; schedule fairly under mixed workloads.\n- [ ] Split work only at declared item/question boundaries. Reject atomic work that cannot fit; never silently shorten state, labels, or instructions.\n- [ ] Handle cold starts, saturation, cancellation, backend death, and partial execution with typed outcomes and Retry-After where applicable; retain attempted and unknown work for settlement.\n- [ ] Measure completed decisions per second, end-to-end and per-item latency, queue time, cold/warm behavior, utilization, cost, and incomplete coverage on pinned workloads. Compare serial and packed execution without claiming amortized time as request latency.\n- [ ] Test tenant isolation, reordered backend responses, cancellation races, pressure limits, and no answer interference using bounded fixtures.\n\n## Dependencies and boundaries\n\nDepends on #9468 admission, #9467 accounting, #9474 bindings, and #9471 receipts. Performance optimization follows measurements; existing #9459/#9460 remain conditional.\n",
+  "fix": "d2d49ecc5a85520760bb67fc767fe723cf7b435f",
+  "parent": "624480405c60eb74abf7a5635ed02d58bc67de60",
+  "package": "gateway",
+  "source_files": [
+    "crates/gateway/src/config.rs",
+    "crates/gateway/src/serve.rs",
+    "docs/decision-models/fixtures/classify-v1/responses/binary-refusal.json",
+    "docs/decision-models/fixtures/classify-v1/responses/fallback.json",
+    "docs/decision-models/fixtures/classify-v1/responses/mixed.json",
+    "docs/decision-models/fixtures/classify-v1/responses/multi-label.json",
+    "docs/decision-models/fixtures/classify-v1/responses/refusal.json",
+    "docs/decision-models/fixtures/classify-v1/responses/review-corrected.json",
+    "docs/decision-models/fixtures/classify-v1/responses/review-invalid.json",
+    "docs/decision-models/fixtures/classify-v1/responses/score.json",
+    "docs/decision-models/fixtures/classify-v1/responses/single-label.json",
+    "docs/decision-models/fixtures/classify-v1/responses/unavailable.json",
+    "docs/decision-models/service/batch-execution.md"
+  ],
+  "test_files": [
+    "crates/gateway/tests/common/mod.rs",
+    "crates/gateway/tests/relay_worker.rs",
+    "crates/gateway/tests/serve.rs",
+    "crates/kev/src/serve.rs"
+  ],
+  "test_names": [
+    "classify_bounds_each_tenants_in_flight_forwards",
+    "classify_publishes_and_verifies_declared_adapter_batching",
+    "classify_records_each_items_queue_time_and_the_calls",
+    "classify_uses_its_own_deadline_not_the_forward_timeouts"
+  ],
+  "fix_lines": 787
+}

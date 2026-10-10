@@ -1,0 +1,41 @@
+{
+  "test_targets": [
+    "--bins"
+  ],
+  "issue": 9347,
+  "title": "[Lev 2] crates/lev: contract types and the schema compiler",
+  "body": "Part of #9345.\n\nBuild `crates/lev` and the parts that need no hardware.\n\n## What to build\n\n- `SystemOneRequest`: `state` as string, object, or array; `model`; the questions map. `Noul`, `Choice`, and `Score` matching the TypeSafe criteria shapes and bounds.\n- One renderer that flattens structured values into labelled text, shared by every later path so training and serving never see different text.\n- The schema compiler: each question type to a runtime generation schema whose enum is exactly the admitted option set, per the mapping table in `docs/lev/architecture.md`.\n- Answer types wire-compatible with `crates/jev`'s `answers.rs`.\n- The typed refusal set, including `uncalibrated`, mapped from the runtime's error codes.\n\nReimplemented here. No dependency on a sibling repository.\n\n## Acceptance\n\n- `cargo test -p lev` compiles every question in a fixture corpus to a schema, and rejects out-of-bound requests with typed refusals.\n- Option text containing schema-shaped content cannot change the admitted set, proved on adversarial fixtures.\n- No network and no hardware in the test path.\n",
+  "fix": "fbfbc9fa7cb05bfb2b9fa34c8328695e1a658c7f",
+  "parent": "eb8e4894fe8d7a00ed259102f31850a318bef59c",
+  "package": null,
+  "source_files": [
+    "crates/lev/Cargo.toml",
+    "crates/lev/src/error.rs",
+    "crates/lev/src/lib.rs"
+  ],
+  "test_files": [
+    "crates/lev/src/api.rs",
+    "crates/lev/src/render.rs",
+    "crates/lev/src/schema.rs"
+  ],
+  "test_names": [
+    "a_blank_or_padded_option_name_is_refused",
+    "a_choice_admits_exactly_its_option_keys",
+    "a_choice_over_the_bound_is_refused_by_code",
+    "a_hostile_state_stays_inside_the_data_block",
+    "a_noul_admits_no_and_yes_in_that_order",
+    "a_one_option_choice_is_not_a_choice",
+    "a_question_serializes_with_its_type_tag",
+    "a_score_admits_level_indices_and_keeps_its_legend",
+    "a_string_renders_as_itself",
+    "an_answer_carries_the_tag_jev_reads",
+    "an_empty_question_map_is_refused",
+    "an_object_renders_as_labelled_lines",
+    "every_question_reads_the_same_state",
+    "field_order_survives",
+    "nesting_indents_and_nulls_drop_out",
+    "option_text_cannot_add_an_option",
+    "score_levels_are_bounded_at_both_ends"
+  ],
+  "fix_lines": 886
+}

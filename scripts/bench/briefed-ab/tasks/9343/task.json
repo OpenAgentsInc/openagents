@@ -1,0 +1,30 @@
+{
+  "test_targets": [
+    "--test",
+    "encode",
+    "--test",
+    "serve"
+  ],
+  "issue": 9343,
+  "title": "[Kev 6] kev-serve: /v1/systemone + /v1/models + refusals",
+  "body": "Part of #9337.\n\n## What to pull over\n\nThe serving surface, TypeSafe-contract compatible like `kev/serve.py`:\n\n- `POST /v1/systemone`: body `{state, model, questions}` \u2192 `{model, answers, usage, latency_ms}` \u2014 answers shaped exactly like `crates/jev` decodes them.\n- `GET /v1/models`: model id, base, artifact digests, `question_types`, `max_options`, context bounds.\n- Typed refusals: `model_unknown`, `unsupported_question_type`, `too_many_options`, `branch_too_long`, `invalid_request` (422-class).\n- `kev-serve` binary in `crates/kev` (axum), `--run <artifact-dir> --port` flags.\n\n## Acceptance\n\n- `cargo run -p kev --bin kev-serve -- --run <dir>` serves answers through the mesh-compatible contract on this machine.\n- A `crates/jev` client with `base_url` pointed at it round-trips noul/choice/score unmodified.\n- Refusal cases return typed errors, not 500s.\n\nGenerated with [Devin](https://devin.ai)",
+  "fix": "eb8e4894fe8d7a00ed259102f31850a318bef59c",
+  "parent": "2d8f237291694abbd7d1d0a8aa2a6ee9a6cac2ea",
+  "package": "kev",
+  "source_files": [
+    "crates/kev/Cargo.toml",
+    "crates/kev/src/bin/kev_serve.rs",
+    "crates/kev/src/lib.rs",
+    "crates/kev/src/serve.rs"
+  ],
+  "test_files": [
+    "crates/kev/tests/encode.rs",
+    "crates/kev/tests/serve.rs"
+  ],
+  "test_names": [
+    "jev_client_round_trips_all_types",
+    "models_lists_kev",
+    "refusals_are_typed"
+  ],
+  "fix_lines": 615
+}

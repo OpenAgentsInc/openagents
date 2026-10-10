@@ -1,0 +1,36 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 9784,
+  "title": "Physics GP-7: raycast, contact force, IMU, and debug overlay",
+  "body": "Port sensors and debug drawing (`sensors/contact_force_go2.py`, `sensors/imu_franka.py`, `sensors/lidar_teleop.py`, `tutorials/draw_debug.py`). Roadmap: `docs/physics/2026-09-27-genesis-port-roadmap.md`.\n\n**Scope**\n- `physics`: raycast against colliders with a filter; per-body contact force from last-step impulses; an IMU (specific force and body angular rate); debug primitives for contacts, normals, joint anchors, and thrust vectors.\n- Lagrange: the HUD shows impact force, g-load, spin rate, and proximity. The Verse renderer can toggle a debug overlay.\n\n**Accept**\n- Sensor values match analytic cases (a thruster burn, a head-on collision, a ray against each shape).\n- The overlay costs nothing when off.\n",
+  "fix": "8e2a99608f2d712ea6cc73973efcc9c00398517a",
+  "parent": "eb9c42383c9088b8ef5ad308f87f145469bb58e5",
+  "package": "physics",
+  "source_files": [
+    "crates/physics/src/contact.rs",
+    "crates/physics/src/lib.rs",
+    "crates/physics/src/sensors.rs",
+    "crates/verse-lagrange/src/station.rs",
+    "crates/verse/src/zones/lagrange.rs",
+    "crates/verse/src/zones/runtime.rs",
+    "docs/verse/lagrange-1.md",
+    "docs/verse/zones.md"
+  ],
+  "test_files": [
+    "crates/physics/src/tests.rs",
+    "crates/verse-lagrange/src/tests.rs",
+    "crates/verse/src/zones/mod.rs",
+    "crates/verse/src/zones/tests.rs"
+  ],
+  "test_names": [
+    "contact_force_reads_weight_and_impacts",
+    "debug_lines_show_contacts_and_joints",
+    "grabbing_closes_on_the_part_surface_facing_the_hands",
+    "raycasts_hit_each_shape_where_geometry_says",
+    "the_hud_reads_impact_g_load_spin_and_proximity",
+    "the_imu_reads_thrust_free_fall_and_spin"
+  ],
+  "fix_lines": 769
+}

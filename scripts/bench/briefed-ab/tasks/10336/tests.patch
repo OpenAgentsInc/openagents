@@ -1,0 +1,317 @@
+diff --git a/crates/coder/src/task/adapter/installs.rs b/crates/coder/src/task/adapter/installs.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..fe08833bba671d66380f38a7ce1bbe24f4650bd7
+--- /dev/null
++++ b/crates/coder/src/task/adapter/installs.rs
+@@ -0,0 +1,218 @@
++//! Where software an agent installs during a full-access run lands
++//! (#10336): a private prefix owned by that run, not the person's own
++//! Python, npm, Cargo, Ruby or Go setup. Nothing is blocked; the usual
++//! commands (`pip install --user`, `npm install -g`, `cargo install`,
++//! `gem install`, `go install`) just install into this prefix, which is
++//! on the run's `PATH` and removed when the run ends.
++
++use std::ffi::OsString;
++use std::path::{Path, PathBuf};
++
++/// The directories under the prefix whose executables go on `PATH`.
++const BINS: [&str; 5] = ["py/bin", "npm/bin", "cargo/bin", "gem/bin", "go/bin"];
++
++/// One run's install prefix; removed when dropped.
++#[derive(Debug)]
++pub(super) struct Prefix(PathBuf);
++
++impl Prefix {
++    /// A new, private prefix in the system's temporary folder.
++    pub(super) fn create() -> std::io::Result<Self> {
++        let base = std::env::temp_dir();
++        let stamp = std::time::SystemTime::now()
++            .duration_since(std::time::UNIX_EPOCH)
++            .map(|elapsed| elapsed.as_nanos())
++            .unwrap_or_default();
++        let mut attempt = 0u32;
++        let root = loop {
++            let candidate = base.join(format!(
++                "coder-installs-{}-{stamp}-{attempt}",
++                std::process::id()
++            ));
++            match create_private_dir(&candidate) {
++                Ok(()) => break candidate,
++                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists && attempt < 64 => {
++                    attempt += 1;
++                }
++                Err(error) => return Err(error),
++            }
++        };
++        let prefix = Self(root);
++        for dir in BINS {
++            std::fs::create_dir_all(prefix.0.join(dir))?;
++        }
++        Ok(prefix)
++    }
++
++    pub(super) fn path(&self) -> &Path {
++        &self.0
++    }
++
++    /// Points the run's install destinations at this prefix and puts its
++    /// executables first on `PATH`. Search paths the person set (their
++    /// `PATH`, Python and Ruby library paths, module caches) are kept, so
++    /// their own tools still resolve.
++    pub(super) fn apply(&self, variables: &mut Vec<(OsString, OsString)>) {
++        let root = &self.0;
++        let old_path = variables
++            .iter()
++            .find(|(key, _)| key == "PATH")
++            .map(|(_, value)| value.clone())
++            .or_else(|| std::env::var_os("PATH"));
++        let path = std::env::join_paths(
++            BINS.iter()
++                .map(|dir| root.join(dir))
++                .chain(old_path.iter().flat_map(std::env::split_paths)),
++        )
++        .unwrap_or_else(|_| old_path.clone().unwrap_or_default());
++        let set: [(&str, OsString); 6] = [
++            ("PATH", path),
++            // `pip install --user` installs under here, and Python adds
++            // this user site to `sys.path` on its own.
++            ("PYTHONUSERBASE", root.join("py").into_os_string()),
++            // Global npm installs (`npm install -g`); local ones still go
++            // to the project's `node_modules`.
++            ("npm_config_prefix", root.join("npm").into_os_string()),
++            ("CARGO_INSTALL_ROOT", root.join("cargo").into_os_string()),
++            ("GEM_HOME", root.join("gem").into_os_string()),
++            ("GOBIN", root.join("go/bin").into_os_string()),
++        ];
++        // npm reads either spelling; the upper-case one would win back.
++        variables.retain(|(key, _)| {
++            key != "NPM_CONFIG_PREFIX" && !set.iter().any(|(name, _)| key == name)
++        });
++        variables.extend(set.into_iter().map(|(name, value)| (name.into(), value)));
++    }
++}
++
++impl Drop for Prefix {
++    fn drop(&mut self) {
++        let _ = std::fs::remove_dir_all(&self.0);
++    }
++}
++
++fn create_private_dir(path: &Path) -> std::io::Result<()> {
++    #[cfg(unix)]
++    {
++        use std::os::unix::fs::DirBuilderExt;
++        std::fs::DirBuilder::new().mode(0o700).create(path)
++    }
++    #[cfg(not(unix))]
++    {
++        std::fs::create_dir(path)
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn value<'a>(env: &'a [(OsString, OsString)], name: &str) -> &'a OsString {
++        &env.iter().find(|(key, _)| key == name).unwrap().1
++    }
++
++    #[test]
++    fn destinations_are_the_runs_and_the_persons_paths_are_kept() {
++        let prefix = Prefix::create().unwrap();
++        let root = prefix.path().to_path_buf();
++        let mut env: Vec<(OsString, OsString)> = vec![
++            ("HOME".into(), "/fixture/home".into()),
++            ("PATH".into(), "/fixture/bin".into()),
++            ("PYTHONPATH".into(), "/fixture/python".into()),
++            ("NPM_CONFIG_PREFIX".into(), "/fixture/npm".into()),
++            ("GEM_HOME".into(), "/fixture/gems".into()),
++        ];
++        prefix.apply(&mut env);
++        assert_eq!(value(&env, "HOME"), "/fixture/home");
++        assert_eq!(value(&env, "PYTHONPATH"), "/fixture/python");
++        for name in [
++            "PYTHONUSERBASE",
++            "npm_config_prefix",
++            "CARGO_INSTALL_ROOT",
++            "GEM_HOME",
++            "GOBIN",
++        ] {
++            assert!(Path::new(value(&env, name)).starts_with(&root), "{name}");
++            assert_eq!(env.iter().filter(|(key, _)| key == name).count(), 1);
++        }
++        assert!(!env.iter().any(|(key, _)| key == "NPM_CONFIG_PREFIX"));
++        let path: Vec<PathBuf> = std::env::split_paths(value(&env, "PATH")).collect();
++        assert_eq!(path[0], root.join("py/bin"));
++        assert_eq!(path.last().unwrap(), Path::new("/fixture/bin"));
++        let other = Prefix::create().unwrap();
++        assert_ne!(root, other.path());
++        drop(prefix);
++        assert!(!root.exists(), "the prefix goes with its run");
++    }
++
++    /// `pip install --user` in a run lands in the run's prefix, stays
++    /// importable and runnable there, and leaves the person's own user
++    /// site untouched. Skipped where there is no Python with pip.
++    #[cfg(unix)]
++    #[test]
++    fn a_user_pip_install_stays_in_the_run_and_still_imports() {
++        let home = tempfile::tempdir().unwrap();
++        let prefix = Prefix::create().unwrap();
++        let mut env: Vec<(OsString, OsString)> = vec![
++            ("HOME".into(), home.path().as_os_str().to_owned()),
++            ("PATH".into(), std::env::var_os("PATH").unwrap_or_default()),
++            ("PIP_CONFIG_FILE".into(), "/dev/null".into()),
++            ("PIP_DISABLE_PIP_VERSION_CHECK".into(), "1".into()),
++            ("PYTHONDONTWRITEBYTECODE".into(), "1".into()),
++        ];
++        prefix.apply(&mut env);
++        let probe = std::process::Command::new("python3")
++            .env_clear()
++            .envs(env.iter().cloned())
++            .args(["-m", "pip", "--version"])
++            .output();
++        if !probe.is_ok_and(|output| output.status.success()) {
++            eprintln!("skipped: no python3 with pip here");
++            return;
++        }
++        let script = r#"
++import os, pathlib, subprocess, sys, zipfile
++wheel = pathlib.Path('oa_install_fixture-1.0-py3-none-any.whl')
++files = {
++    'oa_install_fixture.py': 'def main(): print("run-local-ok")\n',
++    'oa_install_fixture-1.0.dist-info/METADATA': 'Metadata-Version: 2.1\nName: oa-install-fixture\nVersion: 1.0\n',
++    'oa_install_fixture-1.0.dist-info/WHEEL': 'Wheel-Version: 1.0\nGenerator: fixture\nRoot-Is-Purelib: true\nTag: py3-none-any\n',
++    'oa_install_fixture-1.0.dist-info/entry_points.txt': '[console_scripts]\noa-install-fixture = oa_install_fixture:main\n',
++}
++files['oa_install_fixture-1.0.dist-info/RECORD'] = ''.join(n + ',,\n' for n in files) + 'oa_install_fixture-1.0.dist-info/RECORD,,\n'
++with zipfile.ZipFile(wheel, 'w') as archive:
++    for name, body in files.items(): archive.writestr(name, body)
++r = subprocess.run([sys.executable, '-m', 'pip', 'install', '--user', '--no-index', '--no-deps', str(wheel)], capture_output=True, text=True)
++if r.returncode != 0 and 'externally-managed' not in r.stderr and 'EXTERNALLY-MANAGED' not in r.stderr:
++    sys.exit(r.stderr)
++if r.returncode != 0:
++    subprocess.run([sys.executable, '-m', 'pip', 'install', '--user', '--break-system-packages', '--no-index', '--no-deps', str(wheel)], check=True)
++subprocess.run([sys.executable, '-c', 'import oa_install_fixture; oa_install_fixture.main()'], check=True)
++subprocess.run(['oa-install-fixture'], check=True)
++userbase = pathlib.Path(os.environ['PYTHONUSERBASE'])
++assert any(userbase.rglob('oa_install_fixture.py')), 'installed into the run prefix'
++home = pathlib.Path(os.environ['HOME'])
++assert not any(home.rglob('oa_install_fixture.py')), 'nothing installed under the home folder'
++assert not (home / '.local' / 'lib').exists() and not (home / 'Library' / 'Python').exists(), 'the user site was not touched'
++"#;
++        let output = std::process::Command::new("python3")
++            .env_clear()
++            .envs(env)
++            .current_dir(home.path())
++            .args(["-c", script])
++            .output()
++            .unwrap();
++        assert!(
++            output.status.success(),
++            "{}\n{}",
++            String::from_utf8_lossy(&output.stdout),
++            String::from_utf8_lossy(&output.stderr)
++        );
++        assert_eq!(
++            String::from_utf8_lossy(&output.stdout)
++                .matches("run-local-ok")
++                .count(),
++            2
++        );
++    }
++}
+diff --git a/crates/openagents-chat/src/coder_events.rs b/crates/openagents-chat/src/coder_events.rs
+index 2ea797e8e5c529b7419b625db206a1131becc62f..9a26c4817d87b8c8d592765d550748512e8d456c 100644
+--- a/crates/openagents-chat/src/coder_events.rs
++++ b/crates/openagents-chat/src/coder_events.rs
+@@ -2412,21 +2459,45 @@ mod tests {
+     }
+ 
+     #[test]
+-    fn installs_for_the_whole_computer_are_named() {
+-        assert!(installs_outside("python3 -m pip install --user pytest"));
+-        assert!(!installs_outside("pip install requests"));
+-        assert!(installs_outside("sudo pip3 install requests"));
+-        assert!(installs_outside("npm install -g typescript"));
+-        assert!(installs_outside("cd x && cargo install ripgrep"));
+-        assert!(!installs_outside(".venv/bin/pip install pytest"));
+-        assert!(!installs_outside("npm install"));
+-        assert!(!installs_outside("python3 -m pytest -q"));
++    fn installs_are_named_with_where_they_landed() {
++        assert_eq!(
++            install_reach("python3 -m pip install --user pytest"),
++            Some(InstallReach::Run)
++        );
++        assert_eq!(install_reach("pip install requests"), None);
++        assert_eq!(
++            install_reach("sudo pip3 install requests"),
++            Some(InstallReach::Computer)
++        );
++        assert_eq!(
++            install_reach("pip install --break-system-packages x"),
++            Some(InstallReach::Computer)
++        );
++        assert_eq!(
++            install_reach("npm install -g typescript"),
++            Some(InstallReach::Run)
++        );
++        assert_eq!(
++            install_reach("cd x && cargo install ripgrep"),
++            Some(InstallReach::Run)
++        );
++        assert_eq!(
++            install_reach("brew install jq"),
++            Some(InstallReach::Computer)
++        );
++        assert_eq!(
++            install_reach("apt-get install -y jq"),
++            Some(InstallReach::Computer)
++        );
++        assert_eq!(install_reach(".venv/bin/pip install pytest"), None);
++        assert_eq!(install_reach("npm install"), None);
++        assert_eq!(install_reach("python3 -m pytest -q"), None);
+         let mut mapper = Mapper::new(1, None);
+         mapper.step(&step(
+             1,
+             "system",
+             "generated",
+-            mc(json!({"event": "generated", "generated": {"action": {"Ok": {"rationale": "", "reply": "Fixed calc.py.", "commands": ["python3 -m pip install --user pytest"]}}}})),
++            mc(json!({"event": "generated", "generated": {"action": {"Ok": {"rationale": "", "reply": "Fixed calc.py.", "commands": ["python3 -m pip install --user pytest\nbrew install jq"]}}}})),
+         ));
+         let end = mapper.end("model_finished", vec![], "/w", "/t", None);
+         let CoderEvent::Result(finished) = &end else {
+@@ -2434,7 +2505,31 @@ mod tests {
+         };
+         assert_eq!(
+             finished.summary,
+-            "Fixed calc.py.\n\nOutside its worktree, this turn installed software on this computer: `python3 -m pip install --user pytest`."
++            "Fixed calc.py.\n\nOutside its worktree, this turn installed software on this computer: `brew install jq`. This turn installed software just for this run, gone when it ends: `python3 -m pip install --user pytest`."
++        );
++    }
++
++    /// An engine session's own shell calls are read too, not only the
++    /// Microcoder loop's commands (#10336).
++    #[test]
++    fn an_engines_shell_call_that_installs_is_named() {
++        let mut mapper = Mapper::new(1, None);
++        mapper.step(&json!({
++            "step_id": 2, "source": "agent", "message": "",
++            "tool_calls": [{"tool_call_id": "c1", "function_name": "Bash",
++                "arguments": {"command": "npm install -g typescript"}}],
++        }));
++        mapper.step(&json!({"step_id": 3, "source": "agent", "message": "Done."}));
++        let end = mapper.end("model_finished", vec![], "/w", "/t", None);
++        let CoderEvent::Result(finished) = &end else {
++            panic!("{end:?}")
++        };
++        assert!(
++            finished
++                .summary
++                .contains("just for this run, gone when it ends: `npm install -g typescript`"),
++            "{}",
++            finished.summary
+         );
+     }
+ 

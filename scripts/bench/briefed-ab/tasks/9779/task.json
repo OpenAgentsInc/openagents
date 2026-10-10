@@ -1,0 +1,34 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 9779,
+  "title": "Physics GP-2: force at a point and thruster allocation",
+  "body": "Port force-at-a-point wrenches (`rigid/apply_external_wrench.py`) and cascaded control with a thruster mixer (`drone/quadcopter_controller.py`, `drone/interactive_drone.py`). Roadmap: `docs/physics/2026-09-27-genesis-port-roadmap.md`.\n\n**Scope**\n- `Body::apply_force_at`, `apply_torque`: world-frame accumulators applied and cleared each step.\n- `physics::thrusters`: a thruster set (body-frame position, direction, max force) with a bounded allocator from desired body force + torque to throttles in [0, 1]; `Pid`.\n- Lagrange: the pack becomes named thrusters on the astronaut body, heading becomes an attitude target held by the thrusters, propellant is spent from the actual thrust, and plumes come from the firing thrusters.\n\n**Accept**\n- A single off-center thruster gives the analytic linear and angular acceleration.\n- A pure-force request produces no net torque.\n- Attitude holds through a translation.\n- Propellant matches impulse / exhaust velocity.\n- The GP-1 ledger balances with the exhaust term.\n",
+  "fix": "e098cd73633af0b87f45c209a5853c70650c752c",
+  "parent": "2003a31acf6198fddc6234d580a46e63e7f02713",
+  "package": "physics",
+  "source_files": [
+    "crates/physics/src/body.rs",
+    "crates/physics/src/ledger.rs",
+    "crates/physics/src/lib.rs",
+    "crates/physics/src/world.rs",
+    "crates/verse-lagrange/src/station.rs",
+    "crates/verse/src/zones/lagrange.rs",
+    "docs/verse/lagrange-1.md"
+  ],
+  "test_files": [
+    "crates/physics/src/thrusters.rs",
+    "crates/verse-lagrange/src/tests.rs",
+    "crates/verse/src/zones/tests.rs"
+  ],
+  "test_names": [
+    "an_infeasible_request_saturates_toward_it",
+    "attitude_holds_through_a_translation_and_turns_on_command",
+    "one_off_center_thruster_pushes_and_turns",
+    "pid_terms_add",
+    "plumes_come_from_the_firing_thrusters",
+    "pure_force_and_pure_torque_requests_are_met"
+  ],
+  "fix_lines": 652
+}

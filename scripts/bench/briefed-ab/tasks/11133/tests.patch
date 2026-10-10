@@ -1,0 +1,21 @@
+diff --git a/crates/openagents-web/src/tests.rs b/crates/openagents-web/src/tests.rs
+index 91a76dbb675df06a976503a137cba28060d957ba..ab000249bd6ab3181d382763e1b5edac9e537d89 100644
+--- a/crates/openagents-web/src/tests.rs
++++ b/crates/openagents-web/src/tests.rs
+@@ -79,7 +79,7 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
+ /// of `UiPage`, so the shell's checks (one `ui.css` link, the wordmark, no
+ /// script) don't apply. Its own test below holds it to the same policy
+ /// rules: no inline script or style, scripts from this site only.
+-const PAGES: [&str; 56] = [
++const PAGES: [&str; 57] = [
+     "/",
+     "/live",
+     "/promises",
+@@ -123,6 +123,7 @@ const PAGES: [&str; 56] = [
+     "/docs/decks",
+     "/docs/settings",
+     "/docs/troubleshooting",
++    "/docs/self-host",
+     "/docs/faq",
+     "/docs/glossary",
+     "/docs/api",

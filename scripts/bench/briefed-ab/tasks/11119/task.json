@@ -1,0 +1,17 @@
+{
+  "test_targets": [],
+  "issue": 11119,
+  "title": "Coder: make background build/test waits report progress",
+  "body": "Provide guidance and a reusable log-wait helper that streams background build/test logs and reports periodic status instead of silent polling. Verify completion, failures, and bounded waits.",
+  "fix": "91140d098b869114cecbd94a1cef277ca73783b8",
+  "parent": "29fa00319821dc99e799392f7d2a10082a94f80e",
+  "package": "coder-new",
+  "source_files": [
+    "crates/coder-new/src/plugin_tools.rs",
+    "scripts/test-wait-job-logs.py",
+    "scripts/wait-job-logs.py"
+  ],
+  "test_files": [],
+  "test_names": [],
+  "fix_lines": 97
+}

@@ -1,0 +1,833 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index 61235207dadcd184aad8f0ba0e3aa6545541ac1f..ab815ed2bacaaa2a28220cb5c3392a49cb3f163d 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -396,7 +396,9 @@ uses, and marks which are implemented and which are only specified.
+   policy there rather than in what the model is told. `delegate_door`
+   answers a turn through Microcoder's loop in process, on the first
+   connected provider with capacity in the capacity book (the Codex login,
+-  then Claude Code's login, then Vertex when configured), failing over mid-turn when one refuses for a
++  then Claude Code's login, then, always last, Vertex through the
++  OpenAgents cloud, which needs no token on the host; read
++  `docs/coder/runtime/cloud-fallback.md`), failing over mid-turn when one refuses for a
+   usage or rate limit; else through `coder-delegate`'s probes, Jev's judgments, a
+   briefing, and Claude Code or Codex when one is installed, signed in, and
+   has capacity, with the Open Responses door as the fallback. The permit
+diff --git a/INVARIANTS.md b/INVARIANTS.md
+index a2b745ac96e906c8c2020c2fc282012d56577cca..d72ee28ef02bef13add8d0072696b313bf3f5d37 100644
+--- a/INVARIANTS.md
++++ b/INVARIANTS.md
+@@ -72,6 +72,19 @@ are in `docs/deployment/chat-worker.md`.
+ | The phone shows only the chat worker's answer to its own request: an event signed by the worker's key, tagged to the request and to this device, that decrypts; a partial shows only in sequence, a gap stops the preview until the result, and nothing changes a reply after its result or refusal. | New on 2026-09-28. | `partials_stream_in_order_and_the_result_replaces_them`, `answers_from_anyone_else_or_for_another_job_are_set_aside`, `a_refusal_carries_its_code_and_wait` in `crates/openagents-mobile` |
+ | Chatting needs no computer. Coder runs on a computer only after the person taps **Run Coder** in a conversation, on a computer this device may operate, as a NIP-HOST task whose prompt is the conversation so far; with no computer the tap opens Account > Computers. The app offers the computer from the conversation's controls, never from reading the message text. | New on 2026-09-28. | `a_first_chat_needs_no_computer_and_streams_its_reply`, `run_coder_starts_a_task_with_the_conversation`, `the_chat_tab_needs_no_computer` in `crates/openagents-mobile` |
+ 
++## Coder cloud fallback
++
++The owner decided on 2026-09-28 that Coder's Vertex provider goes through
++the OpenAgents cloud and is the no-setup fallback
++([#9919](https://github.com/OpenAgentsInc/openagents/issues/9919)). The
++path, limits, and refusals are in `docs/coder/runtime/cloud-fallback.md`.
++
++| Invariant | Status | Checked by |
++| --- | --- | --- |
++| No provider token is on a user's machine for the cloud fallback. Coder's `vertex` provider is connected from `CODER_CLOUD` alone (only `off` turns it off) and generates only as NIP-CJ conversation jobs signed by the host's own Nostr key and encrypted to the OpenAgents cloud worker, which holds the model credential. Coder reads no Vertex token file and no Google credential. | New on 2026-09-28; replaces the host Vertex token of #9891. | `the_cloud_fallback_needs_nothing_on_the_host` in `crates/microcoder-loop`; `the_default_worker_is_a_public_key_and_the_door_needs_no_token` in `crates/coder` |
++| The cloud is always the last provider in Microcoder's lineup, so a host with no provider configured still answers a turn through it, and a host with a provider that has capacity never spends the cloud's quota: a signed-in Claude Code or Codex CLI is chosen over Microcoder on the cloud, and an own door key takes the cloud off the lineup. | New on 2026-09-28. | `the_cloud_is_always_the_last_provider_and_needs_no_configuration`, `the_cloud_answers_only_when_nothing_on_the_host_can`, `a_fresh_host_completes_a_turn_through_the_cloud_fallback` in `crates/coder` |
++| The cloud worker's `rate_limited`, `busy`, and `quota_exhausted` are capacity refusals held until the worker's `retry_after_ms` (else one minute, one minute, and the next UTC midnight), so the loop fails over and the no-capacity sentence names the reset; any other refusal is the step's plain error and holds nothing. | New on 2026-09-28. | `the_cloud_worker_codes_are_capacity_refusals_with_their_waits` in `crates/microcoder-loop`; `a_quota_refusal_is_a_typed_capacity_refusal_with_its_wait`, `a_rate_limit_holds_a_minute_and_a_too_large_step_is_only_an_error`, `a_cloud_refusal_mid_turn_is_recorded_and_the_next_provider_finishes` in `crates/coder` |
++
+ ## Chat history over the tailnet
+ 
+ | Invariant | Status | Checked by |
+diff --git a/crates/coder/src/checkup.rs b/crates/coder/src/checkup.rs
+index ffeb9c9879cd9ab5f45a17540df912edbd941f0e..3d19820ea9c19722f79cea77591e5ea2c63a2def 100644
+--- a/crates/coder/src/checkup.rs
++++ b/crates/coder/src/checkup.rs
+@@ -102,8 +102,10 @@ fn report() -> (Vec<String>, bool) {
+             };
+             let login = match state.provider {
+                 coder::task::capacity::Provider::Codex => format!(" · {}", codex_state()),
++                coder::task::capacity::Provider::Vertex => {
++                    format!(" · {}", coder::cloud::describe())
++                }
+                 coder::task::capacity::Provider::Claude
+-                | coder::task::capacity::Provider::Vertex
+                 | coder::task::capacity::Provider::Devin
+                 | coder::task::capacity::Provider::OpenCode => String::new(),
+             };
+@@ -113,22 +115,6 @@ fn report() -> (Vec<String>, bool) {
+                 state.model
+             ));
+         }
+-        if !target.agent.is_cli()
+-            && !target
+-                .providers
+-                .iter()
+-                .any(|state| state.provider == coder::task::capacity::Provider::Vertex)
+-        {
+-            lines.push(format!(
+-                "    {:<10} not configured: set {} or write an access token to {}",
+-                coder::task::capacity::Provider::Vertex.as_str(),
+-                microcoder_loop::vertex::MODEL_VAR,
+-                microcoder_loop::vertex::token_path().map_or_else(
+-                    || "~/.openagents/vertex-token".to_string(),
+-                    |path| path.display().to_string()
+-                ),
+-            ));
+-        }
+     }
+ 
+     let policy = coder_delegate::terminal::policy();
+diff --git a/crates/coder/src/delegate_door.rs b/crates/coder/src/delegate_door.rs
+index 59b2b6b654f6a694446fafdc42e33d65e09e6dd2..efe8ce21970ae8cba0da0c97dda463ea1e9a3abd 100644
+--- a/crates/coder/src/delegate_door.rs
++++ b/crates/coder/src/delegate_door.rs
+@@ -351,6 +351,10 @@ pub fn capacity_dir() -> Option<PathBuf> {
+ /// Microcoder, then Claude Code, then Codex CLI. `model` names
+ /// Microcoder's Codex model; `book` is the capacity book's directory,
+ /// and `probe` says whether a provider has a usable login.
++///
++/// The OpenAgents cloud is the fallback when nothing else is set up, so an
++/// own door key (`CODER_DOOR_KEY` or `CODER_AI_GATEWAY_KEY`) takes it off
++/// Microcoder's providers: the operator's own door answers instead.
+ pub fn targets(
+     env: impl Fn(&str) -> Option<String>,
+     model: Option<&str>,
+@@ -359,14 +363,17 @@ pub fn targets(
+     now: u64,
+ ) -> Vec<Target> {
+     let recorded = capacity::Book::load(book);
+-    let vertex = microcoder::vertex_model(
+-        env(microcoder_loop::vertex::MODEL_VAR),
+-        microcoder::vertex_token_exists(),
+-    );
++    let own_door = OWN_DOOR_VARS.into_iter().find(|name| env(name).is_some());
++    let probe = |provider: Provider| match (provider, own_door) {
++        (Provider::Vertex, Some(name)) => Connection::Missing(format!(
++            "{name} names this host's own door, which answers in the cloud's place"
++        )),
++        _ => probe(provider),
++    };
+     let mut found = vec![Target::microcoder(microcoder::providers(
+-        &microcoder::lineup(model, vertex.as_deref()),
++        &microcoder::lineup(model),
+         book,
+-        probe,
++        &probe,
+         now,
+     ))];
+     found.extend(
+@@ -471,7 +478,19 @@ pub fn choose(
+         .iter()
+         .filter(|target| preferred.is_none_or(|agent| target.agent == agent))
+         .collect();
+-    if let Some(target) = considered.iter().find(|target| target.available()) {
++    // The cloud is the last resort: a CLI that can answer is preferred to
++    // Microcoder when the cloud is all Microcoder has.
++    let on_the_cloud = |target: &Target| {
++        target.agent == Agent::Microcoder
++            && target
++                .provider()
++                .is_some_and(|state| state.provider == Provider::Vertex)
++    };
++    let found = considered
++        .iter()
++        .find(|target| target.available() && !on_the_cloud(target))
++        .or_else(|| considered.iter().find(|target| target.available()));
++    if let Some(target) = found {
+         let named = match preferred {
+             Some(_) => format!(" and {AGENT_VAR} names it"),
+             None => String::new(),
+@@ -629,6 +648,9 @@ fn explicit_door(env: &impl Fn(&str) -> Option<String>) -> Option<String> {
+     }
+ }
+ 
++/// The variables that name this host's own Open Responses door key.
++const OWN_DOOR_VARS: [&str; 2] = ["CODER_DOOR_KEY", "CODER_AI_GATEWAY_KEY"];
++
+ /// The Jev client Coder One's judge asks through, and where its key came
+ /// from. `None` when this machine has no TypeSafe key.
+ pub fn jev_from(env: &impl Fn(&str) -> Option<String>) -> (Option<jev::Client>, String) {
+@@ -667,6 +689,9 @@ pub struct DelegateDoor {
+     session: Mutex<Option<String>>,
+     /// Scripted Microcoder replies per provider, for a test.
+     script: Option<Vec<(Provider, microcoder::Script)>>,
++    /// The door Microcoder's cloud lane talks to in place of the
++    /// OpenAgents relay, for a test.
++    cloud: Option<std::sync::Arc<Door>>,
+     /// Whether a turn that asks to work a GitHub issue runs the issue flow:
+     /// the operator's permit runs commands.
+     issues: bool,
+@@ -762,6 +787,7 @@ impl DelegateDoor {
+             jev_source,
+             session: Mutex::new(None),
+             script: None,
++            cloud: None,
+             issues: crate::permit::Permit::operator().executes(),
+             book: capacity_dir().unwrap_or_else(std::env::temp_dir),
+             now: microcoder::now,
+@@ -818,6 +844,14 @@ impl DelegateDoor {
+         self
+     }
+ 
++    /// The same door, with Microcoder's cloud lane answering through
++    /// `door` in place of the OpenAgents relay. For tests.
++    #[must_use]
++    pub fn cloud_through(mut self, door: Door) -> Self {
++        self.cloud = Some(std::sync::Arc::new(door));
++        self
++    }
++
+     /// The target this door runs.
+     #[must_use]
+     pub fn target(&self) -> &Target {
+@@ -1013,6 +1047,7 @@ impl DelegateDoor {
+             book: self.book.clone(),
+             providers,
+             script: self.script.clone(),
++            cloud: self.cloud.clone(),
+             max_seconds: deadline().as_secs(),
+             max_steps: microcoder::MAX_STEPS,
+             max_usd: microcoder::MAX_USD,
+diff --git a/crates/coder/src/delegate_door/microcoder.rs b/crates/coder/src/delegate_door/microcoder.rs
+index 85e9135ef2f124da6bdf14de7d4aa26b060e5470..28ad7a9da36c4ea9095c7bee78a4f913eab0e2fb 100644
+--- a/crates/coder/src/delegate_door/microcoder.rs
++++ b/crates/coder/src/delegate_door/microcoder.rs
+@@ -10,8 +10,9 @@
+ //!
+ //! [`providers`] lists the providers in preference order, Codex (GPT-6 Luna
+ //! on the operator's Codex login), then Claude (through the `claude`
+-//! binary), then Vertex (Vertex AI's OpenAI-compatible endpoint with the
+-//! operator's access token file) when it is configured, each with whether it has a usable login and whether the
++//! binary), then, last and always, Vertex through the OpenAgents cloud
++//! ([`crate::cloud`]), the no-setup fallback that needs no login or token
++//! on this host, each with whether it has a usable login and whether the
+ //! capacity book (`capacity.json` in the task store, the book the
+ //! auto-start policy reads) holds a refusal for it. The turn starts on the
+ //! first connected provider with capacity. When a provider refuses for a
+@@ -44,9 +45,7 @@ use std::rc::Rc;
+ 
+ use atif::{Source, Step};
+ use microcoder_loop::capacity::{self, Connection, Kind, Provider, Refusal};
+-use microcoder_loop::failover::{
+-    self, Admitted, ClaudeLane, Failover, Journal, Lane, Refusing, VertexLane,
+-};
++use microcoder_loop::failover::{self, Admitted, ClaudeLane, Failover, Journal, Lane, Refusing};
+ use microcoder_loop::models::{
+     Basis, CodexGenerator, Generate, Generated, JevJudge, Judge, Judgment, NextAction, QuestionSet,
+ };
+@@ -69,25 +68,10 @@ pub const CODEX_MODEL: &str = microcoder_loop::MODEL;
+ /// The Claude model a turn generates with: Claude Code's `opus` alias.
+ pub const CLAUDE_MODEL: &str = microcoder_loop::claude::DEFAULT_ALIAS;
+ 
+-/// The Vertex model a turn generates with unless `CODER_VERTEX_MODEL`
+-/// names one.
+-pub const VERTEX_MODEL: &str = microcoder_loop::vertex::DEFAULT_MODEL;
+-
+-/// The Vertex model Microcoder asks for, when Vertex is configured on this
+-/// host: `named` (from `CODER_VERTEX_MODEL`), else [`VERTEX_MODEL`] when
+-/// the Vertex token file exists. `None` leaves Vertex out of the providers.
+-#[must_use]
+-pub fn vertex_model(named: Option<String>, token_exists: bool) -> Option<String> {
+-    named
+-        .filter(|model| !model.trim().is_empty())
+-        .or_else(|| token_exists.then(|| VERTEX_MODEL.to_string()))
+-}
+-
+-/// Whether the Vertex token file exists here, without reading it.
+-#[must_use]
+-pub fn vertex_token_exists() -> bool {
+-    microcoder_loop::vertex::token_path().is_some_and(|path| path.is_file())
+-}
++/// The model the lineup names for the cloud fallback. The host can't
++/// choose it: the OpenAgents cloud worker answers on its own lane and names
++/// the model in each result.
++pub const CLOUD_MODEL: &str = crate::cloud::MODEL;
+ 
+ /// The reasoning effort a Codex step asks for, as `microcoder` defaults.
+ pub const CODEX_EFFORT: &str = "medium";
+@@ -131,7 +115,7 @@ impl ProviderState {
+         match self.provider {
+             Provider::Codex => "the Codex login",
+             Provider::Claude => "the Claude Code login",
+-            Provider::Vertex => "Vertex",
++            Provider::Vertex => "the OpenAgents cloud",
+             Provider::Devin => "the Devin CLI login",
+             Provider::OpenCode => "OpenCode",
+         }
+@@ -173,19 +157,17 @@ pub fn blocked(refusal: &Refusal) -> String {
+ }
+ 
+ /// The providers a turn may use and the model each is asked for, in
+-/// preference order: Codex, then Claude, then Vertex when `vertex` names
+-/// its model ([`vertex_model`]). `model` names the Codex model when the
+-/// operator named one.
++/// preference order: Codex, then Claude, then Vertex through the
++/// OpenAgents cloud. The cloud is always there and always last: it is the
++/// fallback when nothing on this host is configured or has capacity.
++/// `model` names the Codex model when the operator named one.
+ #[must_use]
+-pub fn lineup(model: Option<&str>, vertex: Option<&str>) -> Vec<(Provider, String)> {
+-    [
+-        Some((Provider::Codex, model.unwrap_or(CODEX_MODEL).to_string())),
+-        Some((Provider::Claude, CLAUDE_MODEL.to_string())),
+-        vertex.map(|model| (Provider::Vertex, model.to_string())),
++pub fn lineup(model: Option<&str>) -> Vec<(Provider, String)> {
++    vec![
++        (Provider::Codex, model.unwrap_or(CODEX_MODEL).to_string()),
++        (Provider::Claude, CLAUDE_MODEL.to_string()),
++        (Provider::Vertex, CLOUD_MODEL.to_string()),
+     ]
+-    .into_iter()
+-    .flatten()
+-    .collect()
+ }
+ 
+ /// Where each of `lineup`'s providers stands, in its order. `probe` says
+@@ -307,7 +289,7 @@ impl Lane for ScriptedLane {
+ enum Provided {
+     Codex(Box<CodexGenerator<Refusing<codex_transport::codex::CodexTransport>>>),
+     Claude(ClaudeLane),
+-    Vertex(VertexLane),
++    Vertex(crate::cloud::CloudLane),
+     Scripted(ScriptedLane),
+ }
+ 
+@@ -334,8 +316,13 @@ impl Lane for Provided {
+ }
+ 
+ /// The generator for one connected provider, or why it can't be built.
+-/// Building one makes no model call.
+-fn provided(state: &ProviderState, session: &str) -> Result<Provided, String> {
++/// Building one makes no model call. `cloud` is the door the cloud lane
++/// uses in place of the OpenAgents relay, for a test.
++fn provided(
++    state: &ProviderState,
++    session: &str,
++    cloud: Option<&std::sync::Arc<crate::generate::Door>>,
++) -> Result<Provided, String> {
+     match state.provider {
+         Provider::Codex => {
+             let login =
+@@ -351,8 +338,15 @@ fn provided(state: &ProviderState, session: &str) -> Result<Provided, String> {
+         }
+         Provider::Claude => microcoder_loop::claude::ClaudeGenerator::from_env(&state.model, None)
+             .map(|generator| Provided::Claude(ClaudeLane::new(generator))),
+-        Provider::Vertex => microcoder_loop::vertex::VertexGenerator::from_env(&state.model, None)
+-            .map(|generator| Provided::Vertex(VertexLane::new(generator))),
++        Provider::Vertex => {
++            let door = match cloud {
++                Some(door) => std::sync::Arc::clone(door),
++                None => std::sync::Arc::new(crate::generate::Door::Relay(Box::new(
++                    crate::cloud::door(&super::env_value)?,
++                ))),
++            };
++            Ok(Provided::Vertex(crate::cloud::CloudLane::new(door)))
++        }
+         // Devin is a whole coding agent; the loop's steps don't generate
+         // through it, and the lineup never names it.
+         Provider::Devin => Err("the loop does not generate through Devin".into()),
+@@ -503,6 +497,9 @@ pub struct Turn {
+     pub providers: Vec<ProviderState>,
+     /// Scripted replies per provider in place of real calls, for a test.
+     pub script: Option<Vec<(Provider, Script)>>,
++    /// The door the cloud lane talks to in place of the OpenAgents relay,
++    /// for a test.
++    pub cloud: Option<std::sync::Arc<crate::generate::Door>>,
+     /// The loop's wall-clock bound, in seconds.
+     pub max_seconds: u64,
+     /// The loop's step bound.
+@@ -554,7 +551,7 @@ pub async fn answer(turn: Turn, on: Rc<dyn Fn(Update)>) -> Delegated {
+                     .unwrap_or_default(),
+                 refusal: RefCell::new(None),
+             })),
+-            None => provided(state, &session),
++            None => provided(state, &session, turn.cloud.as_ref()),
+         };
+         match built {
+             Ok(lane) => lanes.push((route, lane)),
+diff --git a/crates/coder/src/generate.rs b/crates/coder/src/generate.rs
+index 97a83abfef319b2e7415b9e8e0678abced205ab2..8e6494d09460a218d38683b31ae0516523c0ed34 100644
+--- a/crates/coder/src/generate.rs
++++ b/crates/coder/src/generate.rs
+@@ -239,6 +239,10 @@ pub enum Meta {
+     /// can, and this is how it says so: the door emits the name as the
+     /// result lands and the trace puts it on that step.
+     Model(String),
++    /// The wait, in milliseconds, a worker's typed refusal names before a
++    /// job would be admitted (the NIP-CJ error status's `retry_after_ms`).
++    /// A door emits it just before it returns [`GenerateError::Refused`].
++    RetryAfter(u64),
+ }
+ 
+ /// What generation can fail with.
+diff --git a/crates/coder/src/lib.rs b/crates/coder/src/lib.rs
+index 68b0520bcf27393655afefd4e6b293bd39008665..2b02b7319c003407b9d5aaa5f03260fe438730fa 100644
+--- a/crates/coder/src/lib.rs
++++ b/crates/coder/src/lib.rs
+@@ -50,6 +50,7 @@ pub mod agent;
+ pub mod capability;
+ pub mod child;
+ pub mod classify;
++pub mod cloud;
+ pub mod decision;
+ pub mod delegate;
+ pub mod delegate_door;
+diff --git a/crates/coder/src/relay.rs b/crates/coder/src/relay.rs
+index 99b6c67a7d1077e4a24f70d72a23b65b5e1f1242..da13f811ca63a6136b1e9b4a6cfd061b350e729e 100644
+--- a/crates/coder/src/relay.rs
++++ b/crates/coder/src/relay.rs
+@@ -980,6 +980,9 @@ impl RelayDoor {
+                                 // transport failing.
+                                 let code = feedback["code"].as_str().unwrap_or("internal");
+                                 let message = feedback["message"].as_str().unwrap_or(code);
++                                if let Some(wait) = feedback["retry_after_ms"].as_u64() {
++                                    meta(Meta::RetryAfter(wait));
++                                }
+                                 return Err(GenerateError::Refused {
+                                     code: code.to_string(),
+                                     message: message.to_string(),
+diff --git a/crates/microcoder-loop/src/capacity.rs b/crates/microcoder-loop/src/capacity.rs
+index fd7eef6d455c07a332b873058a762fbe19d578ed..b3d24665326e8499445e060b2087f876233dbbae 100644
+--- a/crates/microcoder-loop/src/capacity.rs
++++ b/crates/microcoder-loop/src/capacity.rs
+@@ -35,9 +35,9 @@ pub const SCHEMA: &str = "openagents.coder.provider-capacity.v1";
+ /// How long a Codex or Claude refusal with no reported reset holds, in
+ /// seconds.
+ pub const UNKNOWN_RESET_HOLD: u64 = 30 * 60;
+-/// How long a Vertex refusal with no reported reset holds, in seconds.
+-/// Vertex's throttling is per minute and its shared quota frees within
+-/// minutes, so a half-hour hold would pass it over for no reason.
++/// How long a cloud (Vertex) refusal with no reported reset holds, in
++/// seconds. The cloud's throttling is per minute, so a half-hour hold
++/// would pass it over for no reason.
+ pub const VERTEX_UNKNOWN_RESET_HOLD: u64 = 5 * 60;
+ /// The latest reset the book accepts: 31 days after the refusal. A later
+ /// reported time is held to this bound.
+@@ -46,6 +46,22 @@ pub const MAX_HOLD: u64 = 31 * 24 * 60 * 60;
+ /// had capacity. The task owner keeps it as the run's `ending`.
+ pub const NO_CAPACITY_ENDING: &str = "no_capacity";
+ 
++/// Where the cloud fallback ([`Provider::Vertex`]) sends a step: the
++/// OpenAgents relay, where the OpenAgents cloud worker answers NIP-CJ
++/// conversation jobs. The model credential stays on the worker.
++pub const CLOUD_ENDPOINT: &str = "wss://relay.openagents.com";
++
++/// The variable that turns the cloud fallback off on a host: `off`. Any
++/// other value, or none, leaves it on.
++pub const CLOUD_VAR: &str = "CODER_CLOUD";
++
++/// The worker's day: a caller's daily quota resets at UTC midnight.
++const DAY: u64 = 86_400;
++
++/// How long a cloud rate limit or busy worker with no reported wait holds:
++/// the worker's per-key window is one minute.
++pub const CLOUD_UNKNOWN_RETRY: u64 = 60;
++
+ /// The endpoint a grant names for a Devin route: the local `devin acp`
+ /// process, which reaches Devin's service with its own login. It is not a
+ /// URL, and no request goes to it from Microcoder.
+@@ -64,8 +80,11 @@ pub enum Provider {
+     Codex,
+     /// The operator's Claude Code login, through the `claude` binary.
+     Claude,
+-    /// Vertex AI's OpenAI-compatible endpoint, with the operator's access
+-    /// token file ([`crate::vertex`]).
++    /// Vertex through the OpenAgents cloud: Coder's no-setup fallback.
++    /// The host sends each step to the OpenAgents cloud worker over
++    /// [`CLOUD_ENDPOINT`], signed by the host's own Nostr key; the worker
++    /// holds the model credential and meters each caller key server-side.
++    /// Nothing on the host configures it and no Google credential is read.
+     Vertex,
+     /// The local Devin CLI over ACP (`devin acp`), with its own login. It
+     /// is a whole coding agent, not a model a loop step generates through:
+@@ -125,7 +144,7 @@ impl Provider {
+         match self {
+             Provider::Codex => codex_transport::codex::BASE_URL,
+             Provider::Claude => "https://api.anthropic.com",
+-            Provider::Vertex => crate::vertex::BASE_URL,
++            Provider::Vertex => CLOUD_ENDPOINT,
+             Provider::Devin => DEVIN_ENDPOINT,
+             Provider::OpenCode => OPENCODE_ENDPOINT,
+         }
+@@ -160,6 +179,32 @@ pub enum Kind {
+     RateLimit,
+ }
+ 
++/// The OpenAgents cloud worker's capacity codes: the closed set of NIP-CJ
++/// refusal codes that mean "not now" rather than "not this request".
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum CloudCode {
++    /// The caller key sent too many jobs in the last minute.
++    RateLimited,
++    /// The caller key, or every caller together, used the day's jobs.
++    QuotaExhausted,
++    /// Every one of the worker's job slots is taken.
++    Busy,
++}
++
++impl CloudCode {
++    /// The capacity code `code` names exactly, or `None` for any other
++    /// code, such as `limit_exceeded` (a request too large to take).
++    #[must_use]
++    pub fn parse(code: &str) -> Option<CloudCode> {
++        match code {
++            "rate_limited" => Some(CloudCode::RateLimited),
++            "quota_exhausted" => Some(CloudCode::QuotaExhausted),
++            "busy" => Some(CloudCode::Busy),
++            _ => None,
++        }
++    }
++}
++
+ /// One provider's refusal, as the book keeps it.
+ #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+ #[serde(deny_unknown_fields)]
+@@ -362,6 +407,30 @@ impl Refusal {
+         ))
+     }
+ 
++    /// The refusal the OpenAgents cloud worker's typed NIP-CJ code carries
++    /// ([`CloudCode`]), for [`Provider::Vertex`]: `rate_limited` and `busy`
++    /// are rate limits, `quota_exhausted` is a usage limit. The reset is
++    /// the worker's `retry_after_ms`, else [`CLOUD_UNKNOWN_RETRY`] for a
++    /// rate limit, else the next UTC midnight, when the worker's daily
++    /// quota resets. Any other code is not a capacity refusal: the caller
++    /// reports it as the step's error.
++    #[must_use]
++    pub fn cloud(code: &str, retry_after_ms: Option<u64>, now: u64) -> Option<Refusal> {
++        let code = CloudCode::parse(code)?;
++        let told = retry_after_ms.map(|ms| now.saturating_add(ms.div_ceil(1_000).max(1)));
++        let (kind, resets_at) = match code {
++            CloudCode::RateLimited | CloudCode::Busy => (
++                Kind::RateLimit,
++                told.unwrap_or(now.saturating_add(CLOUD_UNKNOWN_RETRY)),
++            ),
++            CloudCode::QuotaExhausted => (
++                Kind::UsageLimit,
++                told.unwrap_or((now / DAY + 1).saturating_mul(DAY)),
++            ),
++        };
++        Some(Refusal::new(Provider::Vertex, kind, now, Some(resets_at)))
++    }
++
+     /// Whether the refusal still holds at `now`.
+     #[must_use]
+     pub fn holds(&self, now: u64) -> bool {
+@@ -588,9 +657,10 @@ impl Connection {
+ ///   is OpenCode's to find; `acp_client::opencode::login` names a stored or
+ ///   configured one by name without reading it.
+ ///
+-/// - **Vertex**: the access token file (`VERTEX_TOKEN_FILE`, else
+-///   `~/.openagents/vertex-token`) is present and not empty. Its content is
+-///   read only to check that, never logged.
++/// - **Vertex** (through the OpenAgents cloud): always connected, since it
++///   needs nothing on this host but the host's own Nostr key, unless
++///   `CODER_CLOUD=off` turns it off. No token file or Google credential is
++///   read: the credential stays on the cloud worker.
+ ///
+ /// A connected provider can still refuse: the login may have been revoked.
+ /// That refusal then ends the generation as any other error does.
+@@ -607,16 +677,7 @@ pub fn probe(provider: Provider) -> Connection {
+                 Err(error) => Connection::Missing(error.to_string()),
+             }
+         }
+-        Provider::Vertex => match crate::vertex::token_path() {
+-            None => Connection::Missing("HOME is not set".into()),
+-            Some(path) => match crate::vertex::read_token(&path) {
+-                Ok(_) => Connection::Connected,
+-                Err(_) => Connection::Missing(format!(
+-                    "no Vertex access token in {}; write one there with `gcloud auth print-access-token`",
+-                    path.display()
+-                )),
+-            },
+-        },
++        Provider::Vertex => cloud_connection(std::env::var(CLOUD_VAR).ok().as_deref()),
+         Provider::OpenCode => {
+             let variable = |name: &str| std::env::var_os(name);
+             if acp_client::opencode::binary(&variable).is_none() {
+@@ -659,6 +720,16 @@ pub fn probe(provider: Provider) -> Connection {
+     }
+ }
+ 
++/// Whether the cloud fallback is on, from `CODER_CLOUD`'s value: only the
++/// exact value `off` turns it off. It reads no file and no credential.
++#[must_use]
++pub fn cloud_connection(setting: Option<&str>) -> Connection {
++    match setting.map(str::trim) {
++        Some("off") => Connection::Missing(format!("{CLOUD_VAR}=off turns the cloud fallback off")),
++        _ => Connection::Connected,
++    }
++}
++
+ fn claude_binary(home: Option<&Path>) -> Option<PathBuf> {
+     if let Some(named) = std::env::var_os("CLAUDE_BIN").filter(|v| !v.is_empty()) {
+         return Some(PathBuf::from(named)).filter(|path| path.is_file());
+diff --git a/crates/microcoder-loop/src/failover.rs b/crates/microcoder-loop/src/failover.rs
+index bfa6542605067b263937e23baba76ade7bf0ae93..9b5ce7fc61d90d4bf91e50e1dcd1b379996782cd 100644
+--- a/crates/microcoder-loop/src/failover.rs
++++ b/crates/microcoder-loop/src/failover.rs
+@@ -110,37 +110,6 @@ impl Lane for ClaudeLane {
+     }
+ }
+ 
+-/// Generation on Vertex that keeps the quota or rate-limit refusal (HTTP
+-/// 429 `RESOURCE_EXHAUSTED`) its last call met.
+-pub struct VertexLane {
+-    pub inner: crate::vertex::VertexGenerator,
+-    refusal: RefCell<Option<Refusal>>,
+-}
+-
+-impl VertexLane {
+-    #[must_use]
+-    pub fn new(inner: crate::vertex::VertexGenerator) -> Self {
+-        VertexLane {
+-            inner,
+-            refusal: RefCell::new(None),
+-        }
+-    }
+-}
+-
+-impl Generate for VertexLane {
+-    async fn generate(&self, system: &str, prompt: &str) -> Generated {
+-        let (generated, refusal) = self.inner.attempt(system, prompt).await;
+-        *self.refusal.borrow_mut() = refusal;
+-        generated
+-    }
+-}
+-
+-impl Lane for VertexLane {
+-    fn refusal(&self) -> Option<Refusal> {
+-        self.refusal.borrow_mut().take()
+-    }
+-}
+-
+ /// A generator with no capacity signal, such as an in-process fixture.
+ pub struct Plain<'a, G>(pub &'a G);
+ 
+diff --git a/crates/microcoder-loop/src/vertex.rs b/crates/microcoder-loop/src/vertex.rs
+index c193e5d3d7eeb5402d547d1e26e41b2da3af33e9..bb23685537ab9b65b66ed22e0e8bf2490aaceab6 100644
+--- a/crates/microcoder-loop/src/vertex.rs
++++ b/crates/microcoder-loop/src/vertex.rs
+@@ -1,5 +1,11 @@
+ //! Generation through Vertex AI's OpenAI-compatible endpoint, for the open
+-//! models Google serves as managed APIs (`--provider vertex`).
++//! models Google serves as managed APIs: the `microcoder --provider vertex`
++//! research runs of an operator who holds a Vertex token.
++//!
++//! Coder never generates through this module and never reads its token:
++//! Coder's Vertex provider is the OpenAgents cloud fallback
++//! ([`crate::capacity::Provider::Vertex`]), which holds the credential on
++//! the cloud worker. INVARIANTS.md records that line.
+ //!
+ //! The endpoint speaks chat completions, so the request is
+ //! [`openrouter::Client::structured`]'s: the action comes back as JSON under
+@@ -33,14 +39,6 @@ pub const URL_VAR: &str = "VERTEX_BASE_URL";
+ /// The variable that names the token file.
+ pub const TOKEN_VAR: &str = "VERTEX_TOKEN_FILE";
+ 
+-/// The model Coder's delegate door asks Vertex for unless `MODEL_VAR`
+-/// names another: Qwen3-Coder, the Vertex model that gave usable replies
+-/// in the round 2 loop study (`docs/terminal-bench/2026-09-26-round2-loop.md`).
+-pub const DEFAULT_MODEL: &str = "qwen/qwen3-coder-480b-a35b-instruct-maas";
+-
+-/// The variable that names the Vertex model Coder's delegate door uses.
+-pub const MODEL_VAR: &str = "CODER_VERTEX_MODEL";
+-
+ /// The token file: `VERTEX_TOKEN_FILE`, else `~/.openagents/vertex-token`.
+ #[must_use]
+ pub fn token_path() -> Option<PathBuf> {
+diff --git a/docs/coder/runtime/README.md b/docs/coder/runtime/README.md
+index 387f23905654ab05793e6caefdfe680a095df39d..30447b5f91fc0e771a31cef88f2bb48f6d5e8b84 100644
+--- a/docs/coder/runtime/README.md
++++ b/docs/coder/runtime/README.md
+@@ -10,6 +10,7 @@ and unfinished suite acceptance, use the [migration tracker](../migration-status
+ | --- | --- |
+ | [delegate](delegate.md) | Delegation |
+ | [delegate-door](delegate-door.md) | Shared turn delegation, Microluna and CLI executor choices, and explicit fallback policy |
++| [Cloud fallback](cloud-fallback.md) | The OpenAgents cloud as the no-setup last provider: its path, limits, and typed refusals |
+ | [repository-evidence](repository-evidence.md) | Repository source references |
+ | [shell-loop](shell-loop.md) | The shell loop |
+ | [subprocesses](subprocesses.md) | Subprocess supervision |
+diff --git a/docs/coder/runtime/cloud-fallback.md b/docs/coder/runtime/cloud-fallback.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..ee3731ca08ff3a6f2b7b79ccdc0ba63d77018dbb
+--- /dev/null
++++ b/docs/coder/runtime/cloud-fallback.md
+@@ -0,0 +1,110 @@
++# Cloud fallback
++
++A computer with nothing set up for Coder still answers. When no Codex login,
++no Claude Code sign-in, or none with capacity is on the host, Microcoder's
++loop generates each step through the OpenAgents cloud. Nobody supplies a
++model key or a Vertex token for it, on any machine.
++
++In the capacity book and `coder doctor` the cloud is the provider `vertex`,
++because the cloud worker's model is served from Vertex. The host never talks
++to Vertex or reads a Google credential.
++
++## Where it sits
++
++The [delegate door](delegate-door.md) lists Microcoder's providers in
++preference order: the Codex login, then Claude Code's login, then the cloud.
++The cloud is always on the list and always last, so a turn uses it only when
++every provider before it is missing or out of capacity. A fresh host, with
++no provider CLI installed or signed in, answers its first turn through it.
++
++Two more rules keep it a fallback:
++
++- When the cloud is all Microcoder has, an installed and signed-in Claude
++  Code or Codex CLI answers the turn instead.
++- An own door key (`CODER_DOOR_KEY` or `CODER_AI_GATEWAY_KEY`) takes the
++  cloud off the list: the operator's own Open Responses door answers.
++
++`CODER_CLOUD=off` takes it off a host. Any other value, or none, leaves it
++on. `coder doctor` lists it as
++`vertex openagents-cloud · connected, has capacity · the OpenAgents cloud
++(worker 32c078952ff8… on wss://relay.openagents.com), signed by this host's
++key; no token`.
++
++Repository runs (`coder host autostart --route`) don't generate through the
++cloud: it answers terminal and phone turns only.
++
++## The path
++
++The cloud is the same serving path as the OpenAgents app's basic chat
++([chat worker](../../deployment/chat-worker.md)):
++
++```text
++host (its Nostr key) --NIP-CJ 25900, NIP-44--> relay.openagents.com --> chat worker --> AI gateway
++host <--27000 partials, 26900 result---------- relay.openagents.com <-- chat worker
++```
++
++- Each loop step is one NIP-CJ conversation job. The request carries the
++  step's prompt as the user turn and the loop's instructions, plus a line
++  asking for exactly one JSON action matching the action schema, since a
++  conversation job has no response format. The reply is read as the step's
++  action.
++- The job is signed by the host's own Nostr key, `~/.openagents/nostr-secret`,
++  which Coder creates on first use. That key is the caller identity the
++  worker meters.
++- The worker's public key is compiled in (`coder::cloud::WORKER`, the same
++  key the app carries). `CODER_CLOUD_WORKER` (npub or hex) and
++  `CODER_CLOUD_RELAY` name another worker and relay, for a staging worker.
++- The worker holds the model credential. The host pays nothing: each step's
++  cost is recorded as $0.00, billed.
++
++## Limits
++
++The worker's limits apply to each host key, per job. A loop step is one job.
++
++| Limit | Deployed value |
++| --- | --- |
++| Jobs per key in any 60 seconds | 6 |
++| Jobs per key per UTC day | 40 |
++| Jobs for every caller together per UTC day | 3,000 |
++| Request size | 96 KiB |
++| Jobs at once on the worker | 8 |
++
++## Refusals
++
++The worker's refusals are typed NIP-CJ codes. Three mean "not now" and
++become capacity refusals in the book, so the loop fails over to the next
++provider with capacity and the next turn skips the cloud until the reset:
++
++| Code | Kind in the book | Holds until |
++| --- | --- | --- |
++| `rate_limited` | rate limit | the worker's `retry_after_ms`, else one minute |
++| `busy` | rate limit | the worker's `retry_after_ms`, else one minute |
++| `quota_exhausted` | usage limit | the worker's `retry_after_ms`, else the next UTC midnight |
++
++Since the cloud is last, a quota refusal usually leaves no provider, and the
++turn ends with the no-capacity sentence, for example "the OpenAgents cloud
++is out of its usage limit until 2026-09-29 00:00 UTC".
++
++Any other code is not a capacity refusal and is the step's error in plain
++words: `limit_exceeded` says the step was too large to send, and
++`not_admitted` or `internal` is reported with the worker's message. A relay
++failure or a worker that doesn't answer is also a plain error.
++
++## Checked by
++
++- `the_cloud_fallback_needs_nothing_on_the_host`,
++  `the_cloud_worker_codes_are_capacity_refusals_with_their_waits` in
++  `crates/microcoder-loop`
++- `a_fresh_host_completes_a_turn_through_the_cloud_fallback`,
++  `the_cloud_is_always_the_last_provider_and_needs_no_configuration`,
++  `the_cloud_answers_only_when_nothing_on_the_host_can`,
++  `a_cloud_refusal_mid_turn_is_recorded_and_the_next_provider_finishes`,
++  and the `cloud` module's tests in `crates/coder`
++
++`INVARIANTS.md` (Coder cloud fallback) records the invariants.
++
++## Research runs
++
++`microcoder --provider vertex`, the research CLI, still reads an operator's
++own Vertex token (`VERTEX_TOKEN_FILE` or `~/.openagents/vertex-token`) for
++model studies. Coder never uses that path.
+diff --git a/docs/coder/runtime/delegate-door.md b/docs/coder/runtime/delegate-door.md
+index 9cec4210e441a14a14c69b96e6242ac8842100e5..4f45fb092c942c91586970501398cc458dc02593 100644
+--- a/docs/coder/runtime/delegate-door.md
++++ b/docs/coder/runtime/delegate-door.md
+@@ -50,14 +50,17 @@ The door lists Microcoder's providers in preference order:
+ | --- | --- | --- |
+ | Codex | `gpt-6-luna`, or `CODER_DELEGATE_MODEL` | `~/.codex/auth.json` (or `$CODEX_HOME/auth.json`) is a ChatGPT sign-in whose access token has more than ten minutes left |
+ | Claude | Claude Code's `opus` alias | a `claude` binary (`CLAUDE_BIN`, `PATH`, or `~/.local/bin`) and a Claude Code sign-in |
+-| Vertex | `qwen/qwen3-coder-480b-a35b-instruct-maas`, or `CODER_VERTEX_MODEL` | Vertex AI's OpenAI-compatible endpoint (`VERTEX_BASE_URL` overrides it) with an access token in `VERTEX_TOKEN_FILE` or `~/.openagents/vertex-token` |
+-
+-Vertex joins the list only when it is configured: `CODER_VERTEX_MODEL` is
+-set, or the token file exists. The token is an OAuth access token that
+-expires after about an hour, so the operator keeps the file fresh, for
+-example with `gcloud auth print-access-token > ~/.openagents/vertex-token`.
+-`coder doctor` lists Vertex either way, and says what configures it when
+-it isn't.
++| Vertex, through the OpenAgents cloud | whatever the cloud worker answers on (`openagents-cloud` until it names one) | always, unless `CODER_CLOUD=off`: it needs nothing on this host |
++
++The cloud is always on the list and always last: it is the fallback when
++nothing on the host is configured or has capacity, including a fresh host
++with no provider CLI signed in. Each step is a NIP-CJ conversation job to
++the OpenAgents cloud worker, signed by the host's own Nostr key, and the
++worker holds the model credential and every quota. No token is configured
++or read on the host. When the cloud is all Microcoder has, a signed-in
++Claude Code or Codex CLI answers instead, and an own door key
++(`CODER_DOOR_KEY`) takes the cloud off the list. [Cloud
++fallback](cloud-fallback.md) has the path, the limits, and the refusals.
+ 
+ Before each turn, the door reads the capacity book,
+ `~/.openagents/tasks/capacity.json`, the same book the auto-start policy
+@@ -68,8 +71,8 @@ until 2026-10-03 18:07 UTC". The turn starts on the first connected
+ provider with capacity.
+ 
+ When a provider refuses for a usage or rate limit during the turn, such as
+-Codex's HTTP 429 `usage_limit_reached` or Vertex's HTTP 429
+-`RESOURCE_EXHAUSTED`, the loop records the refusal in the
++Codex's HTTP 429 `usage_limit_reached` or the cloud worker's
++`quota_exhausted`, the loop records the refusal in the
+ book with its reset time and generates the same step on the next connected
+ provider with capacity. The turn's trace holds a `route_switch` step that
+ names both providers and the refusal, and the next turn skips the refused
+@@ -78,10 +81,9 @@ from the stream's `rejected` `rate_limit_event` (`resetsAt`). When a
+ refusal reports no reset, a fresh usage probe reading in the task store's
+ `usage.json` supplies the reset of the window it shows at its limit, and
+ only without either does it hold for 30 minutes, which the sentence and
+-`coder doctor` say. A Vertex refusal is a usage limit when it carries a
+-`google.rpc.QuotaFailure` detail and a rate limit otherwise; its reset is
+-the `google.rpc.RetryInfo` detail's `retryDelay`, else `Retry-After`, else a
+-five-minute hold, since Vertex's throttling is per minute.
++`coder doctor` say. The cloud's `rate_limited` and `busy` are rate limits
++and its `quota_exhausted` is a usage limit, each until the worker's
++`retry_after_ms`; see [Cloud fallback](cloud-fallback.md#refusals).
+ 
+ When no provider is left, the turn ends with one sentence that names each
+ provider and when it resets, such as "Microcoder has no provider to answer
+diff --git a/docs/coder/runtime/host-autostart.md b/docs/coder/runtime/host-autostart.md
+index 4e6887b47dff64ba4819e4afd2c6a9a26903051c..a124af4a623b70b8a27b85479448a0f4b8408ea3 100644
+--- a/docs/coder/runtime/host-autostart.md
++++ b/docs/coder/runtime/host-autostart.md
+@@ -27,7 +27,7 @@ coder host autostart on --workspace openagents --max-running 1
+ | `--workspace LABEL` | Required | A workspace label the host admits, from `coder host init` or `coder link setup --workspace`. Repeat for more. |
+ | `--max-running N` | `1` | At most N auto-started tasks run at once, 1 to 8. The rest wait queued. |
+ | `--model ID` | `gpt-6-luna` | The Codex model each eligible task records and its grant admits, when no `--route` is given. |
+-| `--route PROVIDER:MODEL` | None | An admitted provider (`codex`, `claude`, or `devin`; repository runs don't generate through `vertex`) and model, in preference order. A `devin` route hands the whole turn to the local Devin CLI; see [the Devin route](devin.md). Repeat for more, up to five. The first route's model is the one each task records. Use instead of `--model`. See [Routes and capacity](#routes-and-capacity). |
++| `--route PROVIDER:MODEL` | None | An admitted provider (`codex`, `claude`, or `devin`; repository runs don't generate through `vertex`, the OpenAgents cloud fallback, which answers terminal and phone turns only) and model, in preference order. A `devin` route hands the whole turn to the local Devin CLI; see [the Devin route](devin.md). Repeat for more, up to five. The first route's model is the one each task records. Use instead of `--model`. See [Routes and capacity](#routes-and-capacity). |
+ | `--probe-usage` | Off | Read each admitted provider's usage windows before routing, with its local login, and prefer a route below the threshold. See [Usage probes](#usage-probes). |
+ | `--usage-threshold PERCENT` | `90` | The utilization, 1 to 100, at or above which a probed provider is passed over. Implies `--probe-usage`. |
+ | `--effort LEVEL` | `medium` | `low`, `medium`, `high`, or `xhigh`, for every route. |

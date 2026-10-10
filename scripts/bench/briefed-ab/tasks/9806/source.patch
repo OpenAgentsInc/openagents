@@ -1,0 +1,968 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 491a8fb98f93cfa1dc35a3428ebeeaf73bd7b90d..ee702bab05e9db8e51dae1e24c03f70399797c9b 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -7594,6 +7594,7 @@ dependencies = [
+  "knowledge",
+  "libc",
+  "nostr",
++ "objc2 0.6.4",
+  "physics",
+  "png",
+  "pollster",
+diff --git a/bins/coder-ios/host/App/VerseBridge.swift b/bins/coder-ios/host/App/VerseBridge.swift
+index b5664a4ce882b40a17c14f27d8ce1abc802a776b..f8c9e5e75f316a4cc1d42d036cd413196962810b 100644
+--- a/bins/coder-ios/host/App/VerseBridge.swift
++++ b/bins/coder-ios/host/App/VerseBridge.swift
+@@ -13,6 +13,8 @@ struct VersePacket: Decodable {
+     let live_remote_entities: UInt64
+     let presented_remote_vertices: UInt64
+     let error: String?
++    /// The renderer draws to an extended-range (HDR) surface.
++    let hdr_output: Bool?
+     let frames_presented: UInt64
+     let position: [Double]
+     let view: NativeView?
+diff --git a/bins/coder-ios/host/App/VerseSurface.swift b/bins/coder-ios/host/App/VerseSurface.swift
+index 02c067e8466f20b8cd660f4426f6849d64f964b1..c5a9448b92e7d006314d13e67b5207709a994623 100644
+--- a/bins/coder-ios/host/App/VerseSurface.swift
++++ b/bins/coder-ios/host/App/VerseSurface.swift
+@@ -122,6 +122,7 @@ final class VerseMetalView: UIView {
+         metal.drawableSize = CGSize(width: Int(width), height: Int(height))
+         metal.framebufferOnly = true
+         metal.presentsWithTransaction = false
++        if handle == nil, !creationFailed { configureDynamicRange(metal) }
+         let changed = extent?.width != width || extent?.height != height || extent?.scale != scale
+         extent = (width, height, scale)
+         if handle == nil, !creationFailed {
+@@ -134,6 +135,9 @@ final class VerseMetalView: UIView {
+                     "synthetic_gym": bridge.synthetic && ProcessInfo.processInfo.arguments.contains("--gym-preview"),
+                     // Rust draws the world computer's screen in the HUD.
+                     "computer_hud": true,
++                    // An EDR screen gets an extended-range surface; Rust
++                    // reports whether it took it in `hdr_output`.
++                    "hdr": wantsHDR,
+                 ]
+                 let cache = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+                     .appendingPathComponent("VerseZones", isDirectory: true)
+@@ -211,11 +215,34 @@ final class VerseMetalView: UIView {
+         displayLink?.isPaused = !active
+     }
+ 
++    /// Whether this mount asked Rust for an extended-range surface.
++    private var wantsHDR = false
++
++    /// On a screen with EDR headroom, tag the layer as extended linear sRGB
++    /// so values above 1.0 reach the display as highlights. Rust then renders
++    /// into an RGBA16F surface and rolls highlights off toward the headroom.
++    private func configureDynamicRange(_ metal: CAMetalLayer) {
++        let screen = window?.windowScene?.screen ?? UIScreen.main
++        wantsHDR = screen.potentialEDRHeadroom > 1.01
++            && !ProcessInfo.processInfo.arguments.contains("--sdr")
++        if wantsHDR {
++            metal.wantsExtendedDynamicRangeContent = true
++            metal.colorspace = CGColorSpace(name: CGColorSpace.extendedLinearSRGB)
++        }
++    }
++
++    /// The screen's current headroom over reference white; 1.0 in SDR.
++    private func currentHeadroom() -> Double {
++        guard wantsHDR else { return 1.0 }
++        let screen = window?.windowScene?.screen ?? UIScreen.main
++        return Double(max(1.0, screen.currentEDRHeadroom))
++    }
++
+     func frame(_ link: CADisplayLink) {
+         guard running, window != nil else { return }
+         autoreleasepool {
+             pollMotion(now: CACurrentMediaTime())
+-            send(["action": "frame", "timestamp": link.timestamp], forcePublish: false)
++            send(["action": "frame", "timestamp": link.timestamp, "headroom": currentHeadroom()], forcePublish: false)
+         }
+     }
+ 
+@@ -238,6 +265,12 @@ final class VerseMetalView: UIView {
+             result = .success(try VerseBridge.decode(output))
+         } catch { result = .failure(error) }
+         if case let .success(packet) = result {
++            if wantsHDR, packet.hdr_output == false, let metal = layer as? CAMetalLayer {
++                // The surface stayed in standard range: undo the layer setup.
++                wantsHDR = false
++                metal.wantsExtendedDynamicRangeContent = false
++                metal.colorspace = nil
++            }
+             bridge.retainDoorPreferences(packet, from: self)
+             syncMotion(packet)
+             syncAccessibility(packet)
+diff --git a/crates/coder-mobile/src/android.rs b/crates/coder-mobile/src/android.rs
+index 6828ceacd6c9bc9dd4055c7cc9e470451244a731..5032a8071638d712e8b9b2c5e7151d7e6ba3c13f 100644
+--- a/crates/coder-mobile/src/android.rs
++++ b/crates/coder-mobile/src/android.rs
+@@ -147,6 +147,7 @@ impl AndroidVerse {
+                 verse::render::RenderOptions {
+                     sample_count: 1,
+                     max_extent: 4096,
++                    hdr: false,
+                 },
+             )
+         }?;
+diff --git a/crates/coder-mobile/src/verse_app.rs b/crates/coder-mobile/src/verse_app.rs
+index 1f960e89d5402f02094d823ae88c799fca90177e..998ee570b79a11fe665ccdddd93d4024d8ef8236 100644
+--- a/crates/coder-mobile/src/verse_app.rs
++++ b/crates/coder-mobile/src/verse_app.rs
+@@ -41,6 +41,10 @@ pub(crate) struct Config {
+     /// native computer panel leaves this off.
+     #[serde(default)]
+     pub computer_hud: bool,
++    /// The screen offers extended dynamic range and the layer is set up for
++    /// it: request an extended-range surface.
++    #[serde(default)]
++    pub hdr: bool,
+ }
+ 
+ #[derive(Deserialize)]
+@@ -50,6 +54,10 @@ pub(crate) enum Request {
+     ZoneCredits,
+     Frame {
+         timestamp: f64,
++        /// The screen's current extended-range headroom over reference
++        /// white; absent or 1.0 on a standard-range display.
++        #[serde(default)]
++        headroom: Option<f64>,
+     },
+     Resize {
+         width: u32,
+@@ -189,6 +197,8 @@ pub(crate) struct Packet {
+     door_preferences: String,
+     door_preferences_revision: u64,
+     pub error: Option<String>,
++    /// The renderer draws to an extended-range surface.
++    pub hdr_output: bool,
+     frames_presented: u64,
+     position: [f32; 3],
+     camera_mode: CameraMode,
+@@ -414,6 +424,7 @@ fn packet(
+         door_preferences: verse::doors::Doors::default().document(),
+         door_preferences_revision: 0,
+         error,
++        hdr_output: false,
+         frames_presented: frames,
+         position,
+         camera_mode: CameraMode::Touch,
+@@ -547,6 +558,9 @@ fn motion_angles(quaternion: [f32; 4]) -> Option<MotionOrientation> {
+ }
+ 
+ pub(crate) struct Scene {
++    /// The host asked for an extended-range surface (read by the iOS mount).
++    #[cfg_attr(not(target_os = "ios"), allow(dead_code))]
++    pub hdr_requested: bool,
+     pub world: WorldRuntime,
+     pub atlas: verse::ui::Atlas,
+     map: verse::minimap::MapHud,
+@@ -671,6 +685,7 @@ impl Scene {
+             sprint: false,
+             computer_open: false,
+             computer_hud: crate::computer_hud::ComputerHud::new(config.computer_hud),
++            hdr_requested: config.hdr,
+             gym_open: false,
+             gym_configuration_error: initial_gym_error,
+             gym_board,
+diff --git a/crates/coder-mobile/src/verse_ffi.rs b/crates/coder-mobile/src/verse_ffi.rs
+index 3bcad99ca65e6011375e5dd9229f2d233098cb3a..211c4cfb6f9ac572f9b064ec65d5fa7f5378c2fd 100644
+--- a/crates/coder-mobile/src/verse_ffi.rs
++++ b/crates/coder-mobile/src/verse_ffi.rs
+@@ -84,6 +84,9 @@ fn create_renderer(layer: *mut c_void, scene: Scene) -> Result<VerseHandle, Stri
+             verse::render::RenderOptions {
+                 sample_count: 1,
+                 max_extent: 4096,
++                // The native host sets an extended linear sRGB color space
++                // on the layer when the screen offers EDR headroom.
++                hdr: scene.hdr_requested,
+             },
+         )
+     }?;
+@@ -173,6 +176,7 @@ impl VerseHandle {
+             Ok(()) => {}
+         }
+         let mut packet = self.scene.packet();
++        packet.hdr_output = self.renderer.as_ref().is_some_and(|r| r.hdr());
+         packet.computer_commands = self.scene.take_computer_commands();
+         if include_credits {
+             packet.credits = Some(verse::zones::CREDITS);
+@@ -190,10 +194,14 @@ impl VerseHandle {
+ 
+     fn call(&mut self, request: Request) -> Result<(), String> {
+         match request {
+-            Request::Frame { timestamp } => {
++            Request::Frame {
++                timestamp,
++                headroom,
++            } => {
+                 let Some(renderer) = &mut self.renderer else {
+                     return Ok(());
+                 };
++                renderer.set_headroom(headroom.unwrap_or(1.0) as f32);
+                 if let Some(dt) = self.scene.update(timestamp)? {
+                     if self.rendered_zone_revision != self.scene.world.zone_revision {
+                         renderer.replace_world(&self.scene.world.world.mesh)?;
+diff --git a/crates/verse/Cargo.toml b/crates/verse/Cargo.toml
+index 5544130de6890f267b86bcf4806f944a02ff6053..a6c1bdfda0947ab178a63bd2204652b01684e154 100644
+--- a/crates/verse/Cargo.toml
++++ b/crates/verse/Cargo.toml
+@@ -48,6 +48,10 @@ wgpu = "29.0.4"
+ # `wayland-csd-adwaita` is off: it pulls BSD-2-Clause `arrayref`, which deny.toml refuses.
+ winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen"], optional = true }
+ 
++[target.'cfg(target_os = "macos")'.dependencies]
++# Tags the desktop window's layer for extended dynamic range (src/edr.rs).
++objc2 = "0.6"
++
+ [lints]
+ workspace = true
+ 
+@@ -76,6 +80,10 @@ required-features = ["capture"]
+ name = "lagrange_capture"
+ required-features = ["capture"]
+ 
++[[example]]
++name = "hdr_probe"
++required-features = ["capture"]
++
+ [[example]]
+ name = "lab_capture"
+ required-features = ["capture"]
+diff --git a/crates/verse/examples/hdr_probe.rs b/crates/verse/examples/hdr_probe.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..fe1e84ea4c20be6e419dcf1ed6788fccd84882a2
+--- /dev/null
++++ b/crates/verse/examples/hdr_probe.rs
+@@ -0,0 +1,109 @@
++//! Checks extended-range (HDR) output offscreen, as an EDR display receives it.
++//!
++//! For each scene it renders a linear RGBA16F frame at headroom 1.0 and at 4.0
++//! and reports: the brightest value, the share of pixels above reference
++//! white, and the largest change among pixels that stay below the tone
++//! curve's shoulder (which must be zero: standard-range content is unchanged
++//! on an HDR display). Usage: `hdr_probe`.
++use verse::{
++    controller::InputState,
++    runtime::{Action, WorldRuntime},
++    zones,
++};
++
++fn frame(runtime: &WorldRuntime, headroom: f32, sun: bool) -> Result<Vec<[f32; 4]>, String> {
++    let atlas = verse::ui::Atlas::new(16.0);
++    let mut dynamic = runtime.dynamic_mesh();
++    let player = runtime.view(1.6);
++    let view = match (&mut dynamic.sky, sun) {
++        (Some(sky), true) => {
++            // The Sun through a telephoto lens at a sunlit exposure.
++            sky.camera.auto_exposure = false;
++            verse::render::View {
++                view_proj: glam::Mat4::perspective_rh(0.2, 1.6, 0.1, 2000.0)
++                    * glam::Mat4::look_to_rh(player.eye, sky.sun_dir, glam::Vec3::Y),
++                eye: player.eye,
++            }
++        }
++        _ => player,
++    };
++    verse::render::capture_extended(
++        640,
++        400,
++        &runtime.world.mesh,
++        view,
++        &dynamic,
++        &verse::ui::UiBatch::default(),
++        &atlas,
++        zones::atmosphere(runtime.zone),
++        headroom,
++    )
++}
++
++fn report(name: &str, sdr: &[[f32; 4]], hdr: &[[f32; 4]], headroom: f32) -> Result<(), String> {
++    let peak = |f: &[[f32; 4]]| {
++        f.iter()
++            .flat_map(|p| p[..3].iter().copied())
++            .fold(0.0, f32::max)
++    };
++    let above = hdr
++        .iter()
++        .filter(|p| p[..3].iter().any(|&c| c > 1.001))
++        .count();
++    let mut change: f32 = 0.0;
++    for (a, b) in sdr.iter().zip(hdr) {
++        if a[..3].iter().all(|&c| c < 0.7) {
++            for i in 0..3 {
++                change = change.max((a[i] - b[i]).abs());
++            }
++        }
++    }
++    println!(
++        "{name}: SDR peak {:.3}, HDR peak {:.3} (ceiling {headroom}), {:.2}% above white, \
++         largest change below the shoulder {change:.5}",
++        peak(sdr),
++        peak(hdr),
++        above as f32 * 100.0 / hdr.len() as f32,
++    );
++    if peak(sdr) > 1.001 || peak(hdr) > headroom + 0.01 || change > 1e-3 {
++        return Err(format!("{name}: extended output out of bounds"));
++    }
++    Ok(())
++}
++
++fn main() -> Result<(), String> {
++    let headroom = 4.0;
++    let mut runtime = WorldRuntime::new();
++    runtime.set_spawn(glam::Vec3::new(12.0, 0.0, 9.0), 0.0)?;
++    let plaza_sdr = frame(&runtime, 1.0, false)?;
++    let plaza_hdr = frame(&runtime, headroom, false)?;
++    report("plaza", &plaza_sdr, &plaza_hdr, headroom)?;
++    let plaza_peak = plaza_hdr
++        .iter()
++        .flat_map(|p| p[..3].iter().copied())
++        .fold(0.0, f32::max);
++    if plaza_peak > 1.001 {
++        return Err("the plaza must keep its standard-range look".into());
++    }
++    runtime.zone_intent(zones::Intent::Enter)?;
++    let idle = InputState::default();
++    runtime.apply(Action::Orbit { dx: 90.0, dy: 0.0 })?;
++    for _ in 0..4 {
++        runtime.tick(&idle, 0.05);
++    }
++    runtime.settle_zone_light();
++    let station_sdr = frame(&runtime, 1.0, false)?;
++    let station_hdr = frame(&runtime, headroom, false)?;
++    report("station", &station_sdr, &station_hdr, headroom)?;
++    let sun_sdr = frame(&runtime, 1.0, true)?;
++    let sun_hdr = frame(&runtime, headroom, true)?;
++    report("sun", &sun_sdr, &sun_hdr, headroom)?;
++    let sun_peak = sun_hdr
++        .iter()
++        .flat_map(|p| p[..3].iter().copied())
++        .fold(0.0, f32::max);
++    if sun_peak < 2.0 {
++        return Err("the Sun should rise well above reference white in HDR".into());
++    }
++    Ok(())
++}
+diff --git a/crates/verse/src/app.rs b/crates/verse/src/app.rs
+index d4efd9b59692d1a812f0ff66813165869d2fbc6a..f3f739e1b531b9cce3586cbb67dd9e3c830ba378 100644
+--- a/crates/verse/src/app.rs
++++ b/crates/verse/src/app.rs
+@@ -2279,6 +2279,8 @@ impl App {
+         };
+         dynamic.extend(&entities);
+         if let Some(renderer) = &mut self.renderer {
++            #[cfg(target_os = "macos")]
++            renderer.set_headroom(crate::edr::current_headroom());
+             match renderer.draw(view, &dynamic, &ui) {
+                 render::DrawStatus::Presented => self.presented_entities = entities,
+                 render::DrawStatus::Error(error) => self.error = Some(error),
+diff --git a/crates/verse/src/edr.rs b/crates/verse/src/edr.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..d40a269b13d7b5e4531533e9a4786693747a7349
+--- /dev/null
++++ b/crates/verse/src/edr.rs
+@@ -0,0 +1,81 @@
++//! Extended dynamic range on macOS: the screen's headroom and the layer tag.
++//!
++//! wgpu turns on `wantsExtendedDynamicRangeContent` for an RGBA16F surface but
++//! leaves the layer's color space unset. An extended-range frame needs the
++//! extended linear sRGB space so values above 1.0 display brighter than
++//! reference white (Apple, "Displaying HDR content in a Metal layer"). iOS
++//! hosts tag their own layer; this module does it for the desktop window.
++
++use std::ffi::c_void;
++
++use objc2::encode::{Encoding, RefEncode};
++use objc2::runtime::AnyObject;
++use objc2::{class, msg_send};
++
++#[repr(C)]
++struct ColorSpace {
++    _opaque: [u8; 0],
++}
++
++// SAFETY: `CGColorSpaceRef` is a pointer to the opaque `CGColorSpace` struct.
++unsafe impl RefEncode for ColorSpace {
++    const ENCODING_REF: Encoding = Encoding::Pointer(&Encoding::Struct("CGColorSpace", &[]));
++}
++
++#[link(name = "CoreGraphics", kind = "framework")]
++unsafe extern "C" {
++    static kCGColorSpaceExtendedLinearSRGB: *const c_void;
++    fn CGColorSpaceCreateWithName(name: *const c_void) -> *mut ColorSpace;
++    fn CGColorSpaceRelease(space: *mut ColorSpace);
++}
++
++fn main_screen() -> Option<*mut AnyObject> {
++    // SAFETY: `+[NSScreen mainScreen]` has no arguments; called on the main
++    // thread, where the window and renderer live.
++    let screen: *mut AnyObject = unsafe { msg_send![class!(NSScreen), mainScreen] };
++    (!screen.is_null()).then_some(screen)
++}
++
++/// How far above reference white the main screen could ever display.
++#[must_use]
++pub fn potential_headroom() -> f32 {
++    main_screen().map_or(1.0, |screen| {
++        // SAFETY: an NSScreen responds to this CGFloat property (macOS 10.15+).
++        let value: f64 = unsafe {
++            msg_send![
++                screen,
++                maximumPotentialExtendedDynamicRangeColorComponentValue
++            ]
++        };
++        value as f32
++    })
++}
++
++/// How far above reference white the main screen displays right now.
++#[must_use]
++pub fn current_headroom() -> f32 {
++    main_screen().map_or(1.0, |screen| {
++        // SAFETY: an NSScreen responds to this CGFloat property.
++        let value: f64 =
++            unsafe { msg_send![screen, maximumExtendedDynamicRangeColorComponentValue] };
++        value as f32
++    })
++}
++
++/// Tags a CAMetalLayer as extended linear sRGB.
++///
++/// # Safety
++/// `layer` must be a live CAMetalLayer used on the main thread.
++pub unsafe fn tag_extended_linear(layer: *mut AnyObject) {
++    // SAFETY: the constant is a CFString the framework defines; creating and
++    // releasing the color space follows Core Foundation ownership rules, and
++    // the layer retains its own reference.
++    unsafe {
++        let space = CGColorSpaceCreateWithName(kCGColorSpaceExtendedLinearSRGB);
++        if space.is_null() {
++            return;
++        }
++        let _: () = msg_send![layer, setColorspace: space];
++        CGColorSpaceRelease(space);
++    }
++}
+diff --git a/crates/verse/src/lib.rs b/crates/verse/src/lib.rs
+index 770c83a853a904a0251b285dba9790aa14b7b21e..d4144ab17eccf848c30ea7bc3202b4ab98005f49 100644
+--- a/crates/verse/src/lib.rs
++++ b/crates/verse/src/lib.rs
+@@ -18,6 +18,8 @@ pub mod chat;
+ pub mod controller;
+ pub mod crowd;
+ pub mod doors;
++#[cfg(all(target_os = "macos", feature = "desktop"))]
++pub mod edr;
+ pub mod feed;
+ pub mod gym;
+ pub mod hud;
+diff --git a/crates/verse/src/pbr/gpu.rs b/crates/verse/src/pbr/gpu.rs
+index aae218c8d828866012b0a5147e543fe13a097b0e..bf251636f00d3d9e2aef213f413af6161cf194b5 100644
+--- a/crates/verse/src/pbr/gpu.rs
++++ b/crates/verse/src/pbr/gpu.rs
+@@ -55,6 +55,8 @@ struct Post {
+     lens: [f32; 4],
+     balance: [f32; 4],
+     adapt: [f32; 4],
++    /// x: the output ceiling, the display's headroom over reference white.
++    output: [f32; 4],
+ }
+ 
+ #[repr(C)]
+@@ -232,6 +234,8 @@ pub(crate) struct Photo {
+     star_count: u32,
+     pub dynamic_lit: Stream,
+     pub glow: Stream,
++    /// The display's headroom over reference white for space frames.
++    pub headroom: f32,
+     last_time: Option<f32>,
+ }
+ 
+@@ -704,6 +708,7 @@ impl Photo {
+             star_count: 0,
+             dynamic_lit: Stream::new(device, "verse dynamic lit"),
+             glow: Stream::new(device, "verse glow"),
++            headroom: 1.0,
+             last_time: None,
+         })
+     }
+@@ -895,6 +900,7 @@ impl Photo {
+                     lens: [0.0; 4],
+                     balance: [1.0, 1.0, 1.0, 0.0],
+                     adapt: [0.0; 4],
++                    output: [1.0, 0.0, 0.0, 0.0],
+                 };
+                 device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                     label: Some("verse bloom pass"),
+@@ -1262,6 +1268,7 @@ impl Photo {
+                 gain_min: 2f32.powf(camera.ev100 - camera.ev_max),
+                 gain_max: 2f32.powf(camera.ev100 - camera.ev_min),
+                 hue_preserving: false,
++                ceiling: self.headroom,
+                 time: sky.time,
+             },
+         );
+@@ -1399,6 +1406,8 @@ impl Photo {
+                 gain_min: 1.0,
+                 gain_max: 1.0,
+                 hue_preserving: true,
++                // The plaza keeps its standard-range look on HDR displays.
++                ceiling: 1.0,
+                 time: neon.time,
+             },
+         );
+@@ -1446,6 +1455,7 @@ impl Photo {
+                     look.gain_max,
+                     f32::from(u8::from(look.hue_preserving)),
+                 ],
++                output: [look.ceiling, 0.0, 0.0, 0.0],
+             };
+             queue.write_buffer(&targets.frame_post, 0, bytemuck::bytes_of(&uniform));
+             let pass = |encoder: &mut wgpu::CommandEncoder,
+@@ -1527,6 +1537,8 @@ struct Look {
+     gain_min: f32,
+     gain_max: f32,
+     hue_preserving: bool,
++    /// Highest output value: 1.0 on standard displays, the headroom on HDR.
++    ceiling: f32,
+     time: f32,
+ }
+ 
+diff --git a/crates/verse/src/pbr/post.wgsl b/crates/verse/src/pbr/post.wgsl
+index 7282e2ddab1d5fdc224f38ba6732bb778afdd19e..1e28e10afcefc1f36497113f3f86427632467914 100644
+--- a/crates/verse/src/pbr/post.wgsl
++++ b/crates/verse/src/pbr/post.wgsl
+@@ -20,6 +20,9 @@ struct Post {
+     // x target signal for auto exposure; y min gain; z max gain; w 1 for the
+     // hue-preserving output curve.
+     adapt: vec4<f32>,
++    // x the output ceiling: 1.0 on a standard display, the headroom over
++    // reference white on an extended-range (HDR) surface.
++    output: vec4<f32>,
+ };
+ 
+ @group(0) @binding(0) var<uniform> p: Post;
+@@ -138,8 +141,11 @@ fn fs_adapt(i: Out) -> @location(0) vec4<f32> {
+     return vec4<f32>(value, 0.0, 0.0, 1.0);
+ }
+ 
+-// Khronos PBR Neutral.
+-fn neutral(color: vec3<f32>) -> vec3<f32> {
++// Khronos PBR Neutral, with its shoulder generalized to approach `ceiling`
++// instead of 1.0. Below the shoulder's start the curve is unchanged, so
++// standard-range content looks the same on an HDR display; highlights above
++// it keep rising into the display's headroom.
++fn neutral(color: vec3<f32>, ceiling: f32) -> vec3<f32> {
+     let start = 0.8 - 0.04;
+     let desaturation = 0.15;
+     let x = min(color.r, min(color.g, color.b));
+@@ -149,8 +155,8 @@ fn neutral(color: vec3<f32>) -> vec3<f32> {
+     if peak < start {
+         return c;
+     }
+-    let d = 1.0 - start;
+-    let new_peak = 1.0 - d * d / (peak + d - start);
++    let d = ceiling - start;
++    let new_peak = ceiling - d * d / (peak + d - start);
+     c *= new_peak / peak;
+     let g = 1.0 - 1.0 / (desaturation * (peak - new_peak) + 1.0);
+     return mix(c, vec3<f32>(new_peak), g);
+@@ -158,14 +164,14 @@ fn neutral(color: vec3<f32>) -> vec3<f32> {
+ 
+ // Hue-preserving shoulder for the neon stage: a bright amber core compresses
+ // along its own hue instead of washing toward white.
+-fn hue_shoulder(color: vec3<f32>) -> vec3<f32> {
++fn hue_shoulder(color: vec3<f32>, ceiling: f32) -> vec3<f32> {
+     let peak = max(color.r, max(color.g, color.b));
+     let start = 0.76;
+     if peak < start {
+         return color;
+     }
+-    let d = 1.0 - start;
+-    return color * ((1.0 - d * d / (peak + d - start)) / peak);
++    let d = ceiling - start;
++    return color * ((ceiling - d * d / (peak + d - start)) / peak);
+ }
+ 
+ fn hash(q: vec2<f32>) -> f32 {
+@@ -223,9 +229,9 @@ fn fs_output(i: Out) -> @location(0) vec4<f32> {
+     c *= mix(1.0, pow(1.0 / (1.0 + r2), 2.0), p.look.w);
+     var o: vec3<f32>;
+     if p.adapt.w > 0.5 {
+-        o = hue_shoulder(max(c, vec3<f32>(0.0)));
++        o = hue_shoulder(max(c, vec3<f32>(0.0)), p.output.x);
+     } else {
+-        o = neutral(max(c, vec3<f32>(0.0)));
++        o = neutral(max(c, vec3<f32>(0.0)), p.output.x);
+     }
+     // Sensor grain, stronger in shadows, applied in display space.
+     if p.look.z > 0.0 {
+@@ -233,5 +239,5 @@ fn fs_output(i: Out) -> @location(0) vec4<f32> {
+         let shadow = 1.0 - smoothstep(0.0, 0.5, luma(o));
+         o += vec3<f32>(n) * 0.03 * p.look.z * (0.3 + shadow);
+     }
+-    return vec4<f32>(clamp(o, vec3<f32>(0.0), vec3<f32>(1.0)), 1.0);
++    return vec4<f32>(clamp(o, vec3<f32>(0.0), vec3<f32>(p.output.x)), 1.0);
+ }
+diff --git a/crates/verse/src/render.rs b/crates/verse/src/render.rs
+index 5727d9747d75be1d5a221d61fd76e52b081dd388..0b974e79a23d4aa9252a277334f8bbe4bd156692 100644
+--- a/crates/verse/src/render.rs
++++ b/crates/verse/src/render.rs
+@@ -99,6 +99,8 @@ struct Scene {
+     /// Created on the first frame that carries a sky.
+     photo: Option<Photo>,
+     photo_failed: bool,
++    /// Extended-range headroom for photographic highlights, 1.0 in SDR.
++    headroom: f32,
+ }
+ 
+ /// Color and depth attachments at one size.
+@@ -115,6 +117,10 @@ struct Targets {
+ pub struct RenderOptions {
+     pub sample_count: u32,
+     pub max_extent: u32,
++    /// Request an extended-range surface (RGBA16F, linear) for an HDR
++    /// display. The host must give its layer an extended linear sRGB color
++    /// space; [`Renderer::hdr`] reports whether the surface accepted it.
++    pub hdr: bool,
+ }
+ 
+ impl Default for RenderOptions {
+@@ -122,6 +128,7 @@ impl Default for RenderOptions {
+         Self {
+             sample_count: 4,
+             max_extent: 8192,
++            hdr: false,
+         }
+     }
+ }
+@@ -155,6 +162,7 @@ pub struct Renderer {
+     targets: Targets,
+     max_extent: u32,
+     drawable: bool,
++    hdr: bool,
+ }
+ 
+ impl Renderer {
+@@ -166,15 +174,36 @@ impl Renderer {
+         let surface = instance
+             .create_surface(window)
+             .map_err(|e| format!("cannot create a surface: {e}"))?;
+-        Self::from_surface(
++        #[cfg(target_os = "macos")]
++        let options = RenderOptions {
++            hdr: crate::edr::potential_headroom() > 1.01 && std::env::var_os("VERSE_SDR").is_none(),
++            ..RenderOptions::default()
++        };
++        #[cfg(not(target_os = "macos"))]
++        let options = RenderOptions::default();
++        let renderer = Self::from_surface(
+             instance,
+             surface,
+             size.width,
+             size.height,
+             world,
+             atlas,
+-            RenderOptions::default(),
+-        )
++            options,
++        )?;
++        #[cfg(target_os = "macos")]
++        if renderer.hdr {
++            // SAFETY: the surface is Metal on macOS, alive for this call, and
++            // used on the main thread.
++            unsafe {
++                if let Some(hal) = renderer.surface.as_hal::<wgpu::hal::api::Metal>() {
++                    let layer = hal.render_layer().lock();
++                    crate::edr::tag_extended_linear(
++                        objc2::rc::Retained::as_ptr(&layer).cast_mut().cast(),
++                    );
++                }
++            }
++        }
++        Ok(renderer)
+     }
+ 
+     /// Creates an Apple surface from the native host's CAMetalLayer.
+@@ -261,13 +290,18 @@ impl Renderer {
+             .min(device.limits().max_texture_dimension_2d);
+         validate_extent(width, height, max_extent)?;
+         let caps = surface.get_capabilities(&adapter);
+-        let format = caps
+-            .formats
+-            .iter()
+-            .copied()
+-            .find(wgpu::TextureFormat::is_srgb)
+-            .or_else(|| caps.formats.first().copied())
+-            .ok_or("the surface reports no formats")?;
++        let extended = wgpu::TextureFormat::Rgba16Float;
++        let hdr = options.hdr && caps.formats.contains(&extended);
++        let format = if hdr {
++            extended
++        } else {
++            caps.formats
++                .iter()
++                .copied()
++                .find(wgpu::TextureFormat::is_srgb)
++                .or_else(|| caps.formats.first().copied())
++                .ok_or("the surface reports no formats")?
++        };
+         let config = wgpu::SurfaceConfiguration {
+             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+             format,
+@@ -302,6 +336,7 @@ impl Renderer {
+             targets,
+             max_extent,
+             drawable: true,
++            hdr,
+         })
+     }
+ 
+@@ -324,6 +359,24 @@ impl Renderer {
+         self.scene.samples
+     }
+ 
++    /// Whether the surface is extended range: output values above 1.0 reach
++    /// the display as highlights brighter than reference white.
++    #[must_use]
++    pub fn hdr(&self) -> bool {
++        self.hdr
++    }
++
++    /// The display's current headroom: how many times brighter than
++    /// reference white it can show now. Photographic frames roll their
++    /// highlights off toward it; 1.0 keeps standard range.
++    pub fn set_headroom(&mut self, headroom: f32) {
++        self.scene.headroom = if self.hdr && headroom.is_finite() {
++            headroom.clamp(1.0, 16.0)
++        } else {
++            1.0
++        };
++    }
++
+     /// A zero extent suspends presentation until a valid size returns.
+     pub fn resize(&mut self, width: u32, height: u32) -> Result<(), String> {
+         if width == 0 || height == 0 {
+@@ -572,28 +625,72 @@ pub fn capture_with_atmosphere(
+     atlas: &Atlas,
+     atmosphere: crate::zones::Atmosphere,
+ ) -> Result<(), String> {
++    let pixels = offscreen(
++        width,
++        height,
++        world,
++        view,
++        dynamic,
++        ui,
++        atlas,
++        atmosphere,
++        CAPTURE_FORMAT,
++        1.0,
++    )?;
++    let file = std::fs::File::create(path)
++        .map_err(|e| format!("cannot create {}: {e}", path.display()))?;
++    let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), width, height);
++    encoder.set_color(png::ColorType::Rgba);
++    encoder.set_depth(png::BitDepth::Eight);
++    encoder.set_source_srgb(png::SrgbRenderingIntent::Perceptual);
++    encoder
++        .write_header()
++        .and_then(|mut writer| writer.write_image_data(&pixels))
++        .map_err(|e| format!("cannot write {}: {e}", path.display()))
++}
++
++/// Renders one frame offscreen in `format` and returns its tightly packed
++/// texels, `headroom` giving photographic frames their output ceiling.
++#[cfg(feature = "capture")]
++#[allow(clippy::too_many_arguments)]
++fn offscreen(
++    width: u32,
++    height: u32,
++    world: &Mesh,
++    view: View,
++    dynamic: &Mesh,
++    ui: &UiBatch,
++    atlas: &Atlas,
++    atmosphere: crate::zones::Atmosphere,
++    format: wgpu::TextureFormat,
++    headroom: f32,
++) -> Result<Vec<u8>, String> {
++    let texel = format
++        .block_copy_size(None)
++        .ok_or("capture format has no fixed size")?;
+     let atmosphere = atmosphere.validate()?;
+     validate_extent(width, height, RenderOptions::default().max_extent)?;
+     validate_frame(view, dynamic, ui)?;
+     let instance = instance();
+     let (adapter, device, queue) = open(&instance, None)?;
+     validate_extent(width, height, device.limits().max_texture_dimension_2d)?;
+-    let mut scene = Scene::new(&device, &queue, &adapter, CAPTURE_FORMAT, world, atlas, 4);
++    let mut scene = Scene::new(&device, &queue, &adapter, format, world, atlas, 4);
+     scene.atmosphere = atmosphere;
+-    let mut targets = Targets::new(&device, CAPTURE_FORMAT, width, height, scene.samples);
++    scene.headroom = headroom;
++    let mut targets = Targets::new(&device, format, width, height, scene.samples);
+     let texture = device.create_texture(&wgpu::TextureDescriptor {
+         label: Some("verse capture"),
+         size: extent(width, height),
+         mip_level_count: 1,
+         sample_count: 1,
+         dimension: wgpu::TextureDimension::D2,
+-        format: CAPTURE_FORMAT,
++        format,
+         usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+         view_formats: &[],
+     });
+     let output = texture.create_view(&wgpu::TextureViewDescriptor::default());
+ 
+-    let row = (width * 4).div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
++    let row = (width * texel).div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
+         * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+     let readback = device.create_buffer(&wgpu::BufferDescriptor {
+         label: Some("verse capture readback"),
+@@ -662,24 +759,67 @@ pub fn capture_with_atmosphere(
+         })
+         .map_err(|e| format!("the GPU did not finish: {e}"))?;
+     let mapped = slice.get_mapped_range();
+-    let mut pixels = Vec::with_capacity((width * height * 4) as usize);
++    let mut pixels = Vec::with_capacity((width * height * texel) as usize);
+     for y in 0..height as usize {
+         let start = y * row as usize;
+-        pixels.extend_from_slice(&mapped[start..start + width as usize * 4]);
++        pixels.extend_from_slice(&mapped[start..start + width as usize * texel as usize]);
+     }
+     drop(mapped);
+     readback.unmap();
+ 
+-    let file = std::fs::File::create(path)
+-        .map_err(|e| format!("cannot create {}: {e}", path.display()))?;
+-    let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), width, height);
+-    encoder.set_color(png::ColorType::Rgba);
+-    encoder.set_depth(png::BitDepth::Eight);
+-    encoder.set_source_srgb(png::SrgbRenderingIntent::Perceptual);
+-    encoder
+-        .write_header()
+-        .and_then(|mut writer| writer.write_image_data(&pixels))
+-        .map_err(|e| format!("cannot write {}: {e}", path.display()))
++    Ok(pixels)
++}
++
++/// Renders one frame into an extended-range (RGBA16F, linear) target, as an
++/// HDR display surface receives it, and returns linear RGBA values. Values
++/// above 1.0 are highlights brighter than reference white; `headroom` is the
++/// display's ceiling.
++///
++/// # Errors
++///
++/// Returns a message when no GPU is available.
++#[cfg(feature = "capture")]
++#[allow(clippy::too_many_arguments)]
++pub fn capture_extended(
++    width: u32,
++    height: u32,
++    world: &Mesh,
++    view: View,
++    dynamic: &Mesh,
++    ui: &UiBatch,
++    atlas: &Atlas,
++    atmosphere: crate::zones::Atmosphere,
++    headroom: f32,
++) -> Result<Vec<[f32; 4]>, String> {
++    let bytes = offscreen(
++        width,
++        height,
++        world,
++        view,
++        dynamic,
++        ui,
++        atlas,
++        atmosphere,
++        wgpu::TextureFormat::Rgba16Float,
++        headroom.clamp(1.0, 16.0),
++    )?;
++    Ok(bytes
++        .chunks_exact(8)
++        .map(|t| std::array::from_fn(|i| half_to_f32(u16::from_le_bytes([t[i * 2], t[i * 2 + 1]]))))
++        .collect())
++}
++
++/// IEEE 754 binary16 to f32.
++#[cfg(feature = "capture")]
++fn half_to_f32(bits: u16) -> f32 {
++    let sign = if bits & 0x8000 != 0 { -1.0 } else { 1.0 };
++    let exponent = i32::from((bits >> 10) & 0x1f);
++    let mantissa = f32::from(bits & 0x03ff);
++    sign * match exponent {
++        0 => mantissa * 2f32.powi(-24),
++        0x1f => f32::INFINITY,
++        e => (1.0 + mantissa / 1024.0) * 2f32.powi(e - 15),
++    }
+ }
+ 
+ #[cfg(any(target_vendor = "apple", feature = "desktop", feature = "capture"))]
+@@ -886,6 +1026,7 @@ impl Scene {
+             world_lit: upload_lit(device, &world.lit),
+             photo: None,
+             photo_failed: false,
++            headroom: 1.0,
+             ui_pipeline,
+             ui_bind_group,
+             ui_screen,
+@@ -1077,6 +1218,7 @@ impl Scene {
+                 (&self.dynamic_lines.buffer, self.dynamic_lines.count),
+             ],
+         };
++        photo.headroom = self.headroom;
+         photo.encode(
+             device,
+             queue,
+diff --git a/docs/research/unreal/2026-09-27-lagrange-realism-audit.md b/docs/research/unreal/2026-09-27-lagrange-realism-audit.md
+index 2c64f0de314e48bb0c03c32578dafbe460245343..6cb084615731c72ae5a1e7a06f734bf52d131485 100644
+--- a/docs/research/unreal/2026-09-27-lagrange-realism-audit.md
++++ b/docs/research/unreal/2026-09-27-lagrange-realism-audit.md
+@@ -52,7 +52,7 @@ The runtime guide is [Lagrange 1](../../verse/lagrange-1.md).
+ | V8 camera-relative positions | Not adopted: the zone spans under 200 m, where single precision holds 20 µm; the sky is direction-only. |
+ | C11 TAA | Not adopted: with 4× MSAA, specular antialiasing, and wide guide lines, captures show no crawl on the thinnest members (see the truss in `after-wide.jpg`). |
+ | C12 motion blur | Not adopted: an action camera in full sun at EV 15 and f/2.8 exposes about 1/4,000 s, under 0.1 px of blur at the zone's speeds. |
+-| C13 HDR display output | Deferred to [#9806](https://github.com/OpenAgentsInc/openagents/issues/9806): it needs native layer changes on iOS and device validation. |
++| C13 HDR display output | Landed under [#9806](https://github.com/OpenAgentsInc/openagents/issues/9806): an RGBA16F extended linear sRGB surface on EDR screens (iOS through the host layer, macOS through wgpu's layer), and a tone-curve shoulder that bends toward the live headroom. `hdr_probe` shows highlights reaching the ceiling with zero change below the shoulder, and the plaza stays in standard range. |
+ | E9 MLI flaps | Not adopted: station blankets are taped and stitched, and a cloth solver for a cosmetic edge is not worth its cost on mobile. |
+ 
+ **Changed from the plan.** The station now holds a 30° pitch about its truss
+diff --git a/docs/verse/README.md b/docs/verse/README.md
+index bb3d23491cb1748b6b12d3367dde4738556b98ec..e419f2c49cb63325dbabd15b84896b3a151e0e8d 100644
+--- a/docs/verse/README.md
++++ b/docs/verse/README.md
+@@ -449,6 +449,9 @@ keeps its application palette. Neither palette belongs to Rust Native.
+ - A custom renderer: one WGSL shader with a face pipeline and a line
+   pipeline, 4× MSAA when the adapter supports it, and an sRGB surface, plus
+   the physical path (`pbr`) that draws the plaza's neon stage and Lagrange 1.
++  On EDR displays the surface is RGBA16F in extended linear sRGB, and
++  photographic highlights use the screen's headroom; the plaza stays in
++  standard range.
+ - `glam` for math.
+ 
+ The winit `wayland-csd-adwaita` feature is off because it pulls
+diff --git a/docs/verse/lagrange-1.md b/docs/verse/lagrange-1.md
+index be6fbbe77e4f08878120fcd1eebb19d9ee9074c1..3d9e2a833f79d5b3651cbfb0844ee3325b034d82 100644
+--- a/docs/verse/lagrange-1.md
++++ b/docs/verse/lagrange-1.md
+@@ -131,6 +131,15 @@ station itself. The renderer works in physical units:
+   anti-sunward under radiation pressure and glint as they tumble. Every effect
+   follows from the physics tick, so a replay shows the same frames.
+ 
++On a display with extended dynamic range (an iPhone or Mac with an XDR or
++OLED screen), the Sun, glints, and sunlit white render brighter than reference
++white. The renderer draws to an RGBA16F extended linear sRGB surface and bends
++the tone curve's shoulder toward the screen's current headroom, so everything
++below the shoulder looks exactly as it does in standard range. Launch iOS with
++`--sdr` or set `VERSE_SDR=1` on the desktop to force standard range, and run
++`cargo run --release -p verse --example hdr_probe` to check the extended
++output offscreen.
++
+ Guides (latch outlines, routes, the refill ring, the reticle, and the forces
+ overlay) keep their display colors. Adapters that cannot render a
+ floating-point target tone-map each draw directly and skip post-processing.

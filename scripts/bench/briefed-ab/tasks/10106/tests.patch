@@ -1,0 +1,728 @@
+diff --git a/crates/coder/src/router/policy.rs b/crates/coder/src/router/policy.rs
+index e2ce735cc95e3456827c58d42e9807a9880dced0..43625893a804abd7368e5e8d8de0c0c157fba131 100644
+--- a/crates/coder/src/router/policy.rs
++++ b/crates/coder/src/router/policy.rs
+@@ -917,6 +975,71 @@ mod tests {
+         decided(routing, &Context::default(), false)
+     }
+ 
++    fn web() -> Context {
++        Context::of(&serde_json::json!({ "surface": "web" }))
++    }
++
++    /// On the website (#10106) work, commands, and screens become the
++    /// model told [`WEB_NOTE`]; answers, knowledge, and refusals stay,
++    /// without an offer.
++    #[test]
++    fn the_website_answers_and_never_offers() {
++        assert_eq!(web().surface(), Surface::Web);
++        let work = routed(RouteId::WorkDispatch, 0.9, "dispatch.stem", 0.9, 0.9);
++        assert!(matches!(
++            router(&work),
++            Tier::CannedStem { offer: Some(_), .. }
++        ));
++        assert_eq!(
++            decided(&work, &web(), true),
++            Tier::Model {
++                lead: None,
++                note: Some(WEB_NOTE)
++            }
++        );
++        let mut cli = routed(RouteId::Cli, 0.95, "cli.offer", 0.9, 0.9);
++        cli.cli_group = Some(("session".to_string(), 0.95));
++        assert!(matches!(router(&cli), Tier::Cli { .. }));
++        assert!(matches!(
++            decided(&cli, &web(), false),
++            Tier::Model {
++                note: Some(WEB_NOTE),
++                ..
++            }
++        ));
++        let wallet = routed(RouteId::Wallet, 0.95, "wallet.receive", 0.95, 0.1);
++        assert!(matches!(
++            decided(&wallet, &web(), false),
++            Tier::Model {
++                note: Some(WEB_NOTE),
++                ..
++            }
++        ));
++        let kb = routed(RouteId::ProductKb, 0.95, "none", 0.0, 0.9);
++        assert!(matches!(
++            decided(&kb, &web(), false),
++            Tier::Grounded {
++                corpus: Corpus::Product,
++                ..
++            }
++        ));
++        let map = routed(RouteId::Meta, 0.95, "meta.map", 0.95, 0.1);
++        match decided(&map, &web(), false) {
++            Tier::CannedFinal { answer, offer, .. } => {
++                assert_eq!(answer.id, "meta.map");
++                assert_eq!(offer, None);
++            }
++            other => panic!("{other:?}"),
++        }
++        let mut secret = routed(RouteId::WorkDispatch, 0.9, "dispatch.stem", 0.9, 0.9);
++        secret.risk = Risk::SecretShared;
++        secret.risk_p = 0.99;
++        assert!(matches!(
++            decided(&secret, &web(), false),
++            Tier::Refuse { .. }
++        ));
++    }
++
+     /// T0: a sure route and a sure answer of that route, with no
+     /// specifics, is the whole reply, with its followups available.
+     #[test]
+diff --git a/crates/openagents-web/src/ask.rs b/crates/openagents-web/src/ask.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..35aaf94f93a5ba10652dee8f096ca5635bb77c37
+--- /dev/null
++++ b/crates/openagents-web/src/ask.rs
+@@ -0,0 +1,458 @@
++//! `POST /ask`: the homepage terminal's questions (#10106).
++//!
++//! A visitor's question goes to the same OpenAgents chat worker the phone
++//! and the desktop app talk to, as a NIP-CJ conversation job through
++//! `relay.openagents.com` ([`openagents_chat::basic_coder::Relay`]), with
++//! the website's surface (`web`). The worker answers it with prepared
++//! answers, the knowledge base, or the model, under the website's
++//! instructions, and never offers Coder, a computer, a command, or a
++//! screen (`coder::router::policy::for_web`). Nothing here reaches a
++//! computer, an account, or a Coder run.
++//!
++//! The site signs each visitor's jobs with a key it derives from the
++//! visitor's cookie and a secret only the server holds, so the worker's
++//! per-key quota counts each visitor apart and no key is ever sent to the
++//! browser. On top of the worker's quotas the site holds each visitor to
++//! one question at a time and [`PER_MINUTE`] a minute, and every visitor
++//! together to [`IN_FLIGHT`] at once, in process memory.
++//!
++//! The reply streams back as newline-delimited JSON: `{"html": …}` as the
++//! answer grows, drawn by [`crate::markdown::render`] (raw HTML shows as
++//! text), then `{"done": true, "text": …}` or `{"error": …}`.
++
++use std::collections::{HashMap, VecDeque};
++use std::sync::atomic::{AtomicUsize, Ordering};
++use std::sync::{Arc, Mutex};
++use std::time::{Duration, Instant};
++
++use axum::Router;
++use axum::body::{Body, Bytes};
++use axum::extract::{DefaultBodyLimit, State};
++use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
++use axum::response::{IntoResponse, Response};
++use axum::routing::post;
++use openagents_chat::basic_coder::{self, Door, Reply, Role, Turn};
++use openagents_chat::router::{Context, Surface};
++use secp256k1::SecretKey;
++use serde::Deserialize;
++use serde_json::json;
++use sha2::{Digest, Sha256};
++
++use crate::App;
++
++/// The cookie that names a visitor: 32 random hex characters, nothing
++/// else.
++pub const COOKIE: &str = "oa_visitor";
++/// The most turns of the conversation one question sends, newest kept.
++pub const MAX_TURNS: usize = 8;
++/// The longest turn, in characters.
++pub const MAX_TURN_CHARS: usize = 4_000;
++/// Questions one visitor may ask in a rolling minute.
++pub const PER_MINUTE: usize = 6;
++/// Questions every visitor together may have waiting at once.
++pub const IN_FLIGHT: usize = 32;
++/// The largest request body.
++const MAX_BODY_BYTES: usize = 64 * 1024;
++/// How often a waiting answer is read for new words.
++const POLL: Duration = Duration::from_millis(100);
++/// The most visitors the limiter remembers before it forgets idle ones.
++const REMEMBERED: usize = 10_000;
++
++/// Where questions are answered: the relay to the chat worker in
++/// production, an in-process door in tests.
++pub trait Chat: Send + Sync {
++    /// A door that signs with `secret`.
++    fn door(&self, secret: SecretKey) -> Result<Box<dyn Door>, String>;
++}
++
++/// The OpenAgents chat worker, through `relay.openagents.com`.
++pub struct Worker;
++
++impl Chat for Worker {
++    fn door(&self, secret: SecretKey) -> Result<Box<dyn Door>, String> {
++        Ok(Box::new(basic_coder::Relay::new(
++            basic_coder::RELAY,
++            basic_coder::WORKER,
++            secret,
++        )?))
++    }
++}
++
++/// The site's side of the limits.
++#[derive(Default)]
++pub(crate) struct Limits {
++    visitors: Mutex<HashMap<String, Visitor>>,
++    waiting: AtomicUsize,
++}
++
++#[derive(Default)]
++struct Visitor {
++    asking: bool,
++    asked: VecDeque<Instant>,
++}
++
++/// Why a question was not taken.
++#[derive(Debug, PartialEq, Eq)]
++enum Busy {
++    Asking,
++    Minute,
++    Everyone,
++}
++
++impl Busy {
++    fn message(&self) -> &'static str {
++        match self {
++            Busy::Asking => "We're still answering your last question.",
++            Busy::Minute => "That's a lot of questions at once; try again in a minute.",
++            Busy::Everyone => "We're answering many visitors right now; try again in a moment.",
++        }
++    }
++}
++
++impl Limits {
++    fn take(self: &Arc<Self>, visitor: &str, now: Instant) -> Result<Held, Busy> {
++        let mut visitors = self
++            .visitors
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner);
++        if visitors.len() >= REMEMBERED {
++            visitors.retain(|_, seen| {
++                seen.asking
++                    || seen
++                        .asked
++                        .back()
++                        .is_some_and(|at| now.duration_since(*at) < Duration::from_secs(60))
++            });
++        }
++        let seen = visitors.entry(visitor.to_string()).or_default();
++        while seen
++            .asked
++            .front()
++            .is_some_and(|at| now.duration_since(*at) >= Duration::from_secs(60))
++        {
++            seen.asked.pop_front();
++        }
++        if seen.asking {
++            return Err(Busy::Asking);
++        }
++        if seen.asked.len() >= PER_MINUTE {
++            return Err(Busy::Minute);
++        }
++        if self
++            .waiting
++            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |waiting| {
++                (waiting < IN_FLIGHT).then_some(waiting + 1)
++            })
++            .is_err()
++        {
++            return Err(Busy::Everyone);
++        }
++        seen.asking = true;
++        seen.asked.push_back(now);
++        Ok(Held {
++            limits: self.clone(),
++            visitor: visitor.to_string(),
++        })
++    }
++}
++
++/// A question being answered; dropping it frees the visitor's turn.
++struct Held {
++    limits: Arc<Limits>,
++    visitor: String,
++}
++
++impl Drop for Held {
++    fn drop(&mut self) {
++        self.limits.waiting.fetch_sub(1, Ordering::SeqCst);
++        if let Some(seen) = self
++            .limits
++            .visitors
++            .lock()
++            .unwrap_or_else(std::sync::PoisonError::into_inner)
++            .get_mut(&self.visitor)
++        {
++            seen.asking = false;
++        }
++    }
++}
++
++pub(crate) fn routes() -> Router<App> {
++    Router::new()
++        .route("/ask", post(ask))
++        .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
++}
++
++#[derive(Deserialize)]
++struct Question {
++    turns: Vec<Said>,
++}
++
++#[derive(Deserialize)]
++struct Said {
++    role: Role,
++    text: String,
++}
++
++/// The visitor's cookie, when it is one this site could have set.
++fn visitor(headers: &HeaderMap) -> Option<String> {
++    headers
++        .get_all(header::COOKIE)
++        .iter()
++        .filter_map(|value| value.to_str().ok())
++        .flat_map(|value| value.split(';'))
++        .filter_map(|pair| pair.trim().split_once('='))
++        .find(|(name, _)| *name == COOKIE)
++        .map(|(_, value)| value.to_string())
++        .filter(|value| value.len() == 32 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
++}
++
++/// A new visitor's cookie value.
++fn new_visitor() -> String {
++    secp256k1::rand::random::<[u8; 16]>()
++        .iter()
++        .map(|byte| format!("{byte:02x}"))
++        .collect()
++}
++
++/// The key a visitor's jobs are signed with: derived from the server's
++/// secret and the cookie, never stored or sent.
++pub(crate) fn key(salt: &[u8; 32], visitor: &str) -> SecretKey {
++    let mut seed: [u8; 32] = Sha256::new()
++        .chain_update(b"openagents-web-visitor-v1")
++        .chain_update(salt)
++        .chain_update(visitor.as_bytes())
++        .finalize()
++        .into();
++    loop {
++        if let Ok(key) = SecretKey::from_byte_array(seed) {
++            return key;
++        }
++        seed = Sha256::digest(seed).into();
++    }
++}
++
++/// The turns a question sends: the newest [`MAX_TURNS`], each bounded,
++/// ending with the visitor's. `None` when there is nothing to ask.
++fn turns(question: Question) -> Option<Vec<Turn>> {
++    let start = question.turns.len().saturating_sub(MAX_TURNS);
++    let turns: Vec<Turn> = question.turns[start..]
++        .iter()
++        .map(|said| {
++            let text: String = said.text.trim().chars().take(MAX_TURN_CHARS).collect();
++            match said.role {
++                Role::User => Turn::user(text),
++                Role::Assistant => Turn::assistant(text, None),
++            }
++        })
++        .collect();
++    let last = turns.last()?;
++    (last.role == Role::User && !last.text.is_empty()).then_some(turns)
++}
++
++fn refusal(status: StatusCode, message: &str) -> Response {
++    (status, axum::Json(json!({ "error": message }))).into_response()
++}
++
++async fn ask(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Response {
++    let Some(turns) = serde_json::from_slice::<Question>(&body)
++        .ok()
++        .and_then(turns)
++    else {
++        return refusal(StatusCode::BAD_REQUEST, "Ask a question.");
++    };
++    let (visitor, set_cookie) = match visitor(&headers) {
++        Some(visitor) => (visitor, None),
++        None => {
++            let visitor = new_visitor();
++            let cookie = format!(
++                "{COOKIE}={visitor}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax{}",
++                if app.config.secure_cookies {
++                    "; Secure"
++                } else {
++                    ""
++                }
++            );
++            (visitor, Some(cookie))
++        }
++    };
++    let held = match app.limits.take(&visitor, Instant::now()) {
++        Ok(held) => held,
++        Err(busy) => return refusal(StatusCode::TOO_MANY_REQUESTS, busy.message()),
++    };
++    let door = match app.config.chat.door(key(&app.config.ask_salt, &visitor)) {
++        Ok(door) => door,
++        Err(why) => {
++            eprintln!("openagents-web: the chat door did not open: {why}");
++            return refusal(
++                StatusCode::SERVICE_UNAVAILABLE,
++                "We can't answer right now; try again soon.",
++            );
++        }
++    };
++    let (lines, receiver) = tokio::sync::mpsc::channel::<Bytes>(32);
++    tokio::spawn(answer(door, turns, lines, held));
++    let stream = futures_util::stream::unfold(receiver, |mut receiver| async move {
++        receiver
++            .recv()
++            .await
++            .map(|line| (Ok::<_, std::convert::Infallible>(line), receiver))
++    });
++    let mut response = Response::new(Body::from_stream(stream));
++    let response_headers = response.headers_mut();
++    response_headers.insert(
++        header::CONTENT_TYPE,
++        HeaderValue::from_static("application/x-ndjson; charset=utf-8"),
++    );
++    response_headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
++    if let Some(cookie) = set_cookie.and_then(|cookie| HeaderValue::from_str(&cookie).ok()) {
++        response_headers.insert(header::SET_COOKIE, cookie);
++    }
++    response
++}
++
++fn line(value: &serde_json::Value) -> Bytes {
++    Bytes::from(format!("{value}\n"))
++}
++
++/// Asks the door and writes the answer as it grows, then how it ended.
++async fn answer(
++    door: Box<dyn Door>,
++    turns: Vec<Turn>,
++    lines: tokio::sync::mpsc::Sender<Bytes>,
++    held: Held,
++) {
++    let _held = held;
++    let context = Context {
++        surface: Surface::Web,
++        ..Context::default()
++    };
++    let reply = Arc::new(Mutex::new(Reply::default()));
++    let job = door.ask(turns, context, reply.clone());
++    tokio::pin!(job);
++    let mut asked = false;
++    let mut shown = String::new();
++    loop {
++        tokio::select! {
++            () = &mut job, if !asked => asked = true,
++            () = tokio::time::sleep(POLL) => {}
++        }
++        let (text, done, failure) = {
++            let reply = basic_coder::lock(&reply);
++            (reply.text.clone(), reply.done, reply.failure.clone())
++        };
++        if text != shown {
++            shown = text;
++            let html = crate::markdown::render(&shown);
++            if lines.send(line(&json!({ "html": html }))).await.is_err() {
++                return;
++            }
++        }
++        let last = if done {
++            json!({ "done": true, "text": shown })
++        } else if let Some(failure) = failure {
++            json!({ "error": failure.describe() })
++        } else if asked {
++            json!({ "error": "We didn't get an answer; try asking again." })
++        } else {
++            continue;
++        };
++        let _ = lines.send(line(&last)).await;
++        return;
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn a_visitor_asks_one_question_at_a_time_and_six_a_minute() {
++        let limits = Arc::new(Limits::default());
++        let start = Instant::now();
++        let first = limits.take("a", start).unwrap();
++        assert_eq!(limits.take("a", start).err(), Some(Busy::Asking));
++        let other = limits.take("b", start).unwrap();
++        drop(first);
++        for _ in 1..PER_MINUTE {
++            drop(limits.take("a", start).unwrap());
++        }
++        assert_eq!(limits.take("a", start).err(), Some(Busy::Minute));
++        drop(limits.take("a", start + Duration::from_secs(61)).unwrap());
++        drop(other);
++        assert_eq!(limits.waiting.load(Ordering::SeqCst), 0);
++    }
++
++    #[test]
++    fn everyone_together_waits_on_at_most_the_in_flight_bound() {
++        let limits = Arc::new(Limits::default());
++        let now = Instant::now();
++        let held: Vec<Held> = (0..IN_FLIGHT)
++            .map(|n| limits.take(&n.to_string(), now).unwrap())
++            .collect();
++        assert_eq!(limits.take("late", now).err(), Some(Busy::Everyone));
++        drop(held);
++        assert!(limits.take("late", now).is_ok());
++    }
++
++    #[test]
++    fn each_visitor_signs_with_a_key_of_its_own_that_the_salt_hides() {
++        let salt = [7; 32];
++        assert_eq!(key(&salt, "a"), key(&salt, "a"));
++        assert_ne!(key(&salt, "a"), key(&salt, "b"));
++        assert_ne!(key(&salt, "a"), key(&[8; 32], "a"));
++    }
++
++    #[test]
++    fn only_a_cookie_this_site_could_set_names_a_visitor() {
++        let mut headers = HeaderMap::new();
++        let id = new_visitor();
++        headers.insert(
++            header::COOKIE,
++            HeaderValue::from_str(&format!("x=1; {COOKIE}={id}")).unwrap(),
++        );
++        assert_eq!(visitor(&headers), Some(id));
++        headers.insert(
++            header::COOKIE,
++            HeaderValue::from_static("oa_visitor=../../etc"),
++        );
++        assert_eq!(visitor(&headers), None);
++    }
++
++    #[test]
++    fn a_question_keeps_the_newest_turns_and_ends_with_the_visitor() {
++        let said = |role, text: &str| Said {
++            role,
++            text: text.to_string(),
++        };
++        let mut many: Vec<Said> = (0..12)
++            .map(|n| {
++                said(
++                    if n % 2 == 0 {
++                        Role::User
++                    } else {
++                        Role::Assistant
++                    },
++                    "x",
++                )
++            })
++            .collect();
++        many.push(said(Role::User, &"y".repeat(MAX_TURN_CHARS + 10)));
++        let kept = turns(Question { turns: many }).unwrap();
++        assert_eq!(kept.len(), MAX_TURNS);
++        assert_eq!(kept.last().unwrap().text.chars().count(), MAX_TURN_CHARS);
++        assert!(
++            turns(Question {
++                turns: vec![said(Role::Assistant, "hi")]
++            })
++            .is_none()
++        );
++        assert!(
++            turns(Question {
++                turns: vec![said(Role::User, "  ")]
++            })
++            .is_none()
++        );
++        assert!(turns(Question { turns: vec![] }).is_none());
++    }
++}
+diff --git a/crates/openagents-web/src/tests.rs b/crates/openagents-web/src/tests.rs
+index 8834040aceb4885e5a200a8d8cd887c79d337465..2b25204b782e3e051a4899b9e775d9bd31a6ebfe 100644
+--- a/crates/openagents-web/src/tests.rs
++++ b/crates/openagents-web/src/tests.rs
+@@ -119,13 +119,25 @@ async fn every_public_page_answers_in_development() {
+         assert_eq!(status, StatusCode::OK, "{uri}: {body}");
+         let lower = body.to_ascii_lowercase();
+         assert!(lower.starts_with("<!doctype html>"), "{uri}");
+-        assert!(!lower.contains("<script"), "{uri} runs a script");
++        // The homepage terminal is the site's one script (#10106).
++        let script = uri == "/";
++        assert_eq!(
++            lower.matches("<script").count(),
++            usize::from(script),
++            "{uri} runs a script"
++        );
+         assert!(body.contains("href=\"/terms\""), "{uri} links the terms");
+         assert!(body.contains("href=\"/privacy\""), "{uri} links the policy");
+         assert!(body.contains("class=\"wordmark\""), "{uri} has the header");
+         let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+         assert!(policy.starts_with("default-src 'none'"), "{uri}: {policy}");
+-        assert!(!policy.contains("script-src"), "{uri}: {policy}");
++        if script {
++            assert!(policy.contains("script-src 'self'"), "{uri}: {policy}");
++            assert!(policy.contains("connect-src 'self'"), "{uri}: {policy}");
++            assert!(!policy.contains("unsafe"), "{uri}: {policy}");
++        } else {
++            assert!(!policy.contains("script-src"), "{uri}: {policy}");
++        }
+         assert_eq!(headers[header::X_CONTENT_TYPE_OPTIONS], "nosniff");
+     }
+ }
+@@ -156,7 +168,10 @@ async fn the_homepage_links_one_install_page_and_shows_the_verse() {
+         "the download lives on /install"
+     );
+     assert!(!home.contains("curl ") && !home.contains("irm "));
+-    assert!(!home.contains("class=\"terminal\"") && !home.contains("<form"));
++    // The terminal (#10106): its box, its line, and its one script.
++    assert!(home.contains("<h2 class=\"box-title\" id=\"term-title\">Ask OpenAgents</h2>"));
++    assert!(home.contains("id=\"term-input\""));
++    assert!(home.contains("<script src=\"/static/ask.js\" defer></script>"));
+     assert!(home.contains("<img src=\"/static/verse-grid.jpg\""));
+     assert!(home.contains("alt=\"The Grid, the OpenAgents Verse world"));
+     let (status, headers, image) =
+@@ -164,8 +179,18 @@ async fn the_homepage_links_one_install_page_and_shows_the_verse() {
+     assert_eq!(status, StatusCode::OK);
+     assert_eq!(headers[header::CONTENT_TYPE], "image/jpeg");
+     assert!(image.starts_with(&[0xff, 0xd8, 0xff]), "a JPEG");
+-    let (status, _) = get(router(config(root.path().into())), "/ask?q=help").await;
+-    assert_eq!(status, StatusCode::NOT_FOUND, "the ask box is gone");
++    let (status, headers, script) =
++        get_with(router(config(root.path().into())), "/static/ask.js", LOCAL).await;
++    assert_eq!(status, StatusCode::OK);
++    assert_eq!(
++        headers[header::CONTENT_TYPE],
++        "text/javascript; charset=utf-8"
++    );
++    assert!(script.contains("fetch(\"/ask\""));
++    assert!(
++        !script.contains("innerHTML = message.text"),
++        "only server-drawn HTML"
++    );
+ }
+ 
+ #[tokio::test]
+@@ -463,3 +488,122 @@ async fn task_view_escapes_private_content_and_rejects_bad_cursor() {
+     .await;
+     assert_eq!(status, StatusCode::BAD_REQUEST);
+ }
++
++// ---------------------------------------------------------------------
++// The homepage terminal's questions (#10106), answered in process.
++
++struct Answering;
++
++struct AnsweringDoor;
++
++impl openagents_chat::basic_coder::Door for AnsweringDoor {
++    fn ask(
++        &self,
++        turns: Vec<openagents_chat::basic_coder::Turn>,
++        context: openagents_chat::router::Context,
++        reply: Arc<std::sync::Mutex<openagents_chat::basic_coder::Reply>>,
++    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
++        Box::pin(async move {
++            // The website asks as itself, with nothing about a computer.
++            let payload = openagents_chat::basic_coder::payload(&turns, &context);
++            assert_eq!(payload["context"]["surface"], "web");
++            assert_eq!(payload["context"]["computer_ready"], false);
++            assert!(payload["context"].get("computer").is_none());
++            assert_eq!(payload["client"], "openagents-web");
++            assert_eq!(
++                payload["instructions"],
++                openagents_chat::basic_coder::INSTRUCTIONS_WEB
++            );
++            let mut reply = openagents_chat::basic_coder::lock(&reply);
++            reply.text = format!("You asked **{}** <b>raw</b>", turns.last().unwrap().text);
++            reply.done = true;
++        })
++    }
++}
++
++impl ask::Chat for Answering {
++    fn door(
++        &self,
++        _secret: secp256k1::SecretKey,
++    ) -> Result<Box<dyn openagents_chat::basic_coder::Door>, String> {
++        Ok(Box::new(AnsweringDoor))
++    }
++}
++
++async fn post_ask(
++    router: Router,
++    body: &str,
++    cookie: Option<&str>,
++) -> (StatusCode, axum::http::HeaderMap, String) {
++    let mut request = Request::builder()
++        .method("POST")
++        .uri("/ask")
++        .header(header::HOST, LOCAL)
++        .header(header::CONTENT_TYPE, "application/json");
++    if let Some(cookie) = cookie {
++        request = request.header(header::COOKIE, cookie);
++    }
++    let response = router
++        .oneshot(request.body(Body::from(body.to_owned())).unwrap())
++        .await
++        .unwrap();
++    let status = response.status();
++    let headers = response.headers().clone();
++    let body = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
++    (status, headers, String::from_utf8_lossy(&body).into_owned())
++}
++
++#[tokio::test]
++async fn a_question_streams_its_answer_as_the_website_and_names_the_visitor() {
++    let root = tempfile::tempdir().unwrap();
++    let mut config = config(root.path().into());
++    config.chat = Arc::new(Answering);
++    let question = json!({"turns": [{"role": "user", "text": "what is OpenAgents?"}]}).to_string();
++    let (status, headers, body) = post_ask(router(config.clone()), &question, None).await;
++    assert_eq!(status, StatusCode::OK, "{body}");
++    assert_eq!(
++        headers[header::CONTENT_TYPE],
++        "application/x-ndjson; charset=utf-8"
++    );
++    let cookie = headers[header::SET_COOKIE].to_str().unwrap();
++    assert!(cookie.starts_with("oa_visitor="), "{cookie}");
++    assert!(cookie.contains("HttpOnly") && cookie.contains("SameSite=Lax"));
++    let lines: Vec<serde_json::Value> = body
++        .lines()
++        .map(|line| serde_json::from_str(line).unwrap())
++        .collect();
++    let html = lines[0]["html"].as_str().unwrap();
++    assert!(
++        html.contains("<strong>what is OpenAgents?</strong>"),
++        "{html}"
++    );
++    assert!(
++        html.contains("&lt;b&gt;raw&lt;/b&gt;"),
++        "raw HTML shows as text: {html}"
++    );
++    let last = lines.last().unwrap();
++    assert_eq!(last["done"], true);
++    assert_eq!(last["text"], "You asked **what is OpenAgents?** <b>raw</b>");
++    // A visitor the site already named keeps its cookie.
++    let named = cookie.split(';').next().unwrap();
++    let (status, headers, _) = post_ask(router(config), &question, Some(named)).await;
++    assert_eq!(status, StatusCode::OK);
++    assert!(headers.get(header::SET_COOKIE).is_none());
++}
++
++#[tokio::test]
++async fn a_question_must_end_with_the_visitor() {
++    let root = tempfile::tempdir().unwrap();
++    let mut config = config(root.path().into());
++    config.chat = Arc::new(Answering);
++    for body in [
++        "not json",
++        r#"{"turns":[]}"#,
++        r#"{"turns":[{"role":"assistant","text":"hi"}]}"#,
++        r#"{"turns":[{"role":"user","text":"   "}]}"#,
++        r#"{"turns":[{"role":"system","text":"hi"}]}"#,
++    ] {
++        let (status, _, _) = post_ask(router(config.clone()), body, None).await;
++        assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
++    }
++}

@@ -1,0 +1,366 @@
+diff --git a/crates/coder/src/cli_route/tree.json b/crates/coder/src/cli_route/tree.json
+index 5ef91bf812feb339529a5ea1bf6c8119af66d356..7f151da9075aecc8b5fb67fc7c7e70c1c9ab65bd 100644
+--- a/crates/coder/src/cli_route/tree.json
++++ b/crates/coder/src/cli_route/tree.json
+@@ -5810,6 +5810,154 @@
+         }
+       ]
+     },
++    {
++      "name": "worktree",
++      "summary": "Coder's task worktrees here: list them with size and what removing would lose, archive an ended task's, and restore an archived one.",
++      "children": [
++        {
++          "name": "ls",
++          "leaf": {
++            "path": [
++              "worktree",
++              "ls"
++            ],
++            "usage": [
++              "ls [--no-size]"
++            ],
++            "forms": [
++              {
++                "tokens": [
++                  {
++                    "kind": "literal",
++                    "word": "ls"
++                  },
++                  {
++                    "kind": "option",
++                    "name": "no-size",
++                    "optional": true
++                  }
++                ]
++              }
++            ],
++            "summary": "Each Coder task worktree here: its task and the task's state, size, whether removing it would lose anything (uncommitted, unpushed, or ignored files), and age; then the archived ones. Sizing walks every file; --no-size skips it.",
++            "effect": "read_only",
++            "runs_on": "connected_computer"
++          }
++        },
++        {
++          "name": "archive",
++          "leaf": {
++            "path": [
++              "worktree",
++              "archive"
++            ],
++            "usage": [
++              "archive NAME",
++              "archive NAME --force [--confirm NAME]"
++            ],
++            "forms": [
++              {
++                "tokens": [
++                  {
++                    "kind": "literal",
++                    "word": "archive"
++                  },
++                  {
++                    "kind": "positional",
++                    "name": "NAME"
++                  }
++                ]
++              },
++              {
++                "tokens": [
++                  {
++                    "kind": "literal",
++                    "word": "archive"
++                  },
++                  {
++                    "kind": "positional",
++                    "name": "NAME"
++                  },
++                  {
++                    "kind": "option",
++                    "name": "force"
++                  },
++                  {
++                    "kind": "option",
++                    "name": "confirm",
++                    "value": "NAME",
++                    "open": true,
++                    "optional": true
++                  }
++                ]
++              }
++            ],
++            "summary": "Remove an ended task's worktree and keep what restores it. Refused when it holds anything not saved elsewhere.",
++            "effect": "local_write",
++            "runs_on": "connected_computer"
++          }
++        },
++        {
++          "name": "restore",
++          "leaf": {
++            "path": [
++              "worktree",
++              "restore"
++            ],
++            "usage": [
++              "restore NAME"
++            ],
++            "forms": [
++              {
++                "tokens": [
++                  {
++                    "kind": "literal",
++                    "word": "restore"
++                  },
++                  {
++                    "kind": "positional",
++                    "name": "NAME"
++                  }
++                ]
++              }
++            ],
++            "summary": "Recreate an archived worktree at its path, at the commit it was on.",
++            "effect": "local_write",
++            "runs_on": "connected_computer"
++          }
++        }
++      ],
++      "options": [
++        {
++          "kind": "option",
++          "name": "no-size",
++          "optional": true,
++          "repeated": true
++        },
++        {
++          "kind": "option",
++          "name": "force",
++          "optional": true,
++          "repeated": true
++        },
++        {
++          "kind": "option",
++          "name": "confirm",
++          "value": "NAME",
++          "open": true,
++          "optional": true,
++          "repeated": true
++        },
++        {
++          "kind": "option",
++          "name": "tasks",
++          "value": "DIR",
++          "open": true,
++          "optional": true,
++          "repeated": true
++        }
++      ]
++    },
+     {
+       "name": "ssh",
+       "summary": "Start or adopt a host over SSH and tunnel to it.",
+diff --git a/crates/coder/src/task/worktrees.rs b/crates/coder/src/task/worktrees.rs
+index 40e874b4a8b26dafb2db030dc05b8e1ea60746d5..f25b69b9d64a96ba69a116d29561f8d8f3ce5c76 100644
+--- a/crates/coder/src/task/worktrees.rs
++++ b/crates/coder/src/task/worktrees.rs
+@@ -135,6 +135,115 @@ pub fn restore(store: &Path, task: &str) -> Result<String, String> {
+     Ok(format!("Restored the worktree at {}.", record.worktree))
+ }
+ 
++/// Throw away what [`archive`] would keep the worktree for: its
++/// uncommitted changes and every untracked or ignored file, which are
++/// deleted for good. Commits not on a remote, and a stash made on it,
++/// still keep it. Only the person's typed confirmation should lead here
++/// (`openagents worktree archive --force`, #10294); [`archive`] follows.
++///
++/// # Errors
++/// The task is still going or has no worktree here, or Git refused.
++pub fn discard_unsaved(store: &Path, task: &str) -> Result<(), String> {
++    let ended = Store::open_waiting(store, std::time::Duration::from_secs(30))
++        .and_then(|store| store.list())
++        .map_err(|error| error.to_string())?
++        .into_iter()
++        .find(|found| found.task_id == task)
++        .map(|found| found.ended())
++        .ok_or_else(|| "There is no such task here.".to_owned())?;
++    if !ended {
++        return Err("This task is still going, so its worktree stays.".into());
++    }
++    let record = super::local::record(store, task)
++        .ok_or_else(|| "This task has no worktree on this computer.".to_owned())?;
++    let path = PathBuf::from(&record.worktree);
++    if !path.join(".git").is_file() {
++        return Err("This task's worktree is already gone.".into());
++    }
++    for args in [&["reset", "--hard", "--quiet"][..], &["clean", "-fdxq"][..]] {
++        let output = std::process::Command::new("git")
++            .arg("-C")
++            .arg(&path)
++            .args(args)
++            .env("GIT_TERMINAL_PROMPT", "0")
++            .stdin(std::process::Stdio::null())
++            .output()
++            .map_err(|error| format!("git: {error}"))?;
++        if !output.status.success() {
++            return Err(format!(
++                "Git kept the worktree: {}",
++                String::from_utf8_lossy(&output.stderr).trim()
++            ));
++        }
++    }
++    Ok(())
++}
++
++/// A task worktree [`archive`] or the task's end removed, which
++/// [`restore`] recreates.
++#[derive(Clone, Debug, PartialEq, Eq)]
++pub struct Archived {
++    pub task: String,
++    pub path: PathBuf,
++    pub commit: String,
++    /// When it was removed, in Unix seconds (0 when not recorded).
++    pub at: u64,
++}
++
++/// Every removed task worktree [`restore`] can bring back, newest first:
++/// the runs' records (#10291) and archives made before them.
++#[must_use]
++pub fn archived(store: &Path) -> Vec<Archived> {
++    let mut out = Vec::new();
++    if let Ok(entries) = std::fs::read_dir(store.join("local")) {
++        for entry in entries.flatten() {
++            let name = entry.file_name();
++            let Some(task) = name.to_str().and_then(|name| name.strip_suffix(".json")) else {
++                continue;
++            };
++            let Some(record) = super::local::record(store, task) else {
++                continue;
++            };
++            if let Some(gone) = &record.archived {
++                out.push(Archived {
++                    task: record.task.clone(),
++                    path: PathBuf::from(&record.worktree),
++                    commit: gone.commit.clone(),
++                    at: gone.removed_at,
++                });
++            }
++        }
++    }
++    if let Ok(entries) = std::fs::read_dir(store.join("archived-worktrees")) {
++        for entry in entries.flatten() {
++            let name = entry.file_name();
++            let Some(task) = name.to_str().and_then(|name| name.strip_suffix(".json")) else {
++                continue;
++            };
++            let Some(undo) = std::fs::read(entry.path())
++                .ok()
++                .and_then(|bytes| serde_json::from_slice::<Undo>(&bytes).ok())
++            else {
++                continue;
++            };
++            let at = entry
++                .metadata()
++                .and_then(|meta| meta.modified())
++                .ok()
++                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
++                .map_or(0, |since| since.as_secs());
++            out.push(Archived {
++                task: task.to_owned(),
++                path: undo.path,
++                commit: undo.commit,
++                at,
++            });
++        }
++    }
++    out.sort_by(|a, b| b.at.cmp(&a.at).then_with(|| a.task.cmp(&b.task)));
++    out
++}
++
+ fn undo_path(store: &Path, task: &str) -> PathBuf {
+     store
+         .join("archived-worktrees")
+diff --git a/crates/openagents-cli/src/tree.rs b/crates/openagents-cli/src/tree.rs
+index 5898cb41a41a25c9bd60312ce1d560b1597464b0..3f9e2179b31e99f28dbff929bae2192e172f6c0d 100644
+--- a/crates/openagents-cli/src/tree.rs
++++ b/crates/openagents-cli/src/tree.rs
+@@ -159,6 +159,11 @@ pub fn help() -> Vec<GroupHelp<'static>> {
+             Some(crate::background::USAGE),
+             crate::background::EFFECTS,
+         ),
++        group(
++            "worktree",
++            Some(crate::worktree::USAGE),
++            crate::worktree::EFFECTS,
++        ),
+         group("ssh", Some(crate::ssh::USAGE), crate::ssh::EFFECTS),
+         group(
+             "boat",
+diff --git a/docs/cli/worktree.md b/docs/cli/worktree.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..2c932b80555285b86cfa4e9dc6ef7e42f5b4441d
+--- /dev/null
++++ b/docs/cli/worktree.md
+@@ -0,0 +1,65 @@
++# `openagents worktree`
++
++Coder runs every task in its own Git worktree, in the `worktrees` folder
++beside the task store (`~/.openagents/worktrees` for the default store,
++`$OPENAGENTS_TASKS/../worktrees` otherwise). `openagents worktree` lists
++them, removes an ended task's on purpose, and brings one back. It is P2.1 of
++the [Paseo worktree gap analysis](../worktrees/2026-10-03-paseo-worktree-gap-analysis.md)
++(#10294); the code is `crates/openagents-cli/src/worktree.rs`, over the same
++`coder::task::worktrees` archive and restore as the terminal's `/worktrees`
++(#10296).
++
++```sh
++openagents worktree ls                 # every task worktree, then the archived ones
++openagents worktree ls --no-size       # skip sizing (it walks every file)
++openagents worktree archive NAME       # remove an ended task's worktree, keep what restores it
++openagents worktree archive NAME --force --confirm NAME
++                                       # remove it even with unsaved files (deleted for good)
++openagents worktree restore NAME       # recreate it at its path, at the recorded commit
++```
++
++Every command takes `--tasks DIR` for another task store, and `--json`.
++
++## `ls`
++
++One row per worktree: its name (`PROJECT-TASK12`, the task identity's first
++twelve characters; a project's ready spare is `PROJECT.spare-KEY`), the
++task's state (`ended`, `running`, `queued`, …, or `no task` when the task
++store has none), its size, how long since it was last used, and what
++removing it would lose:
++
++- `nothing unsaved`: clean, every commit is on a remote, and no ignored
++  file outside a build cache (`target`, `node_modules`, …);
++- `uncommitted changes`, `commits not on any remote`,
++  `holds ignored files: …`, or `a stash was made on it`.
++
++These are the same checks the background cleanup uses before it removes a
++worktree (`background::git::removable`). Archived worktrees follow, with
++their commit and when they went.
++
++## `archive`
++
++`NAME` is the folder name, its path, or the task's identity (at least six
++characters). Refuses a running task's worktree, a spare, and a folder with
++no task. Otherwise it runs the checks above; when one fails, nothing is
++removed and the reason is printed. When they pass, it runs the repository's
++teardown hook (#10297), records what restores the worktree in the run's
++record (`<task store>/local/TASK.json`, `archived`: commit, branch if any,
++when), and removes it: the same removal a task's end makes (#10291), so a
++follow-up recreates it by itself.
++
++`--force` first deletes its uncommitted, untracked, and ignored files for
++good (`git reset --hard`, `git clean -fdx`), then archives it; `restore`
++brings back the committed state. Commits not on any remote and a stash made
++on it still keep it. It asks you to type the worktree's name, or takes
++`--confirm NAME` when not run from a terminal.
++
++## `restore`
++
++Recreates the worktree at its old path at the recorded commit, detached as
++Coder made it (or on its branch when it had one and the branch still
++exists), and drops the record. It refuses when the path is taken.
++
++`NAME` is the folder name or the task's identity. Worktrees a task's end
++removed (#10291) are listed and restored the same way, as are archives made
++before that record existed (`<task store>/archived-worktrees/TASK.json`).

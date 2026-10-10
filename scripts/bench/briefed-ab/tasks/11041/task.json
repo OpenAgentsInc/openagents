@@ -1,0 +1,44 @@
+{
+  "test_targets": [
+    "--bins",
+    "--lib"
+  ],
+  "issue": 11041,
+  "title": "Saved Bring-your-own Claude keys are stored unencrypted on disk",
+  "body": "**What users are told:** OpenAgents keeps your own Anthropic or cloud credential \"in private server custody\" (`TERMS` in `crates/openagents-web/src/cloud/byo.rs:51`).\n\n**What the code does:** The key is written as plain text inside a JSON file (`Entry.key`, `crates/openagents-web/src/cloud/custody.rs:193-202`) by `write_private` (`custody.rs:317-341`). The file is owner-only (mode 0600, no symlinks, synced), and the key is wiped from memory on drop, but nothing encrypts it at rest. A disk snapshot, backup or host compromise exposes every stored key.\n\n**Fix:** Encrypt each entry with a key held outside the data directory (a cloud KMS or Secret Manager key, per entry), keep the existing file protections, and migrate existing files on first read. Or reword the terms to say plainly how keys are held.",
+  "fix": "6ea8c08b173ccf178a1ebd0d8f46a59fd7695a02",
+  "parent": "0cc535b5e728b9b75a778b881df0ce30c7291f0e",
+  "package": null,
+  "source_files": [
+    "crates/oa-seal/Cargo.toml",
+    "crates/openagents-web/Cargo.toml",
+    "crates/openagents-web/README.md",
+    "crates/openagents-web/examples/cloud_session_fixture.rs",
+    "crates/openagents-web/examples/github_auth_fixture.rs",
+    "crates/openagents-web/src/cloud/byo.rs",
+    "crates/openagents-web/src/cloud/custody.rs",
+    "crates/openagents-web/src/main.rs",
+    "docs/cloud/claude-code-byo.md",
+    "docs/cloud/coder-cloud-web-activation.md"
+  ],
+  "test_files": [
+    "crates/oa-seal/src/lib.rs",
+    "crates/openagents-web/src/auth/tests.rs",
+    "crates/openagents-web/src/cloud/byo.rs",
+    "crates/openagents-web/src/cloud/custody.rs",
+    "crates/openagents-web/src/cloud/tests.rs"
+  ],
+  "test_names": [
+    "a_keyring_inside_the_custody_directory_is_refused",
+    "a_wrong_or_missing_key_fails_closed",
+    "keys_are_sealed_at_rest_and_round_trip",
+    "plain_text_entries_are_sealed_on_first_read",
+    "refuses_malformed_keyrings_and_shared_files",
+    "rotation_opens_old_records_and_seals_new_ones_under_the_current_key",
+    "rotation_reseals_under_the_current_key",
+    "round_trips_without_plaintext_in_the_record",
+    "tampered_entries_fail_closed",
+    "tampering_with_bytes_metadata_or_key_label_is_detected"
+  ],
+  "fix_lines": 961
+}

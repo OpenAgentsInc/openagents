@@ -1,0 +1,39 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 9785,
+  "title": "Physics GP-8: randomized invariants, step budget, and Genesis oracle",
+  "body": "Calibration and budget, from `rigid/domain_randomization.py`, `rigid/set_phys_attr.py`, `speed_benchmark/timers.py`, and an offline Genesis oracle. Roadmap: `docs/physics/2026-09-27-genesis-port-roadmap.md`.\n\n**Scope**\n- Seeded randomized tests over mass, center of mass, inertia, friction, and restitution; every earlier invariant holds across the sampled range.\n- A step-timing report per phase (integrate, contacts, joints) and a stated frame budget measured on desktop and mobile.\n- Optional offline Genesis oracle scripts for the tank-into-panel and off-center-grab scenes, with recorded traces compared to Rust within tolerance.\n\n**Accept**\n- Randomized invariants pass at a bounded case count.\n- The measured step fits the budget.\n- Oracle comparisons agree within stated tolerances before a fidelity claim is made.\n",
+  "fix": "1885ffc3cf616ada4f43f0050827186d2c84a398",
+  "parent": "8e2a99608f2d712ea6cc73973efcc9c00398517a",
+  "package": "physics",
+  "source_files": [
+    "crates/physics/Cargo.toml",
+    "crates/physics/examples/oracle_scenes.rs",
+    "crates/physics/oracle/README.md",
+    "crates/physics/oracle/genesis_oracle.py",
+    "crates/physics/src/lib.rs",
+    "crates/physics/src/trace.rs",
+    "crates/verse-lagrange/examples/step_budget.rs",
+    "crates/verse/src/zones/runtime.rs",
+    "docs/physics/2026-09-27-genesis-port-roadmap.md",
+    "docs/research/unreal/AGENTS.md",
+    "docs/verse/lagrange-1.md"
+  ],
+  "test_files": [
+    "crates/physics/src/oracle.rs",
+    "crates/physics/src/tests.rs",
+    "crates/verse-lagrange/src/tests.rs",
+    "crates/verse/src/zones/tests.rs"
+  ],
+  "test_names": [
+    "randomized_collisions_conserve_momentum",
+    "randomized_friction_obeys_the_coulomb_limit",
+    "randomized_joints_keep_their_invariants",
+    "randomized_releases_keep_the_ledger_and_stay_out_of_structure",
+    "scenes_round_trip_and_run_deterministically",
+    "tank_into_panel_matches_genesis"
+  ],
+  "fix_lines": 885
+}

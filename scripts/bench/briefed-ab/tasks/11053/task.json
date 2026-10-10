@@ -1,4 +1,7 @@
 {
+  "test_targets": [
+    "--lib"
+  ],
   "issue": 11053,
   "title": "retail-service test fails: killed_service_resumes_original_resource_task_and_settlement",
   "body": "`crates/retail-service/tests/process.rs::killed_service_resumes_original_resource_task_and_settlement` fails with \"live accounting changed since the checkpoint\". Seen 2026-10-09 while building ENV-10 (#11006, 11aa37dd44); it still fails with ENV-10's two new pieces turned off, so it looks older. Find the cause and fix it.",

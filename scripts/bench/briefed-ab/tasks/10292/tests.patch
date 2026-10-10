@@ -1,0 +1,39 @@
+diff --git a/crates/background/src/phase3_tests.rs b/crates/background/src/phase3_tests.rs
+index ae56526cf349b9681df2a88dc4be99f43cdd0d32..80e3ea92548e72edbc38183d1a365895af8b21ce 100644
+--- a/crates/background/src/phase3_tests.rs
++++ b/crates/background/src/phase3_tests.rs
+@@ -258,7 +258,7 @@ fn steps(env: &Env<'_>, rule: &Rule, p: Powers<'_>, dry: bool) -> Vec<engine::St
+ // Built-ins.
+ 
+ #[test]
+-fn every_built_in_is_valid_listed_and_off_but_checkout_on_coderos() {
++fn every_built_in_is_valid_listed_and_off_but_host_defaults() {
+     let h = home();
+     for id in rule::BUILT_IN {
+         let rule = rule::built_in(id).unwrap();
+@@ -267,6 +267,13 @@ fn every_built_in_is_valid_listed_and_off_but_checkout_on_coderos() {
+         assert_eq!(rule.origin, rule::Origin::BuiltIn);
+         if id == "checkout" {
+             assert_eq!(rule.enabled, crate::builtins::on_coderos());
++        } else if id == "worktrees" {
++            assert_eq!(rule.enabled, crate::builtins::coder_host());
++            assert_eq!(rule.classes.worktree_days, 7);
++            assert_eq!(
++                rule.triggers,
++                vec![rule::Trigger::Daily { at: "03:30".into() }]
++            );
+         } else {
+             assert!(!rule.enabled, "{id} ships off");
+         }
+diff --git a/crates/openagents-cli/src/cloud.rs b/crates/openagents-cli/src/cloud.rs
+index af425414e16edecb3979b10de69233ed60a2342f..b654ca0ed4649b25ba415c31a2870630e0fa218f 100644
+--- a/crates/openagents-cli/src/cloud.rs
++++ b/crates/openagents-cli/src/cloud.rs
+@@ -1224,6 +1227,7 @@ mod tests {
+         assert!(HOST_AGENT.contains("oa-pool-idle-minutes"));
+         assert!(HOST_AGENT.contains("bubblewrap") && HOST_AGENT.contains("agent-ready"));
+         assert!(HOST_AGENT.contains("compute.googleapis.com"));
++        assert!(HOST_AGENT.contains("/etc/openagents/pool-host"));
+         assert!(prepare_script().contains("oa_build"));
+     }
+ 

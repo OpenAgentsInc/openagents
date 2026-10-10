@@ -1,0 +1,1318 @@
+diff --git a/crates/physics/src/body.rs b/crates/physics/src/body.rs
+index 0c0091c1e17f7d23f11ad84fb4fded025049b220..3f290393a787d282e92921bf4df18c3c9ccfda31 100644
+--- a/crates/physics/src/body.rs
++++ b/crates/physics/src/body.rs
+@@ -1,7 +1,7 @@
+ //! Rigid bodies: Newton for the center of mass, Euler's equations for
+ //! rotation about principal axes, and quaternion attitude.
+ 
+-use glam::{DQuat, DVec3, DVec4};
++use glam::{DMat3, DQuat, DVec3, DVec4};
+ use serde::{Deserialize, Serialize};
+ 
+ /// How the world moves a body.
+@@ -99,6 +99,13 @@ impl Body {
+         self.vel * self.mass
+     }
+ 
++    /// Inertia tensor about the center of mass in the world frame, kg m^2.
++    #[must_use]
++    pub fn inertia_world(&self) -> DMat3 {
++        let r = DMat3::from_quat(self.orientation);
++        r * DMat3::from_diagonal(self.inertia) * r.transpose()
++    }
++
+     /// Inverse inertia tensor in the world frame applied to `v`.
+     #[must_use]
+     pub fn inverse_inertia_world(&self, v: DVec3) -> DVec3 {
+@@ -214,6 +221,63 @@ impl Body {
+     }
+ }
+ 
++/// Several bodies treated as one: total mass, center of mass, its velocity,
++/// the inertia tensor about it, and the angular momentum about it. For
++/// controlling a group held together by joints.
++#[derive(Clone, Copy, Debug, PartialEq)]
++pub struct Composite {
++    pub mass: f64,
++    pub com: DVec3,
++    pub vel: DVec3,
++    /// World frame, about `com`, kg m^2.
++    pub inertia: DMat3,
++    /// About `com`, kg m^2/s.
++    pub angular_momentum: DVec3,
++}
++
++impl Composite {
++    #[must_use]
++    pub fn of<'a>(bodies: impl IntoIterator<Item = &'a Body> + Clone) -> Self {
++        let mass: f64 = bodies.clone().into_iter().map(|b| b.mass).sum();
++        let com = bodies
++            .clone()
++            .into_iter()
++            .map(|b| b.pos * b.mass)
++            .sum::<DVec3>()
++            / mass;
++        let vel = bodies
++            .clone()
++            .into_iter()
++            .map(|b| b.vel * b.mass)
++            .sum::<DVec3>()
++            / mass;
++        let mut inertia = DMat3::ZERO;
++        let mut angular_momentum = DVec3::ZERO;
++        for b in bodies {
++            let d = b.pos - com;
++            // Parallel-axis theorem.
++            inertia += b.inertia_world()
++                + (DMat3::IDENTITY * d.length_squared()
++                    - DMat3::from_cols(d * d.x, d * d.y, d * d.z))
++                    * b.mass;
++            angular_momentum += b.angular_momentum() + d.cross((b.vel - vel) * b.mass);
++        }
++        Self {
++            mass,
++            com,
++            vel,
++            inertia,
++            angular_momentum,
++        }
++    }
++
++    /// Angular velocity of the group as if rigid, rad/s.
++    #[must_use]
++    pub fn omega(&self) -> DVec3 {
++        self.inertia.inverse() * self.angular_momentum
++    }
++}
++
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+diff --git a/crates/physics/src/collision.rs b/crates/physics/src/collision.rs
+index fa085dd4d0f45c8e6c493a3055e3a653c71ae517..43ff60d39155d4690c5e202d6afcc92e934f6075 100644
+--- a/crates/physics/src/collision.rs
++++ b/crates/physics/src/collision.rs
+@@ -142,6 +142,34 @@ impl Collider {
+         self
+     }
+ 
++    /// The point of the shape nearest `x`: on its surface, or `x` itself
++    /// when `x` is inside.
++    #[must_use]
++    pub fn closest_point(&self, world: &World, x: DVec3) -> DVec3 {
++        let (pos, rotation) = self.pose(world);
++        match place(self.shape, pos, rotation) {
++            Placed::Capsule { p, q, radius } => {
++                let d = q - p;
++                let t = if d.length_squared() > 0.0 {
++                    ((x - p).dot(d) / d.length_squared()).clamp(0.0, 1.0)
++                } else {
++                    0.0
++                };
++                let core = p + d * t;
++                let offset = x - core;
++                if offset.length() <= radius {
++                    x
++                } else {
++                    core + offset.normalize() * radius
++                }
++            }
++            Placed::Cuboid { center, axes, half } => {
++                let local = axes.transpose() * (x - center);
++                center + axes * local.clamp(-half, half)
++            }
++        }
++    }
++
+     /// World pose of the collider frame.
+     #[must_use]
+     pub fn pose(&self, world: &World) -> (DVec3, DQuat) {
+diff --git a/crates/physics/src/contact.rs b/crates/physics/src/contact.rs
+index b341c280474f7fc58a89011cee79b30d54fec82b..98a01c3a31270a68756e0578c2e0671245b20ed6 100644
+--- a/crates/physics/src/contact.rs
++++ b/crates/physics/src/contact.rs
+@@ -11,6 +11,7 @@ use glam::{DMat3, DVec3};
+ use serde::{Deserialize, Serialize};
+ 
+ use crate::collision::{ColliderId, Manifold};
++use crate::joint::JointKind;
+ use crate::world::{BodyId, World};
+ 
+ /// Solver tuning. Named, so a scene that needs a stiffer contact (the tight
+@@ -103,6 +104,180 @@ struct Row {
+     report: ContactReport,
+ }
+ 
++/// A tether: one scalar constraint along the line between its anchors.
++struct JointRow {
++    a: usize,
++    b: usize,
++    ra: DVec3,
++    rb: DVec3,
++    dir: DVec3,
++    /// 1 / (K + gamma).
++    mass: f64,
++    bias: f64,
++    gamma: f64,
++    lower: f64,
++    upper: f64,
++    impulse: f64,
++}
++
++impl JointRow {
++    fn velocity(&self, motions: &[Motion]) -> f64 {
++        let (a, b) = (&motions[self.a], &motions[self.b]);
++        self.dir
++            .dot(b.point_velocity(self.rb) - a.point_velocity(self.ra))
++    }
++
++    fn apply(&self, motions: &mut [Motion], delta: f64) {
++        let d = self.dir * delta;
++        motions[self.a].push(-d, self.ra);
++        motions[self.b].push(d, self.rb);
++    }
++
++    fn solve(&mut self, motions: &mut [Motion]) {
++        let v = self.velocity(motions);
++        let old = self.impulse;
++        let next =
++            (old - (v + self.bias + self.gamma * old) * self.mass).clamp(self.lower, self.upper);
++        self.impulse = next;
++        self.apply(motions, next - old);
++    }
++}
++
++/// Solve `k x = b` for a symmetric positive-definite `n`-by-`n` system by
++/// Gaussian elimination with partial pivoting; `None` if singular.
++fn solve_dense(k: &[[f64; 6]; 6], b: &[f64; 6], n: usize) -> Option<[f64; 6]> {
++    let mut m = *k;
++    let mut x = *b;
++    for col in 0..n {
++        let pivot = (col..n).max_by(|i, j| m[*i][col].abs().total_cmp(&m[*j][col].abs()))?;
++        if m[pivot][col].abs() < 1e-300 {
++            return None;
++        }
++        m.swap(col, pivot);
++        x.swap(col, pivot);
++        for row in (col + 1)..n {
++            let f = m[row][col] / m[col][col];
++            let pivot_row = m[col];
++            for (target, source) in m[row][col..n].iter_mut().zip(&pivot_row[col..n]) {
++                *target -= f * source;
++            }
++            x[row] -= f * x[col];
++        }
++    }
++    for col in (0..n).rev() {
++        let mut sum = x[col];
++        for c in (col + 1)..n {
++            sum -= m[col][c] * x[c];
++        }
++        x[col] = sum / m[col][col];
++    }
++    Some(x)
++}
++
++/// Cross-product matrix: `skew(r) * v == r.cross(v)`.
++fn skew(r: DVec3) -> DMat3 {
++    DMat3::from_cols(
++        DVec3::new(0.0, r.z, -r.y),
++        DVec3::new(-r.z, 0.0, r.x),
++        DVec3::new(r.y, -r.x, 0.0),
++    )
++}
++
++/// A point (three linear rows) or weld (three linear and three angular
++/// rows) solved as one block with its full effective-mass matrix, so a soft
++/// joint's damping ratio holds for every coupled mode.
++struct BlockJoint {
++    joint: usize,
++    a: usize,
++    b: usize,
++    ra: DVec3,
++    rb: DVec3,
++    /// 3 for a point joint, 6 for a weld.
++    size: usize,
++    k: [[f64; 6]; 6],
++    /// Position error: linear, then angular.
++    error: [f64; 6],
++    bias_rate: f64,
++    mass_scale: f64,
++    impulse_scale: f64,
++    impulse: [f64; 6],
++    force_limit: f64,
++    torque_limit: f64,
++}
++
++impl BlockJoint {
++    fn velocity(&self, motions: &[Motion]) -> [f64; 6] {
++        let (a, b) = (&motions[self.a], &motions[self.b]);
++        let linear = b.point_velocity(self.rb) - a.point_velocity(self.ra);
++        let angular = b.omega - a.omega;
++        [
++            linear.x, linear.y, linear.z, angular.x, angular.y, angular.z,
++        ]
++    }
++
++    fn apply(&self, motions: &mut [Motion], delta: &[f64; 6]) {
++        let p = DVec3::new(delta[0], delta[1], delta[2]);
++        let l = DVec3::new(delta[3], delta[4], delta[5]);
++        motions[self.a].push(-p, self.ra);
++        motions[self.b].push(p, self.rb);
++        if self.size == 6 {
++            motions[self.a].twist(-l);
++            motions[self.b].twist(l);
++        }
++    }
++
++    fn solve(&mut self, motions: &mut [Motion]) {
++        let v = self.velocity(motions);
++        let mut rhs = [0.0; 6];
++        for i in 0..self.size {
++            rhs[i] = v[i] + self.bias_rate * self.error[i];
++        }
++        let Some(x) = solve_dense(&self.k, &rhs, self.size) else {
++            return;
++        };
++        let mut next = self.impulse;
++        for i in 0..self.size {
++            next[i] =
++                self.impulse[i] - self.mass_scale * x[i] - self.impulse_scale * self.impulse[i];
++        }
++        // Force and torque limits cap the accumulated impulse's magnitude.
++        for (range, limit) in [(0..3, self.force_limit), (3..6, self.torque_limit)] {
++            let size = next[range.clone()]
++                .iter()
++                .map(|x| x * x)
++                .sum::<f64>()
++                .sqrt();
++            if size > limit {
++                let scale = limit / size;
++                next[range].iter_mut().for_each(|x| *x *= scale);
++            }
++        }
++        let mut delta = [0.0; 6];
++        for i in 0..self.size {
++            delta[i] = next[i] - self.impulse[i];
++        }
++        self.impulse = next;
++        self.apply(motions, &delta);
++    }
++
++    fn saturated(&self) -> bool {
++        let norm =
++            |r: std::ops::Range<usize>| self.impulse[r].iter().map(|x| x * x).sum::<f64>().sqrt();
++        norm(0..3) >= self.force_limit * (1.0 - 1e-9)
++            || (self.size == 6 && norm(3..6) >= self.torque_limit * (1.0 - 1e-9))
++    }
++}
++
++/// Soft-step coefficients for a spring of natural frequency `omega` rad/s
++/// and damping ratio `zeta` over a step `dt` (Catto's mass-independent soft
++/// constraint): bias rate, mass scale, impulse scale.
++fn soft_step(omega: f64, zeta: f64, dt: f64) -> (f64, f64, f64) {
++    let a1 = 2.0 * zeta + dt * omega;
++    let a2 = dt * omega * a1;
++    let a3 = 1.0 / (1.0 + a2);
++    (omega / a1, a2 * a3, a3)
++}
++
+ fn basis(n: DVec3) -> [DVec3; 2] {
+     let t = if n.x.abs() < 0.57 {
+         DVec3::X.cross(n)
+@@ -123,9 +298,10 @@ fn effective_mass(ma: &Motion, mb: &Motion, ra: DVec3, rb: DVec3, d: DVec3) -> f
+ }
+ 
+ impl World {
+-    /// Resolve `manifolds` by changing body velocities for a step of `dt`.
+-    /// Returns what each contact point did.
+-    pub(crate) fn solve_contacts(&mut self, manifolds: &[Manifold], dt: f64) -> Vec<ContactReport> {
++    /// Resolve joints and `manifolds` by changing body velocities for a step
++    /// of `dt`. Records each joint's impulses and returns what each contact
++    /// point did.
++    pub(crate) fn solve(&mut self, manifolds: &[Manifold], dt: f64) -> Vec<ContactReport> {
+         let settings = self.solver;
+         let mut motions: Vec<Motion> = self
+             .bodies()
+@@ -208,7 +384,14 @@ impl World {
+                 });
+             }
+         }
++        let (mut tethers, mut blocks) = self.joint_groups(&motions, dt);
+         for _ in 0..settings.iterations {
++            for block in &mut blocks {
++                block.solve(&mut motions);
++            }
++            for (_, row) in &mut tethers {
++                row.solve(&mut motions);
++            }
+             for row in &mut rows {
+                 let (a, b) = (row.a, row.b);
+                 // Friction first, bounded by the current normal impulse.
+@@ -251,6 +434,21 @@ impl World {
+                 motions[b].push(delta, row.rb);
+             }
+         }
++        for (index, row) in &tethers {
++            if let Some(joint) = self.joints[*index].as_mut() {
++                joint.impulse = row.dir * row.impulse;
++                joint.angular_impulse = DVec3::ZERO;
++                joint.saturated = row.lower.is_finite() && row.impulse <= row.lower * (1.0 - 1e-9);
++            }
++        }
++        for block in &blocks {
++            if let Some(joint) = self.joints[block.joint].as_mut() {
++                joint.impulse = DVec3::new(block.impulse[0], block.impulse[1], block.impulse[2]);
++                joint.angular_impulse =
++                    DVec3::new(block.impulse[3], block.impulse[4], block.impulse[5]);
++                joint.saturated = block.saturated();
++            }
++        }
+         for (body, motion) in self.bodies_mut().iter_mut().zip(&motions) {
+             if motion.inverse_mass > 0.0 {
+                 body.vel = motion.vel;
+@@ -267,4 +465,138 @@ impl World {
+             })
+             .collect()
+     }
++
++    fn joint_groups(
++        &self,
++        motions: &[Motion],
++        dt: f64,
++    ) -> (Vec<(usize, JointRow)>, Vec<BlockJoint>) {
++        let erp = self.solver.erp;
++        let mut tethers = Vec::new();
++        let mut blocks = Vec::new();
++        for (index, joint) in self.joints.iter().enumerate() {
++            let Some(joint) = joint else { continue };
++            let (a, b) = (joint.a.0 as usize, joint.b.0 as usize);
++            let (pa, pb) = joint.anchors(self);
++            // Point and weld impulses act at the anchors' midpoint, so the
++            // pair is equal, opposite, and collinear: momentum is exact even
++            // while the anchors are apart. A tether pulls along the line
++            // between its anchors, which is already collinear.
++            let (qa, qb) = match joint.kind {
++                JointKind::Tether { .. } => (pa, pb),
++                JointKind::Point | JointKind::Weld { .. } => {
++                    let mid = (pa + pb) * 0.5;
++                    (mid, mid)
++                }
++            };
++            let (ra, rb) = (qa - self.bodies()[a].pos, qb - self.bodies()[b].pos);
++            let (ma, mb) = (&motions[a], &motions[b]);
++            // Row parameters from the effective mass `m`, the position error
++            // `c`, and the joint's spring, if any.
++            let row = |dir: DVec3, c: f64, lower: f64, upper: f64| {
++                let k = 1.0 / effective_mass(ma, mb, ra, rb, dir).max(f64::MIN_POSITIVE);
++                if !(k.is_finite() && k > 0.0) {
++                    return None;
++                }
++                let (bias, gamma) = match joint.spring {
++                    Some(spring) => {
++                        let m = 1.0 / k;
++                        let stiffness = m * spring.frequency * spring.frequency;
++                        let damping = 2.0 * m * spring.damping_ratio * spring.frequency;
++                        let denominator = damping + dt * stiffness;
++                        (c * stiffness / denominator, 1.0 / (dt * denominator))
++                    }
++                    None => (c * erp / dt, 0.0),
++                };
++                Some(JointRow {
++                    a,
++                    b,
++                    ra,
++                    rb,
++                    dir,
++                    mass: 1.0 / (k + gamma),
++                    bias,
++                    gamma,
++                    lower,
++                    upper,
++                    impulse: 0.0,
++                })
++            };
++            let force_limit = joint.max_force * dt;
++            let torque_limit = joint.max_torque * dt;
++            match joint.kind {
++                JointKind::Point | JointKind::Weld { .. } => {
++                    let size = if matches!(joint.kind, JointKind::Weld { .. }) {
++                        6
++                    } else {
++                        3
++                    };
++                    let (ia, ib) = (ma.inverse_inertia, mb.inverse_inertia);
++                    let (sa, sb) = (skew(ra), skew(rb));
++                    let ll = DMat3::from_diagonal(DVec3::splat(ma.inverse_mass + mb.inverse_mass))
++                        - sb * ib * sb
++                        - sa * ia * sa;
++                    let la = -(sb * ib) - sa * ia;
++                    let al = ib * sb + ia * sa;
++                    let aa = ia + ib;
++                    let mut k = [[0.0; 6]; 6];
++                    for r in 0..3 {
++                        for c in 0..3 {
++                            k[r][c] = ll.col(c)[r];
++                            k[r][c + 3] = la.col(c)[r];
++                            k[r + 3][c] = al.col(c)[r];
++                            k[r + 3][c + 3] = aa.col(c)[r];
++                        }
++                    }
++                    let linear_error = pb - pa;
++                    let angular_error = joint.angle_error(self);
++                    let (bias_rate, mass_scale, impulse_scale) = match joint.spring {
++                        Some(spring) => soft_step(spring.frequency, spring.damping_ratio, dt),
++                        None => (erp / dt, 1.0, 0.0),
++                    };
++                    blocks.push(BlockJoint {
++                        joint: index,
++                        a,
++                        b,
++                        ra,
++                        rb,
++                        size,
++                        k,
++                        error: [
++                            linear_error.x,
++                            linear_error.y,
++                            linear_error.z,
++                            angular_error.x,
++                            angular_error.y,
++                            angular_error.z,
++                        ],
++                        bias_rate,
++                        mass_scale,
++                        impulse_scale,
++                        impulse: [0.0; 6],
++                        force_limit,
++                        torque_limit,
++                    });
++                }
++                JointKind::Tether { length } => {
++                    let offset = pb - pa;
++                    let distance = offset.length();
++                    if distance > 1e-9 {
++                        let dir = offset / distance;
++                        let stretch = distance - length;
++                        // Slack: allow closing on the limit within this step.
++                        if let Some(mut r) = row(dir, stretch, -force_limit, 0.0) {
++                            if stretch < 0.0 {
++                                r.bias = stretch / dt;
++                                r.mass = 1.0 / (1.0 / r.mass - r.gamma);
++                                r.gamma = 0.0;
++                            }
++                            tethers.push((index, r));
++                        }
++                    }
++                }
++            }
++        }
++        (tethers, blocks)
++    }
+ }
+diff --git a/crates/physics/src/joint.rs b/crates/physics/src/joint.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..769d006f5b9921abd13ec6398ff7b4ddb8243e3c
+--- /dev/null
++++ b/crates/physics/src/joint.rs
+@@ -0,0 +1,186 @@
++//! Joints between two bodies, solved with contacts by sequential impulses.
++//!
++//! - [`JointKind::Point`] pins an anchor on each body together (MuJoCo's
++//!   and Genesis's `connect`, `examples/rigid/closed_loop.py`).
++//! - [`JointKind::Weld`] also holds their relative orientation
++//!   (`add_weld_constraint` in `examples/rigid/suction_cup.py`).
++//! - [`JointKind::Tether`] keeps the anchors at most a length apart and
++//!   only pulls.
++//!
++//! A joint is hard (Baumgarte-corrected) or soft: a critically damped spring
++//! set by natural frequency and damping ratio, solved implicitly so it is
++//! stable at any stiffness. This is the grab in Genesis's mouse-interaction
++//! viewer plugin: the impulse that lands the end-of-step velocity on the
++//! spring-damper response, `(v + b C) / (1/m + s)` with softness
++//! `s = 1 / (dt (c + dt k))` and bias rate `b = k / (c + dt k)` for
++//! `k = m w^2` and `c = 2 m zeta w` per row.
++//!
++//! Force and torque limits cap the impulse; a joint that reached a limit in
++//! the last step reports `saturated`, and its owner decides whether it
++//! breaks.
++
++use glam::{DQuat, DVec3};
++use serde::{Deserialize, Serialize};
++
++use crate::world::{BodyId, World};
++
++/// Spring settings for a soft joint.
++#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
++pub struct Spring {
++    /// Natural frequency, rad/s.
++    pub frequency: f64,
++    /// 1 is critical damping.
++    pub damping_ratio: f64,
++}
++
++#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
++#[serde(tag = "joint", rename_all = "snake_case")]
++pub enum JointKind {
++    Point,
++    /// Holds `b`'s orientation at `a`'s orientation times `relative`.
++    Weld {
++        relative: DQuat,
++    },
++    /// Anchors at most `length` apart; pulls only.
++    Tether {
++        length: f64,
++    },
++}
++
++/// A joint between bodies `a` and `b`.
++#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
++pub struct Joint {
++    pub a: BodyId,
++    pub b: BodyId,
++    /// Anchor on `a`, in `a`'s body frame, m.
++    pub anchor_a: DVec3,
++    /// Anchor on `b`, in `b`'s body frame, m.
++    pub anchor_b: DVec3,
++    pub kind: JointKind,
++    /// `None` for a hard joint.
++    pub spring: Option<Spring>,
++    /// Largest force the joint transmits, N.
++    pub max_force: f64,
++    /// Largest torque a weld transmits, N m.
++    pub max_torque: f64,
++    /// Impulse on `b` in the last step, N s; `a` received the opposite.
++    #[serde(default)]
++    pub impulse: DVec3,
++    /// Angular impulse on `b` in the last step, N m s.
++    #[serde(default)]
++    pub angular_impulse: DVec3,
++    /// Whether a force or torque limit capped the last step.
++    #[serde(default)]
++    pub saturated: bool,
++}
++
++impl Joint {
++    /// A hard, unlimited joint.
++    #[must_use]
++    pub fn new(a: BodyId, anchor_a: DVec3, b: BodyId, anchor_b: DVec3, kind: JointKind) -> Self {
++        Self {
++            a,
++            b,
++            anchor_a,
++            anchor_b,
++            kind,
++            spring: None,
++            max_force: f64::INFINITY,
++            max_torque: f64::INFINITY,
++            impulse: DVec3::ZERO,
++            angular_impulse: DVec3::ZERO,
++            saturated: false,
++        }
++    }
++
++    /// A weld holding the bodies' current relative pose, anchored at the
++    /// world point `at`.
++    #[must_use]
++    pub fn weld_here(world: &World, a: BodyId, b: BodyId, at: DVec3) -> Self {
++        let (ba, bb) = (&world[a], &world[b]);
++        Self::new(
++            a,
++            ba.orientation.inverse() * (at - ba.pos),
++            b,
++            bb.orientation.inverse() * (at - bb.pos),
++            JointKind::Weld {
++                relative: ba.orientation.inverse() * bb.orientation,
++            },
++        )
++    }
++
++    #[must_use]
++    pub fn soft(mut self, frequency: f64, damping_ratio: f64) -> Self {
++        self.spring = Some(Spring {
++            frequency,
++            damping_ratio,
++        });
++        self
++    }
++
++    #[must_use]
++    pub fn limited(mut self, max_force: f64, max_torque: f64) -> Self {
++        self.max_force = max_force;
++        self.max_torque = max_torque;
++        self
++    }
++
++    /// World anchor positions on `a` and `b`.
++    #[must_use]
++    pub fn anchors(&self, world: &World) -> (DVec3, DVec3) {
++        (
++            world[self.a].to_world(self.anchor_a),
++            world[self.b].to_world(self.anchor_b),
++        )
++    }
++
++    /// Orientation error of a weld as a world rotation vector from where `b`
++    /// should be to where it is, rad; zero for other kinds.
++    #[must_use]
++    pub fn angle_error(&self, world: &World) -> DVec3 {
++        let JointKind::Weld { relative } = self.kind else {
++            return DVec3::ZERO;
++        };
++        let target = world[self.a].orientation * relative;
++        let mut error = world[self.b].orientation * target.inverse();
++        if error.w < 0.0 {
++            error = -error;
++        }
++        let (axis, angle) = error.to_axis_angle();
++        axis * angle
++    }
++}
++
++/// Index of a joint in its world. Removed joints leave a gap, so ids stay
++/// valid.
++#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
++pub struct JointId(pub u32);
++
++impl World {
++    pub fn add_joint(&mut self, joint: Joint) -> JointId {
++        self.joints.push(Some(joint));
++        JointId(u32::try_from(self.joints.len() - 1).expect("fewer than 2^32 joints"))
++    }
++
++    /// Remove a joint; returns it if it was present.
++    pub fn remove_joint(&mut self, id: JointId) -> Option<Joint> {
++        self.joints.get_mut(id.0 as usize)?.take()
++    }
++
++    #[must_use]
++    pub fn joint(&self, id: JointId) -> Option<&Joint> {
++        self.joints.get(id.0 as usize)?.as_ref()
++    }
++
++    pub fn joint_mut(&mut self, id: JointId) -> Option<&mut Joint> {
++        self.joints.get_mut(id.0 as usize)?.as_mut()
++    }
++
++    /// Present joints with their ids.
++    pub fn joints(&self) -> impl Iterator<Item = (JointId, &Joint)> {
++        self.joints
++            .iter()
++            .enumerate()
++            .filter_map(|(i, j)| j.as_ref().map(|j| (JointId(i as u32), j)))
++    }
++}
+diff --git a/crates/physics/src/lib.rs b/crates/physics/src/lib.rs
+index b29f0f05243942e9ab499a72119485ab51750271..89ae98a228a47898ed3367f676a2684caca460a9 100644
+--- a/crates/physics/src/lib.rs
++++ b/crates/physics/src/lib.rs
+@@ -8,6 +8,8 @@
+ //!   and multi-point manifolds.
+ //! - [`contact`]: a sequential-impulse solver with restitution, an elliptic
+ //!   friction cone, and torsional friction.
++//! - [`joint`]: point, weld, and tether joints, hard or soft (an implicit
++//!   spring), with force and torque limits.
+ //! - [`clock`]: a [`FixedStep`] accumulator that turns frame time into
+ //!   whole steps and reports time it drops.
+ //! - [`ledger`]: linear and angular momentum with named external impulses,
+@@ -24,15 +26,17 @@ pub mod body;
+ pub mod clock;
+ pub mod collision;
+ pub mod contact;
++pub mod joint;
+ pub mod ledger;
+ pub mod thrusters;
+ pub mod trace;
+ pub mod world;
+ 
+-pub use body::{Body, BodyKind};
++pub use body::{Body, BodyKind, Composite};
+ pub use clock::FixedStep;
+ pub use collision::{Collider, ColliderId, ContactPoint, Filter, Manifold, Material, Shape};
+ pub use contact::{ContactReport, SolverSettings};
++pub use joint::{Joint, JointId, JointKind, Spring};
+ pub use ledger::{Ledger, LedgerError, Momentum};
+ pub use thrusters::{Pid, Thruster, ThrusterSet, Wrench};
+ pub use trace::{Divergence, Tolerance, Trace, attitude_difference};
+diff --git a/crates/physics/src/world.rs b/crates/physics/src/world.rs
+index a76efced42fd186f1533bed64fa0b59162f7c3f4..4920291ee06b639a434c06386d384fec07ad914c 100644
+--- a/crates/physics/src/world.rs
++++ b/crates/physics/src/world.rs
+@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
+ use crate::body::{Body, BodyKind};
+ use crate::collision::{Collider, ColliderId};
+ use crate::contact::{ContactReport, SolverSettings};
++use crate::joint::Joint;
+ 
+ /// Index of a body in its world. Bodies are never removed, so ids stay valid.
+ #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+@@ -62,6 +63,8 @@ pub struct World {
+     bodies: Vec<Body>,
+     #[serde(default)]
+     colliders: Vec<Collider>,
++    #[serde(default)]
++    pub(crate) joints: Vec<Option<Joint>>,
+     /// What each contact point did in the last step.
+     #[serde(skip)]
+     pub contacts: Vec<ContactReport>,
+@@ -80,6 +83,7 @@ impl World {
+             solver: SolverSettings::default(),
+             bodies: Vec::new(),
+             colliders: Vec::new(),
++            joints: Vec::new(),
+             contacts: Vec::new(),
+         }
+     }
+@@ -136,7 +140,7 @@ impl World {
+             body.force = DVec3::ZERO;
+             body.torque = DVec3::ZERO;
+         }
+-        self.contacts = if self.colliders.is_empty() {
++        self.contacts = if self.colliders.is_empty() && self.joints.iter().all(Option::is_none) {
+             Vec::new()
+         } else {
+             let base = self.solver.margin;
+@@ -149,7 +153,7 @@ impl World {
+                 };
+                 base + (reach(a) + reach(b)) * dt
+             });
+-            self.solve_contacts(&manifolds, dt)
++            self.solve(&manifolds, dt)
+         };
+         for body in &mut self.bodies {
+             if body.moves() {
+diff --git a/crates/verse-lagrange/src/station.rs b/crates/verse-lagrange/src/station.rs
+index 3f3451dd718e36a17f7c84cb6f3dcfa2a0a529f5..f87ecb72da763348b47739347924a53689e496e5 100644
+--- a/crates/verse-lagrange/src/station.rs
++++ b/crates/verse-lagrange/src/station.rs
+@@ -7,8 +7,8 @@
+ 
+ use glam::{DQuat, DVec3};
+ use physics::{
+-    Body, BodyId, BodyKind, Collider, ColliderId, Filter, FixedStep, Ledger, Material, Momentum,
+-    Shape, ThrusterSet, World,
++    Body, BodyId, BodyKind, Collider, ColliderId, Composite, Filter, FixedStep, Joint, JointId,
++    Ledger, Material, Momentum, Shape, ThrusterSet, World,
+ };
+ use serde::{Deserialize, Serialize};
+ 
+@@ -35,6 +35,10 @@ pub const ATTITUDE_DEADBAND: f64 = 0.004;
+ pub const RATE_DEADBAND: f64 = 0.002;
+ /// Fastest turn the attitude hold commands, rad/s.
+ pub const MAX_TURN_RATE: f64 = 0.6;
++/// Torque the pack may spend steering its thrust through the center of mass
++/// of a carried load, N m. Heavier or farther loads get less thrust so the
++/// pair does not tumble.
++pub const STEERING_TORQUE: f64 = 15.0;
+ /// Cold nitrogen specific impulse, s.
+ pub const ISP: f64 = 70.0;
+ /// Flight-control speed limit relative to the station, m/s.
+@@ -84,8 +88,16 @@ pub mod layer {
+     pub const ASTRONAUT: u32 = 2;
+     pub const FREE: u32 = 4;
+     pub const FIXED_PART: u32 = 8;
++    pub const CARRIED: u32 = 16;
+ }
+ 
++/// The glove's grip: a soft weld at the grabbed point, critically damped at
++/// this natural frequency, rad/s.
++pub const GRIP_FREQUENCY: f64 = 6.0;
++/// Largest force and torque the grip holds before it slips, N and N m.
++pub const GRIP_FORCE: f64 = 400.0;
++pub const GRIP_TORQUE: f64 = 300.0;
++
+ /// Suit fabric and aluminum hardware.
+ pub const SURFACE: Material = Material {
+     friction: 0.5,
+@@ -234,26 +246,29 @@ impl PartState {
+     pub const fn body_kind(self) -> BodyKind {
+         match self {
+             Self::Stowed | Self::Installed => BodyKind::Static,
+-            Self::Carried => BodyKind::Kinematic,
+-            Self::Drifting => BodyKind::Dynamic,
++            Self::Carried | Self::Drifting => BodyKind::Dynamic,
+         }
+     }
+ 
+-    /// What a part in this state collides with. A carried part collides with
+-    /// nothing; racked and latched parts stop free parts but not the
+-    /// astronaut, who reaches in among them.
++    /// What a part in this state collides with. Racked and latched parts
++    /// stop free parts but not the astronaut, who reaches in among them; a
++    /// carried part hits structure and free parts but not its carrier or
++    /// the rack and jig it is being fitted into.
+     #[must_use]
+     pub const fn filter(self) -> Filter {
+-        use layer::{ASTRONAUT, FIXED_PART, FREE, STRUCTURE};
++        use layer::{ASTRONAUT, CARRIED, FIXED_PART, FREE, STRUCTURE};
+         match self {
+             Self::Stowed | Self::Installed => Filter {
+                 group: FIXED_PART,
+                 mask: FREE,
+             },
+-            Self::Carried => Filter::NONE,
++            Self::Carried => Filter {
++                group: CARRIED,
++                mask: STRUCTURE | FREE,
++            },
+             Self::Drifting => Filter {
+                 group: FREE,
+-                mask: STRUCTURE | ASTRONAUT | FREE | FIXED_PART,
++                mask: STRUCTURE | ASTRONAUT | FREE | FIXED_PART | CARRIED,
+             },
+         }
+     }
+@@ -403,6 +418,9 @@ pub struct Station {
+     /// Inputs applied since recording started, stamped with the world tick.
+     #[serde(default)]
+     pub journal: Option<Vec<(u64, Input)>>,
++    /// The glove's grip on the carried part.
++    #[serde(default)]
++    pub grip: Option<JointId>,
+     /// Apply the L1 tidal field to local bodies. Off only for conservation
+     /// tests, since the rotating-frame field is an external force.
+     #[serde(default = "enabled")]
+@@ -424,7 +442,7 @@ impl Default for Station {
+ impl Station {
+     #[must_use]
+     pub fn new() -> Self {
+-        use layer::{ASTRONAUT, FREE, STRUCTURE};
++        use layer::{ASTRONAUT, CARRIED, FREE, STRUCTURE};
+         let mut world = World::new(PHYSICS_DT);
+         let astronaut = world.add(Body::new(DRY_MASS + PROPELLANT, DVec3::splat(40.0), SPAWN));
+         world.add_collider(
+@@ -435,7 +453,10 @@ impl Station {
+                     half_length: ASTRONAUT_HALF_LENGTH,
+                 },
+             )
+-            .at(DVec3::ZERO, DQuat::from_rotation_x(std::f64::consts::FRAC_PI_2))
++            .at(
++                DVec3::ZERO,
++                DQuat::from_rotation_x(std::f64::consts::FRAC_PI_2),
++            )
+             .with_filter(Filter {
+                 group: ASTRONAUT,
+                 mask: STRUCTURE | FREE,
+@@ -443,9 +464,8 @@ impl Station {
+             .with_material(SURFACE),
+         );
+         for o in &OBSTACLES {
+-            let body = world.add(
+-                Body::new(1.0, DVec3::ONE, (o.min + o.max) * 0.5).with_kind(BodyKind::Static),
+-            );
++            let body = world
++                .add(Body::new(1.0, DVec3::ONE, (o.min + o.max) * 0.5).with_kind(BodyKind::Static));
+             world.add_collider(
+                 Collider::new(
+                     body,
+@@ -455,7 +475,7 @@ impl Station {
+                 )
+                 .with_filter(Filter {
+                     group: STRUCTURE,
+-                    mask: ASTRONAUT | FREE,
++                    mask: ASTRONAUT | FREE | CARRIED,
+                 })
+                 .with_material(SURFACE),
+             );
+@@ -495,6 +515,7 @@ impl Station {
+             refilling: false,
+             pilot: Command::default(),
+             journal: None,
++            grip: None,
+             tide: true,
+             ledger: Ledger::default(),
+             climb: 0.0,
+@@ -584,7 +605,8 @@ impl Station {
+                 continue;
+             }
+             let sign = if b { 1.0 } else { -1.0 };
+-            self.ledger.add_impulse("structure", c.impulse * sign, c.point);
++            self.ledger
++                .add_impulse("structure", c.impulse * sign, c.point);
+             self.ledger.add(
+                 "structure",
+                 Momentum {
+@@ -693,6 +715,12 @@ impl Station {
+             .position(|p| p.state == PartState::Carried)
+     }
+ 
++    /// The astronaut's own mass with its propellant, kg.
++    #[must_use]
++    pub fn own_mass(&self) -> f64 {
++        DRY_MASS + self.propellant
++    }
++
+     /// Total mass the pack must accelerate, kg.
+     #[must_use]
+     pub fn mass(&self) -> f64 {
+@@ -709,14 +737,6 @@ impl Station {
+         self.astronaut().to_world(DVec3::new(0.0, 0.2, 1.0))
+     }
+ 
+-    fn carry_point(&self, kind: PartKind) -> DVec3 {
+-        self.astronaut().to_world(DVec3::new(
+-            0.0,
+-            0.2,
+-            1.0 + kind.size().z.max(kind.size().x) * 0.5,
+-        ))
+-    }
+-
+     /// Ideal rocket equation for the propellant left, m/s.
+     #[must_use]
+     pub fn delta_v_remaining(&self) -> f64 {
+@@ -799,9 +819,18 @@ impl Station {
+             desired.y = SPEED_LIMIT;
+             self.climb -= dt;
+         }
+-        let mass = self.mass();
+-        let accel_limit = THRUST / mass;
+-        let (pos, vel) = (self.astronaut().pos, self.astronaut().vel);
++        let group = self.group();
++        let mass = group.mass;
++        // A force through the group's center of mass needs torque from the
++        // pack in proportion to the lever arm; keep that within budget.
++        let arm = (group.com - self.astronaut().pos).length();
++        let thrust = if arm > 1e-6 {
++            THRUST.min(STEERING_TORQUE / arm)
++        } else {
++            THRUST
++        };
++        let accel_limit = thrust / mass;
++        let (pos, vel) = (self.astronaut().pos, group.vel);
+         if !manual && let Some(target) = self.target {
+             let offset = target - pos;
+             let distance = offset.length();
+@@ -819,15 +848,16 @@ impl Station {
+         } else {
+             DVec3::ZERO
+         };
+-        let torque = self.attitude_torque();
++        let torque = (group.com - self.astronaut().pos).cross(force) + self.attitude_torque(&group);
+         let fired = self.fire(force, torque, dt);
+-        let mass = self.mass();
++        let mass = self.own_mass();
+         self.astronaut_mut().mass = mass;
+         let (c2, tidal) = (self.orbit.l1.c2, self.tide);
+         self.world.step(&move |p, v| {
+             if tidal { tide(c2, p, v) } else { DVec3::ZERO }
+         });
+         self.account_contacts();
++        self.check_grip();
+         let before = self.momentum();
+         let astronaut = &mut self.world[self.astronaut];
+         let range = astronaut.pos.length();
+@@ -848,7 +878,7 @@ impl Station {
+         if self.refilling {
+             // Gas from the station tank starts at rest, so the pack slows.
+             let added = (REFILL_RATE * dt).min(PROPELLANT - self.propellant);
+-            let mass = self.mass();
++            let mass = self.own_mass();
+             self.propellant += added;
+             let astronaut = self.astronaut_mut();
+             astronaut.vel *= mass / (mass + added);
+@@ -858,16 +888,26 @@ impl Station {
+         self.settle_parts();
+     }
+ 
++    /// The astronaut and anything it holds, as one body.
++    #[must_use]
++    pub fn group(&self) -> Composite {
++        let astronaut = self.astronaut();
++        match self.carried() {
++            Some(i) => Composite::of([astronaut, self.body(&self.parts[i])]),
++            None => Composite::of([astronaut]),
++        }
++    }
++
+     /// World-frame torque the attitude hold wants: a critically damped
+-    /// spring toward the commanded heading, level.
+-    fn attitude_torque(&self) -> DVec3 {
++    /// spring toward the commanded heading, level, for the whole group.
++    fn attitude_torque(&self, group: &Composite) -> DVec3 {
+         let body = self.astronaut();
+         let mut error = DQuat::from_rotation_y(self.yaw) * body.orientation.inverse();
+         if error.w < 0.0 {
+             error = -error;
+         }
+         let (axis, angle) = error.to_axis_angle();
+-        let rate = body.omega_world();
++        let rate = group.omega();
+         if angle < ATTITUDE_DEADBAND && rate.length() < RATE_DEADBAND {
+             return DVec3::ZERO;
+         }
+@@ -876,8 +916,7 @@ impl Station {
+         let w = ATTITUDE_FREQUENCY;
+         let wanted = axis * (angle * w / 2.0).min(MAX_TURN_RATE);
+         let accel = (wanted - rate) * (2.0 * w);
+-        let local = body.orientation.inverse() * accel;
+-        body.orientation * (local * body.inertia)
++        group.inertia * accel
+     }
+ 
+     /// Fire the pack toward a world-frame `force` and `torque` within the
+@@ -912,7 +951,7 @@ impl Station {
+         }
+         let (pos, vel) = (self.astronaut().pos, self.astronaut().vel);
+         self.propellant -= used;
+-        let mass = self.mass();
++        let mass = self.own_mass();
+         let astronaut = self.astronaut_mut();
+         astronaut.mass = mass;
+         let fired = pack.apply(astronaut, &throttles);
+@@ -925,20 +964,16 @@ impl Station {
+ 
+     /// Momentum of the free system, about the station origin: the astronaut
+     /// with its propellant, and every part that is not stowed or installed.
+-    /// A carried part moves with the astronaut.
+     #[must_use]
+     pub fn momentum(&self) -> Momentum {
+         let mut astronaut = *self.astronaut();
+         astronaut.mass = DRY_MASS + self.propellant;
+         let mut total = Momentum::of(&astronaut, self.ledger.origin);
+         for part in &self.parts {
+-            let mut body = *self.body(part);
+-            match part.state {
+-                PartState::Stowed | PartState::Installed => continue,
+-                PartState::Carried => body.vel = astronaut.vel,
+-                PartState::Drifting => {}
++            if matches!(part.state, PartState::Stowed | PartState::Installed) {
++                continue;
+             }
+-            total += Momentum::of(&body, self.ledger.origin);
++            total += Momentum::of(self.body(part), self.ledger.origin);
+         }
+         total
+     }
+@@ -979,19 +1014,8 @@ impl Station {
+         }
+     }
+ 
+-    /// After a world step: hold the carried part at the hands, keep
+-    /// drifting parts out of structure, and reel in any that stray.
++    /// After a world step: reel in drifting parts that stray.
+     fn settle_parts(&mut self) {
+-        if let Some(i) = self.carried() {
+-            let kind = self.parts[i].kind;
+-            let at = self.carry_point(kind);
+-            let (vel, orientation) = (self.astronaut().vel, self.astronaut().orientation);
+-            let body = &mut self.world[self.parts[i].body];
+-            body.pos = at;
+-            body.vel = vel;
+-            body.orientation = orientation;
+-            body.omega = DVec3::ZERO;
+-        }
+         for i in 0..self.parts.len() {
+             if self.parts[i].state != PartState::Drifting {
+                 continue;
+@@ -1011,8 +1035,10 @@ impl Station {
+         }
+     }
+ 
+-    /// Take the nearest free part, or the next part at the depot.
+-    /// Capture is perfectly inelastic, so combined momentum is conserved.
++    /// Take the nearest free part, or the next part at the depot. The glove
++    /// closes on the point of the part nearest the hands and holds it with a
++    /// soft weld ([`GRIP_FREQUENCY`]), so capture is an internal impulse and
++    /// momentum is conserved; a heavy part drags on the astronaut.
+     pub fn grab(&mut self) -> Result<PartKind, String> {
+         if self.carried().is_some() {
+             return Err("Hands are full".into());
+@@ -1046,22 +1072,69 @@ impl Station {
+             }
+         };
+         let kind = self.parts[index].kind;
+-        let part = *self.body(&self.parts[index]);
+-        let astronaut = self.astronaut_mut();
+-        let m_a = astronaut.mass;
+-        astronaut.vel = (astronaut.vel * m_a + part.vel * part.mass) / (m_a + part.mass);
++        let grabbed = self.world.colliders()[self.parts[index].collider.0 as usize]
++            .closest_point(&self.world, hands);
+         self.set_state(index, PartState::Carried);
++        let grip = Joint::weld_here(&self.world, self.astronaut, self.parts[index].body, grabbed)
++            .soft(GRIP_FREQUENCY, 1.0)
++            .limited(GRIP_FORCE, GRIP_TORQUE);
++        self.grip = Some(self.world.add_joint(grip));
+         self.target = None;
+         self.message = Some(format!(
+             "Holding the {} ({:.0} kg)",
+             kind.name().to_lowercase(),
+-            part.mass
++            kind.mass()
+         ));
+-        let mass = self.mass();
+-        self.astronaut_mut().mass = mass;
+         Ok(kind)
+     }
+ 
++    /// Let go of the grip, if any.
++    fn let_go(&mut self) {
++        if let Some(grip) = self.grip.take() {
++            self.world.remove_joint(grip);
++        }
++    }
++
++    /// After a world step: a grip pulled past its force or torque limit
++    /// slips, and the part floats free with the motion it has.
++    fn check_grip(&mut self) {
++        let Some(grip) = self.grip else { return };
++        if !self.world.joint(grip).is_some_and(|j| j.saturated) {
++            return;
++        }
++        self.let_go();
++        if let Some(index) = self.carried() {
++            self.set_state(index, PartState::Drifting);
++            self.message = Some(format!(
++                "The grip slipped; the {} floats free",
++                self.parts[index].kind.name().to_lowercase()
++            ));
++        }
++    }
++
++    /// Move the astronaut and anything it holds by `offset`, as one rigid
++    /// group, without changing velocities. For scripted setups.
++    pub fn translate(&mut self, offset: DVec3) {
++        let mut ids = vec![self.astronaut];
++        ids.extend(self.carried().map(|i| self.parts[i].body));
++        for id in ids {
++            let body = &mut self.world[id];
++            body.pos += offset;
++            body.prev_pos += offset;
++        }
++    }
++
++    /// Set the velocity of the astronaut and anything it holds. For
++    /// scripted setups.
++    pub fn set_velocity(&mut self, vel: DVec3) {
++        let mut ids = vec![self.astronaut];
++        ids.extend(self.carried().map(|i| self.parts[i].body));
++        for id in ids {
++            self.world[id].vel = vel;
++            self.world[id].omega = DVec3::ZERO;
++        }
++    }
++
+     /// Distance from the carried part to its latch, m.
+     #[must_use]
+     pub fn latch_distance(&self) -> Option<f64> {
+@@ -1070,12 +1143,13 @@ impl Station {
+     }
+ 
+     /// Let go. Within latch range and below latch speed, the part locks
+-    /// into the jig; otherwise it floats free and tumbles.
++    /// into the jig; otherwise it floats free with its own motion.
+     pub fn release(&mut self) -> Result<PartKind, String> {
+         let index = self.carried().ok_or("Nothing is held")?;
+         let distance = self.latch_distance().unwrap_or(f64::MAX);
+         let kind = self.parts[index].kind;
+-        let vel = self.astronaut().vel;
++        let vel = self.world[self.parts[index].body].vel;
++        self.let_go();
+         let id = self.parts[index].body;
+         if distance <= LATCH_RANGE && vel.length() <= LATCH_SPEED {
+             let before = self.momentum();
+@@ -1101,12 +1175,9 @@ impl Station {
+                 )
+             });
+         } else {
++            // The part keeps the motion the grip left it: its own velocity
++            // and spin.
+             self.set_state(index, PartState::Drifting);
+-            let body = &mut self.world[id];
+-            body.vel = vel;
+-            // Real hands never let go perfectly; a small residual rate
+-            // shows the free rigid-body motion.
+-            body.omega = DVec3::new(0.012, 0.035, -0.02);
+             self.message = Some(if distance <= LATCH_RANGE {
+                 format!(
+                     "Too fast to latch; the {} floats free",
+@@ -1116,8 +1187,6 @@ impl Station {
+                 format!("The {} floats free", kind.name().to_lowercase())
+             });
+         }
+-        let mass = self.mass();
+-        self.astronaut_mut().mass = mass;
+         Ok(kind)
+     }
+ 
+@@ -1152,7 +1221,9 @@ impl Station {
+             next_part: self.next_part(),
+             can_grab,
+             latch_ready: latch_distance.is_some_and(|d| d <= LATCH_RANGE)
+-                && self.astronaut().vel.length() <= LATCH_SPEED,
++                && self
++                    .carried()
++                    .is_some_and(|i| self.body(&self.parts[i]).vel.length() <= LATCH_SPEED),
+             latch_distance_m: latch_distance,
+             refilling: self.refilling,
+             keeping_active: self.keeping_glow > 0.0,
+diff --git a/docs/verse/lagrange-1.md b/docs/verse/lagrange-1.md
+index 7b696ed401d1f50dc42efa0a79679ac909bef09f..6c91d37062e4fe2178ae5e534e566b5c6e50a4a7 100644
+--- a/docs/verse/lagrange-1.md
++++ b/docs/verse/lagrange-1.md
+@@ -144,11 +144,8 @@ every carried or drifting part. `Station::ledger` (a `physics::Ledger`) records
+ every external impulse by name: `exhaust`, `structure` (contact with fixed
+ station structure), `tether`, `reel` (a stray part reeled in), and `latch` (a
+ part joining the station). With the tidal field off (`Station::tide = false`),
+-the momentum always equals the ledger start plus those terms. The rigid carry
+-is the known exception: the held part is placed at the hands each step and
+-released with a preset spin, which conserves linear but not angular momentum
+-until the soft grab ([#9781](https://github.com/OpenAgentsInc/openagents/issues/9781))
+-replaces it.
++the momentum always equals the ledger start plus those terms, through
++grabbing, carrying, and releasing.
+ 
+ Attitude is held automatically, so the astronaut turns only in yaw. Collisions
+ treat the body as a 0.9 m sphere against the habitat, node, truss, solar arrays,
+@@ -189,10 +186,18 @@ free parts; free parts hit structure, the astronaut, each other, and parts in
+ the rack or on the jig. Contacts with fixed bodies enter the momentum ledger
+ as the `structure` term.
+ 
+-Grabbing is a perfectly inelastic capture, so momentum is conserved and the
+-combined mass slows the pack. Holding a part moves it rigidly with the
+-astronaut. Releasing it away from its slot leaves it drifting at the release
+-velocity with a small residual tumble, as real hands never let go perfectly.
++Grabbing closes the glove on the point of the part nearest the hands and holds
++it with a soft weld (`physics::Joint`): a critically damped spring at 6 rad/s
++on position and orientation, solved implicitly. Capture is therefore an
++internal impulse that conserves momentum, a heavy part drags on the astronaut,
++and a part caught while moving or spinning settles into the grip without
++ringing. The grip holds at most 400 N and 300 N m; pulled past that, it slips
++and the part floats free. While carrying, the pack treats the astronaut and
++the part as one body: it aims its thrust through their shared center of mass
++and holds attitude with their combined inertia, and it spends at most 15 N m
++of torque on that aim, so a heavy part far from the hands accelerates gently.
++Releasing a part away from its slot leaves it drifting with its own velocity
++and spin.
+ Drifting parts more than 120 m from the depot are reeled back by their tethers.
+ 
+ ## Approximations
+@@ -204,12 +209,11 @@ Drifting parts more than 120 m from the depot are reeled back by their tethers.
+   than flight halo control and uses a smaller orbit.
+ - Local physics linearizes about L1 rather than about the moving station.
+ - The attitude hold keeps the astronaut level; only heading is commanded.
+-- The astronaut's inertia is a fixed 40 kg m² about every axis, and a carried
+-  part does not add to it.
+-- Carried parts do not collide with anything, and the astronaut passes
+-  through parts in the rack or on the jig.
+-- A carried part is placed at the hands each step, so carrying does not
+-  conserve angular momentum.
++- The astronaut's inertia is a fixed 40 kg m² about every axis.
++- A carried part does not collide with its carrier or with parts in the rack
++  or on the jig, and the astronaut passes through parts in the rack or on the
++  jig.
++- The grip is a single soft weld, not a model of fingers and glove friction.
+ - Construction state is local and resets on each visit; there is no shared
+   editing authority. `StationState` can be saved and restored, but the zone
+   does not persist it.
+@@ -221,8 +225,8 @@ exact unstable eigenvector, Jacobi conservation and uncontrolled divergence,
+ two years of controlled flight, microgravity magnitude, the rocket equation
+ and position hold, inelastic capture, latch conditions, collisions, frame-rate
+ independence, the frame step cap, save and restore, journal replay, and the
+-momentum ledger through coasting, burns, structure contact, the tether, and
+-the rigid-carry baseline, attitude hold through a translation and a commanded
++momentum ledger through coasting, burns, structure contact, the tether,
++capture, and carrying, the grip slipping past its limit, attitude hold through a translation and a commanded
+ turn, plumes at the firing thrusters, a spinning tank glancing off a solar
+ array edge, and free parts colliding with each other.
+ `cargo test -p physics` covers the shared mechanisms, including box manifolds

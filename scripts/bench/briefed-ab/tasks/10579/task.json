@@ -1,0 +1,38 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10579,
+  "title": "Studio: wire the phone panels' actions into the iOS and Android hosts",
+  "body": "Follow-up to #10570. The Rust side is on main: `VerseHandle::connect_studio(links, runtime)` in coder-mobile, `openagents_verse_studio_connect(verse, app, host, len)` in openagents-mobile (returns JSON with the rights or an error), typed text as `{\"action\":\"studio_text\",\"text\":...}`, and Interact opening a station's panel. Wire the iOS host (bins/openagents-ios/host, thin SwiftUI) and the Android host (bins/openagents-android/host, thin Kotlin; add a JNI entry in crates/openagents-mobile/src/android.rs) to connect the studio to a paired computer, show the panels, offer Interact, and send typed text. Update docs/verse/mobile.md (it still says the OpenAgents app shows no studio panel). Acceptance: a simulator run opens the podium on a scratch host's studio and answers a decision.",
+  "fix": "864a0df7750d18dccccd9a64400deedb33ed93bb",
+  "parent": "d2da52c65941f3c732c62393d04ec227c8ae4cd2",
+  "package": "coder-mobile",
+  "source_files": [
+    "bins/openagents-android/host/app/src/main/java/com/openagents/app/MainActivity.kt",
+    "bins/openagents-android/host/app/src/main/java/com/openagents/app/MobileBridge.kt",
+    "bins/openagents-android/host/app/src/main/java/com/openagents/app/OpenAgentsNative.kt",
+    "bins/openagents-android/host/app/src/main/java/com/openagents/app/VerseScript.kt",
+    "bins/openagents-android/host/app/src/main/java/com/openagents/app/VerseStudio.kt",
+    "bins/openagents-android/host/app/src/main/java/com/openagents/app/VerseSurface.kt",
+    "bins/openagents-ios/host/App/AppTabs.swift",
+    "bins/openagents-ios/host/App/MobileBridge.swift",
+    "bins/openagents-ios/host/App/OpenAgentsMobile.h",
+    "bins/openagents-ios/host/App/VerseTab.swift",
+    "crates/coder-mobile/src/verse_app.rs",
+    "crates/openagents-mobile/src/android.rs",
+    "crates/openagents-mobile/src/android/exports.rs",
+    "crates/openagents-mobile/src/studio.rs",
+    "docs/verse/mobile.md"
+  ],
+  "test_files": [
+    "crates/coder-mobile/src/bare_presence_tests.rs",
+    "crates/coder-mobile/src/studio_tests.rs",
+    "crates/openagents-mobile/src/android.rs"
+  ],
+  "test_names": [
+    "a_held_studio_link_is_taken_once",
+    "the_bare_world_offers_interact_only_with_a_studio_source"
+  ],
+  "fix_lines": 953
+}

@@ -1,0 +1,417 @@
+diff --git a/crates/physics/src/thrusters.rs b/crates/physics/src/thrusters.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..38515a2cce8e13d31db6c1c7191c1a7e719286a2
+--- /dev/null
++++ b/crates/physics/src/thrusters.rs
+@@ -0,0 +1,298 @@
++//! Thrusters fixed to a body and the allocator that turns a wanted force
++//! and torque into throttles, after the rotor mixer in Genesis
++//! `examples/drone/quadcopter_controller.py`, generalized to any layout.
++
++use glam::DVec3;
++use serde::{Deserialize, Serialize};
++
++use crate::body::Body;
++
++/// A thruster fixed to a body.
++#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
++pub struct Thruster {
++    /// Mounting point relative to the center of mass, body frame, m.
++    pub pos: DVec3,
++    /// Direction of the force on the body, body frame, unit length. The
++    /// exhaust leaves the other way.
++    pub dir: DVec3,
++    /// Force at full throttle, N.
++    pub max_force: f64,
++}
++
++/// The force and torque a set of throttles produces, body frame.
++#[derive(Clone, Copy, Debug, Default, PartialEq)]
++pub struct Wrench {
++    pub force: DVec3,
++    pub torque: DVec3,
++}
++
++/// Thrusters on one body.
++#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
++pub struct ThrusterSet {
++    pub thrusters: Vec<Thruster>,
++    /// Length that converts torque to force when the allocator weighs them
++    /// against each other, m; about the thruster arm.
++    pub arm: f64,
++}
++
++/// Coordinate-descent sweeps per allocation phase. Fixed, so the result is
++/// deterministic.
++const SWEEPS: usize = 256;
++/// Linear fuel penalty in the first allocation phase, relative to the
++/// largest thruster column's squared norm.
++const FUEL_WEIGHT: f64 = 0.01;
++
++impl ThrusterSet {
++    /// Three thrusters at each corner of a box of half-extents `half`
++    /// around the center of mass, each pushing inward along one axis: a
++    /// 24-thruster layout like the Manned Maneuvering Unit's that gives
++    /// pure force and pure torque about every axis.
++    #[must_use]
++    pub fn box_corners(half: DVec3, max_force: f64) -> Self {
++        let mut thrusters = Vec::with_capacity(24);
++        for sx in [-1.0, 1.0] {
++            for sy in [-1.0, 1.0] {
++                for sz in [-1.0, 1.0] {
++                    let pos = DVec3::new(sx, sy, sz) * half;
++                    for axis in [DVec3::X * sx, DVec3::Y * sy, DVec3::Z * sz] {
++                        thrusters.push(Thruster {
++                            pos,
++                            dir: -axis,
++                            max_force,
++                        });
++                    }
++                }
++            }
++        }
++        Self {
++            thrusters,
++            arm: half.length(),
++        }
++    }
++
++    /// Body-frame wrench for `throttles` in [0, 1].
++    #[must_use]
++    pub fn wrench(&self, throttles: &[f64]) -> Wrench {
++        self.thrusters
++            .iter()
++            .zip(throttles)
++            .fold(Wrench::default(), |w, (t, u)| {
++                let f = t.dir * (t.max_force * u);
++                Wrench {
++                    force: w.force + f,
++                    torque: w.torque + t.pos.cross(f),
++                }
++            })
++    }
++
++    /// Throttles in [0, 1] whose wrench is closest to the wanted body-frame
++    /// `force` and `torque`, with torque weighted by `arm` so both are in
++    /// newtons. Infeasible requests saturate rather than fail.
++    ///
++    /// Two phases of projected coordinate descent, each a fixed number of
++    /// sweeps so the result is deterministic. The first adds a linear fuel
++    /// penalty, which drives thrusters that would fight each other to zero
++    /// and leaves a sparse set; the second fits the request exactly on that
++    /// set without the penalty's bias.
++    #[must_use]
++    pub fn allocate(&self, force: DVec3, torque: DVec3) -> Vec<f64> {
++        let arm = if self.arm > 0.0 { self.arm } else { 1.0 };
++        let columns: Vec<[DVec3; 2]> = self
++            .thrusters
++            .iter()
++            .map(|t| {
++                let f = t.dir * t.max_force;
++                [f, t.pos.cross(f) / arm]
++            })
++            .collect();
++        let biggest = columns
++            .iter()
++            .map(|c| c[0].length_squared() + c[1].length_squared())
++            .fold(0.0, f64::max);
++        let mut throttles = vec![0.0; columns.len()];
++        let mut residual = [force, torque / arm];
++        let mut active = vec![true; columns.len()];
++        for penalty in [FUEL_WEIGHT * biggest, 0.0] {
++            for _ in 0..SWEEPS {
++                let mut moved: f64 = 0.0;
++                for ((u, c), on) in throttles.iter_mut().zip(&columns).zip(&active) {
++                    let norm = c[0].length_squared() + c[1].length_squared();
++                    if !on || norm == 0.0 {
++                        continue;
++                    }
++                    let gradient = c[0].dot(residual[0]) + c[1].dot(residual[1]) - penalty;
++                    let next = (*u + gradient / norm).clamp(0.0, 1.0);
++                    let change = next - *u;
++                    if change != 0.0 {
++                        residual[0] -= c[0] * change;
++                        residual[1] -= c[1] * change;
++                        *u = next;
++                        moved = moved.max(change.abs());
++                    }
++                }
++                // Converged; stopping on a fixed threshold stays deterministic.
++                if moved < 1e-13 {
++                    break;
++                }
++            }
++            for (on, u) in active.iter_mut().zip(&throttles) {
++                *on = *u > 0.0;
++            }
++        }
++        throttles
++    }
++
++    /// Apply `throttles` to `body` as forces at the thruster mounts for the
++    /// next world step. Returns the world-frame force at each mount, N,
++    /// with the mount's world position, for exhaust and plume bookkeeping.
++    pub fn apply(&self, body: &mut Body, throttles: &[f64]) -> Vec<(DVec3, DVec3)> {
++        self.thrusters
++            .iter()
++            .zip(throttles)
++            .filter(|(_, u)| **u > 0.0)
++            .map(|(t, u)| {
++                let at = body.to_world(t.pos);
++                let force = body.orientation * (t.dir * (t.max_force * u));
++                body.apply_force_at(force, at);
++                (force, at)
++            })
++            .collect()
++    }
++}
++
++/// A proportional-integral-derivative controller over vectors.
++#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
++pub struct Pid {
++    pub kp: f64,
++    pub ki: f64,
++    pub kd: f64,
++    pub integral: DVec3,
++    pub prev_error: Option<DVec3>,
++}
++
++impl Pid {
++    #[must_use]
++    pub fn new(kp: f64, ki: f64, kd: f64) -> Self {
++        Self {
++            kp,
++            ki,
++            kd,
++            ..Self::default()
++        }
++    }
++
++    /// Output for `error` after `dt` seconds. The first update has no
++    /// derivative term.
++    pub fn update(&mut self, error: DVec3, dt: f64) -> DVec3 {
++        self.integral += error * dt;
++        let derivative = self
++            .prev_error
++            .map_or(DVec3::ZERO, |prev| (error - prev) / dt);
++        self.prev_error = Some(error);
++        error * self.kp + self.integral * self.ki + derivative * self.kd
++    }
++
++    pub fn reset(&mut self) {
++        self.integral = DVec3::ZERO;
++        self.prev_error = None;
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::world::{NoField, World};
++    use glam::DQuat;
++
++    fn pack() -> ThrusterSet {
++        ThrusterSet::box_corners(DVec3::new(0.35, 0.45, 0.3), 10.0)
++    }
++
++    #[test]
++    fn one_off_center_thruster_pushes_and_turns() {
++        let mut world = World::new(0.01);
++        let mut body = Body::new(
++            100.0,
++            DVec3::new(10.0, 20.0, 30.0),
++            DVec3::new(1.0, 2.0, 3.0),
++        );
++        body.orientation = DQuat::from_rotation_y(0.5);
++        let id = world.add(body);
++        let set = ThrusterSet {
++            thrusters: vec![Thruster {
++                pos: DVec3::new(0.0, 0.5, 0.0),
++                dir: DVec3::X,
++                max_force: 10.0,
++            }],
++            arm: 0.5,
++        };
++        let applied = set.apply(&mut world[id], &[1.0]);
++        let force = applied[0].0;
++        assert!(
++            (force - DQuat::from_rotation_y(0.5) * DVec3::new(10.0, 0.0, 0.0)).length() < 1e-12
++        );
++        world.step(&NoField);
++        let body = world[id];
++        // a = F / m; body-frame torque r x F = (0, 0, -5) N m about z.
++        assert!((body.vel - force / 100.0 * 0.01).length() < 1e-12);
++        let spin = body.orientation.inverse() * body.omega_world();
++        assert!(
++            (spin - DVec3::new(0.0, 0.0, -5.0 / 30.0 * 0.01)).length() < 1e-9,
++            "{spin}"
++        );
++        assert_eq!(body.force, DVec3::ZERO, "accumulators clear");
++    }
++
++    #[test]
++    fn pure_force_and_pure_torque_requests_are_met() {
++        let set = pack();
++        for force in [
++            DVec3::new(40.0, 0.0, 0.0),
++            DVec3::new(-10.0, 25.0, 5.0),
++            DVec3::new(0.0, 0.0, -30.0),
++        ] {
++            let u = set.allocate(force, DVec3::ZERO);
++            let w = set.wrench(&u);
++            assert!((w.force - force).length() < 1e-4, "{force}: {:?}", w);
++            assert!(w.torque.length() < 1e-4, "{force}: {:?}", w);
++            assert!(u.iter().all(|u| (0.0..=1.0).contains(u)));
++            // No thruster fights another: fuel equals the least possible.
++            let fuel: f64 = u.iter().sum::<f64>() * 10.0;
++            let least = force.abs().element_sum();
++            assert!(
++                (fuel - least).abs() < 1e-3,
++                "{force}: fuel {fuel} vs {least}"
++            );
++        }
++        let torque = DVec3::new(0.0, 4.0, -2.0);
++        let w = set.wrench(&set.allocate(DVec3::ZERO, torque));
++        assert!(
++            (w.torque - torque).length() < 1e-6 && w.force.length() < 1e-6,
++            "{w:?}"
++        );
++    }
++
++    #[test]
++    fn an_infeasible_request_saturates_toward_it() {
++        let set = pack();
++        let wanted = DVec3::new(500.0, 0.0, 0.0);
++        let u = set.allocate(wanted, DVec3::ZERO);
++        let w = set.wrench(&u);
++        assert!(u.iter().all(|u| (0.0..=1.0).contains(u)));
++        assert!(
++            (w.force.x - 40.0).abs() < 1e-6,
++            "four thrusters at full: {w:?}"
++        );
++        assert!(w.torque.length() < 1e-4);
++        assert_eq!(u, set.allocate(wanted, DVec3::ZERO), "deterministic");
++    }
++
++    #[test]
++    fn pid_terms_add() {
++        let mut pid = Pid::new(2.0, 1.0, 0.5);
++        let first = pid.update(DVec3::X, 0.1);
++        assert!((first - DVec3::X * (2.0 + 0.1)).length() < 1e-12);
++        let second = pid.update(DVec3::X * 2.0, 0.1);
++        assert!((second - DVec3::X * (4.0 + 0.3 + 5.0)).length() < 1e-12);
++    }
++}
+diff --git a/crates/verse-lagrange/src/tests.rs b/crates/verse-lagrange/src/tests.rs
+index fb2f1aecc971c7a18e70b62d4750b375158a88db..b710fd296f67bd87562e8a19eaeefe597f8a8cef 100644
+--- a/crates/verse-lagrange/src/tests.rs
++++ b/crates/verse-lagrange/src/tests.rs
+@@ -140,7 +140,7 @@ fn the_pack_obeys_the_rocket_equation_and_holds_position() {
+ fn carrying_mass_changes_acceleration_and_momentum_is_conserved() {
+     let mut station = Station::new();
+     station.astronaut_mut().pos = station::DEPOT + DVec3::new(2.5, 0.0, -5.0) - DVec3::Y * 0.2;
+-    station.yaw = -std::f64::consts::FRAC_PI_2;
++    station.face(-std::f64::consts::FRAC_PI_2);
+     let empty = station::THRUST / station.mass();
+     let kind = station.grab().unwrap();
+     assert_eq!(kind, PartKind::MainEngine);
+@@ -169,7 +169,7 @@ fn carrying_mass_changes_acceleration_and_momentum_is_conserved() {
+ fn latching_requires_position_and_low_closing_speed() {
+     let mut station = Station::new();
+     station.astronaut_mut().pos = station::DEPOT + DVec3::new(2.5, 0.0, -5.0) - DVec3::Y * 0.2;
+-    station.yaw = -std::f64::consts::FRAC_PI_2;
++    station.face(-std::f64::consts::FRAC_PI_2);
+     let kind = station.grab().unwrap();
+     // Place the held part right at its slot, moving too fast.
+     let offset = kind.slot() - station.body(&station.parts[0]).pos;
+@@ -217,7 +217,7 @@ fn structure_blocks_the_astronaut() {
+ fn busy_station() -> Station {
+     let mut station = Station::new();
+     station.astronaut_mut().pos = station::DEPOT + DVec3::new(2.5, 0.0, -5.0) - DVec3::Y * 0.2;
+-    station.yaw = -std::f64::consts::FRAC_PI_2;
++    station.face(-std::f64::consts::FRAC_PI_2);
+     station
+ }
+ 
+@@ -451,3 +451,68 @@ fn the_rigid_carry_baseline_breaks_angular_momentum() {
+     assert!(worst.linear < 1e-9, "{worst:?}");
+     assert!(worst.angular > 1e-3, "baseline violation: {worst:?}");
+ }
++
++#[test]
++fn attitude_holds_through_a_translation_and_turns_on_command() {
++    let mut station = open_space();
++    let heading = station.heading_yaw();
++    let across = Command {
++        direction: DVec3::new(1.0, 0.3, 0.2),
++        yaw: heading,
++        climb: false,
++    };
++    let mut worst: f64 = 0.0;
++    for _ in 0..(8 * 60) {
++        station.step(1.0 / 60.0, &across);
++        let off =
++            glam::DQuat::from_rotation_y(heading).angle_between(station.astronaut().orientation);
++        worst = worst.max(off);
++    }
++    assert!(
++        worst.to_degrees() < 1.0,
++        "attitude drifted {:.3} deg",
++        worst.to_degrees()
++    );
++    assert!(station.astronaut().vel.length() > 1.0);
++    // A quarter turn completes and settles within ten seconds.
++    let before = station.propellant;
++    let turn = Command {
++        direction: DVec3::ZERO,
++        yaw: heading + std::f64::consts::FRAC_PI_2,
++        climb: false,
++    };
++    for _ in 0..(10 * 60) {
++        station.step(1.0 / 60.0, &turn);
++    }
++    let target = glam::DQuat::from_rotation_y(turn.yaw);
++    let off = target
++        .angle_between(station.astronaut().orientation)
++        .to_degrees();
++    assert!(off < 1.0, "{off} deg from the commanded heading");
++    assert!(station.astronaut().omega.length() < 0.01);
++    assert!(
++        before - station.propellant > 0.0,
++        "turning costs propellant"
++    );
++    // Hands follow the body: they sit a meter ahead along the new facing.
++    let ahead = station.hands() - station.astronaut().pos;
++    assert!((ahead.dot(station::heading(turn.yaw)) - 1.0).abs() < 0.03);
++}
++
++#[test]
++fn plumes_come_from_the_firing_thrusters() {
++    let mut station = open_space();
++    let push = Command {
++        direction: DVec3::X,
++        yaw: station.heading_yaw(),
++        climb: false,
++    };
++    station.step(1.0 / 60.0, &push);
++    assert!(!station.plumes.is_empty());
++    for plume in &station.plumes {
++        let from = DVec3::from(plume.pos) - station.astronaut().pos;
++        assert!(from.length() < 1.0, "plume {from} is on the pack");
++        // Thrust along +X means exhaust toward -X.
++        assert!(DVec3::from(plume.dir).x < -0.99);
++    }
++}
+diff --git a/crates/verse/src/zones/tests.rs b/crates/verse/src/zones/tests.rs
+index 99608dcde572cc259603e64cb9af2f4145ed65cb..9f208b7e49b7d2100404a064a9e4a955973294a5 100644
+--- a/crates/verse/src/zones/tests.rs
++++ b/crates/verse/src/zones/tests.rs
+@@ -188,7 +188,7 @@ fn l1_flight_is_inertial_and_carries_parts_to_the_jig() {
+     {
+         let lagrange = runtime.zone_state.lagrange.as_mut().unwrap();
+         let station = &mut lagrange.station;
+-        station.yaw = -std::f64::consts::FRAC_PI_2;
++        station.face(-std::f64::consts::FRAC_PI_2);
+         station.astronaut_mut().vel = glam::DVec3::ZERO;
+         station.astronaut_mut().pos =
+             verse_lagrange::PartKind::MainEngine.stowage() + glam::DVec3::new(1.5, -0.2, 0.0);

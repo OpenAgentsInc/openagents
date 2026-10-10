@@ -1,0 +1,275 @@
+diff --git a/INVARIANTS.md b/INVARIANTS.md
+index 2e48c4a0c3d78b25708f682e4f0ef610fc22256b..3a9b3f1b198149218789ae2bfa43c06e51f0dc15 100644
+--- a/INVARIANTS.md
++++ b/INVARIANTS.md
+@@ -138,7 +138,8 @@ payment on the phone. The formats are in
+ 
+ | Invariant | Status | Checked by |
+ | --- | --- | --- |
+-| A playtest report travels only as a NIP-17 gift wrap (NIP-44) addressed to the OpenAgents triage key, signed by the tester's Verse world key; no readable report text, build, or tester key is on the wire, and no other key can open it. Until a build carries the triage key (`playtest::TRIAGE_KEY`), reports wait on the phone and are sent nowhere. | New on 2026-09-28 ([#9882](https://github.com/OpenAgentsInc/openagents/issues/9882)). | `a_report_seals_to_the_triage_key_and_only_it_opens_it` in `crates/playtest`; `a_report_is_sealed_to_the_triage_key_and_listed_with_its_code`, `without_the_triage_key_a_report_waits_on_the_phone_and_sends_later` in `crates/openagents-mobile` |
++| A playtest report's text travels only as a NIP-17 gift wrap (NIP-44) addressed to the OpenAgents triage key, signed by the tester's Verse world key; no readable report text or device is on the wire, and no other key can open it. Until a build carries the triage key (`playtest::TRIAGE_KEY`), reports wait on the phone and are sent nowhere. | New on 2026-09-28 ([#9882](https://github.com/OpenAgentsInc/openagents/issues/9882)); reinterpreted the same day ([#9904](https://github.com/OpenAgentsInc/openagents/issues/9904)): the build and tester key are now public in the report's NIP-XP record, below. | `a_report_seals_to_the_triage_key_and_only_it_opens_it` in `crates/playtest`; `a_report_is_sealed_to_the_triage_key_and_listed_with_its_code`, `without_the_triage_key_a_report_waits_on_the_phone_and_sends_later` in `crates/openagents-mobile` |
++| After its private report is accepted by a relay, and only then, the app publishes the report's public NIP-XP playtest record (kind `3197`), signed by the same world key: the build, the platform, the report kind, and the SHA-256 of the private report's exact content, never its text, device, screenshot, session log, or task. The form says so before sending. Without the triage key nothing is published. | New on 2026-09-28 ([#9904](https://github.com/OpenAgentsInc/openagents/issues/9904)). | `the_public_record_commits_to_the_opened_report_and_holds_no_text` in `crates/playtest`; `a_sent_report_publishes_its_content_free_record_signed_by_the_world_key`, `without_the_triage_key_no_public_record_is_published` in `crates/openagents-mobile` |
+ | No screenshot is taken or sent from the Wallet tab or a screen that can show a key (Identity keys, Trainer), whatever the host sends. | New on 2026-09-28 ([#9882](https://github.com/OpenAgentsInc/openagents/issues/9882)). | `no_screenshot_leaves_the_wallet_or_a_key_screen`, `wallet_and_key_screens_are_sensitive` in `crates/playtest`; `no_screenshot_is_taken_from_the_wallet_or_a_key_screen` in `crates/openagents-mobile` |
+ | The playtest session log holds only closed structural values (time, tab, screen, event code): it has no field for message text, prompts, transcripts, keys, recovery words, invoices, addresses, amounts, balances, or other players' keys, and refuses unknown fields and names. | New on 2026-09-28 ([#9883](https://github.com/OpenAgentsInc/openagents/issues/9883)). | `the_session_log_holds_only_closed_structural_values` in `crates/playtest` |
+ | The session log records only while the tester has turned **Playtest session** on, stays on the device, and leaves it only inside a report whose preview showed the whole log: the report attaches it only when its digest equals the previewed one. | New on 2026-09-28 ([#9883](https://github.com/OpenAgentsInc/openagents/issues/9883)). | `nothing_is_recorded_while_the_session_is_off` in `crates/playtest`; `the_session_log_records_only_while_on_and_leaves_only_as_previewed` in `crates/openagents-mobile` |
+diff --git a/bins/openagents-ios/host/App/MobileBridge.swift b/bins/openagents-ios/host/App/MobileBridge.swift
+index 6836ffb4b5fa20c01124ee75d23e679dce3ea422..f3641d267de06e9bdc9c7e1a3a1bf6f3e2eae9d1 100644
+--- a/bins/openagents-ios/host/App/MobileBridge.swift
++++ b/bins/openagents-ios/host/App/MobileBridge.swift
+@@ -221,6 +221,8 @@ struct ReportRow: Decodable, Hashable {
+     let error: String?
+     let screenshot: Bool
+     let session: Bool
++    /// The public, content-free record of the report is on the relay.
++    let published: Bool?
+ }
+ 
+ /// The playtest session's state.
+diff --git a/bins/openagents-ios/host/App/Playtest.swift b/bins/openagents-ios/host/App/Playtest.swift
+index 9d6af9be40bda7122ffb3161af44b80be37c95c4..d4da5ce2b697041738084798f9082a540cd4a852 100644
+--- a/bins/openagents-ios/host/App/Playtest.swift
++++ b/bins/openagents-ios/host/App/Playtest.swift
+@@ -328,7 +328,7 @@ struct MyReportsScreen: View {
+                             .foregroundStyle(row.status == "sent" ? .secondary : Color.yellow)
+                     }
+                     Text(row.summary).font(.subheadline).lineLimit(2)
+-                    Text("\(row.kind_label) · \(row.place) · \(row.build)\(row.screenshot ? " · screenshot" : "")\(row.session ? " · session log" : "")")
++                    Text("\(row.kind_label) · \(row.place) · \(row.build)\(row.screenshot ? " · screenshot" : "")\(row.session ? " · session log" : "")\(row.published == true ? " · public record" : "")")
+                         .font(.caption).foregroundStyle(.secondary)
+                     if let error = row.error {
+                         Text(error).font(.caption).foregroundStyle(.red)
+diff --git a/crates/openagents-mobile/src/playtest.rs b/crates/openagents-mobile/src/playtest.rs
+index cdb9a80e976eb027ff2d0006dec6824de5ec2665..98abb172e33a0f2ceca6cff7b34904c1faf39e01 100644
+--- a/crates/openagents-mobile/src/playtest.rs
++++ b/crates/openagents-mobile/src/playtest.rs
+@@ -10,6 +10,13 @@
+ //! ([`playtest::TRIAGE_KEY`]) a report waits on the phone and is sent when
+ //! one does; it is never sent anywhere else.
+ //!
++//! When the private report is sent, the app also publishes its public,
++//! content-free NIP-XP playtest report (kind `3197`, [`playtest::report::public_record`])
++//! signed by the same world key: the build, the platform, the kind, and the
++//! private report's digest, and no text. A playtest award cites it, so an
++//! accepted report can earn XP. It is kept on the phone until a relay
++//! accepts it and sent again from My reports.
++//!
+ //! The session log records only while **Playtest session** is on, holds
+ //! only closed structural values ([`playtest::session`]), stays on the
+ //! phone, and is attached to a report only when the tester chose to and
+@@ -75,6 +82,12 @@ struct Saved {
+     error: Option<String>,
+     screenshot: bool,
+     session: bool,
++    /// The signed public record, kept until a relay accepts it.
++    #[serde(default)]
++    public: Option<Event>,
++    /// A relay accepted the public record.
++    #[serde(default)]
++    published: bool,
+ }
+ 
+ /// A row of My reports.
+@@ -94,6 +107,8 @@ pub struct Row {
+     pub error: Option<String>,
+     pub screenshot: bool,
+     pub session: bool,
++    /// The public, content-free record of this report is on the relay.
++    pub published: bool,
+ }
+ 
+ /// The kinds a tester chooses from, with the words the form shows.
+@@ -137,7 +152,7 @@ fn kind_label(kind: Kind) -> &'static str {
+ }
+ 
+ /// What a report sends and to whom, shown on the form.
+-pub const PRIVACY: &str = "Sent privately, encrypted to the OpenAgents triage team and signed by your Verse world key. It becomes public only as a GitHub issue we write, without Wallet or key screenshots, and quotes your words only if you allow it. Reports earn nothing by themselves; accepted ones can earn playtest XP later.";
++pub const PRIVACY: &str = "Sent privately, encrypted to the OpenAgents triage team and signed by your Verse world key. It becomes public only as a GitHub issue we write, without Wallet or key screenshots, and quotes your words only if you allow it. Your key also signs a public record that you filed a report on this build (its kind and a fingerprint, never your words), so an accepted report can earn playtest XP. Reports earn nothing by themselves.";
+ 
+ /// Where testers report while the app can't send yet.
+ pub const FALLBACK: &str =
+@@ -217,9 +232,10 @@ pub struct Form {
+     pub screenshot: Option<Screenshot>,
+ }
+ 
+-/// Publishes a sealed report.
++/// Publishes a sealed report and its public record.
+ pub trait Relay: Send + Sync {
+-    /// Sends `wrap`, authenticating as `auth` where the relay asks.
++    /// Sends `wrap` (a gift wrap or a public record), authenticating as
++    /// `auth` where the relay asks.
+     /// Blocking.
+     fn publish(&self, wrap: &Event, auth: &SecretKey) -> Result<(), String>;
+ }
+@@ -336,6 +352,7 @@ fn row(saved: &Saved) -> Row {
+         error: saved.error.clone(),
+         screenshot: saved.screenshot,
+         session: saved.session,
++        published: saved.published,
+     }
+ }
+ 
+@@ -492,10 +509,37 @@ impl Playtest {
+                     self.dispatch(body, world, &digest);
+                 }
+             }
++            let unpublished: Vec<(String, Event)> = lock(&self.inner)
++                .saved
++                .iter()
++                .filter(|s| s.status == Status::Sent && !s.published)
++                .filter_map(|s| Some((s.digest.clone(), s.public.clone()?)))
++                .collect();
++            for (digest, public) in unpublished {
++                self.announce(public, *world, digest);
++            }
+         }
+         self.packet(None, None)
+     }
+ 
++    /// Publishes a sent report's public record on a background thread,
++    /// authenticating as the key that signed it.
++    fn announce(&mut self, public: Event, world: SecretKey, digest: String) {
++        let (inner, store, relay) = (self.inner.clone(), self.store.clone(), self.relay.clone());
++        self.sending.retain(|h| !h.is_finished());
++        self.sending.push(std::thread::spawn(move || {
++            let result = relay.publish(&public, &world);
++            let mut inner = lock(&inner);
++            if result.is_ok()
++                && let Some(saved) = inner.saved.iter_mut().find(|s| s.digest == digest)
++            {
++                saved.published = true;
++                saved.public = None;
++            }
++            save(store.as_deref(), &inner);
++        }));
++    }
++
+     /// Files a report from the form. `task` is the open Coder chat's task.
+     pub fn send(
+         &mut self,
+@@ -596,6 +640,8 @@ impl Playtest {
+                     error: None,
+                     screenshot: report.screenshot.is_some(),
+                     session: report.session.is_some(),
++                    public: None,
++                    published: false,
+                 },
+             );
+             while inner.saved.len() > MAX_SAVED {
+@@ -645,14 +691,20 @@ impl Playtest {
+                 s.status = Status::Sending;
+                 s.code = Some(sealed.code.clone());
+                 s.error = None;
++                if !s.published {
++                    s.public = Some(sealed.public.clone());
++                }
+             });
+             self.persist(&inner);
+         }
+         let (inner, store, relay) = (self.inner.clone(), self.store.clone(), self.relay.clone());
+         let digest = digest.to_owned();
++        let world = *world;
+         self.sending.retain(|h| !h.is_finished());
+         self.sending.push(std::thread::spawn(move || {
+             let result = relay.publish(&sealed.wrap, &random.wrapper);
++            // The public record follows the private report, never alone.
++            let published = result.is_ok() && relay.publish(&sealed.public, &world).is_ok();
+             let mut inner = lock(&inner);
+             let place = inner.log.position();
+             if let Some(saved) = inner.saved.iter_mut().find(|s| s.digest == digest) {
+@@ -661,6 +713,10 @@ impl Playtest {
+                         saved.status = Status::Sent;
+                         saved.sent_at = Some(now());
+                         saved.error = None;
++                        if published {
++                            saved.published = true;
++                            saved.public = None;
++                        }
+                         // A sent report's body leaves the phone's store.
+                         if let Some(store) = &store {
+                             let _ = store.write(&body_key(&digest), &Option::<Report>::None);
+diff --git a/crates/playtest/src/report.rs b/crates/playtest/src/report.rs
+index af8b7d1c82a2090ddd4deb2beaac64d15bf9f833..5f7cfaaff8e576b688f825cb011ef89da330437c 100644
+--- a/crates/playtest/src/report.rs
++++ b/crates/playtest/src/report.rs
+@@ -7,8 +7,11 @@
+ //! and signed by the tester's Verse world key ([`wrap`]). The kind-14
+ //! rumor's event ID is the report's identity: its first eight hex digits,
+ //! as `PT-1A2B3C4D`, are the report code the tester can quote. The SHA-256
+-//! of the exact content bytes is the report's [`digest`], which a public,
+-//! content-free NIP-XP playtest report event can cite later.
++//! of the exact content bytes is the report's [`digest`]. Beside the
++//! private message, [`wrap`] signs the public, content-free NIP-XP playtest
++//! report (kind `3197`, [`public_record`]) with the same key: the build,
++//! the platform, the kind, and that digest, and no text. It is what a
++//! playtest award cites, so an accepted report can earn XP.
+ //!
+ //! A screenshot is never part of a report from the Wallet tab or a screen
+ //! that can show a key ([`crate::session::Route::sensitive`]); [`Report::check`]
+@@ -283,6 +286,9 @@ pub struct Sealed {
+     pub digest: String,
+     /// The kind-1059 gift wrap addressed to the triage key.
+     pub wrap: Event,
++    /// The public, content-free NIP-XP playtest report (kind `3197`),
++    /// signed by the tester, committing to [`Sealed::digest`].
++    pub public: Event,
+ }
+ 
+ /// The randomness a seal needs, supplied by the caller so tests repeat.
+@@ -339,14 +345,38 @@ pub fn wrap(
+         None,
+     )
+     .map_err(failed)?;
++    let digest = digest(&content);
++    let public = public_record(report, &digest, tester)?;
+     Ok(Sealed {
+         code: code(&rumor.id),
+-        digest: digest(&content),
++        digest,
+         rumor_id: rumor.id,
+         wrap,
++        public,
+     })
+ }
+ 
++/// The public NIP-XP playtest report (kind `3197`) for `report`, whose
++/// private content hashes to `digest`, signed by `tester` at the report's
++/// time. It holds the build, the platform, and the kind, and no text.
++///
++/// # Errors
++///
++/// When a field is outside the NIP-XP grammar.
++pub fn public_record(report: &Report, digest: &str, tester: &SecretKey) -> Result<Event, String> {
++    let parts = nostr::xp::playtest::playtest_report(
++        &report.context.build_label(),
++        &session::name(&report.context.platform),
++        &session::name(&report.kind),
++        digest,
++        None,
++    )
++    .map_err(|_| "The report's public record couldn't be made.".to_string())?;
++    let signer = nostr::domain::RelaySigner::from_secret_hex(&tester.display_secret().to_string())
++        .map_err(|_| "The report's public record couldn't be signed.".to_string())?;
++    Ok(signer.sign(report.context.at, parts.kind, parts.tags, parts.content))
++}
++
+ /// A report the triage key opened.
+ #[derive(Clone, Debug)]
+ pub struct Opened {
+diff --git a/docs/game/playtesting.md b/docs/game/playtesting.md
+index e3bee2f584bc86edca819c2357951d3941efac0c..256c9b24097b312e969eddf565920d611c0a69e9 100644
+--- a/docs/game/playtesting.md
++++ b/docs/game/playtesting.md
+@@ -391,7 +391,12 @@ Status: implemented on iOS in build 16 (`74f2f90be0`), as described below,
+ with the triage key still to be created (workspace `NEEDS_OWNER.md`); until
+ then reports wait on the phone. Screenshots are cropped top and bottom and
+ sent as a small JPEG; reports read on the triage side with
+-`openagents playtest inbox` ([triage](playtest-triage.md)).
++`openagents playtest inbox` ([triage](playtest-triage.md)). When a report is
++sent, the app also publishes its public, content-free NIP-XP playtest record
++(kind `3197`: the build, platform, kind, and the private report's digest,
++signed by the same world key), which a playtest award cites
++([#9904](https://github.com/OpenAgentsInc/openagents/issues/9904)); the form
++says so, and **My reports** marks it once a relay accepts it.
+ 
+ A **Report** action that files a structured report, signed by the tester's
+ key and sent privately:

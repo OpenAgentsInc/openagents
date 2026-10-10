@@ -1,0 +1,140 @@
+diff --git a/crates/lev/src/estimator.rs b/crates/lev/src/estimator.rs
+index ebcd8f873813c348b47793eab1ccf9f32a6e8507..4d7353c1f0ff9be1a5f2cdbae68b64fcf9869909 100644
+--- a/crates/lev/src/estimator.rs
++++ b/crates/lev/src/estimator.rs
+@@ -409,16 +444,51 @@ mod tests {
+         assert!(confidence > 0.7);
+     }
+ 
++    #[test]
++    fn a_block_is_contiguous_and_starts_where_the_last_one_ended() {
++        assert_eq!(seed_block(0, 8).unwrap(), 0..8);
++        assert_eq!(seed_block(1, 8).unwrap(), 8..16);
++        assert_eq!(seed_block(7, 16).unwrap(), 112..128);
++    }
++
++    #[test]
++    fn two_blocks_never_share_a_seed() {
++        let n = 8;
++        let blocks: Vec<Vec<u64>> =
++            (0..8).map(|base| seed_block(base, n).unwrap().collect()).collect();
++        for (left, first) in blocks.iter().enumerate() {
++            for (right, second) in blocks.iter().enumerate().skip(left + 1) {
++                assert!(
++                    first.iter().all(|seed| !second.contains(seed)),
++                    "blocks {left} and {right} share a seed: {first:?} against {second:?}"
++                );
++            }
++        }
++        // Every seed up to the last block is used exactly once, so the blocks
++        // tile the space rather than leaving gaps a later base falls into.
++        let all: Vec<u64> = blocks.into_iter().flatten().collect();
++        assert_eq!(all, (0..8 * n).collect::<Vec<u64>>());
++    }
++
++    #[test]
++    fn a_block_past_the_seed_space_is_refused_rather_than_wrapped() {
++        let refusal = seed_block(u64::MAX, 8).expect_err("it does not fit");
++        assert_eq!(refusal.code, RefusalCode::InvalidRequest);
++        let refusal = seed_block(1, 0).expect_err("an empty ensemble is refused");
++        assert_eq!(refusal.code, RefusalCode::InvalidRequest);
++    }
++
+     #[test]
+     fn an_l2_estimate_carries_its_own_resolution() {
+         let counts: IndexMap<String, u64> =
+             [("a".to_string(), 5_u64), ("b".to_string(), 3)].into_iter().collect();
+-        let raw = finish(Estimator::L2, counts, 8, (0..8).collect(), None, 0.0);
++        let raw = finish(Estimator::L2, counts, 8, (0..8).collect(), 0, None, 0.0);
+         assert_eq!(raw.choice, "a");
+         assert!((raw.top() - 0.625).abs() < 1e-12);
+         // Eight samples cannot express a difference finer than 0.125, which
+         // is coarser than the two decimals the contract reports.
+         assert!((raw.resolution - 0.125).abs() < 1e-12);
+         assert_eq!(raw.seeds.len(), 8);
++        assert_eq!(raw.seed_base, 0);
+     }
+ }
+diff --git a/crates/lev/tests/pool.rs b/crates/lev/tests/pool.rs
+index da3d42f22deee3f980dd184fafda04598ff1e735..abb8982fc3fc1b6d403387685d96bec301c20816 100644
+--- a/crates/lev/tests/pool.rs
++++ b/crates/lev/tests/pool.rs
+@@ -50,13 +50,13 @@ fn a_pool_reproduces_a_single_helper_s_estimate_and_beats_its_clock() {
+     let n = 8;
+ 
+     let start = std::time::Instant::now();
+-    let serial = l2(&mut single, &question, n).expect("the serial estimate ran");
++    let serial = l2(&mut single, &question, n, 0).expect("the serial estimate ran");
+     let serial_ms = start.elapsed().as_millis();
+     drop(single);
+ 
+     let pool = Pool::discover(4).expect("four helpers start");
+     let start = std::time::Instant::now();
+-    let parallel = l2_pool(&pool, &question, n).expect("the pooled estimate ran");
++    let parallel = l2_pool(&pool, &question, n, 0).expect("the pooled estimate ran");
+     let parallel_ms = start.elapsed().as_millis();
+ 
+     eprintln!(
+@@ -76,3 +76,62 @@ fn a_pool_reproduces_a_single_helper_s_estimate_and_beats_its_clock() {
+         "the pool was not faster: {parallel_ms} ms against {serial_ms} ms"
+     );
+ }
++
++/// A seed block is the only fresh trial this runtime can offer.
++///
++/// Seeds reproduce exactly, so rerunning block 0 is not a second trial; it
++/// is the first one again. This checks both halves of that: a block replays
++/// across a fresh pool of helper processes, and a different block draws a
++/// disjoint seed set, which is what makes it independent evidence.
++#[test]
++fn a_seed_block_replays_across_processes_and_a_second_block_is_disjoint() {
++    let Ok(mut probe) = Bridge::discover() else {
++        eprintln!("skipping: no lev-bridge helper");
++        return;
++    };
++    match probe.availability() {
++        Ok(availability) if availability.is_available() => {}
++        other => {
++            eprintln!("skipping: the model is not available ({other:?})");
++            return;
++        }
++    }
++    drop(probe);
++
++    let question = compiled();
++    let n = 8;
++
++    let first = Pool::discover(4).expect("four helpers start");
++    let block_zero = l2_pool(&first, &question, n, 0).expect("block 0 ran");
++    let block_one = l2_pool(&first, &question, n, 1).expect("block 1 ran");
++    drop(first);
++
++    // A fresh pool is a fresh set of helper processes, which is the property
++    // an estimate's reproducibility claim rests on.
++    let second = Pool::discover(4).expect("four more helpers start");
++    let replayed = l2_pool(&second, &question, n, 1).expect("block 1 ran again");
++
++    assert_eq!(block_zero.seeds, (0..n).collect::<Vec<u64>>());
++    assert_eq!(block_one.seeds, (n..2 * n).collect::<Vec<u64>>());
++    assert_eq!(block_one.seed_base, 1);
++    assert!(
++        block_zero.seeds.iter().all(|seed| !block_one.seeds.contains(seed)),
++        "the blocks share a seed: {:?} against {:?}",
++        block_zero.seeds,
++        block_one.seeds
++    );
++    assert_eq!(
++        block_one.frequency, replayed.frequency,
++        "block 1 did not replay across processes: {:?} against {:?}",
++        block_one.frequency, replayed.frequency
++    );
++    assert_eq!(block_one.choice, replayed.choice);
++
++    eprintln!(
++        "block 0 {:?} at {:.3}, block 1 {:?} at {:.3}",
++        block_zero.choice,
++        block_zero.top(),
++        block_one.choice,
++        block_one.top()
++    );
++}

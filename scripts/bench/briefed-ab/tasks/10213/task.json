@@ -1,0 +1,15 @@
+{
+  "test_targets": [],
+  "issue": 10213,
+  "title": "Two `chat work` processes on one computer fail each other: \"another process holds the task store lock\"",
+  "body": "Dogfooding 2026-10-02: with two `openagents chat work --issues \u2026` batches running on one Mac, #10178 failed with \"The fix turn could not start: another process holds the task store lock; retry after it exits\" and #10179 with \"Coder's task could not be read: another process holds the task store lock\". Nothing was wrong with either change.\n\nFix: task store lock acquisition waits (with backoff, bounded only by the lock holder exiting or releasing, logging once) instead of failing the flow; reads that only need a snapshot don't take the exclusive lock at all. Find the lock in `crates/coder/src/task/` (store/owner). Tests: two processes contending \u2014 both flows proceed.",
+  "fix": "e5de15c99337b652f1f15c631f25c0d1992762f3",
+  "parent": "63370f599e2ab5401137fa01b09506bfdca07f94",
+  "package": "coder",
+  "source_files": [
+    "crates/coder/src/task/local.rs"
+  ],
+  "test_files": [],
+  "test_names": [],
+  "fix_lines": 7
+}

@@ -571,7 +571,14 @@ def run_trial(task: dict, arm: str, rep: int, levers: dict, slot: int, out: Path
     fix_src = [p for p in task["source_files"] if not p.endswith(".md")]
     src_changed = [p for p in changed if not is_test_file(p) and not p.endswith(".md") and not p.endswith(".lock")]
     hit = set(src_changed) & set(fix_src)
-    g = grade(task, diff, slot) if diff.strip() else {"applied": True, "compiles": None, "tests_pass": False, "empty": True}
+    if not diff.strip():
+        g = {"applied": True, "compiles": None, "tests_pass": False, "empty": True}
+    elif not task.get("package") or not task.get("test_names"):
+        # No package or no test of the fix's own to run (a new crate, or a
+        # fix without tests): judged on the diff alone.
+        g = {"applied": None, "compiles": None, "tests_pass": False, "no_hidden_tests": True}
+    else:
+        g = grade(task, diff, slot)
     record = {
         "issue": task["issue"], "arm": arm, "rep": rep, "slot": slot, "levers": lv,
         **{k: v for k, v in m.items() if k not in ("result",)},
@@ -674,6 +681,7 @@ def batch(args) -> None:
         # pinned agent binary and CLI, committed before the run.
         plan = load_json(Path(args.plan))
         args.tag, args.issues, args.arms, args.reps = plan["tag"], plan["issues"], plan["arms"], plan["reps"]
+        args.workers = plan.get("workers", args.workers)
         levers.update(plan.get("levers", {}))
         check_pins(plan)
     tag_dir = WORK / "results" / args.tag

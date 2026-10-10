@@ -1,0 +1,56 @@
+diff --git a/crates/openagents-desktop/fixtures/grok-read-only.atif.jsonl b/crates/openagents-desktop/fixtures/grok-read-only.atif.jsonl
+new file mode 100644
+index 0000000000000000000000000000000000000000..271c6f2f86639d98d70506c098e8e91e5e53f7b1
+--- /dev/null
++++ b/crates/openagents-desktop/fixtures/grok-read-only.atif.jsonl
+@@ -0,0 +1,11 @@
++{"record": "session", "schema_version": "ATIF-v1.8", "at": 1790884690739, "session": {"provider": "grok", "model": "default"}}
++{"record": "step", "step": {"at": 1790858419237, "source": "Agent", "message": "", "call": {"id": "decision-openagents.microcoder.judge.v1", "name": "openagents.microcoder.judge.v1", "arguments": {"model": "jev-1.13.0"}, "output": "", "outcome": "Completed", "milliseconds": 761}}}
++{"record": "step", "step": {"at": 1790884690743, "source": "User", "message": "do a test delegation to grok\n\nContinue this conversation from the OpenAgents app on this computer. The request:\n\ndo a test delegation to grok\n\nHow this run started:\n\nThe person asked for this to run on Grok Build. OpenAgents has already started this run on the engine it chose, so that request is don"}}
++{"record": "step", "step": {"at": 1790884697444, "source": "Agent", "message": "This run is already on Grok Build, so I\u2019ll treat it as the delegation and take a quick look at the project without changing anything."}}
++{"record": "step", "step": {"at": 1790884697452, "source": "Agent", "message": "", "call": {"id": "call-959bf27a-b7f6-4701-84ca-a2cc02ef4ae2-0", "name": "other", "arguments": {"target_directory": "/project"}, "output": "", "outcome": "Completed", "milliseconds": 0, "purpose": "List `/project`"}}}
++{"record": "step", "step": {"at": 1790884699917, "source": "Agent", "message": "", "call": {"id": "call-da9ec852-d583-457a-b8b6-9e255bb4fdef-2", "name": "other", "arguments": {"target_file": "/project"}, "output": "", "outcome": "Completed", "milliseconds": 11, "purpose": "Read `/project`"}}}
++{"record": "step", "step": {"at": 1790884699924, "source": "Agent", "message": "", "call": {"id": "call-da9ec852-d583-457a-b8b6-9e255bb4fdef-1", "name": "other", "arguments": {"target_file": "/project"}, "output": "", "outcome": "Completed", "milliseconds": 19, "purpose": "Read `/project`"}}}
++{"record": "step", "step": {"at": 1790884699931, "source": "Agent", "message": "", "call": {"id": "call-da9ec852-d583-457a-b8b6-9e255bb4fdef-3", "name": "other", "arguments": {"target_file": "/project"}, "output": "", "outcome": "Completed", "milliseconds": 26, "purpose": "Read `/project`"}}}
++{"record": "step", "step": {"at": 1790884699935, "source": "Agent", "message": "", "call": {"id": "call-da9ec852-d583-457a-b8b6-9e255bb4fdef-4", "name": "other", "arguments": {"target_file": "/project"}, "output": "", "outcome": "Completed", "milliseconds": 26, "purpose": "Read `/project`"}}}
++{"record": "step", "step": {"at": 1790884703123, "source": "Agent", "message": "The delegation ran on Grok Build. Nothing was changed.\n\nThis worktree holds a small Rust crate named `demo` (edition 2021). `src/lib.rs` exports `add` and `mul`, and `src/main.rs` prints `demo::add(2, 3)`. The README is only a title, and both source files still have TODOs (`args` in `main`, `subtrac"}}
++{"record": "end", "at": 1790884703901, "state": "ended"}
+diff --git a/crates/openagents-desktop/src/acceptance.rs b/crates/openagents-desktop/src/acceptance.rs
+index 118ca10e3e7be7fc4198acf2ebbe83e97c663a00..12b9663318c9911eb631acc75475beb70ee628de 100644
+--- a/crates/openagents-desktop/src/acceptance.rs
++++ b/crates/openagents-desktop/src/acceptance.rs
+@@ -1536,25 +1536,25 @@ fn delegate_grok(gate: &mut Gate) -> Outcome {
+             ));
+         }
+     }
+-    let mut commands = 0;
++    let mut tools = 0;
+     if let Some(done) = &seen.finished {
+         let _ = std::fs::copy(
+             &done.trajectory,
+             gate.evidence("delegate-grok").join("turn.atif.jsonl"),
+         );
+-        // At the default full access Grok Build runs with
+-        // `--always-approve` (#10104); under a named toolchains access the
+-        // host allows the commands it asks for inside its boundary
+-        // (#10092). Either way the turn ran at least one.
+-        commands = ran_commands(&std::fs::read_to_string(&done.trajectory).unwrap_or_default());
+-        if commands == 0 {
+-            problems.push("Grok Build ran no shell command".into());
++        // A test delegation is a read-only question (feb4bc8270), so Grok
++        // Build may only list and read the project with its own tools
++        // rather than run a shell command (#10236). Any tool call it
++        // completed shows it worked in the project.
++        tools = grok_tool_calls(&std::fs::read_to_string(&done.trajectory).unwrap_or_default());
++        if tools == 0 {
++            problems.push("Grok Build used no tool in the project".into());
+         }
+     }
+     if problems.is_empty() {
+         let started = seen.started.as_ref();
+         Ok(format!(
+-            "Coder {} started on Grok Build ({}, {:?}), ran {commands} command(s), and finished: {:?}",
++            "Coder {} started on Grok Build ({}, {:?}), made {tools} tool call(s), and finished: {:?}",
+             seen.task.unwrap_or_default(),
+             started.map_or("?", |s| s.model.as_str()),
+             started.map(|s| s.reason.clone()).unwrap_or_default(),

@@ -1,0 +1,17 @@
+{
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 10302,
+  "title": "Flaky coder task::publish test (1 in 5 runs on macOS)",
+  "body": "From #10300: a `task::publish` test failed in 1 of 5 runs on the Mac after 07d8378aae; which test wasn't identified. Find it (run `cargo test -p coder task::publish` 20\u00d7), fix the cause without weakening checks.",
+  "fix": "10f0a06d86f071b67253abb7d391346274d53782",
+  "parent": "eeae76ff5ade777c12c49f660b1ce145206a39dd",
+  "package": "coder",
+  "source_files": [],
+  "test_files": [
+    "crates/coder/src/task/publish_tests.rs"
+  ],
+  "test_names": [],
+  "fix_lines": 15
+}

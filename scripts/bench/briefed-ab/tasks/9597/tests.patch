@@ -1,0 +1,23 @@
+diff --git a/crates/gym/src/coder_minitasks.rs b/crates/gym/src/coder_minitasks.rs
+index 5c287797a800cca605c9fdb28126d373017acc02..aa0e1b09dbe6d111035e324b89ca3175c71c2dbf 100644
+--- a/crates/gym/src/coder_minitasks.rs
++++ b/crates/gym/src/coder_minitasks.rs
+@@ -489,6 +502,18 @@ pub(crate) mod tests {
+         assert!(run.timeline.as_ref().unwrap().complete);
+         let text = lines(&runs, &errors, Some(0)).join("\n");
+         assert!(text.contains("not Terminal-Bench attempts"), "{text}");
++        assert!(
++            text.contains("A modeled Opus run takes about 22 seconds and costs about $0.054."),
++            "{text}"
++        );
++        assert!(
++            text.contains("A grader checks the resulting state or behavior after each episode."),
++            "{text}"
++        );
++        assert!(
++            text.contains("not Terminal-Bench 4.0 tasks or benchmark results"),
++            "{text}"
++        );
+         assert!(text.contains("Grade: failed"), "{text}");
+         assert!(text.contains("Session control: start done"), "{text}");
+         assert!(text.contains("Episode timeline"), "{text}");

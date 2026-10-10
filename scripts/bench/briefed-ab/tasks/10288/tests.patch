@@ -1,0 +1,25 @@
+diff --git a/crates/microcoder/src/repository/tests.rs b/crates/microcoder/src/repository/tests.rs
+index b3f70aa33d4bf012b191a538748e0f68bcb68ee3..c0cbe43ff5893737573fcdae1d7f798144ae59e8 100644
+--- a/crates/microcoder/src/repository/tests.rs
++++ b/crates/microcoder/src/repository/tests.rs
+@@ -2433,7 +2433,19 @@ mod local_run {
+             git(&top, &["config", "user.name", "F"]);
+             git(&top, &["config", "user.email", "f@example.invalid"]);
+             let origin = root.join("origin.git");
+-            git(root, &["init", "-q", "--bare", origin.to_str().unwrap()]);
++            // `-b main` so a clone checks out `main` whatever the
++            // computer's `init.defaultBranch` is.
++            git(
++                root,
++                &[
++                    "init",
++                    "-q",
++                    "--bare",
++                    "-b",
++                    "main",
++                    origin.to_str().unwrap(),
++                ],
++            );
+             git(&top, &["remote", "add", "origin", origin.to_str().unwrap()]);
+             git(&top, &["push", "-q", "origin", "HEAD:refs/heads/main"]);
+             (top, origin)

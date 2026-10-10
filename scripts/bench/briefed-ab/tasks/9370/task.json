@@ -1,0 +1,34 @@
+{
+  "test_targets": [
+    "--lib",
+    "--test",
+    "pool"
+  ],
+  "issue": 9370,
+  "title": "[Gym 6] Seed base as a parameter, and the variance it reveals",
+  "body": "Part of #9364. **Owns `crates/lev/src/estimator.rs` only.** Parallel with the row, store, gate, and suite issues.\n\nMake the sampling seed a parameter instead of a constant.\n\n## Why\n\n`crates/lev/src/estimator.rs` runs `for seed in 0..n` in `l2`, `l2_pool`, and `l2_pool_with`. The seeds are hardcoded, and they reproduce exactly \u2014 16 of 16 within a process and across a fresh one, measured in `docs/lev/measurements/2026-09-19-behavior.md`.\n\nThat is excellent for reproducibility and it means **there is no trial-to-trial variance to average over**. The Gym's whole acceptance ladder rests on fresh trials: a screening win has to repeat on new ones. Here, \"run it again\" returns the same numbers, so a confirmation stage would rerun the same arithmetic and call it independent evidence.\n\nFresh trials have to be manufactured, and the honest axis is the seed block.\n\n## What to build\n\n- `l2`, `l2_pool`, and `l2_pool_with` take a `seed_base: u64` and draw seeds `seed_base * n .. seed_base * n + n`, so blocks never overlap.\n- `Raw` records the `seed_base` alongside the seeds it already carries.\n- Existing callers pass `0` and behave exactly as today \u2014 the current numbers must not move.\n- A `--seed-base` flag on `lev-serve`, so a door can be asked for a different block.\n\n## Acceptance\n\n- Seed base 0 reproduces today's recorded distributions exactly, on the fixtures and against live hardware.\n- Two different seed bases draw disjoint seed sets, asserted.\n- The same seed base reproduces its estimate across processes, which is the property the whole scheme rests on.\n- Record the spread across, say, eight seed bases on one item in the measurement doc. **That number is the suite's own resampling variance, and it is what the Gym's effect-size thresholds should be derived from** rather than inherited from a container benchmark.\n",
+  "fix": "7c27cc9112e3131eeff67c7ce0f42fc561fd9def",
+  "parent": "e5f94c03352c33575820692d83aa3a5344c1bd7a",
+  "package": "lev",
+  "source_files": [
+    "crates/lev/Cargo.toml",
+    "crates/lev/src/bin/lev_band.rs",
+    "crates/lev/src/bin/lev_seed_sweep.rs",
+    "crates/lev/src/bin/lev_serve.rs",
+    "crates/lev/src/estimator.rs",
+    "crates/lev/src/serve.rs",
+    "docs/lev/architecture.md",
+    "docs/lev/measurements/2026-09-19-seed-variance.md"
+  ],
+  "test_files": [
+    "crates/lev/src/estimator.rs",
+    "crates/lev/tests/pool.rs"
+  ],
+  "test_names": [
+    "a_block_is_contiguous_and_starts_where_the_last_one_ended",
+    "a_block_past_the_seed_space_is_refused_rather_than_wrapped",
+    "a_seed_block_replays_across_processes_and_a_second_block_is_disjoint",
+    "two_blocks_never_share_a_seed"
+  ],
+  "fix_lines": 735
+}

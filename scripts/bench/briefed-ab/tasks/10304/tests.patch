@@ -1,0 +1,116 @@
+diff --git a/crates/background/src/pool.rs b/crates/background/src/pool.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..7e5f487afba8c615acc71882c6e3107dfacb2749
+--- /dev/null
++++ b/crates/background/src/pool.rs
+@@ -0,0 +1,59 @@
++//! A bounded pool for checks that mostly wait on the disk or on Git: run
++//! `f` over the items several at a time and keep the items' order.
++
++use std::sync::Mutex;
++use std::sync::atomic::{AtomicUsize, Ordering};
++
++/// At most this many at once: Git and directory walks on one disk stop
++/// getting faster well before every core is busy.
++const MOST: usize = 12;
++
++/// `f` over `items`, several at a time, results in `items`' order. A panic
++/// in `f` panics here.
++pub fn map<T: Sync, R: Send>(items: &[T], f: impl Fn(&T) -> R + Sync) -> Vec<R> {
++    let workers = std::thread::available_parallelism()
++        .map_or(4, std::num::NonZeroUsize::get)
++        .min(MOST)
++        .min(items.len());
++    if workers <= 1 {
++        return items.iter().map(f).collect();
++    }
++    let next = AtomicUsize::new(0);
++    let out: Mutex<Vec<Option<R>>> = Mutex::new(items.iter().map(|_| None).collect());
++    std::thread::scope(|scope| {
++        for _ in 0..workers {
++            scope.spawn(|| {
++                loop {
++                    let index = next.fetch_add(1, Ordering::Relaxed);
++                    let Some(item) = items.get(index) else {
++                        break;
++                    };
++                    let result = f(item);
++                    out.lock()
++                        .unwrap_or_else(std::sync::PoisonError::into_inner)[index] = Some(result);
++                }
++            });
++        }
++    });
++    out.into_inner()
++        .unwrap_or_else(std::sync::PoisonError::into_inner)
++        .into_iter()
++        .map(|result| result.expect("every item ran"))
++        .collect()
++}
++
++#[cfg(test)]
++mod tests {
++    use super::map;
++
++    #[test]
++    fn keeps_order_and_runs_every_item() {
++        let items: Vec<u32> = (0..100).collect();
++        let doubled = map(&items, |n| {
++            std::thread::sleep(std::time::Duration::from_millis(u64::from(n % 7)));
++            n * 2
++        });
++        assert_eq!(doubled, items.iter().map(|n| n * 2).collect::<Vec<_>>());
++        assert!(map(&Vec::<u32>::new(), |n| *n).is_empty());
++    }
++}
+diff --git a/crates/background/src/tests.rs b/crates/background/src/tests.rs
+index 7e81e1786f12ea6f3d9d32de836ed56299333b28..e5d77182725d27e03543d586e1f5c18e81a34402 100644
+--- a/crates/background/src/tests.rs
++++ b/crates/background/src/tests.rs
+@@ -1016,3 +1016,46 @@ fn shipped_plugin_worktree_plan_matches_builtin_including_old_orphans() {
+     assert_eq!(git(&repository, &["worktree", "list"]).lines().count(), 7);
+     assert!(trees.iter().all(|tree| tree.exists()));
+ }
++
++#[test]
++fn checking_many_worktrees_at_once_agrees_with_checking_each() {
++    let home = Home::new();
++    let (repo, trees) = repo(
++        &home,
++        &["clean", "unpushed", "dirty", "stashed", "env", "detached"],
++    );
++    std::fs::write(trees[1].join("file"), "two").unwrap();
++    git(&trees[1], &["commit", "-q", "-am", "two"]);
++    std::fs::write(trees[2].join("new"), "untracked").unwrap();
++    std::fs::write(trees[3].join("file"), "stash me").unwrap();
++    git(&trees[3], &["stash", "-q"]);
++    std::fs::write(repo.join(".git/info/exclude"), ".env\n").unwrap();
++    std::fs::write(trees[4].join(".env"), "SECRET=1").unwrap();
++    git(&trees[5], &["checkout", "-q", "--detach"]);
++    let mut paths = trees.clone();
++    // A full checkout and a folder that is no worktree at all.
++    paths.push(repo.clone());
++    paths.push(home.layout.home.clone());
++    let all = crate::git::removable_all(&paths);
++    let each: Vec<_> = paths
++        .iter()
++        .map(|path| crate::git::removable(path))
++        .collect();
++    assert_eq!(all, each);
++    assert!(all[0].is_ok() && all[5].is_ok(), "{all:?}");
++    assert_eq!(all[5].as_ref().unwrap().branch, None);
++    assert_eq!(all[0].as_ref().unwrap().branch.as_deref(), Some("clean"));
++    for (index, why) in [
++        (1, "commits not on any remote"),
++        (2, "uncommitted changes"),
++        (3, "a stash was made on it"),
++        (4, "holds ignored files: .env"),
++        (6, "a full checkout, not a worktree"),
++    ] {
++        assert_eq!(
++            all[index].as_ref().err().map(String::as_str),
++            Some(why),
++            "{index}"
++        );
++    }
++}

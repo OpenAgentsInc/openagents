@@ -1,0 +1,415 @@
+diff --git a/crates/plugin/tests/replay.rs b/crates/plugin/tests/replay.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..fd64a81ff29ff8aef6d06b4358a97cd0fd354c13
+--- /dev/null
++++ b/crates/plugin/tests/replay.rs
+@@ -0,0 +1,409 @@
++//! Invocation receipts and exact replay, through [`plugin::invoke_with_receipt`]
++//! and [`plugin::replay`].
++
++use std::collections::BTreeMap;
++use std::path::{Path, PathBuf};
++use std::sync::Arc;
++use std::sync::atomic::AtomicBool;
++
++use plugin::{
++    ENGINE, EXACT_REPLAY, Entry, HostError, InvocationReceipt, Limits, Outcome, Profile, Replay,
++    Snapshot, invoke_with_receipt, replay,
++};
++use serde_json::{Value, json};
++
++const GUESTS: [(&str, &str, &str); 3] = [
++    ("repo-map", "map", "{}"),
++    (
++        "code-search",
++        "search",
++        r#"{"patterns": ["ledger", "retry_limit"]}"#,
++    ),
++    ("test-report", "parse", "{}"),
++];
++
++fn crates() -> PathBuf {
++    Path::new(env!("CARGO_MANIFEST_DIR")).join("..")
++}
++
++fn fixture(name: &str) -> Vec<u8> {
++    std::fs::read(crates().join(format!("plugin/fixtures/{name}.wasm")))
++        .expect("the guest is checked in under crates/plugin/fixtures")
++}
++
++/// The workspace snapshot the Coder runtime grants: one directory,
++/// `workspace`, whose handle is `root`.
++fn snapshot(dir: &Path) -> (Snapshot, BTreeMap<String, String>) {
++    fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, Vec<u8>)>) {
++        let mut paths: Vec<_> = std::fs::read_dir(dir)
++            .unwrap()
++            .map(|entry| entry.unwrap().path())
++            .collect();
++        paths.sort();
++        for path in paths {
++            if path.is_dir() {
++                walk(root, &path, out);
++            } else {
++                let relative = path.strip_prefix(root).unwrap().to_string_lossy();
++                out.push((relative.replace('\\', "/"), std::fs::read(&path).unwrap()));
++            }
++        }
++    }
++    let mut files = Vec::new();
++    walk(dir, dir, &mut files);
++    let mut snapshot = Snapshot::default();
++    let mut children = Vec::new();
++    for (relative, bytes) in files {
++        let label = format!("workspace/{relative}");
++        let version = plugin::digest(&bytes);
++        snapshot
++            .insert(
++                &label,
++                Entry::File {
++                    bytes,
++                    version,
++                    complete: true,
++                },
++            )
++            .unwrap();
++        children.push(label);
++    }
++    snapshot
++        .insert("workspace", Entry::Directory { children })
++        .unwrap();
++    let handles = BTreeMap::from([("workspace".to_string(), "root".to_string())]);
++    (snapshot, handles)
++}
++
++fn guest_limits() -> Limits {
++    Limits {
++        fuel: 200_000_000,
++        memory_bytes: 64 * 1024 * 1024,
++        output_bytes: 1024 * 1024,
++        read_bytes: 1024 * 1024,
++        module_bytes: 2 * 1024 * 1024,
++    }
++}
++
++/// Everything one call borrows, owned so a test can vary one part.
++struct Invocation {
++    wasm: Vec<u8>,
++    profile: Profile,
++    invocation: String,
++    operation: String,
++    input: Value,
++    snapshot: Snapshot,
++    handles: BTreeMap<String, String>,
++    limits: Limits,
++    required: bool,
++}
++
++impl Invocation {
++    fn pure() -> Self {
++        Self {
++            wasm: fixture("pure"),
++            profile: Profile::Pure,
++            invocation: "inv-replay".into(),
++            operation: "echo".into(),
++            input: json!({"topic": "notes", "depth": 2}),
++            snapshot: Snapshot::default(),
++            handles: BTreeMap::new(),
++            limits: Limits {
++                fuel: 50_000_000,
++                ..Limits::default()
++            },
++            required: true,
++        }
++    }
++
++    fn guest(guest: &str, operation: &str, input: &str) -> Self {
++        let (snapshot, handles) = snapshot(&crates().join(format!("plugin-{guest}/fixtures/tree")));
++        Self {
++            wasm: fixture(guest),
++            profile: Profile::SnapshotRead,
++            invocation: "inv-guest".into(),
++            operation: operation.into(),
++            input: serde_json::from_str(input).unwrap(),
++            snapshot,
++            handles,
++            limits: guest_limits(),
++            required: true,
++        }
++    }
++
++    fn call(&self) -> plugin::Call<'_> {
++        plugin::Call {
++            wasm: &self.wasm,
++            profile: self.profile,
++            invocation: &self.invocation,
++            operation: &self.operation,
++            input: &self.input,
++            snapshot: &self.snapshot,
++            handles: &self.handles,
++            limits: self.limits,
++            cancelled: Arc::new(AtomicBool::new(false)),
++            required: self.required,
++        }
++    }
++
++    fn receipt(&self) -> InvocationReceipt {
++        invoke_with_receipt(self.call()).1
++    }
++}
++
++/// Changes one part of an invocation.
++type Change = Box<dyn Fn(&mut Invocation)>;
++
++const PASSED: Replay = Replay::Passed {
++    class: EXACT_REPLAY,
++};
++
++fn unverifiable(verdict: &Replay) -> &str {
++    match verdict {
++        Replay::Unverifiable { reason } => reason,
++        other => panic!("expected unverifiable, got {other:?}"),
++    }
++}
++
++#[test]
++fn an_honest_replay_of_a_pure_guest_passes() {
++    let invocation = Invocation::pure();
++    let (result, receipt) = invoke_with_receipt(invocation.call());
++    let value = result.unwrap();
++    assert_eq!(value.value["topic"], "notes");
++    assert_eq!(value.verification, "not_run", "a receipt is not a check");
++    assert!(matches!(receipt.outcome, Outcome::Value { ref status, .. } if status == "ok"));
++    assert!(receipt.fuel_consumed > 0);
++    assert_eq!(receipt.engine, ENGINE);
++    let verdict = replay(&receipt, invocation.call());
++    assert_eq!(verdict, PASSED);
++    assert_eq!(verdict.verification(), "passed");
++}
++
++#[test]
++fn every_evidence_guest_gives_identical_receipts_and_replays_exactly() {
++    for (guest, operation, input) in GUESTS {
++        let invocation = Invocation::guest(guest, operation, input);
++        let first = invocation.receipt();
++        let second = invocation.receipt();
++        assert_eq!(first, second, "{guest}: two runs differ");
++        assert!(matches!(first.outcome, Outcome::Value { .. }), "{guest}");
++        assert_eq!(replay(&first, invocation.call()), PASSED, "{guest}");
++    }
++}
++
++#[test]
++fn a_tampered_outcome_or_fuel_count_fails() {
++    let invocation = Invocation::guest("repo-map", "map", "{}");
++    let honest = invocation.receipt();
++
++    let mut output = honest.clone();
++    let Outcome::Value { status, .. } = &honest.outcome else {
++        panic!("value")
++    };
++    output.outcome = Outcome::Value {
++        status: status.clone(),
++        output: plugin::digest(b"a claimed output"),
++    };
++    let verdict = replay(&output, invocation.call());
++    assert!(
++        matches!(verdict, Replay::Failed { field: "outcome", ref expected, ref actual }
++            if expected != actual),
++        "{verdict:?}"
++    );
++    assert_eq!(verdict.verification(), "failed");
++
++    let mut fuel = honest.clone();
++    fuel.fuel_consumed += 1;
++    assert!(matches!(
++        replay(&fuel, invocation.call()),
++        Replay::Failed {
++            field: "fuel_consumed",
++            ..
++        }
++    ));
++
++    let mut error = honest;
++    error.outcome = Outcome::Error {
++        kind: "refused".into(),
++        detail: "unsupported_input".into(),
++    };
++    assert!(matches!(
++        replay(&error, invocation.call()),
++        Replay::Failed {
++            field: "outcome",
++            ..
++        }
++    ));
++}
++
++#[test]
++fn different_inputs_or_engine_are_unverifiable_and_do_not_run() {
++    let invocation = Invocation::guest("code-search", "search", GUESTS[1].2);
++    let receipt = invocation.receipt();
++    let cases: [(&str, Change); 7] = [
++        (
++            "input digest",
++            Box::new(|i| i.input = json!({"patterns": ["ledger"]})),
++        ),
++        (
++            "snapshot digest",
++            Box::new(|i| {
++                i.snapshot
++                    .insert(
++                        "workspace/extra.txt",
++                        Entry::File {
++                            bytes: b"x".to_vec(),
++                            version: "v".into(),
++                            complete: true,
++                        },
++                    )
++                    .unwrap();
++            }),
++        ),
++        ("module digest", Box::new(|i| i.wasm = fixture("repo-map"))),
++        ("limits", Box::new(|i| i.limits.fuel -= 1)),
++        ("operation", Box::new(|i| i.operation = "map".into())),
++        (
++            "invocation",
++            Box::new(|i| i.invocation = "inv-other".into()),
++        ),
++        ("required", Box::new(|i| i.required = false)),
++    ];
++    for (field, change) in cases {
++        let mut changed = Invocation::guest("code-search", "search", GUESTS[1].2);
++        change(&mut changed);
++        let verdict = replay(&receipt, changed.call());
++        assert_eq!(unverifiable(&verdict), format!("{field} differs"));
++        assert_eq!(verdict.verification(), "unverifiable");
++    }
++
++    let mut handles = Invocation::guest("code-search", "search", GUESTS[1].2);
++    handles.handles = BTreeMap::from([("workspace".to_string(), "other".to_string())]);
++    assert_eq!(
++        unverifiable(&replay(&receipt, handles.call())),
++        "snapshot digest differs"
++    );
++
++    let mut engine = receipt.clone();
++    engine.engine = "wasmtime/47.0.0+consume_fuel+epoch_interruption".into();
++    assert!(unverifiable(&replay(&engine, invocation.call())).starts_with("engine "));
++}
++
++#[test]
++fn a_deterministic_host_error_replays_and_a_cancellation_does_not() {
++    let mut starved = Invocation::guest("repo-map", "map", "{}");
++    starved.limits.fuel = 1_000;
++    let (result, receipt) = invoke_with_receipt(starved.call());
++    assert_eq!(result.unwrap_err(), HostError::Limit("fuel".into()));
++    assert_eq!(
++        receipt.outcome,
++        Outcome::Error {
++            kind: "limit".into(),
++            detail: "fuel".into()
++        }
++    );
++    assert_eq!(receipt.fuel_consumed, 1_000);
++    assert_eq!(replay(&receipt, starved.call()), PASSED);
++
++    let refused = Invocation::guest("code-search", "map", "{}");
++    let receipt = refused.receipt();
++    assert_eq!(
++        receipt.outcome,
++        Outcome::Error {
++            kind: "refused".into(),
++            detail: "unsupported_input".into()
++        }
++    );
++    assert_eq!(replay(&receipt, refused.call()), PASSED);
++
++    let pure = Invocation::pure();
++    let mut call = pure.call();
++    call.cancelled = Arc::new(AtomicBool::new(true));
++    let (result, cancelled) = invoke_with_receipt(call);
++    assert_eq!(result.unwrap_err(), HostError::Cancelled);
++    assert_eq!(
++        unverifiable(&replay(&cancelled, pure.call())),
++        "the recorded invocation was cancelled"
++    );
++
++    let receipt = pure.receipt();
++    let mut call = pure.call();
++    call.cancelled = Arc::new(AtomicBool::new(true));
++    assert_eq!(
++        unverifiable(&replay(&receipt, call)),
++        "the replay was cancelled"
++    );
++}
++
++#[test]
++fn the_input_digest_ignores_key_order() {
++    let mut forward = Invocation::pure();
++    forward.input = serde_json::from_str(r#"{"a": 1, "b": {"c": [1, 2], "d": null}}"#).unwrap();
++    let mut backward = Invocation::pure();
++    backward.input = serde_json::from_str(r#"{"b": {"d": null, "c": [1, 2]}, "a": 1}"#).unwrap();
++    assert_eq!(forward.receipt().input, backward.receipt().input);
++    assert_eq!(
++        plugin::canonical(&forward.input),
++        r#"{"a":1,"b":{"c":[1,2],"d":null}}"#
++    );
++}
++
++#[test]
++fn a_receipt_round_trips_through_strict_json() {
++    let invocation = Invocation::guest("test-report", "parse", "{}");
++    let receipt = invocation.receipt();
++    let json = receipt.to_json();
++    assert_eq!(json["schema"], plugin::RECEIPT_SCHEMA);
++    let bytes = serde_json::to_vec(&json).unwrap();
++    let parsed = InvocationReceipt::from_json(&bytes).unwrap();
++    assert_eq!(parsed, receipt);
++    assert_eq!(replay(&parsed, invocation.call()), PASSED);
++
++    let mut error = Invocation::pure();
++    error.limits.fuel = 10;
++    let receipt = error.receipt();
++    let bytes = serde_json::to_vec(&receipt.to_json()).unwrap();
++    assert_eq!(InvocationReceipt::from_json(&bytes).unwrap(), receipt);
++
++    let refuse = |value: Value| {
++        InvocationReceipt::from_json(&serde_json::to_vec(&value).unwrap()).unwrap_err()
++    };
++    let mut extra = json.clone();
++    extra["verified"] = json!(true);
++    assert_eq!(refuse(extra), "receipt fields");
++    let mut missing = json.clone();
++    missing.as_object_mut().unwrap().remove("fuel_consumed");
++    assert_eq!(refuse(missing), "receipt fields");
++    let mut digest = json.clone();
++    digest["module"] = json!("sha256:1234");
++    assert_eq!(refuse(digest), "module");
++    let mut schema = json.clone();
++    schema["schema"] = json!("openagents.plugin-invocation-receipt.v2");
++    assert_eq!(refuse(schema), "schema");
++    let mut outcome = json.clone();
++    outcome["outcome"]["extra"] = json!(1);
++    assert_eq!(refuse(outcome), "outcome fields");
++
++    let text = String::from_utf8(bytes).unwrap();
++    let duplicated = text.replacen('{', r#"{"schema":"x","#, 1);
++    assert!(InvocationReceipt::from_json(duplicated.as_bytes()).is_err());
++}
++
++/// `ENGINE` names the Wasmtime version the lock file resolves. Bumping
++/// Wasmtime changes the engine identity, so older receipts become
++/// unverifiable on this host rather than silently compared.
++#[test]
++fn the_engine_identity_names_the_locked_wasmtime() {
++    let lock = std::fs::read_to_string(crates().join("../Cargo.lock")).unwrap();
++    let version = lock
++        .split("[[package]]")
++        .find(|block| block.contains("\nname = \"wasmtime\"\n"))
++        .and_then(|block| block.lines().find(|line| line.starts_with("version = ")))
++        .map(|line| line.trim_start_matches("version = ").trim_matches('"'))
++        .expect("wasmtime is locked");
++    assert!(
++        ENGINE.starts_with(&format!("wasmtime/{version}+")),
++        "{ENGINE} does not name wasmtime {version}"
++    );
++}

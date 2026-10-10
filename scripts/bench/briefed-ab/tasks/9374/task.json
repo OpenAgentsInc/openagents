@@ -1,0 +1,39 @@
+{
+  "test_targets": [
+    "--lib",
+    "--bin",
+    "gym_terminal",
+    "--lib"
+  ],
+  "issue": 9374,
+  "title": "[Gym 10] One amber ladder, not two",
+  "body": "Part of #9364. Small, and worth doing before it ossifies.\n\n`crates/gym/src/tui.rs` reimplements `Intensity`, `Ladder`, `frame`, and `rail` because `crates/coder-terminal` is on **ratatui 0.30** and `crates/gym` was scaffolded on **0.29** \u2014 different `Style` and `Buffer` types, so depending on the crate was not possible. The commit says so, which is the right thing to have done under the circumstances.\n\nBut the repository now holds two copies of the same design system, and the second copy was written by reading the first. That is how a house style quietly becomes two house styles: the next change to the amber ladder lands in one of them.\n\n## What to do\n\n1. Bump `crates/gym` to ratatui 0.30 so the types match.\n2. Extract the shared surface \u2014 the intensity ladder, the frame, the rails, and the `NO_COLOR` behaviour \u2014 into one place both terminals depend on. Either a small `crates/coder-terminal` module made public, or a new crate if that drags too much along.\n3. Keep the two divergences the Gym terminal introduced deliberately, and keep the reasoning with them: a selection cursor `\u25b8` in the frame gutter, which a table needs and a composer does not; and `Full` also going bold under `NO_COLOR`, because Coder's ladder dims the faint half and leaves the rest plain, which would flatten the failed-versus-unverifiable distinction on a colorless terminal.\n\n## Acceptance\n\n- One definition of the ladder, depended on by both terminals.\n- Both `cargo +1.97.1 test -p coder-terminal` and `cargo +1.97.1 test -p gym --features tui` pass.\n- The Gym terminal's rendering tests still hold, in particular that a failed verdict and an unverifiable verdict draw differently with and without color.\n- Nothing about the Coder terminal's appearance changes. This is a refactor, and a screenshot-level difference means it went wrong.",
+  "fix": "e5f94c03352c33575820692d83aa3a5344c1bd7a",
+  "parent": "d53fb7540068fdc87e67e445c8bedbd58ae04394",
+  "package": "coder-terminal",
+  "source_files": [
+    "AGENTS.md",
+    "crates/coder-terminal/src/composer.rs",
+    "crates/coder-terminal/src/ladder.rs",
+    "crates/coder-terminal/src/lib.rs",
+    "crates/gym/Cargo.toml",
+    "crates/gym/src/bin/gym_terminal.rs",
+    "crates/gym/src/tui.rs"
+  ],
+  "test_files": [
+    "crates/coder-terminal/src/hairline.rs",
+    "crates/coder-terminal/src/ladder.rs",
+    "crates/gym/src/bin/gym_terminal.rs",
+    "crates/gym/src/tui.rs"
+  ],
+  "test_names": [
+    "a_colorless_table_can_ask_for_a_bold_top_step",
+    "a_rail_outside_the_buffer_draws_nothing",
+    "a_rail_the_rule_cannot_hold_whole_is_left_out",
+    "an_area_too_small_for_a_frame_is_left_alone",
+    "each_rail_carries_its_own_style",
+    "the_frame_draws_its_rules_and_its_corners",
+    "the_selection_tint_sits_just_above_the_field"
+  ],
+  "fix_lines": 887
+}

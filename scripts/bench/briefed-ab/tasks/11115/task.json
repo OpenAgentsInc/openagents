@@ -1,0 +1,41 @@
+{
+  "test_targets": [
+    "--lib",
+    "--test",
+    "transcript_runtime"
+  ],
+  "issue": 11115,
+  "title": "V1: Coder shows Jev's % done, and Jev works without a key",
+  "body": "coder-new (shipped as `coder`) uses Jev only as a `jev` chat tool and as Microcoder's step judge (`done`, `progress`, `repeating`, `complete`). Gaps against INVARIANTS and the owner's rule (\"% done\" = Jev estimate of completion):\n\n- [ ] **Show the estimate.** `MicrocoderEvents` in `crates/coder-new/src/bundled_runtime.rs` (~1507-1546) drops `Event::Judged` in its catch-all, so coder-new never shows \"step N \u00b7 \u2248X% done\" (INVARIANTS.md:179). The renderers already exist (`coder-terminal/src/components/run.rs:280`, `openagents-chat/src/coder_events.rs:605`). Forward the judged progress into the run row, and into synced chats so web/mobile show it.\n- [ ] **Works without a key.** coder-new never calls `jev_hosted::resolve`, so without a TypeSafe/Vercel key there is no judge and no estimate. Use the keyless relayed path (INVARIANTS.md:38, 202-216) when no key is saved, with the user's own key taking priority.\n- [ ] `/plugins` Jev row: show \"Built in\" when keyless works, instead of \"Setup required\".\n- [ ] Tests: a judged event reaches the run row; no-key path resolves to hosted; own key wins.\n\nNo deploys. Terminal 1.0 (#11091) should include this.\n",
+  "fix": "a3cfd55419ebb0a096bbb747e8f1a427a4b8210e",
+  "parent": "7410ecc7f0c050caa00e5b9b4e3d542850dc6417",
+  "package": "coder-new",
+  "source_files": [
+    "crates/coder-new/Cargo.toml",
+    "crates/coder-new/src/bundled_runtime.rs",
+    "crates/coder-new/src/bundled_settings.rs",
+    "crates/coder-new/src/delegation_events.rs",
+    "crates/coder-new/src/jev_plugin.rs",
+    "crates/coder-new/src/live.rs",
+    "crates/coder-new/src/plugin_tools.rs",
+    "crates/coder-new/src/programmatic.rs",
+    "crates/coder-new/src/trajectory.rs",
+    "crates/coder-new/src/ui.rs"
+  ],
+  "test_files": [
+    "crates/coder-new/src/bundled_runtime.rs",
+    "crates/coder-new/src/bundled_settings.rs",
+    "crates/coder-new/src/jev_plugin.rs",
+    "crates/coder-new/src/lib.rs",
+    "crates/coder-new/src/trajectory.rs",
+    "crates/coder-new/tests/transcript_runtime.rs"
+  ],
+  "test_names": [
+    "a_judged_step_reaches_the_run_as_jevs_estimate_and_only_jevs",
+    "a_judged_step_shows_jevs_estimate_on_the_run_row_and_never_a_budget",
+    "a_saved_key_wins_over_the_built_in_service",
+    "jev_without_a_key_is_built_in_and_a_saved_key_shows_its_own_state",
+    "no_key_resolves_to_the_hosted_service_and_a_key_here_wins"
+  ],
+  "fix_lines": 390
+}

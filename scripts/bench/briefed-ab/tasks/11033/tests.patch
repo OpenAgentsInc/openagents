@@ -1,0 +1,107 @@
+diff --git a/crates/openagents-ui/src/shell/tests.rs b/crates/openagents-ui/src/shell/tests.rs
+index ed053d08772f1dd1bc9e8da4f0dc45608724ed2f..7b19c10d17d94f5414f3a3e7764a7b35e5eb4140 100644
+--- a/crates/openagents-ui/src/shell/tests.rs
++++ b/crates/openagents-ui/src/shell/tests.rs
+@@ -182,6 +182,53 @@ fn chat_list_marks_the_open_chat_and_stays_quiet_when_empty() {
+     );
+ }
+ 
++#[test]
++fn chat_rows_carry_a_detail_line_and_a_plain_status() {
++    let list = ChatList::new()
++        .item(
++            NavItem::new("Fix <the> build", "/chat/1")
++                .detail("acme/app · main")
++                .trailing(ChatStatus::Working),
++        )
++        .item(NavItem::new("Plain", "/chat/2").trailing(ChatStatus::PausedUntil("3:40 PM".into())))
++        .render()
++        .into_string();
++    assert!(list.contains(
++        r#"<span class="oa-nav-item-label oa-nav-item-label--stacked"><span class="oa-nav-item-title">Fix &lt;the&gt; build</span><span class="oa-nav-item-detail">acme/app · main</span></span>"#
++    ));
++    assert!(list.contains(r#"<span class="oa-nav-item-label">Plain</span>"#));
++    assert!(list.contains(r#"data-status="working""#) && list.contains(">Working<"));
++    assert!(list.contains(r#"data-status="paused""#) && list.contains("Paused until 3:40 PM"));
++    let labels: Vec<String> = [
++        ChatStatus::Working,
++        ChatStatus::WaitingForYou,
++        ChatStatus::PausedUntil("3:40 PM".into()),
++        ChatStatus::Done,
++        ChatStatus::Failed,
++    ]
++    .iter()
++    .map(ChatStatus::label)
++    .collect();
++    assert_eq!(
++        labels,
++        [
++            "Working",
++            "Waiting for you",
++            "Paused until 3:40 PM",
++            "Done",
++            "Failed"
++        ]
++    );
++    for class in [
++        ".oa-nav-item-label--stacked",
++        ".oa-nav-item-detail",
++        ".oa-chat-status-dot",
++        r#".oa-chat-status[data-status="failed"]"#,
++    ] {
++        assert!(SHELL_CSS.contains(class), "{class}");
++    }
++}
++
+ #[test]
+ fn legal_links_are_quiet_and_mark_external_links() {
+     let html = LegalLinks::new()
+diff --git a/crates/openagents-web/src/pages/chat_tests.rs b/crates/openagents-web/src/pages/chat_tests.rs
+index 1926c9128e2ef26014d19af7f5820066be2d1f8f..f923a5873917db52510952be67c46712d00726f7 100644
+--- a/crates/openagents-web/src/pages/chat_tests.rs
++++ b/crates/openagents-web/src/pages/chat_tests.rs
+@@ -478,3 +478,44 @@ async fn chat_and_information_panels_render_semantic_controls() {
+     }
+     fixture.no_worker();
+ }
++
++#[test]
++fn sidebar_rows_show_the_repository_and_a_plain_status() {
++    let mut chat = Conversation {
++        id: CHAT.into(),
++        owner: OWNER.into(),
++        revision: 1,
++        title: "Row".into(),
++        messages: Vec::new(),
++        pending: None,
++        requests: Vec::new(),
++        selection: None,
++        updated_unix: 1,
++    };
++    assert_eq!(row_detail(&chat), None);
++    assert_eq!(row_status(&chat), None);
++    chat.selection = Some(Selection {
++        revision: 1,
++        repository: Some(RepositorySource {
++            repository: "acme/app".into(),
++            branch: "main".into(),
++            revision: "0".repeat(40),
++        }),
++        runtime: None,
++    });
++    assert_eq!(row_detail(&chat).as_deref(), Some("acme/app · main"));
++    chat.requests.push(Request {
++        id: CHAT.into(),
++        digest: String::new(),
++        outcome: Outcome::Failed,
++        selection: None,
++        cloud: None,
++    });
++    assert_eq!(row_status(&chat), Some(ChatStatus::Failed));
++    chat.pending = Some(Pending {
++        request_id: NEXT.into(),
++        started_unix: 2,
++        job_id: None,
++    });
++    assert_eq!(row_status(&chat), Some(ChatStatus::Working));
++}
