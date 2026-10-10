@@ -85,7 +85,7 @@ pub(super) async fn offer(
     if !may_continue(chat, online) || !work::links(app, headers).await {
         return None;
     }
-    let studio = app.config.environments.as_ref()?.clone();
+    let studio = app.config.environments.studio()?.clone();
     if !crate::environments::claude_ready(app, &studio, headers).await {
         return None;
     }
@@ -352,7 +352,7 @@ async fn start(
             "This chat's environment changed. Reload the page.",
         );
     }
-    let Some(studio) = app.config.environments.clone() else {
+    let Some(studio) = app.config.environments.get() else {
         return missing();
     };
     let next = posted.prompt.trim();

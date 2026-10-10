@@ -70,7 +70,7 @@ impl std::fmt::Debug for Endpoint {
 
 /// The model this server answers about files with, when it has one.
 pub(crate) fn endpoint(app: &App) -> Option<Endpoint> {
-    let (url, key, model) = app.config.environments.as_ref()?.model_api()?;
+    let (url, key, model) = app.config.environments.studio()?.model_api()?;
     Some(Endpoint { url, key, model })
 }
 

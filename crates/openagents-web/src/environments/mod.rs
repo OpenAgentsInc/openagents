@@ -59,6 +59,11 @@ pub(crate) fn shown() -> bool {
     SHOWN.load(Ordering::Relaxed)
 }
 
+/// Offer Environments in the left panel: the studio opened after start.
+pub(crate) fn mark_shown() {
+    SHOWN.store(true, Ordering::Relaxed);
+}
+
 pub(crate) fn routes(app: &App) -> Router<App> {
     SHOWN.store(app.config.environments.is_some(), Ordering::Relaxed);
     Router::new()
@@ -146,7 +151,7 @@ fn head() -> maud::Markup {
 }
 
 fn studio(app: &App) -> Option<&Arc<Studio>> {
-    app.config.environments.as_ref()
+    app.config.environments.studio()
 }
 
 /// Whose environments this request reaches ([`crate::agent_work::scope`]).
