@@ -2,7 +2,7 @@
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
   "set": "chat-router-v5@bcab1427d09d",
-  "bank": "chat-answers-v1@5f318e29b725",
+  "bank": "chat-answers-v1@00c75b33206a",
   "routes": [
     {
       "id": "meta",
@@ -527,7 +527,9 @@
       "id": "meta.verse",
       "version": 1,
       "routes": [
-        "meta"
+        "meta",
+        "product.kb",
+        "general"
       ],
       "chip": "What is the Verse?",
       "place": "any",

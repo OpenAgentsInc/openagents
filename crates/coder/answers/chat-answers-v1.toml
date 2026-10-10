@@ -303,7 +303,7 @@ followups = ["meta.github", "meta.pricing"]
 [[answer]]
 id = "meta.verse"
 version = 1
-routes = ["meta"]
+routes = ["meta", "product.kb", "general"]
 when = "The user asks what the Verse is, what the Grid is, or how to enter, visit, or explore the Verse; not what the Gym is or how its tests and results work"
 not_for = "What the Gym is or how its tests work (gym.what, gym.what_test)"
 examples = ["What is the Verse?", "whats the verse", "how do I get into the verse", "take me to the grid", "can I explore the verse"]
