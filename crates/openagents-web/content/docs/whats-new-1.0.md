@@ -1,8 +1,7 @@
 # What's new in 1.0
 
-OpenAgents 1.0 is out on the web, in the terminal, on Mac, Linux, and
-Windows, and on iPhone and Android. Get every version from the
-[download page](/download).
+OpenAgents 1.0 is out on the web and in the terminal. Install the terminal
+version from the [download page](/download).
 
 ## On the website
 
@@ -42,23 +41,6 @@ irm https://openagents.com/cli/install.ps1 | iex
 
 Sync is off until you turn it on. A message that looks like a key or a
 password is never sent.
-
-## On your desktop
-
-Download the app for Mac, Linux, or Windows from the
-[download page](/download).
-
-- **Light or dark:** Settings > Appearance. It follows your system until you
-  pick one.
-- **Windows:** SmartScreen asks you to confirm the first time. Click
-  **More info**, then **Run anyway**.
-
-## On your phone
-
-- **iPhone:** join the beta on TestFlight at
-  [testflight.apple.com/join/dvQdns5B](https://testflight.apple.com/join/dvQdns5B).
-- **Android:** download the app from the [download page](/download).
-- **Light or dark:** Account > Appearance.
 
 ## Your privacy
 

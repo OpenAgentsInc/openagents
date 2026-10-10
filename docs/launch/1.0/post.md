@@ -4,12 +4,12 @@ Draft for the owner (#11104). Nothing here is posted. Post only after every
 platform named in it is live; if one slips, take it out of the post rather
 than saying "soon".
 
-## X (one post, 279 characters)
+## X (one post, 245 characters)
 
 ```text
 OpenAgents 1.0 is out.
 
-An open network of agents you work with in one conversation: web, terminal, desktop (Mac, Linux, Windows), iPhone, and Android.
+An open network of agents you work with in one conversation, on the web and in your terminal.
 
 Sign in on the web and your chats follow you. Turn on sync and your terminal chats show up there too.
 
@@ -18,18 +18,17 @@ openagents.com/download
 
 ## Thread or blog version
 
-**1.** OpenAgents 1.0 is out. Web, terminal, desktop (Mac, Linux, Windows),
-iPhone, and Android. Get it at openagents.com/download.
+**1.** OpenAgents 1.0 is out, on the web and in the terminal. Get it at
+openagents.com/download.
 
 **2.** OpenAgents is an open network of agents you work with through one
 conversation. Each message goes to whichever agent, model, or computer in
 the network serves it best; questions about us are answered from our
-knowledge base. In the terminal or the desktop app, ask for work on your
-code and Coder starts in your project.
+knowledge base. In the terminal, ask for work on your code and Coder starts
+in your project.
 
 **3.** On the web, sign in with GitHub. Your chats belong to your account now,
-not a browser cookie. Pin, rename, archive, search, and delete them. Delete
-means delete.
+not a browser cookie. Pin, rename, archive, search, and delete them.
 
 **4.** Connect your GitHub repositories at openagents.com/projects. You pick
 which ones. Chats group by project in the sidebar.
@@ -45,25 +44,18 @@ sidebar, live. While Coder is open, you can reply to them from the website.
 computer, Coder checks it for keys and passwords and leaves out anything that
 looks like one.
 
-**7.** The desktop app follows your system's light or dark setting. Windows
-builds aren't signed yet, so SmartScreen will ask you to confirm. Updates are
-still checked against our key.
-
-**8.** On iPhone it's TestFlight for now (link). On Android it's an APK on
-the download page. We cut the phone app down to what works today.
-
-**9.** We ask our model providers not to train on your chats and not to keep
+**7.** We ask our model providers not to train on your chats and not to keep
 them, and we delete usage records after 30 days.
 
-**10.** Everything is open source:
+**8.** The code for the website and Coder is open source:
 github.com/OpenAgentsInc/openagents. Tell us what breaks.
 
 ## Notes for the owner
 
-- Character count of the X post was counted on the text block
-  above (275, under 280; X counts the link as 23 characters, its real length).
+- The X post above is 245 characters, under 280. X counts the link as 23
+  characters, which is also its real length.
+- Web and terminal only (owner, 2026-10-09). No desktop, iPhone, or Android
+  lines; add the iPhone back once TestFlight review passes.
 - The thread says nothing about the Pro plan, environments, agent payments,
   the wallet, or the inference API.
-- Item 8 needs the TestFlight public link. If the iPhone or Android build
-  isn't out on launch day, cut item 8 and the phones from item 1 and the X
-  post.
+- Every number and comparison here is checked in [claims.md](claims.md).

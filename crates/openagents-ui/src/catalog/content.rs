@@ -181,7 +181,7 @@ pub(super) fn link_cards(_pane: Pane) -> Markup {
         .icon(Icon::Terminal),
         LinkCard::new(
             "Tour the codebase",
-            "Everything we build, open on GitHub.",
+            "The code for this site and our apps, on GitHub.",
             "https://github.com/OpenAgentsInc/openagents",
         )
         .icon(Icon::Code),
