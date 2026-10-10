@@ -2886,7 +2886,7 @@ impl Job {
         // A product reply's references to the rate card and its passages
         // (#11114): an open `{...}` is held until it closes and filled,
         // everything else streams as it comes.
-        let mut grounding: Option<inference::grounded::Stream> = None;
+        let mut grounded_stream: Option<inference::grounded::Stream> = None;
         // When the turn began, the Gym seam answered, and the model's first
         // words went out: durations for the `router gym reply` line.
         let begun = Instant::now();
@@ -3327,11 +3327,11 @@ impl Job {
                                     // A product reply, where prices are
                                     // answered, references the rate card
                                     // and its passages by id (#11114).
-                                    grounding = None;
+                                    grounded_stream = None;
                                     if *corpus == router::Corpus::Product {
                                         let ledger = router::grounding::product_ledger(&passages);
                                         note = format!("{note}\n\n{}", router::grounding::note(&ledger));
-                                        grounding = Some(router::grounding::stream(ledger));
+                                        grounded_stream = Some(router::grounding::stream(ledger));
                                     }
                                     (generating, incoming, said) = start_model(
                                         self.door.clone(),
@@ -3498,7 +3498,7 @@ impl Job {
                             Some((tidying, _)) => tidying.push(&delta),
                             None => delta,
                         };
-                        match &mut grounding {
+                        match &mut grounded_stream {
                             Some(stream) => buffer.push_str(&stream.push(&piece)),
                             None => buffer.push_str(&piece),
                         }
@@ -3590,7 +3590,7 @@ impl Job {
                         };
                         // The whole reply's references, filled; what the
                         // thread keeps (#11114).
-                        let text = match &grounding {
+                        let text = match &grounded_stream {
                             Some(stream) => {
                                 let finished =
                                     router::grounding::finish(&text, stream.ledger());
@@ -4872,6 +4872,16 @@ mod tests {
         content_type: &str,
         body: &str,
     ) -> Vec<u8> {
+        answer_with(stream, delay, content_type, |_| body.to_string())
+    }
+
+    /// [`answer_once`] with the answer made from the request's body.
+    fn answer_with(
+        stream: std::net::TcpStream,
+        delay: Duration,
+        content_type: &str,
+        body: impl FnOnce(&[u8]) -> String,
+    ) -> Vec<u8> {
         use std::io::{BufRead, BufReader, Read, Write};
         let mut reader = BufReader::new(stream);
         let mut length = 0usize;
@@ -4888,6 +4898,7 @@ mod tests {
         let mut request = vec![0; length];
         let _ = reader.read_exact(&mut request);
         std::thread::sleep(delay);
+        let body = body(&request);
         let mut stream = reader.into_inner();
         let _ = write!(
             stream,
@@ -4907,9 +4918,37 @@ mod tests {
     }
 
     /// A judge on loopback that answers `answers` after `delay`.
+    /// A judge that answers one turn: the main request and each side
+    /// request the router splits off (#11193), each with only the answers
+    /// to the questions it asked.
     fn judge(delay: Duration, answers: Value) -> Arc<jev::Client> {
-        let body = json!({ "model": "jev-test", "answers": answers }).to_string();
-        let url = serve_once(delay, "application/json", body);
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            for _ in 0..1 + router::judge::SIDE.len() {
+                let Ok((stream, _)) = listener.accept() else {
+                    return;
+                };
+                let answers = answers.clone();
+                std::thread::spawn(move || {
+                    answer_with(stream, delay, "application/json", |request| {
+                        let asked = serde_json::from_slice::<Value>(request)
+                            .ok()
+                            .and_then(|request| request["questions"].as_object().cloned())
+                            .unwrap_or_default();
+                        let mut answered = serde_json::Map::new();
+                        if let Some(all) = answers.as_object() {
+                            for (id, answer) in all {
+                                if asked.is_empty() || asked.contains_key(id) {
+                                    answered.insert(id.clone(), answer.clone());
+                                }
+                            }
+                        }
+                        json!({ "model": "jev-test", "answers": answered }).to_string()
+                    });
+                });
+            }
+        });
         Arc::new(jev::Client::new(jev::Config::local(url, "jev-test")).unwrap())
     }
 
@@ -4987,7 +5026,7 @@ mod tests {
             "needs_specifics": { "type": "noul", "noul": specifics },
             "opener": sure(opener, &openers),
             "capability": capability("not-a-capability-request", &[]),
-            "risk": sure("ok", &["ok", "secret_shared", "asks_for_secret", "harmful", "money_movement", "none"]),
+            "risk": sure("ok", &["ok", "secret_shared", "asks_for_secret", "harmful", "money_movement"]),
             "engine": engine("none"),
             "fanout": fanout("one"),
             "read_only": { "type": "noul", "noul": 0.0 },
@@ -5915,7 +5954,6 @@ mod tests {
                 "asks_for_secret",
                 "harmful",
                 "money_movement",
-                "none",
             ],
         );
         let frames = frames_routed(
