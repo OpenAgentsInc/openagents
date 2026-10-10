@@ -9,6 +9,7 @@ COPY migrations ./migrations
 COPY crates ./crates
 COPY nips ./nips
 COPY tests ./tests
+COPY vendor ./vendor
 # boat-template embeds the fork-ready script (#10251).
 COPY scripts/cloud/boat-fork-ready.sh ./scripts/cloud/boat-fork-ready.sh
 # No --locked: main's Cargo.lock is sometimes stale, and this binary only

@@ -9,6 +9,7 @@ COPY migrations ./migrations
 COPY crates ./crates
 COPY nips ./nips
 COPY tests ./tests
+COPY vendor ./vendor
 RUN cargo build --release -p oa-boat \
     && strip target/release/oa-boat
 
