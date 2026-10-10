@@ -1024,8 +1024,8 @@ flat-shaded models). Each phase below says how it maps onto that path.
 
 | Phase | Issue | Status |
 | --- | --- | --- |
-| B1 | [#11198](https://github.com/OpenAgentsInc/openagents/issues/11198) | Done (see below) |
-| B2 | [#11199](https://github.com/OpenAgentsInc/openagents/issues/11199) | Next |
+| B1 | [#11198](https://github.com/OpenAgentsInc/openagents/issues/11198) | Done, 6c0de441c7 |
+| B2 | [#11199](https://github.com/OpenAgentsInc/openagents/issues/11199) | Done (see below) |
 | B3 | [#11200](https://github.com/OpenAgentsInc/openagents/issues/11200) | Not started |
 | B4 | [#11201](https://github.com/OpenAgentsInc/openagents/issues/11201) | Not started |
 | B5 | [#11202](https://github.com/OpenAgentsInc/openagents/issues/11202) | Not started |
@@ -1073,9 +1073,46 @@ Deviations, and why:
 - **Not yet:** narrow one-lane corridors, the sprinkler, cold frames and
   dead-end pumpkin corridors belong to gardens 6 to 20 (B8).
 
+### B2: the outline-gray look
+
+`crates/bunny-web/src/outline.rs` and `look.rs`: the scene draws into an
+offscreen target (fill, normal and object id, depth); a full-screen pass
+draws lines where the object changes, normals turn more than 50 degrees, or
+depth jumps (a second difference of inverse depth, so flat ground at a
+grazing angle draws no lines), in `#1E1E1E` fading to `#9A9A9A` from 12 m
+to 75 m. Fills are flat with a 12% shadow band. Coloured things (the bunny,
+edibles, power-ups, crumbs) keep their own inverted-hull outline, 1.5 times
+as thick and thinning with distance, and get no inner crease lines, so small
+food stays readable. Blob shadows sit under the bunny, the farmer and every
+edible. Lane dashes are flat on the ground. The `chroma` rule is a test: every
+gray model (hedges, ground, farmer, every obstacle) has OKLCH chroma at most
+0.02, and every edible has colour. High contrast (`#contrast=high`) turns
+lines black and fills into two grays.
+
+Tiers (`#tier=low|medium|high`; phones default to Medium, everything else
+High): High draws at up to 2 device pixels per CSS pixel, Medium 1.5, Low 1
+with the fill and line target at three quarters of the canvas and 1-pixel
+lines. Captures of each tier come from `scripts/bunny-capture.mjs`.
+
+Deviations, and why:
+
+- **In `bunny-web`, not `verse-pbr`.** The game runs in the browser on its
+  own WebGL2 renderer (see above); the profile is written so the same rules
+  (ids, the 50 degree crease, the chroma flag) can move into `verse-pbr`
+  when a Verse host draws the game.
+- **No crease-line chunk in a pack.** Models are made in code, so there is no
+  admission step to extract crease lines; the screen-space pass finds
+  creases, and Low keeps lines by drawing them 1 pixel wide on a smaller
+  target instead of switching to stored lines.
+- **No grass ticks** on the ground yet.
+- **No GPU timing.** Headless Chrome renders with SwiftShader, so the line
+  pass's cost isn't measured; the budget check needs a device run.
+- **The pack format's line chunk and material fields** stay undone with the
+  pack itself (see B3 and B4).
+
 ### What's next
 
-B2: the outline-gray look in the browser renderer.
+B3: the game contract.
 
 ## Engine gaps
 

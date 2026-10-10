@@ -40,6 +40,8 @@ pub enum Shape {
     },
     /// A flat disc of radius 0.5 facing up.
     Disc { sides: u32 },
+    /// A flat square from -0.5 to 0.5 facing up.
+    Square,
 }
 
 /// One corner: its position and its hull direction.
@@ -145,6 +147,19 @@ fn triangles(shape: Shape) -> Vec<[Corner; 3]> {
                     );
                 }
             }
+        }
+        Shape::Square => {
+            let corner = |x: f32, z: f32| {
+                let p = Vec3::new(x * 0.5, 0.0, z * 0.5);
+                (p, (p.normalize() + Vec3::Y).normalize())
+            };
+            quad(
+                &mut out,
+                corner(-1.0, -1.0),
+                corner(-1.0, 1.0),
+                corner(1.0, 1.0),
+                corner(1.0, -1.0),
+            );
         }
         Shape::Disc { sides } => {
             let centre = (Vec3::ZERO, Vec3::Y);
@@ -262,6 +277,7 @@ mod tests {
                 tube: 0.05,
             },
             Shape::Disc { sides: 12 },
+            Shape::Square,
         ] {
             let mut mesh = Mesh::new();
             mesh.add(

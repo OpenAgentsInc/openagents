@@ -46,6 +46,8 @@ web-sys = { version = "0.3", features = [
     "Storage",
     "WebGl2RenderingContext",
     "WebGlBuffer",
+    "WebGlFramebuffer",
+    "WebGlTexture",
     "WebGlProgram",
     "WebGlShader",
     "WebGlUniformLocation",

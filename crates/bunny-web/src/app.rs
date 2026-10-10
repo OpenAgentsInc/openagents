@@ -17,6 +17,7 @@ use web_sys::{
     WebGlVertexArrayObject, Window,
 };
 
+use crate::look::{Options, Tier};
 use crate::mesh::{Mesh, STRIDE, rgb};
 use crate::{copy, scene};
 
@@ -43,7 +44,8 @@ void main() {
     vec2 dir = push.xy;
     float len = length(dir);
     if (len > 1e-6) { dir /= len; }
-    clip.xy += dir * u_outline * a_weight * 2.0 / u_viewport * clip.w;
+    float near = clamp(8.0 / clip.w, 0.35, 1.0);
+    clip.xy += dir * u_outline * a_weight * near * 2.0 / u_viewport * clip.w;
   }
   v_normal = mat3(u_model) * a_normal;
   v_colour = a_colour;
@@ -57,17 +59,31 @@ in vec3 v_normal;
 in vec3 v_colour;
 uniform vec3 u_tint;
 uniform float u_flat;
-out vec4 o_colour;
+uniform float u_id;
+layout(location = 0) out vec4 o_colour;
+layout(location = 1) out vec4 o_normal;
 void main() {
   if (u_flat > 0.5) {
     o_colour = vec4(u_tint, 1.0);
+    o_normal = vec4(0.5, 0.5, 0.5, 1.0);
     return;
   }
-  float light = dot(normalize(v_normal), normalize(vec3(0.45, 1.0, 0.3)));
-  float band = light > 0.2 ? 1.0 : 0.86;
+  vec3 n = normalize(v_normal);
+  float light = dot(n, normalize(vec3(0.45, 1.0, 0.3)));
+  float band = light > 0.2 ? 1.0 : 0.88;
   o_colour = vec4(v_colour * u_tint * band, 1.0);
+  o_normal = vec4(n * 0.5 + 0.5, u_id);
 }
 ";
+
+/// What a draw is, for the line pass: the ground and things flat on it get
+/// no lines of their own, gray things and coloured things get their own ids.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Look {
+    Ground,
+    Gray,
+    Chroma,
+}
 
 /// The line width at weight 1, in CSS pixels.
 const LINE: f32 = 2.0;
@@ -84,6 +100,9 @@ const MAX_FRAME: f64 = 10.0;
 const MAX_STEPS: u32 = 1000;
 const SAVE_KEY: &str = "bunny.progress.v1";
 const WHITE: [f32; 3] = [1.0, 1.0, 1.0];
+/// The camera's near and far planes, in metres.
+const NEAR: f32 = 0.1;
+const FAR: f32 = 220.0;
 /// The bunny is drawn a little larger than its body height, ears and all,
 /// so a Kit reads on a phone.
 const DRAWN: f32 = 1.25;
@@ -96,6 +115,12 @@ struct GpuMesh {
 
 struct Gpu {
     gl: Gl,
+    program: WebGlProgram,
+    u_id: Option<WebGlUniformLocation>,
+    look: std::cell::Cell<Look>,
+    next_id: std::cell::Cell<u32>,
+    /// Whether the screen-space line pass draws the gray things' lines.
+    lined: std::cell::Cell<bool>,
     u_view_projection: Option<WebGlUniformLocation>,
     u_model: Option<WebGlUniformLocation>,
     u_outline: Option<WebGlUniformLocation>,
@@ -112,6 +137,11 @@ impl Gpu {
         gl.use_program(Some(&program));
         let at = |name: &str| gl.get_uniform_location(&program, name);
         let gpu = Self {
+            program: program.clone(),
+            u_id: at("u_id"),
+            look: std::cell::Cell::new(Look::Gray),
+            next_id: std::cell::Cell::new(0),
+            lined: std::cell::Cell::new(false),
             u_view_projection: at("u_view_projection"),
             u_model: at("u_model"),
             u_outline: at("u_outline"),
@@ -182,6 +212,19 @@ impl Gpu {
         let gl = &self.gl;
         gl.bind_vertex_array(Some(&mesh.vao));
         gl.uniform_matrix4fv_with_f32_array(self.u_model.as_ref(), false, &model.to_cols_array());
+        let look = self.look.get();
+        let n = self.next_id.get().wrapping_add(1);
+        self.next_id.set(n);
+        let id = match look {
+            Look::Ground => 0,
+            Look::Gray => 1 + n % 126,
+            Look::Chroma => 128 + n % 126,
+        };
+        gl.uniform1f(self.u_id.as_ref(), id as f32 / 255.0);
+        // The line pass draws gray things' ordinary lines; only heavier
+        // ones (the net in a wind-up) and coloured things keep their own.
+        let line =
+            line.filter(|(_, width)| !(self.lined.get() && look == Look::Gray && *width <= LINE));
         if let Some((colour, width)) = line {
             gl.cull_face(Gl::FRONT);
             gl.uniform1f(self.u_outline.as_ref(), width * self.scale);
@@ -213,8 +256,13 @@ fn compile(gl: &Gl, kind: u32, source: &str) -> Result<web_sys::WebGlShader, Str
 }
 
 fn link(gl: &Gl) -> Result<WebGlProgram, String> {
-    let vertex = compile(gl, Gl::VERTEX_SHADER, VERTEX)?;
-    let fragment = compile(gl, Gl::FRAGMENT_SHADER, FRAGMENT)?;
+    program(gl, VERTEX, FRAGMENT)
+}
+
+/// Compiles and links a program.
+pub(crate) fn program(gl: &Gl, vertex: &str, fragment: &str) -> Result<WebGlProgram, String> {
+    let vertex = compile(gl, Gl::VERTEX_SHADER, vertex)?;
+    let fragment = compile(gl, Gl::FRAGMENT_SHADER, fragment)?;
     let program = gl.create_program().ok_or("no program")?;
     gl.attach_shader(&program, &vertex);
     gl.attach_shader(&program, &fragment);
@@ -306,6 +354,9 @@ struct App {
     window: Window,
     canvas: HtmlCanvasElement,
     gpu: Gpu,
+    outline: Option<crate::outline::Outline>,
+    tier: Tier,
+    options: Options,
     meshes: Meshes,
     hud: Hud,
     game: Game,
@@ -827,7 +878,9 @@ impl App {
     }
 
     fn resize(&mut self) -> (f32, f32) {
-        let ratio = self.window.device_pixel_ratio().clamp(1.0, 2.0) as f32;
+        let ratio = self
+            .tier
+            .pixel_ratio(self.window.device_pixel_ratio() as f32);
         let width = (self.canvas.client_width().max(1) as f32 * ratio).round() as u32;
         let height = (self.canvas.client_height().max(1) as f32 * ratio).round() as u32;
         if self.canvas.width() != width || self.canvas.height() != height {
@@ -850,18 +903,61 @@ impl App {
 
     fn render(&mut self, alpha: f32, _dt: f32) {
         let (width, height) = self.resize();
-        let gl = &self.gpu.gl;
-        gl.disable(Gl::SCISSOR_TEST);
-        gl.viewport(0, 0, width as i32, height as i32);
         let sky = rgb(scene::SKY);
-        gl.clear_color(sky[0], sky[1], sky[2], 1.0);
-        gl.clear(Gl::COLOR_BUFFER_BIT | Gl::DEPTH_BUFFER_BIT);
+        let gl = self.gpu.gl.clone();
+        gl.disable(Gl::SCISSOR_TEST);
+        gl.use_program(Some(&self.gpu.program));
+        let scale = self.tier.target_scale();
+        let target = (
+            ((width * scale).round() as i32).max(1),
+            ((height * scale).round() as i32).max(1),
+        );
+        let offscreen = match self.outline.as_mut() {
+            Some(outline) => match outline.begin(&gl, target.0, target.1, sky) {
+                Ok(()) => true,
+                Err(error) => {
+                    web_sys::console::error_1(&error.into());
+                    self.outline = None;
+                    false
+                }
+            },
+            None => false,
+        };
+        if !offscreen {
+            gl.bind_framebuffer(Gl::FRAMEBUFFER, None);
+            gl.viewport(0, 0, width as i32, height as i32);
+            gl.clear_color(sky[0], sky[1], sky[2], 1.0);
+            gl.clear(Gl::COLOR_BUFFER_BIT | Gl::DEPTH_BUFFER_BIT);
+        }
+        self.gpu.lined.set(offscreen);
         let aspect = width / height;
         let bunny = self.bunny_at(alpha);
         let farmer = self.farmer_at(alpha);
         let view_projection = self.camera(bunny, farmer, aspect);
-        self.gpu.camera(&view_projection, width, height);
+        let (vw, vh) = if offscreen {
+            (target.0 as f32, target.1 as f32)
+        } else {
+            (width, height)
+        };
+        self.gpu.camera(&view_projection, vw, vh);
+        self.gpu.next_id.set(0);
         self.draw_world(alpha, bunny, farmer);
+        if let (true, Some(outline)) = (offscreen, self.outline.as_ref()) {
+            outline.finish(
+                &gl,
+                (width as i32, height as i32),
+                NEAR,
+                FAR,
+                self.tier,
+                self.options.high_contrast,
+                rgb(scene::INK),
+                rgb(scene::FAR_INK),
+            );
+            gl.use_program(Some(&self.gpu.program));
+            gl.clear(Gl::DEPTH_BUFFER_BIT);
+        }
+        self.gpu.lined.set(false);
+        self.gpu.look.set(Look::Gray);
         self.draw_map(width, height, bunny, farmer);
     }
 
@@ -898,7 +994,7 @@ impl App {
         } else {
             60.0_f32.to_radians()
         };
-        Mat4::perspective_rh_gl(fov, aspect, 0.1, 220.0) * Mat4::look_at_rh(eye, look, Vec3::Y)
+        Mat4::perspective_rh_gl(fov, aspect, NEAR, FAR) * Mat4::look_at_rh(eye, look, Vec3::Y)
     }
 
     fn draw_world(&self, alpha: f32, bunny: Vec2, farmer: Vec2) {
@@ -908,7 +1004,9 @@ impl App {
         let line = Some((ink, LINE));
         let game = &self.game;
         let garden = &game.garden;
+        gpu.look.set(Look::Ground);
         gpu.draw(&m.ground, &Mat4::IDENTITY, WHITE, None);
+        gpu.look.set(Look::Gray);
         gpu.draw(&m.hedges, &Mat4::IDENTITY, WHITE, line);
         let lane = bunny_rules::LANE_WIDTH;
         for (index, c) in garden.edibles.iter().enumerate() {
@@ -926,7 +1024,16 @@ impl App {
                 self.time * 1.3 + index as f32,
                 1.0,
             );
+            gpu.look.set(Look::Ground);
+            gpu.draw(
+                &m.shadow,
+                &scene::place(Vec3::new(at.x, 0.0, at.y), 0.0, 0.45),
+                WHITE,
+                None,
+            );
+            gpu.look.set(Look::Chroma);
             gpu.draw(m.edible(c.kind), &model, WHITE, Some((ink, LINE * 1.5)));
+            gpu.look.set(Look::Gray);
         }
         for (index, cell) in garden.obstacles.iter().enumerate() {
             if !game.alive[index] {
@@ -962,12 +1069,14 @@ impl App {
             }
             _ => 0.0,
         };
+        gpu.look.set(Look::Ground);
         gpu.draw(
             &m.shadow,
             &scene::place(Vec3::new(bunny.x, 0.0, bunny.y), 0.0, size * 1.3),
             WHITE,
             None,
         );
+        gpu.look.set(Look::Chroma);
         let body = Mat4::from_translation(Vec3::new(bunny.x, hop, bunny.y))
             * Mat4::from_quat(Quat::from_rotation_y(self.bunny_yaw) * Quat::from_rotation_z(roll))
             * Mat4::from_scale(Vec3::new(
@@ -990,9 +1099,11 @@ impl App {
                 );
             gpu.draw(&m.ear, &ear, WHITE, outline);
         }
+        gpu.look.set(Look::Gray);
         if game.farmer_on {
             self.draw_farmer(alpha, farmer);
         }
+        gpu.look.set(Look::Chroma);
         for p in &self.particles {
             let scale = p.size * (p.life / p.span).max(0.2);
             gpu.draw(
@@ -1020,12 +1131,14 @@ impl App {
             0.0
         };
         let base = scene::place(Vec3::new(at.x, 0.0, at.y), self.farmer_yaw + stagger, 1.0);
+        gpu.look.set(Look::Ground);
         gpu.draw(
             &m.shadow,
             &scene::place(Vec3::new(at.x, 0.0, at.y), 0.0, 0.9),
             WHITE,
             None,
         );
+        gpu.look.set(Look::Gray);
         gpu.draw(&m.farmer, &base, WHITE, line);
         let swing = self.stride.sin() * 0.55;
         for (side, phase) in [(-1.0_f32, 1.0_f32), (1.0, -1.0)] {
@@ -1330,10 +1443,22 @@ pub fn start() {
         .flatten()
         .is_some_and(|query| query.matches());
     let hud = build_hud(&document, &parent, touch);
+    let options = Options::parse(&window.location().hash().unwrap_or_default());
+    let tier = options.tier.unwrap_or(Tier::default_for(touch));
+    let outline = match crate::outline::Outline::new(&gpu.gl) {
+        Ok(outline) => Some(outline),
+        Err(error) => {
+            web_sys::console::error_1(&error.into());
+            None
+        }
+    };
     let mut app = App {
         window: window.clone(),
         canvas: canvas.clone(),
         gpu,
+        outline,
+        tier,
+        options,
         meshes,
         hud,
         game: Game::new(garden),
@@ -1440,7 +1565,7 @@ pub fn start() {
         });
     }
 
-    let next: Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>> = Rc::new(RefCell::new(None));
+    let next: FrameLoop = Rc::new(RefCell::new(None));
     let first = next.clone();
     let looping = window.clone();
     *first.borrow_mut() = Some(Closure::new(move |now: f64| {
@@ -1453,3 +1578,6 @@ pub fn start() {
         let _ = window.request_animation_frame(callback.as_ref().unchecked_ref());
     }
 }
+
+/// The animation-frame callback, kept so it can ask for the next frame.
+type FrameLoop = Rc<RefCell<Option<Closure<dyn FnMut(f64)>>>>;

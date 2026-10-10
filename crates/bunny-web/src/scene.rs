@@ -14,8 +14,9 @@ use crate::mesh::{Mesh, Shape};
 pub const SKY: u32 = 0xECECE9;
 /// The ground: paper.
 pub const PAPER: u32 = 0xF4F4F2;
-/// The colour of every line.
+/// The colour of every line, fading to `FAR_INK` with distance.
 pub const INK: u32 = 0x1E1E1E;
+pub const FAR_INK: u32 = 0x9A9A9A;
 pub const HEDGE: u32 = 0xD3D3CE;
 const MARK: u32 = 0xE2E2DE;
 const SHADOW: u32 = 0xDADAD6;
@@ -85,7 +86,8 @@ pub fn bounds(garden: &Garden) -> (f32, f32, f32, f32) {
     )
 }
 
-/// The ground under the whole garden and well beyond it.
+/// The ground under the whole garden and well beyond it, with the dashes
+/// between the lanes drawn flat on it.
 #[must_use]
 pub fn ground(garden: &Garden) -> Mesh {
     let (x0, z0, x1, z1) = bounds(garden);
@@ -96,11 +98,43 @@ pub fn ground(garden: &Garden) -> Mesh {
         PAPER,
         0.0,
     );
+    // Dashes between the lanes.
+    let line = metres(LANE_WIDTH) / 2.0;
+    for (index, e) in garden.edges.iter().enumerate() {
+        let len = metres(e.len);
+        let mut s = 2.5;
+        while s + 1.0 <= len - 2.5 {
+            for side in [-line, line] {
+                let (ax, az) =
+                    garden.point(index, (s * UNIT as f32) as i32, (side * UNIT as f32) as i32);
+                let (bx, bz) = garden.point(
+                    index,
+                    ((s + 1.0) * UNIT as f32) as i32,
+                    (side * UNIT as f32) as i32,
+                );
+                let (ax, az, bx, bz) = (metres(ax), metres(az), metres(bx), metres(bz));
+                let (lo, hi) = (
+                    at(ax.min(bx) - 0.04, 0.005, az.min(bz) - 0.04),
+                    at(ax.max(bx) + 0.04, 0.005, az.max(bz) + 0.04),
+                );
+                mesh.add(
+                    Shape::Square,
+                    part(
+                        Vec3::new(hi.x - lo.x, 1.0, hi.z - lo.z),
+                        Quat::IDENTITY,
+                        (lo + hi) * 0.5,
+                    ),
+                    MARK,
+                    0.0,
+                );
+            }
+            s += 2.0;
+        }
+    }
     mesh
 }
 
-/// The hedges between and around the corridors, and the dashes between
-/// the lanes.
+/// The hedges between and around the corridors.
 ///
 /// The hedges fill each grid cell between junctions, the gap between two
 /// neighbouring junctions with no corridor between them, and a border
@@ -183,31 +217,6 @@ pub fn hedges(garden: &Garden) -> Mesh {
     );
     hedge(x0 - half - border, z0 - half, x0 - half, z1 + half);
     hedge(x1 + half, z0 - half, x1 + half + border, z1 + half);
-    // Dashes between the lanes.
-    let line = metres(LANE_WIDTH) / 2.0;
-    for (index, e) in garden.edges.iter().enumerate() {
-        let len = metres(e.len);
-        let mut s = 2.5;
-        while s + 1.0 <= len - 2.5 {
-            for side in [-line, line] {
-                let (ax, az) =
-                    garden.point(index, (s * UNIT as f32) as i32, (side * UNIT as f32) as i32);
-                let (bx, bz) = garden.point(
-                    index,
-                    ((s + 1.0) * UNIT as f32) as i32,
-                    (side * UNIT as f32) as i32,
-                );
-                let (ax, az, bx, bz) = (metres(ax), metres(az), metres(bx), metres(bz));
-                mesh.block(
-                    at(ax.min(bx) - 0.04, 0.0, az.min(bz) - 0.04),
-                    at(ax.max(bx) + 0.04, 0.02, az.max(bz) + 0.04),
-                    MARK,
-                    0.0,
-                );
-            }
-            s += 2.0;
-        }
-    }
     mesh
 }
 
@@ -754,9 +763,9 @@ mod tests {
     fn the_first_garden_has_hedges_dashes_and_a_ground() {
         let garden = bunny_rules::level::garden(1);
         let mesh = hedges(&garden);
-        // 6 grid cells, 4 borders, and dashes.
-        assert!(mesh.vertices() > (6 + 4) * 36, "{}", mesh.vertices());
-        assert_eq!(ground(&garden).vertices(), 36);
+        // 6 grid cells and 4 borders.
+        assert_eq!(mesh.vertices(), (6 + 4) * 36);
+        assert!(ground(&garden).vertices() > 36, "the dashes");
         let (x0, z0, x1, z1) = bounds(&garden);
         assert_eq!((x0, z0, x1, z1), (0.0, 0.0, 60.0, 40.0));
         // No hedge stands in a corridor: sample each corridor's centre line.
@@ -815,14 +824,9 @@ mod tests {
     }
 
     #[test]
-    fn only_the_bunny_and_its_food_are_in_colour() {
-        let grayish = |mesh: &Mesh| {
-            mesh.data.chunks(crate::mesh::STRIDE).all(|v| {
-                let (r, g, b) = (v[9], v[10], v[11]);
-                (r - g).abs() < 0.03 && (g - b).abs() < 0.03
-            })
-        };
-        let garden = bunny_rules::level::garden(1);
+    fn only_the_bunny_its_food_and_power_ups_are_in_colour() {
+        use crate::look::admit_gray;
+        let garden = Garden::clone(&bunny_rules::level::garden(1));
         for mesh in [
             hedges(&garden),
             ground(&garden),
@@ -830,18 +834,15 @@ mod tests {
             leg(),
             net(),
             alarm(),
+            shadow(),
         ] {
-            assert!(grayish(&mesh));
+            admit_gray(&mesh).unwrap();
         }
-        for kind in [
-            CellKind::Pot,
-            CellKind::Gnome,
-            CellKind::Fence,
-            CellKind::Gap,
-            CellKind::Barrow,
-        ] {
-            assert!(grayish(&obstacle(kind)), "{kind:?}");
+        for kind in bunny_rules::ObstacleKind::ALL {
+            admit_gray(&obstacle(kind)).unwrap_or_else(|e| panic!("{kind:?}: {e}"));
         }
-        assert!(!grayish(&carrot()));
+        for kind in bunny_rules::EdibleKind::ALL {
+            assert!(admit_gray(&edible(kind)).is_err(), "{kind:?} is in colour");
+        }
     }
 }

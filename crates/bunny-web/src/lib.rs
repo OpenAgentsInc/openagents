@@ -1,8 +1,10 @@
 //! Grow Little Bunny in the browser (`docs/verse/games/grow-little-bunny.md`).
 //!
 //! The rules live in `bunny-rules`; this crate draws one garden run with
-//! WebGL2 in the game's outline style (flat gray fills with dark
-//! inverted-hull outlines; only the bunny and the carrots in colour), reads
+//! WebGL2 in the game's outline look, `npr.outline-gray.v1` (flat gray
+//! fills, lines from a screen-space pass over depth, normals and object ids,
+//! and only the bunny, its food and power-ups in colour; see `outline` and
+//! `look`), reads
 //! the keyboard and swipes, shows a small HUD, and keeps the win count in
 //! the browser's storage.
 //!
@@ -16,11 +18,14 @@
 //! when it starts; `scripts/build-bunny-web.sh` builds it.
 
 pub mod copy;
+pub mod look;
 pub mod mesh;
 pub mod scene;
 
 #[cfg(target_arch = "wasm32")]
 mod app;
+#[cfg(target_arch = "wasm32")]
+mod outline;
 
 /// Starts the game when the module loads.
 #[cfg(target_arch = "wasm32")]
