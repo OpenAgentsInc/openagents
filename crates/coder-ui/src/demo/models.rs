@@ -67,7 +67,7 @@ pub struct Model {
 /// A small known catalog is available while public model metadata refreshes.
 pub fn openrouter_catalog() -> Vec<Model> {
     let rows: [(&str, &str, &[&str], Option<&str>); 7] = [
-        ("Free router", "Automatic free text model", &[], None),
+        ("Auto", "OpenAgents picks the model", &[], None),
         (
             "GPT-6 Luna",
             "Fast OpenAI text model",
@@ -110,7 +110,12 @@ pub fn openrouter_catalog() -> Vec<Model> {
         .zip(rows)
         .map(|(id, (name, description, efforts, default))| Model {
             plugin: OPENROUTER_PLUGIN.into(),
-            provider: "OpenRouter BYOK".into(),
+            provider: if *id == DEFAULT_MODEL {
+                "OpenAgents"
+            } else {
+                "OpenRouter BYOK"
+            }
+            .into(),
             id: (*id).into(),
             name: name.into(),
             description: description.into(),

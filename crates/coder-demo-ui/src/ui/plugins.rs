@@ -199,7 +199,7 @@ fn plugin_details(app: &App, width: u16) -> Vec<Line<'static>> {
     match definition.id {
         OPENROUTER_PLUGIN => {
             lines.push(Line::from(span(
-                "Requests go directly to OpenRouter. Billed by OpenRouter.",
+                "A model you pick runs on OpenRouter, billed by OpenRouter. Auto runs on OpenAgents when you're signed in.",
                 t::GRAY,
             )));
             lines.push(Line::default());
@@ -217,7 +217,15 @@ fn plugin_details(app: &App, width: u16) -> Vec<Line<'static>> {
                     },
                     width,
                 ),
-                detail("Model", &p.model, width),
+                detail(
+                    "Model",
+                    if p.model == crate::models::DEFAULT_MODEL {
+                        "auto"
+                    } else {
+                        &p.model
+                    },
+                    width,
+                ),
                 detail(
                     "Reasoning",
                     p.options.reasoning.as_deref().unwrap_or("Model default"),
@@ -464,10 +472,7 @@ fn router_settings(frame: &mut Frame, area: Rect, app: &App) {
         &mut cursor,
     );
     lines.push(Line::from(span(
-        truncate(
-            "Default: openrouter/free · Use /models to choose.",
-            area.width,
-        ),
+        truncate("Leave empty for auto · Use /models to choose.", area.width),
         t::GRAY,
     )));
     lines.push(Line::default());
