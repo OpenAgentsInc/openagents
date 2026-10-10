@@ -46,6 +46,7 @@
 
 pub mod about;
 pub mod activity;
+pub mod answer_ui;
 pub mod agent;
 pub mod argv;
 pub mod branch_checkout;

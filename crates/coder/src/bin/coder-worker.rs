@@ -2887,6 +2887,11 @@ impl Job {
         // (#11114): an open `{...}` is held until it closes and filled,
         // everything else streams as it comes.
         let mut grounded_stream: Option<inference::grounded::Stream> = None;
+        // Whether the model was told the component catalog (#11113), so
+        // its finished block is validated, repaired once, and merged into
+        // the interface the last answer showed.
+        let mut ui_turn = false;
+        let earlier_ui = coder::answer_ui::earlier_program(input);
         // When the turn began, the Gym seam answered, and the model's first
         // words went out: durations for the `router gym reply` line.
         let begun = Instant::now();
@@ -3333,9 +3338,23 @@ impl Job {
                                         note = format!("{note}\n\n{}", router::grounding::note(&ledger));
                                         grounded_stream = Some(router::grounding::stream(ledger));
                                     }
+                                    // A product how-to on a surface that
+                                    // draws components is told the catalog
+                                    // (#11113): the router's typed decision,
+                                    // never the message's words.
+                                    let mut told = format!("{instructions}\n\n{note}");
+                                    if coder::answer_ui::wants_ui(
+                                        routing.route,
+                                        *corpus,
+                                        turn.context.surface(),
+                                    ) {
+                                        told.push_str("\n\n");
+                                        told.push_str(&coder::answer_ui::note(earlier_ui.as_deref()));
+                                        ui_turn = true;
+                                    }
                                     (generating, incoming, said) = start_model(
                                         self.door.clone(),
-                                        format!("{instructions}\n\n{note}"),
+                                        told,
                                         input.to_vec(),
                                     );
                                     draining = true;
@@ -3556,7 +3575,7 @@ impl Job {
                             *answered = Some(model);
                         }
                     }
-                    return answered.map(|(text, usage)| {
+                    let mut finished = answered.map(|(text, usage)| {
                         let text = match &tidy {
                             Some((_, Cites::Product(grounding))) => {
                                 let cited = coder::product_kb::cited(&text, grounding);
@@ -3601,6 +3620,33 @@ impl Job {
                         };
                         (format!("{lead}{text}"), usage, served)
                     });
+                    // The finished block: merged into the earlier
+                    // interface, validated, repaired once when something
+                    // was dropped; the result carries the whole program,
+                    // and a surface showing the earlier one gets the patch.
+                    if ui_turn && let Ok((text, _, _)) = &mut finished {
+                        let settled =
+                            coder::answer_ui::finish(self.door.as_ref(), text.as_str(), earlier_ui.as_deref())
+                                .await;
+                        // Counts only, never the reply.
+                        eprintln!(
+                            "answer ui: {} problems, {} left, repaired {}, patch {}",
+                            settled.problems,
+                            settled.left,
+                            settled.repaired,
+                            settled.patch.as_ref().map_or(0, String::len)
+                        );
+                        if let Some(body) = settled
+                            .patch
+                            .as_deref()
+                            .and_then(|patch| coder::answer_ui::patch_payload(version, patch))
+                            && let Err(why) = publish(FEEDBACK_KIND, body)
+                        {
+                            eprintln!("answer ui patch not sent: {why}");
+                        }
+                        *text = settled.text;
+                    }
+                    return finished;
                 }
             }
         }

@@ -114,6 +114,8 @@ pub fn instructions(context: &Context) -> &'static str {
 
 /// How long the worker has to answer at all, connection included.
 const CONTACT: Duration = Duration::from_secs(30);
+/// The largest `ui_patch` kept; the worker sends none larger.
+const MAX_UI_PATCH_BYTES: usize = 16 * 1024;
 /// The longest one job may take, connection included.
 const LIFETIME: Duration = Duration::from_secs(120);
 /// The most conversation text one job sends, newest turns first.
@@ -384,6 +386,10 @@ pub struct Reply {
     /// The router's typed observations: the judgment, offers, the result's
     /// tier and prepared answer, and follow-ups.
     pub meta: Meta,
+    /// The statements that turn the interface the last answer showed into
+    /// this one (`ui_patch` feedback, #11113), for a surface that already
+    /// draws it. The result's text carries the whole program either way.
+    pub ui_patch: Option<String>,
     /// The next partial's sequence number.
     next: u64,
     /// The partials exactly as they came, before [`without_citations`].
@@ -629,6 +635,16 @@ impl Reading {
             // A card is a closed display record; NIP-CJ's parser reads it
             // before the phone keeps it.
             (CJ_CONVERSATION_FEEDBACK, Some("card")) => reply.meta.carded(&payload),
+            // Component statements, never markup: a surface parses them
+            // against its catalog like any other block.
+            (CJ_CONVERSATION_FEEDBACK, Some("ui_patch")) => {
+                if let Some(patch) = payload["patch"]
+                    .as_str()
+                    .filter(|patch| !patch.is_empty() && patch.len() <= MAX_UI_PATCH_BYTES)
+                {
+                    reply.ui_patch = Some(patch.to_owned());
+                }
+            }
             (CJ_CONVERSATION_FEEDBACK, Some("status"))
                 if payload["status"].as_str() == Some("still_working") =>
             {
@@ -1157,7 +1173,10 @@ mod tests {
                 oa_copy::violations(line, &[]).is_empty(),
                 "machine talk in {line:?}"
             );
-            for shown in codes.iter().filter(|code| code.contains('_') || **code == "internal") {
+            for shown in codes
+                .iter()
+                .filter(|code| code.contains('_') || **code == "internal")
+            {
                 assert!(!line.contains(shown), "{shown} shown in {line:?}");
             }
             assert!(!line.contains('(') && !line.contains('_'), "{line:?}");
@@ -1304,6 +1323,35 @@ mod tests {
             "line": "", "lane": "unknown"});
         reading.take(&event(CJ_CONVERSATION_FEEDBACK, unknown), &mut other);
         assert_eq!(other.lane, None);
+    }
+
+    /// A follow-up's interface patch (#11113) is kept for a surface that
+    /// already draws the earlier interface; an empty or oversized one is
+    /// not.
+    #[test]
+    fn a_ui_patch_rides_as_feedback() {
+        let (me, me_hex, worker, worker_public) = keys();
+        let request = "ab".repeat(32);
+        let reading = Reading::new(&me, &me_hex, &worker_public, &request);
+        let event = |kind, body| answer(&worker, &me_hex, &request, kind, body);
+        let mut reply = Reply::default();
+        let patch = "intro = Text(\"Sign in next.\")\nold = null\n";
+        reading.take(
+            &event(
+                CJ_CONVERSATION_FEEDBACK,
+                json!({"v": 2, "type": "ui_patch", "patch": patch}),
+            ),
+            &mut reply,
+        );
+        assert_eq!(reply.ui_patch.as_deref(), Some(patch));
+        let mut other = Reply::default();
+        for body in [
+            json!({"v": 2, "type": "ui_patch", "patch": ""}),
+            json!({"v": 2, "type": "ui_patch", "patch": "x".repeat(MAX_UI_PATCH_BYTES + 1)}),
+        ] {
+            reading.take(&event(CJ_CONVERSATION_FEEDBACK, body), &mut other);
+        }
+        assert_eq!(other.ui_patch, None);
     }
 
     /// The router's offers and the result's tier arrive as typed fields
