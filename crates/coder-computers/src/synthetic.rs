@@ -55,6 +55,12 @@ pub fn owner_secret_hex() -> String {
 pub const APPROVAL_CODE: &str = "7K4M-9QXZ";
 /// An invitation string the fixture refuses as expired.
 pub const EXPIRED_INVITATION: &str = "coder-host:expired";
+/// The bytes every fixture screenshot answers: a PNG's signature and
+/// header.
+pub const SCREENSHOT: &[u8] = &[
+    0x89, b'P', b'N', b'G', b'\r', b'\n', 0x1a, b'\n', 0, 0, 0, 13, b'I', b'H', b'D', b'R', 0, 0,
+    0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0,
+];
 
 struct Host {
     record: HostRecord,
@@ -646,6 +652,34 @@ impl ComputersService for Synthetic {
             record.workspaces = Some(Vec::new());
         }
         Ok(())
+    }
+    /// A fixed picture: the eight-byte PNG signature and a one-pixel
+    /// header are enough for a screen that only shows it.
+    fn screenshot(&mut self, host: &str) -> Result<Vec<u8>> {
+        self.calls.push(format!("screenshot {host}"));
+        self.host(host)?;
+        Ok(SCREENSHOT.to_vec())
+    }
+    /// `~/notes.txt` is a short text file, `~/photo.png` the screenshot,
+    /// and `~/data.bin` bytes that are neither; anything else is missing.
+    fn pull_file(&mut self, host: &str, path: &str, limit: u64) -> Result<(String, Vec<u8>)> {
+        self.calls.push(format!("pull_file {host} {path}"));
+        self.host(host)?;
+        let bytes = match path {
+            "~/notes.txt" => b"Buy milk.\nCall the shop.\n".to_vec(),
+            "~/photo.png" => SCREENSHOT.to_vec(),
+            "~/data.bin" => vec![0, 159, 146, 150, 255],
+            _ => {
+                return Err(Error::new(
+                    Code::Unavailable,
+                    format!("there is no file at {path}"),
+                ));
+            }
+        };
+        if bytes.len() as u64 > limit {
+            return Err(Error::new(Code::Bounds, "over the limit"));
+        }
+        Ok((path.replacen('~', "/home/synthetic", 1), bytes))
     }
     /// Keep a chunk as a host does: in order, and checked against its
     /// digest once whole.

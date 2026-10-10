@@ -2076,6 +2076,48 @@ impl ComputersService for Live {
         Ok(())
     }
 
+    fn screenshot(&mut self, host: &str) -> Result<Vec<u8>> {
+        use coder_access::computer::{
+            Answer, MAX_SCREENSHOT_BYTES, Request, Source, fetch_described_many,
+        };
+        let Answer::File { file } = self
+            .computer(
+                host,
+                Request::Screenshot {
+                    source: Source::Screen { screen: None },
+                },
+            )?
+            .able()?
+        else {
+            return Err(Error::new(
+                Code::Malformed,
+                "the computer did not answer a screenshot",
+            ));
+        };
+        let mut bytes = Vec::new();
+        fetch_described_many(
+            &mut |requests: Vec<Request>| self.computer_many(host, requests),
+            &file,
+            MAX_SCREENSHOT_BYTES,
+            &mut bytes,
+            &mut |_, _| {},
+        )?;
+        Ok(bytes)
+    }
+
+    fn pull_file(&mut self, host: &str, path: &str, limit: u64) -> Result<(String, Vec<u8>)> {
+        use coder_access::computer::{Request, fetch_many};
+        let mut bytes = Vec::new();
+        let file = fetch_many(
+            &mut |requests: Vec<Request>| self.computer_many(host, requests),
+            path,
+            limit,
+            &mut bytes,
+            &mut |_, _| {},
+        )?;
+        Ok((file.path, bytes))
+    }
+
     fn put_artifact(
         &mut self,
         host: &str,

@@ -250,6 +250,26 @@ pub trait ComputersService {
             "this client can't publish changes",
         ))
     }
+    /// A picture of the computer's main screen (`computer`: `screenshot`,
+    /// then the PNG read back in chunks and checked by digest). Needs
+    /// `terminal`.
+    fn screenshot(&mut self, host: &str) -> Result<Vec<u8>> {
+        let _ = host;
+        Err(Error::new(
+            Code::Unsupported,
+            "this client can't take screenshots",
+        ))
+    }
+    /// Copy a file of at most `limit` bytes from the computer (`computer`:
+    /// `stat`, then `read` in chunks, checked by digest). Answers the path
+    /// the computer read and the bytes. Needs `terminal`.
+    fn pull_file(&mut self, host: &str, path: &str, limit: u64) -> Result<(String, Vec<u8>)> {
+        let _ = (host, path, limit);
+        Err(Error::new(
+            Code::Unsupported,
+            "this client can't copy files",
+        ))
+    }
     /// Leave a nudge for a host this device could not reach: a stored note
     /// that commands wait, which the host answers with fresh presence when
     /// it reads it. Best effort; the default does nothing.

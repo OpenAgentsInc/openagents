@@ -180,4 +180,18 @@ pub enum Intent {
     OpenTerminal {
         host: String,
     },
+    /// Take a picture of the computer's screen and show it here
+    /// (`computer`: `screenshot`). Needs `terminal`.
+    Screenshot {
+        host: String,
+    },
+    /// Ask for a path, then copy that file from the computer and show it
+    /// here (`computer`: `stat` and `read`). Needs `terminal`.
+    PullFile {
+        host: String,
+    },
+    /// Stop showing what was last brought back from the computer.
+    ClearCapture {
+        host: String,
+    },
 }
