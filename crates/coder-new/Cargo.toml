@@ -51,7 +51,10 @@ globset = "0.4"
 ignore = "0.4"
 regex = "1"
 crc32fast = "1"
-tokio = { version = "1", features = ["macros", "rt", "sync", "time", "process", "io-util", "signal", "net"] }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "sync", "time", "process", "io-util", "signal", "net"] }
+# `coder issue-run`'s briefed agent (#11214).
+claude_agent_sdk = { path = "../claude_agent_sdk" }
+futures = "0.3"
 unicode-segmentation = "1"
 unicode-width = "0.2"
 

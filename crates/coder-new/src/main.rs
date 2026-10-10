@@ -69,6 +69,25 @@ fn run() -> io::Result<()> {
     if args.first().is_some_and(|command| command == "update") {
         return update_command(&args[1..]);
     }
+    let mut issue_run = None;
+    let args = if args.first().is_some_and(|command| command == "issue-run") {
+        if args
+            .iter()
+            .any(|arg| matches!(arg.as_str(), "--help" | "-h"))
+        {
+            println!("{}", coder_new::issue_run::USAGE);
+            return Ok(());
+        }
+        let options = coder_new::issue_run::Options::parse(&args[1..])
+            .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
+        if options.plain || !io::IsTerminal::is_terminal(&io::stdout()) {
+            return issue_run_plain(options);
+        }
+        issue_run = Some(options);
+        Vec::new()
+    } else {
+        args
+    };
     let mut app = App::default();
     let mut capture = false;
     let mut models = false;
@@ -210,6 +229,12 @@ fn run() -> io::Result<()> {
     if app.mode == Mode::Live && app.plugins.enabled && app.plugins.key_configured {
         app.check_key();
     }
+    let issue_snapshot = issue_run
+        .as_ref()
+        .and_then(|options| options.snapshot.clone());
+    if let Some(options) = issue_run {
+        app.watch_issue_run(coder_new::issue_run::start(options));
+    }
 
     let mut terminal = match ratatui::try_init() {
         Ok(terminal) => terminal,
@@ -259,6 +284,7 @@ fn run() -> io::Result<()> {
                 app.update_line = Some(line);
             }
             app.follow_tick();
+            app.poll_issue_run();
             background.sync(&mut app);
             app.persist_session(false);
             catalog.sync(&mut app);
@@ -300,6 +326,9 @@ fn run() -> io::Result<()> {
     app.persist_session(true);
     let extra_restore = restore_extras();
     ratatui::restore();
+    if let Some(path) = issue_snapshot {
+        write_issue_snapshot(&mut app, &path)?;
+    }
     // Background agents end with the terminal; their worktrees and
     // transcripts stay (#11163).
     if app.fleet.running() > 0 {
@@ -322,6 +351,58 @@ fn run() -> io::Result<()> {
         }
     }
     result.and(extra_restore)
+}
+
+/// `coder issue-run --plain`: the run printed as text, each item once it
+/// has finished, as the terminal screen would draw it.
+fn issue_run_plain(options: coder_new::issue_run::Options) -> io::Result<()> {
+    let width = 110;
+    let snapshot = options.snapshot.clone();
+    let feed = coder_new::issue_run::start(options);
+    let mut app = App::default();
+    app.set_mode(Mode::Live);
+    let mut printed = 0;
+    let mut out = io::stdout();
+    let flush =
+        |app: &App, printed: &mut usize, out: &mut io::Stdout, all: bool| -> io::Result<()> {
+            while let Some(entry) = app.live.entries.get(*printed) {
+                let running = matches!(entry, coder_new::live::Entry::Tool { running: true, .. });
+                if running && !all {
+                    break;
+                }
+                for line in ui::transcript_text(std::slice::from_ref(entry), width) {
+                    writeln!(out, "{line}")?;
+                }
+                *printed += 1;
+            }
+            out.flush()
+        };
+    while let Some(event) = feed.next() {
+        let notice = match &event {
+            coder_new::issue_run::Event::Notice(text) => Some(text.clone()),
+            _ => None,
+        };
+        app.apply_issue_run(event);
+        flush(&app, &mut printed, &mut out, false)?;
+        if let Some(text) = notice {
+            writeln!(out, "{text}")?;
+        }
+    }
+    flush(&app, &mut printed, &mut out, true)?;
+    if let Some(path) = snapshot {
+        write_issue_snapshot(&mut app, &path)?;
+    }
+    Ok(())
+}
+
+/// Saves the whole conversation as one tall SVG picture of the screen.
+fn write_issue_snapshot(app: &mut App, path: &std::path::Path) -> io::Result<()> {
+    let width = 120;
+    let rows = ui::transcript_text(&app.live.entries, width).len();
+    let height = u16::try_from(rows + 12).unwrap_or(u16::MAX);
+    app.live.busy = false;
+    app.scroll = 0;
+    std::fs::write(path, snapshot::svg(app, width, height))
 }
 
 /// Prepares automatic updates for this TUI session: none under CI, with
@@ -482,6 +563,7 @@ Usage:
   coder trace upload     Upload a chat to your account as a trace (coder trace --help).
   coder trace list       List the traces on your account.
   coder update           Install the newest Coder now (coder update --help).
+  coder issue-run N      Play issue N from issue to pull request as a test run (coder issue-run --help).
 
 Options:
   --in DIR            Work in DIR instead of this directory.

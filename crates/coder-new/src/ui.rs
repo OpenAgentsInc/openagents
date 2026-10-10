@@ -771,6 +771,18 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
                 lines.push(Line::default());
                 return lines;
             }
+            if name == crate::issue_run::DECISION {
+                lines.extend(crate::issue_run::cards::decision_lines(
+                    input, output, *running, width, phase,
+                ));
+                lines.push(Line::default());
+                return lines;
+            }
+            if name == crate::issue_run::SUMMARY {
+                lines.extend(crate::issue_run::cards::summary_lines(input, output, width));
+                lines.push(Line::default());
+                return lines;
+            }
             if name == "Run" {
                 lines.extend(run_lines(input, output, *running, width, phase));
                 lines.push(Line::default());
@@ -993,6 +1005,24 @@ impl TranscriptCache {
         }
         rows
     }
+}
+
+/// The conversation as plain text rows, `width` cells wide, as the screen
+/// draws it (`coder issue-run --plain`).
+#[must_use]
+pub fn transcript_text(entries: &[crate::live::Entry], width: u16) -> Vec<String> {
+    entries
+        .iter()
+        .flat_map(|entry| entry_lines(entry, width, 0))
+        .map(|line| {
+            line.spans
+                .iter()
+                .map(|span| span.content.as_ref())
+                .collect::<String>()
+                .trim_end()
+                .to_owned()
+        })
+        .collect()
 }
 
 fn live_lines(app: &App, width: u16) -> Vec<Line<'static>> {

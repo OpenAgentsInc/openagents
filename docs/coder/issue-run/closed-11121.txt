@@ -1,0 +1,523 @@
+ ❯ Play issue #11121 from issue to pull request, as a test run.
+
+ ◇ Stage Issue and starting commit · 7.0 s
+   │ #11121 Match composer queued-message editing and Up/Down history behavior
+   │ state     closed: replay it from the fix's parent and compare with the real fix
+   │ fix       086ecb70a6 coder-new: composer queue/history parity gaps (#11121)
+   │ start     db7cc4ef12 (the fix's parent)
+   │ worktree  /Users/christopherdavid/.openagents/coder-new/issue-runs/worktree (sparse, no pushes)
+   │ folder    /Users/christopherdavid/.openagents/coder-new/issue-runs/11121-1791614915
+
+ ◇ Stage Context finder · 1.5 s
+   │ Deterministic candidate stages over the repository's history, then a learned scorer (#11210)
+   │ candidates  40 files ranked at db7cc4ef12
+   │ time        index 229 ms · issue embedding 496 ms · stages and scorer 905 ms
+
+ ◇ Stage Stage emb · 6 files · 33 ms
+   │ Embedding similarity between the issue and each file's path and head
+   │ crates/coder-new/src/prompt_queue.rs              embedding rank 3 (cos 0.60)
+   │ crates/coder-chat-web/src/browser.rs              ranked by the scorer from weak signals
+   │ crates/coder-ui/src/demo/draft.rs                 ranked by the scorer from weak signals
+   │ crates/coder-ui/src/demo/tests.rs                 ranked by the scorer from weak signals
+   │ crates/rust-native-desktop/src/composer/tests.rs  changes with the seeds (co 0.19)
+   │ crates/rust-native-desktop/src/composer.rs        changes with the seeds (co 0.19)
+
+ ◇ Stage Stage co · 32 files · 1 ms
+   │ Files that changed together with the strongest candidates
+   │ crates/coder-new/src/ui.rs                changes with the seeds (co 0.42)
+   │ crates/coder-new/tests/live.rs            changes with the seeds (co 0.21)
+   │ crates/coder-new/src/lib.rs               changes with the seeds (co 0.42)
+   │ crates/coder-new/src/composer_history.rs  changes with the seeds (co 0.21)
+   │ crates/openagents-web/src/pages/chat.rs   fixed with similar #11112 (sim 0.60)
+   │ crates/openagents-web/src/chat_store.rs   ranked by the scorer from weak signals
+   │ … 26 more
+
+ ◇ Stage Stage sim · 7 files · 1 ms
+   │ Files the fixes of the most similar past issues changed
+   │ crates/coder-new/src/ui.rs                     fixed with similar #11112 (sim 0.60)
+   │ crates/openagents-web/src/pages/chat.rs        fixed with similar #11112 (sim 0.60)
+   │ crates/openagents-web/src/pages/chat_tests.rs  fixed with similar #11112 (sim 0.60)
+   │ crates/coder-new/Cargo.toml                    fixed with similar #11112 (sim 0.60)
+   │ INVARIANTS.md                                  fixed with similar #8969 (sim 0.61)
+   │ Cargo.lock                                     fixed with similar #11112 (sim 0.60)
+   │ … 1 more
+
+ ◇ Stage Stage hist · 12 files · 5 ms
+   │ Commit subjects like the issue's text
+   │ crates/coder-new/src/ui.rs                changed by a similar commit: "Implement queue-first composer…
+   │ crates/coder-new/src/prompt_queue.rs      changed by a similar commit: "Implement queue-first composer…
+   │ crates/coder-new/tests/live.rs            changed by a similar commit: "Implement queue-first composer…
+   │ crates/coder-new/src/lib.rs               changed by a similar commit: "Implement queue-first composer…
+   │ crates/coder-new/src/composer_history.rs  changed by a similar commit: "Implement queue-first composer…
+   │ crates/openagents-desktop/src/shell.rs    changes with the seeds (co 0.64)
+   │ … 6 more
+
+ ◇ Stage Stage pair · 4 files · 0 ms
+   │ Paired files: tests, mod lines, Cargo.toml, the crate's tests folder
+   │ crates/coder-new/src/lib.rs                       changes with the seeds (co 0.42)
+   │ crates/coder-new/Cargo.toml                       fixed with similar #11112 (sim 0.60)
+   │ crates/rust-native-desktop/src/composer/tests.rs  changes with the seeds (co 0.19)
+   │ crates/rust-native-desktop/src/composer.rs        changes with the seeds (co 0.19)
+
+ ◇ Stage Stage dir · 3 files
+   │ Other files in a candidate's folder
+   │ crates/rust-native-desktop/src/composer/field.rs  changes with the seeds (co 0.57)
+   │ crates/rust-native-desktop/src/composer/tests.rs  changes with the seeds (co 0.19)
+   │ crates/rust-native-desktop/src/composer.rs        changes with the seeds (co 0.19)
+
+ ◇ Stage Stage recent · 26 files · 1 ms
+   │ Files changed in the newest commits
+   │ crates/coder-new/src/ui.rs               changes with the seeds (co 0.42)
+   │ crates/coder-new/tests/live.rs           changes with the seeds (co 0.21)
+   │ crates/coder-new/src/lib.rs              changes with the seeds (co 0.42)
+   │ crates/openagents-web/src/pages/chat.rs  fixed with similar #11112 (sim 0.60)
+   │ crates/openagents-web/src/chat_store.rs  ranked by the scorer from weak signals
+   │ crates/openagents-web/src/lib.rs         changes with the top-ranked files (co 0.20)
+   │ … 20 more
+
+ ◇ Ranked Scorer ranks the candidates · 31 ms
+   │ Learned scorer (model.json): the probability that the fix touches each file
+   │  1 0.51 crates/coder-new/src/ui.rs
+   │  2 0.44 crates/coder-new/src/prompt_queue.rs
+   │  3 0.42 crates/coder-new/tests/live.rs
+   │  4 0.39 crates/coder-new/src/lib.rs
+   │  5 0.31 crates/coder-new/src/composer_history.rs
+   │  6 0.28 crates/openagents-web/src/pages/chat.rs
+   │  7 0.17 crates/openagents-web/src/chat_store.rs
+   │  8 0.17 crates/openagents-web/src/lib.rs
+   │  9 0.15 crates/openagents-desktop/src/shell.rs
+   │ 10 0.14 crates/coder-chat-web/src/browser.rs
+   │ 11 0.14 crates/openagents-web/src/pages/chat_tests.rs
+   │ 12 0.13 crates/openagents-web/src/tests.rs
+
+ ◇ Model Issue kind · Jev, TypeSafe API · jev-1.13.0 · 265 ms · $0.0000 · 1.2k tokens
+   │ ? What kind of change does this issue ask for?
+   │   bug       ██░░░░░░░░ 0.21
+   │   feature   ████████░░ 0.79  ← answer
+   │   docs      ░░░░░░░░░░ 0.00
+   │   refactor  ░░░░░░░░░░ 0.00
+   │   config    ░░░░░░░░░░ 0.00
+   │ → feature
+   │ Recorded with the run; the agent's instructions are the same for every kind today
+
+ ◇ Model Does the fix need each file? · Clef-Flash, Ollama on this computer · clef-flash · 443 ms · $0.0009…
+   │ ? Does the fix for this issue need to change this file?
+   │   ░░░░░░░░░░ 0.04 no  crates/coder-new/src/ui.rs  40 ms
+   │   ██████░░░░ 0.60 yes crates/coder-new/src/prompt_queue.rs  17 ms
+   │   █░░░░░░░░░ 0.07 no  crates/coder-new/tests/live.rs  17 ms
+   │   █░░░░░░░░░ 0.09 no  crates/coder-new/src/lib.rs  16 ms
+   │   ███░░░░░░░ 0.32 no  crates/coder-new/src/composer_history.rs  22 ms
+   │   █░░░░░░░░░ 0.06 no  crates/openagents-web/src/pages/chat.rs  23 ms
+   │   ░░░░░░░░░░ 0.05 no  crates/openagents-web/src/chat_store.rs  17 ms
+   │   █░░░░░░░░░ 0.08 no  crates/openagents-web/src/lib.rs  14 ms
+   │   ░░░░░░░░░░ 0.04 no  crates/openagents-desktop/src/shell.rs  17 ms
+   │   ██░░░░░░░░ 0.17 no  crates/coder-chat-web/src/browser.rs  17 ms
+   │   █░░░░░░░░░ 0.08 no  crates/openagents-web/src/pages/chat_tests.rs  20 ms
+   │   ░░░░░░░░░░ 0.04 no  crates/openagents-web/src/tests.rs  17 ms
+   │ A file under 0.35 leaves the briefing (at least 3 stay)
+
+ ◇ Ranked Files for the briefing
+   │ The scorer's order; 9 ruled out by the answers
+   │  1 0.44 crates/coder-new/src/prompt_queue.rs  answer 0.60
+   │  2 0.51 crates/coder-new/src/ui.rs  answer 0.04
+   │  3 0.42 crates/coder-new/tests/live.rs  answer 0.07
+
+ ◇ Briefing Briefing · 679 ms
+   │ Plan, files with excerpts, similar past changes, checks and repo rules (#11211's generator)
+   │ size     19752 characters · from coder issue-run decision steps
+   │ file     crates/coder-new/src/prompt_queue.rs
+   │ file     crates/coder-new/src/ui.rs
+   │ file     crates/coder-new/tests/live.rs
+   │ checks   check:coder-new, test:coder-new, fmt:coder-new
+   │ plan     Goal: Match composer queued-message editing and Up/Down history behavior
+   │ plan     Required: Move the cursor within the input text.
+   │ plan     Required: At the upper boundary, retrieve editable queued messages if any exist.
+   │ plan     Required: Otherwise browse submitted prompt history.
+   │ plan     Required: Navigate back to the live draft.
+   │ plan     Required: At the lower boundary of the live draft, enter footer navigation.
+   │ plan     Required: Boundary Up retrieves **all editable queued messages**, not just one.
+   │ plan     Required: Remove retrieved messages from the live execution queue immediately; they must not …
+   │ plan     Required: Preserve queue order, prepend their text to the existing draft, and join nonempty s…
+   │ plan     Change the behavior where it lives, most likely in `crates/coder-new/src/prompt_queue.rs`, `c…
+   │ plan     Add or update a test that pins the new behavior, next to the existing ones in `crates/coder-n…
+   │ plan     Run `check:coder-new`, then `test:coder-new`, then `fmt`; stop when they pass.
+   │ past     6aa2f671cb coder-new: green suite after Run streaming and composer history (#11117, #11118, #…
+   │ past     b50bc2ceb8 Qualify local Codex model labels with codex prefix
+   │ saved    /Users/christopherdavid/.openagents/coder-new/issue-runs/11121-1791614915/briefing.md
+
+ ◇ Agent Briefed agent
+   │ Claude Agent SDK session on this computer's Claude Code login
+   │ model     claude-opus-5-5
+   │ tools     Read, Edit, Write, Grep, Glob (held to the worktree) and run_check
+   │ checks    check:coder-new, test:coder-new, fmt:coder-new
+   │ briefing  3 files, 20695 characters in the system prompt
+
+ ◆ Read crates/coder-new/src/prompt_queue.rs
+   ╰ 366 lines
+
+ ◆ Grep composer_history|restore_queued_prompts|queue_hint_count
+   ╰ 51 matches in 5 files
+     crates/coder-new/src/composer_history.rs:135:        self.composer_history
+     crates/coder-new/src/composer_history.rs:154:        self.composer_history.reset();
+     crates/coder-new/src/composer_history.rs:194:        self.composer_history.last_recorded = Some(entry.id…
+     crates/coder-new/src/composer_history.rs:195:        self.composer_history.entries.push(entry);
+     crates/coder-new/src/composer_history.rs:209:        let Some(id) = self.composer_history.last_recorded.…
+     … 46 more
+
+ ◆ Read crates/coder-new/src/composer_history.rs
+   ╰ 785 lines
+
+ ◆ Grep composer_arrow|KeyCode::Esc|footer_focused
+   ╰ 16 matches in 0 files
+     99:    footer_focused: bool,
+     1374:                    KeyCode::Esc => {
+     1421:                self.footer_focused = false;
+     1539:                        KeyCode::Esc => self.screen = self.appearance_return_screen,
+     1554:                                && (key.code == KeyCode::Esc
+     … 11 more
+
+ ◆ Read crates/coder-new/src/lib.rs
+   ╰ 2080 lines
+
+Most of this behavior already exists in the code. I'm checking the edge cases against the spec to find what's
+still missing.
+claude-opus-5-5 · 17.8s
+
+ ◆ Grep side_question|btw|side question
+   ╰ 0 matches in 0 files
+
+ ◆ Grep InputMode::Bash
+   ╰ 29 matches in 4 files
+     400-        self.slash_hidden = false;
+     401-    }
+     402-
+     403-    pub fn slash_hints(&self) -> Vec<slash::Command> {
+     404:        if self.composer.mode == composer_state::InputMode::Bash
+     … 24 more
+
+ ◆ Read crates/coder-new/src/lib.rs
+   ╰ 2080 lines
+
+ ◆ Grep pub fn submit\b|pub fn submit\(|pub draft|pub notice|pub live\b|pub live:
+   ╰ 4 matches in 0 files
+     91:    pub draft: Draft,
+     111:    pub live: live::Chat,
+     142:    pub notice: Option<String>,
+     861:    pub fn submit(&mut self, text: &str, cwd: &std::path::Path) {
+
+ ◆ Read crates/coder-new/src/lib.rs
+   ╰ 2080 lines
+
+ ◆ Grep pub struct Draft|pub text|pub cursor|pub request\b|pub request:
+   ╰ 5 matches in 0 files
+     107:    pub cursor_blink_frame: u8,
+     122:    pub request: Option<live::Request>,
+     1930:pub struct Draft {
+     1931:    pub text: String,
+     1932:    pub cursor: usize,
+
+ ◆ Grep apply_update|process_prompt_queue|fn tick|pub fn poll
+   ╰ 20 matches in 6 files
+     crates/coder-new/src/lib.rs:535:    pub fn apply_update(&mut self, update: live::Update) {
+     crates/coder-new/src/lib.rs:1301:    pub fn tick(&mut self) {
+     crates/coder-new/src/delegation_events.rs:365:                app.apply_update(Update::Delegation {
+     crates/coder-new/tests/attribution.rs:60:    app.apply_update(Update::Finished {
+     crates/coder-new/tests/attribution.rs:98:    app.apply_update(Update::Finished {
+     … 15 more
+
+ ◆ Read crates/coder-new/src/lib.rs
+   ╰ 2080 lines
+
+ ◆ Read crates/coder-new/tests/live.rs
+   ╰ 780 lines
+
+ ◆ Grep process_prompt_queue\(\)
+   ╰ 9 matches in 4 files
+     /Users/christopherdavid/.openagents/coder-new/issue-runs/11121-1791614689/agent-events.jsonl:3:[Omitted …
+     /Users/christopherdavid/.openagents/coder-new/issue-runs/11121-1791614689/agent-events.jsonl:54:[Omitted…
+     crates/coder-new/src/live.rs:369:        app.process_prompt_queue();
+     crates/coder-new/src/fleet/tests.rs:410:    app.process_prompt_queue();
+     crates/coder-new/src/fleet/tests.rs:453:    app.process_prompt_queue();
+     … 4 more
+
+ ◆ Read crates/coder-new/src/live.rs
+   ╰ 969 lines
+
+I'm adding an end-to-end test in tests/live.rs that runs the issue's example through real key events.
+claude-opus-5-5 · 63.4s
+
+ ◆ Edit crates/coder-new/tests/live.rs +31 -0
+  752  }
+  753
+  754  #[test]
+  755  fn boundary_up_moves_every_queued_message_into_the_draft() {
+  756      let mut app = App::default();
+  757      app.set_mode(Mode::Live);
+  758      app.plugins.enabled = false;
+  759      let cwd = std::path::Path::new(".");
+  760      app.submit("active", cwd);
+  761      let active = app.request.take().unwrap();
+  762      app.submit("Check the tests", cwd);
+  763      app.submit("Also check formatting", cwd);
+  764      assert!(render(&mut app, 100, 30).contains("Press up to edit queued messages"));
+  765      paste(&mut app, "Focus on the launcher");
+  766      key(&mut app, KeyCode::Left);
+  767      let cursor = app.draft.cursor;
+  768      key(&mut app, KeyCode::Up);
+  769      let prefix = "Check the tests\nAlso check formatting\n";
+  770      assert_eq!(app.draft.text, format!("{prefix}Focus on the launcher"));
+  771      assert_eq!(app.draft.cursor, prefix.len() + cursor);
+  772      // Down never puts the retrieved messages back in the queue, and the
+  773      // finished turn has nothing left to run.
+  774      key(&mut app, KeyCode::End);
+  775      key(&mut app, KeyCode::Down);
+  776      app.apply_update(Update::Finished {
+  777          id: active.id,
+  778          result: Err("stopped".into()),
+  779      });
+  780      assert!(app.request.is_none());
+  781      assert_eq!(app.draft.text, format!("{prefix}Focus on the launcher"));
+  782      assert!(!render(&mut app, 100, 30).contains("Press up to edit queued messages"));
+  783  }
+  784
+  785  #[test]
+  786  fn local_codex_model_label_is_shown_above_the_input_rail() {
+  787      let mut app = App::default();
+  788      app.set_mode(Mode::Live);
+
+ ◆ Run cargo check -p coder-new --tests --message-format short
+   result: passed
+   ok
+       Finished `dev` profile [unoptimized + debuginfo] target(s) in 45.08s
+
+ ◆ Run cargo test -p coder-new -- boundary_up_moves_every_queued_message_into_the_draft
+   result: passed
+   ok
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+   test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.01s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 19 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+Passes. I'll also run the existing history and queue unit tests, then format.
+claude-opus-5-5 · 246.4s
+
+ ◆ Run cargo test -p coder-new -- composer_history
+   result: passed
+   ok
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 19 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+ ◆ Run cargo test -p coder-new -- prompt_queue
+   result: passed
+   ok
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 19 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+ ◆ Run cargo fmt -p coder-new
+   result: passed
+   ok
+
+The module filters matched no tests, so I'll run one unit test by name to see whether the library's own tests
+run under this check.
+claude-opus-5-5 · 688.6s
+
+ × Run cargo test -p coder-new -- history_cursor_direction_and_draft_restoration
+   test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 318 filtered out; finished in 0.04s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 4 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 13 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 7 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 19 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 11 filtered out; finished in 0.00s
+   test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.00s
+   error[E0463]: can't find crate for `coder`
+      --> crates/coder-new/src/approval.rs:333:9
+       |
+   333 |     use coder::task::agent::{Effect, effect};
+       |         ^^^^^ can't find crate
+
+   error[E0463]: can't find crate for `coder_cloud`
+    --> crates/coder-new/src/cloud.rs:3:5
+     |
+   3 | use coder_cloud::{Mode, Placement, Record, Spec, State, Store, boat_backend::Boat, drive};
+     |     ^^^^^^^^^^^ can't find crate
+
+   error: extern location for reqwest does not exist:
+/Users/christopherdavid/work/openagents-target-integrate/debug/deps/libreqwest-48856b74a5bdd507.rlib
+    --> crates/coder-new/src/jev_plugin.rs:7:5
+     |
+   7 | use reqwest::header::{HeaderMap, HeaderValue};
+     |     ^^^^^^^
+
+   error: aborting due to 3 previous errors
+
+   error: doctest failed, to rerun pass `-p coder-new --doc`
+   The check failed.
+
+The unit test passes. The doctest failure comes from missing build artifacts in the shared target directory,
+not from this change. One last broader run:
+claude-opus-5-5 · 715.1s
+
+ × Run cargo test -p coder-new -- queue
+   error: extern location for tokio does not exist:
+/Users/christopherdavid/work/openagents-target-integrate/debug/deps/libtokio-bd8c7acd8cfacd30.rmeta
+     --> /kache/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tokio-rustls-0.26.5/src/lib.rs:51:5
+      |
+   51 | use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite, ReadBuf};
+      |     ^^^^^
+
+   error: could not compile `tokio-rustls` (lib) due to 1 previous error
+   warning: build failed, waiting for other jobs to finish...
+   error: extern location for hyper does not exist:
+/Users/christopherdavid/work/openagents-target-integrate/debug/deps/libhyper-b772fecd5254168f.rmeta
+      -->
+/kache/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hyper-util-0.1.20/src/client/legacy/connect/mod.rs
+:308:9
+       |
+   308 |     use hyper::rt::{Read, Write};
+       |         ^^^^^
+
+   error: extern location for tokio does not exist:
+/Users/christopherdavid/work/openagents-target-integrate/debug/deps/libtokio-bd8c7acd8cfacd30.rmeta
+     -->
+/kache/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hyper-util-0.1.20/src/client/legacy/connect/dns.rs
+:31:5
+      |
+   31 | use tokio::task::JoinHandle;
+      |     ^^^^^
+
+   error: could not compile `hyper-util` (lib) due to 2 previous errors
+   The check failed.
+
+The shared build directory was changed by another build while this run was going. Retrying once:
+claude-opus-5-5 · 722.0s
+
+ × Run cargo test -p coder-new -- queue
+   error[E0463]: can't find crate for `digest`
+     --> /kache/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sha1-0.11.0/src/lib.rs:10:9
+      |
+   10 | pub use digest::{self, Digest};
+      |         ^^^^^^ can't find crate
+
+   error: could not compile `sha1` (lib) due to 1 previous error
+   warning: build failed, waiting for other jobs to finish...
+   The check failed.
+
+I didn't need to change any product code: the composer behavior in #11121 was already built in
+composer_history.rs, prompt_queue.rs and lib.rs. I checked it against the spec and added one end-to-end test,
+boundary_up_moves_every_queued_message_into_the_draft, in crates/coder-new/tests/live.rs.
+
+The test runs the issue's example through real key presses. It checks that the "Press up to edit queued
+messages" hint shows, and that Up brings back both queued messages in order above the draft, keeping the
+cursor in the same place in the draft text. It also checks that pressing Down doesn't put them back in the
+queue, nothing runs when the turn finishes, and the hint goes away afterwards.
+
+• Passed: the compile check, the new test, a spot-check of one existing history unit test, and fmt.
+• Not confirmed: I couldn't confirm the other existing history and queue unit tests in this session. My
+  filters composer_history and prompt_queue matched no tests, and two retries with a broader filter didn't
+  compile. Another build was changing the shared build folder (openagents-target-integrate) at the same time,
+  and that was also behind a doctest failure (missing crates coder and coder_cloud). None of these errors
+  point at the new test. Running cargo test -p coder-new once the shared build folder is quiet would close
+  this gap.
+claude-opus-5-5 · 736.7s
+
+ × Run cargo check -p coder-new --tests --message-format short
+   error: could not compile `wit-parser` (lib) due to 42 previous errors
+   warning: build failed, waiting for other jobs to finish...
+   The check failed.
+
+ ■ Summary #11121 Match composer queued-message editing and Up/Down history behavior
+   │ time      12m 32s in all · the agent 12m 16s over 26 turns
+   │ tokens    839.3k in (786.6k read from cache, 52.7k written to it) · 8.4k out
+   │ cost      $0.75 · the agent $0.75 (as Claude Code reports it), the decisions $0.0009
+   │ checks    check:coder-new failed
+   │ agent ran check:coder-new passed  fmt:coder-new passed  test:coder-new failed
+   │ outside   3 not in the briefing: crates/coder-new/src/composer_history.rs, crates/coder-new/src/lib.rs…
+   │ diff      1 file +31 -0: crates/coder-new/tests/live.rs
+   │ real fix  086ecb70a6 changed 1 file; the agent changed 0 of them; the briefing listed 1
+   │ not done  The real fix also changed crates/coder-new/src/prompt_queue.rs
+   │ reply     I didn't need to change any product code: the composer behavior in #11121 was already built …
+   │
+   │           The test runs the issue's example through real key presses. It checks that the "Press up to …
+   │
+   │ kept in   /Users/christopherdavid/.openagents/coder-new/issue-runs/11121-1791614915
+   crates/coder-new/tests/live.rs
+     751      assert!(canvas.contains("Could not start command"));
+     752  }
+     753
+     754  #[test]
+     755  fn boundary_up_moves_every_queued_message_into_the_draft() {
+     756      let mut app = App::default();
+     757      app.set_mode(Mode::Live);
+     758      app.plugins.enabled = false;
+     759      let cwd = std::path::Path::new(".");
+     760      app.submit("active", cwd);
+     761      let active = app.request.take().unwrap();
+     762      app.submit("Check the tests", cwd);
+     763      app.submit("Also check formatting", cwd);
+     764      assert!(render(&mut app, 100, 30).contains("Press up to edit queued messages"));
+     765      paste(&mut app, "Focus on the launcher");
+     766      key(&mut app, KeyCode::Left);
+     767      let cursor = app.draft.cursor;
+     768      key(&mut app, KeyCode::Up);
+     769      let prefix = "Check the tests\nAlso check formatting\n";
+     770      assert_eq!(app.draft.text, format!("{prefix}Focus on the launcher"));
+     771      assert_eq!(app.draft.cursor, prefix.len() + cursor);
+     772      // Down never puts the retrieved messages back in the queue, and the
+     773      // finished turn has nothing left to run.
+     774      key(&mut app, KeyCode::End);
+     775      key(&mut app, KeyCode::Down);
+     776      app.apply_update(Update::Finished {
+     777          id: active.id,
+     778          result: Err("stopped".into()),
+     779      });
+     780      assert!(app.request.is_none());
+     781      assert_eq!(app.draft.text, format!("{prefix}Focus on the launcher"));
+     782      assert!(!render(&mut app, 100, 30).contains("Press up to edit queued messages"));
+     783  }
+     784
+     785  #[test]
+     786  fn local_codex_model_label_is_shown_above_the_input_rail() {
+     787      let mut app = App::default();
+
+Test run finished. Working copy: /Users/christopherdavid/.openagents/coder-new/issue-runs/worktree. Recording: /Users/christopherdavid/.openagents/coder-new/issue-runs/11121-1791614915/events.jsonl.

@@ -31,7 +31,7 @@ pub struct Chat {
     pub(crate) cache: crate::ui::TranscriptCache,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Entry {
     User(String),
     Assistant {

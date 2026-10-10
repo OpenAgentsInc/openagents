@@ -1,0 +1,527 @@
+ ❯ Play issue #11159 from issue to pull request, as a test run.
+
+ ◇ Stage Issue and starting commit · 14.4 s
+   │ #11159 Web: /coder/* and security.txt are not owned routes, so --upstream forwards them (with the app'…
+   │ state     open: start from the newest main
+   │ start     f3e551cd46 (origin/main)
+   │ worktree  /Users/christopherdavid/.openagents/coder-new/issue-runs/worktree (sparse, no pushes)
+   │ folder    /Users/christopherdavid/.openagents/coder-new/issue-runs/11159-1791616375
+
+ ◇ Stage Context finder · 5.6 s
+   │ Deterministic candidate stages over the repository's history, then a learned scorer (#11210)
+   │ candidates  40 files ranked at f3e551cd46
+   │ time        index 3651 ms · issue embedding 507 ms · stages and scorer 4849 ms
+
+ ◇ Stage Stage emb · 25 files · 85 ms
+   │ Embedding similarity between the issue and each file's path and head
+   │ crates/openagents-web/src/upstream.rs    embedding rank 1 (cos 0.64)
+   │ crates/openagents-web/src/lib.rs         crate `openagents-web` named in the issue
+   │ crates/openagents-web/src/tests.rs       contains `/.well-known/security.txt`, `crates/openagents-web/…
+   │ crates/openagents-web/src/coder_sync.rs  issue names `coder_sync.rs`
+   │ crates/openagents-web/Cargo.toml         crate `openagents-web` named in the issue
+   │ crates/openagents-web/src/pages/mod.rs   embedding rank 2 (cos 0.59)
+   │ … 19 more
+
+ ◇ Stage Stage sym · 16 files · 556 ms
+   │ Paths, file and crate names, identifiers and strings the issue names
+   │ crates/openagents-web/src/upstream.rs    embedding rank 1 (cos 0.64)
+   │ crates/openagents-web/src/lib.rs         crate `openagents-web` named in the issue
+   │ crates/openagents-web/src/oauth.rs       contains `Authorization: Bearer sess_...`
+   │ crates/openagents-web/src/tests.rs       contains `/.well-known/security.txt`, `crates/openagents-web/…
+   │ crates/openagents-web/src/coder_sync.rs  issue names `coder_sync.rs`
+   │ crates/openagents-web/Cargo.toml         crate `openagents-web` named in the issue
+   │ … 10 more
+
+ ◇ Stage Stage co · 37 files · 3 ms
+   │ Files that changed together with the strongest candidates
+   │ crates/openagents-web/src/upstream.rs          embedding rank 1 (cos 0.64)
+   │ crates/openagents-web/src/lib.rs               changes with the seeds (co 2.20)
+   │ crates/openagents-web/src/tests.rs             changes with the seeds (co 2.22)
+   │ crates/openagents-web/src/coder_sync.rs        changes with the seeds (co 0.30)
+   │ crates/openagents-web/Cargo.toml               changes with the seeds (co 1.49)
+   │ crates/openagents-web/src/pages/chat_tests.rs  changes with the seeds (co 0.96)
+   │ … 31 more
+
+ ◇ Stage Stage sim · 7 files · 1 ms
+   │ Files the fixes of the most similar past issues changed
+   │ crates/openagents-web/src/upstream.rs   embedding rank 1 (cos 0.64)
+   │ crates/openagents-web/src/lib.rs        fixed with similar #10128 (sim 0.54)
+   │ crates/openagents-web/src/tests.rs      fixed with similar #10128 (sim 0.54)
+   │ crates/openagents-web/Cargo.toml        fixed with similar #10128 (sim 0.54)
+   │ crates/openagents-web/src/main.rs       fixed with similar #10128 (sim 0.54)
+   │ crates/openagents-web/src/pages/mod.rs  fixed with similar #10128 (sim 0.54)
+   │ … 1 more
+
+ ◇ Stage Stage hist · 18 files · 3 ms
+   │ Commit subjects like the issue's text
+   │ crates/openagents-web/src/upstream.rs          embedding rank 1 (cos 0.64)
+   │ crates/openagents-web/src/lib.rs               crate `openagents-web` named in the issue
+   │ crates/openagents-web/src/tests.rs             contains `/.well-known/security.txt`, `crates/openagent…
+   │ crates/openagents-web/Cargo.toml               crate `openagents-web` named in the issue
+   │ crates/openagents-web/src/pages/chat_tests.rs  changes with the seeds (co 0.96)
+   │ crates/openagents-web/src/main.rs              crate `openagents-web` named in the issue
+   │ … 12 more
+
+ ◇ Stage Stage pair · 8 files · 1 ms
+   │ Paired files: tests, mod lines, Cargo.toml, the crate's tests folder
+   │ crates/openagents-web/src/lib.rs               crate `openagents-web` named in the issue
+   │ crates/openagents-web/src/tests.rs             contains `/.well-known/security.txt`, `crates/openagent…
+   │ crates/openagents-web/Cargo.toml               crate `openagents-web` named in the issue
+   │ crates/openagents-web/src/pages/chat_tests.rs  changes with the seeds (co 0.96)
+   │ crates/openagents-web/src/main.rs              crate `openagents-web` named in the issue
+   │ crates/openagents-web/src/pages/mod.rs         embedding rank 2 (cos 0.59)
+   │ … 2 more
+
+ ◇ Stage Stage dir · 31 files
+   │ Other files in a candidate's folder
+   │ crates/openagents-web/src/upstream.rs    embedding rank 1 (cos 0.64)
+   │ crates/openagents-web/src/lib.rs         crate `openagents-web` named in the issue
+   │ crates/openagents-web/src/oauth.rs       contains `Authorization: Bearer sess_...`
+   │ crates/openagents-web/src/tests.rs       contains `/.well-known/security.txt`, `crates/openagents-web/…
+   │ crates/openagents-web/src/coder_sync.rs  issue names `coder_sync.rs`
+   │ crates/openagents-web/Cargo.toml         crate `openagents-web` named in the issue
+   │ … 25 more
+
+ ◇ Stage Stage recent · 29 files · 1 ms
+   │ Files changed in the newest commits
+   │ crates/openagents-web/src/upstream.rs          embedding rank 1 (cos 0.64)
+   │ crates/openagents-web/src/lib.rs               crate `openagents-web` named in the issue
+   │ crates/openagents-web/src/tests.rs             contains `/.well-known/security.txt`, `crates/openagent…
+   │ crates/openagents-web/src/coder_sync.rs        issue names `coder_sync.rs`
+   │ crates/openagents-web/Cargo.toml               crate `openagents-web` named in the issue
+   │ crates/openagents-web/src/pages/chat_tests.rs  changes with the seeds (co 0.96)
+   │ … 23 more
+
+ ◇ Ranked Scorer ranks the candidates · 39 ms
+   │ Learned scorer (model.json): the probability that the fix touches each file
+   │  1 0.73 crates/openagents-web/src/upstream.rs
+   │  2 0.70 crates/openagents-web/src/lib.rs
+   │  3 0.69 crates/openagents-web/src/oauth.rs
+   │  4 0.62 crates/openagents-web/src/tests.rs
+   │  5 0.60 crates/openagents-web/src/coder_sync.rs
+   │  6 0.51 crates/openagents-web/Cargo.toml
+   │  7 0.51 crates/openagents-web/src/pages/chat_tests.rs
+   │  8 0.46 crates/openagents-web/src/main.rs
+   │  9 0.44 crates/openagents-web/src/pages/mod.rs
+   │ 10 0.42 crates/openagents-web/src/account_memory.rs
+   │ 11 0.42 crates/openagents-web/src/projects/tests.rs
+   │ 12 0.41 crates/coder-sync/src/lib.rs
+
+ ◇ Model Issue kind · Jev, TypeSafe API · jev-1.13.0 · 246 ms · under $0.0001 · 541 tokens
+   │ ? What kind of change does this issue ask for?
+   │   bug       ██████████ 1.00  ← answer
+   │   feature   ░░░░░░░░░░ 0.00
+   │   docs      ░░░░░░░░░░ 0.00
+   │   refactor  ░░░░░░░░░░ 0.00
+   │   config    ░░░░░░░░░░ 0.00
+   │ → bug
+   │ Recorded with the run; the agent's instructions are the same for every kind today
+
+ ◇ Model Does the fix need each file? · Clef-Flash, Ollama on this computer · clef-flash · 17.0 s · $0.0006…
+   │ ? Does the fix for this issue need to change this file?
+   │   █████████░ 0.93 yes crates/openagents-web/src/upstream.rs  3.0 s
+   │   █░░░░░░░░░ 0.08 no  crates/openagents-web/src/lib.rs  1.1 s
+   │   ░░░░░░░░░░ 0.04 no  crates/openagents-web/src/oauth.rs  1.3 s
+   │   ████████░░ 0.83 yes crates/openagents-web/src/tests.rs  972 ms
+   │   ░░░░░░░░░░ 0.04 no  crates/openagents-web/src/coder_sync.rs  1.5 s
+   │   ░░░░░░░░░░ 0.03 no  crates/openagents-web/Cargo.toml  1.4 s
+   │   █░░░░░░░░░ 0.07 no  crates/openagents-web/src/pages/chat_tests.rs  867 ms
+   │   ░░░░░░░░░░ 0.02 no  crates/openagents-web/src/main.rs  1.5 s
+   │   ░░░░░░░░░░ 0.03 no  crates/openagents-web/src/pages/mod.rs  700 ms
+   │   ░░░░░░░░░░ 0.04 no  crates/openagents-web/src/account_memory.rs  1.3 s
+   │   █░░░░░░░░░ 0.08 no  crates/openagents-web/src/projects/tests.rs  990 ms
+   │   ░░░░░░░░░░ 0.02 no  crates/coder-sync/src/lib.rs  1.5 s
+   │ A file under 0.35 leaves the briefing (at least 3 stay)
+
+ ◇ Ranked Files for the briefing
+   │ The scorer's order; 9 ruled out by the answers
+   │  1 0.73 crates/openagents-web/src/upstream.rs  answer 0.93
+   │  2 0.62 crates/openagents-web/src/tests.rs  answer 0.83
+   │  3 0.70 crates/openagents-web/src/lib.rs  answer 0.08
+
+ ◇ Briefing Briefing · 1.4 s
+   │ Plan, files with excerpts, similar past changes, checks and repo rules (#11211's generator)
+   │ size     11488 characters · from coder issue-run decision steps
+   │ file     crates/openagents-web/src/upstream.rs
+   │ file     crates/openagents-web/src/tests.rs
+   │ file     crates/openagents-web/src/lib.rs
+   │ checks   check:openagents-web, test:openagents-web, fmt:openagents-web
+   │ plan     Goal: Web: /coder/* and security.txt are not owned routes, so --upstream forwards them (with …
+   │ plan     Change the behavior where it lives, most likely in `crates/openagents-web/src/upstream.rs`, `…
+   │ plan     Add or update a test that pins the new behavior, next to the existing ones in `crates/openage…
+   │ plan     Run `check:openagents-web`, then `test:openagents-web`, then `fmt`; stop when they pass.
+   │ past     76f465cf9d Home: cards come from the shared new-chat list (openagents_chat::home_cards); Meet…
+   │ saved    /Users/christopherdavid/.openagents/coder-new/issue-runs/11159-1791616375/briefing.md
+
+ ◇ Agent Briefed agent
+   │ Claude Agent SDK session on this computer's Claude Code login
+   │ model     claude-opus-5-5
+   │ tools     Read, Edit, Write, Grep, Glob (held to the worktree) and run_check
+   │ checks    check:openagents-web, test:openagents-web, fmt:openagents-web
+   │ briefing  3 files, 12431 characters in the system prompt
+
+ ◆ Read crates/openagents-web/src/upstream.rs
+   ╰ 296 lines
+
+ ◆ Grep route\(\s*"|nest\(|coder|security\.txt
+   ╰ 17 matches in 0 files
+     31:mod coder_sync;
+     161:    pub environments: Option<Arc<coder_environment_operator::studio::Studio>>,
+     238:        .route("/api/v1/{*path}", axum::routing::any(api_proxy))
+     239:        .route("/api/flow/{*path}", get(pay_proxy))
+     240:        .route("/api/stats", get(pay_proxy))
+     … 12 more
+
+ ◆ Read crates/openagents-web/src/upstream.rs
+   ╰ 296 lines
+
+ ◆ Read crates/openagents-web/src/lib.rs
+   ╰ 646 lines
+
+ ◆ Grep route\(|"/
+   ╰ 9 matches in 0 files
+     62:        .route("/coder/sessions", get(list))
+     63:        .route("/coder/sessions/{session}", put(upload).delete(forget))
+     64:        .route("/coder/sessions/{session}/status", post(status))
+     65:        .route("/coder/sessions/{session}/replies", post(replies))
+     66:        .route("/coder/check-in", post(check_in_route))
+     … 4 more
+
+ ◆ Edit crates/openagents-web/src/upstream.rs +2 -1
+  106  /// which are proxied, load their own (`/static/coder.css`,
+  107  /// `/static/webtui.css`, `/static/favicon.png`), so the rest of `/static/`
+  108  /// goes upstream.
+  109  const OWNED_PREFIXES: [&str; 17] = [
+  109  const OWNED_PREFIXES: [&str; 18] = [
+  110      "/auth/",
+  111      "/coder/",
+  112      "/device/",
+  113      "/docs/",
+  114      "/studios/blue-rush/",
+
+ ◆ Grep upstream::owned|fn .*owned
+   ╰ 202 matches in 23 files
+     332-    assert!(policy.contains("style-src 'self'"), "{policy}");
+     333-    assert!(!policy.contains("'unsafe-inline'"), "{policy}");
+     334-    assert!(!policy.contains("'unsafe-eval'"), "{policy}");
+     335:    assert!(upstream::owned("/ui"));
+     336-}
+     … 197 more
+
+ ◆ Edit crates/openagents-web/src/tests.rs +53 -0
+  2045      }
+  2046  }
+  2047
+  2048  /// Every path the router mounts with a literal `.route("...")` is owned, so
+  2049  /// `--upstream` never forwards a request (or its bearer) meant for this site.
+  2050  /// `/api/v1/` is the inference API, which goes upstream unless an inference
+  2051  /// service is configured.
+  2052  #[test]
+  2053  fn every_mounted_route_is_owned() {
+  2054      fn sources(dir: &std::path::Path, out: &mut Vec<PathBuf>) {
+  2055          for entry in std::fs::read_dir(dir).unwrap() {
+  2056              let path = entry.unwrap().path();
+  2057              if path.is_dir() {
+  2058                  sources(&path, out);
+  2059              } else if path.extension().is_some_and(|ext| ext == "rs") {
+  2060                  out.push(path);
+  2061              }
+  2062          }
+  2063      }
+  2064      let mut files = Vec::new();
+  2065      sources(
+  2066          &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+  2067          &mut files,
+  2068      );
+  2069      let mut checked = 0;
+  2070      for file in files {
+  2071          let text = std::fs::read_to_string(&file).unwrap();
+  2072          for piece in text.split(".route(\"").skip(1) {
+  2073              let route = &piece[..piece.find('"').unwrap()];
+  2074              if route.starts_with("/api/v1/") {
+  2075                  continue;
+  2076              }
+  2077              // `{param}` and `{*rest}` become a sample segment.
+  2078              let mut path = String::new();
+  2079              for segment in route.split('/').skip(1) {
+  2080                  path.push('/');
+  2081                  path.push_str(if segment.starts_with('{') {
+  2082                      "x"
+  2083                  } else {
+  2084                      segment
+  2085                  });
+  2086              }
+  2087              assert!(
+  2088                  upstream::owned(&path),
+  2089                  "{} mounts {route}",
+  2090                  file.display()
+  2091              );
+  2092              checked += 1;
+  2093          }
+  2094      }
+  2095      assert!(checked > 50, "{checked}");
+  2096      for path in ["/coder/sessions", "/coder/sync", "/coder/check-in"] {
+  2097          assert!(upstream::owned(path), "{path}");
+  2098      }
+  2099  }
+  2100
+  2101  #[tokio::test]
+  2102  async fn unowned_paths_are_proxied_with_their_method_host_body_and_status() {
+  2103      use std::sync::atomic::Ordering;
+
+ × Run cargo test -p openagents-web -- every_mounted_route_is_owned
+   failures:
+   ---- tests::every_mounted_route_is_owned stdout ----
+
+   thread 'tests::every_mounted_route_is_owned' (47658489) panicked at
+crates/openagents-web/src/tests.rs:2087:13:
+   /Users/christopherdavid/.openagents/coder-new/issue-runs/worktree/crates/openagents-web/src/cloud/tests.rs
+mounts /v1/sessions
+   note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+   failures:
+   test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 411 filtered out; finished in 0.01s
+   warning: unused imports: `BUNNY_CANVAS`, `BUNNY_GLUE`, `BUNNY_POLICY`, `BUNNY_START`, and `BUNNY_WASM`
+     --> crates/openagents-web/src/pages/mod.rs:26:24
+      |
+   26 | pub(crate) use bunny::{BUNNY_CANVAS, BUNNY_GLUE, BUNNY_POLICY, BUNNY_START, BUNNY_WASM};
+      |                        ^^^^^^^^^^^^  ^^^^^^^^^^  ^^^^^^^^^^^^  ^^^^^^^^^^^  ^^^^^^^^^^
+      |
+      = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+   warning: unused imports: `CANVAS_ID`, `EVERGLADE_POLICY`, `GLUE`, and `WASM`
+     --> crates/openagents-web/src/pages/mod.rs:38:28
+      |
+   38 | pub(crate) use everglade::{CANVAS_ID, EVERGLADE_POLICY, GLUE, WASM};
+      |                            ^^^^^^^^^  ^^^^^^^^^^^^^^^^  ^^^^  ^^^^
+
+   warning: unused variable: `headers`
+      --> crates/openagents-web/src/composer.rs:587:5
+       |
+   587 |     headers: &HeaderMap,
+       |     ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_headers`
+       |
+       = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+   error: test failed, to rerun pass `-p openagents-web --lib`
+   The check failed.
+
+Test files mount fake servers; skip files named tests.rs / under tests/.
+claude-opus-5-5 · 327.3s
+
+ ◆ Edit crates/openagents-web/src/tests.rs +4 -1
+  2056              let path = entry.unwrap().path();
+  2057              if path.is_dir() {
+  2058                  sources(&path, out);
+  2059              } else if path.extension().is_some_and(|ext| ext == "rs") {
+  2059              } else if path.extension().is_some_and(|ext| ext == "rs")
+  2060                  // Test files mount stand-in servers, not the site.
+  2061                  && !path.file_name().is_some_and(|name| name == "tests.rs")
+  2062              {
+  2063                  out.push(path);
+  2064              }
+  2065          }
+
+ × Run cargo test -p openagents-web -- every_mounted_route_is_owned
+   failures:
+   ---- tests::every_mounted_route_is_owned stdout ----
+
+   thread 'tests::every_mounted_route_is_owned' (47712467) panicked at
+crates/openagents-web/src/tests.rs:2090:13:
+
+/Users/christopherdavid/.openagents/coder-new/issue-runs/worktree/crates/openagents-web/src/pages/profile.rs
+mounts /u/{login}
+   note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+   failures:
+   test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 411 filtered out; finished in 0.01s
+   warning: unused imports: `BUNNY_CANVAS`, `BUNNY_GLUE`, `BUNNY_POLICY`, `BUNNY_START`, and `BUNNY_WASM`
+     --> crates/openagents-web/src/pages/mod.rs:26:24
+      |
+   26 | pub(crate) use bunny::{BUNNY_CANVAS, BUNNY_GLUE, BUNNY_POLICY, BUNNY_START, BUNNY_WASM};
+      |                        ^^^^^^^^^^^^  ^^^^^^^^^^  ^^^^^^^^^^^^  ^^^^^^^^^^^  ^^^^^^^^^^
+      |
+      = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+   warning: unused imports: `CANVAS_ID`, `EVERGLADE_POLICY`, `GLUE`, and `WASM`
+     --> crates/openagents-web/src/pages/mod.rs:38:28
+      |
+   38 | pub(crate) use everglade::{CANVAS_ID, EVERGLADE_POLICY, GLUE, WASM};
+      |                            ^^^^^^^^^  ^^^^^^^^^^^^^^^^  ^^^^  ^^^^
+
+   warning: unused variable: `headers`
+      --> crates/openagents-web/src/composer.rs:587:5
+       |
+   587 |     headers: &HeaderMap,
+       |     ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_headers`
+       |
+       = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+   error: test failed, to rerun pass `-p openagents-web --lib`
+   The check failed.
+
+ ◆ Grep /u/
+   ╰ 4 matches in 2 files
+     crates/openagents-web/src/markdown.rs:382:            "![x](/u/me.png)",
+     crates/openagents-web/src/pages/profile.rs:1://! The public profile at `/u/{login}`: what a person made …
+     crates/openagents-web/src/pages/profile.rs:32:    Router::new().route("/u/{login}", get(profile))
+     crates/openagents-web/src/pages/profile.rs:43:    let path = format!("/u/{}", segment(&login));
+
+Profiles are deliberately left to the upstream (an existing test asserts /u/someone is unowned), so I'll list
+it as a named exception.
+claude-opus-5-5 · 445.9s
+
+ ◆ Edit crates/openagents-web/src/tests.rs +1 -1
+  2074          let text = std::fs::read_to_string(&file).unwrap();
+  2075          for piece in text.split(".route(\"").skip(1) {
+  2076              let route = &piece[..piece.find('"').unwrap()];
+  2077              if route.starts_with("/api/v1/") {
+  2077              if route.starts_with("/api/v1/") || route.starts_with("/u/") {
+  2078                  continue;
+  2079              }
+  2080              // `{param}` and `{*rest}` become a sample segment.
+
+ ◆ Edit crates/openagents-web/src/tests.rs +1 -1
+  2048  /// Every path the router mounts with a literal `.route("...")` is owned, so
+  2049  /// `--upstream` never forwards a request (or its bearer) meant for this site.
+  2050  /// `/api/v1/` is the inference API, which goes upstream unless an inference
+  2051  /// service is configured.
+  2051  /// service is configured, and `/u/` profiles are still the previous server's.
+  2052  #[test]
+  2053  fn every_mounted_route_is_owned() {
+  2054      fn sources(dir: &std::path::Path, out: &mut Vec<PathBuf>) {
+
+ ◆ Run cargo test -p openagents-web -- every_mounted_route_is_owned
+   result: passed
+   ok
+   test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 411 filtered out; finished in 0.01s
+   warning: unused imports: `BUNNY_CANVAS`, `BUNNY_GLUE`, `BUNNY_POLICY`, `BUNNY_START`, and `BUNNY_WASM`
+   warning: unused imports: `CANVAS_ID`, `EVERGLADE_POLICY`, `GLUE`, and `WASM`
+   warning: unused variable: `headers`
+
+ ◆ Run cargo test -p openagents-web -- owned
+   result: passed
+   ok
+   test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 406 filtered out; finished in 4.21s
+   warning: unused imports: `BUNNY_CANVAS`, `BUNNY_GLUE`, `BUNNY_POLICY`, `BUNNY_START`, and `BUNNY_WASM`
+   warning: unused imports: `CANVAS_ID`, `EVERGLADE_POLICY`, `GLUE`, and `WASM`
+   warning: unused variable: `headers`
+
+ ◆ Run cargo fmt -p openagents-web
+   result: passed
+   ok
+
+With --upstream set, requests under /coder/ are now answered by this site, so terminal sync calls and their
+sess_ bearer no longer go to the upstream server. The fix adds /coder/ to OWNED_PREFIXES in upstream.rs.
+/.well-known/security.txt and /security.txt were already owned at this commit, and an existing test covers
+them.
+
+The new test, every_mounted_route_is_owned in tests.rs, scans the crate's source for every .route("...") path
+and checks that each one is owned. It skips tests.rs files, which set up stand-in servers. It also skips two
+paths that are meant to go upstream: /api/v1/ (the inference API) and /u/ profiles, which an existing test
+already expects to be forwarded. Routes registered through a constant rather than a written-out path aren't
+scanned, so the test doesn't cover those. The new test and the existing ownership tests pass, and fmt is
+clean.
+claude-opus-5-5 · 472.1s
+
+ ◆ Run cargo check -p openagents-web --tests --message-format short
+   result: passed
+   ok
+       Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 02s
+
+ ■ Summary #11159 Web: /coder/* and security.txt are not owned routes, so --upstream forwards them (with the…
+   │ time      9m 34s in all · the agent 7m 52s over 18 turns
+   │ tokens    182.6k in (156.8k read from cache, 25.8k written to it) · 4.0k out
+   │ cost      $0.32 · the agent $0.32 (as Claude Code reports it), the decisions $0.0006
+   │ checks    check:openagents-web passed
+   │ agent ran test:openagents-web passed  fmt:openagents-web passed
+   │ outside   The agent opened no file the briefing did not list
+   │ diff      3 files +59 -2: crates/openagents-web/src/answer_ui.rs, crates/openagents-web/src/tests.rs, …
+   │ reply     With `--upstream` set, requests under `/coder/` are now answered by this site, so terminal s…
+   │           The new test, `every_mounted_route_is_owned` in `tests.rs`, scans the crate's source for eve…
+   │ kept in   /Users/christopherdavid/.openagents/coder-new/issue-runs/11159-1791616375
+   crates/openagents-web/src/answer_ui.rs
+     102              }
+     103              Node::Command { unix, windows } => match windows {
+     104                  Some(windows) => Tabs::new(&self.name(), "Install command")
+     105                      .tab_for("unix", UNIX_LABEL, CodeBlock::new(unix).language("bash").wrap(true))
+     105                      .tab_for(
+     106                          "unix",
+     107                          UNIX_LABEL,
+     108                          CodeBlock::new(unix).language("bash").wrap(true),
+     109                      )
+     110                      .tab_for(
+     111                          "windows",
+     112                          WINDOWS_LABEL,
+   crates/openagents-web/src/tests.rs
+     2045      }
+     2046  }
+     2047
+     2048  /// Every path the router mounts with a literal `.route("...")` is owned, so
+     2049  /// `--upstream` never forwards a request (or its bearer) meant for this site.
+     2050  /// `/api/v1/` is the inference API, which goes upstream unless an inference
+     2051  /// service is configured, and `/u/` profiles are still the previous server's.
+     2052  #[test]
+     2053  fn every_mounted_route_is_owned() {
+     2054      fn sources(dir: &std::path::Path, out: &mut Vec<PathBuf>) {
+     2055          for entry in std::fs::read_dir(dir).unwrap() {
+     2056              let path = entry.unwrap().path();
+     2057              if path.is_dir() {
+     2058                  sources(&path, out);
+     2059              } else if path.extension().is_some_and(|ext| ext == "rs")
+     2060                  // Test files mount stand-in servers, not the site.
+     2061                  && !path.file_name().is_some_and(|name| name == "tests.rs")
+     2062              {
+     2063                  out.push(path);
+     2064              }
+     2065          }
+     2066      }
+     2067      let mut files = Vec::new();
+     2068      sources(
+     2069          &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+     2070          &mut files,
+     2071      );
+     2072      let mut checked = 0;
+     2073      for file in files {
+     2074          let text = std::fs::read_to_string(&file).unwrap();
+     2075          for piece in text.split(".route(\"").skip(1) {
+     2076              let route = &piece[..piece.find('"').unwrap()];
+     2077              if route.starts_with("/api/v1/") || route.starts_with("/u/") {
+     2078                  continue;
+     2079              }
+     2080              // `{param}` and `{*rest}` become a sample segment.
+     2081              let mut path = String::new();
+     2082              for segment in route.split('/').skip(1) {
+     2083                  path.push('/');
+     2084                  path.push_str(if segment.starts_with('{') {
+     2085                      "x"
+     2086                  } else {
+     2087                      segment
+     2088                  });
+     2089              }
+     2090              assert!(upstream::owned(&path), "{} mounts {route}", file.display());
+     2091              checked += 1;
+     2092          }
+     2093      }
+     2094      assert!(checked > 50, "{checked}");
+     2095      for path in ["/coder/sessions", "/coder/sync", "/coder/check-in"] {
+     2096          assert!(upstream::owned(path), "{path}");
+     2097      }
+     2098  }
+     2099
+     2100  #[tokio::test]
+     2101  async fn unowned_paths_are_proxied_with_their_method_host_body_and_status() {
+     2102      use std::sync::atomic::Ordering;
+   crates/openagents-web/src/upstream.rs
+     106  /// which are proxied, load their own (`/static/coder.css`,
+     107  /// `/static/webtui.css`, `/static/favicon.png`), so the rest of `/static/`
+     108  /// goes upstream.
+     109  const OWNED_PREFIXES: [&str; 17] = [
+     109  const OWNED_PREFIXES: [&str; 18] = [
+     110      "/auth/",
+     111      "/coder/",
+     112      "/device/",
+     113      "/docs/",
+     114      "/studios/blue-rush/",
+
+Test run finished. Working copy: /Users/christopherdavid/.openagents/coder-new/issue-runs/worktree. Recording: /Users/christopherdavid/.openagents/coder-new/issue-runs/11159-1791616375/events.jsonl.

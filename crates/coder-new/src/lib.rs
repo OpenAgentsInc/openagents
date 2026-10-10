@@ -25,6 +25,7 @@ mod demo;
 pub mod file_tools;
 pub mod fleet;
 mod fleet_app;
+pub mod issue_run;
 pub mod jev_plugin;
 pub mod live;
 pub mod media;
@@ -174,6 +175,8 @@ pub struct App {
     appearance_return_screen: Screen,
     appearance_error: Option<String>,
     saved_chats: [Chat; 6],
+    /// A `coder issue-run` in this terminal (#11214).
+    issue_run: Option<issue_run::Feed>,
 }
 
 #[derive(Default)]
@@ -389,6 +392,43 @@ impl App {
             self.scroll = u16::MAX;
         } else {
             child.scroll = u16::MAX;
+        }
+    }
+
+    /// Shows a `coder issue-run` in this conversation as it happens.
+    pub fn watch_issue_run(&mut self, feed: issue_run::Feed) {
+        self.issue_run = Some(feed);
+        self.scroll = u16::MAX;
+    }
+
+    /// Applies the issue run's latest changes. Returns whether any arrived.
+    pub fn poll_issue_run(&mut self) -> bool {
+        let Some(feed) = &self.issue_run else {
+            return false;
+        };
+        let events = feed.drain();
+        let changed = !events.is_empty();
+        for event in events {
+            self.apply_issue_run(event);
+        }
+        changed
+    }
+
+    /// Applies one issue-run change to the conversation.
+    pub fn apply_issue_run(&mut self, event: issue_run::Event) {
+        match event {
+            issue_run::Event::Set { index, entry } => {
+                if index < self.live.entries.len() {
+                    self.live.entries[index] = entry;
+                } else {
+                    self.live.entries.push(entry);
+                }
+            }
+            issue_run::Event::Busy(busy) => {
+                self.live.busy = busy;
+                self.live.reply_started_at = busy.then(std::time::Instant::now);
+            }
+            issue_run::Event::Notice(text) => self.notice = Some(text),
         }
     }
 
