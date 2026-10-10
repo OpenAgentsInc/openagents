@@ -35,6 +35,7 @@ mod coder_sync;
 mod components;
 mod composer;
 mod composer_row;
+pub mod connections;
 mod demo;
 mod device;
 mod docs_mcp;
@@ -165,6 +166,12 @@ pub struct Config {
     /// Claude (`OPENAGENTS_WEB_CLAUDE_TOKEN_ACCOUNTS`, #11235): the
     /// owner's account only unless set, until Anthropic approves it.
     pub claude_tokens: cloud::byo::TokenAllow,
+    /// Each account's sealed connections (Google) and project sources
+    /// (#11238); absence leaves Settings, Connections unavailable.
+    pub connections: Option<Arc<cloud::connections::Store>>,
+    /// The Google OAuth client and where Google is; `None` finds the client
+    /// on first use ([`connections::google`]).
+    pub google: Option<Arc<connections::Google>>,
     /// Optional create-only capability into the host-private sales pipeline.
     /// Without owner-accepted terms, the proposed offer has no intake form.
     pub pilot: Option<Arc<pilot::Intake>>,
@@ -217,6 +224,8 @@ impl Config {
             cloud_build: None,
             cloud_byo: None,
             claude_tokens: cloud::byo::TokenAllow::default(),
+            connections: None,
+            google: None,
             pilot: None,
             environments: None,
             plan: None,
@@ -295,6 +304,7 @@ pub fn router(config: Config) -> Router {
         .merge(account_export::routes())
         .merge(projects::routes())
         .merge(github_tools::routes())
+        .merge(connections::routes())
         .merge(promises::routes())
         .merge(pilot::routes())
         .merge(ask::routes())

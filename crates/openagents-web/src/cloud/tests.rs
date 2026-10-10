@@ -22,6 +22,9 @@ mod phone_api;
 #[path = "account_export_tests.rs"]
 mod account_export;
 
+#[path = "connections_api_tests.rs"]
+mod connections_api;
+
 const HOST: &str = "127.0.0.1:4300";
 const ORIGIN: &str = "http://127.0.0.1:4300";
 const CANARY: &str = "synthetic-native-private-canary";

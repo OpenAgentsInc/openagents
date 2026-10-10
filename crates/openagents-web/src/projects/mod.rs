@@ -448,6 +448,10 @@ fn view(state: &Status, csrf: &str, q: &str, problem: Option<&str>, install: boo
                                     .size(ControlSize::Sm)
                                     .variant(ButtonVariant::Soft)
                                     .color(Color::Secondary))
+                                (ButtonLink::new("Sources", crate::connections::sources::href(&project.id))
+                                    .size(ControlSize::Sm)
+                                    .variant(ButtonVariant::Ghost)
+                                    .color(Color::Secondary))
                                 form method="post" action=(format!("/projects/{}/remove", project.id)) {
                                     input type="hidden" name="csrf" value=(csrf);
                                     (Button::new("Remove")

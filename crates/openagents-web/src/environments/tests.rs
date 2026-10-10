@@ -522,6 +522,7 @@ async fn on_a_public_host_environments_are_for_the_site_admin_and_their_own() {
             {"login": "quiet-local"}
         ]})),
         environments: Some(studio.clone()),
+        ..Options::default()
     })
     .await;
 

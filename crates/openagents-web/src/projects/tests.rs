@@ -70,6 +70,11 @@ pub(crate) struct Options {
     pub invite: Option<serde_json::Value>,
     /// The environments studio.
     pub environments: Option<Arc<coder_environment_operator::studio::Studio>>,
+    /// Connections (#11238): the sealed store and the Google to reach.
+    pub connections: Option<(
+        Arc<crate::cloud::connections::Store>,
+        Arc<crate::connections::Google>,
+    )>,
 }
 
 pub(crate) async fn world() -> World {
@@ -154,6 +159,10 @@ async fn world_at(port: u16, options: Options) -> World {
         config.public_hosts = vec![host.clone()];
     }
     config.environments = options.environments;
+    if let Some((store, google)) = options.connections {
+        config.connections = Some(store);
+        config.google = Some(google);
+    }
     World {
         _root: root,
         site: crate::router(config),
@@ -232,7 +241,12 @@ impl Browser {
         self.send(world, Request::get(path), Body::empty()).await
     }
 
-    async fn post(&mut self, world: &World, path: &str, form: &[(&str, &str)]) -> Answer {
+    pub(crate) async fn post(
+        &mut self,
+        world: &World,
+        path: &str,
+        form: &[(&str, &str)],
+    ) -> Answer {
         let body: String = url::form_urlencoded::Serializer::new(String::new())
             .extend_pairs(form)
             .finish();
@@ -249,7 +263,12 @@ impl Browser {
 
     /// From `start`, act on the fake GitHub as `login`, and land on the
     /// callback.
-    async fn through_github(&mut self, world: &World, start: &str, login: &str) -> Answer {
+    pub(crate) async fn through_github(
+        &mut self,
+        world: &World,
+        start: &str,
+        login: &str,
+    ) -> Answer {
         let start = self.get(world, start).await;
         assert_eq!(start.status, StatusCode::SEE_OTHER, "{}", start.body);
         let at_github = world
@@ -276,7 +295,7 @@ impl Browser {
 }
 
 /// The chat owner for the account that signed in with GitHub `login`.
-fn account_owner_of(world: &World, login: &str) -> String {
+pub(crate) fn account_owner_of(world: &World, login: &str) -> String {
     let store = tenancy::Accounts::open(&world._root.path().join("accounts"))
         .unwrap()
         .store()
@@ -291,7 +310,7 @@ fn account_owner_of(world: &World, login: &str) -> String {
 }
 
 /// The value of the first hidden `name` input after `marker` in `html`.
-fn hidden(html: &str, marker: &str, name: &str) -> String {
+pub(crate) fn hidden(html: &str, marker: &str, name: &str) -> String {
     let from = html
         .find(marker)
         .unwrap_or_else(|| panic!("{marker}: {html}"));
@@ -675,7 +694,7 @@ fn closed_groups_come_from_their_cookie_and_the_page_reads_plainly() {
 }
 
 /// Connect GitHub (public repositories) for a signed-in browser.
-async fn connect_public(browser: &mut Browser, world: &World, login: &str) {
+pub(crate) async fn connect_public(browser: &mut Browser, world: &World, login: &str) {
     let callback = browser
         .through_github(world, "/auth/github/repos?access=public", login)
         .await;

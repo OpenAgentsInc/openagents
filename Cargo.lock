@@ -3406,6 +3406,7 @@ dependencies = [
  "acp-client",
  "agent-fleet",
  "atif",
+ "axum 0.8.9",
  "background",
  "base64 0.22.1",
  "brainstorm-client",
@@ -3436,6 +3437,7 @@ dependencies = [
  "microcoder-loop",
  "model-access",
  "nostr",
+ "oa-connections",
  "oa-copy",
  "openagents-login",
  "openrouter",
@@ -9796,6 +9798,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "oa-connections"
+version = "0.1.0"
+dependencies = [
+ "axum 0.8.9",
+ "base64 0.22.1",
+ "getrandom 0.3.4",
+ "oa-connections",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "oa-copy"
 version = "0.1.0"
 
@@ -10715,6 +10733,7 @@ dependencies = [
  "maud",
  "nostr",
  "oa-auth",
+ "oa-connections",
  "oa-copy",
  "oa-seal",
  "openagents-chat",

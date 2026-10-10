@@ -548,7 +548,7 @@ fn status(entry: &Entry) -> Status {
 
 /// Zero the bytes in place before unlinking, so a later reader of the
 /// directory or a backup of the inode cannot recover the key.
-fn erase(path: &Path) -> Result<(), CustodyError> {
+pub(super) fn erase(path: &Path) -> Result<(), CustodyError> {
     zero(path)?;
     fs::remove_file(path).map_err(|_| CustodyError::Unavailable)
 }

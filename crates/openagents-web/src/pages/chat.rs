@@ -1543,6 +1543,14 @@ async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
     } else {
         Vec::new()
     };
+    // In a project with Google Drive sources, Gemini answers from them,
+    // or hands the message to the hosted chat (#11238).
+    let drive = match (&door, parts.is_empty()) {
+        (Some(_), true) => {
+            crate::connections::chat::door(&app, &owner, chat.project.as_deref()).await
+        }
+        _ => None,
+    };
     // Images or PDFs go to the door that takes them; the hosted chat
     // answers with the words only when it can't (#11174).
     let door: Option<Box<dyn openagents_chat::basic_coder::Door>> = match (door, vision) {
@@ -1553,7 +1561,14 @@ async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
                 fallback: Some((door, fallback_turns)),
             }))
         }
-        (door, _) => door,
+        (Some(door), _) => match drive {
+            Some(mut drive) => {
+                drive.fallback = Some(door);
+                Some(Box::new(drive))
+            }
+            None => Some(door),
+        },
+        (None, _) => None,
     };
     let mut job = match door {
         Some(door) => Some(

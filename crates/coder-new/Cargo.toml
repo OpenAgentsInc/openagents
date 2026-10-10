@@ -38,6 +38,7 @@ openrouter = { path = "../openrouter" }
 # web_search's first door: Gemini on Vertex with Google Search grounding
 # (the Vertex adapter's URL and the Google token source).
 inference = { path = "../inference" }
+oa-connections = { path = "../oa-connections" }
 openagents-login = { path = "../openagents-login" }
 coder-sync = { path = "../coder-sync" }
 crossterm = "0.29"
@@ -65,6 +66,7 @@ unicode-width = "0.2"
 background = { path = "../background" }
 
 [dev-dependencies]
+axum = "0.8"
 oa-copy = { path = "../oa-copy" }
 tempfile = "3"
 

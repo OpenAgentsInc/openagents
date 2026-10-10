@@ -8,6 +8,7 @@
 //! addresses to their new homes.
 
 pub mod byo;
+pub mod connections;
 pub mod custody;
 // Host bindings and their request journal wait for `/environments`, which
 // runs Claude Code on them; nothing calls them until it lands.

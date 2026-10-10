@@ -45,6 +45,7 @@ libc = "0.2"
 mac-jobs = { path = "../mac-jobs" }
 maud = { version = "=0.27.0", features = ["axum"] }
 oa-auth = { path = "../oa-auth" }
+oa-connections = { path = "../oa-connections" }
 oa-seal = { path = "../oa-seal" }
 openagents-chat = { path = "../openagents-chat" }
 pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
@@ -60,6 +61,7 @@ url = "2"
 workbench = { path = "../workbench" }
 
 [dev-dependencies]
+oa-connections = { path = "../oa-connections", features = ["fake"] }
 oa-copy = { path = "../oa-copy" }
 coder-environment = { path = "../coder-environment" }
 coder-environment-build = { path = "../coder-environment-build" }

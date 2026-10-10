@@ -430,6 +430,7 @@ impl Plugins {
         crate::plugin_tools::ExecutionSettings {
             prompt_inbox: None,
             fleet: None,
+            connections: None,
             boat: crate::cloud_settings::Configuration {
                 enabled: self.live && self.bundled.boat.enabled,
                 ..self.bundled.boat.clone()

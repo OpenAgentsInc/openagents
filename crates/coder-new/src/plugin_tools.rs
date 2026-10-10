@@ -49,6 +49,9 @@ pub struct ExecutionSettings {
     /// Background agents (#11163): the `agent` tools are offered when the
     /// host gives a chat its agent list.
     pub fleet: Option<crate::fleet::Host>,
+    /// The openagents.com sign-in that reaches the account's Connections
+    /// (#11238): with it, the Google Drive tools are offered.
+    pub connections: Option<openagents_login::Saved>,
 }
 
 #[derive(Clone)]
@@ -228,6 +231,9 @@ impl ExecutionSettings {
         if self.fleet.is_some() {
             definitions.extend(crate::fleet::tool_definitions(self));
         }
+        if self.connections.is_some() {
+            definitions.extend(crate::connection_tools::definitions());
+        }
         definitions
     }
 
@@ -249,6 +255,9 @@ impl ExecutionSettings {
         }
         if crate::shells::available(self) {
             guidance.push_str(crate::shells::INSTRUCTIONS);
+        }
+        if self.connections.is_some() {
+            guidance.push_str(crate::connection_tools::INSTRUCTIONS);
         }
         if self.registered(ToolBinding::Microcoder) {
             guidance.push_str("The Microcoder plugin runs the existing local coding loop. Delegate concrete work with a complete task and relevant constraints; its commands have full filesystem and network access unless the host explicitly installs an approval policy. It uses the selected OpenRouter model when this chat has that provider, otherwise the existing Codex or Claude Code login. Jev judgments are used only when the Jev plugin is enabled and configured.\n");
@@ -369,6 +378,16 @@ impl ExecutionSettings {
             }
             name if crate::file_tools::is_tool(name) && self.shell => {
                 crate::file_tools::execute(name, arguments, &self.cwd)
+            }
+            name if crate::connection_tools::is_tool(name) && self.connections.is_some() => {
+                let account = self
+                    .connections
+                    .as_ref()
+                    .ok_or("Sign in with coder login.")?;
+                tokio::select! {
+                    result = crate::connection_tools::execute(account, name, arguments) => result,
+                    () = async { while !cancel.load(Ordering::Relaxed) { tokio::time::sleep(std::time::Duration::from_millis(50)).await; } } => Err("The Drive request was canceled.".into()),
+                }
             }
             "web_fetch" | "web_search" if self.shell => {
                 let call = async {
@@ -823,6 +842,7 @@ mod tests {
         ExecutionSettings {
             prompt_inbox: None,
             fleet: None,
+            connections: None,
             boat: Default::default(),
             gce: crate::cloud_settings::Configuration::gce(),
             cloud_root: "fixture-state".into(),
@@ -1088,6 +1108,35 @@ mod tests {
             "[redacted]"
         );
         assert!(settings.defs().is_empty());
+    }
+
+    #[test]
+    fn drive_tools_come_with_an_openagents_sign_in() {
+        let names = |settings: &ExecutionSettings| -> Vec<String> {
+            settings
+                .defs()
+                .iter()
+                .map(|tool| tool["function"]["name"].as_str().unwrap().to_owned())
+                .collect()
+        };
+        let mut settings = settings();
+        assert!(!names(&settings).iter().any(|n| n == "drive_read"));
+        assert!(!settings.instructions().contains("drive_read"));
+        settings.connections = Some(
+            serde_json::from_value(json!({
+                "origin": "https://openagents.com",
+                "account": "acct",
+                "label": "Ada",
+                "expires_at": u64::MAX,
+                "token": "sess_test",
+            }))
+            .unwrap(),
+        );
+        let offered = names(&settings);
+        for tool in ["drive_search", "drive_list_folder", "drive_read"] {
+            assert!(offered.iter().any(|n| n == tool), "{tool}");
+        }
+        assert!(settings.instructions().contains("drive_read"));
     }
 
     #[tokio::test]

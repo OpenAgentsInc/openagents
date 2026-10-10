@@ -120,7 +120,7 @@ impl Gemini {
     }
 
     /// The `generateContent` body for an Open Responses `request`.
-    fn body(&self, request: &Value) -> Result<Value, String> {
+    pub(crate) fn body(&self, request: &Value) -> Result<Value, String> {
         let mut request = request.clone();
         request["model"] = json!(self.row.id);
         // Thinking costs time the chat's deadline needs.

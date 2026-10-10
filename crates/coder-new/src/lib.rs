@@ -18,6 +18,7 @@ mod codex_usage;
 mod composer_history;
 pub mod composer_state;
 pub mod computer_tool;
+pub mod connection_tools;
 #[cfg(test)]
 mod copy_guard_tests;
 pub mod credentials;
@@ -1193,6 +1194,11 @@ impl App {
             }));
         execution.instructions = self.live.instructions.clone();
         execution.prompt_inbox = Some(self.prompt_inbox.clone());
+        // Google Drive through the signed-in account's Connections (#11238).
+        execution.connections = self
+            .account_dir
+            .as_deref()
+            .and_then(connection_tools::signed_in);
         execution.fleet = Some(self.fleet_host());
         if key.is_some()
             && (execution.brainstorm.is_some() || execution.cli)

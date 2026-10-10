@@ -107,26 +107,47 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // OPENAGENTS_WEB_CLOUD_BYO_KEYS (a Secret Manager secret on Cloud Run).
     // Custody refuses to start without one.
     if let Some(directory) = cloud_byo {
-        let keyring = match (
-            cloud_byo_keys,
-            std::env::var("OPENAGENTS_WEB_CLOUD_BYO_KEYS"),
-        ) {
-            (Some(path), _) => oa_seal::Keyring::load(&path)?,
-            (None, Ok(document)) if !document.trim().is_empty() => {
-                let keyring = oa_seal::Keyring::parse(document.as_bytes());
-                let mut bytes = document.into_bytes();
-                bytes.fill(0);
-                keyring?
-            }
-            _ => {
-                return Err("--cloud-byo needs a keyring to encrypt saved keys: \
+        let keyring = || -> Result<oa_seal::Keyring, Box<dyn std::error::Error>> {
+            Ok(
+                match (
+                    cloud_byo_keys.as_ref(),
+                    std::env::var("OPENAGENTS_WEB_CLOUD_BYO_KEYS"),
+                ) {
+                    (Some(path), _) => oa_seal::Keyring::load(path)?,
+                    (None, Ok(document)) if !document.trim().is_empty() => {
+                        let keyring = oa_seal::Keyring::parse(document.as_bytes());
+                        let mut bytes = document.into_bytes();
+                        bytes.fill(0);
+                        keyring?
+                    }
+                    _ => {
+                        return Err("--cloud-byo needs a keyring to encrypt saved keys: \
 --cloud-byo-keys PRIVATE_JSON or OPENAGENTS_WEB_CLOUD_BYO_KEYS"
-                    .into());
-            }
+                            .into());
+                    }
+                },
+            )
         };
         config.cloud_byo = Some(std::sync::Arc::new(
-            openagents_web::cloud::byo::Computers::open(&directory, keyring)?,
+            openagents_web::cloud::byo::Computers::open(&directory, keyring()?)?,
         ));
+        // Connections (#11238) are sealed with the same keyring, in a
+        // private directory beside the own-Claude custody directory.
+        if let Some(parent) = directory.parent() {
+            match openagents_web::cloud::connections::Store::open(
+                &parent.join("connections"),
+                keyring()?,
+            ) {
+                Ok(store) => {
+                    config.connections = Some(std::sync::Arc::new(store));
+                    println!(
+                        "Connections are kept in {}",
+                        parent.join("connections").display()
+                    );
+                }
+                Err(error) => eprintln!("Connections are off: {error}"),
+            }
+        }
     } else if cloud_byo_keys.is_some() {
         return Err("--cloud-byo-keys needs --cloud-byo".into());
     }

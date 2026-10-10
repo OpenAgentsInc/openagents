@@ -112,7 +112,10 @@ impl Signer<'_> {
 }
 
 /// The signed-in app's view, or its JSON refusal.
-async fn app_viewer<'a>(app: &'a App, token: &str) -> Result<(&'a CloudSession, Viewer), Response> {
+pub(crate) async fn app_viewer<'a>(
+    app: &'a App,
+    token: &str,
+) -> Result<(&'a CloudSession, Viewer), Response> {
     let Some(service) = app.config.cloud.as_deref() else {
         return Err(crate::coder_sync::refused(
             StatusCode::SERVICE_UNAVAILABLE,

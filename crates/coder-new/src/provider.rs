@@ -1211,6 +1211,7 @@ mod tests {
         ExecutionSettings {
             prompt_inbox: None,
             fleet: None,
+            connections: None,
             boat: Default::default(),
             gce: crate::cloud_settings::Configuration::gce(),
             cloud_root: "fixture-state".into(),

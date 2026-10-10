@@ -1,0 +1,27 @@
+[package]
+name = "oa-connections"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Connections (#11238): integrations, named per-account connections whose secrets stay server-side, scopes, and per-tool policy, with Google Drive as the first integration (OAuth, Discovery-derived tools, and the read-only drive.search, drive.list_folder, and drive.read)."
+
+[features]
+# `fake`: a fake Google (OAuth, Drive, Sheets) for tests in this crate and
+# its consumers.
+fake = ["dep:axum", "dep:tokio"]
+
+[dependencies]
+axum = { version = "0.8", optional = true }
+base64 = "0.22"
+getrandom = "0.3"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tokio = { version = "1", features = ["net", "rt"], optional = true }
+url = "2"
+
+[dev-dependencies]
+oa-connections = { path = ".", features = ["fake"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
