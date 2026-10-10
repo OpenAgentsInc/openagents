@@ -346,6 +346,42 @@ chunk 2048, median of 9, with llama.cpp b11538 last:
   llama.cpp: the head, the host embedding gather, and HTTP. Compare
   0.058 s with 0.040 s at 175 tokens.
 
+**Chunk invariance (2026-10-10).** This is
+`clef::tests::cuda_chunks_and_cpu_agree`: the max |Δlogit| of chunks
+{2048, 512, 64} against the whole prompt, on records of 155 and 7,274
+tokens.
+
+| Mode | 155 tokens | 7,274 tokens |
+| --- | --- | --- |
+| f16, cuBLAS projections (the M2 default) | 2.4e-2 | 2.7e-2 |
+| f16, fused up to 1,024 tokens (the default now) | 2.2e-3 | 2.2e-2 |
+| f16, fused everywhere (`PSIONIC_CLEF_FUSED=1`) | 2.2e-3 | 3.7e-3 |
+| f32 (`--decision-accumulate f32`) | 1.2e-3 | 1.7e-3 |
+
+- The fused projections are bitwise chunk-invariant. They take the f16
+  movement from 2e-2 to 2–4e-3.
+- What is left comes from attention: its cuBLAS score and `P V` GEMMs
+  differ by shape, and the probabilities are f16. The `W_mem` GEMM
+  differs by shape too.
+- A flash-attention kernel with key tiles fixed at absolute positions,
+  plus a fixed-order `W_mem` product, would make the whole trunk bitwise
+  invariant. That is the next step.
+- The 1e-3 bound is not met as written in any mode yet. The test's 1e-3
+  short-prompt bound for f32 fails at 1.1–1.2e-3 with every projection
+  path, so the test stays red until attention is fixed-order.
+
+**Per-file relevance latency (measured).** This is
+`scripts/bench/clef-relevance-bench.py --mode seq --warmup 3`, run on
+coderos against the deployed `pylon-clef` (`7af29040e6`, chunk 2048) on
+localhost. 72 requests averaged 1,532 tokens:
+
+- latency p50 0.254 s, p90 0.284 s, p99 0.309 s;
+- prefill 6.06k tokens/s;
+- 3.95 decisions/s, one at a time;
+- F1 0.67 at 0.5, AUC 0.85.
+
+The M2 estimate of about 0.28 s is replaced by this measurement.
+
 **The router set on one 4080.** The set is 24.7k tokens per chat turn.
 The three requests queue on the one device, so they run one after
 another: 4.2 s with this build, and 5.0 s on the deployed chunk 1,024.
