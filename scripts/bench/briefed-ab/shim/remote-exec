@@ -2,11 +2,11 @@
 # Runs one command on the bench's build host (coderos-4080) against this
 # trial's working copy, and brings back any file the command wrote.
 # Env: AB_ROOT (the trial worktree), AB_BASE (its base commit), AB_SLOT,
-# AB_HOST (default coderos-4080), AB_CMD_TIMEOUT (default 900).
+# AB_HOST (default coderos-4080), AB_CMD_TIMEOUT (default 600).
 set -u
 root=${AB_ROOT:?} base=${AB_BASE:?} slot=${AB_SLOT:?}
 host=${AB_HOST:-coderos-4080}
-limit=${AB_CMD_TIMEOUT:-900}
+limit=${AB_CMD_TIMEOUT:-600}
 ctl="-o ControlMaster=auto -o ControlPath=/tmp/ab-ssh-%C -o ControlPersist=15m -o ConnectTimeout=20"
 rel=$(python3 -c 'import os,sys; r=os.path.relpath(os.getcwd(), sys.argv[1]); print("." if r.startswith("..") else r)' "$root")
 tmp=$(mktemp -d)

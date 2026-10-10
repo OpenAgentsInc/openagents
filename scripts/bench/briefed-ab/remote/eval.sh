@@ -32,7 +32,7 @@ if $applied; then
     mapfile -t names < "$in/names.txt"
     targets=()
     [ -s "$in/targets.txt" ] && mapfile -t targets < "$in/targets.txt"
-    timeout -k 10 "$limit" cargo test -p "$pkg" "${targets[@]}" --no-fail-fast -- "${names[@]}" >"$in/test.out" 2>&1
+    timeout -k 10 "${AB_TEST_LIMIT:-300}" cargo test -p "$pkg" "${targets[@]}" --no-fail-fast -- "${names[@]}" >"$in/test.out" 2>&1
     rc=$?
     if grep -q "could not compile" "$in/test.out"; then tests_compiled=false; else tests_compiled=true; fi
     passed=$(grep -Eo 'test result: [a-zA-Z]+\. [0-9]+ passed' "$in/test.out" | awk '{s+=$4} END {print s+0}')
