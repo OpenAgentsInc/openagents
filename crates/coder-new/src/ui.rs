@@ -180,22 +180,10 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         app.model_picker.is_none() && !app.footer_focused,
         &app.plugins,
         &app.composer,
+        // OpenAgents picks the model here, so the rail says `auto` and never
+        // the name of whichever vendor answered.
         if app.mode == Mode::Live && !(app.plugins.enabled && app.plugins.key_configured) {
-            let chat = app
-                .selected_agent
-                .and_then(|index| app.delegations.get(index))
-                .map_or(&app.live, |agent| &agent.chat);
-            chat.partial_model
-                .as_deref()
-                .or_else(|| {
-                    chat.entries.iter().rev().find_map(|entry| match entry {
-                        crate::live::Entry::Assistant {
-                            model: Some(model), ..
-                        } => Some(model.as_str()),
-                        _ => None,
-                    })
-                })
-                .or(Some("auto"))
+            Some(crate::models::AUTO)
         } else {
             None
         },
@@ -459,7 +447,7 @@ fn header_view(frame: &mut Frame, area: Rect, app: &App) {
         if let Some(model) = model {
             title.push(span(
                 truncate(
-                    &format!(" · {model}"),
+                    &format!(" · {}", crate::models::label(model)),
                     area.width.saturating_sub(agent.width() as u16),
                 ),
                 t::GRAY_BRIGHT,

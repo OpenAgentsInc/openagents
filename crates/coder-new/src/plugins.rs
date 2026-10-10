@@ -148,8 +148,10 @@ impl<'a> From<&'a crate::plugin_definition::PluginDefinition> for PickerDefiniti
 }
 
 impl Plugins {
+    /// The rail names the model only when the person chose one in /models
+    /// (`auto` otherwise), and never with settings such as `:none`.
     pub fn composer_rails(&self) -> Vec<ResolvedRail> {
-        let model = self.options.slug(&self.model);
+        let model = crate::models::label(&self.model);
         resolve_composer_rails(DEFINITIONS, |definition, binding| {
             if !self.enabled || definition.id != OPENROUTER_PLUGIN {
                 return None;
@@ -493,8 +495,13 @@ impl Plugins {
     pub fn begin_settings(&mut self) {
         self.discard_draft();
         self.saved_connection = Some(self.connection.clone());
-        self.model_draft.text.clone_from(&self.model);
-        self.model_draft.cursor = self.model.len();
+        // The default shows as an empty field: "Default: auto".
+        if crate::models::pinned(&self.model) {
+            self.model_draft.text.clone_from(&self.model);
+        } else {
+            self.model_draft.text.clear();
+        }
+        self.model_draft.cursor = self.model_draft.text.len();
         self.focus = SettingsFocus::ApiKey;
     }
 
@@ -641,7 +648,7 @@ impl Plugins {
 
     fn edited_model(&self) -> String {
         let model = self.model_draft.text.trim();
-        if model.is_empty() {
+        if model.is_empty() || !crate::models::pinned(model) {
             DEFAULT_MODEL.into()
         } else {
             model.into()
@@ -674,11 +681,23 @@ mod rail_tests {
             plugins.composer_rails(),
             vec![ResolvedRail {
                 slot: RailSlot::ComposerTopRight,
-                text: DEFAULT_MODEL.to_owned(),
+                text: "auto".to_owned(),
             }]
         );
         assert!(plugins.set_model(&openrouter_catalog()[1], GenerationOptions::default()));
-        assert_eq!(plugins.composer_rails()[0].text, "openai/gpt-6-luna");
+        assert_eq!(plugins.composer_rails()[0].text, "gpt-6-luna");
+        // The owner's saved `openai/gpt-6-luna:none`: the effort never shows.
+        assert!(plugins.set_model(
+            &openrouter_catalog()[1],
+            GenerationOptions {
+                reasoning: Some("none".into()),
+                max_tokens: None
+            }
+        ));
+        assert_eq!(plugins.composer_rails()[0].text, "gpt-6-luna");
+        // Back to the default with a stale effort saved: still `auto`.
+        plugins.model = DEFAULT_MODEL.into();
+        assert_eq!(plugins.composer_rails()[0].text, "auto");
         assert!(plugins.toggle_enabled());
         assert!(plugins.composer_rails().is_empty());
     }
@@ -691,14 +710,11 @@ mod rail_tests {
         plugins.set_live(true);
         assert!(plugins.composer_rails().is_empty());
         plugins.toggle_enabled();
-        assert_eq!(plugins.composer_rails()[0].text, DEFAULT_MODEL.to_owned());
+        assert_eq!(plugins.composer_rails()[0].text, "auto");
         plugins.set_live(false);
-        assert_eq!(
-            plugins.composer_rails()[0].text,
-            "anthropic/claude-fable-5.1"
-        );
+        assert_eq!(plugins.composer_rails()[0].text, "claude-fable-5.1");
         plugins.set_live(true);
-        assert_eq!(plugins.composer_rails()[0].text, DEFAULT_MODEL.to_owned());
+        assert_eq!(plugins.composer_rails()[0].text, "auto");
     }
 
     #[test]
