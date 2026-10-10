@@ -18,6 +18,7 @@ mod account_memory;
 mod account_schedules;
 mod agent_ready;
 mod agent_work;
+mod agents_page;
 pub mod analytics;
 mod answer_ui;
 mod api_alias;
@@ -477,6 +478,7 @@ pub fn router(config: Config) -> Router {
         .merge(own_runs::routes())
         .merge(mac_jobs::routes())
         .merge(mac_jobs_page::routes())
+        .merge(agents_page::routes())
         .merge(traces::routes())
         .merge(account_memory::routes())
         .merge(account_schedules::routes())
