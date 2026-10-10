@@ -30,7 +30,7 @@ Mac; **minor** costs time or money.
 
 | # | Gap | Severity | Fix | State |
 | --- | --- | --- | --- | --- |
-| 1 | **Image bake broken.** `oa-coder-host-image-daily` failed 2026-10-07..10: the 100 GB builder disk has 7.7 GB left when the `microcoder` warm build needs 20 GB. Every new host and environment boots a 4-day-old image. | blocker | Bake on 200 GB; pool hosts 300 GB (#11224) | Fixed by the proof run (`6652765b03`) |
+| 1 | **Image bake broken.** `oa-coder-host-image-daily` failed 2026-10-07..10: the 100 GB builder disk has 7.7 GB left when the `microcoder` warm build needs 20 GB. Every new host and environment boots a 4-day-old image. | blocker | Bake on 200 GB; pool hosts 300 GB (#11224) | Fixed: `6652765b03` + `5cb6c4ff92`, image `oa-coder-host-20261010` |
 | 2 | **Environment size.** The workspace needs well over 100 GB of target. Boat `large` has 125 GB and 16 GB RAM: it fits only the pruned 24 GB slot, not an integrator's full build. | blocker for integration on Boat | Integrator and builders on GCE `c3-standard-22`, 300 GB pd-balanced, from `oa-coder-host` (`oa-dev-env-1`). Keep Boat for single-crate agent runs | Done (`oa-dev-env-1`) |
 | 3 | **Shared cache.** Without it every environment rebuilds cold. | major | sccache on GCS is already wired into the image through `oa-rustc-wrapper` and the VM's own account. Measured below | Works |
 | 4 | **Credentials live on the Mac.** Claude token (#11204) was only in `~/work/.secrets/claude-code-oauth-token`; the Jev key only in `typesafe.env`; Codex only in the Mac's `~/.codex`. | blocker | Secret Manager: `dev-claude-code-oauth-token`, `dev-typesafe-api-key` added; `coder-pool-git-token` (repo + project scopes) and `openagents-openrouter-api-key` already there. [`scripts/cloud/dev-env-session.sh`](../../scripts/cloud/dev-env-session.sh) reads them through the VM's metadata account into the shell and a mode-600 file on the VM's disk (`~/.openagents/dev-env.env`; `/dev/shm` is wiped by logind when the last ssh session ends), never printing them | Fixed |
@@ -106,7 +106,14 @@ ran on the Mac but the `ssh` over IAP that started the commands.
    from start to landed; sccache 232 hits / 267 misses for the run.
 4. Deploy: the bake is that change's deploy. From the environment,
    `gcloud scheduler jobs run oa-coder-host-image-daily` started it as
-   `oa-mvp-automation@` with no key file. (result in the next section)
+   `oa-mvp-automation@` with no key file. It still ran out of disk (1.8 GB
+   free before `coder-new`): the four warm packages' unpruned test outputs no
+   longer fit 200 GB either. A second change from the environment
+   (`5cb6c4ff92`) prunes each package's test executables right after its
+   test build; the next bake, again started from the environment, **passed**:
+   `oa-coder-host-20261010` (200 GB), free space 152 → 126 GB across the
+   four packages, final warm slot 39 GB, bake 2,146 s, boot smoke 127 s
+   (`fetch=ok sccache=ok`). The family now resolves to today's image.
 5. This page and `dev-env-session.sh` were committed and pushed to `main`
    from the same environment.
 
@@ -117,6 +124,9 @@ What the run found and fixed on the way:
   no agent was signed in. `dev-env-session.sh` now also writes Claude Code's
   own login file (`~/.claude/.credentials.json`, mode 600) from the token,
   which Coder's probe and the `claude` CLI both accept.
+- `/dev/shm` is wiped by logind's RemoveIPC when the last ssh session
+  ends, which took the session file with it; it now lives in
+  `~/.openagents/dev-env.env` (`5cb6c4ff92`).
 - The image's `/usr/local/bin/openagents` is the bake day's release build;
   the agent found it lacks `openagents lease` and used the slot's fresh
   debug binary. A fresh image (gap 1) fixes it daily.
