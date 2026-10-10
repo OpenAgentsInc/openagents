@@ -406,6 +406,7 @@ id = "meta.data_retention"
 version = 3
 routes = ["meta"]
 when = "The user asks whether we store, keep, or log their chats, how long we keep their messages, whether they can delete their history from our servers, whether the website or the apps keep their chats, or whether we train on their conversations; not who can read their messages"
+not_for = "What Coder's memory is or how to use it, or whether we remember earlier conversations, which the memory answer covers"
 examples = ["do you store my chats", "do you train on my conversations", "can I delete my chat history from your servers"]
 text = "In the web chat, we keep your chats on our servers so you can open them again; you can delete one from its … menu in the sidebar. In the Mac app, Terminal, and phone app, your chats are saved on your device, and our chat worker doesn't store your message text. We may use your chats to train and improve our models. On a paid plan you can ask us to opt you out; we set that up with you. To answer, we send your messages to {recipients}."
 facts = { recipients = "worker.recipients" }
@@ -427,13 +428,15 @@ followups = ["meta.open_source", "meta.model"]
 
 [[answer]]
 id = "meta.memory"
-version = 2
+version = 3
 routes = ["meta"]
-when = "The user asks whether we remember them or earlier conversations, or whether we learn from their chats"
-text = "We don't remember earlier conversations. Each reply reads only this conversation, which is sent along with every message."
-chip = "Do you remember past chats?"
-sources = ["crates/openagents-mobile/src/basic_coder.rs", "crates/coder/src/bin/coder-worker.rs"]
-followups = ["meta.privacy"]
+when = "The user asks what memory is in Coder, how Coder's memory works or how to use it (having Coder remember or forget something, listing its notes, AGENTS.md or CLAUDE.md), or whether we remember them or earlier conversations; not whether we train on their chats, store or keep them, how long we keep them, deleting chat history, or who can read their messages"
+not_for = "Training on chats or opting out of it, storing, keeping, or logging chats, how long we keep messages, deleting chat history from our servers, or who can see messages: the privacy answers and notes cover those"
+examples = ["what is memory in coder", "how does coder's memory work", "will you remember this next time I open the app"]
+text = "This chat doesn't remember earlier conversations: each reply reads only this one. Coder, our coding agent, keeps memory across sessions on your computer: it reads the repository's AGENTS.md and CLAUDE.md, and keeps small notes about you and each project in ~/.openagents/memory. Tell Coder to remember or forget something, run `/memory` in Coder to list its notes, or `/memory forget NAME` to delete one. Anything that looks like a password or key is refused."
+chip = "What is memory in Coder?"
+sources = ["crates/coder-new/README.md", "crates/coder-new/src/memory.rs", "crates/coder/src/bin/coder-worker.rs"]
+followups = ["meta.coder", "meta.privacy"]
 
 [[answer]]
 id = "meta.languages"

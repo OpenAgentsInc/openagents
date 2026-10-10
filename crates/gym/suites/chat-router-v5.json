@@ -3,7 +3,7 @@
   "name": "chat-router-v5",
   "description": "The chat router's labeled route set for chat-router-v5 (#10157), from crates/coder/fixtures/chat-router/routes-v5.json: the v4 rows and rows for the standing.rule route and its near misses, across 21 routes, labeled with the route a correct router takes. The fixture's held-out rows are the locked partition.",
   "created": "2026-10-02",
-  "digest": "0e473c2a5ff2bf42f9e1e03e2141e35b16aa9731c94e2232ef5a0ed3e35c90c6",
+  "digest": "2ef2369015eb6fb7a24411756cbe129442f15edd078f2db28e5b0f4cf84d6450",
   "tier": "scored",
   "gate": "router-v1",
   "questions": "chat-router-route-v6",
@@ -19726,6 +19726,384 @@
       },
       "truth": "cli",
       "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/products-001",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what kind of products does openagents sell",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what kind of products does openagents sell"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/products-002",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what products do you have",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what products do you have"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/products-003",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what apps do you guys have",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what apps do you guys have"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/products-004",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what are all the openagents products",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what are all the openagents products"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/products-005",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what do you make",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what do you make"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/products-006",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what does openagents offer",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what does openagents offer"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/products-007",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what can i use",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what can i use"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/products-008",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what products does openagents have?",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what products does openagents have?"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/products-009",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "do you have an app or an api",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "do you have an app or an api"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/products-010",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what are your products",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what are your products"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/products-011",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "whats openagents and what do you offer",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "whats openagents and what do you offer"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/products-012",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "is there a phone app and a terminal version",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "is there a phone app and a terminal version"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/memory-001",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "what is memory in coder",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "what is memory in coder"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/memory-002",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "how does coder's memory work",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "how does coder's memory work"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/memory-003",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "how do i get coder to remember my preferences",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "how do i get coder to remember my preferences"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/memory-004",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "how do I make coder forget something it saved",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "how do I make coder forget something it saved"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/memory-005",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "does coder read my CLAUDE.md",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "does coder read my CLAUDE.md"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/memory-006",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "do you learn from my chats",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "do you learn from my chats"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/memory-007",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "will you use what i tell you to train your models",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "will you use what i tell you to train your models"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "locked",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/memory-008",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "how long do you keep my chats",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "how long do you keep my chats"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "development",
+      "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
+    },
+    {
+      "id": "route/meta/memory-009",
+      "family": "route",
+      "kind": "choice",
+      "state": {
+        "task": "do you keep my conversations on your servers",
+        "transcript": [
+          {
+            "role": "user",
+            "text": "do you keep my conversations on your servers"
+          }
+        ],
+        "repo_members": []
+      },
+      "truth": "meta",
+      "partition": "calibration",
       "label_rule": "author: the route a correct chat router takes for the latest message, per docs/coder/design/2026-09-28-chat-router.md"
     }
   ]

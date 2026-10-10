@@ -2,7 +2,7 @@
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
   "set": "chat-router-v5@bcab1427d09d",
-  "bank": "chat-answers-v1@f9883275c95b",
+  "bank": "chat-answers-v1@80ed80a3d289",
   "routes": [
     {
       "id": "meta",
@@ -683,16 +683,17 @@
     },
     {
       "id": "meta.memory",
-      "version": 2,
+      "version": 3,
       "routes": [
         "meta"
       ],
-      "chip": "Do you remember past chats?",
+      "chip": "What is memory in Coder?",
       "place": "any",
       "records": false,
       "offer": null,
       "sources": [
-        "crates/openagents-mobile/src/basic_coder.rs",
+        "crates/coder-new/README.md",
+        "crates/coder-new/src/memory.rs",
         "crates/coder/src/bin/coder-worker.rs"
       ]
     },
@@ -1653,10 +1654,10 @@
         "near_misses": 1
       },
       "meta": {
-        "rows": 148,
-        "held_out": 46,
-        "tune": 102,
-        "near_misses": 23
+        "rows": 157,
+        "held_out": 48,
+        "tune": 109,
+        "near_misses": 27
       },
       "presentation.open": {
         "rows": 32,
