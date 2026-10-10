@@ -4,8 +4,9 @@
 The gateway's test `audience::tests::the_committed_first_party_document_is_current`
 holds the file to `crates/gateway/src/audience.rs` (`first_party_document`), and
 can write it itself (`OPENAGENTS_WRITE_OPENAPI=1 cargo test -p gateway audience`).
-This script makes the same document without a Rust build. Entries marked
-`x-served-by` (the website's first-party routes) are kept as they are.
+This script makes the same document without a Rust build, and adds the
+website's first-party routes ([`WEB`], marked `x-served-by: web`), which the
+gateway's test leaves alone.
 
 Usage: python3 scripts/api/first_party_openapi.py
 """
@@ -36,6 +37,35 @@ TAGS = {
     "Threads": "Chats synced from the terminal.",
     "Traces": "Agent traces (ATIF).",
 }
+
+
+# The website's FIRST-PARTY API routes (crates/openagents-web), marked
+# `x-served-by: web`: our apps call them on openagents.com with the app's
+# session (`Authorization: Bearer sess_...`). Each older path (#11158)
+# answers the same, with `Deprecation` and `Link` headers.
+WEB = [
+    ("/v1/device/code", "Sessions", [("post", "startAppSignIn", "An app asks to sign in on this computer (RFC 8628). Older path: `/device/code`.")]),
+    ("/v1/device/token", "Sessions", [("post", "pollAppSignIn", "The app's poll: its session once the person approves. Older path: `/device/token`.")]),
+    ("/v1/device/sign-out", "Sessions", [("post", "signOutThisApp", "The app signs its own session out. Older path: `/device/sign-out`.")]),
+    ("/v1/threads", "Threads", [("get", "listThreads", "The account's chats (web, terminal, phone) and computers.")]),
+    ("/v1/threads/{id}", "Threads", [("get", "getThread", "One chat and its newest messages.")]),
+    ("/v1/threads/{id}/messages", "Threads", [("post", "replyToThread", "Reply in a chat.")]),
+    ("/v1/threads/synced", "Threads", [("get", "listSyncedThreads", "Chats synced from Coder, and which were deleted on the website. Older path: `/coder/sessions`.")]),
+    ("/v1/threads/synced/{session}", "Threads", [("put", "syncThread", "Save a Coder chat's messages. Older path: `/coder/sessions/{session}`."), ("delete", "forgetSyncedThread", "Deleted in Coder: remove it here.")]),
+    ("/v1/threads/synced/{session}/status", "Threads", [("post", "setThreadWorking", "Coder is replying, or not.")]),
+    ("/v1/threads/synced/{session}/replies", "Threads", [("post", "takeThreadReplies", "Take the replies sent on the website, each once.")]),
+    ("/v1/computers", "Computers", [("get", "listComputers", "The account's computers and phones.")]),
+    ("/v1/computers/check-in", "Computers", [("post", "checkInComputer", "Coder runs on this computer with sync on: chats waiting for it, and its sync choice. Older path: `/coder/check-in`.")]),
+    ("/v1/computers/{name}/sync", "Computers", [("get", "getComputerSync", "The computer's sync choice. Older path: `/coder/sync?computer=`."), ("put", "setComputerSync", "Set the computer's sync choice.")]),
+    ("/v1/computers/{name}/activity", "Computers", [("post", "reportComputerActivity", "What Coder runs on the computer; answers the commands waiting for it.")]),
+    ("/v1/agents", "Computers", [("get", "listAgents", "What Coder runs on each computer.")]),
+    ("/v1/agents/actions", "Computers", [("post", "actOnAgent", "Stop, approve, deny, or message one running item.")]),
+    ("/v1/traces", "Traces", [("get", "listTraces", "The account's traces, newest first. Older path: `/api/traces`."), ("post", "uploadTrace", "Save an ATIF trace (`?share=true` to share it at once).")]),
+    ("/v1/traces/{id}", "Traces", [("get", "getTrace", "The saved ATIF document."), ("delete", "deleteTrace", "Delete a trace and its agents.")]),
+    ("/v1/traces/{id}/share", "Traces", [("post", "shareTrace", "Share or stop sharing a trace.")]),
+    ("/v1/traces/{id}/agents", "Traces", [("get", "listTraceAgents", "A trace's agents, parents first."), ("post", "uploadTraceAgent", "Save an agent under a trace (`?parent=`).")]),
+    ("/v1/traces/{id}/agents/{agent}", "Traces", [("get", "getTraceAgent", "One agent's ATIF document.")]),
+]
 
 
 def error_response(description):
@@ -100,6 +130,12 @@ def main():
     for path, item in old.get("paths", {}).items():
         if "x-served-by" in item:
             paths[path] = item
+    for path, tag, ops in WEB:
+        item = path_item(path, tag, ops)
+        item["x-served-by"] = "web"
+        paths[path] = item
+        if tag not in tags:
+            tags.append(tag)
     tag_list = [{"name": tag, "description": TAGS.get(tag, "")} for tag in tags]
     for tag in old.get("tags", []):
         if tag["name"] not in tags:
