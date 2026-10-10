@@ -48,6 +48,7 @@
 !/bench/coder/
 !/bench/efficiency/
 !/bench/web-chat/
+!/bench/ui-format/
 !/bench/terminal-bench/
 /bench/terminal-bench/*
 !/bench/terminal-bench/profiles/
