@@ -51,7 +51,7 @@ async function launch() {
     "--hide-scrollbars",
     "about:blank",
   ], { stdio: "ignore" });
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < 300; i++) {
     try {
       const list = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
       const page = list.find((t) => t.type === "page");
