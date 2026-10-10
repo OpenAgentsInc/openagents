@@ -578,10 +578,13 @@
     document.addEventListener("focusin", function (e) {
       if (!e.target.closest || !e.target.closest("dialog[open]")) lastOutside = e.target;
     }, true);
-    if (commandSupported) return;
+    // A link with data-oa-dialog opens its dialog when one is on the page
+    // and goes to its own page otherwise (no script, or no dialog). Buttons
+    // open natively where invoker commands ship.
     document.addEventListener("click", function (e) {
       var opener = e.target.closest && e.target.closest("[data-oa-dialog]");
       if (!opener) return;
+      if (commandSupported && opener.tagName !== "A") return;
       var d = document.getElementById(opener.getAttribute("data-oa-dialog"));
       if (d && d.showModal && !d.open) {
         e.preventDefault();
@@ -623,6 +626,12 @@
             var r = d.getBoundingClientRect();
             if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) d.close();
           });
+        }
+        // data-oa-open: a dialog added to the page already open (loaded on
+        // demand, such as a form with fresh tickets); it leaves when closed.
+        if (d.hasAttribute("data-oa-open")) {
+          d.addEventListener("close", function () { d.remove(); });
+          if (!d.open && d.showModal) d.showModal();
         }
         state();
       }

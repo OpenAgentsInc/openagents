@@ -37,6 +37,7 @@ fn choices() -> Choices {
         environments: vec![environment()],
         computers: vec!["studio-mac".into()],
         claude_connect: false,
+        claude_subscription: false,
     }
 }
 
@@ -301,10 +302,37 @@ fn claude_code_before_claude_is_connected_shows_the_connect_card() {
     assert!(html.contains(r#"href="/settings/claude#key""#), "{html}");
     assert!(html.contains("Use a key"), "{html}");
     // No button that can't work from here: one link.
-    let card = connect_card().into_string();
+    let card = connect_card(false, None).into_string();
     assert!(!card.contains("<button"), "{card}");
     assert_eq!(card.matches("<a ").count(), 1, "{card}");
+    assert!(!card.contains("subscription"), "{card}");
     crate::copy_guard::assert_plain("/composer/row", &card);
+    // On the subscription allowlist the card leads with the subscription:
+    // the same dialog as Settings, Claude, loaded over the page and back
+    // to this chat; without script, the same steps as a page.
+    let card = connect_card(true, Some("chat-1")).into_string();
+    assert!(
+        !card.contains("<button") && !card.contains("<form"),
+        "{card}"
+    );
+    assert_eq!(card.matches("<a ").count(), 2, "{card}");
+    let lead = card.find("Use your Claude subscription").unwrap();
+    assert!(lead < card.find("Use a key").unwrap(), "{card}");
+    assert!(
+        card.contains(r#"href="/settings/claude/subscription?back=%2Fchat%2Fchat-1""#),
+        "{card}"
+    );
+    assert!(
+        card.contains(
+            r#"hx-get="/settings/claude/subscription?part=dialog&amp;back=%2Fchat%2Fchat-1" hx-target="body" hx-swap="beforeend""#
+        ),
+        "{card}"
+    );
+    crate::copy_guard::assert_plain("/composer/row", &card);
+    choices.claude_subscription = true;
+    let picked = choices.resolve(&wanted(APP, "", "claude:env-1"));
+    assert!(render(Some(&choices), &picked).contains("Use your Claude subscription"));
+    choices.claude_subscription = false;
     // Chat, or Claude Code once connected: no card.
     let chat = choices.resolve(&wanted(APP, "", ""));
     assert!(!render(Some(&choices), &chat).contains("composer-connect"));

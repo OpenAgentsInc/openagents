@@ -321,7 +321,7 @@ async fn request(
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct Cookies(BTreeMap<String, String>);
 
 impl Cookies {
@@ -910,7 +910,7 @@ async fn subscription_tokens_are_offered_and_kept_for_the_allowlist_only() {
     .await;
     assert_eq!(page.status, StatusCode::OK, "{}", page.body);
     plain(&page);
-    assert!(page.body.contains("value=\"claude_subscription_token\""));
+    assert!(page.body.contains(">Connect subscription<"));
     let kept = request(
         &fixture.site,
         Method::POST,
@@ -931,9 +931,233 @@ async fn subscription_tokens_are_offered_and_kept_for_the_allowlist_only() {
         None,
     )
     .await;
-    assert!(page.body.contains("Saved: Claude subscription token"));
+    assert!(page.body.contains("Claude subscription connected"));
     assert!(!page.body.contains(&token));
     assert_eq!(std::fs::read_dir(&fixture.byo).unwrap().count(), 2);
+}
+
+/// A fake Anthropic for the check before a token is kept: `GET /v1/models`
+/// answers 200 for the one good token sent the subscription way, 401
+/// otherwise, and counts the calls.
+async fn fake_anthropic(good: String) -> (String, Arc<Mutex<usize>>) {
+    let calls = Arc::new(Mutex::new(0));
+    let seen = calls.clone();
+    let app = Router::new().route(
+        "/v1/models",
+        get(move |headers: HeaderMap| {
+            let seen = seen.clone();
+            let good = good.clone();
+            async move {
+                *seen.lock().unwrap() += 1;
+                let get = |name: &str| {
+                    headers
+                        .get(name)
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or_default()
+                        .to_owned()
+                };
+                if get("authorization") == format!("Bearer {good}")
+                    && get("anthropic-beta") == super::byo::OAUTH_BETA
+                {
+                    StatusCode::OK
+                } else {
+                    StatusCode::UNAUTHORIZED
+                }
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    (format!("http://{address}"), calls)
+}
+
+/// Connect your Claude subscription (Settings, Claude): the three steps on
+/// the page, in its dialog, and on its own page; a malformed token is
+/// refused before Anthropic is asked; a refused one says so; a good one is
+/// checked with Anthropic, kept sealed, and shown connected with its
+/// fingerprint. Off the allowlist there is no flow at all.
+#[tokio::test]
+async fn the_subscription_flow_checks_the_token_with_anthropic_then_keeps_it() {
+    // Assembled at run time so no token-shaped literal sits in the source.
+    let token = format!("sk-ant-oat01-{}", "t9".repeat(40));
+    let (base, calls) = fake_anthropic(token.clone()).await;
+    let fixture = fixture_with(move |config| {
+        config.claude_tokens = super::byo::TokenAllow::parse(Some("alice"));
+        let computers = Arc::try_unwrap(config.cloud_byo.take().unwrap())
+            .ok()
+            .unwrap();
+        config.cloud_byo = Some(Arc::new(computers.checking(Some(base))));
+    })
+    .await;
+    let get_page = |cookies: &Cookies, path: &str| {
+        let cookies = cookies.clone();
+        let path = path.to_owned();
+        let site = fixture.site.clone();
+        async move { request(&site, Method::GET, &path, &cookies, None, None).await }
+    };
+    // Bob isn't on the list: no flow, and its page sends him to the key.
+    let bob = login(&fixture, "bob").await;
+    let page = get_page(&bob, "/settings/claude").await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+    assert!(!page.body.contains("Connect subscription"));
+    assert!(!page.body.contains("connect-subscription"));
+    assert!(!page.body.contains("setup-token"));
+    let away = get_page(&bob, "/settings/claude/subscription").await;
+    assert_eq!(away.status, StatusCode::SEE_OTHER);
+    assert_eq!(away.headers[header::LOCATION], "/settings/claude#key");
+    let none = get_page(&bob, "/settings/claude/subscription?part=dialog").await;
+    assert_eq!(none.status, StatusCode::NOT_FOUND);
+    // Alice is: Settings, Claude leads with it, the dialog holds the three
+    // steps, and the page without script has the same steps.
+    let alice = login(&fixture, "alice").await;
+    let page = get_page(&alice, "/settings/claude").await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+    plain(&page);
+    private(&page);
+    crate::copy_guard::assert_plain("/settings/claude", &page.body);
+    assert!(
+        page.body
+            .contains("data-oa-dialog=\"connect-subscription\"")
+    );
+    assert!(page.body.contains("<dialog id=\"connect-subscription\""));
+    assert!(page.body.contains("data-oa-copy=\"claude setup-token\""));
+    let fallback = get_page(&alice, "/settings/claude/subscription").await;
+    assert_eq!(fallback.status, StatusCode::OK, "{}", fallback.body);
+    plain(&fallback);
+    private(&fallback);
+    crate::copy_guard::assert_plain("/settings/claude/subscription", &fallback.body);
+    for needle in [
+        "<title>Connect your Claude subscription",
+        "In a terminal on your own computer, run:",
+        "A browser window opens.",
+        "Paste the token that the command prints",
+        ">Connect subscription<",
+    ] {
+        assert!(fallback.body.contains(needle), "{needle}");
+    }
+    // Every class the flow draws has a rule in the one stylesheet.
+    {
+        use openagents_ui::css_classes::{markup_classes, needs_rule, selector_classes};
+        let defined = selector_classes(openagents_ui::stylesheet());
+        for body in [&page.body, &fallback.body] {
+            let missing: Vec<_> = markup_classes(body)
+                .into_iter()
+                .filter(|class| needs_rule(class) && !defined.contains(class))
+                .collect();
+            assert!(missing.is_empty(), "classes with no rule: {missing:?}");
+        }
+    }
+    let dialog = get_page(
+        &alice,
+        "/settings/claude/subscription?part=dialog&back=/chat/c-1",
+    )
+    .await;
+    assert_eq!(dialog.status, StatusCode::OK);
+    private(&dialog);
+    assert!(
+        dialog
+            .body
+            .starts_with("<dialog id=\"connect-subscription\""),
+        "{}",
+        dialog.body
+    );
+    assert!(dialog.body.contains("data-oa-open"));
+    assert!(dialog.body.contains("name=\"back\" value=\"/chat/c-1\""));
+    let submit = |html: &str, value: &str, back: &str| {
+        let at = form_at(html, "/settings/claude/subscription");
+        form(&[
+            ("csrf", &field(at, "csrf")),
+            ("request", &field(at, "request")),
+            ("token", value),
+            ("back", back),
+        ])
+    };
+    let post = |cookies: &Cookies, input: String| {
+        let cookies = cookies.clone();
+        let site = fixture.site.clone();
+        async move {
+            request(
+                &site,
+                Method::POST,
+                "/settings/claude/subscription",
+                &cookies,
+                Some(&input),
+                Some(ORIGIN),
+            )
+            .await
+        }
+    };
+    // Malformed: refused before Anthropic is asked, with a plain error.
+    for bad in [
+        "hello",
+        FAKE_KEY,
+        "sk-ant-oat01-short",
+        "sk-ant-ort01-aaaaaaaaaaaaaaaaaaaa",
+    ] {
+        let page = get_page(&alice, "/settings/claude/subscription").await;
+        let refused = post(&alice, submit(&page.body, bad, "/")).await;
+        assert_eq!(refused.status, StatusCode::BAD_REQUEST, "{bad}");
+        private(&refused);
+        plain(&refused);
+        assert!(
+            refused
+                .body
+                .contains("That isn&#39;t a Claude subscription token")
+                || refused
+                    .body
+                    .contains("That isn't a Claude subscription token"),
+            "{}",
+            refused.body
+        );
+        assert!(!refused.body.contains(bad) || bad == "hello", "{bad}");
+    }
+    assert_eq!(*calls.lock().unwrap(), 0);
+    // Well formed but refused by Anthropic: said plainly, nothing kept.
+    let wrong = format!("sk-ant-oat01-{}", "w0".repeat(40));
+    let page = get_page(&alice, "/settings/claude/subscription").await;
+    let refused = post(&alice, submit(&page.body, &wrong, "/")).await;
+    assert_eq!(refused.status, StatusCode::BAD_REQUEST);
+    assert!(refused.body.contains("Anthropic didn"), "{}", refused.body);
+    assert!(!refused.body.contains(&wrong));
+    assert_eq!(*calls.lock().unwrap(), 1);
+    assert_eq!(std::fs::read_dir(&fixture.byo).unwrap().count(), 0);
+    // A ticket is one account's: bob can't use alice's.
+    let page = get_page(&alice, "/settings/claude").await;
+    let crossed = post(&bob, submit(&page.body, &token, "/")).await;
+    assert_eq!(crossed.status, StatusCode::FORBIDDEN);
+    // The good token: checked, kept, and back where the person came from.
+    let kept = post(&alice, submit(&page.body, &token, "/chat/c-1")).await;
+    assert_eq!(kept.status, StatusCode::SEE_OTHER, "{}", kept.body);
+    assert_eq!(kept.headers[header::LOCATION], "/chat/c-1");
+    assert!(!kept.body.contains(&token));
+    assert_eq!(*calls.lock().unwrap(), 2);
+    assert_eq!(std::fs::read_dir(&fixture.byo).unwrap().count(), 1);
+    let page = get_page(&alice, "/settings/claude").await;
+    plain(&page);
+    assert!(page.body.contains("Claude subscription connected"));
+    assert!(page.body.contains("Fingerprint: SHA-256 "));
+    assert!(page.body.contains("action=\"/settings/claude/remove\""));
+    assert!(!page.body.contains(&token));
+    let settings = get_page(&alice, "/settings").await;
+    assert!(settings.body.contains("Claude subscription connected"));
+    // Remove takes it away.
+    let remove = form_at(&page.body, "/settings/claude/remove");
+    let input = form(&[
+        ("csrf", &field(remove, "csrf")),
+        ("request", &field(remove, "request")),
+    ]);
+    let removed = request(
+        &fixture.site,
+        Method::POST,
+        "/settings/claude/remove",
+        &alice,
+        Some(&input),
+        Some(ORIGIN),
+    )
+    .await;
+    assert_eq!(removed.status, StatusCode::SEE_OTHER);
+    assert_eq!(std::fs::read_dir(&fixture.byo).unwrap().count(), 0);
 }
 
 #[tokio::test]

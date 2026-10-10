@@ -26,6 +26,8 @@ use crate::cloud::{
 };
 use crate::ui_page::{UiPage, action_link};
 
+pub(crate) mod subscription;
+
 pub(crate) const PAGE: &str = "/settings";
 pub(crate) const CLAUDE: &str = "/settings/claude";
 const CLAUDE_REMOVE: &str = "/settings/claude/remove";
@@ -35,6 +37,10 @@ pub(crate) fn routes() -> Router<App> {
         .route(PAGE, get(settings))
         .route(CLAUDE, get(claude).post(add))
         .route(CLAUDE_REMOVE, post(remove))
+        .route(
+            subscription::PATH,
+            get(subscription::show).post(subscription::connect),
+        )
         .route(
             crate::api_keys::KEYS,
             get(crate::api_keys::keys).post(crate::api_keys::make),
@@ -129,6 +135,7 @@ impl Standing {
     /// The row's hint, and whether its Manage button can work.
     fn hint(&self) -> (String, bool) {
         match self {
+            Self::Saved(Material::ClaudeSubscriptionToken) => (CONNECTED.to_owned(), true),
             Self::Saved(material) => (format!("Saved: {}", material_label(*material)), true),
             Self::Empty => ("Not added".to_owned(), true),
             Self::NoWorkspace => (
@@ -573,6 +580,8 @@ fn chats_section(saved: Option<usize>) -> Markup {
 }
 
 const SUBSCRIPTION_LABEL: &str = "Claude subscription token (from claude setup-token)";
+/// What Settings says once a subscription token is kept.
+const CONNECTED: &str = "Claude subscription connected";
 
 pub(crate) fn material_label(material: Material) -> &'static str {
     match material {
@@ -698,9 +707,22 @@ async fn claude(State(app): State<App>, headers: HeaderMap) -> Response {
     // Subscription tokens only for the allowlist until Anthropic approves
     // them in writing (#11235).
     let tokens = app.config.claude_tokens.admits_viewer(&context.viewer);
+    let subscribe = if tokens {
+        match subscription::ticket(&context, &headers) {
+            Ok(value) => Some(value),
+            Err(response) => return response,
+        }
+    } else {
+        None
+    };
+    let saved = status.map(|status| (status.material, status.masked()));
     let body = claude_content(
-        status.map(|status| status.material),
-        tokens,
+        saved
+            .as_ref()
+            .map(|(material, print)| (*material, print.as_str())),
+        subscribe
+            .as_ref()
+            .map(|(csrf, request)| (csrf.as_str(), request.as_str())),
         (&tickets[0].0, &tickets[0].1),
         (&tickets[1].0, &tickets[1].1),
     );
@@ -724,41 +746,77 @@ pub(crate) const INSTALL: &str = "curl -fsSL https://claude.ai/install.sh | bash
 /// allowlist (#11235).
 const TOKEN_REFUSED: &str = "Subscription tokens can't be saved here. Sign in to Claude inside your environment instead, or save an Anthropic API key. Nothing was saved.";
 
-/// The Claude page (#11235): signing in inside your environment first,
-/// through Claude Code itself; then your own key, with the Max and Team
-/// monthly API credits; what is saved (never the key itself), a remove
-/// button, and the form that adds or replaces it. `tokens` offers a
-/// subscription token (`claude setup-token`), for the allowlist only
-/// ([`byo::TokenAllow`]).
+/// The Claude page (#11235). For the subscription-token allowlist
+/// (`subscribe`, a ticket for its form) it leads with connecting a Claude
+/// subscription ([`subscription`]): a dialog with three steps, or once
+/// connected, the token's fingerprint and a remove button. Then, for
+/// everyone, signing in inside your environment through Claude Code
+/// itself, and your own key with the Max and Team monthly API credits:
+/// what is saved (never the key itself), a remove button, and the form
+/// that adds or replaces it.
 fn claude_content(
-    saved: Option<Material>,
-    tokens: bool,
+    saved: Option<(Material, &str)>,
+    subscribe: Option<(&str, &str)>,
     add: (&str, &str),
     remove: (&str, &str),
 ) -> Markup {
+    let tokens = subscribe.is_some();
     let material = Field::new("claude-credential-material", "Provider");
     let value = Field::new("claude-credential-value", "Key")
         .required(true)
-        .description(if tokens {
-            "Claude subscription token: the token claude setup-token prints (sk-ant-oat…). Anthropic API key: from console.anthropic.com (sk-ant-api…). Either is recognized by how it starts. Bedrock, Vertex, or Foundry: the JSON credential."
-        } else {
-            "Anthropic API key: from console.anthropic.com (sk-ant-api…). Bedrock, Vertex, or Foundry: the JSON credential."
-        });
-    let mut providers = Select::new("material").aria(material.aria());
-    if tokens {
-        providers = providers.option("claude_subscription_token", SUBSCRIPTION_LABEL);
-    }
-    let providers = providers
+        .description(
+            "Anthropic API key: from console.anthropic.com (sk-ant-api…). Bedrock, Vertex, or Foundry: the JSON credential.",
+        );
+    let providers = Select::new("material")
+        .aria(material.aria())
         .option("anthropic_api_key", "Anthropic API key")
         .option("bedrock_credential", "Amazon Bedrock")
         .option("vertex_credential", "Google Vertex AI")
         .option("foundry_credential", "Microsoft Foundry");
-    let retired_token = !tokens && saved == Some(Material::ClaudeSubscriptionToken);
+    let token_saved = saved.filter(|(material, _)| *material == Material::ClaudeSubscriptionToken);
+    // Connected through the subscription flow: shown there, not as a key.
+    let connected = tokens && token_saved.is_some();
+    let retired_token = !tokens && token_saved.is_some();
+    let remove_form = html! {
+        form method="post" action=(CLAUDE_REMOVE) {
+            input type="hidden" name="csrf" value=(remove.0);
+            input type="hidden" name="request" value=(remove.1);
+            p {
+                (Button::new("Remove")
+                    .kind(ButtonType::Submit)
+                    .variant(ButtonVariant::Soft)
+                    .color(Color::Secondary))
+            }
+        }
+    };
     html! {
         p { (action_link("Settings", PAGE)) }
         (MarkdownRoot::new(html! {
             h1 { "Claude" }
-            h2 #sign-in { "Sign in inside your environment" }
+            @if tokens {
+                h2 #subscription { "Use your Claude subscription" }
+                @if let Some((_, print)) = token_saved {
+                    p { strong { (CONNECTED) } }
+                    p class="oa-page-meta" { "Fingerprint: " (print) }
+                } @else {
+                    p {
+                        "Run Claude Code on your Claude Pro or Max plan. Connecting takes three steps and a terminal on your own computer. Runs bill your plan, one task at a time."
+                    }
+                }
+            }
+        }))
+        @if let Some(ticket) = subscribe {
+            @if connected {
+                (remove_form)
+            } @else {
+                p { (subscription::link()) }
+                (subscription::dialog(ticket, CLAUDE, false))
+            }
+        }
+        (MarkdownRoot::new(html! {
+            h2 #sign-in {
+                @if tokens { "Or sign in inside your environment" } @else { "Sign in inside your environment" }
+            }
             p {
                 "Use your Claude Pro, Max, Team, or Enterprise plan by signing in to Claude Code where it runs. You sign in on Anthropic's own page, and OpenAgents never sees your login. On a plan, Claude Code runs one task at a time."
             }
@@ -781,15 +839,8 @@ fn claude_content(
                 "On Claude Max or Team? Your plan comes with monthly API credits: $100 on Max 5x, $200 on Max 20x, and on Team a share per seat, pooled up to $500. Claim them into a Claude Console organization and create a key there. It works here like any API key: tasks run in parallel and use those credits, not your plan's limits. "
                 a href=(API_CREDITS) { "How to claim them" } "."
             }
-            @if tokens {
-                p {
-                    "You can also save a subscription token: run "
-                    code { "claude setup-token" }
-                    " in a terminal on your computer and paste the token it prints. It bills your Claude plan and runs one task at a time."
-                }
-            }
-            @match saved {
-                Some(material) => {
+            @match saved.filter(|_| !connected) {
+                Some((material, _)) => {
                     p { "Saved: " (material_label(material)) }
                     p class="oa-page-meta" aria-label="Key hidden" { "••••••••••••••••" }
                     @if retired_token {
@@ -798,20 +849,12 @@ fn claude_content(
                         }
                     }
                 },
+                None if connected => {},
                 None => p { "Nothing saved. Without a key, Claude Code runs on the sign-in inside your environment, one task at a time." },
             }
         }))
-        @if saved.is_some() {
-            form method="post" action=(CLAUDE_REMOVE) {
-                input type="hidden" name="csrf" value=(remove.0);
-                input type="hidden" name="request" value=(remove.1);
-                p {
-                    (Button::new("Remove")
-                        .kind(ButtonType::Submit)
-                        .variant(ButtonVariant::Soft)
-                        .color(Color::Secondary))
-                }
-            }
+        @if saved.is_some() && !connected {
+            (remove_form)
         }
         form method="post" action=(CLAUDE) autocomplete="off" {
             input type="hidden" name="csrf" value=(add.0);
@@ -831,7 +874,7 @@ fn claude_content(
                     .required(true))
             }
             p {
-                (Button::new(if saved.is_some() { "Replace" } else { "Save" })
+                (Button::new(if saved.is_some() && !connected { "Replace" } else { "Save" })
                     .kind(ButtonType::Submit))
             }
         }
@@ -937,9 +980,11 @@ async fn remove(
 mod tests {
     use super::*;
 
+    const SUBSCRIBE: Option<(&str, &str)> = Some(("s", "q"));
+
     #[test]
     fn the_claude_page_says_usage_bills_to_the_users_own_account() {
-        let html = claude_content(None, true, ("t", "r"), ("t", "r")).into_string();
+        let html = claude_content(None, SUBSCRIBE, ("t", "r"), ("t", "r")).into_string();
         assert!(html.contains("Usage bills to your own account"));
         assert!(!html.contains(">Remove<"));
         // The secret never reaches autofill or the spellchecker.
@@ -961,8 +1006,8 @@ mod tests {
         );
         assert!(html.contains("name=\"consent\" value=\"custody\""));
         let saved = claude_content(
-            Some(Material::BedrockCredential),
-            true,
+            Some((Material::BedrockCredential, "SHA-256 abc…")),
+            SUBSCRIBE,
             ("t", "r"),
             ("t", "r"),
         )
@@ -972,25 +1017,14 @@ mod tests {
         assert!(byo::TERMS.contains(
             "never put in a checkpoint, saved environment image, export, log, or evidence"
         ));
-        // Both Anthropic kinds have their own clear label.
-        assert!(html.contains("value=\"claude_subscription_token\""));
-        assert!(html.contains("Claude subscription token (from claude setup-token)"));
         assert!(html.contains(">Anthropic API key<"));
-        assert!(html.contains("claude setup-token"));
-        let token = claude_content(
-            Some(Material::ClaudeSubscriptionToken),
-            true,
-            ("t", "r"),
-            ("t", "r"),
-        )
-        .into_string();
-        assert!(token.contains("Saved: Claude subscription token (from claude setup-token)"));
-        assert!(!token.contains("can't be saved here anymore"));
+        // The subscription has its own flow now, not a provider in the key form.
+        assert!(!html.contains("value=\"claude_subscription_token\""));
     }
 
     #[test]
     fn the_claude_page_leads_with_signing_in_inside_your_environment() {
-        let html = claude_content(None, false, ("t", "r"), ("t", "r")).into_string();
+        let html = claude_content(None, None, ("t", "r"), ("t", "r")).into_string();
         // Sign-in first, through Claude Code itself (#11235).
         let sign_in = html.find("Sign in inside your environment").unwrap();
         let key = html.find("Or use your own key").unwrap();
@@ -1022,18 +1056,51 @@ mod tests {
 
     #[test]
     fn subscription_tokens_show_only_for_the_allowlist() {
-        let off = claude_content(None, false, ("t", "r"), ("t", "r")).into_string();
+        let off = claude_content(None, None, ("t", "r"), ("t", "r")).into_string();
         assert!(!off.contains("claude_subscription_token"), "{off}");
         assert!(!off.contains("setup-token"), "{off}");
         assert!(!off.contains("sk-ant-oat"), "{off}");
+        assert!(!off.contains("Connect subscription"), "{off}");
+        assert!(!off.contains(subscription::DIALOG), "{off}");
         assert!(off.contains("value=\"anthropic_api_key\""));
-        let on = claude_content(None, true, ("t", "r"), ("t", "r")).into_string();
-        assert!(on.contains("value=\"claude_subscription_token\""));
-        assert!(on.contains("<code>claude setup-token</code>"));
-        // A token saved before keeps working, with a notice to switch.
+        // On the list: the subscription leads, the sign-in note and the
+        // key stay below it as alternatives.
+        let on = claude_content(None, SUBSCRIBE, ("t", "r"), ("t", "r")).into_string();
+        let lead = on.find("Use your Claude subscription").unwrap();
+        let open = on.find(">Connect subscription<").unwrap();
+        let sign_in = on.find("Or sign in inside your environment").unwrap();
+        let key = on.find("Or use your own key").unwrap();
+        assert!(lead < open && open < sign_in && sign_in < key, "{on}");
+        assert!(on.contains("<dialog id=\"connect-subscription\""), "{on}");
+        assert!(on.contains("<code class=\"oa-code-block__code\">claude setup-token</code>"));
+        assert!(on.contains("name=\"csrf\" value=\"s\""), "{on}");
+        crate::copy_guard::assert_plain(CLAUDE, &on);
+        // Connected: the fingerprint and Remove, no dialog, no key line.
+        let connected = claude_content(
+            Some((Material::ClaudeSubscriptionToken, "SHA-256 0123456789ab…")),
+            SUBSCRIBE,
+            ("t", "r"),
+            ("t", "r"),
+        )
+        .into_string();
+        assert!(
+            connected.contains("Claude subscription connected"),
+            "{connected}"
+        );
+        assert!(
+            connected.contains("Fingerprint: SHA-256 0123456789ab…"),
+            "{connected}"
+        );
+        assert!(connected.contains("action=\"/settings/claude/remove\""));
+        assert_eq!(connected.matches(">Remove<").count(), 1, "{connected}");
+        assert!(!connected.contains("<dialog"), "{connected}");
+        assert!(!connected.contains("Saved: Claude subscription token"));
+        assert!(!connected.contains("Nothing saved."));
+        crate::copy_guard::assert_plain(CLAUDE, &connected);
+        // Off the list, a token saved before keeps working, with a notice to switch.
         let kept = claude_content(
-            Some(Material::ClaudeSubscriptionToken),
-            false,
+            Some((Material::ClaudeSubscriptionToken, "SHA-256 0123456789ab…")),
+            None,
             ("t", "r"),
             ("t", "r"),
         )
@@ -1042,6 +1109,7 @@ mod tests {
         assert!(kept.contains("Yours keeps working until you remove it."));
         assert!(kept.contains("action=\"/settings/claude/remove\""));
         assert!(!kept.contains("value=\"claude_subscription_token\""));
+        assert!(!kept.contains("Connect subscription"));
         let text = oa_copy::visible_text(&kept);
         assert_eq!(oa_copy::violations(&text, &[]), vec![], "{text}");
     }
@@ -1065,6 +1133,10 @@ mod tests {
             assert!(html.contains(manage), "{html}");
             assert!(!html.contains("Unavailable"));
         }
+        assert_eq!(
+            Standing::Saved(Material::ClaudeSubscriptionToken).hint(),
+            ("Claude subscription connected".to_owned(), true)
+        );
         for standing in [Standing::NoWorkspace, Standing::Broken] {
             let (hint, can) = standing.hint();
             assert!(!can);

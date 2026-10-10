@@ -101,6 +101,70 @@
   gap: calc(var(--spacing) * 2);
 }
 
+/* Numbered setup steps, in a dialog or on its page: a round number, then
+   the step's text, command, or field. */
+.oa-setup-steps {
+  display: grid;
+  gap: calc(var(--spacing) * 4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: oa-setup-step;
+
+  & > li {
+    display: grid;
+    grid-template-columns: calc(var(--spacing) * 6) minmax(0, 1fr);
+    gap: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
+    counter-increment: oa-setup-step;
+
+    &::before {
+      content: counter(oa-setup-step);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: calc(var(--spacing) * 6);
+      height: calc(var(--spacing) * 6);
+      border-radius: var(--radius-full);
+      background: var(--color-background-secondary);
+      font-size: var(--font-text-xs-size);
+      font-weight: var(--font-weight-semibold);
+    }
+
+    & > * {
+      grid-column: 2;
+      margin: 0;
+    }
+
+    & > :first-child {
+      grid-row: 1;
+    }
+  }
+}
+
+.oa-setup-form {
+  display: grid;
+  gap: calc(var(--spacing) * 4);
+
+  & > p {
+    margin: 0;
+  }
+}
+
+.oa-setup-hint {
+  color: var(--color-text-secondary);
+  font-size: var(--font-text-sm-size);
+}
+
+/* Until every field is valid the submit button looks disabled; the browser
+   refuses the form too, so this holds without script. */
+.oa-setup-form:invalid .oa-button[type="submit"]:not([formnovalidate]) {
+  --button-background-color: var(--color-background-disabled);
+  --button-border-color: var(--color-border-disabled);
+  --button-text-color: var(--color-text-disabled);
+
+  cursor: not-allowed;
+}
+
 /* Enter and exit, the Popover transition values. */
 @supports selector(:modal) {
   .oa-dialog {

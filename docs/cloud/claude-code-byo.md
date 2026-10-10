@@ -285,13 +285,23 @@ allowlist until Anthropic approves it in writing
   organization: it runs tasks in parallel and bills those credits, not the
   plan.
 
-- **Settings, Claude** offers "Claude subscription token (from claude
-  setup-token)" beside "Anthropic API key". A pasted value is told apart by
-  its prefix (`sk-ant-oat` or `sk-ant-api`), whichever of the two was picked
-  (`cloud::byo::detect`). Only the bare token is accepted
-  (`OwnCredential::SubscriptionToken.canonical`): never a credentials
-  document, a refresh token (`sk-ant-ort`), or a token with anything around
-  it.
+- **Settings, Claude** leads, for the allowlist, with **Connect your Claude
+  subscription** (`settings::subscription`): a dialog with three steps (run
+  `claude setup-token` on your own computer, with a copy button and a link
+  to Anthropic's install page; sign in and approve in the browser; paste the
+  `sk-ant-oat…` token), Cancel, and Connect subscription, which stays
+  disabled until the field matches the token's shape. Without script the
+  same steps are a page at `/settings/claude/subscription`. The composer's
+  connect card (#11234) opens the same dialog over the page
+  (`?part=dialog`, loaded with a fresh ticket) and returns to the chat. The
+  form takes only the bare token (`OwnCredential::SubscriptionToken.canonical`):
+  a malformed value, an API key, a refresh token (`sk-ant-ort`), or a
+  token with anything around it is refused before Anthropic is asked. Once
+  kept, Settings shows "Claude subscription connected" with the token's
+  SHA-256 fingerprint and Remove. Signing in inside the environment and the
+  key form stay below it; a token pasted into the key form is still told
+  apart by its prefix (`cloud::byo::detect`). Off the allowlist none of this
+  shows, and the page sends people to the key form.
 - **Checked before it is kept.** `Computers::check` sends one
   `GET https://api.anthropic.com/v1/models?limit=1` with
   `anthropic-version: 2023-06-01` and, for a token, `Authorization: Bearer`
