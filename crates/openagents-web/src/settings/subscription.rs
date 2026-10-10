@@ -16,7 +16,7 @@ use axum::extract::{Form, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use maud::{Markup, html};
-use openagents_ui::actions::{Alert, Button, ButtonLink, ButtonType, ButtonVariant, Color};
+use openagents_ui::actions::{Button, ButtonLink, ButtonType, ButtonVariant, Color};
 use openagents_ui::content::{CodeBlock, MarkdownRoot};
 use openagents_ui::forms::{Field, Input, InputType};
 use openagents_ui::overlays::Dialog;
@@ -240,9 +240,6 @@ fn respond(
     let body = html! {
         p { (action_link("Claude", CLAUDE)) }
         (MarkdownRoot::new(html! { h1 { (TITLE) } }))
-        @if let Some((_, text)) = error {
-            (Alert::new().color(Color::Danger).description(text))
-        }
         (form(ticket, back, error.map(|(_, text)| text), false))
     };
     let mut response = page(headers, context.service, &context.viewer, TITLE, PATH, body);
