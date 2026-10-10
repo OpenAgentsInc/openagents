@@ -52,6 +52,8 @@ BIG_COMMIT = 40          # commits touching more files are ignored for co-change
 LOCK_NAMES = {"Cargo.lock", "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "bun.lock",
               "bun.lockb", "Package.resolved", "go.sum", "flake.lock", "uv.lock", "poetry.lock"}
 SOURCES = ["emb", "sym", "co", "sim", "hist", "pair", "dir", "recent", "stage2"]
+# output-only labels for what stage 2 found (not model features)
+STAGES_OUT = SOURCES + ["ref", "iface", "rule", "crate"]
 
 
 # ---------------------------------------------------------------- git
@@ -152,6 +154,15 @@ def issue_text(title, body):
 
 # ---------------------------------------------------------------- index
 
+def dirs_index(h):
+    """directory -> sorted commit positions touching any file in it (small commits only)."""
+    by_dir = defaultdict(set)
+    for fid, cs in h["by_file"].items():
+        p = h["paths"][fid]
+        by_dir[p.rsplit("/", 1)[0] if "/" in p else ""].update(cs)
+    return {d: sorted(v) for d, v in by_dir.items()}
+
+
 class Index:
     def __init__(self, cache):
         self.cache = cache
@@ -172,7 +183,10 @@ class Index:
         if need_blobs:
             self.load_blobs()
         self.tokens = TokenIndex(self.cache)
+        self.iface = IfaceIndex(self.cache)
         self.load_commit_vecs()
+        if "by_dir" not in self.hist:
+            self.hist["by_dir"] = dirs_index(self.hist)
         return self
 
     def load_blobs(self):
@@ -215,6 +229,7 @@ class Index:
                      "paths": paths, "pid": pid, "by_file": dict(by_file),
                      "issue_commits": dict(issue_commits),
                      "pos": {c[0]: i for i, c in enumerate(commits)}}
+        self.hist["by_dir"] = dirs_index(self.hist)
         with open(os.path.join(self.cache, "history.pkl"), "wb") as f:
             pickle.dump(self.hist, f, protocol=4)
 
@@ -375,6 +390,132 @@ class TokenIndex:
             for (b,) in self.db.execute(f"SELECT b FROM {table} WHERE t = ?", (t,)):
                 for p in bid_to_path.get(b, ()):
                     out[p].add(t)
+        return out
+
+
+# ---------------------------------------------------------------- interface strings
+
+QUOTED = re.compile(r'"([^"\\\n]{3,120})"|\'([^\'\\\n]{3,120})\'')
+ROUTE_IN = re.compile(r"(?:/[A-Za-z0-9_\-.]+){2,}")
+METHOD = re.compile(r"^[a-z][a-z0-9_]*(?:[.:][a-z][a-z0-9_]*){1,3}$")
+IDLIKE = re.compile(r"^[a-z][a-z0-9]*(?:[-_][a-z0-9]+)+$")
+CSS_CLASS = re.compile(r"\.([a-z][a-z0-9]*(?:-[a-z0-9]+)+)")
+FILE_EXT = {"rs", "md", "json", "jsonl", "toml", "js", "mjs", "ts", "css", "html", "py", "sh", "png", "jpg",
+            "svg", "txt", "yaml", "yml", "lock", "wasm", "gz", "swift", "kt", "com", "org", "io", "dev", "ai", "sh"}
+
+
+def iface_strings(path, text):
+    """Interface strings a file uses: routes (and their prefixes), method/event names,
+    ids and CSS classes. These tie a server to its clients across crates and languages."""
+    out = set()
+    lits = [a or b for a, b in QUOTED.findall(text)]
+    if path.endswith(".css"):
+        lits += CSS_CLASS.findall(text)
+    for s in lits:
+        s = s.strip()
+        for m in ROUTE_IN.findall(s):
+            segs = [x for x in m.split("/") if x]
+            if segs and "." in segs[0] and len(segs) > 1:  # host name
+                segs = segs[1:]
+            clean = []
+            for x in segs:
+                if "{" in x or ":" in x or x.startswith("<"):
+                    break
+                clean.append(x)
+            if not clean or not any(c.isalpha() for c in clean[0]):
+                continue
+            if "." in clean[-1] and clean[-1].rsplit(".", 1)[-1] in FILE_EXT and len(clean) > 1:
+                pass  # a file path: still a usable string
+            for i in range(2, len(clean) + 1):
+                out.add("/" + "/".join(clean[:i]))
+            if len(clean) == 1 and len(clean[0]) >= 4:
+                out.add("/" + clean[0])
+        if " " in s:
+            for t in s.split():
+                if IDLIKE.match(t) and "-" in t and len(t) >= 6:
+                    out.add(t)
+            continue
+        if METHOD.match(s) and s.rsplit(".", 1)[-1] not in FILE_EXT and len(s) >= 6:
+            out.add(s)
+        elif IDLIKE.match(s) and len(s) >= 6:
+            out.add(s)
+    return out
+
+
+class IfaceIndex:
+    """Interface strings per blob, with each string's document frequency."""
+
+    def __init__(self, cache):
+        import sqlite3
+        self.db = sqlite3.connect(os.path.join(cache, "iface.sqlite"), check_same_thread=False)
+        self.db.executescript(
+            "CREATE TABLE IF NOT EXISTS blob(id INTEGER PRIMARY KEY, sha TEXT UNIQUE);"
+            "CREATE TABLE IF NOT EXISTS s(t TEXT, b INTEGER);"
+            "CREATE TABLE IF NOT EXISTS df(t TEXT PRIMARY KEY, n INTEGER);")
+        self.ids = dict(self.db.execute("SELECT sha, id FROM blob"))
+
+    def ensure(self, repo, tree, log=True):
+        items = tree.items() if isinstance(tree, dict) else tree
+        todo = {}
+        for p, sha in items:
+            if sha not in self.ids and sha not in todo and not skip_for_tokens(p):
+                todo[sha] = p
+        if not todo:
+            return 0
+        t0 = time.time()
+        shas = sorted(todo)
+        base = max(self.ids.values(), default=0) + 1
+        rows, blobs, df = [], [], Counter()
+        for k in range(0, len(shas), 2000):
+            chunk = shas[k:k + 2000]
+            texts = cat_heads(repo, chunk, n=TOKEN_MAX_BYTES, cap=TOKEN_MAX_BYTES)
+            for i, sha in enumerate(chunk, k):
+                bid = base + i
+                blobs.append((bid, sha))
+                self.ids[sha] = bid
+                t = texts.get(sha)
+                if t:
+                    got = iface_strings(todo[sha], t)
+                    rows.extend((x, bid) for x in got)
+                    df.update(got)
+        bulk = len(shas) > 5000
+        with self.db:
+            if bulk:
+                self.db.execute("DROP INDEX IF EXISTS s_t")
+                self.db.execute("DROP INDEX IF EXISTS s_b")
+            self.db.executemany("INSERT INTO blob VALUES (?, ?)", blobs)
+            self.db.executemany("INSERT INTO s VALUES (?, ?)", rows)
+            self.db.executemany("INSERT INTO df VALUES (?, ?) ON CONFLICT(t) DO UPDATE SET n = n + excluded.n",
+                                list(df.items()))
+            self.db.execute("CREATE INDEX IF NOT EXISTS s_t ON s(t)")
+            self.db.execute("CREATE INDEX IF NOT EXISTS s_b ON s(b)")
+        if log:
+            print(f"interface strings: {len(shas)} blobs, {len(rows)} postings in {time.time()-t0:.1f}s",
+                  file=sys.stderr)
+        return len(shas)
+
+    def strings_of(self, bid):
+        return [t for (t,) in self.db.execute("SELECT t FROM s WHERE b = ?", (bid,))]
+
+    def rare(self, strings, max_df):
+        out = {}
+        strings = list(strings)
+        for i in range(0, len(strings), 500):
+            chunk = strings[i:i + 500]
+            q = ",".join("?" * len(chunk))
+            for t, n in self.db.execute(f"SELECT t, n FROM df WHERE t IN ({q})", chunk):
+                if n <= max_df:
+                    out[t] = n
+        return out
+
+    def users(self, strings):
+        out = defaultdict(list)
+        strings = list(strings)
+        for i in range(0, len(strings), 500):
+            chunk = strings[i:i + 500]
+            q = ",".join("?" * len(chunk))
+            for t, b in self.db.execute(f"SELECT t, b FROM s WHERE t IN ({q})", chunk):
+                out[t].append(b)
         return out
 
 
@@ -728,6 +869,80 @@ class Query:
             x["src_" + s_] = float(p in self.src[s_])
         return dict(x)
 
+    def interface_users(self, top):
+        """Files that use the interface strings (routes, methods, ids, CSS classes) of the top
+        files: the clients and other implementations of what the fix changes."""
+        ix = self.ix.iface
+        if not hasattr(self, "iface_bid"):
+            self.iface_bid = defaultdict(list)
+            for p, sha in self.tree.items():
+                b = ix.ids.get(sha)
+                if b is not None:
+                    self.iface_bid[b].append(p)
+        score, cross, why = Counter(), Counter(), {}
+        for p, sc in top:
+            b = ix.ids.get(self.tree.get(p, ""))
+            if b is None:
+                continue
+            strings = ix.rare(ix.strings_of(b), 600)
+            if not strings:
+                continue
+            users = ix.users(strings)
+            for t, bs in users.items():
+                files = {q for x in bs for q in self.iface_bid.get(x, ())} - {p}
+                if not files or len(files) > 30:
+                    continue
+                w = sc / math.log2(2 + len(files))
+                for q in files:
+                    score[q] += w
+                    if group(q) != group(p):
+                        cross[q] += w
+                    if w > why.get(q, (0, ""))[0]:
+                        why[q] = (w, f"uses `{t}` like `{p}`")
+        return score, cross, why
+
+    def rules(self, scored):
+        """\"X changes, so Y changes\" from history: P(Y | X) for the top files X and
+        P(Y | a file in directory D changes) for their directories."""
+        h = self.ix.hist
+        rule_f, rule_d, why = Counter(), Counter(), {}
+        for p, sc in scored[:20]:
+            fid = h["pid"].get(p)
+            if fid is None:
+                continue
+            lst = h["by_file"].get(fid, [])
+            cs = lst[max(0, bisect.bisect_left(lst, self.cutoff) - 400):bisect.bisect_left(lst, self.cutoff)]
+            if len(cs) < 3:
+                continue
+            cnt = Counter(g for c in cs for g in h["commits"][c][3] if g != fid)
+            for g, n in cnt.items():
+                if n < 2:
+                    continue
+                pr = n / len(cs)
+                q = h["paths"][g]
+                if q in self.tree and pr * min(1.0, 2 * sc) > rule_f[q]:
+                    rule_f[q] = pr * min(1.0, 2 * sc)
+                    why[q] = f"changes in {n} of {len(cs)} commits that change `{p}`"
+        dmass = Counter()
+        for p, sc in scored[:30]:
+            dmass[p.rsplit("/", 1)[0] if "/" in p else ""] += sc
+        for d, m in dmass.most_common(6):
+            lst = h["by_dir"].get(d, [])
+            cs = lst[max(0, bisect.bisect_left(lst, self.cutoff) - 400):bisect.bisect_left(lst, self.cutoff)]
+            if len(cs) < 4:
+                continue
+            cnt = Counter(g for c in cs for g in h["commits"][c][3])
+            for g, n in cnt.items():
+                q = h["paths"][g]
+                if n < 3 or q not in self.tree or (q.rsplit("/", 1)[0] if "/" in q else "") == d:
+                    continue
+                pr = n / len(cs) * min(1.0, m)
+                if pr > rule_d[q]:
+                    rule_d[q] = pr
+                    if pr > rule_f.get(q, 0):
+                        why[q] = f"changes in {n} of {len(cs)} commits that touch `{d}/`"
+        return rule_f, rule_d, why
+
     def stage2(self, feats, scored):
         """Propagate the first ranking: co-change, pairs and crate/dir mass from its top files."""
         t0 = time.perf_counter()
@@ -792,6 +1007,27 @@ class Query:
                         ref_why[q] = (w, f"uses `{name}` defined in `{p}`")
         for q, _ in ref.most_common(120):
             new.add(q)
+        t1 = time.perf_counter()
+        iface, iface_x, iface_why = self.interface_users(scored[:8])
+        for q, _ in iface.most_common(150):
+            new.add(q)
+        self.tick("stage2_iface", t1)
+        t1 = time.perf_counter()
+        rule_f, rule_d, rule_why = self.rules(scored)
+        for q, v in list(rule_f.items()) + list(rule_d.items()):
+            if v >= 0.3:
+                new.add(q)
+        self.tick("stage2_rules", t1)
+        # the whole of the crates holding the most stage-1 confidence, so the ranker can
+        # place every file of them (the map's crate lists)
+        members = defaultdict(list)
+        for p in self.paths:
+            members[group(p)].append(p)
+        crate_rank = {}
+        for i, (g, _) in enumerate(group_mass(scored).most_common(4)):
+            crate_rank[g] = i + 1
+            if len(members[g]) <= 500:
+                new.update(members[g])
         for p in new - set(feats):
             self.src["stage2"].add(p)
             feats[p] = self.base(p)
@@ -801,9 +1037,18 @@ class Query:
             x["s1_rank"] = math.log1p(rank1.get(p, 3000))
             x["co2"] = co2.get(fid, 0.0) if fid is not None else 0.0
             x["crate_mass"] = crate_mass.get(group(p), 0.0) / tot
+            x["crate_rank"] = crate_rank.get(group(p), 9)
             x["dir_mass"] = dir_mass.get(p.rsplit("/", 1)[0] if "/" in p else "", 0.0) / tot
             x["pair2"] = pair2.get(p, (0.0, ""))[0]
             x["ref"] = ref.get(p, 0.0)
+            x["iface"] = iface.get(p, 0.0)
+            x["iface_x"] = iface_x.get(p, 0.0)
+            x["rule_f"] = rule_f.get(p, 0.0)
+            x["rule_d"] = rule_d.get(p, 0.0)
+            if x["iface"] > 0.1:
+                self.reason[p].append(iface_why[p][1])
+            if max(x["rule_f"], x["rule_d"]) >= 0.4:
+                self.reason[p].append(rule_why[p])
             if x["ref"] > 0.1:
                 self.reason[p].append(ref_why[p][1])
             x["src_stage2"] = float(p in self.src["stage2"])
@@ -811,13 +1056,22 @@ class Query:
                 self.reason[p].append(pair2[p][1])
             if x["co2"] > 0.2:
                 self.reason[p].append(f"changes with the top-ranked files (co {x['co2']:.2f})")
+        for p, x in feats.items():
+            if x.get("ref", 0) > 0:
+                self.src["ref"].add(p)
+            if x.get("iface", 0) > 0:
+                self.src["iface"].add(p)
+            if max(x.get("rule_f", 0), x.get("rule_d", 0)) >= 0.3:
+                self.src["rule"].add(p)
+            if x.get("crate_rank", 9) < 9:
+                self.src["crate"].add(p)
         relative(feats, REL1 + REL2)
         self.tick("stage2", t0)
         return feats
 
 
 REL1 = ["cos", "co", "co_max", "hist", "hist_max", "sim", "sim_max", "sym_ment", "lit", "recent_n"]
-REL2 = ["co2", "s1", "ref"]
+REL2 = ["co2", "s1", "ref", "iface", "iface_x", "rule_f", "rule_d"]
 
 
 def relative(feats, keys):
@@ -843,6 +1097,32 @@ def tidy(reasons, n=4):
             seen.add(key)
             out.append(r)
     return out[:n]
+
+
+def group_mass(ranked, n=50, key=None):
+    key = key or group
+    mass = Counter()
+    for p, s in ranked[:n]:
+        mass[key(p)] += s
+    return mass
+
+
+def build_map(ranked, paths, k=100, c=3, key=None):
+    """The map: the top k files, then every file of the c groups (crates) holding the
+    most confidence, best first. Returns [(group or None, [paths])]."""
+    key = key or group
+    score = dict(ranked)
+    top = [p for p, _ in ranked[:k]]
+    seen = set(top)
+    out = [(None, top)]
+    members = defaultdict(list)
+    for p in paths:
+        members[key(p)].append(p)
+    for g, _ in group_mass(ranked, key=key).most_common(c):
+        rest = sorted((p for p in members.get(g, []) if p not in seen), key=lambda p: (-score.get(p, 0.0), p))
+        seen.update(rest)
+        out.append((g, rest))
+    return out
 
 
 def group(p):
@@ -1042,6 +1322,22 @@ def cmd_index(a):
     ix.save_blobs()
     print(f"blobs: {len(ix.blob_rows)}", file=sys.stderr)
     TokenIndex(ix.cache).ensure(a.repo, tree)
+    IfaceIndex(ix.cache).ensure(a.repo, tree)
+
+
+def map_json(ranked, n, q):
+    """The top n files grouped by crate (crates in order of the confidence they hold),
+    each crate's files best first; files past the top k carry rank and confidence too."""
+    rank = {p: i for i, (p, _) in enumerate(ranked, 1)}
+    groups = defaultdict(list)
+    for p, s in ranked[:n]:
+        groups[group(p)].append((p, s))
+    order = sorted(groups, key=lambda g: -sum(s for _, s in groups[g]))
+    return {"paths": min(n, len(ranked)), "groups": [
+        {"group": g, "confidence_mass": round(sum(s for _, s in groups[g]), 3),
+         "files": [{"rank": rank[p], "path": p, "confidence": round(s, 4),
+                    "stages": [s_ for s_ in STAGES_OUT if p in q.src[s_]]} for p, s in groups[g]]}
+        for g in order]}
 
 
 class _First:
@@ -1091,12 +1387,13 @@ def cmd_query(a):
         if ix.ensure_blobs(a.repo, tree, key, log=False):
             ix.save_blobs()
     ix.tokens.ensure(a.repo, tree, log=False)
+    ix.iface.ensure(a.repo, tree, log=False)
     timing["refresh_index"] = time.perf_counter() - t0
     q = Query(ix, a.repo, rev, tree, exclude_issue=a.issue, timing=timing)
     feats = q.run(title, body, qvec)
     t0 = time.perf_counter()
-    ranked, feats = rank_two_stage(model, q, feats)
-    ranked = ranked[:a.k]
+    ranked_all, feats = rank_two_stage(model, q, feats)
+    ranked = ranked_all[:a.k]
     timing["score"] = time.perf_counter() - t0
     timing["total"] = time.perf_counter() - t_all
     if a.json:
@@ -1105,9 +1402,10 @@ def cmd_query(a):
             "rev": git(a.repo, "rev-parse", rev).decode().strip(),
             "model": os.path.basename(a.model), "timing_ms": {k: round(v * 1000) for k, v in timing.items()},
             "files": [{"rank": i, "path": p, "confidence": round(s, 4),
-                       "stages": [s_ for s_ in SOURCES if p in q.src[s_]],
+                       "stages": [s_ for s_ in STAGES_OUT if p in q.src[s_]],
                        "reasons": tidy(q.reason.get(p, [])) or ["ranked by the scorer from weak signals"]}
-                      for i, (p, s) in enumerate(ranked, 1)]}, indent=1))
+                      for i, (p, s) in enumerate(ranked, 1)],
+            "map": map_json(ranked_all, a.map, q) if a.map else None}, indent=1))
         return
     print(f"# {('#' + str(a.issue) + ' ') if a.issue else ''}{title}")
     for i, (p, s) in enumerate(ranked, 1):
@@ -1134,7 +1432,9 @@ def main():
     g = q.add_mutually_exclusive_group(required=True)
     g.add_argument("--issue", type=int)
     g.add_argument("--text")
-    q.add_argument("--k", type=int, default=50)
+    q.add_argument("--k", type=int, default=100, help="files in the ranked list")
+    q.add_argument("--map", type=int, default=400,
+                   help="also print the map: the top N files grouped by crate (0: off)")
     q.add_argument("--json", action="store_true")
     q.add_argument("--cache")
     q.add_argument("--model", default=MODEL_PATH)

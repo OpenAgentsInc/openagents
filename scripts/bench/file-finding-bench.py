@@ -31,7 +31,7 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "filefind"))
 import filefind as ff  # noqa: E402
 
-KS = (20, 50, 100, 200)
+KS = (20, 50, 100, 200, 300, 400)
 
 
 def kind(p):
@@ -99,6 +99,7 @@ def cmd_prepare(a):
     ix.save_blobs()
     print(f"embedded {total} new blobs; cache has {len(ix.blob_rows)}")
     ix.tokens.ensure(a.repo, [(p, s) for s, p in union.items()])
+    ix.iface.ensure(a.repo, [(p, s) for s, p in union.items()])
 
 
 def run_case(ix, repo, c, key, keep_query=False):
@@ -149,23 +150,34 @@ def cmd_features(a):
     stage_report(split(cases, a.eval)[0], out)
 
 
+STAGE2_TESTS = {
+    "ref (stage 2)": lambda x: x.get("ref", 0) > 0,
+    "iface (stage 2)": lambda x: x.get("iface", 0) > 0,
+    "rule (stage 2)": lambda x: max(x.get("rule_f", 0), x.get("rule_d", 0)) >= 0.3,
+    "crate (stage 2)": lambda x: x.get("crate_rank", 9) < 9,
+}
+
+
 def stage_report(cases, feats):
     """Recall per candidate stage alone and in union, on existing hand-written files."""
-    rows = []
     tot = 0
     hit = Counter()
     pool_sizes = defaultdict(list)
     lat = defaultdict(list)
+    names = list(ff.SOURCES)
     for c in cases:
         r = feats[c["issue"]]
         hand = set(r["hand"])
         tot += len(hand)
-        allsrc = set()
-        for s in ff.SOURCES:
-            got = set(r["src"].get(s, []))
+        sets = {s: set(r["src"].get(s, [])) for s in ff.SOURCES}
+        for name, test in STAGE2_TESTS.items():
+            sets[name] = {p for p, x in r["feats"].items() if test(x)}
+            if name not in names and any(sets[name] for _ in [0]):
+                names.append(name)
+        for s, got in sets.items():
             pool_sizes[s].append(len(got))
             hit[s] += len(hand & got)
-            allsrc |= got
+        allsrc = set(r["feats"])
         hit["union"] += len(hand & allsrc)
         pool_sizes["union"].append(len(allsrc))
         for k, v in r["timing"].items():
@@ -174,8 +186,9 @@ def stage_report(cases, feats):
     print(f"\nstage recall over {tot} existing hand-written files in {len(cases)} eval cases")
     print("| Stage | Recall | Median candidates |")
     print("|---|---:|---:|")
-    for s in ff.SOURCES + ["union"]:
-        print(f"| {s} | {hit[s]/tot:.3f} ({hit[s]}) | {statistics.median(pool_sizes[s]):.0f} |")
+    for s in names + ["union"]:
+        if pool_sizes[s]:
+            print(f"| {s} | {hit[s]/tot:.3f} ({hit[s]}) | {statistics.median(pool_sizes[s]):.0f} |")
     print("\nlatency per stage (median / p90 ms):")
     for k, v in lat.items():
         v = sorted(v)
@@ -261,6 +274,30 @@ def save_model(a, train, m1, m2):
     print(f"trained on {len(train)} cases -> {a.model}")
 
 
+def map_report(ev, feats, model, repo, title="map"):
+    """Coverage of the map (top k + every file of the top c crates) against its size."""
+    grid = [(k, c) for k in (50, 100, 150) for c in (0, 1, 2, 3, 4, 6)]
+    hit, size = Counter(), defaultdict(list)
+    tot = 0
+    for case in ev:
+        r = feats[case["issue"]]
+        ranked = ff.rank(model, r["feats"])
+        paths = list(ff.ls_tree(repo, case["parent"]))
+        hand = set(r["hand"])
+        tot += len(hand)
+        for k, c in grid:
+            m = [p for _, ps in ff.build_map(ranked, paths, k, c) for p in ps]
+            hit[(k, c)] += len(hand & set(m))
+            size[(k, c)].append(len(m))
+    print(f"\n{title}: top k files + every file of the top c crates (existing hand-written files)")
+    print("| k | c | Recall | Median paths | Mean paths | p90 paths |")
+    print("|---:|---:|---:|---:|---:|---:|")
+    for k, c in grid:
+        s = sorted(size[(k, c)])
+        print(f"| {k} | {c} | {hit[(k, c)]/tot:.3f} | {statistics.median(s):.0f} | {statistics.mean(s):.0f} | {s[int(0.9*(len(s)-1))]} |")
+    return {f"{k},{c}": hit[(k, c)] / tot for k, c in grid}
+
+
 def cmd_eval(a):
     cases = load(a)
     model = json.load(open(a.model))
@@ -273,6 +310,7 @@ def cmd_eval(a):
     evaluate(ev, f1, model["stage1"], a)
     print("\n== stage 1 + stage 2 (propagation)")
     res = evaluate(ev, f2, model["stage2"], a)
+    res["map"] = map_report(ev, f2, model["stage2"], a.repo)
     json.dump(res, open(os.path.join(a.work, "eval.json"), "w"), indent=1)
 
 
@@ -321,6 +359,10 @@ def evaluate(ev, feats, model, a, judged=None):
         # derived: Cargo.lock predicted when a Cargo.toml is in the top 50
         for d in c["derived"]:
             derived[d["kind"] + " total"] += 1
+            for k in (100, 400):
+                if d["path"] in set(order[:k]) or (d["kind"] == "lock" and d["path"].endswith("Cargo.lock")
+                                                    and any(p.endswith("Cargo.toml") for p in order[:50])):
+                    derived[f"{d['kind']} in top {k} or by the lock rule"] += 1
             if d["kind"] == "lock" and any(p.endswith("Cargo.toml") for p in order[:50]):
                 derived["lock predicted"] += 1
             if d["kind"] == "generated" and d["path"].rsplit("/", 1)[0] in top_dirs:
@@ -564,8 +606,8 @@ def cmd_check(a):
     ix = ff.Index(a.cache or ff.default_cache(a.repo)).load()
     model = json.load(open(a.model))
     key = os.environ.get("OPENROUTER_API_KEY")
-    print("| Issue | Hand-written files (existing) | @20 | @50 | @100 | @200 | Missed at 100 |")
-    print("|---|---:|---:|---:|---:|---:|---|")
+    print("| Issue | Hand-written files (existing) | " + " | ".join(f"@{k}" for k in KS) + " | Missed at 400 |")
+    print("|---|---:|" + "---:|" * len(KS) + "---|")
     tot = Counter()
     for c in load(a):
         r = run_case(ix, a.repo, c, key, keep_query=True)
@@ -577,7 +619,7 @@ def cmd_check(a):
         for k, v in zip(KS, row):
             tot[k] += v
         tot["n"] += len(hand)
-        miss = sorted(hand - set(order[:100]))
+        miss = sorted(hand - set(order[:400]))
         print(f"| #{c['issue']} | {len(c['hand'])} ({len(hand)}) | " + " | ".join(map(str, row)) +
               " | " + ", ".join(f"`{m}`" for m in miss) + " |")
     print("| all | " + str(tot["n"]) + " | " + " | ".join(f"{tot[k]/tot['n']:.2f}" for k in KS) + " | |")
