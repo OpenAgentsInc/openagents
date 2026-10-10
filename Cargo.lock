@@ -10563,6 +10563,7 @@ version = "1.0.0"
 dependencies = [
  "acp-client",
  "actors",
+ "agent-fleet",
  "atif",
  "axum 0.8.9",
  "background",

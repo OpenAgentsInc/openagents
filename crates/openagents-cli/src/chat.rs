@@ -37,6 +37,8 @@ use crate::{Args, EXIT_FAILURE, runtime};
 mod boat;
 #[path = "chat_coder.rs"]
 mod coder_run;
+#[path = "chat_fleet.rs"]
+mod fleet;
 #[path = "chat_gce.rs"]
 mod gce;
 #[path = "chat_placement.rs"]

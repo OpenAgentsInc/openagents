@@ -1,3 +1,13 @@
+## Show cloud environment issue runs on openagents.com and the phone (#11228)
+
+`openagents chat work` on `oa-dev-env-1` reports each issue run to the
+account's agent list once it is signed in. Sign in once with `coder login` on
+the environment, or store an app sign-in token as the Secret Manager secret
+`dev-openagents-app-token` (project `openagentsgemini`), which
+`scripts/cloud/dev-env-session.sh` exports as `OPENAGENTS_APP_TOKEN`. Then
+start an issue run there and check that it shows on `/settings/agents` and on
+the phone's Agents screen, and that Stop from each ends it.
+
 ## Qualify working-computer checkpoints on real Boat (#11007)
 
 `crates/coder-working-computer` keeps a chat's computer between turns: it

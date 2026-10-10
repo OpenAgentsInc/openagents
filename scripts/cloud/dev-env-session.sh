@@ -17,6 +17,7 @@
 # | CLAUDE_CODE_OAUTH_TOKEN  | dev-claude-code-oauth-token (claude setup-token) |
 # | TYPESAFE_API_KEY         | dev-typesafe-api-key (Jev)    |
 # | OPENROUTER_API_KEY       | openagents-openrouter-api-key |
+# | OPENAGENTS_APP_TOKEN     | dev-openagents-app-token (the owner's app sign-in: issue runs show on openagents.com and the phone) |
 #
 # Google Cloud itself (deploys, Cloud Run, logs) needs nothing: gcloud on
 # the VM already acts as the attached service account.
@@ -39,7 +40,7 @@ secret() { # name -> value on stdout, or nothing
 
 if [[ ${1:-} == --check ]]; then
   [[ -r $file ]] && set -a && . "$file" && set +a
-  for v in GH_TOKEN CLAUDE_CODE_OAUTH_TOKEN TYPESAFE_API_KEY OPENROUTER_API_KEY; do
+  for v in GH_TOKEN CLAUDE_CODE_OAUTH_TOKEN TYPESAFE_API_KEY OPENROUTER_API_KEY OPENAGENTS_APP_TOKEN; do
     if [[ -n ${!v:-} ]]; then echo "$v: set"; else echo "$v: missing"; fi
   done
   gh api user --jq '"github: " + .login' 2>/dev/null || echo "github: not signed in"
@@ -54,7 +55,8 @@ missing=()
 for pair in GH_TOKEN=coder-pool-git-token \
             CLAUDE_CODE_OAUTH_TOKEN=dev-claude-code-oauth-token \
             TYPESAFE_API_KEY=dev-typesafe-api-key \
-            OPENROUTER_API_KEY=openagents-openrouter-api-key; do
+            OPENROUTER_API_KEY=openagents-openrouter-api-key \
+            OPENAGENTS_APP_TOKEN=dev-openagents-app-token; do
   name=${pair%%=*}
   value=$(secret "${pair#*=}")
   if [[ -n $value ]]; then
