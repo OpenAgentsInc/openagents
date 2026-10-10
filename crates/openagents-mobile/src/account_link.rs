@@ -1,8 +1,8 @@
 //! The phone on the person's openagents.com account (#11107, #11165).
 //!
 //! **Sign in.** The device-code flow Coder uses (`docs/auth/README.md`,
-//! "Device sign-in"): `POST /device/code` with `app: "OpenAgents"` and the
-//! phone's name, then `POST /device/token` at the site's interval until the
+//! "Device sign-in"): `POST /v1/device/code` with `app: "OpenAgents"` and the
+//! phone's name, then `POST /v1/device/token` at the site's interval until the
 //! person approves the code on `openagents.com/device` (typed, opened from
 //! the phone, or scanned from the QR the phone shows). Only accounts the
 //! site lets sign in can approve one, so the owner-only allowlist holds
@@ -20,8 +20,12 @@
 //! path as a reply typed on the website (#11048). The phone asks once where
 //! its own chats live ("Sync all my chats" or "Keep chats on this phone",
 //! the per-device record `/v1/computers/{name}/sync`); with "all", each
-//! phone chat uploads like Coder's (`PUT /coder/sessions/phone-{id}`),
+//! phone chat uploads like Coder's (`PUT /v1/threads/synced/phone-{id}`),
 //! screened for credential shapes first.
+//!
+//! Sign-in and the upload ask the `/v1` path first (#11158); a site from
+//! before that serves them only at `/device/*` and `/coder/sessions/*`,
+//! asked when the `/v1` path answers `404`.
 //!
 //! **Photos.** A reply to a web chat can carry up to four photos (#11174):
 //! **Add photo** asks the host for its picker ([`Link::take_pick`]), the
@@ -291,6 +295,35 @@ pub trait Http: Send + Sync {
     fn upload(&self, _url: String, _token: Option<String>, _bytes: Vec<u8>) -> Calling {
         Box::pin(async { Err("Photos can't be sent from here.".to_owned()) })
     }
+}
+
+/// `method` at `path` on the site at `origin`, then at `older` when the
+/// site doesn't serve `path` (a `404` that isn't the API's own `unknown`):
+/// a site from before #11158 serves our apps' routes only at their older
+/// paths (`/device/*`, `/coder/sessions/*`).
+async fn call_v1(
+    http: &dyn Http,
+    method: &'static str,
+    origin: &str,
+    path: &str,
+    older: &str,
+    token: Option<String>,
+    body: Option<Value>,
+) -> Result<Reply, String> {
+    let reply = http
+        .call(
+            method,
+            format!("{origin}{path}"),
+            token.clone(),
+            body.clone(),
+        )
+        .await?;
+    if reply.status == 404 && reply.code() != "unknown" {
+        return http
+            .call(method, format!("{origin}{older}"), token, body)
+            .await;
+    }
+    Ok(reply)
 }
 
 /// The real client, over HTTPS.
@@ -1005,14 +1038,16 @@ impl Link {
         let runtime = self.runtime.clone();
         let poller = self.poller();
         self.spawn(async move {
-            let started = http
-                .call(
-                    "POST",
-                    format!("{origin}/device/code"),
-                    None,
-                    Some(json!({"app": APP_NAME, "computer": name})),
-                )
-                .await;
+            let started = call_v1(
+                &*http,
+                "POST",
+                &origin,
+                "/v1/device/code",
+                "/device/code",
+                None,
+                Some(json!({"app": APP_NAME, "computer": name})),
+            )
+            .await;
             let waiting = match started {
                 Ok(reply) if reply.status == 200 => {
                     let body = &reply.body;
@@ -1077,14 +1112,16 @@ impl Link {
         if let Some(session) = session {
             let http = self.http.clone();
             self.spawn(async move {
-                let _ = http
-                    .call(
-                        "POST",
-                        format!("{}/device/sign-out", session.origin),
-                        Some(session.token.clone()),
-                        Some(json!({})),
-                    )
-                    .await;
+                let _ = call_v1(
+                    &*http,
+                    "POST",
+                    &session.origin,
+                    "/v1/device/sign-out",
+                    "/device/sign-out",
+                    Some(session.token.clone()),
+                    Some(json!({})),
+                )
+                .await;
             });
         }
     }
@@ -1727,7 +1764,7 @@ fn open_chat(state: &mut State, id: &str) {
     state.notice = None;
 }
 
-/// Poll `/device/token` until the person approves or denies, or the code
+/// Poll `/v1/device/token` until the person approves or denies, or the code
 /// expires; then start reading.
 async fn wait_for_approval(
     http: Arc<dyn Http>,
@@ -1768,17 +1805,19 @@ async fn wait_for_approval(
             wake();
             return;
         }
-        let reply = http
-            .call(
-                "POST",
-                format!("{origin}/device/token"),
-                None,
-                Some(json!({
-                    "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-                    "device_code": device_code,
-                })),
-            )
-            .await;
+        let reply = call_v1(
+            &*http,
+            "POST",
+            &origin,
+            "/v1/device/token",
+            "/device/token",
+            None,
+            Some(json!({
+                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                "device_code": device_code,
+            })),
+        )
+        .await;
         // A dropped connection is not the end of a sign-in.
         let Ok(reply) = reply else { continue };
         let mut state = lock(&state);
@@ -2136,15 +2175,16 @@ impl Poller {
                     .map(|m| json!({"role": m.role, "text": m.text}))
                     .collect::<Vec<_>>(),
             });
-            match self
-                .http
-                .call(
-                    "PUT",
-                    format!("{origin}/coder/sessions/{PHONE_SESSION}{id}"),
-                    Some(token.clone()),
-                    Some(body),
-                )
-                .await
+            match call_v1(
+                &*self.http,
+                "PUT",
+                &origin,
+                &format!("/v1/threads/synced/{PHONE_SESSION}{id}"),
+                &format!("/coder/sessions/{PHONE_SESSION}{id}"),
+                Some(token.clone()),
+                Some(body),
+            )
+            .await
             {
                 Ok(reply) if reply.status == 200 => {
                     let mut state = lock(&self.state);

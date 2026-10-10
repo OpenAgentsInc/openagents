@@ -14,12 +14,6 @@ use std::path::{Path, PathBuf};
 /// Mounted here but answered by the upstream on purpose, by prefix, and
 /// why. Nothing else may be.
 const NOT_OWNED: &[(&str, &str)] = &[
-    (
-        "/coder/",
-        "Coder's older sync paths: in production the previous server answers \
-         them until the shipped Coder and phone apps call /v1/threads/synced \
-         and /v1/computers/check-in (#11158), which this site owns",
-    ),
     ("/u/", "profiles: the previous server still draws them"),
     (
         "/api/v1/",
@@ -261,7 +255,7 @@ fn every_mounted_route_is_owned() {
 }
 
 #[test]
-fn the_api_paths_are_owned_and_the_older_coder_paths_are_not_yet() {
+fn the_api_paths_and_the_older_coder_paths_are_owned() {
     for path in [
         "/v1/device/code",
         "/v1/device/token",
@@ -275,10 +269,19 @@ fn the_api_paths_are_owned_and_the_older_coder_paths_are_not_yet() {
         "/api/traces",
         "/.well-known/security.txt",
         "/security.txt",
+        // The older paths shipped apps still call (#11159): answered here,
+        // never forwarded with the app's `Bearer sess_...`.
+        "/coder/sessions",
+        "/coder/sessions/s1",
+        "/coder/sessions/s1/status",
+        "/coder/sessions/s1/replies",
+        "/coder/sessions/s1/captures/a1",
+        "/coder/check-in",
+        "/coder/sync",
+        "/coder/memory",
+        "/coder/memory/sync",
+        "/coder/memory/m1",
     ] {
         assert!(crate::upstream::owned(path), "{path}");
-    }
-    for path in ["/coder/sessions", "/coder/check-in", "/coder/sync"] {
-        assert!(!crate::upstream::owned(path), "{path}");
     }
 }

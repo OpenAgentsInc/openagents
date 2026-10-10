@@ -107,7 +107,9 @@ fn settings_are_off_by_default_private_and_remember_what_was_sent() {
 }
 
 /// A website that keeps what it is sent; session "gone" was deleted there.
-fn site() -> (String, Arc<Mutex<Vec<String>>>) {
+/// It serves the `/v1` paths, or, when `older`, only the paths of a
+/// website from before #11158.
+fn site(older: bool) -> (String, Arc<Mutex<Vec<String>>>) {
     let seen = Arc::new(Mutex::new(Vec::new()));
     let log = seen.clone();
     let (ready, address) = std::sync::mpsc::channel();
@@ -124,10 +126,16 @@ fn site() -> (String, Arc<Mutex<Vec<String>>>) {
             };
             let (a, b, c, d) = (log.clone(), log.clone(), log.clone(), log.clone());
             let (e, f, g) = (log.clone(), log.clone(), log.clone());
-            let router = Router::new()
-                // The computer's choice (#11089): "Studio" chose to keep
-                // its chats; others haven't been asked.
-                .route(
+            let (synced, check_in) = if older {
+                ("/coder/sessions", "/coder/check-in")
+            } else {
+                ("/v1/threads/synced", "/v1/computers/check-in")
+            };
+            let router = Router::new();
+            // The computer's choice (#11089): "Studio" chose to keep its
+            // chats; others haven't been asked.
+            let router = if older {
+                router.route(
                     "/coder/sync",
                     get(
                         |axum::extract::RawQuery(query): axum::extract::RawQuery| async move {
@@ -143,8 +151,28 @@ fn site() -> (String, Arc<Mutex<Vec<String>>>) {
                         Json(json!({"choice": body["choice"]}))
                     }),
                 )
+            } else {
+                router.route(
+                    "/v1/computers/{name}/sync",
+                    get(|UrlPath(name): UrlPath<String>| async move {
+                        let studio = name == "Studio";
+                        Json(json!({"choice": if studio { json!("local") } else { Value::Null }}))
+                    })
+                    .put(
+                        move |UrlPath(name): UrlPath<String>, Json(body): Json<Value>| async move {
+                            // The `/v1` path takes only the choice.
+                            assert_eq!(body.as_object().map(|o| o.len()), Some(1));
+                            g.lock()
+                                .unwrap()
+                                .push(format!("choose {} {}", json!(name), body["choice"]));
+                            Json(json!({"choice": body["choice"]}))
+                        },
+                    ),
+                )
+            };
+            let router = router
                 .route(
-                    "/coder/sessions",
+                    synced,
                     get(move |headers: HeaderMap| async move {
                         assert!(authorized(&headers));
                         a.lock().unwrap().push("list".into());
@@ -155,7 +183,7 @@ fn site() -> (String, Arc<Mutex<Vec<String>>>) {
                     }),
                 )
                 .route(
-                    "/coder/sessions/{session}",
+                    &format!("{synced}/{{session}}"),
                     put(
                         move |UrlPath(session): UrlPath<String>,
                               headers: HeaderMap,
@@ -177,7 +205,7 @@ fn site() -> (String, Arc<Mutex<Vec<String>>>) {
                     }),
                 )
                 .route(
-                    "/coder/sessions/{session}/status",
+                    &format!("{synced}/{{session}}/status"),
                     post(
                         move |UrlPath(session): UrlPath<String>, Json(body): Json<Value>| async move {
                             d.lock()
@@ -189,7 +217,7 @@ fn site() -> (String, Arc<Mutex<Vec<String>>>) {
                 )
                 // Replies typed on the website (#11048): "s1" has one.
                 .route(
-                    "/coder/check-in",
+                    check_in,
                     post(move |headers: HeaderMap, Json(body): Json<Value>| async move {
                         assert!(authorized(&headers));
                         e.lock()
@@ -199,7 +227,7 @@ fn site() -> (String, Arc<Mutex<Vec<String>>>) {
                     }),
                 )
                 .route(
-                    "/coder/sessions/{session}/replies",
+                    &format!("{synced}/{{session}}/replies"),
                     post(move |UrlPath(session): UrlPath<String>| async move {
                         f.lock().unwrap().push(format!("take {session}"));
                         if session == "gone" {
@@ -243,7 +271,18 @@ fn wait_for(worker: &Worker, count: usize) -> Vec<Event> {
 
 #[test]
 fn the_worker_sends_chats_heartbeats_and_deletes_and_hears_of_web_deletes() {
-    let (origin, seen) = site();
+    sends_and_hears(false);
+}
+
+#[test]
+fn a_website_from_before_v1_is_asked_at_the_older_paths() {
+    sends_and_hears(true);
+    checks_in_and_takes(true);
+    reads_and_tells_the_choice(true);
+}
+
+fn sends_and_hears(older: bool) {
+    let (origin, seen) = site(older);
     let worker = Worker::start(saved(&origin));
     // The first round asks which chats were deleted on the website.
     let events = wait_for(&worker, 1);
@@ -307,7 +346,11 @@ fn an_unreachable_site_is_retried_quietly() {
 
 #[test]
 fn the_worker_checks_in_and_takes_replies_typed_on_the_website() {
-    let (origin, seen) = site();
+    checks_in_and_takes(false);
+}
+
+fn checks_in_and_takes(older: bool) {
+    let (origin, seen) = site(older);
     let worker = Worker::start(saved(&origin));
     // The first round's delete check.
     assert_eq!(wait_for(&worker, 1).len(), 1);
@@ -371,7 +414,11 @@ fn the_worker_checks_in_and_takes_replies_typed_on_the_website() {
 
 #[test]
 fn the_choice_is_read_and_told_to_the_website() {
-    let (origin, seen) = site();
+    reads_and_tells_the_choice(false);
+}
+
+fn reads_and_tells_the_choice(older: bool) {
+    let (origin, seen) = site(older);
     let saved = saved(&origin);
     assert_eq!(choice_now(&saved, "Studio"), Some(Choice::Local));
     assert_eq!(choice_now(&saved, "Studio Mac"), None);

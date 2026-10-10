@@ -107,8 +107,16 @@ const OWNED_EXACT: [&str; 66] = [
 /// which are proxied, load their own (`/static/coder.css`,
 /// `/static/webtui.css`, `/static/favicon.png`), so the rest of `/static/`
 /// goes upstream.
-const OWNED_PREFIXES: [&str; 19] = [
+///
+/// `/coder/` is Coder's and the phone's older sync paths (#11159): this
+/// site answers them itself ([`crate::coder_sync`] at `/coder/sessions`,
+/// `/coder/check-in`, `/coder/sync`, and [`crate::account_memory`] at
+/// `/coder/memory`), so a shipped app still calling them is served here
+/// and its `Bearer sess_...` never reaches the upstream. Current apps ask
+/// the `/v1` paths first (#11158).
+const OWNED_PREFIXES: [&str; 20] = [
     "/auth/",
+    "/coder/",
     "/device/",
     "/v1/device/",
     "/docs/",

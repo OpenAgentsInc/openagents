@@ -150,10 +150,11 @@ impl CloudSession {
             return Err(RepoCallError::Repo(RepoError::Invalid));
         }
         let body = self
-            .account_call(
+            .account_call_or(
                 headers,
                 Method::POST,
-                "/v1/account/projects",
+                "/v1/projects",
+                Some("/v1/account/projects"),
                 Some(json!({"repository": repository})),
             )
             .await?;
@@ -166,10 +167,11 @@ impl CloudSession {
         if !oa_auth::repos::project_id(id) {
             return Err(RepoCallError::Repo(RepoError::Invalid));
         }
-        self.account_call(
+        self.account_call_or(
             headers,
             Method::DELETE,
-            &format!("/v1/account/projects/{id}"),
+            &format!("/v1/projects/{id}"),
+            Some(&format!("/v1/account/projects/{id}")),
             None,
         )
         .await
@@ -184,38 +186,69 @@ impl CloudSession {
         path: &str,
         body: Option<Value>,
     ) -> Result<Value> {
+        self.account_call_or(headers, method, path, None, body)
+            .await
+    }
+
+    /// [`Self::account_call`] at `path`, then at `older` when the account
+    /// service doesn't serve `path` (a `404` without an error of its own):
+    /// a service from before #11158 has projects only under
+    /// `/v1/account/projects`.
+    async fn account_call_or(
+        &self,
+        headers: &HeaderMap,
+        method: Method,
+        path: &str,
+        older: Option<&str>,
+        body: Option<Value>,
+    ) -> Result<Value> {
         self.request_host(headers)?;
         let token = value(headers, SESSION_COOKIE)?.ok_or(SessionError::Unauthenticated)?;
         if !session_token(&token) {
             return Err(SessionError::Unauthenticated.into());
         }
         self.ready()?;
-        let mut request = self
-            .http
-            .request(method, format!("{}{path}", self.account_service))
-            .bearer_auth(&token)
-            // A call may read GitHub up to three times.
-            .timeout(Duration::from_secs(30));
-        if let Some(body) = body {
-            request = request.json(&body);
-        }
-        let mut response = request
-            .send()
-            .await
-            .map_err(|_| SessionError::Unavailable)?;
-        let status = response.status();
-        let mut bytes = Vec::new();
-        while let Some(chunk) = response
-            .chunk()
-            .await
-            .map_err(|_| SessionError::Unavailable)?
-        {
-            bytes.extend_from_slice(&chunk);
-            if bytes.len() > BODY_MAX {
-                return Err(SessionError::Unavailable.into());
+        let mut path = path;
+        let mut older = older;
+        let (status, body) = loop {
+            let mut request = self
+                .http
+                .request(method.clone(), format!("{}{path}", self.account_service))
+                .bearer_auth(&token)
+                // A call may read GitHub up to three times.
+                .timeout(Duration::from_secs(30));
+            if let Some(body) = &body {
+                request = request.json(body);
             }
-        }
-        let body: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+            let mut response = request
+                .send()
+                .await
+                .map_err(|_| SessionError::Unavailable)?;
+            let status = response.status();
+            let mut bytes = Vec::new();
+            while let Some(chunk) = response
+                .chunk()
+                .await
+                .map_err(|_| SessionError::Unavailable)?
+            {
+                bytes.extend_from_slice(&chunk);
+                if bytes.len() > BODY_MAX {
+                    return Err(SessionError::Unavailable.into());
+                }
+            }
+            let answered: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+            if status.as_u16() == 404
+                && answered["error"]["code"]
+                    .as_str()
+                    .and_then(RepoError::from_code)
+                    .is_none()
+                && let Some(next) = older.take()
+            {
+                path = next;
+                continue;
+            }
+            break (status, answered);
+        };
         if status.is_success() {
             return Ok(body);
         }

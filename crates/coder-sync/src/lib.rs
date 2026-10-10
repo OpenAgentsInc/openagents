@@ -1,7 +1,7 @@
 //! Coder chats saved to the signed-in openagents.com account (#11046).
 //!
 //! Off by default. When the person turns it on (`/sync on` in Coder), each
-//! saved chat's messages go to the website's `/coder/sessions/{session}`
+//! saved chat's messages go to the website's `/v1/threads/synced/{session}`
 //! (`openagents-web` `coder_sync`) under the account's own app token
 //! ([`openagents_login::Saved`]), in the background, retrying quietly.
 //! While Coder replies it sends a "working" heartbeat so the website shows
@@ -26,8 +26,12 @@
 //! Where this computer's chats live is the person's choice, asked once
 //! (#11089): "Sync all my chats" or "Keep chats on this computer"
 //! ([`Choice`]). The website keeps the same choice per computer
-//! (`/coder/sync`, [`choice`], [`choose`]), so it can be made or changed
-//! there too.
+//! (`/v1/computers/{name}/sync`, [`choice`], [`choose`]), so it can be
+//! made or changed there too.
+//!
+//! Every call asks the `/v1` path first (#11158). A website from before
+//! that serves only the older `/coder/*` paths, so a `404` that isn't the
+//! API's own `unknown` is asked again there.
 //!
 //! The same take brings screenshots and files asked for on the website
 //! from this computer (#11185, [`Ask`]): Coder runs each through this
@@ -383,13 +387,56 @@ async fn call(
     (answer, body)
 }
 
+/// Synced chats, under `/v1` (#11158).
+const SYNCED: &str = "/v1/threads/synced";
+/// Their path on a website from before #11158.
+const OLDER_SYNCED: &str = "/coder/sessions";
+/// A computer checking in, under `/v1`.
+const CHECK_IN: &str = "/v1/computers/check-in";
+/// Its path on a website from before #11158.
+const OLDER_CHECK_IN: &str = "/coder/check-in";
+
+/// The older path of a `/v1` one this crate calls, on a website from
+/// before #11158.
+fn older(path: &str) -> String {
+    if let Some(rest) = path.strip_prefix(SYNCED) {
+        format!("{OLDER_SYNCED}{rest}")
+    } else if path == CHECK_IN {
+        OLDER_CHECK_IN.to_owned()
+    } else {
+        path.to_owned()
+    }
+}
+
+/// A `404` that isn't the API's own `unknown` (no such chat): the website
+/// doesn't serve the path at all.
+fn no_route(answer: &Answer, body: &Value) -> bool {
+    *answer == Answer::Unknown && body["error"]["code"] != "unknown"
+}
+
+/// [`call`] at a `/v1` path; when the website doesn't serve it (a site
+/// from before #11158), the same call at its older path ([`older`]).
+async fn call_v1(
+    http: &reqwest::Client,
+    saved: &Saved,
+    method: reqwest::Method,
+    path: &str,
+    body: Option<&Value>,
+) -> (Answer, Value) {
+    let (answer, answered) = call(http, saved, method.clone(), path, body).await;
+    if no_route(&answer, &answered) {
+        return call(http, saved, method, &older(path), body).await;
+    }
+    (answer, answered)
+}
+
 fn session_path(session: &str) -> Option<String> {
     (!session.is_empty()
         && session.len() <= 128
         && session
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-')))
-    .then(|| format!("/coder/sessions/{session}"))
+    .then(|| format!("{SYNCED}/{session}"))
 }
 
 /// Send one chat.
@@ -397,7 +444,7 @@ pub async fn put(http: &reqwest::Client, saved: &Saved, session: &str, upload: &
     let Some(path) = session_path(session) else {
         return Answer::Refused("That isn't a Coder session id.".into());
     };
-    call(http, saved, reqwest::Method::PUT, &path, Some(&upload.body))
+    call_v1(http, saved, reqwest::Method::PUT, &path, Some(&upload.body))
         .await
         .0
 }
@@ -408,7 +455,7 @@ pub async fn status(http: &reqwest::Client, saved: &Saved, session: &str, workin
         return Answer::Refused("That isn't a Coder session id.".into());
     };
     let body = json!({"working": working});
-    call(
+    call_v1(
         http,
         saved,
         reqwest::Method::POST,
@@ -424,14 +471,14 @@ pub async fn delete(http: &reqwest::Client, saved: &Saved, session: &str) -> Ans
     let Some(path) = session_path(session) else {
         return Answer::Done;
     };
-    call(http, saved, reqwest::Method::DELETE, &path, None)
+    call_v1(http, saved, reqwest::Method::DELETE, &path, None)
         .await
         .0
 }
 
 /// The chats deleted on the website that Coder still has.
 pub async fn deleted_on_site(http: &reqwest::Client, saved: &Saved) -> Result<Vec<String>, Answer> {
-    match call(http, saved, reqwest::Method::GET, "/coder/sessions", None).await {
+    match call_v1(http, saved, reqwest::Method::GET, SYNCED, None).await {
         (Answer::Done, body) => Ok(body["sessions"]
             .as_array()
             .into_iter()
@@ -486,26 +533,27 @@ pub async fn choice(
     saved: &Saved,
     computer: &str,
 ) -> Result<Option<Choice>, Answer> {
-    let query: String = line(computer, 64)
-        .bytes()
-        .map(|b| {
-            if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.') {
-                (b as char).to_string()
-            } else {
-                format!("%{b:02X}")
-            }
-        })
-        .collect();
-    let query = format!("computer={query}");
-    match call(
+    let name = activity::segment(computer);
+    let mut asked = call(
         http,
         saved,
         reqwest::Method::GET,
-        &format!("/coder/sync?{query}"),
+        &format!("/v1/computers/{name}/sync"),
         None,
     )
-    .await
-    {
+    .await;
+    if no_route(&asked.0, &asked.1) {
+        // A website from before #11158.
+        asked = call(
+            http,
+            saved,
+            reqwest::Method::GET,
+            &format!("/coder/sync?computer={name}"),
+            None,
+        )
+        .await;
+    }
+    match asked {
         (Answer::Done, body) => Ok(body["choice"].as_str().and_then(Choice::parse)),
         (Answer::Unknown, _) => Ok(None),
         (answer, _) => Err(answer),
@@ -519,6 +567,18 @@ pub async fn choose(
     computer: &str,
     choice: Choice,
 ) -> Answer {
+    let (answer, body) = call(
+        http,
+        saved,
+        reqwest::Method::PUT,
+        &format!("/v1/computers/{}/sync", activity::segment(computer)),
+        Some(&json!({"choice": choice.as_str()})),
+    )
+    .await;
+    if !no_route(&answer, &body) {
+        return answer;
+    }
+    // A website from before #11158 takes the computer in the body.
     let body = json!({"computer": line(computer, 64), "choice": choice.as_str()});
     call(
         http,
@@ -613,15 +673,7 @@ pub async fn check_in(
     computer: &str,
 ) -> Result<(Vec<String>, Option<Choice>), Answer> {
     let body = json!({"computer": line(computer, 64)});
-    match call(
-        http,
-        saved,
-        reqwest::Method::POST,
-        "/coder/check-in",
-        Some(&body),
-    )
-    .await
-    {
+    match call_v1(http, saved, reqwest::Method::POST, CHECK_IN, Some(&body)).await {
         (Answer::Done, body) => Ok((
             body["waiting"]
                 .as_array()
@@ -737,16 +789,28 @@ pub async fn send_capture(
     };
     match result {
         Ok(bytes) => {
-            let Ok(response) = http
-                .put(format!("{}{path}/captures/{ask}", saved.origin))
-                .bearer_auth(saved.token())
-                .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
-                .body(bytes.clone())
-                .send()
-                .await
-            else {
+            let send = |path: String| {
+                http.put(format!("{}{path}", saved.origin))
+                    .bearer_auth(saved.token())
+                    .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
+                    .body(bytes.clone())
+                    .send()
+            };
+            let path = format!("{path}/captures/{ask}");
+            let Ok(mut response) = send(path.clone()).await else {
                 return Answer::Retry;
             };
+            if response.status().as_u16() == 404 {
+                let body: Value = response.json().await.unwrap_or(Value::Null);
+                if !no_route(&Answer::Unknown, &body) {
+                    return Answer::Unknown;
+                }
+                // A website from before #11158.
+                let Ok(again) = send(older(&path)).await else {
+                    return Answer::Retry;
+                };
+                response = again;
+            }
             match response.status().as_u16() {
                 200 => Answer::Done,
                 401 => Answer::SignedOut,
@@ -758,7 +822,7 @@ pub async fn send_capture(
         }
         Err(message) => {
             let body = json!({"message": line(message, 300)});
-            call(
+            call_v1(
                 http,
                 saved,
                 reqwest::Method::POST,
@@ -790,7 +854,7 @@ pub async fn take(http: &reqwest::Client, saved: &Saved, session: &str) -> Resul
     let Some(path) = session_path(session) else {
         return Err(Answer::Refused("That isn't a Coder session id.".into()));
     };
-    match call(
+    match call_v1(
         http,
         saved,
         reqwest::Method::POST,

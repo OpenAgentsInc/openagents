@@ -184,7 +184,7 @@ fn texts(value: &Value, out: &mut Vec<String>) {
 fn sign_in_shows_a_code_and_keeps_the_session_once() {
     let mut f = fixture();
     f.site.answer(
-        "POST /device/code",
+        "POST /v1/device/code",
         200,
         json!({
             "device_code": "dev_1",
@@ -196,12 +196,12 @@ fn sign_in_shows_a_code_and_keeps_the_session_once() {
         }),
     );
     f.site.once(
-        "POST /device/token",
+        "POST /v1/device/token",
         400,
         json!({"error": "authorization_pending"}),
     );
     f.site.answer(
-        "POST /device/token",
+        "POST /v1/device/token",
         200,
         json!({
             "access_token": "sess_phone",
@@ -231,7 +231,7 @@ fn sign_in_shows_a_code_and_keeps_the_session_once() {
         f.link.tap(Intent::OpenPage).as_deref(),
         Some("https://staging.example/device?code=ABCD-EFGH")
     );
-    let start = &f.site.calls("POST /device/code")[0];
+    let start = &f.site.calls("POST /v1/device/code")[0];
     assert_eq!(start.body.as_ref().unwrap()["app"], "OpenAgents");
     assert_eq!(start.body.as_ref().unwrap()["computer"], "Pixel Test");
     until(|| f.link.signed_in());
@@ -254,6 +254,8 @@ fn sign_in_shows_a_code_and_keeps_the_session_once() {
     drop(f.runtime);
 }
 
+/// A site from before #11158 serves sign-in only at `/device/*`: the
+/// `/v1` path answers `404` there, and the phone asks the older one.
 #[test]
 fn a_denied_code_says_so() {
     let mut f = fixture();
@@ -271,6 +273,8 @@ fn a_denied_code_says_so() {
         f.link.lock().sign_in,
         SignIn::Failed("Sign-in was denied on the website.".into())
     );
+    assert_eq!(f.site.calls("POST /v1/device/code").len(), 1);
+    assert!(!f.site.calls("POST /v1/device/token").is_empty());
 }
 
 #[test]
@@ -531,6 +535,40 @@ fn sign_out_ends_the_session_on_the_site() {
         f.site.calls("POST /device/sign-out")[0].token.as_deref(),
         Some("sess_test")
     );
+    // The `/v1` path first; this site is from before #11158.
+    assert_eq!(f.site.calls("POST /v1/device/sign-out").len(), 1);
+}
+
+#[test]
+fn a_phone_chat_uploads_to_the_older_path_on_a_site_from_before_v1() {
+    let mut f = fixture();
+    f.site.answer(
+        "PUT /v1/computers/Pixel%20Test/sync",
+        200,
+        json!({"choice": "all"}),
+    );
+    f.site.answer(
+        "PUT /coder/sessions/phone-c1",
+        200,
+        json!({"chat": "x", "changed": true}),
+    );
+    signed(&mut f);
+    until(|| f.link.lock().choice_read);
+    f.link.tap(Intent::Choose { all: true });
+    until(|| {
+        !f.site
+            .calls("PUT /v1/computers/Pixel%20Test/sync")
+            .is_empty()
+    });
+    f.link.queue_uploads(vec![(
+        "c1".into(),
+        upload_title("Greeting"),
+        5,
+        upload_messages(&[openagents_chat::basic_coder::Turn::user("hello")]),
+    )]);
+    until(|| !f.site.calls("PUT /coder/sessions/phone-c1").is_empty());
+    assert_eq!(f.site.calls("PUT /v1/threads/synced/phone-c1").len(), 1);
+    until(|| f.link.wanted_uploads(&[("c1".into(), 5)]).is_empty());
 }
 
 #[test]
@@ -542,7 +580,7 @@ fn the_choice_is_asked_once_and_phone_chats_upload_screened() {
         json!({"choice": "all"}),
     );
     f.site.answer(
-        "PUT /coder/sessions/phone-c1",
+        "PUT /v1/threads/synced/phone-c1",
         200,
         json!({"chat": "x", "changed": true}),
     );
@@ -591,8 +629,8 @@ fn the_choice_is_asked_once_and_phone_chats_upload_screened() {
         5,
         upload_messages(&turns),
     )]);
-    until(|| !f.site.calls("PUT /coder/sessions/phone-c1").is_empty());
-    let body = f.site.calls("PUT /coder/sessions/phone-c1")[0]
+    until(|| !f.site.calls("PUT /v1/threads/synced/phone-c1").is_empty());
+    let body = f.site.calls("PUT /v1/threads/synced/phone-c1")[0]
         .body
         .clone()
         .unwrap();
