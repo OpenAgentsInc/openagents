@@ -550,7 +550,7 @@ impl Services {
                 .map(|judge| Box::new(judge) as Box<dyn Judge>),
             _ => None,
         };
-        let relevance: Box<dyn Relevance> = match knowledge::search::Embedder::from_env() {
+        let relevance: Box<dyn Relevance> = match knowledge::search::Embedder::house() {
             Ok(embedder) => Box::new(Embedded::new(embedder, store.dir())),
             Err(_) => Box::new(Lexical),
         };

@@ -458,7 +458,7 @@ impl Embedder {
     }
 
     /// The embedder a command asked for: `None` for the default
-    /// ([`Embedder::from_env`]), `vertex`, or `gateway` (the Vercel AI
+    /// ([`Embedder::house`]), `vertex`, or `gateway` (the Vercel AI
     /// Gateway with the chat worker's own door key).
     ///
     /// # Errors
@@ -469,7 +469,7 @@ impl Embedder {
             return theirs;
         }
         match choice {
-            None => Embedder::from_env(),
+            None => Embedder::house(),
             Some("vertex") => Embedder::vertex(),
             Some("gateway") => Embedder::gateway(),
             Some(other) => Err(format!(
@@ -564,23 +564,38 @@ impl Embedder {
         ))
     }
 
-    /// Our default embedder: Vertex AI when this host holds a Google
-    /// credential ([`Embedder::google`]; owner direction 2026-10-10, Google
-    /// first on the prepaid credit), else OpenAI's API when an OpenAI key is
-    /// set up, else OpenRouter, with our other embedding providers behind it
-    /// ([`Embedder::with_our_backups`]). A person's own keys answer first
-    /// ([`Embedder::theirs`]). Vector caches are keyed by model, so a switch
-    /// re-embeds rather than mixing models.
+    /// Our default embedder for anything whose vectors are cached by model
+    /// (owner direction 2026-10-10, Google first on the prepaid credit): a
+    /// person's own keys first ([`Embedder::theirs`]), then Vertex AI when
+    /// this host holds a Google credential ([`Embedder::google`]), else
+    /// [`Embedder::from_env`]. Vector caches are keyed by model, so a switch
+    /// re-embeds rather than mixing models. An index built with OpenAI's
+    /// model reads with [`Embedder::from_env`] instead.
     ///
     /// # Errors
     ///
     /// None has a credential; the message gives the reasons.
-    pub fn from_env() -> Result<Self, String> {
+    pub fn house() -> Result<Self, String> {
         if let Some(theirs) = Embedder::theirs(&model_access::current()) {
             return theirs;
         }
         if let Some(google) = Embedder::google() {
             return google;
+        }
+        Embedder::from_env()
+    }
+
+    /// OpenAI's `text-embedding-3-small`: OpenAI's API when an OpenAI key is
+    /// set up, else OpenRouter, with our other embedding providers behind it
+    /// ([`Embedder::with_our_backups`]). For an index built with that model;
+    /// a new cache takes [`Embedder::house`].
+    ///
+    /// # Errors
+    ///
+    /// Neither has a key; the message gives both reasons.
+    pub fn from_env() -> Result<Self, String> {
+        if let Some(theirs) = Embedder::theirs(&model_access::current()) {
+            return theirs;
         }
         Embedder::openai()
             .or_else(|openai| {
@@ -1073,7 +1088,7 @@ mod byok_tests {
     #[tokio::test]
     #[ignore = "calls Vertex AI"]
     async fn live_house_embedder_is_vertex() {
-        let embedder = Embedder::from_env().unwrap();
+        let embedder = Embedder::house().unwrap();
         assert_eq!(embedder.provider, EmbeddingProvider::Vertex);
         for _ in 0..3 {
             let started = std::time::Instant::now();

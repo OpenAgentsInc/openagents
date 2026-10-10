@@ -146,7 +146,10 @@ async fn build_command(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// The composer: the gateway door when configured, else OpenRouter.
+/// The composer: Gemini on Vertex AI when the Vertex switch is on
+/// (`VERTEX_PROJECT` with a Google credential; Google first on our keys,
+/// 2026-10-10), else the gateway door when configured, else OpenAI, else
+/// OpenRouter.
 enum Composer {
     Door(ResponsesDoor),
     OpenAi(codebase::OpenAiChat),
@@ -155,6 +158,9 @@ enum Composer {
 
 impl Composer {
     fn from_env() -> Result<Self, String> {
+        if let Some(door) = coder::generate::vertex_door_from_env()? {
+            return Ok(Composer::Door(door));
+        }
         if let Some(door) = ResponsesDoor::from_env() {
             return Ok(Composer::Door(door));
         }
@@ -173,6 +179,7 @@ impl Composer {
 
     fn name(&self) -> String {
         match self {
+            Composer::Door(door) if door.is_vertex() => format!("vertex:{}", door.model),
             Composer::Door(door) => format!("gateway:{}", door.model),
             Composer::OpenAi(chat) => format!("openai:{}", chat.model),
             Composer::OpenRouter(or) => format!("openrouter:{}", or.model),

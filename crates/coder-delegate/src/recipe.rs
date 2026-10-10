@@ -1039,7 +1039,7 @@ pub async fn select_knowledge(
         );
     }
     let base = knowledge::Base { entries };
-    let retriever = match knowledge::search::Embedder::from_env() {
+    let retriever = match knowledge::search::Embedder::house() {
         Ok(embedder) => {
             knowledge::search::Retriever::new(base, embedder, knowledge::default_cache())
         }
