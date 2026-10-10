@@ -52,7 +52,7 @@ Cloud Scheduler  oa-coder-host-image-daily   07:00 UTC
         └─ cloud-sdk step: sparse clone of scripts/cloud at origin/main
              └─ build-coder-host-image.sh --apply
                   1. origin/main → commit; skip if today's image is READY
-                  2. spot c3-standard-22 builder, 100 GB pd-balanced, no external address
+                  2. spot c3-standard-22 builder, 200 GB pd-balanced, no external address
                      (Cloud NAT egress), service account oa-coder-host; zones a, b, c, f
                      in turn when one is out of capacity, then on demand
                   3. serial console until OA_CODER_HOST_BAKE_OK; a preempted spot
@@ -114,13 +114,13 @@ is idempotent per day) or pass `--image-name oa-coder-host-YYYYMMDDb`.
 gcloud compute instances create HOST --project openagentsgemini --zone us-central1-a \
   --machine-type c3-standard-8 --provisioning-model SPOT --instance-termination-action DELETE \
   --image-family oa-coder-host --image-project openagentsgemini \
-  --boot-disk-type pd-balanced --boot-disk-size 200GB \
+  --boot-disk-type pd-balanced --boot-disk-size 300GB \
   --no-address --service-account oa-coder-host@openagentsgemini.iam.gserviceaccount.com \
   --scopes cloud-platform --shielded-secure-boot --shielded-vtpm --shielded-integrity-monitoring
 ```
 
-The root partition grows to the disk size on first boot. Use 200 GB for a
-pool host: the image holds 35 GB, the warm target 23 GiB, and every further
+The root partition grows to the disk size on first boot. Use 300 GB for a
+pool host: the image disk is 200 GB, the image holds 35 GB, the warm target 23 GiB, and every further
 slot or cold target adds 20 to 80 GB once tests are built. Builds in the clone or a worktree reuse the warm slot
 with `CARGO_TARGET_DIR=/home/coder/.openagents/targets/openagents-cc2c5b3cc6c4-slot-0`;
 Coder task runs lease it by themselves.
@@ -183,7 +183,7 @@ About $8 a month, list prices, us-central1:
 | Item | Monthly |
 | --- | --- |
 | Builder: spot `c3-standard-22`, about 20 minutes a day | about $4 |
-| Builder disk: 100 GB pd-balanced for about 25 minutes a day | under $0.10 |
+| Builder disk: 200 GB pd-balanced for about 25 minutes a day | under $0.10 |
 | Smoke VM: spot `e2-standard-4` for 1 to 2 minutes a day | under $0.10 |
 | Images: 3 kept × 9.5 GB at $0.05 per GB-month | about $1.40 |
 | Cloud Build: one `E2_MEDIUM` step of about 25 minutes a day, mostly waiting | $0 inside the 2,500 free build-minutes, at most about $2.30 |

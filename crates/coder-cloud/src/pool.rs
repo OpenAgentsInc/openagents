@@ -15,7 +15,9 @@ pub const IMAGE_FAMILY: &str = "oa-coder-host";
 pub const DEFAULT_MACHINE: &str = "c3-standard-8";
 /// Coder runs per host: one slot of 4 vCPU and 16 GB each.
 pub const SLOTS_PER_HOST: u64 = 2;
-const DISK_GB: u64 = 200;
+/// A host disk: room for the 200 GB image the bake writes plus a second
+/// slot's target.
+const DISK_GB: u64 = 300;
 pub const DEFAULT_IDLE_MINUTES: u64 = 10;
 pub const DEFAULT_MAX_HOSTS: u64 = 8;
 /// The backstop for a host whose agent never deletes it.
@@ -276,7 +278,7 @@ fn out_of_capacity(error: &str) -> bool {
 
 /// Hourly list-price estimate of one host: `OA_POOL_HOURLY_USD`, else
 /// about $0.0175 (spot) or $0.0525 (on demand) per vCPU of a C3 shape, plus
-/// the 200 GB disk.
+/// the 300 GB disk.
 pub fn hourly_usd(machine: &str, spot: bool) -> f64 {
     if let Some(price) = std::env::var("OA_POOL_HOURLY_USD")
         .ok()
@@ -1117,5 +1119,19 @@ mod tests {
         assert!(spot > 0.1 && spot < 0.2, "{spot}");
         assert!(demand > 0.4 && demand < 0.5, "{demand}");
         assert!(hourly_usd("c3-standard-22", true) > spot);
+    }
+
+    #[test]
+    fn a_host_disk_holds_the_baked_image_and_a_second_slot() {
+        let script = include_str!("../../../scripts/cloud/build-coder-host-image.sh");
+        let bake: u64 = script
+            .lines()
+            .find_map(|l| l.strip_prefix("DISK_GB=\"${OA_DISK_GB:-"))
+            .and_then(|rest| rest.strip_suffix("}\""))
+            .and_then(|n| n.parse().ok())
+            .expect("the bake script's default disk size");
+        assert_eq!(bake, 200);
+        assert_eq!(DISK_GB, 300);
+        assert!(DISK_GB >= bake + 100, "pool {DISK_GB} GB, image {bake} GB");
     }
 }

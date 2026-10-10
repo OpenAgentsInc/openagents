@@ -58,7 +58,7 @@ GCE is the only list that stays true.
 
 `cloud up --hosts N` starts hosts until the pool has N running, all at once:
 
-- **Shape.** `c3-standard-8` (8 vCPU, 32 GB), 200 GB pd-balanced, from image
+- **Shape.** `c3-standard-8` (8 vCPU, 32 GB), 300 GB pd-balanced, from image
   family `oa-coder-host`, Shielded VM, no external address (Cloud NAT
   egress), service account `oa-coder-host@` (it reaches the sccache bucket
   and nothing else in the project). `--machine` picks another shape.
@@ -218,9 +218,9 @@ overrides it):
 
 | | Per hour |
 | --- | --- |
-| Spot `c3-standard-8` and its 200 GB disk | about $0.17 |
-| On-demand `c3-standard-8` and its disk | about $0.45 |
-| One run's share (2 per host), spot | about $0.08 |
+| Spot `c3-standard-8` and its 300 GB disk | about $0.18 |
+| On-demand `c3-standard-8` and its disk | about $0.46 |
+| One run's share (2 per host), spot | about $0.09 |
 | An idle pool | $0: hosts delete themselves after 10 minutes |
 
 Each issue comment says the run's wall time and its share of its host's
