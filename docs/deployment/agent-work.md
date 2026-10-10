@@ -55,7 +55,13 @@ them (they need root, long-lived machines, and image capture).
 `--environments` only when `BOAT_API_KEY` and the service key are both
 there; if the studio can't open, the site starts without Environments and
 the log says why. The Boat template is the newest ready
-`oa-coder-runtime-*` snapshot, which carries Claude Code.
+`oa-coder-runtime-*` snapshot, which carries Claude Code. It is chosen when
+the web process starts, so a new template takes effect after the next
+deploy or restart, and only for environments set up after that (a saved
+environment keeps the runtime it was built with). A saved Claude
+subscription token (#11204) needs a runtime from `594aa7afa8` or later
+(`oa-coder-runtime-20261010-11204`); an older runtime removes
+`CLAUDE_CODE_OAUTH_TOKEN` and the run fails as not signed in.
 
 Limits on staging today:
 

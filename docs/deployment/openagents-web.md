@@ -978,3 +978,23 @@ openagents.com smoke (`--production`) after the shift: 57 passed, 0 failed,
 3 skipped, including the new signed-out and forged-session checks. In the
 next 10 minutes `/` answered 200 and `/environments` 303 on 18 of 18 checks.
 Rollback: `scripts/deploy/web.sh rollback coder-gw-4cc00fcfdf-014127`.
+
+### 2026-10-10 04:50 UTC: Claude subscription tokens in Settings, Claude (#11204)
+
+`coder-web-37e70ce641-20261010035400` (`594aa7afa8`, image
+`openagents-web@sha256:37e70ce6…`) serves 100% of openagents.com. Settings,
+Claude takes a Claude subscription token from `claude setup-token` as well
+as an Anthropic API key, checks either with Anthropic before keeping it, and
+Claude Code runs launch a token as `CLAUDE_CODE_OAUTH_TOKEN`
+([bring your own Claude](../cloud/claude-code-byo.md)). Boat runtime
+template `oa-coder-runtime-20261010-11204` carries the matching Coder
+runtime. Staging (`--keep-spec`): smoke 92 passed, 0 failed, 2 skipped; as
+the agent-work test account the owner's real token was saved (a wrong token
+was refused by the check), a fresh `octocat/Hello-World` environment ran
+Claude Code on it and answered "OK", and the token was removed; no page or
+log line held it. The no-traffic candidate failed only its 8 gateway checks
+(`GATEWAY_HOLD=serving`). openagents.com smoke (`--production`) after the
+shift: 59 passed, 0 failed, 2 skipped. In the next 10 minutes `/` and
+`/api/v1/models` answered 200 on 20 of 20 checks, and the revision logged no
+errors.
+Rollback: `scripts/deploy/web.sh rollback coder-web-e4d9859dce-20261010023417`.
