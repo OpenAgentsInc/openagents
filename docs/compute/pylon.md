@@ -120,10 +120,11 @@ CoderOS-4080's), and logs its own dispatch key at start (`decisions: …
 **CoderOS-4080, the first decision pylon (2026-10-10).** Two user units,
 started with `systemd-run --user` like the text pylon's:
 
-- `pylon-clef`: `~/work/pylon-decide/bin/psionic-openai-server-c1aa0a83ff
+- `pylon-clef`: `~/work/pylon-decide/bin/psionic-openai-server-7af29040e6
   -m ~/clef-m1/models/Clef-Flash-Q4_K_M.gguf --host 127.0.0.1 --port 18096
-  --decision-device cuda --decision-chunk 2048` (the M2 round 2 build with
-  the staged delta scan, `c1aa0a83ff`, about 6.5 GB of the 4080).
+  --decision-device cuda --decision-chunk 2048` (the M2 round 2 build: staged
+  delta scan and the fused kernel for short chunks, `7af29040e6`, about
+  6.5 GB of the 4080).
   `sh ~/work/pylon-decide/clef-cuda.sh` (re)starts it, and its log
   (`~/clef-m1/logs/pylon-clef.log`) has one line per decision (tokens,
   time waiting, time run). To roll back to the M2 build:
