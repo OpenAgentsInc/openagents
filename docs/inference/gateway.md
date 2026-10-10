@@ -12,9 +12,10 @@ is the primary API, the upstreams include accounts only we hold (prepaid
 Google and Z.ai credit, the Pro door) and Pylon providers, and every price
 on the rate card shows its cost and margin.
 
-Status: P0 is implemented for our own services and runs locally
-(section 13); production is not deployed. Section 2 records what ran before
-it. Anything else in this document is design unless it says so.
+Status: P0 is implemented for our own services (section 13) and runs as
+the `gateway` sidecar of two Cloud Run services in `openagentsgemini`:
+`coder` (openagents.com, `/api/v1`) and `openagents-web-1-staging`
+(staging.openagents.com). Section 2 records what ran before it. Anything else in this document is design unless it says so.
 
 ## Contents
 
@@ -469,12 +470,27 @@ Starting class table, before measurement takes over:
 
 | Class | For | Order |
 | --- | --- | --- |
-| `classify` | Labels, extraction, short yes or no | Pro door `gpt-5.6-luna`, then `zai/glm-5.3-flash`, then Gemini Flash-Lite on Vertex |
-| `fast` | Short replies, openers, summaries | `zai/glm-5.3-flash`, then Gemini Flash on Vertex, then OpenRouter |
+| `classify` | Labels, extraction, short yes or no | Gemini Flash-Lite on Vertex, then Pro door `gpt-5.6-luna`, then `zai/glm-5.3-flash` |
+| `fast` | Short replies, openers, summaries | Gemini Flash on Vertex, then `zai/glm-5.3-flash`, then OpenRouter |
 | `chat` | General conversation | Gemini Flash on Vertex, then Pro door `gpt-5.6-terra`, then OpenRouter |
 | `code` | Coding and tool use | Highest Terminal-Bench and Gym score within the price; the user's own key or subscription when `pay: "mine"` |
 | `long` | More than 200,000 tokens of context | Gemini on Vertex, then `zai/glm-5.3-flash` (both 1M) |
 | `reason` | Hard multi-step problems | Pro door `gpt-5.6-sol`, then Gemini Pro on Vertex, then OpenRouter |
+
+Google first (owner direction, 2026-10-10,
+[#11222](https://github.com/OpenAgentsInc/openagents/issues/11222)): Gemini
+on Vertex AI, which bills the roughly $30,000 of prepaid Google credit on
+`openagentsgemini`, is the first attempt in every class it can serve
+(`classify`, `fast`, `chat`, `long`), so also for `openagents/auto` when
+the judgment picks one of them or is unavailable (`chat`). The other
+upstreams follow in their earlier order. A request naming
+`google/gemini-3.8-flash` (the Environments setup agent's model) or
+`google/gemini-2.5-flash-lite` puts Vertex first by the credit rule in step
+4. `code` and `reason` keep the Pro door first: Vertex serves no Gemini Pro
+id here yet (`gemini-3.8-pro` answers 404 on Vertex), so their Vertex row
+is never a candidate. With Gym scores configured for a class, step 4's
+credit rule orders the survivors instead (Z.ai's credit, expiring sooner,
+before Google's); the deployed gateways configure none.
 
 ### Credit-aware routing
 
@@ -750,8 +766,9 @@ P0 as built (#11060 to #11064):
   only one: the direct OpenRouter and Vercel AI Gateway doors whose keys
   the worker holds stay behind it, so a gateway that is down or refuses
   hands the turn on ([chat worker](../deployment/chat-worker.md), "Model,
-  and failover across providers"). Production's worker has no gateway
-  door until production's gateway is deployed; it runs the direct chain.
+  and failover across providers"). Production's worker (on
+  `oa-coder-worker-1`) has no gateway service key, so it runs its direct
+  chain, which starts with its own Vertex door.
 - `scripts/dev/inference-local.sh` runs the gateway, a chat worker on it,
   and the website on one machine.
 
@@ -780,7 +797,7 @@ evaluation findings. Keep historical verifier keys while their records remain.
 The locked, synced book rejects conflicting retries or damaged history; new
 records affect the next route plan without a class-table edit.
 
-P1 public API as built (#11065), local only until deployed:
+P1 public API as built (#11065), deployed in both gateway sidecars:
 
 - `inference.public` in the gateway config opens `/v1/responses` and
   `/v1/chat/completions` to every active `oak_` key

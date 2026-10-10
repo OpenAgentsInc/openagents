@@ -223,7 +223,15 @@ fn a_class_without_scores_keeps_the_table_order() {
     let world = World::new();
     assert_eq!(
         world.route(&ask("openagents/fast")),
-        pairs(&[("zai", GLM), ("vertex", FLASH), ("openrouter", FLASH)])
+        pairs(&[("vertex", FLASH), ("zai", GLM), ("openrouter", FLASH)])
+    );
+    assert_eq!(
+        world.route(&ask("openagents/classify")),
+        pairs(&[
+            ("vertex", LITE),
+            ("pro", "openai/gpt-5.6-luna"),
+            ("zai", GLM)
+        ])
     );
     assert_eq!(
         world.route(&ask("openagents/chat")),
@@ -282,8 +290,9 @@ fn the_request_structure_filters_capabilities() {
         ..FunctionTool::default()
     })]);
     let plan = world.plan(&request).unwrap();
-    // The Pro door takes no tools.
-    assert_eq!(plan.attempts[0].upstream, "zai");
+    // The Pro door takes no tools; Vertex and Z.ai do.
+    assert_eq!(plan.attempts[0].upstream, "vertex");
+    assert_eq!(plan.attempts[1].upstream, "zai");
     assert!(
         plan.dropped
             .iter()
@@ -491,7 +500,8 @@ fn auto_takes_the_judged_class() {
         .plan_with(&ask("openagents/auto"), Some(&Says(TaskClass::Classify)))
         .unwrap();
     assert_eq!(plan.class, Some(TaskClass::Classify));
-    assert_eq!(plan.attempts[0].model, "openai/gpt-5.6-luna");
+    assert_eq!(plan.attempts[0].model, LITE);
+    assert_eq!(plan.attempts[0].upstream, "vertex");
     // No judgment available: chat.
     assert_eq!(
         world.plan(&ask("openagents/auto")).unwrap().class,
