@@ -45,6 +45,10 @@ pub struct Config {
     pub allow: Option<BTreeSet<String>>,
     /// Jobs per buyer per minute.
     pub rate_per_minute: u32,
+    /// Jobs per minute from all buyers together; `None` for no such cap.
+    /// An `--allow-any` pylon sharing an engine with other work uses it
+    /// so strangers' keys cannot take the engine over.
+    pub total_per_minute: Option<u32>,
     pub max_tokens: u32,
     pub class: Class,
     pub pools: Vec<String>,
@@ -71,6 +75,7 @@ impl Config {
             slots: 2,
             allow: Some(BTreeSet::new()),
             rate_per_minute: 10,
+            total_per_minute: None,
             max_tokens: 512,
             class: Class {
                 family: Family::Gpu,
@@ -1008,6 +1013,24 @@ impl Provider {
             ));
         }
         let mut state = self.state.lock().await;
+        if let Some(total) = self.config.total_per_minute {
+            // Hex keys never equal "*", so this bucket is everyone's.
+            let rate = f64::from(total.max(1));
+            let bucket = state.buckets.entry("*".into()).or_insert(Bucket {
+                tokens: rate,
+                at: Instant::now(),
+            });
+            bucket.tokens =
+                (bucket.tokens + bucket.at.elapsed().as_secs_f64() * rate / 60.0).min(rate);
+            bucket.at = Instant::now();
+            if bucket.tokens < 1.0 {
+                let wait = ((1.0 - bucket.tokens) * 60_000.0 / rate).ceil() as u64;
+                let mut refusal = Refusal::new("rate_limited", "too many jobs from everyone");
+                refusal.retry_after_ms = Some(wait);
+                return Err(refusal);
+            }
+            bucket.tokens -= 1.0;
+        }
         let rate = f64::from(self.config.rate_per_minute.max(1));
         let bucket = state.buckets.entry(event.pubkey.clone()).or_insert(Bucket {
             tokens: rate,

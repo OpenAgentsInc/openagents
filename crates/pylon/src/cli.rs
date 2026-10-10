@@ -342,6 +342,12 @@ async fn serve(
     config.label = args.value("--label")?.unwrap_or_else(|| slug.clone());
     config.slots = u32::try_from(args.number("--slots", 2)?.clamp(1, 64)).unwrap_or(2);
     config.rate_per_minute = u32::try_from(args.number("--rate", 10)?.clamp(1, 600)).unwrap_or(10);
+    if let Some(total) = args.value("--total-rate")? {
+        let total: u32 = total
+            .parse()
+            .map_err(|_| "--total-rate takes jobs per minute from all callers")?;
+        config.total_per_minute = Some(total.clamp(1, 6_000));
+    }
     config.max_tokens =
         u32::try_from(args.number("--max-tokens", 512)?.clamp(1, 4_096)).unwrap_or(512);
     let vram = u32::try_from(args.number("--vram-gb", 16)?).unwrap_or(16);
