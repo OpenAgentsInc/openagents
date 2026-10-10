@@ -183,6 +183,20 @@ pub(crate) fn refused(
         .into_response()
 }
 
+/// [`refused`] naming the request field at fault (`error.param`).
+fn refused_param(
+    status: StatusCode,
+    code: &'static str,
+    param: &'static str,
+    message: impl Into<String>,
+) -> Response {
+    (
+        status,
+        Json(json!({"error": {"code": code, "param": param, "message": message.into()}})),
+    )
+        .into_response()
+}
+
 /// A success document under the surface's schema tag.
 pub(crate) fn answered(status: StatusCode, fields: Value) -> Response {
     let mut body = fields;
@@ -268,7 +282,18 @@ fn registry(state: &ServeState) -> Result<Registry, Response> {
 /// is a valid credential with no account surface, which is a distinct
 /// answer from a bad one.
 pub(crate) fn principal(state: &ServeState, headers: &HeaderMap) -> Result<Principal, Response> {
-    let principal = principal_unbound(state, headers)?;
+    principal_for(state, headers, "accounts")
+}
+
+/// [`principal`] for a route an `oak_` key reaches with the scope that
+/// admits `action` (#11160): `accounts` for the workspace routes, `keys`
+/// for key management.
+pub(crate) fn principal_for(
+    state: &ServeState,
+    headers: &HeaderMap,
+    action: &str,
+) -> Result<Principal, Response> {
+    let principal = principal_unbound(state, headers, action)?;
     if let Some(expected) = headers.get("x-openagents-team-account") {
         if headers.get_all("x-openagents-team-account").iter().count() != 1
             || expected.to_str().ok() != principal.account()
@@ -283,7 +308,11 @@ pub(crate) fn principal(state: &ServeState, headers: &HeaderMap) -> Result<Princ
     Ok(principal)
 }
 
-fn principal_unbound(state: &ServeState, headers: &HeaderMap) -> Result<Principal, Response> {
+fn principal_unbound(
+    state: &ServeState,
+    headers: &HeaderMap,
+    action: &str,
+) -> Result<Principal, Response> {
     let token = bearer(headers)?;
     if token.starts_with("sess_") {
         let sessions = sessions_store(state)?;
@@ -329,12 +358,16 @@ fn principal_unbound(state: &ServeState, headers: &HeaderMap) -> Result<Principa
     if authenticated
         .scopes
         .as_ref()
-        .is_some_and(|scopes| !scopes.permits_action("accounts"))
+        .is_some_and(|scopes| !scopes.permits_action(action))
     {
         return Err(refused(
             StatusCode::FORBIDDEN,
             "out_of_scope",
-            "Your API key's scope doesn't allow account actions.",
+            if action == "keys" {
+                "Your API key's scope doesn't allow managing keys (`keys`)."
+            } else {
+                "Your API key's scope doesn't allow account actions (`workspace`)."
+            },
         ));
     }
     let accounts = accounts_store(state)?;
@@ -2292,7 +2325,7 @@ async fn keys_list(
     headers: HeaderMap,
     Path(workspace): Path<String>,
 ) -> Response {
-    let principal = match principal(&state, &headers) {
+    let principal = match principal_for(&state, &headers, "keys") {
         Ok(principal) => principal,
         Err(response) => return response,
     };
@@ -2368,7 +2401,7 @@ async fn key_issue(
     Path(workspace): Path<String>,
     Json(body): Json<Value>,
 ) -> Response {
-    let principal = match principal(&state, &headers) {
+    let principal = match principal_for(&state, &headers, "keys") {
         Ok(principal) => principal,
         Err(response) => return response,
     };
@@ -2407,15 +2440,41 @@ async fn key_issue(
             }
         },
     };
+    // `scopes` is a list of the public scope names (docs/api/design.md
+    // section 2.7, #11160), or the older `{models, actions}` object. A key
+    // made without one gets the narrow default (`responses models:read
+    // usage:read`); keys made before this keep their reach.
     let scopes = match body.get("scopes") {
-        None | Some(Value::Null) => None,
+        None | Some(Value::Null) => Some(keys::Scopes::default_for_new_keys()),
+        Some(Value::Array(names)) => {
+            let names: Option<Vec<&str>> = names.iter().map(Value::as_str).collect();
+            match names
+                .filter(|names| !names.is_empty())
+                .and_then(keys::Scopes::public)
+            {
+                Some(scopes) => Some(scopes),
+                None => {
+                    return refused_param(
+                        StatusCode::BAD_REQUEST,
+                        "invalid_scope",
+                        "scopes",
+                        format!(
+                            "`scopes` must list one or more of: {}.",
+                            keys::PUBLIC_SCOPES.join(", ")
+                        ),
+                    );
+                }
+            }
+        }
         Some(value) => match serde_json::from_value::<keys::Scopes>(value.clone()) {
             Ok(scopes) => Some(scopes),
             Err(error) => {
                 return refused(
                     StatusCode::BAD_REQUEST,
                     "invalid_request",
-                    format!("`scopes` must name `models` and `actions` lists: {error}"),
+                    format!(
+                        "`scopes` must be a list of scope names, or name `models` and `actions` lists: {error}"
+                    ),
                 );
             }
         },
@@ -2489,7 +2548,7 @@ pub(crate) fn key_context(
     workspace: &str,
     key_id: &str,
 ) -> Result<KeyContext, Response> {
-    let principal = principal(state, headers)?;
+    let principal = principal_for(state, headers, "keys")?;
     let account = member_account(&principal)?.to_string();
     let membership = member(state, &account, workspace)?;
     let accounts = accounts_store(state)?;

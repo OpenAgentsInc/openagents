@@ -1,7 +1,8 @@
 //! `/settings/api-keys` (#11065): the signed-in person's API keys for the
 //! OpenAgents API (`docs/inference/gateway.md`, section 7). They make a
-//! key, with an optional monthly spending limit they choose, see the
-//! secret once, and revoke keys. The keys are the account service's
+//! key, with an optional monthly spending limit they choose and what it may
+//! do (#11160: calling and listing models and reading usage unless they
+//! pick more), see the secret once, and revoke keys. The keys are the account service's
 //! `oak_` keys on the person's own workspace; nothing about a key's secret
 //! is kept or shown here after it is made.
 
@@ -12,7 +13,7 @@ use axum::response::{IntoResponse, Redirect, Response};
 use maud::{Markup, html};
 use openagents_ui::actions::{Button, ButtonType, ButtonVariant, Color};
 use openagents_ui::content::MarkdownRoot;
-use openagents_ui::forms::{Field, Input, InputType};
+use openagents_ui::forms::{Checkbox, Field, Input, InputType};
 use serde::Deserialize;
 
 use crate::App;
@@ -81,6 +82,54 @@ struct Row {
     name: String,
     created: String,
     active: bool,
+    /// What the key may do, in words; empty for a key made before scopes,
+    /// which may do everything its workspace may.
+    can: String,
+}
+
+/// What a key may do, as the form offers it (#11160, docs/api/design.md
+/// section 2.7): the form field, the scope, the words, and whether a new
+/// key has it unless the person unticks it. Only scopes a key can use
+/// today are offered.
+const SCOPE_CHOICES: [(&str, &str, &str, bool); 6] = [
+    ("scope_responses", "responses", "Call models", true),
+    (
+        "scope_models",
+        "models:read",
+        "List models and prices",
+        true,
+    ),
+    (
+        "scope_usage",
+        "usage:read",
+        "Read its usage and your balance",
+        true,
+    ),
+    ("scope_keys", "keys", "Make and revoke keys", false),
+    ("scope_billing", "billing", "Plans and top-ups", false),
+    (
+        "scope_workspace",
+        "workspace",
+        "Members and workspace settings",
+        false,
+    ),
+];
+
+/// A key's scopes in words, as the list shows them.
+fn scope_words(scopes: Option<&jev::KeyScopes>) -> String {
+    let Some(actions) = scopes.and_then(|scopes| scopes.actions.as_ref()) else {
+        return String::new();
+    };
+    let words: Vec<&str> = SCOPE_CHOICES
+        .iter()
+        .filter(|(_, scope, _, _)| actions.iter().any(|action| action == scope))
+        .map(|(_, _, words, _)| *words)
+        .collect();
+    if words.is_empty() {
+        "Limited".to_owned()
+    } else {
+        words.join(", ")
+    }
 }
 
 pub(crate) async fn keys(State(app): State<App>, headers: HeaderMap) -> Response {
@@ -108,6 +157,7 @@ pub(crate) async fn keys(State(app): State<App>, headers: HeaderMap) -> Response
                 .status
                 .as_deref()
                 .is_none_or(|status| status == "active"),
+            can: scope_words(key.scopes.as_ref()),
             id: key.id,
         })
         .collect();
@@ -179,6 +229,7 @@ fn keys_content(rows: &[Row], make: (&str, &str), revoke: (&str, &str)) -> Marku
                             span class="oa-settings-hint" {
                                 @if row.active { "Works" } @else { "Paused" }
                                 @if !row.created.is_empty() { " · made " (row.created) }
+                                @if !row.can.is_empty() { " · " (row.can) }
                             }
                         }
                         div class="oa-settings-control" {
@@ -212,6 +263,12 @@ fn keys_content(rows: &[Row], make: (&str, &str), revoke: (&str, &str)) -> Marku
                         .inputmode("decimal")
                         .aria(limit.aria()),
                 ))
+                fieldset class="oa-settings-scopes" {
+                    legend { "What the key may do" }
+                    @for (field, _, words, on) in SCOPE_CHOICES {
+                        p { (Checkbox::new(field, words).value("on").checked(on)) }
+                    }
+                }
                 p { (Button::new("Make key").kind(ButtonType::Submit)) }
             }
         }
@@ -393,6 +450,38 @@ pub(crate) struct MakeForm {
     name: String,
     #[serde(default)]
     limit: String,
+    #[serde(default)]
+    scope_responses: Option<String>,
+    #[serde(default)]
+    scope_models: Option<String>,
+    #[serde(default)]
+    scope_usage: Option<String>,
+    #[serde(default)]
+    scope_keys: Option<String>,
+    #[serde(default)]
+    scope_billing: Option<String>,
+    #[serde(default)]
+    scope_workspace: Option<String>,
+}
+
+impl MakeForm {
+    /// The scopes ticked on the form, in [`SCOPE_CHOICES`] order.
+    fn scopes(&self) -> Vec<&'static str> {
+        let ticked = [
+            &self.scope_responses,
+            &self.scope_models,
+            &self.scope_usage,
+            &self.scope_keys,
+            &self.scope_billing,
+            &self.scope_workspace,
+        ];
+        SCOPE_CHOICES
+            .iter()
+            .zip(ticked)
+            .filter(|(_, ticked)| ticked.is_some())
+            .map(|((_, scope, _, _), _)| *scope)
+            .collect()
+    }
 }
 
 /// Dollars typed in the form, as a decimal string the account service
@@ -462,8 +551,15 @@ pub(crate) async fn make(
     } else {
         name
     };
+    let scopes = form.scopes();
+    if scopes.is_empty() {
+        return problem(
+            StatusCode::BAD_REQUEST,
+            "Pick at least one thing the key may do.",
+        );
+    }
     let account = viewer.client().account();
-    let grant = match account.issue_key(&workspace, &name).await {
+    let grant = match account.issue_key_scoped(&workspace, &name, &scopes).await {
         Ok(grant) => grant,
         Err(_) => return unreachable_service(),
     };

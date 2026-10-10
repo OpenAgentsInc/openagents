@@ -42,6 +42,21 @@ pub struct KeyRecord {
     pub status: Option<String>,
     #[serde(default)]
     pub created: Option<String>,
+    /// What the key may do: `{models, actions}`, the actions being the
+    /// public scope names (`responses`, `models:read`, ...) or the older
+    /// action names. `None`: everything its workspace may do (a key made
+    /// before scopes).
+    #[serde(default)]
+    pub scopes: Option<KeyScopes>,
+}
+
+/// A key's scope as the gateway lists it.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct KeyScopes {
+    #[serde(default)]
+    pub models: Option<Vec<String>>,
+    #[serde(default)]
+    pub actions: Option<Vec<String>>,
 }
 
 /// One of a workspace's own provider keys, as the gateway lists it.
@@ -457,9 +472,26 @@ impl Account<'_> {
 
     /// Issue a new API key on the workspace, bound to the caller's account.
     /// The secret is in the grant only.
+    /// A key made without scopes gets the gateway's narrow default
+    /// (`responses models:read usage:read`).
     pub async fn issue_key(&self, workspace: &str, name: &str) -> Result<KeyGrant> {
+        self.issue_key_scoped(workspace, name, &[]).await
+    }
+
+    /// [`Self::issue_key`] with the public scopes the person picked
+    /// (docs/api/design.md section 2.7). Empty: the gateway's default.
+    pub async fn issue_key_scoped(
+        &self,
+        workspace: &str,
+        name: &str,
+        scopes: &[&str],
+    ) -> Result<KeyGrant> {
         identifier(workspace)?;
-        let body = serde_json::to_vec(&serde_json::json!({"name": name}))
+        let mut request = serde_json::json!({"name": name});
+        if !scopes.is_empty() {
+            request["scopes"] = serde_json::json!(scopes);
+        }
+        let body = serde_json::to_vec(&request)
             .map_err(|_| Error::Config("Key request encoding failed.".into()))?;
         self.key_mutation(&format!("/v1/workspaces/{workspace}/keys"), Some(body))
             .await

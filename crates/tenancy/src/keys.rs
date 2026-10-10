@@ -92,12 +92,87 @@ impl Scopes {
             .is_none_or(|models| models.contains(door))
     }
 
-    /// Whether the scope admits an action — same rule.
+    /// Whether the scope admits an action — same rule. A key may name the
+    /// service's actions (`inference`, `accounts`, ...) or the public scope
+    /// names people pick ([`PUBLIC_SCOPES`]); each public scope admits the
+    /// actions [`scope_actions`] lists.
     #[must_use]
     pub fn permits_action(&self, action: &str) -> bool {
-        self.actions
-            .as_ref()
-            .is_none_or(|actions| actions.contains(action))
+        self.actions.as_ref().is_none_or(|actions| {
+            actions.contains(action)
+                || actions
+                    .iter()
+                    .any(|scope| scope_actions(scope).contains(&action))
+        })
+    }
+
+    /// A key scoped to the public scope names `names` (docs/api/design.md
+    /// section 2.7), every door its tenant's binding allows. `None` when
+    /// a name isn't one of [`PUBLIC_SCOPES`].
+    #[must_use]
+    pub fn public<'a>(names: impl IntoIterator<Item = &'a str>) -> Option<Self> {
+        let mut actions = BTreeSet::new();
+        for name in names {
+            if !PUBLIC_SCOPES.contains(&name) {
+                return None;
+            }
+            actions.insert(name.to_owned());
+        }
+        Some(Self {
+            models: None,
+            actions: Some(actions),
+        })
+    }
+
+    /// The scope a new key gets when its maker names none:
+    /// [`DEFAULT_SCOPES`].
+    #[must_use]
+    pub fn default_for_new_keys() -> Self {
+        Self::public(DEFAULT_SCOPES.iter().copied()).unwrap_or_default()
+    }
+}
+
+/// The scopes people can give an `oak_` key (docs/api/design.md section
+/// 2.7, #11160). Scopes only narrow: a key never reaches more than its
+/// tenant's binding and its owner's limits allow.
+pub const PUBLIC_SCOPES: &[&str] = &[
+    "responses",
+    "models:read",
+    "usage:read",
+    "traces",
+    "traces:read",
+    "threads",
+    "threads:read",
+    "runs",
+    "runs:read",
+    "plugins",
+    "keys",
+    "billing",
+    "workspace",
+];
+
+/// What a new key may do when its maker picks nothing: call models, list
+/// them, and read its own usage.
+pub const DEFAULT_SCOPES: &[&str] = &["responses", "models:read", "usage:read"];
+
+/// The service actions one public scope admits. The older action names
+/// stay valid on keys made before the public names: `inference` is
+/// `responses`, `accounts` is `workspace` (and, as it always did, key
+/// management).
+#[must_use]
+pub fn scope_actions(scope: &str) -> &'static [&'static str] {
+    match scope {
+        "responses" => &["inference", "responses"],
+        "models:read" => &["models", "models:read"],
+        "usage:read" => &["balance", "usage:read"],
+        "billing" => &["billing", "balance"],
+        "workspace" => &["accounts", "workspace"],
+        "keys" => &["keys"],
+        "accounts" => &["keys"],
+        "traces" => &["traces", "traces:read"],
+        "threads" => &["threads", "threads:read"],
+        "runs" => &["runs", "runs:read"],
+        _ => &[],
     }
 }
 
@@ -798,6 +873,32 @@ mod tests {
         // An absent scope admits what the tenant's binding does.
         let open = Scopes::default();
         assert!(open.permits_model("anything") && open.permits_action("anything"));
+    }
+
+    #[test]
+    fn public_scope_names_admit_the_service_actions_they_stand_for() {
+        let default = Scopes::default_for_new_keys();
+        assert!(default.permits_action("inference"));
+        assert!(default.permits_action("models"));
+        assert!(default.permits_action("balance"));
+        assert!(!default.permits_action("accounts"));
+        assert!(!default.permits_action("keys"));
+        assert!(!default.permits_action("billing"));
+        assert!(default.permits_model("any-door"));
+        let traces = Scopes::public(["traces:read"]).unwrap();
+        assert!(traces.permits_action("traces:read") && !traces.permits_action("traces"));
+        let writer = Scopes::public(["traces"]).unwrap();
+        assert!(writer.permits_action("traces:read") && writer.permits_action("traces"));
+        let admin = Scopes::public(["workspace", "keys"]).unwrap();
+        assert!(admin.permits_action("accounts") && admin.permits_action("keys"));
+        assert!(Scopes::public(["everything"]).is_none());
+        // A key made before the public names keeps its reach.
+        let older = Scopes {
+            models: None,
+            actions: Some(BTreeSet::from(["accounts".to_owned()])),
+        };
+        assert!(older.permits_action("accounts") && older.permits_action("keys"));
+        assert!(!older.permits_action("inference"));
     }
 
     #[test]

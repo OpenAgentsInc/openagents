@@ -319,6 +319,17 @@ pub fn document(origin: &str, methods: &[MethodInfo]) -> Value {
         &[("403", "Not allowed to make keys here.")],
     );
     key_issue["parameters"] = json!([workspace.clone()]);
+    key_issue["requestBody"] = json!({"required": false, "content": {"application/json": {"schema": {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string", "description": "So you can tell your keys apart."},
+            "scopes": {
+                "type": "array",
+                "items": {"type": "string", "enum": tenancy::keys::PUBLIC_SCOPES},
+                "description": "What the key may do. Left out: `responses`, `models:read`, `usage:read`. Scopes only narrow; a key can never change its own scopes or limits."
+            }
+        }
+    }}}});
     let mut key_revoke = keyed(
         "revokeKey",
         "Revoke a key now.",
