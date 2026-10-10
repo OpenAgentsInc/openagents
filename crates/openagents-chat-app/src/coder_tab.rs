@@ -836,6 +836,7 @@ impl CoderTab {
             tried,
             skip: self.gym.skip(),
             runs: Vec::new(),
+            memory: Vec::new(),
         }
     }
 

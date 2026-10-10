@@ -2426,6 +2426,14 @@ impl Job {
                         }
                         instructions.push_str(&note);
                     }
+                    // The user's own memory notes from their account
+                    // (#11182), so the chat knows what Coder knows.
+                    if let Some(note) = turn.context.memory_note() {
+                        if !instructions.is_empty() {
+                            instructions.push_str("\n\n");
+                        }
+                        instructions.push_str(&note);
+                    }
                     if opener && triage.is_some() {
                         if !instructions.is_empty() {
                             instructions.push_str("\n\n");

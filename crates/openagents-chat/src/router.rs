@@ -167,6 +167,69 @@ pub const MAX_ENGINES: usize = 8;
 pub const MAX_PROJECT_NAME_BYTES: usize = 128;
 /// The most bytes of a project folder's path the context carries.
 pub const MAX_PROJECT_PATH_BYTES: usize = 1024;
+/// The most memory notes the context carries (#11182).
+pub const MAX_MEMORY_NOTES: usize = 40;
+/// The most bytes of all memory notes together; the newest come first, and
+/// the rest are left out.
+pub const MAX_MEMORY_BYTES: usize = 16 * 1024;
+/// The most bytes of one memory note's body.
+pub const MAX_MEMORY_BODY_BYTES: usize = 2 * 1024;
+
+/// A note the user saved to their account's memory (#11182): what Coder
+/// remembers about them, which the web chat sends so its answers know it
+/// too. Data, never an instruction.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MemoryNote {
+    pub name: String,
+    /// `user`, `feedback`, `project`, or `reference`.
+    pub kind: String,
+    pub description: String,
+    pub body: String,
+}
+
+/// The `memory` array for `notes`: newest first as given, each note's name
+/// and description on one line, its body cut at
+/// [`MAX_MEMORY_BODY_BYTES`], at most [`MAX_MEMORY_NOTES`] within
+/// [`MAX_MEMORY_BYTES`].
+fn memory_json(notes: &[MemoryNote]) -> Vec<Value> {
+    let one_line = |text: &str, chars: usize| -> String {
+        text.split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .chars()
+            .filter(|ch| !ch.is_control())
+            .take(chars)
+            .collect()
+    };
+    let mut out = Vec::new();
+    let mut bytes = 0;
+    for note in notes.iter().take(MAX_MEMORY_NOTES) {
+        let name = one_line(&note.name, 80);
+        let body: String = {
+            let body = note.body.trim();
+            let mut end = body.len().min(MAX_MEMORY_BODY_BYTES);
+            while !body.is_char_boundary(end) {
+                end -= 1;
+            }
+            body[..end].to_owned()
+        };
+        if name.is_empty() || body.is_empty() {
+            continue;
+        }
+        let kind = match note.kind.as_str() {
+            kind @ ("user" | "feedback" | "project" | "reference") => kind,
+            _ => "user",
+        };
+        let description = one_line(&note.description, 200);
+        let size = name.len() + description.len() + body.len();
+        if bytes + size > MAX_MEMORY_BYTES {
+            break;
+        }
+        bytes += size;
+        out.push(json!({"name": name, "kind": kind, "description": description, "body": body}));
+    }
+    out
+}
 
 /// Where Coder runs for this chat, as a turn tells the worker (#10077).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -546,6 +609,10 @@ pub struct Context {
     /// [`CoderRun::json`] made it: a request that carries them asks the
     /// worker for one combined summary of them.
     pub runs: Vec<Value>,
+    /// The user's own memory notes from their account, newest first
+    /// (#11182): the web chat sends them so its answers know what Coder
+    /// knows. Empty sends none.
+    pub memory: Vec<MemoryNote>,
 }
 
 impl Context {
@@ -601,6 +668,10 @@ impl Context {
                     .take(nostr::cj_conversation::MAX_PLAN_RUNS)
                     .collect::<Vec<_>>()
             );
+        }
+        let memory = memory_json(&self.memory);
+        if !memory.is_empty() {
+            context["memory"] = json!(memory);
         }
         context
     }
@@ -1942,6 +2013,56 @@ mod computer_context_tests {
                 },
             ]
         );
+    }
+}
+
+#[cfg(test)]
+mod memory_tests {
+    use super::*;
+
+    fn note(name: &str, body: &str) -> MemoryNote {
+        MemoryNote {
+            name: name.into(),
+            kind: "feedback".into(),
+            description: "One\nline".into(),
+            body: body.into(),
+        }
+    }
+
+    #[test]
+    fn memory_travels_bounded_and_only_when_there_is_some() {
+        assert!(Context::default().json().get("memory").is_none());
+        let context = Context {
+            surface: Surface::Web,
+            memory: vec![
+                note("Prefers  tabs", "Indent with tabs."),
+                note("", "No name, left out."),
+                MemoryNote {
+                    kind: "mood".into(),
+                    ..note("Odd kind", &"x".repeat(MAX_MEMORY_BODY_BYTES + 50))
+                },
+            ],
+            ..Context::default()
+        };
+        let memory = context.json()["memory"].as_array().unwrap().clone();
+        assert_eq!(memory.len(), 2);
+        assert_eq!(memory[0]["name"], "Prefers tabs");
+        assert_eq!(memory[0]["kind"], "feedback");
+        assert_eq!(memory[0]["description"], "One line");
+        assert_eq!(memory[1]["kind"], "user");
+        assert_eq!(
+            memory[1]["body"].as_str().unwrap().len(),
+            MAX_MEMORY_BODY_BYTES
+        );
+        let many = Context {
+            memory: (0..100)
+                .map(|n| note(&format!("Note {n}"), &"y".repeat(1000)))
+                .collect(),
+            ..Context::default()
+        };
+        let memory = many.json()["memory"].as_array().unwrap().clone();
+        assert!(memory.len() < 17 && !memory.is_empty());
+        assert_eq!(memory[0]["name"], "Note 0");
     }
 }
 
