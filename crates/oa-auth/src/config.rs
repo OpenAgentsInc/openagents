@@ -24,6 +24,12 @@ pub const SCOPES: [&str; 2] = ["read:user", "user:email"];
 /// at that moment, never at sign-in.
 pub const PRIVATE_REPO_SCOPES: [&str; 3] = ["read:user", "repo", "read:org"];
 
+/// The scopes the chat's GitHub tools ask for when one first moves an
+/// issue on a GitHub Projects board (#11167): the private-repository
+/// scopes plus `project`, which reads and changes boards. Asked only at
+/// that moment, with a consent page first.
+pub const BOARD_SCOPES: [&str; 4] = ["read:user", "repo", "read:org", "project"];
+
 /// The scopes connecting public repositories only asks for: nothing more
 /// than sign-in already has, so GitHub shows no new permission screen.
 pub const PUBLIC_REPO_SCOPES: [&str; 1] = ["read:user"];

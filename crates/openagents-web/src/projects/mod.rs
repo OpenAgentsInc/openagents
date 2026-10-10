@@ -718,7 +718,7 @@ async fn finished(app: &App, headers: &HeaderMap, query: FinishQuery) -> Respons
     let flow = crate::auth::flow_cookie(headers).filter(|flow| {
         matches!(
             flow.purpose,
-            oa_auth::Purpose::Repos { .. } | oa_auth::Purpose::Install
+            oa_auth::Purpose::Repos { .. } | oa_auth::Purpose::Install | oa_auth::Purpose::Board
         ) && query
             .state
             .as_deref()

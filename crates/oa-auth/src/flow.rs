@@ -19,7 +19,7 @@ use oauth2::basic::BasicClient;
 use oauth2::{AuthUrl, ClientId, CsrfToken, PkceCodeChallenge, RedirectUrl, Scope};
 use subtle::ConstantTimeEq;
 
-use crate::config::{GithubApp, PRIVATE_REPO_SCOPES, PUBLIC_REPO_SCOPES, SCOPES};
+use crate::config::{BOARD_SCOPES, GithubApp, PRIVATE_REPO_SCOPES, PUBLIC_REPO_SCOPES, SCOPES};
 
 /// The flow cookie's name.
 pub const FLOW_COOKIE: &str = "oa_auth_flow";
@@ -64,6 +64,10 @@ pub enum Purpose {
     /// Authorize the GitHub App for the signed-in account (its own client;
     /// GitHub Apps take no scopes), to find where it is installed.
     Install,
+    /// Let the chat's GitHub tools change issues and GitHub Projects
+    /// boards (#11167): the private-repository scopes plus `project`.
+    /// Finishes like [`Purpose::Repos`], replacing the stored grant.
+    Board,
 }
 
 impl Purpose {
@@ -73,6 +77,7 @@ impl Purpose {
             Self::Repos { private: true } => &PRIVATE_REPO_SCOPES,
             Self::Repos { private: false } => &PUBLIC_REPO_SCOPES,
             Self::Install => &[],
+            Self::Board => &BOARD_SCOPES,
         }
     }
 
@@ -82,6 +87,7 @@ impl Purpose {
             Self::Repos { private: true } => Some("repos"),
             Self::Repos { private: false } => Some("repos-public"),
             Self::Install => Some("install"),
+            Self::Board => Some("board"),
         }
     }
 }
@@ -191,6 +197,7 @@ impl Flow {
             Some("repos") => Purpose::Repos { private: true },
             Some("repos-public") => Purpose::Repos { private: false },
             Some("install") => Purpose::Install,
+            Some("board") => Purpose::Board,
             Some(_) => return None,
         };
         let token = |s: &str, min: usize| {
@@ -307,6 +314,16 @@ mod tests {
             Purpose::Repos { private: false }
         );
         assert!(Flow::from_cookie(&format!("{}.admin", flow.cookie_value())).is_none());
+
+        // The chat's board tools ask for `project` only when first used,
+        // and come back where they started.
+        let (url, board) =
+            Flow::start_for(&app, Some("/chat/abc/github/confirm"), Purpose::Board).unwrap();
+        let query: std::collections::BTreeMap<_, _> = url.query_pairs().into_owned().collect();
+        assert_eq!(query["scope"], "read:user repo read:org project");
+        let back = Flow::from_cookie(&board.cookie_value()).unwrap();
+        assert_eq!(back.purpose, Purpose::Board);
+        assert_eq!(back.return_to, "/chat/abc/github/confirm");
 
         // A tampered return_to in the cookie is re-validated.
         let forged = format!(

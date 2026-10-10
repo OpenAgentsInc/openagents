@@ -175,6 +175,11 @@ pub(crate) fn begin(
                 if private { "private" } else { "public" }
             ),
             oa_auth::Purpose::Install => crate::projects::INSTALL.to_string(),
+            oa_auth::Purpose::Board => format!(
+                "{}?return_to={}",
+                crate::github_tools::GRANT,
+                encode(&back)
+            ),
         };
         return protect(Redirect::to(&format!("{}{path}", service.origin())).into_response());
     }
@@ -240,7 +245,9 @@ async fn callback(
         && flow_cookie(&headers).is_some_and(|flow| {
             matches!(
                 flow.purpose,
-                oa_auth::Purpose::Repos { .. } | oa_auth::Purpose::Install
+                oa_auth::Purpose::Repos { .. }
+                    | oa_auth::Purpose::Install
+                    | oa_auth::Purpose::Board
             ) && flow.matches(state)
         })
     {
@@ -250,7 +257,9 @@ async fn callback(
         && flow_cookie(&headers).is_some_and(|flow| {
             matches!(
                 flow.purpose,
-                oa_auth::Purpose::Repos { .. } | oa_auth::Purpose::Install
+                oa_auth::Purpose::Repos { .. }
+                    | oa_auth::Purpose::Install
+                    | oa_auth::Purpose::Board
             )
         });
     let clear = HeaderValue::from_str(&oa_auth::flow::clear_cookie(service.secure()))
