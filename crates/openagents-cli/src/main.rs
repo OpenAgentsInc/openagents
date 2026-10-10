@@ -57,6 +57,7 @@ mod key;
 mod labor;
 mod lease;
 mod lease_place;
+mod land;
 mod mac;
 mod mac_serve;
 mod mcp;
@@ -200,6 +201,8 @@ Coder:
                production once the owner approves.
   pr           Read, review, and merge a GitHub pull request; merge waits for
                the owner and passing checks.
+  land         One landing queue for every machine: submit a branch, see the
+               queue, and run the integrator that lands entries on main in turn.
   mac          Send Mac-only steps (iOS builds, the release gate, TestFlight
                uploads, desktop captures) to a Mac linked to your account.
 
@@ -445,6 +448,8 @@ fn main() -> ExitCode {
         "pr" => pr::run(&output, &rest),
         // Mac-only steps on a Mac linked to the account (#11223).
         "mac" => mac::run(&output, &rest),
+        // One landing queue for every machine (#11227).
+        "land" => land::run(&output, &rest),
         #[cfg(unix)]
         "ssh" => ssh::run(&output, &rest),
         "cap" => catalog::cap(&output, &rest),

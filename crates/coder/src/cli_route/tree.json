@@ -21406,6 +21406,293 @@
       ]
     },
     {
+      "name": "land",
+      "summary": "One landing queue for every machine: submit a branch, see the queue, and run the integrator that lands entries on main in turn.",
+      "children": [
+        {
+          "name": "submit",
+          "leaf": {
+            "path": [
+              "land",
+              "submit"
+            ],
+            "usage": [
+              "submit [--branch B] [--issue N] [--no-close] [--summary TEXT] [--target T] [--no-wake]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "submit"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "branch",
+                    "value": "B",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "issue",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "no-close",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "summary",
+                    "value": "TEXT",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "target",
+                    "value": "T",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "no-wake",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Queue this checkout's commits for landing on T (main): push HEAD to land/<id> on origin (or name a branch already there with --branch) and add it to the queue. With --issue N the landing closes issue N (--no-close only comments) and moves the board. When the integrator's environment is stopped, this starts it unless --no-wake.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "status",
+          "leaf": {
+            "path": [
+              "land",
+              "status"
+            ],
+            "usage": [
+              "status [--all]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "status"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "all",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "The integrator (where, when last seen, what it lands now) and the open entries, oldest first; --all adds landed, bounced and withdrawn ones with each one's commit or reason. Bare `openagents land` is status.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "show",
+          "leaf": {
+            "path": [
+              "land",
+              "show"
+            ],
+            "usage": [
+              "show ID"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "show"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ID"
+                  }
+                ]
+              }
+            ],
+            "summary": "One entry and every try at landing it: checks, landing attempts, repair, outcome.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "withdraw",
+          "leaf": {
+            "path": [
+              "land",
+              "withdraw"
+            ],
+            "usage": [
+              "withdraw ID"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "withdraw"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ID"
+                  }
+                ]
+              }
+            ],
+            "summary": "Take a queued entry out of the queue.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "work",
+          "leaf": {
+            "path": [
+              "land",
+              "work"
+            ],
+            "usage": [
+              "work [--once] [--every SECONDS] [--repair COMMAND|none]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "work"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "once",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "every",
+                    "value": "SECONDS",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "repair",
+                    "value": "COMMAND|none",
+                    "choices": [
+                      "none"
+                    ],
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Run the integrator in this checkout: take the oldest entry, land or bounce it, record the try, repeat (polling every 20 s). --repair names the one conflict-repair turn's command (claude by default); none bounces every conflict.",
+            "effect": "long_running",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "branch",
+          "value": "B",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "issue",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "no-close",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "summary",
+          "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "target",
+          "value": "T",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "no-wake",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "all",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "once",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "every",
+          "value": "SECONDS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "repair",
+          "value": "COMMAND|none",
+          "choices": [
+            "none"
+          ],
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "queue",
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
       "name": "mac",
       "summary": "Send Mac-only steps (iOS builds, the release gate, TestFlight uploads, desktop captures) to a Mac linked to your account.",
       "children": [
@@ -30777,7 +31064,7 @@
                 ]
               }
             ],
-            "summary": "Publish beacons and answer jobs from a local Psionic server. --engine URL          The Psionic server (default http://127.0.0.1:18080). --model NAME          The served model (default qwen3.5-0.8b-q8_0). --pylon SLUG          The beacon's name (default: the host name). --label TEXT          Display label (default: the slug). --slots N             Concurrent jobs (default 2). --allow NPUB          A key that may send jobs; repeat or comma-separate. --allow-any           Admit any key (rate limits still apply). --rate N              Jobs per buyer per minute (default 10). --max-tokens N        Output bound per job (default 512). --vram-gb N           GPU memory for the beacon's class (default 16). --pool SLUG           Pool to ask to join (default everglade). --dedicated           Ignore this computer's lease table (a box that runs no owner work); otherwise each job takes a background `pylon` lease and the pylon drains while the owner's work needs the computer. --price-msat N        Sell each job for N msat under NIP-X402, with invoices from this computer's Lightning node. --network NAME        The price's network: testnet (default) or bitcoin, which needs the owner's grant.json.",
+            "summary": "Publish beacons and answer jobs from a local Psionic server. --engine URL          The Psionic server (default http://127.0.0.1:18080). --model NAME          The served model (default qwen3.5-0.8b-q8_0). --decide URL          Also answer NIP-DEC decision jobs with the System One server at URL (Psionic's Clef lane), free; the beacon advertises pylon/decision. --decide-model NAME   The decision model at that server (default: the first one it lists). --decisions-only      Answer decision jobs only, no text jobs. --pylon SLUG          The beacon's name (default: the host name). --label TEXT          Display label (default: the slug). --slots N             Concurrent jobs (default 2). --allow NPUB          A key that may send jobs; repeat or comma-separate. --allow-any           Admit any key (rate limits still apply). --rate N              Jobs per buyer per minute (default 10). --max-tokens N        Output bound per job (default 512). --vram-gb N           GPU memory for the beacon's class (default 16). --pool SLUG           Pool to ask to join (default everglade). --dedicated           Ignore this computer's lease table (a box that runs no owner work); otherwise each job takes a background `pylon` lease and the pylon drains while the owner's work needs the computer. --price-msat N        Sell each job for N msat under NIP-X402, with invoices from this computer's Lightning node. --network NAME        The price's network: testnet (default) or bitcoin, which needs the owner's grant.json.",
             "effect": "long_running",
             "runs_on": "connected_computer"
           }
@@ -31158,6 +31445,28 @@
           "name": "model",
           "value": "NAME",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "decide",
+          "value": "URL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "decide-model",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "decisions-only",
           "optional": true,
           "repeated": true
         },

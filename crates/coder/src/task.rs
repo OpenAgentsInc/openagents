@@ -72,6 +72,7 @@ pub mod freshen;
 pub mod interaction;
 pub mod issue_pick;
 pub mod issue_run;
+pub mod land_queue;
 pub mod landing;
 pub mod lifecycle;
 pub mod local;
