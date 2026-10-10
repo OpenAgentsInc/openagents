@@ -9,6 +9,11 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY . .
+# The commit the image is built from, compiled in for /att/release.json and
+# /vault/release.json (option_env!("OPENAGENTS_COMMIT")); "unknown" when the
+# build names none.
+ARG OPENAGENTS_COMMIT=unknown
+ENV OPENAGENTS_COMMIT=${OPENAGENTS_COMMIT}
 RUN cargo build --locked --release -p openagents-web --bin openagents-web \
     && strip target/release/openagents-web
 

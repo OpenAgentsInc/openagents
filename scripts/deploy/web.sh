@@ -118,7 +118,7 @@ stage() {
         (cd "$ctx" && g builds submit --project "$PROJECT" --service-account "$BUILD_SA" \
             --config crates/openagents-web/cloudbuild.yaml \
             --ignore-file crates/openagents-web/web.gcloudignore \
-            --substitutions "_TAG=stg-$sha" . > "$STATE/build-web-$sha.log" 2>&1) &
+            --substitutions "_TAG=stg-$sha,_COMMIT=$full" . > "$STATE/build-web-$sha.log" 2>&1) &
         pids="$pids $!"
         say "  building $web (log: $STATE/build-web-$sha.log)"
     else

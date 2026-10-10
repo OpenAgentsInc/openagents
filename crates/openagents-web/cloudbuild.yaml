@@ -67,6 +67,8 @@ steps:
     args:
       - build
       - --progress=plain
+      - --build-arg
+      - OPENAGENTS_COMMIT=${_COMMIT}
       - -f
       - crates/openagents-web/Dockerfile
       - -t
@@ -76,6 +78,8 @@ images:
   - us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web:${_TAG}
 substitutions:
   _TAG: latest
+  # The full commit the context was exported from (scripts/deploy/web.sh).
+  _COMMIT: unknown
 options:
   machineType: E2_HIGHCPU_32
   logging: CLOUD_LOGGING_ONLY

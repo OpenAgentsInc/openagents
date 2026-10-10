@@ -104,7 +104,10 @@ button.att-value { padding: 0; border: 0; background: none; text-align: left; cu
 @media (max-width: 699px) {
   .att-stage { position: sticky; top: 0; z-index: 1; height: 240px; min-height: 0; border-bottom: 1px solid var(--color-border-subtle); }
   .att-label span { display: none; }
-  .att-label-relay > span { display: block; font-size: 10px; }
+  /* The relay's label goes under its pipe, small, so it never covers You. */
+  .att-label-relay { translate: 0 calc(100% + 26px); padding: 2px 6px; }
+  .att-label-relay strong { font-size: 11px; }
+  .att-label-relay > span { display: block; font-size: 9px; }
   .att-legend { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .att-legend dd { margin-bottom: 6px; }
 }
