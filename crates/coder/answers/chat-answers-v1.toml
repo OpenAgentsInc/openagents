@@ -429,7 +429,7 @@ followups = ["meta.open_source", "meta.model"]
 [[answer]]
 id = "meta.memory"
 version = 3
-routes = ["meta"]
+routes = ["meta", "product.kb", "general"]
 when = "The user asks what memory is in Coder, how Coder's memory works or how to use it (having Coder remember or forget something, listing its notes, AGENTS.md or CLAUDE.md), or whether we remember them or earlier conversations; not whether we train on their chats, store or keep them, how long we keep them, deleting chat history, or who can read their messages"
 not_for = "Training on chats or opting out of it, storing, keeping, or logging chats, how long we keep messages, deleting chat history from our servers, or who can see messages: the privacy answers and notes cover those"
 examples = ["what is memory in coder", "how does coder's memory work", "will you remember this next time I open the app"]

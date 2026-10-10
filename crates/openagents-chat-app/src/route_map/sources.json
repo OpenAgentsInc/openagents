@@ -2,7 +2,7 @@
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
   "set": "chat-router-v5@bcab1427d09d",
-  "bank": "chat-answers-v1@80ed80a3d289",
+  "bank": "chat-answers-v1@c81c3764a2f3",
   "routes": [
     {
       "id": "meta",
@@ -524,6 +524,24 @@
       ]
     },
     {
+      "id": "meta.verse",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "What is the Verse?",
+      "place": "any",
+      "records": false,
+      "offer": {
+        "run_coder": false,
+        "screen": "verse",
+        "label": "Enter the Grid"
+      },
+      "sources": [
+        "docs/verse/README.md"
+      ]
+    },
+    {
       "id": "meta.codebase",
       "version": 1,
       "routes": [
@@ -685,7 +703,9 @@
       "id": "meta.memory",
       "version": 3,
       "routes": [
-        "meta"
+        "meta",
+        "product.kb",
+        "general"
       ],
       "chip": "What is memory in Coder?",
       "place": "any",
@@ -3571,7 +3591,8 @@
     "gym.publish",
     "gym.test_set",
     "verse.gym",
-    "routes.map"
+    "routes.map",
+    "verse"
   ],
   "plugins": [
     {
