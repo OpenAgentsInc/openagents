@@ -1201,11 +1201,11 @@ pub fn push_access(access: &mut Vec<Access>, event: Access) {
     }
 }
 
-/// The exclusive lock one session mutation holds — the same shape as
-/// `accounts.lock`: `create_new` makes it atomic, absence is the
-/// release, a dropped guard removes it.
+/// The exclusive lock one session mutation holds — the shared store lock
+/// (`crate::store_lock`) on `sessions.lock`, which the OS releases when the
+/// holder exits, or the database's advisory lock.
 struct SessionLock {
-    path: Option<PathBuf>,
+    _lock: Option<crate::store_lock::StoreLock>,
     #[cfg(feature = "postgres")]
     _held: Option<crate::db::Held>,
 }
@@ -1217,40 +1217,17 @@ impl SessionLock {
             let held = crate::db::Held::acquire(&database, crate::db::docs::SESSIONS.store)
                 .map_err(|e| crate::accounts::Trouble::Io(e.into()))?;
             return Ok(Self {
-                path: None,
+                _lock: None,
                 _held: Some(held),
             });
         }
-        let path = dir.join(SESSIONS_LOCK);
-        for _ in 0..SESSIONS_LOCK_RETRIES {
-            match std::fs::OpenOptions::new()
-                .create_new(true)
-                .write(true)
-                .open(&path)
-            {
-                Ok(mut file) => {
-                    writeln!(file, "pid {}", std::process::id()).ok();
-                    return Ok(Self {
-                        path: Some(path),
-                        #[cfg(feature = "postgres")]
-                        _held: None,
-                    });
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                    std::thread::sleep(std::time::Duration::from_millis(10));
-                }
-                Err(error) => return Err(crate::accounts::Trouble::Io(error)),
-            }
-        }
-        Err(crate::accounts::Trouble::Locked(path.display().to_string()))
-    }
-}
-
-impl Drop for SessionLock {
-    fn drop(&mut self) {
-        if let Some(path) = &self.path {
-            std::fs::remove_file(path).ok();
-        }
+        let lock =
+            crate::store_lock::StoreLock::acquire(&dir.join(SESSIONS_LOCK), SESSIONS_LOCK_RETRIES)?;
+        Ok(Self {
+            _lock: Some(lock),
+            #[cfg(feature = "postgres")]
+            _held: None,
+        })
     }
 }
 

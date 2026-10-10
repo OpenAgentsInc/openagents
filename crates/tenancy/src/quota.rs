@@ -298,8 +298,8 @@ impl std::fmt::Display for LedgerTrouble {
             Self::Locked(path) => write!(
                 f,
                 "another process is writing {path}. Only one process can write the \
-                 ledger at a time: wait for it to finish, or remove the lock file \
-                 if no other process is running"
+                 ledger at a time: wait for it to finish (a crashed writer's lock \
+                 is released automatically)"
             ),
         }
     }
@@ -313,39 +313,26 @@ impl From<std::io::Error> for LedgerTrouble {
     }
 }
 
-/// The exclusive lock one writer holds for the ledger's open lifetime.
-///
-/// Same shape as the store's: `create_new` makes the lock atomic, the
-/// file's absence is the release, and a dropped guard removes it. A
-/// crashed writer leaves the file; the holder line inside says who it
-/// was.
+/// The exclusive lock one writer holds for the ledger's open lifetime:
+/// the shared store lock (`crate::store_lock`), taken once without
+/// waiting. The OS releases it when the holder exits, so a crashed writer
+/// never leaves the ledger unwritable.
 struct Lock {
-    path: PathBuf,
+    _lock: crate::store_lock::StoreLock,
 }
 
 impl Lock {
     fn acquire(ledger: &Path) -> Result<Self, LedgerTrouble> {
-        let path = ledger.with_extension("lock");
-        match std::fs::OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&path)
-        {
-            Ok(mut file) => {
-                writeln!(file, "pid {}", std::process::id()).ok();
-                Ok(Self { path })
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                Err(LedgerTrouble::Locked(path.display().to_string()))
-            }
-            Err(error) => Err(LedgerTrouble::Io(error)),
-        }
-    }
-}
-
-impl Drop for Lock {
-    fn drop(&mut self) {
-        std::fs::remove_file(&self.path).ok();
+        use crate::store_lock::{LockFailure, StoreLock};
+        let lock =
+            StoreLock::acquire(&ledger.with_extension("lock"), 1).map_err(
+                |failure| match failure {
+                    LockFailure::Held(path) => LedgerTrouble::Locked(path.display().to_string()),
+                    LockFailure::Io(error) => LedgerTrouble::Io(error),
+                    LockFailure::Invalid(message) => LedgerTrouble::Corrupt(message.into()),
+                },
+            )?;
+        Ok(Self { _lock: lock })
     }
 }
 

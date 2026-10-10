@@ -47,7 +47,6 @@ pub mod team_reports;
 use std::collections::BTreeMap;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -73,8 +72,11 @@ pub const ACCOUNTS_SCHEMA: &str = "openagents.tenancy.accounts.v1";
 /// shape: `inv_<id>.<secret>`.
 const INVITE_PREFIX: &str = "inv";
 
-/// How many times a writer retries the lock before reporting it held.
-const LOCK_RETRIES: u32 = 100;
+/// How many 10 ms waits a writer allows the lock's holder before
+/// reporting it held (5 s). A crashed holder's lock is released by the OS
+/// at once, so this bounds only a live writer; the margin covers a child
+/// process that briefly shares the lock while it is being spawned.
+const LOCK_RETRIES: u32 = 500;
 
 /// A member's role. The declaration order is the rank: member, then
 /// admin, then owner — `actor.role > target.role` is the seniority check
@@ -626,7 +628,7 @@ impl std::fmt::Display for Trouble {
             Self::Locked(path) => write!(
                 f,
                 "another process is writing {path}. Only one process can write at a time: \
-                 wait for it to finish, or remove the lock file if no other process is running"
+                 wait for it to finish (a crashed writer's lock is released automatically)"
             ),
             Self::UnknownRevision(digest) => {
                 write!(f, "no archived revision carries digest `{digest}`")
@@ -844,19 +846,19 @@ fn invite_status_name(status: InviteStatus) -> &'static str {
 /// The exclusive lock one mutation holds while it re-reads, changes, and
 /// writes the store.
 ///
-/// Same shape as the quota ledger's: `create_new` makes the lock atomic,
-/// the file's absence is the release, and a dropped guard removes it. The
-/// lock is per mutation rather than per open handle — reads never take
-/// it, and a writer waits a bounded time for the holder to finish before
-/// reporting the store locked.
+/// The lock is the shared store lock (`crate::store_lock`): an OS
+/// advisory lock on a persistent private `accounts.lock`, released by the
+/// kernel when the holder exits, so a crashed writer never blocks the
+/// store. The lock is per mutation rather than per open handle — reads
+/// never take it, and a writer waits a bounded time for the holder to
+/// finish before reporting the store locked.
 pub(crate) struct Lock {
     inner: LockInner,
 }
 
 enum LockInner {
     Files {
-        path: PathBuf,
-        file: std::fs::File,
+        lock: crate::store_lock::StoreLock,
         directory: std::fs::File,
     },
     /// A transaction holding the store's advisory lock (`crate::db`).
@@ -879,41 +881,16 @@ impl Lock {
             private_fs::O_DIRECTORY | private_fs::O_NOFOLLOW,
         )?
         .open(dir)?;
-        let path = dir.join(LOCKFILE);
-        for _ in 0..LOCK_RETRIES {
-            match std::fs::OpenOptions::new()
-                .create_new(true)
-                .write(true)
-                .open(&path)
-            {
-                Ok(mut file) => {
-                    writeln!(file, "pid {}", std::process::id()).ok();
-                    return Ok(Self {
-                        inner: LockInner::Files {
-                            path,
-                            file,
-                            directory,
-                        },
-                    });
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                    std::thread::sleep(Duration::from_millis(10));
-                }
-                Err(error) => return Err(Trouble::Io(error)),
-            }
-        }
-        Err(Trouble::Locked(path.display().to_string()))
+        let lock = crate::store_lock::StoreLock::acquire(&dir.join(LOCKFILE), LOCK_RETRIES)?;
+        Ok(Self {
+            inner: LockInner::Files { lock, directory },
+        })
     }
 
     /// Refuse an old writer after its lock or account directory was replaced.
     fn check(&self) -> Result<(), Trouble> {
         #[allow(irrefutable_let_patterns)]
-        let LockInner::Files {
-            path,
-            file,
-            directory,
-        } = &self.inner
-        else {
+        let LockInner::Files { lock, directory } = &self.inner else {
             // The database's advisory lock cannot be taken over while held.
             return Ok(());
         };
@@ -922,23 +899,13 @@ impl Lock {
             let current = std::fs::symlink_metadata(path)?;
             Ok(!current.file_type().is_symlink() && private_fs::same_file(&held, &current))
         };
-        if !matches(file, path)?
+        let path = lock.path();
+        if !matches(lock.file(), path)?
             || !matches(directory, path.parent().expect("a lock has a parent"))?
         {
             return Err(Trouble::Invalid("Account writer custody changed.".into()));
         }
         Ok(())
-    }
-}
-
-impl Drop for Lock {
-    fn drop(&mut self) {
-        #[allow(irrefutable_let_patterns)]
-        if let LockInner::Files { path, .. } = &self.inner
-            && self.check().is_ok()
-        {
-            std::fs::remove_file(path).ok();
-        }
     }
 }
 

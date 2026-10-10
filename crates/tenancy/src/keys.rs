@@ -410,10 +410,11 @@ fn save(dir: &Path, store: &KeyStore) -> Result<(), KeyTrouble> {
 const KEYS_LOCK: &str = "keys.lock";
 
 /// The writer lock every key mutation holds across its load and save:
-/// an exclusive-create `keys.lock` beside the store, or the database's
+/// the shared store lock (`crate::store_lock`) on `keys.lock` beside the
+/// store, which the OS releases when the holder exits, or the database's
 /// advisory lock when `dir` is kept in Postgres.
 struct KeyLock {
-    path: Option<std::path::PathBuf>,
+    _lock: Option<crate::store_lock::StoreLock>,
     #[cfg(feature = "postgres")]
     _held: Option<crate::db::Held>,
 }
@@ -425,53 +426,24 @@ impl KeyLock {
             let held = crate::db::Held::acquire(&database, crate::db::docs::KEYS.store)
                 .map_err(|e| KeyTrouble::Io(e.into()))?;
             return Ok(Self {
-                path: None,
+                _lock: None,
                 _held: Some(held),
             });
         }
-        let path = dir.join(KEYS_LOCK);
-        for attempt in 0..500 {
-            match std::fs::OpenOptions::new()
-                .create_new(true)
-                .write(true)
-                .open(&path)
-            {
-                Ok(_) => {
-                    return Ok(Self {
-                        path: Some(path),
-                        #[cfg(feature = "postgres")]
-                        _held: None,
-                    });
+        use crate::store_lock::{LockFailure, StoreLock};
+        let lock =
+            StoreLock::acquire(&dir.join(KEYS_LOCK), 500).map_err(|failure| match failure {
+                LockFailure::Held(path) => {
+                    KeyTrouble::Invalid(format!("{} is held by another writer", path.display()))
                 }
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                    // A lock older than a minute was left by a crash.
-                    if attempt == 0
-                        && std::fs::metadata(&path)
-                            .and_then(|m| m.modified())
-                            .ok()
-                            .and_then(|t| t.elapsed().ok())
-                            .is_some_and(|age| age.as_secs() > 60)
-                    {
-                        std::fs::remove_file(&path).ok();
-                        continue;
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(10));
-                }
-                Err(error) => return Err(KeyTrouble::Io(error)),
-            }
-        }
-        Err(KeyTrouble::Invalid(format!(
-            "{} is held by another writer",
-            path.display()
-        )))
-    }
-}
-
-impl Drop for KeyLock {
-    fn drop(&mut self) {
-        if let Some(path) = &self.path {
-            std::fs::remove_file(path).ok();
-        }
+                LockFailure::Io(error) => KeyTrouble::Io(error),
+                LockFailure::Invalid(message) => KeyTrouble::Invalid(message.into()),
+            })?;
+        Ok(Self {
+            _lock: Some(lock),
+            #[cfg(feature = "postgres")]
+            _held: None,
+        })
     }
 }
 

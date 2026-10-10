@@ -1247,37 +1247,16 @@ impl Directory {
     }
 }
 
-/// The exclusive lock one mutation holds.
+/// The exclusive lock one mutation holds: the shared store lock
+/// (`crate::store_lock`), which the OS releases when the holder exits.
 struct SkillsLock {
-    path: PathBuf,
+    _lock: crate::store_lock::StoreLock,
 }
 
 impl SkillsLock {
     fn acquire(dir: &Path) -> Result<Self, Trouble> {
-        let path = dir.join(LOCK);
-        for _ in 0..LOCK_RETRIES {
-            match std::fs::OpenOptions::new()
-                .create_new(true)
-                .write(true)
-                .open(&path)
-            {
-                Ok(mut file) => {
-                    writeln!(file, "pid {}", std::process::id()).ok();
-                    return Ok(Self { path });
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                    std::thread::sleep(std::time::Duration::from_millis(10));
-                }
-                Err(error) => return Err(Trouble::Io(error)),
-            }
-        }
-        Err(Trouble::Locked(path.display().to_string()))
-    }
-}
-
-impl Drop for SkillsLock {
-    fn drop(&mut self) {
-        std::fs::remove_file(&self.path).ok();
+        let lock = crate::store_lock::StoreLock::acquire(&dir.join(LOCK), LOCK_RETRIES)?;
+        Ok(Self { _lock: lock })
     }
 }
 

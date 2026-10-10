@@ -2028,50 +2028,13 @@ fn load(dir: &Path) -> Result<Store, Trouble> {
 // Keep the same inode for every writer. Removing a locked file lets another
 // process create a second lock; leaving a sentinel after a crash blocks recovery.
 struct BillingLock {
-    _file: std::fs::File,
+    _lock: crate::store_lock::StoreLock,
 }
 
 impl BillingLock {
     fn acquire(dir: &Path) -> Result<Self, Trouble> {
-        let path = dir.join(LOCK);
-        let mut options = std::fs::OpenOptions::new();
-        options.create(true).truncate(false).read(true).write(true);
-        private_fs::mode(&mut options, 0o600)?;
-        let file = private_fs::flags(&mut options, private_fs::O_NOFOLLOW | private_fs::O_CLOEXEC)?
-            .open(&path)?;
-        let held = file.metadata()?;
-        if !held.is_file()
-            || private_fs::nlink(&held) != 1
-            || !private_fs::owned(&held)
-            || !private_fs::mode_clear(&held, 0o077)
-        {
-            return Err(Trouble::Invalid(
-                "billing lock requires an owned private regular file".into(),
-            ));
-        }
-        for _ in 0..LOCK_RETRIES {
-            match file.try_lock() {
-                Ok(()) => {
-                    let current = std::fs::symlink_metadata(&path)?;
-                    if !current.is_file()
-                        || !private_fs::same_file(&current, &held)
-                        || private_fs::nlink(&current) != 1
-                        || !private_fs::owned(&current)
-                        || !private_fs::mode_clear(&current, 0o077)
-                    {
-                        return Err(Trouble::Invalid(
-                            "billing lock changed while acquiring it".into(),
-                        ));
-                    }
-                    return Ok(Self { _file: file });
-                }
-                Err(std::fs::TryLockError::WouldBlock) => {
-                    std::thread::sleep(std::time::Duration::from_millis(10));
-                }
-                Err(std::fs::TryLockError::Error(error)) => return Err(Trouble::Io(error)),
-            }
-        }
-        Err(Trouble::Locked(path.display().to_string()))
+        let lock = crate::store_lock::StoreLock::acquire(&dir.join(LOCK), LOCK_RETRIES)?;
+        Ok(Self { _lock: lock })
     }
 }
 

@@ -86,6 +86,7 @@ pub mod quota;
 mod registry;
 pub mod sessions;
 pub mod skills;
+mod store_lock;
 pub mod training;
 pub mod workspaces;
 
