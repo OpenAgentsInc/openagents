@@ -670,7 +670,7 @@ async fn app_call(
 async fn device_start(world: &World, computer: &str) -> serde_json::Value {
     let (status, started) = app_call(
         world,
-        "/device/code",
+        "/v1/device/code",
         json!({"app": "Coder", "computer": computer}),
         None,
     )
@@ -719,6 +719,34 @@ fn session_state(world: &World, token: &str) -> tenancy::sessions::SessionState 
         .session_of_token(token)
         .unwrap()
         .state
+}
+
+/// The older `/device/*` paths answer as `/v1/device/*` does, and say
+/// which path replaces them (#11158).
+#[tokio::test]
+async fn the_older_device_paths_answer_and_name_their_successor() {
+    let world = world(true).await;
+    let request = Request::post("/device/code")
+        .header(header::HOST, HOST)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            json!({"app": "Coder", "computer": "box"}).to_string(),
+        ))
+        .unwrap();
+    let response = world.site.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers()["deprecation"],
+        crate::older_paths::DEPRECATED_SINCE
+    );
+    assert_eq!(
+        response.headers()[header::LINK],
+        "</v1/device/code>; rel=\"successor-version\""
+    );
+    let started = device_start(&world, "box").await;
+    let (status, polled) = device_poll(&world, &started).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{polled}");
+    assert_eq!(polled["error"], "authorization_pending");
 }
 
 #[tokio::test]

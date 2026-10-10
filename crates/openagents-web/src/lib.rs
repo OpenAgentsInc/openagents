@@ -39,6 +39,7 @@ mod environments;
 mod layout;
 mod markdown;
 mod oauth;
+mod older_paths;
 mod pages;
 pub mod palette;
 mod payments;
@@ -370,12 +371,15 @@ async fn guard(hosts: Hosts, mut request: Request, next: Next) -> Response {
         || path.starts_with("/device/")
         // The OAuth authorization server (#11084).
         || path.starts_with("/oauth/")
+        || path.starts_with("/v1/device/")
         || matches!(path, "/sign-in" | "/sign-out" | "/settings" | "/projects")
         || path.starts_with("/settings/")
         || path.starts_with("/projects/")
-        // Uploaded traces (#11109).
+        // Uploaded traces (#11109), at their API path too (#11158).
         || path == "/api/traces"
-        || path.starts_with("/api/traces/");
+        || path.starts_with("/api/traces/")
+        || path == "/v1/traces"
+        || path.starts_with("/v1/traces/");
     let chat = path == "/chat"
         || path.starts_with("/chat/")
         || path == "/ask"
@@ -594,6 +598,8 @@ pub(crate) fn not_found_page() -> Response {
 mod agent_ready_tests;
 #[cfg(test)]
 mod copy_guard;
+#[cfg(test)]
+mod route_owners_tests;
 #[cfg(test)]
 mod tests;
 

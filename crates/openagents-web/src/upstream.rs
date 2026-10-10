@@ -33,7 +33,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 
 /// The paths this site answers itself, exactly or as a prefix. `/app`, the
 /// local task browser, is never proxied; the host guard keeps it local.
-const OWNED_EXACT: [&str; 65] = [
+const OWNED_EXACT: [&str; 66] = [
     "/",
     crate::analytics::BEACON,
     crate::analytics::SCRIPT,
@@ -80,6 +80,7 @@ const OWNED_EXACT: [&str; 65] = [
     "/sign-out",
     "/settings",
     "/api/traces",
+    "/v1/traces",
     "/projects",
     "/environments",
     "/.well-known/apple-app-site-association",
@@ -106,9 +107,10 @@ const OWNED_EXACT: [&str; 65] = [
 /// which are proxied, load their own (`/static/coder.css`,
 /// `/static/webtui.css`, `/static/favicon.png`), so the rest of `/static/`
 /// goes upstream.
-const OWNED_PREFIXES: [&str; 17] = [
+const OWNED_PREFIXES: [&str; 19] = [
     "/auth/",
     "/device/",
+    "/v1/device/",
     "/docs/",
     "/studios/blue-rush/",
     "/demo/",
@@ -122,6 +124,7 @@ const OWNED_PREFIXES: [&str; 17] = [
     "/cloud/",
     "/settings/",
     "/api/traces/",
+    "/v1/traces/",
     "/projects/",
     "/environments/",
 ];

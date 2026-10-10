@@ -18,6 +18,9 @@ pub(super) fn router(service: LocalService) -> Router {
         .route("/v1/account/github/grant", post(grant).delete(disconnect))
         .route("/v1/account/github/repositories", get(repositories))
         .route("/v1/account/github/token", post(token))
+        .route("/v1/projects", post(add))
+        .route("/v1/projects/{id}", delete(remove))
+        // The older paths (#11158).
         .route("/v1/account/projects", post(add))
         .route("/v1/account/projects/{id}", delete(remove))
         .route("/v1/account/github/app/grant", post(app_grant))

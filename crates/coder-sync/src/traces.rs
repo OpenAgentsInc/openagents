@@ -1,5 +1,7 @@
 //! Uploading agent traces to the signed-in account (#11109): the client
-//! side of the website's `/api/traces` (`openagents-web` `traces`).
+//! side of the website's `/v1/traces` (`openagents-web` `traces`). A site
+//! from before #11158 serves them only at `/api/traces`; `send` asks
+//! there when `/v1/traces` isn't served.
 //!
 //! A trace is a whole ATIF document, so before it leaves the computer every
 //! string in it is redacted ([`prepare`]): credential shapes, the exact
@@ -154,20 +156,35 @@ async fn send(
     body: Option<Vec<u8>>,
 ) -> Result<Value, String> {
     let http = client()?;
-    let mut request = http
-        .request(method, format!("{}{path}", saved.origin))
-        .bearer_auth(saved.token());
-    if let Some(body) = body {
-        request = request
-            .header(reqwest::header::CONTENT_TYPE, "application/json")
-            .body(body);
+    let call = |path: String, body: Option<Vec<u8>>| {
+        let mut request = http
+            .request(method.clone(), format!("{}{path}", saved.origin))
+            .bearer_auth(saved.token());
+        if let Some(body) = body {
+            request = request
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .body(body);
+        }
+        async move {
+            let response = request
+                .send()
+                .await
+                .map_err(|_| format!("Couldn't reach {}. Check your connection.", saved.origin))?;
+            let status = response.status().as_u16();
+            let body: Value = response.json().await.unwrap_or(Value::Null);
+            Ok::<_, String>((status, body))
+        }
+    };
+    let (mut status, mut answer) = call(path.to_owned(), body.clone()).await?;
+    // No such route (a `404` other than the traces API's own `unknown`): a
+    // site from before #11158, which serves traces at `/api/traces`.
+    if status == 404
+        && answer["error"]["code"] != "unknown"
+        && let Some(rest) = path.strip_prefix("/v1/traces")
+    {
+        (status, answer) = call(format!("/api/traces{rest}"), body).await?;
     }
-    let response = request
-        .send()
-        .await
-        .map_err(|_| format!("Couldn't reach {}. Check your connection.", saved.origin))?;
-    let status = response.status().as_u16();
-    let body: Value = response.json().await.unwrap_or(Value::Null);
+    let body = answer;
     if (200..300).contains(&status) {
         Ok(body)
     } else {
@@ -186,9 +203,9 @@ fn trace_of(value: &Value) -> Result<Trace, String> {
 /// The website's words, or why it couldn't be reached.
 pub fn upload(saved: &Saved, prepared: &Prepared, share: bool) -> Result<Uploaded, String> {
     let path = if share {
-        "/api/traces?share=true"
+        "/v1/traces?share=true"
     } else {
-        "/api/traces"
+        "/v1/traces"
     };
     let body = runtime()?.block_on(send(
         saved,
@@ -271,9 +288,9 @@ pub fn upload_tree(
     runtime()?.block_on(async {
         let (_, root) = &tree.nodes[0];
         let path = if share {
-            "/api/traces?share=true"
+            "/v1/traces?share=true"
         } else {
-            "/api/traces"
+            "/v1/traces"
         };
         let body = send(saved, reqwest::Method::POST, path, Some(root.bytes.clone())).await?;
         let trace = trace_of(&body["trace"])?;
@@ -297,8 +314,8 @@ pub fn upload_tree(
                 }
             };
             let path = match &parent_id {
-                Some(parent) => format!("/api/traces/{}/agents?parent={parent}", trace.id),
-                None => format!("/api/traces/{}/agents", trace.id),
+                Some(parent) => format!("/v1/traces/{}/agents?parent={parent}", trace.id),
+                None => format!("/v1/traces/{}/agents", trace.id),
             };
             match send(
                 saved,
@@ -335,7 +352,7 @@ pub fn upload_tree(
 /// # Errors
 /// The website's words, or why it couldn't be reached.
 pub fn list(saved: &Saved) -> Result<Vec<Trace>, String> {
-    let body = runtime()?.block_on(send(saved, reqwest::Method::GET, "/api/traces", None))?;
+    let body = runtime()?.block_on(send(saved, reqwest::Method::GET, "/v1/traces", None))?;
     body["traces"]
         .as_array()
         .into_iter()
@@ -470,7 +487,7 @@ mod tests {
                 let mut kept = kept.lock().unwrap();
                 kept.push((path.clone(), document.clone()));
                 let n = kept.len();
-                if path == "/api/traces" {
+                if path == "/v1/traces" {
                     return (
                         StatusCode::CREATED,
                         axum::Json(json!({"trace": {
@@ -525,12 +542,12 @@ mod tests {
         assert_eq!(
             paths,
             [
-                "/api/traces",
-                "/api/traces/root/agents",
-                "/api/traces/root/agents",
-                "/api/traces/root/agents",
+                "/v1/traces",
+                "/v1/traces/root/agents",
+                "/v1/traces/root/agents",
+                "/v1/traces/root/agents",
                 // d4 under a1, which the website called agent2.
-                "/api/traces/root/agents?parent=agent2",
+                "/v1/traces/root/agents?parent=agent2",
             ]
         );
         let all = serde_json::to_string(&*seen).unwrap();

@@ -230,9 +230,57 @@ pub fn refusal(status: StatusCode, code: &str, message: &str) -> Response {
     response
 }
 
+/// When the older paths were marked deprecated (2026-10-09), as the
+/// `Deprecation` header's `@<unix time>` (RFC 9745).
+pub const DEPRECATED_SINCE: &str = "@1791504000";
+
+/// Mark an answer from an older path (docs/api/design.md section 2.4):
+/// `Deprecation` and `Link: <successor>; rel="successor-version"`. A
+/// FIRST-PARTY older path stays until the two newest client releases stop
+/// calling it, so it names no `Sunset`.
+pub fn mark_deprecated(response: &mut Response, successor: &str) {
+    let headers = response.headers_mut();
+    headers.insert("deprecation", HeaderValue::from_static(DEPRECATED_SINCE));
+    if let Ok(link) = HeaderValue::from_str(&format!("<{successor}>; rel=\"successor-version\"")) {
+        headers.insert(axum::http::header::LINK, link);
+    }
+}
+
+/// `route` answering at an older path: the same handler as at its
+/// successor, which is the request's path with the first `older` replaced
+/// by `newer`, marked with [`mark_deprecated`].
+#[must_use]
+pub fn deprecated<S>(
+    route: axum::routing::MethodRouter<S>,
+    older: &'static str,
+    newer: &'static str,
+) -> axum::routing::MethodRouter<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
+    route.layer(axum::middleware::map_response(
+        move |uri: axum::http::Uri, mut response: Response| async move {
+            let successor = uri.path().replacen(older, newer, 1);
+            mark_deprecated(&mut response, &successor);
+            response
+        },
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_older_path_names_its_successor() {
+        let mut response = refusal(StatusCode::NOT_FOUND, "not_found", "No.");
+        mark_deprecated(&mut response, "/v1/projects");
+        assert_eq!(response.headers()["deprecation"], DEPRECATED_SINCE);
+        assert_eq!(
+            response.headers()[axum::http::header::LINK],
+            "</v1/projects>; rel=\"successor-version\""
+        );
+    }
 
     #[test]
     fn an_account_refusal_gains_type_param_and_request_id_and_keeps_its_fields() {

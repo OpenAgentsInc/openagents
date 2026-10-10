@@ -4,17 +4,20 @@
 //!
 //! | Route | What |
 //! | --- | --- |
-//! | `POST /api/traces[?share=true]` (body: ATIF JSON) | Save a trace. `201 {trace}` when new, `200 {trace}` when the same trace was already saved; `400 invalid`, `413 too_large` or `full`, `422 secret` |
-//! | `GET /api/traces` | `{traces: [trace]}`, newest first |
-//! | `GET /api/traces/{id}` | The saved ATIF document |
-//! | `DELETE /api/traces/{id}` | `200 {deleted}` |
-//! | `POST /api/traces/{id}/share` `{shared}` | Share or stop sharing. `200 {trace}`, `404 unknown` |
+//! | `POST /v1/traces[?share=true]` (body: ATIF JSON) | Save a trace. `201 {trace}` when new, `200 {trace}` when the same trace was already saved; `400 invalid`, `413 too_large` or `full`, `422 secret` |
+//! | `GET /v1/traces` | `{traces: [trace]}`, newest first |
+//! | `GET /v1/traces/{id}` | The saved ATIF document |
+//! | `DELETE /v1/traces/{id}` | `200 {deleted}` |
+//! | `POST /v1/traces/{id}/share` `{shared}` | Share or stop sharing. `200 {trace}`, `404 unknown` |
 //! | `GET /settings/traces`, `/settings/traces/{id}` | The list and the viewer, with Share and Delete |
 //! | `GET /trace/{id}` | A shared trace, for anyone with the link; `404` otherwise |
-//! | `POST /api/traces/{id}/agents[?parent=AGENT]` (body: ATIF JSON) | Save an agent under the trace (#11178), below `parent` or the trace's own conversation. `201 {agent}` when new, `200` when already saved; `404 unknown` (no such trace or parent), `413 full` past [`MAX_AGENTS`] or [`MAX_TREE_BYTES`], and the trace's refusals |
-//! | `GET /api/traces/{id}/agents` | `{agents: [agent]}`, parents before children, each with its times, tokens and cost |
-//! | `GET /api/traces/{id}/agents/{agent}` | The agent's ATIF document |
+//! | `POST /v1/traces/{id}/agents[?parent=AGENT]` (body: ATIF JSON) | Save an agent under the trace (#11178), below `parent` or the trace's own conversation. `201 {agent}` when new, `200` when already saved; `404 unknown` (no such trace or parent), `413 full` past [`MAX_AGENTS`] or [`MAX_TREE_BYTES`], and the trace's refusals |
+//! | `GET /v1/traces/{id}/agents` | `{agents: [agent]}`, parents before children, each with its times, tokens and cost |
+//! | `GET /v1/traces/{id}/agents/{agent}` | The agent's ATIF document |
 //! | `GET /settings/traces/{id}/agents/{agent}`, `/trace/{id}/agents/{agent}` | An agent's page; public while its trace is shared |
+//!
+//! Every `/v1/traces` route also answers at its older path, `/api/traces`,
+//! marked deprecated (#11158, [`crate::older_paths`]).
 //!
 //! A trace with agents is a whole orchestration: a main conversation and
 //! every agent it (or its agents) started. Each agent is its own document
@@ -64,7 +67,9 @@ use crate::settings::{page, viewer};
 use crate::ui_page::{UiPage, action_link};
 
 /// The API.
-pub(crate) const API: &str = "/api/traces";
+pub(crate) const API: &str = "/v1/traces";
+/// The API's older path (#11158), still answered.
+pub(crate) const OLDER_API: &str = "/api/traces";
 /// The signed-in list; a trace's page is under it.
 pub(crate) const PAGE: &str = "/settings/traces";
 /// Where a shared trace is public.
@@ -84,18 +89,35 @@ const SHARE_SCOPE: &str = "trace-share";
 const DELETE_SCOPE: &str = "trace-delete";
 
 pub(crate) fn routes() -> Router<App> {
+    // The API at `/v1/traces` (#11158) and at its older path, `/api/traces`,
+    // which answers the same and names its successor.
+    let api = |base: &str, older: bool| {
+        let mark = |route: axum::routing::MethodRouter<App>| {
+            if older {
+                crate::older_paths::deprecated(route, OLDER_API, API)
+            } else {
+                route
+            }
+        };
+        Router::new()
+            .route(base, mark(get(api_list).post(api_upload)))
+            .route(
+                &format!("{base}/{{id}}"),
+                mark(get(api_read).delete(api_delete)),
+            )
+            .route(&format!("{base}/{{id}}/share"), mark(post(api_share)))
+            .route(
+                &format!("{base}/{{id}}/agents"),
+                mark(get(api_agents).post(api_upload_agent)),
+            )
+            .route(
+                &format!("{base}/{{id}}/agents/{{agent}}"),
+                mark(get(api_read_agent)),
+            )
+    };
     Router::new()
-        .route(API, get(api_list).post(api_upload))
-        .route(&format!("{API}/{{id}}"), get(api_read).delete(api_delete))
-        .route(&format!("{API}/{{id}}/share"), post(api_share))
-        .route(
-            &format!("{API}/{{id}}/agents"),
-            get(api_agents).post(api_upload_agent),
-        )
-        .route(
-            &format!("{API}/{{id}}/agents/{{agent}}"),
-            get(api_read_agent),
-        )
+        .merge(api(API, false))
+        .merge(api(OLDER_API, true))
         .layer(DefaultBodyLimit::max(MAX_BODY))
         .route(PAGE, get(list_page))
         .route(&format!("{PAGE}/{{id}}"), get(trace_page))

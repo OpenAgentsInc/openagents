@@ -251,7 +251,8 @@ async fn post(
         return Ok(answer);
     }
     // Device sign-in is at `/v1/device/*` (#11158). A site that doesn't
-    // serve it there yet answers a plain `404`: ask its older `/device/*`.
+    // serve it there yet answers `404` (device sign-in never does): ask
+    // its older `/device/*`.
     match path.strip_prefix("/v1") {
         Some(older) => send(http, origin, older, &body, bearer)
             .await?
@@ -260,7 +261,7 @@ async fn post(
     }
 }
 
-/// One call. `None` is a `404` without a JSON answer: no such route here.
+/// One call. `None` is a `404`: no such route here.
 async fn send(
     http: &reqwest::Client,
     origin: &str,
@@ -281,11 +282,12 @@ async fn send(
         .bytes()
         .await
         .map_err(|_| Error::Unreachable(origin.to_string()))?;
-    match serde_json::from_slice::<Value>(&text) {
-        Ok(body) => Ok(Some((status, body))),
-        Err(_) if status == 404 => Ok(None),
-        Err(_) => Err(Error::Unreachable(origin.to_string())),
+    if status == 404 {
+        return Ok(None);
     }
+    serde_json::from_slice::<Value>(&text)
+        .map(|body| Some((status, body)))
+        .map_err(|_| Error::Unreachable(origin.to_string()))
 }
 
 /// Ask `origin` to start a sign-in for `app` on this computer.

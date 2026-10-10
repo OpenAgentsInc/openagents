@@ -4,14 +4,19 @@
 //!
 //! | Route | What |
 //! | --- | --- |
-//! | `PUT /coder/sessions/{session}` `{computer, title, messages}` | Save the chat's messages. `200 {chat, changed}`; `410 deleted` when it was deleted on the website; `413 full` or `too_large`; `422 secret` |
-//! | `POST /coder/sessions/{session}/status` `{working}` | Coder is replying (or not). `200`, `404 unknown`, `410 deleted` |
-//! | `DELETE /coder/sessions/{session}` | Deleted in Coder: remove it here. `200 {deleted}` |
-//! | `GET /coder/sessions` | `{sessions: [{session, deleted}]}`, so Coder learns of chats deleted on the website |
-//! | `POST /coder/check-in` `{computer}` | Coder runs on this computer with sync on (#11048). `200 {waiting: [session], sync}`: its chats with replies from the website, or with messages from a Cloud computer it hasn't taken, and the computer's sync choice |
+//! | `PUT /v1/threads/synced/{session}` `{computer, title, messages}` | Save the chat's messages. `200 {chat, changed}`; `410 deleted` when it was deleted on the website; `413 full` or `too_large`; `422 secret` |
+//! | `POST /v1/threads/synced/{session}/status` `{working}` | Coder is replying (or not). `200`, `404 unknown`, `410 deleted` |
+//! | `DELETE /v1/threads/synced/{session}` | Deleted in Coder: remove it here. `200 {deleted}` |
+//! | `GET /v1/threads/synced` | `{sessions: [{session, deleted}]}`, so Coder learns of chats deleted on the website |
+//! | `POST /v1/computers/check-in` `{computer}` | Coder runs on this computer with sync on (#11048). `200 {waiting: [session], sync}`: its chats with replies from the website, or with messages from a Cloud computer it hasn't taken, and the computer's sync choice |
 //! | `GET /coder/sync?computer=` | The computer's sync choice (#11089): `200 {choice: "all" \| "local" \| null}` (null: not asked yet) |
 //! | `PUT /coder/sync` `{computer, choice}` | Coder's answer to "Sync all my chats?" for this computer. `200 {choice}` |
-//! | `POST /coder/sessions/{session}/replies` | Take what waits: the replies sent on the website join the transcript as the person's messages and the chat shows Working; `continued` are the messages added while the computer was offline (#11050), oldest first, for Coder to add to its own copy before answering the replies (#11052). Each is handed out once. `200 {replies: [{id, text}], continued: [{role, text}]}`, `404 unknown`, `410 deleted` |
+//! | `POST /v1/threads/synced/{session}/replies` | Take what waits: the replies sent on the website join the transcript as the person's messages and the chat shows Working; `continued` are the messages added while the computer was offline (#11050), oldest first, for Coder to add to its own copy before answering the replies (#11052). Each is handed out once. `200 {replies: [{id, text}], continued: [{role, text}]}`, `404 unknown`, `410 deleted` |
+//!
+//! Each route also answers at its older path (`/coder/sessions/...`,
+//! `/coder/check-in`), marked deprecated (#11158, [`crate::older_paths`]).
+//! `/coder/sync` is [`crate::phone_api`]'s per-computer
+//! `/v1/computers/{name}/sync` with the computer in the query.
 //!
 //! Every route takes `Authorization: Bearer sess_…`. A synced chat is an
 //! ordinary account chat ([`crate::chat_store::account_owner`]) with a
@@ -57,13 +62,35 @@ pub(crate) const MAX_TEXT: usize = 256 * 1024;
 /// chats are refused; the store's own list limit is 256.
 pub(crate) const MAX_CHATS: usize = 200;
 
+/// Synced terminal chats under `/v1` (#11158).
+pub(crate) const SYNCED: &str = "/v1/threads/synced";
+/// Their older path, still answered.
+const OLDER_SYNCED: &str = "/coder/sessions";
+/// A computer checking in, under `/v1` (#11158).
+pub(crate) const CHECK_IN: &str = "/v1/computers/check-in";
+const OLDER_CHECK_IN: &str = "/coder/check-in";
+
 pub(crate) fn routes() -> Router<App> {
+    use crate::older_paths::deprecated;
+    let old = |route: axum::routing::MethodRouter<App>| deprecated(route, OLDER_SYNCED, SYNCED);
     Router::new()
-        .route("/coder/sessions", get(list))
-        .route("/coder/sessions/{session}", put(upload).delete(forget))
-        .route("/coder/sessions/{session}/status", post(status))
-        .route("/coder/sessions/{session}/replies", post(replies))
-        .route("/coder/check-in", post(check_in_route))
+        .route(SYNCED, get(list))
+        .route(&format!("{SYNCED}/{{session}}"), put(upload).delete(forget))
+        .route(&format!("{SYNCED}/{{session}}/status"), post(status))
+        .route(&format!("{SYNCED}/{{session}}/replies"), post(replies))
+        .route(CHECK_IN, post(check_in_route))
+        // The older paths: the same handlers, marked deprecated until the
+        // two newest Coder and phone releases call the paths above.
+        .route(OLDER_SYNCED, old(get(list)))
+        .route("/coder/sessions/{session}", old(put(upload).delete(forget)))
+        .route("/coder/sessions/{session}/status", old(post(status)))
+        .route("/coder/sessions/{session}/replies", old(post(replies)))
+        .route(
+            OLDER_CHECK_IN,
+            deprecated(post(check_in_route), OLDER_CHECK_IN, CHECK_IN),
+        )
+        // Its successor is per computer: `/v1/computers/{name}/sync`
+        // ([`crate::phone_api`]).
         .route("/coder/sync", get(choice_route).put(choose_route))
         .layer(DefaultBodyLimit::max(MAX_BODY))
 }

@@ -23,8 +23,18 @@ pub(crate) fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
         ("/v1/account/github/grant", post(grant).delete(disconnect)),
         ("/v1/account/github/repositories", get(repositories)),
         ("/v1/account/github/token", post(token)),
-        ("/v1/account/projects", post(add)),
-        ("/v1/account/projects/{id}", delete(remove)),
+        ("/v1/projects", post(add)),
+        ("/v1/projects/{id}", delete(remove)),
+        // Older paths of the two above (#11158), until the two newest
+        // website releases stop calling them.
+        (
+            "/v1/account/projects",
+            crate::envelope::deprecated(post(add), "/v1/account/projects", "/v1/projects"),
+        ),
+        (
+            "/v1/account/projects/{id}",
+            crate::envelope::deprecated(delete(remove), "/v1/account/projects", "/v1/projects"),
+        ),
         ("/v1/account/github/app/grant", post(app_grant)),
         ("/v1/account/github/app/refresh", post(app_refresh)),
         ("/v1/account/github/broker", post(broker_ticket)),
@@ -221,6 +231,8 @@ mod tests {
                 "/v1/account/github/grant",
                 "/v1/account/github/repositories",
                 "/v1/account/github/token",
+                "/v1/projects",
+                "/v1/projects/{id}",
                 "/v1/account/projects",
                 "/v1/account/projects/{id}",
                 "/v1/account/github/app/grant",

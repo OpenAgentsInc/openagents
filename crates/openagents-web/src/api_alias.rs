@@ -65,7 +65,7 @@ const PUBLIC: &[Rule] = &[
     Rule(Methods::Any, "/v1/workspaces/*/sso/**"),
     Rule(GET, "/v1/workspaces/*/usage/**"),
     Rule(GET, "/v1/workspaces/*/balance"),
-    Rule(POST, "/v1/workspaces/*/topups"),
+    Rule(POST, "/v1/workspaces/*/topups/*"),
     Rule(POST, "/v1/workspaces/*/decision-funding/*"),
     Rule(Methods::Only(&["GET", "PUT"]), "/v1/workspaces/*/budgets"),
     Rule(GET, "/v1/workspaces/*/audit"),

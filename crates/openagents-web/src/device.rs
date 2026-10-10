@@ -1,17 +1,19 @@
 //! Signing an app in on another computer (docs/auth, "Apps and the
 //! command line"): RFC 8628's device authorization grant.
 //!
-//! - `POST /device/code` — the app asks to sign in. Answers `device_code`,
+//! - `POST /v1/device/code` — the app asks to sign in. Answers `device_code`,
 //!   `user_code`, `verification_uri` (this site's `/device`),
 //!   `verification_uri_complete`, `expires_in`, and `interval`.
 //! - `GET /device` — the signed-in person types the code (or arrives with
 //!   it in the link) and sees "Sign in to Coder on <computer>?" with
 //!   Approve and Deny. Signing in first comes back here.
-//! - `POST /device/token` — the app's poll. `200 {access_token,
+//! - `POST /v1/device/token` — the app's poll. `200 {access_token,
 //!   token_type, expires_in, account}` once approved; RFC errors
 //!   (`authorization_pending`, `slow_down`, `expired_token`,
 //!   `access_denied`, `invalid_grant`) until then.
-//! - `POST /device/sign-out` — the app signs its own token out.
+//! - `POST /v1/device/sign-out` — the app signs its own token out.
+//! - The older `/device/code`, `/device/token`, and `/device/sign-out`
+//!   answer the same, marked deprecated (#11158, [`crate::older_paths`]).
 //! - Settings' Computers section lists signed-in apps with Remove
 //!   (`POST /settings/computers/remove`).
 //!
@@ -39,17 +41,24 @@ use crate::cloud::{protect, refused, service};
 use crate::ui_page::{UiPage, action_link};
 
 pub(crate) const PAGE: &str = "/device";
-const CODE: &str = "/device/code";
-const TOKEN: &str = "/device/token";
-const SIGN_OUT: &str = "/device/sign-out";
+const CODE: &str = "/v1/device/code";
+const TOKEN: &str = "/v1/device/token";
+const SIGN_OUT: &str = "/v1/device/sign-out";
 const REMOVE: &str = "/settings/computers/remove";
+/// The app routes' older prefix (#11158), still answered.
+const OLDER: &str = "/device/";
+const NEWER: &str = "/v1/device/";
 
 pub(crate) fn routes() -> Router<App> {
+    use crate::older_paths::deprecated;
     Router::new()
         .route(PAGE, get(page).post(decide))
         .route(CODE, post(start))
         .route(TOKEN, post(token))
         .route(SIGN_OUT, post(sign_out))
+        .route("/device/code", deprecated(post(start), OLDER, NEWER))
+        .route("/device/token", deprecated(post(token), OLDER, NEWER))
+        .route("/device/sign-out", deprecated(post(sign_out), OLDER, NEWER))
         .route(REMOVE, post(remove))
 }
 
