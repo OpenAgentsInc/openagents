@@ -36,6 +36,22 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "56",
+        title: "Enter the Grid",
+        what_to_test: "Everything from build 55 applies. Ask \"What is the Verse?\": the answer ends with an Enter the Grid card in the conversation, and a tap on it opens the Grid. On a new chat, tap Ask OpenAgents: the field stays above the keyboard.",
+        items: &[
+            Item {
+                title: "Enter the Grid",
+                detail: "An answer about the Verse ends with a card that opens the Grid.",
+            },
+            Item {
+                title: "Typing on a new chat",
+                detail: "The field stays above the keyboard.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "55",
         title: "Coder and the Verse",
         what_to_test: "No sign-in is needed. The app has no tab bar now: the menu button at the top left opens the menu with Coder, Computers, Wallet, Verse, Settings, and your recent chats. On a new chat, the cards move on by themselves; tap Try it on one. Ask anything in Ask OpenAgents: the reply streams in, and a reply that names web pages shows a card for each. Tap Verse at the top (or Explore the Verse's Try it) to walk around the Grid with your avatar, then tap Coder to come back.",
