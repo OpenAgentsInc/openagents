@@ -10,7 +10,7 @@
 //! Every refusal of an unauthenticated or unauthorized request is the same
 //! `403`, so a stranger learns nothing about which assets exist.
 
-use std::collections::HashMap;
+use std::collections::{HashSet, VecDeque};
 use std::future::Future;
 use std::sync::{Arc, Mutex};
 
@@ -22,8 +22,40 @@ use crate::{manifest_object, pack_object};
 /// How long a request's event ID is remembered, s: past NIP-98's 60-second
 /// window on either side.
 const REPLAY_SECONDS: u64 = 150;
-/// Most remembered event IDs, which bounds the memory a flood can take.
+/// Most remembered event IDs, which bounds the memory the cache can take.
+/// Only admitted readers' requests occupy a slot, so a stranger can't fill it.
 const MAX_SEEN: usize = 10_000;
+
+/// Event IDs already granted, oldest first, so expired ones are pruned from
+/// the front in O(1) each instead of scanning the whole cache.
+#[derive(Default)]
+struct Seen {
+    order: VecDeque<(u64, String)>,
+    ids: HashSet<String>,
+}
+
+impl Seen {
+    /// Records `id` at `now` unless it is a replay. Entries older than
+    /// [`REPLAY_SECONDS`] are evicted first; an unexpired entry is never
+    /// evicted, so a replay inside the window is always caught. When the
+    /// cache is full of unexpired entries the request is refused.
+    fn first_use(&mut self, id: &str, now: u64) -> bool {
+        while let Some((at, _)) = self.order.front() {
+            if now.saturating_sub(*at) <= REPLAY_SECONDS {
+                break;
+            }
+            if let Some((_, old)) = self.order.pop_front() {
+                self.ids.remove(&old);
+            }
+        }
+        if self.ids.contains(id) || self.ids.len() >= MAX_SEEN {
+            return false;
+        }
+        self.ids.insert(id.to_owned());
+        self.order.push_back((now, id.to_owned()));
+        true
+    }
+}
 
 /// Reads manifests from the private bucket.
 pub trait Bucket: Send + Sync + 'static {
@@ -68,7 +100,7 @@ pub struct Broker<B, S> {
     url: String,
     store: B,
     signer: S,
-    seen: Mutex<HashMap<String, u64>>,
+    seen: Mutex<Seen>,
 }
 
 impl<B: Bucket, S: UrlSigner> Broker<B, S> {
@@ -80,7 +112,7 @@ impl<B: Bucket, S: UrlSigner> Broker<B, S> {
             url: grant_url(origin),
             store,
             signer,
-            seen: Mutex::new(HashMap::new()),
+            seen: Mutex::new(Seen::default()),
         }
     }
 
@@ -91,13 +123,10 @@ impl<B: Bucket, S: UrlSigner> Broker<B, S> {
     }
 
     fn first_use(&self, id: &str, now: u64) -> bool {
-        let mut seen = self.seen.lock().unwrap_or_else(|e| e.into_inner());
-        seen.retain(|_, at| now.saturating_sub(*at) <= REPLAY_SECONDS);
-        if seen.contains_key(id) || seen.len() >= MAX_SEEN {
-            return false;
-        }
-        seen.insert(id.to_owned(), now);
-        true
+        self.seen
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .first_use(id, now)
     }
 
     /// Decides one request: its `Authorization` header and body at `now`.
@@ -118,9 +147,6 @@ impl<B: Bucket, S: UrlSigner> Broker<B, S> {
         let header = authorization.ok_or(Refusal::Forbidden)?;
         let auth = nostr::domain::parse_http_authorization(header, "POST", &self.url, body, now)
             .map_err(|_| Refusal::Forbidden)?;
-        if !self.first_use(&auth.event_id, now) {
-            return Err(Refusal::Forbidden);
-        }
         let request: GrantRequest =
             serde_json::from_slice(body).map_err(|_| Refusal::BadRequest)?;
         let object = manifest_object(&request.name).ok_or(Refusal::Forbidden)?;
@@ -136,6 +162,11 @@ impl<B: Bucket, S: UrlSigner> Broker<B, S> {
             return Err(Refusal::Unavailable);
         }
         if !manifest.admits(&auth.pubkey) || manifest.pack.sha256 != request.sha256 {
+            return Err(Refusal::Forbidden);
+        }
+        // Only now, for an admitted reader, does the request take a replay
+        // slot: a stranger's validly signed events can't fill the cache.
+        if !self.first_use(&auth.event_id, now) {
             return Err(Refusal::Forbidden);
         }
         let email = self
@@ -574,5 +605,44 @@ mod tests {
             block_on(broker.grant(Some(&header), &body, NOW)).map(|_| ()),
             Err(Refusal::Forbidden)
         );
+    }
+
+    #[test]
+    fn a_flood_of_strangers_does_not_lock_out_a_reader() {
+        let reader = RelaySigner::from_secret_hex(&"11".repeat(32)).unwrap();
+        let stranger = RelaySigner::from_secret_hex(&"22".repeat(32)).unwrap();
+        let broker = broker(&[reader.pubkey()]);
+        let sha = "cd".repeat(32);
+        let base = String::from_utf8(request(&stranger, "sample-guest", &sha, NOW).1).unwrap();
+        // MAX_SEEN + 1 distinct, validly signed stranger requests for the real
+        // asset: leading whitespace and the signing second vary the event ID.
+        for i in 0..=MAX_SEEN {
+            let at = NOW - 50 + (i / 100) as u64;
+            let body = format!("{}{base}", " ".repeat(i % 100));
+            let header = authorization(&stranger, broker.url(), body.as_bytes(), at);
+            assert_eq!(
+                block_on(broker.grant(Some(&header), body.as_bytes(), NOW)).map(|_| ()),
+                Err(Refusal::Forbidden)
+            );
+        }
+        let (header, body) = request(&reader, "sample-guest", &sha, NOW);
+        assert!(block_on(broker.grant(Some(&header), &body, NOW)).is_ok());
+    }
+
+    #[test]
+    fn the_replay_cache_evicts_expired_ids_and_keeps_unexpired_ones() {
+        let mut seen = Seen::default();
+        for i in 0..MAX_SEEN {
+            assert!(seen.first_use(&format!("old{i}"), NOW));
+        }
+        // Full of unexpired IDs: a replay and a new ID are both refused.
+        assert!(!seen.first_use("old0", NOW + 1));
+        assert!(!seen.first_use("new", NOW + REPLAY_SECONDS));
+        // Once the old ones expire they are evicted and new IDs fit.
+        let later = NOW + REPLAY_SECONDS + 1;
+        assert!(seen.first_use("new", later));
+        assert!(!seen.first_use("new", later + 1));
+        assert_eq!(seen.ids.len(), 1);
+        assert_eq!(seen.order.len(), 1);
     }
 }

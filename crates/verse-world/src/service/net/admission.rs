@@ -5,7 +5,7 @@ use std::{
     collections::BTreeMap,
     net::IpAddr,
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, MutexGuard, PoisonError,
         atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},
@@ -111,6 +111,12 @@ struct State {
 #[derive(Clone)]
 pub(in crate::service) struct Limits(Arc<Mutex<State>>);
 impl Limits {
+    /// The shared state. A panic elsewhere while it was held must not take
+    /// every later connection (or a `Slot` drop) down with it, so a poisoned
+    /// lock is recovered: every update here leaves the counters consistent.
+    fn lock(&self) -> MutexGuard<'_, State> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
     pub fn new() -> Self {
         let now = Instant::now();
         Self(Arc::new(Mutex::new(State {
@@ -130,7 +136,7 @@ impl Limits {
             IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(ip, IpAddr::V4),
             _ => ip,
         };
-        let mut s = self.0.lock().unwrap();
+        let mut s = self.lock();
         if s.stats.active + s.stats.pending >= CONNECTIONS {
             s.stats.capacity_refusals += 1;
             return Err("Chamber connection budget exceeded");
@@ -180,13 +186,13 @@ impl Limits {
         })
     }
     pub fn stats(&self) -> Stats {
-        let s = self.0.lock().unwrap();
+        let s = self.lock();
         let mut out = s.stats.clone();
         out.principal_records = s.principals.len();
         out
     }
     pub fn clients(&self, tick: u64) -> Vec<super::super::operator::Client> {
-        let s = self.0.lock().unwrap();
+        let s = self.lock();
         let now = Instant::now();
         s.clients
             .iter()
@@ -209,10 +215,10 @@ impl Limits {
             .collect()
     }
     pub fn cancelled(&self) {
-        self.0.lock().unwrap().stats.cancelled_workers += 1;
+        self.lock().stats.cancelled_workers += 1;
     }
     pub fn finish(&self, result: &Result<(), String>) {
-        let mut s = self.0.lock().unwrap();
+        let mut s = self.lock();
         let stats = &mut s.stats;
         stats.completed += 1;
         let Err(error) = result else {
@@ -263,9 +269,9 @@ pub(in crate::service) struct Slot {
     stop: Option<Arc<Stop>>,
 }
 fn release_pending(s: &mut State, ip: IpAddr) {
-    s.stats.pending -= 1;
+    s.stats.pending = s.stats.pending.saturating_sub(1);
     if let Some(count) = s.ips.get_mut(&ip) {
-        *count -= 1;
+        *count = count.saturating_sub(1);
         if *count == 0 {
             s.ips.remove(&ip);
         }
@@ -273,15 +279,19 @@ fn release_pending(s: &mut State, ip: IpAddr) {
 }
 impl Slot {
     pub fn received(&self, bytes: usize) {
-        let mut s = self.limits.0.lock().unwrap();
-        let a = s.clients.get_mut(&self.serial).unwrap();
+        let mut s = self.limits.lock();
+        let Some(a) = s.clients.get_mut(&self.serial) else {
+            return;
+        };
         a.requests = a.requests.saturating_add(1);
         a.received = a.received.saturating_add(bytes as u64);
         a.used = Instant::now();
     }
     pub fn delivered(&self, bytes: usize, tick: Option<u64>) {
-        let mut s = self.limits.0.lock().unwrap();
-        let a = s.clients.get_mut(&self.serial).unwrap();
+        let mut s = self.limits.lock();
+        let Some(a) = s.clients.get_mut(&self.serial) else {
+            return;
+        };
         a.sent = a.sent.saturating_add(bytes as u64);
         a.used = Instant::now();
         if let Some(tick) = tick {
@@ -290,7 +300,7 @@ impl Slot {
     }
     /// Called only after signature verification and world-right admission.
     pub fn authenticate(&mut self, key: [u8; 32]) -> Result<(), String> {
-        let mut s = self.limits.0.lock().unwrap();
+        let mut s = self.limits.lock();
         let now = Instant::now();
         s.principals.retain(|_, p| {
             Arc::strong_count(&p.stop) > 1 || now.saturating_duration_since(p.used) < RETAIN
@@ -319,7 +329,9 @@ impl Slot {
         release_pending(&mut s, self.ip);
         s.stats.active += 1;
         s.stats.active_peak = s.stats.active_peak.max(s.stats.active);
-        s.clients.get_mut(&self.serial).unwrap().authenticated = true;
+        if let Some(a) = s.clients.get_mut(&self.serial) {
+            a.authenticated = true;
+        }
         self.principal = Some(key);
         self.stop = Some(stop);
         Ok(())
@@ -360,8 +372,10 @@ impl Slot {
             Body::Events { .. } => (true, 4),
             _ => (false, 1),
         };
-        let mut s = self.limits.0.lock().unwrap();
-        let p = s.principals.get_mut(&key).unwrap();
+        let mut s = self.limits.lock();
+        let Some(p) = s.principals.get_mut(&key) else {
+            return false;
+        };
         p.used = p.used.max(now);
         let local = if projection {
             &mut p.projections
@@ -370,7 +384,9 @@ impl Slot {
         };
         if !local.ready(cost, now) {
             s.stats.principal_work_refusals += 1;
-            s.clients.get_mut(&self.serial).unwrap().refusals += 1;
+            if let Some(a) = s.clients.get_mut(&self.serial) {
+                a.refusals += 1;
+            }
             return false;
         }
         let global = if projection {
@@ -380,17 +396,20 @@ impl Slot {
         };
         if !global.ready(cost, now) {
             s.stats.aggregate_work_refusals += 1;
-            s.clients.get_mut(&self.serial).unwrap().refusals += 1;
+            if let Some(a) = s.clients.get_mut(&self.serial) {
+                a.refusals += 1;
+            }
             return false;
         }
         global.charge(cost);
-        let p = s.principals.get_mut(&key).unwrap();
-        (if projection {
-            &mut p.projections
-        } else {
-            &mut p.commands
-        })
-        .charge(cost);
+        if let Some(p) = s.principals.get_mut(&key) {
+            (if projection {
+                &mut p.projections
+            } else {
+                &mut p.commands
+            })
+            .charge(cost);
+        }
         if projection {
             s.stats.projections += 1;
         } else {
@@ -401,10 +420,10 @@ impl Slot {
 }
 impl Drop for Slot {
     fn drop(&mut self) {
-        let mut s = self.limits.0.lock().unwrap();
+        let mut s = self.limits.lock();
         s.clients.remove(&self.serial);
         if self.principal.is_some() {
-            s.stats.active -= 1;
+            s.stats.active = s.stats.active.saturating_sub(1);
         } else {
             release_pending(&mut s, self.ip);
         }
@@ -431,7 +450,7 @@ mod tests {
         drop(slots);
         drop(admitted);
         assert_eq!((limits.stats().pending, limits.stats().active), (0, 0));
-        assert!(limits.0.lock().unwrap().ips.is_empty());
+        assert!(limits.lock().ips.is_empty());
     }
     #[test]
     fn mapped_ipv4_connections_share_the_pending_ip_limit() {
@@ -501,5 +520,34 @@ mod tests {
             },
             now
         ));
+    }
+    #[test]
+    fn a_poisoned_lock_still_admits_and_drops_slots() {
+        let limits = Limits::new();
+        let mut held = limits.open(ip(1)).unwrap();
+        held.authenticate([1; 32]).unwrap();
+        let poisoner = limits.clone();
+        let panicked = std::thread::spawn(move || {
+            let _guard = poisoner.0.lock().unwrap();
+            panic!("poison the admission lock");
+        })
+        .join();
+        assert!(panicked.is_err());
+        assert!(limits.0.is_poisoned());
+        // New connections are still admitted, authenticated and served.
+        let mut next = limits.open(ip(2)).unwrap();
+        next.authenticate([2; 32]).unwrap();
+        next.received(10);
+        next.delivered(10, Some(1));
+        assert!(next.request(&Body::Snapshot {}));
+        assert_eq!(limits.stats().active, 2);
+        // Dropping slots after poisoning neither panics nor underflows.
+        drop(next);
+        drop(held);
+        let pending = limits.open(ip(3)).unwrap();
+        drop(pending);
+        let stats = limits.stats();
+        assert_eq!((stats.pending, stats.active), (0, 0));
+        assert!(limits.lock().ips.is_empty());
     }
 }
