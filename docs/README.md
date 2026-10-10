@@ -43,6 +43,7 @@ the [document catalog](catalog.md) to find a specific reference.
 | Operate the relay | [Deployment](deployment/README.md) |
 | Plan CoderOS | [CoderOS index](os/README.md), [audit of what moves from the private tree](os/2026-09-28-coderos-audit.md) |
 | Run reliable, user-defined background processes such as disk cleanup | [Background processes](background/README.md) |
+| Keep durable single-writer state (queues, jobs, fleet rows, schedules) with one actor primitive on our Postgres | [Actors spec](architecture/actors.md) |
 | Fan Coder runs out onto Google Cloud machines | [Cloud](cloud/README.md), [parallel execution audit](cloud/2026-10-02-cloud-parallel-execution-audit.md) |
 | Keep sensitive data (financial statements) unreadable, even by us; private inference on sealed hardware | [Security](security/README.md): [vault](security/sensitive-data-vault.md), [private inference](security/private-inference.md) |
 | Sign people in: accounts, GitHub sign-in, sessions, and what comes next | [Authentication](auth/README.md), [GitHub sign-in](auth/github.md) |

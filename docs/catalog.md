@@ -48,6 +48,12 @@ files are included below.
 | [agents/roadmap.md](agents/roadmap.md) | Design / assessment | General agent architecture: remaining work |
 | [agents/skills.md](agents/skills.md) | Reference | Call the decision API from an agent |
 
+## architecture
+
+| Document | Role | Topic |
+| --- | --- | --- |
+| [architecture/actors.md](architecture/actors.md) | Design / assessment | The actor primitive: single-writer state on Postgres, and the migration of ad-hoc queues onto it |
+
 ## audits
 
 | Document | Role | Topic |
