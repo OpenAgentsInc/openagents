@@ -5,6 +5,10 @@
 # host above 50 GB free: below AB_MIN_FREE_GB the bench's own target dir is
 # cleared. Nothing here touches ~/openagents/target.
 AB_MIN_FREE_GB=${AB_MIN_FREE_GB:-55}
+# On the trial's own machine (AB_HOST=local) the caller's PATH starts with
+# the bench's cargo shim, which would call back into this script: drop it.
+PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v 'briefed-ab/shim' | paste -sd: -)
+export PATH
 # AB_BUILD=NAME picks a second checkout and target (the grader's
 # validation runs beside trials without thrashing their build).
 sfx=${AB_BUILD:+-$AB_BUILD}
