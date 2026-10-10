@@ -31600,7 +31600,7 @@
               "serve"
             ],
             "usage": [
-              "serve"
+              "serve [--workload SLUG] [--teeserver SOCKET] [--decision-device cpu|cuda] [--decision-chunk N] [--require-gpu-cc] [--idle-stop SECS]"
             ],
             "forms": [
               {
@@ -31608,11 +31608,54 @@
                   {
                     "kind": "literal",
                     "word": "serve"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "workload",
+                    "value": "SLUG",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "teeserver",
+                    "value": "SOCKET",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "decision-device",
+                    "value": "cpu|cuda",
+                    "choices": [
+                      "cpu",
+                      "cuda"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "decision-chunk",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "require-gpu-cc",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "idle-stop",
+                    "value": "SECS",
+                    "open": true,
+                    "optional": true
                   }
                 ]
               }
             ],
-            "summary": "Publish beacons and answer jobs from a local Psionic server. --engine URL          The Psionic server (default http://127.0.0.1:18080). --model NAME          The served model (default qwen3.5-0.8b-q8_0). --decide URL          Also answer NIP-DEC decision jobs with the System One server at URL (Psionic's Clef lane), free; the beacon advertises pylon/decision. --decide-model NAME   The decision model at that server (default: the first one it lists). --decisions-only      Answer decision jobs only, no text jobs. --pylon SLUG          The beacon's name (default: the host name). --label TEXT          Display label (default: the slug). --slots N             Concurrent jobs (default 2). --allow NPUB          A key that may send jobs; repeat or comma-separate. --allow-any           Admit any key (rate limits still apply). --rate N              Jobs per buyer per minute (default 10). --max-tokens N        Output bound per job (default 512). --vram-gb N           GPU memory for the beacon's class (default 16). --pool SLUG           Pool to ask to join (default everglade). --dedicated           Ignore this computer's lease table (a box that runs no owner work); otherwise each job takes a background `pylon` lease and the pylon drains while the owner's work needs the computer. --price-msat N        Sell each job for N msat under NIP-X402, with invoices from this computer's Lightning node. --network NAME        The price's network: testnet (default) or bitcoin, which needs the owner's grant.json.",
+            "summary": "Publish beacons and answer jobs from a local Psionic server. --engine URL          The Psionic server (default http://127.0.0.1:18080). --model NAME          The served model (default qwen3.5-0.8b-q8_0). --decide URL          Also answer NIP-DEC decision jobs with the System One server at URL (Psionic's Clef lane), free; the beacon advertises pylon/decision. --decide-model NAME   The decision model at that server (default: the first one it lists). --decisions-only      Answer decision jobs only, no text jobs. --attested            Run as a NIP-ATT attested endpoint inside a Google Confidential Space workload (the release image only): a key made in memory, the pinned weights fetched and checked, Psionic started on loopback, a launcher token bound to the key, sealed decisions only. Takes --release ID --publisher HEX --weights-url URL --weights-sha256 HEX --weights PATH --psionic BIN [--operator HEX] (OA_ATT_RELEASE and OA_ATT_PUBLISHER also work). --require-gpu-cc refuses to start (and stops on a refresh) unless Google's token says the GPU is in confidential-computing mode (cc_mode ON, every GPU an H100). --idle-stop stops this VM (Compute instances.stop on itself) once no decision has come for SECS. --pylon SLUG          The beacon's name (default: the host name). --label TEXT          Display label (default: the slug). --slots N             Concurrent jobs (default 2). --allow NPUB          A key that may send jobs; repeat or comma-separate. --allow-any           Admit any key (rate limits still apply). --rate N              Jobs per buyer per minute (default 10). --max-tokens N        Output bound per job (default 512). --vram-gb N           GPU memory for the beacon's class (default 16). --pool SLUG           Pool to ask to join (default everglade). --dedicated           Ignore this computer's lease table (a box that runs no owner work); otherwise each job takes a background `pylon` lease and the pylon drains while the owner's work needs the computer. --price-msat N        Sell each job for N msat under NIP-X402, with invoices from this computer's Lightning node. --network NAME        The price's network: testnet (default) or bitcoin, which needs the owner's grant.json.",
             "effect": "long_running",
             "runs_on": "connected_computer"
           }
@@ -32015,6 +32058,117 @@
         {
           "kind": "option",
           "name": "decisions-only",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "attested",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "release",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "publisher",
+          "value": "HEX",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "weights-url",
+          "value": "URL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "weights-sha256",
+          "value": "HEX",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "weights",
+          "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "psionic",
+          "value": "BIN",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "operator",
+          "value": "HEX",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "workload",
+          "value": "SLUG",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "teeserver",
+          "value": "SOCKET",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "decision-device",
+          "value": "cpu|cuda",
+          "choices": [
+            "cpu",
+            "cuda"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "decision-chunk",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "require-gpu-cc",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "idle-stop",
+          "value": "SECS",
+          "open": true,
           "optional": true,
           "repeated": true
         },
