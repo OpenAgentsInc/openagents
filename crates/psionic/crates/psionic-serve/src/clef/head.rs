@@ -1129,6 +1129,17 @@ impl<'a> ClefHeadStream<'a> {
         Ok(())
     }
 
+    /// The head's pooled inputs so far: every span mean (questions, then
+    /// options in prompt order) and the normalized last row. Complete once
+    /// every row has been pushed.
+    #[must_use]
+    pub fn pooled(&self) -> (Vec<Vec<f32>>, Vec<f32>) {
+        (
+            (0..self.spans.len()).map(|index| self.span_mean(index)).collect(),
+            self.last.clone(),
+        )
+    }
+
     fn span_mean(&self, index: usize) -> Vec<f32> {
         let ((start, end), sum) = &self.spans[index];
         let count = end.saturating_sub(*start).max(1) as f32;

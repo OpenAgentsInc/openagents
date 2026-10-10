@@ -59,7 +59,14 @@
  "label_rule": "true when a commit that fixed the issue (subject carries (#N)) changed this file, read from git at the fix; false when no such commit changed it",
  "label_source": "measurement",
  "leak_dropped": 3,
- "locked_reads": 0,
+ "locked_read_log": [
+  {
+   "by": "openagents#11216 (X1)",
+   "date": "2026-10-10",
+   "what": "Clef-Flash raw probabilities on the 343 locked items, scored once with the frozen map crates/psionic/fixtures/clef/calibration/file-relevance-v1.json"
+  }
+ ],
+ "locked_reads": 1,
  "name": "file-relevance-v1",
  "partitions": {
   "calibration": {

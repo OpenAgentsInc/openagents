@@ -23,6 +23,7 @@
 //! `truncation: "state_tail"`. Confidence is the reference's: the top
 //! probability. Read probabilities, not `confidence`.
 
+pub mod calibration;
 pub mod encode;
 pub mod head;
 pub mod json;
@@ -45,6 +46,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::{ClefCudaHeadParams, ClefCudaTrunk, CpuGgufQwen35TextGenerationService};
+use calibration::{ClefCalibration, HeadInputs, RowExport, request_digest};
 use encode::{
     BudgetRefusal, ClefQuestion, ClefRequest, EncodedRecord, QuestionType, RequestLimits,
     RequestRefusal, TRAINED_LENGTH, encode_record,
@@ -194,6 +196,10 @@ pub struct ClefDecisionLane {
     cuda: Option<ClefCudaTrunk>,
     head: ClefHeadWeights,
     limits: ClefLimits,
+    /// Calibration maps (`--decision-calibration`), one per noul question.
+    calibrations: Vec<ClefCalibration>,
+    /// Hidden-row export (`--decision-export-rows`).
+    export: Option<RowExport>,
     waiting: AtomicUsize,
     running: std::sync::Mutex<()>,
 }
@@ -359,9 +365,37 @@ impl ClefDecisionLane {
             cuda,
             head,
             limits,
+            calibrations: Vec::new(),
+            export: None,
             waiting: AtomicUsize::new(0),
             running: std::sync::Mutex::new(()),
         })
+    }
+
+    /// Applies calibration maps. A map that names another head than this
+    /// lane's is refused: its numbers describe a different model.
+    pub fn with_calibrations(mut self, maps: Vec<ClefCalibration>) -> Result<Self, String> {
+        for map in &maps {
+            if let Some(head) = &map.head_digest {
+                if head != &self.head.digest {
+                    return Err(format!(
+                        "calibration {} was fitted on head {head}; this lane serves head {}",
+                        map.id, self.head.digest
+                    ));
+                }
+            }
+            if self.calibrations.iter().any(|m| m.instructions == map.instructions) {
+                return Err(format!("two calibration maps name the question `{}`", map.instructions));
+            }
+            self.calibrations.push(map.clone());
+        }
+        Ok(self)
+    }
+
+    /// Exports every decision's pooled head inputs to `dir`.
+    pub fn with_row_export(mut self, dir: &Path) -> Result<Self, String> {
+        self.export = Some(RowExport::open(dir)?);
+        Ok(self)
     }
 
     /// The model id `/v1/models` lists (from `general.name`, e.g.
@@ -481,8 +515,20 @@ impl ClefDecisionLane {
         &self,
         record: &EncodedRecord,
         chunk: usize,
+        observe: Option<&mut dyn FnMut(usize, &[f32])>,
+        layers: Option<&mut dyn FnMut(usize, usize, &[f32])>,
+    ) -> Result<Vec<Vec<f32>>, ClefRefusal> {
+        self.logits_capturing(record, chunk, observe, layers, None)
+    }
+
+    /// As [`Self::logits_at_chunk`], also capturing the head's pooled inputs.
+    fn logits_capturing(
+        &self,
+        record: &EncodedRecord,
+        chunk: usize,
         mut observe: Option<&mut dyn FnMut(usize, &[f32])>,
         layers: Option<&mut dyn FnMut(usize, usize, &[f32])>,
+        capture: Option<&mut HeadInputs>,
     ) -> Result<Vec<Vec<f32>>, ClefRefusal> {
         let tokens: Vec<TokenId> = record.input_ids.iter().map(|id| TokenId(*id)).collect();
         let lexical = |ids: &[u32]| {
@@ -520,6 +566,10 @@ impl ClefDecisionLane {
                     sum.iter().map(|value| value / count).collect()
                 })
                 .collect();
+            if let Some(capture) = capture {
+                capture.span_means.clone_from(&span_means);
+                capture.last.clone_from(&prefill.last);
+            }
             let head_began = Instant::now();
             let mut memory = DeviceMemory(trunk);
             let logits = run_head(
@@ -565,6 +615,11 @@ impl ClefDecisionLane {
         if let Some(error) = push_error {
             return Err(ClefRefusal::internal(error));
         }
+        if let Some(capture) = capture {
+            let (span_means, last) = stream.pooled();
+            capture.span_means = span_means;
+            capture.last = last;
+        }
         stream
             .finish(record, &lexical)
             .map_err(ClefRefusal::internal)
@@ -588,8 +643,37 @@ impl ClefDecisionLane {
             .running
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let logits = self.logits(&record)?;
-        Ok(self.answer(&request, &record, &logits, began))
+        let mut inputs = HeadInputs::default();
+        let capture = self.export.as_ref().map(|_| &mut inputs);
+        let logits =
+            self.logits_capturing(&record, self.prefill_chunk(), None, None, capture)?;
+        let answer = self.answer(&request, &record, &logits, began);
+        if let Some(export) = &self.export {
+            let questions: Vec<(String, Vec<String>, Vec<f32>)> = request
+                .questions
+                .iter()
+                .zip(&record.questions)
+                .zip(&logits)
+                .map(|((question, encoded), logits)| {
+                    (question.id.clone(), encoded.option_ids.clone(), logits.clone())
+                })
+                .collect();
+            export
+                .write(&request_digest(body), &inputs, &questions, &answer["psionic"])
+                .map_err(ClefRefusal::internal)?;
+        }
+        Ok(answer)
+    }
+
+    /// The calibration map for a question, if one names it.
+    fn calibration_for(&self, question: &ClefQuestion) -> Option<&ClefCalibration> {
+        if question.kind != QuestionType::Noul {
+            return None;
+        }
+        let instructions = question.instructions.as_str()?;
+        self.calibrations
+            .iter()
+            .find(|map| map.instructions == instructions)
     }
 
     /// The System One answer body for computed logits.
@@ -602,6 +686,8 @@ impl ClefDecisionLane {
         began: Instant,
     ) -> Value {
         let mut answers = serde_json::Map::new();
+        let mut raw_answers = serde_json::Map::new();
+        let mut calibration_digests = std::collections::BTreeSet::new();
         for ((question, encoded), question_logits) in
             request.questions.iter().zip(&record.questions).zip(logits)
         {
@@ -612,7 +698,14 @@ impl ClefDecisionLane {
                 .map(String::as_str)
                 .zip(probabilities.iter().copied())
                 .collect();
-            answers.insert(question.id.clone(), answer_for(question, &by_id));
+            let mut answer = answer_for(question, &by_id);
+            if let Some(map) = self.calibration_for(question) {
+                let raw = answer["noul"].as_f64().unwrap_or(0.0);
+                answer["noul"] = json!(map.map.apply(raw));
+                raw_answers.insert(question.id.clone(), json!(raw));
+                calibration_digests.insert(map.digest.clone());
+            }
+            answers.insert(question.id.clone(), answer);
         }
         let prompt_tokens = record.input_ids.len();
         let mut psionic = json!({
@@ -632,6 +725,15 @@ impl ClefDecisionLane {
         });
         if prompt_tokens > TRAINED_LENGTH {
             psionic["out_of_training_distribution"] = json!(true);
+        }
+        if !calibration_digests.is_empty() {
+            let digests: Vec<&String> = calibration_digests.iter().collect();
+            psionic["calibration_digest"] = if digests.len() == 1 {
+                json!(digests[0])
+            } else {
+                json!(digests)
+            };
+            psionic["raw"] = Value::Object(raw_answers);
         }
         json!({
             "model": if request.model.is_empty() { self.id.clone() } else { request.model.clone() },
@@ -661,6 +763,11 @@ impl ClefDecisionLane {
                 "max_questions": self.limits.max_questions,
                 "max_options": self.limits.max_options,
                 "trained_length": TRAINED_LENGTH,
+                "calibrations": self.calibrations.iter().map(|map| json!({
+                    "id": map.id,
+                    "digest": map.digest,
+                    "instructions": map.instructions,
+                })).collect::<Vec<_>>(),
             },
         })
     }

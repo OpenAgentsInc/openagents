@@ -530,8 +530,8 @@ decision (Clef, #11216; the head-only ranker, #11217). Evidence class:
   byte (`sha256:6a8a34f0…2619`).
 - **`tenant-train check` passes:** provenance and labels on every item, no
   group across partitions, and no exact or near duplicate across partitions.
-  Tenant digest `sha256:4385be4e…69c4`. The locked partition has been read
-  zero times.
+  Tenant digest `sha256:4385be4e…69c4`. The locked partition was read
+  once, by the X1 calibration check (#11216).
 
 The leakage check compared every pair of items across partitions, which
 for 10,234 items is about 52 million token-set comparisons. It now builds

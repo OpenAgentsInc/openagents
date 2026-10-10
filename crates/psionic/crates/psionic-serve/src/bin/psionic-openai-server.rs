@@ -60,7 +60,19 @@ async fn run() -> Result<(), String> {
                 clef::ClefHeadSource::Embedded,
                 clef::ClefHeadSource::Safetensors,
             );
-            clef::ClefDecisionLane::load(path, head, decision.limits)
+            let mut lane = clef::ClefDecisionLane::load(path, head, decision.limits)?;
+            if !decision.calibrations.is_empty() {
+                let maps = decision
+                    .calibrations
+                    .iter()
+                    .map(|path| clef::calibration::ClefCalibration::load(path))
+                    .collect::<Result<Vec<_>, _>>()?;
+                lane = lane.with_calibrations(maps)?;
+            }
+            if let Some(dir) = &decision.export_rows {
+                lane = lane.with_row_export(dir)?;
+            }
+            Ok::<_, String>(lane)
         })
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| format!("failed to load decision model: {error}"))?;
@@ -133,6 +145,8 @@ struct DecisionArgs {
     model_paths: Vec<PathBuf>,
     head: Option<PathBuf>,
     limits: clef::ClefLimits,
+    calibrations: Vec<PathBuf>,
+    export_rows: Option<PathBuf>,
 }
 
 fn split_decision_args<I, S>(args: I) -> Result<(DecisionArgs, Vec<String>), String>
@@ -156,6 +170,12 @@ where
                 .model_paths
                 .push(next_value(&mut args, argument.as_str())?.into()),
             "--clef-head" => decision.head = Some(next_value(&mut args, argument.as_str())?.into()),
+            "--decision-calibration" => decision
+                .calibrations
+                .push(next_value(&mut args, argument.as_str())?.into()),
+            "--decision-export-rows" => {
+                decision.export_rows = Some(next_value(&mut args, argument.as_str())?.into());
+            }
             "--decision-max-tokens" => {
                 decision.limits.max_tokens =
                     number(&argument, next_value(&mut args, argument.as_str())?)?;
@@ -285,7 +305,7 @@ fn next_value(args: &mut impl Iterator<Item = String>, flag: &str) -> Result<Str
 
 fn usage() -> String {
     String::from(
-        "usage: psionic-openai-server -m <model-artifact> [-m <model-artifact> ...] [--backend cpu|cuda|metal] [--qwen38-vision-model-dir <official-model-dir>] [--host <ip>] [--port <port>] [--reasoning-budget <n>] [--mesh-coordination enabled|disabled] [--decision-model <clef-or-qwen35-gguf>] [--clef-head <joint_head dir or .safetensors>] [--decision-max-tokens <n>] [--decision-max-questions <n>] [--decision-max-options <n>] [--decision-chunk <n>] [--decision-device auto|cpu|cuda] [--decision-accumulate f16|f32]\n\nA Clef GGUF (general.architecture = clef) given with -m is served as a decision model at POST /v1/systemone; with only decision models, -m may be omitted.",
+        "usage: psionic-openai-server -m <model-artifact> [-m <model-artifact> ...] [--backend cpu|cuda|metal] [--qwen38-vision-model-dir <official-model-dir>] [--host <ip>] [--port <port>] [--reasoning-budget <n>] [--mesh-coordination enabled|disabled] [--decision-model <clef-or-qwen35-gguf>] [--clef-head <joint_head dir or .safetensors>] [--decision-max-tokens <n>] [--decision-max-questions <n>] [--decision-max-options <n>] [--decision-chunk <n>] [--decision-device auto|cpu|cuda] [--decision-accumulate f16|f32] [--decision-calibration <map.json> ...] [--decision-export-rows <dir>]\n\nA Clef GGUF (general.architecture = clef) given with -m is served as a decision model at POST /v1/systemone; with only decision models, -m may be omitted.",
     )
 }
 

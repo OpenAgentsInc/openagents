@@ -1,0 +1,55 @@
+{
+ "schema": "openagents.clef.calibration.v1",
+ "name": "file-relevance",
+ "version": 1,
+ "evidence_class": "measured",
+ "question": {
+  "type": "noul",
+  "instructions": "Is this file relevant to solving the issue?"
+ },
+ "map": {
+  "kind": "platt",
+  "a": 1.119102,
+  "b": 2.144299
+ },
+ "head_digest": "sha256:6e4699704c24e9f04f3e9270e7fe9c72fdb7c72086e30648d4ac4a39e5e6b041",
+ "artifact_digest": "sha256:fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c",
+ "fitted_on": {
+  "corpus": "file-relevance-v1",
+  "partition": "calibration",
+  "items": 1952,
+  "prompt": "one request per (issue, file); the corpus state; noul `relevant`"
+ },
+ "development": {
+  "raw": {
+   "items": 2520,
+   "accuracy": 0.6528,
+   "ece": 0.1959,
+   "brier": 0.2468,
+   "nll": 0.7223,
+   "confident_errors": 200,
+   "f1_at_0_5": 0.4373,
+   "precision": 0.914,
+   "recall": 0.2874,
+   "auc": 0.8596,
+   "ece_p_true": 0.2562,
+   "mean_p_true": 0.3429,
+   "mean_p_false": 0.0985
+  },
+  "platt": {
+   "items": 2520,
+   "accuracy": 0.7806,
+   "ece": 0.0442,
+   "brier": 0.1557,
+   "nll": 0.4832,
+   "confident_errors": 32,
+   "f1_at_0_5": 0.7603,
+   "precision": 0.7802,
+   "recall": 0.7413,
+   "auc": 0.8596,
+   "ece_p_true": 0.059,
+   "mean_p_true": 0.6847,
+   "mean_p_false": 0.3354
+  }
+ }
+}

@@ -29,6 +29,7 @@ qwen38-vision-cuda = ["psionic-models/qwen38-vision-cuda"]
 axum = "0.8"
 base64 = "0.22"
 futures-util = "0.3"
+half = "2.4.1"
 hex = { workspace = true }
 hyper = "1"
 hyper-util = { version = "0.1", features = ["server", "service", "tokio", "http1", "http2"] }

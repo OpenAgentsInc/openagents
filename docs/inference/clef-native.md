@@ -3,7 +3,7 @@
 > Moved from the psionic repo on 2026-10-09: the standalone psionic repo is reference only. All Clef engine work and its issues live in this monorepo (`crates/psionic`, issues #11194–#11197).
 
 
-Status: M1 `implemented_early` on the CPU (2026-10-09); M2 `implemented_early` on CUDA (2026-10-10), gate partly met; M3–M4 `planned`. See [M1 status](#m1-status-2026-10-09) and [M2 status](#m2-status-2026-10-10).
+Status: M1 `implemented_early` on the CPU (2026-10-09); M2 `implemented_early` on CUDA (2026-10-10), gate partly met; M3–M4 `planned`. See [M1 status](#m1-status-2026-10-09) and [M2 status](#m2-status-2026-10-10). File-relevance calibration map (X1): [below](#file-relevance-calibration-x1-2026-10-10).
 
 This plan covers serving Cloudflare's open-weight Clef decision models
 natively in Psionic, at `POST /v1/systemone`, with no Ollama, llama.cpp,
@@ -265,6 +265,82 @@ Details and command lines:
    weights. This removes the 30–40 ms at 1k and the 0.2 s at 16k.
 2. A chunked (WY) delta rule in place of the sequential scan.
 3. Flash attention for long prompts.
+
+## File-relevance calibration (X1, 2026-10-10)
+
+Roadmap X1 ([#11216](https://github.com/OpenAgentsInc/openagents/issues/11216))
+calibrates Clef-Flash's file-relevance probabilities. Evidence class:
+`measured`.
+
+**Data and prompt.** The data is `file-relevance-v1`, the time-split
+corpus from #11215 ([file-finding-bench.md](file-finding-bench.md#the-decision-corpus-built-from-this-bench-file-relevance-v1-11215)).
+Each request covers one (issue, file) pair: the issue (cut to 2,500
+characters), then `FILE: path` and the file's first 2,048 bytes. The
+question is the noul "Is this file relevant to solving the issue?". The
+measurements ran on coderos-4080 against `Clef-Flash-Q4_K_M.gguf` (head
+`sha256:6e469970…b041`), CUDA lane, f16 accumulate, at about 0.18 s per
+request (about 1k tokens).
+
+**The map.**
+- **Fit.** A Platt map `σ(a·logit(p) + b)` with a = 1.1191 and b = 2.1443,
+  fitted on the 1,952 calibration items.
+- **Rejected alternative.** Temperature alone (t = 3.07) cannot move the
+  0.5 crossing, so it leaves F1 where it was.
+- **Where it lives.** The map is
+  [`crates/psionic/fixtures/clef/calibration/file-relevance-v1.json`](../../crates/psionic/fixtures/clef/calibration/file-relevance-v1.json)
+  (`openagents.clef.calibration.v1`, version 1).
+- **Serving it.** `psionic-openai-server --decision-calibration FILE` applies
+  the map to the noul with the same instruction text.
+  - A map fitted on another head is refused at load.
+  - The answer carries the calibrated probability.
+  - `psionic.raw` holds the raw one, and `psionic.calibration_digest` sits
+    beside `head_digest`.
+  - `/v1/models` lists the maps.
+  - A CPU-lane server with the map answered three development items at
+    0.9404, 0.7178 and 0.6952. Applying the map in Python to the CUDA raw
+    probabilities gives 0.9417, 0.7177 and 0.6979. The difference is the
+    CPU/CUDA backbone gap, not the map.
+
+| Split | Items | | F1 @ 0.5 | Precision | Recall | Accuracy | ECE | Brier | Log loss | Confident errors | AUC |
+|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| development | 2,520 | raw | 0.437 | 0.914 | 0.287 | 0.653 | 0.196 | 0.247 | 0.722 | 200 | 0.860 |
+| development | 2,520 | **mapped** | **0.760** | 0.780 | 0.741 | 0.781 | **0.044** | 0.156 | 0.483 | 32 | 0.860 |
+| locked (read once) | 343 | raw | 0.246 | 0.926 | 0.142 | 0.554 | 0.313 | 0.322 | 0.949 | 52 | 0.844 |
+| locked (read once) | 343 | **mapped** | **0.695** | 0.833 | 0.597 | 0.732 | **0.042** | 0.173 | 0.518 | 1 | 0.844 |
+
+**How the columns are scored.**
+- ECE, Brier, log loss, accuracy and confident errors follow `gym::gate`'s
+  Scores, read on the winning option: `true` when p ≥ 0.5.
+- On locked, the F1 gain is +0.449 with a standard error of 0.046
+  (bootstrap over the 24 issues).
+
+**Gate result.**
+- **probability-v2 on development.** Every criterion passes, scored in
+  Python against the `gym::gate` criteria; no `gym` gate run was made.
+  - Log loss 0.722 → 0.483.
+  - Confident errors 200 → 32.
+  - ECE 0.196 → 0.044, a 78% reduction against the 10% needed.
+  - Brier 0.247 → 0.156.
+  - Error rate 0.347 → 0.219.
+- **Roadmap bar.** The locked F1 of 0.695 improves on the raw baseline,
+  as #11216 asks, but stays under the roadmap's 0.75 bar for X1.
+
+**Limits.**
+- **Base rate.** The corpus is about 45% relevant by construction (fix files
+  plus near neighbours). The map moves the 0.5 crossing to a raw p of about
+  0.14, which suits a candidate list at that rate. On the finder's whole pool
+  (about 1% relevant) the mapped probability over-calls, so read it there as
+  a ranking score, or refit on pool-rate data.
+- **Ranking.** AUC does not change, because a monotone map cannot reorder
+  candidates.
+
+Reproduce:
+
+```sh
+python3 -I scripts/bench/file-relevance-clef.py run --corpus C --partitions calibration,development --base-url URL --out R
+python3 -I scripts/bench/file-relevance-clef.py calibrate --corpus C --results R --out map.json
+python3 -I scripts/bench/file-relevance-clef.py score --corpus C --results R_locked --map map.json --partitions locked --locked-read
+```
 
 ## Sources read
 
