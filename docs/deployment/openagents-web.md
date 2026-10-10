@@ -1128,3 +1128,24 @@ by `vertex` in 1.4–3.2 s.
 Rollback: `scripts/deploy/web.sh rollback coder-web-63d03413b1-20261010135631`
 (the same site and sidecars without the decision route; `/api/v1/systemone`
 answers 404 there).
+
+### 2026-10-10 17:05 UTC: Jev first-class on /v1/systemone (#11225)
+
+`coder-web-3805219f10-20261010170423` serves 100% of openagents.com: web
+image `openagents-web@sha256:3805219f…` and stack image
+`openagents-stack@sha256:24482b59…`, both from `f04d57a58a` (staging smoke
+92 passed, 0 failed), promoted with `scripts/deploy/web.sh promote --stack`
+(the live gateway launcher kept; its `"jev": false` is now ignored). The
+gateway asks Jev first under its own house key, read from Secret Manager
+(`openagents-gateway-production-typesafe-key`, a key of its own, not the
+chat worker's), then the Pylons, then Vertex; its start line says `→ Jev
+first under the Secret Manager key …`. A three-question decision on
+`https://openagents.com/api/v1/systemone` is answered by `jev`
+(`jev-1.13.0`) in 114–245 ms in the gateway, 0.29–0.67 s from a Mac.
+`X-Decision-Order: pylon` still asks the Pylons first. The site the
+revision replaced (`0141ea8036`) is an ancestor of this build, so no other
+change was rolled back. openagents.com smoke (`--production`) 59 passed, 0
+failed, 2 skipped.
+
+Rollback: `scripts/deploy/web.sh rollback coder-web-fe2ddcefc2-20261010165946`
+(Pylons first on `/v1/systemone`).
