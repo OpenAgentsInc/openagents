@@ -1833,3 +1833,19 @@ CoderOS, `openagents chat` answered "How do I connect my codebase?" with
 `coder-web-e4d9859dce-20261010023417`) the same question shows the two
 cards, "Log in to connect" signed out, the install command tabs, and the
 steps.
+
+Release `a32a919471` (2026-10-10 UTC) answers "What is the Verse?" with
+`meta.verse@1` on the product.kb and general routes too, with its typed
+`open_screen` offer (`screen: "verse"`, **Enter the Grid**), and
+`openagents.verse-grid` v3 describes the plain Grid (#11184). Built as
+above on this Mac, installed with `knowledge/` from `git archive a32a919471
+knowledge/` and `codebase-kb.gz` copied from `8e2b053dfa`, checked with
+`--check`, and put live by moving the `chat` symlink and restarting
+`coder-worker-chat`; `8e2b053dfa` stays for rollback. A first restart with
+the binary alone failed for about two minutes (no `codebase-kb.gz` beside
+it) and was rolled back to `8e2b053dfa` before the full release went live:
+install `knowledge/` and `codebase-kb.gz` before moving the symlink. The log
+names `product kb openagents-product@59328c6dbfc3 (110 entries)` and bank
+`chat-answers-v1@00c75b33206a`. From this Mac, `openagents chat --scratch`
+answered "What is the Verse?" from `meta.verse@1` with the `verse` offer,
+and "Write a haiku about rain" from `google/gemini-3.8-flash`.
