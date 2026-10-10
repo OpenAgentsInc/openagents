@@ -29,12 +29,39 @@ A person makes the key; there is no sign-up endpoint for agents.
 4. Give it to the agent in an environment variable, such as
    `OPENAGENTS_API_KEY`. Never put it in source code or a URL.
 
-OpenAgents has no OAuth sign-in for agents yet
-([#11084](https://github.com/OpenAgentsInc/openagents/issues/11084)).
+An app that acts for a person, such as an MCP client, can sign in with
+OAuth instead of a key: see [Sign in with OAuth](#sign-in-with-oauth).
 
 Agents can also call the API with no key and pay for each request. Every
 way to find, sign in to, and pay OpenAgents is in
 [For agents](https://openagents.com/docs/api/for-agents.md).
+
+## Sign in with OAuth
+
+Apps that act for a person, such as MCP clients (Claude, ChatGPT, Cursor,
+VS Code), get a bearer token with OAuth 2.1: the app registers itself, you
+approve the sign-in in your browser, and the app gets a token for your
+account. OpenAgents is its own authorization server (sign-in with GitHub;
+sign-in is invite-only for now).
+
+- Resource metadata: <https://openagents.com/.well-known/oauth-protected-resource/mcp>
+  (and <https://openagents.com/.well-known/oauth-protected-resource> for the site).
+- Authorization server metadata: <https://openagents.com/.well-known/oauth-authorization-server>.
+- Register a client: `POST https://openagents.com/oauth/register` with
+  `{"client_name": "...", "redirect_uris": ["..."]}` (RFC 7591). Clients
+  are public: no client secret. Redirect addresses are `https`, `http` on
+  `127.0.0.1` or `localhost`, or the app's own scheme.
+- Authorize: `https://openagents.com/oauth/authorize` with
+  `response_type=code`, `client_id`, `redirect_uri`, `state`, and PKCE
+  (`code_challenge_method=S256`; plain is refused). The person signs in
+  and chooses Approve or Deny.
+- Token: `POST https://openagents.com/oauth/token` with
+  `grant_type=authorization_code`, `code`, `client_id`, `redirect_uri`,
+  and `code_verifier`. The answer is a bearer `access_token` that lasts 30
+  days; there is no refresh token, so sign in again when it ends.
+
+The app shows in **Settings** under Computers
+(<https://openagents.com/settings>), where **Remove** signs it out at once.
 
 ## Use the key
 

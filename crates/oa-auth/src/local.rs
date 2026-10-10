@@ -259,11 +259,26 @@ async fn session(State(state): State<LocalService>, headers: HeaderMap) -> Respo
     let Some(record) = store.book.session(&id.as_str().into()) else {
         return unauthenticated();
     };
-    body(json!({"session": {
+    // The GitHub identity behind the account, as the gateway answers it
+    // (#11084): what coder-serve's `/mcp` keys a person by.
+    let github = Accounts::open(&state.0.dir)
+        .ok()
+        .and_then(|accounts| accounts.store().ok())
+        .and_then(|store| {
+            store
+                .identities
+                .github_of(account.as_str())
+                .map(|identity| json!({"id": identity.profile.id, "login": identity.profile.login}))
+        });
+    let mut answer = json!({"session": {
         "id": id, "kind": "user", "account": account,
         "created_at": record.created_at, "expires_at": record.expires_at,
         "state": record.standing(now()).to_string(),
-    }}))
+    }});
+    if let Some(github) = github {
+        answer["github"] = github;
+    }
+    body(answer)
 }
 
 async fn sign_out(State(state): State<LocalService>, headers: HeaderMap) -> Response {

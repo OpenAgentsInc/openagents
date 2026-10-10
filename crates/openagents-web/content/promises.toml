@@ -777,10 +777,16 @@ episodes = [48, 53, 68]
 id = "F7"
 group = "F"
 statement = "You connect outside tools through MCP."
-surfaces = ["terminal", "desktop"]
-status = "later"
+surfaces = ["web", "terminal", "desktop"]
+status = "partial"
+link = "/auth.md"
 issues = [11084]
 episodes = [144, 165, 168, 195]
+note = "Claude, ChatGPT, Cursor, and other MCP apps sign in to openagents.com/mcp with your account; adding your own tools to Coder comes later."
+evidence = [
+  { test = "crates/openagents-web/src/oauth.rs::a_token_request_must_match_the_code" },
+  { test = "crates/openagents-web/src/tests.rs::the_oauth_metadata_is_served_here_and_mcp_401s_name_it" },
+]
 
 [[promise]]
 id = "G1"

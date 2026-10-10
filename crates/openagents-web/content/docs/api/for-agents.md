@@ -35,7 +35,7 @@ want one:
 | How | What to send | Status |
 | --- | --- | --- |
 | An API key | `Authorization: Bearer oak_...`. A person makes it at [Settings, API keys](https://openagents.com/settings/api-keys). | Works now |
-| Sign in for a person (OAuth) | For MCP clients and agents acting for someone | Coming ([#11084](https://github.com/OpenAgentsInc/openagents/issues/11084)) |
+| Sign in for a person (OAuth) | For MCP clients and agents acting for someone: [Sign in with OAuth](https://openagents.com/auth.md#sign-in-with-oauth) | Works now: the token opens [openagents.com/mcp](https://openagents.com/mcp) |
 | Your Nostr key | A signed `Authorization: Nostr ...` header (NIP-98) | Coming |
 
 ```sh

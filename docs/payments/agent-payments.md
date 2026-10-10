@@ -232,7 +232,7 @@ spending its owner's money can say who it is three ways:
 | Identity | How | Status |
 | --- | --- | --- |
 | API key | `Authorization: Bearer oak_…` (a person makes it at Settings → API keys) | Built |
-| OAuth 2.1 | For MCP and agents acting for a signed-in person | Planned (#11084) |
+| OAuth 2.1 | For MCP and agents acting for a signed-in person | Built: `crates/openagents-web/src/oauth.rs` issues the token, `/mcp` admits it (#11084) |
 | Nostr key | NIP-98 signed request (`Authorization: Nostr …`); the pay front already checks NIP-98 for author registration | Built on the pay host; planned on the API |
 | Owner-backed budget | `BuyerAttestation`: a NIP-SOV `sovereign-profile.v1` naming the owner, plus a NIP-CAP `grant.v1` with the `spend` effect and its ceilings | Proposed in PR #11088; its fixtures are our starting test vectors |
 | Payment mandate | AP2 v0.2 Checkout and Payment Mandates (SD-JWT credentials) for purchases made for a person | Planned |

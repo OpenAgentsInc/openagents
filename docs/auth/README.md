@@ -36,8 +36,9 @@ Related: [GitHub sign-in details](github.md), the account store
    tests and the local fixture. Real GitHub works locally too.
 
 Non-goals for now: passwords (never), SMS, social sign-in beyond GitHub and
-Google, and federated login *into other sites* with an OpenAgents account
-(we may become an OAuth provider later; out of scope here).
+Google, and federated login *into other sites* with an OpenAgents account.
+Apps acting for a person on OpenAgents itself (MCP clients) do sign in with
+OAuth: see "Apps signing in with OAuth" below.
 
 ## Identity model
 
@@ -114,6 +115,23 @@ is tombstoned with a pointer for audit. Not built before P3.
 
 All browser flows run on the web origin (`openagents.com`, staging, or
 `127.0.0.1:4301` locally). The callback is always `/auth/<provider>/callback`.
+
+### Apps signing in with OAuth (#11084)
+
+MCP clients and other apps that act for a person use OAuth 2.1 against the
+site itself (`crates/openagents-web/src/oauth.rs`; the steps for app authors
+are in `/auth.md`). Registration (`POST /oauth/register`) stores nothing:
+the `client_id` carries the app's name and redirect addresses under a MAC.
+`GET /oauth/authorize` checks the client, the redirect address, and PKCE
+`S256` before showing anything, sends a signed-out visitor through sign-in
+(the request waits in an `oa_oauth_request` cookie, `Path=/oauth/`, 10
+minutes), and shows "Let <app> use your OpenAgents account?". Approve starts
+a device sign-in for the app and approves it at once under the browser
+session; the authorization code seals that sign-in's device code with the
+challenge, client, redirect address, and a 5-minute expiry (AES-256-GCM,
+key derived from the CSRF secret). `POST /oauth/token` checks the verifier
+and redeems the device code once, answering the app session (30 days, no
+refresh token). The app shows in Settings' Computers as "<app> on <host>".
 
 ### Sign up and sign in (same flow)
 

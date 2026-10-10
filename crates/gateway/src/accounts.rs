@@ -958,7 +958,8 @@ async fn anonymous_sign_in(state: Arc<ServeState>) -> Response {
 }
 
 /// `GET /v1/session` — the session the bearer token names: its kind,
-/// its account when it holds one, and its deadline. The id is the
+/// its account when it holds one (with its GitHub `{id, login}`), and
+/// its deadline. The id is the
 /// token's digest — the token itself is never stored or returned.
 async fn session_status(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Response {
     let principal = match principal(&state, &headers) {
@@ -996,6 +997,21 @@ async fn session_status(State(state): State<Arc<ServeState>>, headers: HeaderMap
     });
     if let Some(account) = principal.account() {
         body["session"]["account"] = json!(account);
+        // The GitHub identity behind the account, so a service that keys
+        // people by GitHub (coder-serve's `/mcp`, #11084) can admit an app
+        // session the site's OAuth server issued. Best effort: a store
+        // that doesn't open leaves it out rather than failing the answer.
+        if let Some(github) = Accounts::open(&state.dir)
+            .ok()
+            .and_then(|accounts| accounts.store().ok())
+            .and_then(|accounts| {
+                accounts.identities.github_of(account).map(
+                    |identity| json!({"id": identity.profile.id, "login": identity.profile.login}),
+                )
+            })
+        {
+            body["github"] = github;
+        }
     }
     if let Some(budget) = store.book.onboarding.get(ANONYMOUS_BUDGET) {
         body["budget"] = json!({

@@ -1903,6 +1903,17 @@ pub(crate) async fn echo_upstream() -> (String, Arc<std::sync::atomic::AtomicUsi
                     .body(Body::empty())
                     .unwrap();
             }
+            // The keyed MCP server asks for a bearer (#11084).
+            if request.uri().path() == "/mcp" {
+                return axum::response::Response::builder()
+                    .status(StatusCode::UNAUTHORIZED)
+                    .header(
+                        header::WWW_AUTHENTICATE,
+                        "Bearer resource_metadata=\"https://openagents.com/.well-known/oauth-protected-resource\"",
+                    )
+                    .body(Body::empty())
+                    .unwrap();
+            }
             let mut echo = json!({
                 "method": request.method().as_str(),
                 "uri": request.uri().to_string(),
@@ -2001,6 +2012,12 @@ fn the_site_owns_its_pages_and_the_removed_sections() {
         "/blog/introducing-coder",
         "/doc",
         "/doc/install",
+        "/.well-known/oauth-protected-resource",
+        "/.well-known/oauth-protected-resource/mcp",
+        "/.well-known/oauth-authorization-server",
+        "/oauth/authorize",
+        "/oauth/token",
+        "/oauth/register",
     ] {
         assert!(upstream::owned(path), "{path}");
     }
@@ -2016,7 +2033,6 @@ fn the_site_owns_its_pages_and_the_removed_sections() {
         "/u/someone",
         "/u/someone/avatar",
         "/ws",
-        "/.well-known/oauth-protected-resource",
         "/static/coder.css",
         "/static/webtui.css",
         "/static/favicon.png",
@@ -2074,7 +2090,6 @@ async fn unowned_paths_are_proxied_with_their_method_host_body_and_status() {
         "/install-terminal.sh",
         "/u/someone",
         "/u/someone/avatar",
-        "/.well-known/oauth-protected-resource",
         "/static/coder.css",
         "/forums",
     ] {
@@ -2089,7 +2104,64 @@ async fn unowned_paths_are_proxied_with_their_method_host_body_and_status() {
     let (status, _, body) = get_with(site.clone(), "/", "new.openagents.com").await;
     assert_eq!(status, StatusCode::IM_A_TEAPOT);
     assert!(body.contains("\"host\":\"new.openagents.com\""), "{body}");
-    assert_eq!(hits.load(Ordering::SeqCst), 10);
+    assert_eq!(hits.load(Ordering::SeqCst), 9);
+}
+
+/// #11084: the OAuth metadata is this site's own, and a 401 from the keyed
+/// `/mcp` behind it names the path-form metadata.
+#[tokio::test]
+async fn the_oauth_metadata_is_served_here_and_mcp_401s_name_it() {
+    use std::sync::atomic::Ordering;
+    let root = tempfile::tempdir().unwrap();
+    let (url, hits) = echo_upstream().await;
+    let site = router(proxying(root.path(), &url));
+    for uri in [
+        "/.well-known/oauth-protected-resource",
+        "/.well-known/oauth-protected-resource/mcp",
+        "/.well-known/oauth-authorization-server",
+    ] {
+        let (status, headers, body) = get_with(site.clone(), uri, "openagents.com").await;
+        assert_eq!(status, StatusCode::OK, "{uri}");
+        assert_eq!(headers[header::ACCESS_CONTROL_ALLOW_ORIGIN], "*", "{uri}");
+        let document: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert!(
+            document["authorization_servers"].is_array() || document["issuer"].is_string(),
+            "{uri}: {body}"
+        );
+    }
+    let (_, _, body) = get_with(
+        site.clone(),
+        "/.well-known/oauth-authorization-server",
+        "openagents.com",
+    )
+    .await;
+    let server: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(server["code_challenge_methods_supported"], json!(["S256"]));
+    assert!(server["registration_endpoint"].is_string());
+    // Without an account service the server can't register or sign in.
+    let response = site
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/oauth/register")
+                .header(header::HOST, "openagents.com")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(r#"{"redirect_uris":["https://claude.ai/cb"]}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(hits.load(Ordering::SeqCst), 0, "none of it goes behind");
+
+    let (status, headers, _) = get_with(site.clone(), "/mcp", "openagents.com").await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        headers[header::WWW_AUTHENTICATE],
+        "Bearer resource_metadata=\"https://openagents.com/.well-known/oauth-protected-resource/mcp\", scope=\"account\""
+    );
+    assert_eq!(hits.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]

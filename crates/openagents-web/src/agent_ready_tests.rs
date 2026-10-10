@@ -322,9 +322,11 @@ fn the_agent_documents_are_the_sites_own_and_never_proxied() {
     ] {
         assert!(upstream::owned(path), "{path}");
     }
-    // The keyed MCP server and its metadata stay with the server behind us.
+    // The keyed MCP server stays with the server behind us; its OAuth
+    // metadata is this site's own (#11084).
     assert!(!upstream::owned("/mcp"));
-    assert!(!upstream::owned("/.well-known/oauth-protected-resource"));
+    assert!(upstream::owned("/.well-known/oauth-protected-resource"));
+    assert!(upstream::owned("/.well-known/oauth-protected-resource/mcp"));
 }
 
 #[tokio::test]

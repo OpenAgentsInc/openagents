@@ -127,9 +127,29 @@ Checked locally (development server on a free port) with the checkers'
 own requests: every path above answers 200 in its type, and `/` with
 `Accept: text/markdown` answers `text/markdown`.
 
-Still open (see the issue): DNS-AID records, registry listings, OAuth for
-`/mcp` (#11084), agentic commerce (#11085), `security.txt`, visible homepage
-copy, the A2A card's subject, and `/openapi.json` until the gateway serves it.
+OAuth for `/mcp` (#11084), in `crates/openagents-web/src/oauth.rs`: this
+site is its own authorization server (the GitHub sign-in, invite list
+applied). `/.well-known/oauth-protected-resource` (the origin) and
+`/.well-known/oauth-protected-resource/mcp` (RFC 9728 path form) name it;
+`/.well-known/oauth-authorization-server` (RFC 8414) has PKCE `S256` only,
+`registration_endpoint` (`POST /oauth/register`, RFC 7591, public clients,
+stateless MAC'd `client_id`), and the `agent_auth` block (`skill`,
+`register_uri`, registration methods); `/oauth/authorize` (consent page,
+Approve and Deny) and `/oauth/token` issue the same 30-day app session a
+device sign-in does, listed and removable in Settings. A `401` from `/mcp`
+answers `WWW-Authenticate: Bearer resource_metadata="…/oauth-protected-resource/mcp", scope="account"`.
+`/mcp` itself accepts these `sess_` bearers: `coder-serve`'s admission
+(private `coder` repo, `bins/coder-serve/src/mcp/admission.rs`, set
+`CODER_ACCOUNTS_URL` to the account service) asks the account service's
+`GET /v1/session`, which now answers the account's GitHub `{id, login}`
+(`crates/gateway/src/accounts.rs`); the person is keyed by GitHub id as
+every other credential is, the invite list (`admits_login`) still applies,
+and an answer is reused for 60 seconds, so Remove in Settings stops `/mcp`
+within a minute.
+
+Still open (see the issue): DNS-AID records, registry listings, agentic
+commerce (#11085), `security.txt`, visible homepage copy, the A2A card's
+subject, and `/openapi.json` until the gateway serves it.
 
 Expected after deploy: Is It Agent Ready from level 0 to level 3 or 4
 (robots, sitemap, Link headers, Markdown, AI rules, Content Signals, API

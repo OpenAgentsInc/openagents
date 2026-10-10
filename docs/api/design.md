@@ -143,7 +143,7 @@ thread, run, computer.
 | Account session | `Authorization: Bearer sess_<hex>`; on the website, the `oa_cloud_session` cookie (never sent to the API host) | Our apps after sign-in | Account service (`tenancy::sessions`) |
 | Device sign-in | RFC 8628 device code; ends in an app session (`sess_`) | Terminal, desktop, phone (`coder login`) | Account service, approved on the website |
 | GitHub sign-in | OAuth code with PKCE, exchanged by the website for a session | People on the website | Account service (`POST /v1/sessions/github`) |
-| OAuth 2.1 | For MCP clients and agents acting for a person | Planned (#11084) | Account service |
+| OAuth 2.1 | For MCP clients and agents acting for a person | Built: `crates/openagents-web/src/oauth.rs` issues the token, `/mcp` admits it (#11084) | Account service |
 | Nostr key | NIP-98 signed request (`Authorization: Nostr ...`) | Agents with their own key; the pay front already checks it | Planned on the API (#11148) |
 | Pay per request | No credential: an unpaid call gets `402` with every live method (x402 v2 `lnbtc`, the `Payment` scheme on the same invoice); the paid retry runs | Keyless agents | Payment router (`crates/x402`) |
 | Service credential | The house service key, operator tokens, webhook signatures, NIP-98 by a known service key | INTERNAL only | Each service; never accepted on the public front for admin paths |

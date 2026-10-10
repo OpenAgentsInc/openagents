@@ -38,6 +38,7 @@ mod docs_mcp;
 mod environments;
 mod layout;
 mod markdown;
+mod oauth;
 mod pages;
 pub mod palette;
 mod payments;
@@ -277,6 +278,7 @@ pub fn router(config: Config) -> Router {
         .merge(wellknown::routes())
         .merge(agent_ready::routes())
         .merge(docs_mcp::routes())
+        .merge(oauth::routes())
         .merge(analytics::routes())
         .route_layer(middleware::from_fn(analytics::mark))
         .fallback(not_found)
@@ -366,6 +368,8 @@ async fn guard(hosts: Hosts, mut request: Request, next: Next) -> Response {
         || path.starts_with("/auth/")
         || path == "/device"
         || path.starts_with("/device/")
+        // The OAuth authorization server (#11084).
+        || path.starts_with("/oauth/")
         || matches!(path, "/sign-in" | "/sign-out" | "/settings" | "/projects")
         || path.starts_with("/settings/")
         || path.starts_with("/projects/")
@@ -417,7 +421,17 @@ async fn guard(hosts: Hosts, mut request: Request, next: Next) -> Response {
         && !agent
         && (!(local || public) || !owned)
     {
-        return upstream.forward(request).await;
+        // A 401 from the keyed `/mcp` names its path-form metadata and
+        // this site's authorization server (#11084).
+        let mcp = public && oauth::keyed_mcp(path);
+        let origin = format!("https://{host}");
+        let mut response = upstream.forward(request).await;
+        if mcp && response.status() == StatusCode::UNAUTHORIZED {
+            response
+                .headers_mut()
+                .insert(header::WWW_AUTHENTICATE, oauth::challenge(&origin));
+        }
+        return response;
     }
     if !(local || (!browser && public)) {
         return (StatusCode::FORBIDDEN, "Use the local OpenAgents address").into_response();
