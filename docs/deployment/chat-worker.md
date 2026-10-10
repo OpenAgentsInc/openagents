@@ -12,7 +12,7 @@ usage log; [chat-worker-usage.md](chat-worker-usage.md) shows how to read it.
 
 ```text
 phone (device key) --NIP-CJ 25900, NIP-44--> relay.openagents.com --> chat worker
-phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worker --> OpenRouter, then AI gateway
+phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worker --> Vertex AI (Gemini), then OpenRouter, then AI gateway
 ```
 
 - **Wire.** Each turn is a NIP-CJ conversation job
@@ -42,13 +42,32 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
      staging service), so the production worker has no gateway door today;
      when production's gateway is deployed and its env file gets a service
      key, the gateway goes first and every door below stays behind it.
-  2. The primary, `google/gemini-3.8-flash` on OpenRouter at reasoning
+  2. Gemini on Vertex AI (since 2026-10-10, #11219): the same
+     `google/gemini-3.8-flash` (Vertex id `gemini-3.8-flash`, global
+     endpoint) on Google's own API in project `openagentsgemini`, billed to
+     the prepaid Google credit, through Vertex's native
+     `streamGenerateContent?alt=sse` at thinking level `low`
+     (`CODER_WORKER_VERTEX`; on whenever `VERTEX_PROJECT` is set, `off`
+     leaves it out). The token is the VM's service account's
+     (`157437760789-compute@developer.gserviceaccount.com`, scope
+     `cloud-platform`), read from the metadata server because the env file
+     sets `GCE_METADATA_HOST=metadata.google.internal`, cached until a
+     minute before it expires and fetched again after a 401. No key file is
+     on the VM. Its journal lines name the host: `job … answered in … ms,
+     … chars, by google/gemini-3.8-flash at aiplatform.googleapis.com`; a
+     turn OpenRouter took says `at openrouter.ai`. When Vertex misses, the
+     failover line names it (`door google/gemini-3.8-flash missed its first
+     words … ; google/gemini-3.8-flash at https://openrouter.ai/api takes
+     the turn`) and the result's `switched` names provider `other` ("The
+     first model provider had a problem, so google/gemini-3.8-flash
+     answered instead."), a word every app build knows.
+  3. The primary, `google/gemini-3.8-flash` on OpenRouter at reasoning
      effort `low` (`CODER_WORKER_PRIMARY`; unset, Gemini whenever
      `OPENROUTER_API_KEY` is set; Space Bunny Alpha is retired).
-  3. The door `CODER_DOOR_URL` and `CODER_WORKER_MODEL` name (left out when
+  4. The door `CODER_DOOR_URL` and `CODER_WORKER_MODEL` name (left out when
      it is the primary again; production's is OpenRouter's Gemini since the
      hot fix, so it is).
-  4. The backups (`CODER_WORKER_BACKUPS`; unset, every one whose key is
+  5. The backups (`CODER_WORKER_BACKUPS`; unset, every one whose key is
      here): `z-ai/glm-5.3-flash` on OpenRouter, then `google/gemini-3.8-flash`
      and `zai/glm-5.3-flash` on the Vercel AI Gateway (`AI_GATEWAY_API_KEY`),
      another account.
@@ -78,6 +97,28 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   hold the first release answered "summarize your essay" turns ungrounded.
   The keys are in the worker's environment file on its host and nowhere else.
   No model API key ships in the app.
+- **Embeddings on Vertex AI (2026-10-10, #11219).** The product knowledge
+  base and the Gym records embed with Google's `gemini-embedding-001` at
+  768 dimensions on Vertex AI (`OPENAGENTS_PRODUCT_KB_EMBEDDINGS=vertex`,
+  `KB_VERTEX_PROJECT=openagentsgemini`, `KB_VERTEX_MODEL=gemini-embedding-001`,
+  the same metadata-server token), re-embedding their corpus at startup, so
+  no shipped vectors change. The codebase index ships rebuilt on
+  `text-embedding-005` (`CODER_CODEBASE_EMBEDDINGS=vertex
+  scripts/build-codebase-kb.sh`, 250 chunks a request; Gemini's model takes
+  one input a request, too slow for 43,660 chunks), and the worker reads it
+  with the model the index names, so an index and its questions never mix
+  models (`coder::codebase::embedder_for`). An older OpenAI-built index
+  still opens with the gateway embedder. Vertex has no second embedding
+  provider of the same model, so a failed Vertex embedding costs that turn
+  its retrieval, never its answer. Measured from the VM: a query embeds in
+  0.13–0.16 s on `text-embedding-005` and 0.16–0.21 s on
+  `gemini-embedding-001`. The web chat goldens' router mode
+  (`chat-goldens router`, Jev live) passed 98 of 116 with
+  `gemini-embedding-001` and 94 of 116 with `text-embedding-005`, agreeing
+  on route, tier, and answer for 103 of 116, so the product notes use
+  Gemini's model. A job on the caller's own keys (BYOK) embeds on their
+  provider, whose model differs from these vectors, so its product-note
+  retrieval is off for that job.
 - **Embeddings and the judge fail over too.** The product knowledge base,
   the Gym records, and the codebase index embed with
   `openai/text-embedding-3-small` on the provider the configuration names,
@@ -1849,3 +1890,43 @@ names `product kb openagents-product@59328c6dbfc3 (110 entries)` and bank
 `chat-answers-v1@00c75b33206a`. From this Mac, `openagents chat --scratch`
 answered "What is the Verse?" from `meta.verse@1` with the `verse` offer,
 and "Write a haiku about rain" from `google/gemini-3.8-flash`.
+
+Release `156b301714` (2026-10-10 UTC, #11219) puts Gemini on Vertex AI first
+for chat and Vertex embeddings for the product notes and Gym records, with
+OpenRouter and the Vercel AI Gateway behind it (OpenRouter's account was at
+−$2.52 and the gateway answered 402 on every call, so embeddings failed
+every 45 s and Gemini came only through OpenRouter). Nothing on GCP had to
+change: `aiplatform.googleapis.com` was already enabled on
+`openagentsgemini`, and the VM's default service account already had the
+`cloud-platform` scope and Vertex access (a metadata-token call from the VM
+answered 200). Built on this Mac with `cargo zigbuild --locked --release -p
+coder --bin coder-worker --target x86_64-unknown-linux-musl` at that commit
+(sha256 `3c19e612f399622d…`), installed with `knowledge/` from `git archive
+156b301714 knowledge/` and `codebase-kb.gz` copied from `a32a919471`. The
+environment file was backed up as
+`/etc/coder-worker/coder-worker-chat.env.bak-156b301714` and gained
+`VERTEX_PROJECT=openagentsgemini`, `VERTEX_LOCATION=global`,
+`GCE_METADATA_HOST=metadata.google.internal`,
+`KB_VERTEX_PROJECT=openagentsgemini`, `KB_VERTEX_MODEL=gemini-embedding-001`,
+and `OPENAGENTS_PRODUCT_KB_EMBEDDINGS=vertex`. Checked with `--check`
+against the new release's files, then put live by moving the `chat`
+symlink and restarting `coder-worker-chat`; `a32a919471` stays for
+rollback. The door line names `google/gemini-3.8-flash at
+https://aiplatform.googleapis.com → google/gemini-3.8-flash at
+https://openrouter.ai/api → …`, and the product KB line `embeddings through
+Google Vertex AI`. From this Mac, `openagents chat --scratch` answered
+"What is OpenAgents?" from the bank (`meta.who.here@4`, 0.24–0.53 s at the
+worker), "Which model are you, and what is a transformer in one sentence?"
+and "Explain the difference between a mixture-of-experts model and a dense
+model in two sentences." on Gemini, which the journal logs as `by
+google/gemini-3.8-flash at aiplatform.googleapis.com` in 1.1–2.3 s per turn
+at the worker (1.7–4.2 s end to end through the relay). The codebase index
+was still the OpenAI-built one, so its warm-up embedding kept failing on
+the 402 until the Vertex-built index shipped (below).
+
+To roll back: `sudo ln -sfn /opt/coder-worker/releases/a32a919471
+/opt/coder-worker/chat && sudo cp -p
+/etc/coder-worker/coder-worker-chat.env.bak-156b301714
+/etc/coder-worker/coder-worker-chat.env && sudo systemctl restart
+coder-worker-chat`. To turn only the Vertex chat door off, add
+`CODER_WORKER_VERTEX=off` to the environment file and restart.

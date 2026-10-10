@@ -73,6 +73,11 @@ pub const GEMINI_CACHE_MODEL: &str = "vertex/gemini-embedding-001@768";
 /// [`GEMINI_MODEL`].
 pub const MODEL_VAR: &str = "KB_VERTEX_MODEL";
 
+/// The variable that sets how many times a refused or failed request is
+/// retried (default 2), with backoff doubling from half a second to a
+/// minute; a codebase build sets 8.
+pub const RETRIES_VAR: &str = "KB_VERTEX_RETRIES";
+
 /// The variable that names the Google Cloud project.
 pub const PROJECT_VAR: &str = "KB_VERTEX_PROJECT";
 
@@ -230,7 +235,13 @@ impl Vertex {
                 ));
             }
         };
-        Ok(Vertex::new(&base_url, token).on(model))
+        let mut vertex = Vertex::new(&base_url, token).on(model);
+        // A long build (tens of thousands of chunks) meets Vertex's
+        // per-minute quota (429); more retries ride it out.
+        if let Some(retries) = var(RETRIES_VAR).and_then(|r| r.parse().ok()) {
+            vertex.retries = retries;
+        }
+        Ok(vertex)
     }
 
     /// The bearer for the next request.
