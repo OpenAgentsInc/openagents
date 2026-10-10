@@ -90,7 +90,7 @@ int psionic_clef_delta_prep(const void *conv, const void *alpha, const void *bet
     return 1;
 }
 
-int psionic_clef_delta_seq(const void *qn, const void *kn, const void *conv, const void *decay, const void *beta, const void *kq, void *state, void *out, int n, int key_heads, int value_heads, int dim, int v_head_reordered, int conv_width, int value_offset, void *stream) {
+int psionic_clef_delta_seq(const void *qn, const void *kn, const void *conv, const void *decay, const void *beta, const void *kq, void *state, void *out, int n, int key_heads, int value_heads, int dim, int v_head_reordered, int conv_width, int value_offset, int staged, void *stream) {
     (void)qn;
     (void)kn;
     (void)conv;
@@ -106,6 +106,7 @@ int psionic_clef_delta_seq(const void *qn, const void *kn, const void *conv, con
     (void)v_head_reordered;
     (void)conv_width;
     (void)value_offset;
+    (void)staged;
     (void)stream;
     return 1;
 }
@@ -211,3 +212,18 @@ int psionic_clef_event_create(void **event) { *event = 0; return 1; }
 int psionic_clef_event_destroy(void *event) { (void)event; return 1; }
 int psionic_clef_event_record(void *event, void *stream) { (void)event; (void)stream; return 1; }
 int psionic_clef_stream_wait_event(void *stream, void *event) { (void)stream; (void)event; return 1; }
+
+int psionic_clef_fused_linear(const void *x, const void *w, void *out, int n, int rows, int k, int format, int segment,
+                              int accumulate, void *stream) {
+    (void)x;
+    (void)w;
+    (void)out;
+    (void)n;
+    (void)rows;
+    (void)k;
+    (void)format;
+    (void)segment;
+    (void)accumulate;
+    (void)stream;
+    return 1;
+}

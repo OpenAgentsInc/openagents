@@ -259,11 +259,104 @@ Details and command lines:
       Q4_K_M-vs-f32 noise above, but over the bound.
     - `--decision-accumulate f32` is the strict mode.
 
+### Round 2 (2026-10-10): staged delta scan kept, fused GEMM opt-in
+
+Same box, same session, back to back. Each row is the median of 9 runs
+with a fresh nonce, at `--decision-chunk 2048`, f16 accumulate. The two
+pairs ran in the order new, old, new, old. The router set is the
+production split router's three requests (main 9,535 tokens, `answer`
+3,289, `cli_group` 11,830), replayed from 8 recorded router calls. They
+are sent at once, as `coder::router::judge::ask` sends them, and the
+time is wall time for the set (`fixtures/clef/tools`, see below).
+
+| Build | 1k | 4k | 16k | Router set (24.7k tokens) |
+| --- | --- | --- | --- | --- |
+| M2 (per-warp delta scan) | 0.215 / 0.212 s | 0.683 / 0.673 s | 2.93 / 2.92 s | 4.58 / 4.60 s |
+| **Staged delta scan (kept, default)** | **0.206 / 0.202 s** | **0.640 / 0.628 s** | **2.75 / 2.76 s** | **4.22 / 4.23 s** |
+| Gate | ≤ 0.20 s | ≤ 0.65 s | ≤ 3.25 s | — |
+
+- **The staged scan** (`delta_scan128_kernel`). A CTA holds 32 state rows
+  of one value head. Eight lanes share a row, each holding 16 key
+  entries, so a dot product takes a 3-level shuffle instead of 5. The
+  token inputs come through shared memory in double-buffered tiles of 16
+  tokens (`cp.async`), so the serial per-token chain no longer waits on
+  global loads. The kernel alone runs 2.6–3.0× faster
+  (`fixtures/clef/tools/delta_scan_bench.cu`: 0.35 vs 0.90 ms per layer
+  at 1,082 tokens). Its output matches the per-warp scan to 1.5e-8, and
+  it does the same per-token arithmetic, so it stays bitwise
+  chunk-invariant. `PSIONIC_CLEF_SCAN=0` restores the old scan.
+- **Parity of the kept build.** On the 40 e2e requests (104 questions):
+  - against the M2 CUDA build: top answer 100 %, max |Δp| 0.015;
+  - against the CPU lane: 99.0 %, the same near tie as before;
+  - against the HF f32 reference: 95.2 %, unchanged.
+- **Gates.** 4k and 16k are met. 1k is 0.202–0.206 s against 0.20 s,
+  which is not met yet.
+- **The fused dequantize + tensor-core GEMM** (`fused_linear_kernel`,
+  `PSIONIC_CLEF_FUSED=1`, off by default). It reads Q8_0/Q4_K tiles
+  straight into shared memory as f16 and uses `mma.sync`. Each output
+  sums its k tiles in a fixed order, and f16 partials over 16–256 k are
+  promoted to f32 (`PSIONIC_CLEF_SEGMENT`).
+  - Against an f32-accumulate cuBLAS reference
+    (`fixtures/clef/tools/fused_linear_bench.cu`), the error is
+    4–8e-4 relative RMS. Dequantize + cuBLAS f16 accumulate has a max
+    error of about 1.
+  - The f32 variant matches cuBLAS f32 bitwise.
+  - Every variant is bitwise chunk-invariant (64-row chunks against
+    whole).
+  - It is not faster. It runs 95–110 TF against 120–137 TF for
+    dequantize + cuBLAS f16, so end to end it lost about 5 % at 4k and
+    16k. It stays opt-in until it is tuned. It is the route to the
+    chunk-invariance bound at f16 speed: it removes the 2e-2 logit
+    movement that comes from cuBLAS's per-shape f16 accumulation.
+- **Server.**
+  - A decision log line on stderr gives sizes and times only: tokens,
+    questions, time waited for the device, and time run.
+    `PSIONIC_CLEF_LOG=0` turns it off.
+  - An exact logit cache keeps 256 prompts, keyed on the prompt ids
+    and spans. A repeat is bitwise identical, so a repeated prompt is
+    answered without the device.
+
+**The router set on one 4080.** The set is 24.7k tokens per chat turn.
+The three requests queue on the one device, so they run one after
+another: 4.2 s with this build, and 5.0 s on the deployed chunk 1,024.
+
+The under-1 s target cannot be met by prefill speed on this card. The
+GEMMs alone at 24.7k tokens are about 340 TFLOP. That is 1.8 s at the
+4080's peak f16-accumulate rate.
+
+Prefix reuse does not help this shape. Clef's prompt is the system
+line, then the state, then the schema, and the state is 30–50 tokens of
+the turn's message. Everything after it is the 24k-token schema, and
+causal attention makes the schema's rows depend on the state. No
+reusable prefix is longer than about 60 tokens.
+
+What would meet it is fewer tokens on the router side: the `route`
+question's 22 options take 5.1k tokens and `cli_group`'s 55 options take
+11.8k, about 230 tokens per option. Two ways to cut them:
+
+- ask `cli_group` (and `answer`) only when the route needs them;
+- shorten the option descriptions for the Clef door.
+
+**Router quality** (web chat goldens, router mode, 120 cases, same hour):
+
+| Judge | Pass | Right ignoring time | Route argmax right | Route top p (p10 / p50 / p90) | Judge time p50 / p90 |
+| --- | --- | --- | --- | --- | --- |
+| Hosted Jev | 84 | 94 | 109 | 0.51 / 0.96 / 1.00 | 1.05 / 6.0 s (12 timeouts) |
+| Clef-Flash (pylon-clef, M2 build, chunk 1,024) | 0 | 40 | 102 | 0.18 / 0.30 / 0.50 | 6.6 / 7.7 s |
+
+Clef picks the right route almost as often as Jev, at 102 of 120. Its
+probabilities are about three times lower, though, so the Jev-tuned
+thresholds turn most turns away from the prepared answers. The router
+already fits per-question maps
+(`ROUTER_EVAL_PUBLISH=1`, `crates/coder/src/router/calibration.rs`). It
+needs a map fitted on Clef's answers and chosen by the answering model.
+Jev's `calibration-v2` must not be applied to Clef's probabilities.
+
 **Next for M2 speed:**
 
-1. A fused dequantize-in-GEMM kernel, or int8 MMQ for the Q8_0/Q4_K
-   weights. This removes the 30–40 ms at 1k and the 0.2 s at 16k.
-2. A chunked (WY) delta rule in place of the sequential scan.
+1. Tune the fused GEMM: two CTAs per SM, and fewer syncs per k. Then
+   make it the default for bitwise chunk invariance at f16 speed.
+2. The last 2–6 ms at 1k: embedding gather and upload, and the head.
 3. Flash attention for long prompts.
 
 ## File-relevance calibration (X1, 2026-10-10)

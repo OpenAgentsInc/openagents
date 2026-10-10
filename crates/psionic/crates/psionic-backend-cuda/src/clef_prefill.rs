@@ -23,7 +23,7 @@ unsafe extern "C" {
     fn psionic_clef_layer_norm_f32(x: *const c_void, w: *const c_void, b: *const c_void, out: *mut c_void, rows: i32, d: i32, eps: f32, stream: *mut c_void) -> i32;
     fn psionic_clef_conv1d_seq_silu(input: *const c_void, state: *mut c_void, w: *const c_void, out: *mut c_void, n: i32, channels: i32, k: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_delta_prep(conv: *const c_void, alpha: *const c_void, beta_in: *const c_void, ssm_a: *const c_void, ssm_dt: *const c_void, qn: *mut c_void, kn: *mut c_void, decay: *mut c_void, beta: *mut c_void, kq: *mut c_void, n: i32, key_heads: i32, value_heads: i32, dim: i32, conv_width: i32, stream: *mut c_void) -> i32;
-    fn psionic_clef_delta_seq(qn: *const c_void, kn: *const c_void, conv: *const c_void, decay: *const c_void, beta: *const c_void, kq: *const c_void, state: *mut c_void, out: *mut c_void, n: i32, key_heads: i32, value_heads: i32, dim: i32, v_head_reordered: i32, conv_width: i32, value_offset: i32, stream: *mut c_void) -> i32;
+    fn psionic_clef_delta_seq(qn: *const c_void, kn: *const c_void, conv: *const c_void, decay: *const c_void, beta: *const c_void, kq: *const c_void, state: *mut c_void, out: *mut c_void, n: i32, key_heads: i32, value_heads: i32, dim: i32, v_head_reordered: i32, conv_width: i32, value_offset: i32, staged: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_gated_norm_to_f16(o: *const c_void, z: *const c_void, w: *const c_void, out: *mut c_void, n: i32, heads: i32, dim: i32, eps: f32, stream: *mut c_void) -> i32;
     fn psionic_clef_attention_prep(qg: *const c_void, k: *const c_void, v: *const c_void, qw: *const c_void, kw: *const c_void, cos_sin: *const c_void, q16: *mut c_void, gate: *mut c_void, kcache: *mut c_void, vcache: *mut c_void, n: i32, heads: i32, kv_heads: i32, dim: i32, rot: i32, pos0: i32, scale: f32, eps: f32, stream: *mut c_void) -> i32;
     fn psionic_clef_causal_softmax_to_f16(scores: *const c_void, probs: *mut c_void, rows: i32, n: i32, keys: i32, pos0: i32, stream: *mut c_void) -> i32;
@@ -36,6 +36,7 @@ unsafe extern "C" {
     fn psionic_clef_event_destroy(event: *mut c_void) -> i32;
     fn psionic_clef_event_record(event: *mut c_void, stream: *mut c_void) -> i32;
     fn psionic_clef_stream_wait_event(stream: *mut c_void, event: *mut c_void) -> i32;
+    fn psionic_clef_fused_linear(x: *const c_void, w: *const c_void, out: *mut c_void, n: i32, rows: i32, k: i32, format: i32, segment: i32, accumulate: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_span_sums(rows: *const c_void, spans: *const c_void, sums: *mut c_void, span_count: i32, d: i32, first: i32, n: i32, stream: *mut c_void) -> i32;
 }
 
@@ -264,6 +265,64 @@ impl CudaSubmission {
         self.clef_launch(code, "psionic_clef_dequantize")
     }
 
+    /// Fused dequantize + tensor-core linear layer straight from the GGUF
+    /// layout: `out[n, rows] (+)= x16[n, k] · W[rows, k]^T` (`out` f32).
+    ///
+    /// Each output element sums its k tiles in a fixed order inside one
+    /// thread, so a row's result does not depend on the other rows in the
+    /// call (bitwise chunk invariance). `segment` is the f16 accumulation
+    /// span in 16-wide k steps (1, 2, 4, 8 or 16; partials are added in f32), or 0
+    /// for f32 tensor accumulation. Returns `Ok(false)` for a layout this
+    /// kernel does not take (dense f32, or k / rows off its tiling).
+    #[allow(clippy::too_many_arguments)]
+    pub fn clef_fused_linear(
+        &mut self,
+        x16: &CudaBuffer,
+        weights: &CudaBuffer,
+        format: ClefWeightFormat,
+        out: &CudaBuffer,
+        n: usize,
+        rows: usize,
+        k: usize,
+        segment: usize,
+        accumulate: bool,
+    ) -> Result<bool, RuntimeError> {
+        let code = match format {
+            ClefWeightFormat::Q8_0 if k % 64 == 0 && rows % 2 == 0 => 0,
+            ClefWeightFormat::Q4K if k % 256 == 0 && rows % 2 == 0 => 1,
+            _ => return Ok(false),
+        };
+        if !matches!(segment, 0 | 1 | 2 | 4 | 8 | 16) {
+            return Err(RuntimeError::Backend(format!("clef fused linear: segment {segment} is not 0, 1, 2, 4, 8 or 16")));
+        }
+        if n == 0 {
+            return Ok(true);
+        }
+        let bytes = format.byte_len(rows * k).ok_or_else(|| {
+            RuntimeError::Backend(String::from("clef fused linear: weights are not whole blocks"))
+        })?;
+        let w = span(weights, 0, bytes, 1, "fused weights")?;
+        let x = f16s(x16, n * k, "fused x")?;
+        let o = f32s(out, n * rows, "fused out")?;
+        let stream = self.platform.raw_stream()?;
+        let code = unsafe {
+            psionic_clef_fused_linear(
+                x,
+                w,
+                o,
+                int(n, "n")?,
+                int(rows, "rows")?,
+                int(k, "k")?,
+                code,
+                segment as i32,
+                i32::from(accumulate),
+                stream,
+            )
+        };
+        self.clef_launch(code, "psionic_clef_fused_linear")?;
+        Ok(true)
+    }
+
     /// Records `event` on this submission's stream.
     pub fn clef_record(&mut self, event: &ClefEvent) -> Result<(), RuntimeError> {
         let stream = self.platform.raw_stream()?;
@@ -440,6 +499,8 @@ impl CudaSubmission {
     }
 
     /// The gated delta rule over `n` tokens (state carried in place).
+    /// `staged` uses the shared-memory-staged scan for 128-wide heads (the
+    /// per-warp scan otherwise).
     #[allow(clippy::too_many_arguments)]
     pub fn clef_delta_seq(
         &mut self,
@@ -458,6 +519,7 @@ impl CudaSubmission {
         v_head_reordered: bool,
         conv_width: usize,
         value_offset: usize,
+        staged: bool,
     ) -> Result<(), RuntimeError> {
         let qn = f32s(qn, n * key_heads * dim, "qn")?;
         let kn = f32s(kn, n * key_heads * dim, "kn")?;
@@ -490,6 +552,7 @@ impl CudaSubmission {
                 i32::from(v_head_reordered),
                 int(conv_width, "conv width")?,
                 int(value_offset, "value offset")?,
+                i32::from(staged),
                 stream,
             )
         };

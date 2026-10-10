@@ -65,6 +65,18 @@ __device__ __forceinline__ float load_half(const uint8_t *bytes) {
     return __half2float(value);
 }
 
+__device__ __forceinline__ void cp_async16(void *shared, const void *global, int bytes) {
+    const unsigned address = static_cast<unsigned>(__cvta_generic_to_shared(shared));
+    asm volatile("cp.async.cg.shared.global [%0], [%1], 16, %2;\n" ::"r"(address), "l"(global), "r"(bytes));
+}
+
+__device__ __forceinline__ void cp_async_commit() { asm volatile("cp.async.commit_group;\n" ::); }
+
+template <int N>
+__device__ __forceinline__ void cp_async_wait() {
+    asm volatile("cp.async.wait_group %0;\n" ::"n"(N));
+}
+
 __device__ __forceinline__ float silu(float x) { return x / (1.0f + expf(-x)); }
 __device__ __forceinline__ float sigmoid(float x) { return 1.0f / (1.0f + expf(-x)); }
 
@@ -375,6 +387,175 @@ __global__ void delta_seq_kernel(const float *qn, const float *kn, const float *
     }
 }
 
+// The same delta rule for dim 128, staged: a CTA owns 32 state rows of one
+// value head (4 warps; 8 lanes per row, each lane 16 key entries of 2
+// rows), and the token inputs (k, q, the CTA's 32 values, decay, beta, k.q)
+// come in tiles of kScanTile tokens through shared memory (cp.async, double
+// buffered), so the serial per-token chain is arithmetic and a 3-level
+// shuffle instead of global-load latency and a 5-level one.
+namespace scan {
+constexpr int kDim = 128;
+constexpr int kRowsPerCta = 32;
+constexpr int kThreads = 128;
+constexpr int kTile = 16;
+}  // namespace scan
+
+__device__ __forceinline__ void cp_async4(void *shared, const void *global) {
+    const unsigned address = static_cast<unsigned>(__cvta_generic_to_shared(shared));
+    asm volatile("cp.async.ca.shared.global [%0], [%1], 4;\n" ::"r"(address), "l"(global));
+}
+
+__global__ void __launch_bounds__(scan::kThreads)
+    delta_scan128_kernel(const float *__restrict__ qn, const float *__restrict__ kn, const float *__restrict__ conv,
+                         const float *__restrict__ decay, const float *__restrict__ beta, const float *__restrict__ kq,
+                         float *__restrict__ state, float *__restrict__ out, int n, int key_heads, int value_heads,
+                         int v_head_reordered, int conv_width, int value_offset) {
+    using namespace scan;
+    __shared__ __align__(16) float ks[2][kTile][kDim];
+    __shared__ __align__(16) float qs[2][kTile][kDim];
+    __shared__ __align__(16) float vs[2][kTile][kRowsPerCta];
+    __shared__ float gs[2][kTile], bs[2][kTile], kqs[2][kTile];
+    const int blocks_per_head = kDim / kRowsPerCta;
+    const int vh = blockIdx.x / blocks_per_head;
+    const int row0 = (blockIdx.x % blocks_per_head) * kRowsPerCta;
+    const int repeat = value_heads / key_heads;
+    const int kh = v_head_reordered ? vh % key_heads : vh / repeat;
+    const int tid = threadIdx.x;
+    const int lane = tid % kWarp;
+    const int warp = tid / kWarp;
+    const int group = lane / 8;  // 4 row groups per warp
+    const int l = lane % 8;      // lane within the row group
+    const int local_row = warp * 8 + group * 2;  // this thread's first row within the CTA
+    float s[2][16];
+#pragma unroll
+    for (int r = 0; r < 2; ++r) {
+        const float *row = state + (static_cast<long long>(vh) * kDim + row0 + local_row + r) * kDim;
+#pragma unroll
+        for (int i = 0; i < 4; ++i) {
+            const float4 v = *reinterpret_cast<const float4 *>(row + 4 * l + 32 * i);
+            s[r][4 * i] = v.x;
+            s[r][4 * i + 1] = v.y;
+            s[r][4 * i + 2] = v.z;
+            s[r][4 * i + 3] = v.w;
+        }
+    }
+    auto load_tile = [&](int tile, int buf) {
+        const int t0 = tile * kTile;
+        // k and q: kTile tokens x 2 x 32 float4
+        for (int c = tid; c < kTile * 2 * (kDim / 4); c += kThreads) {
+            const int t = c / (2 * (kDim / 4));
+            const int which = (c / (kDim / 4)) % 2;
+            const int part = c % (kDim / 4);
+            if (t0 + t < n) {
+                const long long base = (static_cast<long long>(t0 + t) * key_heads + kh) * kDim + part * 4;
+                cp_async16(which ? &qs[buf][t][part * 4] : &ks[buf][t][part * 4], (which ? qn : kn) + base, 16);
+            }
+        }
+        // values: kTile tokens x 8 float4
+        {
+            const int t = tid / 8;
+            const int part = tid % 8;
+            if (t < kTile && t0 + t < n) {
+                const long long base =
+                    static_cast<long long>(t0 + t) * conv_width + value_offset + vh * kDim + row0 + part * 4;
+                cp_async16(&vs[buf][t][part * 4], conv + base, 16);
+            }
+        }
+        if (tid < 3 * kTile) {
+            const int t = tid % kTile;
+            const int which = tid / kTile;
+            if (t0 + t < n) {
+                if (which == 0) {
+                    cp_async4(&gs[buf][t], decay + static_cast<long long>(t0 + t) * value_heads + vh);
+                } else if (which == 1) {
+                    cp_async4(&bs[buf][t], beta + static_cast<long long>(t0 + t) * value_heads + vh);
+                } else {
+                    cp_async4(&kqs[buf][t], kq + static_cast<long long>(t0 + t) * key_heads + kh);
+                }
+            }
+        }
+        cp_async_commit();
+    };
+    const int tiles = (n + kTile - 1) / kTile;
+    load_tile(0, 0);
+    for (int tile = 0; tile < tiles; ++tile) {
+        const int buf = tile & 1;
+        if (tile + 1 < tiles) {
+            load_tile(tile + 1, buf ^ 1);
+            cp_async_wait<1>();
+        } else {
+            cp_async_wait<0>();
+        }
+        __syncthreads();
+        const int count = min(kTile, n - tile * kTile);
+        for (int t = 0; t < count; ++t) {
+            float kr[16], qr[16];
+#pragma unroll
+            for (int i = 0; i < 4; ++i) {
+                const float4 k4 = *reinterpret_cast<const float4 *>(&ks[buf][t][4 * l + 32 * i]);
+                const float4 q4 = *reinterpret_cast<const float4 *>(&qs[buf][t][4 * l + 32 * i]);
+                kr[4 * i] = k4.x;
+                kr[4 * i + 1] = k4.y;
+                kr[4 * i + 2] = k4.z;
+                kr[4 * i + 3] = k4.w;
+                qr[4 * i] = q4.x;
+                qr[4 * i + 1] = q4.y;
+                qr[4 * i + 2] = q4.z;
+                qr[4 * i + 3] = q4.w;
+            }
+            const float g = gs[buf][t];
+            const float b = bs[buf][t];
+            const float k_dot_q = kqs[buf][t];
+            float sk[2], sq[2];
+#pragma unroll
+            for (int r = 0; r < 2; ++r) {
+                float sk0 = 0.0f, sk1 = 0.0f, sq0 = 0.0f, sq1 = 0.0f;
+#pragma unroll
+                for (int j = 0; j < 16; j += 2) {
+                    s[r][j] *= g;
+                    s[r][j + 1] *= g;
+                    sk0 += s[r][j] * kr[j];
+                    sk1 += s[r][j + 1] * kr[j + 1];
+                    sq0 += s[r][j] * qr[j];
+                    sq1 += s[r][j + 1] * qr[j + 1];
+                }
+                sk[r] = sk0 + sk1;
+                sq[r] = sq0 + sq1;
+            }
+#pragma unroll
+            for (int offset = 4; offset > 0; offset >>= 1) {
+#pragma unroll
+                for (int r = 0; r < 2; ++r) {
+                    sk[r] += __shfl_xor_sync(0xffffffffu, sk[r], offset);
+                    sq[r] += __shfl_xor_sync(0xffffffffu, sq[r], offset);
+                }
+            }
+            const long long out_base = (static_cast<long long>(tile * kTile + t) * value_heads + vh) * kDim + row0;
+#pragma unroll
+            for (int r = 0; r < 2; ++r) {
+                const float delta = (vs[buf][t][local_row + r] - sk[r]) * b;
+#pragma unroll
+                for (int j = 0; j < 16; ++j) {
+                    s[r][j] += kr[j] * delta;
+                }
+                if (l == r) {
+                    out[out_base + local_row + r] = sq[r] + delta * k_dot_q;
+                }
+            }
+        }
+        __syncthreads();
+    }
+#pragma unroll
+    for (int r = 0; r < 2; ++r) {
+        float *row = state + (static_cast<long long>(vh) * kDim + row0 + local_row + r) * kDim;
+#pragma unroll
+        for (int i = 0; i < 4; ++i) {
+            *reinterpret_cast<float4 *>(row + 4 * l + 32 * i) =
+                make_float4(s[r][4 * i], s[r][4 * i + 1], s[r][4 * i + 2], s[r][4 * i + 3]);
+        }
+    }
+}
+
 // Per-head RMSNorm(o) * w * silu(z) -> f16. Block (t, head), dim threads.
 __global__ void gated_norm_to_f16_kernel(const float *o, const float *z, const float *w, __half *out, int heads, int dim, float eps) {
     __shared__ float scratch[32];
@@ -514,6 +695,345 @@ __global__ void span_sums_kernel(const float *rows, const int *spans, float *sum
     }
 }
 
+// ---- fused dequantize + tensor-core linear ----
+//
+// out[t, m] (+)= sum_k x[t, k] W[m, k] with x f16 row-major [n, K] and W in
+// its GGUF layout (Q8_0 or Q4_K rows). A CTA owns 128 tokens x 128 weight
+// rows; each 64-wide k tile of W is dequantized (to the same f16 values as
+// the dequant kernels above) straight into shared memory, so the weights are
+// read once in their quantized form and never written out as f16.
+//
+// Accumulation order is fixed per output element: k tiles in order, inside
+// a tile the mma k steps in order, nothing split across CTAs. A token's
+// output therefore does not depend on which other tokens share its chunk
+// (bitwise chunk invariance). With SEG > 0 the mma accumulates in f16 over
+// SEG k steps (16 each) and the partial is added to an f32 accumulator
+// (full-rate f16 tensor math, f32 error growth); SEG == 0 accumulates the
+// mma in f32.
+namespace fused {
+constexpr int kTokens = 128;
+constexpr int kRows = 128;
+constexpr int kTileK = 64;
+constexpr int kLds = kTileK + 8;  // halves per shared row (conflict-free ldmatrix)
+constexpr int kXStages = 3;
+constexpr int kThreads = 256;
+constexpr int kSmemBytes = (kXStages * kTokens + 2 * kRows) * kLds * 2;
+}  // namespace fused
+
+constexpr int kFormatQ8_0 = 0;
+constexpr int kFormatQ4K = 1;
+
+__device__ __forceinline__ void ldmatrix_x4(uint32_t (&r)[4], const __half *shared) {
+    const unsigned address = static_cast<unsigned>(__cvta_generic_to_shared(shared));
+    asm volatile("ldmatrix.sync.aligned.m8n8.x4.shared.b16 {%0,%1,%2,%3}, [%4];\n"
+                 : "=r"(r[0]), "=r"(r[1]), "=r"(r[2]), "=r"(r[3])
+                 : "r"(address));
+}
+
+__device__ __forceinline__ uint32_t half2_bits(__half2 value) {
+    uint32_t bits;
+    memcpy(&bits, &value, sizeof(bits));
+    return bits;
+}
+
+__device__ __forceinline__ float2 bits_to_float2(uint32_t bits) {
+    __half2 value;
+    memcpy(&value, &bits, sizeof(bits));
+    return __half22float2(value);
+}
+
+// Raw bytes of one thread's 32-element slice of a weight k tile: Q8_0 one
+// 34-byte block (9 aligned words), Q4_K the super-block header (4 words)
+// plus the 32 nibble bytes of the sub-block pair (8 words).
+template <int FMT>
+struct RawSlice {
+    uint32_t words[FMT == kFormatQ8_0 ? 9 : 12];
+};
+
+template <int FMT>
+__device__ __forceinline__ void load_slice(RawSlice<FMT> &raw, const uint8_t *w, long long row_bytes, int row, int rows,
+                                           int kt, int half_index) {
+    constexpr int kWords = FMT == kFormatQ8_0 ? 9 : 12;
+    if (row >= rows) {
+#pragma unroll
+        for (int i = 0; i < kWords; ++i) {
+            raw.words[i] = 0;
+        }
+        return;
+    }
+    const uint8_t *base = w + static_cast<long long>(row) * row_bytes;
+    if constexpr (FMT == kFormatQ8_0) {
+        // block (2 kt + half) starts at 34 * block; read the aligned
+        // 36-byte window around it
+        const long long start = static_cast<long long>(2 * kt + half_index) * 34;
+        const uint32_t *words = reinterpret_cast<const uint32_t *>(base + (start & ~3LL));
+#pragma unroll
+        for (int i = 0; i < 9; ++i) {
+            raw.words[i] = __ldg(words + i);
+        }
+    } else {
+        const int k0 = kt * fused::kTileK;
+        const uint8_t *super_block = base + static_cast<long long>(k0 / 256) * 144;
+        const int j = (k0 % 256) / 64;
+        const uint4 header = __ldg(reinterpret_cast<const uint4 *>(super_block));
+        const uint4 q0 = __ldg(reinterpret_cast<const uint4 *>(super_block + 16 + 32 * j));
+        const uint4 q1 = __ldg(reinterpret_cast<const uint4 *>(super_block + 16 + 32 * j + 16));
+        raw.words[0] = header.x;
+        raw.words[1] = header.y;
+        raw.words[2] = header.z;
+        raw.words[3] = header.w;
+        raw.words[4] = q0.x;
+        raw.words[5] = q0.y;
+        raw.words[6] = q0.z;
+        raw.words[7] = q0.w;
+        raw.words[8] = q1.x;
+        raw.words[9] = q1.y;
+        raw.words[10] = q1.z;
+        raw.words[11] = q1.w;
+    }
+}
+
+// Dequantizes a slice into 32 f16 values at `dst` (16-byte aligned), with
+// the arithmetic of dequant_q8_0_kernel / dequant_q4_k_kernel.
+template <int FMT>
+__device__ __forceinline__ void store_slice(const RawSlice<FMT> &raw, __half *dst, int kt, int half_index) {
+    uint32_t packed[16];
+    if constexpr (FMT == kFormatQ8_0) {
+        const int shift = static_cast<int>(((2 * kt + half_index) * 34) & 3);  // 0 or 2
+        const uint16_t d_bits = shift ? static_cast<uint16_t>(raw.words[0] >> 16) : static_cast<uint16_t>(raw.words[0]);
+        __half d_half;
+        memcpy(&d_half, &d_bits, sizeof(d_half));
+        const float d = __half2float(d_half);
+#pragma unroll
+        for (int i = 0; i < 8; ++i) {
+            // the 4 quants at bytes shift + 2 + 4i of the window
+            const uint32_t q = shift ? raw.words[i + 1] : __funnelshift_r(raw.words[i], raw.words[i + 1], 16);
+            const int8_t q0 = static_cast<int8_t>(q & 0xff), q1 = static_cast<int8_t>((q >> 8) & 0xff);
+            const int8_t q2 = static_cast<int8_t>((q >> 16) & 0xff), q3 = static_cast<int8_t>(q >> 24);
+            packed[2 * i] = half2_bits(__floats2half2_rn(d * q0, d * q1));
+            packed[2 * i + 1] = half2_bits(__floats2half2_rn(d * q2, d * q3));
+        }
+    } else {
+        const int k0 = kt * fused::kTileK;
+        const int j = (k0 % 256) / 64;
+        const bool high = half_index != 0;
+        const int is = 2 * j + (high ? 1 : 0);
+        uint8_t header[16];
+        memcpy(header, raw.words, 16);
+        __half d_half, dmin_half;
+        memcpy(&d_half, header, 2);
+        memcpy(&dmin_half, header + 2, 2);
+        const float d = __half2float(d_half);
+        const float dmin = __half2float(dmin_half);
+        const uint8_t *scales = header + 4;
+        uint8_t sc, m;
+        if (is < 4) {
+            sc = scales[is] & 63;
+            m = scales[is + 4] & 63;
+        } else {
+            sc = (scales[is + 4] & 0xF) | ((scales[is - 4] >> 6) << 4);
+            m = (scales[is + 4] >> 4) | ((scales[is] >> 6) << 4);
+        }
+        const float scale = d * sc, minimum = dmin * m;
+#pragma unroll
+        for (int i = 0; i < 8; ++i) {
+            uint32_t v = raw.words[4 + i];
+            if (high) {
+                v >>= 4;
+            }
+            const float a0 = scale * ((v >> 0) & 0xF) - minimum;
+            const float a1 = scale * ((v >> 8) & 0xF) - minimum;
+            const float a2 = scale * ((v >> 16) & 0xF) - minimum;
+            const float a3 = scale * ((v >> 24) & 0xF) - minimum;
+            packed[2 * i] = half2_bits(__floats2half2_rn(a0, a1));
+            packed[2 * i + 1] = half2_bits(__floats2half2_rn(a2, a3));
+        }
+    }
+    uint4 *out = reinterpret_cast<uint4 *>(dst);
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+        out[i] = make_uint4(packed[4 * i], packed[4 * i + 1], packed[4 * i + 2], packed[4 * i + 3]);
+    }
+}
+
+template <int FMT, int SEG>
+__global__ void __launch_bounds__(fused::kThreads, 1)
+    fused_linear_kernel(const __half *__restrict__ x, const uint8_t *__restrict__ w, float *__restrict__ out, int n,
+                        int rows, int k, long long row_bytes, int accumulate) {
+    using namespace fused;
+    extern __shared__ __align__(16) unsigned char smem_raw[];
+    __half *xs = reinterpret_cast<__half *>(smem_raw);
+    __half *ws = xs + kXStages * kTokens * kLds;
+    const int tid = threadIdx.x;
+    const int lane = tid % kWarp;
+    const int warp = tid / kWarp;
+    const int t0 = blockIdx.x * kTokens;
+    const int m0 = blockIdx.y * kRows;
+    const int warp_t = (warp & 1) * 64;   // 2 warps along tokens
+    const int warp_m = (warp >> 1) * 32;  // 4 warps along weight rows
+    const int tiles = k / kTileK;
+
+    auto load_x = [&](int kt, int stage) {
+        __half *dst = xs + stage * kTokens * kLds;
+#pragma unroll
+        for (int i = 0; i < 4; ++i) {
+            const int chunk = tid + i * kThreads;
+            const int row = chunk >> 3;
+            const int col = (chunk & 7) * 8;
+            const int t = t0 + row;
+            const __half *src = x + static_cast<long long>(t < n ? t : n - 1) * k + kt * kTileK + col;
+            cp_async16(dst + row * kLds + col, src, t < n ? 16 : 0);
+        }
+    };
+    const int slice_row = tid >> 1;
+    const int slice_half = tid & 1;
+    RawSlice<FMT> raw;
+
+    float acc[4][4][4];
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+#pragma unroll
+        for (int j = 0; j < 4; ++j) {
+#pragma unroll
+            for (int e = 0; e < 4; ++e) {
+                acc[i][j][e] = 0.0f;
+            }
+        }
+    }
+
+    uint32_t seg[4][4][2];  // the f16 partials (SEG > 0), carried across k tiles
+
+    load_x(0, 0);
+    cp_async_commit();
+    if (tiles > 1) {
+        load_x(1, 1);
+    }
+    cp_async_commit();
+    load_slice<FMT>(raw, w, row_bytes, m0 + slice_row, rows, 0, slice_half);
+    store_slice<FMT>(raw, ws + slice_row * kLds + slice_half * 32, 0, slice_half);
+    if (tiles > 1) {
+        load_slice<FMT>(raw, w, row_bytes, m0 + slice_row, rows, 1, slice_half);
+    }
+    cp_async_wait<1>();
+    __syncthreads();
+
+    for (int kt = 0; kt < tiles; ++kt) {
+        if (kt + 2 < tiles) {
+            load_x(kt + 2, (kt + 2) % kXStages);
+        }
+        cp_async_commit();
+        const __half *xa = xs + (kt % kXStages) * kTokens * kLds;
+        const __half *wb = ws + (kt & 1) * kRows * kLds;
+#pragma unroll
+        for (int ks = 0; ks < kTileK / 16; ++ks) {
+            uint32_t a[4][4];
+#pragma unroll
+            for (int i = 0; i < 4; ++i) {
+                ldmatrix_x4(a[i], xa + (warp_t + i * 16 + (lane % 16)) * kLds + ks * 16 + (lane / 16) * 8);
+            }
+            uint32_t b[4][2];
+#pragma unroll
+            for (int jj = 0; jj < 2; ++jj) {
+                const int mat = lane / 8;
+                uint32_t r[4];
+                ldmatrix_x4(r, wb + (warp_m + jj * 16 + (mat / 2) * 8 + (lane % 8)) * kLds + ks * 16 + (mat % 2) * 8);
+                b[2 * jj][0] = r[0];
+                b[2 * jj][1] = r[1];
+                b[2 * jj + 1][0] = r[2];
+                b[2 * jj + 1][1] = r[3];
+            }
+            if constexpr (SEG == 0) {
+#pragma unroll
+                for (int i = 0; i < 4; ++i) {
+#pragma unroll
+                    for (int j = 0; j < 4; ++j) {
+                        asm volatile(
+                            "mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 {%0,%1,%2,%3}, {%4,%5,%6,%7}, "
+                            "{%8,%9}, {%0,%1,%2,%3};\n"
+                            : "+f"(acc[i][j][0]), "+f"(acc[i][j][1]), "+f"(acc[i][j][2]), "+f"(acc[i][j][3])
+                            : "r"(a[i][0]), "r"(a[i][1]), "r"(a[i][2]), "r"(a[i][3]), "r"(b[j][0]), "r"(b[j][1]));
+                    }
+                }
+            } else {
+                if ((kt * (kTileK / 16) + ks) % SEG == 0) {
+#pragma unroll
+                    for (int i = 0; i < 4; ++i) {
+#pragma unroll
+                        for (int j = 0; j < 4; ++j) {
+                            seg[i][j][0] = 0u;
+                            seg[i][j][1] = 0u;
+                        }
+                    }
+                }
+#pragma unroll
+                for (int i = 0; i < 4; ++i) {
+#pragma unroll
+                    for (int j = 0; j < 4; ++j) {
+                        asm volatile(
+                            "mma.sync.aligned.m16n8k16.row.col.f16.f16.f16.f16 {%0,%1}, {%2,%3,%4,%5}, {%6,%7}, "
+                            "{%0,%1};\n"
+                            : "+r"(seg[i][j][0]), "+r"(seg[i][j][1])
+                            : "r"(a[i][0]), "r"(a[i][1]), "r"(a[i][2]), "r"(a[i][3]), "r"(b[j][0]), "r"(b[j][1]));
+                    }
+                }
+                if ((kt * (kTileK / 16) + ks + 1) % SEG == 0 || (kt + 1 == tiles && ks + 1 == kTileK / 16)) {
+#pragma unroll
+                    for (int i = 0; i < 4; ++i) {
+#pragma unroll
+                        for (int j = 0; j < 4; ++j) {
+                            const float2 lo = bits_to_float2(seg[i][j][0]);
+                            const float2 hi = bits_to_float2(seg[i][j][1]);
+                            acc[i][j][0] += lo.x;
+                            acc[i][j][1] += lo.y;
+                            acc[i][j][2] += hi.x;
+                            acc[i][j][3] += hi.y;
+                        }
+                    }
+                }
+            }
+        }
+        if (kt + 1 < tiles) {
+            store_slice<FMT>(raw, ws + ((kt + 1) & 1) * kRows * kLds + slice_row * kLds + slice_half * 32, kt + 1,
+                             slice_half);
+            if (kt + 2 < tiles) {
+                load_slice<FMT>(raw, w, row_bytes, m0 + slice_row, rows, kt + 2, slice_half);
+            }
+        }
+        cp_async_wait<1>();
+        __syncthreads();
+    }
+    cp_async_wait<0>();
+
+    // D fragment: (row g, cols 2c..2c+1) and (row g + 8, same cols)
+    const int g = lane / 4;
+    const int c = lane % 4;
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+#pragma unroll
+        for (int j = 0; j < 4; ++j) {
+            const int m = m0 + warp_m + j * 8 + 2 * c;
+            if (m >= rows) {
+                continue;
+            }
+#pragma unroll
+            for (int h = 0; h < 2; ++h) {
+                const int t = t0 + warp_t + i * 16 + g + 8 * h;
+                if (t >= n) {
+                    continue;
+                }
+                float2 *dst = reinterpret_cast<float2 *>(out + static_cast<long long>(t) * rows + m);
+                float2 value = make_float2(acc[i][j][2 * h], acc[i][j][2 * h + 1]);
+                if (accumulate) {
+                    const float2 old = *dst;
+                    value.x = old.x + value.x;
+                    value.y = old.y + value.y;
+                }
+                *dst = value;
+            }
+        }
+    }
+}
+
 inline int blocks_for(long long count, int threads) {
     return static_cast<int>((count + threads - 1) / threads);
 }
@@ -598,7 +1118,18 @@ extern "C" int psionic_clef_delta_prep(const void *conv, const void *alpha, cons
 
 extern "C" int psionic_clef_delta_seq(const void *qn, const void *kn, const void *conv, const void *decay,
                                       const void *beta, const void *kq, void *state, void *out, int n, int key_heads, int value_heads,
-                                      int dim, int v_head_reordered, int conv_width, int value_offset, void *stream) {
+                                      int dim, int v_head_reordered, int conv_width, int value_offset, int staged, void *stream) {
+    if (n <= 0) {
+        return 0;
+    }
+    if (staged && dim == scan::kDim && (value_offset % 4) == 0 && (conv_width % 4) == 0) {
+        delta_scan128_kernel<<<value_heads * (scan::kDim / scan::kRowsPerCta), scan::kThreads, 0, STREAM>>>(
+            static_cast<const float *>(qn), static_cast<const float *>(kn), static_cast<const float *>(conv),
+            static_cast<const float *>(decay), static_cast<const float *>(beta), static_cast<const float *>(kq),
+            static_cast<float *>(state), static_cast<float *>(out), n, key_heads, value_heads, v_head_reordered,
+            conv_width, value_offset);
+        DONE;
+    }
     constexpr int kRows = 2;
     const long long threads = static_cast<long long>(value_heads) * dim / kRows * kWarp;
     const int block = 128;
@@ -682,6 +1213,68 @@ extern "C" int psionic_clef_f16_to_f32(const void *src, void *dst, long long cou
     f16_to_f32_kernel<<<blocks_for(count, 256), 256, 0, STREAM>>>(
         static_cast<const __half *>(src), static_cast<float *>(dst), count, accumulate);
     DONE;
+}
+
+template <int FMT, int SEG>
+static int launch_fused_linear(const void *x, const void *w, void *out, int n, int rows, int k, long long row_bytes,
+                               int accumulate, cudaStream_t stream) {
+    static bool configured = false;
+    if (!configured) {
+        const cudaError_t code = cudaFuncSetAttribute(fused_linear_kernel<FMT, SEG>,
+                                                      cudaFuncAttributeMaxDynamicSharedMemorySize, fused::kSmemBytes);
+        if (code != cudaSuccess) {
+            return static_cast<int>(code);
+        }
+        configured = true;
+    }
+    dim3 grid((n + fused::kTokens - 1) / fused::kTokens, (rows + fused::kRows - 1) / fused::kRows);
+    fused_linear_kernel<FMT, SEG><<<grid, fused::kThreads, fused::kSmemBytes, stream>>>(
+        static_cast<const __half *>(x), static_cast<const uint8_t *>(w), static_cast<float *>(out), n, rows, k,
+        row_bytes, accumulate);
+    return static_cast<int>(cudaGetLastError());
+}
+
+// out[n, rows] (+)= x16[n, k] . W[rows, k]^T with W in GGUF layout (format 0
+// = Q8_0, 1 = Q4_K). `segment` is the f16 accumulation span in 16-wide k
+// steps (1, 2, 4, 8 or 16), or 0 for f32 accumulation. k must be a multiple of 64
+// (Q4_K: 256) and rows even.
+extern "C" int psionic_clef_fused_linear(const void *x, const void *w, void *out, int n, int rows, int k, int format,
+                                         int segment, int accumulate, void *stream) {
+    if (n <= 0) {
+        return 0;
+    }
+    if (k % fused::kTileK != 0 || rows % 2 != 0 || (format == kFormatQ4K && k % 256 != 0)) {
+        return static_cast<int>(cudaErrorInvalidValue);
+    }
+    const long long row_bytes =
+        format == kFormatQ8_0 ? static_cast<long long>(k) / 32 * 34 : static_cast<long long>(k) / 256 * 144;
+    if (row_bytes % 4 != 0 || (format == kFormatQ4K && row_bytes % 16 != 0)) {
+        return static_cast<int>(cudaErrorInvalidValue);
+    }
+#define FUSED(F, S) launch_fused_linear<F, S>(x, w, out, n, rows, k, row_bytes, accumulate, STREAM)
+    if (format == kFormatQ8_0) {
+        switch (segment) {
+            case 0: return FUSED(kFormatQ8_0, 0);
+            case 1: return FUSED(kFormatQ8_0, 1);
+            case 2: return FUSED(kFormatQ8_0, 2);
+            case 4: return FUSED(kFormatQ8_0, 4);
+            case 8: return FUSED(kFormatQ8_0, 8);
+            case 16: return FUSED(kFormatQ8_0, 16);
+            default: break;
+        }
+    } else if (format == kFormatQ4K) {
+        switch (segment) {
+            case 0: return FUSED(kFormatQ4K, 0);
+            case 1: return FUSED(kFormatQ4K, 1);
+            case 2: return FUSED(kFormatQ4K, 2);
+            case 4: return FUSED(kFormatQ4K, 4);
+            case 8: return FUSED(kFormatQ4K, 8);
+            case 16: return FUSED(kFormatQ4K, 16);
+            default: break;
+        }
+    }
+#undef FUSED
+    return static_cast<int>(cudaErrorInvalidValue);
 }
 
 // ---- a second stream for weight dequantization ----

@@ -404,7 +404,17 @@ impl ClefCudaTrunk {
             }
             for weight in &layer_weights {
                 weight_total += weight_bytes(weight);
-                largest = largest.max(weight.elements());
+                // the f16 slots only serve weights the fused kernel does not take
+                let fused = knobs().fused
+                    && match weight.format {
+                        ClefWeightFormat::Q8_0 => weight.columns % 64 == 0,
+                        ClefWeightFormat::Q4K => weight.columns % 256 == 0,
+                        ClefWeightFormat::F32 => false,
+                    }
+                    && weight.rows % 2 == 0;
+                if !fused {
+                    largest = largest.max(weight.elements());
+                }
             }
             layers.push(DeviceLayer {
                 attention_norm: upload_f32(&mut backend, &layer.attention_norm)?,
@@ -424,8 +434,8 @@ impl ClefCudaTrunk {
         let weight_scratch = WeightPipeline {
             stream: ClefStream::new().map_err(err)?,
             slots: [
-                backend.f16_buffer(largest).map_err(err)?,
-                backend.f16_buffer(largest).map_err(err)?,
+                backend.f16_buffer(largest.max(1)).map_err(err)?,
+                backend.f16_buffer(largest.max(1)).map_err(err)?,
             ],
             dequantized: [ClefEvent::new().map_err(err)?, ClefEvent::new().map_err(err)?],
             consumed: [ClefEvent::new().map_err(err)?, ClefEvent::new().map_err(err)?],
@@ -981,6 +991,18 @@ fn linear(
     accumulate: bool,
     compute_16f: bool,
 ) -> Result<(), String> {
+    let knob = knobs();
+    if knob.fused && !knob.skip_gemm {
+        // straight from the GGUF layout; f16 accumulation in short spans
+        // promoted to f32, or f32 tensor accumulation in strict mode
+        let segment = if compute_16f { knob.segment } else { 0 };
+        if submission
+            .clef_fused_linear(x16, &weight.buffer, weight.format, out, n, weight.rows, weight.columns, segment, accumulate)
+            .map_err(err)?
+        {
+            return Ok(());
+        }
+    }
     let slot = pipeline.next.get();
     pipeline.next.set(slot ^ 1);
     let weight_scratch = &pipeline.slots[slot];
@@ -1046,14 +1068,23 @@ fn gemm(
         .map_err(err)
 }
 
-/// Experiment knobs (`PSIONIC_CLEF_SKIP=dequant,gemm`) for profiling only:
-/// skipping either makes the answers wrong.
+/// Experiment knobs. `PSIONIC_CLEF_SKIP=dequant,gemm,delta,attention` is
+/// for profiling only (skipping makes the answers wrong).
+/// `PSIONIC_CLEF_FUSED=1` runs the projections through the fused
+/// dequantize + tensor-core kernel (bitwise chunk-invariant, f32-promoted
+/// accumulation; about 20 % slower than dequantize + cuBLAS on the 4080 so
+/// far, so off by default); `PSIONIC_CLEF_SEGMENT=1|2|4|8|16` sets its f16
+/// accumulation span in 16-wide k steps (default 16); `PSIONIC_CLEF_SCAN=0`
+/// runs the per-warp delta scan instead of the shared-memory-staged one.
 #[derive(Clone, Copy, Default)]
 struct Knobs {
     skip_dequant: bool,
     skip_gemm: bool,
     skip_delta: bool,
     skip_attention: bool,
+    fused: bool,
+    segment: usize,
+    staged_scan: bool,
 }
 
 fn knobs() -> Knobs {
@@ -1065,6 +1096,13 @@ fn knobs() -> Knobs {
             skip_gemm: value.contains("gemm"),
             skip_delta: value.contains("delta"),
             skip_attention: value.contains("attention"),
+            fused: std::env::var("PSIONIC_CLEF_FUSED").is_ok_and(|v| v == "1"),
+            staged_scan: std::env::var("PSIONIC_CLEF_SCAN").map_or(true, |v| v != "0"),
+            segment: std::env::var("PSIONIC_CLEF_SEGMENT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .filter(|v| matches!(v, 1 | 2 | 4 | 8 | 16))
+                .unwrap_or(16),
         }
     })
 }
@@ -1138,6 +1176,7 @@ fn encode_layer(
                     dims.v_head_reordered,
                     dims.conv_channels,
                     2 * dims.key_heads * dims.state,
+                    knobs().staged_scan,
                 )
                 .map_err(err)?;
             }

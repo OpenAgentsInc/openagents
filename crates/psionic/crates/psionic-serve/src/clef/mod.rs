@@ -202,6 +202,35 @@ pub struct ClefDecisionLane {
     export: Option<RowExport>,
     waiting: AtomicUsize,
     running: std::sync::Mutex<()>,
+    /// Logits of recent prompts by [`record_key`]. The trunk and head are
+    /// deterministic (a repeat is bitwise identical), so a repeated prompt
+    /// (the same router state, say) is answered without the device.
+    logit_cache: std::sync::Mutex<std::collections::VecDeque<([u8; 32], Vec<Vec<f32>>)>>,
+}
+
+/// Prompts whose logits [`ClefDecisionLane`] keeps.
+const LOGIT_CACHE_ENTRIES: usize = 256;
+
+/// What the logits are a function of: the prompt ids and each question's
+/// type and spans.
+fn record_key(record: &EncodedRecord) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    hasher.update((record.input_ids.len() as u64).to_le_bytes());
+    for id in &record.input_ids {
+        hasher.update(id.to_le_bytes());
+    }
+    for question in &record.questions {
+        hasher.update((question.question_type as u64).to_le_bytes());
+        let (start, end) = question.question_span;
+        hasher.update((start as u64).to_le_bytes());
+        hasher.update((end as u64).to_le_bytes());
+        hasher.update((question.option_spans.len() as u64).to_le_bytes());
+        for (start, end) in &question.option_spans {
+            hasher.update((*start as u64).to_le_bytes());
+            hasher.update((*end as u64).to_le_bytes());
+        }
+    }
+    hasher.finalize().into()
 }
 
 impl std::fmt::Debug for ClefDecisionLane {
@@ -369,6 +398,7 @@ impl ClefDecisionLane {
             export: None,
             waiting: AtomicUsize::new(0),
             running: std::sync::Mutex::new(()),
+            logit_cache: std::sync::Mutex::new(std::collections::VecDeque::new()),
         })
     }
 
@@ -639,14 +669,56 @@ impl ClefDecisionLane {
                 message: format!("{queued} decisions are already waiting"),
             });
         }
-        let _running = self
-            .running
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let key = record_key(&record);
+        let cached = if self.export.is_none() {
+            self.logit_cache
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .iter()
+                .find(|(k, _)| *k == key)
+                .map(|(_, logits)| logits.clone())
+        } else {
+            None
+        };
+        let waited_began = Instant::now();
+        let mut waited = 0.0;
         let mut inputs = HeadInputs::default();
-        let capture = self.export.as_ref().map(|_| &mut inputs);
-        let logits =
-            self.logits_capturing(&record, self.prefill_chunk(), None, None, capture)?;
+        let hit = cached.is_some();
+        let logits = match cached {
+            Some(logits) => logits,
+            None => {
+                let _running = self
+                    .running
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                waited = waited_began.elapsed().as_secs_f64();
+                let capture = self.export.as_ref().map(|_| &mut inputs);
+                let logits =
+                    self.logits_capturing(&record, self.prefill_chunk(), None, None, capture)?;
+                if self.export.is_none() {
+                    let mut cache = self
+                        .logit_cache
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    if cache.len() >= LOGIT_CACHE_ENTRIES {
+                        cache.pop_front();
+                    }
+                    cache.push_back((key, logits.clone()));
+                }
+                logits
+            }
+        };
+        if std::env::var("PSIONIC_CLEF_LOG").map_or(true, |value| value != "0") {
+            // sizes and times only, never request text
+            eprintln!(
+                "clef decision: {} tokens, {} questions, waited {:.0} ms, ran {:.0} ms{}",
+                record.input_ids.len(),
+                record.questions.len(),
+                waited * 1e3,
+                (began.elapsed().as_secs_f64() - waited) * 1e3,
+                if hit { ", cached" } else { "" }
+            );
+        }
         let answer = self.answer(&request, &record, &logits, began);
         if let Some(export) = &self.export {
             let questions: Vec<(String, Vec<String>, Vec<f32>)> = request
