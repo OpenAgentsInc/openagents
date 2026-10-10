@@ -233,7 +233,10 @@ fn enablement_and_key_configuration_have_separate_states() {
     key(&mut app, KeyCode::Enter);
     key(&mut app, KeyCode::Enter);
     assert_eq!(app.plugins.model, "openrouter/free");
-    assert!(render(&mut app, 80, 24).text.contains("openrouter/free"));
+    // The default is shown as `auto`, never the router's vendor name.
+    let screen = render(&mut app, 80, 24).text;
+    assert!(screen.contains("auto"));
+    assert!(!screen.contains("openrouter/free"));
 }
 
 #[test]

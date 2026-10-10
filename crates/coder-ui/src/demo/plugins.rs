@@ -209,8 +209,13 @@ impl Plugins {
     pub fn begin_settings(&mut self) {
         self.discard_draft();
         self.saved_connection = Some(self.connection.clone());
-        self.model_draft.text.clone_from(&self.model);
-        self.model_draft.cursor = self.model.len();
+        // The default shows as an empty field: "Leave empty for auto".
+        if self.model == DEFAULT_MODEL {
+            self.model_draft.text.clear();
+        } else {
+            self.model_draft.text.clone_from(&self.model);
+        }
+        self.model_draft.cursor = self.model_draft.text.len();
         self.focus = SettingsFocus::ApiKey;
     }
     pub fn discard_draft(&mut self) {
