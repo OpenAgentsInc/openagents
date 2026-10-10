@@ -35,6 +35,9 @@ microcoder-loop = { path = "../microcoder-loop" }
 supervise = { path = "../supervise" }
 model-access = { path = "../model-access" }
 openrouter = { path = "../openrouter" }
+# web_search's first door: Gemini on Vertex with Google Search grounding
+# (the Vertex adapter's URL and the Google token source).
+inference = { path = "../inference" }
 openagents-login = { path = "../openagents-login" }
 coder-sync = { path = "../coder-sync" }
 crossterm = "0.29"

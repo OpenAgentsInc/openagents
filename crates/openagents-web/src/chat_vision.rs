@@ -11,9 +11,20 @@
 //! which the gateway hands Gemini as inline data. What doesn't fit the
 //! gateway's request size is named in the words and left out.
 //!
-//! When that call fails before saying anything, the hosted chat answers
-//! instead, with the words only (`fallback`): the files are named there,
-//! and the answer says it can't open them.
+//! The doors, in order (#11221, "Google first"):
+//!
+//! 1. Gemini (`gemini-3.8-flash`) on Vertex AI, on the prepaid Google
+//!    credit: the same request translated by the gateway's own Vertex
+//!    adapter ([`inference::upstream::vertex::body`]), the files as
+//!    `inlineData` parts, sent to `generateContent` with the token
+//!    [`TokenSource::from_env`] finds (the Cloud Run metadata server in
+//!    production; `GOOGLE_APPLICATION_CREDENTIALS` on a laptop).
+//! 2. The Open Responses door above ([`Endpoint`]).
+//! 3. The hosted chat, with the words only (`fallback`): the files are
+//!    named there, and the answer says it can't open them.
+//!
+//! A door that fails before saying anything hands the turn to the next,
+//! and the reason is logged.
 
 use std::future::Future;
 use std::io::Cursor;
@@ -22,6 +33,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use base64::Engine;
+use inference::upstream::google::TokenSource;
+use inference::upstream::vertex;
 use openagents_chat::basic_coder::{self, Door, Failure, Reply, Role as TurnRole, Turn};
 use openagents_chat::router::Context;
 use serde_json::{Value, json};
@@ -59,6 +72,129 @@ impl std::fmt::Debug for Endpoint {
 pub(crate) fn endpoint(app: &App) -> Option<Endpoint> {
     let (url, key, model) = app.config.environments.as_ref()?.model_api()?;
     Some(Endpoint { url, key, model })
+}
+
+/// The Gemini model on Vertex the files go to first.
+pub(crate) const GEMINI: &str = "google/gemini-3.8-flash";
+
+/// Gemini on Vertex AI: where `generateContent` is and the credential.
+#[derive(Clone)]
+pub(crate) struct Gemini {
+    pub url: String,
+    pub token: TokenSource,
+    pub row: inference::upstream::ModelRow,
+    pub thinking: vertex::Thinking,
+}
+
+impl std::fmt::Debug for Gemini {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Gemini({}, {:?})", self.url, self.token)
+    }
+}
+
+impl Gemini {
+    /// Gemini from the environment (`VERTEX_PROJECT`, `VERTEX_LOCATION`,
+    /// `VERTEX_BASE_URL`, and a Google credential), when there is a
+    /// credential.
+    #[must_use]
+    pub(crate) fn from_env() -> Option<Self> {
+        let config = vertex::Config::from_env();
+        if !config.token.present() {
+            return None;
+        }
+        let (row, thinking) = config
+            .models
+            .iter()
+            .find(|(row, _)| row.id == GEMINI)
+            .cloned()?;
+        let token = config.token.clone();
+        let url = vertex::Vertex::new(config)
+            .url(&row.upstream_model)
+            .replace(":streamGenerateContent?alt=sse", ":generateContent");
+        Some(Self {
+            url,
+            token,
+            row,
+            thinking,
+        })
+    }
+
+    /// The `generateContent` body for an Open Responses `request`.
+    fn body(&self, request: &Value) -> Result<Value, String> {
+        let mut request = request.clone();
+        request["model"] = json!(self.row.id);
+        // Thinking costs time the chat's deadline needs.
+        request["reasoning"] = json!({"effort": "low"});
+        let request: inference::CreateResponse =
+            serde_json::from_value(request).map_err(|error| error.to_string())?;
+        vertex::body(&request, &self.row, self.thinking).map_err(|error| error.to_string())
+    }
+
+    async fn call(&self, request: &Value) -> Result<(String, Option<String>), String> {
+        let body = self.body(request)?;
+        let token = self.token.token().await?;
+        let client = reqwest::Client::builder()
+            .timeout(DEADLINE)
+            .build()
+            .map_err(|error| error.to_string())?;
+        let response = client
+            .post(&self.url)
+            .bearer_auth(token.expose())
+            .json(&body)
+            .send()
+            .await
+            .map_err(|error| format!("Vertex could not be reached ({})", error.without_url()))?;
+        let status = response.status();
+        if status == reqwest::StatusCode::UNAUTHORIZED {
+            self.token.forget().await;
+        }
+        let reply: Value = response.json().await.map_err(|error| error.to_string())?;
+        if !status.is_success() {
+            let why = reply["error"]["message"].as_str().unwrap_or_default();
+            return Err(format!(
+                "Vertex answered {status}: {}",
+                why.chars().take(300).collect::<String>()
+            ));
+        }
+        let text = gemini_text(&reply).ok_or("Gemini answered nothing")?;
+        Ok((text, Some(self.row.id.clone())))
+    }
+}
+
+/// The answer's text in a `generateContent` reply: the first candidate's
+/// text parts that are not thoughts, in order.
+pub(crate) fn gemini_text(reply: &Value) -> Option<String> {
+    let mut text = String::new();
+    for part in reply["candidates"][0]["content"]["parts"]
+        .as_array()
+        .into_iter()
+        .flatten()
+    {
+        if part["thought"].as_bool() == Some(true) {
+            continue;
+        }
+        if let Some(words) = part["text"].as_str() {
+            text.push_str(words);
+        }
+    }
+    let text = text.trim();
+    (!text.is_empty()).then(|| text.chars().take(MAX_ANSWER_BYTES).collect())
+}
+
+/// The doors that take files on this server: Gemini on Vertex first,
+/// then the Open Responses endpoint. `None` when there is neither.
+#[derive(Clone, Debug)]
+pub(crate) struct Doors {
+    pub gemini: Option<Gemini>,
+    pub endpoint: Option<Endpoint>,
+}
+
+/// This server's file doors (the Gemini credential is read once).
+pub(crate) fn doors(app: &App) -> Option<Doors> {
+    static GEMINI_DOOR: std::sync::OnceLock<Option<Gemini>> = std::sync::OnceLock::new();
+    let gemini = GEMINI_DOOR.get_or_init(Gemini::from_env).clone();
+    let endpoint = endpoint(app);
+    (gemini.is_some() || endpoint.is_some()).then_some(Doors { gemini, endpoint })
 }
 
 /// One file as a content part.
@@ -199,9 +335,10 @@ pub(crate) fn answer_text(reply: &Value) -> Option<String> {
 }
 
 /// A door that answers with the message's images and PDFs
-/// ([`request`]); `fallback` answers when it can't.
+/// ([`request`]): Gemini on Vertex, then the endpoint; `fallback` answers
+/// when neither can.
 pub(crate) struct VisionDoor {
-    pub endpoint: Endpoint,
+    pub doors: Doors,
     pub parts: Vec<Part>,
     /// The hosted chat and the turns it answers instead (the files named
     /// as ones it can't open).
@@ -238,19 +375,45 @@ impl Door for VisionDoor {
         context: Context,
         reply: Arc<Mutex<Reply>>,
     ) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+        let model = self
+            .doors
+            .endpoint
+            .as_ref()
+            .map_or(GEMINI, |endpoint| endpoint.model.as_str());
         let body = request(
-            &self.endpoint.model,
+            model,
             basic_coder::instructions(&context),
             &turns,
             &self.parts,
         );
-        let endpoint = self.endpoint.clone();
+        let doors = self.doors.clone();
         let fallback = self
             .fallback
             .as_ref()
             .map(|(door, turns)| door.ask(turns.clone(), context.clone(), reply.clone()));
         Box::pin(async move {
-            match Self::call(&endpoint, body).await {
+            let mut answer = Err("no door takes files".to_owned());
+            if let Some(gemini) = &doors.gemini {
+                let started = std::time::Instant::now();
+                answer = gemini.call(&body).await;
+                match &answer {
+                    Ok(_) => eprintln!(
+                        "openagents-web: chat vision: gemini-on-vertex answered in {} ms",
+                        started.elapsed().as_millis()
+                    ),
+                    Err(why) => eprintln!(
+                        "openagents-web: chat vision: gemini-on-vertex missed after {} ms, \
+                         trying the next door: {why}",
+                        started.elapsed().as_millis()
+                    ),
+                }
+            }
+            if answer.is_err()
+                && let Some(endpoint) = &doors.endpoint
+            {
+                answer = Self::call(endpoint, body).await;
+            }
+            match answer {
                 Ok((text, model)) => {
                     let mut reply = basic_coder::lock(&reply);
                     reply.text = text;
@@ -311,6 +474,104 @@ mod tests {
         ]});
         assert_eq!(answer_text(&reply).as_deref(), Some("A cat on a desk."));
         assert_eq!(answer_text(&json!({"output": []})), None);
+    }
+
+    #[test]
+    fn gemini_gets_inline_data_and_answers_without_thoughts() {
+        let gemini = Gemini {
+            url: "http://vertex.invalid/v1/x:generateContent".into(),
+            token: TokenSource::none(),
+            row: vertex::default_models()
+                .into_iter()
+                .find(|(row, _)| row.id == GEMINI)
+                .unwrap()
+                .0,
+            thinking: vertex::Thinking::Level,
+        };
+        let parts = [
+            Part {
+                id: "a".repeat(32),
+                name: "shot.png".into(),
+                mime: "image/png",
+                base64: "iVBO".into(),
+            },
+            Part {
+                id: "b".repeat(32),
+                name: "paper.pdf".into(),
+                mime: "application/pdf",
+                base64: "JVBE".into(),
+            },
+        ];
+        let turns = vec![Turn::user("what is in these?")];
+        let open = request("openrouter/whatever", "Be brief.", &turns, &parts);
+        let body = gemini.body(&open).unwrap();
+        let user = &body["contents"][0];
+        assert_eq!(user["role"], "user");
+        assert_eq!(user["parts"][0]["text"], "what is in these?");
+        assert_eq!(user["parts"][1]["inlineData"]["mimeType"], "image/png");
+        assert_eq!(user["parts"][1]["inlineData"]["data"], "iVBO");
+        assert_eq!(
+            user["parts"][2]["inlineData"]["mimeType"],
+            "application/pdf"
+        );
+        assert_eq!(body["systemInstruction"]["parts"][0]["text"], "Be brief.");
+        assert_eq!(
+            body["generationConfig"]["thinkingConfig"]["thinkingLevel"],
+            "low"
+        );
+        let reply = json!({"candidates": [{"content": {"parts": [
+            {"text": "Let me look.", "thought": true},
+            {"text": "A cat "},
+            {"text": "and a paper."}
+        ]}}]});
+        assert_eq!(gemini_text(&reply).as_deref(), Some("A cat and a paper."));
+        assert_eq!(gemini_text(&json!({"candidates": []})), None);
+    }
+
+    /// A real call to Gemini on Vertex with an image and a PDF; needs a
+    /// Google credential (`GOOGLE_APPLICATION_CREDENTIALS`).
+    /// `cargo test -p openagents-web --lib live_gemini -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore = "calls Vertex AI"]
+    async fn live_gemini_reads_an_image_and_a_pdf() {
+        let gemini = Gemini::from_env().expect("a Google credential");
+        let red = image::RgbImage::from_pixel(64, 64, image::Rgb([220, 20, 20]));
+        let mut png = Vec::new();
+        image::DynamicImage::ImageRgb8(red)
+            .write_to(&mut Cursor::new(&mut png), image::ImageFormat::Png)
+            .unwrap();
+        let stream = "BT /F1 24 Tf 72 720 Td (The secret word is PELICAN.) Tj ET";
+        let pdf = format!(
+            "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n4 0 obj<</Length {}>>stream\n{stream}\nendstream endobj\n5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n",
+            stream.len()
+        );
+        let encode = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
+        let parts = [
+            Part {
+                id: "a".repeat(32),
+                name: "red.png".into(),
+                mime: "image/png",
+                base64: encode(&png),
+            },
+            Part {
+                id: "b".repeat(32),
+                name: "word.pdf".into(),
+                mime: "application/pdf",
+                base64: encode(pdf.as_bytes()),
+            },
+        ];
+        let turns = vec![Turn::user(
+            "What color is the image, and what is the secret word in the PDF? One line.",
+        )];
+        let body = request(GEMINI, "Be brief.", &turns, &parts);
+        let started = std::time::Instant::now();
+        let (text, model) = gemini.call(&body).await.unwrap();
+        println!(
+            "gemini-on-vertex vision: {} ms, {model:?}: {text}",
+            started.elapsed().as_millis()
+        );
+        assert!(text.to_ascii_lowercase().contains("red"), "{text}");
+        assert!(text.to_ascii_uppercase().contains("PELICAN"), "{text}");
     }
 
     #[test]

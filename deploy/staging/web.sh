@@ -16,6 +16,15 @@ chmod 700 "$byo"
 printf '%s' "$GITHUB_OAUTH_JSON" > "$p/github-oauth.json"
 printf '%s' "$CSRF_KEY" > "$p/csrf.key"
 unset GITHUB_OAUTH_JSON CSRF_KEY
+# Gemini on Vertex for the chat's images and PDFs (#11221): the same
+# service-account key the gateway sidecar uses, written to a file the
+# site reads through GOOGLE_APPLICATION_CREDENTIALS. Without it the site
+# uses the metadata server's account, then the gateway door.
+if [ -n "${VERTEX_SA_JSON:-}" ]; then
+    printf '%s' "$VERTEX_SA_JSON" > "$p/vertex.json"
+    export GOOGLE_APPLICATION_CREDENTIALS="$p/vertex.json"
+fi
+unset VERTEX_SA_JSON
 # INVITE_ONLY_JSON (optional): only these GitHub people may sign in.
 invite=""
 if [ -n "${INVITE_ONLY_JSON:-}" ]; then

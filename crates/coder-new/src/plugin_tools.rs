@@ -380,7 +380,7 @@ impl ExecutionSettings {
                                 .as_ref()
                                 .and_then(|provider| provider.search_key.clone()),
                         );
-                        crate::web_tools::search(arguments, searcher.as_ref()).await
+                        crate::web_tools::search(arguments, &searcher).await
                     }
                 };
                 tokio::select! {

@@ -262,7 +262,10 @@ env = {e["name"] for e in envs}
 for e in ({"name": "STACK_STATE", "value": "/stack"},
           {"name": "ENVIRONMENTS_MODEL", "value": "google/gemini-3.8-flash"},
           {"name": "BOAT_API_KEY",
-           "valueFrom": {"secretKeyRef": {"name": "boat-api-key", "key": "latest"}}}):
+           "valueFrom": {"secretKeyRef": {"name": "boat-api-key", "key": "latest"}}},
+          # Gemini on Vertex for the chat's images and PDFs (#11221).
+          {"name": "VERTEX_SA_JSON",
+           "valueFrom": {"secretKeyRef": {"name": "openagents-vertex-sa-key", "key": "latest"}}}):
     if e["name"] not in env:
         envs.append(e)
         sys.stderr.write(f"  web env {e['name']} added\n")

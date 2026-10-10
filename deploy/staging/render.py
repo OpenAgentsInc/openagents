@@ -91,6 +91,8 @@ def main():
             plain("STACK_STATE", "/stack"),
             plain("ENVIRONMENTS_MODEL", "google/gemini-3.8-flash"),
             secret("boat-api-key", "BOAT_API_KEY"),
+            # Gemini on Vertex for the chat's images and PDFs (#11221).
+            secret("openagents-gateway-staging-vertex-sa", "VERTEX_SA_JSON"),
             secret("openagents-web-1-staging-github-oauth", "GITHUB_OAUTH_JSON"),
             secret("openagents-web-1-staging-csrf-key", "CSRF_KEY"),
             secret("openagents-web-1-staging-byo-keys", "OPENAGENTS_WEB_CLOUD_BYO_KEYS"),

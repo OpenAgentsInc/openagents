@@ -1472,7 +1472,7 @@ async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
     let vision = sent
         .iter()
         .any(|file| file.kind != crate::chat_files::Kind::Text)
-        .then(|| crate::chat_vision::endpoint(&app))
+        .then(|| crate::chat_vision::doors(&app))
         .flatten();
     let parts = match vision {
         Some(_) => crate::chat_vision::parts(store, &owner, &chat.id, &sent).await,
@@ -1548,9 +1548,9 @@ async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
     // Images or PDFs go to the door that takes them; the hosted chat
     // answers with the words only when it can't (#11174).
     let door: Option<Box<dyn openagents_chat::basic_coder::Door>> = match (door, vision) {
-        (Some(door), Some(endpoint)) if !parts.is_empty() => {
+        (Some(door), Some(doors)) if !parts.is_empty() => {
             Some(Box::new(crate::chat_vision::VisionDoor {
-                endpoint,
+                doors,
                 parts,
                 fallback: Some((door, fallback_turns)),
             }))

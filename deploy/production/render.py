@@ -101,6 +101,8 @@ def main():
         plain("STACK_STATE", "/stack"),
         plain("ENVIRONMENTS_MODEL", "google/gemini-3.8-flash"),
         secret("boat-api-key", "BOAT_API_KEY"),
+        # Gemini on Vertex for the chat's images and PDFs (#11221).
+        secret("openagents-vertex-sa-key", "VERTEX_SA_JSON"),
     ])
     # The gateway's store read-only: the web reads only its house key.
     web["volumeMounts"] = [

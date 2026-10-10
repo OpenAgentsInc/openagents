@@ -10,15 +10,27 @@
 //! most [`MAX_TEXT_CHARS`] (page through longer text with `offset`), and a
 //! page fetched in the last 15 minutes comes from the cache.
 //!
-//! **web_search** returns titles, URLs and snippets. The provider:
+//! **web_search** returns titles, URLs and snippets. The providers, tried
+//! in order until one answers (#11221, "Google first"):
 //!
-//! 1. Exa (`https://api.exa.ai/search`) when `EXA_API_KEY` is set: the same
+//! 1. Gemini ([`GEMINI_MODEL`]) on Vertex AI with grounding on Google
+//!    Search (`tools: [{"googleSearch": {}}]`), on the prepaid Google
+//!    credit, when a Google credential is found
+//!    ([`inference::upstream::google::TokenSource::from_env`]:
+//!    `VERTEX_ACCESS_TOKEN`, `VERTEX_TOKEN_FILE`,
+//!    `GOOGLE_APPLICATION_CREDENTIALS`, or the metadata server on Google
+//!    Cloud). The result carries Gemini's grounded answer and the
+//!    grounding sources (`groundingMetadata.groundingChunks[].web`).
+//! 2. Exa (`https://api.exa.ai/search`) when `EXA_API_KEY` is set: the same
 //!    provider and request the inference gateway's hosted web search uses
 //!    (`crates/inference/src/hosted.rs`).
-//! 2. Otherwise the chat's OpenRouter key, through OpenRouter's `web`
+//! 3. The chat's OpenRouter key, through OpenRouter's `web`
 //!    plugin with its Exa engine on [`SEARCH_MODEL`], keeping the URL
 //!    citations (about a cent per search; the chat's own model can cost
 //!    ten times that and may answer without citations).
+//!
+//! When a provider misses, the reason is kept in the result's `failover`
+//! list and the next one is tried.
 //!
 //! The gateway's hosted search is not called directly: it runs only inside
 //! a model turn on the gateway's Responses API, and refuses the default
@@ -44,6 +56,8 @@ const CACHE_FOR: Duration = Duration::from_secs(15 * 60);
 const MAX_REDIRECTS: usize = 5;
 /// The small model OpenRouter's web plugin runs a search on.
 pub const SEARCH_MODEL: &str = "google/gemini-3.5-flash";
+/// The Gemini model on Vertex that searches with Google Search grounding.
+pub const GEMINI_MODEL: &str = "gemini-3.8-flash";
 const USER_AGENT: &str = "OpenAgents-Coder/1.0 (+https://openagents.com)";
 
 /// Whether `name` is one of these tools.
@@ -574,6 +588,12 @@ fn decode(text: &str) -> String {
 /// What `web_search` searches through.
 #[derive(Clone, Debug)]
 pub enum Searcher {
+    /// Gemini on Vertex AI, grounded on Google Search: the
+    /// `generateContent` URL and the Google credential.
+    Gemini {
+        url: String,
+        token: inference::upstream::google::TokenSource,
+    },
     /// Exa's search API with this key, at this base URL.
     Exa { base: String, key: String },
     /// OpenRouter's `web` plugin with the chat's key.
@@ -581,10 +601,15 @@ pub enum Searcher {
 }
 
 impl Searcher {
-    /// Exa from `EXA_API_KEY`, else OpenRouter with `openrouter`'s base
-    /// URL and key, else none.
+    /// The providers to try, in order: Gemini on Vertex when a Google
+    /// credential is found, Exa from `EXA_API_KEY`, then OpenRouter with
+    /// `openrouter`'s base URL and key.
     #[must_use]
-    pub fn choose(openrouter: Option<(String, String)>) -> Option<Self> {
+    pub fn choose(openrouter: Option<(String, String)>) -> Vec<Self> {
+        let mut out = Vec::new();
+        if let Some(gemini) = Self::gemini_from_env() {
+            out.push(gemini);
+        }
         let exa = std::env::var("EXA_API_KEY")
             .ok()
             .map(|key| key.trim().to_owned())
@@ -594,26 +619,50 @@ impl Searcher {
                 .ok()
                 .filter(|base| !base.trim().is_empty())
                 .unwrap_or_else(|| "https://api.exa.ai".into());
-            return Some(Self::Exa { base, key });
+            out.push(Self::Exa { base, key });
         }
-        openrouter.map(|(base, key)| Self::OpenRouter { base, key })
+        out.extend(openrouter.map(|(base, key)| Self::OpenRouter { base, key }));
+        out
+    }
+
+    /// Gemini on Vertex from the environment (`VERTEX_PROJECT`,
+    /// `VERTEX_LOCATION`, `VERTEX_BASE_URL`), when there is a Google
+    /// credential. The credential is read once per process.
+    #[must_use]
+    pub fn gemini_from_env() -> Option<Self> {
+        static GEMINI: OnceLock<Option<Searcher>> = OnceLock::new();
+        GEMINI
+            .get_or_init(|| {
+                let config = inference::upstream::vertex::Config::from_env();
+                if !config.token.present() {
+                    return None;
+                }
+                let token = config.token.clone();
+                let url = inference::upstream::vertex::Vertex::new(config)
+                    .url(GEMINI_MODEL)
+                    .replace(":streamGenerateContent?alt=sse", ":generateContent");
+                Some(Self::Gemini { url, token })
+            })
+            .clone()
     }
 
     /// The provider's name in results.
     #[must_use]
     pub fn name(&self) -> &'static str {
         match self {
+            Self::Gemini { .. } => "gemini-google-search",
             Self::Exa { .. } => "exa",
             Self::OpenRouter { .. } => "openrouter-web",
         }
     }
 }
 
-/// Runs `web_search` through `searcher`.
+/// Runs `web_search` through the first of `searchers` that answers.
 ///
 /// # Errors
-/// The arguments are invalid, no provider is set up, or the provider fails.
-pub async fn search(arguments: Value, searcher: Option<&Searcher>) -> Result<Value, String> {
+/// The arguments are invalid, no provider is set up, or every provider
+/// fails.
+pub async fn search(arguments: Value, searchers: &[Searcher]) -> Result<Value, String> {
     let args: SearchArguments = serde_json::from_value(arguments)
         .map_err(|_| "web_search takes a query, and optionally max_results.")?;
     let query = args.query.trim();
@@ -621,15 +670,80 @@ pub async fn search(arguments: Value, searcher: Option<&Searcher>) -> Result<Val
         return Err("Give web_search a query.".into());
     }
     let count = args.max_results.unwrap_or(5).clamp(1, 10);
-    let searcher = searcher.ok_or(
-        "Web search needs a provider: set EXA_API_KEY, or connect an OpenRouter key in /plugins.",
-    )?;
+    if searchers.is_empty() {
+        return Err(
+            "Web search needs a provider: a Google credential (GOOGLE_APPLICATION_CREDENTIALS), set EXA_API_KEY, or connect an OpenRouter key in /plugins."
+                .into(),
+        );
+    }
+    let mut failover: Vec<String> = Vec::new();
+    for searcher in searchers {
+        match search_one(query, count, searcher).await {
+            Ok((results, answer)) => {
+                let mut out = json!({
+                    "query": query,
+                    "provider": searcher.name(),
+                    "results": results,
+                    "note": if results.is_empty() { "No results." } else { "Cite the URL of each result you use." },
+                });
+                if let Some(answer) = answer {
+                    out["answer"] = json!(answer);
+                }
+                if !failover.is_empty() {
+                    out["failover"] = json!(failover);
+                }
+                return Ok(out);
+            }
+            Err(why) => failover.push(format!("{}: {why}", searcher.name())),
+        }
+    }
+    Err(format!(
+        "Every search provider missed: {}",
+        failover.join("; ")
+    ))
+}
+
+/// One provider's results, and Gemini's grounded answer when it has one.
+async fn search_one(
+    query: &str,
+    count: u64,
+    searcher: &Searcher,
+) -> Result<(Vec<Value>, Option<String>), String> {
     let http = reqwest::Client::builder()
         .timeout(FETCH_TIMEOUT)
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|_| "The web connection could not start.".to_string())?;
+    let take = usize::try_from(count).unwrap_or(5);
     let results = match searcher {
+        Searcher::Gemini { url, token } => {
+            let token = token.token().await?;
+            let reply = http
+                .post(url)
+                .bearer_auth(token.expose())
+                .timeout(Duration::from_secs(60))
+                .json(&gemini_request(query))
+                .send()
+                .await
+                .map_err(|_| "Vertex could not be reached for the search.".to_string())?;
+            let status = reply.status().as_u16();
+            let body: Value = reply
+                .json()
+                .await
+                .map_err(|_| "Vertex's search answer could not be read.".to_string())?;
+            if status != 200 {
+                let why = body["error"]["message"].as_str().unwrap_or_default();
+                return Err(format!(
+                    "Vertex answered {status} to the search. {}",
+                    why.chars().take(200).collect::<String>()
+                ));
+            }
+            let (answer, results) = gemini_results(&body, take);
+            if results.is_empty() {
+                return Err("Gemini's answer had no Google Search sources.".into());
+            }
+            return Ok((results, answer));
+        }
         Searcher::Exa { base, key } => {
             let reply = http
                 .post(format!("{}/search", base.trim_end_matches('/')))
@@ -657,7 +771,7 @@ pub async fn search(arguments: Value, searcher: Option<&Searcher>) -> Result<Val
                         "snippet": collapse(item["text"].as_str().or(item["summary"].as_str()).unwrap_or_default()).chars().take(600).collect::<String>(),
                     }))
                 })
-                .take(usize::try_from(count).unwrap_or(5))
+                .take(take)
                 .collect::<Vec<_>>()
         }
         Searcher::OpenRouter { base, key } => {
@@ -699,16 +813,87 @@ pub async fn search(arguments: Value, searcher: Option<&Searcher>) -> Result<Val
                         "snippet": collapse(citation["content"].as_str().unwrap_or_default()).chars().take(600).collect::<String>(),
                     }))
                 })
-                .take(usize::try_from(count).unwrap_or(5))
+                .take(take)
                 .collect::<Vec<_>>()
         }
     };
-    Ok(json!({
-        "query": query,
-        "provider": searcher.name(),
-        "results": results,
-        "note": if results.is_empty() { "No results." } else { "Cite the URL of each result you use." },
-    }))
+    Ok((results, None))
+}
+
+/// The `generateContent` body that searches Google for `query`.
+#[must_use]
+pub fn gemini_request(query: &str) -> Value {
+    json!({
+        "contents": [{"role": "user", "parts": [{"text": format!(
+            "Search the web for: {query}\nAnswer briefly from what you find, naming the sources."
+        )}]}],
+        "tools": [{"googleSearch": {}}],
+        "generationConfig": {"thinkingConfig": {"thinkingLevel": "low"}, "maxOutputTokens": 4000},
+    })
+}
+
+/// Gemini's grounded answer and its sources (title, URL, and the answer
+/// text each one supports as the snippet), at most `take`, each URL once.
+#[must_use]
+pub fn gemini_results(body: &Value, take: usize) -> (Option<String>, Vec<Value>) {
+    let candidate = &body["candidates"][0];
+    let answer: String = candidate["content"]["parts"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|part| part["thought"].as_bool() != Some(true))
+        .filter_map(|part| part["text"].as_str())
+        .collect();
+    let answer = answer.trim().to_owned();
+    let metadata = &candidate["groundingMetadata"];
+    let chunks = metadata["groundingChunks"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    // The answer text each source supports.
+    let mut supports: HashMap<usize, String> = HashMap::new();
+    for support in metadata["groundingSupports"]
+        .as_array()
+        .into_iter()
+        .flatten()
+    {
+        let Some(text) = support["segment"]["text"].as_str() else {
+            continue;
+        };
+        for index in support["groundingChunkIndices"]
+            .as_array()
+            .into_iter()
+            .flatten()
+        {
+            if let Some(index) = index.as_u64().and_then(|i| usize::try_from(i).ok()) {
+                let entry = supports.entry(index).or_default();
+                if entry.len() < 600 {
+                    if !entry.is_empty() {
+                        entry.push(' ');
+                    }
+                    entry.push_str(text);
+                }
+            }
+        }
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    let results = chunks
+        .iter()
+        .enumerate()
+        .filter_map(|(index, chunk)| {
+            let web = &chunk["web"];
+            let url = web["uri"].as_str()?;
+            seen.insert(url.to_owned()).then(|| {
+                json!({
+                    "title": web["title"].as_str().unwrap_or_default(),
+                    "url": url,
+                    "snippet": collapse(supports.get(&index).map_or("", String::as_str)).chars().take(600).collect::<String>(),
+                })
+            })
+        })
+        .take(take)
+        .collect();
+    ((!answer.is_empty()).then_some(answer), results)
 }
 
 #[cfg(test)]
@@ -876,7 +1061,7 @@ mod tests {
         };
         let found = search(
             json!({"query":"coder install","max_results":3}),
-            Some(&searcher),
+            std::slice::from_ref(&searcher),
         )
         .await
         .unwrap();
@@ -905,7 +1090,7 @@ mod tests {
             base,
             key: "or-fixture-key".into(),
         };
-        let found = search(json!({"query":"a or b"}), Some(&searcher))
+        let found = search(json!({"query":"a or b"}), std::slice::from_ref(&searcher))
             .await
             .unwrap();
         let urls: Vec<_> = found["results"]
@@ -922,7 +1107,109 @@ mod tests {
         );
         assert!(request.contains(SEARCH_MODEL));
 
-        let error = search(json!({"query":"x"}), None).await.unwrap_err();
+        let error = search(json!({"query":"x"}), &[]).await.unwrap_err();
         assert!(error.contains("EXA_API_KEY"));
+    }
+
+    #[tokio::test]
+    async fn google_search_on_vertex_goes_first_and_a_miss_fails_over() {
+        let grounded = json!({"candidates":[{"content":{"parts":[
+            {"text":"Thinking.","thought":true},
+            {"text":"Coder installs with one line."}
+        ]},"groundingMetadata":{
+            "groundingChunks":[
+                {"web":{"uri":"https://vertexaisearch.cloud.google.com/grounding-api-redirect/a","title":"openagents.com"}},
+                {"web":{"uri":"https://vertexaisearch.cloud.google.com/grounding-api-redirect/a","title":"again"}},
+                {"web":{"uri":"https://vertexaisearch.cloud.google.com/grounding-api-redirect/b","title":"github.com"}}
+            ],
+            "groundingSupports":[{"segment":{"text":"Coder installs with one line."},"groundingChunkIndices":[0,2]}]
+        }}]})
+        .to_string();
+        let (base, server) = serve(vec![http("200 OK", "application/json", "", &grounded)]);
+        let gemini = Searcher::Gemini {
+            url: format!("{base}/v1/models/gemini-3.8-flash:generateContent"),
+            token: inference::upstream::google::TokenSource::fixed(
+                inference::upstream::secret::Secret::new("vertex-fixture-token").unwrap(),
+            ),
+        };
+        let found = search(
+            json!({"query":"install coder"}),
+            std::slice::from_ref(&gemini),
+        )
+        .await
+        .unwrap();
+        assert_eq!(found["provider"], "gemini-google-search");
+        assert_eq!(found["answer"], "Coder installs with one line.");
+        assert_eq!(found["results"].as_array().unwrap().len(), 2);
+        assert_eq!(found["results"][0]["title"], "openagents.com");
+        assert_eq!(
+            found["results"][0]["snippet"],
+            "Coder installs with one line."
+        );
+        assert!(found.get("failover").is_none());
+        let request = &server.join().unwrap()[0];
+        assert!(
+            request.contains("authorization: Bearer vertex-fixture-token"),
+            "{request}"
+        );
+        assert!(
+            request.contains("\"tools\":[{\"googleSearch\":{}}]"),
+            "{request}"
+        );
+
+        // Vertex refuses; Exa answers, and the miss is named.
+        let exa =
+            json!({"results":[{"title":"T","url":"https://t.example/","text":"x"}]}).to_string();
+        let (base, server) = serve(vec![
+            http(
+                "403 Forbidden",
+                "application/json",
+                "",
+                r#"{"error":{"message":"denied"}}"#,
+            ),
+            http("200 OK", "application/json", "", &exa),
+        ]);
+        let searchers = [
+            Searcher::Gemini {
+                url: format!("{base}/v1/x:generateContent"),
+                token: inference::upstream::google::TokenSource::fixed(
+                    inference::upstream::secret::Secret::new("t").unwrap(),
+                ),
+            },
+            Searcher::Exa {
+                base,
+                key: "k".into(),
+            },
+        ];
+        let found = search(json!({"query":"t"}), &searchers).await.unwrap();
+        assert_eq!(found["provider"], "exa");
+        let failover = found["failover"][0].as_str().unwrap();
+        assert!(
+            failover.starts_with("gemini-google-search: Vertex answered 403"),
+            "{failover}"
+        );
+        server.join().unwrap();
+    }
+
+    /// A real grounded search on Vertex; needs a Google credential.
+    /// `cargo test -p coder-new --bin coder-new live_google_search -- --ignored --nocapture`
+    #[tokio::test]
+    #[ignore = "calls Vertex AI"]
+    async fn live_google_search_on_vertex() {
+        let gemini = Searcher::gemini_from_env().expect("a Google credential");
+        let started = Instant::now();
+        let found = search(
+            json!({"query":"OpenAgents Coder install","max_results":5}),
+            std::slice::from_ref(&gemini),
+        )
+        .await
+        .unwrap();
+        println!(
+            "gemini-google-search: {} ms\n{}",
+            started.elapsed().as_millis(),
+            serde_json::to_string_pretty(&found).unwrap()
+        );
+        assert_eq!(found["provider"], "gemini-google-search");
+        assert!(!found["results"].as_array().unwrap().is_empty());
     }
 }
