@@ -10,7 +10,11 @@
 #   --phases a,b     run only these slugs (--list prints them)
 #   --crates a,b     narrow cargo phases to these packages
 #   --changed[=REF]  derive the crate set from paths changed since REF
-#                    (default origin/main), including uncommitted edits
+#                    (default origin/main), including uncommitted edits;
+#                    excluded nested workspaces (crates/psionic,
+#                    crates/openagents-mobile) run with --manifest-path,
+#                    and direct dependents of changed crates get cargo check
+#   --no-dependents  skip the dependents check under --changed
 #   --keep-going     run later phases after one fails; the record names all
 #   --print          show the resolved phases and commands without running
 #   --record-dir D   run records (default .coder/verification); --no-record
@@ -21,7 +25,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-ALL_SLUGS="preflight gate-tooling artifacts delegation backup fmt clippy clippy-features tests tests-features deps postgres metal-clippy metal-tests soak"
+ALL_SLUGS="preflight gate-tooling artifacts delegation backup fmt clippy clippy-features tests tests-features nested dependents deps postgres metal-clippy metal-tests soak"
 CARGO_SCOPED="fmt clippy clippy-features tests tests-features"
 features='kev/serve,lev/serve,gym/tui,jev/blocking,oak/mcp-http'
 
@@ -41,6 +45,9 @@ CRATES_SET=0
 WORKSPACE_SCOPE=0
 CHANGED=""
 UNCOVERED=""
+DEPENDENTS=""
+NESTED_JSON="[]"
+with_dependents=1
 
 usage() {
   cat <<'EOF' >&2
@@ -68,6 +75,8 @@ clippy           Default workspace Clippy
 clippy-features  Feature workspace Clippy
 tests            Default workspace tests
 tests-features   Feature workspace tests
+nested           Nested workspaces (--manifest-path fmt, Clippy, tests)
+dependents       Direct dependents of changed crates (cargo check)
 deps             Dependency policy
 postgres         PostgreSQL acceptance
 metal-clippy     Metal Clippy (with --with-metal)
@@ -83,6 +92,7 @@ while (( $# )); do
     --with-metal) metal=1 ;;
     --with-soak) soak=1 ;;
     --keep-going) keep_going=1 ;;
+    --no-dependents) with_dependents=0 ;;
     --print) print_only=1 ;;
     --no-record) record=0 ;;
     --no-retry) retry=0 ;;
@@ -104,7 +114,7 @@ done
 # Keep ordinary issue work targeted. Explicit phases may add relevant coverage,
 # but a bare invocation must not launch the release matrix.
 if (( ! release )); then
-  [[ -n $WANTED ]] || WANTED="preflight fmt clippy tests"
+  [[ -n $WANTED ]] || WANTED="preflight fmt clippy tests nested dependents"
   if (( ! CRATES_SET )) && [[ -z $CHANGED ]]; then
     CHANGED="origin/main"
   fi
@@ -143,6 +153,8 @@ if [[ -n $CHANGED ]]; then
   CRATES=$(python3 -c 'import json,sys; print(" ".join(json.load(sys.stdin)["crates"]))' <<<"$scope_json")
   WORKSPACE_SCOPE=$(python3 -c 'import json,sys; print(1 if json.load(sys.stdin)["workspace"] else 0)' <<<"$scope_json")
   UNCOVERED=$(python3 -c 'import json,sys; print(" ".join(json.load(sys.stdin)["uncovered"]))' <<<"$scope_json")
+  DEPENDENTS=$(python3 -c 'import json,sys; print(" ".join(json.load(sys.stdin).get("dependents", [])))' <<<"$scope_json")
+  NESTED_JSON=$(python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin).get("nested", [])))' <<<"$scope_json")
   CRATES_SET=1
   if (( WORKSPACE_SCOPE )); then
     workspace_changed=1
@@ -150,7 +162,7 @@ if [[ -n $CHANGED ]]; then
       echo "Release scope: workspace-wide files changed; cargo phases cover the workspace."
     else
       WORKSPACE_SCOPE=0
-      echo "Workspace configuration changed; development checks remain scoped. Select affected consumers with --crates; defer the full matrix to --release."
+      echo "Workspace configuration changed; development checks remain scoped to the crates and dependency consumers resolved from the diff. Add consumers with --crates; defer the full matrix to --release."
     fi
   fi
 fi
@@ -390,6 +402,50 @@ run_phase tests "Default workspace tests" \
   cargo test --locked "${scope[@]+"${scope[@]}"}" -- --nocapture
 run_phase tests-features "Feature workspace tests" \
   cargo test --locked "${scope[@]+"${scope[@]}"}" "${feature_args[@]+"${feature_args[@]}"}" -- --nocapture
+# Excluded nested workspaces are not root members: `-p` cannot name their
+# packages, so each runs against its own manifest. A nested root-manifest
+# change widens to that workspace only under --release.
+nested_commands=$(NESTED_JSON="$NESTED_JSON" RELEASE=$release python3 -c '
+import json, os, shlex
+release = int(os.environ["RELEASE"])
+for entry in json.loads(os.environ["NESTED_JSON"]):
+    manifest = entry["manifest"]
+    if entry["workspace"] and release:
+        scope = []
+    elif entry["packages"]:
+        scope = [arg for pkg in entry["packages"] for arg in ("-p", pkg)]
+    else:
+        print("echo " + shlex.quote(manifest + ": root files changed; development checks stay scoped, use --release for the whole nested workspace"))
+        continue
+    base = ["--manifest-path", manifest] + scope
+    print(" && ".join(shlex.join(cmd) for cmd in (
+        ["cargo", "fmt"] + base + ["--check"],
+        ["cargo", "clippy", "--locked"] + base + ["--all-targets", "--", "-D", "warnings"],
+        ["cargo", "test", "--locked"] + base,
+    )))
+')
+if ! phase_wanted nested; then
+  record_skip nested "not in --phases"
+elif [[ -z $nested_commands ]]; then
+  record_skip nested "no nested workspace changes"
+else
+  run_phase nested "Nested workspaces" bash -c "set -e
+$nested_commands"
+fi
+
+dependent_scope=()
+for c in $DEPENDENTS; do dependent_scope+=(-p "$c"); done
+if ! phase_wanted dependents; then
+  record_skip dependents "not in --phases"
+elif (( ! with_dependents )); then
+  record_skip dependents "--no-dependents"
+elif (( WORKSPACE_SCOPE )) || (( ${#dependent_scope[@]} == 0 )); then
+  record_skip dependents "no dependents outside the selected crates"
+else
+  run_phase dependents "Direct dependents check" \
+    cargo check --locked "${dependent_scope[@]}" --all-targets
+fi
+
 if ! phase_wanted deps; then
   record_skip deps "not in --phases"
 elif cargo +1.97.1 deny --version >/dev/null 2>&1; then

@@ -65,6 +65,24 @@ class DevelopmentPlanTests(unittest.TestCase):
         self.assertNotIn("cargo fmt ", plan)
         self.assertNotIn("test-postgres.sh", plan)
 
+    def test_nested_workspace_changes_run_with_their_manifest(self):
+        (self.root / "Cargo.toml").write_text(
+            '[workspace]\nmembers = ["crates/example"]\n'
+            'exclude = ["crates/nested"]\n')
+        nested = self.root / "crates/nested"
+        (nested / "crates/inner/src").mkdir(parents=True)
+        (nested / "Cargo.toml").write_text('[workspace]\nmembers = ["crates/*"]\n')
+        (nested / "crates/inner/Cargo.toml").write_text('[package]\nname = "inner"\n')
+        self.git("add", ".")
+        self.git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+                 "commit", "-qm", "Nested")
+        self.git("update-ref", "refs/remotes/origin/main", "HEAD")
+        (nested / "crates/inner/src/lib.rs").write_text("// changed\n")
+        plan = self.plan()
+        self.assertIn("cargo test --locked --manifest-path crates/nested/Cargo.toml -p inner", plan)
+        self.assertNotIn("-p nested", plan)
+        self.assertNotIn("cargo test --locked -p", plan)
+
     def test_release_opt_in_selects_workspace_matrix(self):
         plan = self.plan("--release")
         self.assertIn("Release gate:", plan)
