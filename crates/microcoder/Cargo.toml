@@ -2,7 +2,7 @@
 name = "microcoder"
 # The engine release version, shared with Coder and the OpenAgents CLI.
 # The release scripts check this value before naming downloadable artifacts.
-version = "1.0.0"
+version = "1.0.0-rc.6"
 edition.workspace = true
 rust-version.workspace = true
 description = "Microcoder: the simple coding loop. Jev judges the state, one model call returns the next shell commands, the host runs them."
