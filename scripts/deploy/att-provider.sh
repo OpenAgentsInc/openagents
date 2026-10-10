@@ -7,6 +7,7 @@
 #   scripts/deploy/att-provider.sh release DIGEST REF # publish the 3202 release and the 30202 head
 #   scripts/deploy/att-provider.sh start RELEASE_ID DIGEST
 #   scripts/deploy/att-provider.sh replace RELEASE_ID DIGEST  # delete and start again
+#   scripts/deploy/att-provider.sh retarget RELEASE_ID DIGEST # a stopped VM's next image
 #   scripts/deploy/att-provider.sh stop | resume | delete | status | logs
 #
 # The GPU lane (#11241): the same commands prefixed `gpu-` (gpu-build,
@@ -165,6 +166,9 @@ case $cmd in
     build) shift; build "$@" ;;
     release) shift; release "$@" ;;
     start) shift; start "$@" ;;
+    retarget) # a stopped VM runs RELEASE_ID's image DIGEST on its next start
+        g compute instances add-metadata "$VM" --project "$PROJECT" --zone "$ZONE" \
+            --metadata="tee-image-reference=$REPO@$3,tee-env-OA_ATT_RELEASE=$2" ;;
     replace) shift; g compute instances delete "$VM" --project "$PROJECT" --zone "$ZONE" --quiet || true; start "$@" ;;
     stop) if [ "$LANE" = gpu ]; then set -- --discard-local-ssd=true; else set --; fi
         g compute instances stop "$VM" --project "$PROJECT" --zone "$ZONE" "$@" ;;
@@ -174,5 +178,5 @@ case $cmd in
         --format='value(status,machineType.basename(),confidentialInstanceConfig.confidentialInstanceType,metadata.items[0].value)' ;;
     logs) g logging read "resource.type=\"gce_instance\" AND logName:\"confidential-space-launcher\" AND labels.\"compute.googleapis.com/resource_name\"=\"$VM\"" \
         --project "$PROJECT" --limit "${2:-50}" --format='value(timestamp,jsonPayload.MESSAGE,textPayload)' --freshness=2h ;;
-    *) sed -n '2,29p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
+    *) sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac

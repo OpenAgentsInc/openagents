@@ -128,6 +128,66 @@ month left running, plus a 40 GB balanced disk (about $4 a month). Stopped,
 only the disk is billed. `ATT_MACHINE=c3-standard-4` halves the machine
 price at the cost of slower answers.
 
+### The sealed GPU lane (H100 in confidential-computing mode)
+
+Recorded 2026-10-10 (#11241). The same attested pylon, with Psionic's Clef
+lane on CUDA on one NVIDIA H100 in confidential-computing (CC) mode, in an
+`a3-highgpu-1g` (Intel TDX + 1 H100) Confidential Space VM,
+`oa-att-h100-1` in `us-east5-a` (us-central1-a was out of Spot capacity).
+The VM is Spot, stops (keeping its disk) on preemption and after a 1 hour
+maximum run, and is woken on demand: the gateway calls Compute
+`instances.start` (the web runtime account may start and stop only that
+instance), and the workload stops its own VM after 15 minutes without a
+decision (`pylon serve --attested --idle-stop 900`; the workload account
+may stop only that instance).
+
+- **Image.** `deploy/att/Dockerfile.gpu`, built by
+  `deploy/att/cloudbuild-gpu.yaml` into `.../openagents/att-provider-gpu`:
+  NVIDIA's CUDA 13.0.2 devel and runtime images and the Rust 1.97.1 image,
+  all pinned by digest. The builder compiles Psionic's kernels with nvcc
+  for `sm_90` and refuses to finish unless `psionic-openai-server` links
+  `libcudart.so.13` and carries `sm_90` code (no stub kernels). Confidential
+  Space installs NVIDIA's CC driver at boot (`tee-install-gpu-driver=true`)
+  and mounts it at `/usr/local/nvidia/lib64`, which is on the image's
+  `LD_LIBRARY_PATH`.
+- **Refusal.** The entrypoint runs `pylon serve --attested --workload
+  clef-decisions-gpu --decision-device cuda --decision-chunk 2048
+  --require-gpu-cc`: after the first token the pylon refuses to start unless
+  `submods.nvidia_gpu.cc_mode` is `ON` and every `gpus[].hwmodel` is
+  `GCP_NVIDIA_H100`, and it stops if a refreshed token says otherwise.
+- **Release.** Workload `clef-decisions-gpu` has its own head. Its releases
+  carry `gpu: {vendor: nvidia, mode: cc, models: [H100]}`, and `oa-att`
+  refuses an endpoint whose token does not show that GPU in CC mode
+  (`--tamper gpu` shows the refusal).
+- **The token** (Google verifies the GPU's NVIDIA evidence and signs it
+  into the same token whose `eat_nonce` binds the endpoint key): `hwmodel
+  GCP_INTEL_TDX`, `swname CONFIDENTIAL_SPACE`, `dbgstat
+  disabled-since-boot`, support `LATEST STABLE USABLE`, and
+  `submods.nvidia_gpu` = `cc_mode ON`, `cc_feature SPT`, `gpus: [{hwmodel
+  GCP_NVIDIA_H100, driver_version 595.58.03, vbios_version
+  96.00.D9.00.01, ueid, l4_serial_number}]`. The driver version is per GPU.
+- **Measured.** A wake (`instances.start` to the `30203` on the relay)
+  takes about 4 minutes: about 2 for boot and the CC driver install, then
+  about 80 s to fetch and check the 6.5 GB weights, load Clef on the GPU and
+  get the token. A first create took about 3 m 45 s. A verified `oa-att
+  round` takes 355 to 460 ms end to end (six runs), of which Psionic spends
+  54 to 56 ms on the H100 for a 186-token decision; the CPU lane takes about
+  22 s.
+- **Cost.** Spot `a3-highgpu-1g` in us-east5 is about $6.40 an hour (H100
+  $5.71, 26 vCPU $0.39, 234 GB $0.30), plus the Confidential Computing
+  surcharge for an A3 on Spot, $0.44 an hour: about $6.83 an hour while it
+  runs. us-central1 is about $6.68. Each wake costs boot plus the 15 minute
+  idle window (about 20 minutes), about $2.30. Stopped, only the 60 GB disk is billed.
+
+```sh
+scripts/deploy/att-provider.sh gpu-build origin/main
+scripts/deploy/att-provider.sh gpu-release DIGEST origin/main
+ATT_ZONE=us-east5-a scripts/deploy/att-provider.sh gpu-retarget RELEASE_ID DIGEST   # the stopped VM's next image
+ATT_ZONE=us-east5-a scripts/deploy/att-provider.sh gpu-resume | gpu-stop | gpu-status | gpu-logs
+target/debug/oa-att round --publisher 77fabebbeb49a7b9b384422ee6ef5662cf4db7da70acc94981378c0017ecc56e \
+    --workload clef-decisions-gpu --state "..." --question "..."
+```
+
 ### On this device
 
 The same flow works with no TEE when Psionic runs on the person's own
