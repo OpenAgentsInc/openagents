@@ -45,6 +45,15 @@ unimplemented = "deny"
 [profile.dev.package.sha2]
 opt-level = 3
 
+# The vault's recovery code is stretched with scrypt (2^17, 128 MiB); at
+# opt-level 0 one unlock takes most of a minute.
+[profile.dev.package.scrypt]
+opt-level = 3
+[profile.dev.package.salsa20]
+opt-level = 3
+[profile.dev.package.pbkdf2]
+opt-level = 3
+
 # Grow Little Bunny's bot playtests run hundreds of whole gardens.
 [profile.dev.package.bunny-rules]
 opt-level = 3

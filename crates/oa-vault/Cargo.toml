@@ -1,0 +1,26 @@
+[package]
+name = "oa-vault"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "NIP-VAULT client core: the vault master key, key slots (passkey PRF, device, Nostr, recovery code, pairing), chunked AES-256-GCM vault objects, user wraps, and the sealed key index. Builds for native targets and wasm32 (#11240)."
+
+[dependencies]
+aes-gcm = { version = "0.10.3", default-features = false, features = ["aes", "alloc"] }
+base64 = "0.22"
+bip39 = { version = "2.2.2", default-features = false, features = ["std"] }
+getrandom = "0.3"
+hkdf = "0.12.4"
+scrypt = { version = "0.11.0", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+unicode-normalization = "0.1.25"
+zeroize = "1.8"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }
+
+[lints]
+workspace = true

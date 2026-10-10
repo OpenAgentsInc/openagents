@@ -1,6 +1,8 @@
 # NIP-VAULT — Sealed Personal Data
 
-`draft` `optional` — v1, 2026-10-10. **Designed; nothing is implemented.**
+`draft` `optional` — v1, 2026-10-10. **Tier `user` is implemented** (#11240):
+`crates/oa-vault`, the browser vault at openagents.com, and `openagents vault`.
+Tiers `sealed` and `operator` are designed, not built.
 The [shared contracts](contracts.md) are normative. The design, the threat
 model and the honest limits are in the
 [sensitive data vault](../../docs/security/sensitive-data-vault.md).
@@ -45,7 +47,9 @@ self-addressed.
 JSON objects follow [contracts](contracts.md): required `v`, `requires`, and
 optional `meta`. Unknown fields refuse. Binary values are standard base64
 with padding. `"<digest>"` is the lowercase hex SHA-256. IDs are 32 random
-bytes as 64 lowercase hex characters.
+bytes as 64 lowercase hex characters. JCS is RFC 8785; vault formats carry
+integers only, never floats. Where a digest or an id is part of associated
+data or a salt, it is the raw bytes (32 for a digest or id), not its hex.
 
 ## Keys
 
@@ -94,8 +98,13 @@ An object is: `magic ‖ header_len ‖ header ‖ chunks`.
 - `core_digest = SHA-256(JCS(core))`. It binds every chunk and every wrap.
   The `wraps` array can change (rotation, a new device) without touching
   the content.
-- `media` is optional. File names are never in the header; a name is a
-  separate small object. Size is visible from the blob length anyway.
+- `media` is optional. File names are never in the header; a name lives
+  in the key index entry, which is encrypted. A tier `user` client SHOULD
+  leave `media` out of the stored header and keep it in the index too.
+  Size is visible from the blob length anyway.
+- `wraps` MAY be empty. A tier `user` object stored by a service SHOULD
+  carry no wrap: its only wrap is in the key index, so deleting the index
+  entry shreds it ([Key index](#key-index)).
 
 **Content, `aes-256-gcm-chunked-v1`.** Plaintext is split into chunks of
 `chunk_bytes`. The last chunk may be shorter, but not empty unless the
@@ -103,12 +112,17 @@ plaintext is empty. Chunk `i` (from 0) is encrypted with AES-256-GCM under
 `DEK`:
 
 - nonce = `nonce_prefix (7 B) ‖ be32(i) ‖ last (1 B: 0x01 for the final chunk, else 0x00)`;
-- associated data = `"openagents.vault.v1/chunk\0" ‖ core_digest`;
+- associated data = `"openagents.vault.v1/chunk\0" ‖ core_digest` (32 raw bytes);
 - output = ciphertext ‖ 16-byte tag.
 
 A reader MUST refuse a stream that ends without a chunk marked final, a
 chunk count different from `content.chunks`, or a chunk past the final one.
-This stops truncation and extension.
+This stops truncation and extension. Empty plaintext is one chunk of zero
+bytes (16 bytes of tag). Every chunk but the last is exactly
+`chunk_bytes + 16` bytes, so a reader splits the body without lengths.
+`chunk_bytes` is between 1024 and 1048576. The header is at most 65536
+bytes and MUST be exactly its JCS form; a reader refuses any other
+spelling.
 
 ## Wraps
 
@@ -121,7 +135,9 @@ Each wrap opens `DEK` one way. An object carries one or more.
 ```
 
 AES-256-GCM under `K_user_wrap`, with associated data
-`"openagents.vault.v1/wrap-user\0" ‖ core_digest`.
+`"openagents.vault.v1/wrap-user\0" ‖ core_digest` (32 raw bytes). `key` is
+the `user_key_id`; a client tries only the wraps whose `key` matches its
+own.
 
 **`sealed`** (tier `sealed`):
 
@@ -206,16 +222,37 @@ A slot holds `VMK` under one unlock method:
 }
 ```
 
-The wrapping key is `HKDF-SHA256(ikm=<method secret>, salt=slot id bytes,
-info="openagents.vault.v1/slot\0" ‖ method)`. `vmk` is AES-256-GCM of `VMK`
-under it, with associated data `JCS(slot without nonce and vmk)`.
+The wrapping key is `HKDF-SHA256(ikm=<method secret>, salt=the 32 bytes of
+the slot id, info="openagents.vault.v1/slot\0" ‖ method)`. `vmk` is
+AES-256-GCM of `VMK` under it, with associated data `JCS(slot without nonce
+and vmk)`, so the label, method and parameters are bound. A method secret
+is at least 32 bytes. `label` is at most 64 characters, no control
+characters. `params` has exactly the fields its method lists.
 
 | `method` | `params` | method secret |
 | --- | --- | --- |
-| `passkey-prf` | `{rp_id, credential_id, prf_salt}` | the WebAuthn PRF output for `prf_salt`; `prf_salt` is 32 random bytes per slot |
-| `device` | `{platform, key_ref}` | 32 random bytes kept in the iOS/macOS Keychain (this device only) or the Android Keystore; `key_ref` names the entry, never the value |
-| `nostr` | `{pubkey}` | the NIP-44 v2 conversation key of `(person's key, person's pubkey)`. Unwrap by NIP-07 `nip44.decrypt` or NIP-46 `nip44_decrypt` of a 32-byte value that was encrypted to self at slot creation. That value is the method secret. |
-| `recovery` | `{log_n, salt}` | `scrypt(NFKC(24 BIP-39 words), salt, N=2^log_n, r=8, p=1, 32)`; `log_n` is at least 20 |
+| `passkey-prf` | `{rp_id, credential_id, prf_salt}` | the WebAuthn PRF output (`results.first`) for input `prf_salt`; `prf_salt` is 32 random bytes per slot, `credential_id` the credential's raw id, both base64 |
+| `device` | `{platform, key_ref}` | 32 random bytes kept in the iOS/macOS Keychain (this device only), the Android Keystore, or the desktop OS keychain; `platform` is `ios`, `android`, `macos`, `linux` or `windows`; `key_ref` names the entry, never the value |
+| `nostr` | `{pubkey, sealed}` | 32 random bytes. `sealed` is the NIP-44 v2 payload of those bytes as 64 lowercase hex characters, encrypted by the person's key to its own `pubkey` (hex). Unwrap by NIP-07 `nip44.decrypt(pubkey, sealed)`, NIP-46 `nip44_decrypt`, or the app's own key. A conversation key can't be the secret: NIP-07 doesn't expose it. |
+| `recovery` | `{log_n, salt}` | `scrypt(NFKC(words), salt, N=2^log_n, r=8, p=1, 32)`, where `words` is the 24 BIP-39 English words (256 bits and checksum) in lowercase with single spaces; `salt` is 16 random bytes; `log_n` is 16 to 22, default 17 |
+| `pairing` | `{expires_at}` | 32 random bytes carried from one of the person's devices to a new one in a link's fragment (below); `expires_at` is at most 900 seconds after `created_at` |
+
+**Why `log_n` 17, not NIP-49's 20.** The code already carries 256 random
+bits, so no amount of guessing finds it; stretching only guards against a
+weak random source. 2^20 needs 1 GiB, which a phone's browser can't give a
+page. 2^17 needs 128 MiB.
+
+**Pairing.** An unlocked device makes a `pairing` slot and shows the link
+`https://<service>/settings/vault#pair=<slot id>.<secret, base64url without
+padding>` (and a QR code of it). The fragment never reaches the service. The
+new device opens the slot, makes its own lasting slot (a passkey or device
+key), and deletes the pairing slot. The service deletes a pairing slot
+once it expires.
+
+**Enough slots.** A vault MUST NOT hold data until it has at least two
+lasting slots (any method but `pairing`), one of them `recovery`. A client
+MUST NOT delete a slot that would break this. A passkey alone is never
+enough: PRF support differs by platform.
 
 Slots are stored by the service, and copied between the person's devices as
 self-addressed `3188` artifacts. A service that holds all slots holds no
@@ -226,15 +263,106 @@ method secret, so it cannot open any of them.
 The key index is a per-person object of tier `user` or `sealed`. It holds
 each object's wraps, the system key certificates, and the person's NIP-ATT
 approval set. Deleting an object rewrites the index without it, under a new
-index epoch:
+index epoch.
+
+Its plaintext, tier `user`:
+
+```json
+{
+  "v": "openagents.vault-index.v1",
+  "requires": [],
+  "vault": "<id>",
+  "epoch": 2,
+  "entries": [
+    {
+      "object": "<id>",
+      "kind": "file",
+      "name": "statement.pdf",
+      "media": "application/pdf",
+      "size": 2500,
+      "project": "<project id, optional>",
+      "about": ["<object id>"],
+      "route": "device",
+      "core_digest": "<hex>",
+      "wraps": [{ "mode": "user", "key": "...", "nonce": "...", "dek": "..." }],
+      "created_at": 0
+    }
+  ],
+  "system_keys": [],
+  "approvals": []
+}
+```
+
+- `kind` is `file` (the person added it) or `answer` (a model's answer
+  about files, which carries their tier). `about` and `route` (`device`,
+  `fast` or `private`) are set on answers only.
+- `size` is the plaintext size; `name` at most 200 characters.
+- A reader opens an object only if its stored header's `core_digest`
+  equals the entry's, so a service can't swap one stored object for
+  another.
+
+Sealed, the index is
+`"OAVIDX01" ‖ be32(epoch) ‖ nonce (12 B) ‖ AES-256-GCM(index key, JCS(index))`,
+with associated data
+`"openagents.vault.v1/index\0" ‖ vault id (32 B) ‖ be32(epoch)`. Epochs start
+at 1 and every change writes the next one.
 
 - **`sealed` tier:** the index is wrapped to a per-person KMS key version,
   and the old version is scheduled for destruction.
 - **`user` tier:** the index key is
-  `HKDF(VMK, info="openagents.vault.v1/index\0" ‖ be32(epoch))`, and the
-  old epoch's index is deleted.
+  `HKDF-SHA256(ikm=VMK, salt=empty, info="openagents.vault.v1/index\0" ‖ be32(epoch))`,
+  and the old epoch's index is deleted. The service MUST keep vault data in
+  storage with no soft delete and no object versions, so a deleted epoch is
+  gone, not recoverable.
 
 An object whose wraps appear only in a destroyed index is unreadable.
+Within tier `user` this protects against anyone who later holds the
+person's keys (a stolen device, a found recovery code): the deleted file's
+key is in no index they can get. A device that kept its own copy of an old
+index keeps it until it next loads the vault.
+
+## Service API (tier `user`)
+
+How a client talks to a vault service. The reference service is
+openagents.com; the routes are relative to its origin. A browser
+authenticates with its session cookie and the page's form token in
+`x-openagents-csrf`; an app or CLI with `Authorization: Bearer sess_…`. Each
+account sees only its own vault: another account's ids answer `404`.
+Refusals are `{"error": "<plain words>"}`.
+
+| Route | Body | Answer |
+| --- | --- | --- |
+| `GET /vault/api/state` | | `{"vault": null}` or `{"vault": {"id", "slots": [slot], "index": {"epoch", "blob"}, "objects": [{"object", "size"}]}}` |
+| `POST /vault/api/create` | `{"vault", "slots": [slot], "index": <sealed index, base64>}` | `201`; `409` if a vault exists; `400` unless the slots are [enough](#key-slots) |
+| `POST /vault/api/slots` | `{"slot": slot}` | `201` |
+| `POST /vault/api/slots/{slot}/delete` | | `204`; `409` if the rest wouldn't be enough |
+| `PUT /vault/api/objects/{object}` | the object's bytes | `201 {"object", "size"}`. The service checks the magic, the header, the vault id and tier `user`, and refuses objects over 11 MiB |
+| `GET /vault/api/objects/{object}` | | the bytes |
+| `POST /vault/api/index` | `{"after": <current epoch>, "blob": <sealed index>, "delete": [object id]}` | `200 {"epoch"}`. Compare-and-swap: `409` unless `after` is the current epoch and the blob's epoch is `after + 1`. The service writes the new epoch, then deletes the old epoch and the listed objects |
+| `POST /vault/api/delete` | | `204`: every slot, index and object is deleted |
+| `POST /vault/api/answer` | `{"question", "files": [{"name", "media", "data"}]}` | `{"answer", "model"}`. The **Fast** route: the service sends the plaintext the client decrypted to Google Gemini on Vertex AI for this one answer, stores nothing, and logs no content |
+
+The service sees ciphertext, slots, sealed indexes, sizes and times, and,
+for a Fast answer only, that answer's files and question while it runs.
+Nothing it stores opens without a method secret it never receives.
+
+## Answers about vault files (tier `user`)
+
+A model reads a tier `user` file only when the person's client decrypts it
+for that one turn and sends it to the route the person picked, named in
+the client before they send:
+
+- **On this device** (`device`): a model on the person's own machine, such
+  as a local Psionic server (`psionic-openai-server` on `127.0.0.1`). The
+  plaintext never leaves the machine. Clients make this the default when a
+  local model answers.
+- **Fast (Google sees it)** (`fast`): Google Gemini on Vertex AI, through
+  `POST /vault/api/answer`. The service and Google see that turn's files
+  while answering; the service keeps none of it.
+
+The answer comes back to the client, which stores it as a new `answer`
+object under the person's own key. A turn sends the files to one route
+only; the client never falls back to another route without asking.
 
 ## Opening sealed objects
 
@@ -337,15 +465,28 @@ in a project.
   device alone opens it.
 - **Passkey PRF** support differs by platform. A vault MUST have a second
   slot (`recovery`, at least) before it accepts data.
+- **Rollback.** A service could hand back an older index. Old epochs are
+  deleted, so it can only replay one it kept against the rules; clients
+  remember the highest epoch they have seen and refuse a lower one.
 - **Plaintext digests** are never stored or logged, because the digest of a
   templated statement can be guessed.
 
 ## Implementation status
 
-Nothing is implemented. The [vault milestones](../../docs/security/sensitive-data-vault.md#recommendation-and-milestones)
-V1–V4 build it. Test vectors for the content scheme, the three wraps and each
-slot method land with the first implementation (V1 gate), in
-`fixtures/nips/vault/`.
+Tier `user` is implemented (#11240):
+
+- `crates/oa-vault`: keys, objects, the `user` wrap, every slot method, the
+  recovery code and the key index, for native targets and wasm32.
+- `crates/oa-vault-web`: the same core in the browser, behind
+  openagents.com's vault pages (Settings → Vault, and each project).
+- `openagents vault`: device-key, Nostr-key and recovery-code unlock, and
+  answers on this device through a local Psionic server.
+- Vectors: `fixtures/nips/vault/vectors.json` (the content scheme, the
+  `user` wrap, each slot method, the recovery code, a sealed index, and the
+  refusal cases below). `cargo test -p oa-vault` checks them.
+
+The `sealed` and `operator` wraps, sessions and leases are designed here
+and not built; their vectors come with them.
 
 ## Conformance
 
