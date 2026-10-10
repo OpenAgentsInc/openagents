@@ -587,12 +587,27 @@ def disk_guard() -> None:
             check=False, timeout=1800)
 
 
+MAC_MIN_FREE_GB = 15
+
+
+def mac_guard() -> None:
+    """Start no trial while this Mac is short of disk (other work shares
+    it); a trial needs about 1.3 GB here."""
+    while True:
+        st = os.statvfs(str(WORK))
+        free = st.f_bavail * st.f_frsize / 1e9
+        if free >= MAC_MIN_FREE_GB:
+            return
+        print(f"this Mac has {free:.1f} GB free; waiting before the next trial", flush=True)
+        time.sleep(120)
+
+
 def prewarm(task: dict, slot: int) -> float:
     """Build the parent's package and tests in the slot (the warm cache)."""
     t0 = time.time()
     pkg = task["package"]
     run(SSH + [f"bash ~/ab/bin/run.sh {slot} {task['parent']} . 2400 -- cargo test -p {pkg} --no-run -q"],
-        input="", check=False, timeout=3000)
+        input="0\n", check=False, timeout=3000)
     return time.time() - t0
 
 
@@ -631,6 +646,7 @@ def batch(args) -> None:
                         return
                     arm, rep = pending.pop(0)
                 out = tag_dir / f"{issue}-{arm}-{rep}"
+                mac_guard()
                 if levers["build_cache"] == "cold":
                     with _base_lock:
                         run(SSH + ["flock ~/ab/build.lock sh -c 'rm -rf ~/ab/target && mkdir -p ~/ab/target'"], check=False)

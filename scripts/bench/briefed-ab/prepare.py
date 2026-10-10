@@ -193,13 +193,38 @@ def interface(task: dict) -> list[dict]:
     return out
 
 
+def contract_strings(task: dict) -> list[str]:
+    """String literals the fix's tests check that are new at the parent and
+    that the fix's code produces (JSON keys, message words)."""
+    out_dir = TASKS / str(task["issue"])
+    tests = (out_dir / "tests.patch").read_text()
+    source = (out_dir / "source.patch").read_text()
+    added_src = "\n".join(l for l in source.splitlines() if l.startswith("+") and not l.startswith("+++"))
+    found = []
+    for line in tests.splitlines():
+        if not line.startswith("+") or line.startswith("+++"):
+            continue
+        for lit in re.findall(r'"([^"\\]{4,60})"', line):
+            if lit in found or f'"{lit}"' not in added_src:
+                continue
+            hits = subprocess.run(["git", "grep", "-q", "-F", "-e", lit, task["parent"], "--", "crates/"], cwd=REPO)
+            if hits.returncode != 0:
+                found.append(lit)
+    return found[:8]
+
+
 def interface_text(task: dict) -> str:
     items = interface(task)
-    if not items:
-        return ""
-    rows = "\n".join(f"{i['signature']}    // {i['file']}" for i in items)
-    return ("\n\nThe tests that will check this change call these new items, so define them with "
-            "these names and signatures:\n\n```rust\n" + rows + "\n```\n")
+    strings = contract_strings(task)
+    text = ""
+    if items:
+        rows = "\n".join(f"{i['signature']}    // {i['file']}" for i in items)
+        text += ("\n\nThe tests that will check this change call these new items, so define them with "
+                 "these names and signatures:\n\n```rust\n" + rows + "\n```\n")
+    if strings:
+        text += ("\n\nThe tests that will check this change expect these exact strings in its output: "
+                 + ", ".join(f"`{s_}`" for s_ in strings) + ".\n")
+    return text
 
 
 def grade(task: dict, change: str, slot: int = 0, limit: int = 1500) -> dict:

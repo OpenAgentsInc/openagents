@@ -14,7 +14,10 @@ shift 5
 ab_lock
 patch=$(mktemp)
 trap 'rm -f "$patch"' EXIT
-cat > "$patch"
+# stdin: the patch's size in bytes on one line, the patch, then nothing
+# until the trial's side goes away (EOF), which stops the command.
+IFS= read -r size
+head -c "${size:-0}" > "$patch"
 ab_checkout "$base"
 if [ -s "$patch" ]; then
   git apply --binary --whitespace=nowarn "$patch" || { echo "ab: the working copy did not apply on the build host"; exit 97; }
@@ -22,8 +25,20 @@ fi
 cd "$dir/$rel" 2>/dev/null || cd "$dir"
 args=()
 for a in "$@"; do args+=("${a//@ROOT@/$dir}"); done
-timeout -k 10 "$limit" "${args[@]}" 2>&1 | sed -u "s#$dir/##g; s#$dir#.#g"
-rc=${PIPESTATUS[0]}
+# When the trial's side goes away (its shell timed out or the trial was
+# stopped), stdin ends: stop the command too, so it does not hold the
+# build lock.
+out=$(mktemp)
+setsid timeout -k 10 "$limit" "${args[@]}" >"$out" 2>&1 &
+job=$!
+exec 4<&0
+( cat <&4 >/dev/null; kill -TERM -- "-$job" 2>/dev/null || kill -TERM "$job" 2>/dev/null ) &
+watcher=$!
+tail -n +1 -f --pid="$job" "$out" | sed -u "s#$dir/##g; s#$dir#.#g"
+wait "$job"
+rc=$?
+kill "$watcher" 2>/dev/null
+rm -f "$out"
 [ "$rc" = 124 ] && echo "ab: the command ran past ${limit}s and was stopped"
 cd "$dir"
 git add -A >/dev/null 2>&1
