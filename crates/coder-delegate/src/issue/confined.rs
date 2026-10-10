@@ -30,8 +30,28 @@ use serde::Serialize;
 
 use crate::say::say;
 
-/// How long one package's tests may run.
+/// How long one package's tests may run, building included, unless
+/// [`DEADLINE_VAR`] says otherwise.
 pub const DEADLINE: Duration = Duration::from_secs(1200);
+
+/// Seconds that replace [`DEADLINE`] on a host whose cold builds of large
+/// packages take longer (a cloud environment's first build of `coder`
+/// takes about 12 minutes and its tests about 9, S1 2026-10-10). Every
+/// check still runs; only the time allowed changes.
+pub const DEADLINE_VAR: &str = "OPENAGENTS_GATE_DEADLINE_SECS";
+
+/// The deadline in force: [`DEADLINE_VAR`] when it holds a whole number of
+/// seconds above zero, else [`DEADLINE`].
+pub fn deadline() -> Duration {
+    deadline_from(std::env::var(DEADLINE_VAR).ok().as_deref())
+}
+
+fn deadline_from(value: Option<&str>) -> Duration {
+    value
+        .and_then(|text| text.trim().parse::<u64>().ok())
+        .filter(|secs| *secs > 0)
+        .map_or(DEADLINE, Duration::from_secs)
+}
 
 /// How long the host's `cargo fetch` before a normal run's tests may run.
 const FETCH_DEADLINE: Duration = Duration::from_secs(600);
@@ -318,7 +338,7 @@ async fn run_commands(
         writable: Vec::new(),
         reads_confined: setup.seal.read_scope().is_some(),
         readable: Vec::new(),
-        deadline_seconds: DEADLINE.as_secs(),
+        deadline_seconds: deadline().as_secs(),
         output_kept_bytes: OUTPUT_KEPT,
         prefetch: "skipped".to_string(),
         packages: packages.to_vec(),
@@ -442,7 +462,7 @@ async fn run_commands(
             }
         };
         let ended = supervise::Job::from_command(command)
-            .bounded(supervise::Limits::within(DEADLINE).keeping(OUTPUT_KEPT))
+            .bounded(supervise::Limits::within(deadline()).keeping(OUTPUT_KEPT))
             .run()
             .await;
         if suite == Suite::Tests {
@@ -500,7 +520,7 @@ pub fn lint_failure(package: &str, ended: &supervise::Ended) -> Option<String> {
         ending if ending.success() => None,
         supervise::Ending::TimedOut => Some(format!(
             "Clippy on {package} did not finish within {} seconds",
-            DEADLINE.as_secs()
+            deadline().as_secs()
         )),
         supervise::Ending::Failed(why) => Some(format!("Clippy on {package} could not run: {why}")),
         supervise::Ending::Exited(_) => {
@@ -525,7 +545,7 @@ pub fn failure(package: &str, ended: &supervise::Ended) -> Option<String> {
         ending if ending.success() => None,
         supervise::Ending::TimedOut => Some(format!(
             "the {package} tests did not finish within {} seconds",
-            DEADLINE.as_secs()
+            deadline().as_secs()
         )),
         supervise::Ending::Failed(why) => Some(format!("the {package} tests could not run: {why}")),
         supervise::Ending::Exited(_) => {
@@ -868,5 +888,19 @@ esac
         let setup = Setup::for_run_in(dir.path(), Some(&seal), Some(&slot)).unwrap();
         assert_eq!(setup.target, slot);
         assert!(setup.evaluation);
+    }
+}
+
+#[cfg(test)]
+mod deadline_tests {
+    use super::*;
+
+    #[test]
+    fn the_deadline_override_takes_only_a_positive_whole_number() {
+        assert_eq!(deadline_from(None), DEADLINE);
+        assert_eq!(deadline_from(Some("3600")), Duration::from_secs(3600));
+        assert_eq!(deadline_from(Some(" 2400 ")), Duration::from_secs(2400));
+        assert_eq!(deadline_from(Some("0")), DEADLINE);
+        assert_eq!(deadline_from(Some("soon")), DEADLINE);
     }
 }
