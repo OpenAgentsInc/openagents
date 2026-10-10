@@ -26,7 +26,7 @@ use std::{
 
 const USAGE: &str = "relevance [--issue N | --random [--open]] [--files K] [--backends a,b,..]
           [--backend NAME --model clef-flash|clef] [--conc C] [--timeout SECS] [--seed S]
-          [--visual] [--capture OUT.png [--size WxH] [--wait SECS]]
+          [--visual] [--capture OUT.png [--size WxH] [--scale 2] [--wait SECS]]
 
 lanes: jev, ollama-flash, ollama-clef, llamacpp-flash, llamacpp-27b, coderos-4080, psionic
        (also clef-ollama, clef-llamacpp with --model)
@@ -45,6 +45,7 @@ struct Options {
     visual: bool,
     capture: Option<PathBuf>,
     size: [u32; 2],
+    scale: f32,
     wait: f64,
 }
 
@@ -62,7 +63,8 @@ fn options() -> Result<Options, String> {
             .map_or(1, |d| d.as_nanos() as u64),
         visual: false,
         capture: None,
-        size: [1600, 900],
+        size: [2880, 1720],
+        scale: 2.0,
         wait: 300.0,
     };
     let (mut list, mut model): (Option<String>, Option<String>) = (None, None);
@@ -81,6 +83,10 @@ fn options() -> Result<Options, String> {
             "--seed" => o.seed = number(value("--seed")?)?,
             "--visual" => o.visual = true,
             "--capture" => o.capture = Some(value("--capture")?.into()),
+            "--scale" => {
+                let v = value("--scale")?;
+                o.scale = v.parse().map_err(|_| format!("{v} is not a number"))?;
+            }
             "--wait" => o.wait = number(value("--wait")?)? as f64,
             "--size" => {
                 let s = value("--size")?;
@@ -212,6 +218,7 @@ fn cli(o: Options, root: &Path) -> Result<(), String> {
                 case.candidates[*file].path,
                 error.chars().take(160).collect::<String>()
             ),
+            Event::Note { lane, text } => println!("[{:<14}] {text}", id(*lane)),
             Event::Started { .. } | Event::Done { .. } => {}
         }
     }
@@ -260,6 +267,21 @@ fn table(board: &Board) -> String {
     for l in &lanes {
         if let LaneStatus::Offline(why) = &l.status {
             let _ = writeln!(s, "{:<15} offline: {why}", l.backend.id);
+            continue;
+        }
+        if l.answered() == 0 {
+            let why = l
+                .last_error
+                .as_deref()
+                .or(l.note.as_deref())
+                .unwrap_or("no answer");
+            let _ = writeln!(
+                s,
+                "{:<15} 0/{}  {}",
+                l.backend.id,
+                case.candidates.len(),
+                why.chars().take(160).collect::<String>()
+            );
             continue;
         }
         let q = l.quality(&board.labels);
@@ -496,10 +518,13 @@ mod visual {
             true
         }
 
+        /// One frame at `size` physical pixels; the overlay is laid out in
+        /// points (`size / fonts.scale`) with glyphs rasterized at physical
+        /// pixels, so text is drawn 1:1 on a Retina display.
         fn frame(
             &mut self,
             size: [u32; 2],
-            atlas: &Atlas,
+            fonts: &Fonts,
         ) -> (
             verse::render::View,
             Vec<verse_engine::presentation::Instance>,
@@ -510,7 +535,7 @@ mod visual {
             self.camera.yaw += 0.0011;
             let aspect = size[0] as f32 / size[1].max(1) as f32;
             let (view, vp) = self.camera.view(aspect);
-            let overlay = [720.0 * aspect, 720.0];
+            let overlay = [size[0] as f32 / fonts.scale, size[1] as f32 / fonts.scale];
             let world = self.board.as_ref().map_or_else(Vec::new, |b| {
                 scene::instances(b, &self.lane_ids, &self.angles, &self.arrivals, t)
             });
@@ -522,8 +547,37 @@ mod visual {
                 elapsed,
             };
             let board = self.board.as_ref();
-            let ui = scene::overlay(board, &self.angles, vp, overlay, atlas, &hud);
+            let ui = scene::overlay(board, &self.angles, vp, overlay, &fonts.layout, &hud);
             (view, world, ui, overlay)
+        }
+    }
+
+    /// The HUD font at a display's backing scale: the bitmap the renderer
+    /// samples is rasterized at physical pixels (13 points times the scale),
+    /// and `layout` measures in points, as `verse`'s own window does
+    /// (`ui_atlas` in `crates/verse/src/app.rs`).
+    pub struct Fonts {
+        pub raster: Atlas,
+        pub layout: Atlas,
+        pub scale: f32,
+    }
+
+    impl Fonts {
+        pub fn new(scale: f32) -> Self {
+            let scale = if scale.is_finite() {
+                scale.clamp(1.0, 4.0)
+            } else {
+                1.0
+            };
+            let raster = Atlas::new((13.0 * scale).round());
+            let layout = raster
+                .layout_at_scale(scale)
+                .unwrap_or_else(|| Atlas::new(13.0));
+            Self {
+                raster,
+                layout,
+                scale,
+            }
         }
     }
 
@@ -542,13 +596,12 @@ mod visual {
     pub fn run(o: Options, root: PathBuf) -> Result<(), String> {
         let dir = std::env::temp_dir().join(format!("verse-relevance-{}", std::process::id()));
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-        let atlas = Atlas::new(12.0);
         let mut viz = Viz::new(o.clone(), root);
         viz.fetch(o.issue);
         let result = if let Some(path) = o.capture.clone() {
-            capture(&mut viz, &dir, &atlas, &path)
+            capture(&mut viz, &dir, &Fonts::new(o.scale), &path)
         } else {
-            window(viz, &dir, atlas)
+            window(viz, &dir)
         };
         let _ = std::fs::remove_dir_all(&dir);
         result
@@ -556,9 +609,9 @@ mod visual {
 
     /// Runs the case without a window, then writes one frame: at the end of
     /// the run, or after `--wait` seconds.
-    fn capture(viz: &mut Viz, dir: &Path, atlas: &Atlas, path: &Path) -> Result<(), String> {
+    fn capture(viz: &mut Viz, dir: &Path, fonts: &Fonts, path: &Path) -> Result<(), String> {
         let size = viz.o.size;
-        let mut renderer = renderer(dir, size, atlas)?;
+        let mut renderer = renderer(dir, size, &fonts.raster)?;
         let started = Instant::now();
         loop {
             viz.pump();
@@ -572,7 +625,7 @@ mod visual {
             std::thread::sleep(Duration::from_millis(50));
         }
         viz.camera.yaw = 0.6;
-        let (view, world, ui, overlay) = viz.frame(size, atlas);
+        let (view, world, ui, overlay) = viz.frame(size, fonts);
         renderer.set_overlay_size(overlay[0], overlay[1]);
         scene::capture(&mut renderer, view, &world, &ui, size[0], size[1], path)?;
         viz.print_table();
@@ -582,7 +635,7 @@ mod visual {
 
     struct App {
         viz: Viz,
-        atlas: Atlas,
+        fonts: Fonts,
         dir: PathBuf,
         window: Option<StdArc<Window>>,
         renderer: Option<Renderer>,
@@ -591,12 +644,12 @@ mod visual {
         keys: HashSet<KeyCode>,
     }
 
-    fn window(viz: Viz, dir: &Path, atlas: Atlas) -> Result<(), String> {
+    fn window(viz: Viz, dir: &Path) -> Result<(), String> {
         let event_loop = EventLoop::new().map_err(|e| e.to_string())?;
         event_loop.set_control_flow(ControlFlow::Poll);
         let mut app = App {
             viz,
-            atlas,
+            fonts: Fonts::new(1.0),
             dir: dir.to_owned(),
             window: None,
             renderer: None,
@@ -610,10 +663,25 @@ mod visual {
     }
 
     impl App {
+        /// (Re)builds the renderer for the window's backing scale: its glyph
+        /// bitmap is fixed at build time, so a move to a display of another
+        /// scale rebuilds it.
+        fn open(&mut self, scale: f32) -> Result<(), String> {
+            let window = self.window.clone().ok_or("no window")?;
+            self.fonts = Fonts::new(scale);
+            let size = window.inner_size();
+            self.presenter = None;
+            self.renderer = None;
+            let renderer = renderer(&self.dir, [size.width, size.height], &self.fonts.raster)?;
+            self.presenter = Some(renderer.attach_window(window)?);
+            self.renderer = Some(renderer);
+            Ok(())
+        }
+
         fn draw(&mut self) -> Result<(), String> {
             let window = self.window.clone().ok_or("no window")?;
             let renderer = self.renderer.as_mut().ok_or("no renderer")?;
-            if renderer.recover_if_lost(&self.atlas)? {
+            if renderer.recover_if_lost(&self.fonts.raster)? {
                 self.presenter = Some(renderer.attach_window(window.clone())?);
             }
             let size = window.inner_size();
@@ -622,7 +690,7 @@ mod visual {
             }
             renderer.resize(size.width, size.height)?;
             self.viz.pump();
-            let (view, world, ui, overlay) = self.viz.frame([size.width, size.height], &self.atlas);
+            let (view, world, ui, overlay) = self.viz.frame([size.width, size.height], &self.fonts);
             renderer.set_overlay_size(overlay[0], overlay[1]);
             renderer.draw_live(view, &world, &ui, &scene::lighting())?;
             let presenter = self.presenter.as_mut().ok_or("no presenter")?;
@@ -645,12 +713,8 @@ mod visual {
                         )
                         .map_err(|e| e.to_string())?,
                 );
-                let size = window.inner_size();
-                let renderer = renderer(&self.dir, [size.width, size.height], &self.atlas)?;
-                self.presenter = Some(renderer.attach_window(window.clone())?);
-                self.renderer = Some(renderer);
-                self.window = Some(window);
-                Ok(())
+                self.window = Some(window.clone());
+                self.open(window.scale_factor() as f32)
             })();
             if let Err(e) = result {
                 self.error = Some(e);
@@ -667,6 +731,14 @@ mod visual {
         fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
             match event {
                 WindowEvent::CloseRequested => event_loop.exit(),
+                WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                    if (scale_factor as f32 - self.fonts.scale).abs() > 0.01
+                        && let Err(e) = self.open(scale_factor as f32)
+                    {
+                        self.error = Some(e);
+                        event_loop.exit();
+                    }
+                }
                 WindowEvent::RedrawRequested => {
                     if let Err(e) = self.draw() {
                         self.error = Some(e);

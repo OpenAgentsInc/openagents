@@ -657,6 +657,80 @@ fn project(vp: Mat4, p: Vec3, size: [f32; 2]) -> Option<[f32; 2]> {
     Some([(ndc.x + 1.0) * 0.5 * size[0], (1.0 - ndc.y) * 0.5 * size[1]])
 }
 
+/// Why a lane with no answer has none: its last error, the server's own
+/// state (a model loading), or how long its first request has waited.
+pub fn lane_wait(lane: &super::cases::Lane, elapsed: f32) -> String {
+    if let Some(e) = &lane.last_error {
+        return format!("error ({}x): {}", lane.errors, e);
+    }
+    let waited = lane.started.map_or(0.0, |s| (elapsed as f64 - s).max(0.0));
+    match (&lane.status, &lane.note) {
+        (LaneStatus::Waiting, _) => "connecting".into(),
+        (LaneStatus::Done, _) => "finished without an answer".into(),
+        (_, Some(note)) => format!("{note}, {waited:.0}s"),
+        _ => format!("waiting {waited:.0}s for the first answer"),
+    }
+}
+
+/// A file's name over its plinth, before placement.
+pub struct Label {
+    /// The point over the plinth the label belongs to, in overlay units.
+    pub anchor: [f32; 2],
+    pub width: f32,
+    /// Text rows: the name, and "fix" over it for a ground-truth file.
+    pub lines: usize,
+    /// Higher keeps its place; lower moves out of the way.
+    pub priority: u8,
+    pub text: String,
+    pub hot: bool,
+    pub fix: bool,
+}
+
+/// Top-left corners for each label, so no two overlap. Labels are placed
+/// in order of priority, then nearest the camera (lowest on screen) first;
+/// a label that would cover one already placed moves up a row at a time,
+/// then down, until it is clear.
+pub fn place_labels(labels: &[Label], line: f32) -> Vec<[f32; 2]> {
+    let mut order: Vec<usize> = (0..labels.len()).collect();
+    order.sort_by(|&a, &b| {
+        labels[b]
+            .priority
+            .cmp(&labels[a].priority)
+            .then(labels[b].anchor[1].total_cmp(&labels[a].anchor[1]))
+    });
+    let mut out = vec![[0.0; 2]; labels.len()];
+    let mut taken: Vec<[f32; 4]> = Vec::new();
+    let pad = 3.0;
+    for i in order {
+        let l = &labels[i];
+        let h = line * l.lines as f32;
+        let x = l.anchor[0] - l.width / 2.0;
+        let base = l.anchor[1] - h;
+        let clear = |y: f32| {
+            taken.iter().all(|r| {
+                x + l.width + pad <= r[0]
+                    || r[0] + r[2] + pad <= x
+                    || y + h + pad <= r[1]
+                    || r[1] + r[3] + pad <= y
+            })
+        };
+        let step = line + pad;
+        let tries = (0..=8)
+            .map(|k| base - step * k as f32)
+            .chain((1..=4).map(|k| base + step * k as f32));
+        let mut y = base - step * 8.0;
+        for candidate in tries {
+            if clear(candidate) {
+                y = candidate;
+                break;
+            }
+        }
+        taken.push([x, y, l.width, h]);
+        out[i] = [x, y];
+    }
+    out
+}
+
 /// What the overlay needs beyond the board.
 pub struct Hud<'a> {
     pub backends: &'a [Backend],
@@ -695,35 +769,65 @@ pub fn overlay(
     };
     let case = &board.case;
 
-    // File labels over the plinths.
+    // File labels over the plinths, moved apart where they would overlap.
+    let mut labels = Vec::new();
     for (file, &angle) in angles.iter().enumerate() {
         let c = &case.candidates[file];
-        let top = board
-            .lanes
-            .iter()
-            .filter_map(|l| l.p[file])
-            .fold(0.0f64, f64::max) as f32;
+        let answered: Vec<f64> = board.lanes.iter().filter_map(|l| l.p[file]).collect();
+        let top = answered.iter().copied().fold(0.0f64, f64::max) as f32;
         let at =
             Vec3::new(angle.cos(), 0., angle.sin()) * FILE_RING + Vec3::Y * (1.1 + top * BAR_MAX);
-        let Some([x, y]) = project(vp, at, size) else {
+        let Some(anchor) = project(vp, at, size) else {
             continue;
         };
-        let name = c.path.rsplit('/').next().unwrap_or(&c.path);
-        let mean: Vec<f64> = board.lanes.iter().filter_map(|l| l.p[file]).collect();
-        let hot = !mean.is_empty() && mean.iter().sum::<f64>() / mean.len() as f64 >= THRESHOLD;
-        let color = if hot { INK } else { [0.42, 0.40, 0.36, 1.0] };
-        let tw = atlas.measure(name);
-        ui.text(atlas, x - tw / 2.0, y - line, name, color);
-        if board.labels[file] == Some(true) {
+        let name = c.path.rsplit('/').next().unwrap_or(&c.path).to_owned();
+        let hot = !answered.is_empty()
+            && answered.iter().sum::<f64>() / answered.len() as f64 >= THRESHOLD;
+        let fix = board.labels[file] == Some(true);
+        labels.push(Label {
+            anchor,
+            width: atlas.measure(&name),
+            lines: if fix { 2 } else { 1 },
+            priority: u8::from(fix) * 2 + u8::from(hot),
+            text: name,
+            hot,
+            fix,
+        });
+    }
+    let placed = place_labels(&labels, line);
+    for (label, [x, y]) in labels.iter().zip(placed) {
+        let [ax, ay] = label.anchor;
+        let h = line * label.lines as f32;
+        if (y + h - ay).abs() > 1.0 {
+            ui.line(atlas, [ax, ay], [ax, y + h], 1.0, [0.35, 0.22, 0.1, 0.8]);
+        }
+        let color = if label.hot {
+            INK
+        } else {
+            [0.42, 0.40, 0.36, 1.0]
+        };
+        // A dark plate keeps the name readable over a lit bar.
+        ui.rect(
+            atlas,
+            x - 3.0,
+            y - 1.0,
+            label.width + 6.0,
+            h + 2.0,
+            [0.004, 0.004, 0.006, 0.55],
+        );
+        let mut row = y;
+        if label.fix {
             let tag = "fix";
             ui.text(
                 atlas,
-                x - atlas.measure(tag) / 2.0,
-                y - line * 2.0,
+                x + (label.width - atlas.measure(tag)) / 2.0,
+                row,
                 tag,
                 rgba(LAUREL, 1.0).map(|v| (v * 3.0).min(1.0)),
             );
+            row += line;
         }
+        ui.text(atlas, x, row, &label.text, color);
     }
     // The issue number over the obelisk.
     if let Some([x, y]) = project(vp, Vec3::Y * (OBELISK + 2.6), size) {
@@ -845,6 +949,27 @@ pub fn overlay(
             continue;
         }
         let n = case.candidates.len();
+        // Nothing answered yet: say why, not a row of dashes.
+        if lane.answered() == 0 {
+            let why = lane_wait(lane, hud.elapsed);
+            let color = if lane.errors > 0 {
+                rgba(AMBER, 1.0)
+            } else {
+                INK
+            };
+            ui.text(
+                atlas,
+                x + cols[1],
+                y,
+                &fit(
+                    atlas,
+                    &format!("0/{n}  {}", ascii(&why)),
+                    sw - 34.0 - cols[1] - 8.0,
+                ),
+                color,
+            );
+            continue;
+        }
         let done = format!("{}/{}", lane.answered(), n);
         let rate = lane.rate().map_or("-".into(), |r| format!("{r:.2}"));
         let p50 = lane.p50().map_or("-".into(), secs);
@@ -1023,6 +1148,48 @@ pub fn capture(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn label(x: f32, y: f32, width: f32, priority: u8) -> Label {
+        Label {
+            anchor: [x, y],
+            width,
+            lines: 1,
+            priority,
+            text: String::new(),
+            hot: false,
+            fix: false,
+        }
+    }
+
+    #[test]
+    fn overlapping_labels_are_moved_apart() {
+        let line = 14.0;
+        let labels = [
+            label(100.0, 200.0, 90.0, 0),
+            label(110.0, 204.0, 90.0, 2),
+            label(105.0, 198.0, 60.0, 0),
+            label(400.0, 200.0, 50.0, 0),
+        ];
+        let placed = place_labels(&labels, line);
+        let rects: Vec<[f32; 4]> = placed
+            .iter()
+            .zip(&labels)
+            .map(|(p, l)| [p[0], p[1], l.width, line])
+            .collect();
+        for (i, a) in rects.iter().enumerate() {
+            for b in &rects[i + 1..] {
+                let apart = a[0] + a[2] <= b[0]
+                    || b[0] + b[2] <= a[0]
+                    || a[1] + a[3] <= b[1]
+                    || b[1] + b[3] <= a[1];
+                assert!(apart, "{a:?} overlaps {b:?}");
+            }
+        }
+        // The highest priority keeps its place over its anchor.
+        assert_eq!(placed[1], [110.0 - 45.0, 204.0 - line]);
+        // A label with room stays put.
+        assert_eq!(placed[3], [375.0, 200.0 - line]);
+    }
 
     #[test]
     fn bars_glow_past_the_threshold_and_flare_on_arrival() {

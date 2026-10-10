@@ -11,7 +11,7 @@ the issue was closed by a commit on main, the files that commit changed are
 the ground truth, and each backend gets precision, recall, and accuracy.
 The run streams to the terminal, or plays out as a Verse scene.
 
-![Three live lanes judging issue #11199; the other three are offline](captures/relevance/compare.jpg)
+![Three live lanes judging issue #11108; the other three are offline](captures/relevance/compare.jpg)
 
 ## Run it
 
@@ -28,7 +28,7 @@ cargo run -p verse --example relevance -- --issue 11199 --backends jev,ollama-fl
 cargo run -p verse --example relevance -- --random --backend clef-ollama --model clef-flash
 
 # One frame to a PNG, without a window, when the run ends (or after --wait seconds)
-cargo run -p verse --example relevance -- --issue 11199 --capture /tmp/relevance.png --size 1600x900
+cargo run -p verse --example relevance -- --issue 11108 --capture /tmp/relevance.png
 ```
 
 It needs `gh` signed in, for the issue's title and body, and `origin/main`
@@ -45,7 +45,7 @@ in the checkout. The binary reads the repository it is run from.
 | `--timeout S` | Seconds per request (default 180). |
 | `--seed S` | Replays the issue, the files, and their order. |
 | `--visual` | Opens the scene. |
-| `--capture PNG` | Renders one frame off screen instead of opening a window. |
+| `--capture PNG` | Renders one frame off screen instead of opening a window: `--size` physical pixels (default 2880x1720) at `--scale` (default 2, a Retina window's). |
 
 ## The lanes
 
@@ -134,9 +134,22 @@ The scene is a Greco-futurist plaza at dusk, in the palette of
   probability across the lanes is 0.5 or more. Sparks travel along them.
 - **The scoreboard** (top right) shows each lane's progress, decisions per
   second, median latency, and, with ground truth, its precision, recall,
-  and accuracy. An offline lane shows the reason.
+  and accuracy. A lane with no answer yet says why instead of showing
+  dashes: offline and the reason, its last error, "loading clef into
+  Ollama" when Ollama's `/api/ps` shows the model is not in memory, or how
+  long its first request has waited.
 - **The ranking** (bottom right) lists the files by mean probability, with
   each lane's probability in the lane's color.
+
+File names that would overlap move up (or down) a row until they are
+clear, with a thin leader to their plinth; ground-truth and relevant files
+keep their place first.
+
+The window renders the scene and the overlay at the display's backing
+scale: on a Retina display the HUD font is rasterized at physical pixels
+(13 points at 2x is 26 pixels) and laid out in points, the same way
+`verse`'s own window does it (`ui_atlas` in `crates/verse/src/app.rs`).
+Moving the window to a display of another scale rebuilds the renderer.
 
 The camera orbits slowly. The keys are:
 
@@ -166,6 +179,17 @@ jev              12/12    6.37   0.15s   0.18s   100%    83%    92%    0  jev-la
 ollama-flash     12/12    0.27   4.09s   4.99s   100%    50%    75%    0  clef-flash at http://127.0.0.1:11434
 ollama-clef      12/12    0.11   9.18s   13.0s   100%    83%    92%    0  clef at http://127.0.0.1:11434
 ```
+
+### Why an Ollama lane can sit at 0/12
+
+Ollama unloads a model five minutes after its last request. The next run
+loads it again before answering: about 8 seconds for Clef-Flash and about
+33 seconds for Clef 27B on the M5 Max, while Jev finishes all 12 files in
+about 2 seconds. Both Clef lanes share one Ollama, so they also wait on
+each other and on any other client (a benchmark, say). The scoreboard now
+says "loading clef into Ollama" in that case. A rerun (Space, R, or a lane
+key) abandons the last run's requests in flight, so it does not queue
+behind them.
 
 `dec/s` counts one lane's answers over that lane's own time, from its
 first request to its last answer. Lanes that share a server, as the two

@@ -491,6 +491,8 @@ pub struct Lane {
     pub first: Option<f64>,
     pub last: Option<f64>,
     pub started: Option<f64>,
+    /// Why the lane has nothing to show yet, until its first answer.
+    pub note: Option<String>,
 }
 
 /// Precision and recall at [`THRESHOLD`] over the files a lane answered.
@@ -514,6 +516,7 @@ impl Lane {
             first: None,
             last: None,
             started: None,
+            note: None,
         }
     }
     pub fn answered(&self) -> usize {
