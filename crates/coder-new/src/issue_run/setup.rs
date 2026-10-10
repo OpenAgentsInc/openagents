@@ -328,6 +328,20 @@ pub fn summary(
 ) -> Value {
     let diff = working_diff(&base.worktree, &base.base);
     let changed = diff_files(&diff);
+    // The exact diff the summary describes, kept beside it so a trace
+    // (#11218, `scripts/bench/traces`) labels from it and replays it. The
+    // worktree itself is reused by the next run.
+    let _ = std::fs::write(folder.join("change.patch"), &diff);
+    let diff_sha256 = {
+        use sha2::Digest as _;
+        format!("sha256:{:x}", sha2::Sha256::digest(diff.as_bytes()))
+    };
+    let check_commands: Vec<Value> = briefing
+        .checks
+        .iter()
+        .filter(|check| checks.iter().any(|(id, _)| *id == check.id))
+        .map(|check| json!({"id": check.id, "argv": check.argv}))
+        .collect();
     let briefed: Vec<&String> = briefing.files.iter().collect();
     let added = diff
         .lines()
@@ -355,6 +369,9 @@ pub fn summary(
         "checks": checks.iter().map(|(id, ok)| json!({"id": id, "ok": ok})).collect::<Vec<_>>(),
         "agent_checks": work.checks.iter().map(|(id, ok)| json!({"id": id, "ok": ok})).collect::<Vec<_>>(),
         "changed": changed,
+        "base": base.base,
+        "diff_sha256": diff_sha256,
+        "check_commands": check_commands,
         "added": added,
         "removed": removed,
         "error": work.error,

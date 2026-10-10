@@ -79,7 +79,9 @@ with:
 - `filefind.json`;
 - `briefing.md`;
 - `agent-events.jsonl`: every SDK message;
-- `summary.json`.
+- `summary.json`;
+- `change.patch`: the exact diff the summary describes. Each run becomes a
+  verify-replayed training trace from it ([traces.md](traces.md), #11218).
 
 **Credentials.**
 - The agent runs on this computer's Claude Code login. The CLI starts

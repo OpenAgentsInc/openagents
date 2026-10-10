@@ -586,6 +586,12 @@ def run_trial(task: dict, arm: str, rep: int, levers: dict, slot: int, out: Path
         "finished_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
     }
     dump_json(out / "result.json", record)
+    try:  # a trace for verify-replay before corpus admission (#11218)
+        sys.path.insert(0, str(HERE.parent / "traces"))
+        import traces
+        traces.save_traces(traces.STORE, [traces.capture_ab(traces.STORE, REPO, out, TASKS, WORK / "results")])
+    except Exception as error:  # noqa: BLE001 - the trial stands without its trace
+        print(f"trace capture failed: {error}", file=sys.stderr)
     return record
 
 

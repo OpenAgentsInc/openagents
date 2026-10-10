@@ -1518,8 +1518,11 @@ def cmd_feedback(a):
                 continue
             src = "issue-run:" + os.path.basename(os.path.dirname(f))
             checks = (r.get("checks") or []) + (r.get("agent_checks") or [])
-            if checks and all(c.get("ok") for c in checks) and not r.get("error"):
-                for p in r.get("changed") or []:  # only a change whose checks passed
+            patch = os.path.join(os.path.dirname(f), "change.patch")
+            if checks and all(c.get("ok") for c in checks) and not r.get("error") and os.path.exists(patch):
+                # Only a change whose checks passed, read from the run's own diff,
+                # never from the summary's account of it (#11218).
+                for p in sorted(set(re.findall(r"(?m)^diff --git a/.+? b/(.+)$", open(patch, errors="replace").read()))):
                     rows.append((r["issue"], p, "changed", src))
             for p in r.get("opened_outside_briefing") or []:
                 rows.append((r["issue"], p, "read_outside", src))
@@ -1537,6 +1540,23 @@ def cmd_feedback(a):
                 p = m.get("file") if isinstance(m, dict) else m
                 if p:
                     rows.append((r["issue"], p, "read_outside", src))
+    for t_path in a.traces or []:
+        # Verify-replayed traces (scripts/bench/traces, #11218): admitted only after
+        # their diff and checks were replayed from a clean checkout.
+        for line in open(os.path.expanduser(t_path)):
+            try:
+                t = json.loads(line)["trace"]
+            except (ValueError, KeyError):
+                continue
+            src = "trace:" + t["id"]
+            if t["replay"]["verdict"] != "verified":
+                continue
+            ok = t["replay"]["checks"].get("tests_pass") if "tests_pass" in t["replay"]["checks"] else all(t["replay"]["checks"].values())
+            if ok:
+                for p in t["files_changed"]:
+                    rows.append((t["issue"], p, "changed", src))
+            for p in t.get("opened_outside_briefing") or []:
+                rows.append((t["issue"], p, "read_outside", src))
     new = [x for x in rows if x not in seen]
     with open(path, "a") as f:
         for issue, p, kind, src in new:
@@ -1736,6 +1756,8 @@ def main():
     fb.add_argument("--cache")
     fb.add_argument("--issue-runs", nargs="*", default=["~/.openagents/coder-new/issue-runs"])
     fb.add_argument("--ab", nargs="*", default=[], help="briefed-agent A/B results directories")
+    fb.add_argument("--traces", nargs="*", default=[],
+                    help="admitted.jsonl files from scripts/bench/traces (verify-replayed runs)")
     a = ap.parse_args()
     {"index": cmd_index, "query": cmd_query, "feedback": cmd_feedback}[a.cmd](a)
 
