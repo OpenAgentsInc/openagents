@@ -4,6 +4,12 @@ Written October 8, 2026. This page defines how a Cloud computer can run Claude
 Code on the user's own Claude plan or API key, within Anthropic's published
 terms. It is the policy source for the BYO-Claude issues listed at the end.
 
+The product plan built on these rules (connecting a plan in Settings and the
+apps, your computer versus Cloud Environments, plan usage, limits and
+failover, and the current reading of Anthropic's terms after Amp's
+[Use Your Claude Plan](https://ampcode.com/news/use-your-claude-plan)) is
+[`docs/byok/claude-plan.md`](../byok/claude-plan.md).
+
 ## What Anthropic's terms allow
 
 Source: [Claude Code legal and compliance](https://code.claude.com/docs/en/legal-and-compliance)
@@ -249,7 +255,12 @@ Claude Code reads from `CLAUDE_CODE_OAUTH_TOKEN` and that bills the person's
 Claude plan. This relaxes rule 2 for that one value. Anthropic's terms quoted
 above say third parties may not collect or store Claude.ai credentials; the
 owner accepted that risk for this class. Recheck the terms before opening it
-beyond the invite-only site.
+beyond the invite-only site. Rechecked on 2026-10-10 ([claude-plan.md](../byok/claude-plan.md),
+item 9): Anthropic now says the Agent SDK, `claude -p`, and third-party apps may
+use plan limits, but its legal page still bars third parties from storing
+Claude.ai credentials without approval, so saving a token stays limited to an
+allowlist until Anthropic approves it in writing
+([#11235](https://github.com/OpenAgentsInc/openagents/issues/11235)).
 
 - **Settings, Claude** offers "Claude subscription token (from claude
   setup-token)" beside "Anthropic API key". A pasted value is told apart by
