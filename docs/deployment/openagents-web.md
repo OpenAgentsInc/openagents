@@ -959,3 +959,22 @@ logged no errors after the shift.
 Rollback: `scripts/deploy/web.sh rollback coder-web-d43ac84129-20261009233236`
 (its gateway reads `identity.provider_keys` by tenant, which migration 2
 renamed, so BYOK answers errors there until rolled forward).
+
+### 2026-10-10 01:53 UTC: Environments and Claude Code runs for the site admin
+
+`coder-web-784240527d-20261010014956` (`e73e148489`, image
+`openagents-web@sha256:78424052…`) serves 100% of openagents.com.
+Environments, Claude Code runs from a chat, and Continue on a Cloud
+computer answer on openagents.com for the signed-in site admin (the owner);
+everyone else is sent to log in or gets the not-found page (#11162,
+[agent work](agent-work.md)). The web container gained `BOAT_API_KEY`
+(`boat-api-key`, now readable by `157437760789-compute`), `STACK_STATE`,
+`ENVIRONMENTS_MODEL=google/gemini-3.8-flash`, the `stack` volume read-only,
+and the launcher lines from `deploy/production/web.sh`; its log says
+"Environments are on at /environments". A call with the house key through
+`/api/v1/responses` on `google/gemini-3.8-flash` answered. The no-traffic
+candidate failed only its 8 gateway checks (`GATEWAY_HOLD=serving`).
+openagents.com smoke (`--production`) after the shift: 57 passed, 0 failed,
+3 skipped, including the new signed-out and forged-session checks. In the
+next 10 minutes `/` answered 200 and `/environments` 303 on 18 of 18 checks.
+Rollback: `scripts/deploy/web.sh rollback coder-gw-4cc00fcfdf-014127`.
