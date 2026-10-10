@@ -488,6 +488,27 @@ fn settings_content(
                     }
                 }
             }
+            (export_section())
+        }
+    }
+}
+
+/// Export (#11134): everything on the account in one file.
+fn export_section() -> Markup {
+    html! {
+        section class="oa-settings-group" aria-labelledby="settings-export" {
+            h2 #settings-export { "Your data" }
+            div class="oa-settings-row" {
+                div class="oa-settings-text" {
+                    span class="oa-settings-label" { "Export everything" }
+                    span class="oa-settings-hint" {
+                        "One file with your chats, projects, traces, computers, and settings, readable without OpenAgents. Keys and passwords are never in it."
+                    }
+                }
+                div class="oa-settings-control" {
+                    (action_link("Download", crate::account_export::PATH))
+                }
+            }
         }
     }
 }
@@ -521,7 +542,7 @@ fn chats_section(saved: Option<usize>) -> Markup {
 
 const SUBSCRIPTION_LABEL: &str = "Claude subscription token (from claude setup-token)";
 
-fn material_label(material: Material) -> &'static str {
+pub(crate) fn material_label(material: Material) -> &'static str {
     match material {
         Material::AnthropicApiKey => "Anthropic API key",
         Material::ClaudeSubscriptionToken => SUBSCRIPTION_LABEL,
@@ -894,7 +915,15 @@ mod tests {
         // No key store: no Claude row at all.
         let html = settings_content("Ada", None, Some(0), html! {}).into_string();
         assert!(!html.contains("settings-claude"));
-        for needle in [">Settings<", ">Profile<", ">Theme<", ">Ada<"] {
+        // The export is always offered (#11134).
+        assert!(html.contains("href=\"/settings/export\""), "{html}");
+        for needle in [
+            ">Settings<",
+            ">Profile<",
+            ">Theme<",
+            ">Ada<",
+            ">Export everything<",
+        ] {
             assert!(html.contains(needle), "{needle}");
         }
         let text = oa_copy::visible_text(&html);

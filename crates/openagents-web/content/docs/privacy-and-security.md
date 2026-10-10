@@ -20,6 +20,15 @@
     servers right away, though our storage provider may keep a copy we can
     recover for up to 7 days. Chats you don't delete stay; there's no time
     limit yet.
+  - **Exporting.** Signed in, open
+    [Settings](https://openagents.com/settings) and choose **Download**
+    under **Your data** (or go straight to
+    [openagents.com/settings/export](https://openagents.com/settings/export)).
+    You get one file with every chat (each with a Markdown copy to read),
+    your projects, your uploaded traces, your signed-in computers, and your
+    settings. It opens in any text editor, without OpenAgents. It holds only
+    your own account's things, and never a key, token, or password: an API
+    key shows by name only, and a saved Claude credential by its kind only.
 - **In the Mac app, Terminal, and phone app,** your chats are saved on your
   device, encrypted with its key (on a computer, by its host). Your
   messages are encrypted before they leave your device, and the OpenAgents

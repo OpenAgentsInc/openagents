@@ -13,9 +13,11 @@
 //! service's site, reimplemented here.
 
 pub mod account;
+mod account_export;
 mod agent_ready;
 mod agent_work;
 pub mod analytics;
+mod answer_ui;
 mod api_alias;
 mod api_keys;
 pub mod ask;
@@ -34,7 +36,6 @@ mod device;
 mod docs_mcp;
 mod environments;
 mod layout;
-mod answer_ui;
 mod markdown;
 mod pages;
 pub mod palette;
@@ -265,6 +266,7 @@ pub fn router(config: Config) -> Router {
         .merge(terminal_connect::routes())
         .merge(account::routes())
         .merge(settings::routes())
+        .merge(account_export::routes())
         .merge(projects::routes())
         .merge(promises::routes())
         .merge(pilot::routes())
