@@ -55,9 +55,9 @@ mod kb;
 mod key;
 #[cfg(unix)]
 mod labor;
+mod land;
 mod lease;
 mod lease_place;
-mod land;
 mod mac;
 mod mac_serve;
 mod mcp;
@@ -116,6 +116,7 @@ mod study;
 mod terminal;
 #[cfg(test)]
 mod tree;
+mod vault;
 mod verse_terminal;
 mod verse_town;
 mod verse_town_rumor;
@@ -205,6 +206,8 @@ Coder:
                queue, and run the integrator that lands entries on main in turn.
   mac          Send Mac-only steps (iOS builds, the release gate, TestFlight
                uploads, desktop captures) to a Mac linked to your account.
+  vault        Your private vault: files only your own devices can open, and
+               answers about them from a model on this computer.
 
 Verse (NIP-MV):
   verse        See who is around, listen, speak, move, gesture, drive owned
@@ -448,6 +451,8 @@ fn main() -> ExitCode {
         "pr" => pr::run(&output, &rest),
         // Mac-only steps on a Mac linked to the account (#11223).
         "mac" => mac::run(&output, &rest),
+        // The person's "only you" vault (#11240).
+        "vault" => vault::run(&output, &rest),
         // One landing queue for every machine (#11227).
         "land" => land::run(&output, &rest),
         #[cfg(unix)]

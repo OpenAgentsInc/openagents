@@ -10563,6 +10563,8 @@ dependencies = [
  "model-access",
  "nostr",
  "nostr-relay",
+ "oa-copy",
+ "oa-vault",
  "openagents-chat",
  "openagents-chat-app",
  "openagents-connect",
@@ -10603,6 +10605,7 @@ dependencies = [
  "verse-lagrange",
  "verse-world",
  "world-tree",
+ "zeroize",
 ]
 
 [[package]]

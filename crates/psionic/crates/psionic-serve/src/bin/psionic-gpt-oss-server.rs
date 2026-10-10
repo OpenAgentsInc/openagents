@@ -9,7 +9,7 @@ use std::{
 use psionic_observe::{TokioRuntimeTelemetryConfig, build_main_runtime};
 use psionic_serve::{
     GptOssMetalExecutionMode, GptOssOpenAiCompatBackend, GptOssOpenAiCompatConfig,
-    GptOssOpenAiCompatServer,
+    GptOssOpenAiCompatServer, cors,
 };
 use tokio::net::TcpListener;
 
@@ -32,7 +32,8 @@ fn run_main() -> Result<(), String> {
 }
 
 async fn run() -> Result<(), String> {
-    let config = parse_args()?;
+    let (origins, rest) = cors::split_args(env::args().skip(1))?;
+    let config = parse_args_from(rest)?;
     let address = config.socket_addr().map_err(|error| error.to_string())?;
     let listener = TcpListener::bind(address)
         .await
@@ -51,14 +52,15 @@ async fn run() -> Result<(), String> {
         server.execution_mode_label(),
         server.execution_engine_label(),
     );
-    server
-        .serve(listener)
+    if origins.is_empty() {
+        return server
+            .serve(listener)
+            .await
+            .map_err(|error| format!("server failed: {error}"));
+    }
+    psionic_serve::clef::serve(listener, cors::allow_origins(server.router(), origins))
         .await
         .map_err(|error| format!("server failed: {error}"))
-}
-
-fn parse_args() -> Result<GptOssOpenAiCompatConfig, String> {
-    parse_args_from(env::args().skip(1))
 }
 
 fn parse_args_from<I, S>(args: I) -> Result<GptOssOpenAiCompatConfig, String>
@@ -182,7 +184,7 @@ fn next_value(args: &mut impl Iterator<Item = String>, flag: &str) -> Result<Str
 
 fn usage() -> String {
     String::from(
-        "usage: psionic-gpt-oss-server -m <model.gguf> [--backend <auto|cpu|cuda|metal>] [--metal-mode <auto|native|proxy>] [--host <ip>] [--port <port>] [-c <ctx>] [-ngl <n>] [--reasoning-budget <n>] [--no-webui]",
+        "usage: psionic-gpt-oss-server -m <model.gguf> [--backend <auto|cpu|cuda|metal>] [--metal-mode <auto|native|proxy>] [--host <ip>] [--port <port>] [-c <ctx>] [-ngl <n>] [--reasoning-budget <n>] [--no-webui] [--allow-origin <https://origin> ...]",
     )
 }
 

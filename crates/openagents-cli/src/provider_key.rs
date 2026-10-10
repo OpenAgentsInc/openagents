@@ -75,13 +75,13 @@ fn read_key(provider: Provider) -> Result<ApiKey, String> {
 }
 
 /// This terminal without echo until dropped.
-struct NoEcho {
+pub(crate) struct NoEcho {
     #[cfg(unix)]
     saved: Option<libc::termios>,
 }
 
 impl NoEcho {
-    fn enter() -> Self {
+    pub(crate) fn enter() -> Self {
         #[cfg(unix)]
         {
             // SAFETY: termios is plain data; tcgetattr fills it and

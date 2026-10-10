@@ -70,6 +70,9 @@ libc = "0.2"
 mac-jobs = { path = "../mac-jobs" }
 coder-sync = { path = "../coder-sync" }
 openagents-login = { path = "../openagents-login" }
+# `openagents vault`: the person's "only you" vault (NIP-VAULT tier user).
+oa-vault = { path = "../oa-vault" }
+zeroize = "1.8"
 microcoder = { path = "../microcoder" }
 # BYOK: the person's own provider keys, tested over HTTPS and kept in the
 # keychain or 0600 files.
@@ -130,6 +133,8 @@ private-fs = { path = "../private-fs" }
 path = "../coder-project"
 
 [dev-dependencies]
+# The plain-words guard over `openagents vault`'s messages.
+oa-copy = { path = "../oa-copy" }
 commercial-accounts = { path = "../commercial-accounts" }
 hex = "0.4"
 receipts = { path = "../receipts" }

@@ -22113,6 +22113,554 @@
       ]
     },
     {
+      "name": "vault",
+      "summary": "Your private vault: files only your own devices can open, and answers about them from a model on this computer.",
+      "children": [
+        {
+          "name": "setup",
+          "leaf": {
+            "path": [
+              "vault",
+              "setup"
+            ],
+            "usage": [
+              "setup"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "setup"
+                  }
+                ]
+              }
+            ],
+            "summary": "Make your vault: this computer can open it, and you get a 24-word recovery code to write down.",
+            "effect": "secret",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "unlock",
+          "leaf": {
+            "path": [
+              "vault",
+              "unlock"
+            ],
+            "usage": [
+              "unlock [--recovery | --nostr [--nostr-key FILE] | --pair LINK]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "unlock"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "recovery",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "nostr",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "nostr-key",
+                    "value": "FILE",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "pair",
+                    "value": "LINK",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Open your vault on this computer. A computer that's new to it gets in with your recovery code, your Nostr key, or a link from one of your computers, and then remembers it.",
+            "effect": "secret",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "add-device",
+          "leaf": {
+            "path": [
+              "vault",
+              "add-device"
+            ],
+            "usage": [
+              "add-device"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "add-device"
+                  }
+                ]
+              }
+            ],
+            "summary": "Make a link that lets another computer or browser in (works for 10 minutes).",
+            "effect": "grants",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "add-nostr",
+          "leaf": {
+            "path": [
+              "vault",
+              "add-nostr"
+            ],
+            "usage": [
+              "add-nostr [--nostr-key FILE]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "add-nostr"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "nostr-key",
+                    "value": "FILE",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Let your Nostr key open your vault too.",
+            "effect": "grants",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "devices",
+          "leaf": {
+            "path": [
+              "vault",
+              "devices"
+            ],
+            "usage": [
+              "devices"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "devices"
+                  }
+                ]
+              }
+            ],
+            "summary": "What can open your vault.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "remove-device",
+          "leaf": {
+            "path": [
+              "vault",
+              "remove-device"
+            ],
+            "usage": [
+              "remove-device ID"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "remove-device"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "ID"
+                  }
+                ]
+              }
+            ],
+            "summary": "Stop a computer, key or code from opening your vault.",
+            "effect": "grants",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "add",
+          "leaf": {
+            "path": [
+              "vault",
+              "add"
+            ],
+            "usage": [
+              "add FILE [--project ID]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "add"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "FILE"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "project",
+                    "value": "ID",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Put a file in your vault.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "list",
+          "leaf": {
+            "path": [
+              "vault",
+              "list"
+            ],
+            "usage": [
+              "list [--project ID]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "list"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "project",
+                    "value": "ID",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Your files and saved answers.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "get",
+          "leaf": {
+            "path": [
+              "vault",
+              "get"
+            ],
+            "usage": [
+              "get FILE [--out PATH]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "get"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "FILE"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "out",
+                    "value": "PATH",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Save a file from your vault here (only you can read the copy).",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "rm",
+          "leaf": {
+            "path": [
+              "vault",
+              "rm"
+            ],
+            "usage": [
+              "rm FILE"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "rm"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "FILE"
+                  }
+                ]
+              }
+            ],
+            "summary": "Delete a file from your vault for good.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "ask",
+          "leaf": {
+            "path": [
+              "vault",
+              "ask"
+            ],
+            "usage": [
+              "ask FILE... --question TEXT [--route device|fast] [--psionic URL] [--project ID]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "ask"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "FILE",
+                    "repeated": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "question",
+                    "value": "TEXT",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "route",
+                    "value": "device|fast",
+                    "choices": [
+                      "device",
+                      "fast"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "psionic",
+                    "value": "URL",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "project",
+                    "value": "ID",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Ask about your files. device: a model on this computer reads them (the default when one is running). fast: Google Gemini reads them, and Google sees them. The answer is saved in your vault.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "serve-local",
+          "leaf": {
+            "path": [
+              "vault",
+              "serve-local"
+            ],
+            "usage": [
+              "serve-local [--model PATH] [--port N] [--allow-origin ORIGIN] [--print]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "serve-local"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "model",
+                    "value": "PATH",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "port",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "allow-origin",
+                    "value": "ORIGIN",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "print",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Run the model on this computer so your vault page in the browser can ask it too.",
+            "effect": "long_running",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "recovery",
+          "value": "|",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "nostr",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "nostr-key",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "pair",
+          "value": "LINK",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "project",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "out",
+          "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "question",
+          "value": "TEXT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "route",
+          "value": "device|fast",
+          "choices": [
+            "device",
+            "fast"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "psionic",
+          "value": "URL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "model",
+          "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "port",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "allow-origin",
+          "value": "ORIGIN",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "print",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "account-dir",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
       "name": "verse",
       "summary": "See who is around, listen, speak, move, gesture, drive owned entities, and read quests, XP, and the board.",
       "children": [

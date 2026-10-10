@@ -162,7 +162,7 @@ fn default_root() -> PathBuf {
 
 /// The account's sign-in: `OPENAGENTS_APP_TOKEN` and `OPENAGENTS_ORIGIN`,
 /// else the folder named, else Coder's.
-fn saved(dir: Option<&str>) -> Result<Saved, String> {
+pub(crate) fn saved(dir: Option<&str>) -> Result<Saved, String> {
     if dir.is_none()
         && let Ok(token) = std::env::var("OPENAGENTS_APP_TOKEN")
         && !token.trim().is_empty()

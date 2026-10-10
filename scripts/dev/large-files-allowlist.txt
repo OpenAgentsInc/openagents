@@ -18,6 +18,8 @@ crates/gym/results/support-v2-three-way.jsonl
 crates/gym/suites/coder-turns-v1.json
 crates/openagents-deck/decks/assets/marketplace.png
 crates/openagents-ui/src/icons/generated.rs
+# The chat router's command tree, generated from `openagents --help`; over 1 MB on main by 2026-10-10.
+crates/coder/src/cli_route/tree.json
 crates/verse/assets/lagrange/earth_clouds.png
 crates/verse/assets/lagrange/earth_day.png
 crates/verse/assets/lagrange/moon_albedo.png

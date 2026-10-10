@@ -19,6 +19,7 @@
 mod attnres;
 pub mod clef;
 mod conformance;
+pub mod cors;
 mod csm_speech;
 mod gguf;
 mod gpt_oss;

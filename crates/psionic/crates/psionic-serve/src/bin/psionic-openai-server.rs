@@ -8,7 +8,7 @@ use std::{
 };
 
 use psionic_observe::{TokioRuntimeTelemetryConfig, build_main_runtime};
-use psionic_serve::{OpenAiCompatBackend, OpenAiCompatConfig, OpenAiCompatServer, clef};
+use psionic_serve::{OpenAiCompatBackend, OpenAiCompatConfig, OpenAiCompatServer, clef, cors};
 use tokio::net::TcpListener;
 
 fn main() -> ExitCode {
@@ -30,7 +30,8 @@ fn run_main() -> Result<(), String> {
 }
 
 async fn run() -> Result<(), String> {
-    let (decision, rest) = split_decision_args(env::args().skip(1))?;
+    let (origins, rest) = cors::split_args(env::args().skip(1))?;
+    let (decision, rest) = split_decision_args(rest)?;
     let decision_only = !rest.iter().any(|arg| arg == "-m" || arg == "--model");
     if decision_only && decision.model_paths.is_empty() {
         return Err(format!("missing required `-m` / `--model`\n\n{}", usage()));
@@ -100,9 +101,12 @@ async fn run() -> Result<(), String> {
                 .join(","),
             backends,
         );
-        return clef::serve(listener, clef::decision_router(lanes))
-            .await
-            .map_err(|error| format!("server failed: {error}"));
+        return clef::serve(
+            listener,
+            cors::allow_origins(clef::decision_router(lanes), origins),
+        )
+        .await
+        .map_err(|error| format!("server failed: {error}"));
     }
     let server = OpenAiCompatServer::from_config(&config)
         .map_err(|error| format!("failed to load models: {error}"))?;
@@ -123,18 +127,20 @@ async fn run() -> Result<(), String> {
         server.execution_mode_label(),
         server.execution_engine_label(),
     );
-    if lanes.is_empty() {
+    if lanes.is_empty() && origins.is_empty() {
         return server
             .serve(listener)
             .await
             .map_err(|error| format!("server failed: {error}"));
     }
-    clef::serve(
-        listener,
-        server.router().merge(clef::systemone_router(lanes)),
-    )
-    .await
-    .map_err(|error| format!("server failed: {error}"))
+    let router = if lanes.is_empty() {
+        server.router()
+    } else {
+        server.router().merge(clef::systemone_router(lanes))
+    };
+    clef::serve(listener, cors::allow_origins(router, origins))
+        .await
+        .map_err(|error| format!("server failed: {error}"))
 }
 
 const DECISION_ONLY_PLACEHOLDER: &str = "<decision-only>";
@@ -184,11 +190,16 @@ where
                 decision.limits.device = next_value(&mut args, argument.as_str())?.parse()?;
             }
             "--decision-accumulate" => {
-                decision.limits.accumulate_f16 = match next_value(&mut args, argument.as_str())?.as_str() {
-                    "f16" => true,
-                    "f32" => false,
-                    other => return Err(format!("--decision-accumulate takes f16 or f32, not `{other}`")),
-                };
+                decision.limits.accumulate_f16 =
+                    match next_value(&mut args, argument.as_str())?.as_str() {
+                        "f16" => true,
+                        "f32" => false,
+                        other => {
+                            return Err(format!(
+                                "--decision-accumulate takes f16 or f32, not `{other}`"
+                            ));
+                        }
+                    };
             }
             "--decision-chunk" => {
                 decision.limits.prefill_chunk =
@@ -305,7 +316,7 @@ fn next_value(args: &mut impl Iterator<Item = String>, flag: &str) -> Result<Str
 
 fn usage() -> String {
     String::from(
-        "usage: psionic-openai-server -m <model-artifact> [-m <model-artifact> ...] [--backend cpu|cuda|metal] [--qwen38-vision-model-dir <official-model-dir>] [--host <ip>] [--port <port>] [--reasoning-budget <n>] [--mesh-coordination enabled|disabled] [--decision-model <clef-or-qwen35-gguf>] [--clef-head <joint_head dir or .safetensors>] [--decision-max-tokens <n>] [--decision-max-questions <n>] [--decision-max-options <n>] [--decision-chunk <n>] [--decision-device auto|cpu|cuda] [--decision-accumulate f16|f32] [--decision-calibration <map.json> ...] [--decision-export-rows <dir>]\n\nA Clef GGUF (general.architecture = clef) given with -m is served as a decision model at POST /v1/systemone; with only decision models, -m may be omitted.",
+        "usage: psionic-openai-server -m <model-artifact> [-m <model-artifact> ...] [--backend cpu|cuda|metal] [--qwen38-vision-model-dir <official-model-dir>] [--host <ip>] [--port <port>] [--reasoning-budget <n>] [--mesh-coordination enabled|disabled] [--decision-model <clef-or-qwen35-gguf>] [--clef-head <joint_head dir or .safetensors>] [--decision-max-tokens <n>] [--decision-max-questions <n>] [--decision-max-options <n>] [--decision-chunk <n>] [--decision-device auto|cpu|cuda] [--decision-accumulate f16|f32] [--decision-calibration <map.json> ...] [--decision-export-rows <dir>] [--allow-origin <https://origin> ...]\n\nA Clef GGUF (general.architecture = clef) given with -m is served as a decision model at POST /v1/systemone; with only decision models, -m may be omitted. --allow-origin lets pages on that exact origin call this server from a browser (CORS, including Chrome's local network preflight).",
     )
 }
 
@@ -336,6 +347,21 @@ mod tests {
         assert!(decision.head.is_some());
         assert_eq!(rest, ["--port", "9000"]);
         assert!(super::split_decision_args(["--decision-max-options", "1"]).is_err());
+    }
+
+    #[test]
+    fn allow_origin_is_taken_out_and_exact() {
+        let (origins, rest) = psionic_serve::cors::split_args([
+            "--allow-origin",
+            "https://openagents.com",
+            "-m",
+            "/tmp/one.gguf",
+        ])
+        .expect("origins");
+        assert!(!origins.is_empty());
+        assert_eq!(rest, ["-m", "/tmp/one.gguf"]);
+        assert!(psionic_serve::cors::split_args(["--allow-origin", "*"]).is_err());
+        assert!(psionic_serve::cors::split_args(["--allow-origin"]).is_err());
     }
 
     #[test]
