@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# In a bench trial, `openagents lease ... -- CMD` runs CMD directly (the
+# build host does the queuing); every other openagents command, which could
+# touch the real issue tracker or services, is refused.
+if [ "${1:-}" = lease ]; then
+  while [ $# -gt 0 ] && [ "$1" != "--" ]; do shift; done
+  if [ "${1:-}" = "--" ]; then shift; exec "$@"; fi
+fi
+echo "openagents is not available in this benchmark run except 'openagents lease ... -- CMD'." >&2
+exit 1

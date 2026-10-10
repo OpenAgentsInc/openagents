@@ -2203,6 +2203,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "briefed-agent"
+version = "0.1.0"
+dependencies = [
+ "claude_agent_sdk",
+ "futures",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "briefing-lab"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# The bench runs every cargo command on the build host (see remote-exec).
+exec "$(dirname "$0")/remote-exec" cargo "$@"

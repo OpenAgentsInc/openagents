@@ -1,0 +1,20 @@
+[package]
+name = "briefed-agent"
+description = "The briefed agent of the briefed-agent A/B bench (#11211): one Claude Agent SDK session with a briefing-built system prompt, file tools held to one worktree, and a check tool that runs only the briefing's checks"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "briefed-agent"
+path = "src/main.rs"
+
+[dependencies]
+claude_agent_sdk = { path = "../claude_agent_sdk" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs"] }
+futures = "0.3"
+serde_json = "1"
+
+[lints]
+workspace = true

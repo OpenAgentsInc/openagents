@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+echo "gh is not available in this benchmark run: the issue text you were given is the whole task." >&2
+exit 1
