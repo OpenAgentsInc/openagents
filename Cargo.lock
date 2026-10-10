@@ -2791,6 +2791,7 @@ dependencies = [
  "crossterm",
  "ext-eval",
  "futures-util",
+ "github-actions",
  "gym",
  "ignore",
  "indexmap 2.14.2",
@@ -6353,6 +6354,16 @@ dependencies = [
  "libc",
  "libgit2-sys",
  "log",
+]
+
+[[package]]
+name = "github-actions"
+version = "0.1.0"
+dependencies = [
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -10336,6 +10347,7 @@ dependencies = [
  "atif",
  "coder-access",
  "futures-util",
+ "github-actions",
  "model-access",
  "nostr",
  "nostr-transport",
@@ -10667,6 +10679,7 @@ dependencies = [
  "compute-workbench",
  "discovery",
  "futures-util",
+ "github-actions",
  "hmac 0.12.1",
  "hyper",
  "hyper-util",

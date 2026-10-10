@@ -10,6 +10,8 @@ publish.workspace = true
 atif = { path = "../atif" }
 # The machine-talk guard over the answer bank's copy (#11031).
 oa-copy = { path = "../oa-copy" }
+# Which proposed commands are GitHub changes the website makes itself (#11167).
+github-actions = { path = "../github-actions", default-features = false }
 openui-lang = { path = "../openui-lang" }
 # The disk cleanup monitor reads the task store through `task::background_facts`.
 background = { path = "../background" }

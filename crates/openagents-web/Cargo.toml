@@ -31,6 +31,8 @@ rust-native-web = { path = "../rust-native-web" }
 route-contract = { path = "../route-contract" }
 discovery = { path = "../discovery" }
 futures-util = "0.3"
+# The chat's GitHub tools: typed actions and their REST calls (#11167).
+github-actions = { path = "../github-actions" }
 hmac = "0.12.1"
 hyper = { version = "1", features = ["client", "http1"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }

@@ -7,6 +7,8 @@ publish.workspace = true
 description = "Shared OpenAgents hosted chat transport, state, and encrypted storage."
 
 [dependencies]
+# Which proposed commands are GitHub changes, kept at NIP-CJ's bounds (#11167).
+github-actions = { path = "../github-actions", default-features = false }
 coder-access = { path = "../coder-access", default-features = false }
 # Each thread renders as one ATIF trajectory (`thread`).
 atif = { path = "../atif" }

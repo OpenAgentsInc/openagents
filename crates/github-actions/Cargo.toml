@@ -1,0 +1,21 @@
+[package]
+name = "github-actions"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Typed GitHub issue, board, and pull request changes and their REST calls, shared by the web chat's GitHub tools (#11167) and the CLI's issue and project verbs (#11166)."
+
+[features]
+default = ["http"]
+# `rest::Http`: GitHub over HTTPS with reqwest. Without it the actions,
+# their argv form, and `rest::run` over any `rest::Api` still build.
+http = ["dep:reqwest"]
+
+[dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"], optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt"] }

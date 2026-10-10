@@ -30,12 +30,25 @@ pub const PHONE_COMMANDS: &[&str] = &[
     "session list",
 ];
 
-/// Whether `leaf` may be proposed on `surface`: the router's effect gate
-/// offers it, and on the phone it is one of [`PHONE_COMMANDS`].
+/// The commands the website's chat offers (#11167): GitHub changes, which
+/// the website makes itself with the person's GitHub connection after a
+/// signed confirm card (`github_actions::Action::from_argv`), never by
+/// running the program. A test checks each the tree knows is declared
+/// `publishes` there.
+pub const WEB_COMMANDS: [&str; 6] = github_actions::COMMANDS;
+
+/// Whether `leaf` may be proposed on `surface`: on the website, one of
+/// [`WEB_COMMANDS`]; elsewhere the router's effect gate offers it, and on
+/// the phone it is one of [`PHONE_COMMANDS`].
 #[must_use]
 pub fn offered(leaf: &Leaf, surface: Surface) -> bool {
+    let path = leaf.path.join(" ");
+    if surface == Surface::Web {
+        return WEB_COMMANDS.contains(&path.as_str())
+            && leaf.effect == super::tree::Effect::Publishes;
+    }
     gate(leaf.effect, surface) == CliGate::Offer
-        && (surface != Surface::Phone || PHONE_COMMANDS.contains(&leaf.path.join(" ").as_str()))
+        && (surface != Surface::Phone || PHONE_COMMANDS.contains(&path.as_str()))
 }
 
 /// The declared effect of the command `argv` (group first, without the
@@ -74,6 +87,39 @@ mod tests {
 
     fn words(path: &str) -> Vec<String> {
         path.split(' ').map(str::to_owned).collect()
+    }
+
+    /// #11167: the website is offered the GitHub changes it makes itself
+    /// and nothing else; every one the tree knows publishes, and the
+    /// router's gate offers it there by its words.
+    #[test]
+    fn the_website_is_offered_only_github_changes() {
+        let tree = bundled();
+        for leaf in tree.leaves() {
+            let path = leaf.path.join(" ");
+            let github = WEB_COMMANDS.contains(&path.as_str());
+            assert_eq!(
+                offered(leaf, Surface::Web),
+                github && leaf.effect == Effect::Publishes,
+                "{path}"
+            );
+            if github {
+                assert_eq!(leaf.effect, Effect::Publishes, "{path}");
+            }
+        }
+        let argv = words("issue create --title T --project 22 --status Todo");
+        assert_eq!(
+            crate::router::gate_command(&argv, Effect::Publishes, Surface::Web),
+            CliGate::Offer
+        );
+        assert_eq!(
+            crate::router::gate_command(&words("issue claim 3"), Effect::Publishes, Surface::Web),
+            CliGate::Withhold
+        );
+        assert_eq!(
+            crate::router::gate_command(&argv, Effect::Publishes, Surface::Phone),
+            crate::router::gate(Effect::Publishes, Surface::Phone)
+        );
     }
 
     #[test]

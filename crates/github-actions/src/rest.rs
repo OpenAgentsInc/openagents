@@ -1,4 +1,8 @@
-//! Running a confirmed GitHub action as the signed-in person (#11167).
+//! Running a GitHub action over GitHub's REST API: as the signed-in person
+//! from the web chat (#11167), or with this computer's token from the CLI
+//! (#11166). Each step is public ([`create_issue`], [`comment`],
+//! [`close_issue`], [`reopen_issue`], [`place`], [`open_pull_request`]) so
+//! a caller can compose its own verbs; [`run`] runs one [`Action`].
 //!
 //! Only GitHub's REST API, as `scripts/dev/issue-board.sh` uses it, so a
 //! board move keeps working when other tools have spent the GraphQL limit:
@@ -14,20 +18,44 @@
 //! scopes and goes straight on.
 
 use std::future::Future;
-use std::sync::OnceLock;
-use std::time::Duration;
 
-use reqwest::Method;
 use serde_json::{Value, json};
 
-use super::action::{Action, Board};
+use crate::action::{Action, Board, CloseReason};
 
-/// The largest answer read from GitHub.
-const BODY_MAX: usize = 2 * 1024 * 1024;
+/// The REST API version every call names.
+pub const API_VERSION: &str = "2022-11-28";
+/// GitHub's API origin.
+pub const API_BASE: &str = "https://api.github.com";
+
+/// An HTTP method this module uses.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Method {
+    Get,
+    Post,
+    Patch,
+}
+
+impl Method {
+    /// The method's name on the wire.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Method::Get => "GET",
+            Method::Post => "POST",
+            Method::Patch => "PATCH",
+        }
+    }
+}
+
+impl std::fmt::Display for Method {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
 
 /// One answer from GitHub.
 #[derive(Clone, Debug, Default)]
-pub(crate) struct Answer {
+pub struct Answer {
     pub status: u16,
     /// What `X-OAuth-Scopes` said the connection holds; `None` when GitHub
     /// sent no such header (a GitHub App's user connection).
@@ -36,7 +64,7 @@ pub(crate) struct Answer {
 }
 
 /// GitHub's REST API as the signed-in person.
-pub(crate) trait Api: Sync {
+pub trait Api: Sync {
     /// `method` on `path` (starting with `/`), with a JSON body.
     fn call(
         &self,
@@ -49,7 +77,7 @@ pub(crate) trait Api: Sync {
 /// Why an action didn't finish. Each says what to do next in plain words
 /// ([`Failure::text`]).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Failure {
+pub enum Failure {
     /// The GitHub connection needs more access first: `board` when it is
     /// the boards access that is missing.
     NeedsAccess { board: bool },
@@ -73,7 +101,7 @@ pub(crate) enum Failure {
 
 impl Failure {
     /// What the person reads.
-    pub(crate) fn text(&self) -> String {
+    pub fn text(&self) -> String {
         match self {
             Failure::NeedsAccess { board: true } => {
                 "GitHub needs to let OpenAgents change your boards first.".into()
@@ -108,7 +136,7 @@ impl Failure {
 
 /// What a finished action did.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Done {
+pub struct Done {
     /// One sentence: what changed.
     pub summary: String,
     /// The issue, comment or pull request on GitHub.
@@ -120,8 +148,8 @@ pub(crate) struct Done {
 
 /// Run `action`. Nothing changes unless the connection holds the access
 /// it needs.
-pub(crate) async fn run<A: Api>(api: &A, action: &Action) -> Result<Done, Failure> {
-    let user = api.call(Method::GET, "/user", None).await?;
+pub async fn run<A: Api>(api: &A, action: &Action) -> Result<Done, Failure> {
+    let user = api.call(Method::Get, "/user", None).await?;
     checked(&user, "your GitHub account")?;
     if let Some(scopes) = &user.scopes {
         let holds = |name: &str| scopes.iter().any(|s| s == name);
@@ -137,16 +165,10 @@ pub(crate) async fn run<A: Api>(api: &A, action: &Action) -> Result<Done, Failur
             repository,
             title,
             body,
+            labels,
             board,
         } => {
-            let created = api
-                .call(
-                    Method::POST,
-                    &format!("/repos/{repository}/issues"),
-                    Some(json!({"title": title, "body": body})),
-                )
-                .await?;
-            let created = checked(&created, repository)?;
+            let created = create_issue(api, repository, title, body, labels).await?;
             let number = created["number"].as_u64().ok_or(Failure::Unreachable)?;
             let link = link(&created);
             let mut done = Done {
@@ -190,18 +212,12 @@ pub(crate) async fn run<A: Api>(api: &A, action: &Action) -> Result<Done, Failur
             repository,
             number,
             comment: text,
+            reason,
         } => {
             if let Some(text) = text {
                 comment(api, repository, *number, text).await?;
             }
-            let closed = api
-                .call(
-                    Method::PATCH,
-                    &format!("/repos/{repository}/issues/{number}"),
-                    Some(json!({"state": "closed", "state_reason": "completed"})),
-                )
-                .await?;
-            let closed = checked(&closed, &format!("#{number} in {repository}"))?;
+            let closed = close_issue(api, repository, *number, *reason).await?;
             Ok(Done {
                 summary: format!("Closed #{number} in {repository}."),
                 link: link(&closed),
@@ -231,32 +247,9 @@ pub(crate) async fn run<A: Api>(api: &A, action: &Action) -> Result<Done, Failur
             body,
             draft,
         } => {
-            let base = match base {
-                Some(base) => base.clone(),
-                None => {
-                    let repo = api
-                        .call(Method::GET, &format!("/repos/{repository}"), None)
-                        .await?;
-                    checked(&repo, repository)?["default_branch"]
-                        .as_str()
-                        .ok_or(Failure::Unreachable)?
-                        .to_string()
-                }
-            };
-            let opened = api
-                .call(
-                    Method::POST,
-                    &format!("/repos/{repository}/pulls"),
-                    Some(json!({
-                        "title": title,
-                        "head": head,
-                        "base": base,
-                        "body": body,
-                        "draft": draft,
-                    })),
-                )
-                .await?;
-            let opened = checked(&opened, repository)?;
+            let opened =
+                open_pull_request(api, repository, head, base.as_deref(), title, body, *draft)
+                    .await?;
             let number = opened["number"].as_u64().ok_or(Failure::Unreachable)?;
             Ok(Done {
                 summary: format!("Opened pull request #{number} in {repository}."),
@@ -267,7 +260,102 @@ pub(crate) async fn run<A: Api>(api: &A, action: &Action) -> Result<Done, Failur
     }
 }
 
-async fn comment<A: Api>(
+/// Open an issue; GitHub's issue back.
+pub async fn create_issue<A: Api>(
+    api: &A,
+    repository: &str,
+    title: &str,
+    body: &str,
+    labels: &[String],
+) -> Result<Value, Failure> {
+    let mut sent = json!({"title": title, "body": body});
+    if !labels.is_empty() {
+        sent["labels"] = json!(labels);
+    }
+    let created = api
+        .call(
+            Method::Post,
+            &format!("/repos/{repository}/issues"),
+            Some(sent),
+        )
+        .await?;
+    checked(&created, repository)
+}
+
+/// Close an issue for `reason`; GitHub's issue back.
+pub async fn close_issue<A: Api>(
+    api: &A,
+    repository: &str,
+    number: u64,
+    reason: CloseReason,
+) -> Result<Value, Failure> {
+    let closed = api
+        .call(
+            Method::Patch,
+            &format!("/repos/{repository}/issues/{number}"),
+            Some(json!({"state": "closed", "state_reason": reason.word()})),
+        )
+        .await?;
+    checked(&closed, &format!("#{number} in {repository}"))
+}
+
+/// Reopen an issue; GitHub's issue back.
+pub async fn reopen_issue<A: Api>(
+    api: &A,
+    repository: &str,
+    number: u64,
+) -> Result<Value, Failure> {
+    let reopened = api
+        .call(
+            Method::Patch,
+            &format!("/repos/{repository}/issues/{number}"),
+            Some(json!({"state": "open"})),
+        )
+        .await?;
+    checked(&reopened, &format!("#{number} in {repository}"))
+}
+
+/// Open a pull request from `head` into `base` (the repository's default
+/// branch when `None`); GitHub's pull request back.
+pub async fn open_pull_request<A: Api>(
+    api: &A,
+    repository: &str,
+    head: &str,
+    base: Option<&str>,
+    title: &str,
+    body: &str,
+    draft: bool,
+) -> Result<Value, Failure> {
+    let base = match base {
+        Some(base) => base.to_string(),
+        None => {
+            let repo = api
+                .call(Method::Get, &format!("/repos/{repository}"), None)
+                .await?;
+            checked(&repo, repository)?["default_branch"]
+                .as_str()
+                .ok_or(Failure::Unreachable)?
+                .to_string()
+        }
+    };
+    let opened = api
+        .call(
+            Method::Post,
+            &format!("/repos/{repository}/pulls"),
+            Some(json!({
+                "title": title,
+                "head": head,
+                "base": base,
+                "body": body,
+                "draft": draft,
+            })),
+        )
+        .await?;
+    checked(&opened, repository)
+}
+
+/// Comment on an issue or pull request; GitHub's comment back.
+pub async fn comment<A: Api>(
     api: &A,
     repository: &str,
     number: u64,
@@ -275,7 +363,7 @@ async fn comment<A: Api>(
 ) -> Result<Value, Failure> {
     let answer = api
         .call(
-            Method::POST,
+            Method::Post,
             &format!("/repos/{repository}/issues/{number}/comments"),
             Some(json!({"body": body})),
         )
@@ -286,7 +374,7 @@ async fn comment<A: Api>(
 /// Set `number`'s Status on the repository owner's board, adding it to the
 /// board first when it isn't there. `content` is the issue's id and kind
 /// when the caller already has them (an issue it just opened).
-async fn place<A: Api>(
+pub async fn place<A: Api>(
     api: &A,
     repository: &str,
     number: u64,
@@ -296,7 +384,7 @@ async fn place<A: Api>(
     let owner = repository.split('/').next().unwrap_or_default();
     let base = find_board(api, owner, board.number).await?;
     let fields = api
-        .call(Method::GET, &format!("{base}/fields?per_page=100"), None)
+        .call(Method::Get, &format!("{base}/fields?per_page=100"), None)
         .await?;
     let fields = checked(&fields, &format!("board {}", board.number))?;
     let (field, option) = status_option(&fields, board)?;
@@ -304,7 +392,7 @@ async fn place<A: Api>(
     if content.is_none() {
         let items = api
             .call(
-                Method::GET,
+                Method::Get,
                 &format!("{base}/items?per_page=100&q={number}"),
                 None,
             )
@@ -321,7 +409,7 @@ async fn place<A: Api>(
             };
             let added = api
                 .call(
-                    Method::POST,
+                    Method::Post,
                     &format!("{base}/items"),
                     Some(json!({"type": kind, "id": id})),
                 )
@@ -332,7 +420,7 @@ async fn place<A: Api>(
     };
     let set = api
         .call(
-            Method::PATCH,
+            Method::Patch,
             &format!("{base}/items/{item}"),
             Some(json!({"fields": [{"id": field, "value": option}]})),
         )
@@ -342,10 +430,10 @@ async fn place<A: Api>(
 }
 
 /// The board's REST path: an organization's, else a person's.
-async fn find_board<A: Api>(api: &A, owner: &str, number: u32) -> Result<String, Failure> {
+pub async fn find_board<A: Api>(api: &A, owner: &str, number: u32) -> Result<String, Failure> {
     for scope in ["orgs", "users"] {
         let base = format!("/{scope}/{owner}/projectsV2/{number}");
-        let answer = api.call(Method::GET, &base, None).await?;
+        let answer = api.call(Method::Get, &base, None).await?;
         match answer.status {
             404 => continue,
             _ => {
@@ -418,7 +506,7 @@ async fn content_of<A: Api>(
     let what = format!("#{number} in {repository}");
     let issue = api
         .call(
-            Method::GET,
+            Method::Get,
             &format!("/repos/{repository}/issues/{number}"),
             None,
         )
@@ -427,7 +515,7 @@ async fn content_of<A: Api>(
     if issue.get("pull_request").is_some_and(|v| !v.is_null()) {
         let pull = api
             .call(
-                Method::GET,
+                Method::Get,
                 &format!("/repos/{repository}/pulls/{number}"),
                 None,
             )
@@ -494,15 +582,17 @@ fn github_message(body: &Value) -> String {
         .collect()
 }
 
-/// GitHub over HTTPS with the person's connection, read from the account
-/// service for this request and never kept.
-pub(crate) struct Http {
+/// GitHub over HTTPS with a token: the web chat's person's connection,
+/// read for one request and never kept, or the CLI's sign-in.
+#[cfg(feature = "http")]
+pub struct Http {
     base: String,
     token: String,
 }
 
+#[cfg(feature = "http")]
 impl Http {
-    pub(crate) fn new(base: &str, token: String) -> Self {
+    pub fn new(base: &str, token: String) -> Self {
         Self {
             base: base.trim_end_matches('/').to_string(),
             token,
@@ -510,21 +600,25 @@ impl Http {
     }
 }
 
+#[cfg(feature = "http")]
 fn client() -> Result<&'static reqwest::Client, Failure> {
-    static CLIENT: OnceLock<Result<reqwest::Client, reqwest::Error>> = OnceLock::new();
+    use std::time::Duration;
+    static CLIENT: std::sync::OnceLock<Result<reqwest::Client, reqwest::Error>> =
+        std::sync::OnceLock::new();
     CLIENT
         .get_or_init(|| {
             reqwest::Client::builder()
                 .connect_timeout(Duration::from_secs(5))
                 .timeout(Duration::from_secs(20))
                 .redirect(reqwest::redirect::Policy::none())
-                .user_agent("OpenAgents-chat-github-tools")
+                .user_agent("OpenAgents-github-actions")
                 .build()
         })
         .as_ref()
         .map_err(|_| Failure::Unreachable)
 }
 
+#[cfg(feature = "http")]
 impl Api for Http {
     fn call(
         &self,
@@ -535,10 +629,15 @@ impl Api for Http {
         let url = format!("{}{path}", self.base);
         let token = self.token.clone();
         async move {
+            let method = match method {
+                Method::Get => reqwest::Method::GET,
+                Method::Post => reqwest::Method::POST,
+                Method::Patch => reqwest::Method::PATCH,
+            };
             let mut request = client()?
                 .request(method, url)
                 .header("Accept", "application/vnd.github+json")
-                .header("X-GitHub-Api-Version", oa_auth::github::API_VERSION)
+                .header("X-GitHub-Api-Version", API_VERSION)
                 .bearer_auth(token);
             if let Some(body) = body {
                 request = request.json(&body);
@@ -557,6 +656,7 @@ impl Api for Http {
                         .map(str::to_string)
                         .collect()
                 });
+            const BODY_MAX: usize = 2 * 1024 * 1024;
             let mut bytes = Vec::new();
             while let Some(chunk) = response.chunk().await.map_err(|_| Failure::Unreachable)? {
                 if bytes.len().saturating_add(chunk.len()) > BODY_MAX {

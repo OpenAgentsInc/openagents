@@ -4,7 +4,8 @@
 //! `/chat/{id}/github` lists the tools: open an issue (and put it on a
 //! board), comment on an issue or pull request, close an issue, move an
 //! issue on a board, and open a pull request. Each is a typed form
-//! ([`action::Action`]); sending it shows a confirm card that says the
+//! ([`github_actions::Action`], shared with the CLI's `issue` and
+//! `project` verbs); sending it shows a confirm card that says the
 //! repository and every change before anything happens. The card carries
 //! the action sealed with this server's key, bound to the person and the
 //! chat, so Confirm runs exactly what it showed, once.
@@ -17,9 +18,16 @@
 //! changes: a consent page says what GitHub will be asked, one button
 //! goes there ([`GRANT`], [`oa_auth::Purpose::Board`]), and the person
 //! comes back to the same card. What ran is noted in the chat.
-
-pub(crate) mod action;
-pub(crate) mod run;
+//!
+//! The chat can propose a change too. The worker's router picks an
+//! `openagents issue|project` command for the message through its command
+//! tree (Jev chooses the command, the model fills its text, the command's
+//! own parser checks it; `coder::cli_route`), and the reply carries the
+//! command ([`openagents_chat::router::Meta::command`]). The thread shows
+//! that reply's card ([`thread_entry`], loaded from [`proposal`]): the
+//! command read into the same action ([`github_actions::Action::from_argv`],
+//! exact parsing of the chosen command, never of the message) and sealed
+//! the same way, so Confirm runs exactly what it shows.
 
 #[cfg(test)]
 mod tests;
@@ -49,8 +57,18 @@ use crate::chat_store::{Conversation, Message, Role};
 use crate::cloud::session::SessionError;
 use crate::cloud::session::github::RepoCallError;
 use crate::ui_page::UiPage;
-use action::{Action, Tool, ToolForm};
-use run::Failure;
+use github_actions::action::MAX_BODY;
+use github_actions::rest::{self as run, Failure};
+use github_actions::{Action, ArgvError, Fields, Tool};
+
+/// What a tool form sends: the page's CSRF token and the tool's fields.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub(crate) struct ToolForm {
+    #[serde(default)]
+    pub csrf: String,
+    #[serde(flatten)]
+    pub fields: Fields,
+}
 
 /// Where asking GitHub for boards access starts (`?return_to=`).
 pub(crate) const GRANT: &str = "/auth/github/board";
@@ -69,6 +87,7 @@ pub(crate) fn routes() -> Router<App> {
         .route("/chat/{id}/github", get(tools).post(review))
         .route("/chat/{id}/github/confirm", get(confirm_again))
         .route("/chat/{id}/github/run", axum::routing::post(confirmed))
+        .route("/chat/{id}/github/proposed/{index}", get(proposal))
         .route(GRANT, get(grant))
         .layer(DefaultBodyLimit::max(64 * 1024))
 }
@@ -258,7 +277,7 @@ async fn review(
         Ok(_) => return gone(&headers, &id),
         Err(response) => return response,
     };
-    match Action::from_form(&form) {
+    match Action::from_fields(&form.fields) {
         Ok(action) => {
             let sealed = seal(&app, &owner, &id, action.clone());
             card_page(&app, &headers, &ready, &action, &sealed)
@@ -507,7 +526,7 @@ fn area_field(form: &str, name: &str, label: &str, value: &str, required: bool) 
     let area = Textarea::new(name)
         .id(id)
         .rows(4)
-        .maxlength(action::MAX_BODY as u32)
+        .maxlength(MAX_BODY as u32)
         .value(value)
         .required(required)
         .aria(aria);
@@ -534,7 +553,7 @@ pub(crate) fn tools_markup(
     form: &ToolForm,
     problem: Option<&str>,
 ) -> Markup {
-    let sent = Tool::from_key(&form.tool);
+    let sent = Tool::from_key(&form.fields.tool);
     let post = format!("/chat/{chat}/github");
     html! {
         h1 { "GitHub tools" }
@@ -556,33 +575,33 @@ pub(crate) fn tools_markup(
                 form method="post" action=(post) {
                     input type="hidden" name="csrf" value=(csrf);
                     input type="hidden" name="tool" value=(key);
-                    (text_field(key, "repository", "Repository", &value.pick(&form.repository, repository), "owner/name", true))
+                    (text_field(key, "repository", "Repository", &value.pick(&form.fields.repository, repository), "owner/name", true))
                     @match tool {
                         Tool::CreateIssue => {
-                            (text_field(key, "title", "Title", &value.pick(&form.title, ""), "", true))
-                            (area_field(key, "body", "Description", &value.pick(&form.body, ""), false))
-                            (text_field(key, "board", "Board number (optional)", &value.pick(&form.board, ""), "22", false))
-                            (text_field(key, "status", "Status on the board", &value.pick(&form.status, "Todo"), "Todo", false))
+                            (text_field(key, "title", "Title", &value.pick(&form.fields.title, ""), "", true))
+                            (area_field(key, "body", "Description", &value.pick(&form.fields.body, ""), false))
+                            (text_field(key, "board", "Board number (optional)", &value.pick(&form.fields.board, ""), "22", false))
+                            (text_field(key, "status", "Status on the board", &value.pick(&form.fields.status, "Todo"), "Todo", false))
                         }
                         Tool::Comment => {
-                            (text_field(key, "number", "Issue or pull request number", &value.pick(&form.number, ""), "11167", true))
-                            (area_field(key, "body", "Comment", &value.pick(&form.body, ""), true))
+                            (text_field(key, "number", "Issue or pull request number", &value.pick(&form.fields.number, ""), "11167", true))
+                            (area_field(key, "body", "Comment", &value.pick(&form.fields.body, ""), true))
                         }
                         Tool::CloseIssue => {
-                            (text_field(key, "number", "Issue number", &value.pick(&form.number, ""), "11167", true))
-                            (area_field(key, "comment", "Comment (optional)", &value.pick(&form.comment, ""), false))
+                            (text_field(key, "number", "Issue number", &value.pick(&form.fields.number, ""), "11167", true))
+                            (area_field(key, "comment", "Comment (optional)", &value.pick(&form.fields.comment, ""), false))
                         }
                         Tool::MoveOnBoard => {
-                            (text_field(key, "number", "Issue or pull request number", &value.pick(&form.number, ""), "11167", true))
-                            (text_field(key, "board", "Board number", &value.pick(&form.board, ""), "22", true))
-                            (text_field(key, "status", "Status", &value.pick(&form.status, "Todo"), "In Progress", true))
+                            (text_field(key, "number", "Issue or pull request number", &value.pick(&form.fields.number, ""), "11167", true))
+                            (text_field(key, "board", "Board number", &value.pick(&form.fields.board, ""), "22", true))
+                            (text_field(key, "status", "Status", &value.pick(&form.fields.status, "Todo"), "In Progress", true))
                         }
                         Tool::OpenPullRequest => {
-                            (text_field(key, "head", "Branch with your changes", &value.pick(&form.head, ""), "fix-login", true))
-                            (text_field(key, "base", "Into branch (optional; the default branch if empty)", &value.pick(&form.base, ""), "main", false))
-                            (text_field(key, "title", "Title", &value.pick(&form.title, ""), "", true))
-                            (area_field(key, "body", "Description", &value.pick(&form.body, ""), false))
-                            (Checkbox::new("draft", "Open as a draft").id(format!("gh-{key}-draft")).value("1").checked(mine && form.draft.is_some()))
+                            (text_field(key, "head", "Branch with your changes", &value.pick(&form.fields.head, ""), "fix-login", true))
+                            (text_field(key, "base", "Into branch (optional; the default branch if empty)", &value.pick(&form.fields.base, ""), "main", false))
+                            (text_field(key, "title", "Title", &value.pick(&form.fields.title, ""), "", true))
+                            (area_field(key, "body", "Description", &value.pick(&form.fields.body, ""), false))
+                            (Checkbox::new("draft", "Open as a draft").id(format!("gh-{key}-draft")).value("1").checked(mine && form.fields.draft.is_some()))
                         }
                     }
                     div.oa-page-actions {
@@ -628,6 +647,14 @@ pub(crate) fn card_markup(csrf: &str, chat: &str, action: &Action, sealed: &str)
     let card = action.card();
     html! {
         h1 { (card.heading) }
+        (card_body(csrf, chat, action, sealed))
+    }
+}
+
+/// Everything on the card under its heading.
+fn card_body(csrf: &str, chat: &str, action: &Action, sealed: &str) -> Markup {
+    let card = action.card();
+    html! {
         p { "In " a href=(format!("https://github.com/{}", card.repository)) { (card.repository) } ", as you:" }
         ul {
             @for change in &card.changes { li { (change) } }
@@ -793,4 +820,118 @@ pub(crate) async fn entry(app: &App, chat: &Conversation) -> Markup {
             ": open, comment on and close issues, move them on a board, and open pull requests."
         }
     }
+}
+
+/// The change a reply's proposed command makes: `None` when the command
+/// isn't a GitHub one, else the action (with `repository`, the chat's
+/// project's, when the command names none) or why there is none.
+pub(crate) fn proposed(
+    argv: &[String],
+    repository: Option<&str>,
+) -> Option<Result<Action, ArgvError>> {
+    github_actions::argv::is_github(argv).then(|| Action::from_argv(argv, repository))
+}
+
+/// Where a reply that proposed a GitHub change shows its card: loaded
+/// from [`proposal`] into the thread, with a plain link for a browser
+/// without scripts.
+pub(crate) fn thread_entry(
+    chat: &str,
+    index: usize,
+    reply: Option<&openagents_chat::router::Meta>,
+) -> Markup {
+    let github = reply
+        .and_then(|reply| reply.command.as_deref())
+        .is_some_and(github_actions::argv::is_github);
+    if !github {
+        return html! {};
+    }
+    let href = format!("/chat/{chat}/github/proposed/{index}");
+    html! {
+        div.oa-github-card hx-get=(href) hx-trigger="load" hx-swap="outerHTML" {
+            p { a href=(href) { "Review this change on GitHub" } }
+        }
+    }
+}
+
+/// The card in the thread for a proposal: Confirm with the sealed action,
+/// or what to do when the command can't become one.
+pub(crate) fn thread_card(
+    app: &App,
+    owner: &str,
+    chat: &str,
+    proposal: &Result<Action, ArgvError>,
+) -> Markup {
+    let tools = format!("/chat/{chat}/github");
+    match proposal {
+        Ok(action) => {
+            let sealed = seal(app, owner, chat, action.clone());
+            let csrf = crate::pages::chat::csrf(app, owner);
+            html! {
+                div.oa-github-card {
+                    h3 { (action.card().heading) }
+                    (card_body(&csrf, chat, action, &sealed))
+                }
+            }
+        }
+        Err(ArgvError::NeedsRepository) => html! {
+            div.oa-github-card {
+                p { "Pick the repository for this change in " a href=(tools) { "GitHub tools" } "." }
+            }
+        },
+        Err(_) => html! {
+            div.oa-github-card {
+                p { "This change needs a detail filled in first. Finish it in " a href=(tools) { "GitHub tools" } "." }
+            }
+        },
+    }
+}
+
+/// A reply's proposed GitHub change, sealed into a card: the thread loads
+/// it in place, and a browser without scripts opens it as a page.
+async fn proposal(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((id, index)): Path<(String, usize)>,
+) -> Response {
+    let ready = match ready(&app, &headers, &id).await {
+        Ok(ready) => ready,
+        Err(response) => return response,
+    };
+    let chat = &ready.chat;
+    let proposal = chat
+        .messages
+        .get(index)
+        .and_then(|message| crate::suggestions::message_reply(chat, message))
+        .and_then(|reply| reply.command.as_deref())
+        .and_then(|argv| {
+            proposed(
+                argv,
+                Some(ready.repository.as_str()).filter(|repo| !repo.is_empty()),
+            )
+        });
+    let Some(proposal) = proposal else {
+        return crate::ui_page::problem(
+            &headers,
+            StatusCode::NOT_FOUND,
+            "No change here",
+            "That reply proposed no change on GitHub.",
+            (&format!("/chat/{id}"), "Back to the chat"),
+        );
+    };
+    let card = thread_card(&app, &ready.owner, &id, &proposal);
+    if headers.contains_key("hx-request") {
+        let mut response = card.into_response();
+        response
+            .headers_mut()
+            .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+        return crate::chat_html::protect(response);
+    }
+    page(
+        &headers,
+        &ready,
+        &format!("/chat/{id}/github"),
+        "GitHub tools",
+        card,
+    )
 }

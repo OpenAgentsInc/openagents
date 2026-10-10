@@ -1692,6 +1692,22 @@ pub fn gate(effect: Effect, surface: Surface) -> CliGate {
     }
 }
 
+/// [`gate`] for one proposed command (`argv` without the program's name).
+/// On the website, a GitHub change the website makes itself after a
+/// signed confirm card (#11167, `github_actions::COMMANDS`) is offered;
+/// every other command meets [`gate`] by its effect.
+#[must_use]
+pub fn gate_command(argv: &[String], effect: Effect, surface: Surface) -> CliGate {
+    if surface == Surface::Web
+        && effect == Effect::Publishes
+        && github_actions::argv::is_github(argv)
+    {
+        CliGate::Offer
+    } else {
+        gate(effect, surface)
+    }
+}
+
 /// The corpus a grounded reply reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Corpus {

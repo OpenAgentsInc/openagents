@@ -1,5 +1,5 @@
-//! The chat's GitHub tools as typed actions (#11167): what a tool form
-//! asks for, what the confirm card says it will change, and nothing else.
+//! GitHub changes as typed actions: what a form or a command line asks
+//! for, what a confirm card says it will change, and nothing else.
 //!
 //! A form names its tool with one bounded value ([`Tool`]); every other
 //! field is an exact value (a repository, a number, a branch, a status
@@ -9,18 +9,18 @@
 use serde::{Deserialize, Serialize};
 
 /// The longest title an issue or pull request may have here.
-pub(crate) const MAX_TITLE: usize = 256;
+pub const MAX_TITLE: usize = 256;
 /// The longest body or comment, in characters.
-pub(crate) const MAX_BODY: usize = 8_000;
+pub const MAX_BODY: usize = 8_000;
 /// The longest board status name.
-pub(crate) const MAX_STATUS: usize = 64;
+pub const MAX_STATUS: usize = 64;
 /// The longest branch name.
-pub(crate) const MAX_BRANCH: usize = 255;
+pub const MAX_BRANCH: usize = 255;
 
 /// Which tool a form is for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum Tool {
+pub enum Tool {
     CreateIssue,
     Comment,
     CloseIssue,
@@ -30,7 +30,7 @@ pub(crate) enum Tool {
 
 impl Tool {
     /// Every tool, in the order the tools page lists them.
-    pub(crate) const ALL: [Tool; 5] = [
+    pub const ALL: [Tool; 5] = [
         Tool::CreateIssue,
         Tool::Comment,
         Tool::CloseIssue,
@@ -39,7 +39,7 @@ impl Tool {
     ];
 
     /// The form's `tool` value.
-    pub(crate) fn key(self) -> &'static str {
+    pub fn key(self) -> &'static str {
         match self {
             Tool::CreateIssue => "create_issue",
             Tool::Comment => "comment",
@@ -50,12 +50,12 @@ impl Tool {
     }
 
     /// A form's `tool` value back, exactly.
-    pub(crate) fn from_key(value: &str) -> Option<Tool> {
+    pub fn from_key(value: &str) -> Option<Tool> {
         Tool::ALL.into_iter().find(|tool| tool.key() == value)
     }
 
     /// The tool's name, as its heading and its confirm card say it.
-    pub(crate) fn name(self) -> &'static str {
+    pub fn name(self) -> &'static str {
         match self {
             Tool::CreateIssue => "Open an issue",
             Tool::Comment => "Comment on an issue or pull request",
@@ -70,7 +70,7 @@ impl Tool {
 /// to the repository's owner (an organization or a person), as
 /// `scripts/dev/issue-board.sh` reads it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Board {
+pub struct Board {
     pub number: u32,
     pub status: String,
 }
@@ -78,12 +78,14 @@ pub(crate) struct Board {
 /// One change to make on GitHub as the signed-in person.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "tool", rename_all = "snake_case")]
-pub(crate) enum Action {
+pub enum Action {
     /// Open an issue, and put it on a board when one is named.
     CreateIssue {
         repository: String,
         title: String,
         body: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        labels: Vec<String>,
         #[serde(default)]
         board: Option<Board>,
     },
@@ -93,13 +95,14 @@ pub(crate) enum Action {
         number: u64,
         body: String,
     },
-    /// Close an issue as completed, commenting first when there is a
-    /// comment.
+    /// Close an issue, commenting first when there is a comment.
     CloseIssue {
         repository: String,
         number: u64,
         #[serde(default)]
         comment: Option<String>,
+        #[serde(default)]
+        reason: CloseReason,
     },
     /// Set an issue's (or pull request's) status on a board, adding it to
     /// the board first when it isn't there.
@@ -122,13 +125,44 @@ pub(crate) enum Action {
     },
 }
 
-/// What a tool form sends: the tool, and the fields that tool reads.
+/// Why an issue is closed: GitHub's `state_reason`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CloseReason {
+    #[default]
+    Completed,
+    NotPlanned,
+}
+
+impl CloseReason {
+    /// GitHub's word, and the CLI's `--reason`.
+    pub fn word(self) -> &'static str {
+        match self {
+            CloseReason::Completed => "completed",
+            CloseReason::NotPlanned => "not_planned",
+        }
+    }
+
+    /// The CLI's `--reason` back, exactly.
+    pub fn parse(value: &str) -> Option<CloseReason> {
+        [CloseReason::Completed, CloseReason::NotPlanned]
+            .into_iter()
+            .find(|reason| reason.word() == value)
+    }
+}
+
+/// The most labels a new issue may carry here.
+pub const MAX_LABELS: usize = 10;
+/// The longest label name.
+pub const MAX_LABEL: usize = 50;
+
+/// What a tool form sends: the tool, and the fields that tool reads. A
+/// web form deserializes into it; every field is text, checked by
+/// [`Action::from_fields`].
 #[derive(Clone, Debug, Default, Deserialize)]
-pub(crate) struct ToolForm {
+pub struct Fields {
     #[serde(default)]
     pub tool: String,
-    #[serde(default)]
-    pub csrf: String,
     #[serde(default)]
     pub repository: String,
     #[serde(default)]
@@ -153,7 +187,7 @@ pub(crate) struct ToolForm {
 
 /// What the confirm card shows before anything changes.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct Card {
+pub struct Card {
     pub heading: &'static str,
     pub repository: String,
     /// One sentence per change, in the order they happen.
@@ -165,7 +199,7 @@ pub(crate) struct Card {
 
 impl Action {
     /// Read a tool form into an action, or say what to fix.
-    pub(crate) fn from_form(form: &ToolForm) -> Result<Action, &'static str> {
+    pub fn from_fields(form: &Fields) -> Result<Action, &'static str> {
         let tool = Tool::from_key(form.tool.trim()).ok_or("Pick a tool, then try again.")?;
         let repository = repository(&form.repository)?;
         let action = match tool {
@@ -173,6 +207,7 @@ impl Action {
                 repository,
                 title: title(&form.title)?,
                 body: body(&form.body, false)?,
+                labels: Vec::new(),
                 board: optional_board(&form.board, &form.status)?,
             },
             Tool::Comment => Action::Comment {
@@ -184,6 +219,7 @@ impl Action {
                 repository,
                 number: number(&form.number)?,
                 comment: Some(body(&form.comment, false)?).filter(|c| !c.is_empty()),
+                reason: CloseReason::Completed,
             },
             Tool::MoveOnBoard => Action::MoveOnBoard {
                 repository,
@@ -204,7 +240,7 @@ impl Action {
     }
 
     /// Which tool this is.
-    pub(crate) fn tool(&self) -> Tool {
+    pub fn tool(&self) -> Tool {
         match self {
             Action::CreateIssue { .. } => Tool::CreateIssue,
             Action::Comment { .. } => Tool::Comment,
@@ -215,7 +251,7 @@ impl Action {
     }
 
     /// The repository it changes (`owner/name`).
-    pub(crate) fn repository(&self) -> &str {
+    pub fn repository(&self) -> &str {
         match self {
             Action::CreateIssue { repository, .. }
             | Action::Comment { repository, .. }
@@ -226,7 +262,7 @@ impl Action {
     }
 
     /// Whether it changes a board, which needs GitHub's `project` access.
-    pub(crate) fn needs_board(&self) -> bool {
+    pub fn needs_board(&self) -> bool {
         matches!(
             self,
             Action::CreateIssue { board: Some(_), .. } | Action::MoveOnBoard { .. }
@@ -235,13 +271,23 @@ impl Action {
 
     /// Whether the action, read back from a sealed card, still holds every
     /// bound a form holds (a card is signed, but bounds are cheap).
-    pub(crate) fn valid(&self) -> bool {
+    pub fn valid(&self) -> bool {
         let board_ok = |board: &Board| board.number > 0 && status_ok(&board.status);
-        oa_auth::repos::full_name(self.repository())
+        full_name(self.repository())
             && match self {
                 Action::CreateIssue {
-                    title, body, board, ..
-                } => title_ok(title) && body_ok(body) && board.as_ref().is_none_or(board_ok),
+                    title,
+                    body,
+                    labels,
+                    board,
+                    ..
+                } => {
+                    title_ok(title)
+                        && body_ok(body)
+                        && labels.len() <= MAX_LABELS
+                        && labels.iter().all(|label| label_ok(label))
+                        && board.as_ref().is_none_or(board_ok)
+                }
                 Action::Comment { number, body, .. } => {
                     *number > 0 && body_ok(body) && !body.trim().is_empty()
                 }
@@ -265,13 +311,20 @@ impl Action {
     }
 
     /// What the confirm card says will change.
-    pub(crate) fn card(&self) -> Card {
+    pub fn card(&self) -> Card {
         let mut changes = Vec::new();
         let text = match self {
             Action::CreateIssue {
-                title, body, board, ..
+                title,
+                body,
+                labels,
+                board,
+                ..
             } => {
                 changes.push(format!("Opens a new issue titled \u{201c}{title}\u{201d}."));
+                if !labels.is_empty() {
+                    changes.push(format!("Labels it {}.", labels.join(", ")));
+                }
                 if let Some(board) = board {
                     changes.push(format!(
                         "Puts it on board {} with the status {}.",
@@ -285,12 +338,18 @@ impl Action {
                 Some(body.clone())
             }
             Action::CloseIssue {
-                number, comment, ..
+                number,
+                comment,
+                reason,
+                ..
             } => {
                 if comment.is_some() {
                     changes.push(format!("Adds a comment to #{number}."));
                 }
-                changes.push(format!("Closes #{number} as completed."));
+                changes.push(match reason {
+                    CloseReason::Completed => format!("Closes #{number} as completed."),
+                    CloseReason::NotPlanned => format!("Closes #{number} as not planned."),
+                });
                 comment.clone()
             }
             Action::MoveOnBoard { number, board, .. } => {
@@ -327,26 +386,41 @@ impl Action {
     }
 }
 
-fn repository(value: &str) -> Result<String, &'static str> {
+/// Whether `value` is a GitHub `owner/name`.
+pub fn full_name(value: &str) -> bool {
+    let Some((owner, name)) = value.split_once('/') else {
+        return false;
+    };
+    let part = |p: &str| {
+        !p.is_empty()
+            && p.len() <= 100
+            && !p.starts_with('.')
+            && p.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
+    };
+    part(owner) && part(name)
+}
+
+pub(crate) fn repository(value: &str) -> Result<String, &'static str> {
     let value = value.trim().trim_end_matches(".git");
     let value = value
         .strip_prefix("https://github.com/")
         .unwrap_or(value)
         .trim_end_matches('/');
-    if oa_auth::repos::full_name(value) {
+    if full_name(value) {
         Ok(value.to_string())
     } else {
         Err("Enter the repository as owner/name, such as OpenAgentsInc/openagents.")
     }
 }
 
-fn title_ok(title: &str) -> bool {
+pub(crate) fn title_ok(title: &str) -> bool {
     !title.trim().is_empty()
         && title.chars().count() <= MAX_TITLE
         && !title.chars().any(char::is_control)
 }
 
-fn title(value: &str) -> Result<String, &'static str> {
+pub(crate) fn title(value: &str) -> Result<String, &'static str> {
     let value = value.trim();
     if title_ok(value) {
         Ok(value.to_string())
@@ -355,11 +429,11 @@ fn title(value: &str) -> Result<String, &'static str> {
     }
 }
 
-fn body_ok(body: &str) -> bool {
+pub(crate) fn body_ok(body: &str) -> bool {
     body.chars().count() <= MAX_BODY
 }
 
-fn body(value: &str, required: bool) -> Result<String, &'static str> {
+pub(crate) fn body(value: &str, required: bool) -> Result<String, &'static str> {
     let value = value.trim().replace("\r\n", "\n");
     if required && value.is_empty() {
         return Err("Enter the comment.");
@@ -371,7 +445,7 @@ fn body(value: &str, required: bool) -> Result<String, &'static str> {
     }
 }
 
-fn number(value: &str) -> Result<u64, &'static str> {
+pub(crate) fn number(value: &str) -> Result<u64, &'static str> {
     value
         .trim()
         .trim_start_matches('#')
@@ -381,13 +455,13 @@ fn number(value: &str) -> Result<u64, &'static str> {
         .ok_or("Enter the issue or pull request number, such as 11167.")
 }
 
-fn status_ok(status: &str) -> bool {
+pub(crate) fn status_ok(status: &str) -> bool {
     !status.trim().is_empty()
         && status.chars().count() <= MAX_STATUS
         && !status.chars().any(char::is_control)
 }
 
-fn optional_board(board: &str, status: &str) -> Result<Option<Board>, &'static str> {
+pub(crate) fn optional_board(board: &str, status: &str) -> Result<Option<Board>, &'static str> {
     let board = board.trim().trim_start_matches('#');
     if board.is_empty() {
         return Ok(None);
@@ -409,7 +483,7 @@ fn optional_board(board: &str, status: &str) -> Result<Option<Board>, &'static s
 
 /// A branch name Git and GitHub accept, plus `owner:branch` for a head on
 /// a fork.
-fn branch_ok(value: &str) -> bool {
+pub(crate) fn branch_ok(value: &str) -> bool {
     let name = value.split_once(':').map_or(
         value,
         |(owner, name)| {
@@ -431,7 +505,7 @@ fn branch_ok(value: &str) -> bool {
             .any(|c| c.is_control() || c.is_whitespace() || "~^:?*[\\".contains(c))
 }
 
-fn branch(value: &str, required: bool) -> Result<Option<String>, &'static str> {
+pub(crate) fn branch(value: &str, required: bool) -> Result<Option<String>, &'static str> {
     let value = value.trim();
     if value.is_empty() {
         return if required {
@@ -445,4 +519,11 @@ fn branch(value: &str, required: bool) -> Result<Option<String>, &'static str> {
     } else {
         Err("Enter a branch name as Git writes it, such as fix-login.")
     }
+}
+
+pub(crate) fn label_ok(label: &str) -> bool {
+    !label.trim().is_empty()
+        && label.chars().count() <= MAX_LABEL
+        && !label.contains(',')
+        && !label.chars().any(char::is_control)
 }

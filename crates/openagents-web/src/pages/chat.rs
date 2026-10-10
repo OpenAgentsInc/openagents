@@ -1820,6 +1820,8 @@ fn messages(chat: &Conversation, before: Option<usize>, links: bool) -> Markup {
                 streaming(chat, message),
                 crate::chat_store::is_account_owner(&chat.owner),
             ))
+            // A reply that proposed a change on GitHub: its confirm card (#11167).
+            (crate::github_tools::thread_entry(&chat.id, index + start, crate::suggestions::message_reply(chat, message)))
             (work::rows(chat, index + start + 1, links))
         }
         // Replies sent here that Coder hasn't taken yet (#11048).

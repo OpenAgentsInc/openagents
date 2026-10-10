@@ -35,6 +35,10 @@ const MAX_FOLLOWUP_CHARS: usize = 80;
 /// The most words one proposed command has, and the longest word.
 const MAX_ARGV: usize = 8;
 const MAX_ARG_BYTES: usize = 200;
+/// The bounds of a proposed GitHub change's words (#11167): NIP-CJ's own
+/// for a `cli` offer, since a title or a comment is one word.
+const MAX_GITHUB_ARGV: usize = 32;
+const MAX_GITHUB_ARG_BYTES: usize = 256;
 /// The most bytes of the worker's judgment the phone keeps, for a tester
 /// who shares the chat.
 const MAX_JUDGMENT_BYTES: usize = playtest::report::MAX_JUDGMENT_BYTES;
@@ -799,9 +803,16 @@ pub fn command_of(payload: &Value) -> Option<Vec<String>> {
     if argv.first().is_some_and(|word| word == "openagents") {
         argv.remove(0);
     }
-    ((1..=MAX_ARGV).contains(&argv.len())
+    // A GitHub change the website shows on a confirm card (#11167) carries
+    // its title and text as words, so it keeps NIP-CJ's own bounds.
+    let (max_words, max_bytes) = if github_actions::argv::is_github(&argv) {
+        (MAX_GITHUB_ARGV, MAX_GITHUB_ARG_BYTES)
+    } else {
+        (MAX_ARGV, MAX_ARG_BYTES)
+    };
+    ((1..=max_words).contains(&argv.len())
         && argv.iter().all(|word| {
-            !word.is_empty() && word.len() <= MAX_ARG_BYTES && !word.chars().any(char::is_control)
+            !word.is_empty() && word.len() <= max_bytes && !word.chars().any(char::is_control)
         }))
     .then_some(argv)
 }

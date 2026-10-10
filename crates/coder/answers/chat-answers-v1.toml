@@ -629,6 +629,15 @@ when = "The user wants something a read-only openagents command shows, and the t
 text = "Running the openagents command for that on this computer."
 sources = ["docs/cli/README.md", "docs/cli/chat.md"]
 
+[[answer]]
+id = "cli.offer.website"
+version = 1
+routes = ["cli"]
+place = "web"
+when = "On the website, the user wants a GitHub issue opened, commented on, or closed, or an issue's status set on a GitHub Projects board, and we have the change ready"
+text = "Here's that change on GitHub. Nothing changes until you confirm it."
+sources = ["docs/web/github-tools.md"]
+
 # ---------------------------------------------------------------------------
 # wallet
 # ---------------------------------------------------------------------------

@@ -993,9 +993,15 @@ pub fn decide(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situati
     }
 }
 
+/// The command groups the website's chat proposes from (#11167): the
+/// groups of `github_actions::COMMANDS`, whose changes the website makes
+/// itself ([`crate::cli_route::gate::WEB_COMMANDS`]).
+pub const WEB_GROUPS: [&str; 3] = ["issue", "project", "pr"];
+
 /// The website's tiers (#10106): refusals, knowledge, the model, and
-/// prepared answers on the answer routes, each without an offer. Work,
-/// commands, screens, the Gym, decks, and capabilities become the model
+/// prepared answers on the answer routes, each without an offer, and the
+/// GitHub commands of [`WEB_GROUPS`]. Work, other commands, screens, the
+/// Gym, decks, and capabilities become the model
 /// told [`WEB_NOTE`], since nothing on the website can act on them. An
 /// account question reads the product knowledge: the website has
 /// accounts (GitHub sign-in, Settings, the Claude key, Coder's sign-in),
@@ -1012,6 +1018,17 @@ pub fn for_web(routing: &Routing, tier: Tier) -> Tier {
     };
     match tier {
         Tier::Refuse { .. } => tier,
+        // A GitHub change (#11167): the website makes it itself after a
+        // signed confirm card, so the command route stays, held to the
+        // GitHub groups (the typed `cli_group` reading, never the words).
+        Tier::Cli { group, also, lead } if WEB_GROUPS.contains(&group.as_str()) => Tier::Cli {
+            group,
+            also: also
+                .into_iter()
+                .filter(|group| WEB_GROUPS.contains(&group.as_str()))
+                .collect(),
+            lead,
+        },
         _ if routing.route == RouteId::Account => Tier::Grounded {
             corpus: Corpus::Product,
             lead: None,
@@ -1614,6 +1631,34 @@ mod tests {
             Some(crate::cli_route::tree::Effect::ReadOnly)
         );
         assert_eq!(overview.effect, crate::router::Effect::ReadOnly);
+    }
+
+    /// On the website a GitHub command group keeps the command route
+    /// (#11167): the website makes the change itself after a signed
+    /// confirm card. Other groups in the beam are dropped there.
+    #[test]
+    fn the_website_proposes_github_changes_from_the_github_groups_only() {
+        let mut cli = routed(RouteId::Cli, 0.95, "cli.offer", 0.9, 0.9);
+        cli.cli_group = Some(("issue".to_string(), 0.95));
+        cli.cli_alternatives = vec![("project".to_string(), 0.4), ("session".to_string(), 0.3)];
+        match decided(&cli, &web(), false) {
+            Tier::Cli { group, also, .. } => {
+                assert_eq!(group, "issue");
+                assert!(
+                    also.iter().all(|g| WEB_GROUPS.contains(&g.as_str())),
+                    "{also:?}"
+                );
+            }
+            other => panic!("expected the command route, got {other:?}"),
+        }
+        for group in WEB_GROUPS {
+            assert!(
+                crate::cli_route::gate::WEB_COMMANDS
+                    .iter()
+                    .any(|command| command.split(' ').next() == Some(group)),
+                "{group}"
+            );
+        }
     }
 
     /// On the website (#10106) work, commands, and screens become the

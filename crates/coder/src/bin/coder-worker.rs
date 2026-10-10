@@ -3348,12 +3348,17 @@ impl Job {
                             }
                         }
                         (SeamOutcome::Cli(Ok(CliAnswer::Proposal(proposal))), Tier::Cli { lead: shown, .. }) => {
-                            match router::gate(proposal.effect, turn.context.surface()) {
+                            match router::gate_command(
+                                &proposal.argv,
+                                proposal.effect,
+                                turn.context.surface(),
+                            ) {
                                 router::CliGate::Offer => {
                                     // A terminal runs a read-only command at
                                     // once and shows what it printed
                                     // (#10170); anything else waits for a
-                                    // confirm.
+                                    // confirm. The website's GitHub changes
+                                    // (#11167) say so in `cli.offer.website`.
                                     let id = if turn.context.surface() == router::Surface::Terminal
                                         && proposal.effect == router::Effect::ReadOnly
                                     {
@@ -3361,7 +3366,7 @@ impl Job {
                                     } else {
                                         "cli.offer"
                                     };
-                                    if let Some(entry) = bank.entry(id)
+                                    if let Some(entry) = bank.placed(id, facts)
                                         && let Some(text) = entry.render(facts)
                                     {
                                         send(0, &text)?;
