@@ -564,6 +564,152 @@ first door, with the Pylon as fallback and shadow.
 (it reaches about 130 TF before dequantization against cuBLAS's 145–170),
 then make it the default for bitwise chunk invariance at f16 speed.
 
+## H100 (2026-10-10)
+
+A one-off benchmark on a plain (not confidential) spot `a3-highgpu-1g` in
+`us-east5-a`: one NVIDIA H100 80GB HBM3, driver 580.178.04, the Deep
+Learning VM image `common-cu129-ubuntu-2404-nvidia-580`. Psionic was built
+on the VM from `origin/main` (`3ed7bf2a63`) with nvcc 12.9 and
+`PSI_CUDA_ARCH=90`. It ran as `psionic-openai-server --decision-device cuda
+--decision-chunk 2048 --decision-max-tokens 65536`, with f16 accumulate, the
+default. llama.cpp was the b11538 CUDA 12.8 release, the build used above, at
+`-ngl 99 -np 1 -fa on`, with `-c/-b/-ub 17408` (and 32768 for the 32k
+prompt). Nothing else ran on the GPU. The VM was deleted after the run.
+Details are in `crates/psionic/fixtures/clef/reports/h100-2026-10-10.json`.
+
+**Latency.** These are the same prompts as the 4080 gate session
+(`len{1k,4k,16k,32k}.json`), measured with `bench_latency.py`: the median
+of 9 runs, a fresh nonce each run. Psionic and llama.cpp were interleaved
+for three rounds; the cells below are rounds 1 / 2 / 3.
+
+| Prompt | Psionic, H100 | llama.cpp b11538, H100 | H100 speedup | Psionic, 4080 (gate session) | llama.cpp, 4080 |
+| --- | --- | --- | --- | --- | --- |
+| 1,082 tokens | **0.074 / 0.077 / 0.073 s** | 0.135 / 0.136 / 0.138 s | 1.8× | 0.194 s | 0.182 s |
+| 3,917 tokens | **0.210 / 0.215 / 0.209 s** | 0.462 / 0.464 / 0.464 s | 2.2× | 0.596 s | 0.684 s |
+| 15,511 tokens | **0.843 / 0.851 / 0.842 s** | 2.218 / 2.220 / 2.219 s | 2.6× | 2.48 s | 3.46 s |
+| 30,659 tokens | **1.78 / 1.79 / 1.79 s** | 5.54 / 5.53 / 5.53 s | 3.1× | 6.5 s | refused (one physical batch) |
+| Process VRAM (nvidia-smi) | 8.6 GB after 32k | 10.7 GB (17k batch), 15.5 GB (32k batch) | | 7.5 GB at 16k | 10.3 GB |
+
+- Psionic's runs are tight: every one of the 108 runs is within 10 % of
+  its median.
+- llama.cpp is bimodal on this card. 1 to 3 of every 9 runs take
+  3.6–4.9× its median: for example 0.64 s against 0.136 s at 1k, 9.4 s
+  against 2.22 s at 16k, and 20 s against 5.5 s at 32k. The medians above
+  are its fast mode.
+- At 16k the H100 runs Psionic 2.9× faster than the 4080 does. That puts
+  every M2 latency gate (0.20 / 0.65 / 3.25 s) about 3–4× clear.
+
+**Per-file relevance.** `scripts/bench/clef-relevance-bench.py --mode seq
+--warmup 3`, on the same 72-request dataset (about 1,534 tokens each), on
+localhost:
+
+| | Psionic, H100 | llama.cpp, H100 | Psionic, 4080 (deployed) |
+| --- | --- | --- | --- |
+| p50 / p90 / p99 | **0.109 / 0.117 / 0.130 s** | 0.186 / 0.206 / 1.07 s | 0.250 / 0.277 / 0.299 s |
+| Decisions/s, one at a time | **9.33** | 4.40 | 4.05 |
+| Prefill tok/s (median) | 14.5k | 8.5k | 6.2k |
+| F1 at 0.5 / AUC | 0.67 / 0.84 | — | 0.67 / 0.85 |
+
+**Concurrency.** The same per-file requests (144 of them, two rounds),
+sent from N clients at once. Decisions per second, then p50 / p90
+latency per decision:
+
+| Clients | Psionic, H100 | llama.cpp `-np 1` | llama.cpp `-np 4` |
+| --- | --- | --- | --- |
+| 1 | **9.4/s**, 0.108 / 0.116 s | 4.1/s, 0.187 / 0.206 s | — |
+| 4 | **9.5/s**, 0.42 / 0.46 s | 5.7/s, 0.71 / 0.79 s | 5.0/s, 0.35 / 0.40 s |
+| 16 | **9.4/s**, 0.95 / 3.4 s (1,867 busy retries) | 5.7/s, 2.8 / 3.0 s | 5.7/s, 2.3 / 2.5 s |
+| 32 | **8.9/s**, 1.0 / 8.8 s (5,817 busy retries) | 5.7/s, 5.6 / 6.0 s | 5.7/s, 5.0 / 5.5 s |
+
+- Psionic runs one decision at a time, so its throughput stays flat at
+  about 9.4/s however many clients send.
+- It also refuses with `503 busy` once more than 8 decisions are waiting
+  (`RequestLimits::max_queue`, fixed at 8 and not a flag). With 16 or 32
+  clients and no retry, 135 of the 144 requests were refused.
+- The 16- and 32-client rows above are from a client that retries a 503
+  after 50 ms. Their p90 is the retry wait.
+- Batching several prompts into one prefill (M4) is what would raise
+  throughput beyond 9.4/s. A queue-depth flag is a one-line follow-up.
+
+**The router's three-request replay.** `router_set.py` replays 8
+recorded router calls (main 9,535, `answer` 3,289 and `cli_group` 11,830
+tokens), each sent as three requests at once. Every pass ran on a newly
+started server, so the exact logit cache was empty. (A second pass on the
+same server answers from the cache in 7 ms.)
+
+| | H100 | 4080 |
+| --- | --- | --- |
+| Psionic Clef-Flash, three passes | **1.40 / 1.38 / 1.37 s** | 3.98–4.22 s |
+| llama.cpp Clef-Flash (`-np 1`) | 3.18 s p50, 8.7 s p90 (its slow mode) | — |
+| Psionic Clef 27B, two passes | 4.00 / 3.99 s | does not fit |
+
+On Flash the H100 takes the set from about 4.2 s to 1.4 s. That is
+still over the router's under-1 s target. The three requests queue on one
+device, and together they hold 24.7k tokens.
+
+**Parity** (the 40 e2e requests, 104 questions; `e2e.py compare`):
+
+| H100 CUDA lane against | Top answer | max \|Δp\| | median \|Δp\| |
+| --- | --- | --- | --- |
+| Psionic CPU lane | **100 %** | 0.0022 | 0.0001 |
+| the 4080 M2 CUDA run (`psionic-cuda-f16-q4_k_m.jsonl`) | 99.0 % (the known `password_3` near tie, 0.218 vs 0.220) | 0.017 | 0.0007 |
+| HF f32 reference | 94.2 % (the CPU lane's own figure) | 0.177 | 0.013 |
+
+**Clef 27B** (`ggml-org/Clef-GGUF` `Clef-Q4_K_M.gguf`, 19.2 GB).
+
+- **It fits.** Psionic's CUDA lane loads it unchanged and holds 18.1 GB
+  after load and 21.8 GB after a 32k prompt. llama.cpp holds 24.2 GB at
+  a 17k batch and 30.2 GB at a 32k batch.
+- **It agrees with llama.cpp.** Psionic and llama.cpp 27B give the same
+  top answer on 92.6 % of 95 e2e questions, with median |Δp| 0.008 and
+  max 0.16. llama.cpp refused 3 of the 40 requests with a 400.
+
+Clef 27B latency, median of 9 with a fresh nonce:
+
+| Prompt | Psionic 27B, H100 | llama.cpp 27B, H100 | Speedup |
+| --- | --- | --- | --- |
+| 1k | **0.212 s** | 0.396 s | 1.9× |
+| 4k | **0.611 s** | 1.359 s | 2.2× |
+| 16k | **2.61 s** | 6.39 s | 2.4× |
+| 32k | **6.00 s** | 15.5 s | 2.6× |
+
+**Router goldens with 27B.** `chat-goldens router` (123 cases) ran
+against each server through `CODER_DECISION_PROFILE=direct_local`, in the
+same hour, with and without the Clef calibration map.
+
+- **Product notes were off.** No embeddings key was on the VM, so every
+  knowledge turn reports tier `grounded`. That caps Pass and the
+  served-answer checks for every judge, which is why Pass and "right
+  ignoring time" here can't be compared with the 4080 table above.
+- **Judge-only columns.** "Route right" is the route check.
+  "Answer top right" counts goldens that name answers (112 cases) and
+  checks whether the judge's top `answer` option is one of them.
+- **Map.** The Clef map was fitted on Flash; no 27B map exists yet.
+
+| Judge (H100) | Pass | Right ignoring time | Route right | Answer top right | Route top p (p10 / p50 / p90) | Judge p50 / p90 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Clef-Flash, Clef map | 26 | 26 | 111 / 123 | 72 / 112 | 0.41 / 0.82 / 0.98 | 1.47 / 1.48 s |
+| Clef-Flash, raw | 13 | 13 | 111 / 123 | 72 / 112 | 0.18 / 0.30 / 0.49 | 1.47 / 1.48 s |
+| **Clef 27B, Clef-Flash map** | 0 (all over the 2 s judge budget) | **44** | **118 / 123** | 74 / 112 | 0.66 / 0.96 / 0.98 | 4.30 / 4.33 s |
+| Clef 27B, raw | 0 | 15 | 118 / 123 | 74 / 112 | 0.29 / 0.53 / 0.74 | 4.32 / 4.33 s |
+| Hosted Jev (4080 table above, notes on) | 106 | 108 | 120 / 123 | 108 (served) | 0.52 / 0.95 / 1.00 | 0.89 / 1.13 s |
+
+**What 27B closes, and what it doesn't.**
+
+- **Route: mostly closed.** 27B gets 118 of 123 routes right, against
+  Flash's 111 and Jev's 120. Its route confidence is higher too: a median
+  of 0.96 through the Flash map, against 0.82 for Flash.
+- **The `answer` question: not closed.** 27B's top answer is right on 74
+  of 112 goldens; Flash's is right on 72. That leaves most of the gap to
+  Jev in place.
+- **Too slow for the budget.** At 4.3 s per turn on an H100, 27B misses
+  the router's 2 s judge budget on every case. Clef-Flash on the H100
+  fits the budget at 1.47 s.
+- **Where that leaves the router.** On an H100, Clef-Flash is a viable
+  speed tier. Neither Clef model reaches Jev's `answer` accuracy, so Jev
+  stays the first door. A 27B calibration map, and fewer `answer`
+  options (see above), are the next steps on accuracy.
+
 ## M3 status (2026-10-10, in progress)
 
 The Metal lane exists and its kernels are checked. It has not yet run the

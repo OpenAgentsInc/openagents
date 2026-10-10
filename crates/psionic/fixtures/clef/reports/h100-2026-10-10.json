@@ -1,0 +1,46 @@
+{
+  "issue": "OpenAgentsInc/openagents#11195 (H100 benchmark)",
+  "device": "NVIDIA H100 80GB HBM3, GCE a3-highgpu-1g spot, us-east5-a, driver 580.178.04, image common-cu129-ubuntu-2404-nvidia-580; VM deleted after the run",
+  "build": "origin/main 3ed7bf2a63, built on the VM: nvcc 12.9, PSI_CUDA_ARCH=90",
+  "artifacts": {
+    "clef_flash": "ggml-org/Clef-Flash-GGUF Clef-Flash-Q4_K_M.gguf sha256:fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c",
+    "clef_27b": "ggml-org/Clef-GGUF Clef-Q4_K_M.gguf (19,232,219,200 bytes)"
+  },
+  "commands": {
+    "psionic": "psionic-openai-server -m MODEL --decision-device cuda --decision-chunk 2048 --decision-max-tokens 65536 (f16 accumulate)",
+    "llama.cpp": "llama-server b11538 (cuda-12.8 release) -m MODEL -ngl 99 -np 1 -fa on -c N -b N -ub N, N = 17408 (1k-16k) or 32768 (32k)"
+  },
+  "method": "tools/bench_latency.py, median of 9 after one warmup, fresh nonce per run; Psionic and llama.cpp interleaved for three rounds",
+  "latency_median_s": {
+    "psionic_flash": {"1k": [0.0737, 0.0766, 0.0733], "4k": [0.21, 0.2145, 0.2089], "16k": [0.8426, 0.8505, 0.8417], "32k": [1.7832, 1.7926, 1.7857]},
+    "llama_cpp_flash": {"1k": [0.1352, 0.1361, 0.1377], "4k": [0.4623, 0.4635, 0.4638], "16k": [2.2181, 2.2198, 2.219], "32k": [5.538, 5.5263, 5.5251]},
+    "llama_cpp_note": "bimodal: 1-3 of every 9 runs take 3.6-4.9x the median (e.g. 9.4 s at 16k, 20 s at 32k)",
+    "psionic_27b": {"1k": 0.2122, "4k": 0.6108, "16k": 2.6066, "32k": 5.9976},
+    "llama_cpp_27b": {"1k": 0.3958, "4k": 1.3589, "16k": 6.3874, "32k": 15.5164}
+  },
+  "input_tokens": {"1k": 1082, "4k": 3917, "16k": 15511, "32k": 30659},
+  "process_vram_mib": {"psionic_flash_after_32k": 8556, "llama_flash_17k_batch": 10690, "llama_flash_32k_batch": 15480, "psionic_27b_load": 18058, "psionic_27b_after_32k": 21772, "llama_27b_17k_batch": 24188, "llama_27b_32k_batch": 30196},
+  "relevance_seq": {
+    "psionic": {"requests": 72, "p50_s": 0.109, "p90_s": 0.117, "p99_s": 0.13, "decisions_per_s": 9.33, "prefill_tok_s": 14503, "f1_at_0_5": 0.67, "auc": 0.84},
+    "llama_cpp": {"requests": 72, "p50_s": 0.186, "p90_s": 0.206, "p99_s": 1.069, "decisions_per_s": 4.40, "prefill_tok_s": 8488}
+  },
+  "concurrency_decisions_per_s": {
+    "psionic_retry_on_503": {"1": 9.34, "4": 9.45, "16": 9.40, "32": 8.92},
+    "psionic_no_retry": {"1": 9.41, "4": 9.45, "16": "9 of 144 admitted (503 busy above 8 waiting)", "32": "9 of 144 admitted"},
+    "llama_np1": {"1": 4.11, "4": 5.68, "16": 5.68, "32": 5.66},
+    "llama_np4": {"4": 5.01, "16": 5.67, "32": 5.68}
+  },
+  "router_set_p50_s": {"psionic_flash": [1.397, 1.375, 1.372], "llama_flash": 3.175, "psionic_27b": [4.004, 3.989]},
+  "parity_e2e_40_requests": {
+    "vs_psionic_cpu": {"top_answer": 1.0, "max_abs_dp": 0.0022, "median_abs_dp": 0.00013},
+    "vs_4080_m2_cuda_f16": {"top_answer": 0.9904, "max_abs_dp": 0.0174},
+    "vs_hf_f32_reference": {"top_answer": 0.9423, "max_abs_dp": 0.1769},
+    "psionic_27b_vs_llama_27b": {"questions": 95, "top_answer": 0.9263, "max_abs_dp": 0.160, "median_abs_dp": 0.0082, "llama_refused": 3}
+  },
+  "router_goldens_123_cases_product_notes_off": {
+    "flash_clef_map": {"pass": 26, "route_right": 111, "answer_top_right_of_112": 72, "judge_p50_ms": 1472},
+    "flash_raw": {"pass": 13, "route_right": 111, "answer_top_right_of_112": 72, "judge_p50_ms": 1467},
+    "c27_flash_map": {"pass": 0, "right_ignoring_time": 44, "route_right": 118, "answer_top_right_of_112": 74, "judge_p50_ms": 4304},
+    "c27_raw": {"pass": 0, "right_ignoring_time": 15, "route_right": 118, "answer_top_right_of_112": 74, "judge_p50_ms": 4315}
+  }
+}
