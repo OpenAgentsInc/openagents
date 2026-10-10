@@ -475,6 +475,26 @@ pub(crate) async fn report_capabilities(
     .await
 }
 
+/// A report on a job says the Mac is still there, busy with it: its last
+/// report is refreshed (now and then) without asking it again.
+pub(crate) async fn touch_mac(store: &Store, owner: &str, computer: &str) -> Result<(), Error> {
+    let key = Store::owner_key(owner, MACS_KEY)?;
+    let computer = computer.to_owned();
+    update(store, &key, fresh_macs, move |macs| {
+        let now = now_unix();
+        let Some(reported) = macs.computers.get_mut(&computer) else {
+            return (false, ());
+        };
+        if now.saturating_sub(reported.reported_unix) < REWRITE_EVERY {
+            return (false, ());
+        }
+        reported.reported_unix = now;
+        reported.capabilities.busy = true;
+        (true, ())
+    })
+    .await
+}
+
 /// A job handed to its Mac.
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct Taken {
@@ -1254,7 +1274,12 @@ pub(crate) fn download(name: &str, size: u64, body: Body) -> Response {
     if let Ok(value) = HeaderValue::from_str(media(name)) {
         headers.insert(header::CONTENT_TYPE, value);
     }
-    headers.insert(header::CONTENT_LENGTH, HeaderValue::from(size));
+    // No Content-Length: Cloud Run refuses a response over 32 MiB that
+    // declares one, and streams one sent in chunks. The size is still said.
+    headers.insert(
+        header::HeaderName::from_static("x-file-size"),
+        HeaderValue::from(size),
+    );
     headers.insert(
         header::CACHE_CONTROL,
         HeaderValue::from_static("private, no-store"),
@@ -1333,7 +1358,15 @@ async fn report_route(
         );
     };
     let computer = line(&name, 64);
-    match report(&app.config.chat_store, &owner, &computer, &id, sent).await {
+    let store = &app.config.chat_store;
+    // While a job runs, its reports are the Mac's check-ins.
+    if let Err(error) = coder_sync::check_in(store, &owner, &computer).await {
+        return stored(&error);
+    }
+    if let Err(error) = touch_mac(store, &owner, &computer).await {
+        return stored(&error);
+    }
+    match report(store, &owner, &computer, &id, sent).await {
         Ok(Some(heard)) => answer(StatusCode::OK, json!(heard)),
         Ok(None) => refused(StatusCode::NOT_FOUND, "unknown", "There is no such job."),
         Err(error) => stored(&error),

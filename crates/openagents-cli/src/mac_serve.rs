@@ -752,7 +752,15 @@ pub(crate) fn checkout(
 ) -> Result<String, String> {
     // The ref was checked (`Spec::check`): no option can hide in it.
     let refspec = format!("+{git_ref}:{into}");
-    git(base, &["fetch", "--quiet", "--no-tags", "origin", &refspec])?;
+    git(base, &["fetch", "--quiet", "--no-tags", "origin", &refspec]).map_err(|why| {
+        if git_ref.len() < 40 && git_ref.bytes().all(|b| b.is_ascii_hexdigit()) {
+            "Name a branch, a tag, or the full 40-character commit: git can't fetch a short \
+             commit."
+                .to_owned()
+        } else {
+            why
+        }
+    })?;
     let commit = git(
         base,
         &["rev-parse", "--verify", &format!("{into}^{{commit}}")],

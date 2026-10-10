@@ -75,6 +75,9 @@ async fn a_job_goes_from_the_environment_to_the_mac_and_back() {
     .unwrap()
     .unwrap();
     assert_eq!(heard, Heard::default());
+    // A report on a job keeps the Mac online, busy.
+    touch_mac(&store, &owner, "Studio").await.unwrap();
+    assert!(macs(&store, &owner).await.unwrap()[0].2);
     // A file, in two parts.
     for (part, last, bytes) in [(0, false, b"PNG1".to_vec()), (1, true, b"PNG2".to_vec())] {
         let saved = save_part(
