@@ -4,6 +4,10 @@ Running Coder and agent work on Google Cloud machines (project
 `openagentsgemini`) in parallel with, and in place of, the owner's own
 computers.
 
+[Developing OpenAgents on our own production environment](dogfood-dev-on-prod.md)
+is the gap list for moving agent work off the owner's Mac, with an issue taken
+end to end on a cloud environment.
+
 The [Coder Cloud and openagents.com specification](coder-cloud.md) defines the
 proposed Rust web workspace, connected Verse and delegation views, and customer,
 team, billing, and sales interfaces over the existing domain owners.
