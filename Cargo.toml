@@ -45,6 +45,10 @@ unimplemented = "deny"
 [profile.dev.package.sha2]
 opt-level = 3
 
+# Grow Little Bunny's bot playtests run hundreds of whole gardens.
+[profile.dev.package.bunny-rules]
+opt-level = 3
+
 # Real-time movement and GPU command submission must meet the frame budget in
 # development builds, including the binary used by the local verse-play alias.
 [profile.dev.package.verse]

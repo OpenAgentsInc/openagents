@@ -1,10 +1,13 @@
 //! Grow Little Bunny's rules (`docs/verse/games/grow-little-bunny.md`).
 //!
 //! A pure, integer, fixed-step simulation of one garden run: the bunny runs
-//! along a graph of three-lane corridors, eats carrots, grows through the
-//! size tiers, bumps or smashes obstacles, and the farmer chases it with his
-//! net. Nothing here draws, reads a clock, or uses randomness, so the same
-//! inputs on the same ticks give the same run on every platform.
+//! along a graph of three-lane corridors, eats what it finds, grows through
+//! the size tiers, jumps, ducks, bumps or smashes obstacles, picks up
+//! power-ups, and the farmer chases it with his net. Gardens are
+//! `bunny.garden.v1` level files ([`level`]); a run's inputs make a receipt
+//! that verifies by replay ([`receipt`]). Nothing here draws, reads a
+//! clock, or uses randomness beyond the run's seed, so the same inputs on
+//! the same ticks give the same run on every platform.
 //!
 //! Units: distances are in [`UNIT`]s (a tenth of a millimetre), time is in
 //! ticks of [`HZ`] per second.
@@ -12,10 +15,14 @@
 pub mod bot;
 pub mod game;
 pub mod garden;
+pub mod kinds;
+pub mod level;
+pub mod receipt;
 pub mod shade;
 
 pub use game::{Event, Farmer, FarmerState, Game, Input, Move, Status};
-pub use garden::{Cell, CellKind, Edge, Garden, Node};
+pub use garden::{Edge, Edible, Garden, Node, Obstacle, Power};
+pub use kinds::{Contact, EdibleKind, ObstacleKind, PowerKind};
 
 /// Simulation ticks per second.
 pub const HZ: u32 = 60;
@@ -58,6 +65,10 @@ pub const TIER_SPEED: [i32; 5] = [
     per_tick(7_200),
     per_tick(7_600),
 ];
+
+/// How high each tier's jump rises, in units, for drawing; every jump
+/// lasts the same time.
+pub const TIER_JUMP: [i32; 5] = [3_000, 4_000, 5_500, 7_500, 10_500];
 
 /// How far the farmer sees a bunny of each tier down a corridor.
 pub const TIER_SIGHT: [i32; 5] = [10 * UNIT, 13 * UNIT, 16 * UNIT, 20 * UNIT, 25 * UNIT];

@@ -33,6 +33,12 @@ const NET: u32 = 0x3C3C3C;
 const MESH_BAG: u32 = 0xE8E8E4;
 pub const CARROT: u32 = 0xF28A1E;
 pub const LEAF: u32 = 0x3FA34D;
+pub const GOLD: u32 = 0xF2C230;
+const RADISH: u32 = 0xD2306E;
+const LETTUCE: u32 = 0x9BD46A;
+const BERRY: u32 = 0xE0283A;
+const PUMPKIN: u32 = 0xE0661A;
+const SEEDLING: u32 = 0x58B947;
 const INNER_EAR: u32 = 0xF4B6C2;
 const EYE: u32 = 0x151515;
 
@@ -205,9 +211,8 @@ pub fn hedges(garden: &Garden) -> Mesh {
     mesh
 }
 
-/// A carrot, tip down, about half a metre tall.
-#[must_use]
-pub fn carrot() -> Mesh {
+/// A carrot, tip down, about half a metre tall, in `colour`.
+fn carrot_in(colour: u32) -> Mesh {
     let mut mesh = Mesh::new();
     mesh.add(
         Shape::Frustum {
@@ -220,23 +225,142 @@ pub fn carrot() -> Mesh {
             Quat::from_rotation_x(std::f32::consts::PI),
             at(0.0, 0.3, 0.0),
         ),
-        CARROT,
+        colour,
         1.5,
     );
+    leaves(&mut mesh, 0.6, 1.0);
+    mesh
+}
+
+/// A tuft of three leaves standing at height `y`.
+fn leaves(mesh: &mut Mesh, y: f32, scale: f32) {
     for (i, lean) in [-0.45_f32, 0.0, 0.45].iter().enumerate() {
         let turn = Quat::from_rotation_y(i as f32 * 1.1) * Quat::from_rotation_z(*lean);
         mesh.add(
             Shape::Cube,
             part(
-                at(0.05, 0.24, 0.09),
+                at(0.05, 0.24, 0.09) * scale,
                 turn,
-                at(0.0, 0.6, 0.0) + turn * at(0.0, 0.06, 0.0),
+                at(0.0, y, 0.0) + turn * at(0.0, 0.06 * scale, 0.0),
             ),
             LEAF,
             1.5,
         );
     }
-    mesh
+}
+
+/// A carrot.
+#[must_use]
+pub fn carrot() -> Mesh {
+    carrot_in(CARROT)
+}
+
+/// Each edible's model, standing on the ground and facing `+z`.
+#[must_use]
+pub fn edible(kind: bunny_rules::EdibleKind) -> Mesh {
+    use bunny_rules::EdibleKind as E;
+    let sphere = Shape::Sphere {
+        rings: 5,
+        segments: 8,
+    };
+    let none = Quat::IDENTITY;
+    match kind {
+        E::Carrot => carrot_in(CARROT),
+        E::Golden => carrot_in(GOLD),
+        E::Seedling => {
+            let mut mesh = Mesh::new();
+            mesh.add(
+                Shape::Cube,
+                part(at(0.03, 0.14, 0.03), none, at(0.0, 0.07, 0.0)),
+                SEEDLING,
+                1.5,
+            );
+            for side in [-1.0_f32, 1.0] {
+                let turn = Quat::from_rotation_z(0.9 * side);
+                mesh.add(
+                    Shape::Cube,
+                    part(at(0.05, 0.12, 0.08), turn, at(0.05 * side, 0.15, 0.0)),
+                    SEEDLING,
+                    1.5,
+                );
+            }
+            mesh
+        }
+        E::Radish => {
+            let mut mesh = Mesh::new();
+            mesh.add(
+                sphere,
+                part(at(0.26, 0.24, 0.26), none, at(0.0, 0.16, 0.0)),
+                RADISH,
+                1.5,
+            );
+            leaves(&mut mesh, 0.3, 0.8);
+            mesh
+        }
+        E::Lettuce => {
+            let mut mesh = Mesh::new();
+            mesh.add(
+                sphere,
+                part(at(0.6, 0.42, 0.6), none, at(0.0, 0.21, 0.0)),
+                LETTUCE,
+                1.5,
+            );
+            for i in 0..4 {
+                let turn = Quat::from_rotation_y(i as f32 * 1.57) * Quat::from_rotation_x(0.6);
+                mesh.add(
+                    Shape::Cube,
+                    part(
+                        at(0.3, 0.04, 0.26),
+                        turn,
+                        at(0.0, 0.2, 0.0) + turn * at(0.0, 0.0, 0.24),
+                    ),
+                    LETTUCE,
+                    1.5,
+                );
+            }
+            mesh
+        }
+        E::Strawberry => {
+            let mut mesh = Mesh::new();
+            mesh.add(
+                Shape::Frustum {
+                    sides: 7,
+                    bottom: 0.5,
+                    top: 0.0,
+                },
+                part(
+                    at(0.24, 0.3, 0.24),
+                    Quat::from_rotation_x(std::f32::consts::PI),
+                    at(0.0, 0.17, 0.0),
+                ),
+                BERRY,
+                1.5,
+            );
+            leaves(&mut mesh, 0.3, 0.6);
+            mesh
+        }
+        E::Pumpkin | E::Bonus => {
+            let mut mesh = Mesh::new();
+            let colour = if kind == E::Pumpkin {
+                PUMPKIN
+            } else {
+                0x7CC242
+            };
+            mesh.add(
+                sphere,
+                part(at(0.9, 0.6, 0.9), none, at(0.0, 0.3, 0.0)),
+                colour,
+                1.5,
+            );
+            mesh.add(
+                Shape::Cube,
+                part(at(0.06, 0.2, 0.06), none, at(0.0, 0.66, 0.0)),
+                LEAF,
+                1.5,
+            );
+            mesh
+        }
+    }
 }
 
 /// The bunny's body, head, tail and face, one unit tall, in `fur`.
@@ -424,13 +548,18 @@ pub fn alarm() -> Mesh {
 /// The obstacle meshes, each filling one lane, facing `+z` along the
 /// corridor.
 #[must_use]
-pub fn obstacle(kind: bunny_rules::CellKind) -> Mesh {
-    use bunny_rules::CellKind;
+pub fn obstacle(kind: bunny_rules::ObstacleKind) -> Mesh {
+    use bunny_rules::ObstacleKind as CellKind;
     let mut mesh = Mesh::new();
     let none = Quat::IDENTITY;
     let lane = metres(LANE_WIDTH);
     match kind {
-        CellKind::Pot => {
+        CellKind::Pot
+        | CellKind::Hose
+        | CellKind::Puddle
+        | CellKind::Tray
+        | CellKind::Can
+        | CellKind::BirdNet => {
             mesh.add(
                 Shape::Frustum {
                     sides: 8,
@@ -516,7 +645,7 @@ pub fn obstacle(kind: bunny_rules::CellKind) -> Mesh {
                 1.0,
             );
         }
-        CellKind::Fence | CellKind::Gap => {
+        CellKind::Fence | CellKind::Gap | CellKind::Wire | CellKind::Tunnel => {
             for side in [-1.0_f32, 1.0] {
                 mesh.block(
                     at(side * lane * 0.46 - 0.06, 0.0, -0.06),
@@ -539,7 +668,7 @@ pub fn obstacle(kind: bunny_rules::CellKind) -> Mesh {
                 );
             }
         }
-        CellKind::Barrow => {
+        CellKind::Barrow | CellKind::Scarecrow => {
             mesh.add(
                 Shape::Frustum {
                     sides: 4,
@@ -619,17 +748,17 @@ pub fn dot() -> Mesh {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bunny_rules::CellKind;
+    use bunny_rules::ObstacleKind as CellKind;
 
     #[test]
     fn the_first_garden_has_hedges_dashes_and_a_ground() {
-        let garden = Garden::first();
+        let garden = bunny_rules::level::garden(1);
         let mesh = hedges(&garden);
-        // 12 grid cells, 2 missing corridors, 4 borders, and dashes.
-        assert!(mesh.vertices() > (12 + 2 + 4) * 36, "{}", mesh.vertices());
+        // 6 grid cells, 4 borders, and dashes.
+        assert!(mesh.vertices() > (6 + 4) * 36, "{}", mesh.vertices());
         assert_eq!(ground(&garden).vertices(), 36);
         let (x0, z0, x1, z1) = bounds(&garden);
-        assert_eq!((x0, z0, x1, z1), (0.0, 0.0, 56.0, 42.0));
+        assert_eq!((x0, z0, x1, z1), (0.0, 0.0, 60.0, 40.0));
         // No hedge stands in a corridor: sample each corridor's centre line.
         let blocks: Vec<(Vec3, Vec3)> = mesh
             .data
@@ -693,7 +822,7 @@ mod tests {
                 (r - g).abs() < 0.03 && (g - b).abs() < 0.03
             })
         };
-        let garden = Garden::first();
+        let garden = bunny_rules::level::garden(1);
         for mesh in [
             hedges(&garden),
             ground(&garden),

@@ -1,13 +1,15 @@
 //! Every word the game shows.
 
 pub const TITLE: &str = "Grow Little Bunny";
-pub const GOAL: &str = "Eat every carrot. Don't get caught.";
-pub const KEYS: &str = "\u{2190} \u{2192} dodge and turn \u{b7} \u{2193} turn back";
-pub const SWIPES: &str = "Swipe left or right to dodge and turn \u{b7} swipe down to turn back";
+pub const GOAL: &str = "Eat everything in the garden. Don't get caught.";
+pub const KEYS: &str =
+    "\u{2190} \u{2192} dodge and turn \u{b7} \u{2191} jump \u{b7} \u{2193} duck \u{b7} X turn back";
+pub const SWIPES: &str =
+    "Swipe left or right to dodge and turn \u{b7} up to jump \u{b7} down to turn back";
 pub const PLAY: &str = "Play";
 pub const PLAY_AGAIN: &str = "Play again";
 pub const RESTART: &str = "Restart";
-pub const CARROTS: &str = "Carrots";
+pub const CARROTS: &str = "Food left";
 pub const WON: &str = "Garden cleared!";
 pub const CAUGHT: &str = "Caught!";
 pub const CAUGHT_LINE: &str = "The farmer got you with his net.";

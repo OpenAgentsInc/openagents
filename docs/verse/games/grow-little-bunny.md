@@ -1,6 +1,7 @@
 # Grow Little Bunny
 
-Status: design, 2026-10-08. Nothing here is implemented. Numbers marked
+Status: design 2026-10-08; being built, phase by phase, as a browser game
+first (see [Implementation status](#implementation-status)). Numbers marked
 *tunable* are starting values for playtests, not measured results.
 
 Grow Little Bunny is a mini-game inside Verse. You play a small white
@@ -44,6 +45,7 @@ first one is built the way an outside author would have to build it.
 - [Packaging, publishing, and sandboxing](#packaging-publishing-and-sandboxing)
 - [Telemetry and testing](#telemetry-and-testing)
 - [Milestones](#milestones)
+- [Implementation status](#implementation-status)
 - [Engine gaps](#engine-gaps)
 - [Open questions](#open-questions)
 
@@ -1009,6 +1011,71 @@ its own, and leaves every tier correct.
 
 B1 to B7 (about 80 hours) make the game playable on every platform. B9
 to B12 make it a community game in full.
+
+## Implementation status
+
+The game is playable at `/games/grow-little-bunny` on openagents.com and in
+the local stack (`scripts/dev/full-local.sh`, which builds it with
+`--bunny`). It is built as a browser game first: `bunny-rules` holds the
+rules, and `bunny-web` draws them with WebGL2 directly in place of
+`verse-zone-bunny` on `verse-pbr` (that renderer brings wgpu, naga, glTF and
+the physics crate, several megabytes of wasm, for a scene of a few hundred
+flat-shaded models). Each phase below says how it maps onto that path.
+
+| Phase | Issue | Status |
+| --- | --- | --- |
+| B1 | [#11198](https://github.com/OpenAgentsInc/openagents/issues/11198) | Done (see below) |
+| B2 | [#11199](https://github.com/OpenAgentsInc/openagents/issues/11199) | Next |
+| B3 | [#11200](https://github.com/OpenAgentsInc/openagents/issues/11200) | Not started |
+| B4 | [#11201](https://github.com/OpenAgentsInc/openagents/issues/11201) | Not started |
+| B5 | [#11202](https://github.com/OpenAgentsInc/openagents/issues/11202) | Not started |
+| B6 | [#11203](https://github.com/OpenAgentsInc/openagents/issues/11203) | Not started |
+
+### B1: the rules
+
+`crates/bunny-rules`: every edible, obstacle and power-up in the tables
+(`kinds.rs`), jump and duck, the farmer's Tend (shed and patrol), Chase,
+Ambush, Search, Scatter, Spooked and Dazed states, Gentle mode, the munch
+chain and every scoring row, the bonus vegetable at 35% and 70%,
+`bunny.garden.v1` level files with gardens 1 to 5 in
+`crates/bunny-rules/gardens/`, the validator, and `bunny.run-receipt.v1`
+receipts that verify by replay (a tampered receipt is refused). A seed picks
+where the farmer starts his rounds and breaks his ties.
+
+Checks: `cargo test -p bunny-rules`; the bot clears all five gardens, and
+garden 1 with the farmer on in at least 90% of 200 seeds (an ignored
+`playtest_every_garden` test prints each garden's clear rate);
+`scripts/bunny-wasm-test.sh` runs the receipt tests as wasm32 under Node and
+gets the same pinned final-state digest as native.
+
+Deviations, and why:
+
+- **Corridors are 20 m and edible counts are higher than the level list.**
+  The validator's 1.2 s sight rule puts an obstacle at least 9.1 m (at a
+  Giant's speed) from both junctions, so corridors that hold obstacles
+  must be at least 18.3 m. And the level list's counts (80 seedlings and 8
+  carrots in garden 1) give 36 GP, under the 1.2 times a Giant (74 GP) the
+  validator requires. Gardens 1 to 5 hold 136 to 217 seedlings and 12 to 17
+  carrots; garden 5 is 80 m with 20 junctions.
+- **The validator is stricter than "reachable from the start".** Every
+  edible must stay reachable at every size big enough to eat it, a bunny
+  that grows wherever a smaller one could be must get back to the rest of
+  the garden, and a Kit eating only what it can reach must grow to a Giant
+  and clear the garden.
+- **The golden carrot runs on its own clock** beside the one slot for the
+  other power-ups, which is what "always takes precedence" comes to.
+- **A dandelion float clears every obstacle,** fences included, as the
+  power-up table says.
+- **Bumping into the farmer when he isn't spooked is a tumble.**
+- **Dazed:** he goes to the shed at once and lies there 5 s, then tends.
+- **Determinism on wasm32** is checked with `wasm32-wasip1` under Node's
+  WASI, the same wasm32 code generation the browser build uses.
+- **Not yet:** narrow one-lane corridors, the sprinkler, cold frames and
+  dead-end pumpkin corridors belong to gardens 6 to 20 (B8).
+
+### What's next
+
+B2: the outline-gray look in the browser renderer.
 
 ## Engine gaps
 

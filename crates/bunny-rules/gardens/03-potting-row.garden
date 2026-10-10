@@ -1,0 +1,98 @@
+bunny.garden.v1
+# Garden 3: smashing. Pots stop a small bunny; a Jack smashes them. One
+# corridor has a pot in every lane, and lettuce needs a Jack to eat.
+name Potting Row
+number 3
+set 1
+grid 20
+spawn 0,0 1,0 at 3
+shed 3,3
+patrol 3,3 2,3 2,2 3,2
+farmer walk 3.0 run 5.0 windup 0.5 chase 20 scatter 7 spook 8
+par 200
+bonus 1,1 2,1 at 6 C
+
+corridor 0,0 1,0
+  seedling L 3..17/2
+  carrot C 10
+  golden R 5
+corridor 1,0 2,0
+  seedling C 3..17/2
+corridor 2,0 3,0
+  seedling R 3..17/2
+  carrot L 14
+  golden C 15
+  pot R 10
+  pot C 10
+corridor 0,1 1,1
+  seedling L 3..17/2
+  carrot C 10
+corridor 1,1 2,1
+  seedling C 3..17/2
+corridor 2,1 3,1
+  seedling R 3..17/2
+  carrot L 14
+  lettuce L 10
+corridor 0,2 1,2
+  seedling L 3..17/2
+  carrot C 10
+corridor 1,2 2,2
+  seedling C 3..17/2
+  carrot R 14
+  pot C 10
+  pot L 10
+corridor 2,2 3,2
+  seedling R 3..17/2
+  carrot L 10
+corridor 0,3 1,3
+  seedling L 3..17/2
+  carrot C 10
+  golden R 5
+corridor 1,3 2,3
+  seedling C 3..17/2
+  carrot R 14
+  pot L 10
+  pot C 10
+  pot R 10
+corridor 2,3 3,3
+  seedling R 3..17/2
+  carrot L 10
+  golden C 15
+corridor 0,0 0,1
+  seedling L 3..17/2
+  carrot C 10
+  clover R 6
+corridor 0,1 0,2
+  seedling C 3..17/2
+corridor 0,2 0,3
+  seedling R 3..17/2
+  carrot L 10
+corridor 1,0 1,1
+  seedling L 3..17/2
+  carrot C 14
+  pot L 10
+  pot R 10
+corridor 1,1 1,2
+  seedling C 3..17/2
+corridor 1,2 1,3
+  seedling R 3..17/2
+  carrot L 10
+corridor 2,0 2,1
+  seedling L 3..17/2
+  carrot C 14
+  lettuce C 10
+corridor 2,1 2,2
+  seedling C 3..17/2
+corridor 2,2 2,3
+  seedling R 3..17/2
+  carrot L 14
+  pot R 10
+  pot C 10
+corridor 3,0 3,1
+  seedling L 3..17/2
+  carrot C 10
+corridor 3,1 3,2
+  seedling C 3..17/2
+corridor 3,2 3,3
+  seedling R 3..17/2
+  carrot L 10

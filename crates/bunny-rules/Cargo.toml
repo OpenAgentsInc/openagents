@@ -4,9 +4,10 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "Grow Little Bunny's rules: the garden graph, growth, carrots, obstacles, and the farmer, as an integer fixed-step simulation."
+description = "Grow Little Bunny's rules: the garden graph, growth, edibles, obstacles, power-ups, the farmer, scoring, level files, the validator, and run receipts, as an integer fixed-step simulation."
 
 [dependencies]
+sha2 = "0.10"
 
 [lints]
 workspace = true

@@ -5,8 +5,8 @@ use std::rc::Rc;
 
 use bunny_rules::game::Move;
 use bunny_rules::{
-    CellKind, Event, FarmerState, Game, Garden, HZ, Input, Status, TIER_HEIGHT, TIER_NAMES, UNIT,
-    shade,
+    EdibleKind, Event, FarmerState, Game, HZ, Input, ObstacleKind, Status, TIER_HEIGHT, TIER_JUMP,
+    TIER_NAMES, UNIT, level, shade,
 };
 use glam::{Mat4, Quat, Vec2, Vec3};
 use wasm_bindgen::JsCast;
@@ -233,7 +233,7 @@ fn link(gl: &Gl) -> Result<WebGlProgram, String> {
 struct Meshes {
     ground: GpuMesh,
     hedges: GpuMesh,
-    carrot: GpuMesh,
+    edibles: Vec<(EdibleKind, GpuMesh)>,
     bunny: GpuMesh,
     ear: GpuMesh,
     farmer: GpuMesh,
@@ -251,14 +251,21 @@ struct Meshes {
 }
 
 impl Meshes {
-    fn obstacle(&self, kind: CellKind) -> &GpuMesh {
+    fn obstacle(&self, kind: ObstacleKind) -> &GpuMesh {
         match kind {
-            CellKind::Pot => &self.pot,
-            CellKind::Gnome => &self.gnome,
-            CellKind::Fence => &self.fence,
-            CellKind::Gap => &self.gap,
-            CellKind::Barrow => &self.barrow,
+            ObstacleKind::Gnome => &self.gnome,
+            ObstacleKind::Fence => &self.fence,
+            ObstacleKind::Gap | ObstacleKind::Tunnel | ObstacleKind::Wire => &self.gap,
+            ObstacleKind::Barrow | ObstacleKind::Scarecrow => &self.barrow,
+            _ => &self.pot,
         }
+    }
+
+    fn edible(&self, kind: EdibleKind) -> &GpuMesh {
+        self.edibles
+            .iter()
+            .find(|(k, _)| *k == kind)
+            .map_or(&self.edibles[0].1, |(_, mesh)| mesh)
     }
 }
 
@@ -607,7 +614,7 @@ impl App {
     }
 
     fn new_run(&mut self) {
-        self.game = Game::new(Garden::first());
+        self.game = Game::new(level::garden(1));
         #[cfg(feature = "autoplay")]
         if self
             .window
@@ -730,8 +737,8 @@ impl App {
         let bunny = point(self.game.bunny_point());
         let bunny = Vec3::new(bunny.x, 0.2, bunny.y);
         match event {
-            Event::Ate(index) => {
-                let c = self.game.garden.carrots[index];
+            Event::Ate(index, _) => {
+                let c = self.game.garden.edibles[index];
                 let at = point(self.game.garden.point(
                     c.edge,
                     c.s,
@@ -741,8 +748,8 @@ impl App {
                 self.burst(at, 6, scene::CARROT, 0.07, 1.6);
                 self.burst(at, 3, scene::LEAF, 0.06, 1.4);
             }
-            Event::Smashed(index) => {
-                let c = self.game.garden.cells[index];
+            Event::Smashed(index, _) => {
+                let c = self.game.garden.obstacles[index];
                 let at = point(self.game.garden.point(
                     c.edge,
                     c.s,
@@ -904,7 +911,7 @@ impl App {
         gpu.draw(&m.ground, &Mat4::IDENTITY, WHITE, None);
         gpu.draw(&m.hedges, &Mat4::IDENTITY, WHITE, line);
         let lane = bunny_rules::LANE_WIDTH;
-        for (index, c) in garden.carrots.iter().enumerate() {
+        for (index, c) in garden.edibles.iter().enumerate() {
             if game.eaten[index] {
                 continue;
             }
@@ -912,15 +919,16 @@ impl App {
             if (at - bunny).length() > 45.0 {
                 continue;
             }
-            let bob = 0.06 + 0.05 * (self.time * 3.0 + index as f32).sin();
+            let lift = if c.air { 0.6 } else { 0.0 };
+            let bob = lift + 0.04 + 0.04 * (self.time * 3.0 + index as f32).sin();
             let model = scene::place(
                 Vec3::new(at.x, bob, at.y),
                 self.time * 1.3 + index as f32,
                 1.0,
             );
-            gpu.draw(&m.carrot, &model, WHITE, line);
+            gpu.draw(m.edible(c.kind), &model, WHITE, Some((ink, LINE * 1.5)));
         }
-        for (index, cell) in garden.cells.iter().enumerate() {
+        for (index, cell) in garden.obstacles.iter().enumerate() {
             if !game.alive[index] {
                 continue;
             }
@@ -937,11 +945,16 @@ impl App {
         let b = &game.bunny;
         let fur = rgb(self.fur());
         let size = self.size;
-        let hop = if self.phase == Phase::Playing && b.mv == Move::Run {
+        let jump = b.jump_progress();
+        let hop = if b.air > 0 {
+            let peak = scene::metres(TIER_JUMP[usize::from(b.tier)]) + 0.1;
+            4.0 * jump * (1.0 - jump) * peak
+        } else if self.phase == Phase::Playing && b.mv == Move::Run {
             self.hop.sin().abs() * 0.35 * size
         } else {
             0.0
         };
+        let squash: f32 = if b.duck > 0 { 0.55 } else { 1.0 };
         let roll = match b.mv {
             Move::Tumble { left } => {
                 let done = 1.0 - left as f32 / bunny_rules::game::TUMBLE as f32;
@@ -957,7 +970,11 @@ impl App {
         );
         let body = Mat4::from_translation(Vec3::new(bunny.x, hop, bunny.y))
             * Mat4::from_quat(Quat::from_rotation_y(self.bunny_yaw) * Quat::from_rotation_z(roll))
-            * Mat4::from_scale(Vec3::splat(size));
+            * Mat4::from_scale(Vec3::new(
+                size * (2.0 - squash).min(1.25),
+                size * squash,
+                size,
+            ));
         let outline = Some(([fur[0] * 0.38, fur[1] * 0.36, fur[2] * 0.36], LINE));
         gpu.draw(&m.bunny, &body, WHITE, outline);
         let flop = if b.mv == Move::Run {
@@ -1017,7 +1034,7 @@ impl App {
                 * Mat4::from_rotation_x(swing * phase);
             gpu.draw(&m.leg, &leg, WHITE, line);
         }
-        let windup = self.game.garden.windup as f32;
+        let windup = self.game.windup() as f32;
         let (angle, width) = if f.windup > 0 {
             let progress = 1.0 - f.windup as f32 / windup;
             let eased = 1.0 - (1.0 - progress) * (1.0 - progress);
@@ -1074,7 +1091,7 @@ impl App {
         let game = &self.game;
         let garden = &game.garden;
         let carrot = rgb(scene::CARROT);
-        for (index, c) in garden.carrots.iter().enumerate() {
+        for (index, c) in garden.edibles.iter().enumerate() {
             if game.eaten[index] {
                 continue;
             }
@@ -1117,7 +1134,7 @@ impl App {
     }
 
     fn update_hud(&mut self) {
-        let left = self.game.carrots_left;
+        let left = self.game.food_left;
         let tier = self.game.bunny.tier;
         let shown = (left, tier, self.phase);
         let late = self.phase == Phase::Over && self.time - self.over_at > 0.7;
@@ -1182,7 +1199,9 @@ fn input_for(key: &str) -> Option<Input> {
     match key {
         "ArrowLeft" | "a" | "A" => Some(Input::Left),
         "ArrowRight" | "d" | "D" => Some(Input::Right),
-        "ArrowDown" | "s" | "S" | "x" | "X" | "Backspace" => Some(Input::Back),
+        "ArrowUp" | "w" | "W" | " " => Some(Input::Jump),
+        "ArrowDown" | "s" | "S" => Some(Input::Duck),
+        "x" | "X" | "Backspace" => Some(Input::Back),
         _ => None,
     }
 }
@@ -1279,14 +1298,17 @@ pub fn start() {
             return;
         }
     };
-    let garden = Garden::first();
+    let garden = level::garden(1);
     let wins = load_wins(&window);
     let fur = shade::fur(wins);
     let obstacle = |kind| gpu.upload(&scene::obstacle(kind));
     let meshes = Meshes {
         ground: gpu.upload(&scene::ground(&garden)),
         hedges: gpu.upload(&scene::hedges(&garden)),
-        carrot: gpu.upload(&scene::carrot()),
+        edibles: EdibleKind::ALL
+            .iter()
+            .map(|kind| (*kind, gpu.upload(&scene::edible(*kind))))
+            .collect(),
         bunny: gpu.upload(&scene::bunny(fur)),
         ear: gpu.upload(&scene::ear(fur)),
         farmer: gpu.upload(&scene::farmer()),
@@ -1296,11 +1318,11 @@ pub fn start() {
         shadow: gpu.upload(&scene::shadow()),
         crumb: gpu.upload(&scene::crumb()),
         dot: gpu.upload(&scene::dot()),
-        pot: obstacle(CellKind::Pot),
-        gnome: obstacle(CellKind::Gnome),
-        fence: obstacle(CellKind::Fence),
-        gap: obstacle(CellKind::Gap),
-        barrow: obstacle(CellKind::Barrow),
+        pot: obstacle(ObstacleKind::Pot),
+        gnome: obstacle(ObstacleKind::Gnome),
+        fence: obstacle(ObstacleKind::Fence),
+        gap: obstacle(ObstacleKind::Gap),
+        barrow: obstacle(ObstacleKind::Barrow),
     };
     let touch = window
         .match_media("(pointer: coarse)")
@@ -1345,7 +1367,9 @@ pub fn start() {
         listen::<KeyboardEvent>(window.as_ref(), "keydown", move |event| {
             let key = event.key();
             let mut app = app.borrow_mut();
-            if let Some(input) = input_for(&key) {
+            if app.phase == Phase::Playing
+                && let Some(input) = input_for(&key)
+            {
                 event.prevent_default();
                 if !event.repeat() {
                     app.press(input);
@@ -1390,7 +1414,7 @@ pub fn start() {
             } else if dy > 0.0 {
                 Some(Input::Back)
             } else {
-                None
+                Some(Input::Jump)
             };
             if let Some(input) = input {
                 app.press(input);

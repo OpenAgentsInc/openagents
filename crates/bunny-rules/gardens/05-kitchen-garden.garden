@@ -1,0 +1,119 @@
+bunny.garden.v1
+# Garden 5: fence gaps. A Kit or a Bunny slips through a gap under a fence;
+# anything bigger, and the farmer, goes around.
+name Kitchen Garden
+number 5
+set 1
+grid 20
+spawn 0,0 1,0 at 3
+shed 4,3
+patrol 4,3 3,3 3,2 4,2
+farmer walk 3.0 run 5.0 windup 0.5 chase 20 scatter 7 spook 8
+par 240
+bonus 2,1 2,2 at 6 C
+
+corridor 0,0 1,0
+  seedling L 3..17/2
+  carrot C 10
+  golden R 5
+corridor 1,0 2,0
+  seedling C 3..17/2
+corridor 2,0 3,0
+  seedling R 3..17/2
+  carrot L 14
+  lettuce L 10
+corridor 3,0 4,0
+  seedling L 3..17/2
+  golden R 15
+corridor 0,1 1,1
+  seedling C 3..17/2
+  carrot R 10
+corridor 1,1 2,1
+  seedling R 3..7/2, 13..17/2
+  fence L 10
+  fence C 10
+  gap R 10
+  strawberry R 12
+corridor 2,1 3,1
+  seedling L 3..17/2
+  carrot C 10
+corridor 3,1 4,1
+  seedling C 3..17/2
+corridor 0,2 1,2
+  seedling R 3..17/2
+  carrot L 10
+corridor 1,2 2,2
+  seedling L 3..17/2
+  carrot C 14
+  pot C 10
+corridor 2,2 3,2
+  seedling C 3..17/2
+  carrot R 10
+corridor 3,2 4,2
+  seedling R 3..17/2
+  carrot L 10
+  magnet C 6
+corridor 0,3 1,3
+  seedling L 3..17/2
+  carrot C 10
+  golden R 5
+corridor 1,3 2,3
+  seedling C 3..7/2, 13..17/2
+  fence L 10
+  fence R 10
+  gap C 10
+corridor 2,3 3,3
+  seedling R 3..17/2
+  carrot L 10
+corridor 3,3 4,3
+  seedling L 3..17/2
+  golden R 15
+corridor 0,0 0,1
+  seedling C 3..17/2
+  carrot R 10
+corridor 0,1 0,2
+  seedling R 3..17/2
+  carrot L 14
+  lettuce L 10
+corridor 0,2 0,3
+  seedling L 3..17/2
+  carrot C 10
+corridor 1,0 1,1
+  seedling C 3..17/2
+corridor 1,1 1,2
+  seedling R 3..17/2
+  carrot L 10
+corridor 1,2 1,3
+  seedling L 3..7/2, 13..17/2
+  fence C 10
+  fence R 10
+  gap L 10
+  strawberry L 12
+corridor 2,0 2,1
+  seedling C 3..17/2
+  carrot R 10
+corridor 2,1 2,2
+  seedling R 3..17/2
+corridor 2,2 2,3
+  seedling L 3..17/2
+  carrot C 10
+corridor 3,0 3,1
+  seedling C 3..17/2
+  carrot R 14
+  pot R 10
+corridor 3,1 3,2
+  seedling R 3..17/2
+  carrot L 10
+corridor 3,2 3,3
+  seedling L 3..7/2, 13..17/2
+  fence C 10
+  fence R 10
+  gap L 10
+corridor 4,0 4,1
+  seedling C 3..17/2
+  carrot R 10
+corridor 4,1 4,2
+  seedling R 3..17/2
+corridor 4,2 4,3
+  seedling L 3..17/2
+  carrot C 10
