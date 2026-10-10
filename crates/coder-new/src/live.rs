@@ -496,43 +496,37 @@ fn run_with_provider(
                     id,
                     result: crate::jev_plugin::test_key_for_model(request.key.expose(), &endpoint, &model).await,
                 },
+                Work::Microcoder { messages, execution } if gateway_first(&execution) => {
+                    match gateway_turn(&messages, &execution, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await {
+                        Some(result) => Update::Finished { id, result },
+                        None => {
+                            local_turn(id, messages, execution, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await
+                        }
+                    }
+                }
                 Work::Microcoder { messages, execution } => {
-                    let mut events = |event| {
-                        match event {
-                            RuntimeEvent::Text(text) => text_callback(&execution.redact_text(&text)),
-                            RuntimeEvent::Model(model) => model_callback(&model),
-                            RuntimeEvent::Tool { name, mut input, mut output, running } => {
-                                execution.redact(&mut input);
-                                execution.redact(&mut output);
-                                event_callback(RuntimeEvent::Tool { name, input, output, running });
+                    local_turn(id, messages, execution, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await
+                }
+                Work::Chat { model, options, messages, execution }
+                    if !crate::models::pinned(&model) && gateway_first(&execution) =>
+                {
+                    match gateway_turn(&messages, &execution, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await {
+                        Some(result) => Update::Finished { id, result },
+                        None => match create(openrouter::ApiKey::new(request.key.expose())) {
+                            Ok(provider) => Update::Finished {
+                                id,
+                                result: provider.chat_with_plugins(
+                                    &model, &options, messages, &execution,
+                                    &mut text_callback, &mut model_callback,
+                                    &mut event_callback, &cancel,
+                                ).await,
+                            },
+                            Err(error) => {
+                                failure(id, checking, &sender, error);
+                                return;
                             }
-                            RuntimeEvent::Delegation { .. } | RuntimeEvent::Tokens(_) | RuntimeEvent::Progress { .. } => event_callback(event),
-                        }
-                    };
-                    let result = async {
-                        let task = local_task(&messages, &execution)?;
-                        let client = execution.jev_client()?;
-                        let result = crate::bundled_runtime::microcoder_local(
-                            &task, &execution.cwd, client, &execution.redaction_keys,
-                            &cancel, &mut events,
-                        ).await?;
-                        let mut reply = Streamed {
-                            text: execution.redact_text(result["reply"].as_str().unwrap_or_default()),
-                            model: result["model"].as_str().unwrap_or_default().into(),
-                            ..Streamed::default()
-                        };
-                        reply.usage.total_tokens = result["tokens"].as_u64().unwrap_or_default();
-                        // The loop's dollars, for the status line (#11179).
-                        reply.usage.cost = result["outcome"]["usd"].as_f64();
-                        if !matches!(result["outcome"]["ending"]["reason"].as_str(), Some("finished" | "tests_held" | "checks_passed" | "asked")) {
-                            return Err(format!("The coding loop stopped: {}.", result["outcome"]));
-                        }
-                        if reply.text.is_empty() {
-                            return Err("The coding loop stopped before producing a reply. Inspect the tool results or retry with a smaller task.".into());
-                        }
-                        Ok(reply)
-                    }.await;
-                    Update::Finished { id, result }
+                        },
+                    }
                 }
                 kind => {
                     let provider = match create(openrouter::ApiKey::new(request.key.expose())) {
@@ -577,6 +571,129 @@ fn run_with_provider(
             _ = &mut work => {}
         }
     });
+}
+
+/// Whether an `auto` turn asks the OpenAgents gateway first: signed in on
+/// this computer, and the gateway has not refused the sign-in this run.
+fn gateway_first(execution: &ExecutionSettings) -> bool {
+    execution
+        .connections
+        .as_ref()
+        .is_some_and(crate::provider::gateway_open)
+}
+
+/// `auto`'s first door when signed in: the OpenAgents inference gateway's
+/// own router (`openagents/auto`, Vertex first). `None` when it failed
+/// before saying or doing anything, so the turn goes to its next door
+/// (the OpenRouter free router with a key, else the local loop) without
+/// repeating an effect.
+async fn gateway_turn(
+    messages: &[Message],
+    execution: &ExecutionSettings,
+    cancel: &Arc<AtomicBool>,
+    text_callback: &mut (dyn FnMut(&str) + Send),
+    model_callback: &mut (dyn FnMut(&str) + Send),
+    event_callback: &mut (dyn FnMut(RuntimeEvent) + Send),
+) -> Option<Result<Streamed, String>> {
+    let account = execution.connections.as_ref()?;
+    let provider = Provider::gateway(account).ok()?;
+    let mut execution = execution.clone();
+    execution
+        .redaction_keys
+        .push(model_access::ApiKey::new(account.token()));
+    let started = AtomicBool::new(false);
+    let result = {
+        let mut text = |delta: &str| {
+            if !delta.is_empty() {
+                started.store(true, Ordering::Relaxed);
+            }
+            text_callback(delta);
+        };
+        let mut events = |event: RuntimeEvent| {
+            if matches!(
+                event,
+                RuntimeEvent::Tool { .. } | RuntimeEvent::Delegation { .. }
+            ) {
+                started.store(true, Ordering::Relaxed);
+            }
+            event_callback(event);
+        };
+        provider
+            .chat_with_plugins(
+                crate::models::GATEWAY_AUTO,
+                &crate::models::GenerationOptions::default(),
+                messages.to_vec(),
+                &execution,
+                &mut text,
+                model_callback,
+                &mut events,
+                cancel,
+            )
+            .await
+    };
+    match result {
+        Err(_) if !started.load(Ordering::Relaxed) && !cancel.load(Ordering::Relaxed) => None,
+        result => Some(result),
+    }
+}
+
+/// The local loop: the person's own model logins, then the OpenAgents cloud.
+async fn local_turn(
+    id: u64,
+    messages: Vec<Message>,
+    execution: ExecutionSettings,
+    cancel: &Arc<AtomicBool>,
+    text_callback: &mut (dyn FnMut(&str) + Send),
+    model_callback: &mut (dyn FnMut(&str) + Send),
+    event_callback: &mut (dyn FnMut(RuntimeEvent) + Send),
+) -> Update {
+    let cancel = cancel.clone();
+    let mut events = |event| match event {
+        RuntimeEvent::Text(text) => text_callback(&execution.redact_text(&text)),
+        RuntimeEvent::Model(model) => model_callback(&model),
+        RuntimeEvent::Tool {
+            name,
+            mut input,
+            mut output,
+            running,
+        } => {
+            execution.redact(&mut input);
+            execution.redact(&mut output);
+            event_callback(RuntimeEvent::Tool {
+                name,
+                input,
+                output,
+                running,
+            });
+        }
+        RuntimeEvent::Delegation { .. }
+        | RuntimeEvent::Tokens(_)
+        | RuntimeEvent::Progress { .. } => event_callback(event),
+    };
+    let result = async {
+        let task = local_task(&messages, &execution)?;
+        let client = execution.jev_client()?;
+        let result = crate::bundled_runtime::microcoder_local(
+            &task, &execution.cwd, client, &execution.redaction_keys,
+            &cancel, &mut events,
+        ).await?;
+        let mut reply = Streamed {
+            text: execution.redact_text(result["reply"].as_str().unwrap_or_default()),
+            model: result["model"].as_str().unwrap_or_default().into(),
+            ..Streamed::default()
+        };
+        reply.usage.total_tokens = result["tokens"].as_u64().unwrap_or_default();
+        // The loop's dollars, for the status line (#11179).
+        reply.usage.cost = result["outcome"]["usd"].as_f64();
+        if !matches!(result["outcome"]["ending"]["reason"].as_str(), Some("finished" | "tests_held" | "checks_passed" | "asked")) {
+            return Err(format!("The coding loop stopped: {}.", result["outcome"]));
+        }
+        if reply.text.is_empty() {
+            return Err("The coding loop stopped before producing a reply. Inspect the tool results or retry with a smaller task.".into());
+        }
+        Ok(reply)
+    }.await;
+    Update::Finished { id, result }
 }
 
 fn run_brainstorm(
@@ -871,6 +988,125 @@ mod tests {
             );
             thread::sleep(Duration::from_millis(5));
         }
+    }
+
+    fn signed_in_at(origin: &str, token: &str) -> openagents_login::Saved {
+        serde_json::from_value(json!({
+            "origin": origin, "account": "acct_fixture", "label": "Fixture",
+            "expires_at": u64::MAX, "token": token,
+        }))
+        .unwrap()
+    }
+
+    fn reply_stream(model: &str, text: &str) -> String {
+        format!(
+            "data: {{\"model\":\"{model}\",\"choices\":[{{\"delta\":{{\"content\":\"{text}\"}},\"finish_reason\":\"stop\"}}]}}\n\ndata: [DONE]\n\n"
+        )
+    }
+
+    fn auto_turn(token: &str, origin: &str) -> Request {
+        let root = tempfile::tempdir().unwrap();
+        let mut execution = crate::plugins::Plugins::default().execution_settings(root.keep());
+        execution.connections = Some(signed_in_at(origin, token));
+        Request {
+            id: 7,
+            key: model_access::ApiKey::new(FIXTURE_TOKEN),
+            kind: Work::Chat {
+                model: crate::models::DEFAULT_MODEL.into(),
+                options: crate::models::GenerationOptions::default(),
+                messages: vec![Message::user("hello".to_owned())],
+                execution,
+            },
+        }
+    }
+
+    /// A signed-in `auto` turn runs on the OpenAgents gateway's own router
+    /// with the account's session, and OpenRouter is never asked.
+    #[test]
+    fn signed_in_auto_runs_on_the_openagents_gateway() {
+        let (listener, base) = fixture_listener();
+        let origin = base.trim_end_matches("/api/v1").to_owned();
+        let server = thread::spawn(move || {
+            let mut socket = accept(&listener);
+            let request = read_request(&mut socket);
+            let body = reply_stream("google/gemini-3.8-flash", "From the gateway");
+            headers(&mut socket, "text/event-stream", body.len());
+            socket.write_all(body.as_bytes()).unwrap();
+            request
+        });
+        let (sender, receiver) = mpsc::channel();
+        let (_cancel, canceled) = oneshot::channel();
+        run_with_provider(
+            auto_turn("sess_gateway_ok", &origin),
+            sender,
+            canceled,
+            |_| panic!("a signed-in auto turn the gateway answers never reaches OpenRouter"),
+        );
+        let request = server.join().unwrap();
+        assert!(request.starts_with("POST /api/v1/chat/completions HTTP/1.1"));
+        assert!(request.contains("Bearer sess_gateway_ok"));
+        let body: Value = serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1).unwrap();
+        assert_eq!(body["model"], "openagents/auto");
+        assert!(receiver.try_iter().any(|update| matches!(
+            update,
+            Update::Finished { result: Ok(reply), .. } if reply.text == "From the gateway"
+        )));
+    }
+
+    /// When the gateway refuses the sign-in, the same turn goes to the
+    /// OpenRouter free router, and later turns skip the gateway.
+    #[test]
+    fn a_refused_gateway_falls_back_to_the_free_router_and_is_not_asked_again() {
+        let (gateway, gateway_base) = fixture_listener();
+        let origin = gateway_base.trim_end_matches("/api/v1").to_owned();
+        let (openrouter, openrouter_base) = fixture_listener();
+        let refusing = thread::spawn(move || {
+            let mut socket = accept(&gateway);
+            read_request(&mut socket);
+            let body =
+                r#"{"error":{"type":"unauthorized","message":"Your API key was rejected."}}"#;
+            write!(
+                socket,
+                "HTTP/1.1 401 Unauthorized\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .unwrap();
+        });
+        let answering = thread::spawn(move || {
+            let mut socket = accept(&openrouter);
+            let request = read_request(&mut socket);
+            let body = reply_stream("vendor/free-model", "From the free router");
+            headers(&mut socket, "text/event-stream", body.len());
+            socket.write_all(body.as_bytes()).unwrap();
+            request
+        });
+        let (sender, receiver) = mpsc::channel();
+        let (_cancel, canceled) = oneshot::channel();
+        let turn = auto_turn("sess_gateway_refused", &origin);
+        run_with_provider(turn, sender, canceled, |key| {
+            Provider::with_base(key, &openrouter_base)
+        });
+        refusing.join().unwrap();
+        let request = answering.join().unwrap();
+        authenticated(&request);
+        let body: Value = serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1).unwrap();
+        assert_eq!(body["model"], crate::models::DEFAULT_MODEL);
+        let updates = receiver.try_iter().collect::<Vec<_>>();
+        assert!(updates.iter().any(|update| matches!(
+            update,
+            Update::Finished { result: Ok(reply), .. } if reply.text == "From the free router"
+        )));
+        assert!(!updates.iter().any(
+            |update| matches!(update, Update::Delta { text, .. } if text.contains("rejected"))
+        ));
+        assert!(!crate::provider::gateway_open(&signed_in_at(
+            &origin,
+            "sess_gateway_refused"
+        )));
+        assert!(crate::provider::gateway_open(&signed_in_at(
+            &origin,
+            "sess_other"
+        )));
     }
 
     #[test]

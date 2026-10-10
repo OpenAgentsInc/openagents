@@ -7,6 +7,12 @@ use crate::Draft;
 
 pub const OPENROUTER_PLUGIN: &str = "openrouter-byok";
 pub const DEFAULT_MODEL: &str = "openrouter/free";
+/// What the default model is called wherever Coder shows it: OpenAgents
+/// picks the model, so no vendor's name is advertised.
+pub const AUTO: &str = "auto";
+/// The OpenAgents inference gateway's own router, the first door of an
+/// `auto` turn when the person is signed in (docs/inference/providers.md).
+pub const GATEWAY_AUTO: &str = "openagents/auto";
 pub const SHORTLIST: [&str; 7] = [
     DEFAULT_MODEL,
     "openai/gpt-6-luna",
@@ -24,7 +30,26 @@ pub const SHORTLIST: [&str; 7] = [
 #[must_use]
 pub fn pinned(model: &str) -> bool {
     let model = model.trim();
-    !model.is_empty() && model != DEFAULT_MODEL
+    !model.is_empty() && !matches!(model, DEFAULT_MODEL | AUTO | GATEWAY_AUTO)
+}
+
+/// The short name Coder shows for `model`: `auto` unless the person chose
+/// a model in /models, and then only the model's own name, without the
+/// vendor prefix or settings such as `:none` or `:max-tokens=…`.
+#[must_use]
+pub fn label(model: &str) -> String {
+    let model = model.trim();
+    // `openagents/auto` has no colon; a slug's settings start at the first one.
+    let base = model.split(':').next().unwrap_or(model);
+    if !pinned(base) {
+        return AUTO.into();
+    }
+    let name = base.rsplit('/').next().unwrap_or(base);
+    if name.is_empty() {
+        AUTO.into()
+    } else {
+        name.into()
+    }
 }
 
 /// Whether `model` takes images in a user message (#11173): the shortlist's
@@ -94,7 +119,7 @@ pub struct Model {
 /// A small known catalog is available while public model metadata refreshes.
 pub fn openrouter_catalog() -> Vec<Model> {
     let rows: [(&str, &str, &[&str], Option<&str>); 7] = [
-        ("Free router", "Automatic free text model", &[], None),
+        ("Auto", "OpenAgents picks the model", &[], None),
         (
             "GPT-6 Luna",
             "Fast OpenAI text model",
@@ -137,7 +162,12 @@ pub fn openrouter_catalog() -> Vec<Model> {
         .zip(rows)
         .map(|(id, (name, description, efforts, default))| Model {
             plugin: OPENROUTER_PLUGIN.into(),
-            provider: "OpenRouter BYOK".into(),
+            provider: if *id == DEFAULT_MODEL {
+                "OpenAgents"
+            } else {
+                "OpenRouter BYOK"
+            }
+            .into(),
             id: (*id).into(),
             name: name.into(),
             description: description.into(),
@@ -413,5 +443,30 @@ mod pinned_tests {
         for model in SHORTLIST.iter().skip(1) {
             assert!(pinned(model), "{model}");
         }
+        assert!(!pinned(AUTO) && !pinned(GATEWAY_AUTO));
+    }
+
+    /// No vendor's name shows unless the person picked that model, and
+    /// then without internal settings (the owner's `openai/gpt-6-luna:none`).
+    #[test]
+    fn the_label_is_auto_unless_chosen_and_never_carries_settings() {
+        for default in [
+            "",
+            DEFAULT_MODEL,
+            "openrouter/free:none",
+            AUTO,
+            GATEWAY_AUTO,
+        ] {
+            let slug = GenerationOptions {
+                reasoning: Some("none".into()),
+                max_tokens: None,
+            }
+            .slug(default);
+            assert_eq!(label(default), "auto");
+            assert_eq!(label(&slug), "auto", "{slug}");
+        }
+        assert_eq!(label("openai/gpt-6-luna:none"), "gpt-6-luna");
+        assert_eq!(label("openai/gpt-6-luna:low:max-tokens=4096"), "gpt-6-luna");
+        assert_eq!(label("x-ai/grok-4.7"), "grok-4.7");
     }
 }

@@ -161,7 +161,29 @@ impl Store {
     pub fn under(root: impl Into<PathBuf>) -> Self {
         Self { root: root.into() }
     }
+}
 
+/// A test that saves settings must use a temporary folder, never the
+/// person's `~/.openagents` (a saved model there changes what their Coder
+/// runs and shows).
+#[cfg(test)]
+fn refuse_the_real_home(root: &Path) {
+    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+        return;
+    };
+    let temporary = |path: &Path| {
+        path.starts_with(std::env::temp_dir())
+            || path.starts_with("/tmp")
+            || path.starts_with("/private")
+    };
+    assert!(
+        temporary(&home) || !root.starts_with(home.join(".openagents")),
+        "a test tried to save Coder settings under the real ~/.openagents: {}",
+        root.display()
+    );
+}
+
+impl Store {
     /// Load settings, or return defaults when no file has been saved.
     ///
     /// # Errors
@@ -205,6 +227,8 @@ impl Store {
     /// # Errors
     /// Invalid existing settings are preserved. A failed write preserves the previous file.
     pub fn save(&self, settings: &SavedPlugin) -> Result<(), String> {
+        #[cfg(test)]
+        refuse_the_real_home(&self.root);
         // Do not overwrite a damaged or newer document if loading it failed.
         self.load()?;
         if !valid_model(&settings.model)
