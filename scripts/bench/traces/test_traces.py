@@ -41,19 +41,21 @@ class Fixture:
         self.store = tmp / "store"
         self.runs = tmp / "runs"
 
-    def issue_run(self, name="11218-1", patch=None, checks_ok=True, claimed=None, with_patch=True):
+    def issue_run(self, name="11218-1", patch=None, checks_ok=True, claimed=None, with_patch=True, **extra):
         folder = self.runs / name
         folder.mkdir(parents=True)
         if with_patch:
             (folder / "change.patch").write_bytes(self.patch if patch is None else patch)
         (folder / "briefing.md").write_text("# briefing\n")
-        (folder / "summary.json").write_text(json.dumps({
+        summary = {
             "issue": 11218, "base": self.base, "briefed": ["greet.txt"],
             "opened_outside_briefing": ["other.txt"],
             "checks": [{"id": "check:greet", "ok": checks_ok}],
             "check_commands": [{"id": "check:greet", "argv": CHECK}],
             "changed": claimed if claimed is not None else ["greet.txt"],
-        }))
+        }
+        summary.update(extra)
+        (folder / "summary.json").write_text(json.dumps(summary))
         return folder
 
     def capture(self):
@@ -149,6 +151,92 @@ class ReplayTests(unittest.TestCase):
             (folder / "summary.json").read_text().replace('"ok": true', '"ok": false'))
         again = self.f.capture()["issue-run:11218-1"]
         self.assertEqual(first["checks_digest"], again["checks_digest"])
+
+
+
+class InventoryTests(unittest.TestCase):
+    """#11230: every attempt survives export, and missing cost stays unknown."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.f = Fixture(Path(self.tmp.name))
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def manifest(self):
+        out = Path(self.tmp.name) / "manifest.json"
+        traces.cmd_manifest(_ns(store=self.f.store, out=str(out)))
+        return json.loads(out.read_text())
+
+    def test_missing_agent_cost_is_unknown_not_zero(self):
+        cost = {"denomination": "USD", "components": {
+            "agent": {"usd": None, "unknown_reason": "Claude Code reported no cost for the session"},
+            "decisions": {"usd": 0.002, "unknown_reason": None}}}
+        self.f.issue_run(agent_usd=None, decision_usd=0.002, cost=cost)
+        t = self.f.capture()["issue-run:11218-1"]
+        self.assertIsNone(t["cost_usd"])
+        self.assertFalse(t["cost"]["complete"])
+        self.assertIsNone(t["cost"]["total_usd"])
+        self.assertEqual(t["cost"]["known_subtotal_usd"], 0.002)
+        self.assertIn("no cost", t["cost"]["components"]["agent"]["unknown_reason"])
+
+    def test_a_legacy_summary_without_costs_is_unknown_not_zero(self):
+        self.f.issue_run()  # no agent_usd or decision_usd at all
+        t = self.f.capture()["issue-run:11218-1"]
+        self.assertIsNone(t["cost_usd"])
+        self.assertEqual(t["outcome"]["status"], "unknown")
+        self.assertIsNone(t["wall_secs"])
+
+    def test_a_fully_priced_run_has_a_total(self):
+        self.f.issue_run(agent_usd=1.25, decision_usd=0.5)
+        t = self.f.capture()["issue-run:11218-1"]
+        self.assertEqual(t["cost_usd"], 1.75)
+        self.assertTrue(t["cost"]["complete"])
+
+    def test_failed_setup_cancel_and_retry_survive_export(self):
+        # Attempt 1: setup failed, no base, no diff.
+        self.f.issue_run(name="11218-1-aa", with_patch=False, base=None, run_id="11218-1-aa",
+                         attempt={"index": 1, "prior_runs": []},
+                         outcome={"status": "setup_failed", "delivers": False, "reason": "no worktree"})
+        # Attempt 2: cancelled after the agent started.
+        self.f.issue_run(name="11218-2-bb", run_id="11218-2-bb", agent_usd=None,
+                         attempt={"index": 2, "prior_runs": ["11218-1-aa"]},
+                         outcome={"status": "cancelled", "delivers": False, "reason": "stopped"})
+        # Attempt 3: killed before writing its summary (its process is gone).
+        killed = self.f.runs / "11218-3-cc"
+        killed.mkdir(parents=True)
+        dead = subprocess.Popen([sys.executable, "-c", "pass"])
+        dead.wait()
+        (killed / "run.json").write_text(json.dumps({
+            "run_id": "11218-3-cc", "issue": 11218, "pid": dead.pid,
+            "attempt": {"index": 3, "prior_runs": ["11218-1-aa", "11218-2-bb"]}}))
+        # A run still working (this process) is not captured yet.
+        live = self.f.runs / "11218-4-dd"
+        live.mkdir(parents=True)
+        (live / "run.json").write_text(json.dumps({"run_id": "11218-4-dd", "issue": 11218, "pid": os.getpid()}))
+        got = self.f.capture()
+        self.assertEqual(got["issue-run:11218-1-aa"]["outcome"]["status"], "setup_failed")
+        self.assertTrue(got["issue-run:11218-1-aa"]["capture_error"])
+        self.assertEqual(got["issue-run:11218-2-bb"]["outcome"]["status"], "cancelled")
+        self.assertEqual(got["issue-run:11218-3-cc"]["outcome"]["status"], "incomplete")
+        self.assertEqual(got["issue-run:11218-3-cc"]["attempt"]["index"], 3)
+        self.assertNotIn("issue-run:11218-4-dd", got)
+        # Unreplayed and unverifiable attempts are all in the export.
+        attempts = {r["trace"]: r for r in self.manifest()["attempts"]}
+        self.assertEqual(set(attempts), {"issue-run:11218-1-aa", "issue-run:11218-2-bb", "issue-run:11218-3-cc"})
+        self.assertIsNone(attempts["issue-run:11218-2-bb"]["cost_usd"])
+        self.assertFalse(attempts["issue-run:11218-2-bb"]["cost_complete"])
+        self.assertTrue(attempts["issue-run:11218-2-bb"]["cost_unknown"])
+        self.assertIsNone(attempts["issue-run:11218-1-aa"]["replay_verdict"])
+
+    def test_capture_marks_the_folder_with_the_stored_diff(self):
+        folder = self.f.issue_run()
+        traces.cmd_capture(_ns(store=self.f.store, repo=self.f.repo, ab=[], tasks="", issue_runs=[],
+                               issue_run_folders=[str(folder)]))
+        mark = json.loads((folder / "trace-captured.json").read_text())
+        self.assertEqual(mark["trace"], "issue-run:11218-1")
+        self.assertEqual(mark["diff_digest"], traces.sha256(self.f.patch))
 
 
 if __name__ == "__main__":

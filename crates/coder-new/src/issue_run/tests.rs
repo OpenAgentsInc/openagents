@@ -339,3 +339,299 @@ fn diffs_split_per_file() {
         vec![("x".to_owned(), "@@ -1 +1 @@\n-a\n+b\n".to_owned())]
     );
 }
+
+// ---- #11230: delivery gate, own worktree per run, unknown cost ----
+
+use crate::issue_run::{
+    setup,
+    verdict::{self, Outcome, Status},
+};
+
+fn ids(list: &[&str]) -> Vec<String> {
+    list.iter().map(|id| (*id).to_owned()).collect()
+}
+
+fn verdicts(list: &[(&str, bool)]) -> Vec<(String, bool)> {
+    list.iter()
+        .map(|(id, ok)| ((*id).to_owned(), *ok))
+        .collect()
+}
+
+#[test]
+fn only_a_clean_run_with_every_required_check_passing_delivers() {
+    let required = ids(&["check:a", "check:b"]);
+    let pass = verdict::judge(
+        false,
+        None,
+        &required,
+        &verdicts(&[("check:a", true), ("check:b", true)]),
+    );
+    assert_eq!(pass.status, Status::Passed);
+    assert!(pass.delivers());
+
+    let failed_check = verdict::judge(
+        false,
+        None,
+        &required,
+        &verdicts(&[("check:a", true), ("check:b", false)]),
+    );
+    assert_eq!(failed_check.status, Status::Failed);
+    assert!(!failed_check.delivers());
+    assert!(failed_check.reason.unwrap().contains("check:b failed"));
+
+    let missing = verdict::judge(false, None, &required, &verdicts(&[("check:a", true)]));
+    assert_eq!(missing.status, Status::Failed);
+    assert!(missing.reason.unwrap().contains("check:b has no result"));
+
+    let agent_error = verdict::judge(
+        false,
+        Some("The agent ran out of its time."),
+        &required,
+        &verdicts(&[("check:a", true), ("check:b", true)]),
+    );
+    assert_eq!(agent_error.status, Status::Failed);
+    assert!(!agent_error.delivers());
+
+    let unchecked = verdict::judge(false, None, &[], &[]);
+    assert_eq!(unchecked.status, Status::Unchecked);
+    assert!(!unchecked.delivers());
+
+    let cancelled = verdict::judge(
+        true,
+        None,
+        &required,
+        &verdicts(&[("check:a", true), ("check:b", true)]),
+    );
+    assert_eq!(cancelled.status, Status::Cancelled);
+    assert!(!cancelled.delivers());
+}
+
+#[test]
+fn optional_checks_never_decide_the_outcome() {
+    // A failing agent-only test check beside passing required checks.
+    let outcome = verdict::judge(
+        false,
+        None,
+        &ids(&["check:a"]),
+        &verdicts(&[("check:a", true), ("test:a", false)]),
+    );
+    assert!(outcome.delivers());
+}
+
+fn test_transcript() -> (Transcript, mpsc::Receiver<Event>) {
+    let (sender, receiver) = mpsc::channel();
+    (
+        Transcript {
+            entries: Vec::new(),
+            sender,
+            log: None,
+            started: Instant::now(),
+            cancel: Arc::new(AtomicBool::new(false)),
+        },
+        receiver,
+    )
+}
+
+#[test]
+fn open_pr_refuses_a_run_that_did_not_pass() {
+    let options = Options::parse(&args("7 --open-pr")).unwrap();
+    let base = setup::Base {
+        issue: 7,
+        title: "t".into(),
+        body: String::new(),
+        closed: false,
+        fix: None,
+        base: "HEAD".into(),
+        repo: "/nonexistent".into(),
+        worktree: "/nonexistent/worktree".into(),
+        fetch_error: None,
+    };
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    for outcome in [
+        Outcome::stopped(Status::Failed, "The required check check:a failed."),
+        Outcome::stopped(Status::Failed, "The agent ended on an error: boom"),
+        Outcome::stopped(Status::Unchecked, "no required check"),
+        Outcome::stopped(Status::Cancelled, "stopped"),
+    ] {
+        let (mut transcript, events) = test_transcript();
+        runtime.block_on(setup::open_pr(&options, &base, &outcome, &mut transcript));
+        let events: Vec<Event> = events.try_iter().collect();
+        assert!(
+            events
+                .iter()
+                .all(|event| !matches!(event, Event::Set { .. })),
+            "no git or gh step may run: {events:?}"
+        );
+        assert!(events.iter().any(
+            |event| matches!(event, Event::Notice(text) if text.starts_with("No pull request"))
+        ));
+    }
+}
+
+#[test]
+fn cost_keeps_unknown_components_and_has_no_total_without_them() {
+    let partial = verdict::cost(
+        verdict::component(None, "Claude Code reported no cost"),
+        verdict::component(Some(0.002), ""),
+    );
+    assert!(partial["total_usd"].is_null());
+    assert_eq!(partial["complete"], json!(false));
+    assert_eq!(partial["known_subtotal_usd"], json!(0.002));
+    assert!(partial["components"]["agent"]["usd"].is_null());
+    assert_eq!(
+        partial["components"]["agent"]["unknown_reason"],
+        json!("Claude Code reported no cost")
+    );
+    let full = verdict::cost(
+        verdict::component(Some(1.0), ""),
+        verdict::component(Some(0.5), ""),
+    );
+    assert_eq!(full["total_usd"], json!(1.5));
+    assert_eq!(full["complete"], json!(true));
+}
+
+#[test]
+fn the_summary_card_never_shows_an_unknown_cost_as_zero() {
+    let summary = json!({"agent_usd": null, "decision_usd": 0.002});
+    let shown = cards::cost_text(&summary);
+    assert!(shown.starts_with("unknown"), "{shown}");
+    assert!(shown.contains("the agent unknown"), "{shown}");
+    assert!(!shown.contains("$0 "), "{shown}");
+    let summary = json!({
+        "issue": 7, "title": "t",
+        "outcome": {"status": "failed", "reason": "The required check check:a failed.", "delivers": false},
+        "cost": verdict::cost(verdict::component(None, "no cost"), verdict::component(Some(0.0), "")),
+        "optional_checks": [{"id": "test:a", "ok": null}],
+    });
+    let shown = text(cards::summary_lines(&summary, &json!({"diff": ""}), 160));
+    for part in [
+        "failed · not delivered: The required check check:a failed.",
+        "unknown (known part $0)",
+        "tokens    unknown",
+        "test:a not run",
+    ] {
+        assert!(shown.contains(part), "missing {part:?} in\n{shown}");
+    }
+}
+
+#[test]
+fn run_ids_are_unique_and_runs_get_their_own_folders() {
+    let a = run_id(7, 100);
+    let b = run_id(7, 100);
+    assert_ne!(a, b);
+    assert!(a.starts_with("7-100-"));
+    let state = tempfile::tempdir().unwrap();
+    let mut options = Options::parse(&args("7")).unwrap();
+    options.state = state.path().to_owned();
+    let first = new_run(&options).unwrap();
+    let second = new_run(&options).unwrap();
+    assert_ne!(first.folder, second.folder);
+    assert_eq!(first.attempt["index"], json!(1));
+    assert_eq!(second.attempt["index"], json!(2));
+    assert_eq!(second.attempt["prior_runs"], json!([first.id]));
+    assert!(second.folder.join("run.json").exists());
+}
+
+fn git(dir: &std::path::Path, args: &[&str]) {
+    let status = std::process::Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(status.status.success(), "git {args:?}: {status:?}");
+}
+
+/// A finished run folder with a worktree, its patch, and (when `captured`)
+/// the trace marker.
+fn finished_run(repo: &std::path::Path, folder: &std::path::Path, captured: bool) {
+    std::fs::create_dir_all(folder).unwrap();
+    let worktree = folder.join("worktree");
+    git(
+        repo,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "--detach",
+            worktree.to_str().unwrap(),
+            "HEAD",
+        ],
+    );
+    std::fs::write(worktree.join("work.txt"), "uncommitted\n").unwrap();
+    let patch = b"diff --git a/work.txt b/work.txt\n";
+    std::fs::write(folder.join("change.patch"), patch).unwrap();
+    let digest = setup::digest(patch);
+    std::fs::write(
+        folder.join("summary.json"),
+        json!({"finished": true, "diff_sha256": digest, "repo": repo.display().to_string()})
+            .to_string(),
+    )
+    .unwrap();
+    if captured {
+        std::fs::write(
+            folder.join(setup::CAPTURED),
+            json!({"diff_digest": digest}).to_string(),
+        )
+        .unwrap();
+    }
+}
+
+#[test]
+fn a_new_run_cleans_only_finished_and_captured_worktrees() {
+    let root = tempfile::tempdir().unwrap();
+    let repo = root.path().join("repo");
+    std::fs::create_dir(&repo).unwrap();
+    git(&repo, &["init", "-q"]);
+    git(&repo, &["config", "user.email", "t@example.com"]);
+    git(&repo, &["config", "user.name", "t"]);
+    std::fs::write(repo.join("a.txt"), "a\n").unwrap();
+    git(&repo, &["add", "-A"]);
+    git(&repo, &["commit", "-q", "-m", "base"]);
+    let state = root.path().join("state");
+    let done = state.join("7-1-done");
+    let uncaptured = state.join("7-2-uncaptured");
+    let active = state.join("7-3-active");
+    finished_run(&repo, &done, true);
+    finished_run(&repo, &uncaptured, false);
+    // An active run: a worktree and run.json, no summary yet.
+    std::fs::create_dir_all(&active).unwrap();
+    git(
+        &repo,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "--detach",
+            active.join("worktree").to_str().unwrap(),
+            "HEAD",
+        ],
+    );
+    std::fs::write(active.join("worktree/editing.txt"), "in progress\n").unwrap();
+    let current = state.join("7-4-current");
+    std::fs::create_dir_all(&current).unwrap();
+
+    assert!(setup::cleanable(&done).is_ok());
+    assert!(setup::cleanable(&uncaptured).is_err());
+    assert!(setup::cleanable(&active).is_err());
+    // A patch that is not the summarized diff keeps the worktree.
+    let tampered = state.join("7-5-tampered");
+    finished_run(&repo, &tampered, true);
+    std::fs::write(tampered.join("change.patch"), b"other").unwrap();
+    assert!(setup::cleanable(&tampered).is_err());
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let removed = runtime.block_on(setup::sweep(&state, &repo, &current));
+    assert_eq!(removed, 1);
+    assert!(!done.join("worktree").exists());
+    assert!(done.join("summary.json").exists(), "the run's record stays");
+    assert!(uncaptured.join("worktree/work.txt").exists());
+    assert!(active.join("worktree/editing.txt").exists());
+    assert!(tampered.join("worktree/work.txt").exists());
+}

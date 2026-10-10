@@ -223,25 +223,81 @@ def capture_ab(store: Path, repo: Path, trial: Path, tasks: Path, root: Path) ->
     t["claimed"] = {"files": sorted(r.get("files_changed") or [])}
     t["teacher"] = {"judge": (_load(trial / "judge.json") or {}).get("score")}
     t["cost_usd"] = r.get("cost_usd")
+    if t["cost_usd"] is None:
+        t["cost_unknown_reason"] = "the trial recorded no cost"
     t["wall_secs"] = r.get("wall_secs")
     return t
 
 
+def unknown_cost(component: str, reason: str) -> dict:
+    return {"usd": None, "unknown_reason": f"{component}: {reason}"}
+
+
+def issue_run_cost(s: dict) -> dict:
+    """The run's cost with every component kept: an amount, or None and why
+    (#11230, PRODUCT-04). A total exists only when every component is
+    known; a missing amount is never read as 0."""
+    if isinstance(s.get("cost"), dict) and isinstance(s["cost"].get("components"), dict):
+        parts = {k: dict(v) for k, v in s["cost"]["components"].items()}
+    else:
+        # Summaries before #11230 carry only the two amounts.
+        parts = {}
+        for key, name in (("agent_usd", "agent"), ("decision_usd", "decisions")):
+            v = s.get(key)
+            parts[name] = {"usd": v, "unknown_reason": None} if isinstance(v, (int, float)) else \
+                {"usd": None, "unknown_reason": f"the summary recorded no {name} cost"}
+    known = [p["usd"] for p in parts.values() if isinstance(p.get("usd"), (int, float))]
+    complete = len(known) == len(parts) and bool(parts)
+    return {
+        "denomination": "USD",
+        "basis": "reported",
+        "components": parts,
+        "known_subtotal_usd": sum(known),
+        "total_usd": sum(known) if complete else None,
+        "complete": complete,
+    }
+
+
+def _pid_alive(pid) -> bool:
+    try:
+        os.kill(int(pid), 0)
+    except (OSError, TypeError, ValueError):
+        return False
+    return True
+
+
 def capture_issue_run(store: Path, repo: Path, folder: Path) -> dict | None:
     """One `coder issue-run` folder (summary.json and, from #11218 on,
-    change.patch) as a trace."""
+    change.patch) as a trace. Every attempt is kept (#11230): a run that
+    stopped in setup, in the decision steps, was cancelled, or was killed
+    before its summary (run.json but no summary.json, and its process gone)
+    is still a trace, unverifiable, with its outcome."""
     s = _load(folder / "summary.json")
+    started = _load(folder / "run.json")
     if not s:
+        if not started or _pid_alive(started.get("pid")):
+            return None  # not a run folder, or a run still working
+        s = {"issue": started.get("issue"), "run_id": started.get("run_id"), "attempt": started.get("attempt"),
+             "outcome": {"status": "incomplete", "delivers": False,
+                         "reason": "the run ended without a summary (killed or crashed)"}}
+    if s.get("issue") is None:
         return None
     patch_path = folder / "change.patch"
     patch = patch_path.read_bytes() if patch_path.exists() else None
     t = base_record(store, repo, tid="issue-run:" + folder.name, kind="issue-run", path=folder,
                     issue=s["issue"], base=s.get("base"), patch=patch)
+    t["run_id"] = s.get("run_id") or folder.name
+    t["attempt"] = s.get("attempt")
+    # Summaries before #11230 have no outcome: unknown, never "passed".
+    t["outcome"] = s.get("outcome") or {"status": "unknown", "delivers": None,
+                                        "reason": "the summary predates recorded outcomes"}
     briefing = folder / "briefing.md"
     t["briefing_digest"] = put_blob(store, briefing.read_bytes()) if briefing.exists() else None
     t["briefed"] = sorted(s.get("briefed") or [])
     t["opened_outside_briefing"] = sorted(s.get("opened_outside_briefing") or [])
     t["checks"] = {c["id"]: bool(c.get("ok")) for c in s.get("checks") or []}
+    t["required_checks"] = s.get("required_checks")
+    t["optional_checks"] = s.get("optional_checks")
     t["check_spec"] = {"kind": "commands", "checks": s.get("check_commands") or []}
     if t["checks"] and not t["check_spec"]["checks"]:
         t["capture_error"] = t["capture_error"] or "the run did not record its check commands"
@@ -252,9 +308,21 @@ def capture_issue_run(store: Path, repo: Path, folder: Path) -> dict | None:
     if s.get("diff_sha256") and t["diff_digest"] and s["diff_sha256"] != t["diff_digest"]:
         t["capture_error"] = "change.patch is not the diff the summary was computed from"
     t["teacher"] = None
-    t["cost_usd"] = (s.get("agent_usd") or 0) + (s.get("decision_usd") or 0)
-    t["wall_secs"] = (s.get("wall_ms") or 0) / 1000
+    t["cost"] = issue_run_cost(s)
+    # None when any component is unknown: never a partial sum shown as total.
+    t["cost_usd"] = t["cost"]["total_usd"]
+    t["wall_secs"] = s["wall_ms"] / 1000 if isinstance(s.get("wall_ms"), (int, float)) else None
     return t
+
+
+def mark_captured(folder: Path, t: dict) -> None:
+    """Tell the issue-run that this folder's trace is stored, so a later run
+    may clean its worktree (only when the digests match)."""
+    body = {"trace": t["id"], "diff_digest": t.get("diff_digest"), "captured_at": t.get("captured_at"),
+            "capture_error": t.get("capture_error")}
+    tmp = folder / f"trace-captured.json.{os.getpid()}.tmp"
+    tmp.write_text(json.dumps(body, indent=1, sort_keys=True) + "\n")
+    os.replace(tmp, folder / "trace-captured.json")
 
 
 def read_jsonl(path: Path) -> list[dict]:
@@ -303,12 +371,24 @@ def cmd_capture(a) -> None:
             t = capture_ab(store, repo, Path(f).parent, Path(a.tasks), root)
             if t:
                 new.append(t)
+    folders = []
     for root in a.issue_runs or []:
-        for f in sorted(glob.glob(os.path.join(os.path.expanduser(root), "*", "summary.json"))):
-            t = capture_issue_run(store, repo, Path(f).parent)
-            if t:
-                new.append(t)
+        root = os.path.expanduser(root)
+        found = set(glob.glob(os.path.join(root, "*", "summary.json"))) | set(
+            glob.glob(os.path.join(root, "*", "run.json")))
+        folders += sorted({Path(f).parent for f in found})
+    folders += [Path(os.path.expanduser(f)) for f in getattr(a, "issue_run_folders", None) or []]
+    captured = []
+    for folder in folders:
+        t = capture_issue_run(store, repo, folder)
+        if t:
+            new.append(t)
+            captured.append((folder, t["id"]))
     rows = save_traces(store, new)
+    stored = {r["id"]: r for r in rows}
+    for folder, tid in captured:
+        # The stored trace, which may be an earlier capture of this folder.
+        mark_captured(folder, stored[tid])
     bad = sum(1 for t in new if t.get("capture_error"))
     print(f"capture: {len(new)} runs read ({bad} with no replayable diff), {len(rows)} traces in {store}")
 
@@ -577,6 +657,27 @@ def cmd_admit(a) -> None:
     print(f"admit: {len(rows)} traces admitted to {store / 'admitted.jsonl'} (replays: {counts})")
 
 
+def attempt_inventory(traces: dict, latest: dict) -> list[dict]:
+    """One row per captured attempt, whether or not it was replayed, with its
+    outcome, attempt position and cost (unknown stays None, with reasons)."""
+    rows = []
+    for tid, t in sorted(traces.items()):
+        rec = latest.get(tid) or {}
+        cost = t.get("cost")
+        rows.append({
+            "trace": tid, "kind": (t.get("source") or {}).get("kind"), "issue": t.get("issue"),
+            "run_id": t.get("run_id"), "attempt": t.get("attempt"), "arm": t.get("arm"), "rep": t.get("rep"),
+            "outcome": t.get("outcome"), "capture_error": t.get("capture_error"),
+            "cost_usd": t.get("cost_usd"),
+            "cost_complete": cost.get("complete") if cost else t.get("cost_usd") is not None,
+            "cost_unknown": [p.get("unknown_reason") for p in (cost or {}).get("components", {}).values()
+                             if p.get("usd") is None] if cost else
+                            ([t.get("cost_unknown_reason")] if t.get("cost_usd") is None else []),
+            "replay_verdict": rec.get("verdict"),
+        })
+    return rows
+
+
 def cmd_manifest(a) -> None:
     store = Path(a.store)
     traces = {t["id"]: t for t in read_jsonl(store / "traces.jsonl")}
@@ -597,6 +698,11 @@ def cmd_manifest(a) -> None:
     body = {"v": "openagents.coder-trace-manifest.v1", "generated": _now(),
             "admitted": sum(1 for r in rows if r["verdict"] == "verified"), "rows": rows}
     body["digest"] = sha256(canonical(rows))
+    # Every captured attempt, replayed or not: failed setups, cancellations,
+    # killed runs and retries stay in the export (#11230).
+    attempts = attempt_inventory(traces, latest)
+    body["attempts"] = attempts
+    body["attempts_digest"] = sha256(canonical(attempts))
     Path(a.out).write_text(json.dumps(body, indent=1, sort_keys=True) + "\n")
     print(f"manifest: {len(rows)} receipts ({body['admitted']} admitted) -> {a.out}")
 
@@ -610,6 +716,7 @@ def main(argv=None) -> None:
     c.add_argument("--ab", nargs="*", default=[], help="A/B results directories (…/.work/results)")
     c.add_argument("--tasks", default=str(HERE.parent / "briefed-ab" / "tasks"))
     c.add_argument("--issue-runs", nargs="*", default=[], help="e.g. ~/.openagents/coder-new/issue-runs")
+    c.add_argument("--issue-run-folders", nargs="*", default=[], help="single run folders (issue-run calls this)")
     r = sub.add_parser("replay")
     r.add_argument("--on", default="mac", help="mac, or a build host name (A/B grades only)")
     r.add_argument("--ids", nargs="*")

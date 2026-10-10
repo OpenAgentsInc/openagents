@@ -20,18 +20,27 @@
 //!   opened that the briefing did not list, the check results, and the
 //!   diff; for a closed issue, the comparison with the real fix.
 //!
-//! Test mode is the default: the working copy is a fresh worktree at the
-//! issue's base (the fix's parent for a closed issue, `origin/main` for an
-//! open one), and nothing is pushed. `--open-pr` commits to a branch,
-//! pushes it, and opens a pull request, for an open issue only.
+//! Test mode is the default: the working copy is the run's own fresh
+//! worktree at the issue's base (the fix's parent for a closed issue,
+//! `origin/main` for an open one), and nothing is pushed. `--open-pr`
+//! commits to a branch, pushes it, and opens a pull request, for an open
+//! issue only, and only when the run passed ([`verdict`]): every required
+//! final check ran and passed and the agent ended without an error.
 //!
-//! Every transcript change is also written to `events.jsonl` in the run's
-//! folder, so `coder issue-run --replay FILE` plays a recorded run again.
+//! Each run has a unique id and its own folder,
+//! `STATE/<run-id>/` (`run.json`, `events.jsonl`, `summary.json`,
+//! `change.patch`, and `worktree/`). Every run, including one that stopped
+//! in setup, in the decision steps, or was cancelled, ends with a
+//! `summary.json` naming its outcome and attempt, and is captured as a
+//! trace (`scripts/bench/traces`), so failed attempts and retries survive
+//! export. Every transcript change is also written to `events.jsonl`, so
+//! `coder issue-run --replay FILE` plays a recorded run again.
 
 pub mod agent;
 pub mod cards;
 pub mod decide;
 pub mod setup;
+pub mod verdict;
 
 use std::{
     io::Write,
@@ -47,6 +56,7 @@ use std::{
 use serde_json::{Value, json};
 
 use crate::live::Entry;
+use verdict::{Outcome, Status};
 
 /// The tool name of a decision card.
 pub const DECISION: &str = "Decision";
@@ -225,6 +235,96 @@ fn default_state() -> PathBuf {
         .unwrap_or_else(|| std::env::temp_dir().join("coder-issue-runs"))
 }
 
+/// One run's identity: its unique id, its folder `STATE/<id>/`, and where
+/// it sits among the attempts at the same issue.
+#[derive(Clone, Debug)]
+pub struct Run {
+    pub id: String,
+    pub folder: PathBuf,
+    /// `{"index": K, "prior_runs": [ids]}`: this is the K-th attempt at the
+    /// issue under this state root, after the runs named (finished, failed,
+    /// cancelled or killed alike).
+    pub attempt: Value,
+}
+
+/// A run id: the issue, the start second, and 64 random bits, so two runs
+/// started together never share a folder.
+#[must_use]
+pub fn run_id(issue: u64, seconds: u64) -> String {
+    let mut bytes = [0u8; 8];
+    if getrandom::fill(&mut bytes).is_err() {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.subsec_nanos());
+        bytes = (u64::from(nanos) << 32 | u64::from(std::process::id())).to_be_bytes();
+    }
+    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    format!("{issue}-{seconds}-{hex}")
+}
+
+/// Makes a new run's folder under `state`. The folder is created
+/// exclusively, so it is never another run's; `run.json` records the run's
+/// identity and attempt before any work starts.
+///
+/// # Errors
+/// The state root or the folder cannot be created.
+pub fn new_run(options: &Options) -> Result<Run, String> {
+    let state = &options.state;
+    std::fs::create_dir_all(state)
+        .map_err(|error| format!("Cannot create {}: {error}", state.display()))?;
+    let prefix = format!("{}-", options.issue);
+    let mut prior: Vec<String> = std::fs::read_dir(state)
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|entry| entry.path().is_dir())
+                .filter_map(|entry| entry.file_name().into_string().ok())
+                .filter(|name| name.starts_with(&prefix))
+                .collect()
+        })
+        .unwrap_or_default();
+    prior.sort();
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let mut made = None;
+    for _ in 0..8 {
+        let id = run_id(options.issue, seconds);
+        let folder = state.join(&id);
+        match std::fs::create_dir(&folder) {
+            Ok(()) => {
+                made = Some((id, folder));
+                break;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(format!("Cannot create {}: {error}", folder.display())),
+        }
+    }
+    let (id, folder) = made.ok_or("Cannot find a free run id.")?;
+    let attempt = json!({"index": prior.len() + 1, "prior_runs": prior});
+    let record = json!({
+        "v": "openagents.coder-issue-run.v1",
+        "run_id": id,
+        "issue": options.issue,
+        "github": options.github,
+        "repo": options.repo.display().to_string(),
+        "model": options.model,
+        "open_pr": options.open_pr,
+        "pid": std::process::id(),
+        "started_at": seconds,
+        "attempt": attempt,
+    });
+    setup::write_atomic(
+        &folder.join("run.json"),
+        &serde_json::to_vec_pretty(&record).unwrap_or_default(),
+    )?;
+    Ok(Run {
+        id,
+        folder,
+        attempt,
+    })
+}
+
 /// One change to the run's transcript.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Event {
@@ -337,7 +437,7 @@ impl Transcript {
 }
 
 /// Starts the run on its own thread. The run's folder is
-/// `STATE/N-SECONDS/`; `events.jsonl` there records every change.
+/// `STATE/<run-id>/`; `events.jsonl` there records every change.
 pub fn start(options: Options) -> Feed {
     let (sender, events) = mpsc::channel();
     let cancel = Arc::new(AtomicBool::new(false));
@@ -350,19 +450,24 @@ pub fn start(options: Options) -> Feed {
             play(&replay, options.speed, &sender, &cancel);
             return;
         }
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_secs());
-        let folder = options.state.join(format!("{}-{stamp}", options.issue));
-        let log = std::fs::create_dir_all(&folder)
+        let made = new_run(&options);
+        let log = made
+            .as_ref()
             .ok()
-            .and_then(|()| std::fs::File::create(folder.join("events.jsonl")).ok());
+            .and_then(|run| std::fs::File::create(run.folder.join("events.jsonl")).ok());
         let mut transcript = Transcript {
             entries: Vec::new(),
             sender,
             log,
             started: Instant::now(),
             cancel,
+        };
+        let run = match made {
+            Ok(run) => run,
+            Err(why) => {
+                transcript.notice(format!("The run could not start: {why}"));
+                return;
+            }
         };
         transcript.busy(true);
         let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -371,7 +476,7 @@ pub fn start(options: Options) -> Feed {
             .build();
         match runtime {
             Ok(runtime) => {
-                runtime.block_on(run(&options, &folder, &mut transcript));
+                runtime.block_on(drive(&options, &run, &mut transcript));
             }
             Err(_) => transcript.notice("The run could not start its worker threads."),
         }
@@ -380,57 +485,178 @@ pub fn start(options: Options) -> Feed {
     feed
 }
 
-/// The whole run, step by step.
-async fn run(options: &Options, folder: &Path, transcript: &mut Transcript) {
+/// The whole run, step by step. Every way out, a stop in setup or the
+/// decision steps, a cancel, or the end, writes the run's summary.
+async fn drive(options: &Options, run: &Run, transcript: &mut Transcript) {
     transcript.push(Entry::User(format!(
         "Play issue #{} from issue to pull request, as a test run.",
         options.issue
     )));
     let started = Instant::now();
-    let Some(base) = setup::prepare(options, folder, transcript).await else {
-        transcript.notice(format!(
-            "The run stopped. Its files are in {}.",
-            folder.display()
-        ));
-        return;
+    let folder = run.folder.as_path();
+    let mut ending = End {
+        options,
+        run,
+        base: None,
+        briefing: None,
+        work: None,
+        checks: Vec::new(),
+        started,
     };
+    let Some(base) = setup::prepare(options, folder, transcript).await else {
+        let outcome = if transcript.cancelled() {
+            Outcome::stopped(Status::Cancelled, "The run was stopped during setup.")
+        } else {
+            Outcome::stopped(
+                Status::SetupFailed,
+                "The issue, its base commit, or the worktree could not be prepared.",
+            )
+        };
+        return ending.conclude(outcome, transcript).await;
+    };
+    ending.base = Some(base.clone());
     if transcript.cancelled() {
-        return;
+        let outcome = Outcome::stopped(Status::Cancelled, "The run was stopped after setup.");
+        return ending.conclude(outcome, transcript).await;
     }
     let Some(briefing) = decide::decide(options, &base, folder, transcript).await else {
-        transcript.notice(format!(
-            "The run stopped. Its files are in {}.",
-            folder.display()
-        ));
-        return;
+        let outcome = if transcript.cancelled() {
+            Outcome::stopped(
+                Status::Cancelled,
+                "The run was stopped in the decision steps.",
+            )
+        } else {
+            Outcome::stopped(
+                Status::DecisionFailed,
+                "The decision steps stopped before a briefing existed.",
+            )
+        };
+        return ending.conclude(outcome, transcript).await;
     };
+    ending.briefing = Some(briefing.clone());
     if transcript.cancelled() {
-        return;
+        let outcome = Outcome::stopped(Status::Cancelled, "The run was stopped before the agent.");
+        return ending.conclude(outcome, transcript).await;
     }
     let work = agent::work(options, &base, &briefing, folder, transcript).await;
-    if transcript.cancelled() {
+    ending.work = Some(work.clone());
+    if !transcript.cancelled() {
+        ending.checks = agent::final_checks(&base, &briefing, transcript).await;
+    }
+    let outcome = verdict::judge(
+        transcript.cancelled(),
+        work.error.as_deref(),
+        &setup::required_checks(&briefing),
+        &ending.checks,
+    );
+    ending.conclude(outcome, transcript).await;
+}
+
+/// What a run has when it ends.
+struct End<'a> {
+    options: &'a Options,
+    run: &'a Run,
+    base: Option<setup::Base>,
+    briefing: Option<decide::Briefing>,
+    work: Option<agent::Work>,
+    checks: Vec<(String, bool)>,
+    started: Instant,
+}
+
+impl End<'_> {
+    /// Writes the summary, delivers only a passed run when `--open-pr` asks,
+    /// and captures the run as a trace.
+    async fn conclude(self, outcome: Outcome, transcript: &mut Transcript) {
+        let folder = self.run.folder.as_path();
+        let summary = setup::summary(&setup::Report {
+            options: self.options,
+            run: self.run,
+            base: self.base.as_ref(),
+            briefing: self.briefing.as_ref(),
+            work: self.work.as_ref(),
+            checks: &self.checks,
+            outcome: &outcome,
+            started: self.started,
+            folder,
+        });
+        if self.base.is_some() && self.briefing.is_some() {
+            let diff = self
+                .base
+                .as_ref()
+                .map(|base| setup::working_diff(&base.worktree, &base.base))
+                .unwrap_or_default();
+            transcript.push(Entry::Tool {
+                name: SUMMARY.into(),
+                input: summary.clone(),
+                output: json!({"diff": diff}),
+                running: false,
+            });
+        }
+        if let Err(why) = setup::write_atomic(
+            &folder.join("summary.json"),
+            &serde_json::to_vec_pretty(&summary).unwrap_or_default(),
+        ) {
+            transcript.notice(format!("{why}. The worktree is kept."));
+        }
+        if self.options.open_pr {
+            match &self.base {
+                Some(base) => setup::open_pr(self.options, base, &outcome, transcript).await,
+                None => transcript.notice("No pull request: the run has no working copy."),
+            }
+        }
+        capture(self.options, folder, transcript).await;
+        let worktree = self
+            .base
+            .as_ref()
+            .map(|base| format!(" Working copy: {}.", base.worktree.display()))
+            .unwrap_or_default();
+        transcript.notice(format!(
+            "Test run ended: {}{}.{worktree} Recording: {}.",
+            outcome.status.as_str(),
+            outcome
+                .reason
+                .as_deref()
+                .map(|why| format!(" ({why})"))
+                .unwrap_or_default(),
+            folder.join("events.jsonl").display()
+        ));
+    }
+}
+
+/// Stores the run as a trace (`scripts/bench/traces/traces.py capture`),
+/// which marks the folder `trace-captured.json`; only then may a later run
+/// clean its worktree. `CODER_ISSUE_RUN_CAPTURE=0` skips it.
+async fn capture(options: &Options, folder: &Path, transcript: &mut Transcript) {
+    if std::env::var("CODER_ISSUE_RUN_CAPTURE").as_deref() == Ok("0") {
         return;
     }
-    let checks = agent::final_checks(&base, &briefing, transcript).await;
-    let summary = setup::summary(options, &base, &briefing, &work, &checks, started, folder);
-    transcript.push(Entry::Tool {
-        name: SUMMARY.into(),
-        input: summary.clone(),
-        output: json!({"diff": setup::working_diff(&base.worktree, &base.base)}),
-        running: false,
-    });
-    let _ = std::fs::write(
-        folder.join("summary.json"),
-        serde_json::to_vec_pretty(&summary).unwrap_or_default(),
-    );
-    if options.open_pr {
-        setup::open_pr(options, &base, transcript).await;
+    let script = tools_root(&options.repo).join("scripts/bench/traces/traces.py");
+    if !script.exists() {
+        transcript.notice("The trace was not captured (no traces.py); the worktree is kept.");
+        return;
     }
-    transcript.notice(format!(
-        "Test run finished. Working copy: {}. Recording: {}.",
-        base.worktree.display(),
-        folder.join("events.jsonl").display()
-    ));
+    let repo = options
+        .repo
+        .canonicalize()
+        .unwrap_or_else(|_| options.repo.clone());
+    let (script, repo, folder_text) = (
+        script.to_string_lossy().into_owned(),
+        repo.to_string_lossy().into_owned(),
+        folder.to_string_lossy().into_owned(),
+    );
+    let args = [
+        script.as_str(),
+        "--repo",
+        repo.as_str(),
+        "capture",
+        "--issue-run-folders",
+        folder_text.as_str(),
+    ];
+    if let Err(why) = setup::output("python3", &args, folder).await {
+        transcript.notice(format!(
+            "The trace was not captured ({why}); the worktree is kept."
+        ));
+    }
 }
 
 /// Plays a recorded run with its original pacing, `speed` times faster.

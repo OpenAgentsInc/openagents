@@ -43,8 +43,31 @@ pub struct Briefing {
     pub system: String,
     pub prompt: String,
     pub markdown: String,
-    /// What the System One questions cost.
+    /// What the System One questions cost, as far as their doors reported
+    /// it: the known subtotal.
     pub decision_usd: f64,
+    /// How many answered System One questions reported no cost. When this
+    /// is above zero the decisions' cost is unknown, never the subtotal.
+    pub decision_unpriced: usize,
+}
+
+/// What the decision questions cost so far: the reported subtotal and the
+/// count of answers that reported no cost (#11230: missing cost is unknown,
+/// never zero).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Spent {
+    pub usd: f64,
+    pub unpriced: usize,
+}
+
+impl Spent {
+    /// Adds one answered question's reported cost.
+    pub fn add(&mut self, cost: Option<f64>) {
+        match cost {
+            Some(usd) => self.usd += usd,
+            None => self.unpriced += 1,
+        }
+    }
 }
 
 /// The finder's candidate stages, in the order it runs them, each with
@@ -91,12 +114,13 @@ pub async fn decide(
         .as_ref()
         .and_then(|found| found["files"].as_array().cloned())
         .unwrap_or_default();
-    let mut decision_usd = 0.0;
-    let kind = issue_kind(options, base, transcript, &mut decision_usd).await;
-    let judged = file_questions(options, base, &ranked, transcript, &mut decision_usd).await;
+    let mut spent = Spent::default();
+    let kind = issue_kind(options, base, transcript, &mut spent).await;
+    let judged = file_questions(options, base, &ranked, transcript, &mut spent).await;
     let chosen = choose(options, &ranked, &judged, transcript);
     let mut briefing = brief(options, base, &chosen, kind.as_deref(), folder, transcript).await?;
-    briefing.decision_usd = decision_usd;
+    briefing.decision_usd = spent.usd;
+    briefing.decision_unpriced = spent.unpriced;
     Some(briefing)
 }
 
@@ -339,7 +363,7 @@ async fn issue_kind(
     options: &Options,
     base: &Base,
     transcript: &mut Transcript,
-    spent: &mut f64,
+    spent: &mut Spent,
 ) -> Option<String> {
     const KINDS: [(&str, &str); 5] = [
         ("bug", "Something that should work does not: fix it"),
@@ -384,7 +408,7 @@ async fn issue_kind(
             card["door"] = json!(answered_by(&door, &response));
             card["model"] = json!(response.model);
             let cost = response.usage.cost_usd();
-            *spent += cost.unwrap_or(0.0);
+            spent.add(cost);
             card["cost_usd"] = json!(cost);
             card["tokens"] = json!(response.usage.input_tokens);
             let Ok(answer) = response.choice("kind") else {
@@ -420,7 +444,7 @@ async fn file_questions(
     base: &Base,
     ranked: &[Value],
     transcript: &mut Transcript,
-    spent: &mut f64,
+    spent: &mut Spent,
 ) -> Vec<(String, f64)> {
     let question = "Does the fix for this issue need to change this file?";
     let asked: Vec<String> = ranked
@@ -451,7 +475,7 @@ async fn file_questions(
     let started = Instant::now();
     let mut answers = Vec::new();
     let mut rows: Vec<Value> = asked.iter().map(|path| json!({"name": path})).collect();
-    let mut cost_total = 0.0;
+    let mut cost_total = Spent::default();
     let mut tokens = 0u64;
     let mut last_door = door.label.clone();
     for (row, path) in asked.iter().enumerate() {
@@ -476,8 +500,7 @@ async fn file_questions(
             Ok(response) => {
                 let ms = asked_at.elapsed().as_millis() as u64;
                 last_door = answered_by(&door, &response);
-                let cost = response.usage.cost_usd().unwrap_or(0.0);
-                cost_total += cost;
+                cost_total.add(response.usage.cost_usd());
                 tokens += response.usage.input_tokens.unwrap_or(0);
                 if let Ok(answer) = response.noul("relevant") {
                     rows[row] = json!({
@@ -496,7 +519,11 @@ async fn file_questions(
         card["files"] = json!(rows);
         card["door"] = json!(last_door);
         card["ms"] = json!(started.elapsed().as_millis() as u64);
-        card["cost_usd"] = json!(cost_total);
+        card["cost_usd"] = if cost_total.unpriced == 0 {
+            json!(cost_total.usd)
+        } else {
+            Value::Null
+        };
         card["tokens"] = json!(tokens);
         transcript.set(
             index,
@@ -508,7 +535,8 @@ async fn file_questions(
             },
         );
     }
-    *spent += cost_total;
+    spent.usd += cost_total.usd;
+    spent.unpriced += cost_total.unpriced;
     transcript.finish(index, card, json!({"ok": true}));
     answers
 }
@@ -676,6 +704,7 @@ async fn brief(
         prompt: answer["prompt"].as_str().unwrap_or_default().to_owned(),
         markdown,
         decision_usd: 0.0,
+        decision_unpriced: 0,
     })
 }
 

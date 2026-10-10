@@ -1,5 +1,12 @@
-//! The run's ground: the issue, its base commit, the fresh worktree, and,
-//! at the end, the diff, the summary, and the opt-in pull request.
+//! The run's ground: the issue, its base commit, the run's own worktree,
+//! and, at the end, the diff, the summary, and the opt-in pull request.
+//!
+//! Each run owns `STATE/<run-id>/worktree` (#11230, audit RUN-06). Starting
+//! a run never touches another run's worktree unless that run finished
+//! (its `summary.json` is written), its `change.patch` matches the summary's
+//! digest, and `scripts/bench/traces` captured it (`trace-captured.json`
+//! names the same digest). A run that is still working, was killed, or was
+//! never captured keeps its worktree.
 
 use std::{
     path::{Path, PathBuf},
@@ -8,7 +15,12 @@ use std::{
 
 use serde_json::{Value, json};
 
-use super::{Options, Transcript, agent::Work, decide::Briefing};
+use super::{
+    Options, Run, Transcript,
+    agent::Work,
+    decide::Briefing,
+    verdict::{self, Outcome, Status},
+};
 use crate::live::Entry;
 
 /// Where the run works.
@@ -26,6 +38,9 @@ pub struct Base {
     pub repo: PathBuf,
     /// The run's own working copy, at `base`.
     pub worktree: PathBuf,
+    /// Why `git fetch` failed before an open issue's base was read: the
+    /// base may then be a stale `origin/main`.
+    pub fetch_error: Option<String>,
 }
 
 /// Runs a program and returns its standard output, or a sentence saying
@@ -125,6 +140,7 @@ pub async fn prepare(
             "open: start from the newest main"
         },
     )];
+    let mut fetch_error = None;
     let (fix, base) = if closed {
         let fix = match &options.fix {
             Some(fix) => Some(fix.clone()),
@@ -159,7 +175,9 @@ pub async fn prepare(
         ));
         (Some(fix), parent.trim().to_owned())
     } else {
-        let _ = output("git", &["fetch", "-q", "origin", "main"], &repo).await;
+        if let Err(why) = output("git", &["fetch", "-q", "origin", "main"], &repo).await {
+            fetch_error = Some(why);
+        }
         let Ok(head) = output("git", &["rev-parse", "origin/main"], &repo).await else {
             card["rows"] = json!(rows);
             return fail(
@@ -170,7 +188,13 @@ pub async fn prepare(
         };
         rows.push(row(
             "start",
-            format!("{} (origin/main)", short(head.trim())),
+            match &fetch_error {
+                None => format!("{} (origin/main)", short(head.trim())),
+                Some(why) => format!(
+                    "{} (origin/main as last fetched; the fetch failed, so it may be stale: {why})",
+                    short(head.trim())
+                ),
+            },
         ));
         (None, head.trim().to_owned())
     };
@@ -184,14 +208,25 @@ pub async fn prepare(
             running: true,
         },
     );
-    let worktree = options.state.join("worktree");
+    let swept = sweep(&options.state, &repo, folder).await;
+    let worktree = folder.join("worktree");
     if let Err(why) = make_worktree(&repo, &worktree, &base).await {
+        // Only this run's own, just-made, empty worktree is removed.
+        let text = worktree.to_string_lossy().into_owned();
+        let _ = output("git", &["worktree", "remove", "--force", &text], &repo).await;
+        let _ = std::fs::remove_dir_all(&worktree);
         return fail(transcript, &mut card, why);
     }
     rows.push(row(
         "worktree",
-        format!("{} (sparse, no pushes)", worktree.display()),
+        format!("{} (this run's own, sparse, no pushes)", worktree.display()),
     ));
+    if swept > 0 {
+        rows.push(row(
+            "cleaned",
+            format!("{swept} finished and captured runs' worktrees"),
+        ));
+    }
     rows.push(row("folder", folder.display().to_string()));
     card["rows"] = json!(rows);
     card["ms"] = json!(started.elapsed().as_millis() as u64);
@@ -205,6 +240,7 @@ pub async fn prepare(
         base,
         repo,
         worktree,
+        fetch_error,
     })
 }
 
@@ -233,15 +269,16 @@ async fn find_fix(repo: &Path, issue: u64) -> Option<String> {
     log.lines().next().map(str::to_owned)
 }
 
-/// A fresh sparse worktree of `repo` at `base`, at a fixed path so the
-/// shared build cache keeps its work between runs.
+/// A fresh sparse worktree of `repo` at `base`, at `path`, which must not
+/// exist yet: a run never reuses or removes another run's working copy.
 async fn make_worktree(repo: &Path, path: &Path, base: &str) -> Result<(), String> {
     let text = path.to_string_lossy().into_owned();
     if path.exists() {
-        let _ = output("git", &["worktree", "remove", "--force", &text], repo).await;
-        let _ = std::fs::remove_dir_all(path);
+        return Err(format!(
+            "{} already exists; a run never reuses another run's worktree.",
+            path.display()
+        ));
     }
-    let _ = output("git", &["worktree", "prune"], repo).await;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|_| format!("Cannot create {}.", parent.display()))?;
@@ -268,6 +305,98 @@ async fn make_worktree(repo: &Path, path: &Path, base: &str) -> Result<(), Strin
     .await?;
     output("git", &["checkout", "-q", "--detach", base], path).await?;
     Ok(())
+}
+
+/// The marker `scripts/bench/traces` writes into a run folder once its
+/// trace is stored.
+pub const CAPTURED: &str = "trace-captured.json";
+
+/// The sha256 of `bytes`, as `sha256:HEX`.
+#[must_use]
+pub fn digest(bytes: &[u8]) -> String {
+    use sha2::Digest as _;
+    format!("sha256:{:x}", sha2::Sha256::digest(bytes))
+}
+
+/// Writes `bytes` to `path` through a temporary file and a rename, so a
+/// reader never sees half a file.
+///
+/// # Errors
+/// The file cannot be written or renamed.
+pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
+    std::fs::write(&tmp, bytes)
+        .and_then(|()| std::fs::rename(&tmp, path))
+        .map_err(|error| {
+            let _ = std::fs::remove_file(&tmp);
+            format!("Cannot write {}: {error}", path.display())
+        })
+}
+
+/// Whether run folder `folder`'s worktree may be deleted: the run finished
+/// (its summary is written), its `change.patch` is the diff the summary
+/// names, and its trace was captured from that same diff. `Err` says why
+/// it must be kept.
+///
+/// # Errors
+/// The worktree holds work that is not both finished and captured.
+pub fn cleanable(folder: &Path) -> Result<(), String> {
+    let read = |name: &str| -> Option<Value> {
+        serde_json::from_slice(&std::fs::read(folder.join(name)).ok()?).ok()
+    };
+    let Some(summary) = read("summary.json") else {
+        return Err("the run has not finished (no summary.json)".into());
+    };
+    if summary["finished"].as_bool() != Some(true) {
+        return Err("the summary does not mark the run finished".into());
+    }
+    let Some(named) = summary["diff_sha256"].as_str() else {
+        return Err("the summary names no diff".into());
+    };
+    let Ok(patch) = std::fs::read(folder.join("change.patch")) else {
+        return Err("change.patch is missing".into());
+    };
+    if digest(&patch) != named {
+        return Err("change.patch is not the diff the summary names".into());
+    }
+    let Some(captured) = read(CAPTURED) else {
+        return Err("the trace has not been captured".into());
+    };
+    if captured["diff_digest"].as_str() != Some(named) {
+        return Err("the captured trace is not this diff".into());
+    }
+    Ok(())
+}
+
+/// Removes the worktrees of other runs under `state` that are finished and
+/// captured ([`cleanable`]); every other run's worktree stays. Returns how
+/// many were removed.
+pub async fn sweep(state: &Path, repo: &Path, current: &Path) -> usize {
+    let mut removed = 0;
+    let Ok(entries) = std::fs::read_dir(state) else {
+        return 0;
+    };
+    for entry in entries.flatten() {
+        let folder = entry.path();
+        let worktree = folder.join("worktree");
+        if folder == current || !worktree.is_dir() || cleanable(&folder).is_err() {
+            continue;
+        }
+        let owner = std::fs::read(folder.join("summary.json"))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+            .and_then(|summary| summary["repo"].as_str().map(PathBuf::from))
+            .filter(|path| path.is_dir())
+            .unwrap_or_else(|| repo.to_owned());
+        let text = worktree.to_string_lossy().into_owned();
+        let _ = output("git", &["worktree", "remove", "--force", &text], &owner).await;
+        let _ = std::fs::remove_dir_all(&worktree);
+        if !worktree.exists() {
+            removed += 1;
+        }
+    }
+    let _ = output("git", &["worktree", "prune"], repo).await;
+    removed
 }
 
 /// Everything changed in `worktree` since `base`, new files included,
@@ -315,71 +444,168 @@ pub fn diff_files(diff: &str) -> Vec<String> {
     files
 }
 
-/// The summary card's numbers.
+/// What a run's summary is made from. Every stage after setup is
+/// optional, so a run that stopped early still leaves a summary.
+pub struct Report<'a> {
+    pub options: &'a Options,
+    pub run: &'a Run,
+    pub base: Option<&'a Base>,
+    pub briefing: Option<&'a Briefing>,
+    pub work: Option<&'a Work>,
+    /// The harness's verdicts on the required final checks.
+    pub checks: &'a [(String, bool)],
+    pub outcome: &'a Outcome,
+    pub started: Instant,
+    pub folder: &'a Path,
+}
+
+/// The ids of the checks the harness reruns at the end and that decide the
+/// outcome: the briefing's `check:` entries.
 #[must_use]
-pub fn summary(
-    options: &Options,
-    base: &Base,
-    briefing: &Briefing,
-    work: &Work,
-    checks: &[(String, bool)],
-    started: Instant,
-    folder: &Path,
-) -> Value {
-    let diff = working_diff(&base.worktree, &base.base);
-    let changed = diff_files(&diff);
-    // The exact diff the summary describes, kept beside it so a trace
-    // (#11218, `scripts/bench/traces`) labels from it and replays it. The
-    // worktree itself is reused by the next run.
-    let _ = std::fs::write(folder.join("change.patch"), &diff);
-    let diff_sha256 = {
-        use sha2::Digest as _;
-        format!("sha256:{:x}", sha2::Sha256::digest(diff.as_bytes()))
-    };
-    let check_commands: Vec<Value> = briefing
+pub fn required_checks(briefing: &Briefing) -> Vec<String> {
+    briefing
         .checks
         .iter()
-        .filter(|check| checks.iter().any(|(id, _)| *id == check.id))
-        .map(|check| json!({"id": check.id, "argv": check.argv}))
-        .collect();
-    let briefed: Vec<&String> = briefing.files.iter().collect();
-    let added = diff
-        .lines()
-        .filter(|line| line.starts_with('+') && !line.starts_with("+++"))
-        .count();
-    let removed = diff
-        .lines()
-        .filter(|line| line.starts_with('-') && !line.starts_with("---"))
-        .count();
+        .filter(|check| check.id.starts_with("check:"))
+        .map(|check| check.id.clone())
+        .collect()
+}
+
+/// The summary card's numbers. It also writes `change.patch`, the exact
+/// diff the summary describes, when the run has a worktree.
+#[must_use]
+pub fn summary(report: &Report<'_>) -> Value {
+    let Report {
+        options,
+        run,
+        base,
+        briefing,
+        work,
+        checks,
+        outcome,
+        started,
+        folder,
+    } = *report;
+    let diff = base.map(|base| working_diff(&base.worktree, &base.base));
+    let changed = diff.as_deref().map(diff_files).unwrap_or_default();
+    // The exact diff the summary describes, kept beside it so a trace
+    // (#11218, `scripts/bench/traces`) labels from it and replays it.
+    let patch_error = diff
+        .as_ref()
+        .and_then(|diff| write_atomic(&folder.join("change.patch"), diff.as_bytes()).err());
+    let diff_sha256 = diff.as_ref().map(|diff| digest(diff.as_bytes()));
+    let required = briefing.map(required_checks).unwrap_or_default();
+    let check_commands: Vec<Value> = briefing
+        .map(|briefing| {
+            briefing
+                .checks
+                .iter()
+                .filter(|check| checks.iter().any(|(id, _)| *id == check.id))
+                .map(|check| json!({"id": check.id, "argv": check.argv}))
+                .collect()
+        })
+        .unwrap_or_default();
+    // Checks the agent may run but the harness does not rerun: reported,
+    // never deciding the outcome.
+    let optional: Vec<Value> = briefing
+        .map(|briefing| {
+            briefing
+                .checks
+                .iter()
+                .filter(|check| !required.contains(&check.id))
+                .map(|check| {
+                    let ok = work.and_then(|work| {
+                        work.checks
+                            .iter()
+                            .find(|(id, _)| *id == check.id)
+                            .map(|(_, ok)| *ok)
+                    });
+                    json!({"id": check.id, "ok": ok, "ran": ok.is_some()})
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let briefed: Vec<&String> = briefing
+        .map(|b| b.files.iter().collect())
+        .unwrap_or_default();
+    let count = |prefix: char, header: &str| {
+        diff.as_deref().map(|diff| {
+            diff.lines()
+                .filter(|line| line.starts_with(prefix) && !line.starts_with(header))
+                .count()
+        })
+    };
+    let agent_unknown = match work {
+        None => "the agent did not run",
+        Some(work) if work.cost_usd.is_none() => "Claude Code reported no cost for the session",
+        Some(_) => "",
+    };
+    let decision_usd = briefing
+        .filter(|b| b.decision_unpriced == 0)
+        .map(|b| b.decision_usd);
+    let decision_unknown = match briefing {
+        None => "the decision steps stopped before reporting their cost".to_owned(),
+        Some(b) => format!("{} decision answers reported no cost", b.decision_unpriced),
+    };
+    let cost = verdict::cost(
+        verdict::component(work.and_then(|w| w.cost_usd), agent_unknown),
+        verdict::component(decision_usd, &decision_unknown),
+    );
+    let usage_unknown = match work {
+        None => Some("the agent did not run"),
+        Some(work) if work.input_tokens.is_none() => Some("the agent's session reported no usage"),
+        Some(_) => None,
+    };
     let mut summary = json!({
-        "issue": base.issue,
-        "title": base.title,
+        "v": "openagents.coder-issue-run-summary.v2",
+        "run_id": run.id,
+        "attempt": run.attempt,
+        "finished": true,
+        "outcome": outcome.to_json(),
+        "issue": options.issue,
+        "title": base.map(|b| b.title.clone()),
+        "repo": base.map(|b| b.repo.display().to_string()),
         "wall_ms": started.elapsed().as_millis() as u64,
-        "agent_ms": work.wall_ms,
+        "agent_ms": work.map(|w| w.wall_ms),
         "model": options.model,
-        "turns": work.turns,
-        "input_tokens": work.input_tokens,
-        "output_tokens": work.output_tokens,
-        "cache_read_tokens": work.cache_read,
-        "cache_write_tokens": work.cache_write,
-        "agent_usd": work.cost_usd,
-        "decision_usd": briefing.decision_usd,
+        "turns": work.and_then(|w| w.turns),
+        "input_tokens": work.and_then(|w| w.input_tokens),
+        "output_tokens": work.and_then(|w| w.output_tokens),
+        "cache_read_tokens": work.and_then(|w| w.cache_read),
+        "cache_write_tokens": work.and_then(|w| w.cache_write),
+        "usage_unknown_reason": usage_unknown,
+        "agent_usd": work.and_then(|w| w.cost_usd),
+        "decision_usd": decision_usd,
+        "cost": cost,
         "briefed": briefed,
-        "opened_outside_briefing": work.misses,
+        "opened_outside_briefing": work.map(|w| w.misses.clone()).unwrap_or_default(),
+        "required_checks": required,
         "checks": checks.iter().map(|(id, ok)| json!({"id": id, "ok": ok})).collect::<Vec<_>>(),
-        "agent_checks": work.checks.iter().map(|(id, ok)| json!({"id": id, "ok": ok})).collect::<Vec<_>>(),
+        "optional_checks": optional,
+        "agent_checks": work.map(|w| w.checks.iter().map(|(id, ok)| json!({"id": id, "ok": ok})).collect::<Vec<_>>()).unwrap_or_default(),
         "changed": changed,
-        "base": base.base,
+        "base": base.map(|b| b.base.clone()),
+        "base_fetch_error": base.and_then(|b| b.fetch_error.clone()),
         "diff_sha256": diff_sha256,
+        "patch_error": patch_error,
         "check_commands": check_commands,
-        "added": added,
-        "removed": removed,
-        "error": work.error,
-        "reply": work.reply,
+        "added": count('+', "+++"),
+        "removed": count('-', "---"),
+        "error": work.and_then(|w| w.error.clone()).or_else(|| {
+            matches!(
+                outcome.status,
+                Status::SetupFailed | Status::DecisionFailed | Status::Cancelled
+            )
+            .then(|| outcome.reason.clone())
+            .flatten()
+        }),
+        "reply": work.and_then(|w| w.reply.clone()),
         "folder": folder.display().to_string(),
-        "worktree": base.worktree.display().to_string(),
+        "worktree": base.map(|b| b.worktree.display().to_string()),
     });
-    if let Some(fix) = &base.fix {
+    if let Some(base) = base
+        && let Some(fix) = &base.fix
+    {
         let fix_files: Vec<String> = std::process::Command::new("git")
             .arg("-C")
             .arg(&base.repo)
@@ -398,7 +624,7 @@ pub fn summary(
         let missed: Vec<&String> = fix_files.iter().filter(|f| !changed.contains(f)).collect();
         let briefed_fix: Vec<&String> = fix_files
             .iter()
-            .filter(|f| briefing.files.contains(f))
+            .filter(|f| briefing.is_some_and(|b| b.files.contains(f)))
             .collect();
         summary["fix"] = json!({
             "commit": short(fix),
@@ -413,7 +639,24 @@ pub fn summary(
 
 /// `--open-pr`: commit the change to `coder/issue-N`, push it, and open a
 /// pull request. Each step shows as a Run.
-pub async fn open_pr(options: &Options, base: &Base, transcript: &mut Transcript) {
+///
+/// It refuses unless `outcome` delivers: a failed or missing required
+/// check, an agent error, an unchecked or a cancelled run never commits,
+/// pushes, or opens a pull request (#11230).
+pub async fn open_pr(
+    options: &Options,
+    base: &Base,
+    outcome: &Outcome,
+    transcript: &mut Transcript,
+) {
+    if !outcome.delivers() {
+        transcript.notice(format!(
+            "No pull request: the run did not pass ({}). {}",
+            outcome.status.as_str(),
+            outcome.reason.as_deref().unwrap_or_default()
+        ));
+        return;
+    }
     if base.closed {
         transcript.notice("A closed issue's test run never opens a pull request.");
         return;

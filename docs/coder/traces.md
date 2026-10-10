@@ -31,7 +31,7 @@ from the diff.
 
 | Field | What it is |
 | --- | --- |
-| `id`, `source` | `ab:TAG/ISSUE-ARM-REP` or `issue-run:ISSUE-SECONDS`, and the run folder |
+| `id`, `source` | `ab:TAG/ISSUE-ARM-REP` or `issue-run:<run-id>`, and the run folder |
 | `issue`, `base` | The issue, and the commit the run started from |
 | `briefing_digest`, `briefed` | `sha256` of the briefing the agent was given (none for arm A), and its files |
 | `diff_digest`, `result_tree` | `sha256` of the diff, and the tree it makes at `base` |
@@ -40,6 +40,21 @@ from the diff.
 | `checks`, `checks_digest`, `check_spec` | The recorded check results, their digest, and how to run them again |
 | `evidence_class` | `recorded` until a replay passes, then `exact_replay` |
 | `teacher` | The A/B judge's score. It is a model's opinion, so it is kept only as a teacher field, never as a label |
+| `run_id`, `attempt`, `outcome` | Issue-runs: the run's id, its position among the issue's attempts, and its outcome (`passed`, `failed`, `unchecked`, `cancelled`, `setup_failed`, `decision_failed`; `incomplete` for a run killed before its summary; `unknown` for summaries older than #11230) |
+| `cost`, `cost_usd` | Issue-runs: each cost component's amount, or `null` with why it is unknown; `cost_usd` is the total only when every component is known, else `null`. Missing cost is never 0 (#11230) |
+
+## Every attempt is kept (#11230)
+
+`capture --issue-runs ROOT` reads every run folder under `ROOT`, not only
+those with a diff: a run that stopped in setup or the decision steps, was
+cancelled, or was killed before its summary (a `run.json` whose process is
+gone) still becomes a trace, unverifiable, with its outcome. A run still
+working is skipped until it ends. `capture --issue-run-folders F` captures
+single folders (each issue-run calls it on its own folder at the end) and
+writes `trace-captured.json` into each, naming the stored diff digest; only
+then may a later issue-run clean that run's worktree. `manifest` carries an
+`attempts` list with every captured trace, replayed or not, with its
+outcome, attempt and cost completeness.
 
 ## Replay
 

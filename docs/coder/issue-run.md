@@ -64,24 +64,48 @@ Or, with an installed `coder` built from this source:
 | `--open-pr` | Commit to `coder/issue-N`, push, and open a pull request. Open issues only. |
 
 **Test mode is the default.**
-- The run works in a fresh sparse worktree at
-  `~/.openagents/coder-new/issue-runs/worktree`. The path stays the same
-  from run to run, so the shared build cache keeps its work.
+- Each run gets a unique id (`N-SECONDS-RANDOM`) and its own fresh sparse
+  worktree at `~/.openagents/coder-new/issue-runs/<run-id>/worktree`
+  (#11230). Starting a run never deletes another run's worktree. A run's
+  worktree is cleaned by a later run only when that run finished (its
+  `summary.json` is written), its `change.patch` matches the summary's
+  digest, and its trace was captured (`trace-captured.json` names the same
+  digest). Active, killed, and uncaptured runs keep their worktrees. Set
+  `CARGO_TARGET_DIR` to share build output between runs.
 - A closed issue starts from its fix's parent, and the end of the run is
   compared with the real fix.
-- An open issue starts from `origin/main`.
+- An open issue starts from `origin/main`. If the fetch fails, the starting
+  commit is marked as possibly stale (`base_fetch_error` in the summary).
 - Nothing is committed or pushed unless you pass `--open-pr`, and a
   closed issue never opens a pull request.
+- `--open-pr` delivers only a run whose outcome is `passed`: every required
+  final check (the briefing's `check:` entries, rerun by the harness) ran
+  and passed, and the agent ended without an error. A failed or missing
+  required check, an agent error, a run with no required check
+  (`unchecked`), and a cancelled run never commit, push, or open a pull
+  request. Checks only the agent ran are reported as `optional_checks` and
+  never decide the outcome.
 
-Each run keeps a folder `~/.openagents/coder-new/issue-runs/N-SECONDS/`
+Each run keeps a folder `~/.openagents/coder-new/issue-runs/<run-id>/`
 with:
+- `run.json`: the run's id, issue, process, and attempt (its position among
+  earlier runs of the same issue), written before any work starts;
 - `events.jsonl`: the recording, which `--replay` plays;
 - `filefind.json`;
 - `briefing.md`;
 - `agent-events.jsonl`: every SDK message;
-- `summary.json`;
-- `change.patch`: the exact diff the summary describes. Each run becomes a
-  verify-replayed training trace from it ([traces.md](traces.md), #11218).
+- `summary.json`: written by every run, including one that stopped in
+  setup or the decision steps or was cancelled. It names the `outcome`
+  (`passed`, `failed`, `unchecked`, `cancelled`, `setup_failed`,
+  `decision_failed`) and its reason, the `attempt`, and the `cost`: each
+  component's amount, or `null` with the reason it is unknown. A total
+  exists only when every component is known; missing usage or cost is
+  never 0;
+- `change.patch`: the exact diff the summary describes;
+- `trace-captured.json`: written when the run is captured as a
+  verify-replayed training trace ([traces.md](traces.md), #11218). Each run
+  captures itself at its end (`CODER_ISSUE_RUN_CAPTURE=0` skips it);
+- `worktree/`: the run's own working copy.
 
 **Credentials.**
 - The agent runs on this computer's Claude Code login. The CLI starts

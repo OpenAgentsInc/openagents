@@ -395,12 +395,44 @@ fn names(value: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// The summary's cost: the total only when every component is known,
+/// otherwise the known subtotal and what is unknown. A missing amount is
+/// never shown as $0 (#11230).
+#[must_use]
+pub fn cost_text(summary: &Value) -> String {
+    let part = |usd: &Value| usd.as_f64().map_or_else(|| "unknown".to_owned(), dollars);
+    let (agent, decisions) = if summary["cost"].is_object() {
+        let parts = &summary["cost"]["components"];
+        (
+            parts["agent"]["usd"].clone(),
+            parts["decisions"]["usd"].clone(),
+        )
+    } else {
+        (
+            summary["agent_usd"].clone(),
+            summary["decision_usd"].clone(),
+        )
+    };
+    let known: f64 = [&agent, &decisions].iter().filter_map(|v| v.as_f64()).sum();
+    let head = if agent.is_number() && decisions.is_number() {
+        dollars(known)
+    } else {
+        format!("unknown (known part {})", dollars(known))
+    };
+    format!(
+        "{head} · the agent {} (as Claude Code reports it), the decisions {}",
+        part(&agent),
+        part(&decisions)
+    )
+}
+
 /// The lines of the summary card.
 #[must_use]
 pub fn summary_lines(summary: &Value, output: &Value, width: u16) -> Vec<Line<'static>> {
     let accent = t::ACCENT_SUCCESS;
     let inner = width.saturating_sub(RAIL.len() as u16);
-    let failed = summary["error"].is_string();
+    let status = summary["outcome"]["status"].as_str();
+    let failed = summary["error"].is_string() || status.is_some_and(|status| status != "passed");
     let mut lines = vec![Line::from(vec![
         styled(" ■ ", if failed { t::DIFF_DELETE_FG } else { accent }),
         Span::styled(
@@ -428,6 +460,21 @@ pub fn summary_lines(summary: &Value, output: &Value, width: u16) -> Vec<Line<'s
             styled(truncate(&text, inner.saturating_sub(10)), color),
         ])
     };
+    if let Some(status) = status {
+        let delivers = summary["outcome"]["delivers"].as_bool() == Some(true);
+        lines.push(row(
+            "outcome",
+            match summary["outcome"]["reason"].as_str() {
+                Some(why) => format!("{status} · not delivered: {why}"),
+                None => format!("{status} · every required check passed"),
+            },
+            if delivers {
+                t::ACCENT_SUCCESS
+            } else {
+                t::DIFF_DELETE_FG
+            },
+        ));
+    }
     let n = |key: &str| summary[key].as_u64().unwrap_or(0);
     lines.push(row(
         "time",
@@ -441,27 +488,25 @@ pub fn summary_lines(summary: &Value, output: &Value, width: u16) -> Vec<Line<'s
     ));
     lines.push(row(
         "tokens",
-        format!(
-            "{} in ({} read from cache, {} written to it) · {} out",
-            tokens(n("input_tokens") + n("cache_read_tokens") + n("cache_write_tokens")),
-            tokens(n("cache_read_tokens")),
-            tokens(n("cache_write_tokens")),
-            tokens(n("output_tokens")),
-        ),
+        if summary["input_tokens"].is_null() && summary["output_tokens"].is_null() {
+            format!(
+                "unknown ({})",
+                summary["usage_unknown_reason"]
+                    .as_str()
+                    .unwrap_or("the session reported no usage")
+            )
+        } else {
+            format!(
+                "{} in ({} read from cache, {} written to it) · {} out",
+                tokens(n("input_tokens") + n("cache_read_tokens") + n("cache_write_tokens")),
+                tokens(n("cache_read_tokens")),
+                tokens(n("cache_write_tokens")),
+                tokens(n("output_tokens")),
+            )
+        },
         t::TEXT_SECONDARY,
     ));
-    let agent = summary["agent_usd"].as_f64().unwrap_or(0.0);
-    let decisions = summary["decision_usd"].as_f64().unwrap_or(0.0);
-    lines.push(row(
-        "cost",
-        format!(
-            "{} · the agent {} (as Claude Code reports it), the decisions {}",
-            dollars(agent + decisions),
-            dollars(agent),
-            dollars(decisions)
-        ),
-        t::TEXT_SECONDARY,
-    ));
+    lines.push(row("cost", cost_text(summary), t::TEXT_SECONDARY));
     let verdicts = |key: &str| -> Vec<Span<'static>> {
         let mut spans = Vec::new();
         for check in summary[key].as_array().into_iter().flatten() {
@@ -490,6 +535,29 @@ pub fn summary_lines(summary: &Value, output: &Value, width: u16) -> Vec<Line<'s
     let mut agent_checks = vec![styled(RAIL, t::GRAY_DIM), styled("agent ran ", t::GRAY)];
     agent_checks.extend(verdicts("agent_checks"));
     lines.push(Line::from(agent_checks));
+    let optional: Vec<String> = summary["optional_checks"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|check| {
+            let id = check["id"].as_str().unwrap_or_default();
+            match check["ok"].as_bool() {
+                Some(true) => format!("{id} passed"),
+                Some(false) => format!("{id} failed"),
+                None => format!("{id} not run"),
+            }
+        })
+        .collect();
+    if !optional.is_empty() {
+        lines.push(row(
+            "optional",
+            format!(
+                "{} (reported, never deciding the outcome)",
+                optional.join(", ")
+            ),
+            t::GRAY_BRIGHT,
+        ));
+    }
     let outside = names(&summary["opened_outside_briefing"]);
     lines.push(row(
         "outside",
