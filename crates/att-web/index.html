@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Sealed inference, live</title>
+    <meta name="description" content="Watch your browser check a sealed machine, then send it a message only that machine can read.">
+    <link rel="stylesheet" href="att.css">
+  </head>
+  <body class="att">
+    <!-- The reference markup for openagents.com/att. No inline scripts,
+         styles or handlers: the page passes a strict CSP. start.js is the
+         only script; the wasm fills the step list, panels and labels. -->
+    <div class="att-stage" id="att-stage" aria-hidden="true">
+      <canvas id="att-canvas"></canvas>
+      <div class="att-labels" id="att-labels"></div>
+    </div>
+
+    <main class="att-hud">
+      <div class="att-left" id="att-left">
+        <header class="att-header">
+          <p class="att-kicker">OpenAgents</p>
+          <h1>Sealed inference, live</h1>
+          <p class="att-lede">Your browser checks that a sealed machine runs exactly the published program, then sends it a message that only that machine can read.</p>
+        </header>
+
+        <form class="att-box att-controls" id="att-form" autocomplete="off">
+          <label class="att-field-label" for="att-prompt">Your message</label>
+          <input class="att-input" id="att-prompt" name="prompt" type="text" maxlength="200" value="The weather in Lisbon is sunny today." spellcheck="false">
+          <p class="att-question"><span class="att-field-label">Question asked</span> <span class="att-chip">Is this about the weather?</span></p>
+
+          <fieldset class="att-tamper">
+            <legend class="att-field-label">Try to fool it</legend>
+            <label class="att-radio"><input type="radio" name="att-tamper" value="none" checked> <span>No tampering</span></label>
+            <label class="att-radio"><input type="radio" name="att-tamper" value="measurement"> <span>Change the program's fingerprint</span></label>
+            <label class="att-radio"><input type="radio" name="att-tamper" value="unbound-key"> <span>Swap in a key the hardware didn't vouch for</span></label>
+          </fieldset>
+
+          <div class="att-run-row">
+            <button class="att-run" id="att-run" type="submit">Run</button>
+            <p class="att-status" id="att-status" role="status" aria-live="polite"></p>
+          </div>
+        </form>
+
+        <section class="att-box att-steps-box" aria-labelledby="att-steps-title">
+          <h2 class="att-box-title" id="att-steps-title">Steps</h2>
+          <p class="att-note" id="att-note"></p>
+          <ol class="att-steps" id="att-steps"></ol>
+        </section>
+      </div>
+
+      <div class="att-right" id="att-right">
+        <div class="att-verdict" id="att-verdict" role="status" aria-live="polite" hidden></div>
+        <div class="att-panels" id="att-panels"></div>
+      </div>
+    </main>
+
+    <script type="module" src="start.js"></script>
+  </body>
+</html>

@@ -2,6 +2,7 @@
 
 pub(crate) mod api_docs;
 mod blue_rush;
+mod att;
 mod bunny;
 pub(crate) mod chat;
 mod cloud;
@@ -50,6 +51,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(efficiency::routes())
         .merge(everglade::routes())
         .merge(bunny::routes())
+        .merge(att::routes())
         .merge(content::routes())
         .merge(api_docs::routes())
         .merge(download::routes())

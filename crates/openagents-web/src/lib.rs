@@ -142,6 +142,9 @@ pub struct Config {
     /// `/games/grow-little-bunny/`. Without it, the game's page says it
     /// can't be played here.
     pub bunny: Option<PathBuf>,
+    /// The sealed-inference demo's build (`--att DIR`, default `/srv/att`
+    /// when it exists), served under `/att/`.
+    pub att: Option<PathBuf>,
     /// The independently built Rust/Wasm component catalog assets.
     pub components_build: Option<PathBuf>,
     /// Explicit native account adapter; absence leaves sign-in and Settings unavailable.
@@ -217,6 +220,7 @@ impl Config {
             api_operator_signup: false,
             everglade: None,
             bunny: None,
+            att: None,
             components_build: None,
             cloud: None,
             github: None,

@@ -266,7 +266,12 @@ async fn verify(args: &mut Args, relay: &str, round: bool) -> Result<Value, Stri
     steps.push(json!({"step": "encrypt", "ms": ms(t), "request": request.id, "ciphertext_bytes": request.content.len()}));
     let t = Instant::now();
     let mut answers: Vec<Event> = Vec::new();
-    let accepted = net::exchange(relay, &secret, &request, Duration::from_secs(110), |e| answers.push(e)).await?;
+    let accepted = net::exchange(relay, &secret, &request, Duration::from_secs(110), |e| {
+        if let net::Exchanged::Answer(event) = e {
+            answers.push(event);
+        }
+    })
+    .await?;
     steps.push(json!({"step": "relay", "ms": accepted, "round_ms": ms(t), "answers": answers.len()}));
     for event in &answers {
         match oa_att::open_answer(event, &request, &body, &secret, signer.pubkey()).map_err(|e| e.0)? {

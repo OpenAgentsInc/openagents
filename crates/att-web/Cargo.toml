@@ -1,0 +1,54 @@
+[package]
+name = "att-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The live sealed-inference demo at openagents.com/att: a Greco-futurist scene drawn with WebGL2, and its step list and panels."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+glam = "0.30.10"
+
+# The page is browser-only; natively only the meshes, the timeline and the
+# words are built, for their tests.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# The `wasm-bindgen` CLI that `scripts/build-att-web.sh` runs must be the
+# version Cargo.lock resolves here; the script checks.
+wasm-bindgen = "0.2.128"
+js-sys = "0.3"
+console_error_panic_hook = "0.1.7"
+web-sys = { version = "0.3", features = [
+    "CssStyleDeclaration",
+    "Document",
+    "DomRect",
+    "DomTokenList",
+    "Element",
+    "Event",
+    "EventTarget",
+    "HtmlButtonElement",
+    "HtmlCanvasElement",
+    "HtmlElement",
+    "HtmlFormElement",
+    "HtmlInputElement",
+    "MediaQueryList",
+    "Node",
+    "NodeList",
+    "Performance",
+    "WebGl2RenderingContext",
+    "WebGlBuffer",
+    "WebGlProgram",
+    "WebGlShader",
+    "WebGlUniformLocation",
+    "WebGlVertexArrayObject",
+    "Window",
+    "console",
+] }
+
+[dev-dependencies]
+oa-copy = { path = "../oa-copy" }
+
+[lints]
+workspace = true

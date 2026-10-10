@@ -158,6 +158,15 @@ pub async fn fetch(
     })
 }
 
+/// What [`exchange`] reports as it happens.
+#[derive(Debug, Clone)]
+pub enum Exchanged {
+    /// The relay accepted the request after this many milliseconds.
+    Accepted(u64),
+    /// A signed answer from the worker the request names.
+    Answer(Event),
+}
+
 /// Publish a sealed request and collect the worker's answers to it, each
 /// handed to `on_event` as it arrives, until a result arrives or `wait`
 /// passes. Returns the milliseconds the relay took to accept the request.
@@ -170,7 +179,7 @@ pub async fn exchange(
     secret: &SecretKey,
     request: &Event,
     wait: Duration,
-    mut on_event: impl FnMut(Event),
+    mut on_event: impl FnMut(Exchanged),
 ) -> Result<u64, String> {
     let wait = wait.min(LIFETIME - Duration::from_secs(5));
     let mut conn = connect(relay, secret, wait + Duration::from_secs(5)).await?;
@@ -187,7 +196,9 @@ pub async fn exchange(
                 if frame[2] != true {
                     return Err(format!("the relay refused the request: {}", frame[3]));
                 }
-                accepted_ms = Some(u64::try_from(sent.elapsed().as_millis()).unwrap_or(0));
+                let ms = u64::try_from(sent.elapsed().as_millis()).unwrap_or(0);
+                accepted_ms = Some(ms);
+                on_event(Exchanged::Accepted(ms));
             }
             Some("EVENT") if frame[1] == "answers" => {
                 if let Ok(event) = serde_json::from_value::<Event>(frame[2].clone())
@@ -195,7 +206,7 @@ pub async fn exchange(
                     && event.pubkey == request.tag_values("p").next().unwrap_or_default()
                 {
                     let done = event.kind == RESULT_KIND;
-                    on_event(event);
+                    on_event(Exchanged::Answer(event));
                     if done {
                         break;
                     }

@@ -30,6 +30,7 @@ use nostr::pylon::Beacon;
 use serde::Serialize;
 use serde_json::Value;
 
+pub use nostr;
 pub use token::{Claims, Refused};
 
 /// The workload slug of the sealed Clef decision service.

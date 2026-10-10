@@ -47,6 +47,9 @@ maud = { version = "=0.27.0", features = ["axum"] }
 oa-auth = { path = "../oa-auth" }
 oa-connections = { path = "../oa-connections" }
 oa-seal = { path = "../oa-seal" }
+# The sealed-inference demo at /att (NIP-ATT): the gateway's own checks and
+# its relay reads and exchange.
+oa-att = { path = "../oa-att", features = ["net"] }
 openagents-chat = { path = "../openagents-chat" }
 pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
