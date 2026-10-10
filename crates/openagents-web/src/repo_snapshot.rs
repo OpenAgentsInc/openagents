@@ -468,6 +468,60 @@ mod tests {
         assert!(snapshot.snapshot.len() <= MAX_REPOSITORY_SNAPSHOT_BYTES);
     }
 
+    /// End to end against the production chat worker: a public
+    /// repository read as a project chat reads it, then "Summarize this
+    /// repo." asked with it on the website's surface. The answer must come
+    /// from the repository, never the install text:
+    /// `OPENAGENTS_LIVE_REPO=owner/name OPENAGENTS_LIVE_BRANCH=main cargo test
+    /// -p openagents-web --lib repo_snapshot -- --ignored --nocapture`.
+    #[tokio::test]
+    #[ignore = "asks the production chat worker"]
+    async fn the_production_worker_summarizes_a_project_repository() {
+        use crate::ask::Chat;
+        use openagents_chat::basic_coder::{Reply, Turn};
+        use openagents_chat::router::{Context, Surface};
+        use std::sync::{Arc, Mutex};
+        let repository =
+            std::env::var("OPENAGENTS_LIVE_REPO").unwrap_or_else(|_| "rust-lang/log".into());
+        let branch = std::env::var("OPENAGENTS_LIVE_BRANCH").unwrap_or_else(|_| "master".into());
+        let read = RepoRead {
+            base: "https://api.github.com".into(),
+            token: None,
+            repository,
+            branch,
+            private: false,
+        };
+        let snapshot = read.read().await.expect("GitHub answered");
+        let door = crate::ask::Worker::default()
+            .door(secp256k1::SecretKey::new(&mut secp256k1::rand::rng()))
+            .unwrap();
+        let reply = Arc::new(Mutex::new(Reply::default()));
+        let message = std::env::var("OPENAGENTS_LIVE_MESSAGE")
+            .unwrap_or_else(|_| "Summarize this repo.".into());
+        door.ask(
+            vec![Turn::user(message)],
+            Context {
+                surface: Surface::Web,
+                repository: Some(snapshot),
+                ..Context::default()
+            },
+            reply.clone(),
+        )
+        .await;
+        let reply = openagents_chat::basic_coder::lock(&reply);
+        println!(
+            "route {:?} tier {:?} answer {:?} model {:?}\n---\n{}",
+            reply.meta.route, reply.meta.tier, reply.meta.answer, reply.model, reply.text
+        );
+        assert!(
+            reply.done,
+            "{:?}",
+            reply.failure.as_ref().map(|f| f.describe())
+        );
+        assert!(!reply.text.contains("coder login"));
+        assert!(!reply.text.contains("install.sh"));
+    }
+
     #[test]
     fn nothing_read_is_no_snapshot() {
         assert!(Parts::default().text().is_none());

@@ -2045,3 +2045,25 @@ To roll back: `sudo ln -sfn /opt/coder-worker/releases/156b301714
 through the Vercel AI Gateway, OpenRouter, then TypeSafe, with the key now
 in the file). `7ccd13da60` and `aeaa5771ca` ask our API first and are not
 rollback targets for routing.
+
+Release `cba18936e3` (2026-10-10 UTC) answers questions about a project
+chat's repository from the repository. The website reads the chat's
+project's GitHub repository on the chosen branch with the person's GitHub
+connection (`crates/openagents-web/src/repo_snapshot.rs`) and sends it as
+`context.repository`; the worker puts it in the model's instructions, tells
+Jev the chat is in the user's own repository, and asks one more typed
+question (`repository`: read, change, or other, `router::judge::Split::with_repository`).
+On the website a sure `read` is answered by the model from the repository
+(`router::policy::in_project`, `REPO_NOTE`), never with the install text.
+It carries #11225's Jev-first judge (`f04d57a58a`, its parent). Built with
+`cargo zigbuild` as above (sha256 `cdb6fd376d9a0590…`), installed with
+`knowledge/` from `git archive cba18936e3 knowledge/` and `7ccd13da60`'s
+`codebase-kb.gz`, checked with `--check`, and put live by moving the `chat`
+symlink; the environment file did not change. Asked "Summarize this repo."
+with `rust-lang/log` read as a project chat reads it, the production worker
+routed `work.dispatch`, tier `model`, and Gemini on Vertex summarized the
+repository from its README, layout, and recent commits in 4.7 s
+(`repo_snapshot::tests::the_production_worker_summarizes_a_project_repository`).
+
+To roll back: `sudo ln -sfn /opt/coder-worker/releases/f04d57a58a
+/opt/coder-worker/chat && sudo systemctl restart coder-worker-chat`.
