@@ -37,13 +37,24 @@
 //! [`embed`] finds the blocks in Markdown and writes the Markdown fallback
 //! (prose with links, numbered steps, and commands as code blocks) for
 //! surfaces that cannot draw the components.
+//!
+//! [`edit`] merges a follow-up turn's statements into the earlier program
+//! by name (`name = null` removes one; what `root` no longer reaches is
+//! dropped) and gives the patch a surface showing the earlier interface
+//! needs. [`feedback`] turns a block's diagnostics and only the lines they
+//! name into a message for the model, and merges its corrections back.
 
 pub mod catalog;
+pub mod edit;
 pub mod embed;
+pub mod feedback;
 mod lex;
+mod print;
 mod tree;
 
 pub use catalog::prompt;
+pub use edit::Edit;
+pub use feedback::Feedback;
 pub use lex::{Expr, Statement};
 pub use tree::{Audience, ButtonStyle, Diagnostic, Document, Node, Step, Tab, safe_href};
 

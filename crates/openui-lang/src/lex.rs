@@ -316,6 +316,41 @@ fn string(
     Err("a string is not closed".into())
 }
 
+/// Every statement of a whole program, as its source text (trimmed) and
+/// the parse of it; blank and comment-only stretches are skipped.
+pub(crate) fn program(source: &str) -> Vec<(&str, Result<Statement, String>)> {
+    let (mut texts, tail, _) = split(source);
+    texts.push(tail);
+    texts
+        .into_iter()
+        .filter(|text| !blank(text))
+        .map(|text| (text.trim(), statement(text)))
+        .collect()
+}
+
+/// The name a statement's text starts with, even when the rest fails to
+/// parse: the word before its first `=`.
+pub(crate) fn head(text: &str) -> Option<&str> {
+    text.split('=')
+        .next()
+        .map(str::trim)
+        .filter(|name| !name.is_empty() && !name.contains(char::is_whitespace))
+}
+
+/// The names `expr` refers to, in the order written.
+pub(crate) fn refs<'e>(expr: &'e Expr, out: &mut Vec<&'e str>) {
+    match expr {
+        Expr::Ref(name) => out.push(name),
+        Expr::Array(items) => items.iter().for_each(|item| refs(item, out)),
+        Expr::Object(fields) => fields.iter().for_each(|(_, value)| refs(value, out)),
+        Expr::Call { args, named, .. } => {
+            args.iter().for_each(|arg| refs(arg, out));
+            named.iter().for_each(|(_, value)| refs(value, out));
+        }
+        Expr::Str(_) | Expr::Num(_) | Expr::Bool(_) | Expr::Null => {}
+    }
+}
+
 /// Whether `text` holds nothing but spaces and comments.
 pub(crate) fn blank(text: &str) -> bool {
     tokens(text).is_ok_and(|tokens| tokens.is_empty())

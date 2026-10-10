@@ -353,3 +353,169 @@ fn the_prompt_describes_the_catalog() {
     );
     assert!(prompt.contains("```openui-lang"));
 }
+
+#[test]
+fn statements_print_back_as_source_that_parses_the_same() {
+    for (text, parsed) in lex::program(CONNECT) {
+        let statement = parsed.unwrap_or_else(|e| panic!("{text}: {e}"));
+        let printed = statement.to_string();
+        assert!(!printed.contains('\n'), "{printed}");
+        assert_eq!(Statement::parse(&printed), Ok(statement), "{printed}");
+    }
+    let tricky = "root = Text(\"a \\\"quote\\\", a \\\\ slash,\\na line and a \\u0007 bell\", style: {\"two words\": [1, -2.5, true, null], plain: x})\n";
+    let (_, parsed) = lex::program(tricky).remove(0);
+    let statement = parsed.unwrap();
+    assert_eq!(Statement::parse(&statement.to_string()), Ok(statement));
+}
+
+#[test]
+fn an_edit_replaces_adds_and_removes_by_name() {
+    let change = r#"web = Card("In your browser", [Text("Connect GitHub.")])
+root = Columns([web, computer, help])
+help = LinkCard("Help", "Questions answered", "/docs")
+"#;
+    let edit = edit::apply(CONNECT, change);
+    assert!(edit.diagnostics.is_empty(), "{:?}", edit.diagnostics);
+    assert_eq!(edit.added, ["help"]);
+    assert_eq!(edit.replaced, ["root", "web"]);
+    assert!(edit.removed.is_empty() && edit.dropped.is_empty());
+    assert!(
+        edit.source
+            .starts_with("root = Columns([web, computer, help])\n")
+    );
+    let document = parse(&edit.source);
+    assert!(
+        document.diagnostics.is_empty(),
+        "{:?}",
+        document.diagnostics
+    );
+    let Some(Node::Columns { children }) = &document.root else {
+        panic!("{:?}", document.root);
+    };
+    assert_eq!(children.len(), 3);
+    assert!(matches!(&children[0], Node::Card { title, .. } if title == "In your browser"));
+    // The untouched card keeps its steps.
+    let Node::Card { children: kept, .. } = &children[1] else {
+        panic!("{:?}", children[1]);
+    };
+    assert!(matches!(&kept[0], Node::Steps { steps } if steps.len() == 3));
+
+    // Leaving a name out of `root` drops it and what only it reached.
+    let edit = edit::apply(CONNECT, "root = Columns([web])\n");
+    assert_eq!(edit.replaced, ["root"]);
+    assert_eq!(edit.dropped, ["computer", "install", "login", "sync"]);
+    assert_eq!(edit.source.lines().count(), 2);
+    let edit = edit::apply(CONNECT, "computer = null\nroot = Columns([web])\n");
+    assert_eq!(edit.removed, ["computer"]);
+    assert_eq!(edit.dropped, ["install", "login", "sync"]);
+}
+
+#[test]
+fn an_edit_that_changes_nothing_or_fails_keeps_the_program() {
+    let same = edit::apply(
+        CONNECT,
+        "sync = Step(\"Save its chats to your account\", [CodeBlock(\"/sync on\")])\n",
+    );
+    assert!(!same.changed(), "{same:?}");
+    assert_eq!(parse(&same.source), parse(CONNECT));
+
+    let broken = edit::apply(CONNECT, "web = Card(\"Half\")]\n");
+    assert!(!broken.changed(), "{broken:?}");
+    assert!(
+        broken
+            .diagnostics
+            .iter()
+            .any(|d| d.statement.as_deref() == Some("web")
+                && d.message.contains("the earlier `web` is kept")),
+        "{:?}",
+        broken.diagnostics
+    );
+
+    let ghost = edit::apply(CONNECT, "ghost = null\n");
+    assert!(!ghost.changed());
+    assert!(
+        ghost
+            .diagnostics
+            .iter()
+            .any(|d| d.statement.as_deref() == Some("ghost")),
+        "{:?}",
+        ghost.diagnostics
+    );
+
+    let stray = edit::apply(CONNECT, "orphan = Text(\"never used\")\n");
+    assert!(!stray.changed());
+    assert!(
+        stray
+            .diagnostics
+            .iter()
+            .any(|d| d.statement.as_deref() == Some("orphan")),
+        "{:?}",
+        stray.diagnostics
+    );
+}
+
+#[test]
+fn a_patch_turns_the_earlier_program_into_the_edited_one() {
+    let change = "web = Card(\"Web\", [Text(\"Go.\")])\ncomputer = null\nroot = Columns([web, extra])\nextra = Text(\"More\")\n";
+    let edit = edit::apply(CONNECT, change);
+    let patch = edit.patch();
+    // Only what changed is sent.
+    assert!(!patch.contains("Install Coder"), "{patch}");
+    assert!(patch.contains("computer = null"), "{patch}");
+    assert!(patch.contains("install = null"), "{patch}");
+    assert_eq!(edit::apply(CONNECT, &patch).source, edit.source);
+}
+
+const BROKEN: &str = r#"root = Stack([intro, go, extra])
+intro = Text("Hello")
+go = Button("Open", href="javascript:alert(1)")
+extra = Card("More", [Bogus("x")])
+"#;
+
+#[test]
+fn feedback_names_the_problems_and_only_the_lines_involved() {
+    assert_eq!(feedback::feedback(CONNECT, &parse(CONNECT)), None);
+
+    let document = parse(BROKEN);
+    let feedback = feedback::feedback(BROKEN, &document).expect("problems");
+    assert_eq!(
+        feedback.lines,
+        [
+            "go = Button(\"Open\", href=\"javascript:alert(1)\")",
+            "extra = Card(\"More\", [Bogus(\"x\")])"
+        ]
+    );
+    let prompt = feedback.prompt();
+    assert!(prompt.contains("`Bogus` is not in the catalog"), "{prompt}");
+    assert!(prompt.contains("- `go`:"), "{prompt}");
+    assert!(!prompt.contains("Hello"), "{prompt}");
+    assert!(prompt.contains("`name = null` removes one"), "{prompt}");
+
+    let rootless = "intro = Text(\"Hello\")\n";
+    let feedback = feedback::feedback(rootless, &parse(rootless)).expect("problems");
+    assert!(feedback.lines.is_empty());
+    assert!(feedback.prompt().contains("there is no `root` statement"));
+}
+
+#[test]
+fn a_repair_merges_the_corrected_lines_and_parses_clean() {
+    let reply = "Fixed:\n```openui-lang\ngo = Button(\"Open\", href=\"/download\")\nextra = Card(\"More\", [Text(\"x\")])\n```\n";
+    let edit = feedback::repair(BROKEN, reply);
+    assert_eq!(edit.replaced, ["go", "extra"]);
+    let document = parse(&edit.source);
+    assert!(
+        document.diagnostics.is_empty(),
+        "{:?}",
+        document.diagnostics
+    );
+    let Some(Node::Stack { children }) = &document.root else {
+        panic!("{:?}", document.root);
+    };
+    assert_eq!(children.len(), 3);
+
+    // Bare statements work too.
+    let bare = feedback::repair(BROKEN, "extra = null\nroot = Stack([intro])\n");
+    assert_eq!(bare.removed, ["extra"]);
+    assert_eq!(bare.dropped, ["go"]);
+    assert!(parse(&bare.source).diagnostics.is_empty());
+}

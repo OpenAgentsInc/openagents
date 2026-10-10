@@ -523,12 +523,7 @@ pub(crate) fn admit(texts: &[&str], table: &mut Table, diagnostics: &mut Vec<Dia
                 table.insert(statement.name.clone(), statement);
             }
             Err(message) => diagnostics.push(Diagnostic {
-                statement: text
-                    .split('=')
-                    .next()
-                    .map(str::trim)
-                    .filter(|n| !n.is_empty() && !n.contains(char::is_whitespace))
-                    .map(str::to_owned),
+                statement: lex::head(text).map(str::to_owned),
                 message: format!("a line was dropped: {message}"),
             }),
         }
