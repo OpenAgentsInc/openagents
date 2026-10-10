@@ -59,6 +59,17 @@ struct State {
     /// A live run's stop switch, by claim key.
     running: BTreeMap<String, Cancel>,
     seen: VecDeque<String>,
+    /// Counts ledger snapshots, so writes land in the order taken.
+    ledger_generation: u64,
+}
+
+impl State {
+    /// The ledger as of now and its generation, for
+    /// [`Runner::persist_ledger`] outside the lock.
+    fn ledger_snapshot(&mut self) -> (u64, Service) {
+        self.ledger_generation += 1;
+        (self.ledger_generation, self.service.clone())
+    }
 }
 
 /// The hosted runner.
@@ -73,6 +84,8 @@ pub struct Runner {
     /// Every job, one line each (#10121).
     usage: usage::Log,
     state: Mutex<State>,
+    /// Orders `service.json` writes (see [`crate::store::LedgerWriter`]).
+    ledger: crate::store::LedgerWriter,
     suites: tokio::sync::Semaphore,
     /// Each catalog tool's NIP-EXT release, by its definition ID, once
     /// known.
@@ -182,7 +195,9 @@ impl Runner {
                 quota,
                 running: BTreeMap::new(),
                 seen: VecDeque::with_capacity(SEEN),
+                ledger_generation: 0,
             }),
+            ledger: crate::store::LedgerWriter::default(),
             suites: tokio::sync::Semaphore::new(jobs),
             tool_releases: tokio::sync::Mutex::new(BTreeMap::new()),
             defaults_seen: Mutex::new(None),
@@ -266,8 +281,14 @@ impl Runner {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    fn save_service(&self, service: &Service) {
-        if let Err(error) = self.store.save_service(service) {
+    /// Writes a ledger snapshot taken with [`State::ledger_snapshot`],
+    /// in generation order.
+    fn persist_ledger(&self, (generation, service): (u64, Service)) -> std::io::Result<()> {
+        self.ledger.persist(&self.store, generation, &service)
+    }
+
+    fn save_service(&self, snapshot: (u64, Service)) {
+        if let Err(error) = self.persist_ledger(snapshot) {
             log(&format!("ledger: {error}"));
         }
     }
@@ -389,9 +410,9 @@ impl Runner {
                     log(&format!("cancelling {}", crate::store::key_name(&key)));
                 }
             }
-            let service = state.service.clone();
+            let snapshot = state.ledger_snapshot();
             drop(state);
-            self.save_service(&service);
+            self.save_service(snapshot);
             match answer {
                 Ok(payload) => payload,
                 Err(error) => execution::refusal_result(
@@ -502,10 +523,9 @@ impl Runner {
                     .acknowledge(&key, &root)
                     .map_err(|e| format!("{e:?}"));
                 let intended = accepted.is_ok() && state.service.intend(&key).is_ok();
-                let service = state.service.clone();
+                let snapshot = state.ledger_snapshot();
                 drop(state);
-                self.store
-                    .save_service(&service)
+                self.persist_ledger(snapshot)
                     .map_err(|error| error.to_string())?;
                 if intended {
                     accepted
@@ -795,9 +815,9 @@ impl Runner {
                 .get(key)
                 .map(|claim| claim.aliases.clone())
                 .unwrap_or_default();
-            let service = state.service.clone();
+            let snapshot = state.ledger_snapshot();
             drop(state);
-            self.save_service(&service);
+            self.save_service(snapshot);
             (payload, aliases)
         };
         match payload {

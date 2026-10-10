@@ -51,6 +51,57 @@ pub struct Store {
     dir: PathBuf,
 }
 
+/// Serializes ledger writes and keeps them in order.
+///
+/// Callers take a snapshot of the ledger and a generation number together
+/// under the runner's state lock, then write outside it. Writes run one at
+/// a time under this writer's lock, and a snapshot older than one already
+/// on disk is skipped: the newer one already holds everything it had, so
+/// the file never goes back in time.
+#[derive(Debug, Default)]
+pub struct LedgerWriter {
+    written: std::sync::Mutex<u64>,
+}
+
+impl LedgerWriter {
+    /// Writes `service`, taken at `generation`, unless a later generation
+    /// is already on disk.
+    ///
+    /// # Errors
+    ///
+    /// The I/O error.
+    pub fn persist(
+        &self,
+        store: &Store,
+        generation: u64,
+        service: &Service,
+    ) -> std::io::Result<()> {
+        self.persist_with(generation, || store.save_service(service))
+    }
+
+    /// The ordering of [`LedgerWriter::persist`] around any write.
+    ///
+    /// # Errors
+    ///
+    /// The error `write` returns.
+    pub fn persist_with(
+        &self,
+        generation: u64,
+        write: impl FnOnce() -> std::io::Result<()>,
+    ) -> std::io::Result<()> {
+        let mut written = self
+            .written
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if generation <= *written {
+            return Ok(());
+        }
+        write()?;
+        *written = generation;
+        Ok(())
+    }
+}
+
 /// A file-safe name for an idempotency key.
 #[must_use]
 pub fn key_name(key: &str) -> String {
