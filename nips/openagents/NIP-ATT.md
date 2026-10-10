@@ -206,6 +206,15 @@ sealed jobs.
     Otherwise, the GPU evidence MUST be gathered by the attested CPU
     workload at start, and the workload MUST refuse to start if the GPU is
     not in CC mode.
+  - Confidential Space with a GPU: Google verifies the GPU's NVIDIA
+    evidence itself and adds `submods.nvidia_gpu` to the same PKI token
+    (`cc_mode`, `cc_feature`, and per GPU `hwmodel` such as
+    `GCP_NVIDIA_H100`, `driver_version`, `vbios_version`, `ueid`). The
+    token's `eat_nonce` binding then covers the CPU and the GPU at once,
+    and no separate `nvidia-gpu` evidence entry is needed. A client
+    checks `cc_mode` is `ON` and every listed GPU is one of the release's
+    `gpu.models` (`H100` matches `GCP_NVIDIA_H100`); `DEVTOOLS` and `OFF`
+    are refused.
 - `valid_until` is at most 3600 seconds after `issued_at`, and no later than
   the evidence's own expiry. Endpoints republish before expiry with fresh
   evidence. The `d` tag stays the same while the instance lives.
@@ -353,7 +362,10 @@ batch on its own.
 
 ## Implementation status
 
-Implemented (2026-10-10, #11241), for the `gcp-confidential-space` platform:
+Implemented (2026-10-10, #11241), for the `gcp-confidential-space` platform,
+on Intel TDX alone and on Intel TDX with an NVIDIA H100 in
+confidential-computing mode (GPU evidence as `submods.nvidia_gpu` in the
+Confidential Space token, above):
 
 - `crates/nostr` `att`: the three records, the binding, admission under the
   notice delay and emergencies, the rollback check, and the sealed-job
@@ -368,7 +380,8 @@ Implemented (2026-10-10, #11241), for the `gcp-confidential-space` platform:
 - `deploy/att/`: the release image (Psionic serving Clef on the CPU), and
   `scripts/deploy/att-provider.sh` for the build, the release and the VM.
 
-Not yet: raw TDX quotes, SEV-SNP and NVIDIA evidence, HPKE keys, Rekor
+Not yet: raw TDX quotes, SEV-SNP, NVIDIA evidence outside Confidential
+Space (an NRAS token gathered by the workload), HPKE keys, Rekor
 entries and independent rebuilds in the release, gift-wrapped requests,
 per-chunk streamed output, the personal approval set, and the public `3201`
 receipt for sealed jobs. The [private inference](../../docs/security/private-inference.md)
