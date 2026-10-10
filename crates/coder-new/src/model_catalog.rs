@@ -524,10 +524,7 @@ mod tests {
         loader.active = Some(Active { cancel, receiver });
         loader.sync_with_base(&mut app, &base);
         assert!(app.model_picker.as_ref().unwrap().loading);
-        assert_eq!(
-            app.model_picker.as_ref().unwrap().models[0].name,
-            "Free router"
-        );
+        assert_eq!(app.model_picker.as_ref().unwrap().models[0].name, "Auto");
         let deadline = Instant::now() + Duration::from_secs(4);
         while app.model_picker.as_ref().unwrap().loading {
             assert!(Instant::now() < deadline, "Catalog worker did not complete");

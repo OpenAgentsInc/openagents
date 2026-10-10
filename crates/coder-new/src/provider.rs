@@ -48,9 +48,26 @@ pub struct KeyInfo {
     pub limit_remaining: Option<f64>,
 }
 
+/// The sign-in the OpenAgents gateway refused (401 or 403), so later
+/// `auto` turns on it go straight to their fallback instead of asking
+/// again every turn. Signing in again, or restarting Coder, asks again.
+static GATEWAY_REFUSED: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// Whether `auto` may try the OpenAgents gateway with `account`.
+#[must_use]
+pub fn gateway_open(account: &openagents_login::Saved) -> bool {
+    GATEWAY_REFUSED
+        .lock()
+        .map_or(true, |refused| refused.as_deref() != Some(account.token()))
+}
+
 #[derive(Clone)]
 pub struct Provider {
     key: ApiKey,
+    /// The OpenAgents inference gateway with the signed-in account's
+    /// session: a failure returns to the caller, which falls back, instead
+    /// of starting the local loop here.
+    gateway: bool,
     check_http: reqwest::Client,
     chat: Client,
     base_url: String,
@@ -85,12 +102,26 @@ impl Provider {
         let chat = Client::new(config).map_err(|_| "The OpenRouter connection could not start.")?;
         Ok(Self {
             key,
+            gateway: false,
             check_http,
             chat,
             base_url: base_url.trim_end_matches('/').to_owned(),
             #[cfg(test)]
             offline_fallback: None,
         })
+    }
+
+    /// The OpenAgents inference gateway (`{origin}/api/v1`, Chat
+    /// Completions) as the signed-in account: `auto`'s first door, which
+    /// routes `openagents/auto` to Vertex first (docs/inference/providers.md).
+    pub fn gateway(account: &openagents_login::Saved) -> Result<Self, String> {
+        let mut provider = Self::build(
+            ApiKey::new(account.token()),
+            &format!("{}/api/v1", account.origin.trim_end_matches('/')),
+        )
+        .map_err(|_| "The OpenAgents connection could not start.".to_owned())?;
+        provider.gateway = true;
+        Ok(provider)
     }
 
     /// Checks the key without returning its label or any response-body text.
@@ -302,7 +333,8 @@ impl Provider {
             client: self.chat.clone(),
             model: model.into(),
             effort: options.reasoning.clone(),
-            search_key: Some((self.base_url.clone(), self.key.expose().to_owned())),
+            search_key: (!self.gateway)
+                .then(|| (self.base_url.clone(), self.key.expose().to_owned())),
         };
         loop {
             if cancel.load(Ordering::Relaxed) {
@@ -348,7 +380,27 @@ impl Provider {
                         aggregate_usage(&mut aggregate.usage, usage, !have_usage);
                         have_usage = true;
                     }
-                    let Some(recovery) = recovery(&error, failures) else {
+                    let recovered = recovery(&error, failures).filter(|_| {
+                        // The gateway fails over before its first words, and
+                        // retries a started turn only twice.
+                        !self.gateway || (!(joined.is_empty() && seen.is_empty()) && failures < 2)
+                    });
+                    let Some(recovery) = recovered else {
+                        // The gateway's failure goes back to `auto`'s next door.
+                        if self.gateway {
+                            if matches!(
+                                error,
+                                openrouter::Error::Api {
+                                    status: 401 | 403,
+                                    ..
+                                }
+                            ) {
+                                if let Ok(mut refused) = GATEWAY_REFUSED.lock() {
+                                    *refused = Some(self.key.expose().to_owned());
+                                }
+                            }
+                            return Err(stream_error(error));
+                        }
                         // A model the person chose is never swapped for
                         // another (#11132): the turn fails, says why, and
                         // the app offers another model.

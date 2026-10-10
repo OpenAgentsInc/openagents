@@ -307,7 +307,17 @@ fn search(frame: &mut Frame, area: Rect, picker: &Picker) {
 fn details(frame: &mut Frame, area: Rect, model: &Model) {
     let mut lines = vec![
         (format!("Provider  {}", model.provider), t::ACCENT_MODEL),
-        (format!("ID  {}", model.id), t::TEXT_SECONDARY),
+        (
+            format!(
+                "ID  {}",
+                if crate::models::pinned(&model.id) {
+                    model.id.as_str()
+                } else {
+                    crate::models::AUTO
+                }
+            ),
+            t::TEXT_SECONDARY,
+        ),
     ];
     let mut limits = Vec::new();
     if let Some(context) = model.context_length {

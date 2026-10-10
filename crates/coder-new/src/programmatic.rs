@@ -536,7 +536,7 @@ fn status(app: &App, context: &Context) -> Value {
 }
 
 fn active_model(app: &App) -> String {
-    if app.plugins.enabled && app.plugins.key_configured {
+    if app.plugins.enabled && app.plugins.key_configured && models::pinned(&app.plugins.model) {
         app.plugins.options.slug(&app.plugins.model)
     } else {
         "auto".into()
