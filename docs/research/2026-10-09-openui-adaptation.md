@@ -133,3 +133,9 @@ No new format, dependency or client code is needed for this.
 - #11114: tool-result IDs and field references (`r3.price`) as plain Markdown
   first, then as typed arguments inside OpenUI Lang statements, resolved and
   checked on the server. This replaces their `Query` and stays server-side.
+  The plain-Markdown half is in `crates/inference/src/grounded.rs`: a per-turn
+  result ledger (`r1`, `r2`, ...), `{r3.path}` and `{cite:r3.results[0]}`
+  references filled on the server with dropped-reference diagnostics fed back
+  to the model, rate-card rows by model id, and the golden check that every
+  number and URL traces to a result. Wiring it into the hosted search loop
+  and the chat worker's reply is next.

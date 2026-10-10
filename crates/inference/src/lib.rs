@@ -16,6 +16,9 @@
 //!   route and cost events.
 //! - [`rates`]: the public rate card and the model catalog's price rows,
 //!   over the meter's rate card.
+//! - [`grounded`]: grounded values (#11114): tool results with stable ids
+//!   in a turn, references to their fields filled in on the server, and
+//!   the golden check that every number and URL traces to a result.
 //! - [`meter`]: the measurement half (sections 5 and 6): one record per
 //!   upstream attempt, live rates, and the credit ledger with burn-down
 //!   alerts. Adapters report each attempt through [`meter::Recorder`].
@@ -36,6 +39,7 @@ mod wire;
 pub mod chat;
 pub mod error;
 pub mod event;
+pub mod grounded;
 pub mod hosted;
 pub mod item;
 pub mod meter;
