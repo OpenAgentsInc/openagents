@@ -12,6 +12,8 @@
 //! | `GET /coder/sync?computer=` | The computer's sync choice (#11089): `200 {choice: "all" \| "local" \| null}` (null: not asked yet) |
 //! | `PUT /coder/sync` `{computer, choice}` | Coder's answer to "Sync all my chats?" for this computer. `200 {choice}` |
 //! | `POST /v1/threads/synced/{session}/replies` | Take what waits: the replies sent on the website join the transcript as the person's messages and the chat shows Working; `continued` are the messages added while the computer was offline (#11050), oldest first, for Coder to add to its own copy before answering the replies (#11052). Each is handed out once. `200 {replies: [{id, text}], continued: [{role, text}]}`, `404 unknown`, `410 deleted` |
+//! | `PUT /v1/threads/synced/{session}/captures/{ask}` | The screenshot or file an ask brought back (#11185), as the raw body (at most [`MAX_CAPTURE_BYTES`]). `200 {saved}`, `404 unknown`, `410 deleted` |
+//! | `POST /v1/threads/synced/{session}/captures/{ask}/failed` `{message}` | The computer couldn't do the ask: its words, one line. `200`, `404`, `410` |
 //!
 //! Each route also answers at its older path (`/coder/sessions/...`,
 //! `/coder/check-in`), marked deprecated (#11158, [`crate::older_paths`]).
@@ -46,7 +48,8 @@ use sha2::{Digest, Sha256};
 
 use crate::App;
 use crate::chat_store::{
-    Computers, Conversation, Error, MAX_COMPUTERS, MAX_REPLY_IDS, MAX_WAITING_CHATS,
+    AskAction, AskState, CAPTURE_MEDIA, ComputerAsk, Computers, Conversation, Error, MAX_ASKS,
+    MAX_CAPTURE_BYTES, MAX_COMPUTERS, MAX_OPEN_ASKS, MAX_REPLY_IDS, MAX_WAITING_CHATS,
     MAX_WEB_REPLIES, Message, Role, Store, SyncChoice, Terminal, WebReply, account_owner, now_unix,
 };
 use crate::cloud::protect;
@@ -78,6 +81,14 @@ pub(crate) fn routes() -> Router<App> {
         .route(&format!("{SYNCED}/{{session}}"), put(upload).delete(forget))
         .route(&format!("{SYNCED}/{{session}}/status"), post(status))
         .route(&format!("{SYNCED}/{{session}}/replies"), post(replies))
+        .route(
+            &format!("{SYNCED}/{{session}}/captures/{{ask}}"),
+            put(capture_route).layer(DefaultBodyLimit::max(MAX_CAPTURE_BYTES + 1024)),
+        )
+        .route(
+            &format!("{SYNCED}/{{session}}/captures/{{ask}}/failed"),
+            post(failed_route),
+        )
         .route(CHECK_IN, post(check_in_route))
         // The older paths: the same handlers, marked deprecated until the
         // two newest Coder and phone releases call the paths above.
@@ -85,6 +96,14 @@ pub(crate) fn routes() -> Router<App> {
         .route("/coder/sessions/{session}", old(put(upload).delete(forget)))
         .route("/coder/sessions/{session}/status", old(post(status)))
         .route("/coder/sessions/{session}/replies", old(post(replies)))
+        .route(
+            "/coder/sessions/{session}/captures/{ask}",
+            old(put(capture_route).layer(DefaultBodyLimit::max(MAX_CAPTURE_BYTES + 1024))),
+        )
+        .route(
+            "/coder/sessions/{session}/captures/{ask}/failed",
+            old(post(failed_route)),
+        )
         .route(
             OLDER_CHECK_IN,
             deprecated(post(check_in_route), OLDER_CHECK_IN, CHECK_IN),
@@ -276,6 +295,7 @@ pub(crate) async fn save(
                     reply_ids: Vec::new(),
                     continued: Vec::new(),
                     continued_taken: 0,
+                    asks: Vec::new(),
                 }),
                 environment: None,
                 tasks: Vec::new(),
@@ -664,6 +684,201 @@ pub(crate) async fn queue_reply(
     Err(Error::Conflict)
 }
 
+/// Ask Coder on the chat's computer for a screenshot or a file (#11185),
+/// when it is online. The ask waits on the chat like a reply; Coder takes
+/// it, runs it through its computer's own host, and uploads what came
+/// back ([`save_capture`]). The website never reaches the computer.
+pub(crate) async fn queue_ask(
+    store: &Store,
+    owner: &str,
+    chat: &str,
+    action: AskAction,
+) -> Result<Queued, Error> {
+    if !action.valid() {
+        return Ok(Queued::Missing);
+    }
+    for _ in 0..4 {
+        let Some(loaded) = store.load(owner, chat).await? else {
+            return Ok(Queued::Missing);
+        };
+        let Some(terminal) = loaded.conversation.terminal.clone() else {
+            return Ok(Queued::Missing);
+        };
+        if terminal.deleted_unix.is_some() {
+            return Ok(Queued::Missing);
+        }
+        if terminal.asks.iter().filter(|ask| ask.state.open()).count() >= MAX_OPEN_ASKS {
+            return Ok(Queued::Full);
+        }
+        if !online(&store.computers(owner).await?, &terminal.computer) {
+            return Ok(Queued::Offline(terminal.computer));
+        }
+        let (session, computer) = (terminal.session.clone(), terminal.computer.clone());
+        let marked = store
+            .update_computers(owner, move |computers| {
+                if computers.waiting.get(&session) == Some(&computer)
+                    || (!computers.waiting.contains_key(&session)
+                        && computers.waiting.len() >= MAX_WAITING_CHATS)
+                {
+                    return false;
+                }
+                computers.waiting.insert(session.clone(), computer.clone());
+                true
+            })
+            .await?;
+        if !marked.waiting.contains_key(&terminal.session) {
+            return Ok(Queued::Full);
+        }
+        let mut next = loaded.conversation.clone();
+        next.revision += 1;
+        next.updated_unix = now_unix();
+        let mut dropped = Vec::new();
+        if let Some(terminal) = &mut next.terminal {
+            terminal.asks.push(ComputerAsk {
+                id: crate::pages::chat::new_id(),
+                action: action.clone(),
+                asked_unix: now_unix(),
+                state: AskState::Waiting,
+            });
+            // The oldest finished asks go first.
+            while terminal.asks.len() > MAX_ASKS {
+                let Some(index) = terminal.asks.iter().position(|ask| !ask.state.open()) else {
+                    break;
+                };
+                dropped.push(terminal.asks.remove(index).id);
+            }
+        }
+        match store.compare_and_swap(&loaded, &next).await {
+            Ok(_) => {
+                for ask in dropped {
+                    store.forget_capture(owner, chat, &ask).await;
+                }
+                return Ok(Queued::Queued);
+            }
+            Err(Error::Conflict) => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Err(Error::Conflict)
+}
+
+/// The media type a capture is served as, from its bytes (never a name).
+pub(crate) fn capture_media(bytes: &[u8]) -> &'static str {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        CAPTURE_MEDIA[0]
+    } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        CAPTURE_MEDIA[1]
+    } else if std::str::from_utf8(bytes).is_ok_and(|text| {
+        !text
+            .chars()
+            .any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
+    }) {
+        CAPTURE_MEDIA[2]
+    } else {
+        CAPTURE_MEDIA[3]
+    }
+}
+
+/// Keep what an ask brought back from the computer (#11185): the bytes
+/// in the chat's private storage, or the computer's words when it
+/// couldn't. Only an ask Coder took (or still waiting) is answered, once.
+pub(crate) async fn save_capture(
+    store: &Store,
+    owner: &str,
+    session: &str,
+    ask: &str,
+    result: Result<Vec<u8>, String>,
+) -> Result<Saved, Error> {
+    if !valid_session(session) || !crate::chat_store::valid_id(ask) {
+        return Ok(Saved::Unknown);
+    }
+    let id = chat_id(owner, session);
+    // Only an ask this chat holds open is answered; nothing is stored
+    // for any other.
+    let Some(loaded) = store.load(owner, &id).await? else {
+        return Ok(Saved::Unknown);
+    };
+    let Some(terminal) = &loaded.conversation.terminal else {
+        return Ok(Saved::Unknown);
+    };
+    if terminal.deleted_unix.is_some() {
+        return Ok(Saved::Deleted);
+    }
+    if !terminal
+        .asks
+        .iter()
+        .any(|known| known.id == ask && known.state.open())
+    {
+        return Ok(Saved::Unknown);
+    }
+    let state = match &result {
+        Ok(bytes) if bytes.len() > MAX_CAPTURE_BYTES => {
+            return Ok(Saved::Invalid("too_large"));
+        }
+        Ok(bytes) => {
+            let key = Store::capture_key(owner, &id, ask)?;
+            let current = store
+                .read_key(&key)
+                .await?
+                .map(|(_, generation)| generation);
+            store
+                .write_key(&key, bytes.clone(), current.as_deref())
+                .await?;
+            AskState::Saved {
+                size: bytes.len() as u64,
+                media: capture_media(bytes).to_owned(),
+            }
+        }
+        Err(message) => {
+            let mut message = line(message, 300);
+            if message.is_empty() {
+                message = "The computer couldn't do this.".into();
+            }
+            AskState::Failed { message }
+        }
+    };
+    for _ in 0..4 {
+        let Some(loaded) = store.load(owner, &id).await? else {
+            return Ok(Saved::Unknown);
+        };
+        let Some(terminal) = &loaded.conversation.terminal else {
+            return Ok(Saved::Unknown);
+        };
+        if terminal.deleted_unix.is_some() {
+            return Ok(Saved::Deleted);
+        }
+        if !terminal
+            .asks
+            .iter()
+            .any(|known| known.id == ask && known.state.open())
+        {
+            if result.is_ok() {
+                store.forget_capture(owner, &id, ask).await;
+            }
+            return Ok(Saved::Unknown);
+        }
+        let mut next = loaded.conversation.clone();
+        next.revision += 1;
+        next.updated_unix = now_unix();
+        if let Some(terminal) = &mut next.terminal
+            && let Some(known) = terminal.asks.iter_mut().find(|known| known.id == ask)
+        {
+            known.state = state.clone();
+        }
+        match store.compare_and_swap(&loaded, &next).await {
+            Ok(_) => {
+                return Ok(Saved::Saved {
+                    chat: id,
+                    changed: true,
+                });
+            }
+            Err(Error::Conflict) => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Err(Error::Conflict)
+}
+
 /// What became of a chat started on the website for Coder on a computer.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Started {
@@ -749,6 +964,7 @@ pub(crate) async fn start_from_web(
                 reply_ids: Vec::new(),
                 continued: Vec::new(),
                 continued_taken: 0,
+                asks: Vec::new(),
             }),
             environment: None,
             tasks: Vec::new(),
@@ -778,6 +994,9 @@ pub(crate) enum Taken {
         /// oldest first, that Coder hadn't taken yet: it adds them to its
         /// own copy before answering `replies`.
         continued: Vec<Message>,
+        /// Screenshots and files asked for here (#11185), for Coder to
+        /// run through its computer's host and upload.
+        asks: Vec<ComputerAsk>,
     },
     Deleted,
     Unknown,
@@ -787,7 +1006,12 @@ pub(crate) enum Taken {
 /// messages added while its computer was offline.
 fn has_waiting(terminal: &Terminal) -> bool {
     terminal.deleted_unix.is_none()
-        && (!terminal.replies.is_empty() || terminal.continued_taken < terminal.continued.len())
+        && (!terminal.replies.is_empty()
+            || terminal.continued_taken < terminal.continued.len()
+            || terminal
+                .asks
+                .iter()
+                .any(|ask| ask.state == AskState::Waiting))
 }
 
 /// Mark a Coder chat as waiting for Coder on its computer when it has
@@ -847,10 +1071,17 @@ pub(crate) async fn take_replies(
         }
         let continued =
             terminal.continued[terminal.continued_taken.min(terminal.continued.len())..].to_vec();
-        if terminal.replies.is_empty() && continued.is_empty() {
+        let asks: Vec<ComputerAsk> = terminal
+            .asks
+            .iter()
+            .filter(|ask| ask.state == AskState::Waiting)
+            .cloned()
+            .collect();
+        if terminal.replies.is_empty() && continued.is_empty() && asks.is_empty() {
             taken = Some(Taken::Replies {
                 replies: Vec::new(),
                 continued,
+                asks,
             });
             break;
         }
@@ -872,10 +1103,21 @@ pub(crate) async fn take_replies(
                 terminal.working_unix = Some(now_unix());
             }
             terminal.continued_taken = terminal.continued.len();
+            for ask in &mut terminal.asks {
+                if ask.state == AskState::Waiting {
+                    ask.state = AskState::Taken {
+                        at_unix: now_unix(),
+                    };
+                }
+            }
         }
         match store.compare_and_swap(&loaded, &next).await {
             Ok(_) => {
-                taken = Some(Taken::Replies { replies, continued });
+                taken = Some(Taken::Replies {
+                    replies,
+                    continued,
+                    asks,
+                });
                 break;
             }
             Err(Error::Conflict) => continue,
@@ -1185,9 +1427,17 @@ async fn replies(
         Err(response) => return response,
     };
     match take_replies(&app.config.chat_store, &owner, &session).await {
-        Ok(Taken::Replies { replies, continued }) => answer(
+        Ok(Taken::Replies {
+            replies,
+            continued,
+            asks,
+        }) => answer(
             StatusCode::OK,
             json!({
+                "asks": asks
+                    .into_iter()
+                    .map(|ask| json!({"id": ask.id, "action": ask.action}))
+                    .collect::<Vec<_>>(),
                 "replies": replies
                     .into_iter()
                     .map(|reply| json!({"id": reply.id, "text": reply.text}))
@@ -1202,6 +1452,59 @@ async fn replies(
         Ok(Taken::Unknown) => respond(Ok(Saved::Unknown)),
         Err(error) => stored(&error),
     }
+}
+
+async fn capture_route(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((session, ask)): Path<(String, String)>,
+    body: Bytes,
+) -> Response {
+    let owner = match owner(&app, &headers).await {
+        Ok(owner) => owner,
+        Err(response) => return response,
+    };
+    respond(
+        save_capture(
+            &app.config.chat_store,
+            &owner,
+            &session,
+            &ask,
+            Ok(body.to_vec()),
+        )
+        .await,
+    )
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Failure {
+    message: String,
+}
+
+async fn failed_route(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((session, ask)): Path<(String, String)>,
+    body: Bytes,
+) -> Response {
+    let owner = match owner(&app, &headers).await {
+        Ok(owner) => owner,
+        Err(response) => return response,
+    };
+    let Ok(failure) = serde_json::from_slice::<Failure>(&body) else {
+        return refused(StatusCode::BAD_REQUEST, "invalid", "Send {message}.");
+    };
+    respond(
+        save_capture(
+            &app.config.chat_store,
+            &owner,
+            &session,
+            &ask,
+            Err(failure.message),
+        )
+        .await,
+    )
 }
 
 #[cfg(test)]
@@ -1347,8 +1650,9 @@ mod tests {
             check_in(&store, &owner(), "Studio").await.unwrap(),
             Ok(vec!["s1".to_string()])
         );
-        let Taken::Replies { replies, continued } =
-            take_replies(&store, &owner(), "s1").await.unwrap()
+        let Taken::Replies {
+            replies, continued, ..
+        } = take_replies(&store, &owner(), "s1").await.unwrap()
         else {
             panic!("not taken");
         };
@@ -1365,7 +1669,8 @@ mod tests {
             take_replies(&store, &owner(), "s1").await.unwrap(),
             Taken::Replies {
                 replies: Vec::new(),
-                continued: Vec::new()
+                continued: Vec::new(),
+                asks: Vec::new(),
             },
             "handed out once"
         );
@@ -1429,6 +1734,7 @@ mod tests {
                 message(Role::Assistant, "Later answer"),
             ],
             continued_taken: 2,
+            asks: Vec::new(),
         };
         let uploaded = [
             message(Role::User, "Fix it"),
@@ -1522,6 +1828,139 @@ mod tests {
     const REPLY_TWO: &str = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
 
     #[tokio::test]
+    async fn a_screenshot_asked_on_the_website_waits_for_coder_and_comes_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::local(dir.path().to_path_buf());
+        let Saved::Saved { chat, .. } =
+            save(&store, &owner(), "s1", &upload("A", &[("user", "Hi")]))
+                .await
+                .unwrap()
+        else {
+            panic!("not saved");
+        };
+        // Offline: nothing waits.
+        assert_eq!(
+            queue_ask(&store, &owner(), &chat, AskAction::Screenshot)
+                .await
+                .unwrap(),
+            Queued::Offline("Studio".into())
+        );
+        check_in(&store, &owner(), "Studio").await.unwrap().unwrap();
+        // A path that isn't absolute or under home is refused.
+        assert_eq!(
+            queue_ask(
+                &store,
+                &owner(),
+                &chat,
+                AskAction::Pull {
+                    path: "notes.txt".into()
+                }
+            )
+            .await
+            .unwrap(),
+            Queued::Missing
+        );
+        for action in [
+            AskAction::Screenshot,
+            AskAction::Pull {
+                path: "~/notes.txt".into(),
+            },
+        ] {
+            assert_eq!(
+                queue_ask(&store, &owner(), &chat, action).await.unwrap(),
+                Queued::Queued
+            );
+        }
+        // Two wait at most.
+        assert_eq!(
+            queue_ask(&store, &owner(), &chat, AskAction::Screenshot)
+                .await
+                .unwrap(),
+            Queued::Full
+        );
+        assert_eq!(
+            check_in(&store, &owner(), "Studio").await.unwrap(),
+            Ok(vec!["s1".to_string()])
+        );
+        let Taken::Replies { replies, asks, .. } =
+            take_replies(&store, &owner(), "s1").await.unwrap()
+        else {
+            panic!("not taken");
+        };
+        assert!(replies.is_empty());
+        assert_eq!(asks.len(), 2);
+        // Handed out once; the chat no longer waits.
+        let Taken::Replies { asks: again, .. } =
+            take_replies(&store, &owner(), "s1").await.unwrap()
+        else {
+            panic!("not taken");
+        };
+        assert!(again.is_empty());
+        assert_eq!(
+            check_in(&store, &owner(), "Studio").await.unwrap(),
+            Ok(Vec::new())
+        );
+
+        // The picture comes back and is kept privately; the file failed.
+        let png = b"\x89PNG\r\n\x1a\nrest".to_vec();
+        assert!(matches!(
+            save_capture(&store, &owner(), "s1", &asks[0].id, Ok(png.clone()))
+                .await
+                .unwrap(),
+            Saved::Saved { .. }
+        ));
+        assert!(matches!(
+            save_capture(
+                &store,
+                &owner(),
+                "s1",
+                &asks[1].id,
+                Err("there is no file at ~/notes.txt".into())
+            )
+            .await
+            .unwrap(),
+            Saved::Saved { .. }
+        ));
+        // Answered once.
+        assert_eq!(
+            save_capture(&store, &owner(), "s1", &asks[0].id, Ok(png.clone()))
+                .await
+                .unwrap(),
+            Saved::Unknown
+        );
+        let loaded = store.load(&owner(), &chat).await.unwrap().unwrap();
+        let kept = &loaded.conversation.terminal.as_ref().unwrap().asks;
+        assert_eq!(
+            kept[0].state,
+            AskState::Saved {
+                size: png.len() as u64,
+                media: "image/png".into()
+            }
+        );
+        assert!(
+            matches!(&kept[1].state, AskState::Failed { message } if message.contains("no file"))
+        );
+        let key = Store::capture_key(&owner(), &chat, &asks[0].id).unwrap();
+        assert_eq!(store.read_key(&key).await.unwrap().unwrap().0, png);
+        // Another account never reaches it.
+        assert_eq!(
+            save_capture(
+                &store,
+                &account_owner("acct_two"),
+                "s1",
+                &asks[0].id,
+                Ok(png)
+            )
+            .await
+            .unwrap(),
+            Saved::Unknown
+        );
+        // Deleting the chat deletes what came back.
+        store.remove(&loaded).await.unwrap();
+        assert!(store.read_key(&key).await.unwrap().is_none());
+    }
+
+    #[tokio::test]
     async fn a_web_reply_waits_for_coder_and_joins_the_transcript() {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::local(dir.path().to_path_buf());
@@ -1603,7 +2042,8 @@ mod tests {
             take_replies(&store, &owner(), "s1").await.unwrap(),
             Taken::Replies {
                 replies: Vec::new(),
-                continued: Vec::new()
+                continued: Vec::new(),
+                asks: Vec::new(),
             }
         );
         // A resend of the taken reply isn't queued again.

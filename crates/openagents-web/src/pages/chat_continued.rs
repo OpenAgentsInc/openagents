@@ -450,6 +450,7 @@ mod tests {
                 reply_ids: Vec::new(),
                 continued: Vec::new(),
                 continued_taken: 0,
+                asks: Vec::new(),
             }),
             environment: None,
             tasks: Vec::new(),

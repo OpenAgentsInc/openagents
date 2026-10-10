@@ -59,6 +59,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(agents::routes())
         .merge(continued::routes())
         .merge(approval::routes())
+        .merge(computer::routes())
         .layer(DefaultBodyLimit::max(64 * 1024))
 }
 
@@ -748,6 +749,7 @@ fn terminal_composer(
         .after(html! {
             (ticket(app, chat, false))
             p #chat-feedback.oa-composer-feedback role="status" aria-live="polite" {}
+            (computer::controls(app, chat, computer))
         });
     match notice {
         Some(notice) => composer
@@ -1823,6 +1825,10 @@ fn messages(chat: &Conversation, before: Option<usize>, links: bool) -> Markup {
             @for (index, reply) in terminal.replies.iter().enumerate() {
                 (ThreadMessage::user(&reply.text).id(format!("chat-reply-{index}")))
             }
+            // Screenshots and files asked for here (#11185).
+            @for (index, ask) in terminal.asks.iter().enumerate() {
+                (computer::turn(chat, &terminal.computer, index, ask))
+            }
         }
         // The chat's agents (#11164): they load themselves.
         @if before.is_none() { (agents::slot(chat)) }
@@ -2290,6 +2296,8 @@ mod sidebar;
 mod agents;
 #[path = "chat_approval.rs"]
 mod approval;
+#[path = "chat_computer.rs"]
+mod computer;
 #[path = "chat_continued.rs"]
 mod continued;
 #[path = "chat_delete_all.rs"]

@@ -117,7 +117,86 @@ pub(crate) struct Terminal {
     /// once an upload carries it.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub continued_taken: usize,
+    /// Screenshots and files asked for on the website from this chat's
+    /// computer (#11185), oldest first, at most [`MAX_ASKS`]. Coder there
+    /// takes the waiting ones with the replies, runs them through the
+    /// computer's own host, and uploads what came back
+    /// ([`Store::capture_key`]); the website never reaches the computer.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub asks: Vec<ComputerAsk>,
 }
+
+/// A screenshot or file asked for on the website (#11185).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ComputerAsk {
+    /// A version 4 UUID.
+    pub id: String,
+    pub action: AskAction,
+    pub asked_unix: u64,
+    pub state: AskState,
+}
+
+/// What the person asked the computer for.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub(crate) enum AskAction {
+    /// A picture of its main screen.
+    Screenshot,
+    /// A copy of the file at `path` (absolute, or starting with `~/`).
+    Pull { path: String },
+}
+
+impl AskAction {
+    /// The path is one line, absolute or under the home folder, and
+    /// bounded.
+    pub(crate) fn valid(&self) -> bool {
+        match self {
+            Self::Screenshot => true,
+            Self::Pull { path } => {
+                (path.starts_with('/') || path.starts_with("~/"))
+                    && path.len() <= MAX_ASK_PATH_BYTES
+                    && !path.chars().any(char::is_control)
+            }
+        }
+    }
+}
+
+/// Where an ask is.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+pub(crate) enum AskState {
+    /// Waiting for Coder on the computer to take it.
+    Waiting,
+    /// Coder took it at `at_unix`.
+    Taken { at_unix: u64 },
+    /// What came back is stored under [`Store::capture_key`].
+    Saved { size: u64, media: String },
+    /// The computer couldn't; its words, one line.
+    Failed { message: String },
+}
+
+impl AskState {
+    pub(crate) fn open(&self) -> bool {
+        matches!(self, Self::Waiting | Self::Taken { .. })
+    }
+}
+
+/// The most asks a Coder chat keeps.
+pub(crate) const MAX_ASKS: usize = 8;
+/// The most asks waiting for the computer at once.
+pub(crate) const MAX_OPEN_ASKS: usize = 2;
+/// The longest path an ask names, in bytes.
+pub(crate) const MAX_ASK_PATH_BYTES: usize = 1024;
+/// The largest screenshot or file stored for an ask.
+pub(crate) const MAX_CAPTURE_BYTES: usize = 15 * 1024 * 1024;
+/// The media types a stored capture is served as.
+pub(crate) const CAPTURE_MEDIA: [&str; 4] = [
+    "image/png",
+    "image/jpeg",
+    "text/plain; charset=utf-8",
+    "application/octet-stream",
+];
 
 fn is_zero(n: &usize) -> bool {
     *n == 0
@@ -1011,9 +1090,37 @@ impl Store {
             terminal.replies.clear();
             terminal.reply_ids.clear();
             terminal.continued.clear();
+            terminal.asks.clear();
             terminal.deleted_unix = Some(now_unix());
         }
-        self.compare_and_swap(loaded, &next).await.map(|_| true)
+        self.compare_and_swap(loaded, &next).await?;
+        // What came back from the computer goes with the chat (#11185).
+        if let Some(terminal) = &chat.terminal {
+            for ask in &terminal.asks {
+                self.forget_capture(&chat.owner, &chat.id, &ask.id).await;
+            }
+        }
+        Ok(true)
+    }
+
+    /// The object holding what came back for ask `ask` of chat `chat`
+    /// (#11185): beside the account's chats, never listed as one.
+    pub(crate) fn capture_key(owner: &str, chat: &str, ask: &str) -> Result<String, Error> {
+        if !valid_id(chat) || !valid_id(ask) {
+            return Err(Error::Invalid("The capture address is invalid."));
+        }
+        Self::owner_key(owner, &format!("captures/{chat}/{ask}"))
+    }
+
+    /// Remove an ask's stored capture, if any. Best effort: a failure
+    /// leaves the object, which nothing links to any more.
+    pub(crate) async fn forget_capture(&self, owner: &str, chat: &str, ask: &str) {
+        let Ok(key) = Self::capture_key(owner, chat, ask) else {
+            return;
+        };
+        if let Ok(Some((_, generation))) = self.read_key(&key).await {
+            let _ = self.delete_key(&key, &generation).await;
+        }
     }
 
     /// Move one chat to `to` (a signed-in account's owner, see
@@ -1813,6 +1920,19 @@ fn validate_conversation(conversation: &Conversation) -> Result<(), Error> {
                 .continued
                 .iter()
                 .any(|message| message.text.len() > MAX_CONTINUED_BYTES)
+            || terminal.asks.len() > MAX_ASKS
+            || terminal.asks.iter().any(|ask| {
+                !valid_id(&ask.id)
+                    || !ask.action.valid()
+                    || match &ask.state {
+                        AskState::Waiting | AskState::Taken { .. } => false,
+                        AskState::Saved { size, media } => {
+                            *size > MAX_CAPTURE_BYTES as u64
+                                || !CAPTURE_MEDIA.contains(&media.as_str())
+                        }
+                        AskState::Failed { message } => !bounded_text(message, 512),
+                    }
+            })
             || !conversation.requests.is_empty()
             || conversation.pending.is_some())
     {
