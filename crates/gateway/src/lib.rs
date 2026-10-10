@@ -46,6 +46,7 @@ pub mod classify;
 pub mod config;
 #[allow(clippy::result_large_err)]
 pub mod dashboard;
+pub mod decision_dispatch;
 pub mod decision_offer;
 pub mod decision_usage;
 pub mod discovery;

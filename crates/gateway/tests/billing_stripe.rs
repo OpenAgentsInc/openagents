@@ -192,6 +192,7 @@ async fn deploy() -> Deployment {
         }),
         funding: None,
         inference: None,
+        decisions: None,
         earnings: None,
         commercial: None,
         skills: None,

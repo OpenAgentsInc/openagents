@@ -4,7 +4,7 @@
 //! `docs/api/design.md` marks PUBLIC. FIRST-PARTY and INTERNAL routes (the
 //! inference admin page and meter, operator sign-up, the website-only
 //! GitHub token, device approval, sessions, the dashboard and playground,
-//! the decision service) answer `404` from outside; the website reaches
+//! decision jobs and classification) answer `404` from outside; the website reaches
 //! them over the loopback, never through this alias. Anything not listed
 //! here, including every gateway route added later, is refused by default.
 //!
@@ -40,6 +40,9 @@ const PUBLIC: &[Rule] = &[
     Rule(GET, "/v1/models/*"),
     Rule(GET, "/v1/rates"),
     Rule(GET, "/v1/openapi.json"),
+    // Decisions (#11225): the one decision entry point, answered by
+    // connected Pylons first.
+    Rule(POST, "/v1/systemone"),
     // Usage and money (4.5, 4.6).
     Rule(GET, "/v1/key"),
     Rule(GET, "/v1/usage/*"),

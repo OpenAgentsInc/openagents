@@ -83,6 +83,34 @@ with no free slots, admitted jobs finish, new ones are refused
 or queued. `--dedicated` skips the lease table on a box that runs no owner
 work.
 
+### Answer decisions (Clef)
+
+Every OpenAgents decision (the chat router, Coder's judges, file
+relevance, the Verse's questions) goes to `POST /v1/systemone` on our API,
+which sends it to a connected pylon first (#11225; NIP-DEC, "The
+OpenAgents decision API"). A pylon answers decisions with a local Psionic
+Clef server:
+
+```sh
+# The Clef server (crates/psionic, CUDA on a 4080):
+psionic-openai-server -m Clef-Flash-Q4_K_M.gguf --port 18096 --decision-device cuda
+# The pylon, decisions only, admitting the gateways' dispatch keys:
+openagents pylon serve --decide http://127.0.0.1:18096 --decisions-only \
+  --pylon coderos-4080-clef --slots 4 --rate 600 --allow npub1...,npub1...
+```
+
+The beacon advertises `<pylon key>:pylon/decision` on the `cj-decision`
+lane with the served identity (`clef-flash@sha256:<artifact digest>`, read
+from the server's `/v1/models`) and its free slots; the beacon says
+`draining` while the Clef server does not answer. Each decision job gets
+`27010 processing`, then a `26910` result whose answer names the model, the
+pylon (`service.door: "pylon:<slug>"`), and the latency, with a sealed
+receipt naming the artifact digest. Decisions are free work. Without
+`--decisions-only` the same pylon also serves text jobs from `--engine`.
+The gateway trusts only the pylon keys in its `DECISION_PYLONS` (default
+CoderOS-4080's), and logs its own dispatch key at start (`decisions: …
+(dispatch key …)`), which is the key to `--allow`.
+
 ### Share this computer from the host
 
 The Coder host is the pylon. Sharing is off by default:

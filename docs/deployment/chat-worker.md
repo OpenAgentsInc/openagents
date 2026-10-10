@@ -174,6 +174,16 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   they are what a router eval report pins as the subject's configuration
   ([#9959](https://github.com/OpenAgentsInc/openagents/issues/9959),
   [`docs/coder/measurements/2026-09-29-chat-router-claims.md`](../coder/measurements/2026-09-29-chat-router-claims.md)).
+- **The judge's door since #11225.** The router's judgment is
+  `POST /v1/systemone` on our API (`https://openagents.com/api`, or
+  `OPENAGENTS_DECISIONS_URL`), with no TypeSafe key: the gateway asks a
+  connected Pylon (Clef on CoderOS-4080 first) and then Gemini on Vertex AI
+  (NIP-DEC, "The OpenAgents decision API"). With no decision profile
+  configured, the worker resolves to it (`coder::decision::from_env`); with
+  `TYPESAFE_API_KEY` set it still goes to our API unless
+  `OPENAGENTS_DECISIONS=jev`. The startup line reads `judge
+  https://openagents.com/api (jev-latest)`. The doors below are what
+  `OPENAGENTS_DECISIONS=jev` brings back.
 - **Jev's doors.** The judge asks the Vercel AI Gateway's
   TypeSafe-compatible API first (`typesafe-ai/jev`, under
   `AI_GATEWAY_API_KEY`; the gateway routes Jev to TypeSafe itself, with the

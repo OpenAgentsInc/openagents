@@ -68,6 +68,7 @@ async fn deploy() -> Deployment {
         team_policy: None,
         team_reports: None,
         inference: None,
+        decisions: None,
         accounts: Some(config::Accounts {
             signup_tenant: Some("acme".to_string()),
             open_signup: true,

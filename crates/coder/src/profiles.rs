@@ -315,6 +315,7 @@ impl Profile {
             } else if jev::doors::FALLBACKS
                 .iter()
                 .any(|fallback| fallback.key_var == name)
+                || [jev_hosted::DECISIONS_VAR, jev_hosted::DECISIONS_URL_VAR].contains(&name)
             {
                 env(name)
             } else {
@@ -374,6 +375,8 @@ impl Profile {
                         jev_hosted::HOSTED_VAR,
                         jev_hosted::RELAY_VAR,
                         jev_hosted::WORKER_VAR,
+                        jev_hosted::DECISIONS_VAR,
+                        jev_hosted::DECISIONS_URL_VAR,
                     ]
                     .contains(&name)
                 {

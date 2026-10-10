@@ -198,6 +198,21 @@ runbook is `docs/release/terminal.md`.
 | A macOS artifact is published only after Gatekeeper (`spctl --assess -t install`) answers `accepted` from `Notarized Developer ID`; `--skip-notarization` is refused with `--publish`. | New on 2026-10-01 ([#10114](https://github.com/OpenAgentsInc/openagents/issues/10114)). | `wait_for_gatekeeper` in `scripts/release/terminal.sh`; the verdicts in each published manifest |
 | `openagents-cli`, `openagents-terminal`, and `microcoder` carry one release version; `scripts/release/terminal.sh` refuses a release whose version differs from any of the three manifests at the released commit. | New on 2026-10-10 (codebase health audit CLI-03). | `terminal_cli_and_microcoder_share_one_release_version` in `crates/openagents-terminal/tests/release_version.rs`; the manifest loop in `scripts/release/terminal.sh` |
 
+## The OpenAgents decision API
+
+Since 2026-10-10 ([#11225](https://github.com/OpenAgentsInc/openagents/issues/11225))
+every decision goes through our own `POST /v1/systemone`, which sends it
+to connected Pylons over Nostr ([NIP-DEC](nips/openagents/NIP-DEC.md),
+"The OpenAgents decision API"). The rows below take precedence over the
+hosted decision service's rows that follow, which now hold only for a
+caller that chooses Jev (`OPENAGENTS_DECISIONS=jev`).
+
+| Invariant | Status | Checked by |
+| --- | --- | --- |
+| A caller of TypeSafe's door (or ours) resolved through `jev_hosted::resolve` or `jev_hosted::resolve_with_fallbacks` gets our decision API (`jev_hosted::ours`: `POST <OPENAGENTS_DECISIONS_URL, default https://openagents.com/api>/v1/systemone`) with no key: no TypeSafe key is read, sent, or needed, and no decision key file is made. Only `OPENAGENTS_DECISIONS=jev` takes the older local-key, backup-door, and hosted-worker paths. A door that is neither TypeSafe's nor ours (a loopback Clef, a local Kev) is that door. With no decision profile configured, `coder::decision::from_env` resolves to our API (`OPENAGENTS_DECISIONS=off` keeps no classifier). | New on 2026-10-10 (#11225), owner decision: "every decision goes through our own API … no dependency on the Jev API". | `typesafe_s_door_resolves_to_our_decision_api_with_no_key` in `crates/jev-hosted` |
+| The gateway's decision route asks connected Pylons first: only fresh, online beacons from its trusted pylon keys (`decisions.pylons`) that advertise `<key>:pylon/decision` on the `cj-decision` lane with a free slot; each attempt is a NIP-DEC job signed by the gateway's dispatch key and bounded by `pylon_ms`. An answer counts only when it answers exactly the questions asked in their own types, with probabilities finite in `[0, 1]` that sum to one over exactly the options asked, and names the beacon's served model and identity; otherwise the pylon is benched and the next door is asked (another pylon, our hosted Clef, Gemini on Vertex, and Jev only when the operator turns it on). Every answer names its door, pylon, model, identity, and latency, and every decision is one line in `decisions/YYYY-MM-DD.jsonl` with each attempt; no state or question text is logged. | New on 2026-10-10 (#11225). | `a_connected_pylon_answers_and_the_gateway_fails_over_when_it_stops` in `crates/gateway/tests/decision_dispatch.rs`; `a_clef_answer_passes_and_a_wrong_shape_does_not`, `gemini_structured_output_becomes_nip_dec_answers` in `crates/gateway` (`decision_dispatch`) |
+| A pylon answers a decision job only after the same admission as a text job (verified, addressed to it alone, fresh, unseen, an allowed key under its rate, a free slot), runs it on its own local System One server, and returns a result whose receipt is bound to the request event and digest and names the served model and artifact digest. Decision work is free (`free-v1`); a priced config refuses to serve decisions. | New on 2026-10-10 (#11225). | `a_connected_pylon_answers_and_the_gateway_fails_over_when_it_stops` |
+
 ## Hosted decision service
 
 Coder on a computer with no TypeSafe key asks Jev through the hosted

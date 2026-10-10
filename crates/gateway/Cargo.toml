@@ -19,6 +19,8 @@ openagents-wallet = { path = "../wallet", default-features = false }
 openagents-x402 = { path = "../x402" }
 discovery = { path = "../discovery" }
 jev = { path = "../jev" }
+# Decision jobs to connected Pylons over the relay (#11225).
+jev-hosted = { path = "../jev-hosted" }
 axum = { version = "0.8", features = ["multipart", "ws"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 hex = "0.4"
@@ -50,6 +52,8 @@ base64 = "0.22"
 commercial-spend = { path = "../commercial-spend" }
 hex = "0.4"
 nostr = { path = "../nostr", features = ["test-invoice"] }
+# The in-process relay the decision dispatch test runs a Pylon on (#11225).
+pylon = { path = "../pylon", features = ["fixture"] }
 tempfile = "3"
 
 [lints]

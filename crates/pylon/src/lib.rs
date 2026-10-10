@@ -27,6 +27,7 @@ pub mod broker;
 pub mod check;
 pub mod cli;
 pub mod client;
+pub mod decide;
 pub mod engine;
 pub mod field;
 #[cfg(feature = "fixture")]

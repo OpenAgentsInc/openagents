@@ -193,6 +193,7 @@ async fn deploy_outcomes(service_tenants: Vec<String>, issuer: Option<String>) -
         team_policy: None,
         team_reports: None,
         inference: Some(inference),
+        decisions: None,
         accounts: None,
         billing: None,
         funding: None,

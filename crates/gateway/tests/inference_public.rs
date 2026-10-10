@@ -212,6 +212,7 @@ async fn deploy(public: bool, book: Option<Value>) -> Deployment {
         team_policy: None,
         team_reports: None,
         inference: Some(inference),
+        decisions: None,
         accounts: None,
         billing: None,
         funding: None,

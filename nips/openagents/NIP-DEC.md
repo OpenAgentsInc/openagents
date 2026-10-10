@@ -215,6 +215,48 @@ status. OpenRouter's Decisions API puts the HTTP status number in
 `error.code`; a client or worker reads a numeric or absent code through
 `code_for_http_status`.
 
+### The OpenAgents decision API
+
+Since 2026-10-10 ([#11225](https://github.com/OpenAgentsInc/openagents/issues/11225))
+every OpenAgents caller sends its decisions to our own API,
+`POST https://openagents.com/api/v1/systemone`, with no key and no
+dependency on TypeSafe. The gateway (`crates/gateway`, `decision_dispatch`)
+answers any `jev-…` or `typesafe/…` model name, `openagents/decide`, and
+`clef-flash`, and asks these doors in order, each only when every door
+before it could not answer:
+
+1. **Connected Pylons.** The gateway reads [NIP-PYLON](NIP-PYLON.md)
+   beacons on its relay and keeps the fresh, online ones from its trusted
+   pylon keys that advertise a decision service (`<pylon key>:pylon/decision`
+   on the `cj-decision` lane) with a free slot, best standing first (fewest
+   failures, then the fastest). It sends the decision as a job of this NIP
+   (`25910`, signed by the gateway's dispatch key), waits up to 8 s, checks
+   the answer's shape (every question answered with its own type,
+   probabilities finite and summing to one over exactly the options asked)
+   and that the served model and identity are the beacon's, and otherwise
+   benches that pylon for a minute and tries the next. At most two pylons
+   are tried.
+2. **Our hosted Clef** (`clef_url`), a Psionic `/v1/systemone` over HTTP.
+3. **Gemini on Vertex AI** (`gemini-3.8-flash`, the prepaid Google credit):
+   the same state and questions with a response schema that asks one
+   probability per option (`p_yes` for a noul), clamped and normalized
+   into the answer shape above.
+4. **Jev**, optional and last, off unless the operator turns it on.
+
+Each answer names its door in `service.door` (`pylon:<slug>`, `clef`,
+`vertex`, `jev`), the pylon's address, key, and identity, the served
+`model`, and `latency_ms`, and the response carries `X-Decision-Door`.
+Every decision is one line in `<registry>/decisions/YYYY-MM-DD.jsonl` with
+each attempt's door, outcome, code, and milliseconds. One answer in twenty
+is asked again at a second door after it is sent, and the agreement (the
+questions whose pick agrees, the largest probability gap) goes to
+`decisions/shadow-YYYY-MM-DD.jsonl`.
+
+Clients find it through `jev_hosted::resolve` (below): TypeSafe's door
+resolves to our API unless the person or operator sets
+`OPENAGENTS_DECISIONS=jev`. `OPENAGENTS_DECISIONS_URL` names another base
+URL (staging, a local gateway).
+
 ### Doors and the backup door
 
 The body is the same at every door; only the model's name differs:
@@ -449,10 +491,14 @@ records a judgment, not proof that it was right.
   reports the result as NIP-CJ `judgment` feedback (`route`, `route_p`,
   `lane`, `risk`, `tier`, …). The thread's ATIF records the judgment as a
   decision call.
-- **Coder.** Every caller that asks TypeSafe's door finds Jev through
-  `jev_hosted::resolve`: a local TypeSafe key calls TypeSafe over HTTP;
-  otherwise the call goes to the hosted decision worker as a decision job;
-  otherwise there is no Jev, and the caller says why. The callers: the
+- **Coder.** Every caller that asks TypeSafe's door finds its door through
+  `jev_hosted::resolve`, which since #11225 answers with our decision API
+  (above), keyless. Only under `OPENAGENTS_DECISIONS=jev` does it take the
+  older order: a local TypeSafe key calls TypeSafe over HTTP; otherwise the
+  call goes to the hosted decision worker as a decision job; otherwise there
+  is no Jev, and the caller says why. With no decision profile configured,
+  the chat worker's and the terminal's router ask our API too
+  (`coder::decision::from_env`; `OPENAGENTS_DECISIONS=off` turns it off). The callers: the
   Microcoder repository adapter and bench, the delegate door's Jev and
   judge, Coder One's episode, checks, and tools, the hands seam, a
   program's `decide` step, the chat router and CLI route (through the

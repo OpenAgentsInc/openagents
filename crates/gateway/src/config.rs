@@ -207,6 +207,12 @@ pub struct Config {
     /// Absent mounts no route and keeps no records.
     #[serde(default)]
     pub inference: Option<Inference>,
+    /// `POST /v1/systemone` as the one decision entry point (#11225):
+    /// connected Pylons over Nostr first, then our hosted Clef, then Gemini
+    /// on Vertex AI, with Jev optional and last. Absent keeps the
+    /// registry's doors as the only route.
+    #[serde(default)]
+    pub decisions: Option<crate::decision_dispatch::Decisions>,
 }
 
 /// The inference meter's configuration.

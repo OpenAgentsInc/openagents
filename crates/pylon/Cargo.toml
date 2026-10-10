@@ -28,6 +28,8 @@ pay-ledger = { path = "../pay-ledger", optional = true }
 # replay store that paid direct jobs and brokered sales settle through (P3).
 openagents-x402 = { path = "../x402" }
 nostr-transport = { path = "../nostr-transport" }
+# The sealed execution receipt a decision result carries (NIP-DEC, #11225).
+receipts = { path = "../receipts" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 serde = { version = "1", features = ["derive"] }

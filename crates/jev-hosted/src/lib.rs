@@ -22,6 +22,16 @@
 //! that reason back out of a [`jev::Error`], so a caller can stop asking
 //! and say so once.
 //!
+//! **Since #11225 every decision goes through our own API by default.**
+//! [`resolve`] and [`resolve_with_fallbacks`] answer TypeSafe's door with
+//! [`ours`]: `POST /v1/systemone` on the OpenAgents API
+//! (`https://openagents.com/api`, [`DECISIONS_URL_VAR`] names another),
+//! which farms each decision out to connected Pylons over Nostr (Clef on
+//! Psionic), then Gemini on Vertex AI. No TypeSafe key is read or needed.
+//! The older paths below (a local TypeSafe key, the backup doors, the
+//! hosted decision worker) are taken only when the person or operator
+//! chooses Jev with `OPENAGENTS_DECISIONS=jev` ([`DECISIONS_VAR`]).
+//!
 //! The hosted client is an ordinary [`jev::Client`] whose attempts go
 //! through [`RelayExchange`]; its [`jev::Client::base_url`] names the door
 //! the worker reaches (`https://api.typesafe.ai`) and
@@ -56,6 +66,19 @@ pub const WORKER_VAR: &str = "OPENAGENTS_JEV_WORKER";
 /// `off` turns the hosted service off: no local key then means no Jev.
 pub const HOSTED_VAR: &str = "OPENAGENTS_JEV_HOSTED";
 
+/// Our decision API: `POST /v1/systemone` on the OpenAgents gateway, which
+/// sends each decision to a connected Pylon first (#11225).
+pub const OPENAGENTS: &str = "https://openagents.com/api";
+/// Names another OpenAgents decision API base URL (staging, a local
+/// gateway).
+pub const DECISIONS_URL_VAR: &str = "OPENAGENTS_DECISIONS_URL";
+/// `jev` chooses TypeSafe's Jev (a local key, its backup doors, the hosted
+/// decision worker) over our decision API. Unset or anything else is ours.
+pub const DECISIONS_VAR: &str = "OPENAGENTS_DECISIONS";
+/// How long one call to our decision API may take when the caller set
+/// nothing tighter: the gateway tries Pylons, then Vertex, within 25 s.
+pub const OURS_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// The file under `~/.openagents` holding this computer's decision key.
 pub const KEY_FILE: &str = "decision.key";
 
@@ -71,6 +94,11 @@ const JEV_FILE: &str = "jev.json";
 pub enum Via {
     /// TypeSafe directly, with the key from `source` (a variable or path).
     Direct { source: String },
+    /// Our decision API (#11225): connected Pylons first, no key.
+    OpenAgents {
+        /// The API's base URL, such as [`OPENAGENTS`].
+        url: String,
+    },
     /// The hosted decision service.
     Hosted {
         /// The worker's public key, hex.
@@ -86,6 +114,7 @@ impl std::fmt::Display for Via {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Via::Direct { source } => write!(f, "TypeSafe directly, key from {source}"),
+            Via::OpenAgents { url } => write!(f, "the OpenAgents decision API at {url}"),
             Via::Hosted { worker, relay, .. } => write!(
                 f,
                 "the OpenAgents hosted decision service ({}… on {relay})",
@@ -137,6 +166,9 @@ pub fn resolve(
     door: &Door<'_>,
     tune: &dyn Fn(jev::Config) -> jev::Config,
 ) -> Result<Resolved, String> {
+    if is_ours(env, door) {
+        return ours(env, door, tune);
+    }
     if let Some(resolved) = theirs(&model_access::current(), door, tune)? {
         return Ok(resolved);
     }
@@ -304,6 +336,9 @@ pub fn resolve_with_fallbacks(
     tune: &dyn Fn(jev::Config) -> jev::Config,
     primary_timeout: Option<Duration>,
 ) -> Result<(Resolved, Vec<Fallback>), String> {
+    if is_ours(env, door) {
+        return ours(env, door, tune).map(|resolved| (resolved, Vec::new()));
+    }
     let mut found = Vec::new();
     let mut keyed = Vec::new();
     for fallback in &jev::doors::FALLBACKS {
@@ -361,6 +396,156 @@ pub fn resolve_with_fallbacks(
         found,
     ))
 }
+
+/// Whether a decision for `door` goes to our decision API: TypeSafe's door
+/// or ours, unless `OPENAGENTS_DECISIONS=jev` chooses Jev. Another door (a
+/// local Kev, a loopback Clef, a door the person runs) is that door.
+#[must_use]
+pub fn is_ours(env: &dyn Fn(&str) -> Option<String>, door: &Door<'_>) -> bool {
+    if env(DECISIONS_VAR).is_some_and(|value| value.trim() == "jev") {
+        return false;
+    }
+    let url = door.url.trim_end_matches('/');
+    url == DOOR
+        || url == OPENAGENTS
+        || present(env(DECISIONS_URL_VAR)).is_some_and(|ours| ours.trim_end_matches('/') == url)
+}
+
+/// Our decision API (#11225): a client whose every call is
+/// `POST /v1/systemone` on [`OPENAGENTS`] (or [`DECISIONS_URL_VAR`]), with
+/// no key. The gateway sends the decision to a connected Pylon, then to
+/// Gemini on Vertex AI; the answer's `service.door` names which answered.
+/// The model the caller pins (`jev-1.13.0`, `jev-latest`) is what the call
+/// asks for; the answer names the model that served it.
+///
+/// # Errors
+///
+/// The client cannot be built.
+pub fn ours(
+    env: &dyn Fn(&str) -> Option<String>,
+    door: &Door<'_>,
+    tune: &dyn Fn(jev::Config) -> jev::Config,
+) -> Result<Resolved, String> {
+    let url = present(env(DECISIONS_URL_VAR))
+        .map(|url| url.trim_end_matches('/').to_string())
+        .unwrap_or_else(|| OPENAGENTS.to_string());
+    let exchange = OpenAgentsExchange::new(&url)?;
+    let client = jev::Client::new(
+        tune(jev::Config::new().timeout(OURS_TIMEOUT))
+            .exchange(Arc::new(exchange))
+            .base_url(&url)
+            .default_model(door.model),
+    )
+    .map_err(|error| format!("decisions: {error}"))?;
+    Ok(Resolved {
+        client,
+        via: Via::OpenAgents { url },
+    })
+}
+
+/// Our decision API over HTTPS, keyless: each attempt is one
+/// `POST <url>/v1/systemone` with the caller's `Idempotency-Key` and
+/// `X-Attempt`.
+pub struct OpenAgentsExchange {
+    url: String,
+    http: reqwest::Client,
+}
+
+impl std::fmt::Debug for OpenAgentsExchange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OpenAgentsExchange")
+            .field("url", &self.url)
+            .finish_non_exhaustive()
+    }
+}
+
+impl OpenAgentsExchange {
+    /// An exchange to the decision API at `url` (such as [`OPENAGENTS`]).
+    ///
+    /// # Errors
+    ///
+    /// The HTTP client cannot be built.
+    pub fn new(url: &str) -> Result<Self, String> {
+        let http = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(5))
+            .build()
+            .map_err(|error| format!("decisions: {error}"))?;
+        Ok(Self {
+            url: url.trim_end_matches('/').to_string(),
+            http,
+        })
+    }
+
+    async fn carry(&self, call: Call) -> Result<Reply, Failure> {
+        let mut request = match call.method.as_str() {
+            "GET" => self.http.get(format!("{}{}", self.url, call.path)),
+            _ => self.http.post(format!("{}{}", self.url, call.path)),
+        }
+        .timeout(call.timeout)
+        .header("content-type", "application/json")
+        .header("x-attempt", call.attempt.to_string());
+        if let Some(key) = &call.idempotency_key {
+            request = request.header("idempotency-key", key);
+        }
+        if let Some(body) = call.body {
+            request = request.body(body);
+        }
+        let response = request.send().await.map_err(|error| {
+            if error.is_timeout() {
+                Failure::Timeout
+            } else {
+                Failure::Unreachable(format!(
+                    "{OURS_UNREACHABLE}: the OpenAgents decision API at {} could not be reached: {}",
+                    self.url,
+                    without_url(&error)
+                ))
+            }
+        })?;
+        let status = response.status().as_u16();
+        let headers = response
+            .headers()
+            .iter()
+            .filter_map(|(name, value)| {
+                Some((
+                    name.as_str().to_ascii_lowercase(),
+                    value.to_str().ok()?.to_string(),
+                ))
+            })
+            .collect();
+        let body = response.bytes().await.map_err(|error| {
+            if error.is_timeout() {
+                Failure::Timeout
+            } else {
+                Failure::Unreachable(format!(
+                    "{OURS_UNREACHABLE}: the OpenAgents decision API at {} stopped answering",
+                    self.url
+                ))
+            }
+        })?;
+        Ok(Reply {
+            status,
+            headers,
+            body: body.to_vec(),
+        })
+    }
+}
+
+fn without_url(error: &reqwest::Error) -> String {
+    let text = error.to_string();
+    text.split(" for url").next().unwrap_or(&text).to_string()
+}
+
+impl Exchange for OpenAgentsExchange {
+    fn exchange(&self, call: Call) -> Pending<'_> {
+        Box::pin(self.carry(call))
+    }
+
+    fn service(&self) -> String {
+        format!("OpenAgents decision API at {}", self.url)
+    }
+}
+
+const OURS_UNREACHABLE: &str = "Decisions are unreachable";
 
 /// The hosted decision service alone, whatever key this computer holds:
 /// [`resolve`]'s second door, for a caller configured to use it (the
@@ -438,7 +623,9 @@ pub fn openagents_dir() -> Option<PathBuf> {
 #[must_use]
 pub fn unavailable(error: &jev::Error) -> Option<String> {
     match error {
-        jev::Error::Connection { message, .. } if message.starts_with(UNREACHABLE) => {
+        jev::Error::Connection { message, .. }
+            if message.starts_with(UNREACHABLE) || message.starts_with(OURS_UNREACHABLE) =>
+        {
             Some(message.clone())
         }
         jev::Error::Api(api) => {
@@ -1010,8 +1197,61 @@ fn unix_now() -> u64 {
 mod tests {
     use super::*;
 
-    fn no_env(_: &str) -> Option<String> {
-        None
+    /// No variable but the choice of Jev: these tests cover the older
+    /// paths, which only `OPENAGENTS_DECISIONS=jev` takes since #11225.
+    fn no_env(name: &str) -> Option<String> {
+        (name == DECISIONS_VAR).then(|| "jev".to_string())
+    }
+
+    /// `env`, with Jev chosen.
+    fn jev(env: impl Fn(&str) -> Option<String>) -> impl Fn(&str) -> Option<String> {
+        move |name: &str| {
+            if name == DECISIONS_VAR {
+                Some("jev".to_string())
+            } else {
+                env(name)
+            }
+        }
+    }
+
+    #[test]
+    fn typesafe_s_door_resolves_to_our_decision_api_with_no_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let env = |name: &str| (name == TYPESAFE_KEY_VAR).then(|| "ts-local".to_string());
+        for env in [&env as &dyn Fn(&str) -> Option<String>, &|_: &str| None] {
+            let resolved = resolve(env, dir.path(), &DOOR_PIN, &|config| config).unwrap();
+            assert_eq!(
+                resolved.via,
+                Via::OpenAgents {
+                    url: OPENAGENTS.into()
+                }
+            );
+            assert_eq!(resolved.client.base_url(), OPENAGENTS);
+            assert_eq!(resolved.client.default_model(), "jev-1.13.0");
+            assert_eq!(
+                resolved.client.service().as_deref(),
+                Some("OpenAgents decision API at https://openagents.com/api")
+            );
+            assert_eq!(via(&resolved.client), "hosted");
+            let (resolved, found) =
+                resolve_with_fallbacks(env, dir.path(), &DOOR_PIN, &|config| config, None).unwrap();
+            assert_eq!(resolved.client.base_url(), OPENAGENTS);
+            assert!(found.is_empty());
+        }
+        assert!(
+            !dir.path().join(KEY_FILE).exists(),
+            "no decision key is made"
+        );
+        let staging =
+            |name: &str| (name == DECISIONS_URL_VAR).then(|| "https://staging.example/api/".into());
+        let resolved = resolve(&staging, dir.path(), &DOOR_PIN, &|config| config).unwrap();
+        assert_eq!(resolved.client.base_url(), "https://staging.example/api");
+        // Another door is that door: a local Clef is not rerouted.
+        let local = Door {
+            url: "http://127.0.0.1:18096",
+            model: "clef-flash",
+        };
+        assert!(!is_ours(&|_| None, &local));
     }
 
     const DOOR_PIN: Door<'static> = Door {
@@ -1022,7 +1262,7 @@ mod tests {
     #[test]
     fn a_local_key_is_used_unchanged_and_named_by_where_it_came_from() {
         let dir = tempfile::tempdir().unwrap();
-        let env = |name: &str| (name == TYPESAFE_KEY_VAR).then(|| " ts-local ".to_string());
+        let env = jev(|name: &str| (name == TYPESAFE_KEY_VAR).then(|| " ts-local ".to_string()));
         let resolved = resolve(&env, dir.path(), &DOOR_PIN, &|config| config).unwrap();
         assert_eq!(
             resolved.via,
@@ -1045,6 +1285,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let only = |names: &'static [(&'static str, &'static str)]| {
             move |name: &str| {
+                if name == DECISIONS_VAR {
+                    return Some("jev".to_string());
+                }
                 names
                     .iter()
                     .find(|(key, _)| *key == name)
@@ -1140,7 +1383,7 @@ mod tests {
     #[test]
     fn the_hosted_service_is_off_on_request_and_for_other_doors() {
         let dir = tempfile::tempdir().unwrap();
-        let off = |name: &str| (name == HOSTED_VAR).then(|| "off".to_string());
+        let off = jev(|name: &str| (name == HOSTED_VAR).then(|| "off".to_string()));
         let error = resolve(&off, dir.path(), &DOOR_PIN, &|config| config).unwrap_err();
         assert!(error.contains(HOSTED_VAR), "{error}");
         let other = Door {
@@ -1238,6 +1481,9 @@ mod tests {
         let tune = |config: jev::Config| config;
         let keys = |names: &'static [(&'static str, &'static str)]| {
             move |name: &str| {
+                if name == DECISIONS_VAR {
+                    return Some("jev".to_string());
+                }
                 names
                     .iter()
                     .find(|(key, _)| *key == name)

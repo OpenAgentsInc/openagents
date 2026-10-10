@@ -164,6 +164,7 @@ async fn deploy() -> Deployment {
         team_policy: None,
         team_reports: None,
         inference: None,
+        decisions: None,
         accounts: Some(account_config()),
         billing: Some(billing_config()),
         funding: None,

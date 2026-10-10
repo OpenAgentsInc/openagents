@@ -49,9 +49,34 @@ const CONFIGURED: &[&str] = &[
 /// cannot use, a name it does not know, a setting it does not take, or
 /// a profile no System One client carries.
 pub fn from_env() -> Result<Option<jev::Client>, String> {
-    profile_from_env()?
-        .map(|profile| profile.client().map_err(|refusal| refusal.to_string()))
-        .transpose()
+    match profile_from_env()? {
+        Some(profile) => profile
+            .client()
+            .map(Some)
+            .map_err(|refusal| refusal.to_string()),
+        None => ours_from_env(),
+    }
+}
+
+/// With no decision profile configured, our decision API (#11225):
+/// `POST /v1/systemone` on the OpenAgents gateway, answered by connected
+/// Pylons first, keyless (`jev_hosted::ours`). `OPENAGENTS_DECISIONS=off`
+/// keeps the old absence (no classifier); `=jev` asks for Jev, which needs
+/// a configured key, so it is no door here either.
+fn ours_from_env() -> Result<Option<jev::Client>, String> {
+    let env = |name: &str| std::env::var(name).ok();
+    if env(jev_hosted::DECISIONS_VAR).is_some_and(|value| matches!(value.trim(), "off" | "jev")) {
+        return Ok(None);
+    }
+    jev_hosted::ours(
+        &env,
+        &jev_hosted::Door {
+            url: jev_hosted::OPENAGENTS,
+            model: jev::defaults::MODEL,
+        },
+        &|config| config,
+    )
+    .map(|resolved| Some(resolved.client))
 }
 
 /// [`from_env`] for a server that holds Jev's fallback door keys (the chat
@@ -68,13 +93,13 @@ pub fn from_env_with_fallbacks(
     primary_timeout: Option<std::time::Duration>,
 ) -> Result<Option<(jev::Client, Vec<jev_hosted::Fallback>)>, String> {
     let env = |name: &str| std::env::var(name).ok();
-    profile_from_env()?
-        .map(|profile| {
-            profile
-                .client_with_fallbacks(&env, primary_timeout)
-                .map_err(|refusal| refusal.to_string())
-        })
-        .transpose()
+    match profile_from_env()? {
+        Some(profile) => profile
+            .client_with_fallbacks(&env, primary_timeout)
+            .map(Some)
+            .map_err(|refusal| refusal.to_string()),
+        None => Ok(ours_from_env()?.map(|client| (client, Vec::new()))),
+    }
 }
 
 /// Resolve the active profile without building its door — the same

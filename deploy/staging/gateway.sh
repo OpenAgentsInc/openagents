@@ -46,6 +46,11 @@
 #   INFERENCE_STORE_KEY         optional: the key that seals stored responses
 #   VERTEX_SA_JSON              optional: a service-account key for Vertex
 #   OPENROUTER_API_KEY, AI_GATEWAY_API_KEY, TYPESAFE_API_KEY: optional upstreams
+#   DECISION_PYLONS             optional: comma-separated hex keys of the Pylons whose
+#                               beacons POST /v1/systemone sends decisions to (#11225);
+#                               default CoderOS-4080's pylon key
+#   DECISION_CLEF_URL           optional: our hosted Clef (`/v1/systemone`) after the Pylons
+#   DECISION_JEV                optional: `on` asks Jev (TypeSafe, TYPESAFE_API_KEY) last
 set -eu
 umask 077
 state=${STACK_STATE:-/stack}
@@ -189,6 +194,18 @@ database=""
 if [ -n "${OPENAGENTS_ACCOUNTS_DATABASE_URL:-}" ]; then
     database='"store": "postgres", "import_files": true,'
 fi
+# Decisions (#11225): POST /v1/systemone sends each decision to a connected
+# Pylon over Nostr (NIP-DEC to the beacons of DECISION_PYLONS), then our
+# hosted Clef, then Gemini on Vertex AI with structured output; Jev only
+# with DECISION_JEV=on.
+pylons=$(printf '%s' "${DECISION_PYLONS:-95bc752118e119f852d73741e5f49438cf5e9dce4f3185591014cbb7c311eb32}" |
+    tr -d ' ' | sed 's/,*$//; s/,/","/g')
+clef=""
+if [ -n "${DECISION_CLEF_URL:-}" ]; then
+    clef="\"clef_url\": \"$DECISION_CLEF_URL\","
+fi
+jev=false
+[ "${DECISION_JEV:-}" = on ] && jev=true
 cat > "$private/gateway.json" << EOF
 {
   "v": "openagents.gateway.v1",
@@ -217,6 +234,11 @@ cat > "$private/gateway.json" << EOF
       {"id": "openrouter", "upstream": "openrouter", "granted": 0, "balance": 0, "basis": "pay_as_you_go"},
       {"id": "vercel", "upstream": "vercel", "granted": 0, "balance": 0, "basis": "pay_as_you_go"}
     ]$byok
+  },
+  "decisions": {
+    $clef
+    "pylons": ["$pylons"],
+    "jev": $jev
   }
 }
 EOF

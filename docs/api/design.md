@@ -479,7 +479,8 @@ website cookie), `app` (`sess_` from device sign-in), `nostr` (NIP-98),
 | `GET /v1/models`, `GET /v1/models/{id}` | `GET /v1/models` | Catalog with prices and live speed | PUBLIC | none / key | rate card | launch; `{id}` planned |
 | `GET /v1/rates` | same | Rate card with cost and margin | PUBLIC | none | rate card | launch |
 | `GET /v1/openapi.json` | same, also `/openapi.json` on both hosts | The contract | PUBLIC | none | — | launch #11078 |
-| `POST /v1/systemone`, `POST /v1/classify`, `/v1/jobs...` | same | Decision calls (TypeSafe's Jev) | INTERNAL | key | `money.usage`, `receipts` | built; TypeSafe documents these at `api.typesafe.ai`, we don't |
+| `POST /v1/systemone` | same | Decisions: connected Pylons (Clef over NIP-DEC) first, then Gemini on Vertex; Jev optional and last (#11225) | PUBLIC | none (free) | `decisions/*.jsonl` | built |
+| `POST /v1/classify`, `/v1/jobs...` | same | Decision calls (TypeSafe's Jev) | INTERNAL | key | `money.usage`, `receipts` | built; TypeSafe documents these at `api.typesafe.ai`, we don't |
 | NIP-DEC jobs: kinds `25910`, `26910`, `27010` | same | Decision worker over the relay | INTERNAL | NIP-42 key | — | live |
 
 ### 4.11 discovery and docs

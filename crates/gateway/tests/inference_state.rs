@@ -182,6 +182,7 @@ async fn deploy() -> Deployment {
         team_policy: None,
         team_reports: None,
         inference: Some(inference),
+        decisions: None,
         accounts: None,
         billing: None,
         funding: None,

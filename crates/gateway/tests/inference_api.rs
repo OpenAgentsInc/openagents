@@ -276,6 +276,7 @@ async fn deploy_with(pay: Pay, refuse: bool) -> Deployment {
         team_policy: None,
         team_reports: None,
         inference: Some(inference),
+        decisions: None,
         accounts: Some(gateway::config::Accounts {
             signup_tenant: Some("acme".to_string()),
             open_signup: true,

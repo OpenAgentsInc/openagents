@@ -12,12 +12,15 @@ Steps (each writes into --work, a scratch directory):
   features  run the candidate stages per case; per-stage recall and latency
   train     fit the scorer on the train cases -> scripts/filefind/model.json
   eval      rank the eval cases; recall / precision at 20, 50, 100; misses
-  judge     ask Jev (batch nouls) about the files the scorer is unsure of
+  judge     ask our decision API (batch nouls; connected Pylons first, #11225)
+            about the files the scorer is unsure of
   plan      stage 4: a model writes the change plan; map steps to files
 
     export GOOGLE_APPLICATION_CREDENTIALS=...  # embeddings on Vertex AI (filefind.embed_key)
     export OPENROUTER_API_KEY=...   # the plan model; embeddings when no Google credential
-    export TYPESAFE_API_KEY=...     # Jev, judge step only
+    # judge step: our decision API at openagents.com, keyless
+    # (OPENAGENTS_DECISIONS_URL names another; OPENAGENTS_DECISIONS=jev asks
+    # TypeSafe with TYPESAFE_API_KEY instead)
     python3 scripts/bench/file-finding-bench.py prepare --repo . --dataset D --work W
     python3 scripts/bench/file-finding-bench.py features --repo . --dataset D --work W
     python3 scripts/bench/file-finding-bench.py train --dataset D --work W
@@ -397,14 +400,24 @@ def evaluate(ev, feats, model, a, judged=None):
 # ---------------------------------------------------------------- model stages
 
 JEV_URL = "https://api.typesafe.ai/v1/systemone"
+# Our decision API (#11225): connected Pylons first, then Gemini on Vertex.
+OURS_URL = os.environ.get("OPENAGENTS_DECISIONS_URL", "https://openagents.com/api").rstrip("/") + "/v1/systemone"
+
+
+def decision_door():
+    """(url, key): our API keyless by default; Jev only when chosen."""
+    if os.environ.get("OPENAGENTS_DECISIONS") == "jev":
+        return JEV_URL, os.environ.get("TYPESAFE_API_KEY") or sys.exit("TYPESAFE_API_KEY is not set")
+    return OURS_URL, None
 PLAN_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
 def post(url, key, body, timeout=180):
     import urllib.request
-    r = urllib.request.Request(url, data=json.dumps(body).encode(), headers={
-        "Authorization": f"Bearer {key}", "Content-Type": "application/json",
-        "User-Agent": "openagents-filefind-bench/1"})
+    headers = {"Content-Type": "application/json", "User-Agent": "openagents-filefind-bench/1"}
+    if key:
+        headers["Authorization"] = f"Bearer {key}"
+    r = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers)
     for attempt in range(4):
         try:
             with urllib.request.urlopen(r, timeout=timeout) as x:
@@ -435,7 +448,7 @@ def jev_judge(key, c, paths, head):
             parts.append(f"FILE f{i}: {p}\n```\n{head.get(p, '')}\n```\n")
             qs[f"f{i}"] = {"type": "noul",
                            "instructions": f"Will the change that resolves this issue edit file f{i} ({p})?"}
-        d = post(JEV_URL, key, {"model": "jev-latest", "state": "\n".join(parts), "questions": qs})
+        d = post(key[0], key[1], {"model": "jev-latest", "state": "\n".join(parts), "questions": qs})
         ans = d.get("answers", {})
         return {p: ans.get(f"f{i}", {}).get("noul") for i, p in enumerate(chunk, 1)}, d.get("usage", {})
     usage = Counter()
@@ -450,7 +463,7 @@ def jev_judge(key, c, paths, head):
 
 def cmd_judge(a):
     """Jev re-judges the files the scorer is unsure about: ranks a.band_lo..a.band_hi."""
-    key = os.environ.get("TYPESAFE_API_KEY") or sys.exit("TYPESAFE_API_KEY is not set")
+    key = decision_door()
     cases = load(a)
     model = json.load(open(a.model))
     ev, _ = split(cases, a.eval)

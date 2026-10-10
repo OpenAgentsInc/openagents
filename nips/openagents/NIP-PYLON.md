@@ -116,7 +116,7 @@ again with `status: "offline"` when it stops.
 | `valid_until` | At most 300 seconds after `observed_at`; equal to the `expiration` tag. |
 | `class` | `{family, tier, memory_gb}`. `family` is `unified-memory`, `gpu`, or `cpu`. `tier` is `small`, `medium`, `large`, or `xl` under the bands in [Hardware classes](#hardware-classes). `memory_gb` is one of 8, 16, 32, 64, 128, 256, or 512, rounded down. |
 | `slots` | `{total, free}`, whole numbers, `0 ≤ free ≤ total ≤ 64`. A slot is one concurrent job the pylon admits. |
-| `services` | 1 to 16 entries, each `{capability, model, lanes, offering, price_hint_msat}`. `capability` is an exact CAP DefinitionRef. `model` is an inert identifier of at most 128 bytes. `lanes` is a nonempty distinct subset of `cj-execution`, `cj-conversation`, and `nip90-5050`. `offering` is a `30192` address or null. `price_hint_msat` is a nonnegative integer or null. |
+| `services` | 1 to 16 entries, each `{capability, model, lanes, offering, price_hint_msat}`. `capability` is an exact CAP DefinitionRef. `model` is an inert identifier of at most 128 bytes. `lanes` is a nonempty distinct subset of `cj-execution`, `cj-conversation`, `cj-decision`, and `nip90-5050`. `offering` is a `30192` address or null. `price_hint_msat` is a nonnegative integer or null. |
 | `settlement` | Nonempty distinct list of the NIP-MKT payment profiles and X402 schemes the pylon accepts, such as `free-v1`. |
 | `pools` | Up to 8 pool slugs the provider asks to join. Joining is the aggregator's decision. |
 
@@ -156,6 +156,23 @@ A provider republishes when `status`, `generation`, `services`, or
 least once every 240 seconds while online. A relay MAY refuse a beacon that
 arrives sooner than 10 seconds after the previous one for the same address,
 with `rate-limited:`.
+
+### Decision services
+
+A pylon that answers [NIP-DEC](NIP-DEC.md) decision jobs (`25910` in,
+`27010` and `26910` out) advertises a service on the `cj-decision` lane:
+
+- `capability` is `<pylon key>:pylon/decision`;
+- `model` is the served identity, the model name and, when the server
+  names one, its artifact digest: `clef-flash@sha256:<64 hex>`;
+- `slots` counts decisions and text jobs together.
+
+Every answer it returns names the same identity: `response.model` is the
+name before `@`, and `response.service` is `{door: "pylon:<slug>",
+version, provider, identity}`. A buyer checks both against the beacon and
+treats a mismatch as no answer. The result's receipt names the served model
+and its artifact digest (`served.artifact_signature`). Decision work is
+free (`free-v1`) in this version.
 
 ## Service receipt — kind `3201`
 
@@ -367,6 +384,14 @@ carry the customer's `x402-exact` payment, settled through the broker's
 x402 facilitator, in the broker's receipt. Readers
 sum paid amounts per network and light a pylon's coin only for receipts
 that verify.
+
+Decisions (2026-10-10, #11225): `nostr::pylon::Lane::CjDecision`;
+`crates/pylon` answers NIP-DEC jobs with a local System One server
+(`openagents pylon serve --decide URL`, Psionic's Clef lane on
+`psionic-openai-server`; `--decisions-only` serves no text jobs) and
+advertises `pylon/decision` with its served identity; the OpenAgents
+gateway's `POST /v1/systemone` reads these beacons and sends each decision
+to a pylon with a free slot (NIP-DEC, "The OpenAgents decision API").
 
 Not implemented: mainnet paid receipts, a `wellspring` projection from an
 aggregate, and the `nip-pylon-v1` relay extension. A service's `capability` is a qualified ID

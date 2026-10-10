@@ -136,6 +136,7 @@ async fn a_pylon_provider_earns_from_an_api_request_and_is_paid_out() {
         team_policy: None,
         team_reports: None,
         inference: Some(inference),
+        decisions: None,
         accounts: None,
         billing: None,
         funding: None,

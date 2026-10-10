@@ -110,6 +110,7 @@ async fn deploy(upstreams: Option<Vec<Arc<dyn Upstream>>>) -> Deployment {
         team_policy: None,
         team_reports: None,
         inference: Some(inference),
+        decisions: None,
         accounts: None,
         billing: None,
         funding: None,

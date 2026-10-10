@@ -56,8 +56,8 @@ pub const SUMMARY: &str = "Summary";
 /// Which System One door answers the decision questions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Decider {
-    /// Jev for the issue's kind, Clef-Flash on this computer's Ollama for
-    /// the per-file questions when it answers, else Jev.
+    /// Our decision API (`openagents.com/api/v1/systemone`, connected
+    /// Pylons first; #11225) for every question, keyless.
     Auto,
     /// Jev, TypeSafe's hosted API, for every question.
     Jev,
@@ -110,8 +110,8 @@ Options:
   --repo PATH        The repository checkout to read (default: this directory).
   --github OWNER/R   The GitHub repository of the issue (default: OpenAgentsInc/openagents).
   --fix SHA          A closed issue's fix commit (default: the newest commit naming #N).
-  --decider WHO      auto, jev, clef, or off (default: auto: Jev for the issue's kind,
-                     Clef-Flash on this computer for the files when it answers).
+  --decider WHO      auto, jev, clef, or off (default: auto: our decision API, which
+                     asks connected Pylons first; jev asks TypeSafe with your key).
   --files K          Files in the briefing (default 6).
   --model NAME       The agent's model (default claude-opus-5-5).
   --timeout SECS     How long the agent may work (default 1800).

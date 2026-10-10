@@ -663,6 +663,16 @@ The memory target follows from the layout:
 
 ## Integration into OpenAgents
 
+**Status (2026-10-10, #11225).** Items 1 and 3 are built differently from
+the plan below, free and through our API: `openagents pylon serve --decide`
+answers NIP-DEC jobs with a local Clef server and advertises
+`pylon/decision` on the `cj-decision` lane, and the gateway's
+`POST /v1/systemone` (now public at `openagents.com/api/v1/systemone`)
+sends every decision to such a pylon first, then Gemini on Vertex. Every
+Jev caller resolves to that API by default (`jev_hosted::resolve`).
+CoderOS-4080 is the first pylon (`coderos-4080-clef`, Clef-Flash Q4_K_M on
+CUDA). See [the pylon guide](../compute/pylon.md#answer-decisions-clef).
+
 1. **Jev door** ([#11191](https://github.com/OpenAgentsInc/openagents/issues/11191), after [#11189](https://github.com/OpenAgentsInc/openagents/issues/11189)).
    - `jev::Config::local("http://127.0.0.1:<port>", "clef-flash")` already
      talks to any loopback System One server, so `crates/jev` needs no

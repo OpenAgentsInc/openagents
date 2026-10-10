@@ -13,6 +13,8 @@ jev = { path = "../jev" }
 model-access = { path = "../model-access" }
 nostr = { path = "../nostr" }
 nostr-transport = { path = "../nostr-transport" }
+# Our decision API over HTTPS (#11225).
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 serde_json = "1"
 tokio = { version = "1", features = ["time"] }

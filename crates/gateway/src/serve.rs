@@ -218,6 +218,9 @@ pub struct ServeState {
     /// Live job cancellation signals — one sender per running durable
     /// job, registered before its runner starts.
     pub(crate) job_cancels: Mutex<HashMap<String, watch::Sender<bool>>>,
+    /// The decision dispatcher (#11225), present when `decisions` is
+    /// configured.
+    pub(crate) decisions: Option<Arc<crate::decision_dispatch::Dispatch>>,
 }
 
 impl ServeState {
@@ -461,6 +464,12 @@ impl ServeState {
             })
             .transpose()
             .map_err(|error| Trouble::Io(std::io::Error::other(error)))?;
+        let decisions = config
+            .decisions
+            .clone()
+            .map(|decisions| crate::decision_dispatch::Dispatch::open(decisions, &config.registry))
+            .transpose()
+            .map_err(|error| Trouble::Io(std::io::Error::other(error)))?;
         let state = Arc::new(Self {
             meter,
             inference_x402,
@@ -491,6 +500,7 @@ impl ServeState {
             doors: Mutex::new(HashMap::new()),
             attempt_ids: AtomicU64::new(0),
             job_cancels: Mutex::new(HashMap::new()),
+            decisions,
         });
         Ok(state)
     }
@@ -1507,6 +1517,11 @@ pub(crate) async fn systemone(
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
+    if let Some(dispatch) = &state.decisions
+        && let Some(response) = dispatch.handle(&headers, &body).await
+    {
+        return response;
+    }
     owned_request(state, headers, body, false).await
 }
 

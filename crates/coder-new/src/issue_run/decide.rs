@@ -276,6 +276,26 @@ fn jev_door() -> Option<Door> {
     })
 }
 
+/// Our decision API (#11225): connected Pylons first, then Gemini on
+/// Vertex, keyless.
+fn ours_door() -> Option<Door> {
+    let env = |name: &str| std::env::var(name).ok();
+    let resolved = jev_hosted::ours(
+        &env,
+        &jev_hosted::Door {
+            url: jev_hosted::OPENAGENTS,
+            model: "jev-latest",
+        },
+        &|config| config.timeout(std::time::Duration::from_secs(30)),
+    )
+    .ok()?;
+    Some(Door {
+        client: resolved.client,
+        label: "OpenAgents decisions".into(),
+        model: "jev-latest".into(),
+    })
+}
+
 fn clef_door() -> Option<Door> {
     let address = std::net::SocketAddr::from(([127, 0, 0, 1], 11434));
     std::net::TcpStream::connect_timeout(&address, std::time::Duration::from_millis(500)).ok()?;
@@ -294,10 +314,7 @@ fn doors(decider: Decider) -> (Option<Door>, Option<Door>) {
         Decider::Off => (None, None),
         Decider::Jev => (jev_door(), jev_door()),
         Decider::Clef => (clef_door(), clef_door()),
-        Decider::Auto => {
-            let files = clef_door().or_else(jev_door);
-            (jev_door().or_else(clef_door), files)
-        }
+        Decider::Auto => (ours_door(), ours_door()),
     }
 }
 

@@ -39,6 +39,8 @@ BACKENDS = {
     # llama.cpp b11538 llama-server (Metal) on this Mac
     "mac-llamacpp-flash": ("http://127.0.0.1:18093", "clef-flash", None),
     "mac-llamacpp-27b": ("http://127.0.0.1:18094", "clef", None),
+    # Our decision API (#11225): connected Pylons first, keyless.
+    "openagents": ("https://openagents.com/api", "jev-latest", None),
     "jev": ("https://api.typesafe.ai", "jev-latest", "TYPESAFE_API_KEY"),
 }
 QUESTION = "Is this file relevant to solving the issue?"

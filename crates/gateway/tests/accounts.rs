@@ -104,6 +104,7 @@ async fn deploy(accounts: Option<config::Accounts>, require_membership: bool) ->
         team_policy: None,
         team_reports: None,
         inference: None,
+        decisions: None,
         accounts,
         money: None,
         max_body_bytes: 1_048_576,
@@ -1890,6 +1891,7 @@ async fn stores_install_under_accounts_config_and_validate() {
         team_policy: None,
         team_reports: None,
         inference: None,
+        decisions: None,
         accounts: Some(config::Accounts {
             signup_tenant: Some("acme".to_string()),
             open_signup: true,

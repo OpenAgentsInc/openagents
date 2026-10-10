@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use nostr::decision::{self, Admitted, RequestWindow, Resolution, Seal};
 use nostr::domain::{Event, MintedOwnerAttestation};
 use nostr::pylon::{
     BEACON_V, Beacon, Class, Family, Lane, Service, Slots, Status, Tier, owned_beacon_event,
@@ -22,6 +23,7 @@ use serde_json::json;
 use tokio::sync::{Mutex, mpsc};
 use tokio::time::timeout;
 
+use crate::decide::Decider;
 use crate::engine::Engine;
 use crate::identity::Identity;
 use crate::job::{self, Refusal};
@@ -121,7 +123,10 @@ struct State {
 pub struct Provider {
     config: Config,
     identity: Identity,
-    engine: Arc<dyn Engine>,
+    /// The text model; `None` for a pylon that only answers decisions.
+    engine: Option<Arc<dyn Engine>>,
+    /// The System One server decisions go to, when this pylon answers them.
+    decider: Option<Arc<dyn Decider>>,
     machine: Arc<dyn Machine>,
     seller: Option<Seller>,
     generation: u64,
@@ -163,7 +168,28 @@ impl Provider {
         engine: Arc<dyn Engine>,
         machine: Arc<dyn Machine>,
     ) -> Result<Arc<Self>, String> {
-        Self::build(config, identity, engine, machine, None)
+        Self::build(config, identity, Some(engine), None, machine, None)
+    }
+
+    /// A free pylon that answers NIP-DEC decision jobs with `decider`, and
+    /// text jobs too when `engine` is given (#11225). Its beacon advertises
+    /// `<pylon key>:pylon/decision` on the `cj-decision` lane with the
+    /// decider's served identity.
+    ///
+    /// # Errors
+    ///
+    /// As [`Provider::on`], and for a priced config: decisions are free work.
+    pub fn deciding(
+        config: Config,
+        identity: Identity,
+        engine: Option<Arc<dyn Engine>>,
+        decider: Arc<dyn Decider>,
+        machine: Arc<dyn Machine>,
+    ) -> Result<Arc<Self>, String> {
+        if config.price.is_some() {
+            return Err("a pylon answers decisions for free; drop the price".into());
+        }
+        Self::build(config, identity, engine, Some(decider), machine, None)
     }
 
     /// A priced pylon: every job is bought first under NIP-X402, with
@@ -198,13 +224,14 @@ impl Provider {
                 .join(format!("{}-{}", config.pylon, &identity.pubkey()[..16]));
         let per_hour = config.rate_per_minute.saturating_mul(60);
         let seller = Seller::open(&dir, identity.pubkey(), price, receiver, Some(per_hour))?;
-        Self::build(config, identity, engine, machine, Some(seller))
+        Self::build(config, identity, Some(engine), None, machine, Some(seller))
     }
 
     fn build(
         config: Config,
         identity: Identity,
-        engine: Arc<dyn Engine>,
+        engine: Option<Arc<dyn Engine>>,
+        decider: Option<Arc<dyn Decider>>,
         machine: Arc<dyn Machine>,
         seller: Option<Seller>,
     ) -> Result<Arc<Self>, String> {
@@ -237,6 +264,7 @@ impl Provider {
             config,
             identity,
             engine,
+            decider,
             machine,
             seller,
             generation,
@@ -288,13 +316,7 @@ impl Provider {
                     0
                 },
             },
-            services: vec![Service {
-                capability: Config::capability(self.pubkey()),
-                model: self.engine.model().chars().take(128).collect(),
-                lanes: vec![Lane::CjConversation],
-                offering: None,
-                price_hint_msat: self.config.price.map(|p| p.msat),
-            }],
+            services: self.services(),
             settlement: vec![if self.config.price.is_some() {
                 paid::PROFILE.into()
             } else {
@@ -302,6 +324,44 @@ impl Provider {
             }],
             pools: self.config.pools.clone(),
         }
+    }
+
+    /// The services the beacon advertises: text generation when there is an
+    /// engine, decisions when there is a decider.
+    fn services(&self) -> Vec<Service> {
+        let mut services = Vec::new();
+        if let Some(engine) = &self.engine {
+            services.push(Service {
+                capability: Config::capability(self.pubkey()),
+                model: engine.model().chars().take(128).collect(),
+                lanes: vec![Lane::CjConversation],
+                offering: None,
+                price_hint_msat: self.config.price.map(|p| p.msat),
+            });
+        }
+        if let Some(decider) = &self.decider {
+            services.push(Service {
+                capability: crate::decide::capability(self.pubkey()),
+                model: decider.identity().advertised(),
+                lanes: vec![Lane::CjDecision],
+                offering: None,
+                price_hint_msat: None,
+            });
+        }
+        services
+    }
+
+    /// Whether every model this pylon serves answers right now.
+    async fn models_healthy(&self) -> bool {
+        let text = match &self.engine {
+            Some(engine) => engine.healthy().await,
+            None => true,
+        };
+        let decisions = match &self.decider {
+            Some(decider) => decider.healthy().await,
+            None => true,
+        };
+        text && decisions
     }
 
     /// Serve until `stop` resolves, then publish an offline beacon.
@@ -338,7 +398,7 @@ impl Provider {
         let mut checked = Instant::now() - Duration::from_secs(60);
         loop {
             if checked.elapsed() >= Duration::from_secs(30) {
-                let healthy = self.engine.healthy().await;
+                let healthy = self.models_healthy().await;
                 self.state.lock().await.healthy = healthy;
                 checked = Instant::now();
             }
@@ -406,8 +466,15 @@ impl Provider {
                 }
             }
         };
+        let mut kinds = Vec::new();
+        if self.engine.is_some() {
+            kinds.push(job::REQUEST_KIND);
+        }
+        if self.decider.is_some() {
+            kinds.push(decision::REQUEST_KIND);
+        }
         let filter = json!({
-            "kinds": [job::REQUEST_KIND],
+            "kinds": kinds,
             "#p": [self.pubkey()],
             "since": now().saturating_sub(10),
         });
@@ -428,6 +495,8 @@ impl Provider {
                         Frame::Event { sub, event } if sub == "jobs" => {
                             if event.kind == job::REQUEST_KIND {
                                 tokio::spawn(Arc::clone(&self).admit(*event));
+                            } else if event.kind == decision::REQUEST_KIND {
+                                tokio::spawn(Arc::clone(&self).decide(*event));
                             } else {
                                 tokio::spawn(Arc::clone(&self).purchase(*event));
                             }
@@ -464,6 +533,9 @@ impl Provider {
 
     /// Admit one request event, run it, and queue the answer.
     pub async fn admit(self: Arc<Self>, event: Event) {
+        let Some(engine) = self.engine.clone() else {
+            return;
+        };
         if event.kind != job::REQUEST_KIND || event.validate_crypto().is_err() {
             return;
         }
@@ -554,7 +626,7 @@ impl Provider {
         );
         let outcome = timeout(
             self.config.job_timeout,
-            self.engine.generate(&request.turns, self.config.max_tokens),
+            engine.generate(&request.turns, self.config.max_tokens),
         )
         .await;
         let body = match outcome {
@@ -611,6 +683,178 @@ impl Provider {
         }
         self.state.lock().await.free += 1;
         self.changed.notify_one();
+    }
+
+    /// Answer one NIP-DEC decision job (`25910`) with the decider (#11225):
+    /// the same admission as a text job (a verified, addressed, fresh,
+    /// unseen request from an allowed key under its rate, with a free
+    /// slot), then `27010 processing`, the decider's answer, and a `26910`
+    /// result carrying a sealed execution receipt. A refusal is a `27010`
+    /// error.
+    pub async fn decide(self: Arc<Self>, event: Event) {
+        let Some(decider) = self.decider.clone() else {
+            return;
+        };
+        if event.kind != decision::REQUEST_KIND || event.validate_crypto().is_err() {
+            return;
+        }
+        {
+            let mut state = self.state.lock().await;
+            if !state.seen.insert(event.id.clone()) {
+                return;
+            }
+            state.order.push_back(event.id.clone());
+            if state.order.len() > SEEN_BOUND
+                && let Some(old) = state.order.pop_front()
+            {
+                state.seen.remove(&old);
+            }
+        }
+        let call = match decision::admit(
+            &event,
+            self.pubkey(),
+            self.identity.secret(),
+            now(),
+            RequestWindow::new(120, 30),
+        ) {
+            Ok(Admitted::Call(call)) => call,
+            // A decision runs for a second or two; there is nothing to stop.
+            Ok(Admitted::Cancel(_)) => return,
+            Err(error) => {
+                self.state.lock().await.counters.refused += 1;
+                if let Some(refusal) = decision::Refusal::from_error(&error)
+                    && let Ok(payload) = decision::decrypt_payload(&event, self.identity.secret())
+                    && let Some((request, attempt)) = decision::payload_correlation(&payload)
+                {
+                    let body = decision::refusal_payload(&request, attempt, &refusal);
+                    self.send_decision(&event, |seal| {
+                        decision::answer_event(
+                            seal,
+                            decision::FEEDBACK_KIND,
+                            &event.id,
+                            &event.pubkey,
+                            &body,
+                        )
+                    });
+                }
+                return;
+            }
+        };
+        let refuse = |this: &Self, code: &str, message: String, retry: Option<u64>| {
+            let mut refusal = decision::Refusal::new(code).message(message);
+            if let Some(ms) = retry {
+                refusal = refusal.retry_after_ms(ms);
+            }
+            this.send_decision(&event, |seal| call.refusal_event(seal, &refusal));
+        };
+        if let Err(refusal) = self.gate(&event).await {
+            self.state.lock().await.counters.refused += 1;
+            let code = match refusal.code {
+                "rate_limited" if refusal.message == "no free slot" => "busy",
+                other => other,
+            };
+            refuse(&self, code, refusal.message, refusal.retry_after_ms);
+            return;
+        }
+        self.changed.notify_one();
+        let machine = Arc::clone(&self.machine);
+        let _lease = match tokio::task::spawn_blocking(move || machine.take()).await {
+            Ok(Ok(guard)) => guard,
+            Ok(Err(_)) | Err(_) => {
+                let mut state = self.state.lock().await;
+                state.yielding = true;
+                state.counters.refused += 1;
+                state.free += 1;
+                drop(state);
+                self.changed.notify_one();
+                refuse(
+                    &self,
+                    "busy",
+                    "the owner's work needs this computer".into(),
+                    Some(30_000),
+                );
+                return;
+            }
+        };
+        self.send_decision(&event, |seal| {
+            call.status_event(seal, decision::Status::Processing)
+        });
+        let started = Instant::now();
+        let outcome = timeout(
+            self.config.job_timeout,
+            decider.decide(&call.body.state, &call.body.questions),
+        )
+        .await;
+        let latency_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        let identity = decider.identity();
+        match outcome {
+            Ok(Ok(mut response)) => {
+                self.state.lock().await.counters.served += 1;
+                response["model"] = json!(identity.model);
+                response["service"] = json!({
+                    "door": format!("pylon:{}", self.config.pylon),
+                    "version": concat!("pylon@", env!("CARGO_PKG_VERSION")),
+                    "provider": self.pubkey(),
+                    "identity": identity.advertised(),
+                });
+                response["latency_ms"] = json!(latency_ms);
+                let receipt = decision_receipt(&call, &identity, latency_ms, &response);
+                let resolution = Resolution::Answered(response);
+                self.send_decision(&event, |seal| {
+                    call.result_event(seal, &resolution, &receipt)
+                });
+                eprintln!(
+                    "pylon: decision {} answered by {} in {latency_ms} ms",
+                    &event.id[..12],
+                    identity.model
+                );
+            }
+            Ok(Err(refusal)) => {
+                self.state.lock().await.counters.failed += 1;
+                eprintln!(
+                    "pylon: decision {} refused by the model server: {}",
+                    &event.id[..12],
+                    refusal.code
+                );
+                self.send_decision(&event, |seal| call.refusal_event(seal, &refusal));
+            }
+            Err(_) => {
+                self.state.lock().await.counters.failed += 1;
+                refuse(
+                    &self,
+                    "timeout",
+                    "the model server did not answer in time".into(),
+                    None,
+                );
+            }
+        }
+        self.state.lock().await.free += 1;
+        self.changed.notify_one();
+    }
+
+    /// Seal one decision-job event to the request's signer and queue it.
+    fn send_decision(
+        &self,
+        request: &Event,
+        build: impl FnOnce(Seal<'_>) -> Result<Event, decision::DecisionError>,
+    ) {
+        let Some(peer) = crate::identity::parse_pubkey(&request.pubkey) else {
+            return;
+        };
+        let seal = Seal {
+            signer: self.identity.signer(),
+            conversation: nostr::nip44::conversation_key(self.identity.secret(), &peer),
+            nonce: secp256k1::rand::random(),
+            created_at: now(),
+        };
+        match build(seal) {
+            Ok(event) => {
+                if self.outbound.try_send(event).is_err() {
+                    eprintln!("pylon: outbound queue full; dropped a decision answer");
+                }
+            }
+            Err(e) => eprintln!("pylon: sealing a decision answer: {e}"),
+        }
     }
 
     /// For a priced pylon, the buyer's admitted NIP-X402 purchase whose
@@ -749,4 +993,41 @@ impl Provider {
             Err(e) => eprintln!("pylon: sealing an answer: {e}"),
         }
     }
+}
+
+/// The sealed execution receipt a decision result carries: bound to the
+/// request event and the request's digest, naming the served model and its
+/// artifact digest.
+fn decision_receipt(
+    call: &decision::AdmittedCall,
+    identity: &crate::decide::Identity,
+    latency_ms: u64,
+    response: &serde_json::Value,
+) -> serde_json::Value {
+    use receipts::execution::{ExecutionReceipt, Outcome, Served, Timing};
+    let mut receipt = ExecutionReceipt::for_attempt(
+        decision::RELAY_TRANSPORT,
+        call.body.request.clone(),
+        call.body.attempt,
+        call.request_digest.clone(),
+    );
+    receipt.attempt_id = call.attempt_id.clone();
+    receipt.requested = Served {
+        model: call.body.model.clone(),
+        ..Served::default()
+    };
+    receipt.served = Served {
+        model: identity.model.clone(),
+        artifact_signature: identity.artifact_digest.clone().unwrap_or_default(),
+        ..Served::default()
+    };
+    receipt.outcome = Outcome::Answered;
+    receipt.timing = Timing {
+        queued_ms: None,
+        latency_ms: Some(latency_ms),
+        resolved_at: None,
+    };
+    receipt.result_digest = Some(nostr::pylon::sha256_hex(response.to_string().as_bytes()));
+    receipt.seal();
+    serde_json::to_value(&receipt).unwrap_or(serde_json::Value::Null)
 }

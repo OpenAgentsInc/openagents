@@ -34,6 +34,12 @@ Commands:
   serve                     Publish beacons and answer jobs from a local Psionic server.
       --engine URL          The Psionic server (default http://127.0.0.1:18080).
       --model NAME          The served model (default qwen3.5-0.8b-q8_0).
+      --decide URL          Also answer NIP-DEC decision jobs with the System
+                            One server at URL (Psionic's Clef lane), free;
+                            the beacon advertises pylon/decision.
+      --decide-model NAME   The decision model at that server (default: the
+                            first one it lists).
+      --decisions-only      Answer decision jobs only, no text jobs.
       --pylon SLUG          The beacon's name (default: the host name).
       --label TEXT          Display label (default: the slug).
       --slots N             Concurrent jobs (default 2).
@@ -306,6 +312,12 @@ async fn serve(
     let model = args
         .value("--model")?
         .unwrap_or_else(|| "qwen3.5-0.8b-q8_0".into());
+    let decide_url = args.value("--decide")?;
+    let decide_model = args.value("--decide-model")?;
+    let decisions_only = args.flag("--decisions-only");
+    if decisions_only && decide_url.is_none() {
+        return Err("--decisions-only needs --decide URL".into());
+    }
     let slug = args.value("--pylon")?.unwrap_or_else(host_slug);
     let mut config = Config::new(relay, &slug, home());
     config.label = args.value("--label")?.unwrap_or_else(|| slug.clone());
@@ -351,7 +363,25 @@ async fn serve(
     config.owner = load_owner(&home())?;
     let engine = Arc::new(Psionic::new(&engine_url, &model)?);
     let identity = key("provider")?;
-    let provider = if price_msat > 0 {
+    let provider = if let Some(url) = &decide_url {
+        if price_msat > 0 {
+            return Err("decisions are free work; drop --price-msat with --decide".into());
+        }
+        let clef = crate::decide::Clef::new(url, decide_model.as_deref())?;
+        match clef.refresh().await {
+            Ok(found) => eprintln!("pylon: decisions from {} at {url}", found.advertised()),
+            Err(why) => eprintln!("pylon: {why}; the beacon says draining until it answers"),
+        }
+        let text: Option<Arc<dyn crate::engine::Engine>> =
+            if decisions_only { None } else { Some(engine) };
+        Provider::deciding(
+            config.clone(),
+            identity.clone(),
+            text,
+            Arc::new(clef),
+            machine,
+        )?
+    } else if price_msat > 0 {
         let grant = grant_for(net)?;
         config.price = Some(Price {
             msat: price_msat,
@@ -376,15 +406,21 @@ async fn serve(
             "pylon": format!("30200:{}:{}", identity.pubkey(), slug),
             "npub": identity.npub(),
             "relay": relay,
-            "engine": engine_url,
-            "model": model,
+            "engine": (!decisions_only).then_some(&engine_url),
+            "model": (!decisions_only).then_some(&model),
+            "decide": decide_url,
             "allow": config.allow.as_ref().map(|a| a.iter().map(|k| npub(k)).collect::<Vec<_>>()),
             "price_msat": config.price.map(|p| p.msat),
             "network": config.price.map(|p| p.network.as_str()),
         }),
         &format!(
-            "pylon {} serving {model} from {engine_url} on {relay}\nnpub {}\nstop with Ctrl-C or SIGTERM; an offline beacon goes out on the way down",
+            "pylon {} serving {} on {relay}\nnpub {}\nstop with Ctrl-C or SIGTERM; an offline beacon goes out on the way down",
             slug,
+            match (&decide_url, decisions_only) {
+                (Some(url), true) => format!("decisions from {url}"),
+                (Some(url), false) => format!("{model} from {engine_url} and decisions from {url}"),
+                (None, _) => format!("{model} from {engine_url}"),
+            },
             identity.npub()
         ),
     );

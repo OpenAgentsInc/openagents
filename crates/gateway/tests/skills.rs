@@ -105,6 +105,7 @@ async fn deploy(answer_status: StatusCode, review_body: Value) -> Deployment {
         team_policy: None,
         team_reports: None,
         inference: None,
+        decisions: None,
         accounts: Some(account_config()),
         billing: None,
         funding: None,

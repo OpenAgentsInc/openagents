@@ -122,6 +122,10 @@ pub enum Lane {
     CjConversation,
     #[serde(rename = "nip90-5050")]
     Nip90,
+    /// NIP-DEC decision jobs (`25910`/`26910`/`27010`): the pylon answers
+    /// `POST /v1/systemone`-shaped questions with probabilities.
+    #[serde(rename = "cj-decision")]
+    CjDecision,
 }
 
 /// `class` in a beacon.

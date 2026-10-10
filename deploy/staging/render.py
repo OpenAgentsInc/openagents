@@ -153,7 +153,10 @@ def main():
             plain("OPENAGENTS_PRODUCT_KB_EMBEDDINGS", "gateway"),
             secret("openagents-chat-worker-staging-secret", "CODER_WORKER_SECRET"),
             secret("openagents-gateway-staging-ai-gateway-key", "CODER_AI_GATEWAY_KEY"),
-            secret("openagents-gateway-staging-typesafe-key", "TYPESAFE_API_KEY"),
+            # Decisions (the router's judge) go to this service's own
+            # gateway, which asks connected Pylons first, with no TypeSafe
+            # key (#11225).
+            plain("OPENAGENTS_DECISIONS_URL", "http://127.0.0.1:8791"),
         ],
         "volumeMounts": [stack],
         "resources": {"limits": {"cpu": "1", "memory": "512Mi"}},
