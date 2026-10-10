@@ -19,17 +19,16 @@ A page showing host-owned private records also supplies
 `endpoint` and `identity`: a pinned same-origin host-standing route and a
 `sha256:` identity digest. The server checks current observation authority, the
 rendered account projection, and the exact host, workspace, grant, task,
-attempt, and source binding before
-returning `{active:true,identity}`. The runtime checks account and resource
-standing serially before reveal and during the visible lifetime, with a 4 KiB
-resource-response bound. The descriptor is limited to 8 KiB and its endpoint
-to 4 KiB. An append-only head may advance while the original
-source remains valid; the displayed record stays pinned until navigation.
+attempt, and source binding before returning `{active:true,identity}`. The
+runtime checks account and resource standing serially before reveal and during
+the visible lifetime, with a 4 KiB resource-response bound. The descriptor is
+limited to 8 KiB and its endpoint to 4 KiB. An append-only head may advance
+while the original source remains valid; the displayed record stays pinned
+until navigation.
 
 `start()` validates initial standing, then reveals the mount only after a
 current server response. It polls the same-origin session endpoint serially,
-with an eight-second timeout and a
-16 KiB response bound. Lost visibility, page departure, expiration, changed
+with an eight-second timeout and a 16 KiB response bound. Lost visibility, page departure, expiration, changed
 authority, or an unavailable response clears private DOM and input values.
 Returning to the page requires navigation; retired content never resumes.
 No credentials or drafts enter browser storage.
