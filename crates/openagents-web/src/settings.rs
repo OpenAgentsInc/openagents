@@ -938,7 +938,7 @@ mod tests {
     #[test]
     fn the_claude_page_says_usage_bills_to_the_users_own_account() {
         let html = claude_content(None, true, ("t", "r"), ("t", "r")).into_string();
-        assert!(html.contains("Usage bills to your own account."));
+        assert!(html.contains("Usage bills to your own account"));
         assert!(!html.contains(">Remove<"));
         // The secret never reaches autofill or the spellchecker.
         assert!(
