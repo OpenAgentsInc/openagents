@@ -998,3 +998,23 @@ shift: 59 passed, 0 failed, 2 skipped. In the next 10 minutes `/` and
 `/api/v1/models` answered 200 on 20 of 20 checks, and the revision logged no
 errors.
 Rollback: `scripts/deploy/web.sh rollback coder-web-e4d9859dce-20261010023417`.
+
+### 2026-10-10 13:55 UTC: chat images and PDFs on Gemini/Vertex first (#11221)
+
+`coder-web-63d03413b1-20261010135324` (`513821b8e6`, image
+`openagents-web@sha256:63d03413…`) serves 100% of openagents.com. The
+chat's images and PDFs go to `gemini-3.8-flash` on Vertex AI first
+(`chat_vision.rs`), then the gateway sidecar door, then the hosted chat
+with the words only. The web container gained `VERTEX_SA_JSON` (secret
+`openagents-vertex-sa-key`, the gateway's), which `deploy/production/web.sh`
+writes to a private file for `GOOGLE_APPLICATION_CREDENTIALS`; `promote`
+adds it to a spec that lacks it. Staging (`--keep-spec`): smoke 92 passed,
+0 failed, 2 skipped; a signed-up test account sent a red PNG and a
+one-page PDF and got "The image is red and the secret word is PELICAN" in
+11.5 s end to end, the log saying "gemini-on-vertex answered in 9175 ms".
+The no-traffic candidate failed only its 8 gateway checks
+(`GATEWAY_HOLD=serving`); `replace` was refused `actAs` for the automation
+account and applied as `chris@`. openagents.com smoke (`--production`)
+after the shift: 59 passed, 0 failed, 2 skipped. Production has no
+scriptable signed-in account, so the image question there is the owner's.
+Rollback: `scripts/deploy/web.sh rollback coder-web-37e70ce641-20261010035400`.
