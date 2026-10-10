@@ -1,8 +1,30 @@
 # Briefed agent vs bare Claude Code (#11211)
 
-Status: in progress, 2026-10-10. Pilot and an exploratory main round done;
-the pre-registered S2 run (below) is running. Its result replaces the
-exploratory numbers.
+Status: S2 complete, 2026-10-10. Tier-1 tool and one-lever ablations are
+not yet run (see Next).
+
+## Headline (pre-registered S2: 21 closed issues x 3 runs, A vs B0)
+
+| Arm | Accepted (fix tests + judge) | Median $ (sd) | Median s (sd) | $ per accepted | Same outcome in all 3 runs |
+|---|---|---|---|---|---|
+| A bare Claude Code | 19/63 | 1.19 (0.56) | 284 (233) | 4.00 | 16/21 issues |
+| B0 briefed + verify | 19/63 | 0.52 (0.29) | 121 (96) | 1.84 | 17/21 issues |
+
+- **Success:** equal point estimates (0.302 each, issue-weighted); difference
+  +0.000, 95% CI [-0.048, +0.048]. Under the frozen rule a CI spanning 0 is
+  **inconclusive on "equal or better"**. Secondary: the fix's tests pass
+  0.333 vs 0.302 (CI [-0.079, 0.000]); the judge accepts 0.889 vs 0.794
+  (CI [-0.254, +0.048]), so a quality cost for B0 is not ruled out.
+- **Cost:** 53.9% lower per accepted change (95% CI [44.3%, 60.4%]): the
+  30% gate is met with its lower bound. Total list price $75.98 (A) and
+  $35.03 (B0); no unknown costs; one timeout.
+- **Time:** median 121 s vs 284 s, p90 289 s vs 657 s: the latency gate is
+  met. Spread is lower too.
+- **Recommendation:** use B0 as the default path for small, well-scoped Rust
+  issues: it halves the cost and time per accepted change at the same
+  observed success. Do not claim it is equal or better in quality yet:
+  extend S2 prospectively (a new frozen plan with more issues) before that
+  claim, and watch the judge-acceptance gap.
 
 The question: is a Claude agent with a prepared **briefing**, a custom system
 prompt and a minimal tool set a cheaper, faster or more reliable way to turn
@@ -207,3 +229,89 @@ are fixed (commands run without the lock's descriptor; prewarm skips the
 watcher; incremental builds are off to fit the build host's 50 GB floor), and
 S2 restarted from scratch under the same plan. The exploratory rounds ran
 without a working prewarm, so their first trial per issue built cold.
+
+### S2 results
+
+Issues: 21; trials: 126; bootstrap: 10000 issue-level resamples, seed 11211.
+
+| Success (B0 vs A) | A | B0 | Difference | 95% CI |
+|---|---|---|---|---|
+| accepted (fix tests and judge) | 0.302 | 0.302 | +0.000 | [-0.048, +0.048] |
+| fix tests pass | 0.333 | 0.302 | -0.032 | [-0.079, +0.000] |
+| judge accepts | 0.889 | 0.794 | -0.095 | [-0.254, +0.048] |
+
+| Cost (list price, as the CLI reports) | A | B0 |
+|---|---|---|
+| $ per accepted (known costs) | 4.00 | 1.84 |
+| trials with unknown cost | 0 | 0 |
+| cost reduction per accepted | | +53.9% (95% CI [+44.3%, +60.4%]) |
+
+| Time (s) | A | B0 |
+|---|---|---|
+| median | 284.2 | 121.1 |
+| p90 | 656.5 | 289.0 |
+
+| Issue | A accepted | B0 accepted | A mean $ | B0 mean $ | A mean s | B0 mean s |
+|---|---|---|---|---|---|---|
+| #10074 | 2/3 | 2/3 | 0.70 | 0.17 | 193 | 67 |
+| #10167 | 0/3 | 0/3 | 0.47 | 0.27 | 66 | 64 |
+| #10179 | 0/3 | 0/3 | 1.99 | 0.94 | 369 | 198 |
+| #10181 | 1/3 | 2/3 | 1.38 | 0.85 | 310 | 163 |
+| #10201 | 3/3 | 3/3 | 1.05 | 0.54 | 202 | 137 |
+| #10228 | 3/3 | 3/3 | 0.61 | 0.16 | 156 | 67 |
+| #10248 | 0/3 | 0/3 | 1.60 | 0.51 | 470 | 99 |
+| #10258 | 0/3 | 0/3 | 1.08 | 0.56 | 170 | 109 |
+| #10273 | 3/3 | 3/3 | 1.32 | 0.69 | 501 | 138 |
+| #10283 | 0/3 | 0/3 | 1.88 | 0.91 | 237 | 176 |
+| #10289 | 2/3 | 2/3 | 0.67 | 0.26 | 363 | 93 |
+| #10295 | 0/3 | 0/3 | 0.76 | 0.39 | 89 | 113 |
+| #10298 | 0/3 | 0/3 | 1.32 | 0.58 | 364 | 153 |
+| #10299 | 0/3 | 0/3 | 2.29 | 0.72 | 555 | 107 |
+| #10301 | 1/3 | 0/3 | 1.64 | 0.55 | 348 | 199 |
+| #10349 | 0/3 | 0/3 | 1.94 | 0.86 | 664 | 287 |
+| #10369 | 0/3 | 0/3 | 1.36 | 0.99 | 315 | 304 |
+| #10370 | 0/3 | 0/3 | 0.70 | 0.44 | 373 | 176 |
+| #10893 | 3/3 | 3/3 | 0.48 | 0.20 | 257 | 354 |
+| #10986 | 1/3 | 1/3 | 0.79 | 0.25 | 660 | 120 |
+| #11118 | 0/3 | 0/3 | 1.31 | 0.83 | 649 | 163 |
+
+
+Judge cost (not in either arm): $34.18. Build-lock wait per trial: median
+9.8 s. Per-trial rows: `scripts/bench/briefed-ab/results/s2-trials.csv`.
+
+Where B0's saving comes from: A's median run read 1.02M cached tokens against
+B0's 0.46M (Claude Code's own prompt and tool definitions on every turn, and
+Bash output: 23 Bash calls a run at about 650 tokens each). B0 takes more
+turns (23 vs 15) but cheaper ones: about 6.9 Edit, 6.7 Grep, 6.4 Read and 1.5
+`verify` calls a run; a `verify` returns about 200 tokens in a median 39 s.
+Output tokens are the same (about 7.3k).
+
+Tool use in S2 (calls per run, share of runs, tokens in and out per call,
+median seconds, and how often the next edit touched a file the result named):
+
+| Arm | Tool | Calls/run | Share | In/call | Out/call | Median s | Acted on |
+|---|---|---|---|---|---|---|---|
+| A | Bash | 22.6 | 1.00 | 136 | 648 | 0.1 | 0.02 |
+| A | Edit | 0.3 | 0.13 | 366 | 58 | 0.0 | 0.29 |
+| B0 | Edit | 6.9 | 1.00 | 286 | 41 | 0.0 | 0.57 |
+| B0 | Grep | 6.7 | 0.98 | 33 | 653 | 0.0 | 0.35 |
+| B0 | Read | 6.4 | 0.98 | 39 | 1458 | 0.0 | 0.07 |
+| B0 | verify | 1.5 | 1.00 | 16 | 200 | 39.1 | 0.18 |
+
+### Exploratory main round (before #11229, no judge)
+
+Stopped at 101 of 189 trials; 12 issues. Fix tests passing: A 10/34, B0
+12/34, Bbash 13/33; total $39.43, $19.62, $15.82; median s 230, 128, 188.
+Briefed with Bash cost no more than briefed with `verify` here, so the
+tools doc's guess that verify is the largest single gain is not supported
+yet; it needs the frozen B0-vs-Bbash run.
+
+## Next
+
+- Extend S2 prospectively (new frozen plan, more issues) to settle quality.
+- Tier 1 per [briefed-agent-tools.md](briefed-agent-tools.md), one at a
+  time on B0 under the same rules: Bbash, `related`, `outline`/`read_symbol`,
+  `finish`. Arms and harness are ready (`ab.py` arms Bbash, Brelated,
+  Boutline, Bfinish).
+- One-lever ablations (arms Bsmall, Blarge, Bterse, Blow, Bsonnet, Bcold).
+- "Guesses to check": none is settled by S2, which compares only A and B0.
