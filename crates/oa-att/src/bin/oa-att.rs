@@ -11,6 +11,8 @@
 //!     --notice SECS --effective-at UNIX [--publish]
 //! oa-att verify --publisher HEX [--workload SLUG] [--tamper measurement|unbound|gpu]
 //! oa-att round --publisher HEX [--workload SLUG] --state TEXT --question TEXT [--tamper …]
+//! oa-att open-round --pylon HEX --slug SLUG --artifact sha256:… --state TEXT --question TEXT
+//!     [--tamper measurement]    # the open lane: no hardware evidence
 //! ```
 //!
 //! Every command takes `--relay URL` (default wss://relay.openagents.com)
@@ -116,6 +118,7 @@ async fn main() {
         "head" => head(&mut args, &relay).await,
         "verify" => verify(&mut args, &relay, false).await,
         "round" => verify(&mut args, &relay, true).await,
+        "open-round" => open_round(&mut args, &relay).await,
         other => Err(format!("unknown command `{other}`")),
     };
     match result {
@@ -339,6 +342,68 @@ async fn verify(args: &mut Args, relay: &str, round: bool) -> Result<Value, Stri
                     &body.digest(),
                 )
                 .map_err(|e| format!("receipt: {e}"))?;
+                steps.push(json!({"step": "answer", "response": payload["response"]}));
+                steps.push(json!({"step": "receipt", "checked": checked}));
+            }
+        }
+    }
+    Ok(json!({"steps": steps}))
+}
+
+async fn open_round(args: &mut Args, relay: &str) -> Result<Value, String> {
+    let key = args.need("--pylon")?;
+    let slug = args.need("--slug")?;
+    let artifact = args.need("--artifact")?;
+    let tamper = tamper(args)?;
+    let (secret, signer) = ephemeral();
+    let mut steps = Vec::new();
+    let t = Instant::now();
+    let (event, _) = net::fetch_beacon(relay, &secret, &key, &slug).await?;
+    let beacon = match oa_att::open::parse_beacon(&event, &key, &artifact, now(), tamper) {
+        Ok(b) => b,
+        Err(why) => {
+            return Ok(json!({"steps": steps, "refused": {"step": "beacon", "reason": why.0}}));
+        }
+    };
+    steps.push(json!({"step": "beacon", "ms": ms(t), "beacon": beacon}));
+    let t = Instant::now();
+    let request_id = format!("{:x}", Sha256::digest(signer.pubkey().as_bytes()));
+    let (request, body) = oa_att::sealed_decision(
+        &signer,
+        &secret,
+        &beacon.key,
+        &beacon.model,
+        None,
+        &args.need("--state")?,
+        &args.need("--question")?,
+        &request_id[..32],
+        secp256k1::rand::random(),
+        now(),
+    )
+    .map_err(|e| e.0)?;
+    steps.push(json!({"step": "encrypt", "ms": ms(t), "request": request.id, "ciphertext_bytes": request.content.len()}));
+    let t = Instant::now();
+    let mut answers: Vec<Event> = Vec::new();
+    let accepted = net::exchange(relay, &secret, &request, Duration::from_secs(60), |e| {
+        if let net::Exchanged::Answer(event) = e {
+            answers.push(event);
+        }
+    })
+    .await?;
+    steps.push(
+        json!({"step": "relay", "ms": accepted, "round_ms": ms(t), "answers": answers.len()}),
+    );
+    for event in &answers {
+        match oa_att::open_answer(event, &request, &body, &secret, signer.pubkey())
+            .map_err(|e| e.0)?
+        {
+            Opened::Status { word, refusal } => {
+                steps.push(json!({"step": "status", "word": word, "refusal": refusal}));
+            }
+            Opened::Result(payload) => {
+                let checked =
+                    oa_att::open::check_answer(&beacon, event, &payload, &request, &body.digest())
+                        .map_err(|e| format!("receipt: {e}"))?;
                 steps.push(json!({"step": "answer", "response": payload["response"]}));
                 steps.push(json!({"step": "receipt", "checked": checked}));
             }

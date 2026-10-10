@@ -12,7 +12,7 @@ net = ["dep:nostr-transport", "dep:tokio", "secp256k1/rand"]
 [dependencies]
 nostr = { path = "../nostr" }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 sha2 = { version = "0.10", features = ["oid"] }
 rsa = { version = "0.9", default-features = false, features = ["std", "sha2"] }
 x509-cert = { version = "0.2.5", default-features = false }

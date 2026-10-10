@@ -165,6 +165,36 @@ pub async fn fetch(
     })
 }
 
+/// The newest `30200` beacon of the Pylon at `key` (hex) with slug
+/// `pylon`, for the open lane.
+///
+/// # Errors
+///
+/// When the relay is unreachable or holds no such beacon.
+pub async fn fetch_beacon(
+    relay: &str,
+    secret: &SecretKey,
+    key: &str,
+    pylon: &str,
+) -> Result<(Event, u64), String> {
+    let started = Instant::now();
+    let mut conn = connect(relay, secret, Duration::from_secs(30)).await?;
+    let beacon = query(
+        &mut conn,
+        "beacon",
+        json!({"kinds": [nostr::pylon::BEACON_KIND], "authors": [key], "#d": [pylon]}),
+    )
+    .await?
+    .into_iter()
+    .max_by_key(|e| e.created_at)
+    .ok_or("the Pylon has published no beacon")?;
+    let _ = conn.close().await;
+    Ok((
+        beacon,
+        u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+    ))
+}
+
 /// What [`exchange`] reports as it happens.
 #[derive(Debug, Clone)]
 pub enum Exchanged {

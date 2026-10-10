@@ -20,6 +20,7 @@
 
 #[cfg(feature = "net")]
 pub mod net;
+pub mod open;
 pub mod token;
 
 use nostr::att::{self, ENDPOINT_KIND, EndpointRecord, Head, Level, Release, TOKEN_AUDIENCE};
@@ -468,7 +469,7 @@ pub fn endpoint_address(record: &EndpointRecord) -> String {
     )
 }
 
-fn flip_last_hex(digest: &str) -> String {
+pub(crate) fn flip_last_hex(digest: &str) -> String {
     let mut chars: Vec<char> = digest.chars().collect();
     if let Some(last) = chars.last_mut() {
         *last = if *last == '0' { '1' } else { '0' };
@@ -506,14 +507,50 @@ pub fn sealed_request(
     nonce: [u8; 32],
     now: u64,
 ) -> Result<(Event, nostr::decision::RequestBody), Refused> {
-    use nostr::decision::{REQUEST_KIND, RequestBody, Seal};
-    use nostr::domain::Tag;
     let model = parsed
         .release
         .models
         .first()
         .map(|m| m.id.clone())
         .ok_or_else(|| Refused("the release pins no model".into()))?;
+    sealed_decision(
+        client,
+        client_secret,
+        &parsed.endpoint.body.endpoint,
+        &model,
+        Some((&parsed.endpoint.address(), &parsed.release_id, level)),
+        state,
+        question,
+        request,
+        nonce,
+        now,
+    )
+}
+
+/// A sealed decision request to `worker` (hex key) for `model`: one
+/// yes-or-no question about `state`, NIP-44 encrypted to that key. With
+/// `attested` (the endpoint address, release and level the client
+/// verified) it requires `openagents.attested.v1`; without, it is an
+/// ordinary NIP-DEC request to an open Pylon.
+///
+/// # Errors
+///
+/// When the body is out of bounds or the key is not a key.
+#[allow(clippy::too_many_arguments)]
+pub fn sealed_decision(
+    client: &nostr::domain::RelaySigner,
+    client_secret: &secp256k1::SecretKey,
+    worker: &str,
+    model: &str,
+    attested: Option<(&str, &str, Level)>,
+    state: &str,
+    question: &str,
+    request: &str,
+    nonce: [u8; 32],
+    now: u64,
+) -> Result<(Event, nostr::decision::RequestBody), Refused> {
+    use nostr::decision::{REQUEST_KIND, RequestBody, Seal};
+    use nostr::domain::Tag;
     let mut questions = serde_json::Map::new();
     questions.insert(
         "answer".into(),
@@ -522,7 +559,7 @@ pub fn sealed_request(
     let body = RequestBody::new(
         request,
         1,
-        model,
+        model.to_string(),
         Value::String(state.to_string()),
         questions,
     )
@@ -530,11 +567,12 @@ pub fn sealed_request(
     body.validate()
         .map_err(|e| Refused(format!("the request is out of bounds: {e}")))?;
     let mut payload = body.payload();
-    let (requires, attested) =
-        att::sealed_fields(&parsed.endpoint.address(), &parsed.release_id, level);
-    payload["requires"] = requires;
-    payload["attested"] = attested;
-    let peer = endpoint_key(&parsed.endpoint.body.endpoint)?;
+    if let Some((endpoint, release, level)) = attested {
+        let (requires, block) = att::sealed_fields(endpoint, release, level);
+        payload["requires"] = requires;
+        payload["attested"] = block;
+    }
+    let peer = endpoint_key(worker)?;
     let seal = Seal {
         signer: client,
         conversation: nostr::nip44::conversation_key(client_secret, &peer),
@@ -542,7 +580,7 @@ pub fn sealed_request(
         created_at: now,
     };
     let tags = vec![
-        Tag::new(vec!["p".into(), parsed.endpoint.body.endpoint.clone()]),
+        Tag::new(vec!["p".into(), worker.to_string()]),
         Tag::new(vec!["expiration".into(), (now + 180).to_string()]),
     ];
     let event = seal
