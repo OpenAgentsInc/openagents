@@ -678,8 +678,8 @@ Neither was promoted. What this shows:
 - **The active model holds up on Vertex vectors.** It was trained on OpenAI
   similarity values, but retraining on Vertex's does not beat it.
 - **The fusion helps.** It is the strongest candidate at @20 and @50 and the
-  best calibrated, and it misses the primary bar by 0.0001 of recall in
-  standard-error terms. Its base is the retrained model, the only numpy base
+  best calibrated, and it misses the primary bar (2 SE = 0.0380) by 0.0001 of
+  recall. Its base is the retrained model, the only numpy base
   with no overlap with the eval cases. The plan is frozen and was not
   loosened. Fusing over a base that beats the active model at @100, or a
   larger held-out set (the SE is what fails), is the next try.
