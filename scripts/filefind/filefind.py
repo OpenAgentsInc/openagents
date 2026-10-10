@@ -184,6 +184,14 @@ def load_feedback(cache):
     return out
 
 
+def atomic(path, write):
+    """Write a cache file through a temporary file, so a concurrent reader never sees half."""
+    tmp = f"{path}.{os.getpid()}.tmp"
+    with open(tmp, "wb") as f:
+        write(f)
+    os.replace(tmp, path)
+
+
 def dirs_index(h):
     """directory -> sorted commit positions touching any file in it (small commits only)."""
     by_dir = defaultdict(set)
@@ -230,7 +238,7 @@ class Index:
 
     def save_blobs(self):
         keys = np.array(list(self.blob_rows.keys()), dtype="S40") if self.blob_rows else np.zeros(0, "S40")
-        np.savez(os.path.join(self.cache, "blobs.npz"), keys=keys, vecs=self.blob_mat)
+        atomic(os.path.join(self.cache, "blobs.npz"), lambda f: np.savez(f, keys=keys, vecs=self.blob_mat))
 
     def build_history(self, repo, rev):
         raw = git(repo, "log", "--reverse", "--no-merges", "--format=%x00%H%x09%ct%x09%s",
@@ -261,8 +269,7 @@ class Index:
                      "issue_commits": dict(issue_commits),
                      "pos": {c[0]: i for i, c in enumerate(commits)}}
         self.hist["by_dir"] = dirs_index(self.hist)
-        with open(os.path.join(self.cache, "history.pkl"), "wb") as f:
-            pickle.dump(self.hist, f, protocol=4)
+        atomic(os.path.join(self.cache, "history.pkl"), lambda f: pickle.dump(self.hist, f, protocol=4))
 
     def refresh_history(self, repo, rev):
         """Append the commits between the indexed head and rev; a rewritten history
@@ -303,8 +310,7 @@ class Index:
                 h["issue_commits"].setdefault(num, []).append(i)
             n += 1
         h["rev"] = head
-        with open(os.path.join(self.cache, "history.pkl"), "wb") as f:
-            pickle.dump(h, f, protocol=4)
+        atomic(os.path.join(self.cache, "history.pkl"), lambda f: pickle.dump(h, f, protocol=4))
         return n
 
     def build_commit_vecs(self, key):
@@ -320,7 +326,7 @@ class Index:
             for c, v in zip(todo, m):
                 rows[c[0].encode()] = v
         keys = [c[0].encode() for c in self.hist["commits"]]
-        np.savez(p, keys=np.array(keys, dtype="S40"), vecs=np.array([rows[k] for k in keys]))
+        atomic(p, lambda f: np.savez(f, keys=np.array(keys, dtype="S40"), vecs=np.array([rows[k] for k in keys])))
         self.commit_vecs = np.array([rows[k] for k in keys], dtype=np.float32)
         return len(todo)
 
@@ -352,8 +358,7 @@ class Index:
         nums = sorted(old)
         self.issues = {"numbers": np.array(nums), "vecs": np.array([old[n] for n in nums], np.float32),
                        "titles": titles}
-        with open(os.path.join(self.cache, "issues.pkl"), "wb") as f:
-            pickle.dump(self.issues, f, protocol=4)
+        atomic(os.path.join(self.cache, "issues.pkl"), lambda f: pickle.dump(self.issues, f, protocol=4))
 
     def ensure_blobs(self, repo, tree, key, log=True):
         """Embed every blob of `tree` the cache lacks. Returns how many."""
@@ -1476,7 +1481,12 @@ def rank_two_stage(model, q, feats):
 # ---------------------------------------------------------------- CLI
 
 def default_cache(repo):
-    name = os.path.basename(os.path.abspath(repo))
+    """One cache per repository, shared by all its worktrees (named after the main checkout)."""
+    try:
+        common = git(repo, "rev-parse", "--path-format=absolute", "--git-common-dir").decode().strip()
+        name = os.path.basename(os.path.dirname(common.rstrip("/")))
+    except Exception:
+        name = os.path.basename(os.path.abspath(repo))
     return os.path.expanduser(f"~/.cache/openagents/filefind/{name}")
 
 
