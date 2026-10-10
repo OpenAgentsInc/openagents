@@ -236,14 +236,53 @@ impl Granted {
         }
     }
 
-    fn spent_since(&self, since: u64) -> u64 {
-        std::fs::read_to_string(&self.journal)
-            .unwrap_or_default()
-            .lines()
-            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
-            .filter(|v| v["at"].as_u64().is_some_and(|at| at >= since))
-            .filter_map(|v| v["msat"].as_u64())
-            .sum()
+    /// The msat journaled at or after `since`. A missing journal is none
+    /// spent; an unreadable journal or a line that does not parse is an
+    /// error, so the ceiling never fails open.
+    fn spent_since(&self, since: u64) -> Result<u64, String> {
+        let text = match std::fs::read_to_string(&self.journal) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+            Err(e) => return Err(format!("the payment journal: {e}; nothing was paid")),
+        };
+        let mut spent = 0u64;
+        for (n, line) in text.lines().enumerate() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let entry = serde_json::from_str::<Value>(line)
+                .ok()
+                .and_then(|v| Some((v["at"].as_u64()?, v["msat"].as_u64()?)))
+                .ok_or_else(|| {
+                    format!(
+                        "the payment journal has an unreadable line {}; nothing was paid",
+                        n + 1
+                    )
+                })?;
+            if entry.0 >= since {
+                spent = spent.saturating_add(entry.1);
+            }
+        }
+        Ok(spent)
+    }
+
+    /// An exclusive lock on the journal's sibling `.lock` file, held from
+    /// the read through the check to the append, so concurrent processes
+    /// (two `pylon ask`s on one home) cannot both pass the ceiling.
+    fn lock_journal(&self) -> Result<std::fs::File, String> {
+        if let Some(dir) = self.journal.parent() {
+            std::fs::create_dir_all(dir)
+                .map_err(|e| format!("the payment journal: {e}; nothing was paid"))?;
+        }
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(self.journal.with_extension("jsonl.lock"))
+            .map_err(|e| format!("the payment journal lock: {e}; nothing was paid"))?;
+        file.lock()
+            .map_err(|e| format!("the payment journal lock: {e}; nothing was paid"))?;
+        Ok(file)
     }
 }
 
@@ -261,18 +300,17 @@ impl Payer for Granted {
             if invoice.amount_msat > grant.per_payment_msat {
                 return Err("over the owner's per-payment ceiling; nothing was paid".into());
             }
+            // Released when dropped, after the append below.
+            let _file_lock = self.lock_journal()?;
             let at = crate::now();
             if self
-                .spent_since(at.saturating_sub(86_400))
+                .spent_since(at.saturating_sub(86_400))?
                 .saturating_add(invoice.amount_msat)
                 > grant.daily_msat
             {
                 return Err("over the owner's daily ceiling; nothing was paid".into());
             }
             let line = json!({"at": at, "msat": invoice.amount_msat, "payment_hash": invoice.payment_hash});
-            if let Some(dir) = self.journal.parent() {
-                std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-            }
             std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
@@ -877,5 +915,67 @@ mod tests {
                 daily_msat: 9_000
             })
         );
+    }
+
+    fn mainnet_invoice(msat: u64) -> Invoice {
+        Invoice {
+            bolt11: "lnbc".into(),
+            payment_hash: "11".repeat(32),
+            amount_msat: msat,
+        }
+    }
+
+    const GRANT: Grant = Grant {
+        per_payment_msat: 5_000,
+        daily_msat: 8_000,
+    };
+
+    #[test]
+    fn a_corrupt_mainnet_journal_refuses_instead_of_counting_zero() {
+        let home = tempfile::tempdir().unwrap();
+        let inner = Arc::new(Mainnet(Mutex::new(0)));
+        let granted = Granted::new(inner.clone(), Some(GRANT), home.path());
+        std::fs::write(home.path().join("mainnet-payments.jsonl"), "not json\n").unwrap();
+        assert!(
+            granted
+                .pay(&mainnet_invoice(1_000))
+                .unwrap_err()
+                .contains("unreadable line 1")
+        );
+        // A line that parses but lacks its amount refuses too.
+        std::fs::write(
+            home.path().join("mainnet-payments.jsonl"),
+            format!("{{\"at\": {}}}\n", crate::now()),
+        )
+        .unwrap();
+        assert!(granted.pay(&mainnet_invoice(1_000)).is_err());
+        // A journal that is not a readable file refuses.
+        std::fs::remove_file(home.path().join("mainnet-payments.jsonl")).unwrap();
+        std::fs::create_dir(home.path().join("mainnet-payments.jsonl")).unwrap();
+        assert!(granted.pay(&mainnet_invoice(1_000)).is_err());
+        assert_eq!(*inner.0.lock().unwrap(), 0);
+    }
+
+    #[test]
+    fn separate_payers_on_one_home_share_the_daily_ceiling() {
+        let home = tempfile::tempdir().unwrap();
+        let inner = Arc::new(Mainnet(Mutex::new(0)));
+        // As separate `pylon ask` processes would: each its own Granted.
+        let payers: Vec<_> = (0..8)
+            .map(|_| Arc::new(Granted::new(inner.clone(), Some(GRANT), home.path())))
+            .collect();
+        let threads: Vec<_> = payers
+            .iter()
+            .cloned()
+            .map(|p| std::thread::spawn(move || p.pay(&mainnet_invoice(3_000)).is_ok()))
+            .collect();
+        let paid = threads
+            .into_iter()
+            .map(|t| t.join().unwrap())
+            .filter(|ok| *ok)
+            .count();
+        // 8_000 / 3_000: two fit, a third would cross the ceiling.
+        assert_eq!(paid, 2);
+        assert_eq!(*inner.0.lock().unwrap(), 2);
     }
 }
