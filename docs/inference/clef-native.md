@@ -316,6 +316,36 @@ time is wall time for the set (`fixtures/clef/tools`, see below).
     and spans. A repeat is bitwise identical, so a repeated prompt is
     answered without the device.
 
+**Round 2b: the fused kernel for short chunks (kept, default).** The
+dequantize pass writes a full f16 copy of the weights (about 14 GB of
+traffic) whatever the chunk size, so short prompts are bound by weight
+reads. The fused kernel reads the 5 GB of quantized weights once.
+`PSIONIC_CLEF_FUSED` (default `1024`) sends chunks of up to 1,024 tokens
+through it and longer ones through dequantize + cuBLAS. Same session,
+chunk 2048, median of 9, with llama.cpp b11538 last:
+
+| Build | 175 tokens | 1k | 4k | 16k | Router set |
+| --- | --- | --- | --- | --- | --- |
+| cuBLAS only (`PSIONIC_CLEF_FUSED=0`), two runs | 0.078 / 0.077 s | 0.199 / 0.200 s | 0.615 / 0.627 s | 2.78 / 2.73 s | 4.39 / 4.23 s |
+| **Fused up to 1,024 tokens (default)**, two runs | **0.058 / 0.058 s** | **0.201 / 0.200 s** | **0.625 / 0.626 s** | **2.71 / 2.70 s** | **4.21 / 4.22 s** |
+| Fused up to 2,048 tokens | 0.056 s | 0.207 s | 0.711 s | 3.03 s | 4.73 s |
+| llama.cpp b11538 | 0.040 s | 0.181 s | 0.684 s | 3.417 s | — |
+
+- **Parity of the default build** (40 e2e requests). The short records
+  now take the fused kernel.
+  - Against the CPU lane: top answer 100 %, max |Δp| 0.0036. The
+    cuBLAS f16 path gave 99.0 % and 0.018.
+  - Against the HF f32 reference: 94.2 %, the CPU lane's own figure.
+- **M2 gates in this session.**
+  - 4k is 0.63 s against 0.65 s, which is met and ahead of llama.cpp's
+    0.68 s.
+  - 16k is 2.70 s against 3.25 s, which is met: 1.27× llama.cpp.
+  - 1k is 0.200 s against 0.20 s, met only at the line. llama.cpp is
+    0.181 s.
+- **What is left at 1k.** About 18 ms of fixed cost per request beyond
+  llama.cpp: the head, the host embedding gather, and HTTP. Compare
+  0.058 s with 0.040 s at 175 tokens.
+
 **The router set on one 4080.** The set is 24.7k tokens per chat turn.
 The three requests queue on the one device, so they run one after
 another: 4.2 s with this build, and 5.0 s on the deployed chunk 1,024.

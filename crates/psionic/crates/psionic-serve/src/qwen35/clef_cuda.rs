@@ -405,7 +405,7 @@ impl ClefCudaTrunk {
             for weight in &layer_weights {
                 weight_total += weight_bytes(weight);
                 // the f16 slots only serve weights the fused kernel does not take
-                let fused = knobs().fused
+                let fused = knobs().fused == Fused::Always
                     && match weight.format {
                         ClefWeightFormat::Q8_0 => weight.columns % 64 == 0,
                         ClefWeightFormat::Q4K => weight.columns % 256 == 0,
@@ -992,7 +992,7 @@ fn linear(
     compute_16f: bool,
 ) -> Result<(), String> {
     let knob = knobs();
-    if knob.fused && !knob.skip_gemm {
+    if knob.fused.takes(n) && !knob.skip_gemm {
         // straight from the GGUF layout; f16 accumulation in short spans
         // promoted to f32, or f32 tensor accumulation in strict mode
         let segment = if compute_16f { knob.segment } else { 0 };
@@ -1070,19 +1070,43 @@ fn gemm(
 
 /// Experiment knobs. `PSIONIC_CLEF_SKIP=dequant,gemm,delta,attention` is
 /// for profiling only (skipping makes the answers wrong).
-/// `PSIONIC_CLEF_FUSED=1` runs the projections through the fused
-/// dequantize + tensor-core kernel (bitwise chunk-invariant, f32-promoted
-/// accumulation; about 20 % slower than dequantize + cuBLAS on the 4080 so
-/// far, so off by default); `PSIONIC_CLEF_SEGMENT=1|2|4|8|16` sets its f16
+/// `PSIONIC_CLEF_FUSED` picks the fused dequantize + tensor-core kernel
+/// (bitwise chunk-invariant, f32-promoted accumulation): `1` for every
+/// projection, `0` for none, `N` for chunks of at most N tokens (default
+/// [`FUSED_UP_TO`]; above that dequantize + cuBLAS is faster on the 4080); `PSIONIC_CLEF_SEGMENT=1|2|4|8|16` sets its f16
 /// accumulation span in 16-wide k steps (default 16); `PSIONIC_CLEF_SCAN=0`
 /// runs the per-warp delta scan instead of the shared-memory-staged one.
+/// When a projection runs through the fused kernel.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum Fused {
+    /// Never (dequantize + cuBLAS).
+    #[default]
+    Never,
+    /// Every projection.
+    Always,
+    /// Chunks of at most this many tokens: there the projections are bound
+    /// by reading the weights, and the fused kernel reads them quantized
+    /// once instead of writing and re-reading an f16 copy.
+    UpTo(usize),
+}
+
+impl Fused {
+    fn takes(self, n: usize) -> bool {
+        match self {
+            Self::Never => false,
+            Self::Always => true,
+            Self::UpTo(limit) => n <= limit,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Default)]
 struct Knobs {
     skip_dequant: bool,
     skip_gemm: bool,
     skip_delta: bool,
     skip_attention: bool,
-    fused: bool,
+    fused: Fused,
     segment: usize,
     staged_scan: bool,
 }
@@ -1096,7 +1120,12 @@ fn knobs() -> Knobs {
             skip_gemm: value.contains("gemm"),
             skip_delta: value.contains("delta"),
             skip_attention: value.contains("attention"),
-            fused: std::env::var("PSIONIC_CLEF_FUSED").is_ok_and(|v| v == "1"),
+            fused: match std::env::var("PSIONIC_CLEF_FUSED").as_deref() {
+                Ok("1") => Fused::Always,
+                Ok("0") => Fused::Never,
+                Ok(other) => other.parse().map_or(Fused::UpTo(FUSED_UP_TO), Fused::UpTo),
+                Err(_) => Fused::UpTo(FUSED_UP_TO),
+            },
             staged_scan: std::env::var("PSIONIC_CLEF_SCAN").map_or(true, |v| v != "0"),
             segment: std::env::var("PSIONIC_CLEF_SEGMENT")
                 .ok()
@@ -1106,6 +1135,9 @@ fn knobs() -> Knobs {
         }
     })
 }
+
+/// The default largest chunk the fused kernel takes (`PSIONIC_CLEF_FUSED`).
+const FUSED_UP_TO: usize = 1024;
 
 /// Score plus probability bytes (6 per element) one batched attention call
 /// may use; above it a KV group's heads run in smaller batches.
