@@ -28,7 +28,7 @@ pub(crate) const TERMS: &str = include_str!("../../content/legal/terms.md");
 pub(crate) const PRIVACY: &str = include_str!("../../content/legal/privacy.md");
 
 /// The docs, by slug, in reading order.
-pub(crate) const DOCS: [(&str, &str); 32] = [
+pub(crate) const DOCS: [(&str, &str); 33] = [
     (
         "what-is-openagents",
         include_str!("../../content/docs/what-is-openagents.md"),
@@ -106,6 +106,7 @@ pub(crate) const DOCS: [(&str, &str); 32] = [
         "troubleshooting",
         include_str!("../../content/docs/troubleshooting.md"),
     ),
+    ("self-host", include_str!("../../content/docs/self-host.md")),
     ("faq", include_str!("../../content/docs/faq.md")),
     ("glossary", include_str!("../../content/docs/glossary.md")),
 ];
@@ -151,7 +152,7 @@ pub(crate) const SECTIONS: [(&str, &str, &str); 9] = [
     ),
     (
         "Reference",
-        "Settings, pricing, and fixes for common problems.",
+        "Settings, pricing, fixes for common problems, and running your own copy.",
         "settings",
     ),
     (

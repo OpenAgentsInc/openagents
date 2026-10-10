@@ -24,6 +24,9 @@ scripts/dev/full-local.sh stop
   `~/.openagents/full-local/logs/{gateway,worker,web}.log`.
 - Binaries build into `~/work/openagents-target-fulllocal`. `start
   --no-build` skips the build.
+- The website and the chat worker meet on `wss://relay.openagents.com`.
+  `FULL_LOCAL_RELAY=ws://127.0.0.1:8080 scripts/dev/full-local.sh start`
+  puts both on your own relay instead ([self-host guide](../self-host.md)).
 - `/environments` is on when `~/work/.secrets/boat.env` and a Codex login
   exist. Its setup machines are real Boat machines and cost money;
   `FULL_LOCAL_ENVIRONMENTS=0 scripts/dev/full-local.sh start` turns it off.

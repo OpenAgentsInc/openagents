@@ -190,7 +190,7 @@ test passes on production.
 | K2 | Agents can read our docs through MCP. | N | Launching | Docs MCP server | 165, 168 | #11086 |
 | K3 | Everything you can do in an app, you can do from the command line or API. | T N | Partial | `openagents-cli` over Nostr; `/docs/api` | 067, 085, 100, 203, 289 | — |
 | K4 | All of it is open source and built in public. | all | Live | This repository | 001, 047, 125, 173, 242 | — |
-| K5 | You can run your own copy of the whole thing. | N | Partial | Open source, but no self-host guide | 129, 242, 289 | — |
+| K5 | You can run your own copy of the whole thing. | N | Partial | `docs/self-host.md` and `/docs/self-host` (one machine; not yet run on a clean Linux machine; a public website still needs Google Cloud Storage) | 129, 242, 289 | #11133 |
 | K6 | Agents can pay us with the payment method they already use, on Bitcoin: x402, MPP and L402 on Lightning, Nostr, and card through ACP, UCP, AP2 or Stripe; Taproot Assets stablecoins later. | N | Partial | Owner, 2026-10-09: Bitcoin and Bitcoin-based stablecoins only; no USDC, Base, Solana, EVM or Tempo (#11141 closed); Cashu not now (#11140 closed). x402 and the `Payment` scheme on Lightning built (gateway, pay front); the rest planned in [agent payments](../payments/agent-payments.md) | 062, 070 | #11085, #11136, #11139, #11142–#11145 |
 | K7 | One open license: everything we publish is under Apache 2.0. | all | Live | `LICENSE` (Apache 2.0) | X only | — |
 | K8 | Agents find every way to pay us where they look: OpenAPI, the API and AI catalogs, the agent card, `/.well-known/ucp`, `/.well-known/acp.json`, MCP, and Nostr. | N | Partial | `/docs/api/for-agents` and `/auth.md` name the methods; generated discovery is next | — | #11137, #11147 |

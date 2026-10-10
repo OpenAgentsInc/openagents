@@ -99,4 +99,4 @@ you see it first, and the Wallet and key screens never attach one.
 **My reports** lists what you sent. You can also open an issue on
 [GitHub](https://github.com/OpenAgentsInc/openagents/issues).
 
-Next: [FAQ](/docs/faq).
+Next: [Run your own OpenAgents](/docs/self-host).

@@ -14,8 +14,9 @@
 #                  /v1/chat/completions) in one process, as in production.
 #   chat worker    built from this checkout; every model call goes to the
 #                  gateway above (CODER_INFERENCE_URL/KEY). It joins
-#                  relay.openagents.com on its own fresh key and answers only
-#                  the site below.
+#                  relay.openagents.com (or $FULL_LOCAL_RELAY, your own
+#                  relay) on its own fresh key and answers only the site
+#                  below.
 #   website        127.0.0.1:$WEB_PORT (4301, the port the local GitHub OAuth
 #                  App calls back to): chats on disk, sign-in through the
 #                  gateway, Settings -> Claude (encrypted with
@@ -42,6 +43,9 @@ state=${FULL_LOCAL:-$HOME/.openagents/full-local}
 target=${CARGO_TARGET_DIR:-$HOME/work/openagents-target-fulllocal}
 gateway_port=${GATEWAY_PORT:-8791}
 web_port=${WEB_PORT:-4301}
+# The relay the website and the chat worker meet on. Set it to run your
+# own (docs/self-host.md), e.g. ws://127.0.0.1:8080.
+relay=${FULL_LOCAL_RELAY:-wss://relay.openagents.com}
 run="$state/run"
 logs="$state/logs"
 export CARGO_TARGET_DIR="$target"
@@ -152,6 +156,7 @@ status() {
         echo
         echo "Website:   http://127.0.0.1:$web_port"
         echo "Gateway:   http://127.0.0.1:$gateway_port (admin token in $state/admin.token)"
+        echo "Relay:     $relay"
         echo "Coder:     $state/bin/coder login   (then: $state/bin/coder, /sync on)"
         echo "Logs:      $logs/{gateway,worker,web}.log"
     fi
@@ -193,7 +198,7 @@ start() {
 
     mkdir -p "$state" "$run" "$logs"
     chmod 700 "$state"
-    printf 'web_port=%s\ngateway_port=%s\n' "$web_port" "$gateway_port" > "$run/ports"
+    printf 'web_port=%s\ngateway_port=%s\nrelay=%s\n' "$web_port" "$gateway_port" "$relay" > "$run/ports"
     if [ "${1:-}" != "--no-build" ]; then
         build
     fi
@@ -281,7 +286,7 @@ EOF
         CODER_INFERENCE_KEY=$(cat "$state/service.key")
         export CODER_WORKER_SECRET CODER_INFERENCE_KEY
         export CODER_INFERENCE_URL="http://127.0.0.1:$gateway_port"
-        export CODER_RELAY=wss://relay.openagents.com CODER_WORKER_OPEN=1 CODER_WORKER_JOBS=16
+        export CODER_RELAY="$relay" CODER_WORKER_OPEN=1 CODER_WORKER_JOBS=16
         export CODER_WORKER_USAGE_DIR="$state/worker-usage"
         export OPENAGENTS_PRODUCT_KNOWLEDGE="$root/knowledge/openagents"
         export CODER_AI_GATEWAY_KEY="${AI_GATEWAY_API_KEY:-}" OPENAGENTS_PRODUCT_KB_EMBEDDINGS=gateway
@@ -364,7 +369,7 @@ EOF
         [ -s "$state/build/components/coder_components_web_bg.wasm" ] \
             && set -- "$@" --components-build "$state/build/components"
         [ -s "$state/build/bunny/bunny_web_bg.wasm" ] && set -- "$@" --bunny "$state/build/bunny"
-        export OPENAGENTS_WEB_CHAT_WORKER="$key"
+        export OPENAGENTS_WEB_CHAT_WORKER="$key" OPENAGENTS_WEB_CHAT_RELAY="$relay"
         cd "$state"
         exec nohup "$target/debug/openagents-web" --listen "127.0.0.1:$web_port" \
             --store "$state/tasks" --chat-store "$state/chats" \
