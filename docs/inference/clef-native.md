@@ -649,6 +649,26 @@ The Clef-Flash Q4_K_M GGUF (digest `fd3e9060…`) ran on the M5 Max through
 
   Under the same load Psionic is ahead at 4k and 16k and even at 1k. The
   official gate needs a quiet Mac.
+- **Where 4k goes under that load.** `PSIONIC_CLEF_PROFILE=1` gives the
+  device time, and `PSIONIC_CLEF_SKIP=gemm|delta|attention` takes each
+  phase out:
+  - device time: 4.4 s;
+  - GEMMs: about 3.4 s;
+  - delta scan: about 0.27 s;
+  - attention: about 0.3 s;
+  - the rest: about 0.4 s;
+  - head: 0.27 s, of which 46 linears took 0.1 s.
+
+  The GEMMs ran at about 16 TF in the model, against 50–60 TF for the
+  same shapes in short standalone runs.
+- **Why: sustained throughput, not the kernel.**
+  `fixtures/clef/tools/metal_kernels_harness.swift` and a
+  48-GEMM command buffer ran at 45 TF for the first 200 ms, then 15–18 TF,
+  with the same or distinct weights. On that loaded Mac, a long command
+  buffer shares the GPU with the visualizer and browser and runs under
+  the power the CPU-bound builds leave. The 1k/4k/16k gate has to be
+  measured on a quiet machine. At 55–60 TF sustained, the projections
+  alone would be about 0.26 s at 1k and 3.6 s at 16k.
 
 ### Next
 

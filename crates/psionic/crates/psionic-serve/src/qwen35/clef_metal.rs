@@ -413,6 +413,8 @@ impl ClefMetalTrunk {
         let profile = std::env::var_os("PSIONIC_CLEF_PROFILE").is_some();
         let began = std::time::Instant::now();
         let mut device_time = 0.0f64;
+        let hybrid_time = std::cell::Cell::new(0.0f64);
+        let attention_time = std::cell::Cell::new(0.0f64);
         let mut last = Vec::new();
         let build_inputs = |first: usize, n: usize| -> Result<(Vec<f32>, Vec<f32>), String> {
             let piece = &tokens[first..first + n];
@@ -447,7 +449,7 @@ impl ClefMetalTrunk {
                 let next = (next_first < length).then(|| scope.spawn(|| build_inputs(next_first, next_n)));
                 let device = (|| -> Result<(), String> {
                     let scratch = state.scratch.as_ref().ok_or("scratch")?;
-                    if layer_observer.is_none() {
+                    if layer_observer.is_none() && !profile {
                         // one command buffer for the chunk's layer stack
                         let batch = state.metal.batch();
                         for (layer_index, layer) in state.layers.iter().enumerate() {
@@ -456,9 +458,15 @@ impl ClefMetalTrunk {
                         batch.commit_wait()?;
                     } else {
                         for (layer_index, layer) in state.layers.iter().enumerate() {
+                            let layer_began = std::time::Instant::now();
                             let batch = state.metal.batch();
                             encode_layer(&batch, layer, scratch, &request, layer_index, dims, first, n)?;
                             batch.commit_wait()?;
+                            let seconds = layer_began.elapsed().as_secs_f64();
+                            match layer.mixer {
+                                DeviceMixer::Hybrid { .. } => hybrid_time.set(hybrid_time.get() + seconds),
+                                DeviceMixer::Attention { .. } => attention_time.set(attention_time.get() + seconds),
+                            }
                             if let Some(observer) = layer_observer.as_mut() {
                                 let rows = scratch.x.read_f32(0, n * dims.hidden)?;
                                 observer(layer_index, first, &rows);
@@ -507,9 +515,11 @@ impl ClefMetalTrunk {
         }
         if profile {
             eprintln!(
-                "clef metal prefill: {length} tokens chunk {chunk}: total {:.1} ms, device {:.1} ms",
+                "clef metal prefill: {length} tokens chunk {chunk}: total {:.1} ms, device {:.1} ms (hybrid layers {:.1} ms, attention layers {:.1} ms)",
                 began.elapsed().as_secs_f64() * 1e3,
                 device_time * 1e3,
+                hybrid_time.get() * 1e3,
+                attention_time.get() * 1e3,
             );
         }
         let sums = if spans.is_empty() {
@@ -801,6 +811,16 @@ fn new_request(state: &DeviceState, dims: Dims, length: usize, chunk: usize) -> 
     request
 }
 
+/// Profiling knobs: `PSIONIC_CLEF_SKIP=gemm,delta,attention` leaves those
+/// out (the answers are then wrong).
+fn skips() -> (bool, bool, bool) {
+    static SKIPS: std::sync::OnceLock<(bool, bool, bool)> = std::sync::OnceLock::new();
+    *SKIPS.get_or_init(|| {
+        let value = std::env::var("PSIONIC_CLEF_SKIP").unwrap_or_default();
+        (value.contains("gemm"), value.contains("delta"), value.contains("attention"))
+    })
+}
+
 fn linear(
     batch: &ClefMetalBatch<'_>,
     weight: &DeviceWeight,
@@ -809,6 +829,9 @@ fn linear(
     n: usize,
     accumulate: bool,
 ) -> Result<(), String> {
+    if skips().0 {
+        return Ok(());
+    }
     batch.gemm(x16, 0, &weight.buffer, out, 0, n, weight.rows, weight.columns, accumulate)
 }
 
@@ -850,6 +873,7 @@ fn encode_layer(
                 dims.state,
                 dims.conv_channels,
             )?;
+            if !skips().1 {
             batch.delta_scan(
                 &s.qn,
                 &s.kn,
@@ -867,6 +891,7 @@ fn encode_layer(
                 dims.conv_channels,
                 2 * dims.key_heads * dims.state,
             )?;
+            }
             batch.gated_norm_to_f16(&s.mid_b, &s.mid_a, ssm_norm, &s.act16, n, dims.value_heads, dims.state, dims.eps)?;
             linear(batch, out, &s.act16, &s.x, n, true)?;
         }
@@ -896,6 +921,7 @@ fn encode_layer(
                 dims.attention_scale,
                 dims.eps,
             )?;
+            if !skips().2 {
             batch.attention(
                 &s.query16,
                 key_cache,
@@ -909,6 +935,7 @@ fn encode_layer(
                 dims.head_dim,
                 first,
             )?;
+            }
             batch.sigmoid_gate_to_f16(&s.mid_b, &s.mid_a, &s.act16, n * dims.heads * dims.head_dim)?;
             linear(batch, out, &s.act16, &s.x, n, true)?;
         }
