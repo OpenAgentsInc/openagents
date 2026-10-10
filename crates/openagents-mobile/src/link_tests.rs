@@ -658,3 +658,113 @@ fn every_screen_validates() {
         assert!(result.is_ok(), "{screen:?}: {:?}", result.err());
     }
 }
+
+#[test]
+fn memory_notes_list_edit_delete_and_go_with_chat_turns() {
+    let mut f = fixture();
+    f.site.answer(
+        "GET /coder/memory",
+        200,
+        json!({"notes": [
+            {"id": "mem-1", "scope": "user", "kind": "feedback", "name": "Tabs",
+             "description": "Indent with tabs.", "body": "Use tabs.", "updated": 20},
+            {"id": "mem-2", "scope": "project", "project": "repo-1", "project_name": "openagents",
+             "kind": "project", "name": "Builds", "body": "cargo build", "updated": 10},
+            {"id": "mem-3", "scope": "user", "updated": 30, "deleted": true},
+        ]}),
+    );
+    f.site.answer(
+        "PUT /coder/memory/mem-1",
+        200,
+        json!({"note": {"id": "mem-1", "scope": "user", "kind": "feedback", "name": "Tabs",
+                        "description": "Indent with tabs.", "body": "Use two spaces.", "updated": 40}}),
+    );
+    f.site.answer(
+        "PUT /coder/memory/new",
+        200,
+        json!({"note": {"id": "mem-9", "scope": "user", "kind": "user", "name": "Central time",
+                        "description": "", "body": "Central time\nI'm in Chicago.", "updated": 50}}),
+    );
+    f.site
+        .answer("DELETE /coder/memory/mem-2", 200, json!({"deleted": true}));
+    assert!(f.link.memory_notes().is_empty(), "signed out");
+    signed(&mut f);
+    until(|| f.link.lock().memory_read);
+    // Chat turns carry only the notes that apply everywhere.
+    let notes = f.link.memory_notes();
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0].name, "Tabs");
+    assert_eq!(notes[0].kind, "feedback");
+    f.link.act(Action::Show {
+        screen: Screen::Memory,
+        id: None,
+    });
+    let packet = f.link.packet();
+    let mut words = vec![];
+    texts(packet.view.as_ref().unwrap(), &mut words);
+    for word in ["Everywhere", "openagents", "Tabs", "Builds", "Add a note"] {
+        assert!(words.iter().any(|w| w == word), "{word}: {words:?}");
+    }
+    // Change what a note says.
+    // The website's list as it stands after each change, so a read in
+    // between agrees with what the phone shows.
+    let tabs = |body: &str, updated: u64| {
+        json!({"id": "mem-1", "scope": "user", "kind": "feedback", "name": "Tabs",
+               "description": "Indent with tabs.", "body": body, "updated": updated})
+    };
+    let builds = json!({"id": "mem-2", "scope": "project", "project": "repo-1",
+        "project_name": "openagents", "kind": "project", "name": "Builds",
+        "body": "cargo build", "updated": 10});
+    let central = json!({"id": "mem-9", "scope": "user", "kind": "user", "name": "Central time",
+        "description": "", "body": "Central time\nI'm in Chicago.", "updated": 50});
+    f.site.answer(
+        "GET /coder/memory",
+        200,
+        json!({"notes": [tabs("Use two spaces.", 40), builds.clone()]}),
+    );
+    f.link.tap(Intent::EditNote { id: "mem-1".into() });
+    assert_eq!(f.link.lock().screen, Screen::Note);
+    let token = format!("link-note-{}", f.link.composer);
+    f.link.input(&token, "Use two spaces.");
+    until(|| !f.site.calls("PUT /coder/memory/mem-1").is_empty());
+    let sent = f.site.calls("PUT /coder/memory/mem-1")[0]
+        .body
+        .clone()
+        .unwrap();
+    assert_eq!(sent["body"], "Use two spaces.");
+    assert_eq!(sent["name"], "Tabs");
+    until(|| f.link.lock().screen == Screen::Memory);
+    assert_eq!(f.link.memory_notes()[0].body, "Use two spaces.");
+    // A new note is named by its first line and applies everywhere.
+    f.site.answer(
+        "GET /coder/memory",
+        200,
+        json!({"notes": [central.clone(), tabs("Use two spaces.", 40), builds]}),
+    );
+    f.link.tap(Intent::NewNote);
+    let token = format!("link-note-{}", f.link.composer);
+    f.link.input(&token, "Central time\nI'm in Chicago.");
+    until(|| !f.site.calls("PUT /coder/memory/new").is_empty());
+    let sent = f.site.calls("PUT /coder/memory/new")[0]
+        .body
+        .clone()
+        .unwrap();
+    assert_eq!(sent["name"], "Central time");
+    assert_eq!(sent["kind"], "user");
+    until(|| f.link.memory_notes().len() == 2);
+    // A credential never leaves the phone.
+    f.link.tap(Intent::NewNote);
+    let token = format!("link-note-{}", f.link.composer);
+    let key = format!("sk-ant-{}", "a1".repeat(20));
+    f.link.input(&token, &format!("my key is {key}"));
+    assert_eq!(f.site.calls("PUT /coder/memory/new").len(), 1);
+    // Delete removes it here too.
+    f.site.answer(
+        "GET /coder/memory",
+        200,
+        json!({"notes": [central, tabs("Use two spaces.", 40)]}),
+    );
+    f.link.tap(Intent::DeleteNote { id: "mem-2".into() });
+    until(|| !f.site.calls("DELETE /coder/memory/mem-2").is_empty());
+    until(|| f.link.lock().memory.iter().all(|note| note.id != "mem-2"));
+}

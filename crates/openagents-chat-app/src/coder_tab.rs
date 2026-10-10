@@ -490,6 +490,11 @@ pub struct CoderTab {
     shell: shell::Shell,
     /// The link cards under replies, and the pages they still need read.
     links: crate::links::LinkPreviews,
+    /// The person's memory notes from their account that apply everywhere
+    /// (#11182), newest first: each turn sends them, as the web chat does.
+    /// The host reads them (`GET /coder/memory`) and hands them over with
+    /// [`CoderTab::set_memory`]; empty while signed out.
+    memory: Vec<openagents_chat::router::MemoryNote>,
 }
 
 /// A read of an ended Coder task's chat for the one line its start card
@@ -567,7 +572,14 @@ impl CoderTab {
             attachments: ATTACHMENTS_ENABLED,
             shell: shell::Shell::default(),
             links: crate::links::LinkPreviews::default(),
+            memory: Vec::new(),
         }
+    }
+
+    /// The person's memory notes that apply everywhere, newest first
+    /// (#11182), for each turn's context; empty clears them.
+    pub fn set_memory(&mut self, notes: Vec<openagents_chat::router::MemoryNote>) {
+        self.memory = notes;
     }
 
     /// Whether the chat takes images: [`ATTACHMENTS_ENABLED`] unless
@@ -836,7 +848,7 @@ impl CoderTab {
             tried,
             skip: self.gym.skip(),
             runs: Vec::new(),
-            memory: Vec::new(),
+            memory: self.memory.clone(),
         }
     }
 

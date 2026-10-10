@@ -2264,6 +2264,9 @@ impl App {
                 self.link.queue_uploads(chats);
             }
         }
+        // The account's memory notes that apply everywhere go with each
+        // chat turn, as on the web (#11182); none while signed out.
+        self.coder.set_memory(self.link.memory_notes());
         let mut link = self.link.packet();
         link.open_url = self.link_open.take();
         let coder_live = coder_live || link.live;

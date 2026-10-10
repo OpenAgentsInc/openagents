@@ -29,6 +29,14 @@
 //! change to finished, failed, or asking becomes a notice the host shows
 //! as a local notification ([`Packet::notify`]).
 //!
+//! **Memory** (#11182). `GET /coder/memory` reads the notes Coder keeps
+//! about the person on their account (from computers with sync on); the
+//! ones that apply everywhere go with each phone chat turn
+//! ([`Link::memory_notes`]), as the web chat sends them. The Memory screen
+//! lists them; a note opens to change what it says
+//! (`PUT /coder/memory/{id}`) or delete it (`DELETE /coder/memory/{id}`),
+//! and a new note is `PUT /coder/memory/new`.
+//!
 //! Everything polls with backoff: faster while a screen that needs it
 //! shows, slower in the background, never while signed out.
 
@@ -60,6 +68,54 @@ const UPLOADS_PER_PASS: usize = 8;
 pub const MAX_REPLY_BYTES: usize = 16 * 1024;
 /// The most notices kept for the host at once.
 const MAX_NOTIFY: usize = 16;
+/// How often the memory notes are read while the Memory screen isn't up.
+const MEMORY_EVERY: u64 = 120;
+/// The longest memory note, as the website keeps it.
+pub const MAX_NOTE_BYTES: usize = 8 * 1024;
+/// The longest note name, in characters.
+const MAX_NOTE_NAME: usize = 80;
+
+/// One memory note on the account, as `GET /coder/memory` lists it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+pub struct Note {
+    pub id: String,
+    #[serde(default)]
+    pub scope: String,
+    #[serde(default)]
+    pub project_name: Option<String>,
+    #[serde(default)]
+    pub kind: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub body: Option<String>,
+    #[serde(default)]
+    pub updated: u64,
+    #[serde(default)]
+    pub deleted: bool,
+}
+
+impl Note {
+    /// Whether the note applies everywhere (not to one project).
+    #[must_use]
+    pub fn everywhere(&self) -> bool {
+        self.scope == "user"
+    }
+}
+
+/// What a person reads for a note's kind.
+#[must_use]
+pub fn kind_label(kind: Option<&str>) -> &'static str {
+    match kind {
+        Some("user") => "About you",
+        Some("feedback") => "How you like things done",
+        Some("project") => "About a project",
+        Some("reference") => "Where to look",
+        _ => "Note",
+    }
+}
 
 /// The signed-in account. The token never appears in `Debug`.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -314,6 +370,10 @@ pub enum Screen {
     Running,
     /// Write a message to one running agent.
     Message,
+    /// The memory notes on the account (#11182).
+    Memory,
+    /// One memory note, to change or delete, or a new one.
+    Note,
 }
 
 /// An open chat.
@@ -452,6 +512,16 @@ pub enum Intent {
         computer: String,
         item: String,
     },
+    /// Open a memory note to change or delete it.
+    EditNote {
+        id: String,
+    },
+    /// Write a new memory note.
+    NewNote,
+    /// Delete a memory note everywhere.
+    DeleteNote {
+        id: String,
+    },
     Retry,
 }
 
@@ -499,6 +569,16 @@ pub struct State {
     pub revision: u64,
     /// Actions already sent, by request id, so a double tap sends once.
     pub acted: BTreeSet<String>,
+    /// The account's memory notes, newest first (#11182).
+    pub memory: Vec<Note>,
+    /// The notes were read at least once.
+    pub memory_read: bool,
+    /// When the notes were last read, in Unix seconds.
+    pub memory_at: u64,
+    /// The note the Note screen shows: its id, or empty for a new one.
+    pub editing: Option<String>,
+    /// A note's change or delete is on its way.
+    pub memory_busy: bool,
 }
 
 impl State {
@@ -739,8 +819,10 @@ impl Link {
                 state.screen = match state.screen {
                     Screen::Message => Screen::Running,
                     Screen::Chat => Screen::Chats,
+                    Screen::Note => Screen::Memory,
                     _ => Screen::Account,
                 };
+                state.editing = None;
                 if state.screen != Screen::Chat {
                     state.open = None;
                 }
@@ -754,6 +836,27 @@ impl Link {
                 action,
                 question,
             } => self.send_action(computer, item, action, question, None),
+            Intent::EditNote { id } => {
+                let mut state = self.lock();
+                if state
+                    .memory
+                    .iter()
+                    .any(|note| note.id == id && !note.deleted)
+                {
+                    state.editing = Some(id);
+                    state.screen = Screen::Note;
+                    state.notice = None;
+                    state.changed();
+                }
+            }
+            Intent::NewNote => {
+                let mut state = self.lock();
+                state.editing = Some(String::new());
+                state.screen = Screen::Note;
+                state.notice = None;
+                state.changed();
+            }
+            Intent::DeleteNote { id } => self.delete_note(id),
             Intent::Message { computer, item } => {
                 let mut state = self.lock();
                 let title = state
@@ -777,6 +880,10 @@ impl Link {
     pub fn input(&mut self, token: &str, value: &str) {
         let text = value.trim();
         if text.is_empty() {
+            return;
+        }
+        if token.starts_with("link-note-") {
+            self.save_note(text.to_owned());
             return;
         }
         if text.len() > MAX_REPLY_BYTES {
@@ -886,6 +993,9 @@ impl Link {
             state.agents.clear();
             state.threads_read = false;
             state.agents_read = false;
+            state.memory.clear();
+            state.memory_read = false;
+            state.editing = None;
             state.open = None;
             state.seen.clear();
             state.choice_read = false;
@@ -1098,6 +1208,175 @@ impl Link {
             }
             wake();
             nudge.notify_one();
+        });
+    }
+
+    /// The memory notes that apply everywhere, newest first, for each
+    /// phone chat turn (#11182); none while signed out.
+    #[must_use]
+    pub fn memory_notes(&self) -> Vec<openagents_chat::router::MemoryNote> {
+        let state = self.lock();
+        if !state.signed() {
+            return Vec::new();
+        }
+        state
+            .memory
+            .iter()
+            .filter(|note| !note.deleted && note.everywhere())
+            .filter_map(|note| {
+                Some(openagents_chat::router::MemoryNote {
+                    name: note.name.clone()?,
+                    kind: note.kind.clone()?,
+                    description: note.description.clone().unwrap_or_default(),
+                    body: note.body.clone()?,
+                })
+            })
+            .take(openagents_chat::router::MAX_MEMORY_NOTES)
+            .collect()
+    }
+
+    /// Save the Note screen's text: what the open note says, or a new note
+    /// that applies everywhere, named by its first line.
+    fn save_note(&mut self, text: String) {
+        let refuse = |link: &Self, notice: &str| {
+            let mut state = link.lock();
+            state.notice = Some(notice.to_owned());
+            state.changed();
+        };
+        if text.len() > MAX_NOTE_BYTES {
+            return refuse(&*self, "That note is longer than 8 KB.");
+        }
+        if secret_screen::credential_in(&text).is_some() {
+            return refuse(
+                &*self,
+                "This looks like it holds a password or key, so it wasn't saved.",
+            );
+        }
+        let (origin, token, id, body) = {
+            let mut state = self.lock();
+            let Some(session) = state.session.clone() else {
+                return;
+            };
+            let Some(editing) = state.editing.clone() else {
+                return;
+            };
+            if state.memory_busy {
+                return;
+            }
+            let body = if editing.is_empty() {
+                let name: String = text
+                    .lines()
+                    .find(|line| !line.trim().is_empty())
+                    .unwrap_or_default()
+                    .trim()
+                    .chars()
+                    .take(MAX_NOTE_NAME)
+                    .collect();
+                json!({"kind": "user", "name": name, "description": "", "body": text})
+            } else {
+                let Some(note) = state.memory.iter().find(|note| note.id == editing) else {
+                    return;
+                };
+                json!({
+                    "kind": note.kind,
+                    "name": note.name,
+                    "description": note.description,
+                    "body": text,
+                })
+            };
+            state.memory_busy = true;
+            state.notice = Some("Saving…".into());
+            state.changed();
+            let id = if editing.is_empty() {
+                "new".to_owned()
+            } else {
+                editing
+            };
+            (state.origin.clone(), session.token, id, body)
+        };
+        self.composer += 1;
+        let http = self.http.clone();
+        let state = self.state.clone();
+        let wake = self.wake.clone();
+        self.spawn(async move {
+            let reply = http
+                .call(
+                    "PUT",
+                    format!("{origin}/coder/memory/{}", encode(&id)),
+                    Some(token),
+                    Some(body),
+                )
+                .await;
+            {
+                let mut state = lock(&state);
+                state.memory_busy = false;
+                match &reply {
+                    Ok(reply) if reply.status == 200 => {
+                        if let Ok(note) = serde_json::from_value::<Note>(reply.body["note"].clone())
+                        {
+                            state.memory.retain(|have| have.id != note.id);
+                            state.memory.insert(0, note);
+                        }
+                        state.editing = None;
+                        state.screen = Screen::Memory;
+                        state.notice = Some("Saved. Coder has it at its next sync.".into());
+                    }
+                    Ok(reply) => {
+                        state.notice = Some(reply.message("That note wasn't saved. Try again."));
+                    }
+                    Err(error) => state.notice = Some(error.clone()),
+                }
+                state.changed();
+            }
+            wake();
+        });
+    }
+
+    /// Delete a memory note everywhere.
+    fn delete_note(&mut self, id: String) {
+        let (origin, token) = {
+            let mut state = self.lock();
+            let Some(session) = state.session.clone() else {
+                return;
+            };
+            if state.memory_busy {
+                return;
+            }
+            state.memory_busy = true;
+            state.notice = Some("Deleting…".into());
+            state.changed();
+            (state.origin.clone(), session.token)
+        };
+        let http = self.http.clone();
+        let state = self.state.clone();
+        let wake = self.wake.clone();
+        self.spawn(async move {
+            let reply = http
+                .call(
+                    "DELETE",
+                    format!("{origin}/coder/memory/{}", encode(&id)),
+                    Some(token),
+                    None,
+                )
+                .await;
+            {
+                let mut state = lock(&state);
+                state.memory_busy = false;
+                match &reply {
+                    Ok(reply) if reply.status == 200 => {
+                        state.memory.retain(|note| note.id != id);
+                        state.editing = None;
+                        state.screen = Screen::Memory;
+                        state.notice = Some("Deleted. Coder forgets it at its next sync.".into());
+                    }
+                    Ok(reply) => {
+                        state.notice = Some(reply.message("That note wasn't deleted. Try again."));
+                    }
+                    Err(error) => state.notice = Some(error.clone()),
+                }
+                state.changed();
+            }
+            wake();
         });
     }
 
@@ -1446,7 +1725,7 @@ impl Poller {
     /// One pass: the choice, the chat list, the open chat, the agents, and
     /// the uploads.
     async fn pass(&self) {
-        let (origin, token, name, read_choice, open, uploads) = {
+        let (origin, token, name, read_choice, open, uploads, read_memory) = {
             let state = lock(&self.state);
             let Some(session) = state.session.clone().filter(|s| s.live(unix_now())) else {
                 return;
@@ -1469,6 +1748,9 @@ impl Poller {
                 !state.choice_read,
                 state.open.as_ref().map(|open| open.id.clone()),
                 uploads,
+                !state.memory_read
+                    || (state.shown && state.screen == Screen::Memory)
+                    || unix_now().saturating_sub(state.memory_at) >= MEMORY_EVERY,
             )
         };
         let before = lock(&self.state).revision;
@@ -1640,6 +1922,46 @@ impl Poller {
             Ok(reply) if reply.status == 401 => signed_out = true,
             _ => failed = true,
         }
+        if read_memory {
+            // An older website keeps no memory: that is no failure.
+            match self
+                .http
+                .call(
+                    "GET",
+                    format!("{origin}/coder/memory"),
+                    Some(token.clone()),
+                    None,
+                )
+                .await
+            {
+                Ok(reply) if reply.status == 200 => {
+                    let mut notes: Vec<Note> = reply.body["notes"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|note| serde_json::from_value::<Note>(note.clone()).ok())
+                        .filter(|note| !note.deleted)
+                        .collect();
+                    notes.sort_by(|a, b| b.updated.cmp(&a.updated));
+                    let mut state = lock(&self.state);
+                    state.memory_at = unix_now();
+                    if state.memory != notes || !state.memory_read {
+                        state.memory = notes;
+                        state.memory_read = true;
+                        state.changed();
+                    }
+                }
+                Ok(reply) if reply.status == 401 => signed_out = true,
+                _ => {
+                    let mut state = lock(&self.state);
+                    state.memory_at = unix_now();
+                    if !state.memory_read {
+                        state.memory_read = true;
+                        state.changed();
+                    }
+                }
+            }
+        }
         for (id, (title, messages, updated)) in uploads {
             let body = json!({
                 "computer": name,
@@ -1687,6 +2009,9 @@ impl Poller {
             state.forget = true;
             state.threads.clear();
             state.agents.clear();
+            state.memory.clear();
+            state.memory_read = false;
+            state.editing = None;
             state.open = None;
             state.screen = Screen::Account;
             state.notice = Some("Your sign-in ended. Sign in again.".into());

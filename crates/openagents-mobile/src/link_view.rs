@@ -55,6 +55,8 @@ fn draw(state: &State, composer: u64, messages: usize, text: usize) -> Node<Inte
         },
         Screen::Running => running(state),
         Screen::Message => message(state, composer),
+        Screen::Memory => memory(state),
+        Screen::Note => note(state, composer),
     }
 }
 
@@ -94,6 +96,14 @@ fn account(state: &State) -> Node<Intent> {
                 Some(Glyph::Terminal),
                 Intent::Show {
                     screen: Screen::Running,
+                },
+            ));
+            children.push(button(
+                "link-open-memory",
+                "Memory",
+                Some(Glyph::Person),
+                Intent::Show {
+                    screen: Screen::Memory,
                 },
             ));
             children.push(button(
@@ -563,6 +573,153 @@ fn item_card(computer: &Agents, item: &Item, now: u64) -> Node<Intent> {
         });
     }
     card(&key, lines)
+}
+
+/// The memory notes on the account (#11182): those that apply everywhere,
+/// then each project's, each opening to change or delete it.
+fn memory(state: &State) -> Node<Intent> {
+    let mut children = vec![header("link-memory-header", "Memory", Intent::Back)];
+    children.push(status(
+        "link-memory-what",
+        "What Coder remembers about you, from computers with sync on. Chats here use the notes that apply everywhere.",
+        quiet(),
+    ));
+    children.extend(notice(state));
+    if !state.memory_read {
+        children.push(working("link-memory-loading", "Loading your notes…"));
+        return page(children);
+    }
+    children.push(button(
+        "link-memory-new",
+        "Add a note",
+        Some(Glyph::Add),
+        Intent::NewNote,
+    ));
+    if state.memory.is_empty() {
+        children.push(status(
+            "link-memory-empty",
+            "No notes yet. Tell Coder \"remember …\" on a computer with sync on (`/sync on`), or add one here.",
+            quiet(),
+        ));
+        return page(children);
+    }
+    let mut groups: Vec<(String, Vec<&crate::account_link::Note>)> = vec![];
+    for note in &state.memory {
+        let group = if note.everywhere() {
+            "Everywhere".to_owned()
+        } else {
+            note.project_name
+                .clone()
+                .unwrap_or_else(|| "A project".to_owned())
+        };
+        match groups.iter_mut().find(|(name, _)| *name == group) {
+            Some((_, rows)) => rows.push(note),
+            None => groups.push((group, vec![note])),
+        }
+    }
+    groups.sort_by_key(|(name, _)| name != "Everywhere");
+    for (index, (name, rows)) in groups.into_iter().enumerate() {
+        children.push(status(
+            &format!("link-memory-group-{index}"),
+            &name,
+            quiet(),
+        ));
+        for note in rows {
+            let key = format!("link-memory-{}", slug(&note.id));
+            let mut lines = vec![button(
+                &format!("{key}-open"),
+                note.name.as_deref().unwrap_or("Note"),
+                None,
+                Intent::EditNote {
+                    id: note.id.clone(),
+                },
+            )];
+            let hint = match note.description.as_deref().filter(|d| !d.trim().is_empty()) {
+                Some(description) => format!(
+                    "{} · {}",
+                    crate::account_link::kind_label(note.kind.as_deref()),
+                    cut(description, 160)
+                ),
+                None => crate::account_link::kind_label(note.kind.as_deref()).to_owned(),
+            };
+            lines.push(status(&format!("{key}-hint"), &hint, quiet()));
+            children.push(card(&key, lines));
+        }
+    }
+    page(children)
+}
+
+/// One memory note: what it says, a composer to change it, and Delete; or
+/// a composer for a new note.
+fn note(state: &State, composer: u64) -> Node<Intent> {
+    let editing = state.editing.clone().unwrap_or_default();
+    let found = state
+        .memory
+        .iter()
+        .find(|note| !editing.is_empty() && note.id == editing);
+    let title = found
+        .and_then(|note| note.name.clone())
+        .unwrap_or_else(|| "New note".into());
+    let mut children = vec![header("link-note-header", &title, Intent::Back)];
+    match found {
+        Some(note) => {
+            children.push(status(
+                "link-note-kind",
+                crate::account_link::kind_label(note.kind.as_deref()),
+                quiet(),
+            ));
+            children.push(text(
+                "link-note-body",
+                &cut(note.body.as_deref().unwrap_or_default(), SHOWN_TEXT),
+                TextRole::Body,
+                ink(),
+                false,
+            ));
+            children.push(status(
+                "link-note-how",
+                "Change what it says below, then send. It reaches Coder at its next sync.",
+                quiet(),
+            ));
+        }
+        None => children.push(status(
+            "link-note-how",
+            "Write what to remember. The first line names it, and it applies everywhere.",
+            quiet(),
+        )),
+    }
+    children.extend(notice(state));
+    children.push(Node {
+        key: "link-note-composer".into(),
+        style: Style::default(),
+        element: Element::Composer {
+            token: format!("link-note-{composer}"),
+            placeholder: if found.is_some() {
+                "What to remember".into()
+            } else {
+                "Remember that…".into()
+            },
+            max_bytes: crate::account_link::MAX_NOTE_BYTES,
+            enabled: !state.memory_busy,
+            busy: state.memory_busy,
+            stop: None,
+            choices: vec![],
+            draft: found
+                .and_then(|note| note.body.clone())
+                .filter(|body| body.len() <= crate::account_link::MAX_NOTE_BYTES),
+            focus: true,
+        },
+    });
+    if let Some(note) = found {
+        children.push(button(
+            "link-note-delete",
+            "Delete",
+            Some(Glyph::Stop),
+            Intent::DeleteNote {
+                id: note.id.clone(),
+            },
+        ));
+    }
+    page(children)
 }
 
 /// Write a message to one agent.
