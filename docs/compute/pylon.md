@@ -111,6 +111,28 @@ The gateway trusts only the pylon keys in its `DECISION_PYLONS` (default
 CoderOS-4080's), and logs its own dispatch key at start (`decisions: …
 (dispatch key …)`), which is the key to `--allow`.
 
+**CoderOS-4080, the first decision pylon (2026-10-10).** Two user units,
+started with `systemd-run --user` like the text pylon's:
+
+- `pylon-clef`: `~/clef-m1/target/release/psionic-openai-server -m
+  ~/clef-m1/models/Clef-Flash-Q4_K_M.gguf --host 127.0.0.1 --port 18096
+  --decision-device cuda --decision-chunk 1024` (the M2 CUDA build, about
+  6.5 GB of the 4080; `~/work/pylon-decide/clef-cuda.sh` starts it);
+- `pylon-decide`: the static `pylon` at `~/work/pylon-decide/bin/pylon`,
+  `serve --decide http://127.0.0.1:18096 --decisions-only --pylon
+  coderos-4080-clef --slots 8 --allow <staging and production dispatch
+  keys>`, under the text pylon's key (`OPENAGENTS_PYLON_HOME=~/work/pylon-p1/home`,
+  `95bc7521…`, the gateways' default `DECISION_PYLONS`);
+  `~/work/pylon-decide/pylon-decide.sh KEY,KEY` restarts it.
+
+The 4080 has 16 GB. While a second Clef server for training experiments
+holds 6.5 GB of it, the text pylon's qwen model (`pylon-psionic`) is
+stopped so the decision Clef fits, and the user unit `pylon-text-restore`
+brings it back as it ran before (`psionic-restart.sh original`) once that
+server exits. Stopping `pylon-clef` is the failover drill: the next
+decision goes to Gemini on Vertex, and the pylon answers again within a
+minute of a restart (the gateway benches a failed pylon for 60 s).
+
 ### Share this computer from the host
 
 The Coder host is the pylon. Sharing is off by default:

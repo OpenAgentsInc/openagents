@@ -1952,3 +1952,43 @@ To roll back: `sudo ln -sfn /opt/coder-worker/releases/a32a919471
 coder-worker-chat` (the old release carries its own OpenAI-built index).
 To turn only the Vertex chat door off, add
 `CODER_WORKER_VERTEX=off` to the environment file and restart.
+
+Release `aeaa5771ca` (2026-10-10 UTC, #11225) asks every router judgment of
+our own decision API instead of TypeSafe's Jev: the judge resolves to
+`https://openagents.com/api/v1/systemone` (`judge https://openagents.com/api
+(jev-latest)` at start), which sends it to the connected Pylon on
+CoderOS-4080 (Clef-Flash on CUDA) and falls back to Gemini on Vertex. Built
+on this Mac with `cargo zigbuild --locked --release -p coder --bin
+coder-worker --target x86_64-unknown-linux-musl` at that commit, installed
+with `knowledge/` from `git archive aeaa5771ca knowledge/` (strip macOS
+`._*` files before restarting: the product KB refuses to load with them,
+which the first restart showed as `product kb off: … ._README.md`) and
+`codebase-kb.gz` copied from `156b301714`. **`TYPESAFE_API_KEY` is removed
+from the environment file**; the file as it was is kept as
+`/etc/coder-worker/coder-worker-chat.env.before-11225`. Checked with
+`--check`, then put live by moving the `chat` symlink and restarting
+`coder-worker-chat`; `156b301714` stays for rollback.
+
+From this Mac, `openagents chat send … --no-run` answered "What is
+OpenAgents?", "Write a haiku about rain", and "how do I connect my
+codebase?" routed (`decided: grounded`), and the journal logs `judge
+answered by door pylon:coderos-4080-clef in 4901 ms` (4700–4901 ms over the
+three turns). The router's main question set is large, so Clef took
+4.3–4.4 s of that on a 4080 shared with a Clef training run; the side
+requests took 1.0–1.3 s. Jev answered the same judge in 374 ms at the median
+and 594 ms at p90 over the 396 judgments of the 24 hours before. A judgment
+past 2.5 s shows the bank's `explain` opener first, so every turn now opens
+with "We'll look that up for you." until Clef is faster (a dedicated GPU,
+the router split of #11193). With the pylon's Clef server stopped, the next
+judgment failed over to Gemini on Vertex (`vertex answered as
+gemini-3.8-flash … after pylon:coderos-4080-clef unavailable`; 6.35 s for
+the router's main set, so that turn's reply went out unrouted), and the
+pylon answered again within a minute of the server's restart.
+
+To roll back: `sudo ln -sfn /opt/coder-worker/releases/156b301714
+/opt/coder-worker/chat && sudo cp -p
+/etc/coder-worker/coder-worker-chat.env.before-11225
+/etc/coder-worker/coder-worker-chat.env && sudo systemctl restart
+coder-worker-chat` (Jev through the Vercel AI Gateway, OpenRouter, and
+TypeSafe, as before). To keep this release but ask Jev again, add
+`OPENAGENTS_DECISIONS=jev` and `TYPESAFE_API_KEY` back and restart.

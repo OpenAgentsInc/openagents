@@ -1085,3 +1085,28 @@ are the owner's to check.
 Rollback: `scripts/deploy/web.sh rollback coder-web-63d03413b1-20261010135324`.
 That revision has the same site and the old sidecars, and `sess_` bearers
 then name nobody at `/mcp`.
+
+### 2026-10-10 14:56 UTC: decisions through connected Pylons (#11225)
+
+`coder-dec-c68cbbf86a-145250` serves 100% of openagents.com: web image
+`openagents-web@sha256:36f30ac9…` and stack image
+`openagents-stack@sha256:f6fcb25a…` (both built from `c68cbbf86a` by
+`scripts/deploy/web.sh stage`, which passed 92, failed 0, skipped 2 on
+staging), rendered with `deploy/production/render.py` so the gateway takes
+the new launcher: `gateway.sh` now writes a `decisions` section, and
+`POST /api/v1/systemone` is public. The gateway's start line names the
+chain and its dispatch key (`decisions: POST /v1/systemone for …
+→ connected pylons on wss://relay.openagents.com (dispatch key d6c54f14…)
+→ Vertex gemini-3.8-flash`); staging's key is `64197699…`, and CoderOS-4080's
+decision pylon admits both. Applied as `chris@` (the automation account is
+refused `actAs`); the no-traffic candidate failed only its 8 gateway checks
+(`GATEWAY_HOLD=serving`); 1% then 100%; openagents.com smoke
+(`--production`) 59 passed, 0 failed, 2 skipped. A three-question decision
+on `https://openagents.com/api/v1/systemone` is answered by
+`pylon:coderos-4080-clef` in 0.48–0.78 s from a Mac (289–623 ms in the
+gateway, 157–297 ms of it in Clef); with the pylon's Clef server stopped,
+by `vertex` in 1.4–3.2 s.
+
+Rollback: `scripts/deploy/web.sh rollback coder-web-63d03413b1-20261010135631`
+(the same site and sidecars without the decision route; `/api/v1/systemone`
+answers 404 there).

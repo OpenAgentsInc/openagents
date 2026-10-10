@@ -252,6 +252,12 @@ is asked again at a second door after it is sent, and the agreement (the
 questions whose pick agrees, the largest probability gap) goes to
 `decisions/shadow-YYYY-MM-DD.jsonl`.
 
+Deployed 2026-10-10 on staging and openagents.com, with CoderOS-4080 as the
+first pylon (`coderos-4080-clef`, Clef-Flash Q4_K_M on CUDA). A three-question
+decision takes 0.3–0.6 s in the gateway through the pylon; the chat
+router's main question set takes about 4.7 s (Clef 4.3 s on a shared 4080),
+against Jev's 0.37 s median through TypeSafe before.
+
 Clients find it through `jev_hosted::resolve` (below): TypeSafe's door
 resolves to our API unless the person or operator sets
 `OPENAGENTS_DECISIONS=jev`. `OPENAGENTS_DECISIONS_URL` names another base
