@@ -15,12 +15,15 @@
 //! instruction loading off. The model saves, updates and deletes them with
 //! the `remember`, `forget` and `recall` tools, and `/memory` lists them.
 //!
-//! **Sharing later.** Every note has a stable id and an update time, and a
-//! delete leaves a tombstone, so [`Memory::sync_records`] is the whole
-//! state a sync needs: the web chat and the apps can read the same notes
-//! through the account once it is on. Nothing leaves this computer unless
-//! the person's sync choice says so; notes are private by default. Notes
-//! that look like credentials are refused at save time.
+//! **On the account (#11182).** Every note has a stable id and an update
+//! time, and a delete leaves a tombstone, so [`Memory::account_records`]
+//! is the whole state a sync needs. While the person's `/sync` choice is
+//! on, Coder sends it to the account (`crate::memory_sync`) and
+//! [`Memory::merge`]s the account's list back, so a note saved here shows
+//! on openagents.com (Settings, Memory), the web chat reads it, and a
+//! delete anywhere removes it everywhere. Nothing leaves this computer
+//! while sync is off; notes are private to the account. Notes that look
+//! like credentials are refused at save time and never sent.
 
 use std::{
     collections::BTreeSet,
@@ -49,6 +52,9 @@ pub const PROVIDER_BUDGET: usize = 160 * 1024;
 /// Of that, the most spent on memory notes (index lines always fit first).
 const MEMORY_BUDGET: usize = 24 * 1024;
 const TOMBSTONES: &str = ".forgotten.json";
+/// The project's name (its folder's name), beside its notes, so the
+/// account can show which project a note belongs to.
+const PROJECT_NAME: &str = ".project";
 
 /// What kind of thing a note records.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
@@ -149,12 +155,21 @@ pub struct SyncRecord {
     pub id: String,
     pub scope: Scope,
     /// The project a project note belongs to (its key), `None` for the user's.
+    #[serde(default)]
     pub project: Option<String>,
+    /// The project's folder name, for showing; `None` for the user's.
+    #[serde(default)]
+    pub project_name: Option<String>,
+    #[serde(default)]
     pub kind: Option<Kind>,
+    #[serde(default)]
     pub name: Option<String>,
+    #[serde(default)]
     pub description: Option<String>,
+    #[serde(default)]
     pub body: Option<String>,
     pub updated: u64,
+    #[serde(default)]
     pub deleted: bool,
 }
 
@@ -367,21 +382,7 @@ impl Memory {
 
     /// Every note in `scope`, newest first.
     pub fn entries(&self, scope: Scope) -> Vec<Entry> {
-        let dir = self.scope_dir(scope);
-        let Ok(read) = fs::read_dir(&dir) else {
-            return Vec::new();
-        };
-        let mut entries: Vec<Entry> = read
-            .filter_map(Result::ok)
-            .map(|item| item.path())
-            .filter(|path| {
-                path.extension().is_some_and(|ext| ext == "md")
-                    && path.file_name().is_some_and(|name| name != INDEX)
-            })
-            .filter_map(|path| parse_entry(&path, scope))
-            .collect();
-        entries.sort_by(|a, b| b.updated.cmp(&a.updated).then(a.name.cmp(&b.name)));
-        entries
+        entries_in(&self.scope_dir(scope), scope)
     }
 
     /// The user's notes, then the project's.
@@ -502,56 +503,144 @@ impl Memory {
     /// nothing: the caller sends them only when the person's sync choice
     /// allows it.
     pub fn sync_records(&self) -> Vec<SyncRecord> {
-        let mut records = Vec::new();
-        for scope in [Scope::User, Scope::Project] {
-            let project = (scope == Scope::Project).then(|| self.project_key.clone());
-            for entry in self.entries(scope) {
-                records.push(SyncRecord {
-                    id: entry.id,
-                    scope,
-                    project: project.clone(),
-                    kind: Some(entry.kind),
-                    name: Some(entry.name),
-                    description: Some(entry.description),
-                    body: Some(entry.body),
-                    updated: entry.updated,
-                    deleted: false,
-                });
-            }
-            for stone in read_tombstones(&self.scope_dir(scope).join(TOMBSTONES)) {
-                records.push(SyncRecord {
-                    id: stone.id,
-                    scope,
-                    project: project.clone(),
-                    kind: None,
-                    name: None,
-                    description: None,
-                    body: None,
-                    updated: stone.at,
-                    deleted: true,
-                });
-            }
+        let mut records = records_in(&self.scope_dir(Scope::User), Scope::User, None);
+        records.extend(records_in(
+            &self.scope_dir(Scope::Project),
+            Scope::Project,
+            Some(&self.project_key),
+        ));
+        records
+    }
+
+    /// Notes and deletions for the account (#11182): the user's, and every
+    /// project's kept on this computer, not only this one's. Calling this
+    /// sends nothing.
+    pub fn account_records(&self) -> Vec<SyncRecord> {
+        let mut records = records_in(&self.scope_dir(Scope::User), Scope::User, None);
+        let projects = self.root.join("projects");
+        let mut keys: Vec<String> = fs::read_dir(&projects)
+            .map(|read| {
+                read.filter_map(Result::ok)
+                    .filter(|item| item.path().is_dir())
+                    .filter_map(|item| item.file_name().into_string().ok())
+                    .filter(|key| valid_project_key(key))
+                    .collect()
+            })
+            .unwrap_or_default();
+        keys.sort();
+        for key in keys {
+            records.extend(records_in(&projects.join(&key), Scope::Project, Some(&key)));
         }
         records
     }
 
+    /// Take the account's notes and deletions (#11182), by id: a newer
+    /// change wins, and a delete wins a tie with an update. A note from
+    /// the account that is new here is saved beside the others (in its own
+    /// project's folder), one deleted there is deleted here, and a note
+    /// changed or deleted here more recently stays as it is, for the next
+    /// sync to send. Records that are malformed, too large, or look like
+    /// credentials are skipped. Returns how many notes changed here.
+    pub fn merge(&self, remote: &[SyncRecord]) -> usize {
+        let mut changed = 0;
+        let mut touched: Vec<(PathBuf, Scope)> = Vec::new();
+        for record in remote {
+            let Some(dir) = self.record_dir(record) else {
+                continue;
+            };
+            if !valid_id(&record.id) {
+                continue;
+            }
+            let entries = entries_in(&dir, record.scope);
+            let local = entries.iter().find(|entry| entry.id == record.id);
+            let stones_path = dir.join(TOMBSTONES);
+            let mut stones = read_tombstones(&stones_path);
+            let stone_at = stones
+                .iter()
+                .find(|stone| stone.id == record.id)
+                .map(|stone| stone.at);
+            if record.deleted {
+                let Some(local) = local else {
+                    continue;
+                };
+                // A change here after the delete wins; a tie goes to the delete.
+                if local.updated > record.updated || fs::remove_file(&local.file).is_err() {
+                    continue;
+                }
+                stones.retain(|stone| stone.id != record.id);
+                stones.push(Tombstone {
+                    id: record.id.clone(),
+                    name: local.name.clone(),
+                    at: record.updated,
+                });
+                let _ = write_atomic(
+                    &stones_path,
+                    &serde_json::to_string_pretty(&stones).unwrap_or_else(|_| "[]".into()),
+                );
+            } else {
+                if stone_at.is_some_and(|at| at >= record.updated)
+                    || local.is_some_and(|entry| entry.updated >= record.updated)
+                {
+                    continue;
+                }
+                let Some(entry) = remote_entry(record, &dir, &entries, local) else {
+                    continue;
+                };
+                if fs::create_dir_all(&dir).is_err()
+                    || write_atomic(&entry.file, &render_entry(&entry)).is_err()
+                {
+                    continue;
+                }
+                if stone_at.is_some() {
+                    stones.retain(|stone| stone.id != record.id);
+                    let _ = write_atomic(
+                        &stones_path,
+                        &serde_json::to_string_pretty(&stones).unwrap_or_else(|_| "[]".into()),
+                    );
+                }
+                if record.scope == Scope::Project
+                    && !dir.join(PROJECT_NAME).exists()
+                    && let Some(name) = record
+                        .project_name
+                        .as_deref()
+                        .map(one_line)
+                        .filter(|name| !name.is_empty() && name.len() <= 120)
+                {
+                    let _ = fs::write(dir.join(PROJECT_NAME), name);
+                }
+            }
+            changed += 1;
+            if !touched.iter().any(|(seen, _)| *seen == dir) {
+                touched.push((dir, record.scope));
+            }
+        }
+        for (dir, scope) in touched {
+            let _ = write_index_in(&dir, scope);
+        }
+        changed
+    }
+
+    /// The folder a record's note lives in here: the user's, or its
+    /// project's (by the project's key); `None` for a bad key.
+    fn record_dir(&self, record: &SyncRecord) -> Option<PathBuf> {
+        match record.scope {
+            Scope::User => Some(self.scope_dir(Scope::User)),
+            Scope::Project => record
+                .project
+                .as_deref()
+                .filter(|key| valid_project_key(key))
+                .map(|key| self.root.join("projects").join(key)),
+        }
+    }
+
     fn write_index(&self, scope: Scope) -> Result<(), String> {
         let dir = self.scope_dir(scope);
-        let mut text = String::new();
-        for entry in self.entries(scope) {
-            let file = entry
-                .file
-                .file_name()
-                .map(|name| name.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            text.push_str(&format!(
-                "- [{}]({file}) ({}) — {}\n",
-                entry.name,
-                entry.kind.word(),
-                entry.description
-            ));
+        if scope == Scope::Project
+            && let Some(name) = self.project_root.file_name()
+        {
+            let _ = fs::write(dir.join(PROJECT_NAME), name.to_string_lossy().as_bytes());
         }
-        write_atomic(&dir.join(INDEX), &text)
+        write_index_in(&dir, scope)
     }
 
     /// What `/memory` shows.
@@ -578,7 +667,7 @@ impl Memory {
             }
         }
         text.push_str(&format!(
-            "Saved in {}. Ask Coder to remember or forget something, or /memory forget NAME.",
+            "Saved in {}. Ask Coder to remember or forget something, or /memory forget NAME. With /sync on, they also show at https://openagents.com/settings/memory and in the web chat.",
             self.root.display()
         ));
         text
@@ -769,6 +858,163 @@ impl Memory {
             _ => Err("Unknown memory tool.".into()),
         }
     }
+}
+
+/// Every note in `dir`, newest first.
+fn entries_in(dir: &Path, scope: Scope) -> Vec<Entry> {
+    let Ok(read) = fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut entries: Vec<Entry> = read
+        .filter_map(Result::ok)
+        .map(|item| item.path())
+        .filter(|path| {
+            path.extension().is_some_and(|ext| ext == "md")
+                && path.file_name().is_some_and(|name| name != INDEX)
+        })
+        .filter_map(|path| parse_entry(&path, scope))
+        .collect();
+    entries.sort_by(|a, b| b.updated.cmp(&a.updated).then(a.name.cmp(&b.name)));
+    entries
+}
+
+/// Rewrite `dir`'s `MEMORY.md` from its notes.
+fn write_index_in(dir: &Path, scope: Scope) -> Result<(), String> {
+    let mut text = String::new();
+    for entry in entries_in(dir, scope) {
+        let file = entry
+            .file
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        text.push_str(&format!(
+            "- [{}]({file}) ({}) — {}\n",
+            entry.name,
+            entry.kind.word(),
+            entry.description
+        ));
+    }
+    write_atomic(&dir.join(INDEX), &text)
+}
+
+/// The notes and deletions in `dir`, as sync records.
+fn records_in(dir: &Path, scope: Scope, project: Option<&str>) -> Vec<SyncRecord> {
+    let project = project.map(str::to_owned);
+    let project_name = project.as_ref().and_then(|_| {
+        fs::read_to_string(dir.join(PROJECT_NAME))
+            .ok()
+            .map(|name| one_line(&name))
+            .filter(|name| !name.is_empty())
+    });
+    let mut records = Vec::new();
+    for entry in entries_in(dir, scope) {
+        records.push(SyncRecord {
+            id: entry.id,
+            scope,
+            project: project.clone(),
+            project_name: project_name.clone(),
+            kind: Some(entry.kind),
+            name: Some(entry.name),
+            description: Some(entry.description),
+            body: Some(entry.body),
+            updated: entry.updated,
+            deleted: false,
+        });
+    }
+    for stone in read_tombstones(&dir.join(TOMBSTONES)) {
+        records.push(SyncRecord {
+            id: stone.id,
+            scope,
+            project: project.clone(),
+            project_name: project_name.clone(),
+            kind: None,
+            name: None,
+            description: None,
+            body: None,
+            updated: stone.at,
+            deleted: true,
+        });
+    }
+    records
+}
+
+/// The note a live record from the account becomes here, checked like a
+/// `remember`, in its existing file or a new one whose name no other note
+/// has. `None` when the record isn't a note this computer would keep.
+fn remote_entry(
+    record: &SyncRecord,
+    dir: &Path,
+    entries: &[Entry],
+    local: Option<&Entry>,
+) -> Option<Entry> {
+    let kind = record.kind?;
+    let name = one_line(record.name.as_deref()?);
+    let body = record.body.as_deref()?.trim().to_string();
+    if name.is_empty() || name.chars().count() > 80 || body.is_empty() || body.len() > BODY_LIMIT {
+        return None;
+    }
+    if local.is_none() && entries.len() >= SCOPE_LIMIT {
+        return None;
+    }
+    let description = record
+        .description
+        .as_deref()
+        .map(one_line)
+        .filter(|text| !text.is_empty())
+        .unwrap_or_else(|| cut(&one_line(body.lines().next().unwrap_or_default()), 150).0);
+    let description = cut(&description, 300).0;
+    if [&name, &description, &body]
+        .iter()
+        .any(|text| secret_screen::credential_in(text).is_some())
+    {
+        return None;
+    }
+    let file = match local {
+        Some(entry) => entry.file.clone(),
+        None => {
+            let base = slug(&name);
+            let plain = dir.join(format!("{base}.md"));
+            if plain.exists() {
+                let tail: String = record
+                    .id
+                    .chars()
+                    .filter(char::is_ascii_alphanumeric)
+                    .collect();
+                let tail = &tail[tail.len().saturating_sub(8)..];
+                dir.join(format!("{base}-{tail}.md"))
+            } else {
+                plain
+            }
+        }
+    };
+    Some(Entry {
+        id: record.id.clone(),
+        scope: record.scope,
+        kind,
+        name,
+        description,
+        body,
+        updated: record.updated,
+        file,
+    })
+}
+
+/// A note id from the account: letters, digits, `-` and `_`, at most 64
+/// bytes, so it stays one front-matter line.
+fn valid_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 64
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+}
+
+/// A project key from the account: what [`project_key`] makes, so it is
+/// one plain folder name.
+fn valid_project_key(key: &str) -> bool {
+    !key.is_empty()
+        && key.len() <= 120
+        && key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
 }
 
 /// The checkout that owns `cwd`: the nearest directory with `.git`; for a
@@ -1130,6 +1376,166 @@ mod tests {
             .map(|file| file.text)
             .collect();
         assert_eq!(texts, ["worktree copy", "workspace rule"]);
+    }
+
+    fn live(
+        id: &str,
+        scope: Scope,
+        project: Option<&str>,
+        name: &str,
+        body: &str,
+        updated: u64,
+    ) -> SyncRecord {
+        SyncRecord {
+            id: id.into(),
+            scope,
+            project: project.map(str::to_owned),
+            project_name: project.map(|_| "repo".to_owned()),
+            kind: Some(Kind::User),
+            name: Some(name.into()),
+            description: None,
+            body: Some(body.into()),
+            updated,
+            deleted: false,
+        }
+    }
+
+    fn gone(id: &str, scope: Scope, project: Option<&str>, updated: u64) -> SyncRecord {
+        SyncRecord {
+            id: id.into(),
+            scope,
+            project: project.map(str::to_owned),
+            project_name: None,
+            kind: None,
+            name: None,
+            description: None,
+            body: None,
+            updated,
+            deleted: true,
+        }
+    }
+
+    #[test]
+    fn account_notes_merge_by_id_and_a_delete_wins_a_tie() {
+        let f = fixture();
+        let memory = memory(&f, &f.repo);
+        // A note saved on the website arrives here.
+        assert_eq!(
+            memory.merge(&[live(
+                "mem-web1",
+                Scope::User,
+                None,
+                "Time zone",
+                "Central.",
+                100
+            )]),
+            1
+        );
+        let entry = memory.recall("Time zone").unwrap();
+        assert_eq!((entry.id.as_str(), entry.updated), ("mem-web1", 100));
+        let index = fs::read_to_string(memory.scope_dir(Scope::User).join(INDEX)).unwrap();
+        assert!(index.contains("[Time zone]"));
+        // An older copy changes nothing; a newer one replaces it in place.
+        assert_eq!(
+            memory.merge(&[live("mem-web1", Scope::User, None, "Time zone", "Old.", 50)]),
+            0
+        );
+        memory.merge(&[live(
+            "mem-web1",
+            Scope::User,
+            None,
+            "Time zone",
+            "Eastern.",
+            200,
+        )]);
+        assert_eq!(memory.recall("time zone").unwrap().body, "Eastern.");
+        assert_eq!(memory.entries(Scope::User).len(), 1);
+        // A delete older than the last change here loses; one at the same
+        // time wins and leaves a tombstone that a later sync sends on.
+        assert_eq!(memory.merge(&[gone("mem-web1", Scope::User, None, 150)]), 0);
+        assert!(memory.recall("Time zone").is_some());
+        assert_eq!(memory.merge(&[gone("mem-web1", Scope::User, None, 200)]), 1);
+        assert!(memory.recall("Time zone").is_none());
+        let records = memory.account_records();
+        assert_eq!(records.len(), 1);
+        assert!(records[0].deleted);
+        // A copy no newer than the delete doesn't bring it back.
+        assert_eq!(
+            memory.merge(&[live(
+                "mem-web1",
+                Scope::User,
+                None,
+                "Time zone",
+                "Back?",
+                200
+            )]),
+            0
+        );
+        assert!(memory.recall("Time zone").is_none());
+    }
+
+    #[test]
+    fn account_records_carry_every_project_and_merge_keeps_them_apart() {
+        let f = fixture();
+        let here = memory(&f, &f.repo);
+        here.remember(&note("Board", "project", "Project 22"))
+            .unwrap();
+        // Another project's note from the account goes to its own folder.
+        let other = "-elsewhere-other";
+        assert_eq!(
+            here.merge(&[live(
+                "mem-p2",
+                Scope::Project,
+                Some(other),
+                "Deploys",
+                "Fridays.",
+                10
+            )]),
+            1
+        );
+        assert_eq!(here.entries(Scope::Project).len(), 1);
+        let records = here.account_records();
+        let projects: Vec<(Option<&str>, Option<&str>)> = records
+            .iter()
+            .map(|record| (record.project.as_deref(), record.name.as_deref()))
+            .collect();
+        assert!(projects.contains(&(Some(other), Some("Deploys"))));
+        assert!(
+            records
+                .iter()
+                .any(|record| record.name.as_deref() == Some("Board")
+                    && record.project_name.as_deref() == Some("repo"))
+        );
+        // The same name from another computer keeps both notes.
+        assert_eq!(
+            here.merge(&[live(
+                "mem-xyz12345",
+                Scope::Project,
+                Some(here.project_key.as_str()),
+                "Board",
+                "Other.",
+                9
+            )]),
+            1
+        );
+        assert_eq!(here.entries(Scope::Project).len(), 2);
+        // A bad project key, a bad id, or a credential is never written.
+        let key = format!("sk-ant-{}", "a1".repeat(20));
+        assert_eq!(
+            here.merge(&[
+                live("mem-a", Scope::Project, Some("../escape"), "X", "y", 1),
+                live("mem/../b", Scope::User, None, "X", "y", 1),
+                live("mem-c", Scope::User, None, "Key", &key, 1),
+            ]),
+            0
+        );
+        // Records read back the way the account sends them.
+        let wire = serde_json::to_value(&records[0]).unwrap();
+        let back: SyncRecord = serde_json::from_value(wire).unwrap();
+        assert_eq!(back, records[0]);
+        let minimal: SyncRecord =
+            serde_json::from_value(json!({"id": "mem-d", "scope": "user", "updated": 3})).unwrap();
+        assert!(!minimal.deleted);
     }
 
     #[test]

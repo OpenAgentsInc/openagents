@@ -29,6 +29,7 @@ pub mod jev_plugin;
 pub mod live;
 pub mod login_choice;
 pub mod memory;
+mod memory_sync;
 pub mod model_catalog;
 pub mod models;
 pub mod ops_tool;

@@ -27,7 +27,7 @@ use crate::{App, sessions};
 /// What `/sync` says when it is off.
 pub const OFF: &str = "Saving chats to your account is off. /sync on saves new and changed chats; /sync all adds your earlier chats too.";
 /// What `/sync` says when it is on.
-pub const ON: &str = "Chats save to your account, and you can reply to them on openagents.com while Coder is open here. /sync off stops; /sync delete removes the ones already there.";
+pub const ON: &str = "Chats and memory save to your account, and you can reply to them on openagents.com while Coder is open here. /sync off stops; /sync delete removes the chats already there.";
 /// What Coder asks, once, when signed in and nobody chose yet (#11089).
 pub const QUESTION: &str = "Where should this computer's chats live? /sync all syncs all your chats to your account; /sync off keeps them on this computer.";
 /// What Coder says when it answers a reply typed on the website.
@@ -72,6 +72,8 @@ pub(crate) struct SyncState {
     told: Option<Instant>,
     /// What runs here, as last told to the phone (#11165).
     pub(crate) board: crate::supervise::Board,
+    /// Memory notes on the account (#11182).
+    pub(crate) memory: crate::memory_sync::MemorySync,
 }
 
 /// What one take brought for one chat.
@@ -114,7 +116,7 @@ fn now() -> u64 {
 }
 
 /// The live sign-in in `dir`.
-fn signed_in(dir: &Path) -> Option<Saved> {
+pub(crate) fn signed_in(dir: &Path) -> Option<Saved> {
     Saved::load(dir).filter(|saved| !saved.expired(now()))
 }
 
@@ -154,6 +156,7 @@ impl App {
             asked: None,
             told: None,
             board: crate::supervise::Board::default(),
+            memory: crate::memory_sync::MemorySync::default(),
         });
         sync.settings = settings;
         // Ask the website once where this computer's chats live: a choice
@@ -353,6 +356,7 @@ impl App {
     /// Each tick: apply what the sender reported, and keep the open chat's
     /// "working" heartbeat current.
     pub(crate) fn poll_sync(&mut self) {
+        self.poll_memory();
         let busy = self.live.busy;
         let open = self.session_id().map(str::to_owned);
         let asked = self
