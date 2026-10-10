@@ -2018,3 +2018,30 @@ wrote each answer (`at aiplatform.googleapis.com`).
 
 To roll back: `sudo ln -sfn /opt/coder-worker/releases/aeaa5771ca
 /opt/coder-worker/chat && sudo systemctl restart coder-worker-chat`.
+
+Release `f04d57a58a` (2026-10-10 UTC, #11225) puts Jev back first-class
+by the owner's decision: the Pylon judge took 4.7–6 s with confidence
+0.27–0.35 on the router's main set and missed prepared answers. The judge
+asks TypeSafe's API directly under `TYPESAFE_API_KEY` (restored from
+`coder-worker-chat.env.before-11225`; the keyless file is kept as
+`.before-jev-first`), with our `/v1/systemone` asked Pylons-first behind
+it, and one Jev answer in twenty shadowed there. Built on this Mac with
+`cargo zigbuild --release -p coder --bin coder-worker --target
+x86_64-unknown-linux-musl` at that commit, installed with `knowledge/` from
+`git archive f04d57a58a knowledge/` (packed with `COPYFILE_DISABLE=1`, no
+`._*` files) and `codebase-kb.gz` from `7ccd13da60`, checked with
+`--check`, and put live by moving the `chat` symlink; `7ccd13da60` stays
+for rollback. The start line reads `judge doors https://api.typesafe.ai →
+https://openagents.com/api (jev-latest)`. From this Mac, `openagents chat
+send … --no-run` answered "What is OpenAgents?" with its prepared answer
+(`meta.who.here@4`, judge 246 ms, 0.88 s end to end), "how do I connect my
+codebase?" with `meta.codebase@2` (227 ms, 0.93 s), and "Write a haiku about
+rain" from the model (233 ms, 1.7 s). The first shadow logged `decisions
+shadow: vertex (gemini-3.8-flash) agrees with Jev on 9/11 questions, max
+|Δp| 0.890` (the Pylon's Clef server was down then, so Vertex answered).
+
+To roll back: `sudo ln -sfn /opt/coder-worker/releases/156b301714
+/opt/coder-worker/chat && sudo systemctl restart coder-worker-chat` (Jev
+through the Vercel AI Gateway, OpenRouter, then TypeSafe, with the key now
+in the file). `7ccd13da60` and `aeaa5771ca` ask our API first and are not
+rollback targets for routing.
