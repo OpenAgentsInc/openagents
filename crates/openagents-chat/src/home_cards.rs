@@ -41,7 +41,7 @@ pub const HOME_CARDS: &[HomeCard] = &[
     HomeCard {
         id: "codebase",
         title: "Tour the codebase",
-        line: "The code for this site and our apps is open source. Take a look around.",
+        line: "This site and our apps are open source. Take a look around.",
         href: "https://github.com/OpenAgentsInc/openagents",
         message: "Give me a tour of the OpenAgents codebase.",
         opens_verse: false,
