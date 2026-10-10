@@ -31,7 +31,7 @@ from the diff.
 
 | Field | What it is |
 | --- | --- |
-| `id`, `source` | `ab:TAG/ISSUE-ARM-REP` or `issue-run:<run-id>`, and the run folder |
+| `id`, `source` | `ab:TAG/ISSUE-ARM-REP`, `issue-run:<run-id>` or `landed:<short>-issue-N`, and the run folder (`landed:<commit>` for a landed commit) |
 | `issue`, `base` | The issue, and the commit the run started from |
 | `briefing_digest`, `briefed` | `sha256` of the briefing the agent was given (none for arm A), and its files |
 | `diff_digest`, `result_tree` | `sha256` of the diff, and the tree it makes at `base` |
@@ -56,6 +56,27 @@ then may a later issue-run clean that run's worktree. `manifest` carries an
 `attempts` list with every captured trace, replayed or not, with its
 outcome, attempt and cost completeness.
 
+## Landed commits (#11243)
+
+Changes landed by the issue flow (`openagents chat work --issues N`) or by the
+landing queue (#11227) leave no run folder. Capture them from the commit:
+
+```sh
+python3 scripts/bench/traces/traces.py capture --landed COMMIT --issue N [--check CMD ...]
+```
+
+`--landed` is repeatable and takes several commits as `--landed A,B`. The
+trace's `base` is `COMMIT~1`, its diff is `git diff COMMIT~1 COMMIT` (stored by
+digest), `source` is `landed:<commit>`, `id` is `landed:<short>-issue-N`, and
+`outcome` is `landed`. Every cost component is `null` with the reason `not
+recorded by the issue flow`, never 0.
+
+The checks default to the issue flow's gate: `cargo test -p PKG` for each root
+workspace package whose files the diff touches. Each `--check` command replaces
+that gate. The recorded results are the ones the landing reported: pass, with
+`checks_recorded_by: issue_flow_gate`. A docs-only diff has no checks. Its
+replay checks the diff, tree, and files fields, and reports checks `none`.
+
 ## Replay
 
 `traces.py replay` checks each trace in order and stops at the first
@@ -78,7 +99,8 @@ Each receipt ends in one of three verdicts:
 Only verified traces are admitted.
 
 Where the checks run (`--on`):
-- **`mac`**: a fresh worktree on this computer, with a dedicated
+- **`local`** (or **`mac`**, its older name; both work on Linux too): a fresh
+  worktree on this computer, with a dedicated
   `CARGO_TARGET_DIR`. Both are deleted afterwards. A build is refused
   (unverifiable) when the disk has less than `TRACES_MIN_FREE_GB` (30) free.
 - **A host name**, such as `coderos-4080`: the A/B grader (`~/ab/bin/eval.sh`)

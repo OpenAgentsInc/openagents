@@ -10,6 +10,9 @@ training traces, and admits a trace only after an independent replay:
              the diff alone (files changed, its digest, the tree it makes at
              the base commit) and from the checks the harness ran, never
              from the agent's own summary or reply.
+             `--landed COMMIT --issue N` captures a commit the issue flow
+             or the landing queue landed (#11243): base COMMIT~1, its diff,
+             and the gate's checks as the landing reported them (pass).
     replay   for each trace: re-read the stored diff and compare its digest,
              apply it in a clean index at the base commit and compare the
              tree, re-derive the files it changes, then run the same verify
@@ -28,7 +31,8 @@ The store defaults to ~/.openagents/traces (override with --store). Nothing
 in it goes into git; `manifest` is what a commit carries.
 
 Where the checks run (`--on`):
-    mac      this computer: a fresh git worktree at the base commit and a
+    local    this computer (`mac` is the older name; it works on Linux
+             too): a fresh git worktree at the base commit and a
              dedicated CARGO_TARGET_DIR, both deleted after. A cargo check
              is refused (unverifiable) when the disk has less than
              TRACES_MIN_FREE_GB (default 30) free.
@@ -48,6 +52,7 @@ import io
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -61,7 +66,12 @@ TRACE_SCHEMA = "openagents.coder-trace.v1"
 RECEIPT_SCHEMA = "openagents.coder-trace-replay.v1"
 EXACT_REPLAY = "exact_replay"
 STORE = Path(os.environ.get("TRACES_STORE", os.path.expanduser("~/.openagents/traces")))
-REPO = Path(os.environ.get("TRACES_REPO", "/Users/christopherdavid/work/openagents"))
+# The owner's Mac checkout when it exists, else the checkout holding this script
+# (a Linux cloud environment).
+_MAC_REPO = Path("/Users/christopherdavid/work/openagents")
+REPO = Path(os.environ.get("TRACES_REPO") or (_MAC_REPO if _MAC_REPO.exists() else HERE.parents[2]))
+# `--on` values that mean this computer.
+LOCAL = ("local", "mac")
 MIN_FREE_GB = float(os.environ.get("TRACES_MIN_FREE_GB", "30"))
 OVERLAY = HERE.parent / "briefed-ab" / "remote" / "overlay.py"
 # The #11215 corpus's issue-group map: one partition per issue, for every feed.
@@ -321,6 +331,96 @@ def capture_issue_run(store: Path, repo: Path, folder: Path) -> dict | None:
     return t
 
 
+def _show(repo: Path, rev: str, path: str) -> str | None:
+    r = git(repo, "show", f"{rev}:{path}")
+    return r.stdout.decode(errors="replace") if r.returncode == 0 else None
+
+
+def gate_packages(repo: Path, commit: str, patch: str) -> list[tuple[str, None]]:
+    """The Cargo packages whose directories the diff touches, read from the
+    commit's tree: the issue flow's gate (`changed_packages` in
+    crates/coder-delegate/src/issue.rs). A package outside the root
+    workspace can't be tested by name from the root, so it is skipped."""
+    root = _show(repo, commit, "Cargo.toml") or ""
+    m = re.search(r"\nexclude\s*=\s*\[(.*?)\]", root, re.S)
+    excluded = m.group(1) if m else ""
+    packages = []
+    for line in patch.splitlines():
+        if not line.startswith("+++ b/"):
+            continue
+        at = os.path.dirname(line[len("+++ b/"):])
+        while True:
+            text = _show(repo, commit, f"{at}/Cargo.toml" if at else "Cargo.toml")
+            if text is not None and "[package]" in text:
+                if any(l.strip() == "[workspace]" for l in text.splitlines()) or f'"{at}"' in excluded:
+                    break
+                body = text.split("[package]", 1)[1]
+                name = re.search(r'^\s*name\s*=\s*"([^"]+)"', body, re.M)
+                if name and name.group(1) not in packages:
+                    packages.append(name.group(1))
+                break
+            if not at:
+                break
+            at = os.path.dirname(at)
+    return packages
+
+
+def capture_landed(store: Path, repo: Path, commit: str, issue: int, checks: list[str] | None = None) -> dict:
+    """A commit the issue flow or the landing queue (#11227) landed, as a
+    trace (#11243). Its base is COMMIT~1 and its diff `git diff COMMIT~1
+    COMMIT`. The checks are the issue flow's gate (`cargo test -p PKG` per
+    touched package; none for a docs-only diff) or the given commands, and
+    their recorded results are the ones the landing reported: pass."""
+    r = git(repo, "rev-parse", "--verify", f"{commit}^{{commit}}")
+    full = r.stdout.decode().strip() if r.returncode == 0 else commit
+    short = full[:12]
+    parent = git(repo, "rev-parse", "--verify", f"{full}~1")
+    base = parent.stdout.decode().strip() if parent.returncode == 0 else None
+    patch = None
+    if r.returncode == 0 and base:
+        d = git(repo, "diff", "--binary", base, full)
+        patch = d.stdout if d.returncode == 0 else None
+    t = base_record(store, repo, tid=f"landed:{short}-issue-{int(issue)}", kind="landed",
+                    path=Path(f"landed:{full}"), issue=issue, base=base, patch=patch)
+    t["source"]["path"] = f"landed:{full}"
+    t["commit"] = full
+    if r.returncode:
+        t["capture_error"] = f"commit {commit} is not in {repo}"
+    elif not base:
+        t["capture_error"] = f"commit {short} has no parent to diff against"
+    t["outcome"] = {"status": "landed", "delivers": True, "reason": "the commit is on the landed branch"}
+    t["attempt"] = None
+    t["run_id"] = None
+    t["briefing_digest"] = None
+    t["briefed"] = []
+    t["opened_outside_briefing"] = None
+    if checks:
+        argvs = [shlex.split(c) for c in checks]
+    else:
+        text = patch.decode(errors="replace") if patch else ""
+        argvs = [["cargo", "test", "-p", p] for p in gate_packages(repo, full, text)] if base else []
+    specs = [{"id": "check:" + shlex.join(a), "argv": a} for a in argvs]
+    t["check_spec"] = {"kind": "commands", "checks": specs} if specs else {"kind": "none"}
+    # The landing ran these and landed only because they passed.
+    t["checks"] = {c["id"]: True for c in specs}
+    t["checks_recorded_by"] = "issue_flow_gate"
+    t["checks_digest"] = sha256(canonical(t["checks"]))
+    t["claimed"] = None
+    t["teacher"] = None
+    why = "not recorded by the issue flow"
+    t["cost"] = {
+        "denomination": "USD",
+        "basis": "reported",
+        "components": {name: {"usd": None, "unknown_reason": why} for name in ("agent", "decisions")},
+        "known_subtotal_usd": None,
+        "total_usd": None,
+        "complete": False,
+    }
+    t["cost_usd"] = None
+    t["wall_secs"] = None
+    return t
+
+
 def mark_captured(folder: Path, t: dict) -> None:
     """Tell the issue-run that this folder's trace is stored, so a later run
     may clean its worktree (only when the digests match)."""
@@ -390,6 +490,12 @@ def cmd_capture(a) -> None:
         if t:
             new.append(t)
             captured.append((folder, t["id"]))
+    issue = getattr(a, "issue", None)
+    for spec in getattr(a, "landed", None) or []:
+        for commit in filter(None, (c.strip() for c in spec.split(","))):
+            if issue is None:
+                raise SystemExit("capture --landed needs --issue N")
+            new.append(capture_landed(store, repo, commit, issue, getattr(a, "check", None)))
     rows = save_traces(store, new)
     stored = {r["id"]: r for r in rows}
     for folder, tid in captured:
@@ -485,7 +591,7 @@ def run_checks_host(t: dict, patch: bytes, store: Path, host: str, limit: int) -
     """The A/B grader on the build host, in its second checkout."""
     spec = t["check_spec"]
     if spec["kind"] != "ab-grade":
-        raise Unverifiable("only the A/B grade runs on the build host; run command checks with --on mac")
+        raise Unverifiable("only the A/B grade runs on the build host; run command checks with --on local")
     tests = get_blob(store, spec["tests_patch_digest"])
     if tests is None:
         raise Unverifiable("the stored test overlay is missing")
@@ -521,7 +627,7 @@ def replay(t: dict, store: Path, repo: Path, on: str, limit: int = 1500, checks_
         "v": RECEIPT_SCHEMA,
         "trace": t["id"],
         "at": _now(),
-        "host": "mac" if on == "mac" else on,
+        "host": on,
         "base": t.get("base"),
         "clean": True,
     }
@@ -560,11 +666,15 @@ def replay(t: dict, store: Path, repo: Path, on: str, limit: int = 1500, checks_
         return diverged("files_changed", t["files_changed"], files)
     # 4. The same verify checks, run again from a clean checkout.
     try:
+        if t["check_spec"]["kind"] == "none":
+            # A docs-only landing: the diff, tree and files replayed; no check applies.
+            rec["checks"] = "none"
+            return done("passed")
         if t["check_spec"]["kind"] == "empty":
             checks = {"tests_pass": False if not patch.strip() else None}
         elif checks_runner is not None:
             checks = checks_runner(t, patch)
-        elif on == "mac":
+        elif on in LOCAL:
             checks = run_checks_mac(t, patch, store, repo, limit)
         else:
             checks = run_checks_host(t, patch, store, on, limit)
@@ -650,7 +760,8 @@ def corpus_items(t: dict, rec: dict, pmap: dict | None = None) -> list[dict]:
     role = partition_of(t, pmap)["role"]
     if role is None:
         return []
-    ok = accepted(t, rec["checks"])
+    unchecked = (t.get("check_spec") or {}).get("kind") == "none"
+    ok = not unchecked and accepted(t, rec["checks"])
     prov = {
         "source": f"openagents repository, {t['id']} (#11218)",
         "license": "Apache-2.0 (repository)",
@@ -664,7 +775,7 @@ def corpus_items(t: dict, rec: dict, pmap: dict | None = None) -> list[dict]:
                          "diff_digest": t["diff_digest"], "files_changed": t["files_changed"],
                          "opened_outside_briefing": t.get("opened_outside_briefing"),
                          "teacher": t.get("teacher")},
-                  label="accepted" if ok else "rejected",
+                  label="unchecked" if unchecked else "accepted" if ok else "rejected",
                   label_rule="the verify checks, replayed from a clean checkout at the base commit, passed")]
     if ok:
         for path in t["files_changed"]:
@@ -761,8 +872,14 @@ def main(argv=None) -> None:
     c.add_argument("--tasks", default=str(HERE.parent / "briefed-ab" / "tasks"))
     c.add_argument("--issue-runs", nargs="*", default=[], help="e.g. ~/.openagents/coder-new/issue-runs")
     c.add_argument("--issue-run-folders", nargs="*", default=[], help="single run folders (issue-run calls this)")
+    c.add_argument("--landed", action="append", default=[],
+                   help="a commit the issue flow or landing queue landed; repeatable, or A,B")
+    c.add_argument("--issue", type=int, help="the issue the --landed commits resolve")
+    c.add_argument("--check", action="append", default=[],
+                   help="a check command for --landed (default: cargo test -p PKG per touched package)")
     r = sub.add_parser("replay")
-    r.add_argument("--on", default="mac", help="mac, or a build host name (A/B grades only)")
+    r.add_argument("--on", default="local",
+                   help="local (this computer; mac is the same), or a build host name (A/B grades only)")
     r.add_argument("--ids", nargs="*")
     r.add_argument("--issues", nargs="*", type=int)
     r.add_argument("--limit", type=int, default=0)

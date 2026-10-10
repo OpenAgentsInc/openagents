@@ -6,6 +6,7 @@ rejects a tampered one, naming the field that diverged.
 
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -247,6 +248,96 @@ class InventoryTests(unittest.TestCase):
         mark = json.loads((folder / "trace-captured.json").read_text())
         self.assertEqual(mark["trace"], "issue-run:11218-1")
         self.assertEqual(mark["diff_digest"], traces.sha256(self.f.patch))
+
+
+class LandedTests(unittest.TestCase):
+    """#11243: a commit the issue flow or landing queue landed is a trace."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        tmp = Path(self.tmp.name)
+        self.repo, self.store = tmp / "repo", tmp / "store"
+        (self.repo / "crates" / "alpha" / "src").mkdir(parents=True)
+        (self.repo / "crates" / "solo").mkdir(parents=True)
+        (self.repo / "docs").mkdir()
+        sh(self.repo, "git", "init", "-q")
+        sh(self.repo, "git", "config", "user.email", "t@example.com")
+        sh(self.repo, "git", "config", "user.name", "t")
+        (self.repo / "Cargo.toml").write_text('[workspace]\nmembers = ["crates/alpha"]\nexclude = [\n    "crates/solo",\n]\n')
+        (self.repo / "crates" / "alpha" / "Cargo.toml").write_text('[package]\nname = "alpha"\n')
+        (self.repo / "crates" / "alpha" / "src" / "lib.rs").write_text("// a\n")
+        (self.repo / "crates" / "solo" / "Cargo.toml").write_text('[package]\nname = "solo"\n')
+        (self.repo / "docs" / "a.md").write_text("a\n")
+        (self.repo / "greet.txt").write_text("bye\n")
+        self.commit("base")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def commit(self, msg, **files):
+        for path, text in files.items():
+            (self.repo / path.replace("__", "/")).write_text(text)
+        sh(self.repo, "git", "add", "-A")
+        sh(self.repo, "git", "commit", "-q", "-m", msg)
+        return sh(self.repo, "git", "rev-parse", "HEAD")
+
+    def capture(self, landed, check=None):
+        traces.cmd_capture(_ns(store=self.store, repo=self.repo, ab=[], tasks="", issue_runs=[],
+                               landed=landed, issue=11243, check=check or []))
+        return {t["id"]: t for t in traces.read_jsonl(self.store / "traces.jsonl")}
+
+    def test_a_rust_landing_takes_the_gate_and_unknown_cost(self):
+        c = self.commit("rust", **{"crates__alpha__src__lib.rs": "// b\n"})
+        t = self.capture([c])[f"landed:{c[:12]}-issue-11243"]
+        self.assertEqual(t["base"], sh(self.repo, "git", "rev-parse", f"{c}~1"))
+        self.assertEqual(t["source"]["path"], f"landed:{c}")
+        self.assertEqual(t["files_changed"], ["crates/alpha/src/lib.rs"])
+        patch = subprocess.run(["git", "diff", "--binary", f"{c}~1", c], cwd=self.repo, capture_output=True).stdout
+        self.assertEqual(t["diff_digest"], traces.sha256(patch))
+        self.assertEqual(t["outcome"]["status"], "landed")
+        self.assertEqual(t["check_spec"]["checks"], [{"id": "check:cargo test -p alpha",
+                                                      "argv": ["cargo", "test", "-p", "alpha"]}])
+        self.assertEqual(t["checks"], {"check:cargo test -p alpha": True})
+        self.assertEqual(t["checks_recorded_by"], "issue_flow_gate")
+        self.assertIsNone(t["cost_usd"])
+        for part in t["cost"]["components"].values():
+            self.assertIsNone(part["usd"])
+            self.assertEqual(part["unknown_reason"], "not recorded by the issue flow")
+
+    def test_an_excluded_workspace_is_not_gated_by_name(self):
+        c = self.commit("solo", **{"crates__solo__Cargo.toml": '[package]\nname = "solo"\n# x\n'})
+        t = self.capture([c])[f"landed:{c[:12]}-issue-11243"]
+        self.assertEqual(t["check_spec"], {"kind": "none"})
+
+    def test_several_commits_and_given_checks_replay_on_this_computer(self):
+        a = self.commit("one", **{"greet.txt": "hello\n"})
+        b = self.commit("two", **{"other.txt": "x\n"})
+        got = self.capture([f"{a},{b}"], check=[shlex.join(CHECK)])
+        ta, tb = got[f"landed:{a[:12]}-issue-11243"], got[f"landed:{b[:12]}-issue-11243"]
+        self.assertEqual([c["argv"] for c in ta["check_spec"]["checks"]], [CHECK])
+        for on in ("local", "mac"):
+            rec = traces.replay(ta, self.store, self.repo, on, 60)
+            self.assertEqual(rec["verdict"], "verified", rec)
+            self.assertEqual(rec["host"], on)
+        self.assertEqual(traces.replay(tb, self.store, self.repo, "local", 60)["verdict"], "verified")
+
+    def test_a_docs_only_landing_replays_the_diff_and_reports_no_checks(self):
+        c = self.commit("docs", **{"docs__a.md": "b\n"})
+        t = self.capture([c])[f"landed:{c[:12]}-issue-11243"]
+        self.assertEqual(t["check_spec"], {"kind": "none"})
+        self.assertEqual(t["checks"], {})
+        rec = traces.replay(t, self.store, self.repo, "local", 60)
+        self.assertEqual(rec["verdict"], "verified")
+        self.assertEqual(rec["checks"], "none")
+        items = traces.corpus_items(t, rec, {"path": "issues.tsv", "digest": "sha256:x", "issues": {11243: "training"}})
+        self.assertEqual([i["label"] for i in items], ["unchecked"])
+
+    def test_a_tampered_landed_diff_is_rejected(self):
+        c = self.commit("one", **{"greet.txt": "hello\n"})
+        t = self.capture([c])[f"landed:{c[:12]}-issue-11243"]
+        blob = self.store / "blobs" / t["diff_digest"].split(":")[1]
+        blob.write_bytes(blob.read_bytes().replace(b"+hello", b"+hellO"))
+        self.assertEqual(traces.replay(t, self.store, self.repo, "local", 60)["divergent"]["field"], "diff_digest")
 
 
 class PartitionTests(unittest.TestCase):
