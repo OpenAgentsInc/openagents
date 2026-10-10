@@ -1786,3 +1786,27 @@ chat-router-v5@bcab1427d09d (Live)`, and bank `chat-answers-v1@f9883275c95b`
 (89 answers). From CoderOS, `openagents chat` answered "what products do you
 have?" with the `openagents.products` note, "what do you make" with
 `meta.products.here`, and "What is OpenAgents?" with `meta.who.here`.
+
+Release `15020bfbbc` (2026-10-10 UTC) sends privacy questions to the privacy
+answers again and answers "what is memory in coder?" (#11106, #11176):
+`meta.memory` v3 no longer claims "whether we learn from their chats" (which
+pulled "do you train on my chats" and "do you store my chats" to it), says
+what Coder's memory is, and answers the `meta`, `product.kb`, and `general`
+routes; the new `openagents.coder-memory` note v1 covers the same, since Jev
+reads that question at a low route probability (0.35–0.39) and the model
+had said we had no documented answer. Built with `cargo zigbuild --locked
+--release -p coder --bin coder-worker --target x86_64-unknown-linux-musl` at
+that commit on CoderOS (this Mac was short of disk; sha256
+`41ad026d02029d35…`), installed with `knowledge/` from `git archive
+15020bfbbc knowledge/` and `codebase-kb.gz` copied from `80438d7296`,
+checked with `--check`, and put live by moving the `chat` symlink and
+restarting `coder-worker-chat`. The environment file, unit, and
+`coder-worker.service`/`current` did not change; `80438d7296` stays in
+`releases/` for rollback (`23563881d7` and `4d1e95a585`, the two
+intermediate releases this fix went through, are there too). The log names
+`product kb openagents-product@fbc68010abaf (110 entries)`, `router
+chat-router-v5@bcab1427d09d (Live)`, and bank `chat-answers-v1@c81c3764a2f3`
+(90 answers). From CoderOS, `openagents chat` answered "do you train on my
+chats?" with the `openagents.chat-privacy` note, "how long do you keep my
+chats?" from the notes on the retention details, and "what is memory in
+coder?" with the `openagents.coder-memory` note shown whole.
