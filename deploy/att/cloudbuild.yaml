@@ -1,0 +1,34 @@
+# Builds and pushes the NIP-ATT attested decision provider image
+# (deploy/att/Dockerfile) reproducibly. From a `git archive` of one commit:
+#
+#   gcloud builds submit --project openagentsgemini \
+#     --config deploy/att/cloudbuild.yaml \
+#     --ignore-file deploy/att/att.gcloudignore \
+#     --substitutions _TAG=$(git rev-parse --short=10 HEAD) .
+#
+# scripts/deploy/att-provider.sh runs this; see
+# docs/security/private-inference.md for the release and the VM.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -eu
+        docker buildx version
+        docker buildx create --name att --driver docker-container --use
+        docker buildx build \
+          --file deploy/att/Dockerfile \
+          --build-arg SOURCE_DATE_EPOCH=0 \
+          --provenance=false --sbom=false \
+          --output type=image,name=us-central1-docker.pkg.dev/$PROJECT_ID/openagents/att-provider:${_TAG},push=true,rewrite-timestamp=true,oci-mediatypes=true \
+          --metadata-file /workspace/metadata.json \
+          .
+        python3 -c 'import json; print("digest", json.load(open("/workspace/metadata.json"))["containerimage.digest"])' || cat /workspace/metadata.json
+options:
+  machineType: E2_HIGHCPU_32
+  env:
+    - SOURCE_DATE_EPOCH=0
+timeout: 5400s
+substitutions:
+  _TAG: dev

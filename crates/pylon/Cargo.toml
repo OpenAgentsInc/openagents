@@ -31,10 +31,14 @@ nostr-transport = { path = "../nostr-transport" }
 # The sealed execution receipt a decision result carries (NIP-DEC, #11225).
 receipts = { path = "../receipts" }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# The attested serve mode (NIP-ATT): the launcher token's claims and the
+# pinned weights' digest.
+base64 = "0.22"
+sha2 = "0.10"
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 
 [dev-dependencies]
 # The in-process relay (`fixture`) for this crate's own integration tests.

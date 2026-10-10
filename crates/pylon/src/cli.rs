@@ -40,6 +40,16 @@ Commands:
       --decide-model NAME   The decision model at that server (default: the
                             first one it lists).
       --decisions-only      Answer decision jobs only, no text jobs.
+      --attested            Run as a NIP-ATT attested endpoint inside a Google
+                            Confidential Space workload (the release image
+                            only): a key made in memory, the pinned weights
+                            fetched and checked, Psionic started on loopback,
+                            a launcher token bound to the key, sealed
+                            decisions only. Takes --release ID --publisher
+                            HEX --weights-url URL --weights-sha256 HEX
+                            --weights PATH --psionic BIN [--operator HEX]
+                            [--workload SLUG] [--teeserver SOCKET]
+                            (OA_ATT_RELEASE and OA_ATT_PUBLISHER also work).
       --pylon SLUG          The beacon's name (default: the host name).
       --label TEXT          Display label (default: the slug).
       --slots N             Concurrent jobs (default 2).
@@ -312,6 +322,9 @@ async fn serve(
     let model = args
         .value("--model")?
         .unwrap_or_else(|| "qwen3.5-0.8b-q8_0".into());
+    if args.flag("--attested") {
+        return serve_attested(json_out, args, relay).await;
+    }
     let decide_url = args.value("--decide")?;
     let decide_model = args.value("--decide-model")?;
     let decisions_only = args.flag("--decisions-only");
@@ -447,6 +460,167 @@ async fn serve(
         counters.served, counters.refused, counters.failed
     );
     Ok(())
+}
+
+/// `serve --attested`: the NIP-ATT endpoint inside the release image
+/// (`crate::attested`). Free, sealed decisions only, any caller under the
+/// rate limit and the slot count.
+async fn serve_attested(json_out: bool, args: &mut Args, relay: &str) -> Result<(), String> {
+    use crate::attested::{self, Attestation, Setup};
+    let env = |name: &str| std::env::var(name).ok().filter(|v| !v.is_empty());
+    let release = args
+        .value("--release")?
+        .or_else(|| env("OA_ATT_RELEASE"))
+        .ok_or("--attested needs --release ID (or OA_ATT_RELEASE)")?;
+    let publisher = args
+        .value("--publisher")?
+        .or_else(|| env("OA_ATT_PUBLISHER"))
+        .ok_or("--attested needs --publisher HEX (or OA_ATT_PUBLISHER)")?;
+    let operator = args.value("--operator")?.unwrap_or_else(|| publisher.clone());
+    let workload = args
+        .value("--workload")?
+        .unwrap_or_else(|| "clef-decisions".into());
+    let socket = args
+        .value("--teeserver")?
+        .unwrap_or_else(|| attested::TEESERVER.into());
+    let weights_url = args.value("--weights-url")?.ok_or("--attested needs --weights-url")?;
+    let weights_sha256 = args
+        .value("--weights-sha256")?
+        .ok_or("--attested needs --weights-sha256")?;
+    let weights = PathBuf::from(args.value("--weights")?.ok_or("--attested needs --weights PATH")?);
+    let psionic = args.value("--psionic")?.ok_or("--attested needs --psionic BIN")?;
+    let port = args.number("--psionic-port", 18_096)?;
+    let slug = args.value("--pylon")?.unwrap_or_else(|| "att-tdx".into());
+    let mut config = Config::new(relay, &slug, home());
+    config.label = args
+        .value("--label")?
+        .unwrap_or_else(|| "Sealed Clef (Intel TDX, Confidential Space)".into());
+    config.slots = u32::try_from(args.number("--slots", 1)?.clamp(1, 8)).unwrap_or(1);
+    config.rate_per_minute = u32::try_from(args.number("--rate", 6)?.clamp(1, 60)).unwrap_or(6);
+    config.class.family = nostr::pylon::Family::Cpu;
+    config.class.tier = Tier::Small;
+    config.class.memory_gb = 16;
+    config.pools = Vec::new();
+    config.allow = None;
+    if let Some(extra) = args.words.first() {
+        return Err(format!("unexpected argument `{extra}`"));
+    }
+    for (value, field) in [(&release, "release"), (&publisher, "publisher"), (&operator, "operator")] {
+        if hex_pubkey(value).as_deref() != Some(value.as_str()) && !(value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit())) {
+            return Err(format!("--{field} is not 64 hex characters"));
+        }
+    }
+    let setup = Setup {
+        release: release.clone(),
+        publisher,
+        workload,
+        operator,
+        socket: PathBuf::from(socket),
+    };
+    // The endpoint key lives only in this process's memory.
+    let identity = Identity::generate();
+    eprintln!("pylon: attested endpoint key {}", identity.pubkey());
+    attested::fetch_weights(&weights_url, &weights_sha256, &weights).await?;
+    let mut psionic_child = std::process::Command::new(&psionic)
+        .args(["-m"])
+        .arg(&weights)
+        .args(["--host", "127.0.0.1", "--port", &port.to_string(), "--decision-device", "cpu"])
+        .spawn()
+        .map_err(|e| format!("Psionic did not start: {e}"))?;
+    let url = format!("http://127.0.0.1:{port}");
+    let clef = crate::decide::Clef::new(&url, None)?;
+    let started = std::time::Instant::now();
+    let served = loop {
+        match clef.refresh().await {
+            Ok(found) => break found,
+            Err(why) => {
+                if let Ok(Some(status)) = psionic_child.try_wait() {
+                    return Err(format!("Psionic exited ({status}) before it served"));
+                }
+                if started.elapsed() > Duration::from_secs(1_800) {
+                    return Err(format!("Psionic never served: {why}"));
+                }
+                tokio::time::sleep(Duration::from_secs(5)).await;
+            }
+        }
+    };
+    let pinned = format!("sha256:{weights_sha256}");
+    if served.artifact_digest.as_deref() != Some(pinned.as_str()) {
+        let _ = psionic_child.kill();
+        return Err(format!(
+            "Psionic serves {:?}, not the pinned weights {pinned}; refusing",
+            served.artifact_digest
+        ));
+    }
+    eprintln!("pylon: Psionic serves {} on loopback", served.advertised());
+    let instance = attested::instance_id();
+    let (first, claims) = attested::endpoint_event(&identity, &setup, &instance).await?;
+    let measurement = claims["submods"]["container"]["image_digest"]
+        .as_str()
+        .ok_or("the launcher's token names no image digest")?
+        .to_string();
+    let attestation = Attestation {
+        address: format!("{}:{}:{instance}", nostr::att::ENDPOINT_KIND, identity.pubkey()),
+        release,
+        measurement: measurement.clone(),
+        level: nostr::att::Level::TeeCloud,
+        model: served.model.clone(),
+        model_digest: pinned,
+    };
+    let provider = Provider::deciding(
+        config,
+        identity.clone(),
+        None,
+        Arc::new(clef),
+        Arc::new(Dedicated),
+    )?;
+    provider.attest(attestation.clone())?;
+    provider.queue(first).await?;
+    emit(
+        json_out,
+        &json!({
+            "serving": true,
+            "attested": attestation.address,
+            "release": attestation.release,
+            "measurement": measurement,
+            "model": served.advertised(),
+            "relay": relay,
+        }),
+        &format!(
+            "attested pylon {slug} serving sealed decisions on {relay}\nendpoint {}\nmeasurement {measurement}\nmodel {}",
+            attestation.address,
+            served.advertised()
+        ),
+    );
+    let refresher = {
+        let provider = Arc::clone(&provider);
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(attested::REFRESH).await;
+                match attested::endpoint_event(&identity, &setup, &instance).await {
+                    Ok((event, _)) => {
+                        if provider.queue(event).await.is_err() {
+                            return;
+                        }
+                        eprintln!("pylon: endpoint refreshed with a fresh token");
+                    }
+                    Err(why) => eprintln!("pylon: endpoint refresh failed: {why}"),
+                }
+            }
+        })
+    };
+    let stop = async {
+        let mut term =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).ok();
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            () = async { match term.as_mut() { Some(t) => { t.recv().await; } None => std::future::pending().await } } => {}
+        }
+    };
+    let result = provider.run(stop).await;
+    refresher.abort();
+    let _ = psionic_child.kill();
+    result
 }
 
 fn link(json_out: bool, args: &mut Args) -> Result<(), String> {

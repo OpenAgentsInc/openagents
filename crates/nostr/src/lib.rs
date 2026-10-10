@@ -12,6 +12,7 @@
 
 pub mod activity_summary;
 pub mod agent_persona;
+pub mod att;
 pub mod block_lane;
 pub mod cap;
 pub mod channel_window;

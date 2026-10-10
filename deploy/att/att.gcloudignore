@@ -1,0 +1,21 @@
+# Build context for deploy/att/Dockerfile: the workspace manifest, every
+# crate (Psionic included), Cargo's configuration, the vendored sources,
+# the NIP texts some crates compile in, and the recipe itself.
+/*
+!/Cargo.toml
+!/Cargo.lock
+!/vendor/
+!/.cargo/
+!/crates/
+!/nips/
+!/deploy/
+/deploy/*
+!/deploy/att/
+!/migrations/
+!/assets/
+!/knowledge/
+!/programs/
+!/questions/
+!/plugins/
+!/packages/
+**/target/

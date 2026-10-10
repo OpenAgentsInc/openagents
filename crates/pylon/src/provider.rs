@@ -135,6 +135,9 @@ pub struct Provider {
     outbound: mpsc::Sender<Event>,
     inbound: Mutex<mpsc::Receiver<Event>>,
     changed: tokio::sync::Notify,
+    /// Set in the attested serve mode (NIP-ATT): decisions must be sealed
+    /// jobs for this endpoint, and their answers name it.
+    attested: std::sync::OnceLock<crate::attested::Attestation>,
 }
 
 const SEEN_BOUND: usize = 4_096;
@@ -272,7 +275,33 @@ impl Provider {
             outbound,
             inbound: Mutex::new(inbound),
             changed: tokio::sync::Notify::new(),
+            attested: std::sync::OnceLock::new(),
         }))
+    }
+
+    /// Turn on the attested mode: from now on a decision is answered only
+    /// as a sealed job for `attestation`'s endpoint and release.
+    ///
+    /// # Errors
+    ///
+    /// When the mode was already set.
+    pub fn attest(&self, attestation: crate::attested::Attestation) -> Result<(), String> {
+        self.attested
+            .set(attestation)
+            .map_err(|_| "the attested mode is already set".to_string())
+    }
+
+    /// Queue an event this pylon signed (an attested endpoint, say) for
+    /// the relay.
+    ///
+    /// # Errors
+    ///
+    /// When the provider has stopped.
+    pub async fn queue(&self, event: Event) -> Result<(), String> {
+        self.outbound
+            .send(event)
+            .await
+            .map_err(|_| "the pylon has stopped".to_string())
     }
 
     /// The pylon's public key.
@@ -298,7 +327,12 @@ impl Provider {
         Beacon {
             v: BEACON_V.into(),
             requires: Vec::new(),
-            meta: None,
+            // Inert: the attested endpoint this pylon's key serves. The
+            // level a reader shows comes only from that endpoint's evidence.
+            meta: self
+                .attested
+                .get()
+                .map(|a| json!({"attested_endpoint": a.address, "claimed_level": a.level.as_str()})),
             provider: self.pubkey().into(),
             pylon: self.config.pylon.clone(),
             label: self.config.label.clone(),
@@ -747,6 +781,14 @@ impl Provider {
             }
             this.send_decision(&event, |seal| call.refusal_event(seal, &refusal));
         };
+        if let Some(attested) = self.attested.get()
+            && let Err(why) =
+                nostr::att::check_sealed(&call.payload, &attested.address, &attested.release)
+        {
+            self.state.lock().await.counters.refused += 1;
+            refuse(&self, "unsupported_feature", why, None);
+            return;
+        }
         if let Err(refusal) = self.gate(&event).await {
             self.state.lock().await.counters.refused += 1;
             let code = match refusal.code {
@@ -798,7 +840,22 @@ impl Provider {
                     "identity": identity.advertised(),
                 });
                 response["latency_ms"] = json!(latency_ms);
-                let receipt = decision_receipt(&call, &identity, latency_ms, &response);
+                let attested = self.attested.get();
+                if let Some(a) = attested {
+                    response["attested"] = nostr::att::attested_block(
+                        &a.address,
+                        &a.release,
+                        a.level,
+                        &a.measurement,
+                        &event.content,
+                        &a.model,
+                        &a.model_digest,
+                    );
+                }
+                let mut receipt = decision_receipt(&call, &identity, latency_ms, &response);
+                if attested.is_some() {
+                    receipt = attested_receipt(receipt, &response);
+                }
                 let resolution = Resolution::Answered(response);
                 self.send_decision(&event, |seal| {
                     call.result_event(seal, &resolution, &receipt)
@@ -993,6 +1050,18 @@ impl Provider {
             Err(e) => eprintln!("pylon: sealing an answer: {e}"),
         }
     }
+}
+
+/// An attested answer's receipt: the result digest is over the response's
+/// JCS bytes (`nostr::att::response_digest`), which a client in another
+/// language or JSON library recomputes exactly, and the seal is redone.
+fn attested_receipt(receipt: serde_json::Value, response: &serde_json::Value) -> serde_json::Value {
+    let Ok(mut parsed) = serde_json::from_value::<receipts::execution::ExecutionReceipt>(receipt.clone()) else {
+        return receipt;
+    };
+    parsed.result_digest = Some(nostr::att::response_digest(response));
+    parsed.seal();
+    serde_json::to_value(&parsed).unwrap_or(receipt)
 }
 
 /// The sealed execution receipt a decision result carries: bound to the
