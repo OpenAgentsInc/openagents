@@ -38,6 +38,34 @@ pub const VAR: &str = "CODER_WORKER_ROUTER_CALIBRATION";
 /// The committed map, fitted by the last published eval.
 pub const FIXTURE: &str = include_str!("../../fixtures/chat-router/calibration-v2.json");
 
+/// The map fitted the same way on Clef-Flash's answers (#11195): the
+/// published eval run against a Psionic Clef server, so a decision a Clef
+/// door answers (a connected Pylon, #11225) is read on Clef's own scale.
+/// Jev's [`FIXTURE`] describes Jev's probabilities and must not be applied
+/// to Clef's, which run about three times lower.
+pub const CLEF_FIXTURE: &str =
+    include_str!("../../fixtures/chat-router/calibration-clef-flash-v1.json");
+
+/// Whether a response's `model` names a Clef model (`clef-flash`,
+/// `clef-flash@sha256:…`, `clef`), whose readings take [`CLEF_FIXTURE`].
+#[must_use]
+pub fn answered_by_clef(model: &str) -> bool {
+    model.trim().to_ascii_lowercase().starts_with("clef")
+}
+
+/// Whether a response came from a Clef model: its `model` names one (a
+/// Pylon's answer: `clef-flash@sha256:…`), or it carries a Psionic Clef
+/// server's `psionic` block (a server asked directly echoes the requested
+/// model id).
+#[must_use]
+pub fn response_from_clef(response: &jev::SystemOneResponse) -> bool {
+    answered_by_clef(&response.model)
+        || response
+            .field("psionic")
+            .and_then(|block| block["artifact"].as_str().map(answered_by_clef))
+            .unwrap_or(false)
+}
+
 /// The probability at or above which a reading counts as sure, for the
 /// operating-point table.
 pub const SURE: f64 = 0.9;
@@ -138,6 +166,15 @@ impl Calibration {
         Self::parse(FIXTURE)
     }
 
+    /// The committed Clef record ([`CLEF_FIXTURE`]).
+    ///
+    /// # Errors
+    ///
+    /// When the fixture does not parse, which the tests rule out.
+    pub fn builtin_clef() -> Result<Self, String> {
+        Self::parse(CLEF_FIXTURE)
+    }
+
     /// The map from [`VAR`]: `Some` when it is `on` or unset, `None` when
     /// it is `off`.
     ///
@@ -157,9 +194,27 @@ impl Calibration {
     ///
     /// As [`Calibration::from_env`].
     pub fn from_setting(value: Option<&str>, bank: &str) -> Result<Option<Self>, String> {
+        Self::from_setting_with(value, bank, Self::builtin)
+    }
+
+    /// The Clef record ([`CLEF_FIXTURE`]) under the same [`VAR`] setting.
+    ///
+    /// # Errors
+    ///
+    /// As [`Calibration::from_env`].
+    pub fn clef_from_env(bank: &str) -> Result<Option<Self>, String> {
+        let value = std::env::var(VAR).ok();
+        Self::from_setting_with(value.as_deref(), bank, Self::builtin_clef)
+    }
+
+    fn from_setting_with(
+        value: Option<&str>,
+        bank: &str,
+        builtin: fn() -> Result<Self, String>,
+    ) -> Result<Option<Self>, String> {
         match value.map(str::trim) {
             Some("on") => {
-                let record = Self::builtin()?;
+                let record = builtin()?;
                 record.check(&set_id(), bank)?;
                 Ok(Some(record))
             }
@@ -168,7 +223,7 @@ impl Calibration {
             // (a question-set change must not stop the worker; the
             // published eval refits the map).
             Some("") | None => {
-                let record = Self::builtin()?;
+                let record = builtin()?;
                 Ok(record.check(&set_id(), bank).is_ok().then_some(record))
             }
             Some("off") => Ok(None),
@@ -248,6 +303,21 @@ mod tests {
             .iter()
             .map(|(p, c)| Observation::new(*p, *c))
             .collect()
+    }
+
+    /// The Clef record parses, names this build's question set, and both
+    /// of its maps passed their held-out gate.
+    #[test]
+    fn the_committed_clef_record_is_this_builds() {
+        let record = Calibration::builtin_clef().expect("the Clef fixture parses");
+        assert_eq!(record.schema, SCHEMA);
+        record
+            .check(&set_id(), &Bank::builtin().id())
+            .expect("fitted for this question set");
+        assert!(record.route.serves() && record.answer.serves());
+        assert!(answered_by_clef("clef-flash@sha256:fd3e"));
+        assert!(answered_by_clef("Clef"));
+        assert!(!answered_by_clef("jev-1.13.0"));
     }
 
     /// The committed record parses, names this build's question set, and

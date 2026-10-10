@@ -308,6 +308,10 @@ struct Routed {
     admitted: router::Admitted,
     plugin_names: Vec<String>,
     target: String,
+    /// The worker's calibration maps (`CODER_WORKER_ROUTER_CALIBRATION`),
+    /// Jev's and Clef's, applied by the model that answered.
+    calibration: Option<router::calibration::Calibration>,
+    clef_calibration: Option<router::calibration::Calibration>,
 }
 
 impl Routed {
@@ -340,9 +344,12 @@ impl Routed {
         let tools = coder::gym_kb::tools(&corpus);
         let admitted = router::Admitted::of(&tools, &[]);
         let facts = chat_goldens::web_facts(base);
+        let bank = Bank::builtin();
+        let calibration = router::calibration::Calibration::from_env(&bank.id())?;
+        let clef_calibration = router::calibration::Calibration::clef_from_env(&bank.id())?;
         Ok(Routed {
             judge,
-            bank: Bank::builtin(),
+            bank,
             facts,
             seams,
             kb,
@@ -350,6 +357,8 @@ impl Routed {
             admitted,
             plugin_names: coder::builtin_plugins::names(),
             target,
+            calibration,
+            clef_calibration,
         })
     }
 
@@ -411,7 +420,17 @@ impl Routed {
                 };
             }
         };
-        let routing = router::reading(&response, self.bank, &self.facts, &self.admitted);
+        let mut routing = router::reading(&response, self.bank, &self.facts, &self.admitted);
+        // As the worker reads it: the map for the model that answered
+        // (Jev's, or Clef's when a Clef door answered).
+        let map = if router::calibration::response_from_clef(&response) {
+            self.clef_calibration.as_ref()
+        } else {
+            self.calibration.as_ref()
+        };
+        if let Some(map) = map {
+            map.apply(&mut routing);
+        }
         let tier = router::decide(&routing, self.bank, &self.facts, &situation);
         let mut why = format!("route {} {:.2}", routing.route.word(), routing.route_p);
         if let Some((second, p)) = routing.runner_up {

@@ -281,6 +281,16 @@ impl SystemOneResponse {
         self.raw.request_id()
     }
 
+    /// A top-level field of the response body the SDK does not model, such
+    /// as a Psionic server's `psionic` receipt block.
+    #[must_use]
+    pub fn field(&self, key: &str) -> Option<serde_json::Value> {
+        serde_json::from_slice::<serde_json::Value>(&self.raw.bytes)
+            .ok()?
+            .get(key)
+            .cloned()
+    }
+
     /// The NIP-CJ `service` object (`{door, version}`) a hosted decision
     /// service adds to the answers it relays: the door that answered and
     /// the build that carried it. `None` for an answer straight from the

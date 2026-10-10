@@ -249,8 +249,11 @@ pub fn split_of(id: &str) -> &'static str {
     }
 }
 
-/// What a system did with one row.
-#[derive(Clone, Debug, Default, PartialEq, Serialize)]
+/// What a system did with one row. It reads back from the
+/// `*-readings.json` a run writes, so a run's maps can be refitted
+/// without asking the judge again (`ROUTER_EVAL_READINGS`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Reading {
     pub id: String,
     /// The route it chose, or `None` when it has no route reading.

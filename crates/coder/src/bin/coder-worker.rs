@@ -835,7 +835,10 @@ async fn serve(options: &Options) -> Result<(), String> {
             news.as_deref(),
             &jev_fallbacks,
         )
-        .calibrated(router::calibration::Calibration::from_env(&bank.id())?),
+        .calibrated(
+            router::calibration::Calibration::from_env(&bank.id())?,
+            router::calibration::Calibration::clef_from_env(&bank.id())?,
+        ),
     );
     eprintln!(
         "router  {} ({:?}), bank {} with {} answers; seams {:?}",
@@ -1591,13 +1594,34 @@ struct RouterConfig {
     /// the policy decides, when `CODER_WORKER_ROUTER_CALIBRATION=on`
     /// (#9959); `None` serves the raw probabilities.
     calibration: Option<router::calibration::Calibration>,
+    /// The map for readings a Clef door answered
+    /// ([`router::calibration::answered_by_clef`]), under the same setting.
+    clef_calibration: Option<router::calibration::Calibration>,
 }
 
 impl RouterConfig {
-    /// The configuration with `calibration` applied to every reading.
-    fn calibrated(mut self, calibration: Option<router::calibration::Calibration>) -> Self {
+    /// The configuration with `calibration` applied to every reading and
+    /// `clef` to the readings a Clef model answered.
+    fn calibrated(
+        mut self,
+        calibration: Option<router::calibration::Calibration>,
+        clef: Option<router::calibration::Calibration>,
+    ) -> Self {
         self.calibration = calibration;
+        self.clef_calibration = clef;
         self
+    }
+
+    /// The map for a reading `response` carried.
+    fn calibration_for(
+        &self,
+        response: &jev::SystemOneResponse,
+    ) -> Option<&router::calibration::Calibration> {
+        if router::calibration::response_from_clef(response) {
+            self.clef_calibration.as_ref()
+        } else {
+            self.calibration.as_ref()
+        }
     }
 
     #[cfg(test)]
@@ -1725,6 +1749,7 @@ impl RouterConfig {
             fell_back,
             news: news.map(Arc::new),
             calibration: None,
+            clef_calibration: None,
         }
     }
 }
@@ -2053,7 +2078,10 @@ impl Job {
         let seams = their_seams(&self.routing.seams, &access, judge.as_ref(), &door);
         let routing =
             RouterConfig::with_news_and_jev(self.routing.setting, seams, &door, None, &[])
-                .calibrated(self.routing.calibration.clone())
+                .calibrated(
+                    self.routing.calibration.clone(),
+                    self.routing.clef_calibration.clone(),
+                )
                 .on_their_keys(&door, if judge.is_some() { &jev_names[..] } else { &[] });
         self.door = door;
         self.judge = judge;
@@ -2659,7 +2687,7 @@ impl Job {
                     }
                     let answered_by = (door, response.model.clone());
                     let mut reading = router::reading(&response, bank, &facts, &admitted);
-                    if let Some(map) = &routing.calibration {
+                    if let Some(map) = routing.calibration_for(&response) {
                         map.apply(&mut reading);
                     }
                     let personalize = routing.seams.personalize.available();
@@ -2706,7 +2734,7 @@ impl Job {
                         &served,
                         u64::try_from(milliseconds).unwrap_or(u64::MAX),
                     )
-                    .calibrated(routing.calibration.as_ref());
+                    .calibrated(routing.calibration_for(&response));
                     eprintln!("{}", record.line());
                     Some(Judged {
                         routing: reading,

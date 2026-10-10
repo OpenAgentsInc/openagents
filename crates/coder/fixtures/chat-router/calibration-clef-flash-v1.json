@@ -1,0 +1,182 @@
+{
+  "schema": "openagents.chat-router.calibration.v1",
+  "set": "chat-router-v5@bcab1427d09d",
+  "bank": "chat-answers-v1@c2e5baa50550",
+  "created": "2026-10-10",
+  "fitted_on": "calibration",
+  "fitted_rows": 417,
+  "route": {
+    "map": {
+      "bins": [
+        {
+          "lo": 0.0,
+          "hi": 0.1,
+          "fitted": 0.7590361445783133,
+          "count": 0
+        },
+        {
+          "lo": 0.1,
+          "hi": 0.2,
+          "fitted": 0.4090909090909091,
+          "count": 54
+        },
+        {
+          "lo": 0.2,
+          "hi": 0.3,
+          "fitted": 0.6611842105263158,
+          "count": 151
+        },
+        {
+          "lo": 0.3,
+          "hi": 0.4,
+          "fitted": 0.82,
+          "count": 74
+        },
+        {
+          "lo": 0.4,
+          "hi": 0.5,
+          "fitted": 0.9758064516129032,
+          "count": 61
+        },
+        {
+          "lo": 0.5,
+          "hi": 0.6,
+          "fitted": 0.9634146341463414,
+          "count": 40
+        },
+        {
+          "lo": 0.6,
+          "hi": 0.7,
+          "fitted": 0.868421052631579,
+          "count": 18
+        },
+        {
+          "lo": 0.7,
+          "hi": 0.8,
+          "fitted": 0.9705882352941176,
+          "count": 16
+        },
+        {
+          "lo": 0.8,
+          "hi": 0.9,
+          "fitted": 0.75,
+          "count": 1
+        },
+        {
+          "lo": 0.9,
+          "hi": 1.0,
+          "fitted": 0.7590361445783133,
+          "count": 0
+        }
+      ],
+      "base_rate": 0.7590361445783133,
+      "fitted_on": 415
+    },
+    "held_out_items": 261,
+    "raw": {
+      "accuracy": 0.6781609195402298,
+      "ece": 0.3785226880719392,
+      "brier": 0.3295004912317015,
+      "nll": 0.8753674364103962,
+      "confident_errors": 0,
+      "items": 261
+    },
+    "calibrated": {
+      "accuracy": 0.6781609195402298,
+      "ece": 0.029969363925748504,
+      "brier": 0.18160643517545833,
+      "nll": 0.5451077636720653,
+      "confident_errors": 4,
+      "items": 261
+    },
+    "verdict": "passed",
+    "gate": "gate:5bdfd1423c6c2d305a12d8f9f16e7e83a594f8548f1b605de0f77c1ef639e758"
+  },
+  "answer": {
+    "map": {
+      "bins": [
+        {
+          "lo": 0.0,
+          "hi": 0.1,
+          "fitted": 0.125,
+          "count": 3
+        },
+        {
+          "lo": 0.1,
+          "hi": 0.2,
+          "fitted": 0.05384615384615385,
+          "count": 64
+        },
+        {
+          "lo": 0.2,
+          "hi": 0.3,
+          "fitted": 0.15760869565217392,
+          "count": 91
+        },
+        {
+          "lo": 0.3,
+          "hi": 0.4,
+          "fitted": 0.4076923076923077,
+          "count": 64
+        },
+        {
+          "lo": 0.4,
+          "hi": 0.5,
+          "fitted": 0.5285714285714286,
+          "count": 34
+        },
+        {
+          "lo": 0.5,
+          "hi": 0.6,
+          "fitted": 0.7121212121212122,
+          "count": 32
+        },
+        {
+          "lo": 0.6,
+          "hi": 0.7,
+          "fitted": 0.5952380952380952,
+          "count": 20
+        },
+        {
+          "lo": 0.7,
+          "hi": 0.8,
+          "fitted": 0.9,
+          "count": 24
+        },
+        {
+          "lo": 0.8,
+          "hi": 0.9,
+          "fitted": 0.9761904761904762,
+          "count": 20
+        },
+        {
+          "lo": 0.9,
+          "hi": 1.0,
+          "fitted": 0.875,
+          "count": 3
+        }
+      ],
+      "base_rate": 0.3971830985915493,
+      "fitted_on": 355
+    },
+    "held_out_items": 230,
+    "raw": {
+      "accuracy": 0.4782608695652174,
+      "ece": 0.0937349043807081,
+      "brier": 0.16764578343153225,
+      "nll": 0.5109769237258664,
+      "confident_errors": 0,
+      "items": 230
+    },
+    "calibrated": {
+      "accuracy": 0.4782608695652174,
+      "ece": 0.05248472699323368,
+      "brier": 0.16197085857557741,
+      "nll": 0.48855618567799397,
+      "confident_errors": 0,
+      "items": 230
+    },
+    "verdict": "passed",
+    "gate": "gate:5bdfd1423c6c2d305a12d8f9f16e7e83a594f8548f1b605de0f77c1ef639e758"
+  }
+}

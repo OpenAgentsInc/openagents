@@ -276,7 +276,29 @@ async fn run_router(name: &str, mode: router::Mode) {
     let starter = starter_records(&tools);
     let mut offers = Offers::default();
     let mut engines = Engines::default();
-    for row in &rows {
+    // `ROUTER_EVAL_READINGS`: replay a run's readings file instead of
+    // asking the judge (refits the maps from a finished run).
+    let replay: Option<Vec<Reading>> = std::env::var_os("ROUTER_EVAL_READINGS").map(|path| {
+        let bytes = std::fs::read(&path).expect("the readings file");
+        serde_json::from_slice(&bytes).expect("a readings file")
+    });
+    if let Some(replayed) = &replay {
+        readings = rows
+            .iter()
+            .map(|row| {
+                replayed
+                    .iter()
+                    .find(|reading| reading.id == row.id)
+                    .cloned()
+                    .unwrap_or_else(|| Reading {
+                        id: row.id.clone(),
+                        error: Some("not in the replayed readings".to_string()),
+                        ..Reading::default()
+                    })
+            })
+            .collect();
+    }
+    for row in rows.iter().filter(|_| replay.is_none()) {
         let started = Instant::now();
         let asked = router::ask(
             &judge,
@@ -444,6 +466,18 @@ fn record(
         started_at,
         ended_at,
     };
+    // The maps first: they stand on their own held-out gate, whether or
+    // not the evidence record below is well formed.
+    let dir = out_dir().join(&date);
+    let _ = std::fs::create_dir_all(&dir);
+    let calibration_file = std::env::var("ROUTER_EVAL_CALIBRATION_FILE")
+        .unwrap_or_else(|_| "calibration-v2.json".to_string());
+    std::fs::write(
+        dir.join(&calibration_file),
+        serde_json::to_string_pretty(&calibration).unwrap_or_default() + "\n",
+    )
+    .expect("the calibration is written");
+    println!("wrote {}", dir.join(&calibration_file).display());
     let record = claim.record();
     let bytes = record.bytes();
     nostr::eval_ext::parse_report(&bytes).expect("the record is a NIP-EVAL report");
@@ -458,13 +492,7 @@ fn record(
             criterion.name, criterion.verdict, criterion.detail
         );
     }
-    let dir = out_dir().join(&date);
     record.write(&dir).expect("the record is written");
-    std::fs::write(
-        dir.join("calibration-v2.json"),
-        serde_json::to_string_pretty(&calibration).unwrap_or_default() + "\n",
-    )
-    .expect("the calibration is written");
     println!(
         "wrote {} ({} bytes of report, {} files) and calibration-v2.json",
         dir.display(),

@@ -346,11 +346,42 @@ question's 22 options take 5.1k tokens and `cli_group`'s 55 options take
 
 Clef picks the right route almost as often as Jev, at 102 of 120. Its
 probabilities are about three times lower, though, so the Jev-tuned
-thresholds turn most turns away from the prepared answers. The router
-already fits per-question maps
-(`ROUTER_EVAL_PUBLISH=1`, `crates/coder/src/router/calibration.rs`). It
-needs a map fitted on Clef's answers and chosen by the answering model.
-Jev's `calibration-v2` must not be applied to Clef's probabilities.
+thresholds turn most turns away from the prepared answers.
+
+**A Clef calibration map** (`crates/coder/fixtures/chat-router/calibration-clef-flash-v1.json`).
+The published router eval (`ROUTER_EVAL_PUBLISH=1`) ran against the
+deployed Clef server: 678 labeled rows, the split router, 0 errors. It
+fitted both maps on the calibration partition (415 rows), and the
+`probability-v2` gate passed both on the held-out split (261 rows):
+
+| Question | ECE raw → mapped | Brier | NLL |
+| --- | --- | --- | --- |
+| `route` | 0.379 → 0.030 | 0.330 → 0.182 | 0.875 → 0.545 |
+| `answer` | 0.094 → 0.052 | 0.168 → 0.162 | 0.511 → 0.489 |
+
+The worker and `chat-goldens router` now choose the map by the model that
+answered (`router::calibration::response_from_clef`). A Pylon's answer
+names `clef-flash@sha256:…`, and a Psionic server's answer carries its
+`psionic` block. Jev's answers keep `calibration-v2`. The goldens' router
+mode used to read raw probabilities; it now applies the maps as the
+worker does, so its Jev numbers below match production.
+`ROUTER_EVAL_READINGS` replays a run's readings file to refit without
+asking the judge again.
+
+| Judge (goldens router mode, 123 cases, maps applied) | Pass | Right ignoring time | Route right | Answer right | Critical-flow wrong | Route top p (p10 / p50 / p90) | Judge p50 / p90 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Hosted Jev (`calibration-v2`) | 106 | 108 | 120 | 108 | 3 | 0.52 / 0.95 / 1.00 | 0.89 / 1.13 s |
+| Clef-Flash, raw | 0 | 45 | 111 | 46 | 32 | 0.18 / 0.30 / 0.49 | 6.0 / 6.5 s |
+| Clef-Flash, Clef map | 1 | 55 | 110 | 56 | 22 | 0.41 / 0.82 / 0.98 | 5.8 / 6.1 s |
+
+With its own map, Clef reads on Jev's scale. Its route confidence median
+goes from 0.30 to 0.82, and the critical-flow errors fall from 32 to 22.
+The `answer` question is still the gap: 56 right against Jev's 108. That
+gap is accuracy, not calibration, since the mapped probabilities are
+honest. Clef-Flash on one 4080 therefore meets neither half of the router
+gate (under 1 s, and at least Jev's golden score). Clef 27B would not fit
+in the 4080's 16 GB beside the trunk's caches. Jev stays the router's
+first door, with the Pylon as fallback and shadow.
 
 **Next for M2 speed:**
 
