@@ -37,6 +37,8 @@ unsafe extern "C" {
     fn psionic_clef_event_record(event: *mut c_void, stream: *mut c_void) -> i32;
     fn psionic_clef_stream_wait_event(stream: *mut c_void, event: *mut c_void) -> i32;
     fn psionic_clef_fused_linear(x: *const c_void, w: *const c_void, out: *mut c_void, n: i32, rows: i32, k: i32, format: i32, segment: i32, accumulate: i32, stream: *mut c_void) -> i32;
+    fn psionic_clef_flash_attention(q16: *const c_void, kcache: *const c_void, vcache: *const c_void, out: *mut c_void, n: i32, heads: i32, kv_heads: i32, dim: i32, first: i32, stream: *mut c_void) -> i32;
+    fn psionic_clef_linear_f32_ordered(x: *const c_void, w: *const c_void, out: *mut c_void, n: i32, m: i32, k: i32, stream: *mut c_void) -> i32;
     fn psionic_clef_span_sums(rows: *const c_void, spans: *const c_void, sums: *mut c_void, span_count: i32, d: i32, first: i32, n: i32, stream: *mut c_void) -> i32;
 }
 
@@ -320,6 +322,80 @@ impl CudaSubmission {
             )
         };
         self.clef_launch(code, "psionic_clef_fused_linear")?;
+        Ok(true)
+    }
+
+    /// `out[n, m] = x[n, k] · W[m, k]^T` in f32 with each output summed in
+    /// a fixed order, so a row's result does not depend on the other rows
+    /// (unlike a cuBLAS GEMM, whose kernel choice follows the shape).
+    /// `out` starts at element `out_offset`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn clef_linear_f32_ordered(
+        &mut self,
+        x: &CudaBuffer,
+        w: &CudaBuffer,
+        out: &CudaBuffer,
+        out_offset: usize,
+        n: usize,
+        m: usize,
+        k: usize,
+    ) -> Result<(), RuntimeError> {
+        let xp = f32s(x, n * k, "ordered x")?;
+        let wp = f32s(w, m * k, "ordered w")?;
+        let op = span(out, out_offset, n * m, 4, "ordered out")?;
+        let stream = self.platform.raw_stream()?;
+        let code = unsafe {
+            psionic_clef_linear_f32_ordered(xp, wp, op, int(n, "n")?, int(m, "m")?, int(k, "k")?, stream)
+        };
+        self.clef_launch(code, "psionic_clef_linear_f32_ordered")
+    }
+
+    /// Causal flash attention of `n` queries at positions `first..` (f16,
+    /// already scaled, `[n, heads, dim]`) over the f16 caches
+    /// `[positions, kv_heads, dim]`, into f32 `out` `[n, heads, dim]`.
+    /// Keys stream in tiles at absolute positions, so a query's result does
+    /// not depend on the chunk it came in. Returns `Ok(false)` for a head
+    /// size the kernel does not take (it takes 256, with 4 query heads per
+    /// KV head).
+    #[allow(clippy::too_many_arguments)]
+    pub fn clef_flash_attention(
+        &mut self,
+        query16: &CudaBuffer,
+        key_cache: &CudaBuffer,
+        value_cache: &CudaBuffer,
+        out: &CudaBuffer,
+        n: usize,
+        heads: usize,
+        kv_heads: usize,
+        dim: usize,
+        first: usize,
+    ) -> Result<bool, RuntimeError> {
+        if dim != 256 || kv_heads == 0 || heads != kv_heads * 4 {
+            return Ok(false);
+        }
+        if n == 0 {
+            return Ok(true);
+        }
+        let q = f16s(query16, n * heads * dim, "flash q")?;
+        let k = f16s(key_cache, (first + n) * kv_heads * dim, "flash keys")?;
+        let v = f16s(value_cache, (first + n) * kv_heads * dim, "flash values")?;
+        let o = f32s(out, n * heads * dim, "flash out")?;
+        let stream = self.platform.raw_stream()?;
+        let code = unsafe {
+            psionic_clef_flash_attention(
+                q,
+                k,
+                v,
+                o,
+                int(n, "n")?,
+                int(heads, "heads")?,
+                int(kv_heads, "kv heads")?,
+                int(dim, "dim")?,
+                int(first, "first")?,
+                stream,
+            )
+        };
+        self.clef_launch(code, "psionic_clef_flash_attention")?;
         Ok(true)
     }
 

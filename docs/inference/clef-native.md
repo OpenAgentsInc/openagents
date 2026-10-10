@@ -382,6 +382,52 @@ localhost. 72 requests averaged 1,532 tokens:
 
 The M2 estimate of about 0.28 s is replaced by this measurement.
 
+### Round 3 (2026-10-10): fixed-order flash attention (kept, default)
+
+`flash_attention256_kernel` replaces the cuBLAS score and `P V` GEMMs.
+
+- **Layout.** A CTA owns 16 queries and one KV head. Each of its 4 warps
+  takes one of the 4 query heads that share that KV head, and keeps its
+  16 × 256 queries in registers.
+- **Order.** Keys stream in tiles of 16 at absolute positions, through
+  double-buffered shared memory shared by the 4 heads. Each row runs the
+  online softmax over the tiles in order. A tile past a row's diagonal
+  is fully masked and leaves the row's state bitwise unchanged.
+- **Precision.** Scores and `P V` accumulate in f32, with f16
+  probabilities.
+- **Kernel alone** (`fixtures/clef/tools/flash_attention_bench.cu`): 75
+  TF at 4k and 87 TF at 16k, against the 4080's f32-accumulate peak of
+  about 97 TF. At 16k one layer takes 25 ms. Against an f64 reference
+  the error is 2.5–4e-4. Chunks of 2048, 512 and 64 are bitwise
+  identical to the whole prompt.
+- **`W_mem`.** It now goes through a fixed-order f32 kernel instead of a
+  shape-dependent cuBLAS GEMM.
+- **Knob.** `PSIONIC_CLEF_FLASH=0` restores the cuBLAS attention.
+
+Same session, chunk 2048, median of 9, two runs each:
+
+| Build | 175 tokens | 1k | 4k | 16k | Router set |
+| --- | --- | --- | --- | --- | --- |
+| cuBLAS attention | 0.057 / 0.062 s | 0.200 / 0.205 s | 0.627 / 0.672 s | 2.72 / 2.73 s | 4.21 / 4.21 s |
+| **Flash attention (default)** | **0.058 / 0.056 s** | **0.198 / 0.200 s** | **0.600 / 0.605 s** | **2.50 / 2.52 s** | **3.98 / 4.02 s** |
+| Flash, fused projections everywhere | 0.057 s | 0.206 s | 0.686 s | 2.83 s | 4.50 s |
+
+**Chunk invariance now** (`cuda_chunks_and_cpu_agree`, which passes):
+
+| Mode | 155 tokens | 7,274 tokens |
+| --- | --- | --- |
+| f16, default (fused up to 1,024 tokens) | 0 (bitwise) | 1.6–2.1e-2 (the 2,048-token and whole chunks run cuBLAS) |
+| f32 (`--decision-accumulate f32`) | 0 | 7.3e-4 (meets 1e-3) |
+| f16 or f32 with fused projections everywhere (`PSIONIC_CLEF_FUSED=1`) | 0 | **0 (bitwise, every chunk size)** |
+
+**Parity.** On the 40 e2e requests the CUDA lane agrees with the CPU lane
+on every top answer: max |Δp| 0.0045, median 0.0002. Against f32 it is
+94.2 %, the CPU lane's own figure.
+
+The trunk can now be bitwise chunk-invariant, but the default isn't
+yet: fused projections everywhere cost 14 % at 4k and miss the 4k gate.
+Making the fused kernel as fast as cuBLAS on large chunks closes this.
+
 **The router set on one 4080.** The set is 24.7k tokens per chat turn.
 The three requests queue on the one device, so they run one after
 another: 4.2 s with this build, and 5.0 s on the deployed chunk 1,024.
@@ -451,10 +497,9 @@ first door, with the Pylon as fallback and shadow.
 
 **Next for M2 speed:**
 
-1. Tune the fused GEMM: two CTAs per SM, and fewer syncs per k. Then
-   make it the default for bitwise chunk invariance at f16 speed.
-2. The last 2–6 ms at 1k: embedding gather and upload, and the head.
-3. Flash attention for long prompts.
+1. The head's 12 ms and the host embedding gather, for margin at 1k.
+2. Make the fused GEMM as fast as cuBLAS on large chunks, then make it
+   the default for bitwise chunk invariance at f16 speed.
 
 ## File-relevance calibration (X1, 2026-10-10)
 

@@ -227,3 +227,29 @@ int psionic_clef_fused_linear(const void *x, const void *w, void *out, int n, in
     (void)stream;
     return 1;
 }
+
+int psionic_clef_flash_attention(const void *q16, const void *kcache, const void *vcache, void *out, int n, int heads,
+                                 int kv_heads, int dim, int first, void *stream) {
+    (void)q16;
+    (void)kcache;
+    (void)vcache;
+    (void)out;
+    (void)n;
+    (void)heads;
+    (void)kv_heads;
+    (void)dim;
+    (void)first;
+    (void)stream;
+    return 1;
+}
+
+int psionic_clef_linear_f32_ordered(const void *x, const void *w, void *out, int n, int m, int k, void *stream) {
+    (void)x;
+    (void)w;
+    (void)out;
+    (void)n;
+    (void)m;
+    (void)k;
+    (void)stream;
+    return 1;
+}

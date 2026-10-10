@@ -649,16 +649,16 @@ impl ClefCudaTrunk {
                         dims.head_eps,
                     )
                     .map_err(err)?;
+                // fixed order: a memory row does not depend on its chunk
                 submission
-                    .clef_linear(
-                        ClefOperand::f32(&scratch.norm_rows, 0),
-                        ClefOperand::f32(&state.memory_projection, 0),
-                        ClefOperand::f32(&request.memory, first * dims.width),
+                    .clef_linear_f32_ordered(
+                        &scratch.norm_rows,
+                        &state.memory_projection,
+                        &request.memory,
+                        first * dims.width,
                         n,
                         dims.width,
                         dims.hidden,
-                        false,
-                        false,
                     )
                     .map_err(err)?;
                 submission
@@ -1075,7 +1075,9 @@ fn gemm(
 /// projection, `0` for none, `N` for chunks of at most N tokens (default
 /// [`FUSED_UP_TO`]; above that dequantize + cuBLAS is faster on the 4080); `PSIONIC_CLEF_SEGMENT=1|2|4|8|16` sets its f16
 /// accumulation span in 16-wide k steps (default 16); `PSIONIC_CLEF_SCAN=0`
-/// runs the per-warp delta scan instead of the shared-memory-staged one.
+/// runs the per-warp delta scan instead of the shared-memory-staged one;
+/// `PSIONIC_CLEF_FLASH=0` runs attention as cuBLAS score and `P V` GEMMs
+/// instead of the fixed-order flash kernel.
 /// When a projection runs through the fused kernel.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Fused {
@@ -1109,6 +1111,7 @@ struct Knobs {
     fused: Fused,
     segment: usize,
     staged_scan: bool,
+    flash: bool,
 }
 
 fn knobs() -> Knobs {
@@ -1127,6 +1130,7 @@ fn knobs() -> Knobs {
                 Err(_) => Fused::UpTo(FUSED_UP_TO),
             },
             staged_scan: std::env::var("PSIONIC_CLEF_SCAN").map_or(true, |v| v != "0"),
+            flash: std::env::var("PSIONIC_CLEF_FLASH").map_or(true, |v| v != "0"),
             segment: std::env::var("PSIONIC_CLEF_SEGMENT")
                 .ok()
                 .and_then(|v| v.parse().ok())
@@ -1280,6 +1284,23 @@ fn attention(
     first: usize,
     n: usize,
 ) -> Result<(), String> {
+    if knobs().flash
+        && submission
+            .clef_flash_attention(
+                &s.query16,
+                key_cache,
+                value_cache,
+                &s.mid_b,
+                n,
+                dims.heads,
+                dims.kv_heads,
+                dims.head_dim,
+                first,
+            )
+            .map_err(err)?
+    {
+        return Ok(());
+    }
     let keys = first + n;
     let group = dims.heads / dims.kv_heads.max(1);
     let batch = (request.score_capacity / (n * keys).max(1)).clamp(1, group);

@@ -1034,6 +1034,278 @@ __global__ void __launch_bounds__(fused::kThreads, 1)
     }
 }
 
+// ---- f32 linear with a fixed reduction order ----
+// out[n, m] = x[n, k] . w[m, k]^T (f32). Each output sums k in order in
+// one thread, so a row's result does not depend on the other rows in the
+// call. 64 x 64 outputs per CTA, 16 x 16 threads with 4 x 4 each, k tiles
+// of 16 through shared memory.
+__global__ void __launch_bounds__(256) linear_f32_ordered_kernel(const float *__restrict__ x, const float *__restrict__ w,
+                                                                 float *__restrict__ out, int n, int m, int k) {
+    __shared__ float xs[16][64 + 1];
+    __shared__ float ws[16][64 + 1];
+    const int tx = threadIdx.x % 16, ty = threadIdx.x / 16;
+    const int row0 = blockIdx.y * 64, col0 = blockIdx.x * 64;
+    float acc[4][4] = {};
+    for (int k0 = 0; k0 < k; k0 += 16) {
+        for (int i = threadIdx.x; i < 64 * 16; i += 256) {
+            const int r = i / 16, kk = i % 16;
+            const int row = row0 + r, col = col0 + r, kidx = k0 + kk;
+            xs[kk][r] = row < n && kidx < k ? x[static_cast<long long>(row) * k + kidx] : 0.0f;
+            ws[kk][r] = col < m && kidx < k ? w[static_cast<long long>(col) * k + kidx] : 0.0f;
+        }
+        __syncthreads();
+#pragma unroll
+        for (int kk = 0; kk < 16; ++kk) {
+#pragma unroll
+            for (int i = 0; i < 4; ++i) {
+#pragma unroll
+                for (int j = 0; j < 4; ++j) {
+                    acc[i][j] = fmaf(xs[kk][ty * 4 + i], ws[kk][tx * 4 + j], acc[i][j]);
+                }
+            }
+        }
+        __syncthreads();
+    }
+#pragma unroll
+    for (int i = 0; i < 4; ++i) {
+        const int row = row0 + ty * 4 + i;
+        if (row >= n) {
+            continue;
+        }
+#pragma unroll
+        for (int j = 0; j < 4; ++j) {
+            const int col = col0 + tx * 4 + j;
+            if (col < m) {
+                out[static_cast<long long>(row) * m + col] = acc[i][j];
+            }
+        }
+    }
+}
+
+// ---- causal flash attention, fixed order ----
+//
+// out[t, h, :] = softmax_j(q[t, h] . k[j]) v[j] over keys j <= first + t,
+// for head_dim 256, f16 q (already scaled) and f16 K/V caches
+// [positions, kv_heads, 256], f32 out [n, heads, 256].
+//
+// A CTA owns 16 queries and one KV head; each of its 4 warps takes one of
+// the 4 query heads that share it, holding its 16 x 256 queries in
+// registers. Keys stream in tiles of 16 at absolute positions 0, 16, 32,
+// ... through double-buffered shared memory shared by the 4 heads. Each
+// query row runs the online softmax over those tiles in order, so its
+// result depends only on its own position and the cache, never on the
+// chunk it came in: a tile past its diagonal is all masked and leaves its
+// state exactly unchanged (alpha = 1, p = 0). Keys at or beyond
+// `first + n` are zero-filled, so masked lanes never read garbage. Scores
+// accumulate in f32 (f16 tensor inputs); probabilities are f16 for the
+// P V product, which accumulates in f32.
+namespace flash {
+constexpr int kDim = 256;
+constexpr int kQueries = 16;
+constexpr int kKeys = 16;
+constexpr int kGroup = 4;  // query heads per KV head
+constexpr int kLds = kDim + 8;
+constexpr int kThreads = 32 * kGroup;
+// K and V double buffered; the query staging (kGroup x 16 rows) reuses it
+constexpr int kSmemBytes = 4 * kKeys * kLds * 2;
+static_assert(kGroup * kQueries <= 4 * kKeys, "query staging fits the K/V buffers");
+}  // namespace flash
+
+__device__ __forceinline__ void ldmatrix_x4_trans(uint32_t (&r)[4], const __half *shared) {
+    const unsigned address = static_cast<unsigned>(__cvta_generic_to_shared(shared));
+    asm volatile("ldmatrix.sync.aligned.m8n8.x4.trans.shared.b16 {%0,%1,%2,%3}, [%4];\n"
+                 : "=r"(r[0]), "=r"(r[1]), "=r"(r[2]), "=r"(r[3])
+                 : "r"(address));
+}
+
+__device__ __forceinline__ uint32_t pack_half2(float lo, float hi) {
+    return half2_bits(__floats2half2_rn(lo, hi));
+}
+
+__global__ void __launch_bounds__(flash::kThreads, 2)
+    flash_attention256_kernel(const __half *__restrict__ q16, const __half *__restrict__ kcache,
+                              const __half *__restrict__ vcache, float *__restrict__ out, int n, int heads,
+                              int kv_heads, int first) {
+    using namespace flash;
+    extern __shared__ __align__(16) unsigned char smem_raw[];
+    __half *ks = reinterpret_cast<__half *>(smem_raw);  // [2][kKeys][kLds]
+    __half *vs = ks + 2 * kKeys * kLds;                  // [2][kKeys][kLds]
+    const int tid = threadIdx.x;
+    const int lane = tid % kWarp;
+    const int warp = tid / kWarp;
+    const int kvh = blockIdx.y;
+    const int head = kvh * kGroup + warp;
+    const int t0 = blockIdx.x * kQueries;  // first query of the CTA, within the chunk
+    const int g = lane / 4;
+    const int c = lane % 4;
+
+    // stage the group's queries (zero past n) and take them into registers
+    for (int chunk = tid; chunk < kGroup * kQueries * (kDim / 8); chunk += kThreads) {
+        const int row = chunk / (kDim / 8);  // head-major: row = h * 16 + query
+        const int col = (chunk % (kDim / 8)) * 8;
+        const int t = t0 + row % kQueries;
+        const int h = kvh * kGroup + row / kQueries;
+        const __half *src = q16 + (static_cast<long long>(t < n ? t : n - 1) * heads + h) * kDim + col;
+        cp_async16(ks + row * kLds + col, src, t < n ? 16 : 0);
+    }
+    cp_async_commit();
+    cp_async_wait<0>();
+    __syncthreads();
+    uint32_t qa[kDim / 16][4];
+#pragma unroll
+    for (int kk = 0; kk < kDim / 16; ++kk) {
+        ldmatrix_x4(qa[kk], ks + (warp * kQueries + (lane % 16)) * kLds + kk * 16 + (lane / 16) * 8);
+    }
+    __syncthreads();
+
+    const int limit = first + n;  // keys that exist
+    const int last_query = first + min(t0 + kQueries, n) - 1;
+    const int tiles = last_query / kKeys + 1;
+    auto load_kv = [&](int tile, int buf) {
+        const int j0 = tile * kKeys;
+        for (int chunk = tid; chunk < kKeys * (kDim / 8); chunk += kThreads) {
+            const int row = chunk / (kDim / 8);
+            const int col = (chunk % (kDim / 8)) * 8;
+            const int j = j0 + row;
+            const long long offset = (static_cast<long long>(j < limit ? j : 0) * kv_heads + kvh) * kDim + col;
+            const int bytes = j < limit ? 16 : 0;
+            cp_async16(ks + (buf * kKeys + row) * kLds + col, kcache + offset, bytes);
+            cp_async16(vs + (buf * kKeys + row) * kLds + col, vcache + offset, bytes);
+        }
+        cp_async_commit();
+    };
+    load_kv(0, 0);
+
+    float o[kDim / 8][4];
+#pragma unroll
+    for (int i = 0; i < kDim / 8; ++i) {
+        o[i][0] = o[i][1] = o[i][2] = o[i][3] = 0.0f;
+    }
+    float row_max[2] = {-INFINITY, -INFINITY};
+    float row_sum[2] = {0.0f, 0.0f};
+    const int pos[2] = {first + t0 + g, first + t0 + g + 8};
+
+    for (int tile = 0; tile < tiles; ++tile) {
+        const int buf = tile & 1;
+        if (tile + 1 < tiles) {
+            load_kv(tile + 1, buf ^ 1);
+            cp_async_wait<1>();
+        } else {
+            cp_async_wait<0>();
+        }
+        __syncthreads();
+        const __half *kt = ks + buf * kKeys * kLds;
+        const __half *vt = vs + buf * kKeys * kLds;
+        // S = Q K^T: 16 rows x 16 keys (2 n8 tiles)
+        float s[2][4];
+#pragma unroll
+        for (int j = 0; j < 2; ++j) {
+            s[j][0] = s[j][1] = s[j][2] = s[j][3] = 0.0f;
+        }
+#pragma unroll
+        for (int kk = 0; kk < kDim / 16; ++kk) {
+            const int mat = lane / 8;
+            uint32_t r[4];
+            ldmatrix_x4(r, kt + ((mat / 2) * 8 + (lane % 8)) * kLds + kk * 16 + (mat % 2) * 8);
+#pragma unroll
+            for (int h = 0; h < 2; ++h) {
+                float *acc = s[h];
+                asm volatile(
+                    "mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 {%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, "
+                    "{%0,%1,%2,%3};\n"
+                    : "+f"(acc[0]), "+f"(acc[1]), "+f"(acc[2]), "+f"(acc[3])
+                    : "r"(qa[kk][0]), "r"(qa[kk][1]), "r"(qa[kk][2]), "r"(qa[kk][3]), "r"(r[2 * h]),
+                      "r"(r[2 * h + 1]));
+            }
+        }
+        // mask, online softmax per row (rows g and g + 8)
+        const int j0 = tile * kKeys;
+        float tile_max[2] = {-INFINITY, -INFINITY};
+#pragma unroll
+        for (int j = 0; j < 2; ++j) {
+#pragma unroll
+            for (int e = 0; e < 4; ++e) {
+                const int key = j0 + j * 8 + 2 * c + (e & 1);
+                const int r = e >> 1;
+                if (key > pos[r]) {
+                    s[j][e] = -INFINITY;
+                }
+                tile_max[r] = fmaxf(tile_max[r], s[j][e]);
+            }
+        }
+        float alpha[2], new_max[2];
+#pragma unroll
+        for (int r = 0; r < 2; ++r) {
+            tile_max[r] = fmaxf(tile_max[r], __shfl_xor_sync(0xffffffffu, tile_max[r], 1));
+            tile_max[r] = fmaxf(tile_max[r], __shfl_xor_sync(0xffffffffu, tile_max[r], 2));
+            new_max[r] = fmaxf(row_max[r], tile_max[r]);
+            alpha[r] = new_max[r] == row_max[r] ? 1.0f : expf(row_max[r] - new_max[r]);
+            row_max[r] = new_max[r];
+        }
+        float tile_sum[2] = {0.0f, 0.0f};
+        uint32_t p[4];  // the A fragment of P (16 rows x 16 keys)
+#pragma unroll
+        for (int j = 0; j < 2; ++j) {
+            float e[4];
+#pragma unroll
+            for (int k = 0; k < 4; ++k) {
+                const int r = k >> 1;
+                e[k] = s[j][k] == -INFINITY ? 0.0f : expf(s[j][k] - new_max[r]);
+                tile_sum[r] += e[k];
+            }
+            // (rows g, keys 0-7), (rows g+8, keys 0-7), (rows g, keys 8-15), (rows g+8, keys 8-15)
+            p[2 * j] = pack_half2(e[0], e[1]);
+            p[2 * j + 1] = pack_half2(e[2], e[3]);
+        }
+#pragma unroll
+        for (int r = 0; r < 2; ++r) {
+            tile_sum[r] += __shfl_xor_sync(0xffffffffu, tile_sum[r], 1);
+            tile_sum[r] += __shfl_xor_sync(0xffffffffu, tile_sum[r], 2);
+            row_sum[r] = row_sum[r] * alpha[r] + tile_sum[r];
+        }
+        if (alpha[0] != 1.0f || alpha[1] != 1.0f) {
+#pragma unroll
+            for (int i = 0; i < kDim / 8; ++i) {
+                o[i][0] *= alpha[0];
+                o[i][1] *= alpha[0];
+                o[i][2] *= alpha[1];
+                o[i][3] *= alpha[1];
+            }
+        }
+        // O += P V
+#pragma unroll
+        for (int d = 0; d < kDim / 16; ++d) {
+            const int mat = lane / 8;
+            uint32_t r[4];
+            ldmatrix_x4_trans(r, vt + ((mat % 2) * 8 + (lane % 8)) * kLds + d * 16 + (mat / 2) * 8);
+#pragma unroll
+            for (int h = 0; h < 2; ++h) {
+                float *acc = o[2 * d + h];
+                asm volatile(
+                    "mma.sync.aligned.m16n8k16.row.col.f32.f16.f16.f32 {%0,%1,%2,%3}, {%4,%5,%6,%7}, {%8,%9}, "
+                    "{%0,%1,%2,%3};\n"
+                    : "+f"(acc[0]), "+f"(acc[1]), "+f"(acc[2]), "+f"(acc[3])
+                    : "r"(p[0]), "r"(p[1]), "r"(p[2]), "r"(p[3]), "r"(r[2 * h]), "r"(r[2 * h + 1]));
+            }
+        }
+        __syncthreads();
+    }
+    // out = O / l
+#pragma unroll
+    for (int r = 0; r < 2; ++r) {
+        const int t = t0 + g + 8 * r;
+        if (t >= n) {
+            continue;
+        }
+        const float inv = 1.0f / row_sum[r];
+        float *dst = out + (static_cast<long long>(t) * heads + head) * kDim;
+#pragma unroll
+        for (int i = 0; i < kDim / 8; ++i) {
+            *reinterpret_cast<float2 *>(dst + i * 8 + 2 * c) = make_float2(o[i][2 * r] * inv, o[i][2 * r + 1] * inv);
+        }
+    }
+}
+
 inline int blocks_for(long long count, int threads) {
     return static_cast<int>((count + threads - 1) / threads);
 }
@@ -1275,6 +1547,42 @@ extern "C" int psionic_clef_fused_linear(const void *x, const void *w, void *out
     }
 #undef FUSED
     return static_cast<int>(cudaErrorInvalidValue);
+}
+
+extern "C" int psionic_clef_linear_f32_ordered(const void *x, const void *w, void *out, int n, int m, int k, void *stream) {
+    if (n <= 0) {
+        return 0;
+    }
+    dim3 grid((m + 63) / 64, (n + 63) / 64);
+    linear_f32_ordered_kernel<<<grid, 256, 0, STREAM>>>(static_cast<const float *>(x), static_cast<const float *>(w),
+                                                        static_cast<float *>(out), n, m, k);
+    DONE;
+}
+
+// Causal attention of n queries at positions first.. over the caches
+// (head_dim 256 and 4 query heads per KV head; see flash_attention256_kernel).
+extern "C" int psionic_clef_flash_attention(const void *q16, const void *kcache, const void *vcache, void *out, int n,
+                                            int heads, int kv_heads, int dim, int first, void *stream) {
+    if (n <= 0) {
+        return 0;
+    }
+    if (dim != flash::kDim || kv_heads <= 0 || heads != kv_heads * flash::kGroup) {
+        return static_cast<int>(cudaErrorInvalidValue);
+    }
+    static bool configured = false;
+    if (!configured) {
+        const cudaError_t code = cudaFuncSetAttribute(flash_attention256_kernel,
+                                                      cudaFuncAttributeMaxDynamicSharedMemorySize, flash::kSmemBytes);
+        if (code != cudaSuccess) {
+            return static_cast<int>(code);
+        }
+        configured = true;
+    }
+    dim3 grid((n + flash::kQueries - 1) / flash::kQueries, kv_heads);
+    flash_attention256_kernel<<<grid, flash::kThreads, flash::kSmemBytes, STREAM>>>(
+        static_cast<const __half *>(q16), static_cast<const __half *>(kcache), static_cast<const __half *>(vcache),
+        static_cast<float *>(out), n, heads, kv_heads, first);
+    DONE;
 }
 
 // ---- a second stream for weight dequantization ----
