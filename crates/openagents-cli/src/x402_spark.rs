@@ -25,7 +25,7 @@ pub(crate) fn pay(bolt11: &str, network: &str, max_fee_msat: u64) -> Result<Proo
         .sync()
         .map_err(|_| "Your wallet could not be read right now; nothing was paid.".to_string())?;
     let max_fee_sats = max_fee_msat / 1000;
-    let key = uuid::Uuid::new_v4().to_string();
+    let key = invoice_key(bolt11);
     let paid = wallet
         .pay_invoice(bolt11, max_fee_sats, &key)
         .map_err(|failure| refused(&failure, max_fee_sats))?;
@@ -42,7 +42,24 @@ fn refused(failure: &AgentPayFailure, max_fee_sats: u64) -> String {
             "The fee is ₿{fee}, above the fee cap of ₿{max_fee_sats}; nothing was paid. Raise it with --max-fee-msat."
         ),
         AgentPayFailure::Failed(message) => format!("{message} Nothing was paid."),
+        AgentPayFailure::Unknown(message) => format!(
+            "{message} `openagents wallet history` shows whether it went through. Running the call again with this same invoice is safe: the wallet returns that payment instead of paying twice. A new invoice would be paid again."
+        ),
     }
+}
+
+/// The idempotency key for paying `bolt11`: a UUID derived from the
+/// invoice, so every attempt at the same invoice, including a retry after
+/// an unknown outcome, carries the same key and the wallet pays it at most
+/// once. An invoice can be paid only once anyway, so no legitimate second
+/// payment shares it.
+fn invoice_key(bolt11: &str) -> String {
+    let digest = Sha256::digest(bolt11.trim().to_ascii_lowercase().as_bytes());
+    let mut bytes = [0_u8; 16];
+    bytes.copy_from_slice(&digest[..16]);
+    uuid::Builder::from_random_bytes(bytes)
+        .into_uuid()
+        .to_string()
 }
 
 /// The proof for a payment the wallet made, or why there is none yet.
@@ -149,6 +166,34 @@ mod tests {
         let refused = pay("lntb1x", nostr::x402::TESTNET, 1_000).unwrap_err();
         assert!(refused.contains("--pay-with node"), "{refused}");
         assert!(refused.contains("nothing was paid"), "{refused}");
+    }
+
+    #[test]
+    fn an_unknown_outcome_never_says_nothing_was_paid() {
+        let unknown = refused(
+            &AgentPayFailure::Unknown(
+                "The wallet lost track of this payment while sending it (Network error: reset), so it may have gone through.".into(),
+            ),
+            1,
+        );
+        assert!(
+            !unknown.to_lowercase().contains("nothing was paid"),
+            "{unknown}"
+        );
+        assert!(unknown.contains("may have gone through"), "{unknown}");
+        assert!(unknown.contains("openagents wallet history"), "{unknown}");
+        let failed = refused(&AgentPayFailure::Failed("Refused.".into()), 1);
+        assert!(failed.contains("Nothing was paid"), "{failed}");
+    }
+
+    #[test]
+    fn a_retry_of_the_same_invoice_reuses_its_key() {
+        let key = invoice_key("lnbc50n1abc");
+        assert_eq!(key, invoice_key("lnbc50n1abc"));
+        assert_eq!(key, invoice_key(" LNBC50N1ABC\n"));
+        assert_ne!(key, invoice_key("lnbc50n1abd"));
+        let parsed = uuid::Uuid::parse_str(&key).expect("a UUID");
+        assert_eq!(parsed.get_version_num(), 4);
     }
 
     #[test]

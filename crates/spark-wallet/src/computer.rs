@@ -119,6 +119,85 @@ pub fn open_with(home: &Path, seed: &Seed, network: Network) -> Result<SparkNode
     SparkNode::open(storage, network, &seed.mnemonic)
 }
 
+/// Where the keys of sends whose outcome is not yet known are kept.
+const UNSETTLED_SENDS: &str = "unsettled-sends.json";
+
+/// The idempotency key for a send, and whether it repeats an earlier
+/// attempt. `what` names the send (its recipient and amount).
+///
+/// A fresh key is recorded here before the send starts and forgotten with
+/// [`send_settled`] once the outcome is known. A send whose outcome stayed
+/// unknown (a network or storage error after it left, or a crash) keeps its
+/// key, so running the same send again reuses it and the wallet returns
+/// that payment instead of paying a second time.
+///
+/// # Errors
+///
+/// When the record cannot be read or written: the send must not start
+/// without its key on disk.
+pub fn send_key(home: &Path, what: &str) -> Result<(String, bool), String> {
+    let mut held = unsettled(home)?;
+    let id = send_id(what);
+    if let Some(key) = held.get(&id) {
+        return Ok((key.clone(), true));
+    }
+    let key = uuid::Uuid::new_v4().to_string();
+    held.insert(id, key.clone());
+    save_unsettled(home, &held)?;
+    Ok((key, false))
+}
+
+/// Forget the key of a send whose outcome is now known: paid, pending in
+/// the wallet's history, or definitely not sent.
+///
+/// # Errors
+///
+/// When the record cannot be written.
+pub fn send_settled(home: &Path, what: &str) -> Result<(), String> {
+    let mut held = unsettled(home)?;
+    if held.remove(&send_id(what)).is_some() {
+        save_unsettled(home, &held)?;
+    }
+    Ok(())
+}
+
+fn send_id(what: &str) -> String {
+    use sha2::{Digest, Sha256};
+    hex(&Sha256::digest(what.as_bytes()))
+}
+
+fn unsettled(home: &Path) -> Result<std::collections::BTreeMap<String, String>, String> {
+    match std::fs::read_to_string(home.join(UNSETTLED_SENDS)) {
+        Ok(text) => serde_json::from_str(&text)
+            .map_err(|_| "The wallet's record of unfinished sends can't be read.".to_string()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Default::default()),
+        Err(_) => Err("The wallet's record of unfinished sends can't be read.".into()),
+    }
+}
+
+fn save_unsettled(
+    home: &Path,
+    held: &std::collections::BTreeMap<String, String>,
+) -> Result<(), String> {
+    private_dir(home)?;
+    let path = home.join(UNSETTLED_SENDS);
+    let temporary = home.join(format!("{UNSETTLED_SENDS}.tmp"));
+    let write = || -> std::io::Result<()> {
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options.open(&temporary)?;
+        file.write_all(serde_json::to_string(held)?.as_bytes())?;
+        file.sync_all()?;
+        std::fs::rename(&temporary, &path)
+    };
+    write().map_err(|_| "The wallet's record of unfinished sends could not be saved.".to_string())
+}
+
 /// What a computer without the wallet says.
 pub const NOT_SET_UP: &str = "This computer doesn't have a wallet yet. Run `openagents wallet create` to start one, `openagents wallet link` to bring your phone's over, or `openagents wallet restore` to type your recovery words.";
 
@@ -197,5 +276,35 @@ mod tests {
         assert!(!error.contains("zz-not-hex"), "{error}");
         let missing = open(&dir.path().join("none")).err().expect("not set up");
         assert_eq!(missing, NOT_SET_UP);
+    }
+
+    #[test]
+    fn an_unsettled_send_keeps_its_key_until_its_outcome_is_known() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let home = dir.path().join("spark");
+        let (first, reused) = send_key(&home, "alice@example.com\n1000").expect("key");
+        assert!(!reused);
+        // The outcome stayed unknown: the same send reuses the key.
+        let (again, reused) = send_key(&home, "alice@example.com\n1000").expect("key");
+        assert!(reused);
+        assert_eq!(again, first);
+        // Another send gets its own key.
+        let (other, reused) = send_key(&home, "bob@example.com\n1000").expect("key");
+        assert!(!reused);
+        assert_ne!(other, first);
+        // Once settled, the next send of the same thing is a new payment.
+        send_settled(&home, "alice@example.com\n1000").expect("settled");
+        let (fresh, reused) = send_key(&home, "alice@example.com\n1000").expect("key");
+        assert!(!reused);
+        assert_ne!(fresh, first);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(home.join(UNSETTLED_SENDS))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
     }
 }

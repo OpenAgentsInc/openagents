@@ -24,7 +24,9 @@ pub trait Node: Send + Sync {
     /// quote.
     fn quote(&self, request: &SendRequest) -> Result<Quote, QuoteFailure>;
     /// Pay a quote once; a repeat with the same key returns the same payment.
-    fn pay(&self, quote: u64, idempotency_key: &str) -> Result<Paid, String>;
+    /// A [`PayFailure::Unknown`] may have paid: retry it only with the same
+    /// key, never a fresh one.
+    fn pay(&self, quote: u64, idempotency_key: &str) -> Result<Paid, PayFailure>;
     /// Recent payments, newest first.
     fn payments(&self, limit: u32) -> Result<Vec<PaymentRow>, String>;
     /// Start a purchase with a provider; the URL for the person to open.
@@ -96,7 +98,45 @@ pub enum AgentPayFailure {
     /// The quoted fee, in sats, is above the ceiling.
     FeeTooHigh(u64),
     InsufficientFunds,
+    /// The wallet refused before sending: nothing was paid.
     Failed(String),
+    /// The send started and the wallet lost track of it (a network or
+    /// storage error): it may have gone through. Retry only with the same
+    /// idempotency key.
+    Unknown(String),
+}
+
+/// Why a payment of a quote did not complete.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PayFailure {
+    /// The wallet refused before anything was sent: nothing was paid.
+    NotSent(String),
+    /// The send started and the wallet lost track of it (a network or
+    /// storage error): it may have gone through. Retry only with the same
+    /// idempotency key; the payment history says what happened.
+    Unknown(String),
+}
+
+impl PayFailure {
+    /// The failure in words for the person.
+    #[must_use]
+    pub fn message(&self) -> &str {
+        match self {
+            Self::NotSent(message) | Self::Unknown(message) => message,
+        }
+    }
+
+    /// Whether the payment may have gone through.
+    #[must_use]
+    pub fn outcome_unknown(&self) -> bool {
+        matches!(self, Self::Unknown(_))
+    }
+}
+
+impl std::fmt::Display for PayFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.message())
+    }
 }
 
 /// Who sells bitcoin for dollars. Both are Breez integrations on mainnet.

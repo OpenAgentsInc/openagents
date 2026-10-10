@@ -11,8 +11,8 @@
 
 use crate::model::{
     AgentPayFailure, Ask, ClaimQuote, Contact, DepositProblem, DepositRow, Destination, FeeRates,
-    InvoicePayment, LnurlTerms, Node, Paid, PaymentRow, Provider, Quote, QuoteFailure, SendRequest,
-    Speed,
+    InvoicePayment, LnurlTerms, Node, Paid, PayFailure, PaymentRow, Provider, Quote, QuoteFailure,
+    SendRequest, Speed,
 };
 use breez_sdk_spark::{
     AddContactRequest, BreezSdk, BuyBitcoinRequest, ClaimDepositOutcome, ClaimDepositRequest,
@@ -21,8 +21,8 @@ use breez_sdk_spark::{
     LnurlPayRequest, MaxFee, Network, OnchainConfirmationSpeed, Payment, PaymentDetails,
     PaymentMethod, PaymentRequest, PaymentStatus, PaymentType, PrepareLnurlPayRequest,
     PrepareLnurlPayResponse, PrepareSendPaymentRequest, PrepareSendPaymentResponse,
-    ReceivePaymentMethod, ReceivePaymentRequest, RefundDepositRequest, SdkBuilder, SdkEvent, Seed,
-    SendPaymentMethod, SendPaymentOptions, SendPaymentRequest, StorageBackend,
+    ReceivePaymentMethod, ReceivePaymentRequest, RefundDepositRequest, SdkBuilder, SdkError,
+    SdkEvent, Seed, SendPaymentMethod, SendPaymentOptions, SendPaymentRequest, StorageBackend,
     SuccessActionProcessed, SyncWalletRequest, default_config,
 };
 use std::collections::HashMap;
@@ -503,13 +503,15 @@ impl Node for SparkNode {
         self.quote_input(request)
     }
 
-    fn pay(&self, quote: u64, idempotency_key: &str) -> Result<Paid, String> {
+    fn pay(&self, quote: u64, idempotency_key: &str) -> Result<Paid, PayFailure> {
         let prepared = self
             .prepared
             .lock()
             .unwrap_or_else(|poison| poison.into_inner())
             .remove(&quote)
-            .ok_or_else(|| "That quote has expired. Review the payment again.".to_string())?;
+            .ok_or_else(|| {
+                PayFailure::NotSent("That quote has expired. Review the payment again.".into())
+            })?;
         let payment = match prepared {
             Prepared::Send(prepare_response, options) => self
                 .runtime
@@ -532,7 +534,7 @@ impl Node for SparkNode {
                 row: row(&payment),
                 message: success.and_then(|action| success_message(&action)),
             })
-            .map_err(|error| describe("pay", &error.to_string()))
+            .map_err(|error| pay_failure(&error))
     }
 
     fn payments(&self, limit: u32) -> Result<Vec<PaymentRow>, String> {
@@ -741,7 +743,7 @@ impl Node for SparkNode {
                     "The wallet doesn't hold enough to pay this and its fee.".into()
                 }
                 AgentPayFailure::FeeTooHigh(_) => "The fee is above the ceiling.".into(),
-                AgentPayFailure::Failed(message) => message,
+                AgentPayFailure::Failed(message) | AgentPayFailure::Unknown(message) => message,
             })
     }
 
@@ -763,7 +765,7 @@ impl Node for SparkNode {
                 idempotency_key: Some(idempotency_key.to_owned()),
             }))
             .map(|response| response.payment)
-            .map_err(|error| failure(&error.to_string()))?;
+            .map_err(|error| agent_pay_failure(&error))?;
         let preimage = match &payment.details {
             Some(PaymentDetails::Lightning { htlc_details, .. }) => htlc_details.preimage.clone(),
             Some(PaymentDetails::Spark {
@@ -779,12 +781,71 @@ impl Node for SparkNode {
     }
 }
 
-/// An SDK failure while paying an agent's invoice.
-fn failure(detail: &str) -> AgentPayFailure {
-    if detail.to_ascii_lowercase().contains("insufficient") {
+/// Whether an SDK error from a send leaves the payment's outcome unknown.
+///
+/// Only the variants the SDK raises while checking the request, before it
+/// hands anything to Spark or Lightning, are definite refusals. A network,
+/// storage, Spark, chain, LNURL, signer, or generic error can arrive after
+/// the transfer left, so it may have paid. Unrecognized variants count as
+/// unknown: a payment wrongly called failed can be paid twice.
+fn send_outcome_unknown(error: &SdkError) -> bool {
+    !matches!(
+        error,
+        SdkError::InsufficientFunds { .. }
+            | SdkError::InvalidUuid(_)
+            | SdkError::InvalidInput(_)
+            | SdkError::CrossChainAmountOutOfRange { .. }
+            | SdkError::CrossChainRouteUnavailable { .. }
+            | SdkError::MaxDepositClaimFeeExceeded { .. }
+            | SdkError::MissingUtxo { .. }
+            | SdkError::DepositClaimInProgress { .. }
+            | SdkError::RefundReplacementFeeTooLow { .. }
+            | SdkError::OptimizationAlreadyRunning
+            | SdkError::InsufficientCpfpFunds { .. }
+    )
+}
+
+/// The words for a send whose outcome is unknown. Its text names no key
+/// material.
+fn unknown_outcome(detail: &str) -> String {
+    format!(
+        "The wallet lost track of this payment while sending it ({}), so it may have gone through. Check the payment history before paying again.",
+        detail.trim()
+    )
+}
+
+/// An SDK failure while paying a quote.
+fn pay_failure(error: &SdkError) -> PayFailure {
+    if matches!(error, SdkError::InsufficientFunds { .. }) {
+        PayFailure::NotSent("The wallet doesn't hold enough to pay this and its fee.".into())
+    } else if send_outcome_unknown(error) {
+        PayFailure::Unknown(unknown_outcome(&error.to_string()))
+    } else {
+        PayFailure::NotSent(format!(
+            "The payment did not go through ({}).",
+            error.to_string().trim()
+        ))
+    }
+}
+
+/// An SDK failure while sending an agent's invoice.
+fn agent_pay_failure(error: &SdkError) -> AgentPayFailure {
+    if matches!(error, SdkError::InsufficientFunds { .. }) {
+        return AgentPayFailure::InsufficientFunds;
+    }
+    match pay_failure(error) {
+        PayFailure::Unknown(message) => AgentPayFailure::Unknown(message),
+        PayFailure::NotSent(message) => AgentPayFailure::Failed(message),
+    }
+}
+
+/// An SDK failure while preparing an agent's invoice. Preparing sends
+/// nothing, so every failure here is definite.
+fn prepare_failure(error: &SdkError) -> AgentPayFailure {
+    if matches!(error, SdkError::InsufficientFunds { .. }) {
         AgentPayFailure::InsufficientFunds
     } else {
-        AgentPayFailure::Failed(describe("pay", detail))
+        AgentPayFailure::Failed(describe("pay", &error.to_string()))
     }
 }
 
@@ -806,7 +867,7 @@ impl SparkNode {
                 conversion_options: None,
                 fee_policy: None,
             }))
-            .map_err(|error| failure(&error.to_string()))?;
+            .map_err(|error| prepare_failure(&error))?;
         let SendPaymentMethod::Bolt11Invoice {
             spark_transfer_fee_sats,
             lightning_fee_sats,
@@ -907,5 +968,135 @@ mod unparsed_tests {
         assert_eq!(lightning_address_domain("a b@example.com"), None);
         assert!(unparsed("someone@example.invalid").starts_with("Couldn't reach example.invalid"));
         assert_eq!(unparsed("garbage"), UNREADABLE);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn every_variant() -> Vec<(SdkError, bool)> {
+        vec![
+            (SdkError::SparkError("transfer rejected".into()), true),
+            (
+                SdkError::InsufficientFunds {
+                    token_identifier: None,
+                },
+                false,
+            ),
+            (SdkError::InvalidUuid("x".into()), false),
+            (SdkError::InvalidInput("x".into()), false),
+            (
+                SdkError::CrossChainAmountOutOfRange {
+                    reason: "x".into(),
+                    too_small: true,
+                    bound_amount: None,
+                    bound_usd_cents: None,
+                },
+                false,
+            ),
+            (
+                SdkError::CrossChainRouteUnavailable {
+                    reason: "x".into(),
+                    temporary: true,
+                },
+                false,
+            ),
+            (SdkError::NetworkError("connection reset".into()), true),
+            (SdkError::StorageError("disk full".into()), true),
+            (SdkError::ChainServiceError("x".into()), true),
+            (
+                SdkError::MaxDepositClaimFeeExceeded {
+                    tx: "t".into(),
+                    vout: 0,
+                    max_fee: None,
+                    required_fee_sats: 1,
+                    required_fee_rate_sat_per_vbyte: 1,
+                },
+                false,
+            ),
+            (
+                SdkError::MissingUtxo {
+                    tx: "t".into(),
+                    vout: 0,
+                },
+                false,
+            ),
+            (
+                SdkError::DepositClaimInProgress {
+                    tx: "t".into(),
+                    vout: 0,
+                },
+                false,
+            ),
+            (
+                SdkError::RefundReplacementFeeTooLow {
+                    pending_fee_sats: 1,
+                    required_fee_sats: 2,
+                },
+                false,
+            ),
+            (SdkError::LnurlError("x".into()), true),
+            (SdkError::Signer("x".into()), true),
+            (SdkError::OptimizationAlreadyRunning, false),
+            (SdkError::OptimizationCancelled, true),
+            (SdkError::InsufficientCpfpFunds { required_sat: 1 }, false),
+            (SdkError::Generic("timeout".into()), true),
+        ]
+    }
+
+    #[test]
+    fn a_send_error_is_unknown_unless_the_sdk_refused_before_sending() {
+        for (error, unknown) in every_variant() {
+            let failure = pay_failure(&error);
+            assert_eq!(failure.outcome_unknown(), unknown, "{error:?}");
+            if unknown {
+                assert!(
+                    failure.message().contains("may have gone through"),
+                    "{error:?}"
+                );
+                assert!(!failure.message().contains("did not go through"));
+                assert!(matches!(
+                    agent_pay_failure(&error),
+                    AgentPayFailure::Unknown(_)
+                ));
+            } else {
+                assert!(!failure.message().contains("may have gone through"));
+                assert!(!matches!(
+                    agent_pay_failure(&error),
+                    AgentPayFailure::Unknown(_)
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn insufficient_funds_comes_from_the_variant_not_the_text() {
+        let short = SdkError::InsufficientFunds {
+            token_identifier: None,
+        };
+        assert_eq!(
+            agent_pay_failure(&short),
+            AgentPayFailure::InsufficientFunds
+        );
+        assert_eq!(prepare_failure(&short), AgentPayFailure::InsufficientFunds);
+        // A network error that merely mentions the word is not a shortfall,
+        // and may have paid.
+        let network = SdkError::NetworkError("insufficient bandwidth".into());
+        assert!(matches!(
+            agent_pay_failure(&network),
+            AgentPayFailure::Unknown(_)
+        ));
+        assert!(pay_failure(&network).outcome_unknown());
+    }
+
+    #[test]
+    fn preparing_never_reports_an_unknown_outcome() {
+        for (error, _) in every_variant() {
+            assert!(!matches!(
+                prepare_failure(&error),
+                AgentPayFailure::Unknown(_)
+            ));
+        }
     }
 }

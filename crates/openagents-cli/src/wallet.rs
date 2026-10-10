@@ -21,7 +21,9 @@ use std::time::Duration;
 
 use bitcoin_amount::Format;
 use openagents_spark::computer;
-use openagents_spark::model::{Destination, Node, PaymentRow, QuoteFailure, SendRequest};
+use openagents_spark::model::{
+    Destination, Node, PayFailure, PaymentRow, QuoteFailure, SendRequest,
+};
 use openagents_spark::seed::Seed;
 use serde_json::{Value, json};
 
@@ -346,7 +348,7 @@ fn send(
     let amount = amount(args, format)?;
     let node = opened(note)?;
     let quote = match node.quote(&SendRequest {
-        input: to,
+        input: to.clone(),
         amount_sats: amount,
         comment: None,
         format,
@@ -385,8 +387,21 @@ fn send(
             return Err(Failure::Plain("Nothing was sent.".into()));
         }
     }
-    let key = uuid::Uuid::new_v4().to_string();
-    let paid = node.pay(quote.id, &key).map_err(Failure::Plain)?;
+    // A send whose outcome stayed unknown left its key: the same send
+    // reuses it, so the wallet returns that payment instead of paying twice.
+    let home = computer::home();
+    let what = format!("{to}\n{}", quote.amount_sats);
+    let (key, repeated) = computer::send_key(&home, &what).map_err(Failure::Plain)?;
+    let paid = match node.pay(quote.id, &key) {
+        Ok(paid) => paid,
+        Err(failure) => {
+            if !failure.outcome_unknown() {
+                let _ = computer::send_settled(&home, &what);
+            }
+            return Err(Failure::Plain(pay_failure_line(&failure)));
+        }
+    };
+    let _ = computer::send_settled(&home, &what);
     let row = paid.row;
     let line = match row.status.as_str() {
         "completed" => format!("Sent {} to {who}.", format.show(row.amount_sats)),
@@ -400,6 +415,13 @@ fn send(
         Some(message) => format!("{line}\nThey said: {message}"),
         None => line,
     };
+    let line = if repeated {
+        format!(
+            "{line}\nThis repeats a send whose outcome was unknown, so the wallet reported that payment rather than paying again."
+        )
+    } else {
+        line
+    };
     Ok((
         json!({
             "payment": row.id,
@@ -409,6 +431,17 @@ fn send(
         }),
         Box::new(move |_: &Value| line),
     ))
+}
+
+/// Why a send did not complete, in words that never claim "nothing was
+/// sent" when the payment may have gone through.
+fn pay_failure_line(failure: &PayFailure) -> String {
+    match failure {
+        PayFailure::NotSent(message) => format!("{message} Nothing was sent."),
+        PayFailure::Unknown(message) => format!(
+            "{message} `openagents wallet history` shows whether it went through. Running the same send again is safe: it reuses this attempt's key, so the wallet can't pay twice."
+        ),
+    }
 }
 
 /// One payment, for one line: when (UTC), the amount, and what happened,
@@ -755,6 +788,23 @@ mod tests {
         for word in TECHNICAL {
             assert!(!lower.contains(word), "{text:?} names {word}");
         }
+    }
+
+    #[test]
+    fn a_send_that_may_have_paid_never_says_nothing_was_sent() {
+        let unknown = pay_failure_line(&PayFailure::Unknown(
+            "The wallet lost track of this payment while sending it (Network error: reset), so it may have gone through.".into(),
+        ));
+        assert!(
+            !unknown.to_lowercase().contains("nothing was sent"),
+            "{unknown}"
+        );
+        assert!(unknown.contains("openagents wallet history"), "{unknown}");
+        assert!(unknown.contains("can't pay twice"), "{unknown}");
+        let refused = pay_failure_line(&PayFailure::NotSent(
+            "The wallet doesn't hold enough to pay this and its fee.".into(),
+        ));
+        assert!(refused.ends_with("Nothing was sent."), "{refused}");
     }
 
     #[test]

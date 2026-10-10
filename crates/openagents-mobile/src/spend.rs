@@ -962,11 +962,25 @@ impl Spending {
                     _ => format!("Paid for {label}, but the wallet has no proof yet."),
                 });
             }
+            Err(AgentPayFailure::Unknown(_)) => {
+                // The send may have gone through: keep the reservation and
+                // ask the wallet again with the same key on the next pass,
+                // which returns that payment rather than paying twice.
+                shared
+                    .saved
+                    .ledger
+                    .settle(&request.request, false, None, None, now);
+                shared.notice = Some(format!(
+                    "The payment for {label} may have gone through. The wallet will check again."
+                ));
+            }
             Err(failure) => {
                 let code = match failure {
                     AgentPayFailure::FeeTooHigh(_) => Refusal::FeeTooHigh,
                     AgentPayFailure::InsufficientFunds => Refusal::InsufficientFunds,
-                    AgentPayFailure::Failed(_) => Refusal::PaymentFailed,
+                    AgentPayFailure::Failed(_) | AgentPayFailure::Unknown(_) => {
+                        Refusal::PaymentFailed
+                    }
                 };
                 refuse(&mut shared, host, request, code, now);
                 shared.notice = Some(code.describe().into());

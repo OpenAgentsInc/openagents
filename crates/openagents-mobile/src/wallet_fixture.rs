@@ -5,7 +5,7 @@
 
 use crate::wallet::{
     Ask, ClaimQuote, Contact, DepositRow, Destination, FeeRates, LnurlTerms, Node, Opener, Paid,
-    PaymentRow, Provider, Quote, QuoteFailure, SendRequest, Speed,
+    PayFailure, PaymentRow, Provider, Quote, QuoteFailure, SendRequest, Speed,
 };
 use std::sync::{Arc, Mutex};
 
@@ -136,7 +136,7 @@ impl Node for Fixture {
             "That isn't a payment request this wallet can pay.".into(),
         ))
     }
-    fn pay(&self, _quote: u64, key: &str) -> Result<Paid, String> {
+    fn pay(&self, _quote: u64, key: &str) -> Result<Paid, PayFailure> {
         let mut state = self.state();
         let row = PaymentRow {
             id: format!("fixture-{key}"),

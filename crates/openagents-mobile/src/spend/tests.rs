@@ -355,6 +355,41 @@ fn wallet_failures_release_the_reservation_with_their_code() {
 }
 
 #[test]
+fn an_unknown_outcome_is_never_refused_and_is_rechecked_with_the_same_key() {
+    let (spending, computer, wallet, grant) = phone();
+    *wallet.outcome.lock().unwrap() = Err(AgentPayFailure::Unknown("lost".into()));
+    let asked = request(&grant, 2, "lnbc250n", 25_000);
+    computer.ask(asked.clone());
+    spending.poll_now(&hosts(), &computer, Some(&wallet));
+    spending
+        .lock()
+        .saved
+        .ledger
+        .reserve(Some(&grant), &asked, at_t0())
+        .unwrap();
+    spending.pay(HOST, &asked, &wallet);
+    spending.poll_now(&hosts(), &computer, Some(&wallet));
+    // No refusal reached the computer, and the money stays reserved.
+    assert!(computer.receipts().iter().all(|r| r.code.is_none()));
+    assert_eq!(
+        spending.lock().saved.ledger.entries[&asked.request].state,
+        State::Pending
+    );
+    let held = spending.lock().saved.ledger.remaining(&grant, at_t0());
+    assert!(held.period_msat < grant.period_max);
+    // The wallet answers on a later pass: same key, paid once.
+    *wallet.outcome.lock().unwrap() = Ok("completed");
+    spending.poll_now(&hosts(), &computer, Some(&wallet));
+    let paid = wallet.paid();
+    assert!(paid.len() >= 2);
+    assert!(paid.iter().all(|(_, _, key)| *key == paid[0].2));
+    assert_eq!(
+        spending.lock().saved.ledger.entries[&asked.request].state,
+        State::Paid
+    );
+}
+
+#[test]
 fn a_pending_payment_stays_reserved_until_the_wallet_settles_it() {
     let (spending, computer, wallet, grant) = phone();
     *wallet.outcome.lock().unwrap() = Ok("pending");

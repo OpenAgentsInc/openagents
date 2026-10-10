@@ -1107,7 +1107,8 @@ impl Wallet {
                 let succeeded = matches!(&paid, Ok(paid) if paid.row.status != "failed");
                 state.send = match paid {
                     Ok(paid) => Sending::Sent(paid),
-                    Err(message) => Sending::Failed(message),
+                    // An unknown outcome says it may have gone through.
+                    Err(failure) => Sending::Failed(failure.to_string()),
                 };
                 if succeeded {
                     remember(&mut state, &home, &quote);
@@ -2169,7 +2170,7 @@ mod tests {
                 )),
             }
         }
-        fn pay(&self, quote: u64, key: &str) -> Result<Paid, String> {
+        fn pay(&self, quote: u64, key: &str) -> Result<Paid, PayFailure> {
             self.paid.lock().unwrap().push((quote, key.to_owned()));
             let row = PaymentRow {
                 id: format!("pay-{quote}"),

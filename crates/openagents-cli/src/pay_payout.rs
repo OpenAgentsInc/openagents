@@ -19,7 +19,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use nostr::domain::Event;
-use openagents_spark::model::{Node as _, SendRequest};
+use openagents_spark::model::{Node as _, PayFailure, SendRequest};
 use openagents_spark::spark::SparkNode;
 use openagents_wallet::config::Network;
 use openagents_wallet::open::Opened;
@@ -264,7 +264,10 @@ impl Rails for LiveRails {
                 "failed" => Outcome::Failed("the transfer failed".into()),
                 _ => Outcome::Unknown("the transfer is pending".into()),
             },
-            Err(why) => Outcome::Unknown(why),
+            // Only a definite refusal is a failure; anything that may have
+            // left stays unknown so the same key is asked again.
+            Err(PayFailure::NotSent(why)) => Outcome::Failed(why),
+            Err(PayFailure::Unknown(why)) => Outcome::Unknown(why),
         }
     }
 
