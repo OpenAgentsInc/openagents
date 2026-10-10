@@ -11,12 +11,18 @@
 //! - `/schedule weekdays 9am triage the new issues`
 //! - `/schedule daily 18:30 summarize today's commits`
 //! - `/schedule every 2h check the deploy`
+//! - `/schedule here weekdays 9am what changed overnight?` posts into
+//!   this chat instead of starting a new Coder run.
 //! - `/schedule` lists them; `/schedule remove ID` removes one.
+//!
+//! While sync is on, the scheduled prompts also live on the account
+//! (`crate::schedule_sync`), where the website and the apps list, make,
+//! pause, and delete them; this computer keeps running them.
 
 use crate::{App, Mode};
 
 /// How to make one.
-pub const USAGE: &str = "Use /schedule WHEN PROMPT, where WHEN is daily TIME, weekdays TIME, weekends TIME, or every INTERVAL (at least 1m). For example /schedule weekdays 9am triage the new issues. /schedule lists them; /schedule remove ID removes one.";
+pub const USAGE: &str = "Use /schedule WHEN PROMPT, where WHEN is daily TIME, weekdays TIME, weekends TIME, or every INTERVAL (at least 1m). For example /schedule weekdays 9am triage the new issues. /schedule here WHEN PROMPT posts into this chat instead of starting a new run. /schedule lists them; /schedule remove ID removes one.";
 
 /// When a scheduled prompt runs.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -105,7 +111,7 @@ fn background_time(_text: &str) -> Option<String> {
 }
 
 #[cfg(unix)]
-mod rules {
+pub(crate) mod rules {
     use background::Layout;
     use background::rule::{Action, Condition, Origin, Rule, Trigger};
     use background::store;
@@ -144,31 +150,36 @@ mod rules {
             .unwrap_or(base)
     }
 
-    /// The rule for `prompt` at `when`, run in `workspace`.
-    pub fn rule(
-        layout: &Layout,
-        when: &When,
-        prompt: &str,
-        workspace: Option<String>,
-        thread: &str,
-    ) -> Rule {
+    /// What a scheduled prompt is: when, what, where it runs, and the
+    /// chat it posts into (a new Coder run when `None`).
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub struct Prompt {
+        pub when: When,
+        pub prompt: String,
+        pub workspace: Option<String>,
+        pub chat: Option<String>,
+        pub paused: bool,
+    }
+
+    /// The rule `id` for `prompt`, made in the conversation `thread`.
+    pub fn build(id: &str, prompt: &Prompt, thread: &str) -> Rule {
         let mut rule = background::rule::disk();
-        rule.id = id_for(prompt, layout);
+        rule.id = id.into();
         rule.name = format!(
             "Scheduled prompt: {}",
-            crate::long_session::clip(prompt, 60)
+            crate::long_session::clip(&prompt.prompt, 60)
         );
         rule.version = 1;
         rule.origin = Origin::Conversation {
             thread: thread.into(),
-            message: prompt.chars().take(280).collect(),
+            message: prompt.prompt.chars().take(280).collect(),
         };
-        rule.enabled = true;
+        rule.enabled = !prompt.paused;
         rule.paused_until = None;
         rule.cooldown_secs = 0;
         rule.escalate = None;
         rule.conditions = Vec::new();
-        rule.triggers = match when {
+        rule.triggers = match &prompt.when {
             When::At { time, days } => {
                 if !days.is_empty() {
                     rule.conditions
@@ -181,10 +192,34 @@ mod rules {
             }],
         };
         rule.actions = vec![Action::StartCoderRun {
-            prompt: prompt.into(),
-            workspace,
+            prompt: prompt.prompt.clone(),
+            workspace: prompt.workspace.clone(),
+            chat: prompt.chat.clone(),
         }];
         rule
+    }
+
+    /// The rule for `prompt` at `when`, run in `workspace` (or posted into
+    /// `chat`), under a new id.
+    pub fn rule(
+        layout: &Layout,
+        when: &When,
+        prompt: &str,
+        workspace: Option<String>,
+        chat: Option<String>,
+        thread: &str,
+    ) -> Rule {
+        build(
+            &id_for(prompt, layout),
+            &Prompt {
+                when: when.clone(),
+                prompt: prompt.into(),
+                workspace,
+                chat,
+                paused: false,
+            },
+            thread,
+        )
     }
 
     /// Saves a new scheduled prompt.
@@ -193,9 +228,10 @@ mod rules {
         when: &When,
         prompt: &str,
         workspace: Option<String>,
+        chat: Option<String>,
         thread: &str,
     ) -> Result<Rule, String> {
-        store::save(layout, &rule(layout, when, prompt, workspace, thread))
+        store::save(layout, &rule(layout, when, prompt, workspace, chat, thread))
     }
 
     /// The scheduled prompts: rules made here that start a Coder run.
@@ -203,7 +239,7 @@ mod rules {
         store::list(layout)
             .into_iter()
             .filter_map(Result::ok)
-            .filter(|rule| rule.id.starts_with(PREFIX) && prompt_of(rule).is_some())
+            .filter(|rule| rule.id.starts_with(PREFIX) && read(rule, 0).is_some())
             .collect()
     }
 
@@ -218,50 +254,63 @@ mod rules {
     }
 
     /// What a rule's first `StartCoderRun` runs.
-    fn prompt_of(rule: &Rule) -> Option<&str> {
+    fn prompt_of(rule: &Rule) -> Option<(&str, Option<&String>, Option<&String>)> {
         rule.actions.iter().find_map(|action| match action {
-            Action::StartCoderRun { prompt, .. } => Some(prompt.as_str()),
+            Action::StartCoderRun {
+                prompt,
+                workspace,
+                chat,
+            } => Some((prompt.as_str(), workspace.as_ref(), chat.as_ref())),
             _ => None,
+        })
+    }
+
+    /// The scheduled prompt a rule holds, as of `now` (a pause that has
+    /// run out isn't one); `None` for any other rule.
+    pub fn read(rule: &Rule, now: u64) -> Option<Prompt> {
+        let (prompt, workspace, chat) = prompt_of(rule)?;
+        let when = rule.triggers.iter().find_map(|trigger| match trigger {
+            Trigger::Daily { at } => Some(When::At {
+                time: at.clone(),
+                days: rule
+                    .conditions
+                    .iter()
+                    .find_map(|condition| match condition {
+                        Condition::Weekdays { days } => Some(days.clone()),
+                        _ => None,
+                    })
+                    .unwrap_or_default(),
+            }),
+            Trigger::Interval { every_secs } => Some(When::Every {
+                seconds: *every_secs,
+            }),
+            _ => None,
+        })?;
+        Some(Prompt {
+            when,
+            prompt: prompt.to_owned(),
+            workspace: workspace.cloned(),
+            chat: chat.cloned(),
+            paused: !rule.enabled || rule.paused_until.is_some_and(|until| until > now),
         })
     }
 
     /// One line for `/schedule`.
     pub fn line(rule: &Rule) -> String {
-        let when = rule
-            .triggers
-            .iter()
-            .find_map(|trigger| match trigger {
-                Trigger::Daily { at } => {
-                    let days = rule
-                        .conditions
-                        .iter()
-                        .find_map(|condition| match condition {
-                            Condition::Weekdays { days } => Some(days.clone()),
-                            _ => None,
-                        });
-                    Some(
-                        When::At {
-                            time: at.clone(),
-                            days: days.unwrap_or_default(),
-                        }
-                        .words(),
-                    )
-                }
-                Trigger::Interval { every_secs } => Some(
-                    When::Every {
-                        seconds: *every_secs,
-                    }
-                    .words(),
-                ),
-                _ => None,
-            })
-            .unwrap_or_default();
+        let Some(read) = read(rule, 0) else {
+            return rule.id.clone();
+        };
         format!(
-            "{}  {}{}  {}",
+            "{}  {}{}{}  {}",
             rule.id,
-            when,
-            if rule.enabled { "" } else { " (off)" },
-            crate::long_session::clip(prompt_of(rule).unwrap_or_default(), 80)
+            read.when.words(),
+            if rule.enabled { "" } else { " (paused)" },
+            if read.chat.is_some() {
+                ", posts into a chat"
+            } else {
+                ""
+            },
+            crate::long_session::clip(&read.prompt, 80)
         )
     }
 }
@@ -320,9 +369,27 @@ impl App {
                 Err(error) => error,
             };
         }
+        // `/schedule here WHEN PROMPT` posts into this chat (#11177).
+        let (here, argument) = match argument.strip_prefix("here ") {
+            Some(rest) => (true, rest.trim()),
+            None => (false, argument),
+        };
         let (when, prompt) = match parse(argument) {
             Ok(parsed) => parsed,
             Err(error) => return error,
+        };
+        let chat = if here {
+            if !self.ensure_session() {
+                return "This chat isn't saved, so a schedule can't post into it.".into();
+            }
+            match self.session_id() {
+                Some(id) => Some(id.to_owned()),
+                None => {
+                    return "This chat isn't saved, so a schedule can't post into it.".into();
+                }
+            }
+        } else {
+            None
         };
         let workspace = self
             .cwd
@@ -331,11 +398,17 @@ impl App {
             .and_then(|path| path.canonicalize().ok())
             .map(|path| path.to_string_lossy().into_owned());
         let thread = self.session_id().unwrap_or("coder").to_owned();
-        match rules::add(layout, &when, &prompt, workspace, &thread) {
+        let posts = chat.is_some();
+        match rules::add(layout, &when, &prompt, workspace, chat, &thread) {
             Ok(rule) => format!(
-                "Scheduled {}: {} on this computer, as a Coder run in this folder. The background runner starts it (openagents background status shows whether it is on). /schedule remove {} removes it.",
+                "Scheduled {}: {} on this computer, {}. The background runner starts it (openagents background status shows whether it is on). /schedule remove {} removes it.",
                 rule.id,
                 when.words(),
+                if posts {
+                    "posted into this chat"
+                } else {
+                    "as a Coder run in this folder"
+                },
                 rule.id
             ),
             Err(error) => format!("The schedule was not saved: {error}"),
@@ -423,7 +496,7 @@ mod tests {
         );
         assert!(matches!(
             &rule.actions[..],
-            [background::rule::Action::StartCoderRun { prompt, workspace: Some(_) }]
+            [background::rule::Action::StartCoderRun { prompt, workspace: Some(_), chat: None }]
                 if prompt == "triage the new issues"
         ));
         // A second one with the same words gets its own id.
@@ -439,5 +512,33 @@ mod tests {
             app.schedule_with(&layout, "remove disk")
                 .contains("not a scheduled prompt")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_scheduled_prompt_can_post_into_this_chat() {
+        let home = tempfile::tempdir().unwrap();
+        let layout = background::Layout::new(home.path(), None).unwrap();
+        let mut app = App::default();
+        app.set_mode(Mode::Live);
+        app.cwd = Some(home.path().to_owned());
+        // No saved chat: nothing to post into.
+        assert!(
+            app.schedule_with(&layout, "here daily 8am what changed?")
+                .contains("isn't saved")
+        );
+        assert!(rules::list(&layout).is_empty());
+        let sessions = home.path().join("sessions");
+        app.attach_session_store(crate::sessions::Store::under(&sessions));
+        let said = app.schedule_with(&layout, "here daily 8am what changed?");
+        assert!(said.contains("posted into this chat"), "{said}");
+        let saved = rules::list(&layout);
+        assert_eq!(saved.len(), 1);
+        assert!(saved[0].validate().is_ok());
+        let read = rules::read(&saved[0], 0).unwrap();
+        assert_eq!(read.chat.as_deref(), app.session_id());
+        assert_eq!(read.prompt, "what changed?");
+        assert!(!read.paused);
+        assert!(rules::line(&saved[0]).contains("posts into a chat"));
     }
 }

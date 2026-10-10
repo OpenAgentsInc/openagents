@@ -241,6 +241,7 @@ pub fn after(
                 .workspace
                 .as_ref()
                 .map(|w| expand(w, &env.layout.home).display().to_string()),
+            chat: None,
         };
         let started = services.start_coder_run(&run);
         let now = env.now;

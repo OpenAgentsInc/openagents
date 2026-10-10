@@ -147,6 +147,7 @@ pub fn rule(id: &str) -> Option<Rule> {
             rule.actions = vec![Action::StartCoderRun {
                 prompt: QA_PROMPT.into(),
                 workspace: None,
+                chat: None,
             }];
             rule
         }
@@ -214,7 +215,11 @@ pub fn steps(
 ) -> Option<Vec<Step>> {
     let services = powers.services;
     Some(match action {
-        Action::StartCoderRun { prompt, workspace } => {
+        Action::StartCoderRun {
+            prompt,
+            workspace,
+            chat,
+        } => {
             let Some(services) = services else {
                 return Some(vec![missing("start_coder_run")]);
             };
@@ -223,7 +228,14 @@ pub fn steps(
                     "start_coder_run",
                     workspace.clone(),
                     StepOutcome::Would,
-                    format!("would start a Coder run: {}", first_line(prompt)),
+                    match chat {
+                        Some(chat) => format!(
+                            "would post into chat {}: {}",
+                            short(chat),
+                            first_line(prompt)
+                        ),
+                        None => format!("would start a Coder run: {}", first_line(prompt)),
+                    },
                 )]);
             }
             let run = CoderRun {
@@ -232,13 +244,19 @@ pub fn steps(
                 workspace: workspace
                     .as_ref()
                     .map(|w| rule::expand(w, &env.layout.home).display().to_string()),
+                chat: chat.clone(),
             };
             vec![match services.start_coder_run(&run) {
                 Ok(task) => step(
                     "start_coder_run",
                     Some(task.clone()),
                     StepOutcome::Done,
-                    format!("Started Coder run {}: {}.", short(&task), rule.name),
+                    match &run.chat {
+                        Some(chat) => {
+                            format!("Posted into chat {}: {}.", short(chat), rule.name)
+                        }
+                        None => format!("Started Coder run {}: {}.", short(&task), rule.name),
+                    },
                 ),
                 Err(why) => step("start_coder_run", None, StepOutcome::Failed, why),
             }]

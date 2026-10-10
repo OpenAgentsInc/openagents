@@ -398,11 +398,15 @@ pub enum Action {
         branch: Option<String>,
     },
     /// Start a Coder run with `prompt` in `workspace` (the host's default
-    /// when unset) and a code-built briefing.
+    /// when unset) and a code-built briefing. With `chat`, the prompt is
+    /// posted into that existing Coder chat (its session id) instead, and
+    /// answered there with the chat's history (#11177).
     StartCoderRun {
         prompt: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         workspace: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        chat: Option<String>,
     },
     /// Run an installed plugin's declared background action, read-only.
     /// A plugin's rule may run only its own plugin.
@@ -802,6 +806,17 @@ pub fn id_like(id: &str) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
 }
 
+/// A Coder chat's session id: letters, numbers, `_`, and `-`, up to 128
+/// bytes (`coder-new` `sessions::validate_id`).
+#[must_use]
+pub fn chat_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 128
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+}
+
 fn path_like(path: &str) -> bool {
     (path.starts_with("~/") || path.starts_with('/'))
         && !path.contains("..")
@@ -877,12 +892,21 @@ impl Rule {
                         return Err("a branch name is 1 to 200 bytes".into());
                     }
                 }
-                Action::StartCoderRun { prompt, workspace } => {
+                Action::StartCoderRun {
+                    prompt,
+                    workspace,
+                    chat,
+                } => {
                     if prompt.trim().is_empty() || prompt.len() > 4000 {
                         return Err("a Coder run's prompt is 1 to 4000 bytes".into());
                     }
                     if let Some(bad) = workspace.as_ref().filter(|w| !path_like(w)) {
                         return Err(format!("workspace `{bad}` must be absolute or under ~"));
+                    }
+                    if let Some(bad) = chat.as_ref().filter(|c| !chat_id(c)) {
+                        return Err(format!(
+                            "chat `{bad}` is not a Coder chat id (letters, numbers, - and _)"
+                        ));
                     }
                 }
                 Action::RunPlugin { plugin, input } => {

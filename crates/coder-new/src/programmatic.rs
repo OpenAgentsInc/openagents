@@ -1156,6 +1156,11 @@ pub(crate) fn chat(
     document["session_id"] = json!(session);
     document["trajectory_id"] = json!(session);
     lease.save(&document)?;
+    // Saved to the account too when sync is on, so a chat a scheduled
+    // prompt posted into shows its answer there (#11177).
+    if !demo {
+        crate::account_sync::upload_saved_now(&context.root, &document);
+    }
     if let Some(error) = &app.live.notice {
         return Err(error.clone().into());
     }

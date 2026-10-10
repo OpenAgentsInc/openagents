@@ -56,7 +56,7 @@ pub(crate) struct SyncState {
     pub(crate) settings: Settings,
     pub(crate) worker: Option<Worker>,
     screen: secret_screen::Screen,
-    computer: String,
+    pub(crate) computer: String,
     /// The last heartbeat sent for the open chat: working, and when.
     heartbeat: Option<(String, bool, Instant)>,
     told_full: bool,
@@ -76,6 +76,8 @@ pub(crate) struct SyncState {
     pub(crate) board: crate::supervise::Board,
     /// Memory notes on the account (#11182).
     pub(crate) memory: crate::memory_sync::MemorySync,
+    /// Scheduled prompts on the account (#11177).
+    pub(crate) schedules: crate::schedule_sync::ScheduleSync,
     /// Coding runs for the account's own API key (#11080), taken while
     /// sync is on.
     own_runs: Option<crate::own_runs::Host>,
@@ -140,6 +142,41 @@ pub fn forget_deleted(dir: &Path, session: &str) {
     let _ = settings.store(dir);
 }
 
+/// A chat saved outside the terminal (`openagents coder chat`, which a
+/// scheduled prompt posting into a chat runs, #11177): send it now when
+/// saving chats to the account is on and this computer is signed in, so
+/// the answer shows in the chat on openagents.com and in the apps even
+/// while the terminal is closed. Quietly does nothing otherwise; the
+/// terminal sends it later.
+pub fn upload_saved_now(dir: &Path, document: &Value) {
+    let Some(session) = document.get("session_id").and_then(Value::as_str) else {
+        return;
+    };
+    let mut settings = Settings::load(dir);
+    if !settings.on {
+        return;
+    }
+    let upload = coder_sync::upload(
+        document,
+        &openagents_login::computer_name(),
+        &secret_screen::Screen::host(),
+    );
+    if !settings.sends(session, &upload.digest) {
+        return;
+    }
+    let Some(saved) = signed_in(dir) else {
+        return;
+    };
+    let sent = coder_sync::send_now(&saved, vec![(session.to_owned(), upload)]);
+    if sent.is_empty() {
+        return;
+    }
+    for (session, digest) in sent {
+        settings.sent.insert(session, digest);
+    }
+    let _ = settings.store(dir);
+}
+
 impl App {
     /// Read the setting, and start sending when it is on (or deletes are
     /// waiting) and this computer is signed in.
@@ -162,6 +199,7 @@ impl App {
             told: None,
             board: crate::supervise::Board::default(),
             memory: crate::memory_sync::MemorySync::default(),
+            schedules: crate::schedule_sync::ScheduleSync::default(),
             own_runs: None,
         });
         sync.settings = settings;
@@ -364,6 +402,7 @@ impl App {
     /// "working" heartbeat current.
     pub(crate) fn poll_sync(&mut self) {
         self.poll_memory();
+        self.poll_schedules();
         let busy = self.live.busy;
         let open = self.session_id().map(str::to_owned);
         let account_dir = self.account_dir.clone();

@@ -45,6 +45,7 @@ pub mod activity;
 pub mod claude_session;
 pub mod memory;
 pub mod own_runs;
+pub mod schedules;
 pub mod traces;
 
 use std::collections::{BTreeMap, BTreeSet};

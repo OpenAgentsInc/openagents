@@ -51,6 +51,7 @@ pub mod provider;
 pub mod resume;
 pub mod risk_policy;
 mod schedule;
+mod schedule_sync;
 pub mod sessions;
 mod shells;
 pub mod slash;

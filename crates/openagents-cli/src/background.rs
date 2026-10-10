@@ -336,6 +336,71 @@ impl HostServices {
     }
 }
 
+/// The command that posts a scheduled prompt into the existing Coder chat
+/// `chat` (#11177): `openagents coder chat`, which continues the saved
+/// chat with its history, answers with this computer's tools in `dir`,
+/// saves it, and sends it to the account when sync is on. The prompt goes
+/// on its stdin.
+fn chat_command(program: &std::path::Path, dir: &std::path::Path, chat: &str) -> Vec<String> {
+    vec![
+        program.display().to_string(),
+        "coder".into(),
+        "chat".into(),
+        "--in".into(),
+        dir.display().to_string(),
+        "--session".into(),
+        chat.into(),
+        "--stdin".into(),
+    ]
+}
+
+impl HostServices {
+    /// Post `run`'s prompt into the chat `chat`: start `openagents coder
+    /// chat` on its own, its output in a log beside the background rules.
+    /// Returns the chat's id.
+    fn post_into_chat(
+        &self,
+        run: &background::services::CoderRun,
+        chat: &str,
+    ) -> Result<String, String> {
+        use std::io::Write;
+        if !background::rule::chat_id(chat) {
+            return Err(format!("`{chat}` is not a Coder chat"));
+        }
+        // The rule's folder when it names one, else the default checkout or
+        // the home folder: the chat keeps its history either way.
+        let dir = match run.workspace.as_deref() {
+            Some(named) => PathBuf::from(named),
+            None => self.workspace(None).unwrap_or_else(|_| self.home.clone()),
+        };
+        let program = std::env::current_exe().map_err(|error| error.to_string())?;
+        let command = chat_command(&program, &dir, chat);
+        let logs = self.home.join(".openagents/background/chat-posts");
+        std::fs::create_dir_all(&logs).map_err(|error| error.to_string())?;
+        let log = std::fs::File::create(logs.join(format!("{chat}.log")))
+            .map_err(|error| error.to_string())?;
+        let errors = log.try_clone().map_err(|error| error.to_string())?;
+        let mut child = std::process::Command::new(&command[0])
+            .args(&command[1..])
+            .current_dir(&dir)
+            .stdin(std::process::Stdio::piped())
+            .stdout(log)
+            .stderr(errors)
+            .spawn()
+            .map_err(|error| format!("couldn't start Coder for the chat: {error}"))?;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin
+                .write_all(run.prompt.as_bytes())
+                .map_err(|error| error.to_string())?;
+        }
+        // The chat answers on its own; the runner doesn't wait for it.
+        std::thread::spawn(move || {
+            let _ = child.wait();
+        });
+        Ok(chat.to_owned())
+    }
+}
+
 impl background::services::Services for HostServices {
     fn recalibrate(&self, dry_run: bool) -> Result<String, String> {
         let (report, _) = crate::efficiency::recalibrate(&self.store, !dry_run)?;
@@ -343,6 +408,9 @@ impl background::services::Services for HostServices {
     }
 
     fn start_coder_run(&self, run: &background::services::CoderRun) -> Result<String, String> {
+        if let Some(chat) = &run.chat {
+            return self.post_into_chat(run, chat);
+        }
         let dir = self.workspace(run.workspace.as_deref())?;
         coder::task::local::Local::here(self.store.clone())
             .start(&dir, &run.title, &run.prompt, None)
@@ -1194,6 +1262,28 @@ pub(crate) fn watchers() -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_scheduled_prompt_posts_into_its_chat_through_coder_chat() {
+        let command = super::chat_command(
+            std::path::Path::new("/usr/local/bin/openagents"),
+            std::path::Path::new("/home/me/work/app"),
+            "2026-10-10-abc",
+        );
+        assert_eq!(
+            command,
+            [
+                "/usr/local/bin/openagents",
+                "coder",
+                "chat",
+                "--in",
+                "/home/me/work/app",
+                "--session",
+                "2026-10-10-abc",
+                "--stdin",
+            ]
+        );
+    }
+
     use super::*;
 
     #[test]

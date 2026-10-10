@@ -13,6 +13,10 @@ pub struct CoderRun {
     /// The checkout it works in (absolute), or the host's default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub workspace: Option<String>,
+    /// The existing Coder chat (its session id) the prompt is posted
+    /// into, instead of a new run (#11177).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat: Option<String>,
 }
 
 /// An issue claim this computer holds that nothing works any more.

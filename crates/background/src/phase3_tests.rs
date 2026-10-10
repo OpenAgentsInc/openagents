@@ -519,6 +519,39 @@ fn the_nightly_qa_run_starts_coder_only_for_real() {
     );
 }
 
+#[test]
+fn a_scheduled_prompt_can_post_into_an_existing_chat() {
+    let h = home();
+    let volumes = low();
+    let env = env(&h, &volumes, idle());
+    let mut rule = rule::built_in("qa").unwrap();
+    rule.name = "Scheduled prompt: triage".into();
+    rule.actions = vec![Action::StartCoderRun {
+        prompt: "triage the new issues".into(),
+        workspace: None,
+        chat: Some("2026-10-10-abc_1".into()),
+    }];
+    assert!(rule.validate().is_ok());
+    let host = Host::default();
+    let dry = steps(&env, &rule, powers(None, Some(&host)), true);
+    assert!(dry[0].detail.starts_with("would post into chat"), "{dry:?}");
+    let done = steps(&env, &rule, powers(None, Some(&host)), false);
+    assert_eq!(
+        done[0].detail,
+        "Posted into chat 2026-10-10-a: Scheduled prompt: triage."
+    );
+    let runs = host.runs.lock().unwrap().clone();
+    assert_eq!(runs[0].chat.as_deref(), Some("2026-10-10-abc_1"));
+    assert_eq!(runs[0].prompt, "triage the new issues");
+    // A chat id is a Coder session id, nothing else.
+    rule.actions = vec![Action::StartCoderRun {
+        prompt: "p".into(),
+        workspace: None,
+        chat: Some("../etc".into()),
+    }];
+    assert!(rule.validate().is_err());
+}
+
 fn git(dir: &Path, args: &[&str]) {
     let status = std::process::Command::new("git")
         .arg("-C")
@@ -826,6 +859,7 @@ fn a_plugin_runs_only_its_own_action_and_starts_coder_only_when_it_asks() {
     rule.actions = vec![Action::StartCoderRun {
         prompt: "p".into(),
         workspace: None,
+        chat: None,
     }];
     assert!(crate::plugins::admit(rule.clone(), &installed("k:checker")).is_err());
     rule.needs.coder = true;

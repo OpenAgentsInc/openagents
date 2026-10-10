@@ -155,7 +155,7 @@ plan before it changes anything.
 | `CargoCleanPartial { what }` | Removes part of an idle Cargo target directory: `debug/incremental`, `release/incremental`, or `doc`. Compiled dependencies stay. |
 | `EmptyTrash { older_than }` | Empties the background trash. |
 | `Notify { text }` | Sends a short notification. |
-| `StartCoderRun { prompt, workspace, briefing }` | Starts a Coder task with a prompt and a code-built briefing (phase 3). |
+| `StartCoderRun { prompt, workspace, briefing, chat }` | Starts a Coder task with a prompt and a code-built briefing (phase 3); with `chat`, posts the prompt into that existing Coder chat instead (`openagents coder chat --session`), which answers with its history and syncs to the account (#11177). |
 | `RunPlugin { plugin, input }` | Runs an installed plugin's declared background action (phase 3). |
 
 There is no "run any shell command" action. A user who needs one writes a
@@ -648,7 +648,9 @@ design above, and why:
   `FsEvent { paths }`. Conditions: `FreeBelow`, `TaskOutcome`,
   `NoTaskRunning`, `PathExists`, `TimeBetween`, `Weekdays { days }` (the
   local day of the week, 0 Sunday to 6 Saturday; Coder's `/schedule
-  weekdays 9am PROMPT` uses it, #11177), and `Judgment` (a Jev Noul
+  weekdays 9am PROMPT` uses it, #11177; scheduled prompts are also listed,
+  made, paused, and deleted on openagents.com, Settings, Scheduled prompts,
+  and in the phone app, and Coder applies them here while sync is on), and `Judgment` (a Jev Noul
   read at the rule's percent, setting `background.judgment`, 0.8 by
   default, with the host's judge; without one it never holds). Each rule
   has its cooldown. Disk cleanup actions still run through the planner
