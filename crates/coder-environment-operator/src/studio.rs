@@ -442,6 +442,18 @@ impl Studio {
         &self.github
     }
 
+    /// The Open Responses endpoint the setup agent uses
+    /// ([`Config::model_api`]), as `(url, key, model)`, for other model
+    /// calls this server makes on its own key, such as answering about the
+    /// images and PDFs sent to a chat. `None` without one, or when its key
+    /// file can't be read now.
+    pub fn model_api(&self) -> Option<(String, String, String)> {
+        let api = self.config.model_api.as_ref()?;
+        let key = fs::read_to_string(&api.key_file).ok()?;
+        let key = key.trim();
+        (!key.is_empty()).then(|| (api.url.clone(), key.to_owned(), self.config.model()))
+    }
+
     /// Whether Claude Code runs can start (an Anthropic API key is
     /// configured).
     pub fn claude_ready(&self) -> bool {
@@ -731,6 +743,18 @@ impl Studio {
         prompt: &str,
         own: Option<claude::Key>,
     ) -> Result<String, String> {
+        self.run_claude_with_files(id, prompt, own, Vec::new())
+    }
+
+    /// [`Self::run_claude`] with `files` put in the computer's working
+    /// directory before Claude Code starts ([`claude::Attachment`]).
+    pub fn run_claude_with_files(
+        &self,
+        id: &str,
+        prompt: &str,
+        own: Option<claude::Key>,
+        files: Vec<claude::Attachment>,
+    ) -> Result<String, String> {
         let env = self.envs().read(id).map_err(|e| e.to_string())?;
         if env.project.workspace != self.config.owner.workspace {
             return Err("That environment isn't yours.".into());
@@ -748,12 +772,13 @@ impl Studio {
                 .ok_or("Add your Claude key in Settings to run Claude Code here.")?,
         };
         self.runs
-            .start(
+            .start_with_files(
                 &env,
                 prompt,
                 &self.config.machines.workdir,
                 &self.config.size(),
                 Some(key),
+                files,
             )
             .map_err(|e| plain(&e, "Claude Code didn't start. Try again."))
     }

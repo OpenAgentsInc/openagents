@@ -36,6 +36,8 @@ github-actions = { path = "../github-actions" }
 hmac = "0.12.1"
 hyper = { version = "1", features = ["client", "http1"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
+# Images sent to a chat are made smaller before a model reads them (#11174).
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
 jev = { path = "../jev" }
 inference = { path = "../inference" }
 libc = "0.2"

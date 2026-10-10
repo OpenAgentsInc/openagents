@@ -480,8 +480,8 @@ async fn start_on_coder(
 
 /// A new chat whose first message starts Claude Code in the picked
 /// project's environment ([`work::begin`]); the run's answer joins the
-/// chat when it is done. On to its page. Text files sent with the message
-/// go in the run's prompt ([`crate::chat_files::for_run`]).
+/// chat when it is done. On to its page. Files sent with the message go
+/// in the computer's working directory ([`crate::chat_files::for_run`]).
 #[allow(clippy::too_many_arguments)]
 async fn start_claude(
     app: &App,
@@ -504,12 +504,20 @@ async fn start_claude(
             "Claude Code can't run there now. Pick where it runs again.",
         );
     };
-    let asked = format!("{text}{attached}");
-    let (environment, task) =
-        match work::begin(app, headers, &env, picked.branch.as_deref(), &[], &asked).await {
-            Ok(found) => found,
-            Err(message) => return refusal(StatusCode::CONFLICT, &message),
-        };
+    let (environment, task) = match work::begin(
+        app,
+        headers,
+        &env,
+        picked.branch.as_deref(),
+        &[],
+        &text,
+        attached,
+    )
+    .await
+    {
+        Ok(found) => found,
+        Err(message) => return refusal(StatusCode::CONFLICT, &message),
+    };
     let mut record = Conversation {
         id: id.to_owned(),
         owner: owner.to_owned(),
@@ -1013,7 +1021,7 @@ async fn follow(
     };
     if loaded.conversation.terminal.is_some() {
         if !prompt.files.trim().is_empty() {
-            return refusal(StatusCode::BAD_REQUEST, crate::chat_files::NOT_TO_CODER);
+            return refusal(StatusCode::BAD_REQUEST, crate::chat_files::CODER_CHAT);
         }
         return reply_to_coder(&app, &headers, &owner, &id, &prompt.request_id, &text).await;
     }
@@ -1214,6 +1222,7 @@ pub(crate) async fn follow_from_app(
     id: &str,
     request_id: &str,
     text: &str,
+    files: Vec<crate::chat_files::FileRef>,
 ) -> AppSent {
     let Some(text) = normalize(text) else {
         return AppSent::Invalid;
@@ -1235,7 +1244,10 @@ pub(crate) async fn follow_from_app(
         return AppSent::Missing;
     }
     let selection = chat.selection.clone();
-    let hash = request_digest(&text, selection.as_ref());
+    let hash = request_digest(
+        &crate::chat_files::with_files(&text, &files),
+        selection.as_ref(),
+    );
     if let Some(request) = chat.requests.iter().find(|r| r.id == request_id) {
         return if request.digest == hash {
             AppSent::Answering
@@ -1300,7 +1312,7 @@ pub(crate) async fn follow_from_app(
         outcome: Outcome::Pending,
         selection,
         cloud: None,
-        files: Vec::new(),
+        files,
         reply: None,
     });
     match store.compare_and_swap(&loaded, &next).await {
@@ -1348,7 +1360,7 @@ async fn follow_claude(
             "Claude Code is still working in this chat. Wait for it to finish.",
         );
     }
-    // Text files sent with the message go in the run's prompt
+    // Files sent with the message go in the computer's working directory
     // ([`crate::chat_files::for_run`], #11174).
     let attached =
         match crate::chat_files::for_run(&app.config.chat_store, &chat.owner, &chat.id, &files)
@@ -1357,7 +1369,6 @@ async fn follow_claude(
             Ok(attached) => attached,
             Err(message) => return refusal(StatusCode::BAD_REQUEST, message),
         };
-    let asked = format!("{text}{attached}");
     let Some(env) = claude_environment(app, headers, &chat.owner, picked, false).await else {
         return refusal(
             StatusCode::CONFLICT,
@@ -1370,7 +1381,8 @@ async fn follow_claude(
         &env,
         picked.branch.as_deref(),
         &chat.messages,
-        &asked,
+        &text,
+        attached,
     )
     .await
     {
@@ -1447,47 +1459,74 @@ async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
         .expect("dispatch owns pending request")
         .request_id
         .clone();
-    // The text files sent with this message, read as data; a line naming
-    // each image or PDF ([`crate::chat_files::for_answer`], #11174).
+    // The files sent with this message (#11174): text files read as data;
+    // images and PDFs as content parts when this server has a model that
+    // takes them ([`crate::chat_vision`]), else a line naming each one.
     let sent = chat
         .requests
         .iter()
         .find(|r| r.id == request_id)
         .map(|r| r.files.clone())
         .unwrap_or_default();
-    let attached =
-        crate::chat_files::for_answer(&app.config.chat_store, &owner, &chat.id, &sent).await;
-    let turns: Vec<Turn> = chat
-        .messages
+    let store = &app.config.chat_store;
+    let vision = sent
         .iter()
-        .filter(|m| m.role != Role::Tool && !m.text.is_empty())
-        .rev()
-        .take(crate::ask::MAX_TURNS)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .map(|m| {
-            if m.role == Role::User {
-                let mut text = m
-                    .text
-                    .chars()
-                    .take(crate::ask::MAX_TURN_CHARS)
-                    .collect::<String>();
-                if m.request_id.as_deref() == Some(request_id.as_str()) {
-                    text.push_str(&attached);
-                }
-                Turn::user(text)
-            } else {
-                Turn::assistant(
-                    m.text
+        .any(|file| file.kind != crate::chat_files::Kind::Text)
+        .then(|| crate::chat_vision::endpoint(&app))
+        .flatten();
+    let parts = match vision {
+        Some(_) => crate::chat_vision::parts(store, &owner, &chat.id, &sent).await,
+        None => Vec::new(),
+    };
+    let opened: Vec<&str> = parts.iter().map(|part| part.id.as_str()).collect();
+    let attached = crate::chat_files::for_answer(store, &owner, &chat.id, &sent).await;
+    let seen = if parts.is_empty() {
+        attached.clone()
+    } else {
+        crate::chat_files::for_model(
+            store,
+            &owner,
+            &chat.id,
+            &sent,
+            crate::chat_files::ANSWER_BYTES,
+            &opened,
+        )
+        .await
+    };
+    let turns_with = |attached: &str| -> Vec<Turn> {
+        chat.messages
+            .iter()
+            .filter(|m| m.role != Role::Tool && !m.text.is_empty())
+            .rev()
+            .take(crate::ask::MAX_TURNS)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .map(|m| {
+                if m.role == Role::User {
+                    let mut text = m
+                        .text
                         .chars()
                         .take(crate::ask::MAX_TURN_CHARS)
-                        .collect::<String>(),
-                    None,
-                )
-            }
-        })
-        .collect();
+                        .collect::<String>();
+                    if m.request_id.as_deref() == Some(request_id.as_str()) {
+                        text.push_str(attached);
+                    }
+                    Turn::user(text)
+                } else {
+                    Turn::assistant(
+                        m.text
+                            .chars()
+                            .take(crate::ask::MAX_TURN_CHARS)
+                            .collect::<String>(),
+                        None,
+                    )
+                }
+            })
+            .collect()
+    };
+    let turns = turns_with(&seen);
+    let fallback_turns = turns_with(&attached);
     let reply = Arc::new(Mutex::new(Reply::default()));
     // Storage admission must leave time for the bounded worker lifetime.
     // An expired admission never dispatches work, even if its write succeeded.
@@ -1505,6 +1544,18 @@ async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
         crate::account_memory::chat_notes(&app.config.chat_store, &owner).await
     } else {
         Vec::new()
+    };
+    // Images or PDFs go to the door that takes them; the hosted chat
+    // answers with the words only when it can't (#11174).
+    let door: Option<Box<dyn openagents_chat::basic_coder::Door>> = match (door, vision) {
+        (Some(door), Some(endpoint)) if !parts.is_empty() => {
+            Some(Box::new(crate::chat_vision::VisionDoor {
+                endpoint,
+                parts,
+                fallback: Some((door, fallback_turns)),
+            }))
+        }
+        (door, _) => door,
     };
     let mut job = match door {
         Some(door) => Some(

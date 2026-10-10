@@ -10684,6 +10684,7 @@ dependencies = [
  "hmac 0.12.1",
  "hyper",
  "hyper-util",
+ "image",
  "inference",
  "jev",
  "libc",

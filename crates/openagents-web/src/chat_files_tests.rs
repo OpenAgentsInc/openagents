@@ -165,18 +165,30 @@ async fn a_browser_cannot_send_files() {
 }
 
 #[tokio::test]
-async fn a_run_takes_text_files_only() {
+async fn a_run_gets_every_file_and_the_answer_names_images() {
     let (_directory, store) = store();
     let owner = account_owner("account-1");
     let picture = save(&store, &owner, CHAT, "shot.png", Kind::Png, PNG.to_vec())
         .await
         .unwrap();
-    assert_eq!(
-        for_run(&store, &owner, CHAT, std::slice::from_ref(&picture)).await,
-        Err(TEXT_ONLY_RUN)
-    );
-    let words = for_answer(&store, &owner, CHAT, &[picture]).await;
-    assert!(words.contains("shot.png"));
+    let files = for_run(&store, &owner, CHAT, std::slice::from_ref(&picture))
+        .await
+        .unwrap();
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].name, "shot.png");
+    assert_eq!(files[0].bytes, PNG);
+    let words = for_answer(&store, &owner, CHAT, std::slice::from_ref(&picture)).await;
+    assert!(words.contains("shot.png") && words.contains("can't open"));
+    let seen = for_model(
+        &store,
+        &owner,
+        CHAT,
+        &[picture.clone()],
+        1024,
+        &[&picture.id],
+    )
+    .await;
+    assert!(seen.contains("attached below") && !seen.contains("can't open"));
 }
 
 #[tokio::test]

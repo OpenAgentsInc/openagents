@@ -491,13 +491,16 @@ pub(super) async fn begin(
     branch: Option<&str>,
     prior: &[Message],
     text: &str,
+    files: Vec<coder_environment_operator::studio::claude::Attachment>,
 ) -> Result<(ChatEnvironment, ChatTask), String> {
     let studio = studio(app)
         .cloned()
         .ok_or_else(|| "Claude Code can't run on this server.".to_owned())?;
     let prompt = composer_prompt(env, branch, prior, text);
     let own = crate::cloud::byo::run_key(app, headers).await;
-    let run = studio.run_claude(&env.id, &prompt, own)?;
+    // The files sent with the message go in the computer's working
+    // directory, named in the task (#11174).
+    let run = studio.run_claude_with_files(&env.id, &prompt, own, files)?;
     let version = studio
         .claude_run(&env.id, &run)
         .and_then(|run| run.version)

@@ -9,7 +9,9 @@
 //! | --- | --- |
 //! | `GET /v1/threads` | `{threads: [Row], computers: [Computer]}`: the account's chats (web, terminal, phone), not archived, pinned first, then newest |
 //! | `GET /v1/threads/{id}` | `{thread: Row, messages: [{role, text}], earlier, waiting}`: the newest [`SHOWN_MESSAGES`] messages |
-//! | `POST /v1/threads/{id}/messages` `{request_id, text}` | Reply. A terminal chat queues it for Coder on its computer (`202 {queued}`); a web chat is answered here (`202 {answering}`); a phone chat refuses (`409 phone`) |
+//! | `POST /v1/threads/{id}/messages` `{request_id, text, files?}` | Reply. A terminal chat queues it for Coder on its computer (`202 {queued}`); a web chat is answered here (`202 {answering}`), with the files added below (`files`: their ids, up to four); a phone chat refuses (`409 phone`) |
+//! | `POST /v1/threads/{id}/files?name=` (the file's bytes) | Add an image, PDF, or text file to a web chat for the next reply (`201 {id, name, kind, size, url}`; #11174, [`crate::chat_files`]) |
+//! | `GET`/`DELETE /v1/threads/{id}/files/{file}` | A file of the chat; remove one not sent yet (`204`) |
 //! | `GET /v1/computers` | `{computers: [Computer]}` |
 //! | `GET`/`PUT /v1/computers/{name}/sync` `{choice}` | The computer's (or phone's) sync choice, as `/coder/sync` |
 //! | `POST /v1/computers/{name}/activity` `{items: [Item]}` | Coder's running work on the computer; answers `{commands: [Command]}`, each handed out once |
@@ -28,7 +30,7 @@ use axum::Router;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -71,6 +73,16 @@ pub(crate) fn routes() -> Router<App> {
         .route("/v1/threads", get(threads))
         .route("/v1/threads/{id}", get(thread))
         .route("/v1/threads/{id}/messages", post(reply))
+        .route(
+            "/v1/threads/{id}/files",
+            post(add_file).layer(axum::extract::DefaultBodyLimit::max(
+                crate::chat_files::MAX_FILE_BYTES + 64 * 1024,
+            )),
+        )
+        .route(
+            "/v1/threads/{id}/files/{file}",
+            get(read_file).delete(remove_file),
+        )
         .route("/v1/computers", get(computers_route))
         .route("/v1/computers/{name}/sync", get(sync_get).put(sync_put))
         .route("/v1/computers/{name}/activity", post(activity))
@@ -213,7 +225,14 @@ async fn thread(State(app): State<App>, headers: HeaderMap, Path(id): Path<Strin
             "thread": row(&chat, &computers),
             "messages": messages[earlier..]
                 .iter()
-                .map(|message| json!({"role": message.role, "text": message.text}))
+                .map(|message| {
+                    let files = crate::chat_files::of_message(&chat, message);
+                    if files.is_empty() {
+                        json!({"role": message.role, "text": message.text})
+                    } else {
+                        json!({"role": message.role, "text": message.text, "files": files})
+                    }
+                })
                 .collect::<Vec<_>>(),
             "earlier": earlier,
             "waiting": chat.terminal.as_ref().map_or(0, |t| t.replies.len()),
@@ -226,6 +245,9 @@ async fn thread(State(app): State<App>, headers: HeaderMap, Path(id): Path<Strin
 struct Reply {
     request_id: String,
     text: String,
+    /// Files added with `POST /v1/threads/{id}/files`, by id.
+    #[serde(default)]
+    files: Vec<String>,
 }
 
 /// A request id: a UUID the app made for this send, so a resend is
@@ -269,6 +291,13 @@ async fn reply(
         Err(error) => return stored(&error),
     };
     if let Some(terminal) = &chat.terminal {
+        if !sent.files.is_empty() {
+            return refused(
+                StatusCode::BAD_REQUEST,
+                "files",
+                crate::chat_files::CODER_CHAT,
+            );
+        }
         if phone_session(&terminal.session) {
             return refused(
                 StatusCode::CONFLICT,
@@ -304,7 +333,11 @@ async fn reply(
             "This looks like it holds a password or key, so it wasn't sent.",
         );
     }
-    match follow_from_app(&app, &owner, &id, &sent.request_id, text).await {
+    let files = match crate::chat_files::take(store, &owner, &id, &sent.files.join(",")).await {
+        Ok(files) => files,
+        Err(message) => return refused(StatusCode::BAD_REQUEST, "files", message),
+    };
+    match follow_from_app(&app, &owner, &id, &sent.request_id, text, files).await {
         AppSent::Answering => answer(StatusCode::ACCEPTED, json!({"answering": true})),
         AppSent::Busy(message) => refused(StatusCode::CONFLICT, "busy", message),
         AppSent::Invalid => refused(
@@ -318,6 +351,85 @@ async fn reply(
             "unavailable",
             "Try again later.",
         ),
+    }
+}
+
+#[derive(Deserialize)]
+struct FileName {
+    #[serde(default)]
+    name: String,
+}
+
+/// `POST /v1/threads/{id}/files?name=`: the web composer's upload
+/// ([`crate::chat_files::add`]) for the apps.
+async fn add_file(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    axum::extract::Query(named): axum::extract::Query<FileName>,
+    body: Bytes,
+) -> Response {
+    let owner = match coder_sync::owner(&app, &headers).await {
+        Ok(owner) => owner,
+        Err(response) => return response,
+    };
+    use crate::chat_files::Refused;
+    match crate::chat_files::add(&app.config.chat_store, &owner, &id, &named.name, &body).await {
+        Ok(file) => answer(
+            StatusCode::CREATED,
+            json!({
+                "id": file.id,
+                "name": file.name,
+                "kind": file.kind,
+                "size": crate::chat_files::size(file.size),
+                "url": format!("/v1/threads/{id}/files/{}", file.id),
+            }),
+        ),
+        Err(Refused::Plain(status, message)) => refused(status, "file", message),
+        Err(Refused::Full) => refused(StatusCode::CONFLICT, "full", crate::chat_files::FULL),
+        Err(Refused::Stored(error)) => stored(&error),
+    }
+}
+
+/// `GET /v1/threads/{id}/files/{file}`: one of the chat's files.
+async fn read_file(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((id, file)): Path<(String, String)>,
+) -> Response {
+    let owner = match coder_sync::owner(&app, &headers).await {
+        Ok(owner) => owner,
+        Err(response) => return response,
+    };
+    if !crate::chat_store::valid_id(&id) {
+        return not_found();
+    }
+    match crate::chat_files::read(&app.config.chat_store, &owner, &id, &file).await {
+        Ok(Some((found, bytes))) => crate::chat_files::file_response(&found, bytes),
+        Ok(None) | Err(Error::Invalid(_)) => not_found(),
+        Err(error) => stored(&error),
+    }
+}
+
+/// `DELETE /v1/threads/{id}/files/{file}`: a file added and not sent.
+async fn remove_file(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((id, file)): Path<(String, String)>,
+) -> Response {
+    let owner = match coder_sync::owner(&app, &headers).await {
+        Ok(owner) => owner,
+        Err(response) => return response,
+    };
+    if !crate::chat_store::valid_id(&id) {
+        return not_found();
+    }
+    use crate::chat_files::Refused;
+    match crate::chat_files::unsent_forget(&app.config.chat_store, &owner, &id, &file).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(Refused::Plain(status, message)) => refused(status, "file", message),
+        Err(Refused::Full) => refused(StatusCode::CONFLICT, "full", crate::chat_files::FULL),
+        Err(Refused::Stored(error)) => stored(&error),
     }
 }
 

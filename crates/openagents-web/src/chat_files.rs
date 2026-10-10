@@ -14,16 +14,20 @@
 //!   (`secret_screen`) is refused and nothing is kept.
 //! - **Sent:** the message's request records the files it carried
 //!   ([`FileRef`] on `chat_store::Request`). The answer here reads text
-//!   files as data; a Claude Code run gets them in its prompt.
+//!   files as data, and images and PDFs through a model that takes them
+//!   ([`crate::chat_vision`]; without one, a line names each). A Claude Code
+//!   run gets every file in its computer's working directory
+//!   ([`for_run`]). Coder on a computer takes words only ([`NOT_TO_CODER`]).
+//! - **Apps:** the phone sends photos with a reply to a web chat through
+//!   the same store (`crate::phone_api`: `POST /v1/threads/{id}/files`).
 //! - **Kept:** with the chat. Deleting the chat deletes its files
 //!   (`Store::remove`); the chat retention sweep removes the files of chats
 //!   that are gone (`Store::expire_untouched`). A sign-in that moves a
 //!   browser's chats to the account moves their files too ([`adopt`]).
 //!
-//! What is left (see #11174): images and PDFs reach the answer here only as
-//! a line naming them, because the hosted chat answers words; a Claude Code
-//! run takes text files only; the phone and desktop apps keep their own
-//! picker off until they send to these same routes.
+//! What is left (see #11174): images and PDFs larger than what one model
+//! request carries (about 760 KB once images are made smaller) are named,
+//! not read, in the answer here; Coder on a computer takes no files.
 
 use axum::Router;
 use axum::body::Bytes;
@@ -36,6 +40,8 @@ use openagents_ui::icons::Icon;
 use serde::{Deserialize, Serialize};
 
 use crate::App;
+use coder_environment_operator::studio::claude::Attachment;
+
 use crate::chat_store::{
     Conversation, Error, FILES_FOLDER, Message, Role, Store, is_account_owner, now_unix, valid_id,
 };
@@ -51,9 +57,7 @@ pub(crate) const MAX_PER_CHAT: usize = 32;
 /// The longest file name kept, in characters.
 const MAX_NAME_CHARS: usize = 96;
 /// How much of a message's text files the answer here reads.
-const ANSWER_BYTES: usize = 12 * 1024;
-/// How much of a message's text files a Claude Code run's prompt carries.
-const RUN_BYTES: usize = 64 * 1024;
+pub(crate) const ANSWER_BYTES: usize = 12 * 1024;
 
 /// The composer's script and styles for files.
 pub(crate) const SCRIPT_PATH: &str = "/chat/files.js";
@@ -221,12 +225,10 @@ pub(crate) fn check(bytes: &[u8]) -> Result<Kind, (StatusCode, &'static str)> {
 
 const TOO_LARGE: &str = "Files must be 10 MB or smaller.";
 const UNSUPPORTED: &str = "Add a PNG, JPEG, GIF, or WebP image, a PDF, or a text file.";
-/// The refusal for a route that carries words only.
-pub(crate) const NOT_TO_CODER: &str =
-    "Files can't go to Coder on a computer from the website yet. Remove them to send this.";
-/// The refusal for a Claude Code run with an image or PDF.
-pub(crate) const TEXT_ONLY_RUN: &str =
-    "Claude Code takes text files for now. Remove images and PDFs to send this there.";
+/// The refusal for Coder on a computer, which takes words only from here.
+pub(crate) const NOT_TO_CODER: &str = "Coder on a computer can't take files sent from the website yet. Remove them to send this there, or pick Claude Code in an environment to send them with your message.";
+/// The refusal for a chat that runs in Coder on a computer.
+pub(crate) const CODER_CHAT: &str = "This chat runs in Coder on a computer, which can't take files sent from the website yet. Send your message without them.";
 
 fn folder(owner: &str, chat: &str) -> Result<String, Error> {
     Store::owner_key(owner, &format!("{FILES_FOLDER}/{chat}"))
@@ -437,13 +439,16 @@ pub(crate) fn of_message<'a>(chat: &'a Conversation, message: &Message) -> &'a [
 
 /// The words a model reads for `files`: each text file's contents (to
 /// `budget` bytes in all), marked as data, and a line naming each image or
-/// PDF. Empty when there are no files.
+/// PDF: one the model gets as well (its id in `opened`,
+/// [`crate::chat_vision`]) is "attached below", any other one it can't
+/// open. Empty when there are no files.
 pub(crate) async fn for_model(
     store: &Store,
     owner: &str,
     chat: &str,
     files: &[FileRef],
     budget: usize,
+    opened: &[&str],
 ) -> String {
     if files.is_empty() {
         return String::new();
@@ -459,10 +464,17 @@ pub(crate) async fn for_model(
             } else {
                 "An image"
             };
-            out.push_str(&format!(
-                "\n[{what} named \"{}\". This chat can't open images or PDFs yet; if asked about it, say so.]",
-                file.name
-            ));
+            if opened.contains(&file.id.as_str()) {
+                out.push_str(&format!(
+                    "\n[{what} named \"{}\", attached below.]",
+                    file.name
+                ));
+            } else {
+                out.push_str(&format!(
+                    "\n[{what} named \"{}\". This chat can't open it here; if asked about it, say so.]",
+                    file.name
+                ));
+            }
             continue;
         }
         let text = match read(store, owner, chat, &file.id).await {
@@ -493,21 +505,34 @@ pub(crate) async fn for_answer(
     chat: &str,
     files: &[FileRef],
 ) -> String {
-    for_model(store, owner, chat, files, ANSWER_BYTES).await
+    for_model(store, owner, chat, files, ANSWER_BYTES, &[]).await
 }
 
-/// What a Claude Code run's prompt carries for a message's files: text
-/// files only ([`TEXT_ONLY_RUN`] otherwise).
+/// The files a Claude Code run gets for a message's files: each one's
+/// bytes, put in the computer's working directory before Claude Code
+/// starts and named in its task
+/// (`coder_environment_operator::studio::claude::Attachment`).
 pub(crate) async fn for_run(
     store: &Store,
     owner: &str,
     chat: &str,
     files: &[FileRef],
-) -> Result<String, &'static str> {
-    if files.iter().any(|file| file.kind != Kind::Text) {
-        return Err(TEXT_ONLY_RUN);
+) -> Result<Vec<Attachment>, &'static str> {
+    let mut out = Vec::with_capacity(files.len());
+    for file in files {
+        match read(store, owner, chat, &file.id).await {
+            Ok(Some((_, bytes))) => out.push(Attachment {
+                name: file.name.clone(),
+                bytes,
+            }),
+            Ok(None) => return Err("A file you added is gone. Remove it and add it again."),
+            Err(error) => {
+                eprintln!("openagents-web: chat files: {error}");
+                return Err("We couldn't read your files right now. Try again.");
+            }
+        }
     }
-    Ok(for_model(store, owner, chat, files, RUN_BYTES).await)
+    Ok(out)
 }
 
 /// The longest start of `text` within `limit` bytes, on a character edge.
@@ -667,31 +692,7 @@ async fn upload(
         Ok(owner) => owner,
         Err(response) => return response,
     };
-    let store = &app.config.chat_store;
-    // A chat synced from Coder takes words only.
-    match store.load(&owner, &chat).await {
-        Ok(Some(loaded)) if loaded.conversation.terminal.is_some() => {
-            return failed(StatusCode::CONFLICT, NOT_TO_CODER, None);
-        }
-        Ok(_) => {}
-        Err(error) => return unavailable(error),
-    }
-    let kind = match check(&body) {
-        Ok(kind) => kind,
-        Err((status, text)) => return failed(status, text, None),
-    };
-    match count(store, &owner, &chat).await {
-        Ok(held) if held >= MAX_PER_CHAT => {
-            return failed(
-                StatusCode::CONFLICT,
-                "This chat holds as many files as it can. Start a new chat to add more.",
-                Some(("/", "New chat")),
-            );
-        }
-        Ok(_) => {}
-        Err(error) => return unavailable(error),
-    }
-    match save(store, &owner, &chat, &upload.name, kind, body.to_vec()).await {
+    match add(&app.config.chat_store, &owner, &chat, &upload.name, &body).await {
         Ok(file) => crate::chat_html::protect(
             axum::Json(serde_json::json!({
                 "id": file.id,
@@ -702,8 +703,121 @@ async fn upload(
             }))
             .into_response(),
         ),
-        Err(error) => unavailable(error),
+        Err(Refused::Plain(status, text)) => failed(status, text, None),
+        Err(Refused::Full) => failed(StatusCode::CONFLICT, FULL, Some(("/", "New chat"))),
+        Err(Refused::Stored(error)) => unavailable(error),
     }
+}
+
+/// Why a file wasn't added or removed ([`add`], [`unsent_forget`]).
+#[derive(Debug)]
+pub(crate) enum Refused {
+    Plain(StatusCode, &'static str),
+    /// The chat holds [`MAX_PER_CHAT`] files.
+    Full,
+    Stored(Error),
+}
+
+pub(crate) const FULL: &str =
+    "This chat holds as many files as it can. Start a new chat to add more.";
+
+/// Add `body`, named `name`, to `chat` of `owner` (an account): the
+/// web composer's upload and the apps' (`crate::phone_api`).
+pub(crate) async fn add(
+    store: &Store,
+    owner: &str,
+    chat: &str,
+    name: &str,
+    body: &[u8],
+) -> Result<FileRef, Refused> {
+    if !valid_id(chat) {
+        return Err(Refused::Plain(StatusCode::NOT_FOUND, "No such chat."));
+    }
+    if !is_account_owner(owner) {
+        return Err(Refused::Plain(
+            StatusCode::FORBIDDEN,
+            "Log in to add files.",
+        ));
+    }
+    // A chat synced from Coder takes words only.
+    match store.load(owner, chat).await {
+        Ok(Some(loaded)) if loaded.conversation.terminal.is_some() => {
+            return Err(Refused::Plain(StatusCode::CONFLICT, CODER_CHAT));
+        }
+        Ok(_) => {}
+        Err(error) => return Err(Refused::Stored(error)),
+    }
+    let kind = check(body).map_err(|(status, text)| Refused::Plain(status, text))?;
+    match count(store, owner, chat).await {
+        Ok(held) if held >= MAX_PER_CHAT => return Err(Refused::Full),
+        Ok(_) => {}
+        Err(error) => return Err(Refused::Stored(error)),
+    }
+    save(store, owner, chat, name, kind, body.to_vec())
+        .await
+        .map_err(Refused::Stored)
+}
+
+/// Remove a file added to `chat` and not sent: a file a sent message
+/// carries stays until the chat is deleted.
+pub(crate) async fn unsent_forget(
+    store: &Store,
+    owner: &str,
+    chat: &str,
+    id: &str,
+) -> Result<(), Refused> {
+    match store.load(owner, chat).await {
+        Ok(Some(loaded))
+            if loaded
+                .conversation
+                .requests
+                .iter()
+                .any(|request| request.files.iter().any(|file| file.id == id)) =>
+        {
+            return Err(Refused::Plain(
+                StatusCode::CONFLICT,
+                "This file was sent with a message. Delete the chat to remove it.",
+            ));
+        }
+        Ok(_) => {}
+        Err(error) => return Err(Refused::Stored(error)),
+    }
+    forget(store, owner, chat, id)
+        .await
+        .map(|_| ())
+        .map_err(Refused::Stored)
+}
+
+/// A file as a response, with the headers that keep it private and inert.
+/// Images open in place; PDFs and text files download.
+pub(crate) fn file_response(file: &FileRef, bytes: Vec<u8>) -> Response {
+    let disposition = if file.kind.image() {
+        "inline".to_owned()
+    } else {
+        format!("attachment; filename*=UTF-8''{}", encode(&file.name))
+    };
+    let mut response = (StatusCode::OK, bytes).into_response();
+    let set = response.headers_mut();
+    set.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(file.kind.mime()),
+    );
+    if let Ok(value) = HeaderValue::from_str(&disposition) {
+        set.insert(header::CONTENT_DISPOSITION, value);
+    }
+    set.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static("default-src 'none'; sandbox"),
+    );
+    set.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    set.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-store"),
+    );
+    response
 }
 
 fn unavailable(error: Error) -> Response {
@@ -736,33 +850,7 @@ async fn serve(
             return StatusCode::SERVICE_UNAVAILABLE.into_response();
         }
     };
-    let disposition = if file.kind.image() {
-        "inline".to_owned()
-    } else {
-        format!("attachment; filename*=UTF-8''{}", encode(&file.name))
-    };
-    let mut response = (StatusCode::OK, bytes).into_response();
-    let set = response.headers_mut();
-    set.insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static(file.kind.mime()),
-    );
-    if let Ok(value) = HeaderValue::from_str(&disposition) {
-        set.insert(header::CONTENT_DISPOSITION, value);
-    }
-    set.insert(
-        header::CONTENT_SECURITY_POLICY,
-        HeaderValue::from_static("default-src 'none'; sandbox"),
-    );
-    set.insert(
-        header::X_CONTENT_TYPE_OPTIONS,
-        HeaderValue::from_static("nosniff"),
-    );
-    set.insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("private, no-store"),
-    );
-    response
+    file_response(&file, bytes)
 }
 
 /// `name` for a `filename*` parameter: letters, digits, and `-._~` as they
@@ -790,27 +878,11 @@ async fn remove(
         Ok(owner) => owner,
         Err(response) => return response,
     };
-    let store = &app.config.chat_store;
-    match store.load(&owner, &chat).await {
-        Ok(Some(loaded))
-            if loaded
-                .conversation
-                .requests
-                .iter()
-                .any(|request| request.files.iter().any(|file| file.id == id)) =>
-        {
-            return failed(
-                StatusCode::CONFLICT,
-                "This file was sent with a message. Delete the chat to remove it.",
-                None,
-            );
-        }
-        Ok(_) => {}
-        Err(error) => return unavailable(error),
-    }
-    match forget(store, &owner, &chat, &id).await {
-        Ok(_) => crate::chat_html::protect(StatusCode::NO_CONTENT.into_response()),
-        Err(error) => unavailable(error),
+    match unsent_forget(&app.config.chat_store, &owner, &chat, &id).await {
+        Ok(()) => crate::chat_html::protect(StatusCode::NO_CONTENT.into_response()),
+        Err(Refused::Plain(status, text)) => failed(status, text, None),
+        Err(Refused::Full) => failed(StatusCode::CONFLICT, FULL, None),
+        Err(Refused::Stored(error)) => unavailable(error),
     }
 }
 

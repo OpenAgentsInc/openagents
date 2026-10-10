@@ -302,3 +302,84 @@ async fn a_phone_keeps_its_sync_choice() {
     .await;
     assert_eq!(body["computers"][0]["name"], "My iPhone");
 }
+
+/// A raw upload, as the apps send a file (#11174).
+async fn upload(site: &Router, path: &str, bearer: &str, bytes: &[u8]) -> (StatusCode, Value) {
+    let response = site
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri(path)
+                .header(header::HOST, HOST)
+                .header(header::AUTHORIZATION, format!("Bearer {bearer}"))
+                .header(header::CONTENT_TYPE, "application/octet-stream")
+                .body(Body::from(bytes.to_vec()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+#[tokio::test]
+async fn an_app_sends_a_file_with_a_web_reply() {
+    let (fixture, store) = with_store().await;
+    let site = &fixture.site;
+    let id = "2a2b3c4d-1111-4222-8333-444455556666";
+    store
+        .create(&web_chat(&account_owner("alice"), id))
+        .await
+        .unwrap();
+    let alice = token("alice");
+    let files = format!("/v1/threads/{id}/files?name=notes.md");
+    let (status, file) = upload(site, &files, &alice, b"# Notes\n").await;
+    assert_eq!(status, StatusCode::CREATED, "{file}");
+    assert_eq!(file["kind"], "text");
+    let file_id = file["id"].as_str().unwrap().to_owned();
+    // Another account can't read it.
+    let read = format!("/v1/threads/{id}/files/{file_id}");
+    let (status, _) = call(site, Method::GET, &read, Some(&token("bob")), None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    // A second file, removed before sending.
+    let (_, other) = upload(site, &files, &alice, b"other").await;
+    let other = format!("/v1/threads/{id}/files/{}", other["id"].as_str().unwrap());
+    let (status, _) = call(site, Method::DELETE, &other, Some(&alice), None).await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+
+    let reply = json!({
+        "request_id": "6a2b3c4d-1111-4222-8333-444455556666",
+        "text": "What do my notes say?",
+        "files": [file_id],
+    });
+    let messages = format!("/v1/threads/{id}/messages");
+    let (status, body) = call(site, Method::POST, &messages, Some(&alice), Some(reply)).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{body}");
+    let chat = store
+        .load(&account_owner("alice"), id)
+        .await
+        .unwrap()
+        .unwrap()
+        .conversation;
+    assert_eq!(chat.requests[0].files.len(), 1);
+    assert_eq!(chat.requests[0].files[0].name, "notes.md");
+    // A sent file stays.
+    let (status, _) = call(site, Method::DELETE, &read, Some(&alice), None).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+
+    // A Coder chat takes words only.
+    let terminal = terminal_chat(&store).await;
+    let (status, body) = upload(
+        site,
+        &format!("/v1/threads/{terminal}/files?name=a.txt"),
+        &alice,
+        b"a",
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+}

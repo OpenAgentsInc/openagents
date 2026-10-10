@@ -28,6 +28,7 @@ mod chat_files;
 mod chat_html;
 mod chat_owner;
 pub mod chat_store;
+mod chat_vision;
 pub mod cloud;
 mod coder_sync;
 mod components;
