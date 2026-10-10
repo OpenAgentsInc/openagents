@@ -49,7 +49,13 @@ Commands:
                             HEX --weights-url URL --weights-sha256 HEX
                             --weights PATH --psionic BIN [--operator HEX]
                             [--workload SLUG] [--teeserver SOCKET]
+                            [--decision-device cpu|cuda] [--decision-chunk N]
+                            [--require-gpu-cc]
                             (OA_ATT_RELEASE and OA_ATT_PUBLISHER also work).
+                            --require-gpu-cc refuses to start (and stops on
+                            a refresh) unless Google's token says the GPU is
+                            in confidential-computing mode (cc_mode ON, every
+                            GPU an H100).
       --pylon SLUG          The beacon's name (default: the host name).
       --label TEXT          Display label (default: the slug).
       --slots N             Concurrent jobs (default 2).
@@ -499,16 +505,48 @@ async fn serve_attested(json_out: bool, args: &mut Args, relay: &str) -> Result<
         .value("--psionic")?
         .ok_or("--attested needs --psionic BIN")?;
     let port = args.number("--psionic-port", 18_096)?;
-    let slug = args.value("--pylon")?.unwrap_or_else(|| "att-tdx".into());
+    let device = args
+        .value("--decision-device")?
+        .unwrap_or_else(|| "cpu".into());
+    let gpu = match device.as_str() {
+        "cpu" => false,
+        "cuda" => true,
+        other => {
+            return Err(format!(
+                "--decision-device takes cpu or cuda, not `{other}`"
+            ));
+        }
+    };
+    let chunk = args.value("--decision-chunk")?;
+    if let Some(n) = &chunk {
+        n.parse::<u32>()
+            .map_err(|_| format!("--decision-chunk takes a number, not `{n}`"))?;
+    }
+    let require_gpu_cc = args.flag("--require-gpu-cc");
+    let slug = args
+        .value("--pylon")?
+        .unwrap_or_else(|| if gpu { "att-h100" } else { "att-tdx" }.into());
     let mut config = Config::new(relay, &slug, home());
-    config.label = args
-        .value("--label")?
-        .unwrap_or_else(|| "Sealed Clef (Intel TDX, Confidential Space)".into());
+    config.label = args.value("--label")?.unwrap_or_else(|| {
+        if gpu {
+            "Sealed Clef (H100 in CC mode, Intel TDX, Confidential Space)"
+        } else {
+            "Sealed Clef (Intel TDX, Confidential Space)"
+        }
+        .into()
+    });
     config.slots = u32::try_from(args.number("--slots", 1)?.clamp(1, 8)).unwrap_or(1);
     config.rate_per_minute = u32::try_from(args.number("--rate", 6)?.clamp(1, 60)).unwrap_or(6);
-    config.class.family = nostr::pylon::Family::Cpu;
-    config.class.tier = Tier::Small;
-    config.class.memory_gb = 16;
+    if gpu {
+        // One H100, 80 GB.
+        config.class.family = nostr::pylon::Family::Gpu;
+        config.class.tier = Tier::for_gpu(80);
+        config.class.memory_gb = 64;
+    } else {
+        config.class.family = nostr::pylon::Family::Cpu;
+        config.class.tier = Tier::Small;
+        config.class.memory_gb = 16;
+    }
     config.pools = Vec::new();
     config.allow = None;
     if let Some(extra) = args.words.first() {
@@ -536,17 +574,19 @@ async fn serve_attested(json_out: bool, args: &mut Args, relay: &str) -> Result<
     let identity = Identity::generate();
     eprintln!("pylon: attested endpoint key {}", identity.pubkey());
     attested::fetch_weights(&weights_url, &weights_sha256, &weights).await?;
-    let mut psionic_child = std::process::Command::new(&psionic)
-        .args(["-m"])
-        .arg(&weights)
-        .args([
-            "--host",
-            "127.0.0.1",
-            "--port",
-            &port.to_string(),
-            "--decision-device",
-            "cpu",
-        ])
+    let mut psionic_command = std::process::Command::new(&psionic);
+    psionic_command.args(["-m"]).arg(&weights).args([
+        "--host",
+        "127.0.0.1",
+        "--port",
+        &port.to_string(),
+        "--decision-device",
+        &device,
+    ]);
+    if let Some(n) = &chunk {
+        psionic_command.args(["--decision-chunk", n]);
+    }
+    let mut psionic_child = psionic_command
         .spawn()
         .map_err(|e| format!("Psionic did not start: {e}"))?;
     let url = format!("http://127.0.0.1:{port}");
@@ -577,6 +617,17 @@ async fn serve_attested(json_out: bool, args: &mut Args, relay: &str) -> Result<
     eprintln!("pylon: Psionic serves {} on loopback", served.advertised());
     let instance = attested::instance_id();
     let (first, claims) = attested::endpoint_event(&identity, &setup, &instance).await?;
+    if require_gpu_cc {
+        match attested::check_gpu_cc(&claims) {
+            Ok((count, driver)) => eprintln!(
+                "pylon: the token attests {count} H100 in confidential-computing mode (driver {driver})"
+            ),
+            Err(why) => {
+                let _ = psionic_child.kill();
+                return Err(why);
+            }
+        }
+    }
     let measurement = claims["submods"]["container"]["image_digest"]
         .as_str()
         .ok_or("the launcher's token names no image digest")?
@@ -624,6 +675,17 @@ async fn serve_attested(json_out: bool, args: &mut Args, relay: &str) -> Result<
             loop {
                 tokio::time::sleep(attested::REFRESH).await;
                 match attested::endpoint_event(&identity, &setup, &instance).await {
+                    Ok((_, claims))
+                        if require_gpu_cc && attested::check_gpu_cc(&claims).is_err() =>
+                    {
+                        // The GPU left CC mode: stop serving rather than
+                        // publish an endpoint without it.
+                        eprintln!(
+                            "pylon: {}; stopping",
+                            attested::check_gpu_cc(&claims).unwrap_err()
+                        );
+                        std::process::exit(1);
+                    }
                     Ok((event, _)) => {
                         if provider.queue(event).await.is_err() {
                             return;

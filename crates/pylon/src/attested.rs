@@ -256,6 +256,58 @@ pub async fn endpoint_event(
     Ok((event, claims))
 }
 
+/// The GPU model Google names for an H100 in a Confidential VM.
+pub const H100_HWMODEL: &str = "GCP_NVIDIA_H100";
+
+/// NIP-ATT: a GPU workload MUST refuse to start unless the GPU is in
+/// confidential-computing mode. Google verifies the GPU's NVIDIA evidence
+/// and signs `submods.nvidia_gpu` into the same token whose nonce binds the
+/// endpoint key; this reads those claims and requires `cc_mode` `ON` and at
+/// least one GPU, every one of them an H100. Returns the GPU count and the
+/// driver version.
+///
+/// # Errors
+///
+/// When the token carries no GPU claims, the mode is not `ON`, or a GPU is
+/// not an H100.
+pub fn check_gpu_cc(claims: &Value) -> Result<(usize, String), String> {
+    let gpu = claims
+        .get("submods")
+        .and_then(|s| s.get("nvidia_gpu"))
+        .ok_or("the token carries no submods.nvidia_gpu: no confidential GPU is attested")?;
+    let mode = gpu
+        .get("cc_mode")
+        .and_then(Value::as_str)
+        .unwrap_or("absent");
+    if mode != "ON" {
+        return Err(format!(
+            "the GPU's confidential-computing mode is {mode}, not ON; refusing to start"
+        ));
+    }
+    let gpus = gpu
+        .get("gpus")
+        .and_then(Value::as_array)
+        .filter(|gpus| !gpus.is_empty())
+        .ok_or("the token lists no GPU under submods.nvidia_gpu.gpus")?;
+    for (index, one) in gpus.iter().enumerate() {
+        let model = one
+            .get("hwmodel")
+            .and_then(Value::as_str)
+            .unwrap_or("absent");
+        if model != H100_HWMODEL {
+            return Err(format!(
+                "GPU {index} is {model}, not {H100_HWMODEL}; refusing to start"
+            ));
+        }
+    }
+    let driver = gpu
+        .get("driver_version")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown")
+        .to_string();
+    Ok((gpus.len(), driver))
+}
+
 /// A random 64-hex instance ID.
 #[must_use]
 pub fn instance_id() -> String {
@@ -284,6 +336,35 @@ mod tests {
         let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(br#"{"exp":5}"#);
         assert_eq!(claims(&format!("a.{payload}.c")).unwrap()["exp"], 5);
         assert!(claims("nope").is_err());
+    }
+
+    #[test]
+    fn a_gpu_in_cc_mode_passes_and_anything_else_refuses() {
+        let on = json!({"submods": {"nvidia_gpu": {
+            "cc_mode": "ON", "cc_feature": "SPT", "driver_version": "580.95.05",
+            "gpus": [{"hwmodel": "GCP_NVIDIA_H100", "ueid": "1"}],
+        }}});
+        assert_eq!(check_gpu_cc(&on).unwrap(), (1, "580.95.05".into()));
+        for mode in ["OFF", "DEVTOOLS"] {
+            let mut claims = on.clone();
+            claims["submods"]["nvidia_gpu"]["cc_mode"] = json!(mode);
+            assert!(check_gpu_cc(&claims).unwrap_err().contains(mode));
+        }
+        let mut no_mode = on.clone();
+        no_mode["submods"]["nvidia_gpu"]
+            .as_object_mut()
+            .unwrap()
+            .remove("cc_mode");
+        assert!(check_gpu_cc(&no_mode).is_err());
+        let mut none = on.clone();
+        none["submods"]["nvidia_gpu"]["gpus"] = json!([]);
+        assert!(check_gpu_cc(&none).is_err());
+        let mut other = on.clone();
+        other["submods"]["nvidia_gpu"]["gpus"] =
+            json!([{"hwmodel": "GCP_NVIDIA_H100"}, {"hwmodel": "GCP_NVIDIA_A100"}]);
+        assert!(check_gpu_cc(&other).unwrap_err().contains("A100"));
+        let cpu_only = json!({"submods": {"container": {"image_digest": "sha256:aa"}}});
+        assert!(check_gpu_cc(&cpu_only).unwrap_err().contains("nvidia_gpu"));
     }
 
     #[tokio::test]
