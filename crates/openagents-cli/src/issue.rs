@@ -36,8 +36,24 @@ pub(crate) const USAGE: &str = "usage: openagents issue COMMAND [OPTIONS]
         The open issues to pick up next, in order: the repository's project
         order, Ready status, and blockedBy when it has a project; else the
         label (coder-sized), oldest first.
+  create --title TEXT [--body TEXT] [--body-file FILE] [--label NAME] [--project N] [--status NAME] [--repo OWNER/NAME]
+        Open an issue (--body-file - reads standard input; --label repeats or
+        takes a comma list), and put it on board N with that status.
+  comment N [--body TEXT] [--body-file FILE] [--repo OWNER/NAME]
+        Comment on issue N.
+  close N [--reason completed|not_planned] [--comment TEXT] [--comment-file FILE] [--project N] [--repo OWNER/NAME]
+        Close issue N, after the comment when given, and move it to \"Done\"
+        on every open board it is on (only board N with --project).
+  reopen N [--comment TEXT] [--comment-file FILE] [--repo OWNER/NAME]
+        Reopen issue N.
+  list [--state open|closed|all] [--label NAME] [--limit N] [--repo OWNER/NAME]
+        The repository's issues, newest first (30 unless --limit).
+  view N [--repo OWNER/NAME]
+        Issue N with its body and comments.
 The repository is the checkout here unless --repo names one; field and value
-names come from .openagents/coder-issues.json (`project`).";
+names come from .openagents/coder-issues.json (`project`). create, comment,
+close, reopen, list, and view use GH_TOKEN, GITHUB_TOKEN, or the GitHub CLI's
+sign-in; `openagents project` lists and moves board items.";
 
 /// What each command above does and where the phone runs it, for the
 /// chat router's command tree (`coder::cli_route::tree`).
@@ -48,6 +64,12 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("done", Effect::Publishes),
     Declared::computer("status", Effect::ReadOnly),
     Declared::computer("pickup", Effect::ReadOnly),
+    Declared::computer("create", Effect::Publishes),
+    Declared::computer("comment", Effect::Publishes),
+    Declared::computer("close", Effect::Publishes),
+    Declared::computer("reopen", Effect::Publishes),
+    Declared::computer("list", Effect::ReadOnly),
+    Declared::computer("view", Effect::ReadOnly),
 ];
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
@@ -59,16 +81,22 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         return 0;
     }
     // Refuse an unknown command before anything asks gh about the checkout.
-    if !matches!(
-        command.as_str(),
-        "claim" | "release" | "done" | "status" | "pickup"
-    ) {
+    let github_verb = crate::github_verbs::ISSUE_VERBS.contains(&command.as_str());
+    if !github_verb
+        && !matches!(
+            command.as_str(),
+            "claim" | "release" | "done" | "status" | "pickup"
+        )
+    {
         return output.usage("issue", &format!("unknown command `{command}`"), USAGE);
     }
     let args = match Args::parse(rest, &["force"]) {
         Ok(args) => args,
         Err(message) => return output.usage("issue", &message, USAGE),
     };
+    if github_verb {
+        return github(output, "issue", command, &args, USAGE);
+    }
     let number = || -> Result<u64, String> {
         args.positional()
             .first()
@@ -144,6 +172,53 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     };
     output.emit(&value, render);
     0
+}
+
+/// `openagents project COMMAND`.
+pub fn project(output: &Output, words: &[String]) -> u8 {
+    let usage = crate::github_verbs::PROJECT_USAGE;
+    let Some((command, rest)) = words.split_first() else {
+        return output.usage("project", "a command is required", usage);
+    };
+    if matches!(command.as_str(), "help" | "-h" | "--help") {
+        println!("{usage}");
+        return 0;
+    }
+    if !matches!(command.as_str(), "list" | "add" | "move") {
+        return output.usage("project", &format!("unknown command `{command}`"), usage);
+    }
+    match Args::parse(rest, &["every-repo"]) {
+        Ok(args) => github(output, "project", command, &args, usage),
+        Err(message) => output.usage("project", &message, usage),
+    }
+}
+
+/// Runs a [`crate::github_verbs`] command of `group` (`issue` or
+/// `project`) with this computer's GitHub sign-in.
+fn github(output: &Output, group: &str, command: &str, args: &Args, usage: &str) -> u8 {
+    let (repository, policy) = match place(args.option("repo")) {
+        Ok(place) => place,
+        Err(message) => return output.fail(group, &message),
+    };
+    let rest = match crate::github_verbs::TokenRest::here() {
+        Ok(rest) => rest,
+        Err(message) => return output.fail(group, &message),
+    };
+    let done = if group == "project" {
+        crate::github_verbs::project(&rest, command, args, &repository, &policy)
+    } else {
+        crate::github_verbs::issue(&rest, command, args, &repository, &policy)
+    };
+    match done {
+        Ok(value) => {
+            output.emit(&value, crate::github_verbs::render);
+            0
+        }
+        Err(message) if message.starts_with("the issue number is required") => {
+            output.usage(group, &message, usage)
+        }
+        Err(message) => output.fail(group, &message),
+    }
 }
 
 /// The repository and its policy: `--repo`, or the checkout here.

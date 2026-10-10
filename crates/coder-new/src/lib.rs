@@ -23,6 +23,7 @@ mod delegation_events;
 mod demo;
 pub mod fleet;
 mod fleet_app;
+pub mod github_tool;
 pub mod jev_plugin;
 pub mod live;
 pub mod login_choice;
