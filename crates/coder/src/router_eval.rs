@@ -911,6 +911,7 @@ mod tests {
         "meta.map",
         "meta.map.desktop",
         "meta.who",
+        "meta.products",
         "meta.model",
         "meta.jev",
         "meta.coder",

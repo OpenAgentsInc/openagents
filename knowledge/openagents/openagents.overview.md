@@ -1,6 +1,6 @@
 ---
 id: openagents.overview
-version: 8
+version: 9
 kind: product
 title: "What OpenAgents is"
 summary: >-
@@ -11,8 +11,9 @@ summary: >-
 tags: [overview, app, product, website, off-computer]
 applies_when: >-
   The user asks what OpenAgents is, what the product or the app is for, or
-  what it does overall; not who is answering in this chat, and not which
-  AI model powers the chat.
+  what it does overall; not who is answering in this chat, not which
+  AI model powers the chat, and not which products or apps we offer
+  (openagents.products).
 answer: >-
   OpenAgents is an open network of agents you work with through one
   conversation: on the web, in your terminal, on desktop, and on your
@@ -43,6 +44,7 @@ evidence:
   - "2026-10-09: v6: the iPhone app ships on TestFlight (https://testflight.apple.com/join/dvQdns5B, the link the download page and /connect give), not as a source build; checked against the cited sources."
   - "2026-10-09: v7 (#11095): the answer to the starter question 'What is OpenAgents?': a general agent on web, terminal, desktop, and phone; Coder does the code work; many models, routed per message; plugins such as handing work to Claude Code or Codex. It matches the prepared answer meta.who."
   - "2026-10-09: v8: the owner's framing: OpenAgents is an open network of agents you work with through one conversation, not one agent or a general agent; each message goes to whatever in the network serves it best. It matches the prepared answer meta.who v4 and the What is OpenAgents doc."
+  - "2026-10-09: v9: applies_when leaves 'what products do you have' to openagents.products; the answer is unchanged."
 ---
 
 ## Answer

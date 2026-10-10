@@ -2,7 +2,7 @@
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
   "set": "chat-router-v5@bcab1427d09d",
-  "bank": "chat-answers-v1@efe69f37d240",
+  "bank": "chat-answers-v1@f9883275c95b",
   "routes": [
     {
       "id": "meta",
@@ -221,6 +221,63 @@
         "docs/auth/README.md",
         "crates/openagents-web/src/pages/download.rs",
         "crates/coder-new/README.md"
+      ]
+    },
+    {
+      "id": "meta.products",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "What products do you have?",
+      "place": "away",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/openagents-web/src/pages/download.rs",
+        "crates/openagents-web/content/docs/iphone.md",
+        "docs/api/README.md",
+        "crates/openagents-web/content/docs/plugins.md",
+        "crates/openagents-web/content/docs/verse.md",
+        "crates/openagents-web/src/promises.rs"
+      ]
+    },
+    {
+      "id": "meta.products.here",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "What products do you have?",
+      "place": "here",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/openagents-web/src/pages/download.rs",
+        "crates/openagents-web/content/docs/iphone.md",
+        "docs/api/README.md",
+        "crates/openagents-web/content/docs/plugins.md",
+        "crates/openagents-web/content/docs/verse.md",
+        "crates/openagents-web/src/promises.rs"
+      ]
+    },
+    {
+      "id": "meta.products.website",
+      "version": 1,
+      "routes": [
+        "meta"
+      ],
+      "chip": "What products do you have?",
+      "place": "web",
+      "records": false,
+      "offer": null,
+      "sources": [
+        "crates/openagents-web/src/pages/download.rs",
+        "crates/openagents-web/content/docs/iphone.md",
+        "docs/api/README.md",
+        "crates/openagents-web/content/docs/plugins.md",
+        "crates/openagents-web/content/docs/verse.md",
+        "crates/openagents-web/src/promises.rs"
       ]
     },
     {
@@ -1596,9 +1653,9 @@
         "near_misses": 1
       },
       "meta": {
-        "rows": 136,
-        "held_out": 43,
-        "tune": 93,
+        "rows": 148,
+        "held_out": 46,
+        "tune": 102,
         "near_misses": 23
       },
       "presentation.open": {
@@ -2646,6 +2703,22 @@
           "free",
           "plans",
           "subscription"
+        ],
+        "answer": true
+      },
+      {
+        "id": "openagents.products",
+        "title": "What OpenAgents offers",
+        "path": "knowledge/openagents/openagents.products.md",
+        "status": "admitted",
+        "tags": [
+          "overview",
+          "products",
+          "app",
+          "website",
+          "api",
+          "iphone",
+          "terminal"
         ],
         "answer": true
       },
