@@ -1,0 +1,23 @@
+{
+  "result": "pass",
+  "source_revision": "07805e6a7c3513a057d226b488cb2d40fd974a64",
+  "required_files": 49,
+  "open_issues": 47,
+  "recently_closed_issues": 917,
+  "historical_health_rows": 709,
+  "reviewed_source_paths": 151,
+  "source_review_entries": 171,
+  "markdown_documents": 12,
+  "local_link_targets_checked": 146,
+  "analytical_topics": 58,
+  "proposed_actions": 32,
+  "checks": [
+    "CSV counts, uniqueness and required-reading coverage",
+    "Requested byte/word totals",
+    "Pinned source SHA-256 hashes using git show",
+    "Local Markdown path targets (not fragment anchors or web URLs)",
+    "All open issues represented in the issue map",
+    "Named topics, ordered action IDs and JSON syntax"
+  ],
+  "failures": []
+}

@@ -7,6 +7,7 @@ Use the [master roadmap](../roadmap.md) for current work.
 
 | Document | Recorded topic |
 | --- | --- |
+| [2026-10-10-self-improving-codebases-audit/README.md](2026-10-10-self-improving-codebases-audit/README.md) | Self-improving codebases as a product: execution, learning, experiments, operations, customer data, economics, all open issues, 32 proposed actions, and pinned evidence from the sales and prior audits |
 | [2026-10-10-training-system-audit/README.md](2026-10-10-training-system-audit/README.md) | Training system audit: Psionic training code, Pylon, Tassadar/Psion/Percepta history, kitchen-sink promises, and a roadmap ([roadmap.md](2026-10-10-training-system-audit/roadmap.md)) for decision-model training in the Verse and V1 products |
 | [2026-10-10-codebase-health-audit/README.md](2026-10-10-codebase-health-audit/README.md) | Codebase health audit across all 184 crates: 34 sections, 709 verified findings, scorecard, top actions, remediation roadmap, and [action register](2026-10-10-codebase-health-audit/action-register.md) |
 | [2026-10-03-independent-efficiency/README.md](2026-10-03-independent-efficiency/README.md) | Independent cost and context audit: Claude/Codex comparisons, historical controls, System One preparation experiments, and a runnable issue briefing prototype |

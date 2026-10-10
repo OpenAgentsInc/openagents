@@ -1,0 +1,172 @@
+path,reviewer,scope,details,sha256,bytes
+.agents/skills/google-developer-style/SKILL.md,learning,full read,,afb103c87f283e88ea33a1439a11fb1838a17970760b8ecc59bf2f9d89fb0197,2518
+.agents/skills/google-developer-style/SKILL.md,product,full read,,afb103c87f283e88ea33a1439a11fb1838a17970760b8ecc59bf2f9d89fb0197,2518
+.agents/skills/google-developer-style/SKILL.md,root,full read,,afb103c87f283e88ea33a1439a11fb1838a17970760b8ecc59bf2f9d89fb0197,2518
+.agents/skills/google-developer-style/SKILL.md,runtime,full read,,afb103c87f283e88ea33a1439a11fb1838a17970760b8ecc59bf2f9d89fb0197,2518
+.agents/skills/nostr/SKILL.md,runtime,full read,,007c65c8922cd43faccbae6d4728e08681b7867fb5dc4d787f701a6cab8da4c8,24765
+.agents/skills/typesafe-ai/SKILL.md,learning,full read,,71ea90d7906c6554c4f4c460ef7361b2d26f59116ccdae986dc6d997b9389f52,10040
+.githooks/pre-commit,root,full read,,d416056e3195575f5b670e15e7b19a20045553db8992df6663f92cba6cbb49ad,190
+Cargo.toml,root,full read,,f544b4606c0ae7ef8d8604cc5c88bb65e341953744eb54c1876404840cd907ca,4324
+NEEDS_OWNER.md,product,targeted read,Sales/commercial/consent/training searches; exact O1 pilot/service invoice/first offer/operating finance passages.,04bbd599565e802ced6b92ef254f291392af8e968f7ad93ed84e84c7b36b22f6,131606
+crates/briefed-agent/src/main.rs,runtime,targeted read,,ceb1a8bc704bccfa1379f2cfc43705e19c141ab13f0f4996129687e7dbd0b4a5,14362
+crates/briefed-agent/src/tools.rs,runtime,targeted read,,064afa3b81939af4cab8ea17937177e17f175136f9c5ccf08f52c98a792bb62d,16681
+crates/briefed-agent/src/verify.rs,runtime,full read,,7ec0238d8092e84555326d37501a194c26856d3a389bacea9397582c4da789a6,21205
+crates/coder-cloud/src/operator.rs,runtime,targeted read,,d3a5c54d565e333be01f247bf5376b659ae050f18933abbbc40510b080baca2b,73599
+crates/coder-cloud/src/operator_adapters.rs,runtime,targeted read,,24c5c0fc7a547c26dbc1a1ac0d27602c16b25252b71f451f2d9ea05c69424454,10872
+crates/coder-cloud/src/operator_release_tests.rs,runtime,targeted read,,4e757c94cf8d10ec6d420a59451f0c2fafd6fc9232791f23ae7f0f0dd457e329,9053
+crates/coder-cloud/src/pool.rs,runtime,targeted read,,b932dd2eef60dd4cffafae3f1b5dca7a8a4d82ab2666575ff73d96d9a7dcc011,43171
+crates/coder-delegate/src/seal.rs,runtime,targeted read,,47b428d0a5fa6a76c163b88a2e9a39826b024e8ee413d08725863854ba54f393,10263
+crates/coder-delegate/src/shell.rs,runtime,targeted read,,8a3864dc3658e2791c925e1b63549b38b9e01eeb7b89c5edf0f83cab3c04de3f,5545
+crates/coder-environment-verify/src/lib.rs,runtime,targeted read,,e7ed482ff8d15becca36b13336a11449b3d4317e66d5a426558c3fa5b12fa536,13670
+crates/coder-new/src/bundled_runtime.rs,runtime,targeted read,,d30a0a0fe61a86a8b80cc4b87306d938017d4763e40eb80088aa85617c9d45d8,119911
+crates/coder-new/src/issue_run/agent.rs,product,targeted read,Optional cost source search.,885a3802112910dac6e79ee0dd9a9e0d7490e91f58434167bc6a1cea18ca3f54,29294
+crates/coder-new/src/issue_run/agent.rs,runtime,full read,,885a3802112910dac6e79ee0dd9a9e0d7490e91f58434167bc6a1cea18ca3f54,29294
+crates/coder-new/src/issue_run/cards.rs,product,targeted read,Summary cost zero default search.,1f01e58b5fe2c57f271be595489d37ecfbd96485b994618c8dd4709460251210,21552
+crates/coder-new/src/issue_run/decide.rs,product,targeted read,Decision cost aggregation search.,9671450ce2c0529f4dbde7afaaf4a8a1459214cedb5fc3a62063a617bb76c141,25592
+crates/coder-new/src/issue_run/decide.rs,runtime,targeted read,,9671450ce2c0529f4dbde7afaaf4a8a1459214cedb5fc3a62063a617bb76c141,25592
+crates/coder-new/src/issue_run/mod.rs,runtime,full read,,e3f42d894f90d64d8a572d428f233826546bd7a48748030106a01ba7da14c8e3,20341
+crates/coder-new/src/issue_run/setup.rs,product,targeted read,Summary cost emission search.,805f490cbb419679779b07f5c366f3039be8e4d085a954d468b9d73f54c1d065,16325
+crates/coder-new/src/issue_run/setup.rs,runtime,full read,,805f490cbb419679779b07f5c366f3039be8e4d085a954d468b9d73f54c1d065,16325
+crates/coder/src/task/issue_run.rs,runtime,targeted read,,443ee9e8d203531c861b1666b8edb3353cddce20a991bb009223f0eff430a9c3,100920
+crates/coder/src/task/sales.rs,product,targeted read,"Consent, current-authority, retention/suppression, deletion and tests symbol searches.",508fd64a995767944604fad168e2d9efb51c5077b225e62706ef12dcd526523a,100782
+crates/coder/src/task/sales/earned.rs,product,targeted read,Module and schemas through row delivery/eligibility predicate.,d54eabaeb3583e72bdb3670faca55e34d94061f4b68675405c01b60ec94a62d8,15161
+crates/coder/src/task/sales/privacy.rs,product,targeted read,"Module, permission/admission/copy schemas; supporting sales implementation searches.",87b9ab68ca0d5c08dbb5e34879abbebe3c80cf08488abee801270672b0084c01,130742
+crates/gateway/src/inference_byok.rs,product,targeted read,Module contract and store/key types; workspace isolation and migration.,13403615dc12b0249f26cd862ff61adbc2fa9cd13d2ea966782a9d4612861f71,35547
+crates/gateway/src/open_quota.rs,product,targeted read,Module contract and policy/default implementation.,4b13900b68c5a8c785206303671a6d02a9e197a476ffeebd542b16ccaaf2f250,14927
+crates/gateway/src/receipt_log.rs,product,full read,,cb6b905573a66b2c093db805ce765c44ff10dee3055e453212cfb01c87403d10,4580
+crates/gateway/src/serve.rs,product,targeted read,Receipt call sites and current tenant_slots function.,a3e94dcfc12755e82434bfa8572f0a5b8c8437f30d397cdddf2e5d965e66cfeb,232628
+crates/gym/src/ab.rs,learning,targeted read,690-732; effect_size and family_allowance; metric bound symbol search,c7b984708435395a4267f9ad3735d728a1f1c12028f0b3d0f88d2156c583b9ca,112819
+crates/gym/src/admission.rs,learning,targeted read,1-200; 450-572; 1207-1292; guard/locked/calibration symbol search,04feb777f1945617f2aca6a5d8a6dc28b9ba500dd00530f876feddac48455bf2,89153
+crates/gym/src/calibrate.rs,learning,targeted read,1-145,eadc92690cd9f39305bf5ca37caf49991e089517ecb209004054ca3f5f763c5b,47651
+crates/gym/src/gate.rs,learning,targeted read,gate/calibration/deployment/metric symbol search,1f9da84c9a28545866b9005def8829a8550c1bc72fc61c8fc6e5887b9cc760c9,208163
+crates/gym/src/sales_evidence.rs,product,targeted read,"Manifest/attempt/acceptance/cost types, acceptance validation, cost coverage, inventory equality, report limitations; symbol search.",772be5fd4896ed03a0edb0cde245d9a962522eb9465af2141a13c83e07cae547,41012
+crates/gym/src/sales_finance.rs,product,targeted read,"Manifest/source/payment/delivery/expense types, joins and cost coverage searches, calculate and public limitations.",a48aaff4b9f0db0cc2688a55f4a305d2775ea170332c689fa6b174347de6fa20,63025
+crates/gym/suites/file-relevance-v1/issues.tsv,learning,artifact check,,65ec3c094f3e00f15940ed57faa79839e9413e6f0f6ccbea9cebc012304cb4aa,139095
+crates/gym/suites/file-relevance-v1/items.tsv.gz,learning,artifact check,,e93245ef068af678b83d2b3b884a88facf61951edc1b4cdaa9b7e2049269e28b,771265
+crates/gym/suites/file-relevance-v1/manifest.json,learning,full read,,142cebae9a3b434bbbcdf9f047597b9688f7306a5b88ea9a3e31c3d04bbb22ba,3413
+crates/inference/src/router.rs,product,targeted read,Privacy/payer/capability filters source search.,b460672ddd1f05f62e6d6d1c8ada1afddfc2b446c83e56894acfe5b88fb7ad51,34488
+crates/inference/src/upstream/coder.rs,product,targeted read,Payer/privacy/refusal source search.,74a9b0f891171032c9ea1ba35b19af86ceeb8df2965c50b57c495cdd09964d52,20880
+crates/inference/src/upstream/vercel.rs,product,targeted read,Privacy request fields source search.,6843646216cd22133ba5b4969d2e71487778d872c5b2e2e8a2f6ea271038a8e5,3794
+crates/inference/src/upstream/vertex.rs,product,targeted read,Privacy terms source search.,e6683d20085977d9b61860f2f8eada8368ae64723ff485f631f3f7b893b3874d,28123
+crates/kev/tests/conformance.rs,learning,targeted read,32-49; artifact-skip searches,616a842ca80a0406271c09e588329baa7b98adae7bed2752d3fa1a693d271088,12927
+crates/kev/tests/encode.rs,learning,targeted read,artifact-skip searches,b9b2f2e2ed74ee7c0ab4c2b46361dc215e4ced43960d669cf4824d2ad92fc5eb,6769
+crates/kev/tests/serve.rs,learning,targeted read,artifact-skip searches,79689828d58e6b78ea4adc1ae2d4670d5f82907c51f0ca04d4b8eafa591fcf14,8072
+crates/laya/tests/conformance.rs,learning,targeted read,35-67; artifact-skip searches,0cc49591e3ce8fbaa2f33e3a06833922f38e978e64fd638b85f4cf6fb237516e,6467
+crates/oa-auth/src/repos.rs,product,targeted read,"Module, repository/project/access schemas, seal_bound/open_bound.",3f811e1281f21894ce9b27882c30148fab4355ce7254fcb5e71dd9a02ac08a81,43418
+crates/openagents-cli/src/deploy.rs,runtime,targeted read,,12a2fba05896fc72c4cb497827aede782f1bb99e844d4cac5684cc2f7f6ad87e,13560
+crates/openagents-cli/src/mcp.rs,runtime,targeted read,,c221a3489235c5a448751d03b1facb38219b8f426ae77be3ab6b26d131230f20,38718
+crates/openagents-web/content/docs/privacy-and-security.md,product,targeted read,Training/provider privacy passages.,a360e1009d1f4a06849d94fe5e1788c077fa5a0d5008da4dc57ad4d512a04cc7,6782
+crates/openagents-web/content/legal/privacy.md,product,targeted read,"Training, retention, paid opt-out policy passages.",d41feda6ee0847b530b6382d77b02bf51a83c36140d0d0600e465de6aa2a791e,8887
+crates/openagents-web/content/legal/terms.md,product,targeted read,Content and product-improvement license passages.,03cac63b44e6e27b46e0740b6c5b1d00babcd1802189d2d76b169509bd61cfd7,11291
+crates/openagents-web/src/promises.rs,root,targeted read,Rendering types and evidence existence test,9a3a06ca87ffad57ca63f29899f89e7ea17cb6b37c300e57b026507179d0fa6c,23777
+crates/openagents-web/src/traces.rs,product,targeted read,"Module contract, route setup, summary/index schemas and scoped trace ID.",803b895c1e6a14d3e9ca89224e1e2051c336fe881875146e82a2816645946cb5,85902
+crates/psionic/crates/psionic-research/src/runner.rs,learning,targeted read,284-360; 1540-1698; synthetic metric search,db772bf2319131fb071c25219c63e02cd35bfec47295c6a892f4d64f21609836,92506
+crates/psionic/crates/psionic-serve/Cargo.toml,learning,full read,,431ca1bec5c25978b03963452f750631a41095bef3039dbbe298fefc58ca48d8,2389
+crates/receipts/src/service_sale.rs,product,targeted read,Optional fulfillment and validation/effective_fulfillment symbol searches.,12064dea51c6c1fa351238e9bfcb702bcebdb1c2708f24bbb59363833da9dda7,18843
+crates/secret-screen/src/lib.rs,product,targeted read,"Module, credential patterns and credential/redaction API.",efa3327ff4372ec712937646657212dfe2ecc6b4e8fc0e5f5dcd6ae73e519318,27522
+crates/tenancy/src/accounts.rs,product,targeted read,Lock source search.,0a823f0d4a5e356082d2a136ca8ae61cfc4b7f59f4516a05d2d761da3362fc65,109021
+crates/tenancy/src/billing.rs,product,targeted read,Retention-bound constants and journal checks source search.,b01de495b6e295895476b80ea7447a3b720976a68f905f65af6f61ded78d2127,100217
+crates/tenancy/src/bin/tenant-train.rs,learning,targeted read,105-170; symbol search,9a9eaca4725dfa4c515b9ed8011f42372000d295f915f441469db9c99f208c1d,7272
+crates/tenancy/src/training.rs,learning,targeted read,1-245; 250-279; 458-689; 692-905; 1340-1374; 1490-1738; symbol search,126b42b49e528f327cf2fbe57dd8db3c1633a1bf5a9174df9e2ca9a8c9224deb,66135
+crates/tenancy/src/training.rs,product,targeted read,"Module contract, schema, provenance/retention/corpus items, Corpus::validate and digest_of, Book open/register/read, delete_corpus; focused symbols search over whole file.",126b42b49e528f327cf2fbe57dd8db3c1633a1bf5a9174df9e2ca9a8c9224deb,66135
+crates/tenancy/tests/training.rs,learning,targeted read,215-230; 416-440; teacher/deletion/candidate search,b162e6fc15cb89eebec2b3bcd54f0694bdea4afbef424cde51e50894fd80f6e8,17191
+docs/audits/2026-10-03-independent-efficiency/codex-validation/results.md,learning,full read,,1d6570fd4d686864938cd2ded137c00b29bc4779bdaddc1a379d01c470c6a5bc,4957
+docs/audits/2026-10-03-independent-efficiency/jev-native-pilot/README.md,learning,full read,,d4ddf741e7a4dc05e24499143a343f2e028300707cdc8306eea7826947a17e7b,15103
+docs/audits/2026-10-10-codebase-health-audit/README.md,root,full read,,599adb127f6e2d349c0869066afd54ccfe465a2cb3ea547d81676fca9534f4a7,49087
+docs/audits/2026-10-10-codebase-health-audit/action-register.md,root,full index and expanded-section review,All709 rows parsed; expanded area/cross-cutting sections reviewed by assigned reviewers,0843ea42c948dd84bad89c4c495ed506b2ff2293aab8fa52ac55ece7a2736bcf,237656
+docs/audits/2026-10-10-codebase-health-audit/areas/agent-runtime-plugins.md,runtime,full read,,41b29db094248bc9ca58a1701226ebb175f27c2bb2b765a799685b76885f6cbd,34001
+docs/audits/2026-10-10-codebase-health-audit/areas/cli-terminal.md,runtime,full read,,f8239ed0fda2d21ab9e6e101a1ffe008b33a736dd3530084b6e43e1d2ff38815,44901
+docs/audits/2026-10-10-codebase-health-audit/areas/coder-environment-infra.md,runtime,full read,,cc895679c7c87d97febadd9452dddda39e2458f7482a628a02b5cfad7de4fe6b,37032
+docs/audits/2026-10-10-codebase-health-audit/areas/coder-one.md,runtime,full read,,76877f8efd29c753e5c5336be60d0667c84a0a93f969c688b7e4968b937dd1d9,30928
+docs/audits/2026-10-10-codebase-health-audit/areas/coder-orchestration.md,runtime,full read,,6648974a46951490312226a857a3f3f7c285cb947e4a9ff652e40f606c71b3df,37105
+docs/audits/2026-10-10-codebase-health-audit/areas/coder-surfaces.md,runtime,full read,,74cedc6e1ce61900a482ad1170f060026f1f1d034b6df2ee356fabaaf39e5758,39649
+docs/audits/2026-10-10-codebase-health-audit/areas/coder.md,runtime,full read,,385861465ae90d4652330db54832a6b308408c555b94b017cb68a5b29bc3ff38,35682
+docs/audits/2026-10-10-codebase-health-audit/areas/decision-models.md,learning,full read,,7744fdbd50faddd90baf2c55df955356ecb842284acfa220207e6c260b4ea133,36154
+docs/audits/2026-10-10-codebase-health-audit/areas/desktop-chat-apps.md,product,full read,,d22abeea6785b32d83cd9834f674cfcefdeabdcc9d0e841f65d4ab413ef9874a,37916
+docs/audits/2026-10-10-codebase-health-audit/areas/gateway-inference.md,product,full read,,2c736ef3139903cd7e768010bf02b67f0847de0bb60440773f8f4d762ae17259,39770
+docs/audits/2026-10-10-codebase-health-audit/areas/gym-eval-bench.md,learning,full read,,73ecb2672ff795d21d605d57b008c9df4280d9038da138a3aebf9fd209993880,33044
+docs/audits/2026-10-10-codebase-health-audit/areas/misc-products.md,product,full read,,2a7d6214a6e6d74e8daad7179e304b4ba379c02937c9abf0cf20404a2e17564a,40725
+docs/audits/2026-10-10-codebase-health-audit/areas/mobile.md,product,full read,,27c28ce333a8f3021fa2852ff26eed9549d8a61e10dacb848b1afedfdd840e96,36186
+docs/audits/2026-10-10-codebase-health-audit/areas/nostr.md,runtime,full read,,157f9332f39213fb0f6016e131ed7d3c3d0b129f392ef8d9713b0fc956608500,42807
+docs/audits/2026-10-10-codebase-health-audit/areas/payments-identity-tenancy.md,product,full read,,68f7546fc7f96e57aa97a90d38e92aa75692284ccc540dcf5aa73d81d5b2c4a6,47408
+docs/audits/2026-10-10-codebase-health-audit/areas/psionic-backends-compiler.md,learning,full read,,735ecb411d0c3e060fcd9c81b4bc94be6e61f787acc681a925196d9dbb099332,47700
+docs/audits/2026-10-10-codebase-health-audit/areas/psionic-eval-research-data.md,learning,full read,,a5d52fcbb47826559c4c000182f57b6f30f26c76618e82664dd8d61599af44f1,32917
+docs/audits/2026-10-10-codebase-health-audit/areas/psionic-serve-runtime-models.md,learning,full read,,4ae1de100356cb5669800f02b60628494a7e8b9c422891f32d2ce00b6a4e5e44,41046
+docs/audits/2026-10-10-codebase-health-audit/areas/psionic-train.md,learning,full read,,d77a718eda4b72a9e65bc30965530d7ce1b5a9d549c1e269ac50502b648c007b,40543
+docs/audits/2026-10-10-codebase-health-audit/areas/scripts-deploy-repo-hygiene.md,runtime,full read,,e78d94a242ae1303c6b955e79e79fa309812ca8eeb11b7dbf14b3c7fe7b6cac9,38590
+docs/audits/2026-10-10-codebase-health-audit/areas/verse-engine.md,product,full read,,3302daa885c93e8b568a65d333e8bedeb507620c0bbc42534e54ac2bca1fd29d,50447
+docs/audits/2026-10-10-codebase-health-audit/areas/verse-world-zones.md,product,full read,,b81b80dc3498d77187b036c5af871546a7c769eea828c37ba7a2b4cde880154d,34404
+docs/audits/2026-10-10-codebase-health-audit/areas/web-ui-native.md,product,full read,,8ef4ed0fb8d85916dc50aeeb152a43dd11f21692277e2b90a11faa1a0ea75601,37734
+docs/audits/2026-10-10-codebase-health-audit/cross-cutting/dead-code-stale.md,learning,full read,,4cb9f9955f9a02477719b60ef0f7f7af9c47a1b84a1f2d2843fde2ccf4f695a4,35021
+docs/audits/2026-10-10-codebase-health-audit/cross-cutting/dependencies.md,root,full read,,1f1aaeaf32d15c3e34416930868b9d39834e802ac4b0d3aaf8a0788d09911470,36968
+docs/audits/2026-10-10-codebase-health-audit/cross-cutting/docs-drift.md,root,full read,,5430b86053b41ce600ceb5884a3f8ea01a4283467dbb9494fe380c2c081f3c3d,35871
+docs/audits/2026-10-10-codebase-health-audit/cross-cutting/duplication-overlap.md,root,full read,,dab0c40950a3590ddd56e310f644c0a54297cdc4cfcc2696c61e62fa73031fbb,49418
+docs/audits/2026-10-10-codebase-health-audit/cross-cutting/error-handling-panics.md,root,full read,,f63c39eba8c138ce1d88ce57a6e8df8779952df3c467e8c9ee1e4da161889a24,33156
+docs/audits/2026-10-10-codebase-health-audit/cross-cutting/file-function-size.md,root,full read,,d6fcdfdc02f0edc68bdf548bc976378b30574126da82ef7645d4990bf4db3c36,45557
+docs/audits/2026-10-10-codebase-health-audit/cross-cutting/lints-build-config.md,root,full read,,9d1f5afa7db5b2492bfeed69f36f9229143623672beae2ac1d4eea4cd6ae9bb6,36269
+docs/audits/2026-10-10-codebase-health-audit/cross-cutting/security-smells.md,root,full read,,f30b832b21c18238cc0915c58bf0fe52541b0f804771436d5c7e03ef985c5263,33497
+docs/audits/2026-10-10-codebase-health-audit/cross-cutting/semantic-routing-policy.md,runtime,full read,,421c1a2fa58981a1bf4bc652cc8ce687dbf06482540828b3c1e85cfd7d918d37,27997
+docs/audits/2026-10-10-codebase-health-audit/cross-cutting/tests-ci-verification.md,runtime,full read,,b023b6cc5cac8c6b92a98002c84f99060b7e141f97f2d6136c158c3c3911e1bd,31596
+docs/audits/2026-10-10-codebase-health-audit/cross-cutting/unsafe-async-concurrency.md,runtime,full read,,1ad49af54a0a63a5c09968d4cac3a18e32ffdf5dbfb2dd249a32916290ea931b,36785
+docs/audits/2026-10-10-codebase-health-audit/remediation.md,root,full read,,b1dbf8b1e596c5012e376eda210f76e894d393d0add94bb2f1da3cbeac950fc1,3606
+docs/audits/2026-10-10-codebase-health-audit/remediation.md,runtime,full read,,b1dbf8b1e596c5012e376eda210f76e894d393d0add94bb2f1da3cbeac950fc1,3606
+docs/audits/2026-10-10-training-system-audit/README.md,learning,full read,,cd08e6c659344d7bdc19fe25bb21e4933cc789c03cacf06176f82fb2d28ec740,44938
+docs/audits/2026-10-10-training-system-audit/roadmap.md,learning,full read,,2882296dc7404e952678fde09d81602b87c348156c23f23302f0d72598788d31,25220
+docs/audits/README.md,root,full read,,fd81889d57b114a0b2062a8ff62a509a79c1baae66ea43236c1ceec4aea563ad,2362
+docs/cloud/dogfood-dev-on-prod.md,root,full read,,6f4aa1a9e71f964e480a6cc26927cbc436bf462c523e821666017b4e8d8dac4d,12223
+docs/cloud/dogfood-dev-on-prod.md,runtime,full read,,6f4aa1a9e71f964e480a6cc26927cbc436bf462c523e821666017b4e8d8dac4d,12223
+docs/coder/issue-run.md,runtime,full read,,8e436dd1efb83c49481aa116c445bca5597a70f133e6887dbc008674ff2a9de8,9627
+docs/coder/runtime/leases.md,runtime,full read,,6fef5b12f95f0e478a5cbe215560307b1e796940dd8bb4bfade45e1875d0b231,23930
+docs/coder/runtime/placement.md,runtime,full read,,d0f22c0262e1779cd8c46cde0f7e92578b87589490ef03875de8cb631d67a4c0,7088
+docs/coder/traces.md,learning,full read,,bb51aeff55c3964bc7e6983c7cc935de6deba974628edad132f6edb2f5763028,5350
+docs/coder/traces.md,runtime,full read,,bb51aeff55c3964bc7e6983c7cc935de6deba974628edad132f6edb2f5763028,5350
+docs/coder/traces/2026-10-10-manifest.json,learning,artifact check,,dd25040e7fd4bd96e057661dd215b256ee6846587bc81c1592167a8fa61d1a28,34444
+docs/cost/2026-10-02-shadow-baseline-measurement.md,learning,full read,,6faaef05f64464a86e119707e0dd41fc287826f5b4296254bae4501e35f2a21d,28225
+docs/decision-models/service/tenant-training.md,learning,full read,,555ff74c1df9ac6900f8accf4d52862279c3ec2354be80bcd852f5324b5572b5,4826
+docs/documentation.md,root,full read,,d4e919d6bb178d5199e8861a8c7e7a28ece87a4a874a6c770714d41b0a2db669,4132
+docs/inference/briefed-agent-ab.md,learning,full read,,661b2ce32f8a30aae93936b9b2863dfa195b18ea56a5b4511d86e1adb7355513,7741
+docs/inference/file-finding-bench.md,learning,full read,,098252c3f106717c480158e82f11918ed318e50986aca8376381ff66c068b6b7,28507
+docs/product/self-improving-codebases.md,learning,full read,,f4dc864b64f2d5cec73864b23eeec06c3c6a2b9f006ce267552727be7f479641,14952
+docs/product/self-improving-codebases.md,product,full read,,f4dc864b64f2d5cec73864b23eeec06c3c6a2b9f006ce267552727be7f479641,14952
+docs/product/self-improving-codebases.md,root,full read,,f4dc864b64f2d5cec73864b23eeec06c3c6a2b9f006ce267552727be7f479641,14952
+docs/product/self-improving-codebases.md,runtime,full read,,f4dc864b64f2d5cec73864b23eeec06c3c6a2b9f006ce267552727be7f479641,14952
+docs/promises/README.md,root,full read,,6a90637b8a022d46e2251a75d8b32e0b99c7a0232c6c72a3383fd296d4629bfa,6473
+docs/research/typesafe/2026-10-03-calibration.md,learning,targeted read,calibration/threshold/selection search excerpts,e2e2893c0302a8590dbac57c9e2d5dd60f703b8890a2df817770a1f43da7f28a,19950
+docs/sales/README.md,product,full read,,79e6b9f4fc9b710a62c0a5b44a599f8e625d8d8491deb234e536dc302f28c1d4,65895
+docs/sales/agent-sales-floor.md,product,full read,,040ec19b4559248f89532906c991670516b1b80507f6c2bd2988c96cf3e6cccf,77520
+docs/sales/delivery-kit.json,product,full read,,203a3f4c693348e2cd4e5bd1d0ce10a7a8defc907a9ef8388bec57880255e5e9,10713
+docs/sales/evidence.md,product,full read,,8cc2eb10190bb56c660a3bab9be19314991a42ec0dc9d305cdbe69a952d7e7a0,16444
+docs/sales/install-qualification.json,product,full read,,329d895bded90243c95fb589017c8c98208bcc3ade9289e8d590bc0ea577ce2f,8626
+docs/sales/pilot-kit.json,product,full read,,bafe2d98b71ffa4cc0cf75d888c4a5f6a776b32b3abfac607c1a8c5ede537d16,10386
+docs/sales/revenue-handoff.md,product,full read,,1999a6b910b26475bb58f7c78fa6c9260b99eb59e60561db37332d74da040149,10801
+docs/sales/revenue-roadmap.md,product,full read,,b9b924e7e849c7e597b1aaa7cd62f23ebc2f8aa04cd31e6c917ace495c67148b,79447
+docs/sales/team-qualification.json,product,full read,,9c371db1128c9f006e088e64acb9c8c37eb6a34559a84a87acac5dcbae794d36,5954
+docs/verification.md,root,full read,,81086616d81d0dd00e87a000117bc511ccfa0675ed172e2acc4e827557b4b2a2,15771
+knowledge/openagents/openagents.chat-privacy.md,product,targeted read,Current training/provider/retention answers and historical changes.,41735fe02b98e1b6c946a0150d6df024c16471a6c3e5c2e48264233df61c417b,11142
+scripts/bench/briefed-ab/ab.py,runtime,targeted read,,257bfab29c506af68bda9df9377495013fd43d14e4b95c759121957ef768c44e,46517
+scripts/bench/briefed-ab/briefing.py,runtime,targeted read,,6aa42d07adbd3e6192effbe2a338ef5c895112c0d6b08eb546700062b202c6e9,19009
+scripts/bench/briefed-ab/remote/common.sh,runtime,full read,,247577c6c313d4d7b0f8bd65905f5e668a411fec1864f346a407b80d76b7eaf4,1646
+scripts/bench/briefed-ab/remote/eval.sh,learning,full read,,4265443a97442da9f64ac2fef5962046585ec70205b85fc9bc82fc74dc0dc3b9,3086
+scripts/bench/briefed-ab/remote/eval.sh,runtime,full read,,4265443a97442da9f64ac2fef5962046585ec70205b85fc9bc82fc74dc0dc3b9,3086
+scripts/bench/briefed-ab/shim/remote-exec,runtime,full read,,d67f9f6fbe3a4aa493267cb23dbd083671ab8c6c460d33024509248a84e41529,1939
+scripts/bench/file-finding-bench.py,learning,targeted read,1-395; 752-783,9f54b651cff91787b44778097ef95d9d147f06d47f8b2513669886d29ed640e5,35701
+scripts/bench/file-finding-dataset.py,learning,full read,,b10b4ec7faa5b2a6f984b1975ec7c9553969e4f583da5cc367928ec8cec1e811,7035
+scripts/bench/file-relevance-corpus.py,learning,full read,,d50f29ee9c03f3080bc6627cd5c15f76b1064224e518f7b3555c4d87666ecd18,20453
+scripts/bench/file-relevance-corpus.sh,learning,full read,,2190ecaa6b9c15c97031e8de7236e6e3ba4726dc30a63f5d06740c7c5e197610,2328
+scripts/bench/traces/test_traces.py,learning,full read,,42f988d37b2263cfdc344c90e07f1f18cda42d3c8ad28e07fcd69ce4fc106b74,6750
+scripts/bench/traces/traces.py,learning,full read,,31f64a7eec0528a64f22f297cd70671f5f683da3b8b35757602ec6e7d1135f56,27889
+scripts/bench/traces/traces.py,product,targeted read,"Intro, blob storage, base_record, capture paths, accepted/corpus_items/cmd_admit/manifest and CLI; focused source searches.",31f64a7eec0528a64f22f297cd70671f5f683da3b8b35757602ec6e7d1135f56,27889
+scripts/bench/traces/traces.py,runtime,full read,,31f64a7eec0528a64f22f297cd70671f5f683da3b8b35757602ec6e7d1135f56,27889
+scripts/check-dependencies.sh,root,full read,,de928ea65742497332326643bd8fd190e8dafa4940201bbe9fe0649ca3e95635,768
+scripts/coder/issue_run_briefing.py,runtime,full read,,932f27e71dabe1faae74de0af142c84f348e6dca20496002d14af539d683bced,2282
+scripts/filefind/filefind.py,learning,targeted read,356-378; 1700-1774; 1900-1945; symbol and feedback/cutoff search,5203782accba910d668279755d831bf73688c90304e4721759a7e08640a6a2a2,87299
+scripts/filefind/filefind.py,product,targeted read,"Provider/cache/feedback searches; default_cache, cmd_feedback, CLI defaults, ranking feedback consumption and provider-selection snippets.",5203782accba910d668279755d831bf73688c90304e4721759a7e08640a6a2a2,87299
+scripts/filefind/model.json,learning,artifact check,,b11f9b6b1b74bff55f04a4d5a3d0080aee0937aa607401f3465fdf9137c412d9,247370
+scripts/filefind/post-merge-hook.sh,learning,full read,,93644fcbbfe6fb095fc098ad89b18b3e170c3c59e6a1c918af9a9fff6d442555,943
+scripts/filefind/post-merge-hook.sh,product,full read,,93644fcbbfe6fb095fc098ad89b18b3e170c3c59e6a1c918af9a9fff6d442555,943
+scripts/filefind/retrain.sh,learning,full read,,52163590a124e1e5f2d1156d1fad57a5322005e150ff12d0f91b604b3757ae0b,1805
+scripts/filefind/retrain.sh,product,full read,,52163590a124e1e5f2d1156d1fad57a5322005e150ff12d0f91b604b3757ae0b,1805
+scripts/filefind/retrain.sh,root,full read,,52163590a124e1e5f2d1156d1fad57a5322005e150ff12d0f91b604b3757ae0b,1805
+scripts/verify-changed.py,root,targeted read,"Lines1-250, metadata handling and change scopes",494c1b298f58703a5d9439b1b93a27ce84ad0c28722ad28f19f32b0736b20e0a,17041
+training/lev-adapter/README.md,learning,targeted read,182-203; corpus and leakage search,da4ff17379357a3912f3f7012b914d08efe36e49552bc0eec5df4b6d73874611,8817
+training/tenant-demo/make_artifacts.py,learning,full read,,1eea2653f4b9821e112e4d2e785a12a6dac2464b8c6834c7ba8db8f594713553,4282

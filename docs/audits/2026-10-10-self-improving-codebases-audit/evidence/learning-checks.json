@@ -1,0 +1,41 @@
+{
+  "base": "07805e6a7c3513a057d226b488cb2d40fd974a64",
+  "trace_manifest_digest_matches": true,
+  "trace_manifest_digest": "sha256:2b074fb2ccce61450443dd1d46db34675863128263f118386e831f1ef5588e36",
+  "rows": 45,
+  "verdicts": {
+    "verified": 41,
+    "unverifiable": 4
+  },
+  "verified_checks_passed": 22,
+  "verified_checks_failed": 19,
+  "verified_by_issue": {
+    "10074": 18,
+    "10228": 22,
+    "10273": 1
+  },
+  "verified_groups_N8": {
+    "10074": "calibration",
+    "10228": "calibration",
+    "10273": "development"
+  },
+  "N8_artifact_hashes": {
+    "items.tsv.gz": {
+      "actual": "sha256:e93245ef068af678b83d2b3b884a88facf61951edc1b4cdaa9b7e2049269e28b",
+      "expected": "sha256:e93245ef068af678b83d2b3b884a88facf61951edc1b4cdaa9b7e2049269e28b"
+    },
+    "issues.tsv": {
+      "actual": "sha256:65ec3c094f3e00f15940ed57faa79839e9413e6f0f6ccbea9cebc012304cb4aa",
+      "expected": "sha256:65ec3c094f3e00f15940ed57faa79839e9413e6f0f6ccbea9cebc012304cb4aa"
+    }
+  },
+  "trace_test": {
+    "command": "TMPDIR=\"$(openagents scratch)\" python3 -m unittest discover -s scripts/bench/traces -p test_traces.py",
+    "exit_code": 0,
+    "tests": 7,
+    "seconds": 2.185,
+    "result": "OK",
+    "command_note": "Scratch path normalized from the executed absolute task-scratch path."
+  },
+  "no_cargo_or_models": true
+}
