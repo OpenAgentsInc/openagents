@@ -50,7 +50,7 @@ summaries, A/B results, reads outside a briefing, held-out or failed traces) is
 an "observation". Only labels change the ranking; a query on the issue lists its
 observations separately, for exploration.
 """
-import argparse, bisect, gzip, json, math, os, pickle, re, subprocess, sys, time
+import argparse, bisect, gzip, hashlib, json, math, os, pickle, re, subprocess, sys, threading, time
 import urllib.parse, urllib.request, urllib.error
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -1750,6 +1750,125 @@ def rank_two_stage(model, q, feats):
     return rank(model["stage2"], feats), feats
 
 
+# ---------------------------------------------------------------- Clef fusion
+
+# A model card may carry `fusion` (#11217, #11220): the numpy ranker's logit plus
+# Clef-Flash's file-relevance logit, summed, re-ranks the numpy top K. No learned
+# parameter. Clef is asked once per (issue, file) in the file-relevance-v1 prompt
+# (scripts/bench/file-relevance-corpus.py), at a /v1/systemone door; an answer
+# counts only when its `psionic` block names the card's artifact and head
+# digests. When any readable top-K file goes unanswered (door down, another
+# model answered, past the budget), the numpy order stands.
+FUSION_KIND = "clef-logit-sum.v1"
+CLEF_HEAD_BYTES = 2048
+CLEF_ISSUE_CHARS = 2500
+
+
+def clef_state(n, title, body, path, head):
+    """The file-relevance-v1 state (file-relevance-corpus.py `state_text`)."""
+    body = (body or "").strip()
+    if len(body) > CLEF_ISSUE_CHARS:
+        body = body[:CLEF_ISSUE_CHARS] + "\n[...]"
+    return f"ISSUE #{n}: {(title or '').strip()}\n\n{body}\n\nFILE: {path}\n```\n{head}\n```"
+
+
+def clef_heads(repo, shas):
+    """sha -> the first CLEF_HEAD_BYTES of the blob (None for binary), as the corpus cuts them."""
+    got = cat_heads(repo, sorted(set(shas)), n=CLEF_HEAD_BYTES * 2, cap=10 ** 9)
+    return {s: (None if t is None else t.encode("utf-8")[:CLEF_HEAD_BYTES].decode("utf-8", "ignore"))
+            for s, t in got.items()}
+
+
+def _logit(p, eps=1e-6):
+    p = min(max(float(p), eps), 1 - eps)
+    return math.log(p / (1 - p))
+
+
+class ClefDoor:
+    """POSTs file-relevance questions to a /v1/systemone door, with a JSONL cache
+    keyed by request sha256 (only answers from the card's Clef are cached)."""
+
+    def __init__(self, fusion, cache_path=None):
+        self.f = fusion
+        self.url = os.environ.get("FILEFIND_CLEF_URL") or fusion["door"]
+        self.cache_path = cache_path
+        self.cache = {}
+        self.lock = threading.Lock()
+        if cache_path and os.path.exists(cache_path):
+            for line in open(cache_path):
+                try:
+                    r = json.loads(line)
+                    self.cache[r["request_sha256"]] = r["p"]
+                except (ValueError, KeyError):
+                    pass
+
+    def body(self, state):
+        return json.dumps({"model": self.f["model"], "state": state,
+                           "questions": {"relevant": {"type": "noul", "instructions": self.f["question"]}}},
+                          ensure_ascii=False, separators=(",", ":"))
+
+    def ask(self, state, timeout):
+        import urllib.request
+        body = self.body(state)
+        key = "sha256:" + hashlib.sha256(body.encode("utf-8")).hexdigest()
+        with self.lock:
+            if key in self.cache:
+                return self.cache[key]
+        req = urllib.request.Request(self.url, data=body.encode("utf-8"),
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            d = json.load(r)
+        ps = d.get("psionic") or {}
+        if ps.get("artifact_digest") != self.f["artifact_digest"] or ps.get("head_digest") != self.f["head_digest"]:
+            door = (d.get("service") or {}).get("door", "?")
+            raise RuntimeError(f"answered by {door}, not the card's Clef")
+        p = float(d["answers"]["relevant"]["noul"])
+        with self.lock:
+            self.cache[key] = p
+            if self.cache_path:
+                with open(self.cache_path, "a") as f:
+                    f.write(json.dumps({"request_sha256": key, "p": p}) + "\n")
+        return p
+
+
+def clef_fuse(fusion, ranked, issue, title, body, tree, repo, door=None, budget=None, workers=None):
+    """Re-rank the numpy top K by numpy logit + Clef logit. Returns (ranked, info);
+    on any unanswered readable file the numpy order is returned unchanged."""
+    k = int(fusion["k"])
+    top = ranked[:k]
+    door = door or ClefDoor(fusion)
+    budget = float(budget if budget is not None else os.environ.get("FILEFIND_CLEF_BUDGET_S", fusion.get("budget_s", 20)))
+    heads = clef_heads(repo, [tree[p] for p, _ in top if p in tree])
+    jobs = [(p, clef_state(issue or 0, title, body, p, heads[tree[p]]))
+            for p, _ in top if p in tree and heads.get(tree[p]) is not None]
+    t0 = time.perf_counter()
+    got, errs = {}, []
+
+    def one(job):
+        left = budget - (time.perf_counter() - t0)
+        if left <= 0:
+            raise TimeoutError("past the Clef budget")
+        return job[0], door.ask(job[1], timeout=left)
+    with ThreadPoolExecutor(int(workers or fusion.get("workers", 8))) as ex:
+        for fut in [ex.submit(one, j) for j in jobs]:
+            try:
+                path, p = fut.result()
+                got[path] = p
+            except Exception as e:  # noqa: BLE001 - any miss means no fusion
+                errs.append(str(e)[:120])
+    secs = time.perf_counter() - t0
+    if errs or len(got) < len(jobs):
+        return ranked, {"fused": False, "why": errs[0] if errs else "unanswered", "asked": len(jobs),
+                        "answered": len(got), "seconds": round(secs, 2)}
+    # A file Clef cannot read (binary) takes the mean Clef logit of the answered ones.
+    cl = {p: _logit(v) for p, v in got.items()}
+    mean = sum(cl.values()) / len(cl) if cl else 0.0
+    z = [(p, _logit(s) + cl.get(p, mean)) for p, s in top]
+    z.sort(key=lambda t: -t[1])
+    fused = [(p, 1.0 / (1.0 + math.exp(-v))) for p, v in z] + list(ranked[k:])
+    return fused, {"fused": True, "asked": len(jobs), "answered": len(got), "seconds": round(secs, 2)}
+
+
 # ---------------------------------------------------------------- CLI
 
 CACHE_ROOT = os.path.expanduser("~/.cache/openagents/filefind")
@@ -2129,6 +2248,14 @@ def cmd_query(a):
     feats = q.run(title, body, qvec)
     t0 = time.perf_counter()
     ranked_all, feats = rank_two_stage(model, q, feats)
+    timing["score"] = time.perf_counter() - t0
+    if model.get("fusion"):
+        t0 = time.perf_counter()
+        ranked_all, info = clef_fuse(model["fusion"], ranked_all, a.issue, title, body, tree, a.repo)
+        timing["clef"] = time.perf_counter() - t0
+        if not info["fused"]:
+            print(f"Clef fusion off for this query ({info['why']}); numpy ranking", file=sys.stderr)
+    t0 = time.perf_counter()
     fb = ix.feedback.get(a.issue, {}) if a.issue else {}
     if fb:  # files earlier runs on this issue changed or had to open: keep them in the list
         conf = dict(ranked_all)
@@ -2144,7 +2271,7 @@ def cmd_query(a):
     # for exploration, never in the ranking (LEARN-04).
     observed = sorted({(r["path"], r["kind"], r["basis"]) for r in feedback_rows(cache, OBSERVATION)
                        if a.issue and int(r["issue"]) == a.issue and r["path"] in tree})
-    timing["score"] = time.perf_counter() - t0
+    timing["feedback"] = time.perf_counter() - t0
     timing["total"] = time.perf_counter() - t_all
     if a.json:
         print(json.dumps({

@@ -352,13 +352,51 @@ def cmd_eval(a):
     json.dump(res, open(os.path.join(a.work, "eval.json"), "w"), indent=1)
 
 
-def gate_rows(ev, feats, model):
+def fused_rankings(a, ev, feats, card):
+    """issue -> the card's ranking with its Clef fusion applied; exits when any
+    case could not be fused (the comparison needs every case measured)."""
+    door = ff.ClefDoor(card["fusion"], os.path.join(a.work, "clef-cache.jsonl"))
+    out, t0 = {}, time.perf_counter()
+    for i, c in enumerate(ev):
+        ranked = ff.rank(card["stage2"], feats[c["issue"]]["feats"])
+        tree = ff.ls_tree(a.repo, c["parent"])
+        fused, info = ff.clef_fuse(card["fusion"], ranked, c["issue"], c["title"], c["body"], tree, a.repo,
+                                   door=door, budget=3600, workers=a.clef_workers)
+        if not info["fused"]:
+            sys.exit(f"#{c['issue']}: Clef fusion failed ({info['why']}); no receipt written")
+        out[c["issue"]] = fused
+        print(f"fused {i + 1}/{len(ev)} #{c['issue']}: {info['answered']} answers in {info['seconds']} s "
+              f"({time.perf_counter() - t0:.0f} s total)", file=sys.stderr)
+    return out
+
+
+def cmd_fusion_card(a):
+    """A candidate card: --model's numpy ranker (its stages and training record,
+    unchanged) plus the frozen Clef fusion of #11217 over its top --clef-k. It has
+    no learned parameter of its own, so its overlap with the eval cases is the
+    base model's."""
+    card = json.load(open(a.model))
+    if card.get("fusion"):
+        sys.exit("the base model already carries a fusion")
+    base_digest = gate.digest_file(a.model)
+    card["fusion"] = {"kind": ff.FUSION_KIND, "k": a.clef_k, "door": a.clef_door, "model": "clef-flash",
+                      "question": "Is this file relevant to solving the issue?",
+                      "artifact_digest": a.clef_artifact, "head_digest": a.clef_head,
+                      "budget_s": 20, "workers": 8, "base_digest": base_digest,
+                      "source": "openagents#11217 (e1f070d566): numpy logit + Clef logit in the numpy top K"}
+    tmp = os.path.join(a.work, "fusion-card.json")
+    with open(tmp, "w") as f:
+        json.dump(card, f, indent=1, sort_keys=True)
+    print(gate.immutable_copy(tmp, os.path.join(a.work, "candidates")))
+
+
+def gate_rows(ev, feats, model, judged=None):
     """Per-case rows for the gate: hits at 20/50/100 and the Brier score of the
     top 100 confidences against whether each file is in the fix."""
     rows = []
     for c in ev:
         r = feats[c["issue"]]
-        ranked = ff.rank(model, r["feats"])
+        ranked = judged[c["issue"]] if judged else ff.rank(model, r["feats"])
         hand = set(r["hand"])
         order = [p for p, _ in ranked]
         row = {"issue": c["issue"], "n": len(hand)}
@@ -386,8 +424,11 @@ def cmd_compare(a):
         print(f"note: the baseline was trained on {len(base_seen)} of the {len(ev)} eval cases; its numbers "
               "are optimistic, which only makes the gate harder to pass", file=sys.stderr)
     f2 = pickle.load(open(os.path.join(a.work, "features2.pkl"), "rb"))
+    judged = fused_rankings(a, ev, f2, cand) if cand.get("fusion") else None
     rec = gate.receipt(a.baseline, a.candidate, issues, gate_rows(ev, f2, base["stage2"]),
-                       gate_rows(ev, f2, cand["stage2"]), base_seen)
+                       gate_rows(ev, f2, cand["stage2"], judged), base_seen)
+    if cand.get("fusion"):
+        rec["fusion"] = cand["fusion"]
     out = os.path.join(a.work, f"compare-{rec['candidate']['digest'].split(':')[1][:12]}.json")
     with open(out, "w") as f:
         json.dump(rec, f, indent=1, sort_keys=True)
@@ -839,7 +880,7 @@ def cmd_check(a):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=["prepare", "features", "train", "eval", "compare", "judge", "judge-eval", "plan",
-                                    "check", "rerank"])
+                                    "check", "rerank", "fusion-card"])
     ap.add_argument("--repo", default=".")
     ap.add_argument("--dataset", required=True)
     ap.add_argument("--work", required=True)
@@ -866,10 +907,18 @@ def main():
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--plan-model", default="anthropic/claude-sonnet-5.5")
     ap.add_argument("--plan-top", type=int, default=60)
+    ap.add_argument("--clef-k", type=int, default=100, help="fusion-card: files Clef re-ranks")
+    ap.add_argument("--clef-door", default="https://openagents.com/api/v1/systemone")
+    ap.add_argument("--clef-artifact",
+                    default="sha256:fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c")
+    ap.add_argument("--clef-head",
+                    default="sha256:6e4699704c24e9f04f3e9270e7fe9c72fdb7c72086e30648d4ac4a39e5e6b041")
+    ap.add_argument("--clef-workers", type=int, default=3, help="compare: concurrent Clef requests")
     a = ap.parse_args()
     os.makedirs(a.work, exist_ok=True)
     {"prepare": cmd_prepare, "features": cmd_features, "train": cmd_train, "eval": cmd_eval, "compare": cmd_compare,
-     "judge": cmd_judge, "judge-eval": cmd_judge_eval, "plan": cmd_plan, "check": cmd_check, "rerank": cmd_rerank}[a.cmd](a)
+     "judge": cmd_judge, "judge-eval": cmd_judge_eval, "plan": cmd_plan, "check": cmd_check, "rerank": cmd_rerank,
+     "fusion-card": cmd_fusion_card}[a.cmd](a)
 
 
 if __name__ == "__main__":
