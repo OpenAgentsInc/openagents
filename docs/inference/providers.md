@@ -45,7 +45,7 @@ Owners of a row update it when they change the path. The gateway spec's
 | --- | --- | --- | --- |
 | Chat worker turn (**prod**, `coder-worker-chat`) | `crates/coder/src/bin/coder-worker.rs` `main` door chain; `crates/coder/src/generate.rs` `vertex_door_from_env` | Vertex AI `gemini-3.8-flash` (global), `CODER_WORKER_VERTEX` / `VERTEX_PROJECT`, GCE metadata token | OpenRouter primary (`CODER_WORKER_PRIMARY`), the `CODER_DOOR_KEY` door, then `CODER_WORKER_BACKUPS` (`openrouter:gemini,openrouter:glm,vercel:gemini,vercel:glm`). With `CODER_INFERENCE_KEY` set, the inference gateway instead |
 | Chat worker turn on the person's keys (**prod**, **BYOK**) | `coder-worker.rs` `their_door` | Their OpenRouter key | Their Vercel key; never ours |
-| Dispatch sentence (personalization) (**prod**) | `crates/coder/src/router/personalize.rs` `Personalizer::named_behind` | Vertex AI `gemini-2.5-flash-lite`, thinking off (~0.5 s; budget 1.2 s), whenever the chat door's Vertex switch is on | The provider `CODER_PERSONALIZE` names (prod: OpenRouter `google/gemini-2.5-flash-lite`; or the gateway door's `glm`) |
+| Dispatch sentence (personalization) (**prod** from the first worker release at or after `b91f3f1dbf`) | `crates/coder/src/router/personalize.rs` `Personalizer::named_behind` | Vertex AI `gemini-2.5-flash-lite`, thinking off (~0.5 s; budget 1.2 s), whenever the chat door's Vertex switch is on | The provider `CODER_PERSONALIZE` names (prod: OpenRouter `google/gemini-2.5-flash-lite`; or the gateway door's `glm`) |
 | Dispatch sentence on the person's keys (**prod**, **BYOK**) | `personalize.rs` `Personalizer::theirs` | Their OpenRouter key | Their Vercel key; else the stem's own words |
 | Router judge and "answers first" judge (**prod**) | `crates/coder/src/decision/profiles.rs`, `crates/jev-hosted/src/lib.rs` `resolve_with_fallbacks`; `crates/coder/src/router/judge.rs` `ask` | Jev on the Vercel AI Gateway (`typesafe-ai/jev`) | OpenRouter `typesafe/jev-1.13`, then TypeSafe `jev-1.13.0`. TypeSafe product: unchanged |
 | Hosted decision worker (**prod**, `decision-worker.service`) | `crates/gateway/src/relay_worker.rs`, `src/bin/decision-worker.rs` | Jev on the Vercel AI Gateway | OpenRouter decisions, then TypeSafe (env template sets only TypeSafe). TypeSafe product: unchanged |
@@ -94,7 +94,7 @@ Owners of a row update it when they change the path. The gateway spec's
 | Path | Call site | First door | Fallbacks |
 | --- | --- | --- | --- |
 | Codebase index (**prod**, chat worker) | `crates/coder/src/codebase.rs` `embedder`, `embedder_for` | Vertex `text-embedding-005` for an index built with `CODER_CODEBASE_EMBEDDINGS=vertex` (questions read with the index's own model) | An index built with OpenAI vectors reads with the Vercel AI Gateway, then `Embedder::from_env` (OpenAI, then OpenRouter) |
-| Product KB (**prod**, chat worker) | `crates/coder/src/product_kb.rs` `embedder_from_env` | `OPENAGENTS_PRODUCT_KB_EMBEDDINGS` unset: `Embedder::house`, Vertex `text-embedding-005` on the VM's Google credential. Prod sets `gateway` today: the Vercel AI Gateway (HTTP 402) | Unset: OpenAI, then OpenRouter only when there is no Google credential. `gateway`: OpenRouter, OpenAI |
+| Product KB (**prod**, chat worker) | `crates/coder/src/product_kb.rs` `embedder_from_env` | Prod (release `156b301714`): `OPENAGENTS_PRODUCT_KB_EMBEDDINGS=vertex`, `KB_VERTEX_MODEL=gemini-embedding-001` on the VM's metadata token. Unset: `Embedder::house` (Vertex on a Google credential) | Vertex has no same-model fallback (vectors cannot mix); unset with no Google credential: OpenAI, then OpenRouter; `gateway`: Vercel, OpenRouter, OpenAI |
 | Gym KB seam (**prod**, chat worker) | `crates/coder/src/gym_kb.rs` | As the product KB (`product_kb::embedder_from_env`) | As the product KB |
 | Seams on the person's keys (**prod**, **BYOK**) | `crates/coder/src/router/seams.rs` `TheirKeys::embedder`; `knowledge::search::Embedder::theirs` | Their OpenRouter key (`text-embedding-3-small`) | Their Vercel key; never ours |
 | Knowledge search, `kb` CLI and `microcoder --kb-embeddings` (**user machine** / **tool**) | `crates/knowledge/src/search.rs` `Embedder::chosen`, `Embedder::house`; `crates/knowledge/src/cli.rs` | **BYOK** first; then Vertex `text-embedding-005` when a Google credential is here (`Embedder::google`, project `openagentsgemini` unless named) | OpenAI (`OPENAI_API_KEY`), then OpenRouter; `KB_GOOGLE_FIRST=off` skips Vertex |
@@ -105,10 +105,11 @@ Owners of a row update it when they change the path. The gateway spec's
 
 ## Remaining
 
-- Product KB in production: the worker's env sets
-  `OPENAGENTS_PRODUCT_KB_EMBEDDINGS=gateway` (Vercel, HTTP 402). Unsetting it
-  (or `vertex`) on the worker VM makes it Vertex first; the base re-embeds
-  once under the new model's cache key.
+- Personalization goes live with the next chat worker release at or after
+  `b91f3f1dbf`; the worker already has `VERTEX_PROJECT` and the metadata
+  token, so no env change is needed. Until then prod personalizes on
+  OpenRouter (HTTP 402), so the dispatch sentence ends with the stem's own
+  words.
 - Hosted plugin-eval runner: its run door is pinned per run so results
   compare; moving it to Vertex is a change to the eval protocol, not a door
   swap.
