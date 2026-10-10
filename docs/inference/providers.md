@@ -45,7 +45,7 @@ Owners of a row update it when they change the path. The gateway spec's
 | --- | --- | --- | --- |
 | Chat worker turn (**prod**, `coder-worker-chat`) | `crates/coder/src/bin/coder-worker.rs` `main` door chain; `crates/coder/src/generate.rs` `vertex_door_from_env` | Vertex AI `gemini-3.8-flash` (global), `CODER_WORKER_VERTEX` / `VERTEX_PROJECT`, GCE metadata token | OpenRouter primary (`CODER_WORKER_PRIMARY`), the `CODER_DOOR_KEY` door, then `CODER_WORKER_BACKUPS` (`openrouter:gemini,openrouter:glm,vercel:gemini,vercel:glm`). With `CODER_INFERENCE_KEY` set, the inference gateway instead |
 | Chat worker turn on the person's keys (**prod**, **BYOK**) | `coder-worker.rs` `their_door` | Their OpenRouter key | Their Vercel key; never ours |
-| Dispatch sentence (personalization) (**prod** from the first worker release at or after `b91f3f1dbf`) | `crates/coder/src/router/personalize.rs` `Personalizer::named_behind` | Vertex AI `gemini-2.5-flash-lite`, thinking off (~0.5 s; budget 1.2 s), whenever the chat door's Vertex switch is on | The provider `CODER_PERSONALIZE` names (prod: OpenRouter `google/gemini-2.5-flash-lite`; or the gateway door's `glm`) |
+| Dispatch sentence (personalization) (**prod**, live since worker release `7ccd13da60`) | `crates/coder/src/router/personalize.rs` `Personalizer::named_behind` | Vertex AI `gemini-2.5-flash-lite`, thinking off (~0.5 s; budget 1.2 s), whenever the chat door's Vertex switch is on | The provider `CODER_PERSONALIZE` names (prod: OpenRouter `google/gemini-2.5-flash-lite`; or the gateway door's `glm`) |
 | Dispatch sentence on the person's keys (**prod**, **BYOK**) | `personalize.rs` `Personalizer::theirs` | Their OpenRouter key | Their Vercel key; else the stem's own words |
 | Router judge and "answers first" judge (**prod**) | `crates/coder/src/decision/profiles.rs`, `crates/jev-hosted/src/lib.rs` `resolve_with_fallbacks`; `crates/coder/src/router/judge.rs` `ask` | Jev on the Vercel AI Gateway (`typesafe-ai/jev`) | OpenRouter `typesafe/jev-1.13`, then TypeSafe `jev-1.13.0`. TypeSafe product: unchanged |
 | Hosted decision worker (**prod**, `decision-worker.service`) | `crates/gateway/src/relay_worker.rs`, `src/bin/decision-worker.rs` | Jev on the Vercel AI Gateway | OpenRouter decisions, then TypeSafe (env template sets only TypeSafe). TypeSafe product: unchanged |
@@ -105,11 +105,6 @@ Owners of a row update it when they change the path. The gateway spec's
 
 ## Remaining
 
-- Personalization goes live with the next chat worker release at or after
-  `b91f3f1dbf`; the worker already has `VERTEX_PROJECT` and the metadata
-  token, so no env change is needed. Until then prod personalizes on
-  OpenRouter (HTTP 402), so the dispatch sentence ends with the stem's own
-  words.
 - Hosted plugin-eval runner: its run door is pinned per run so results
   compare; moving it to Vertex is a change to the eval protocol, not a door
   swap.
