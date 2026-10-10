@@ -300,8 +300,10 @@ pub fn check_gpu_cc(claims: &Value) -> Result<(usize, String), String> {
             ));
         }
     }
+    // Google's reference puts the driver under each GPU; accept either.
     let driver = gpu
         .get("driver_version")
+        .or_else(|| gpus[0].get("driver_version"))
         .and_then(Value::as_str)
         .unwrap_or("unknown")
         .to_string();
@@ -341,8 +343,8 @@ mod tests {
     #[test]
     fn a_gpu_in_cc_mode_passes_and_anything_else_refuses() {
         let on = json!({"submods": {"nvidia_gpu": {
-            "cc_mode": "ON", "cc_feature": "SPT", "driver_version": "580.95.05",
-            "gpus": [{"hwmodel": "GCP_NVIDIA_H100", "ueid": "1"}],
+            "cc_mode": "ON", "cc_feature": "SPT",
+            "gpus": [{"hwmodel": "GCP_NVIDIA_H100", "ueid": "1", "driver_version": "580.95.05"}],
         }}});
         assert_eq!(check_gpu_cc(&on).unwrap(), (1, "580.95.05".into()));
         for mode in ["OFF", "DEVTOOLS"] {
