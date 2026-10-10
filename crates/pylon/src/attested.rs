@@ -358,7 +358,8 @@ pub async fn stop_self() -> Result<(), String> {
     let zone = metadata(&client, "instance/zone").await?;
     let name = metadata(&client, "instance/name").await?;
     let url = format!(
-        "https://compute.googleapis.com/compute/v1/projects/{}/zones/{}/instances/{}/stop",
+        // An a3's local SSD must be named: its contents are discarded.
+        "https://compute.googleapis.com/compute/v1/projects/{}/zones/{}/instances/{}/stop?discardLocalSsd=true",
         project.trim(),
         last_segment(&zone),
         name.trim()
@@ -370,8 +371,14 @@ pub async fn stop_self() -> Result<(), String> {
         .send()
         .await
         .map_err(|e| format!("Compute did not answer: {e}"))?;
-    if !response.status().is_success() {
-        return Err(format!("Compute refused the stop: {}", response.status()));
+    let status = response.status();
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        let reason = serde_json::from_str::<Value>(&body)
+            .ok()
+            .and_then(|v| v["error"]["message"].as_str().map(str::to_string))
+            .unwrap_or_default();
+        return Err(format!("Compute refused the stop: {status} {reason}"));
     }
     Ok(())
 }
