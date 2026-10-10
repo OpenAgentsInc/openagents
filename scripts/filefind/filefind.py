@@ -85,7 +85,7 @@ def worktree_tree(repo):
     return tree
 
 
-def cat_heads(repo, shas, n=HEAD_CHARS * 2):
+def cat_heads(repo, shas, n=HEAD_CHARS * 2, cap=HEAD_CHARS):
     """sha -> head text (None for binary) via one `git cat-file --batch`."""
     p = subprocess.Popen(["git", "-C", repo, "cat-file", "--batch"], stdin=subprocess.PIPE,
                          stdout=subprocess.PIPE)
@@ -103,7 +103,7 @@ def cat_heads(repo, shas, n=HEAD_CHARS * 2):
         data = p.stdout.read(size)
         p.stdout.read(1)
         head = data[:n]
-        out[s] = None if b"\0" in head else head.decode("utf-8", "replace")[:HEAD_CHARS]
+        out[s] = None if b"\0" in head[:8000] else head.decode("utf-8", "replace")[:cap]
     p.wait()
     return out
 
@@ -315,6 +315,13 @@ class TokenIndex:
             "CREATE TABLE IF NOT EXISTS tok(t TEXT, b INTEGER);"
             "CREATE TABLE IF NOT EXISTS def(t TEXT, b INTEGER);")
         self.ids = dict(self.db.execute("SELECT sha, id FROM blob"))
+        self.db.execute("CREATE INDEX IF NOT EXISTS def_b ON def(b)")
+
+    def defined_in(self, bid):
+        return [t for (t,) in self.db.execute("SELECT t FROM def WHERE b = ?", (bid,))]
+
+    def postings(self, t, cap=400):
+        return [b for (b,) in self.db.execute("SELECT b FROM tok WHERE t = ? LIMIT ?", (t, cap))]
 
     def ensure(self, repo, tree, log=True):
         items = tree.items() if isinstance(tree, dict) else tree
@@ -441,24 +448,6 @@ class Query:
             return f[p]
 
         src = defaultdict(set)
-        # ---- emb
-        t0 = time.perf_counter()
-        rows = [self.ix.blob_rows.get(self.tree[p].encode(), -1) for p in self.paths]
-        rows = np.array(rows)
-        mat = np.zeros((len(self.paths), DIMS), np.float32)
-        ok = rows >= 0
-        mat[ok] = self.ix.blob_mat[rows[ok]].astype(np.float32)
-        with np.errstate(all="ignore"):
-            cos = mat @ qvec
-        order = np.argsort(-cos)
-        self.cos, self.erank = cos, np.empty_like(order)
-        self.erank[order] = np.arange(len(order))
-        for r, i in enumerate(order[:300]):
-            p = self.paths[i]
-            src["emb"].add(p)
-            if r < 10:
-                reason[p].append(f"embedding rank {r+1} (cos {cos[i]:.2f})")
-        self.tick("emb", t0)
         # ---- sym
         t0 = time.perf_counter()
         fl = fields(text)
@@ -510,10 +499,21 @@ class Query:
         lit_toks = {lit: sorted(set(TOKEN.findall(lit))) for lit in sorted(fl["literals"])[:30]}
         lit_toks = {k: v for k, v in lit_toks.items() if len(v) >= 2}
         lt = self.ix.tokens.lookup("tok", sorted({t for v in lit_toks.values() for t in v}), bid_to_path)
-        lits = defaultdict(set)
+        cand = defaultdict(list)
         for p, have in lt.items():
             for lit, need in lit_toks.items():
                 if have.issuperset(need):
+                    cand[lit].append(p)
+        # confirm the literal really occurs (tokens alone over-match); skip undistinctive ones
+        check = sorted({p for lit, ps in cand.items() if len(ps) <= 60 for p in ps})
+        body = cat_heads(self.repo, [self.tree[p] for p in check], n=1 << 20, cap=1 << 20) if check else {}
+        lits = defaultdict(set)
+        for lit, ps in cand.items():
+            if len(ps) > 60:
+                continue
+            for p in ps:
+                t = body.get(self.tree[p])
+                if t and lit in t:
                     lits[p].add(lit)
         df = Counter()
         for p, c in ment.items():
@@ -543,6 +543,28 @@ class Query:
             sym_seed[p] += w
             reason[p].append("contains " + ", ".join(f"`{k[:40]}`" for k in sorted(c)[:2]))
         self.tick("sym", t0)
+        # ---- emb (qvec may be a Future: the embedding call overlaps the token lookups)
+        if hasattr(qvec, "result"):
+            tw = time.perf_counter()
+            qvec = qvec.result()
+            self.tick("embed_wait", tw)
+        t0 = time.perf_counter()
+        rows = [self.ix.blob_rows.get(self.tree[p].encode(), -1) for p in self.paths]
+        rows = np.array(rows)
+        mat = np.zeros((len(self.paths), DIMS), np.float32)
+        ok = rows >= 0
+        mat[ok] = self.ix.blob_mat[rows[ok]].astype(np.float32)
+        with np.errstate(all="ignore"):
+            cos = mat @ qvec
+        order = np.argsort(-cos)
+        self.cos, self.erank = cos, np.empty_like(order)
+        self.erank[order] = np.arange(len(order))
+        for r, i in enumerate(order[:300]):
+            p = self.paths[i]
+            src["emb"].add(p)
+            if r < 10:
+                reason[p].append(f"embedding rank {r+1} (cos {cos[i]:.2f})")
+        self.tick("emb", t0)
         # ---- seeds for graph sources
         seeds = {}
         for r, i in enumerate(order[:10]):
@@ -678,6 +700,7 @@ class Query:
         self.F, self.src, self.reason = F, src, reason
         self.recent, self.last = recent, last
         feats = {p: self.base(p) for p in set().union(*src.values())}
+        relative(feats, REL1)
         return feats
 
     def base(self, p):
@@ -740,6 +763,35 @@ class Query:
                 if sc > pair2.get(q, (0, ""))[0]:
                     pair2[q] = (sc, f"{why} of `{p}`")
                 new.add(q)
+        # reference graph: files that use names the top files define
+        ref, ref_why = Counter(), {}
+        ids = self.ix.tokens.ids
+        if not hasattr(self, "bid_to_path"):
+            self.bid_to_path = defaultdict(list)
+            for p, sha in self.tree.items():
+                b = ids.get(sha)
+                if b is not None:
+                    self.bid_to_path[b].append(p)
+        for p, sc in scored[:6]:
+            b = ids.get(self.tree.get(p, ""))
+            if b is None:
+                continue
+            for name in self.ix.tokens.defined_in(b)[:80]:
+                if len(name) < 5:
+                    continue
+                post = self.ix.tokens.postings(name)
+                if len(post) >= 400:
+                    continue
+                users = {q for x in post for q in self.bid_to_path.get(x, ())} - {p}
+                if not users or len(users) > 25:
+                    continue
+                w = sc / math.log2(2 + len(users))
+                for q in users:
+                    ref[q] += w
+                    if w > ref_why.get(q, (0, ""))[0]:
+                        ref_why[q] = (w, f"uses `{name}` defined in `{p}`")
+        for q, _ in ref.most_common(120):
+            new.add(q)
         for p in new - set(feats):
             self.src["stage2"].add(p)
             feats[p] = self.base(p)
@@ -751,13 +803,35 @@ class Query:
             x["crate_mass"] = crate_mass.get(group(p), 0.0) / tot
             x["dir_mass"] = dir_mass.get(p.rsplit("/", 1)[0] if "/" in p else "", 0.0) / tot
             x["pair2"] = pair2.get(p, (0.0, ""))[0]
+            x["ref"] = ref.get(p, 0.0)
+            if x["ref"] > 0.1:
+                self.reason[p].append(ref_why[p][1])
             x["src_stage2"] = float(p in self.src["stage2"])
             if p in pair2 and pair2[p][0] > 0.3:
                 self.reason[p].append(pair2[p][1])
             if x["co2"] > 0.2:
                 self.reason[p].append(f"changes with the top-ranked files (co {x['co2']:.2f})")
+        relative(feats, REL1 + REL2)
         self.tick("stage2", t0)
         return feats
+
+
+REL1 = ["cos", "co", "co_max", "hist", "hist_max", "sim", "sim_max", "sym_ment", "lit", "recent_n"]
+REL2 = ["co2", "s1", "ref"]
+
+
+def relative(feats, keys):
+    """Per-query features: each signal's share of the query's best, and its rank in the pool."""
+    paths = list(feats)
+    for k in keys:
+        v = np.array([feats[p].get(k, 0.0) for p in paths])
+        top = v.max() if len(v) else 0.0
+        order = np.argsort(-v, kind="stable")
+        r = np.empty(len(v))
+        r[order] = np.arange(len(v))
+        for i, p in enumerate(paths):
+            feats[p][k + "_rel"] = float(v[i] / top) if top > 0 else 0.0
+            feats[p][k + "_rk"] = math.log1p(r[i]) if v[i] > 0 else 8.0
 
 
 def tidy(reasons, n=4):
@@ -820,7 +894,8 @@ def vectorize(feats, names):
     return np.array([[float(f.get(n, 0.0)) for n in names] for f in feats], dtype=np.float64)
 
 
-def fit_gbdt(X, y, trees=200, depth=3, lr=0.1, bins=32, min_leaf=30, l2=1.0, pos_weight=3.0):
+def fit_gbdt(X, y, trees=200, depth=3, lr=0.1, bins=32, min_leaf=30, l2=1.0, pos_weight=3.0,
+             sample_weight=None):
     edges = []
     Xb = np.zeros(X.shape, np.uint8)
     for j in range(X.shape[1]):
@@ -828,6 +903,8 @@ def fit_gbdt(X, y, trees=200, depth=3, lr=0.1, bins=32, min_leaf=30, l2=1.0, pos
         edges.append(e.tolist())
         Xb[:, j] = np.searchsorted(e, X[:, j], side="right")
     w = np.where(y > 0, pos_weight, 1.0)
+    if sample_weight is not None:
+        w = w * sample_weight
     prior = np.clip((w * y).sum() / w.sum(), 1e-4, 1 - 1e-4)
     base = math.log(prior / (1 - prior))
     F = np.full(len(y), base)
@@ -871,13 +948,16 @@ def fit_gbdt(X, y, trees=200, depth=3, lr=0.1, bins=32, min_leaf=30, l2=1.0, pos
     return {"kind": "gbdt", "edges": edges, "trees": out, "base": base, "lr": lr}
 
 
-def predict_tree(nodes, Xb):
+_ARRAYS = {}  # id(model) -> per-tree numpy arrays (models live for the whole process)
+
+
+def tree_arrays(nodes):
+    return tuple(np.array([n[i] for n in nodes]) for i in range(5))
+
+
+def predict_tree(nodes, Xb, arrays=None):
     cur = np.zeros(len(Xb), np.int64)
-    feat = np.array([n[0] for n in nodes])
-    thr = np.array([n[1] for n in nodes])
-    left = np.array([n[2] for n in nodes])
-    right = np.array([n[3] for n in nodes])
-    val = np.array([n[4] for n in nodes])
+    feat, thr, left, right, val = arrays or tree_arrays(nodes)
     for _ in range(8):
         f = feat[cur]
         leaf = f < 0
@@ -894,8 +974,11 @@ def score(m, X):
     for j, e in enumerate(m["edges"]):
         Xb[:, j] = np.searchsorted(np.array(e), X[:, j], side="right")
     F = np.full(len(X), m["base"])
-    for t in m["trees"]:
-        F += m["lr"] * predict_tree(t, Xb)
+    arrays = _ARRAYS.get(id(m))
+    if arrays is None:
+        arrays = _ARRAYS[id(m)] = [tree_arrays(t) for t in m["trees"]]
+    for t, arr in zip(m["trees"], arrays):
+        F += m["lr"] * predict_tree(t, Xb, arr)
     return 1 / (1 + np.exp(-F))
 
 
@@ -906,6 +989,12 @@ def rank(m, feats):
     s = score(m, vectorize([feats[p] for p in paths], m["features"]))
     order = np.argsort(-s, kind="stable")
     return [(paths[i], float(s[i])) for i in order]
+
+
+def sureness(ranked, k=50):
+    """The scorer's own estimate of its recall at k: confidence mass in the top k over all."""
+    tot = sum(s for _, s in ranked)
+    return sum(s for _, s in ranked[:k]) / tot if tot > 0 else 0.0
 
 
 def rank_two_stage(model, q, feats):
@@ -955,6 +1044,16 @@ def cmd_index(a):
     TokenIndex(ix.cache).ensure(a.repo, tree)
 
 
+class _First:
+    """A Future of a matrix whose first row is wanted."""
+
+    def __init__(self, fut):
+        self.fut = fut
+
+    def result(self):
+        return self.fut.result()[0]
+
+
 def issue_from_gh(repo, n):
     out = subprocess.run(["gh", "issue", "view", str(n), "--json", "title,body"], cwd=repo,
                          check=True, capture_output=True).stdout
@@ -963,34 +1062,36 @@ def issue_from_gh(repo, n):
 
 
 def cmd_query(a):
-    t_all = time.perf_counter()
     timing = {}
     t0 = time.perf_counter()
-    ix = Index(a.cache or default_cache(a.repo)).load()
-    model = json.load(open(a.model))
-    timing["load"] = time.perf_counter() - t0
     if a.issue:
         title, body = issue_from_gh(a.repo, a.issue)
     else:
         title, body = a.text.split("\n", 1)[0], a.text
+    timing["fetch_issue"] = time.perf_counter() - t0
+    t_all = time.perf_counter()  # "total" counts from here: the issue text in hand
+    key = os.environ.get("OPENROUTER_API_KEY")
+    pool = ThreadPoolExecutor(1)
+    if key:  # the one network call runs while the indexes load and the token stages run
+        qvec = pool.submit(embed, [issue_text(title, body)], key)
+        qvec = _First(qvec)
+    else:  # no embeddings: the deterministic stages still run; similarity features are zero
+        print("OPENROUTER_API_KEY is not set: running without embeddings (lower recall)", file=sys.stderr)
+        qvec = np.zeros(DIMS, np.float32)
+    t0 = time.perf_counter()
+    ix = Index(a.cache or default_cache(a.repo)).load()
+    model = json.load(open(a.model))
+    timing["load"] = time.perf_counter() - t0
     t0 = time.perf_counter()
     rev = a.rev
     tree = ls_tree(a.repo, rev)
     timing["tree"] = time.perf_counter() - t0
-    key = os.environ.get("OPENROUTER_API_KEY")
     t0 = time.perf_counter()
     if key:
         if ix.ensure_blobs(a.repo, tree, key, log=False):
             ix.save_blobs()
     ix.tokens.ensure(a.repo, tree, log=False)
     timing["refresh_index"] = time.perf_counter() - t0
-    t0 = time.perf_counter()
-    if key:
-        qvec = embed([issue_text(title, body)], key)[0]
-    else:  # no embeddings: the deterministic stages still run; similarity features are zero
-        print("OPENROUTER_API_KEY is not set: running without embeddings (lower recall)", file=sys.stderr)
-        qvec = np.zeros(DIMS, np.float32)
-    timing["embed_query"] = time.perf_counter() - t0
     q = Query(ix, a.repo, rev, tree, exclude_issue=a.issue, timing=timing)
     feats = q.run(title, body, qvec)
     t0 = time.perf_counter()

@@ -62,58 +62,78 @@ def main():
     ap.add_argument("--n", type=int, default=100)
     ap.add_argument("--max-hand", type=int, default=25, help="skip sweeping fixes with more hand-written files")
     ap.add_argument("--rev", default="origin/main")
+    ap.add_argument("--multi", action="store_true",
+                    help="also take issues fixed by several commits (union of their files), for training")
+    ap.add_argument("--max-commits", type=int, default=6)
+    ap.add_argument("--max-cases", type=int, default=100000)
+    ap.add_argument("--only", help="comma-separated issue numbers (any state; --issues must hold them)")
     a = ap.parse_args()
     issues = {i["number"]: i for i in json.load(open(a.issues))}
+    only = {int(x) for x in a.only.split(",")} if a.only else None
+    if only:  # open issues with fixes already on main (out-of-sample check)
+        issues = {n: v for n, v in issues.items() if n in only}
     log = git(a.repo, "log", a.rev, "--no-merges", "--format=%H%x09%s").decode().splitlines()
     by_issue = defaultdict(list)
-    single = {}
     for line in log:
         sha, subj = line.split("\t", 1)
-        refs = sorted(set(int(x) for x in REF.findall(subj)))
-        for n in refs:
+        for n in set(int(x) for x in REF.findall(subj)):
             by_issue[n].append(sha)
-        m = re.search(r"\(#(\d+)\)\s*$", subj) or re.search(r"\(#(\d+)\)", subj)
-        if m and len(refs) == 1:
-            single.setdefault(int(m.group(1)), (sha, subj))
     cases, skipped = [], defaultdict(int)
+    order = {line.split("\t", 1)[0]: i for i, line in enumerate(log)}  # 0 = newest
+
+    def files_of(shas, parent):
+        hand, derived = {}, {}
+        for sha in shas:
+            status = git(a.repo, "show", "--format=", "--name-status", "--no-renames", sha).decode().splitlines()
+            for st in status:
+                parts = st.split("\t")
+                code, path = parts[0], parts[-1]
+                if path in hand or path in derived:
+                    continue
+                existed = subprocess.run(["git", "-C", a.repo, "cat-file", "-e", f"{parent}:{path}"],
+                                         capture_output=True).returncode == 0
+                kind = derived_kind(a.repo, parent if existed else sha, path)
+                if kind:
+                    derived[path] = {"path": path, "kind": kind, "status": code}
+                else:
+                    hand[path] = {"path": path, "status": code, "existing": existed}
+        return list(hand.values()), list(derived.values())
+
+    seen = set()
     for line in log:  # newest first
         sha, subj = line.split("\t", 1)
         refs = sorted(set(int(x) for x in REF.findall(subj)))
-        if len(refs) != 1:
-            continue
-        n = refs[0]
-        if single.get(n, (None,))[0] != sha:
-            continue
-        if n not in issues:
-            skipped["not a closed issue"] += 1
-            continue
-        if len(by_issue[n]) != 1:
-            skipped["several commits mention the issue"] += 1
-            continue
-        parent = f"{sha}^"
-        status = git(a.repo, "show", "--format=", "--name-status", "--no-renames", sha).decode().splitlines()
-        hand, derived = [], []
-        for st in status:
-            parts = st.split("\t")
-            code, path = parts[0], parts[-1]
-            rev = parent if code != "A" else sha
-            kind = derived_kind(a.repo, rev, path)
-            if kind:
-                derived.append({"path": path, "kind": kind, "status": code})
-            else:
-                hand.append({"path": path, "status": code, "existing": code != "A"})
-        if not hand:
-            skipped["only derived files"] += 1
-            continue
-        if len(hand) > a.max_hand:
-            skipped[f"more than {a.max_hand} hand-written files"] += 1
-            continue
-        iss = issues[n]
-        cases.append({"issue": n, "commit": sha, "parent": git(a.repo, "rev-parse", parent).decode().strip(),
-                      "subject": subj, "title": iss["title"], "body": iss["body"] or "",
-                      "created": iss["createdAt"], "closed": iss["closedAt"],
-                      "hand": hand, "derived": derived})
-        if len(cases) >= a.n:
+        for n in refs:
+            if n in seen or n not in issues:
+                continue
+            shas = by_issue[n]
+            single_case = len(refs) == 1 and len(shas) == 1
+            if not single_case and not a.multi:
+                continue
+            if len(shas) > a.max_commits:
+                skipped["too many commits"] += 1
+                seen.add(n)
+                continue
+            seen.add(n)
+            first = max(shas, key=lambda x: order[x])  # oldest
+            parent = git(a.repo, "rev-parse", f"{first}^").decode().strip()
+            hand, derived = files_of(sorted(shas, key=lambda x: -order[x]), parent)
+            if not hand:
+                skipped["only derived files"] += 1
+                continue
+            if len(hand) > a.max_hand:
+                skipped[f"more than {a.max_hand} hand-written files"] += 1
+                continue
+            iss = issues[n]
+            cases.append({"issue": n, "commit": first, "parent": parent, "commits": shas,
+                          "last_commit": min(shas, key=lambda x: order[x]),
+                          "kind": "single" if single_case else "multi",
+                          "subject": subj, "title": iss["title"], "body": iss["body"] or "",
+                          "created": iss["createdAt"], "closed": iss["closedAt"],
+                          "hand": hand, "derived": derived})
+        if len([c for c in cases if c["kind"] == "single"]) >= a.n and not a.multi:
+            break
+        if len(cases) >= a.max_cases:
             break
     json.dump({"rev": a.rev, "max_hand": a.max_hand, "skipped": skipped, "cases": cases},
               open(a.out, "w"), indent=1)
