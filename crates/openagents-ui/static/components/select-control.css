@@ -88,15 +88,6 @@
     --select-control-font-size: var(--control-font-size-sm);
     --select-control-gap: 4px;
     --select-control-radius: var(--control-radius-sm);
-    --start-icon-size: var(--control-icon-size-xs);
-    --start-icon-offset: 0;
-    --start-icon-pill-offset: 0;
-    --clear-size: 14px;
-    --clear-icon-size: 13px;
-    --clear-iso-size: 12px;
-    --clear-iso-icon-size: 10px;
-    --clear-iso-offset: -1px;
-    --clear-iso-pill-offset: -2px;
     --dropdown-icon-offset: 0;
     --dropdown-icon-pill-offset: 0;
     --dropdown-icon-width: 6px;
@@ -113,15 +104,6 @@
     --select-control-font-size: var(--control-font-size-sm);
     --select-control-gap: 6px;
     --select-control-radius: var(--control-radius-sm);
-    --start-icon-size: var(--control-icon-size-sm);
-    --start-icon-offset: 0;
-    --start-icon-pill-offset: -1px;
-    --clear-size: 16px;
-    --clear-icon-size: 13px;
-    --clear-iso-size: 14px;
-    --clear-iso-icon-size: 12px;
-    --clear-iso-offset: -2px;
-    --clear-iso-pill-offset: -4px;
     --dropdown-icon-offset: 0;
     --dropdown-icon-pill-offset: 0;
     --dropdown-icon-width: 6px;
@@ -138,15 +120,6 @@
     --select-control-font-size: var(--control-font-size-md);
     --select-control-gap: 6px;
     --select-control-radius: var(--control-radius-sm);
-    --start-icon-size: var(--control-icon-size-sm);
-    --start-icon-offset: -1px;
-    --start-icon-pill-offset: -1px;
-    --clear-size: 18px;
-    --clear-icon-size: 14px;
-    --clear-iso-size: 16px;
-    --clear-iso-icon-size: 12px;
-    --clear-iso-offset: -2px;
-    --clear-iso-pill-offset: -4px;
     --dropdown-icon-offset: 0;
     --dropdown-icon-pill-offset: 0;
     --dropdown-icon-width: 7px;
@@ -163,15 +136,6 @@
     --select-control-font-size: var(--control-font-size-md);
     --select-control-gap: 8px;
     --select-control-radius: var(--control-radius-sm);
-    --start-icon-size: var(--control-icon-size-sm);
-    --start-icon-offset: -1px;
-    --start-icon-pill-offset: -2px;
-    --clear-size: 18px;
-    --clear-icon-size: 14px;
-    --clear-iso-size: 16px;
-    --clear-iso-icon-size: 12px;
-    --clear-iso-offset: -3px;
-    --clear-iso-pill-offset: -6px;
     --dropdown-icon-offset: 0;
     --dropdown-icon-pill-offset: -2px;
     --dropdown-icon-width: 7px;
@@ -188,15 +152,6 @@
     --select-control-font-size: var(--control-font-size-md);
     --select-control-gap: 8px;
     --select-control-radius: var(--control-radius-md);
-    --start-icon-size: var(--control-icon-size-md);
-    --start-icon-offset: -1px;
-    --start-icon-pill-offset: -4px;
-    --clear-size: 22px;
-    --clear-icon-size: 15px;
-    --clear-iso-size: 18px;
-    --clear-iso-icon-size: 14px;
-    --clear-iso-offset: -4px;
-    --clear-iso-pill-offset: -7px;
     --dropdown-icon-offset: 0;
     --dropdown-icon-pill-offset: -2px;
     --dropdown-icon-width: 8px;
@@ -213,15 +168,6 @@
     --select-control-font-size: var(--control-font-size-md);
     --select-control-gap: 8px;
     --select-control-radius: var(--control-radius-md);
-    --start-icon-size: var(--control-icon-size-md);
-    --start-icon-offset: -2px;
-    --start-icon-pill-offset: -4px;
-    --clear-size: 22px;
-    --clear-icon-size: 15px;
-    --clear-iso-size: 18px;
-    --clear-iso-icon-size: 14px;
-    --clear-iso-offset: -2px;
-    --clear-iso-pill-offset: -6px;
     --dropdown-icon-offset: 0;
     --dropdown-icon-pill-offset: -2px;
     --dropdown-icon-width: 8px;
@@ -238,15 +184,6 @@
     --select-control-font-size: var(--control-font-size-md);
     --select-control-gap: 8px;
     --select-control-radius: var(--control-radius-lg);
-    --start-icon-size: var(--control-icon-size-md);
-    --start-icon-offset: -2px;
-    --start-icon-pill-offset: -4px;
-    --clear-size: 24px;
-    --clear-icon-size: 16px;
-    --clear-iso-size: 18px;
-    --clear-iso-icon-size: 14px;
-    --clear-iso-offset: -2px;
-    --clear-iso-pill-offset: -7px;
     --dropdown-icon-offset: 0;
     --dropdown-icon-pill-offset: -2px;
     --dropdown-icon-width: 8px;
@@ -263,15 +200,6 @@
     --select-control-font-size: var(--control-font-size-lg);
     --select-control-gap: 10px;
     --select-control-radius: var(--control-radius-xl);
-    --start-icon-size: var(--control-icon-size-lg);
-    --start-icon-offset: -2px;
-    --start-icon-pill-offset: -4px;
-    --clear-size: 24px;
-    --clear-icon-size: 16px;
-    --clear-iso-size: 20px;
-    --clear-iso-icon-size: 15px;
-    --clear-iso-offset: -2px;
-    --clear-iso-pill-offset: -7px;
     --dropdown-icon-offset: 0;
     --dropdown-icon-pill-offset: -2px;
     --dropdown-icon-width: 8px;
@@ -288,15 +216,6 @@
     --select-control-font-size: var(--control-font-size-lg);
     --select-control-gap: 10px;
     --select-control-radius: var(--control-radius-xl);
-    --start-icon-size: var(--control-icon-size-lg);
-    --start-icon-offset: -2px;
-    --start-icon-pill-offset: -4px;
-    --clear-size: 24px;
-    --clear-icon-size: 16px;
-    --clear-iso-size: 20px;
-    --clear-iso-icon-size: 15px;
-    --clear-iso-offset: -2px;
-    --clear-iso-pill-offset: -7px;
     --dropdown-icon-offset: 0;
     --dropdown-icon-pill-offset: -3px;
     --dropdown-icon-width: 9px;
@@ -480,7 +399,6 @@
   ============================================= */
   &:not([data-disabled]) {
     &:hover {
-      .oa-select-control-clear,
       .oa-select-control-icon {
         opacity: 1;
       }
@@ -534,43 +452,6 @@
   padding-left: var(--indicator-wrapper-gutter);
 }
 
-.oa-select-control-start-icon {
-  position: relative;
-  width: var(--start-icon-size);
-  height: var(--start-icon-size);
-  margin-left: var(--start-icon-offset);
-
-  :where(.oa-select-control[data-pill]) & {
-    margin-left: var(--start-icon-pill-offset);
-  }
-}
-
-.oa-select-control-clear {
-  --button-size: var(--clear-size);
-  --button-icon-size: var(--clear-icon-size);
-
-  position: relative;
-  opacity: 0.75;
-
-  &[data-variant="solid"] {
-    --button-size: var(--clear-iso-size);
-    --button-icon-size: var(--clear-iso-icon-size);
-  }
-
-  [data-state="open"] &,
-  &:focus-visible {
-    opacity: 1;
-  }
-
-  &[data-only-child] {
-    margin-right: var(--clear-iso-offset);
-
-    :where(.oa-select-control[data-pill]) & {
-      margin-right: var(--clear-iso-pill-offset);
-    }
-  }
-}
-
 .oa-select-control-icon {
   position: relative;
   width: var(--dropdown-icon-width, 8px);
@@ -589,20 +470,6 @@
 
   [data-state="open"] & {
     opacity: 1;
-  }
-}
-
-.oa-select-control-chevron {
-  width: var(--dropdown-chevron-icon-width, 11px);
-  height: var(--dropdown-chevron-icon-height, 6px);
-}
-
-/* Shares margin offset with dropdown indicator */
-.oa-select-control-loading {
-  margin-right: var(--dropdown-icon-offset);
-
-  :where(.oa-select-control[data-pill]) & {
-    margin-right: var(--dropdown-icon-pill-offset);
   }
 }
 

@@ -184,8 +184,7 @@
 }
 
 /* Links: the renderer only keeps http, https, mailto, site paths and anchors. */
-.oa-markdown a,
-.oa-link {
+.oa-markdown a {
   border-radius: var(--radius-sm);
   color: var(--markdown-link-color);
   text-decoration: underline;
@@ -194,13 +193,11 @@
   transition: color var(--transition-duration-basic, 150ms) var(--transition-ease-basic, ease);
 }
 
-.oa-markdown a:hover,
-.oa-link:hover {
+.oa-markdown a:hover {
   color: var(--markdown-link-color-hover);
 }
 
-.oa-markdown a:focus-visible,
-.oa-link:focus-visible {
+.oa-markdown a:focus-visible {
   outline: 2px solid var(--color-ring);
   outline-offset: 1px;
 }

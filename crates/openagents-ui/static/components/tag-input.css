@@ -191,15 +191,6 @@
     filter 0s 50000s !important;
 }
 
-.oa-tag-input__limit {
-  width: 100%;
-  margin-top: 2px;
-  color: var(--color-text);
-  font-size: var(--font-text-xs-size);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
 @keyframes oa-tag-input-shake {
   0% {
     transform: translateX(0);
