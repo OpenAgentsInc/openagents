@@ -328,7 +328,12 @@ async fn count(store: &Store, owner: &str, chat: &str) -> Result<usize, Error> {
 }
 
 /// Remove one file of `chat`; false when it was gone.
-pub(crate) async fn forget(store: &Store, owner: &str, chat: &str, id: &str) -> Result<bool, Error> {
+pub(crate) async fn forget(
+    store: &Store,
+    owner: &str,
+    chat: &str,
+    id: &str,
+) -> Result<bool, Error> {
     if !valid_file_id(id) {
         return Ok(false);
     }
@@ -450,12 +455,12 @@ pub(crate) async fn for_model(
     for file in files {
         if file.kind != Kind::Text {
             let what = if file.kind == Kind::Pdf {
-                "PDF"
+                "A PDF"
             } else {
-                "image"
+                "An image"
             };
             out.push_str(&format!(
-                "\n[An {what} named \"{}\". This chat can't open images or PDFs yet; if asked about it, say so.]",
+                "\n[{what} named \"{}\". This chat can't open images or PDFs yet; if asked about it, say so.]",
                 file.name
             ));
             continue;
@@ -482,7 +487,12 @@ pub(crate) async fn for_model(
 }
 
 /// What the answer here reads for a message's files ([`for_model`]).
-pub(crate) async fn for_answer(store: &Store, owner: &str, chat: &str, files: &[FileRef]) -> String {
+pub(crate) async fn for_answer(
+    store: &Store,
+    owner: &str,
+    chat: &str,
+    files: &[FileRef],
+) -> String {
     for_model(store, owner, chat, files, ANSWER_BYTES).await
 }
 
@@ -568,7 +578,7 @@ pub(crate) fn picker() -> Markup {
 /// in, one chip per file, and the privacy note while there are any.
 pub(crate) fn tray() -> Markup {
     html! {
-        div.oa-file-tray data-oa-files="" {
+        div.oa-file-tray data-oa-files="" data-empty="" {
             input type="hidden" name="files" value="" data-oa-files-field="";
             ul.oa-file-chips data-oa-file-list="" aria-label="Files to send" {}
             p.oa-file-note hidden data-oa-file-note="" {
@@ -733,7 +743,10 @@ async fn serve(
     };
     let mut response = (StatusCode::OK, bytes).into_response();
     let set = response.headers_mut();
-    set.insert(header::CONTENT_TYPE, HeaderValue::from_static(file.kind.mime()));
+    set.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(file.kind.mime()),
+    );
     if let Ok(value) = HeaderValue::from_str(&disposition) {
         set.insert(header::CONTENT_DISPOSITION, value);
     }

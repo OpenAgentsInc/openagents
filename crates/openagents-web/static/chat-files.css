@@ -1,0 +1,143 @@
+/* Files in the composer and under sent messages (#11174,
+   `crate::chat_files`). Served from /chat/files.css. */
+
+/* The row above the text box only shows while files are added. */
+.oa-composer-attachments:has(> .oa-file-tray[data-empty]) {
+  display: none;
+}
+
+.oa-file-tray {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 2);
+  width: 100%;
+  min-width: 0;
+}
+
+.oa-file-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--spacing) * 2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.oa-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  max-width: 100%;
+  min-width: 0;
+  padding: calc(var(--spacing) * 1) calc(var(--spacing) * 1) calc(var(--spacing) * 1) calc(var(--spacing) * 2);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-size: var(--font-text-sm-size);
+}
+.oa-file-chip[data-state="adding"] {
+  color: var(--color-text-secondary);
+}
+.oa-file-chip img {
+  flex: none;
+  width: calc(var(--spacing) * 8);
+  height: calc(var(--spacing) * 8);
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+.oa-file-chip-name {
+  overflow: hidden;
+  max-width: 16rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oa-file-chip-size {
+  flex: none;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-text-xs-size);
+}
+.oa-file-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: calc(var(--spacing) * 6);
+  height: calc(var(--spacing) * 6);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+.oa-file-chip-remove:hover {
+  background: var(--color-background-primary-ghost-hover);
+  color: var(--color-text);
+}
+.oa-file-chip-remove:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+
+.oa-file-note {
+  margin: 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-text-xs-size);
+}
+.oa-file-note a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+/* The picker is a label around a hidden file input. */
+.oa-file-pick:focus-within {
+  box-shadow: 0 0 0 2px var(--color-ring);
+}
+
+/* A file dragged over the text box. */
+.oa-composer-body[data-oa-file-over] {
+  border-color: var(--color-border-strong);
+}
+
+/* Under a sent message. */
+.oa-chat-files {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: calc(var(--spacing) * 2);
+  margin: calc(var(--spacing) * -2) 0 calc(var(--spacing) * 4);
+  padding: 0;
+  list-style: none;
+}
+.oa-chat-file a {
+  display: inline-flex;
+  flex-direction: column;
+  max-width: 14rem;
+  padding: calc(var(--spacing) * 2);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  text-decoration: none;
+}
+.oa-chat-file a:hover {
+  border-color: var(--color-border);
+}
+.oa-chat-file img {
+  display: block;
+  width: 6rem;
+  height: 4.5rem;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+.oa-chat-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-text-sm-size);
+}
+.oa-chat-file-size {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-text-xs-size);
+}

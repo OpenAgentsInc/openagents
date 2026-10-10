@@ -493,11 +493,11 @@ async fn start_claude(
     picked: &crate::composer_row::Picked,
     files: Vec<crate::chat_files::FileRef>,
 ) -> Response {
-    let attached =
-        match crate::chat_files::for_run(&app.config.chat_store, owner, id, &files).await {
-            Ok(attached) => attached,
-            Err(message) => return refusal(StatusCode::BAD_REQUEST, message),
-        };
+    let attached = match crate::chat_files::for_run(&app.config.chat_store, owner, id, &files).await
+    {
+        Ok(attached) => attached,
+        Err(message) => return refusal(StatusCode::BAD_REQUEST, message),
+    };
     let Some(env) = claude_environment(app, headers, owner, picked, true).await else {
         return refusal(
             StatusCode::CONFLICT,
@@ -1339,6 +1339,7 @@ async fn follow_claude(
     digest: String,
     picked: &crate::composer_row::Picked,
     place: Option<(Option<String>, Option<String>)>,
+    files: Vec<crate::chat_files::FileRef>,
 ) -> Response {
     let chat = &loaded.conversation;
     if work::running(chat) {
@@ -1347,6 +1348,16 @@ async fn follow_claude(
             "Claude Code is still working in this chat. Wait for it to finish.",
         );
     }
+    // Text files sent with the message go in the run's prompt
+    // ([`crate::chat_files::for_run`], #11174).
+    let attached =
+        match crate::chat_files::for_run(&app.config.chat_store, &chat.owner, &chat.id, &files)
+            .await
+        {
+            Ok(attached) => attached,
+            Err(message) => return refusal(StatusCode::BAD_REQUEST, message),
+        };
+    let asked = format!("{text}{attached}");
     let Some(env) = claude_environment(app, headers, &chat.owner, picked, false).await else {
         return refusal(
             StatusCode::CONFLICT,
@@ -1359,7 +1370,7 @@ async fn follow_claude(
         &env,
         picked.branch.as_deref(),
         &chat.messages,
-        &text,
+        &asked,
     )
     .await
     {
@@ -1383,7 +1394,7 @@ async fn follow_claude(
         outcome: Outcome::Answered,
         selection: chat.selection.clone(),
         cloud: None,
-        files: Vec::new(),
+        files,
         reply: None,
     });
     work::record(&mut next, environment, task.clone());
@@ -1436,6 +1447,16 @@ async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
         .expect("dispatch owns pending request")
         .request_id
         .clone();
+    // The text files sent with this message, read as data; a line naming
+    // each image or PDF ([`crate::chat_files::for_answer`], #11174).
+    let sent = chat
+        .requests
+        .iter()
+        .find(|r| r.id == request_id)
+        .map(|r| r.files.clone())
+        .unwrap_or_default();
+    let attached =
+        crate::chat_files::for_answer(&app.config.chat_store, &owner, &chat.id, &sent).await;
     let turns: Vec<Turn> = chat
         .messages
         .iter()
@@ -1447,12 +1468,15 @@ async fn answer(app: App, mut loaded: Loaded, admitted_at: u64) {
         .rev()
         .map(|m| {
             if m.role == Role::User {
-                Turn::user(
-                    m.text
-                        .chars()
-                        .take(crate::ask::MAX_TURN_CHARS)
-                        .collect::<String>(),
-                )
+                let mut text = m
+                    .text
+                    .chars()
+                    .take(crate::ask::MAX_TURN_CHARS)
+                    .collect::<String>();
+                if m.request_id.as_deref() == Some(request_id.as_str()) {
+                    text.push_str(&attached);
+                }
+                Turn::user(text)
             } else {
                 Turn::assistant(
                     m.text
@@ -1863,6 +1887,8 @@ fn messages(chat: &Conversation, before: Option<usize>, links: bool) -> Markup {
                 streaming(chat, message),
                 crate::chat_store::is_account_owner(&chat.owner),
             ))
+            // The files sent with it (#11174).
+            (crate::chat_files::shown(&chat.id, crate::chat_files::of_message(chat, message)))
             // A reply that proposed a change on GitHub: its confirm card (#11167).
             (crate::github_tools::thread_entry(&chat.id, index + start, crate::suggestions::message_reply(chat, message)))
             (work::rows(chat, index + start + 1, links))

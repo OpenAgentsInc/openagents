@@ -1079,7 +1079,9 @@ impl Store {
                 .delete(&chat.owner, &chat.id, &loaded.generation)
                 .await?;
             // The chat's files go with it (#11174).
-            if let Err(error) = crate::chat_files::purge(self, &chat.owner, &chat.id).await {
+            if removed
+                && let Err(error) = crate::chat_files::purge(self, &chat.owner, &chat.id).await
+            {
                 eprintln!("openagents-web: chat files delete: {error}");
             }
             return Ok(removed);
@@ -2014,12 +2016,15 @@ impl Gcs {
                 continue;
             };
             let updated = rfc3339_unix(&object.updated).unwrap_or(u64::MAX);
-            let newest = folders.entry((owner.to_owned(), chat.to_owned())).or_insert(0);
+            let newest = folders
+                .entry((owner.to_owned(), chat.to_owned()))
+                .or_insert(0);
             *newest = (*newest).max(updated);
         }
         let mut removed = 0;
         for ((owner, chat), newest) in folders {
-            if newest >= cutoff_unix || chats.contains(format!("{prefix}{owner}/{chat}.json").as_str())
+            if newest >= cutoff_unix
+                || chats.contains(format!("{prefix}{owner}/{chat}.json").as_str())
             {
                 continue;
             }
