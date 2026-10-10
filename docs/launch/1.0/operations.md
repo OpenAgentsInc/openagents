@@ -111,12 +111,13 @@ published in the older separate-files layout:
 export CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config
 B=gs://openagentsgemini-cli-releases/coder
 gcloud storage rm $B/coder.stable
-printf '1.0.0-rc.5\n' >/tmp/coder.rc && gcloud storage cp /tmp/coder.rc $B/coder.rc \
+printf '1.0.0-rc.6\n' >/tmp/coder.rc && gcloud storage cp /tmp/coder.rc $B/coder.rc \
   --content-type=text/plain --cache-control='public, max-age=60'
 ```
 
-Then set `CODER_VERSION` in `download.rs` back to `1.0.0-rc.5` if it was
-moved, and deploy the website.
+Then set `CODER_VERSION` in `download.rs` back to `1.0.0-rc.6` (and
+`coder_release_commands.txt` with it) if it was moved, and deploy the
+website. Never point a channel at 1.0.0-rc.5: it has no `coder login`.
 
 ### Desktop
 

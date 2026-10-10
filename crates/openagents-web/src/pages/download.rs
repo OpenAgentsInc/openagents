@@ -21,7 +21,7 @@ use crate::ui_page::UiPage;
 /// published release: set it to a new version only after
 /// `scripts/release/coder.sh` has published that version
 /// (`docs/release/terminal.md`), or the page links files that don't exist.
-pub(crate) const CODER_VERSION: &str = "1.0.0-rc.5";
+pub(crate) const CODER_VERSION: &str = "1.0.0-rc.6";
 pub(crate) const CODER_BASE: &str =
     "https://storage.googleapis.com/openagentsgemini-cli-releases/coder";
 pub(crate) const CODER_SH: &str = "curl -fsSL https://openagents.com/cli/install.sh | bash";

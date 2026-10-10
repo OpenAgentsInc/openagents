@@ -17,8 +17,10 @@ deploy the website first if its installers changed (the hosted installers
 read both layouts, so an older site installer must not meet an archive-only
 channel); run `--version 1.0.0-rc.6` to build and check locally, then the
 same with `--publish --channel rc`; run `--publish-installers` from the same
-commit; then set `CODER_VERSION` in `download.rs` to the new version and
-deploy the site, which turns on the per-platform "Coder for <platform>"
+commit; then set `CODER_VERSION` in `download.rs` to the new version,
+regenerate the release's command list
+(`scripts/release/coder-commands.sh VERSION COMMIT >
+crates/openagents-web/src/coder_release_commands.txt`), and deploy the site, which turns on the per-platform "Coder for <platform>"
 downloads. The website serves the installers at `/cli/install.sh` and
 `/cli/install.ps1`. `scripts/test-release-coder.sh` and
 `scripts/test-install-coder-hosted.py` test the archive layout, channel
@@ -59,7 +61,7 @@ control it; `CI` turns checks off.
 
 The crates carry `1.0.0` from #11091. `CODER_VERSION` in
 `crates/openagents-web/src/pages/download.rs` stays at the newest
-published version (`1.0.0-rc.5`) until 1.0.0 is published, because the
+published version (`1.0.0-rc.6`) until 1.0.0 is published, because the
 page links that version's files. On the release Mac, from a clean checkout
 of `main`:
 
@@ -75,9 +77,23 @@ of `main`:
    `curl -fsS https://storage.googleapis.com/openagentsgemini-cli-releases/coder/coder.stable`
    prints `1.0.0`; then `curl -fsSL https://openagents.com/cli/install.sh | bash`
    in a new terminal and `coder --version` prints `coder 1.0.0 (...)`.
-5. **Turn on the downloads:** set `CODER_VERSION` to `"1.0.0"`, commit, and
+5. **Turn on the downloads:** set `CODER_VERSION` to `"1.0.0"`, regenerate
+   the command list (`scripts/release/coder-commands.sh 1.0.0 HEAD >
+   crates/openagents-web/src/coder_release_commands.txt`), commit, and
    deploy the website. `/download` then says "Version 1.0.0." and lists the
    seven archives.
+
+### Commands the site names
+
+The site, its docs, the chat knowledge in `knowledge/openagents/`, and the
+chat answer bank tell people to run Coder commands (`coder login`,
+`/sync on`). `coder_commands_guard.rs` in openagents-web fails when one of
+them is missing from `coder_release_commands.txt`, the command list of the
+release `CODER_VERSION` names, and when that list is for another version.
+1.0.0-rc.5 shipped without `coder login` while every page said to run it;
+1.0.0-rc.6 (2026-10-10) was published from release commit `65f83ab379`
+(tag `coder-v1.0.0-rc.6`: origin/main `00e7563c14` with the crates at
+`1.0.0-rc.6`; `main` keeps `1.0.0` for the stable release).
 
 Rollback: [operations.md](../launch/1.0/operations.md#terminal-coder).
 

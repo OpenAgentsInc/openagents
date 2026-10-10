@@ -5,7 +5,7 @@ platforms, the iPhone beta, and a link to the web app.
 
 ## Coder
 
-Coder 1.0.0-rc.5 is the new terminal UI. Installing Coder also adds the
+Coder 1.0.0-rc.6 is the new terminal UI. Installing Coder also adds the
 `openagents` command.
 
 On macOS and Linux:

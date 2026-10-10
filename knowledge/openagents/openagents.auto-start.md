@@ -41,7 +41,7 @@ A task from your phone starts on your computer right away only when you've allow
 
 ## Details
 
-- Only the computer itself turns auto-start on or widens it: the desktop app, or on a computer without it, `coder host autostart on`. No phone or relay message can.
+- Only the computer itself turns auto-start on or widens it: the desktop app. No phone or relay message can.
 - An auto-started task runs under a normal operator execution grant with every usual check.
 
 ## Sources

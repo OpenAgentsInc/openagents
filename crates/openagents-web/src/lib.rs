@@ -647,6 +647,8 @@ pub(crate) fn not_found_page() -> Response {
 #[cfg(test)]
 mod agent_ready_tests;
 #[cfg(test)]
+mod coder_commands_guard;
+#[cfg(test)]
 mod copy_guard;
 #[cfg(test)]
 mod route_owners_tests;

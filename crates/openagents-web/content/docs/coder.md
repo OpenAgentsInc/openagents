@@ -4,7 +4,7 @@ Coder is an AI coding assistant in your terminal. Ask it to explain code,
 change files, or run commands in the folder you open. You can follow its work
 in the chat and open a delegated agent's conversation below the input bar.
 
-The new **1.0.0-rc.5** release ships Coder, with the `openagents` command, for
+The new **1.0.0-rc.6** release ships Coder, with the `openagents` command, for
 macOS, Linux, and Windows. It includes plugin settings, an OpenRouter model
 picker, agent conversations, Markdown replies, code diffs, and saved chats
 that you can resume or export.
@@ -38,7 +38,7 @@ Open a new terminal, then check the version:
 coder --version
 ```
 
-It should report `1.0.0-rc.5`. The [download page](/download) also has manual
+It should report `1.0.0-rc.6`. The [download page](/download) also has manual
 downloads. Run the installer again when you want to update.
 
 ### 2. Open a test folder

@@ -23,7 +23,7 @@ answer: >-
   ~/.openagents/AGENTS.md, and it keeps small notes about you (for every
   project) and about each project in ~/.openagents/memory. Tell Coder to
   remember or forget something; type `/memory` in Coder to list its notes and
-  `/memory forget NAME` to delete one, or run `coder memory list`. Notes that
+  `/memory forget NAME` to delete one, or run `openagents coder memory list`. Notes that
   look like a password or key are refused. Get Coder:
   `curl -fsSL https://openagents.com/cli/install.sh | bash`.
 status: admitted
@@ -39,13 +39,13 @@ evidence:
 
 ## Answer
 
-Coder, our coding agent, keeps memory across sessions on your computer. On every turn it reads the repository's AGENTS.md and CLAUDE.md and your own ~/.openagents/AGENTS.md, and it keeps small notes about you (for every project) and about each project in ~/.openagents/memory. Tell Coder to remember or forget something; type `/memory` in Coder to list its notes and `/memory forget NAME` to delete one, or run `coder memory list`. Notes that look like a password or key are refused. Get Coder: `curl -fsSL https://openagents.com/cli/install.sh | bash`.
+Coder, our coding agent, keeps memory across sessions on your computer. On every turn it reads the repository's AGENTS.md and CLAUDE.md and your own ~/.openagents/AGENTS.md, and it keeps small notes about you (for every project) and about each project in ~/.openagents/memory. Tell Coder to remember or forget something; type `/memory` in Coder to list its notes and `/memory forget NAME` to delete one, or run `openagents coder memory list`. Notes that look like a password or key are refused. Get Coder: `curl -fsSL https://openagents.com/cli/install.sh | bash`.
 
 ## Details
 
 - Instruction files are read from the working directory up to your home folder, nearest first. Instruction files in other directories of the checkout are named so Coder reads them before working there.
 - Project notes are shared by all worktrees of the same project. Notes are markdown files with a `MEMORY.md` index.
-- `coder memory list|show|forget|instructions` does the same from scripts. `OPENAGENTS_MEMORY=off` turns instructions and memory off.
+- `openagents coder memory list|show|forget|instructions` does the same from scripts. `OPENAGENTS_MEMORY=off` turns instructions and memory off.
 - Notes stay on your computer. The OpenAgents chat itself doesn't remember earlier conversations: each reply reads only that conversation.
 
 ## Sources
