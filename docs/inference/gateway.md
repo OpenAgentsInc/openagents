@@ -55,6 +55,8 @@ outside Pylon and Psionic.
 
 Every model call today picks its provider, key, privacy fields, and
 fallbacks in its own code. There is no shared front for generation.
+[providers.md](providers.md) lists every call site with its first door and
+fallbacks now (Google first on our keys, 2026-10-10).
 
 | Caller | Upstreams and models | Keys | Fallbacks and privacy | Metering |
 | --- | --- | --- | --- | --- |
