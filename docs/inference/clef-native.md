@@ -3,7 +3,7 @@
 > Moved from the psionic repo on 2026-10-09: the standalone psionic repo is reference only. All Clef engine work and its issues live in this monorepo (`crates/psionic`, issues #11194–#11197).
 
 
-Status: M1 `implemented_early` on the CPU (2026-10-09); M2 done on CUDA (2026-10-10, gate met, chunk bound restated); M3–M4 `planned`. See [M1 status](#m1-status-2026-10-09) and [M2 status](#m2-status-2026-10-10). File-relevance calibration map (X1): [below](#file-relevance-calibration-x1-2026-10-10).
+Status: M1 `implemented_early` on the CPU (2026-10-09); M2 done on CUDA (2026-10-10, gate met, chunk bound restated); M3 in progress on Metal ([status](#m3-status-2026-10-10-in-progress)); M4 `planned`. See [M1 status](#m1-status-2026-10-09) and [M2 status](#m2-status-2026-10-10). File-relevance calibration map (X1): [below](#file-relevance-calibration-x1-2026-10-10).
 
 This plan covers serving Cloudflare's open-weight Clef decision models
 natively in Psionic, at `POST /v1/systemone`, with no Ollama, llama.cpp,
@@ -563,6 +563,68 @@ first door, with the Pylon as fallback and shadow.
 **After M2:** make the fused GEMM as fast as cuBLAS on large chunks
 (it reaches about 130 TF before dequantization against cuBLAS's 145–170),
 then make it the default for bitwise chunk invariance at f16 speed.
+
+## M3 status (2026-10-10, in progress)
+
+The Metal lane exists and its kernels are checked. It has not yet run the
+model. Issue: [#11196](https://github.com/OpenAgentsInc/openagents/issues/11196).
+
+- **Kernels:** `crates/psionic/crates/psionic-backend-metal/src/kernels/clef_prefill.metal`,
+  with `clef_prefill.rs`.
+- **Trunk:** `crates/psionic/crates/psionic-serve/src/qwen35/clef_metal.rs`
+  (`ClefMetalTrunk`).
+- **Selection:** `--decision-device metal`. On macOS, `auto` picks Metal.
+  CUDA and Metal sit behind one `DeviceTrunk`.
+
+### Design
+
+- **Projections.** Every trunk weight is dequantized to f16 once at load
+  and stays resident in unified memory (13.8 GB for Clef-Flash).
+  - Each projection is one f16 × f16 → f32 GEMM on the Metal Performance
+    Primitives `matmul2d` tensor op, which runs on the M5's neural
+    accelerators.
+  - Weights are read with no per-request dequantization.
+  - Accumulation is f32.
+- **Gated DeltaNet.** The sequential scan from M2. One threadgroup covers
+  64 state rows, with token inputs staged through threadgroup memory.
+- **Attention.** Scores and `P V` run on the same tensor op, one query head
+  at a time, with a causal softmax between them. A key past a query's
+  diagonal gets probability exactly 0.
+- **Everything else** is ported from the CUDA kernels with the same
+  arithmetic and fixed reduction orders. That covers the norms, conv,
+  attention prep, gates, span sums, the fixed-order `W_mem`, and the head's
+  device memory attention.
+
+### Kernel checks on the M5 Max
+
+`fixtures/clef/tools/metal_kernels_harness.swift` runs on synthetic data.
+The Mac was shared with other agents' work (load average 8–17, including a
+GPU visualizer), so the times are upper bounds. The tensor-op GEMM reached
+55–64 TF when the GPU was free and 28–36 TF under that load.
+
+| Kernel | Correctness | Chunk invariance | Time |
+| --- | --- | --- | --- |
+| Tensor-op GEMM, f16 → f32 | ≤ 3e-6 against f64 | bitwise (64-row chunks against whole) | 55–64 TF free; MPS on the same shapes 59–64 TF |
+| Delta scan, 1,082 tokens | 2e-8 against a CPU reference | sequential, same arithmetic | 1.7 ms per layer under load, about 41 ms per 1k request |
+| Attention on the tensor op | 1e-4 against f64 | bitwise (512-token chunks against whole) | 2.3 / 9.6 / 204 ms per layer at 1k / 4k / 16k, under load |
+
+What was tried and dropped:
+
+- **Hand-written flash attention.** I tried a SIMT version and one on
+  `simdgroup_matrix` with keys at absolute positions. Both were correct and
+  bitwise invariant, but they ran at only 1.4–2.5 TF.
+- **Scan layouts.** The per-row simdgroup scan (llama.cpp's Metal layout)
+  ran at 2.4–2.7 ms. Threadgroups of 128 to 1,024 threads ran at 1.7–2.8
+  ms.
+
+### Next
+
+- **A model-level run on the Mac.** It needs the Clef-Flash GGUF, about
+  6.5 GB, and a release build, about 3 GB. The Mac has 48 GB free against
+  the 40 GB floor this work keeps, so the run waits for disk headroom.
+- **Then:** the e2e parity against the CPU lane, the chunk test with
+  `PSIONIC_CLEF_TEST_DEVICE=metal`, and the M3 gate against Ollama and MLX
+  on an idle Mac.
 
 ## File-relevance calibration (X1, 2026-10-10)
 

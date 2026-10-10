@@ -45,7 +45,7 @@ use psionic_models::{GgufBlobArtifact, GgufContent, TokenId};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::{ClefCudaHeadParams, ClefCudaTrunk, CpuGgufQwen35TextGenerationService};
+use crate::{ClefCudaHeadParams, ClefCudaPrefill, ClefCudaTrunk, ClefLayerObserver, CpuGgufQwen35TextGenerationService};
 use calibration::{ClefCalibration, HeadInputs, RowExport, request_digest};
 use encode::{
     BudgetRefusal, ClefQuestion, ClefRequest, EncodedRecord, QuestionType, RequestLimits,
@@ -59,11 +59,14 @@ use head::{
 /// Where the backbone runs (`--decision-device`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ClefDevice {
-    /// CUDA when a device is present and the trunk loads, else the CPU.
+    /// The GPU when one is present and the trunk loads (Metal on macOS,
+    /// CUDA elsewhere), else the CPU.
     #[default]
     Auto,
     Cpu,
     Cuda,
+    /// Apple silicon (#11196).
+    Metal,
 }
 
 impl std::str::FromStr for ClefDevice {
@@ -74,7 +77,108 @@ impl std::str::FromStr for ClefDevice {
             "auto" => Ok(Self::Auto),
             "cpu" => Ok(Self::Cpu),
             "cuda" => Ok(Self::Cuda),
-            other => Err(format!("unknown decision device `{other}` (auto, cpu, cuda)")),
+            "metal" => Ok(Self::Metal),
+            other => Err(format!("unknown decision device `{other}` (auto, cpu, cuda, metal)")),
+        }
+    }
+}
+
+/// The trunk on a GPU: CUDA (M2) or Metal (M3), with one contract.
+pub enum DeviceTrunk {
+    Cuda(ClefCudaTrunk),
+    #[cfg(target_os = "macos")]
+    Metal(crate::ClefMetalTrunk),
+}
+
+impl std::fmt::Debug for DeviceTrunk {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "DeviceTrunk({}: {})", self.backend(), self.device_name())
+    }
+}
+
+impl DeviceTrunk {
+    /// `cuda` or `metal`.
+    #[must_use]
+    pub fn backend(&self) -> &'static str {
+        match self {
+            Self::Cuda(_) => "cuda",
+            #[cfg(target_os = "macos")]
+            Self::Metal(_) => "metal",
+        }
+    }
+
+    /// The device name.
+    #[must_use]
+    pub fn device_name(&self) -> &str {
+        match self {
+            Self::Cuda(trunk) => trunk.device_name(),
+            #[cfg(target_os = "macos")]
+            Self::Metal(trunk) => trunk.device_name(),
+        }
+    }
+
+    /// See [`ClefCudaTrunk::prefill`].
+    pub fn prefill(
+        &self,
+        cpu: &CpuGgufQwen35TextGenerationService,
+        tokens: &[TokenId],
+        spans: &[(usize, usize)],
+        chunk: usize,
+        layer_observer: Option<ClefLayerObserver<'_>>,
+        final_observer: Option<ClefLayerObserver<'_>>,
+    ) -> Result<ClefCudaPrefill, String> {
+        match self {
+            Self::Cuda(trunk) => trunk.prefill(cpu, tokens, spans, chunk, layer_observer, final_observer),
+            #[cfg(target_os = "macos")]
+            Self::Metal(trunk) => trunk.prefill(cpu, tokens, spans, chunk, layer_observer, final_observer),
+        }
+    }
+
+    /// See [`ClefCudaTrunk::attend_memory`].
+    pub fn attend_memory(
+        &self,
+        evidence: Option<usize>,
+        queries: &[f32],
+        rows: usize,
+        scale: f32,
+    ) -> Result<Vec<f32>, String> {
+        match self {
+            Self::Cuda(trunk) => trunk.attend_memory(evidence, queries, rows, scale),
+            #[cfg(target_os = "macos")]
+            Self::Metal(trunk) => trunk.attend_memory(evidence, queries, rows, scale),
+        }
+    }
+
+    /// See [`ClefCudaTrunk::attend_memory_projected`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn attend_memory_projected(
+        &self,
+        evidence: Option<usize>,
+        key_matrix: &[f32],
+        value_matrix: &[f32],
+        value_bias: &[f32],
+        projected: &[f32],
+        rows: usize,
+        heads: usize,
+        scale: f32,
+    ) -> Result<Option<Vec<f32>>, String> {
+        match self {
+            Self::Cuda(trunk) => trunk.attend_memory_projected(
+                evidence, key_matrix, value_matrix, value_bias, projected, rows, heads, scale,
+            ),
+            #[cfg(target_os = "macos")]
+            Self::Metal(trunk) => trunk.attend_memory_projected(
+                evidence, key_matrix, value_matrix, value_bias, projected, rows, heads, scale,
+            ),
+        }
+    }
+
+    /// See [`ClefCudaTrunk::head_linear`].
+    pub fn head_linear(&self, values: &[f32], input: &[f32], n: usize) -> Result<Option<Vec<f32>>, String> {
+        match self {
+            Self::Cuda(trunk) => trunk.head_linear(values, input, n),
+            #[cfg(target_os = "macos")]
+            Self::Metal(trunk) => trunk.head_linear(values, input, n),
         }
     }
 }
@@ -193,7 +297,7 @@ pub struct ClefDecisionLane {
     backbone: CpuGgufQwen35TextGenerationService,
     /// The trunk on CUDA; the CPU backbone then only serves embedding and
     /// output rows.
-    cuda: Option<ClefCudaTrunk>,
+    cuda: Option<DeviceTrunk>,
     head: ClefHeadWeights,
     limits: ClefLimits,
     /// Calibration maps (`--decision-calibration`), one per noul question.
@@ -366,21 +470,35 @@ impl ClefDecisionLane {
                         .map(|matrix| (matrix.values.as_slice(), matrix.rows, matrix.columns))
                         .collect(),
                 };
-                match ClefCudaTrunk::load(
-                    &backbone,
-                    &params,
-                    limits.accumulate_f16,
-                ) {
+                let metal = match device {
+                    ClefDevice::Metal => true,
+                    ClefDevice::Auto => cfg!(target_os = "macos"),
+                    _ => false,
+                };
+                let loaded: Result<DeviceTrunk, String> = if metal {
+                    #[cfg(target_os = "macos")]
+                    {
+                        crate::ClefMetalTrunk::load(&backbone, &params).map(DeviceTrunk::Metal)
+                    }
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        Err(String::from("Metal is only available on macOS"))
+                    }
+                } else {
+                    ClefCudaTrunk::load(&backbone, &params, limits.accumulate_f16).map(DeviceTrunk::Cuda)
+                };
+                let name = if metal { "Metal" } else { "CUDA" };
+                match loaded {
                     Ok(trunk) => Some(trunk),
                     Err(error) if device == ClefDevice::Auto => {
                         eprintln!(
-                            "{}: CUDA decision trunk unavailable ({error}); deciding on the CPU",
+                            "{}: {name} decision trunk unavailable ({error}); deciding on the CPU",
                             gguf_path.display()
                         );
                         None
                     }
                     Err(error) => {
-                        return Err(format!("{}: CUDA decision trunk: {error}", gguf_path.display()));
+                        return Err(format!("{}: {name} decision trunk: {error}", gguf_path.display()));
                     }
                 }
             }
@@ -440,10 +558,10 @@ impl ClefDecisionLane {
         self.limits
     }
 
-    /// `cuda` or `cpu`.
+    /// `cuda`, `metal` or `cpu`.
     #[must_use]
     pub fn backend(&self) -> &'static str {
-        if self.cuda.is_some() { "cuda" } else { "cpu" }
+        self.cuda.as_ref().map_or("cpu", DeviceTrunk::backend)
     }
 
     /// The prefill chunk in effect.
@@ -851,7 +969,7 @@ impl ClefDecisionLane {
             "backend": self.backend(),
             "execution_mode": "native",
             "prefill_chunk": self.prefill_chunk(),
-            "accumulate": if self.cuda.is_some() && self.limits.accumulate_f16 { "f16" } else { "f32" },
+            "accumulate": if matches!(self.cuda, Some(DeviceTrunk::Cuda(_))) && self.limits.accumulate_f16 { "f16" } else { "f32" },
             "prompt_tokens": prompt_tokens,
             "truncated_state_tokens": record.truncated_state_tokens,
             "trained_length": TRAINED_LENGTH,
@@ -892,7 +1010,7 @@ impl ClefDecisionLane {
                 "head_source": self.head.source,
                 "head_digest": self.head.digest,
                 "backend": self.backend(),
-                "device": self.cuda.as_ref().map(ClefCudaTrunk::device_name),
+                "device": self.cuda.as_ref().map(DeviceTrunk::device_name),
                 "prefill_chunk": self.prefill_chunk(),
                 "max_tokens": self.limits.max_tokens,
                 "max_questions": self.limits.max_questions,
@@ -913,13 +1031,13 @@ impl ClefDecisionLane {
 /// The head's device calls, with time spent in each kind
 /// (`PSIONIC_CLEF_PROFILE`).
 struct DeviceMemory<'a> {
-    trunk: &'a ClefCudaTrunk,
+    trunk: &'a DeviceTrunk,
     attend: (usize, f64),
     linear: (usize, f64),
 }
 
 impl<'a> DeviceMemory<'a> {
-    fn new(trunk: &'a ClefCudaTrunk) -> Self {
+    fn new(trunk: &'a DeviceTrunk) -> Self {
         Self {
             trunk,
             attend: (0, 0.0),

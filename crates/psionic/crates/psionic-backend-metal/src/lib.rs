@@ -49,6 +49,10 @@ use psionic_runtime::{
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "Metal backend discovery, allocation, and submission";
 
+/// The Clef decision lane's sequence-prefill kernels (#11196).
+#[cfg(target_os = "macos")]
+pub mod clef_prefill;
+
 #[cfg(target_os = "macos")]
 const MODERN_FAMILY_FLAG: &str = "family_modern";
 #[cfg(target_os = "macos")]

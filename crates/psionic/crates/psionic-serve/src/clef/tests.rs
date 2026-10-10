@@ -581,7 +581,7 @@ fn dump_layer_rows() {
             std::path::Path::new(&gguf),
             super::ClefHeadSource::Embedded,
             super::ClefLimits {
-                device: super::ClefDevice::Cuda,
+                device: gpu_device(),
                 ..super::ClefLimits::default()
             },
         )
@@ -621,6 +621,15 @@ fn dump_layer_rows() {
         write(format!("l_out-{layer}.f32"), rows);
     }
     write(String::from("result_norm.f32"), &final_rows);
+}
+
+/// The GPU the device tests run on: `PSIONIC_CLEF_TEST_DEVICE=metal` on a
+/// Mac, CUDA otherwise.
+fn gpu_device() -> super::ClefDevice {
+    match std::env::var("PSIONIC_CLEF_TEST_DEVICE").as_deref() {
+        Ok("metal") => super::ClefDevice::Metal,
+        _ => super::ClefDevice::Cuda,
+    }
 }
 
 /// CUDA trunk: chunk sizes {whole, 2048, 512, 64} give the same argmax and
@@ -674,7 +683,7 @@ fn cuda_chunks_and_cpu_agree() {
     };
     let mut failures = Vec::new();
     for accumulate_f16 in [true, false] {
-        let lane = load(super::ClefDevice::Cuda, accumulate_f16);
+        let lane = load(gpu_device(), accumulate_f16);
         // the longest corpus record that the default budget admits
         let long = corpus
             .lines()
@@ -709,7 +718,7 @@ fn cuda_chunks_and_cpu_agree() {
     }
     assert!(failures.is_empty(), "{failures:?}");
     // CUDA (f32 accumulate) vs the CPU lane on the short record.
-    let cuda = load(super::ClefDevice::Cuda, false);
+    let cuda = load(gpu_device(), false);
     let cpu = load(super::ClefDevice::Cpu, false);
     let record = cpu.encode(&cpu.parse_request(&short).expect("request")).expect("encode");
     let a = cuda.logits(&record).expect("cuda");

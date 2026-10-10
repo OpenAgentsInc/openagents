@@ -1533,7 +1533,7 @@ fn attention(
 }
 
 /// Rotary parameters of the trunk, for the per-chunk cos/sin table.
-struct RopeTable {
+pub(super) struct RopeTable {
     freq_scale: f32,
     ext_factor: f32,
     corr_dims: [f32; 2],
@@ -1542,7 +1542,7 @@ struct RopeTable {
     interleaved: bool,
 }
 
-fn rope_table_params(model: &super::CpuQwen35Model) -> RopeTable {
+pub(super) fn rope_table_params(model: &super::CpuQwen35Model) -> RopeTable {
     let rotary = model.descriptor.config.block.attention.rotary_dim;
     let rotary = rotary.min(model.descriptor.config.block.attention.head_dim).max(2);
     let (freq_scale, ext_factor, corr_dims, theta_scale) =
@@ -1560,7 +1560,7 @@ fn rope_table_params(model: &super::CpuQwen35Model) -> RopeTable {
 impl RopeTable {
     /// `[n, rotary/2, (cos, sin)]` for text positions `first..first + n`
     /// (all three MRoPE positions equal), as the CPU lane computes them.
-    fn table(&self, first: usize, n: usize, rotary: usize) -> Vec<f32> {
+    pub(super) fn table(&self, first: usize, n: usize, rotary: usize) -> Vec<f32> {
         let pairs = rotary / 2;
         let mut out = Vec::with_capacity(n * pairs * 2);
         for position in first..first + n {

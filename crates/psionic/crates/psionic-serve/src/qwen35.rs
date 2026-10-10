@@ -59,6 +59,10 @@ use crate::{
 
 mod clef_cuda;
 pub use clef_cuda::{ClefCudaHeadParams, ClefCudaPrefill, ClefCudaTrunk, ClefLayerObserver};
+#[cfg(target_os = "macos")]
+mod clef_metal;
+#[cfg(target_os = "macos")]
+pub use clef_metal::ClefMetalTrunk;
 
 /// Stable schema for one opt-in Qwen3.8 MTP execution report.
 pub const QWEN38_MTP_EXECUTION_REPORT_SCHEMA_VERSION: &str = "psionic.qwen38.mtp_execution.v1";
