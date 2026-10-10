@@ -96,7 +96,12 @@ fn account(state: &State) -> Node<Intent> {
                     screen: Screen::Running,
                 },
             ));
-            children.push(button("link-sign-out", "Sign out", None, Intent::SignOut));
+            children.push(button(
+                "link-sign-out",
+                "Sign out",
+                Some(Glyph::Key),
+                Intent::SignOut,
+            ));
         }
         (None, SignIn::Waiting { user_code, .. }) => {
             children.push(heading("link-title", "Approve this phone"));
@@ -110,10 +115,15 @@ fn account(state: &State) -> Node<Intent> {
             children.push(button(
                 "link-open-page",
                 "Approve on this phone",
-                None,
+                Some(Glyph::Check),
                 Intent::OpenPage,
             ));
-            children.push(button("link-cancel", "Cancel", None, Intent::CancelSignIn));
+            children.push(button(
+                "link-cancel",
+                "Cancel",
+                Some(Glyph::Back),
+                Intent::CancelSignIn,
+            ));
         }
         (None, SignIn::Starting) => {
             children.push(heading("link-title", "Sign in"));
@@ -132,7 +142,12 @@ fn account(state: &State) -> Node<Intent> {
                 children.push(status("link-error", error, warn()));
             }
             children.extend(notice(state));
-            children.push(button("link-sign-in", "Sign in", None, Intent::SignIn));
+            children.push(button(
+                "link-sign-in",
+                "Sign in",
+                Some(Glyph::Person),
+                Intent::SignIn,
+            ));
         }
     }
     page(children)
@@ -157,12 +172,14 @@ fn choice_card(state: &State) -> Node<Intent> {
     lines.push(choice(
         "link-choice-all",
         "Sync all my chats",
+        Glyph::Cloud,
         state.choice == Some(true),
         Intent::Choose { all: true },
     ));
     lines.push(choice(
         "link-choice-local",
         "Keep chats on this phone",
+        Glyph::Computer,
         state.choice == Some(false),
         Intent::Choose { all: false },
     ));
@@ -272,7 +289,12 @@ fn chat(state: &State, open: &Open, composer: u64, limit: usize, cut_at: usize) 
     children.extend(notice(state));
     if let Some(error) = &open.error {
         children.push(status("link-chat-error", error, warn()));
-        children.push(button("link-retry", "Try again", None, Intent::Retry));
+        children.push(button(
+            "link-retry",
+            "Try again",
+            Some(Glyph::History),
+            Intent::Retry,
+        ));
     }
     let mut rows: Vec<Node<Intent>> = vec![];
     if !open.loaded {
@@ -506,7 +528,7 @@ fn item_card(computer: &Agents, item: &Item, now: u64) -> Node<Intent> {
         controls.push(button(
             &format!("{key}-deny"),
             "Deny",
-            None,
+            Some(Glyph::Flag),
             act("deny", Some(question.id.clone())),
         ));
     }
@@ -514,13 +536,13 @@ fn item_card(computer: &Agents, item: &Item, now: u64) -> Node<Intent> {
         controls.push(button(
             &format!("{key}-stop"),
             "Stop",
-            None,
+            Some(Glyph::Stop),
             act("stop", None),
         ));
         controls.push(button(
             &format!("{key}-message"),
             "Message",
-            None,
+            Some(Glyph::Ask),
             Intent::Message {
                 computer: computer.name.clone(),
                 item: item.id.clone(),
@@ -750,7 +772,7 @@ fn button(key: &str, label: &str, glyph: Option<Glyph>, intent: Intent) -> Node<
     }
 }
 
-fn choice(key: &str, label: &str, selected: bool, intent: Intent) -> Node<Intent> {
+fn choice(key: &str, label: &str, glyph: Glyph, selected: bool, intent: Intent) -> Node<Intent> {
     // A button, not a v3 `Choice`: every host draws buttons. The chosen one
     // carries a check.
     Node {
@@ -763,8 +785,8 @@ fn choice(key: &str, label: &str, selected: bool, intent: Intent) -> Node<Intent
             shortcut: None,
             label: label.into(),
             enabled: true,
-            icon: selected.then_some(Icon {
-                glyph: Glyph::Check,
+            icon: Some(Icon {
+                glyph: if selected { Glyph::Check } else { glyph },
                 circular: false,
                 pill: true,
             }),

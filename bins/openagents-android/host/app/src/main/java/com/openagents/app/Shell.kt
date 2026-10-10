@@ -415,7 +415,7 @@ internal class ShellDrawer(private val context: Context, private val bridge: Mob
                 body.addView(row(label, "shell-place-running", R.drawable.ic_glyph_terminal) { go("running") })
                 if (accountRows.isNotEmpty()) {
                     body.addView(context.text("On your account", 13f, Palette.SECONDARY).apply {
-                        typeface = PaperMono.typeface(context, PaperMono.BOLD)
+                        typeface = Fonts.typeface(context, Fonts.BOLD)
                         setPadding(0, context.dp(10), 0, context.dp(4))
                     })
                     for (chat in accountRows) {

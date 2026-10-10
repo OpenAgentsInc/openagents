@@ -340,11 +340,16 @@ async fn call(
     path: &str,
     body: Option<&Value>,
 ) -> (Answer, Value) {
+    let method_has_body = matches!(method, reqwest::Method::POST | reqwest::Method::PUT);
     let mut request = http
         .request(method, format!("{}{path}", saved.origin))
         .bearer_auth(saved.token());
     if let Some(body) = body {
         request = request.json(body);
+    } else if method_has_body {
+        // Google's front end refuses a POST with no length (411), before
+        // the website sees it: send an empty object.
+        request = request.json(&json!({}));
     }
     let Ok(response) = request.send().await else {
         return (Answer::Retry, Value::Null);
