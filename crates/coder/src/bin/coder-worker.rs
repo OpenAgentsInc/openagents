@@ -2595,7 +2595,8 @@ impl Job {
         // Jev reads only that the chat's Coder run ended, never what it
         // reported (#10094).
         let judged = turn.context.judged(input);
-        let request = router::request(
+        // The main request and its side requests, asked at once (#11193).
+        let request = router::split(
             &turn.message,
             &judged,
             bank,
@@ -2616,7 +2617,7 @@ impl Job {
             makes_plugins(&turn.context) && coder::eval_author::plugin::open(input).is_some();
         Some(Box::pin(async move {
             let started = Instant::now();
-            let answered = tokio::time::timeout(first::LATE, judge.system_one(request)).await;
+            let answered = tokio::time::timeout(first::LATE, router::ask(&judge, request)).await;
             let milliseconds = started.elapsed().as_millis();
             match answered {
                 Ok(Ok(response)) => {

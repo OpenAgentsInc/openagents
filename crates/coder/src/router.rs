@@ -2,8 +2,9 @@
 //! route (`docs/coder/design/2026-09-28-chat-router.md`).
 //!
 //! For a turn that asks (`"router": "chat-router-v2"`, or `chat-router-v1`
-//! from the phones of build 20), the chat worker asks one System One (Jev)
-//! request, the `chat-router-v2` question set,
+//! from the phones of build 20), the chat worker asks the `chat-router-v2`
+//! question set of System One (Jev), as a main request and side requests
+//! sent at once ([`judge::split`], #11193),
 //! beside the model call and never in front of it. Code, not the judge,
 //! maps the answers to a [`Tier`] through the policy table in
 //! [`decide`]:
@@ -56,7 +57,7 @@ use serde_json::Value;
 
 pub use bank::{Bank, Entry, Facts};
 pub use capability::{Admitted, Capability};
-pub use judge::{Fanout, Routing, reading, request};
+pub use judge::{Fanout, Routing, Split, ask, merge, reading, split};
 pub use policy::{Lead, Mode, Situation, Tier, decide};
 pub use seams::Seams;
 

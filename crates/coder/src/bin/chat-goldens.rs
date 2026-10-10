@@ -380,7 +380,9 @@ impl Routed {
             plugin: false,
         };
         let started = Instant::now();
-        let request = router::request(
+        // The split router (#11193): the main request and its side
+        // requests, asked at once.
+        let request = router::split(
             case.phrasing,
             &transcript,
             self.bank,
@@ -390,7 +392,7 @@ impl Routed {
             &self.admitted,
             &[],
         );
-        let response = match self.judge.system_one(request).await {
+        let response = match router::ask(&self.judge, request).await {
             Ok(r) => r,
             Err(e) => {
                 return Observed {

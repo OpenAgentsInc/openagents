@@ -210,8 +210,9 @@ async fn live_jev() {
     let mut wrong = Vec::new();
     let (mut fan_rows, mut fan_ok, mut single_rows, mut single_ok) = (0, 0, 0, 0);
     for (at, row) in rows(&set).iter().enumerate() {
-        let asked = judge
-            .system_one(router::request(
+        let asked = router::ask(
+            &judge,
+            router::split(
                 &row.message,
                 &[coder::generate::Message {
                     role: coder::generate::Role::User,
@@ -223,9 +224,10 @@ async fn live_jev() {
                 &tools,
                 &admitted,
                 &[],
-            ))
-            .await
-            .expect("Jev answered");
+            ),
+        )
+        .await
+        .expect("Jev answered");
         let tier = decided(&asked, &admitted);
         let (why, notes) = judged(row, &tier);
         if row.expect == "fan_out" {

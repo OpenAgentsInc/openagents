@@ -270,8 +270,9 @@ async fn live_jev() {
         } else {
             &[]
         };
-        let asked = judge
-            .system_one(router::request(
+        let asked = router::ask(
+            &judge,
+            router::split(
                 &row.message,
                 &[coder::generate::Message {
                     role: coder::generate::Role::User,
@@ -283,9 +284,10 @@ async fn live_jev() {
                 &tools,
                 &admitted,
                 decks,
-            ))
-            .await
-            .expect("Jev answered");
+            ),
+        )
+        .await
+        .expect("Jev answered");
         let tier = decided(row, &asked, &admitted);
         let why = judged(row, &tier, &forbidden);
         println!(

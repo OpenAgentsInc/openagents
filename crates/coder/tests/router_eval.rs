@@ -278,8 +278,9 @@ async fn run_router(name: &str, mode: router::Mode) {
     let mut engines = Engines::default();
     for row in &rows {
         let started = Instant::now();
-        let asked = judge
-            .system_one(router::request(
+        let asked = router::ask(
+            &judge,
+            router::split(
                 row.latest(),
                 &transcript(row),
                 bank,
@@ -289,8 +290,9 @@ async fn run_router(name: &str, mode: router::Mode) {
                 &admitted,
                 // The set's default phone context asks no `deck` question.
                 decks,
-            ))
-            .await;
+            ),
+        )
+        .await;
         let ms = started.elapsed().as_millis();
         readings.push(match asked {
             Ok(response) => {

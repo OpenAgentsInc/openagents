@@ -348,6 +348,8 @@ box in `~/clef-test/results-2026-10-09b/`. The model files were deleted.
    - keep each request under 16k tokens and 26 options per choice
    - fix the `risk` / `none` wording
 
+   **Done in code (#11193):** the router now sends `answer` and `cli_group` each in a request of its own, at the same time as the main request (`crates/coder/src/router/judge.rs`, `split`, `ask`, `merge`), so the split adds no round trip against the 6 s budget; `risk` no longer offers `none`. A unit test holds each request under 64 KiB and about 16k tokens. The re-measure below is still to run.
+
    Then re-measure. On the split route question, Clef 27B already agreed 12/12. Speed decides the rest. The router's 6 s budget needs the 4080 (0.2–3 s per request) or a bigger GPU, not the Mac.
 3. **Machine choice.** coderos-4080 with llama.cpp Q4 is the fastest box we have: about 10× the loaded Mac. Running it next to `pylon-psionic` leaves only about 2 GB of VRAM spare at a 17k batch, so it should be a managed service that unloads when Pylon needs the GPU. The Mac (Ollama) is the right place for development and for the 27B. Clef 27B on the 4080 runs only with partial offload, at about 2.6 s for 3k tokens and 12 s for 16k (see the prefill benchmark).
 4. **Pylon / psionic angle.** psionic already serves Qwen3.5 on CUDA on this box (`crates/psionic/crates/psionic-serve/src/qwen35.rs` is what `pylon-psionic` runs) and has Qwen3.8 GGUF conversion work (`psionic-models/src/qwen38_gguf_*`). Serving Clef in psionic means three additions:

@@ -20,9 +20,21 @@
 //! | `fanout` | Choice | one run, one run on each ready engine, or one on each of two named engines ([`Fanout`]); asked on every turn, read only for a dispatch (#10183) |
 //! | `read_only` | Noul | whether the work asked for only reads: explore, review, summarize, answer, change nothing (#10183) |
 //! | `summarize` | Noul | whether the person asks for one summary or comparison of what the work finds (#10183) |
-//! | `risk` | Choice | ok, secret shared, asks for a secret, harmful, money movement, none |
+//! | `risk` | Choice | ok, secret shared, asks for a secret, harmful, money movement (no `none`: `ok` is the "nothing wrong" option, #11193) |
 //!
 //! No question consumes another's answer, so they cost one round trip.
+//!
+//! **The split (#11193).** The set is asked as more than one request over
+//! the same state, all sent at once ([`split`], [`ask`]): the main request
+//! holds every question but [`SIDE`], and `answer` (every selectable bank
+//! entry) and `cli_group` (the command tree) each go in a request of their
+//! own. Each request then stays within the 16,384 tokens a Clef decision
+//! head was trained at, where the single request ran about 24.5k, and the
+//! sides run beside the main request rather than after it, so the split
+//! costs no extra round trip against [`crate::first::LATE`]. [`merge`]
+//! joins the answers back into one response, so [`reading`] and the policy
+//! read it exactly as they read the single request. A side that fails
+//! reads as not asked: no prepared answer, no command proposal.
 
 use indexmap::IndexMap;
 use jev::{Answer, Choice, ChoiceAnswer, Entry as Criterion, Noul, NoulCriteria, Questions};
@@ -239,7 +251,9 @@ pub fn questions(
             )
         })
         .collect();
-    let risks = with_none(risks, "None of these describes the message");
+    // No `none` here (#11193): `ok` already says nothing is wrong, and a
+    // `none` option let a judge that read it as "the question does not
+    // apply" turn the hazard gate off without saying so.
     let mut questions = Questions::new()
         .with("action", action)
         .with("route", route())
@@ -379,11 +393,38 @@ pub fn state(task: &str, transcript: &[Message]) -> Value {
     crate::first::state(task, transcript)
 }
 
-/// The request the worker sends, bounded by `coder::first::LATE`. Each
-/// list is one question's options, so they stay separate arguments.
+/// The questions asked apart from the main request, each in a request of
+/// its own (#11193): the two long option lists, the bank's selectable
+/// answers and the command groups.
+pub const SIDE: [&str; 2] = ["answer", "cli_group"];
+
+/// The tokens a Clef decision head was trained at: no request the router
+/// sends should need more (#11193).
+pub const CLEF_TOKENS: usize = 16_384;
+
+/// The router's requests for one turn: the main one and the side ones,
+/// all over the same state, sent at once by [`ask`].
+#[derive(Clone, Debug)]
+pub struct Split {
+    /// Every question but [`SIDE`].
+    pub main: jev::SystemOneRequest,
+    /// One request per [`SIDE`] question the set asks, by its id.
+    pub sides: Vec<(&'static str, jev::SystemOneRequest)>,
+}
+
+impl Split {
+    /// Every request, main first.
+    pub fn requests(&self) -> impl Iterator<Item = &jev::SystemOneRequest> {
+        std::iter::once(&self.main).chain(self.sides.iter().map(|(_, request)| request))
+    }
+}
+
+/// The requests the worker sends, each bounded by `coder::first::LATE`.
+/// Each list is one question's options, so they stay separate arguments.
+/// Together they ask exactly [`questions`].
 #[must_use]
 #[allow(clippy::too_many_arguments)]
-pub fn request(
+pub fn split(
     task: &str,
     transcript: &[Message],
     bank: &Bank,
@@ -392,13 +433,142 @@ pub fn request(
     tools: &[Tool],
     admitted: &Admitted,
     decks: &[DeckEntry],
-) -> jev::SystemOneRequest {
-    jev::SystemOneRequest::new(
-        state(task, transcript),
-        questions(bank, facts, groups, tools, admitted, decks),
+) -> Split {
+    let asked = questions(bank, facts, groups, tools, admitted, decks);
+    let state = state(task, transcript);
+    let request = |questions: Questions| {
+        jev::SystemOneRequest::new(state.clone(), questions)
+            .retry(crate::first::retry())
+            .timeout(crate::first::LATE)
+    };
+    let main: Questions = asked
+        .iter()
+        .filter(|(id, _)| !SIDE.contains(id))
+        .map(|(id, question)| (id.to_string(), question.clone()))
+        .collect();
+    let sides = SIDE
+        .into_iter()
+        .filter_map(|id| {
+            let question = asked.get(id)?.clone();
+            Some((id, request(Questions::new().with(id, question))))
+        })
+        .collect();
+    Split {
+        main: request(main),
+        sides,
+    }
+}
+
+/// Asks every request of a [`Split`] at once and [`merge`]s the answers.
+///
+/// The main request's failure is the call's. A side that fails is left
+/// out, so its question reads as not asked (no prepared answer, no command
+/// proposal), and its id and error go to the log: an id and a door's
+/// error, never message text.
+///
+/// # Errors
+///
+/// Returns the main request's error.
+pub async fn ask(judge: &jev::Client, split: Split) -> jev::Result<jev::SystemOneResponse> {
+    let Split { main, sides } = split;
+    let (ids, requests): (Vec<&'static str>, Vec<jev::SystemOneRequest>) =
+        sides.into_iter().unzip();
+    let (main, sides) = futures_util::future::join(
+        judge.system_one(main),
+        futures_util::future::join_all(requests.into_iter().map(|side| judge.system_one(side))),
     )
-    .retry(crate::first::retry())
-    .timeout(crate::first::LATE)
+    .await;
+    let main = main?;
+    let answered = ids
+        .into_iter()
+        .zip(sides)
+        .filter_map(|(id, side)| match side {
+            Ok(response) => Some(response),
+            Err(error) => {
+                eprintln!("router: the {id} request failed: {error}");
+                None
+            }
+        })
+        .collect();
+    Ok(merge(main, answered))
+}
+
+/// One response holding the main response's answers and then each side's:
+/// the main response's model, `service`, and other fields, with the
+/// sides' input tokens and costs added to its usage. [`reading`] and
+/// [`super::decisions::capture`] read it as they read a single request's.
+#[must_use]
+pub fn merge(
+    main: jev::SystemOneResponse,
+    sides: Vec<jev::SystemOneResponse>,
+) -> jev::SystemOneResponse {
+    if sides.is_empty() {
+        return main;
+    }
+    let body = |response: &jev::SystemOneResponse| {
+        serde_json::from_slice::<serde_json::Map<String, Value>>(&response.raw().bytes).ok()
+    };
+    let Some(mut merged) = body(&main) else {
+        let mut main = main;
+        for side in sides {
+            main.answers.extend(side.answers);
+        }
+        return main;
+    };
+    let sum = |left: Option<&Value>, right: Option<&Value>| match (
+        left.and_then(Value::as_f64),
+        right.and_then(Value::as_f64),
+    ) {
+        (Some(left), Some(right)) => {
+            let total = left + right;
+            Some(
+                if total.fract() == 0.0 && total >= 0.0 && total < u64::MAX as f64 {
+                    Value::from(total as u64)
+                } else {
+                    Value::from(total)
+                },
+            )
+        }
+        (Some(only), None) | (None, Some(only)) => Some(Value::from(only)),
+        (None, None) => None,
+    };
+    for side in &sides {
+        let Some(side) = body(side) else { continue };
+        if let (Some(Value::Object(answers)), Some(Value::Object(more))) =
+            (merged.get_mut("answers"), side.get("answers"))
+        {
+            for (id, answer) in more {
+                answers.insert(id.clone(), answer.clone());
+            }
+        }
+        if let Some(Value::Object(more)) = side.get("usage") {
+            let usage = merged
+                .entry("usage")
+                .or_insert_with(|| Value::Object(serde_json::Map::new()));
+            if let Value::Object(usage) = usage {
+                for key in ["input_tokens", "output_tokens", "cost"] {
+                    if let Some(total) = sum(usage.get(key), more.get(key)) {
+                        usage.insert(key.to_string(), total);
+                    }
+                }
+            }
+        }
+    }
+    let raw = jev::RawResponse {
+        status: main.raw().status,
+        headers: main.raw().headers.clone(),
+        bytes: serde_json::to_vec(&Value::Object(merged)).unwrap_or_default(),
+    };
+    match jev::SystemOneResponse::decode(raw) {
+        Ok(response) => response,
+        Err(_) => {
+            let mut main = main;
+            for side in sides {
+                main.answers.extend(side.answers);
+            }
+            main
+        }
+    }
 }
 
 /// The router's reading of one turn: each answer's argmax and probability,
@@ -800,6 +970,234 @@ mod tests {
         .expect("a readable response")
     }
 
+    fn groups() -> Vec<CliGroup> {
+        vec![
+            CliGroup {
+                id: "computer".into(),
+                summary: "List, check, and manage your computers".into(),
+                tree: None,
+            },
+            CliGroup {
+                id: "wallet".into(),
+                summary: "The bitcoin wallet: balance, receive, pay".into(),
+                tree: None,
+            },
+        ]
+    }
+
+    fn split_for(groups: &[CliGroup]) -> Split {
+        let transcript = [Message {
+            role: crate::generate::Role::User,
+            text: "Which of my computers are online?".into(),
+        }];
+        split(
+            "Which of my computers are online?",
+            &transcript,
+            Bank::builtin(),
+            &facts(),
+            groups,
+            &[],
+            &Admitted::builtin(),
+            crate::router::decks(),
+        )
+    }
+
+    fn ids(questions: &Questions) -> Vec<String> {
+        questions.iter().map(|(id, _)| id.to_string()).collect()
+    }
+
+    /// The split asks exactly the set (#11193): the main request holds
+    /// every question but `answer` and `cli_group`, each of those goes in
+    /// a request of its own over the same state, and every request is a
+    /// valid set with the router's timeout.
+    #[test]
+    fn the_split_asks_the_whole_set_in_requests_of_their_own() {
+        let groups = groups();
+        let asked = split_for(&groups);
+        let whole = questions(
+            Bank::builtin(),
+            &facts(),
+            &groups,
+            &[],
+            &Admitted::builtin(),
+            crate::router::decks(),
+        );
+        assert!(asked.main.questions.get("answer").is_none());
+        assert!(asked.main.questions.get("cli_group").is_none());
+        assert!(asked.main.questions.get("route").is_some());
+        assert!(asked.main.questions.get("risk").is_some());
+        let sides: Vec<&str> = asked.sides.iter().map(|(id, _)| *id).collect();
+        assert_eq!(sides, ["answer", "cli_group"]);
+        for (id, request) in &asked.sides {
+            assert_eq!(ids(&request.questions), [id.to_string()]);
+            assert_eq!(
+                serde_json::to_value(request.questions.get(id)).unwrap(),
+                serde_json::to_value(whole.get(id)).unwrap(),
+                "{id} is asked as the set asks it"
+            );
+        }
+        // Together, exactly the set's questions, each once.
+        let mut together: Vec<String> = asked
+            .requests()
+            .flat_map(|request| ids(&request.questions))
+            .collect();
+        together.sort();
+        let mut expected = ids(&whole);
+        expected.sort();
+        assert_eq!(together, expected);
+        for request in asked.requests() {
+            request.questions.validate().expect("a valid set");
+            assert_eq!(request.state, asked.main.state, "one state");
+            assert_eq!(request.timeout, Some(crate::first::LATE));
+        }
+        // No command tree, no `cli_group` request.
+        let bare = split_for(&[]);
+        let sides: Vec<&str> = bare.sides.iter().map(|(id, _)| *id).collect();
+        assert_eq!(sides, ["answer"]);
+    }
+
+    /// Each request fits a Clef door (#11193): under Ollama's 64 KiB body
+    /// limit, and, at the roughly four bytes per token the single request
+    /// measured (about 100 KB for 24.5k Clef tokens), under the 16,384
+    /// tokens the head was trained at.
+    #[test]
+    fn every_split_request_fits_a_clef_door() {
+        for request in split_for(&groups()).requests() {
+            let body = serde_json::to_vec(&json!({
+                "state": request.state.to_value(),
+                "questions": request.questions.to_value(),
+            }))
+            .unwrap();
+            assert!(
+                body.len() < 64 * 1024,
+                "{:?}: {} bytes",
+                ids(&request.questions),
+                body.len()
+            );
+            assert!(
+                body.len() / 4 < CLEF_TOKENS,
+                "{:?}: about {} tokens",
+                ids(&request.questions),
+                body.len() / 4
+            );
+        }
+    }
+
+    /// `risk` offers no `none` (#11193): `ok` is its "nothing wrong"
+    /// option, so a judge cannot switch the hazard gate off by reading the
+    /// question as not applying. An old `none` answer still reads as
+    /// unknown, never as `ok`.
+    #[test]
+    fn the_risk_question_has_no_none_option() {
+        let asked = questions(
+            Bank::builtin(),
+            &facts(),
+            &[],
+            &[],
+            &Admitted::builtin(),
+            &[],
+        );
+        let risk = serde_json::to_value(asked.get("risk")).unwrap();
+        let options: Vec<&str> = risk["criteria"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        let expected: Vec<&str> = Risk::ALL.iter().map(|risk| risk.word()).collect();
+        assert_eq!(options, expected);
+        assert!(!options.contains(&"none"));
+        assert_eq!(Risk::parse("none"), Risk::Unknown);
+    }
+
+    fn raw(body: serde_json::Value) -> jev::SystemOneResponse {
+        jev::SystemOneResponse::decode(jev::RawResponse {
+            status: 200,
+            headers: Default::default(),
+            bytes: body.to_string().into_bytes(),
+        })
+        .expect("a readable response")
+    }
+
+    /// The merged response reads exactly as one response holding every
+    /// answer would: the main response's model and `service`, the sides'
+    /// answers, and the usage of all of them. Policy capture reads the
+    /// merged bytes, so a side's answer is captured too.
+    #[test]
+    fn merged_answers_read_as_one_response() {
+        let route = json!({ "type": "choice", "choice": "cli", "confidence": 0.9,
+            "probabilities": { "cli": 0.9, "general": 0.1 } });
+        let risk = json!({ "type": "choice", "choice": "ok", "confidence": 0.98,
+            "probabilities": { "ok": 0.98, "harmful": 0.02 } });
+        let answer = json!({ "type": "choice", "choice": "meta.pricing", "confidence": 0.9,
+            "probabilities": { "meta.pricing": 0.9, "none": 0.1 } });
+        let cli = json!({ "type": "choice", "choice": "computer", "confidence": 0.8,
+            "probabilities": { "computer": 0.8, "wallet": 0.15, "none": 0.05 } });
+        let main = raw(json!({
+            "model": "jev-1.13.0",
+            "answers": { "route": route, "risk": risk },
+            "usage": { "input_tokens": 9000 },
+            "service": { "door": "https://openrouter.ai" },
+        }));
+        let sides = vec![
+            raw(
+                json!({ "model": "jev-1.13.0", "answers": { "answer": answer },
+                "usage": { "input_tokens": 7000 } }),
+            ),
+            raw(
+                json!({ "model": "jev-1.13.0", "answers": { "cli_group": cli },
+                "usage": { "input_tokens": 6000, "cost": 0.0003 } }),
+            ),
+        ];
+        let merged = merge(main, sides);
+        assert_eq!(merged.model, "jev-1.13.0");
+        assert_eq!(
+            merged.service().unwrap()["door"],
+            json!("https://openrouter.ai")
+        );
+        assert_eq!(merged.usage.input_tokens, Some(22_000));
+        assert_eq!(merged.usage.cost, Some(0.0003));
+        let keys: Vec<&str> = merged.answers.keys().map(String::as_str).collect();
+        assert_eq!(keys, ["route", "risk", "answer", "cli_group"]);
+
+        let whole = response(json!({
+            "route": route, "risk": risk, "answer": answer, "cli_group": cli,
+        }));
+        let admitted = Admitted::builtin();
+        let bank = Bank::builtin();
+        assert_eq!(
+            reading(&merged, bank, &facts(), &admitted),
+            reading(&whole, bank, &facts(), &admitted)
+        );
+        let routing = reading(&merged, bank, &facts(), &admitted);
+        assert_eq!(routing.cli_group, Some(("computer".to_string(), 0.8)));
+        assert_eq!(routing.answer.as_ref().unwrap().0.id, "meta.pricing");
+        let (_, captured) = crate::router::decisions::capture(&merged, false, || {
+            crate::router::decisions::test("cli_group", "CLI_GROUP", 0.8, 0.5, "ge")
+        });
+        assert_eq!(
+            captured.len(),
+            1,
+            "the side's answer is in the merged bytes"
+        );
+    }
+
+    /// A side that fails reads as not asked: no prepared answer and no
+    /// command group, and the main response's readings stand.
+    #[test]
+    fn a_missing_side_reads_as_not_asked() {
+        let main = raw(json!({
+            "model": "jev",
+            "answers": { "route": { "type": "choice", "choice": "meta", "confidence": 0.9,
+                "probabilities": { "meta": 0.9, "general": 0.1 } } },
+        }));
+        let merged = merge(main, Vec::new());
+        let routing = reading(&merged, Bank::builtin(), &facts(), &Admitted::builtin());
+        assert_eq!(routing.route, RouteId::Meta);
+        assert!(routing.answer.is_none());
+        assert!(routing.cli_group.is_none());
+    }
+
     /// The `engine` reading is a listed engine with the probability of
     /// that option, or nothing for `none`, an unknown word, or no answer
     /// (#10076).
@@ -1145,8 +1543,9 @@ mod tests {
                 text: (*message).to_string(),
             }];
             let started = std::time::Instant::now();
-            let response = judge
-                .system_one(request(
+            let response = ask(
+                &judge,
+                split(
                     message,
                     &transcript,
                     bank,
@@ -1155,9 +1554,10 @@ mod tests {
                     &[],
                     &Admitted::builtin(),
                     &[],
-                ))
-                .await
-                .expect("the judge answers");
+                ),
+            )
+            .await
+            .expect("the judge answers");
             let ms = started.elapsed().as_millis();
             millis.push(ms);
             let routing = reading(&response, bank, &facts, &Admitted::builtin());
