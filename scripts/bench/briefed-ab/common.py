@@ -30,8 +30,8 @@ SSH = [
 # full settings, so any two runs can be compared lever by lever.
 LEVERS: dict[str, object] = {
     # 1 Briefing
-    "finder": "lite",            # lite | oracle | finder (#11210)
-    "briefing_files": 6,         # most files listed
+    "finder": "finder",          # finder (#11210 filefind) | lite | oracle
+    "briefing_files": 8,         # most files listed
     "excerpt": "windows",        # windows | whole (whole file when small)
     "excerpt_lines": 140,        # most excerpt lines per file
     "briefing_tokens": 14000,    # rough cap on the briefing text

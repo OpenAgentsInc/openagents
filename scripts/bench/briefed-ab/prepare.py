@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import os
 import re
 import sys
 import tarfile
@@ -100,7 +101,7 @@ def prepare(issue: int, commit: str) -> dict:
             test_files.append(path)
             tests_patch.append(header + "".join(test_h))
             names += added_tests(test_h)
-    crate_files = [p for p in source_files + test_files if p.startswith("crates/")]
+    crate_files = [p for p in test_files + source_files if p.startswith("crates/")]
     package = package_of(parent, crate_files[0]) if crate_files else None
     targets: list[str] = []
     for path in sorted(set(test_files)):
@@ -164,7 +165,7 @@ def grade(task: dict, change: str, slot: int = 0, limit: int = 1500) -> dict:
             info.size = len(raw)
             tar.addfile(info, io.BytesIO(raw))
     proc = run(
-        SSH + [f"bash ~/ab/bin/eval.sh {slot} {task['parent']} {task['package']} {limit}"],
+        SSH + [f"AB_BUILD={os.environ.get('AB_BUILD', '')} bash ~/ab/bin/eval.sh {slot} {task['parent']} {task['package']} {limit}"],
         input=buf.getvalue(),
         check=False,
         timeout=limit * 2 + 600,
@@ -209,6 +210,10 @@ def main() -> None:
             print(f"{issue}: {error}", file=sys.stderr)
             continue
         line = f"{issue} {task['package']} src={len(task['source_files'])} tests={task['test_names']}"
+        if args.validate and (TASKS / issue / "validation.json").exists():
+            v = load_json(TASKS / issue / "validation.json")
+            print(f"{line} usable={v['usable']} (validated before)", flush=True)
+            continue
         if args.validate and task["package"] and task["test_names"]:
             v = validate(task, args.slot)
             line += f" usable={v['usable']} behavioral={v['behavioral']}"

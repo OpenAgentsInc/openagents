@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import re
 import shutil
 import subprocess
@@ -36,7 +37,7 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
-from common import HERE, LEVERS, REPO, dump_json, git, is_test_file, load_json, package_of, run, show
+from common import HERE, LEVERS, REPO, WORK, dump_json, git, is_test_file, load_json, package_of, run, show
 
 TASKS = HERE / "tasks"
 SKIP = (":!bench/", ":!assets/", ":!**/*.lock", ":!**/*.json", ":!**/*.svg", ":!**/*.png")
@@ -177,27 +178,63 @@ def oracle_files(task: dict) -> list[dict]:
     return out
 
 
+SECRETS = Path(os.environ.get("AB_OPENROUTER_ENV", "/Users/christopherdavid/work/.secrets/openrouter.env"))
+
+
+def finder_tool() -> Path | None:
+    """#11210's finder (`scripts/filefind/filefind.py`), taken from
+    origin/main into the bench's work dir."""
+    dest = WORK / "filefind"
+    if not (dest / "filefind.py").exists():
+        dest.mkdir(parents=True, exist_ok=True)
+        for name in ("filefind.py", "model.json"):
+            text = show("origin/main", f"scripts/filefind/{name}")
+            if text is None:
+                return None
+            (dest / name).write_text(text)
+    return dest / "filefind.py"
+
+
+def finder_env() -> dict:
+    """The environment with the embeddings key loaded from the secrets
+    file (never printed)."""
+    env = dict(os.environ)
+    if "OPENROUTER_API_KEY" not in env and SECRETS.exists():
+        for line in SECRETS.read_text().splitlines():
+            line = line.strip().removeprefix("export ")
+            if line.startswith("OPENROUTER_API_KEY="):
+                env["OPENROUTER_API_KEY"] = line.split("=", 1)[1].strip().strip("'\"")
+    return env
+
+
 def finder_files(task: dict, levers: dict) -> tuple[list[dict], str]:
-    """The #11210 context finder, when its CLI exists; `lite` otherwise."""
-    for candidate in sorted((REPO / "scripts" / "bench").glob("*find*.py")):
-        if "relevance" in candidate.name:
-            continue
+    """The #11210 context finder at the base commit; `lite` if it fails."""
+    tool = finder_tool()
+    if tool is not None:
         proc = subprocess.run(
-            [sys.executable, str(candidate), "--issue", str(task["issue"]), "--rev", task["parent"], "--json"],
-            cwd=REPO, capture_output=True, text=True, timeout=600,
+            [sys.executable, str(tool), "query", "--repo", str(REPO), "--rev", task["parent"],
+             "--issue", str(task["issue"]), "--k", str(int(levers["briefing_files"])), "--json"],
+            cwd=REPO, capture_output=True, text=True, timeout=600, env=finder_env(),
         )
-        if proc.returncode == 0:
-            try:
-                found = json.loads(proc.stdout)
-                files = found.get("files", found) if isinstance(found, dict) else found
-                return [
-                    {"path": f["path"] if isinstance(f, dict) else f, "score": None, "lines": [],
-                     "why": [f.get("why", "the context finder chose it")] if isinstance(f, dict) else ["the context finder chose it"]}
-                    for f in files
-                ][: int(levers["briefing_files"])], candidate.name
-            except (json.JSONDecodeError, KeyError, TypeError):
-                pass
-    return lite_files(task, levers), "lite (finder CLI absent)"
+        try:
+            found = json.loads(proc.stdout)["files"]
+        except (json.JSONDecodeError, KeyError):
+            found = None
+        if found:
+            hits = {f["path"]: f["lines"] for f in lite_files(task, dict(levers, briefing_files=60))}
+            return [
+                {"path": f["path"], "score": f.get("confidence"), "lines": hits.get(f["path"], []),
+                 "why": [f"finder confidence {f.get('confidence')}"] + list(f.get("reasons") or [])[:4]}
+                for f in found
+            ], "filefind (#11210)"
+    return lite_files(task, levers), "lite (finder unavailable)"
+
+
+def outline(rows: list[str], cap: int) -> list[int]:
+    """Line numbers of a Rust file's items (fn, struct, enum, impl, mod,
+    trait, const), for a file the finder listed without a text match."""
+    pat = re.compile(r"^\s*(pub(\([^)]*\))?\s+)?(async\s+)?(fn|struct|enum|impl|mod|trait|const|static|type)\b|^\s*#\[cfg\(test\)\]")
+    return [i for i, row in enumerate(rows, 1) if pat.match(row)][:cap]
 
 
 def excerpt(rev: str, path: str, hit_lines: list[int], levers: dict) -> str:
@@ -206,6 +243,12 @@ def excerpt(rev: str, path: str, hit_lines: list[int], levers: dict) -> str:
         return "(new file)"
     rows = text.splitlines()
     cap = int(levers["excerpt_lines"])
+    if not hit_lines and len(rows) > cap and levers["excerpt"] != "whole":
+        items = outline(rows, min(cap, 60))
+        if items:
+            body = [f"--- outline: {len(items)} items of {len(rows)} lines ---"]
+            body += [f"{i:>5}  {rows[i - 1]}" for i in items]
+            return "\n".join(body)
     if levers["excerpt"] == "whole" or len(rows) <= cap or not hit_lines:
         chosen = range(1, min(len(rows), cap if hit_lines else min(cap, 60)) + 1)
         if levers["excerpt"] == "whole" or len(rows) <= cap:
@@ -284,7 +327,7 @@ def build(task: dict, levers: dict) -> dict:
     for f in files:
         f["excerpt"] = excerpt(rev, f["path"], f["lines"], levers)
     packages = []
-    for f in files:
+    for f in [f for f in files if f["path"].endswith(".rs")][:3]:
         if f["path"].startswith("crates/"):
             pkg = package_of(rev, f["path"])
             if pkg and pkg not in packages:

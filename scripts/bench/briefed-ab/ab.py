@@ -51,11 +51,11 @@ from prepare import TASKS, grade
 
 SHIM = HERE / "shim"
 AGENT_BIN = Path(os.environ.get(
-    "AB_AGENT_BIN", "/Users/christopherdavid/work/openagents/target/debug/briefed-agent"))
+    "AB_AGENT_BIN", str(WORK / "bin" / "briefed-agent")))
 CLAUDE = shutil.which("claude") or "claude"
 SPARSE = ["/*", "!/bench/terminal-bench/", "!/assets/"]
 BASE_DEPTH = 50
-_base_lock = threading.Lock()
+_base_lock = threading.RLock()
 
 
 # ---------------------------------------------------------------- worktrees
@@ -78,17 +78,21 @@ def base_repo(task: dict) -> Path:
 
 def make_worktree(task: dict, dest: Path) -> Path:
     base = base_repo(task)
-    shutil.rmtree(dest, ignore_errors=True)
-    run(["git", "-C", str(base), "worktree", "add", "-q", "--detach", "--no-checkout", str(dest), task["parent"]])
-    run(["git", "-C", str(dest), "sparse-checkout", "set", "--no-cone", *SPARSE])
+    with _base_lock:  # git worktree and sparse-checkout write the base's config
+        shutil.rmtree(dest, ignore_errors=True)
+        run(["git", "-C", str(base), "worktree", "prune"], check=False)
+        run(["git", "-C", str(base), "worktree", "add", "-f", "-q", "--detach", "--no-checkout", str(dest),
+             task["parent"]])
+        run(["git", "-C", str(dest), "sparse-checkout", "set", "--no-cone", *SPARSE])
     run(["git", "-C", str(dest), "checkout", "-q", "--detach", task["parent"]], timeout=600)
     return dest
 
 
 def drop_worktree(task: dict, dest: Path) -> None:
     base = WORK / "bases" / str(task["issue"])
-    run(["git", "-C", str(base), "worktree", "remove", "--force", str(dest)], check=False)
-    shutil.rmtree(dest, ignore_errors=True)
+    with _base_lock:
+        run(["git", "-C", str(base), "worktree", "remove", "--force", str(dest)], check=False)
+        shutil.rmtree(dest, ignore_errors=True)
 
 
 def working_diff(root: Path, base: str) -> str:
@@ -357,7 +361,7 @@ def disk_guard() -> None:
     free = run(SSH + ["df -BG --output=avail / | tail -1"], check=False).stdout.strip().rstrip("G")
     if free.isdigit() and int(free) < MIN_FREE_GB:
         print(f"build host has {free} GB free; clearing ~/ab/target", flush=True)
-        run(SSH + ["flock ~/ab/slot0.lock flock ~/ab/slot1.lock rm -rf ~/ab/target && mkdir -p ~/ab/target"],
+        run(SSH + ["flock ~/ab/build.lock sh -c 'rm -rf ~/ab/target && mkdir -p ~/ab/target'"],
             check=False, timeout=1800)
 
 
@@ -380,44 +384,66 @@ def batch(args) -> None:
     dump_json(tag_dir / "levers.json", levers)
     issues = [int(x) for x in args.issues.split(",")]
     arms = args.arms.split(",")
-    queue = list(issues)
-    lock = threading.Lock()
+    # Issues run one at a time and both workers share the issue's base
+    # commit: the build host has one build checkout, so trials of one issue
+    # only rebuild what their patches touch.
+    for issue in issues:
+        task = load_json(TASKS / str(issue) / "task.json")
+        order = []
+        for rep in range(args.reps):
+            rot = arms[rep % len(arms):] + arms[: rep % len(arms)]
+            order += [(arm, rep) for arm in rot]
+        pending = [(a, r) for a, r in order if not (tag_dir / f"{issue}-{a}-{r}" / "result.json").exists()]
+        if not pending:
+            continue
+        disk_guard()
+        if levers["build_cache"] == "warm":
+            secs = prewarm(task, args.first_slot)
+            print(f"{issue} prewarmed in {secs:.0f}s", flush=True)
+        lock = threading.Lock()
 
-    def worker(slot: int) -> None:
-        while True:
-            with lock:
-                if not queue:
-                    return
-                issue = queue.pop(0)
-            task = load_json(TASKS / str(issue) / "task.json")
-            order = []
-            for rep in range(args.reps):
-                rot = arms[rep % len(arms):] + arms[: rep % len(arms)]
-                order += [(arm, rep) for arm in rot]
-            pending = [(a, r) for a, r in order if not (tag_dir / f"{issue}-{a}-{r}" / "result.json").exists()]
-            if not pending:
-                continue
-            disk_guard()
-            if levers["build_cache"] == "warm":
-                secs = prewarm(task, slot)
-                print(f"[slot{slot}] {issue} prewarmed in {secs:.0f}s", flush=True)
-            for arm, rep in pending:
+        def worker(slot: int) -> None:
+            while True:
+                with lock:
+                    if not pending:
+                        return
+                    arm, rep = pending.pop(0)
                 out = tag_dir / f"{issue}-{arm}-{rep}"
+                if levers["build_cache"] == "cold":
+                    with _base_lock:
+                        run(SSH + ["flock ~/ab/build.lock sh -c 'rm -rf ~/ab/target && mkdir -p ~/ab/target'"], check=False)
                 try:
                     r = run_trial(task, arm, rep, levers, slot, out)
                     print(f"[slot{slot}] {issue} {arm}{rep}: ${r['cost_usd']} {r['wall_secs']}s "
                           f"compiles={r['compiles']} tests={r['tests_pass']} overlap={r['overlap_recall']}", flush=True)
                 except Exception as error:  # noqa: BLE001 - record and go on
                     print(f"[slot{slot}] {issue} {arm}{rep}: harness error {error}", flush=True)
+                    out.mkdir(parents=True, exist_ok=True)
                     (out / "error.txt").write_text(str(error))
-            if not args.keep_bases:
-                shutil.rmtree(WORK / "bases" / str(issue), ignore_errors=True)
 
-    threads = [threading.Thread(target=worker, args=(args.first_slot + s,)) for s in range(args.workers)]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
+        threads = [threading.Thread(target=worker, args=(args.first_slot + s,)) for s in range(args.workers)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        if not args.keep_bases:
+            shutil.rmtree(WORK / "bases" / str(issue), ignore_errors=True)
+
+
+def regrade(args) -> None:
+    """Grade saved changes again (after a grader fix)."""
+    for tag in args.tag:
+        for d in sorted((WORK / "results" / tag).iterdir()):
+            if not (d / "result.json").exists() or (args.issue and int(d.name.split("-")[0]) not in args.issue):
+                continue
+            r = load_json(d / "result.json")
+            task = load_json(TASKS / str(r["issue"]) / "task.json")
+            diff = (d / "change.patch").read_text()
+            g = grade(task, diff, r["slot"]) if diff.strip() else r["grade"]
+            r.update({"grade": g, "compiles": compiles_vs_parent(task, g), "compiles_raw": g.get("compiles"),
+                      "new_errors": new_errors(task, g)[:10], "tests_pass": bool(g.get("tests_pass"))})
+            dump_json(d / "result.json", r)
+            print(d.name, r["compiles"], r["tests_pass"], flush=True)
 
 
 # -------------------------------------------------------------------- judge
@@ -606,8 +632,11 @@ def main() -> None:
     r = sub.add_parser("report")
     r.add_argument("--tag", action="append", required=True)
     r.add_argument("--csv")
+    g = sub.add_parser("regrade")
+    g.add_argument("--tag", action="append", required=True)
+    g.add_argument("--issue", type=int, action="append")
     args = ap.parse_args()
-    {"batch": batch, "judge": judge, "report": report}[args.cmd](args)
+    {"batch": batch, "judge": judge, "report": report, "regrade": regrade}[args.cmd](args)
 
 
 if __name__ == "__main__":

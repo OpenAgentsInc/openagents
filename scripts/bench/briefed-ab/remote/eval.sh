@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The bench's grader on the build host (#11211). In slot SLOT at BASE:
+# The bench's grader on the build host (#11211). In the build checkout at BASE:
 # apply the change, check that it compiles, lay the fix commit's own test
 # changes over it, and run the fix's tests.
 #
@@ -9,16 +9,12 @@
 # Prints one JSON object as its last line.
 set -u
 slot=$1 base=$2 pkg=$3 limit=$4
-dir=$HOME/ab/slot$slot
-exec 9>"$HOME/ab/slot$slot.lock"
-flock 9
+. "$(dirname "$0")/common.sh"
+ab_lock
 in=$(mktemp -d)
 trap 'rm -rf "$in"' EXIT
 tar -x -C "$in"
-cd "$dir" || exit 98
-git reset -q --hard "$base" 2>/dev/null || { git -C "$HOME/openagents" fetch -q origin && git reset -q --hard "$base"; } || exit 98
-git clean -fdq
-export CARGO_TARGET_DIR=$HOME/ab/target CARGO_TERM_COLOR=never CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
+ab_checkout "$base"
 tests_compiled=null applied=true compiles=null tests_applied=null tests_pass=null passed=0 failed=0
 t0=$(date +%s)
 if [ -s "$in/change.patch" ]; then
@@ -28,11 +24,7 @@ if $applied; then
   if timeout -k 10 "$limit" cargo check -q -p "$pkg" --tests --keep-going --message-format short >"$in/check.out" 2>&1; then compiles=true; else compiles=false; fi
   git add -A >/dev/null 2>&1
   if [ -s "$in/tests.patch" ]; then
-    if git apply --3way --whitespace=nowarn "$in/tests.patch" >"$in/tests.err" 2>&1; then tests_applied=true; else tests_applied=false; fi
-    if [ "$tests_applied" = false ]; then
-      git checkout -q -- . 2>/dev/null
-      git apply --whitespace=nowarn -C1 --recount "$in/tests.patch" >>"$in/tests.err" 2>&1 && tests_applied=true
-    fi
+    if python3 "$(dirname "$0")/overlay.py" "$in/tests.patch" >"$in/tests.err" 2>&1; then tests_applied=true; else tests_applied=false; fi
   else
     tests_applied=true
   fi
