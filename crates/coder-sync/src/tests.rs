@@ -413,3 +413,30 @@ fn a_take_from_a_site_without_added_messages_brings_only_replies() {
     assert_eq!(only.replies.len(), 1);
     assert!(only.added.is_empty());
 }
+
+#[test]
+fn asks_from_the_website_are_read_and_bad_ones_left_out() {
+    let id = "0b3c1a5e-8f0d-4c5e-9a7b-2d4e6f8a0b1c";
+    let body = json!({"replies": [], "asks": [
+        {"id": id, "action": {"kind": "screenshot"}},
+        {"id": id, "action": {"kind": "pull", "path": "~/notes.txt"}},
+        {"id": id, "action": {"kind": "pull", "path": "notes.txt"}},
+        {"id": "not-an-id", "action": {"kind": "screenshot"}},
+        {"id": id, "action": {"kind": "run"}},
+    ]});
+    assert_eq!(
+        taken(&body).asks,
+        vec![
+            Ask {
+                id: id.into(),
+                action: AskAction::Screenshot
+            },
+            Ask {
+                id: id.into(),
+                action: AskAction::Pull {
+                    path: "~/notes.txt".into()
+                }
+            },
+        ]
+    );
+}

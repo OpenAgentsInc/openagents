@@ -29,6 +29,12 @@
 //! (`/coder/sync`, [`choice`], [`choose`]), so it can be made or changed
 //! there too.
 //!
+//! The same take brings screenshots and files asked for on the website
+//! from this computer (#11185, [`Ask`]): Coder runs each through this
+//! computer's own host and sends back what came of it ([`Job::Capture`]).
+//! The website never reaches the computer; it only answers what Coder
+//! asks.
+//!
 //! [`Settings`] lives in `sync.json` (0600) beside the account file.
 
 pub mod activity;
@@ -641,6 +647,130 @@ pub struct Added {
     pub text: String,
 }
 
+/// A screenshot or file asked for on the website from this computer
+/// (#11185).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Ask {
+    /// The website's id for it, a version 4 UUID.
+    pub id: String,
+    pub action: AskAction,
+}
+
+/// What the person asked for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AskAction {
+    /// A picture of this computer's main screen.
+    Screenshot,
+    /// A copy of the file at this path (absolute, or under `~/`).
+    Pull { path: String },
+}
+
+/// The largest capture sent back; the website takes no more.
+pub const MAX_CAPTURE_BYTES: usize = 15 * 1024 * 1024;
+
+fn ask_id(id: &str) -> bool {
+    id.len() == 36
+        && id.bytes().enumerate().all(|(index, byte)| {
+            if matches!(index, 8 | 13 | 18 | 23) {
+                byte == b'-'
+            } else {
+                byte.is_ascii_hexdigit()
+            }
+        })
+}
+
+/// The asks in a take's answer; a website without asks sends none, and a
+/// malformed one is left out.
+fn asks(body: &Value) -> Vec<Ask> {
+    body["asks"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|ask| {
+            let id = ask["id"].as_str().filter(|id| ask_id(id))?.to_owned();
+            let action = match ask["action"]["kind"].as_str()? {
+                "screenshot" => AskAction::Screenshot,
+                "pull" => {
+                    let path = ask["action"]["path"].as_str()?;
+                    if !(path.starts_with('/') || path.starts_with("~/"))
+                        || path.len() > 1024
+                        || path.chars().any(char::is_control)
+                    {
+                        return None;
+                    }
+                    AskAction::Pull {
+                        path: path.to_owned(),
+                    }
+                }
+                _ => return None,
+            };
+            Some(Ask { id, action })
+        })
+        .collect()
+}
+
+/// Send back what an ask brought: the bytes, or why it couldn't be done.
+pub async fn send_capture(
+    http: &reqwest::Client,
+    saved: &Saved,
+    session: &str,
+    ask: &str,
+    result: &Result<Vec<u8>, String>,
+) -> Answer {
+    let Some(path) = session_path(session) else {
+        return Answer::Refused("That isn't a Coder session id.".into());
+    };
+    if !ask_id(ask) {
+        return Answer::Refused("That isn't an ask id.".into());
+    }
+    let too_large: Result<Vec<u8>, String>;
+    let result = match result {
+        Ok(bytes) if bytes.len() > MAX_CAPTURE_BYTES => {
+            too_large = Err(format!(
+                "It is {} MB, over the {} MB this can bring back.",
+                bytes.len() / (1024 * 1024),
+                MAX_CAPTURE_BYTES / (1024 * 1024)
+            ));
+            &too_large
+        }
+        other => other,
+    };
+    match result {
+        Ok(bytes) => {
+            let Ok(response) = http
+                .put(format!("{}{path}/captures/{ask}", saved.origin))
+                .bearer_auth(saved.token())
+                .header(reqwest::header::CONTENT_TYPE, "application/octet-stream")
+                .body(bytes.clone())
+                .send()
+                .await
+            else {
+                return Answer::Retry;
+            };
+            match response.status().as_u16() {
+                200 => Answer::Done,
+                401 => Answer::SignedOut,
+                404 => Answer::Unknown,
+                410 => Answer::Deleted,
+                408 | 429 | 500..=599 => Answer::Retry,
+                _ => Answer::Refused("The website refused the capture.".into()),
+            }
+        }
+        Err(message) => {
+            let body = json!({"message": line(message, 300)});
+            call(
+                http,
+                saved,
+                reqwest::Method::POST,
+                &format!("{path}/captures/{ask}/failed"),
+                Some(&body),
+            )
+            .await
+            .0
+        }
+    }
+}
+
 /// What one take brought from the website.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Taken {
@@ -650,6 +780,8 @@ pub struct Taken {
     /// for Coder to add to its own copy before answering `replies`
     /// (#11052).
     pub added: Vec<Added>,
+    /// Screenshots and files asked for there (#11185).
+    pub asks: Vec<Ask>,
 }
 
 /// Take what waits in one chat. The website shows replies in the chat at
@@ -704,7 +836,11 @@ fn taken(body: &Value) -> Taken {
             })
         })
         .collect();
-    Taken { replies, added }
+    Taken {
+        replies,
+        added,
+        asks: asks(body),
+    }
 }
 
 /// Delete one chat from the website now, waiting at most a few seconds
@@ -751,6 +887,13 @@ pub enum Job {
     Take {
         session: String,
     },
+    /// Send back what an ask brought (#11185): the bytes, or why the
+    /// computer couldn't.
+    Capture {
+        session: String,
+        ask: String,
+        result: Result<Vec<u8>, String>,
+    },
     /// What runs on this computer now, for the phone (#11165): reported
     /// at once when it changed, then again every [`activity::every`];
     /// actions from the phone come back as [`Event::Commands`]. `None`
@@ -791,6 +934,9 @@ pub enum Event {
     /// Actions sent from the phone for this computer's running work
     /// (#11165), each handed out once.
     Commands { commands: Vec<activity::Command> },
+    /// Screenshots and files asked for on the website in this chat
+    /// (#11185), taken with its replies, each handed out once.
+    Asks { session: String, asks: Vec<Ask> },
 }
 
 /// The background sender: one thread, its own runtime, quiet retries.
@@ -833,6 +979,8 @@ struct Queue {
     statuses: BTreeMap<String, bool>,
     deletes: BTreeSet<String>,
     takes: BTreeSet<String>,
+    /// What asks brought, to send back (#11185).
+    captures: Vec<(String, String, Result<Vec<u8>, String>)>,
     /// The computer to check in as, when listening for replies.
     computer: Option<String>,
     /// The running work to report, and for which computer (#11165).
@@ -861,6 +1009,11 @@ impl Queue {
             Job::Take { session } => {
                 self.takes.insert(session);
             }
+            Job::Capture {
+                session,
+                ask,
+                result,
+            } => self.captures.push((session, ask, result)),
             Job::Activity { computer, items } => {
                 let next = items.map(|items| (computer, items));
                 if next != self.activity {
@@ -876,6 +1029,7 @@ impl Queue {
             && self.statuses.is_empty()
             && self.deletes.is_empty()
             && self.takes.is_empty()
+            && self.captures.is_empty()
             && !self.activity_changed
     }
 }
@@ -1004,7 +1158,17 @@ async fn round(
     }
     for session in std::mem::take(&mut queue.takes) {
         match take(http, saved, &session).await {
-            Ok(Taken { replies, added }) => {
+            Ok(Taken {
+                replies,
+                added,
+                asks,
+            }) => {
+                if !asks.is_empty() {
+                    let _ = outbox.send(Event::Asks {
+                        session: session.clone(),
+                        asks,
+                    });
+                }
                 let _ = outbox.send(Event::Replies {
                     session,
                     replies,
@@ -1027,6 +1191,17 @@ async fn round(
                     added: Vec::new(),
                 });
             }
+        }
+    }
+    for (session, ask, result) in std::mem::take(&mut queue.captures) {
+        match send_capture(http, saved, &session, &ask, &result).await {
+            Answer::SignedOut => return Round::SignedOut,
+            Answer::Retry => {
+                failed = true;
+                queue.captures.push((session, ask, result));
+            }
+            // Taken, answered already, or the chat is gone: done either way.
+            _ => {}
         }
     }
     for (session, working) in std::mem::take(&mut queue.statuses) {

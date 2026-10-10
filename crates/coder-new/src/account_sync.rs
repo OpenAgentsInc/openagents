@@ -11,7 +11,9 @@
 //! the answer syncs back like any other. Messages added to a chat on the
 //! website while this computer was offline (a run on a Cloud computer,
 //! #11050) come with the same take and join the chat here, in order,
-//! before any reply is answered (#11052).
+//! before any reply is answered (#11052). Screenshots and files asked for
+//! there come with the take too and run through this computer's own host
+//! (`crate::web_asks`, #11185).
 
 use std::collections::{BTreeSet, VecDeque};
 use std::path::Path;
@@ -613,6 +615,14 @@ impl App {
                         added,
                         replies: replies.into_iter().map(|r| r.text).collect(),
                     });
+                }
+            }
+            // A screenshot or file asked for on the website (#11185): run
+            // through this computer's own host in the background; what came
+            // of it goes back with the next round.
+            Event::Asks { session, asks } => {
+                if let Some(worker) = &sync.worker {
+                    crate::web_asks::run(session, asks, sync.computer.clone(), worker.sender());
                 }
             }
             Event::Waiting { .. } | Event::Chosen { .. } | Event::Commands { .. } => {}
