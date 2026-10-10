@@ -1,6 +1,11 @@
 //! Accept prompts while busy and safely transfer pending work back to the composer.
 use crate::{App, Draft, Mode, Screen, live};
 
+/// The discovery hint for retrieving queued messages (#11121).
+pub(crate) const QUEUE_HINT: &str = "Press up to edit queued messages";
+/// How many times the hint is shown in one run of Coder.
+const QUEUE_HINT_SHOWS: u8 = 3;
+
 pub type Inbox =
     std::sync::Arc<std::sync::Mutex<Vec<std::sync::Arc<std::sync::Mutex<Option<String>>>>>>;
 
@@ -46,8 +51,10 @@ impl App {
         });
         self.draft.cursor = 0;
         self.live.notice = None;
-        if self.queue_hint_count < 3 {
-            self.notice = Some("Press up to edit queued messages".into());
+        // Limited exposure: one showing counts once, however many messages
+        // are queued while it is up.
+        if self.notice.as_deref() != Some(QUEUE_HINT) && self.queue_hint_count < QUEUE_HINT_SHOWS {
+            self.notice = Some(QUEUE_HINT.into());
             self.queue_hint_count += 1;
         }
     }
@@ -117,7 +124,7 @@ impl App {
         self.composer.mode = crate::composer_state::InputMode::Prompt;
         self.assign_image_ids();
         self.composer_history.reset();
-        if self.notice.as_deref() == Some("Press up to edit queued messages") {
+        if self.notice.as_deref() == Some(QUEUE_HINT) {
             self.notice = None;
         }
         true
@@ -144,7 +151,7 @@ impl App {
     pub(crate) fn process_prompt_queue(&mut self) {
         self.acknowledge_prompts();
         if !self.queued_prompts.iter().any(|p| p.editable)
-            && self.notice.as_deref() == Some("Press up to edit queued messages")
+            && self.notice.as_deref() == Some(QUEUE_HINT)
         {
             self.notice = None;
         }
@@ -361,5 +368,34 @@ mod tests {
         assert_eq!(a.composer.images[1].id.as_deref(), Some("queued-id"));
         assert_eq!(a.queued_prompts.len(), 1);
         assert!(!a.restore_queued_prompts());
+    }
+    #[test]
+    fn queue_hint_shows_only_for_editable_messages_and_a_few_times() {
+        let mut a = app();
+        a.live.busy = true;
+        a.queue_notice("an agent finished".into());
+        assert_ne!(a.notice.as_deref(), Some(QUEUE_HINT));
+        for round in 0..5 {
+            a.draft.text = format!("queued {round}");
+            a.queue_prompt();
+            a.draft.text = format!("queued again {round}");
+            a.queue_prompt();
+            let shown = a.notice.as_deref() == Some(QUEUE_HINT);
+            assert_eq!(
+                shown,
+                round < usize::from(QUEUE_HINT_SHOWS),
+                "round {round}"
+            );
+            if shown {
+                assert!(a.restore_queued_prompts());
+                assert_ne!(a.notice.as_deref(), Some(QUEUE_HINT));
+            } else {
+                assert!(a.restore_queued_prompts());
+            }
+            a.draft = Draft::default();
+        }
+        assert_eq!(a.queue_hint_count, QUEUE_HINT_SHOWS);
+        // The agent's notice is never retrieved for editing.
+        assert!(a.queued_prompts.iter().all(|p| p.notice && !p.editable));
     }
 }
