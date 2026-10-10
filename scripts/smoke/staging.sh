@@ -1,7 +1,7 @@
 #!/bin/sh
 # The web smoke suite against staging (or any running site):
 #
-#   scripts/smoke/staging.sh [BASE_URL] [--no-install] [--only home,docs,...] [--production]
+#   scripts/smoke/staging.sh [BASE_URL] [--no-install] [--only home,docs,...] [--production] [--candidate]
 #
 # BASE_URL defaults to the staging service
 # (https://staging.openagents.com,
@@ -20,9 +20,11 @@
 # openagents-gateway-staging-smoke-signup-token read with the automation
 # account (never printed). Without it those checks are skipped.
 # --production (openagents.com or its tag URL): one question, no test
-# account; the operator token is not read.
+# account; the operator token is not read. --candidate (a no-traffic
+# production candidate, implies --production): the gateway checks, which
+# wait for traffic (#11154), print WAIT instead of failing.
 set -eu
-case " $* " in *" --production "*) production=1 ;; *) production= ;; esac
+case " $* " in *" --production "* | *" --candidate "*) production=1 ;; *) production= ;; esac
 if [ -z "$production" ] && [ -z "${SMOKE_SIGNUP_TOKEN:-}" ] && command -v gcloud > /dev/null 2>&1; then
     config=${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}
     SMOKE_SIGNUP_TOKEN=$(CLOUDSDK_CONFIG=$config gcloud secrets versions access latest \

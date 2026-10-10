@@ -16,6 +16,14 @@ one starter question instead of four and makes no account (the operator
 sign-up path is not open there), so it writes nothing beyond that one chat.
 Sign-in checks stop at github.com.
 
+`--candidate` (with `--production`) is for a no-traffic candidate on the
+`new` tag. Production's gateway sidecar waits until its revision serves
+traffic before it takes the account store (`GATEWAY_HOLD=serving`,
+#11154), so the checks in GATEWAY_HELD cannot pass there yet: a failure of
+one of them prints WAIT ("expected until traffic") and does not fail the
+run. `scripts/deploy/web.sh shift` runs them for real against
+openagents.com once the traffic has moved.
+
 `--invite-only` also checks that `/login` says sign-in is invite-only.
 
 The `environments` group (#11162) signs in as the fixed agent-work test
@@ -132,9 +140,27 @@ class Site:
 
 RESULTS = []
 
+# Checks answered through production's gateway sidecar, which holds until
+# its revision serves traffic (#11154). With --candidate a failure of one of
+# these is WAIT, not FAIL.
+GATEWAY_HELD = {
+    "openapi.json",
+    "alias: GET /api/v1/models answers",
+    "sign-in: /auth/github goes to GitHub with this site's callback",
+    "sign-in: GitHub answers the authorize request",
+    "device: signed out goes to log in",
+    "projects: signed out goes to log in",
+    "gateway: /v1/models",
+    "traces: signed out is refused",
+}
+CANDIDATE = False
+
 
 def record(name, ok, detail=""):
     word = "SKIP" if ok is None else ("PASS" if ok else "FAIL")
+    if word == "FAIL" and CANDIDATE and name in GATEWAY_HELD:
+        word = "WAIT"
+        detail = f"{detail}; expected until traffic" if detail else "expected until traffic"
     RESULTS.append((word, name, detail))
     line = f"{word}  {name}"
     if detail:
@@ -871,6 +897,9 @@ def main():
     parser.add_argument("--only", default="")
     parser.add_argument("--production", action="store_true",
                         help="one question, no test account")
+    parser.add_argument("--candidate", action="store_true",
+                        help="a no-traffic production candidate: the gateway checks it cannot "
+                        "pass before traffic print WAIT instead of failing (implies --production)")
     parser.add_argument("--invite-only", action="store_true",
                         help="also check that /login says sign-in is invite-only")
     parser.add_argument("--restart", action="store_true",
@@ -884,6 +913,10 @@ def main():
     parser.add_argument("--region", default="us-central1")
     parser.add_argument("--project", default="openagentsgemini")
     args = parser.parse_args()
+    global CANDIDATE
+    CANDIDATE = args.candidate
+    if args.candidate:
+        args.production = True
     only = [o for o in args.only.split(",") if o]
     print(f"Smoke: {args.base}", flush=True)
     started = time.time()
@@ -896,7 +929,9 @@ def main():
     passed = sum(1 for r in RESULTS if r[0] == "PASS")
     failed = sum(1 for r in RESULTS if r[0] == "FAIL")
     skipped = sum(1 for r in RESULTS if r[0] == "SKIP")
-    print(f"\n{passed} passed, {failed} failed, {skipped} skipped in {time.time() - started:.0f} s")
+    waiting = sum(1 for r in RESULTS if r[0] == "WAIT")
+    held = f", {waiting} waiting for traffic" if waiting else ""
+    print(f"\n{passed} passed, {failed} failed, {skipped} skipped{held} in {time.time() - started:.0f} s")
     sys.exit(1 if failed else 0)
 
 

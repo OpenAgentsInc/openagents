@@ -833,11 +833,29 @@ Production serves the image staging tested, with no second build
 
 ```sh
 scripts/deploy/web.sh stage                 # build origin/main once, staging, smoke
-scripts/deploy/web.sh promote sha256:...    # same digest, no traffic, tag `new`
-scripts/smoke/staging.sh https://new---coder-ezxz4mgdsq-uc.a.run.app --production
-scripts/deploy/web.sh shift                 # 100% to the candidate
+scripts/deploy/web.sh promote sha256:...    # same digest, no traffic, tag `new`, smoke --candidate
+scripts/deploy/web.sh shift                 # 100% to the candidate, then smoke openagents.com
 scripts/deploy/web.sh rollback              # 100% back to the revision before it
 ```
+
+**A no-traffic candidate is expected to fail 8 gateway checks.**
+Production's `gateway` sidecar waits until its revision serves traffic
+before it takes the account store (`GATEWAY_HOLD=serving`, #11154). Until
+then, everything answered through it returns 502 or nothing: `openapi.json`,
+`/api/v1/models`, the two GitHub sign-in checks, signed-out `device` and
+`projects`, `gateway: /v1/models`, and signed-out `traces`. The `web`
+container itself is fine. So `promote` smokes the `new` tag with
+`--candidate`, which prints those 8 as `WAIT` ("expected until traffic")
+instead of `FAIL`. Any other failure stops `promote` with exit 1; don't
+shift then. `shift` waits for the gateway to answer on openagents.com and
+then runs the full `--production` smoke there, the 8 included, and prints
+the rollback if anything fails. The list is `GATEWAY_HELD` in
+`scripts/smoke/web.py`. `SMOKE=0` skips either smoke.
+
+`shift` also refuses when production no longer serves the revision that
+`promote` copied. That happens when another deploy shifted in between, and
+shifting would roll it back. `FORCE=1` overrides; usually the right move is
+to check whether the newer revision already contains your commits.
 
 `promote` copies the spec of the revision serving the traffic (not the
 service template, which can be a tagged test revision), swaps only the

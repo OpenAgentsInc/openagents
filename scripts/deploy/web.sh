@@ -31,11 +31,20 @@
 # coder-serve always gets CODER_ACCOUNTS_URL=http://127.0.0.1:8791, the
 # gateway sidecar's account service, so /mcp admits the sessions
 # openagents.com's OAuth sign-in issues (#11084). JSON, not YAML, so CODER_CHAT_SYNC stays
-# the string "on". Then run the smoke against the tag URL:
-#   scripts/smoke/staging.sh https://new---coder-ezxz4mgdsq-uc.a.run.app --production
+# the string "on". promote then smokes the tag URL with --candidate:
+# production's gateway sidecar waits for its revision to serve traffic
+# before it takes the account store (GATEWAY_HOLD=serving, #11154), so the
+# 8 checks answered through it print WAIT ("expected until traffic") rather
+# than FAIL. Any other failure stops promote with exit 1: do not shift.
+# SMOKE=0 skips the smoke.
 #
 # shift and rollback move all traffic; their default revisions are the ones
-# the last promote recorded under $STATE. Every step prints its time.
+# the last promote recorded under $STATE. shift refuses when the revision
+# serving production is no longer the one that promote copied (another
+# deploy shifted since, and this one would roll it back; FORCE=1 overrides).
+# After moving the traffic it waits for the gateway to answer, then runs the
+# full --production smoke against openagents.com, the 8 gateway checks
+# included (SMOKE=0 skips it). Every step prints its time.
 #
 # Reads run as the automation account (CLOUDSDK_CONFIG, default
 # ~/work/.secrets/gcloud-sa-config). Where that account is refused actAs on
@@ -378,10 +387,39 @@ PY
     printf '%s\n' "$previous" > "$STATE/$SERVICE.previous"
     printf '%s\n' "$name" > "$STATE/$SERVICE.candidate"
     took "promote total" "$started"
-    say "Candidate $name at $TAG_URL (no traffic). Next:"
-    say "  scripts/smoke/staging.sh $TAG_URL --production"
-    say "  scripts/deploy/web.sh shift $name"
+    say "Candidate $name at $TAG_URL (no traffic)."
+    if [ "${SMOKE:-1}" != 0 ]; then
+        t=$(now)
+        if ! "$ROOT/scripts/smoke/staging.sh" "$TAG_URL" --candidate; then
+            took "candidate smoke" "$t"
+            say "The candidate failed checks that do not wait for traffic: do not shift."
+            exit 1
+        fi
+        took "candidate smoke" "$t"
+    fi
+    say "Next: scripts/deploy/web.sh shift $name"
     say "Rollback: scripts/deploy/web.sh rollback $previous"
+}
+
+# After a shift: wait for the gateway to take the store (it polls every 5 s
+# for traffic), then smoke openagents.com with every check counting.
+after_shift() {
+    [ -z "${DRY_RUN:-}" ] && [ "${SMOKE:-1}" != 0 ] || return 0
+    t=$(now)
+    tries=0
+    until [ "$(curl -s -o /dev/null -w '%{http_code}' https://openagents.com/openapi.json)" = 200 ]; do
+        tries=$((tries + 1))
+        [ "$tries" -lt 36 ] || { say "the gateway did not answer within 3 minutes"; break; }
+        sleep 5
+    done
+    took "gateway answering" "$t"
+    t=$(now)
+    if ! "$ROOT/scripts/smoke/staging.sh" https://openagents.com --production; then
+        took "openagents.com smoke" "$t"
+        say "openagents.com failed its smoke after the shift. Rollback: scripts/deploy/web.sh rollback"
+        exit 1
+    fi
+    took "openagents.com smoke" "$t"
 }
 
 traffic_to() {
@@ -397,8 +435,18 @@ case ${1:-} in
     shift)
         rev=${2:-$(cat "$STATE/$SERVICE.candidate" 2> /dev/null || true)}
         [ -n "$rev" ] || { say "shift needs a revision"; exit 2; }
-        say "previous: $(serving_revision) (rollback: scripts/deploy/web.sh rollback)"
-        traffic_to "$rev" ;;
+        serving=$(serving_revision)
+        copied=$(cat "$STATE/$SERVICE.previous" 2> /dev/null || true)
+        candidate=$(cat "$STATE/$SERVICE.candidate" 2> /dev/null || true)
+        if [ "$rev" = "$candidate" ] && [ -n "$copied" ] && [ "$serving" != "$copied" ] &&
+            [ -z "${FORCE:-}" ]; then
+            say "refusing: production now serves $serving, not $copied, which promote copied."
+            say "Another deploy shifted since; shifting would roll it back. FORCE=1 overrides."
+            exit 1
+        fi
+        say "previous: $serving (rollback: scripts/deploy/web.sh rollback)"
+        traffic_to "$rev"
+        after_shift ;;
     rollback)
         rev=${2:-$(cat "$STATE/$SERVICE.previous" 2> /dev/null || true)}
         [ -n "$rev" ] || { say "rollback needs a revision"; exit 2; }
