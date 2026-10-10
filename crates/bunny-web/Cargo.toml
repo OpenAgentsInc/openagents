@@ -15,6 +15,7 @@ autoplay = []
 
 [dependencies]
 bunny-rules = { path = "../bunny-rules" }
+verse-game = { path = "../verse-game" }
 glam = "0.30.10"
 
 # The page itself is browser-only; natively only the meshes, the scene and

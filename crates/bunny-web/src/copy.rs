@@ -5,7 +5,7 @@ pub const GOAL: &str = "Eat everything in the garden. Don't get caught.";
 pub const KEYS: &str =
     "\u{2190} \u{2192} dodge and turn \u{b7} \u{2191} jump \u{b7} \u{2193} duck \u{b7} X turn back";
 pub const SWIPES: &str =
-    "Swipe left or right to dodge and turn \u{b7} up to jump \u{b7} down to turn back";
+    "Swipe left or right to dodge and turn \u{b7} up to jump \u{b7} down to duck";
 pub const PLAY: &str = "Play";
 pub const PLAY_AGAIN: &str = "Play again";
 pub const RESTART: &str = "Restart";

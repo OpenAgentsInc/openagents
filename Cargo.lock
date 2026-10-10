@@ -2268,6 +2268,7 @@ dependencies = [
  "glam",
  "js-sys",
  "oa-copy",
+ "verse-game",
  "wasm-bindgen",
  "web-sys",
 ]
@@ -16181,6 +16182,13 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "tempfile",
+]
+
+[[package]]
+name = "verse-game"
+version = "0.1.0"
+dependencies = [
+ "sha2 0.10.9",
 ]
 
 [[package]]

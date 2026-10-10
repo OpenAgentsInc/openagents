@@ -21,6 +21,7 @@ pub mod copy;
 pub mod look;
 pub mod mesh;
 pub mod scene;
+pub mod zone;
 
 #[cfg(target_arch = "wasm32")]
 mod app;

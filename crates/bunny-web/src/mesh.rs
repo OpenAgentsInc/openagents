@@ -286,7 +286,7 @@ mod tests {
                 0xFF8800,
                 1.0,
             );
-            assert!(mesh.vertices() > 0 && mesh.vertices() % 3 == 0);
+            assert!(mesh.vertices() > 0 && mesh.vertices().is_multiple_of(3));
             faces_point_outward(&mesh);
         }
     }

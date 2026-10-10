@@ -1025,8 +1025,8 @@ flat-shaded models). Each phase below says how it maps onto that path.
 | Phase | Issue | Status |
 | --- | --- | --- |
 | B1 | [#11198](https://github.com/OpenAgentsInc/openagents/issues/11198) | Done, 6c0de441c7 |
-| B2 | [#11199](https://github.com/OpenAgentsInc/openagents/issues/11199) | Done (see below) |
-| B3 | [#11200](https://github.com/OpenAgentsInc/openagents/issues/11200) | Not started |
+| B2 | [#11199](https://github.com/OpenAgentsInc/openagents/issues/11199) | Done, 67898d1470 |
+| B3 | [#11200](https://github.com/OpenAgentsInc/openagents/issues/11200) | Done in part, see below |
 | B4 | [#11201](https://github.com/OpenAgentsInc/openagents/issues/11201) | Not started |
 | B5 | [#11202](https://github.com/OpenAgentsInc/openagents/issues/11202) | Not started |
 | B6 | [#11203](https://github.com/OpenAgentsInc/openagents/issues/11203) | Not started |
@@ -1110,9 +1110,40 @@ Deviations, and why:
 - **The pack format's line chunk and material fields** stay undone with the
   pack itself (see B3 and B4).
 
-### What's next
+### B3: the game contract
 
-B3: the game contract.
+- **`crates/verse-game`** (new, no renderer, builds for wasm32): the
+  generic game-input channel `GameInput` (Left, Right, Up, Down, Back, Use,
+  Pause) with the desktop key map and the swipe recognizer (24 px within
+  250 ms, dominant axis); the HUD element set (counter with ring, pips with
+  a growth bar, score with multiplier, ring timer, edge arrow with a state
+  mark, map lines and dots); the game-neutral replay envelope
+  `verse.game-replay.v1` with verification by re-running; and the
+  `CommunityGame` trait a host drives.
+- **`crates/bunny-web/src/zone.rs`** puts the game on that contract: Up
+  jumps, Down ducks, Back turns back; its HUD; its replays (a test plays the
+  bot through the contract and verifies the replay; another garden's is
+  refused). The page reads keys and swipes only through the channel; swipe
+  down now ducks, as the controls table says.
+Deviations, and why:
+
+- **No zone trait inside `verse` yet.** Registering a zone outside `verse`
+  means replacing the app's `zones::State` match and the closed `Intent`
+  enum the iOS and Android validators mirror; that is a change to the
+  desktop and phone hosts, which this browser-first build doesn't use.
+  `CommunityGame` is the trait such a registration would take; wiring the
+  `verse` host to it is open (see What's next).
+- **The pack format did not move.** Moving `everglade_pack::format` into
+  its own crate was tried: the format moves cleanly, but Everglade adds
+  inherent methods to `ZonePack` (`decode_pinned`, `load_local`), which Rust
+  allows only in the type's own crate, and about forty files across
+  `verse`, `verse-bake`, `coder-mobile` and Everglade's tests and examples
+  call them. Turning them into an extension trait is a mechanical change
+  across the desktop app's build, left for when a community game needs a
+  pack (this one draws models made in code).
+- **No line chunk or `gray` and `chroma` fields in the pack format.**
+  Adding them changes the encoding, and so every pinned pack's digest;
+  they wait for the game's own pack (see B4).
 
 ## Engine gaps
 

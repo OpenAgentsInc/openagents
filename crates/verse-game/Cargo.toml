@@ -1,0 +1,13 @@
+[package]
+name = "verse-game"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The contract a Verse community game builds to: a generic game-input channel, a small HUD element set, a game-neutral replay envelope, and the step trait a host drives."
+
+[dependencies]
+sha2 = "0.10"
+
+[lints]
+workspace = true

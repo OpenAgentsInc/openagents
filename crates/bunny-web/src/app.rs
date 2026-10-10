@@ -1308,15 +1308,9 @@ impl App {
     }
 }
 
+/// A key's game input, through the community-game input channel.
 fn input_for(key: &str) -> Option<Input> {
-    match key {
-        "ArrowLeft" | "a" | "A" => Some(Input::Left),
-        "ArrowRight" | "d" | "D" => Some(Input::Right),
-        "ArrowUp" | "w" | "W" | " " => Some(Input::Jump),
-        "ArrowDown" | "s" | "S" => Some(Input::Duck),
-        "x" | "X" | "Backspace" => Some(Input::Back),
-        _ => None,
-    }
+    verse_game::GameInput::from_key(key).and_then(crate::zone::input)
 }
 
 fn listen<E: wasm_bindgen::convert::FromWasmAbi + 'static>(
@@ -1531,17 +1525,8 @@ pub fn start() {
                 return;
             };
             let (dx, dy) = (event.client_x() as f32 - x, event.client_y() as f32 - y);
-            if event.time_stamp() - at > 600.0 || dx.abs().max(dy.abs()) < 24.0 {
-                return;
-            }
-            let input = if dx.abs() > dy.abs() {
-                Some(if dx < 0.0 { Input::Left } else { Input::Right })
-            } else if dy > 0.0 {
-                Some(Input::Back)
-            } else {
-                Some(Input::Jump)
-            };
-            if let Some(input) = input {
+            let swipe = verse_game::Swipe::default().read(dx, dy, event.time_stamp() - at);
+            if let Some(input) = swipe.and_then(crate::zone::input) {
                 app.press(input);
             }
         });
