@@ -1151,8 +1151,17 @@ mod lanes {
         if let Some(cost) = info["cost_per_hour"].as_f64().filter(|c| *c > 0.0) {
             words.push_str(&format!(", about ${cost:.2} an hour while it runs"));
         }
+        let wake = info["wake_seconds"]
+            .as_f64()
+            .map(|s| {
+                format!(
+                    ". Asleep: waking it takes about {:.0} minutes.",
+                    (s / 60.0).ceil()
+                )
+            })
+            .unwrap_or_else(|| ". Asleep: wake it first.".into());
         words.push_str(match info["status"].as_str() {
-            Some("asleep") => ". Asleep: wake it first.",
+            Some("asleep") => wake.as_str(),
             Some("waking") => ". Waking up now.",
             Some("unavailable") => ". Not answering right now.",
             _ => ".",

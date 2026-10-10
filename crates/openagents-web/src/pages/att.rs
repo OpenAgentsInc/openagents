@@ -135,6 +135,7 @@ impl Lane {
                 "seconds": LANE_SECONDS[0],
                 "cost_per_hour": LANE_COST[0],
                 "on_demand": true,
+                "wake_seconds": 240,
                 "sees": [
                     ["Your browser", "Your question and the answer"],
                     ["OpenAgents relay and gateway", "Size, timing, sealed bytes"],
@@ -181,7 +182,7 @@ impl Lane {
 /// Measured seconds per answer (gpu, cpu, open), browser round included.
 const LANE_SECONDS: [f64; 3] = [1.0, 27.0, 1.0];
 /// Dollars per hour while the lane's machine runs (gpu, cpu, open).
-const LANE_COST: [f64; 3] = [0.0, 0.40, 0.0];
+const LANE_COST: [f64; 3] = [6.83, 0.40, 0.0];
 
 /// The build's files (`scripts/build-att-web.sh`).
 const GLUE: &str = "att_web.js";
