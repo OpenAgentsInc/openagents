@@ -273,7 +273,7 @@ fn narrow_transcripts_keep_long_code_and_table_content_accessible_by_scrolling()
         assert!(
             rows(&buffer)
                 .iter()
-                .any(|row| row.starts_with('─') && row.contains(coder_new::models::DEFAULT_MODEL))
+                .any(|row| row.starts_with('─') && row.contains(" auto "))
         );
         maximum_scroll = maximum_scroll.max(app.scroll);
         if app.scroll < requested {

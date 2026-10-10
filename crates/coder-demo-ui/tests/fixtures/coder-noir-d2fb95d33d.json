@@ -177,7 +177,7 @@
       "width": 110,
       "height": 36,
       "original_cell_sha256": "f50ed0b8e51abfbfc04630234cb6fbf39cdc6863de2000c107e34c85145be9b4",
-      "cell_sha256": "2c13254957e703eaccd0c39d67a24bdd7720ade54ec0400ef520f8ff05233f02"
+      "cell_sha256": "b98006ac55f878a4e2b091e6363262ab8c05347395de8beb389ace3beac90fa6"
     },
     {
       "name": "settings-1",
@@ -233,7 +233,7 @@
       "width": 110,
       "height": 36,
       "original_cell_sha256": "041cb8990351eab6cf180ef968d3785b545872cf40ecfadf97f595b3bbdb5d3a",
-      "cell_sha256": "89aea820c3b6cd72d2687df16924236f2f3869a18d2d5c51c0dda08854d08730"
+      "cell_sha256": "716ae44267d74055389392639642a0a990872b9cc9f52d77d7ee4df646092a0b"
     },
     {
       "name": "model-reasoning",
@@ -394,7 +394,7 @@
       "width": 80,
       "height": 24,
       "original_cell_sha256": "33d1f74bad80fabdeb76a2cbb4a75e9be7dcf2a6213d0b5e290513551046387f",
-      "cell_sha256": "53665985837277c9ba9c1d97d713b2fde3fe873bda58e7b38c78d0612f515159"
+      "cell_sha256": "1f72fafa700b7525b40005b25f09579c9d050450ded5a753b964895d78828e16"
     },
     {
       "name": "settings-1",
@@ -450,7 +450,7 @@
       "width": 80,
       "height": 24,
       "original_cell_sha256": "3c81210817da876220df343d959280fadaae8c2089adbc62c263a439d22f5dfa",
-      "cell_sha256": "e27776c89f7fc4a53f392d75246865a28767c3ebe1263bcff40809f2b72fcfba"
+      "cell_sha256": "e8b052b3091ae19acee02d709d1c8d06d62aefa0065f85565400cbc135aae2a4"
     },
     {
       "name": "model-reasoning",
@@ -667,7 +667,7 @@
       "width": 24,
       "height": 12,
       "original_cell_sha256": "35e4fcf6f33c1ae101a49fc709507c1dd5a43a81ff5a4d1a16f02767caec6fb6",
-      "cell_sha256": "d12f7892e08f7b334cb1abd7a0cadf4e05d3a9c75d3d6ba28d576ca88500964f"
+      "cell_sha256": "cf054b26d14e392efa4d7b5d8b5cc07a70b7f5da8333184b515cb848ce2102df"
     },
     {
       "name": "model-reasoning",
