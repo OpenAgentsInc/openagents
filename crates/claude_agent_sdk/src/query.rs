@@ -97,7 +97,7 @@ impl ControlHandlers {
                 Some(handler) => handler
                     .can_use_tool_request(tool)
                     .await
-                    .and_then(|r| Ok(Some(serde_json::to_value(r)?))),
+                    .and_then(|r| Ok(Some(serde_json::to_value(r.within_limits())?))),
                 None => Err(Error::InvalidMessage(
                     "canUseTool callback is not provided".into(),
                 )),
@@ -270,6 +270,7 @@ impl Query {
             session_id,
             is_replay: None,
             client_composed: self.verbatim_prompts.then_some(true),
+            agent_id: None,
         };
 
         let mut transport = self.transport.lock().await;
@@ -689,6 +690,16 @@ impl Query {
         self.initialization.as_ref()
     }
 
+    /// Claude Code version of the process that runs the session's turns,
+    /// from the `initialize` response (0.3.296). `None` on CLIs that
+    /// predate the field.
+    pub fn claude_code_version(&self) -> Option<&str> {
+        self.initialization
+            .as_ref()
+            .and_then(|value| value.get("claude_code_version"))
+            .and_then(Value::as_str)
+    }
+
     /// Models advertised in the initialize handshake. [`Query::list_models`]
     /// asks the CLI again.
     pub fn supported_models(&self) -> Option<&Value> {
@@ -770,12 +781,11 @@ mod tests {
 
         assert!(args.contains(&"--output-format".to_string()));
         assert!(args.contains(&"stream-json".to_string()));
-        assert!(args.contains(&"--model".to_string()));
-        assert!(args.contains(&"claude-sonnet-4-5-20250929".to_string()));
-        assert!(args.contains(&"--max-turns".to_string()));
-        assert!(args.contains(&"10".to_string()));
-        assert!(args.contains(&"--max-budget-usd".to_string()));
-        assert!(args.contains(&"1".to_string()));
+        // 0.3.295: a named option's value rides in its flag's argument.
+        assert!(args.contains(&"--model=claude-sonnet-4-5-20250929".to_string()));
+        assert!(args.contains(&"--max-turns=10".to_string()));
+        assert!(args.contains(&"--max-budget-usd=1".to_string()));
+        assert!(!args.contains(&"--model".to_string()));
     }
 
     #[test]
@@ -787,14 +797,23 @@ mod tests {
             skip_mcp_discovery: None,
         }];
         let args = options.build_args();
-        assert!(args.windows(2).any(|w| w == ["--permission-mode", "auto"]));
-        assert!(args.windows(2).any(|w| w == ["--fallback-model", "sonnet"]));
-        assert!(args.windows(2).any(|w| w == ["--plugin-dir", "/tmp/plug"]));
+        assert!(args.contains(&"--permission-mode=auto".to_string()));
+        assert!(args.contains(&"--fallback-model=sonnet".to_string()));
+        assert!(args.contains(&"--plugin-dir=/tmp/plug".to_string()));
     }
 
+    /// The value of `flag`, sent as `flag=value` or as `flag value`.
     fn flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
-        args.windows(2)
-            .find_map(|w| (w[0] == flag).then(|| w[1].as_str()))
+        let joined = format!("{flag}=");
+        args.iter().enumerate().find_map(|(i, arg)| {
+            if let Some(value) = arg.strip_prefix(&joined) {
+                Some(value)
+            } else if arg == flag {
+                args.get(i + 1).map(String::as_str)
+            } else {
+                None
+            }
+        })
     }
 
     #[test]
@@ -817,6 +836,7 @@ mod tests {
                 tools: Some(vec!["Read".into()]),
                 disallowed_tools: Some(vec!["Bash".into()]),
                 model: Some(crate::options::AgentModel::Haiku),
+                auto_compact_window: Some(60_000),
             },
         );
         options.sandbox = Some(crate::options::SandboxSettings {
@@ -825,7 +845,9 @@ mod tests {
             network: Some(crate::options::SandboxNetworkConfig {
                 allow_local_binding: Some(true),
                 allow_unix_sockets: Some(vec!["/tmp/sock".into()]),
+                ..Default::default()
             }),
+            ..Default::default()
         });
         options.output_format = Some(OutputFormat {
             format_type: "json_schema".into(),
@@ -975,7 +997,7 @@ rl.on('line', (line) => {
   try { msg = JSON.parse(line); } catch { return; }
   if (msg.type === 'control_request' && msg.request) {
     const payload = msg.request.subtype === 'initialize'
-      ? JSON.parse('{"commands":[{"name":"help","description":"help"}],"agents":[],"output_style":"default","available_output_styles":["default"],"models":[{"value":"sonnet","displayName":"Sonnet"}],"account":{"email":"t@example.com"}}')
+      ? JSON.parse('{"commands":[{"name":"help","description":"help"}],"agents":[],"output_style":"default","available_output_styles":["default"],"models":[{"value":"sonnet","displayName":"Sonnet"}],"account":{"email":"t@example.com"},"claude_code_version":"2.1.296"}')
       : { "echo": msg.request.subtype };
     process.stdout.write(JSON.stringify({
       type: 'control_response',
@@ -1034,6 +1056,7 @@ readline.createInterface({ input: process.stdin });
         assert_eq!(init["commands"][0]["name"], "help");
         assert_eq!(init["account"]["email"], "t@example.com");
         assert_eq!(query.supported_models().unwrap()[0]["value"], "sonnet");
+        assert_eq!(query.claude_code_version(), Some("2.1.296"));
 
         // Wait for the fake to log both lines; dropping the query kills it.
         let mut recorded = String::new();
@@ -1258,10 +1281,15 @@ rl.on('line', (line) => {
 
     /// Run the scripted fake with `frames` and return every stdin line it
     /// logged once `settle` has passed.
-    async fn run_scripted(
+    async fn run_scripted(frames: &[Value], options: QueryOptions, settle: Duration) -> Vec<Value> {
+        run_scripted_with(frames, options, settle, None).await
+    }
+
+    async fn run_scripted_with(
         frames: &[Value],
         mut options: QueryOptions,
         settle: Duration,
+        permission_handler: Option<Arc<dyn PermissionHandler>>,
     ) -> Vec<Value> {
         let dir = unique_temp_dir();
         let fake = write_executable(&dir, "fake-claude", FAKE_SCRIPTED);
@@ -1283,7 +1311,9 @@ rl.on('line', (line) => {
             .into_iter()
             .collect(),
         );
-        let query = Query::new("hello", options, None).await.unwrap();
+        let query = Query::new("hello", options, permission_handler)
+            .await
+            .unwrap();
         tokio::time::sleep(settle).await;
         drop(query);
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -1576,7 +1606,12 @@ rl.on('line', (line) => {
             "--enable-file-checkpointing",
             "--permission-prompt-tool",
         ] {
-            assert!(!args.iter().any(|a| a == gone), "unexpected {gone}");
+            assert!(
+                !args
+                    .iter()
+                    .any(|a| a == gone || a.starts_with(&format!("{gone}="))),
+                "unexpected {gone}"
+            );
         }
         let settings: Value =
             serde_json::from_str(flag_value(&args, "--settings").unwrap()).unwrap();
@@ -1667,5 +1702,206 @@ rl.on('line', (line) => {
         ))
         .unwrap();
         assert_eq!(read["serverName"], "docs");
+    }
+
+    #[test]
+    fn build_args_send_values_in_the_flag_argument_as_0_3_295_does() {
+        let mut options = QueryOptions::new().model("-odd-model");
+        options.system_prompt = Some(SystemPromptConfig::Custom("-starts with a dash".into()));
+        options.tools = Some(crate::options::ToolsConfig::Names(Vec::new()));
+        options.resume = Some("sess".into());
+        options.managed_settings = Some("{\"a\":1}".into());
+        options.settings = Some(Value::String("/etc/claude.json".into()));
+        options
+            .extra_args
+            .insert("note".into(), Some("-dashed".into()));
+        options.extra_args.insert("plain".into(), Some("x".into()));
+        options.mcp_servers.insert(
+            "docs".into(),
+            crate::options::McpServerConfig::Http {
+                url: "https://docs".into(),
+                headers: None,
+            },
+        );
+        let args = options.build_args();
+        for joined in [
+            "--model=-odd-model",
+            "--system-prompt=-starts with a dash",
+            "--tools=",
+            "--resume=sess",
+            "--note=-dashed",
+        ] {
+            assert!(
+                args.iter().any(|a| a == joined),
+                "missing {joined}: {args:?}"
+            );
+        }
+        // The TS SDK keeps `--flag value` for these unless the value
+        // starts with a dash.
+        for (flag, value) in [
+            ("--managed-settings", r#"{"a":1}"#),
+            ("--settings", "/etc/claude.json"),
+            ("--plain", "x"),
+        ] {
+            assert!(
+                args.windows(2).any(|w| w[0] == flag && w[1] == value),
+                "expected {flag} {value}: {args:?}"
+            );
+        }
+        assert!(args.windows(2).any(|w| w[0] == "--mcp-config"));
+        // The stream-json transport flags stay as they are.
+        assert!(
+            args.windows(2)
+                .any(|w| w == ["--output-format", "stream-json"])
+        );
+    }
+
+    #[test]
+    fn agent_definition_carries_auto_compact_window() {
+        let mut options = QueryOptions::new();
+        options.agents.insert(
+            "small".into(),
+            crate::options::AgentDefinition {
+                description: "d".into(),
+                prompt: "p".into(),
+                auto_compact_window: Some(50_000),
+                ..Default::default()
+            },
+        );
+        let args = options.build_args();
+        let agents: Value = serde_json::from_str(flag_value(&args, "--agents").unwrap()).unwrap();
+        assert_eq!(agents["small"]["autoCompactWindow"], 50_000);
+        assert!(agents["small"].get("tools").is_none());
+    }
+
+    fn settings_of(options: &QueryOptions) -> Value {
+        serde_json::from_str(flag_value(&options.build_args(), "--settings").expect("--settings"))
+            .unwrap()
+    }
+
+    #[test]
+    fn sandbox_option_merges_into_an_inline_settings_sandbox_block() {
+        let mut options = QueryOptions::new();
+        options.settings = Some(serde_json::json!({
+            "model": "haiku",
+            "sandbox": {
+                "enabled": false,
+                "autoAllowBashIfSandboxed": true,
+                "failIfUnavailable": false,
+                "filesystem": {"denyRead": ["/secret"], "disabled": true},
+                "network": {"deniedDomains": ["a.com"], "httpProxyPort": 8080,
+                            "socksProxyPort": 1080, "allowLocalBinding": true},
+                "credentials": {"envVars": [{"name": "TOKEN", "mode": "mask"}]},
+                "ripgrep": {"command": "rg", "args": ["--x"]}
+            }
+        }));
+        let mut extra = serde_json::Map::new();
+        extra.insert("ripgrep".into(), serde_json::json!({"command": "/bin/rg"}));
+        options.sandbox = Some(crate::options::SandboxSettings {
+            enabled: Some(true),
+            filesystem: Some(serde_json::json!({"denyRead": ["/keys", "/secret"]})),
+            network: Some(crate::options::SandboxNetworkConfig {
+                denied_domains: Some(vec!["b.com".into()]),
+                ..Default::default()
+            }),
+            credentials: Some(serde_json::json!({"envVars": [{"name": "KEY", "mode": "deny"}]})),
+            extra,
+            ..Default::default()
+        });
+        let settings = settings_of(&options);
+        assert_eq!(settings["model"], "haiku");
+        let sandbox = &settings["sandbox"];
+        // The option's values win; values it does not set are kept.
+        assert_eq!(sandbox["enabled"], true);
+        assert_eq!(sandbox["autoAllowBashIfSandboxed"], true);
+        // The settings block set failIfUnavailable, so it is not defaulted.
+        assert_eq!(sandbox["failIfUnavailable"], false);
+        // Restriction lists combine.
+        assert_eq!(
+            sandbox["filesystem"]["denyRead"],
+            serde_json::json!(["/secret", "/keys"])
+        );
+        assert_eq!(
+            sandbox["network"]["deniedDomains"],
+            serde_json::json!(["a.com", "b.com"])
+        );
+        assert_eq!(
+            sandbox["credentials"]["envVars"].as_array().unwrap().len(),
+            2
+        );
+        // A filesystem restriction drops `disabled: true`; a domain
+        // restriction drops the proxy ports the option did not set.
+        assert!(sandbox["filesystem"].get("disabled").is_none());
+        assert!(sandbox["network"].get("httpProxyPort").is_none());
+        assert!(sandbox["network"].get("socksProxyPort").is_none());
+        assert_eq!(sandbox["network"]["allowLocalBinding"], true);
+        // ripgrep is replaced whole.
+        assert_eq!(
+            sandbox["ripgrep"],
+            serde_json::json!({"command": "/bin/rg"})
+        );
+    }
+
+    #[test]
+    fn sandbox_option_merges_into_inline_json_settings_text() {
+        let mut options = QueryOptions::new();
+        options.settings = Some(Value::String(
+            r#" {"sandbox": {"network": {"httpProxyPort": 9}}} "#.into(),
+        ));
+        options.sandbox = Some(crate::options::SandboxSettings {
+            enabled: Some(true),
+            ..Default::default()
+        });
+        assert!(options.validate(false).is_ok());
+        let sandbox = settings_of(&options)["sandbox"].clone();
+        assert_eq!(sandbox["enabled"], true);
+        assert_eq!(sandbox["failIfUnavailable"], true);
+        // No domain restriction, so the proxy port stays.
+        assert_eq!(sandbox["network"]["httpProxyPort"], 9);
+
+        options.settings = Some(Value::String("/etc/claude.json".into()));
+        assert!(matches!(
+            options.validate(false),
+            Err(Error::InvalidOptions(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn an_oversized_permission_answer_goes_out_as_a_deny() {
+        let frames = vec![serde_json::json!({
+            "type": "control_request",
+            "request_id": "cli-perm-big",
+            "request": {"subtype": "can_use_tool", "tool_name": "Bash", "input": {}, "tool_use_id": "tu-big"}
+        })];
+        let handler = crate::permissions::permission_handler(|_request| async {
+            Ok::<_, Error>(crate::protocol::PermissionResult::Allow {
+                updated_input: serde_json::json!({}),
+                updated_permissions: Some(vec![
+                    crate::protocol::PermissionUpdate::AddDirectories {
+                        directories: (0..crate::protocol::MAX_UPDATED_PERMISSIONS)
+                            .map(|i| format!("/d{i}"))
+                            .collect(),
+                        destination: "session".into(),
+                    },
+                ]),
+                tool_use_id: None,
+                decision_classification: None,
+            })
+        });
+        let lines = run_scripted_with(
+            &frames,
+            QueryOptions::new(),
+            Duration::from_millis(400),
+            Some(handler),
+        )
+        .await;
+        let reply = reply_to(&lines, "cli-perm-big").expect("can_use_tool reply");
+        assert_eq!(reply["response"]["response"]["behavior"], "deny");
+        assert!(
+            reply["response"]["response"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("4097")
+        );
     }
 }

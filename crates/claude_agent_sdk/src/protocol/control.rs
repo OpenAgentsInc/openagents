@@ -1,5 +1,5 @@
 //! Control request and response types for the bidirectional control
-//! protocol (`@anthropic-ai/claude-agent-sdk` 0.3.289).
+//! protocol (`@anthropic-ai/claude-agent-sdk` 0.3.296).
 //!
 //! The SDK sends most subtypes to the CLI. The CLI sends `can_use_tool`,
 //! `hook_callback`, `mcp_message`, `elicitation`, `request_user_dialog`,
@@ -450,7 +450,7 @@ pub struct SetPermissionModeRequest {
     pub mode: PermissionMode,
 }
 
-/// Permission mode (unchanged from 0.3.172 to 0.3.289).
+/// Permission mode (unchanged from 0.3.172 to 0.3.296).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum PermissionMode {
@@ -904,7 +904,60 @@ pub enum PermissionResult {
     },
 }
 
+/// Most `updatedPermissions` entries a permission answer may carry, counting
+/// updates, rules, and directories together. Claude Code 2.1.295 and later
+/// treat an answer over this limit as a denial, so the SDK sends such an
+/// answer as an explicit deny instead (see [`PermissionResult::within_limits`]).
+pub const MAX_UPDATED_PERMISSIONS: usize = 4096;
+
+impl PermissionUpdate {
+    /// Rules or directories this update carries, plus one for the update.
+    fn entries(&self) -> usize {
+        1 + match self {
+            Self::AddRules { rules, .. }
+            | Self::ReplaceRules { rules, .. }
+            | Self::RemoveRules { rules, .. } => rules.len(),
+            Self::AddDirectories { directories, .. }
+            | Self::RemoveDirectories { directories, .. } => directories.len(),
+            Self::SetMode { .. } => 0,
+        }
+    }
+}
+
 impl PermissionResult {
+    /// Updates, rules, and directories in `updatedPermissions`, counted
+    /// together.
+    pub fn updated_permission_entries(&self) -> usize {
+        match self {
+            Self::Allow {
+                updated_permissions: Some(updates),
+                ..
+            } => updates.iter().map(PermissionUpdate::entries).sum(),
+            _ => 0,
+        }
+    }
+
+    /// This answer, or a deny when its `updatedPermissions` is over
+    /// [`MAX_UPDATED_PERMISSIONS`]: the CLI would count it as a denial, so
+    /// the host's answer says so instead of being dropped silently.
+    pub fn within_limits(self) -> Self {
+        let entries = self.updated_permission_entries();
+        if entries <= MAX_UPDATED_PERMISSIONS {
+            return self;
+        }
+        let tool_use_id = match &self {
+            Self::Allow { tool_use_id, .. } | Self::Deny { tool_use_id, .. } => tool_use_id.clone(),
+        };
+        Self::Deny {
+            message: format!(
+                "Permission answer denied: updatedPermissions holds {entries} entries, over the limit of {MAX_UPDATED_PERMISSIONS}"
+            ),
+            interrupt: None,
+            tool_use_id,
+            decision_classification: None,
+        }
+    }
+
     /// Allow with the original input.
     pub fn allow(input: Value) -> Self {
         Self::Allow {

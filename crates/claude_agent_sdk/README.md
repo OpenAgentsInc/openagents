@@ -14,6 +14,11 @@ a studio approval: **Allow once** runs that exact request, **Deny** refuses
 it, and the seat's standing rules apply. The engine runs under full access
 only. See the [Agent Studio audit](../../docs/verse/agent-studio-audit.md).
 
+The crate tracks SDK 0.3.296 (Claude Code 2.1.296) as of October 9, 2026;
+[PARITY.md](PARITY.md) lists what each release added and what is deferred,
+and `scripts/check-claude-sdk-parity.sh latest` compares it with the newest
+npm release.
+
 On Unix the CLI leads a process group of its own; `Query::kill`, or dropping
 the `Query`, stops the whole group.
 
@@ -412,7 +417,7 @@ let options = QueryOptions::new().hook(HookEvent::PreToolUse, HookMatcher::new(S
 Set `on_elicitation` to answer MCP elicitation (without it, the SDK
 declines) and `on_user_dialog` to answer `request_user_dialog` (without
 it, the request gets no reply). [PARITY.md](PARITY.md) lists what the
-crate covers at SDK 0.3.289 and what remains.
+crate covers at SDK 0.3.296 and what remains.
 
 To check the crate against the installed CLI, run the live smoke. It
 saves no session:

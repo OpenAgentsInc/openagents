@@ -272,6 +272,7 @@ mod tests {
             session_id: "session-123".to_string(),
             is_replay: None,
             client_composed: Some(true),
+            agent_id: None,
         };
 
         let json = serde_json::to_value(&msg).unwrap();
@@ -885,5 +886,280 @@ mod tests {
             }) => assert_eq!(pending[0].request_id, "p1"),
             other => panic!("expected success with pending requests, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_0_3_292_subagent_messages_carry_agent_id() {
+        let assistant: SdkMessage = serde_json::from_value(json!({
+            "type": "assistant",
+            "message": {"role": "assistant", "content": []},
+            "parent_tool_use_id": "tu-1",
+            "agent_id": "task-7",
+            "subagent_type": "Explore",
+            "task_description": "Find the config",
+            "uuid": "a1",
+            "session_id": "s"
+        }))
+        .unwrap();
+        match assistant {
+            SdkMessage::Assistant(a) => {
+                assert_eq!(a.agent_id.as_deref(), Some("task-7"));
+                assert_eq!(a.subagent_type.as_deref(), Some("Explore"));
+                assert_eq!(a.task_description.as_deref(), Some("Find the config"));
+            }
+            other => panic!("expected assistant, got {other:?}"),
+        }
+        let user: SdkMessage = serde_json::from_value(json!({
+            "type": "user",
+            "message": {"role": "user", "content": "hi"},
+            "parent_tool_use_id": "tu-1",
+            "agent_id": "task-7",
+            "session_id": "s"
+        }))
+        .unwrap();
+        match user {
+            SdkMessage::User(u) => assert_eq!(u.agent_id.as_deref(), Some("task-7")),
+            other => panic!("expected user, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_inbound_user_messages_parse_typed_and_round_trip() {
+        // The CLI's user frames (tool results, replays) used to fall to
+        // `Unknown` because the enum tag consumed `type`.
+        let wire = json!({
+            "type": "user",
+            "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "tu", "content": "ok"}
+            ]},
+            "parent_tool_use_id": null,
+            "isSynthetic": true,
+            "isReplay": true,
+            "tool_use_result": {"stdout": "ok"},
+            "uuid": "u1",
+            "session_id": "s"
+        });
+        let msg: SdkMessage = serde_json::from_value(wire.clone()).unwrap();
+        match &msg {
+            SdkMessage::User(u) => {
+                assert_eq!(u.is_synthetic, Some(true));
+                assert_eq!(u.is_replay, Some(true));
+                assert_eq!(u.uuid.as_deref(), Some("u1"));
+            }
+            other => panic!("expected user, got {other:?}"),
+        }
+        let text = serde_json::to_string(&msg).unwrap();
+        assert_eq!(text.matches("\"type\":\"user\"").count(), 1, "{text}");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&text).unwrap(),
+            wire
+        );
+    }
+
+    #[test]
+    fn test_0_3_292_task_events_carry_run_and_parent_ids() {
+        match system(
+            "task_started",
+            json!({"task_id": "t2", "run_id": "r-01", "description": "d",
+                   "parent_task_id": "t1", "spawn_depth": 2}),
+        ) {
+            SdkMessage::System(SdkSystemMessage::TaskStarted(m)) => {
+                assert_eq!(m.run_id.as_deref(), Some("r-01"));
+                assert_eq!(m.parent_task_id.as_deref(), Some("t1"));
+            }
+            other => panic!("expected task_started, got {other:?}"),
+        }
+        match system(
+            "task_updated",
+            json!({"task_id": "t2", "run_id": "r-01", "patch": {"status": "running"}}),
+        ) {
+            SdkMessage::System(SdkSystemMessage::TaskUpdated(m)) => {
+                assert_eq!(m.run_id.as_deref(), Some("r-01"))
+            }
+            other => panic!("expected task_updated, got {other:?}"),
+        }
+        match system(
+            "task_progress",
+            json!({"task_id": "t2", "run_id": "r-01", "description": "d",
+                   "usage": {"total_tokens": 1, "tool_uses": 0, "duration_ms": 5}}),
+        ) {
+            SdkMessage::System(SdkSystemMessage::TaskProgress(m)) => {
+                assert_eq!(m.run_id.as_deref(), Some("r-01"))
+            }
+            other => panic!("expected task_progress, got {other:?}"),
+        }
+        match system(
+            "task_notification",
+            json!({"task_id": "t2", "run_id": "r-01", "status": "completed",
+                   "output_file": "/o", "summary": "done"}),
+        ) {
+            SdkMessage::System(SdkSystemMessage::TaskNotification(m)) => {
+                assert_eq!(m.run_id.as_deref(), Some("r-01"))
+            }
+            other => panic!("expected task_notification, got {other:?}"),
+        }
+        match system(
+            "background_tasks_changed",
+            json!({"tasks": [{"task_id": "t2", "run_id": "r-01", "task_type": "local_agent",
+                              "subagent_type": "general-purpose", "description": "d",
+                              "parent_task_id": "t1"}]}),
+        ) {
+            SdkMessage::System(SdkSystemMessage::BackgroundTasksChanged(m)) => {
+                let task = &m.tasks[0];
+                assert_eq!(task.run_id.as_deref(), Some("r-01"));
+                assert_eq!(task.subagent_type.as_deref(), Some("general-purpose"));
+                assert_eq!(task.parent_task_id.as_deref(), Some("t1"));
+                let wire = serde_json::to_value(task).unwrap();
+                assert_eq!(wire["parent_task_id"], "t1");
+            }
+            other => panic!("expected background_tasks_changed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_0_3_295_rate_limit_overage_fields() {
+        let msg: SdkMessage = serde_json::from_value(json!({
+            "type": "rate_limit_event",
+            "rate_limit_info": {
+                "status": "allowed_warning",
+                "overageStatus": "allowed",
+                "overageResetsAt": 1760000000,
+                "overageDisabledReason": "out_of_credits",
+                "overageEnabled": true
+            },
+            "uuid": "u",
+            "session_id": "s"
+        }))
+        .unwrap();
+        match msg {
+            SdkMessage::RateLimitEvent(e) => {
+                let info = &e.rate_limit_info;
+                assert_eq!(info.status, "allowed_warning");
+                assert_eq!(info.overage_enabled, Some(true));
+                assert_eq!(info.overage_status.as_deref(), Some("allowed"));
+                assert_eq!(info.overage_resets_at, Some(1760000000));
+                assert_eq!(
+                    info.overage_disabled_reason.as_deref(),
+                    Some("out_of_credits")
+                );
+                let wire = serde_json::to_value(info).unwrap();
+                assert_eq!(wire["overageEnabled"], true);
+            }
+            other => panic!("expected rate_limit_event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_0_3_295_text_block_citations_survive() {
+        let citation = json!({"type": "web_search_result_location", "url": "https://x",
+                              "title": "X", "cited_text": "c", "encrypted_index": "e"});
+        let assistant: SdkMessage = serde_json::from_value(json!({
+            "type": "assistant",
+            "message": {"role": "assistant", "content": [
+                {"type": "text", "text": "cited", "citations": [citation.clone()]}
+            ]},
+            "parent_tool_use_id": null,
+            "uuid": "a",
+            "session_id": "s"
+        }))
+        .unwrap();
+        let wire = serde_json::to_value(&assistant).unwrap();
+        assert_eq!(wire["message"]["content"][0]["citations"][0], citation);
+        let delta: SdkMessage = serde_json::from_value(json!({
+            "type": "stream_event",
+            "event": {"type": "content_block_delta", "index": 0,
+                      "delta": {"type": "citations_delta", "citation": citation.clone()}},
+            "parent_tool_use_id": null,
+            "uuid": "e",
+            "session_id": "s"
+        }))
+        .unwrap();
+        match delta {
+            SdkMessage::StreamEvent(e) => {
+                assert_eq!(e.event["delta"]["citation"], citation)
+            }
+            other => panic!("expected stream_event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_0_3_296_startup_failure_reasons_stay_typed() {
+        for reason in ["org_config_required_unavailable", "org_config_refused"] {
+            let msg: SdkMessage = serde_json::from_value(json!({
+                "type": "result",
+                "subtype": "error_during_execution",
+                "duration_ms": 1, "duration_api_ms": 0, "is_error": true,
+                "num_turns": 0, "total_cost_usd": 0.0,
+                "usage": {"input_tokens": 0, "output_tokens": 0},
+                "modelUsage": {}, "permission_denials": [], "errors": ["refused"],
+                "startup_failure_reason": reason,
+                "uuid": "r", "session_id": "s"
+            }))
+            .unwrap();
+            match msg {
+                SdkMessage::Result(SdkResultMessage::ErrorDuringExecution(e)) => {
+                    assert_eq!(e.turn.startup_failure_reason.as_deref(), Some(reason))
+                }
+                other => panic!("expected error result, got {other:?}"),
+            }
+        }
+    }
+
+    fn rules(n: usize) -> Vec<PermissionRule> {
+        (0..n)
+            .map(|i| PermissionRule {
+                tool_name: format!("Tool{i}"),
+                rule_content: None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_0_3_295_oversized_updated_permissions_become_a_deny() {
+        let allow = |updates: Vec<PermissionUpdate>| PermissionResult::Allow {
+            updated_input: json!({}),
+            updated_permissions: Some(updates),
+            tool_use_id: Some("tu".into()),
+            decision_classification: None,
+        };
+        // One update holding 4,095 rules is 4,096 entries: at the limit.
+        let at_limit = allow(vec![PermissionUpdate::AddRules {
+            rules: rules(MAX_UPDATED_PERMISSIONS - 1),
+            behavior: PermissionBehavior::Allow,
+            destination: "session".into(),
+        }]);
+        assert_eq!(
+            at_limit.updated_permission_entries(),
+            MAX_UPDATED_PERMISSIONS
+        );
+        assert!(matches!(
+            at_limit.within_limits(),
+            PermissionResult::Allow { .. }
+        ));
+        // Rules and directories across updates count together.
+        let over = allow(vec![
+            PermissionUpdate::AddRules {
+                rules: rules(3000),
+                behavior: PermissionBehavior::Allow,
+                destination: "session".into(),
+            },
+            PermissionUpdate::AddDirectories {
+                directories: (0..1095).map(|i| format!("/d{i}")).collect(),
+                destination: "session".into(),
+            },
+        ]);
+        assert_eq!(over.updated_permission_entries(), 4097);
+        match over.within_limits() {
+            PermissionResult::Deny {
+                message,
+                tool_use_id,
+                ..
+            } => {
+                assert!(message.contains("4097"), "{message}");
+                assert_eq!(tool_use_id.as_deref(), Some("tu"));
+            }
+            other => panic!("expected deny, got {other:?}"),
+        }
+        assert_eq!(PermissionResult::deny("no").updated_permission_entries(), 0);
     }
 }

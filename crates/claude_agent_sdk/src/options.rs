@@ -1,8 +1,8 @@
 //! Query options for configuring Claude Code sessions.
 //!
 //! [`QueryOptions::build_args`] follows the argument builder of
-//! `@anthropic-ai/claude-agent-sdk` 0.3.289, checked against
-//! `claude --help` for Claude Code 2.1.289.
+//! `@anthropic-ai/claude-agent-sdk` 0.3.296, checked against
+//! `claude --help` for Claude Code 2.1.295.
 
 use crate::callbacks::{ElicitationHandler, HookMatcher, UserDialogHandler};
 use crate::error::{Error, Result};
@@ -295,7 +295,7 @@ pub enum McpServerConfig {
 }
 
 /// Agent definition for custom subagents.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentDefinition {
     /// Description of when to use this agent.
@@ -311,6 +311,11 @@ pub struct AgentDefinition {
     /// Model to use.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<AgentModel>,
+    /// Token count at which the agent compacts its own conversation when
+    /// it runs as a subagent; it only lowers the inherited window
+    /// (`autoCompactWindow`, 0.3.296).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_compact_window: Option<u64>,
 }
 
 /// Base set of built-in tools (`--tools`).
@@ -411,12 +416,22 @@ impl SettingSource {
     }
 }
 
-/// Sandbox settings.
+/// Sandbox settings (the TS `sandbox` option).
+///
+/// Merged into `--settings`. When `settings` is inline and has its own
+/// `sandbox` block, the two merge as in the TS SDK 0.3.296: a value set
+/// here replaces the value at the same path, a value not set here is kept,
+/// and the restriction lists from both sides are combined. Fields this
+/// struct does not name go in `extra`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SandboxSettings {
     /// Enable sandboxing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enabled: Option<bool>,
+    /// Exit at startup when an enabled sandbox cannot start. Defaults to
+    /// `true` when `enabled` is set and neither side sets it.
+    #[serde(rename = "failIfUnavailable", skip_serializing_if = "Option::is_none")]
+    pub fail_if_unavailable: Option<bool>,
     /// Auto-allow bash if sandboxed.
     #[serde(
         rename = "autoAllowBashIfSandboxed",
@@ -426,6 +441,15 @@ pub struct SandboxSettings {
     /// Network configuration.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub network: Option<SandboxNetworkConfig>,
+    /// Filesystem restrictions (`denyRead`, `denyWrite`, `disabled`, ...).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filesystem: Option<Value>,
+    /// Credential restrictions (`files`, `envVars`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub credentials: Option<Value>,
+    /// Any other sandbox setting, passed through as written.
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, Value>,
 }
 
 /// Sandbox network configuration.
@@ -437,6 +461,18 @@ pub struct SandboxNetworkConfig {
     /// Allowed Unix sockets.
     #[serde(rename = "allowUnixSockets", skip_serializing_if = "Option::is_none")]
     pub allow_unix_sockets: Option<Vec<String>>,
+    /// Domains commands may reach.
+    #[serde(rename = "allowedDomains", skip_serializing_if = "Option::is_none")]
+    pub allowed_domains: Option<Vec<String>>,
+    /// Domains commands may not reach.
+    #[serde(rename = "deniedDomains", skip_serializing_if = "Option::is_none")]
+    pub denied_domains: Option<Vec<String>>,
+    /// Allow only `allowed_domains`.
+    #[serde(rename = "strictAllowlist", skip_serializing_if = "Option::is_none")]
+    pub strict_allowlist: Option<bool>,
+    /// Any other network setting, passed through as written.
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, Value>,
 }
 
 /// Plugin configuration.
@@ -566,7 +602,9 @@ impl QueryOptions {
                     .to_string(),
             ));
         }
-        if self.sandbox.is_some() && matches!(self.settings, Some(Value::String(_))) {
+        if self.sandbox.is_some()
+            && matches!(&self.settings, Some(Value::String(path)) if !is_inline_json(path))
+        {
             return Err(Error::InvalidOptions(
                 "cannot use both a settings file path and the sandbox option".to_string(),
             ));
@@ -666,7 +704,7 @@ impl QueryOptions {
             args.push("--continue".into());
         }
         if let Some(ref session_id) = self.resume {
-            args.push(format!("--resume={session_id}"));
+            push_pair(&mut args, "--resume", session_id.clone());
         }
         if let Some(ref tools) = self.allowed_tools
             && !tools.is_empty()
@@ -690,7 +728,7 @@ impl QueryOptions {
                 "mcpServers": self.mcp_servers,
             }))
         {
-            push_pair(&mut args, "--mcp-config", json);
+            push_split(&mut args, "--mcp-config", json);
         }
         if let Some(ref sources) = self.setting_sources {
             let joined: Vec<&str> = sources.iter().map(|s| s.as_cli_str()).collect();
@@ -756,7 +794,7 @@ impl QueryOptions {
             args.push("--no-session-persistence".into());
         }
         if let Some(ref managed) = self.managed_settings {
-            push_pair(&mut args, "--managed-settings", managed.clone());
+            push_split(&mut args, "--managed-settings", managed.clone());
         }
 
         // Flags the TS SDK sends in `initialize` instead; the CLI accepts
@@ -779,16 +817,13 @@ impl QueryOptions {
         }
 
         if let Some(settings) = self.settings_arg() {
-            push_pair(&mut args, "--settings", settings);
+            push_split(&mut args, "--settings", settings);
         }
 
         for (key, value) in &self.extra_args {
             match value {
                 None => args.push(format!("--{key}")),
-                Some(v) if v.len() > 1 && v.starts_with('-') => {
-                    args.push(format!("--{key}={v}"));
-                }
-                Some(v) => push_pair(&mut args, &format!("--{key}"), v.clone()),
+                Some(v) => push_split(&mut args, &format!("--{key}"), v.clone()),
             }
         }
 
@@ -796,31 +831,29 @@ impl QueryOptions {
     }
 
     /// `--settings` value: the settings path or object, with the sandbox
-    /// merged in as the TS SDK does.
+    /// option merged into its `sandbox` block as the TS SDK 0.3.296 does.
     fn settings_arg(&self) -> Option<String> {
-        let sandbox = self.sandbox.as_ref().map(|sandbox| {
-            let mut value = serde_json::to_value(sandbox).unwrap_or(Value::Null);
-            // The TS SDK fails closed when an enabled sandbox is unavailable.
-            if sandbox.enabled == Some(true)
-                && let Some(map) = value.as_object_mut()
-            {
-                map.entry("failIfUnavailable").or_insert(Value::Bool(true));
-            }
-            value
-        });
-        match (&self.settings, sandbox) {
-            (None, None) => None,
-            (Some(Value::String(path)), None) => Some(path.clone()),
-            (Some(settings), None) => serde_json::to_string(settings).ok(),
-            (settings, Some(sandbox)) => {
-                let mut merged = match settings {
-                    Some(Value::Object(map)) => map.clone(),
+        let Some(sandbox) = self.sandbox.as_ref() else {
+            return match &self.settings {
+                None => None,
+                Some(Value::String(path)) => Some(path.clone()),
+                Some(settings) => serde_json::to_string(settings).ok(),
+            };
+        };
+        let mut settings = match &self.settings {
+            Some(Value::Object(map)) => map.clone(),
+            Some(Value::String(text)) if is_inline_json(text) => {
+                match serde_json::from_str::<Value>(text) {
+                    Ok(Value::Object(map)) => map,
                     _ => serde_json::Map::new(),
-                };
-                merged.insert("sandbox".into(), sandbox);
-                serde_json::to_string(&Value::Object(merged)).ok()
+                }
             }
-        }
+            _ => serde_json::Map::new(),
+        };
+        let option = serde_json::to_value(sandbox).unwrap_or(Value::Null);
+        let merged = merge_sandbox(settings.get("sandbox"), &option);
+        settings.insert("sandbox".into(), merged);
+        serde_json::to_string(&Value::Object(settings)).ok()
     }
 
     /// Environment the CLI runs with, on top of the inherited environment.
@@ -864,7 +897,128 @@ impl QueryOptions {
     }
 }
 
+/// `--flag=value`: since 0.3.295 the TS SDK sends a named option's value in
+/// the same argument as its flag, so a value that starts with `-` is never
+/// read as another flag.
 fn push_pair(args: &mut Vec<String>, flag: &str, value: String) {
-    args.push(flag.to_string());
-    args.push(value);
+    args.push(format!("{flag}={value}"));
+}
+
+/// `--flag value`, or `--flag=value` when the value starts with `-`. The TS
+/// SDK keeps this form for `--mcp-config`, `--managed-settings`,
+/// `--settings`, and extra arguments.
+fn push_split(args: &mut Vec<String>, flag: &str, value: String) {
+    if value.len() > 1 && value.starts_with('-') {
+        args.push(format!("{flag}={value}"));
+    } else {
+        args.push(flag.to_string());
+        args.push(value);
+    }
+}
+
+/// A `settings` string that is inline JSON rather than a file path.
+fn is_inline_json(text: &str) -> bool {
+    let text = text.trim();
+    text.starts_with('{') && text.ends_with('}')
+}
+
+/// Restriction lists combined from both sides instead of replaced.
+const SANDBOX_UNION_PATHS: &[&str] = &[
+    "filesystem.denyRead",
+    "filesystem.denyWrite",
+    "network.deniedDomains",
+    "credentials.files",
+    "credentials.envVars",
+];
+
+/// Objects the sandbox option replaces whole instead of merging.
+const SANDBOX_REPLACE_PATHS: &[&str] = &["ripgrep", "network.tlsTerminate"];
+
+/// Proxy ports dropped when the option sets a domain restriction.
+const SANDBOX_PROXY_PORTS: &[&str] = &["httpProxyPort", "socksProxyPort"];
+
+fn merge_sandbox_at(base: Option<&Value>, option: &Value, prefix: &str) -> Value {
+    let mut merged = match base {
+        Some(Value::Object(map)) => map.clone(),
+        _ => serde_json::Map::new(),
+    };
+    let Value::Object(option) = option else {
+        return Value::Object(merged);
+    };
+    for (key, value) in option {
+        if matches!(key.as_str(), "__proto__" | "constructor" | "prototype") {
+            continue;
+        }
+        let path = if prefix.is_empty() {
+            key.clone()
+        } else {
+            format!("{prefix}.{key}")
+        };
+        let next = match (merged.get(key), value) {
+            (Some(Value::Array(old)), Value::Array(new))
+                if SANDBOX_UNION_PATHS.contains(&path.as_str()) =>
+            {
+                let mut combined = old.clone();
+                for item in new {
+                    if !combined.contains(item) {
+                        combined.push(item.clone());
+                    }
+                }
+                Value::Array(combined)
+            }
+            (Some(old @ Value::Object(_)), Value::Object(_))
+                if !SANDBOX_REPLACE_PATHS.contains(&path.as_str()) =>
+            {
+                merge_sandbox_at(Some(old), value, &path)
+            }
+            _ => value.clone(),
+        };
+        merged.insert(key.clone(), next);
+    }
+    Value::Object(merged)
+}
+
+/// Merge the sandbox option into a settings `sandbox` block (TS SDK
+/// 0.3.296): the option's values win, restriction lists combine,
+/// `filesystem.disabled: true` is dropped when the option restricts the
+/// filesystem, proxy ports are dropped when the option restricts domains,
+/// and an enabled sandbox fails closed unless either side says otherwise.
+fn merge_sandbox(base: Option<&Value>, option: &Value) -> Value {
+    let mut merged = merge_sandbox_at(base, option, "");
+    let restricts_files = option.get("filesystem").is_some_and(|v| !v.is_null())
+        || option
+            .pointer("/credentials/files")
+            .and_then(Value::as_array)
+            .is_some_and(|files| files.iter().any(|f| f["mode"] == "deny"));
+    if restricts_files
+        && option.pointer("/filesystem/disabled").is_none()
+        && let Some(filesystem) = merged.get_mut("filesystem").and_then(Value::as_object_mut)
+        && filesystem.get("disabled") == Some(&Value::Bool(true))
+    {
+        filesystem.remove("disabled");
+    }
+    let network = option.get("network");
+    let restricts_domains = network.is_some_and(|n| {
+        n.get("allowedDomains").is_some_and(|v| !v.is_null())
+            || n["deniedDomains"].as_array().is_some_and(|d| !d.is_empty())
+            || n["strictAllowlist"] == Value::Bool(true)
+    });
+    if restricts_domains
+        && let Some(merged_network) = merged.get_mut("network").and_then(Value::as_object_mut)
+    {
+        for port in SANDBOX_PROXY_PORTS {
+            let set_by_option = network
+                .and_then(|n| n.get(*port))
+                .is_some_and(|v| !v.is_null());
+            if !set_by_option {
+                merged_network.remove(*port);
+            }
+        }
+    }
+    if option["enabled"] == Value::Bool(true)
+        && let Some(map) = merged.as_object_mut()
+    {
+        map.entry("failIfUnavailable").or_insert(Value::Bool(true));
+    }
+    merged
 }

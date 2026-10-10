@@ -20,6 +20,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .no_session_persistence();
     options.tools = Some(ToolsConfig::Names(Vec::new()));
     options.setting_sources = Some(Vec::new());
+    // Run on the Claude Code login, never an API key.
+    options.env_remove = vec!["ANTHROPIC_API_KEY".into()];
 
     let mut stream = query("Reply with the single word: pong", options).await?;
     let init = stream
@@ -27,7 +29,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok_or("initialize returned no payload")?;
     let models = init["models"].as_array().map_or(0, Vec::len);
     let commands = init["commands"].as_array().map_or(0, Vec::len);
-    println!("initialize: ok ({models} models, {commands} commands)");
+    println!(
+        "initialize: ok ({models} models, {commands} commands, claude_code_version={})",
+        stream.claude_code_version().unwrap_or("absent")
+    );
 
     let mut unknown = Vec::new();
     while let Some(message) = stream.next().await {

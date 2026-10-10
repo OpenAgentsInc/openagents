@@ -1303,12 +1303,12 @@ done
         // settings files, and no API key in its environment.
         let arguments = logged(&dir, "arguments").join("\n");
         assert!(
-            arguments.contains("--permission-prompt-tool stdio"),
+            arguments.contains("--permission-prompt-tool=stdio"),
             "{arguments}"
         );
         assert!(arguments.contains("--setting-sources="), "{arguments}");
         assert!(
-            arguments.contains(&format!("--model {MODEL}")),
+            arguments.contains(&format!("--model={MODEL}")),
             "{arguments}"
         );
         assert!(!arguments.contains("--resume"), "{arguments}");

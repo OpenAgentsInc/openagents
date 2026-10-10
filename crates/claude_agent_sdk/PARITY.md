@@ -3,8 +3,8 @@
 This crate ports the wire protocol of `@anthropic-ai/claude-agent-sdk`: the
 stream-json frames the `claude` CLI writes, the control protocol in both
 directions, and the options that become CLI flags or `initialize` fields.
-It tracks SDK **0.3.289** (`UPSTREAM_SDK_VERSION` in `src/lib.rs`), checked
-against Claude Code **2.1.289**. The npm package is read as a reference;
+It tracks SDK **0.3.296** (`UPSTREAM_SDK_VERSION` in `src/lib.rs`), checked
+against Claude Code **2.1.295**, the newest CLI installed for the smoke. The npm package is read as a reference;
 nothing from it is vendored.
 
 Run `scripts/check-claude-sdk-parity.sh` to compare the crate with the
@@ -13,7 +13,7 @@ script exits 1 only for gaps this file does not list as deferred.
 
 ## Stream messages
 
-Every `type` and `system` `subtype` in the 0.3.289 `SDKMessage` union
+Every `type` and `system` `subtype` in the 0.3.296 `SDKMessage` union
 parses to a typed `SdkMessage` variant. A valid JSON object with an
 unmodelled `type` or `subtype` becomes `SdkMessage::Unknown { type_name,
 raw }` and the stream continues; invalid JSON becomes
@@ -43,9 +43,35 @@ Added for 0.3.289:
 
 No 0.3.172 message type or required field was removed in 0.3.289.
 
+Added for 0.3.296 (0.3.290 to 0.3.296 add no message type or subtype):
+
+- `agent_id` on assistant and user messages a subagent produces
+  (0.3.292); assistant messages also carry `subagent_type` and
+  `task_description`, which 0.3.289 already had.
+- `run_id` on `task_started`, `task_updated`, `task_progress`, and
+  `task_notification`, and `parent_task_id` on `task_started` (0.3.292).
+- `background_tasks_changed` entries: `run_id`, `parent_task_id` (0.3.292)
+  and `subagent_type` (0.3.293).
+- `SdkRateLimitInfo::overage_enabled` (`overageEnabled`, 0.3.295). The
+  `overageStatus`, `overageResetsAt`, and `overageDisabledReason` fields
+  were already modelled, so `allowed_warning` events now carrying them
+  parse unchanged.
+- `startup_failure_reason` values `org_config_required_unavailable` and
+  `org_config_refused` (0.3.296) parse; the field stays a string.
+- `citations` on text blocks (fixed in 0.3.295 for streamed responses)
+  pass through: `message` and stream `event` are kept as JSON, and a test
+  pins both forms.
+- Fixed here: an inbound `user` frame (tool results, replays) parsed to
+  `SdkMessage::Unknown`, because the enum tag consumed the `type` field the
+  struct required. It now parses to `SdkMessage::User` and serializes with
+  one `type`, and `isSynthetic` and `isReplay` use their wire names (the
+  snake_case spellings are still read). `microcoder`'s `claude_sdk` engine
+  records these frames in its transcript, which it had silently skipped.
+
 ## Control protocol
 
 Outbound (SDK to CLI): all 40 subtypes in 0.3.289 `SDKControlRequestInner`
+(unchanged through 0.3.296)
 serialize, and `Query` has a method for each one a host sends. New since
 0.3.172: `list_models`, `get_hooks_listing`, `get_task_output`,
 `list_permission_rules`, `mcp_read_resource`, `reload_output_styles`, and
@@ -73,6 +99,20 @@ does not stall the stdout reader:
 | `remote_tool_call` and the other remote tool subtypes | No reply, as in the TS SDK. |
 | Any other subtype | Error naming the subtype. |
 
+Added for 0.3.296:
+
+- The `initialize` response's `claude_code_version` is
+  `Query::claude_code_version()`. Claude Code 2.1.295 does not send it yet,
+  so the smoke reports it absent.
+- A permission answer whose `updatedPermissions` holds over
+  `MAX_UPDATED_PERMISSIONS` (4,096) updates, rules, and directories counted
+  together is sent as a deny that names the count
+  (`PermissionResult::within_limits`). Claude Code 2.1.295 and later count
+  such an answer as a denial; the CLI does not say whether the limit is per
+  list or combined, so the SDK applies the stricter combined count.
+- `suppress_always_allow_rule` on `can_use_tool` (set for connector tools
+  an organization requires approval for, 0.3.292) was already modelled.
+
 `control_cancel_request` aborts the matching in-flight answer, and a
 duplicate delivery of an in-flight request is skipped. Permission and
 dialog requests carried in a control response's
@@ -86,7 +126,33 @@ the CLI in `initialize.hooks`.
 
 ## Options and flags
 
-`build_args` follows the 0.3.289 argument builder. Fixed against the
+Added for 0.3.296:
+
+- Flag values ride in the flag's own argument (`--model=haiku`), as the TS
+  SDK does since 0.3.295, so a value that starts with `-` is never read as
+  another flag. `--mcp-config`, `--managed-settings`, `--settings`, and
+  extra arguments keep `--flag value` unless the value starts with `-`,
+  also as in the TS SDK. The stream-json transport flags are unchanged. The
+  crate's own `--system-prompt`, `--append-system-prompt`, and `--agents`
+  use the joined form too.
+- `AgentDefinition::auto_compact_window` (`autoCompactWindow`, 0.3.296).
+  `AgentDefinition` now derives `Default`.
+- The sandbox option merges into an inline `settings.sandbox` block
+  instead of replacing it (0.3.296): its values win, values it does not set
+  are kept, `filesystem.denyRead`, `filesystem.denyWrite`,
+  `network.deniedDomains`, `credentials.files`, and `credentials.envVars`
+  from both sides are combined, `ripgrep` and `network.tlsTerminate` are
+  replaced whole, `filesystem.disabled: true` is dropped when the option
+  restricts the filesystem, unset proxy ports are dropped when it restricts
+  domains, and `failIfUnavailable` defaults to `true` only when neither side
+  sets it. `settings` given as inline JSON text merges like an object; a
+  settings file path with a sandbox is still rejected.
+- `SandboxSettings` gains `fail_if_unavailable`, `filesystem`,
+  `credentials`, and `extra`; `SandboxNetworkConfig` gains
+  `allowed_domains`, `denied_domains`, `strict_allowlist`, and `extra`.
+  Fields without a typed slot go in `extra` as written.
+
+`build_args` follows the 0.3.289 argument builder, as revised above. Fixed against the
 CLI: `--allowedTools` and `--disallowedTools` take one comma-joined value,
 `--setting-sources=` and `--betas` take joined lists,
 `allow_dangerously_skip_permissions` is
@@ -126,7 +192,12 @@ from 0.3.172.
   the installed CLI with `--no-session-persistence`, no tools, and no
   settings files. On 2026-10-04 with Claude Code 2.1.289 it completed the
   handshake (12 models, 55 commands) and a `success` result with no
-  `Unknown` messages.
+  `Unknown` messages. On 2026-10-09 with Claude Code 2.1.295, the owner's
+  login, no API key, and the `--flag=value` arguments it completed the
+  handshake (13 models, 55 commands, no `claude_code_version` yet) and a
+  `success` result (`completed`) with no `Unknown` messages.
+- `cargo test -p microcoder`: the `claude_sdk` engine's fake-CLI tests,
+  updated for the joined flag spelling.
 
 ## Deferred
 
@@ -142,3 +213,15 @@ from 0.3.172.
   expose.
 - Hook input and hook-specific output stay `serde_json::Value` rather than
   one Rust type per event.
+- Tool inputs and results stay JSON, so the 0.3.290 to 0.3.296 tool shape
+  changes (WebFetch `offset`, ListAgents `sections` and `notes`,
+  SendMessage `recipient_kind`, ReadNotifications `read_at` and
+  `arrived_at`, MCP `tool_use_result` caps, `tool_result_meta`) need no
+  port. The same holds for settings-file fields the SDK passes through
+  untyped (hook `onFailure`, `idleCompaction`).
+- Message `origin` (and its 0.3.292 `runId`) is not modelled.
+- `AgentDefinition` models the 0.3.172 fields plus `autoCompactWindow`;
+  the other optional agent fields (`initialPrompt`, `maxTurns`,
+  `background`, `omitClaudeMd`, and the rest) are not.
+- MCP description limits (4,096 and 16,384 characters) apply to
+  SDK-hosted MCP servers, which this crate does not support.

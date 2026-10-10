@@ -84,7 +84,7 @@ pub mod transport;
 
 /// The `@anthropic-ai/claude-agent-sdk` version whose wire protocol this
 /// crate tracks.
-pub const UPSTREAM_SDK_VERSION: &str = "0.3.289";
+pub const UPSTREAM_SDK_VERSION: &str = "0.3.296";
 
 // Re-export main types at crate root
 pub use callbacks::{ElicitationHandler, HookCallback, HookMatcher, UserDialogHandler, hook_fn};
@@ -101,20 +101,20 @@ pub use permissions::{
 };
 pub use protocol::{
     AssistantMessageError, AsyncHookJSONOutput, CanUseToolRequest, ElicitationAction,
-    ElicitationRequest, ElicitationResult, HookEvent, HookJSONOutput, KeepAliveMessage, ModelUsage,
-    PermissionBehavior, PermissionDenial, PermissionMode, PermissionResult, PermissionRule,
-    PermissionUpdate, RequestUserDialogRequest, ResultError, ResultSuccess, ResultTurnFields,
-    SdkActiveGoalMessage, SdkApiRetryMessage, SdkAssistantMessage, SdkAuthStatusMessage,
-    SdkBackgroundTasksChangedMessage, SdkCommandsChangedMessage, SdkControlRequest,
-    SdkControlRequestProgressMessage, SdkControlResponse, SdkConversationResetMessage,
-    SdkElicitationCompleteMessage, SdkFilesPersistedEvent, SdkHookProgressMessage,
-    SdkHookStartedMessage, SdkInformationalMessage, SdkLocalCommandOutputMessage,
-    SdkMemoryRecallMessage, SdkMessage, SdkMirrorErrorMessage, SdkModelRefusalFallbackMessage,
-    SdkModelRefusalNoFallbackMessage, SdkNotificationMessage, SdkPermissionDeniedMessage,
-    SdkPluginInstallMessage, SdkPromptSuggestionMessage, SdkRateLimitEvent, SdkRateLimitInfo,
-    SdkResultMessage, SdkSessionStateChangedMessage, SdkStreamEvent, SdkSystemMessage,
-    SdkTaskNotificationMessage, SdkTaskProgressMessage, SdkTaskStartedMessage,
-    SdkTaskUpdatedMessage, SdkThinkingTokensMessage, SdkToolProgressMessage,
+    ElicitationRequest, ElicitationResult, HookEvent, HookJSONOutput, KeepAliveMessage,
+    MAX_UPDATED_PERMISSIONS, ModelUsage, PermissionBehavior, PermissionDenial, PermissionMode,
+    PermissionResult, PermissionRule, PermissionUpdate, RequestUserDialogRequest, ResultError,
+    ResultSuccess, ResultTurnFields, SdkActiveGoalMessage, SdkApiRetryMessage, SdkAssistantMessage,
+    SdkAuthStatusMessage, SdkBackgroundTasksChangedMessage, SdkCommandsChangedMessage,
+    SdkControlRequest, SdkControlRequestProgressMessage, SdkControlResponse,
+    SdkConversationResetMessage, SdkElicitationCompleteMessage, SdkFilesPersistedEvent,
+    SdkHookProgressMessage, SdkHookStartedMessage, SdkInformationalMessage,
+    SdkLocalCommandOutputMessage, SdkMemoryRecallMessage, SdkMessage, SdkMirrorErrorMessage,
+    SdkModelRefusalFallbackMessage, SdkModelRefusalNoFallbackMessage, SdkNotificationMessage,
+    SdkPermissionDeniedMessage, SdkPluginInstallMessage, SdkPromptSuggestionMessage,
+    SdkRateLimitEvent, SdkRateLimitInfo, SdkResultMessage, SdkSessionStateChangedMessage,
+    SdkStreamEvent, SdkSystemMessage, SdkTaskNotificationMessage, SdkTaskProgressMessage,
+    SdkTaskStartedMessage, SdkTaskUpdatedMessage, SdkThinkingTokensMessage, SdkToolProgressMessage,
     SdkToolUseSummaryMessage, SdkUserMessage, SdkWorkerShuttingDownMessage, StdinMessage,
     StdoutMessage, SyncHookJSONOutput, TerminalReason, Usage, parse_stdout_line,
 };

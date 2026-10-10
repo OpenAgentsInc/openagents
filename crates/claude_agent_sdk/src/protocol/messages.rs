@@ -23,7 +23,7 @@ pub const KNOWN_SDK_MESSAGE_TYPES: &[&str] = &[
     "conversation_reset",
 ];
 
-/// Internally tagged union of recognized SDK stdout messages (0.3.289 set).
+/// Internally tagged union of recognized SDK stdout messages (0.3.296 set).
 /// Unknown future `type` values become [`SdkMessage::Unknown`] instead of a
 /// deserialize failure, so hosts can count protocol drift.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -164,7 +164,8 @@ impl Serialize for SdkMessage {
         match self {
             SdkMessage::Unknown { raw, .. } => raw.serialize(serializer),
             SdkMessage::Assistant(v) => KnownSdkMessage::Assistant(v.clone()).serialize(serializer),
-            SdkMessage::User(v) => KnownSdkMessage::User(v.clone()).serialize(serializer),
+            // The user message carries its own `type` field.
+            SdkMessage::User(v) => v.serialize(serializer),
             SdkMessage::Result(v) => KnownSdkMessage::Result(v.clone()).serialize(serializer),
             SdkMessage::System(v) => KnownSdkMessage::System(v.clone()).serialize(serializer),
             SdkMessage::StreamEvent(v) => {
@@ -233,6 +234,17 @@ pub struct SdkAssistantMessage {
     /// Usage report, when the CLI attaches one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage_report: Option<Value>,
+    /// The subagent that produced this message: the `task_id` of its task
+    /// events, unchanged when the subagent resumes. Absent on main-thread
+    /// messages (0.3.292).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+    /// Subagent type that produced this message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subagent_type: Option<String>,
+    /// Description of the subagent task that produced this message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task_description: Option<String>,
     /// Unique message ID
     pub uuid: String,
     /// Session ID
@@ -262,15 +274,22 @@ pub enum AssistantMessageError {
 /// User message to send to Claude.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SdkUserMessage {
-    /// Message type marker
-    #[serde(rename = "type")]
+    /// Message type marker. Defaulted when parsing: inside [`SdkMessage`]
+    /// the `type` tag is consumed by the enum.
+    #[serde(rename = "type", default)]
     pub msg_type: UserMessageType,
     /// The message content (APIUserMessage format)
     pub message: Value,
     /// Parent tool use ID if responding to a tool call
     pub parent_tool_use_id: Option<String>,
-    /// Whether this is a synthetic (system-generated) message
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Whether this is a synthetic (system-generated) message (TS
+    /// `isSynthetic`).
+    #[serde(
+        rename = "isSynthetic",
+        alias = "is_synthetic",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub is_synthetic: Option<bool>,
     /// Tool use result if responding to a tool call
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -280,18 +299,28 @@ pub struct SdkUserMessage {
     pub uuid: Option<String>,
     /// Session ID
     pub session_id: String,
-    /// True if this is a replay/acknowledgment
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// True if this is a replay/acknowledgment (TS `isReplay`).
+    #[serde(
+        rename = "isReplay",
+        alias = "is_replay",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
     pub is_replay: Option<bool>,
     /// Deliver the text as written: no `@path` expansion and no
     /// slash-command dispatch (TS `client_composed`, 0.3.289).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_composed: Option<bool>,
+    /// The subagent that produced this message (0.3.292); absent on
+    /// main-thread messages and on prompts the host sends.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UserMessageType {
+    #[default]
     User,
 }
 
@@ -491,7 +520,7 @@ pub struct PermissionDenial {
 
 /// System message types (`type: "system"` plus a `subtype` discriminator).
 ///
-/// Subtypes follow `@anthropic-ai/claude-agent-sdk` 0.3.289. An unrecognized
+/// Subtypes follow `@anthropic-ai/claude-agent-sdk` 0.3.296. An unrecognized
 /// subtype fails this enum and is recovered as [`SdkMessage::Unknown`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "subtype")]
@@ -802,6 +831,14 @@ pub struct SdkRateLimitInfo {
         skip_serializing_if = "Option::is_none"
     )]
     pub overage_in_use: Option<bool>,
+    /// On usage-limit warnings: whether the account has extra usage turned
+    /// on (0.3.295).
+    #[serde(
+        rename = "overageEnabled",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub overage_enabled: Option<bool>,
     #[serde(
         rename = "surpassedThreshold",
         default,
@@ -934,6 +971,10 @@ pub struct SdkPluginInstallMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SdkTaskNotificationMessage {
     pub task_id: String,
+    /// One run of the task; a resumed task keeps its `task_id` and gets a
+    /// new `run_id` (0.3.292).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_use_id: Option<String>,
     pub status: String,
@@ -958,6 +999,10 @@ pub struct SdkTaskNotificationMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SdkTaskStartedMessage {
     pub task_id: String,
+    /// One run of the task; a resumed task keeps its `task_id` and gets a
+    /// new `run_id` (0.3.292).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_use_id: Option<String>,
     pub description: String,
@@ -975,6 +1020,10 @@ pub struct SdkTaskStartedMessage {
     pub is_backgrounded: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spawn_depth: Option<u32>,
+    /// `task_id` of the subagent task that launched this task; absent when
+    /// the main thread launched it (0.3.292).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_task_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ambient: Option<bool>,
     pub uuid: String,
@@ -985,6 +1034,10 @@ pub struct SdkTaskStartedMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SdkTaskUpdatedMessage {
     pub task_id: String,
+    /// One run of the task; a resumed task keeps its `task_id` and gets a
+    /// new `run_id` (0.3.292).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
     pub patch: SdkTaskUpdatedPatch,
     pub uuid: String,
     pub session_id: String,
@@ -1011,6 +1064,10 @@ pub struct SdkTaskUpdatedPatch {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SdkTaskProgressMessage {
     pub task_id: String,
+    /// One run of the task; a resumed task keeps its `task_id` and gets a
+    /// new `run_id` (0.3.292).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_use_id: Option<String>,
     pub description: String,
@@ -1221,8 +1278,18 @@ pub struct SdkBackgroundTasksChangedMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SdkBackgroundTask {
     pub task_id: String,
+    /// One run of the task; a resumed task keeps its `task_id` and gets a
+    /// new `run_id` (0.3.292).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
     pub task_type: String,
+    /// Agent type of a `local_agent` task (0.3.293).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subagent_type: Option<String>,
     pub description: String,
+    /// `task_id` of the subagent task that launched this one (0.3.292).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_task_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ambient: Option<bool>,
 }
