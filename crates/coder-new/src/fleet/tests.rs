@@ -511,3 +511,48 @@ fn the_agents_panel_lists_stops_and_opens_agents() {
     assert_eq!(app.delegations[index].name, "second");
     assert!(app.delegations[index].background);
 }
+
+/// A background agent started here shows on the desktop app's Agents
+/// panel, through this process's board, and Stop there stops it (#11180).
+#[test]
+fn the_desktop_board_lists_agents_and_carries_out_stop() {
+    let home = tempfile::tempdir().unwrap();
+    let mut app = crate::App::default();
+    app.publish_agents(home.path());
+    let dir = agent_fleet::board::dir(home.path());
+    assert!(
+        agent_fleet::board::read(&dir, |_, _| true).is_empty(),
+        "no agents, no board"
+    );
+    let control = app
+        .fleet
+        .start(agent_fleet::Spec {
+            engine: "codex".into(),
+            task: "fix the login".into(),
+            ..agent_fleet::Spec::default()
+        })
+        .unwrap();
+    app.poll_fleet();
+    let boards = agent_fleet::board::read(&dir, |_, _| true);
+    assert_eq!(boards.len(), 1);
+    assert_eq!(boards[0].pid, std::process::id());
+    assert_eq!(boards[0].agents.len(), 1);
+    assert_eq!(boards[0].agents[0].name, "fix-the-login");
+    assert_eq!(boards[0].agents[0].status, agent_fleet::Status::Running);
+
+    agent_fleet::board::request_stop(&dir, std::process::id(), "agent-1").unwrap();
+    // Requests are looked for every half second.
+    let started = Instant::now();
+    while !control.stopped() {
+        assert!(started.elapsed() < Duration::from_secs(5), "never stopped");
+        std::thread::sleep(Duration::from_millis(50));
+        app.poll_fleet();
+    }
+    control.finish(agent_fleet::Outcome::Failed("canceled".into()));
+    app.poll_fleet();
+    let boards = agent_fleet::board::read(&dir, |_, _| true);
+    assert_eq!(boards[0].agents[0].status, agent_fleet::Status::Stopped);
+
+    drop(app);
+    assert!(agent_fleet::board::read(&dir, |_, _| true).is_empty());
+}

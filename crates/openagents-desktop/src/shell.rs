@@ -24,6 +24,10 @@ pub mod acceptance;
 /// The largest the code draws, in points.
 pub const CODE_SIDE: f32 = 360.0;
 
+/// The width the Terminal's button takes while the pane is hidden, in
+/// points (#11180).
+const TERMINAL_RAIL: f32 = 96.0;
+
 /// Where requests go: a background worker in the window, or inline in a
 /// capture.
 enum Runner {
@@ -64,6 +68,8 @@ pub struct DesktopApp {
     slides: Option<openagents_desktop::slides::Slides>,
     /// The Map page, only while it shows (#10085).
     map: Option<openagents_desktop::route_map::MapPage>,
+    /// The Terminal beside the chat, and its Agents panel (#11180).
+    terminal: Option<openagents_desktop::terminal_pane::TerminalPane>,
     /// The window's size in points and its scale.
     viewport: (f32, f32, f32),
     /// A full-screen change for the window to make (`fullscreen_request`).
@@ -274,6 +280,14 @@ impl DesktopApp {
             normal_wake: None,
             slides: None,
             map: None,
+            // A test never reads the real home's agent lists.
+            terminal: (live && chrome).then(|| {
+                if cfg!(test) {
+                    openagents_desktop::terminal_pane::TerminalPane::new(None)
+                } else {
+                    openagents_desktop::terminal_pane::TerminalPane::for_home()
+                }
+            }),
             viewport: (1200.0, 840.0, 1.0),
             fullscreen_want: None,
             window_fullscreen: false,
@@ -285,6 +299,148 @@ impl DesktopApp {
         };
         app.present();
         app
+    }
+
+    /// Starts the Terminal's shell: the person's own, in their home
+    /// folder, with Coder on its `PATH` (#11180).
+    fn start_terminal(&mut self, waker: Waker) {
+        let Some(terminal) = &mut self.terminal else {
+            return;
+        };
+        let Some(home) = openagents_desktop::terminal_pane::home() else {
+            terminal.phase = openagents_desktop::terminal_pane::Phase::Failed(
+                "A shell needs a home folder, and this account has none.".into(),
+            );
+            return;
+        };
+        let coder = crate::platform::coder_path();
+        let shell = openagents_desktop::terminal_pane::shell(
+            &|name: &str| std::env::var(name).ok(),
+            &home,
+            coder.as_deref(),
+        );
+        terminal.start(&shell, move || waker.wake());
+    }
+
+    /// A control on the Terminal pane (#11180).
+    fn terminal_action(
+        &mut self,
+        action: openagents_desktop::terminal_action::Action,
+        now: Instant,
+    ) {
+        use openagents_desktop::terminal_action::Action;
+        let Some(terminal) = &mut self.terminal else {
+            return;
+        };
+        let mut restart = false;
+        match action {
+            Action::Show => {
+                terminal.open = true;
+                terminal.focus(true);
+                if let Some(chat) = &mut self.chat {
+                    chat.input(rust_native_desktop::input::TextInput::FocusLost, now);
+                }
+            }
+            Action::Hide => {
+                terminal.open = false;
+                terminal.focus(false);
+            }
+            Action::Restart => {
+                terminal.reset();
+                restart = true;
+            }
+            Action::Stop { pid, agent } => terminal.stop(pid, &agent),
+        }
+        if restart
+            && self.live
+            && !cfg!(test)
+            && let Some(waker) = self.waker.clone()
+        {
+            self.start_terminal(waker);
+        }
+    }
+
+    /// Keys for the Terminal: Ctrl+` shows or hides it, and while its
+    /// screen has the keyboard, what is typed goes to the shell (#11180).
+    /// Returns whether the key was the Terminal's.
+    fn terminal_input(
+        &mut self,
+        event: &rust_native_desktop::input::TextInput<'_>,
+        now: Instant,
+    ) -> bool {
+        use openagents_desktop::terminal_pane::Typed;
+        use rust_native_desktop::input::TextInput;
+        let on_chat = self
+            .navigation
+            .as_ref()
+            .is_some_and(|state| matches!(state.page, Page::Chat(_)));
+        let modal = self.chat.as_ref().is_some_and(|chat| chat.modal());
+        let Some(terminal) = &self.terminal else {
+            return false;
+        };
+        if !on_chat || modal {
+            return false;
+        }
+        if let TextInput::Key {
+            key: "`",
+            control: true,
+            ..
+        } = event
+        {
+            let action = if terminal.open {
+                openagents_desktop::terminal_action::Action::Hide
+            } else {
+                openagents_desktop::terminal_action::Action::Show
+            };
+            self.terminal_action(action, now);
+            self.present();
+            return true;
+        }
+        if !terminal.open || !terminal.focused {
+            return false;
+        }
+        let live = self.live;
+        let Some(terminal) = &mut self.terminal else {
+            return false;
+        };
+        let taken = match *event {
+            TextInput::Key {
+                key,
+                text,
+                control,
+                command,
+                alt,
+                shift,
+            } => match terminal.key(key, text, control, command, alt, shift) {
+                Typed::Bytes(_) => true,
+                Typed::Paste => {
+                    if live && let Some(text) = rust_native_desktop::input::paste() {
+                        terminal.paste(&text);
+                    }
+                    true
+                }
+                Typed::Copy => {
+                    if live {
+                        rust_native_desktop::input::copy(&terminal.text());
+                    }
+                    true
+                }
+                Typed::Unhandled => false,
+            },
+            TextInput::Commit(text) => {
+                terminal.commit(text);
+                true
+            }
+            TextInput::Preedit { .. } | TextInput::CancelComposition => true,
+            TextInput::FocusLost => {
+                terminal.focus(false);
+                false
+            }
+        };
+        if taken {
+            self.present();
+        }
+        taken
     }
 
     pub fn model(&self) -> &Model {
@@ -683,7 +839,20 @@ impl DesktopApp {
                     .min((chat.viewport.0 - 360.0).max(0.0))
             };
             let pane = if chat.changes_open() { 420.0 } else { 0.0 };
-            chat.column_width = (chat.viewport.0 - leading - pane - 16.0).clamp(1.0, 768.0);
+            let content = chat.viewport.0 - leading - pane - 16.0;
+            // The Terminal beside the chat takes its share first (#11180).
+            let terminal = match &mut self.terminal {
+                Some(terminal) if matches!(state.page, Page::Chat(_)) => {
+                    let width = terminal.fit(content);
+                    if width > 0.0 {
+                        width + 8.0
+                    } else {
+                        TERMINAL_RAIL
+                    }
+                }
+                _ => 0.0,
+            };
+            chat.column_width = (content - terminal).clamp(1.0, 768.0);
             chat.show_saved(
                 state.page == Page::Saved,
                 self.model.project().map(|project| project.label.clone()),
@@ -726,6 +895,10 @@ impl DesktopApp {
                 children[1] = grid.borrow_mut().view();
             }
         }
+        let terminal_here = self
+            .navigation
+            .as_ref()
+            .is_some_and(|state| matches!(state.page, Page::Chat(_)));
         if self.model.nearby().is_none()
             && (self
                 .navigation
@@ -738,7 +911,11 @@ impl DesktopApp {
             && let Some(content) = children.get_mut(1)
             && let rust_native::Element::Stack { children, .. } = &mut content.element
         {
-            children[1] = chat.body();
+            let body = chat.body();
+            children[1] = match &self.terminal {
+                Some(terminal) if terminal_here => terminal.beside(body),
+                _ => body,
+            };
             children[2] = chat.footer();
         }
         if self.model.nearby().is_none()
@@ -1062,6 +1239,10 @@ impl App for DesktopApp {
         if let Some(chat) = &mut self.chat {
             chat.start(waker.clone());
         }
+        // The Terminal's shell starts with the window, never in a test.
+        if self.live && !cfg!(test) {
+            self.start_terminal(waker.clone());
+        }
         crate::menubar::start(waker.clone());
         if self.live {
             crate::updates::start(waker.clone());
@@ -1160,6 +1341,10 @@ impl App for DesktopApp {
         if let Some(request) = self.chat.as_mut().and_then(|chat| chat.tick(now)) {
             self.send(vec![request], now);
         }
+        if let Some(terminal) = &mut self.terminal {
+            terminal.poll();
+            terminal.refresh_agents(now);
+        }
         // A reply arrives here (the background worker's outcomes above, or
         // an inline `send`), not on input: open the deck its typed
         // `open_presentation` offer holds now, not on the next key (#10082),
@@ -1202,6 +1387,15 @@ impl App for DesktopApp {
             wake.min(now + openagents_desktop::grid::FRAME)
         } else {
             wake
+        };
+        // The Agents panel reads the agent lists once a second (#11180).
+        let wake = match self
+            .terminal
+            .as_ref()
+            .and_then(|terminal| terminal.next_wake(now))
+        {
+            Some(read) => wake.min(read),
+            None => wake,
         };
         // A key test in flight is looked at again soon, even without a
         // waker (a capture).
@@ -1291,6 +1485,11 @@ impl App for DesktopApp {
         }
         if let Intent::Settings { action } = intent {
             self.settings_action(action, now);
+            return;
+        }
+        if let Intent::Terminal { action } = intent {
+            self.terminal_action(action, now);
+            self.present();
             return;
         }
         if let Intent::Map { action } = intent {
@@ -1552,6 +1751,9 @@ impl App for DesktopApp {
             self.present();
             return taken;
         }
+        if self.terminal_input(&event, now) {
+            return true;
+        }
         if self
             .chat
             .as_mut()
@@ -1617,6 +1819,14 @@ impl App for DesktopApp {
         changed
     }
     fn pointer_down(&mut self, target: Option<&str>, point: (f32, f32), _now: Instant) -> bool {
+        // A click anywhere but the Terminal's screen gives the keyboard
+        // back to the window; one on it takes it again (`surface_input`).
+        if target != Some(openagents_desktop::terminal_pane::SCREEN)
+            && let Some(terminal) = &mut self.terminal
+            && terminal.focused
+        {
+            terminal.focus(false);
+        }
         let consumed = self
             .chat
             .as_mut()
@@ -1722,6 +1932,9 @@ impl App for DesktopApp {
     }
 
     fn surface_version(&self, resource: &str) -> Option<u64> {
+        if resource == openagents_desktop::terminal_pane::RESOURCE {
+            return self.terminal.as_ref().map(|terminal| terminal.version());
+        }
         if resource == openagents_desktop::slides::RESOURCE {
             return self.slides.as_ref().map(|slides| slides.version());
         }
@@ -1743,6 +1956,23 @@ impl App for DesktopApp {
         event: rust_native_desktop::input::SurfaceInput,
         now: Instant,
     ) -> bool {
+        if resource == openagents_desktop::terminal_pane::RESOURCE {
+            let handled = self
+                .terminal
+                .as_mut()
+                .is_some_and(|terminal| terminal.input(event));
+            if self
+                .terminal
+                .as_ref()
+                .is_some_and(|terminal| terminal.focused)
+                && let Some(chat) = &mut self.chat
+            {
+                // The composer lets go of the keyboard for the shell.
+                chat.input(rust_native_desktop::input::TextInput::FocusLost, now);
+            }
+            self.present();
+            return handled;
+        }
         if resource == openagents_desktop::slides::RESOURCE {
             let handled = self
                 .slides
@@ -1818,6 +2048,9 @@ impl App for DesktopApp {
     }
 
     fn viewport(&mut self, width: f32, height: f32, scale: f32) {
+        if let Some(terminal) = &mut self.terminal {
+            terminal.set_window(height, scale);
+        }
         if let Some(slides) = &mut self.slides {
             slides.set_unit(scale);
         }
@@ -1856,6 +2089,12 @@ impl App for DesktopApp {
     }
 
     fn surface_size(&self, resource: &str, available: f32) -> Option<(f32, f32)> {
+        if resource == openagents_desktop::terminal_pane::RESOURCE {
+            return self
+                .terminal
+                .as_ref()
+                .map(|terminal| terminal.surface_size(available));
+        }
         if resource == openagents_desktop::slides::RESOURCE {
             return Some((available, 1.0));
         }
@@ -1885,6 +2124,12 @@ impl App for DesktopApp {
     }
 
     fn paint_surface(&mut self, resource: &str, frame: &mut Frame, rect: PxRect) {
+        if resource == openagents_desktop::terminal_pane::RESOURCE {
+            if let Some(terminal) = &mut self.terminal {
+                terminal.paint(frame, rect);
+            }
+            return;
+        }
         if resource == openagents_desktop::slides::RESOURCE {
             self.deck_map();
             if let Some(slides) = &mut self.slides {
@@ -6156,6 +6401,11 @@ mod access_tests;
 #[cfg(test)]
 #[path = "route_map_shell_tests.rs"]
 mod route_map_shell_tests;
+
+/// The Terminal beside the chat (#11180).
+#[cfg(test)]
+#[path = "terminal_shell_tests.rs"]
+mod terminal_shell_tests;
 
 #[cfg(test)]
 mod coder_events {

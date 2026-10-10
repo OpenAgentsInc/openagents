@@ -315,6 +315,16 @@ The policy is `docs/cloud/claude-code-byo.md`.
 | Terminal input is live only: nothing typed while the screen is not attached is queued or sent later. | New on 2026-09-27. | `a_build_without_the_live_service_refuses_clearly`; `Session::send` refuses unless attached |
 | Terminal output is untrusted data: it cannot read or write the phone's clipboard, and a paste cannot end a bracketed paste early. | New on 2026-09-27. | `title_bell_and_ignored_commands`, `a_paste_normalizes_newlines_and_cannot_close_the_bracket` in `crates/coder-vt` |
 
+## Local agent boards
+
+Each running `coder` publishes its background agents for the desktop app's
+Agents panel (`crates/agent-fleet` `board`,
+[#11180](https://github.com/OpenAgentsInc/openagents/issues/11180)).
+
+| Invariant | Status | Checked by |
+| --- | --- | --- |
+| A board, `~/.openagents/agents/<pid>.json`, carries only the rows the process's own agent list already shows, is rewritten when a row changes (and on a refresh interval), and is removed when its list empties or the process ends. A reader keeps only a board whose schema and `pid` match its file name, under the size bound, for a process that still runs (or, where the system can't be asked, whose board is fresh). The only thing that crosses back is a stop request, `<pid>.<agent id>.stop`, whose name must be an agent id: the process it names reads it once and stops that agent as `/agents` does; any other process ignores it. Nothing in the folder carries a reply or a credential: a row is the agent list's own (name, engine, place, status, its one-line task, times, tokens, cost, worktree and branch), beside the process's working folder. | New on 2026-10-10 ([#11180](https://github.com/OpenAgentsInc/openagents/issues/11180)). Model boundary: the folder is the person's own home; another process of the same user can write a stop request, which is the same reach as `/agents` in that user's terminal. | `a_publisher_writes_changes_and_removes_its_board_when_dropped`, `an_unchanged_list_is_rewritten_after_the_refresh`, `an_emptied_list_removes_the_board`, `readers_skip_dead_processes_and_foreign_files`, `a_stop_request_is_read_once_by_its_process_only`, `age_stands_in_for_asking_about_the_process`, `agent_ids_are_the_only_request_names` in `crates/agent-fleet` |
+
 ## Your computers (screenshots, files, commands)
 
 | Invariant | Status | Checked by |

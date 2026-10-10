@@ -69,6 +69,12 @@ model-access = { path = "../model-access", optional = true, features = ["http", 
 # #10091); already in the graph through `coder`.
 acp-client = { path = "../acp-client" }
 uuid = { version = "1", features = ["v4"] }
+# The Terminal beside the chat (#11180): a shell on a PTY from an
+# in-process host, drawn by the emulator, and every running Coder's agent
+# list. All three are already in the graph through `coder-computers`.
+coder-pty = { path = "../coder-pty" }
+coder-vt = { path = "../coder-vt" }
+agent-fleet = { path = "../agent-fleet" }
 base64 = "0.22"
 # The control protocol's messages.
 openagents-connect = { path = "../openagents-connect" }

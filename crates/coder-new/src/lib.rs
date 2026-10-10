@@ -139,6 +139,9 @@ pub struct App {
     pub(crate) queued_prompts: Vec<prompt_queue::Prompt>,
     /// Background agents started from this terminal (#11163).
     pub fleet: fleet::Fleet,
+    /// This process's agent list on disk, for the desktop app's Agents
+    /// panel (#11180); set by [`App::publish_agents`].
+    pub(crate) board: Option<agent_fleet::board::Publisher>,
     /// The `/agents` panel, while it is open.
     pub(crate) agents_panel: Option<fleet_app::Panel>,
     /// Compaction, usage-limit pauses and dollars (#11179).

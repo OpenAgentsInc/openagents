@@ -21,6 +21,8 @@
 //!   pool of build folders.
 //! - [`lease`]: the `worktree/<id>` lease an agent holds while it runs, so
 //!   nothing removes its checkout under it.
+//! - [`board`]: each running Coder's list on disk, so the desktop app's
+//!   Agents panel shows agents started in any terminal here (#11180).
 //!
 //! There are no step or time limits anywhere here; an agent runs until it
 //! finishes or someone stops it.
@@ -809,6 +811,10 @@ where
             control.finish(outcome);
         })
 }
+
+/// Every running Coder's agent list on this computer, for the desktop app
+/// (#11180).
+pub mod board;
 
 /// The free-disk floor for new worktree agents and the shared build pool.
 pub mod guard {

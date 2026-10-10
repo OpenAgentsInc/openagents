@@ -175,6 +175,11 @@ fn run() -> io::Result<()> {
             app.notice = Some(error);
         }
     }
+    // The desktop app's Agents panel lists this process's background
+    // agents (#11180).
+    if let Some(root) = &openagents_root {
+        app.publish_agents(root);
+    }
     match std::env::current_dir() {
         Ok(cwd) => match coder_new::credentials::load(&cwd, openagents_root.as_deref(), |name| {
             std::env::var(name).ok()

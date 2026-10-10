@@ -10521,6 +10521,7 @@ version = "1.0.0"
 dependencies = [
  "accesskit_consumer",
  "acp-client",
+ "agent-fleet",
  "background",
  "base64 0.22.1",
  "block2 0.6.2",
@@ -10530,6 +10531,8 @@ dependencies = [
  "coder-connect",
  "coder-history",
  "coder-mobile",
+ "coder-pty",
+ "coder-vt",
  "core-foundation 0.9.4",
  "gym-leaderboard",
  "keyring",

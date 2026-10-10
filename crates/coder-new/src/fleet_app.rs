@@ -136,6 +136,36 @@ impl App {
             }
             self.history.dirty = true;
         }
+        self.publish_board();
+    }
+
+    /// Writes this process's background agents to
+    /// `<openagents root>/agents/<pid>.json` from now on, so the desktop
+    /// app's Agents panel lists them (#11180); the file goes when Coder
+    /// exits.
+    pub fn publish_agents(&mut self, openagents_root: &std::path::Path) {
+        self.board = Some(agent_fleet::board::Publisher::new(
+            agent_fleet::board::dir(openagents_root),
+            std::process::id(),
+            std::env::current_dir().ok(),
+        ));
+        self.publish_board();
+    }
+
+    /// Carries out Stop pressed in the desktop app, then writes the list
+    /// when it changed.
+    pub(crate) fn publish_board(&mut self) {
+        let Some(board) = &mut self.board else {
+            return;
+        };
+        for id in board.take_stops() {
+            if let Ok(row) = self.fleet.stop(&id) {
+                self.notice = Some(format!("Stopping {} from the desktop app.", row.name));
+            }
+        }
+        // A board that can't be written leaves the desktop's panel
+        // without this process; the agents run on.
+        let _ = board.publish(&self.fleet.list());
     }
 
     /// `/agent ENGINE TASK`.

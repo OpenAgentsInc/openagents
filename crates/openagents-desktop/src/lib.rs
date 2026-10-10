@@ -90,6 +90,9 @@ pub mod settings;
 pub mod slide_embeds;
 #[cfg(feature = "app")]
 pub mod slides;
+pub mod terminal_action;
+#[cfg(feature = "app")]
+pub mod terminal_pane;
 pub mod typeface;
 #[cfg(feature = "app")]
 pub mod update;
