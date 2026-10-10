@@ -163,9 +163,9 @@ test passes on production.
 | I5 | Earnings go to your Lightning address automatically. | N | Partial | Splits and payouts built on the pay host; owner-only so far | 064, 092, 096, 098 | — |
 | I6 | The revenue split between authors, providers, and OpenAgents is published. | W | Missing | No current split | 037, 097, 098 | — |
 | I7 | Bring someone in and earn a share of what they pay, for as long as they pay. | N | Missing | Red in the old registry | 037, 125, 150, 153, 229, 239 | — |
-| I8 | There is no OpenAgents token. Bitcoin is our own money. | all | Live | Policy across every payment path. Revised 2026-10-09 (owner: "pay in any different way"): agents may also pay by card and dollar stablecoins, which settle to dollars; we never issue a token. Was "Bitcoin is the only money." | 001, 200, 220, 230 | #11141 |
+| I8 | There is no OpenAgents token. Bitcoin is our own money. | all | Live | Policy across every payment path. Revised 2026-10-09: we take Bitcoin and Bitcoin-based stablecoins only (Lightning; Taproot Assets stablecoins through [tap-ldk](https://github.com/OpenAgentsInc/tap-ldk), later), plus card for credits and Pro; no USDC, Base, Solana, EVM or Tempo (#11141 closed as won't do). We never issue a token. Was "Bitcoin is the only money." | 001, 200, 220, 230 | #11085 |
 | I9 | You can hold dollar-pegged balances backed by Bitcoin. | N | Missing | Taproot Assets work lives in `tap-ldk` | 096, 173, 200 | — |
-| I10 | Your agents can pay any service that asks for payment (x402, MPP, L402, Cashu), from your wallet and within your budget. | T M N | Missing | Designed in [agent payments](../payments/agent-payments.md); `openagents inference --pay x402` pays our own API | — | #11146 |
+| I10 | Your agents can pay any service that asks for payment (x402, MPP, L402 on Lightning), from your wallet and within your budget. | T M N | Missing | Designed in [agent payments](../payments/agent-payments.md); `openagents inference --pay x402` pays our own API | — | #11146 |
 | I11 | Every payment, any method, gets the same receipt, and shows in your usage and on `/stats`. | W N | Missing | Receipt model in [agent payments](../payments/agent-payments.md) §3 | — | #11138 |
 
 ## J. Markets, compute, and earning
@@ -191,7 +191,7 @@ test passes on production.
 | K3 | Everything you can do in an app, you can do from the command line or API. | T N | Partial | `openagents-cli` over Nostr; `/docs/api` | 067, 085, 100, 203, 289 | — |
 | K4 | All of it is open source and built in public. | all | Live | This repository | 001, 047, 125, 173, 242 | — |
 | K5 | You can run your own copy of the whole thing. | N | Partial | Open source, but no self-host guide | 129, 242, 289 | — |
-| K6 | Agents can pay us any way they already know: x402, MPP, L402, Cashu, ACP, UCP, AP2, Lightning, Nostr, card, and stablecoins. | N | Partial | Owner, 2026-10-09: support everything. x402 and the `Payment` scheme on Lightning built (gateway, pay front); the rest planned in [agent payments](../payments/agent-payments.md) | 062, 070 | #11085, #11136, #11139–#11145 |
+| K6 | Agents can pay us with the payment method they already use, on Bitcoin: x402, MPP and L402 on Lightning, Nostr, and card through ACP, UCP, AP2 or Stripe; Taproot Assets stablecoins later. | N | Partial | Owner, 2026-10-09: Bitcoin and Bitcoin-based stablecoins only; no USDC, Base, Solana, EVM or Tempo (#11141 closed); Cashu not now (#11140 closed). x402 and the `Payment` scheme on Lightning built (gateway, pay front); the rest planned in [agent payments](../payments/agent-payments.md) | 062, 070 | #11085, #11136, #11139, #11142–#11145 |
 | K7 | One open license: everything we publish is under Apache 2.0. | all | Live | `LICENSE` (Apache 2.0) | X only | — |
 | K8 | Agents find every way to pay us where they look: OpenAPI, the API and AI catalogs, the agent card, `/.well-known/ucp`, `/.well-known/acp.json`, MCP, and Nostr. | N | Partial | `/docs/api/for-agents` and `/auth.md` name the methods; generated discovery is next | — | #11137, #11147 |
 | K9 | Agents can sign in with their own Nostr key. | N | Missing | NIP-98 checked on the pay host only | — | #11148 |

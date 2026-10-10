@@ -433,8 +433,9 @@ website cookie), `app` (`sess_` from device sign-in), `nostr` (NIP-98),
 | --- | --- | --- | --- | --- | --- | --- |
 | `402` on `/v1/responses`, `/v1/chat/completions` with x402 v2 (`PAYMENT-REQUIRED`, `PAYMENT-SIGNATURE`, `PAYMENT-RESPONSE`) | same | Pay per request on Lightning | PUBLIC | pay | `money.quotes`, `payments`, `receipts` | built #11077, not live |
 | Same `402` with `WWW-Authenticate: Payment` on the same invoice | same (`inference.x402.mpp`, off by default) | MPP clients pay the same invoice | PUBLIC | pay | same | built #11136, not live |
-| L402, Cashu NUT-24 on the same `402` | — | More ways to pay | PUBLIC | pay | same | planned #11139 #11140 |
-| x402 on Base and Solana USDC; MPP `tempo` and `stripe` | — | Stablecoins and cards per request | PUBLIC | pay | same | planned #11141 #11142 |
+| L402 on the same `402` | — | More ways to pay on Lightning | PUBLIC | pay | same | planned #11139 |
+| MPP `stripe` | — | Card per request (above the card floor) | PUBLIC | pay | same | planned #11142 |
+| Taproot Assets stablecoins over Lightning | — | Dollars on Bitcoin per request ([tap-ldk](https://github.com/OpenAgentsInc/tap-ldk)) | PUBLIC | pay | same | later |
 | `/.well-known/acp.json`, `POST /v1/checkout_sessions...` (ACP); `/.well-known/ucp` (UCP); AP2 in the agent card | — | Agent checkout for credits and Pro | PUBLIC | session / mandate | `money.payments` | planned #11143 #11144 #11145 |
 | `GET /api/flow/stream`, `/api/flow/snapshot`, `/api/stats` | same (web forwards to pay host `/flow/*`, `/stats`) | The public money flow and totals | PUBLIC | none | `money` (aggregate) | live |
 

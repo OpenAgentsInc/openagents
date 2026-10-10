@@ -28,11 +28,11 @@
 //!   through [`Settle::lightning`] like the two adapters here, so it shares
 //!   their replay key. [`Method::L402`] is reserved; no adapter exists yet,
 //!   so nothing can configure or advertise it.
-//! - **Cashu** (NUT-24, `X-Cashu`), **EVM / Solana** stablecoins through an
-//!   x402 facilitator, and **Stripe** (MPP `stripe`, a Shared Payment
-//!   Token) settle on their own rails and return their own replay key
-//!   (`cashu:<mint>:<Y>`, `<caip2>:<nonce>`, `stripe:<payment_intent>`);
-//!   they ignore the shared invoice in [`Offer`].
+//! - **Stripe** (MPP `stripe`, a Shared Payment Token) settles on its own
+//!   rail and returns its own replay key (`stripe:<payment_intent>`); it
+//!   ignores the shared invoice in [`Offer`]. Taproot Assets stablecoins
+//!   (tap-ldk) come later over Lightning. We take no EVM, Solana or Tempo
+//!   stablecoins; Cashu is not planned for now (owner, 2026-10-09).
 //!
 //! Every adapter follows the same rules as the x402 front: settle before
 //! execute, one replay key per payment, release only when nothing was

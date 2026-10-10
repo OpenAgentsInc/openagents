@@ -190,7 +190,7 @@ Append-only. Amounts are integers in the currency's smallest unit
 | --- | --- | --- | --- |
 | `usage` | One metered use: request and attempt, door or model, input and output units, the price terms it was pinned to | Account | 30 days for content-bearing fields (none are stored), usage numbers 7 years |
 | `quotes` | A price offered before work (x402, L402, MPP challenges) | Account | 7 years |
-| `payments` | A payment in or out on any rail (card, x402, L402, Lightning, Cashu, MPP, ACP, AP2, stablecoin): rail, external id, amount, state | Account | 7 years |
+| `payments` | A payment in or out on any rail (card, x402, L402, Lightning, MPP, ACP, AP2, Taproot Assets stablecoin): rail, external id, amount, state | Account | 7 years |
 | `receipts` | Execution receipts (`openagents.receipt.execution.v1`) and payment receipts | Account | 7 years |
 | `ledger_entries` | Double-entry credits ledger: each posting is two or more rows that sum to zero, by account (`credits:<workspace>`, `revenue`, `payouts:<author>`) | Account | Forever; corrections are new entries |
 | `reservations` | Quota and monetary holds before dispatch, and their settlement | Account | 1 year |

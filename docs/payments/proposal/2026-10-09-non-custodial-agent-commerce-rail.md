@@ -234,9 +234,10 @@ BOLT11 pays exactly one node. Honest options, worst-to-best for a first cut:
   profile X402 defines today. A future profile, not v1.
 - **(D) Cashu/ecash budgets.** Would be elegant for agent budgets, but NIP-X402
   **explicitly excludes** NIP-60/61 Cashu ("different proofs with mint trust … not
-  an implicit fallback"). *Revisited 2026-10-09:* Cashu is accepted as its own
-  adapter and challenge (NUT-24 `X-Cashu`), never as an x402 fallback; see
-  [agent payments §7](../agent-payments.md#7-how-each-protocol-fits-nip-x402).
+  an implicit fallback"). *Revisited 2026-10-09:* the owner dropped Cashu for now
+  (#11140 closed; maybe later). If it returns, it is its own adapter and
+  challenge (NUT-24 `X-Cashu`), never an x402 fallback; see
+  [agent payments](../agent-payments.md#not-now-maybe-later).
 
 **Recommendation:** v1 handles the common case — **agent → one merchant, single
 payee** — natively and perfectly. For the author-fee / platform-fee case, use **(B)
@@ -393,6 +394,9 @@ MKT dispute/refund for cooperative cases; escrow explicitly deferred.
 4. **Volatility:** X402/MKT are msat-only with no USD peg or stablecoin fallback.
    Do external, USD-priced merchants need a quote/hedge layer, or do we stay sats-
    native and push FX to the merchant's PSP? (Recommend: stay sats-native in v1.)
+   *Owner, 2026-10-09:* the only stablecoin path is Bitcoin-based: Taproot
+   Assets stablecoins over Lightning ([tap-ldk](https://github.com/OpenAgentsInc/tap-ldk)),
+   later. No USDC or other chains.
 5. **Escrow (§9):** confirm it is out of v1 scope; if not, it pulls a reviewed legal/
    custody commitment forward.
 

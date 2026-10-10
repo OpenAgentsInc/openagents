@@ -1,9 +1,21 @@
 # Agent payments: pay any way (design, 2026-10-09)
 
-**Owner direction (2026-10-09):** support every agent payment protocol, fully.
+**Owner direction (2026-10-09):** support every agent payment protocol, fully, on Bitcoin rails.
 An agent that finds openagents.com should be able to do whatever it needs:
 call the API, use Nostr, and pay in whatever way it already knows. Payments
 are routed to the right rail behind one front door.
+
+**Owner decision (2026-10-09): Bitcoin and Bitcoin-based stablecoins only.**
+We take Lightning (through x402, the `Payment` scheme used by MPP, and L402,
+all on one Lightning invoice), Taproot Assets stablecoins on Bitcoin (see
+[tap-ldk](https://github.com/OpenAgentsInc/tap-ldk)), and card through Stripe
+for credits and Pro. We do not take USDC, or any payment on Base, Solana,
+other EVM chains, or Tempo. x402 stays, on its Lightning (`lnbtc`) side only.
+Cashu ecash is not now, maybe later (see [Not now](#not-now-maybe-later)).
+[#11141](https://github.com/OpenAgentsInc/openagents/issues/11141) (Base and
+Solana USDC) and [#11140](https://github.com/OpenAgentsInc/openagents/issues/11140)
+(Cashu) are closed as won't do; [#11142](https://github.com/OpenAgentsInc/openagents/issues/11142)
+covers only MPP's Stripe card method.
 
 This doc is the plan for that: which protocols, what "full support" means for
 each as a **merchant** (agents pay us) and as a **buyer** (our agents pay
@@ -22,32 +34,33 @@ Status words below: **Built** (on `main`), **Live** (in production),
 
 | Protocol | Backers, version | Rails | The one request | Discovery agents expect | Merchant: full support | Buyer: full support | Ours today |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| [x402](https://github.com/x402-foundation/x402) | x402 Foundation (Linux Foundation; from Coinbase), v2 | Stablecoins on Base, Solana and ~15 more chains; Lightning (`lnbtc`) | `402` + `PAYMENT-REQUIRED`; retry with `PAYMENT-SIGNATURE`; `PAYMENT-RESPONSE` back (v1: `X-PAYMENT`) | `402` itself; Bazaar extension indexed by facilitators (`/discovery/resources`) | `accepts[]` with `lnbtc` and Base/Solana USDC `exact`, `upto` for metered calls, v1 headers too, Bazaar metadata, MCP signaling | Parse v1+v2, pick from `accepts`, sign EIP-3009/Permit2, pay BOLT11, budget check before signing | **Built**: `lnbtc` on the gateway (#11078, not live) and pay front |
-| [MPP](https://mpp.dev/) (`Payment` HTTP auth scheme) | Tempo + Stripe; Lightning drafts by Lightspark; `draft-httpauth-payment-01` | Tempo, Stripe SPT/card, Lightning, EVM, Solana, others | `402` + `WWW-Authenticate: Payment id=… method=… intent=charge request=…`; retry `Authorization: Payment <cred>`; `Payment-Receipt` back | `/openapi.json` with `x-service-info` and per-operation `x-payment-info` | `lightning` (same invoice), `tempo`, `stripe`; `session` intent for metered use; problem bodies | Parse several challenges, build each method's credential, honor `digest`/`expires` | **Built** on the pay front (`payment_scheme.rs`, Lightning charge, `lnget`-tested) and on the API through the payment router (#11136, off unless `inference.x402.mpp` is set; not live) |
+| [x402](https://github.com/x402-foundation/x402) | x402 Foundation (Linux Foundation; from Coinbase), v2 | Lightning (`lnbtc`) is the rail we take. The spec also lists stablecoins on Base, Solana and other chains; we do not take those | `402` + `PAYMENT-REQUIRED`; retry with `PAYMENT-SIGNATURE`; `PAYMENT-RESPONSE` back (v1: `X-PAYMENT`) | `402` itself; Bazaar extension indexed by facilitators (`/discovery/resources`) | `accepts[]` with `lnbtc` `exact`, v1 headers too, Bazaar metadata, MCP signaling | Parse v1+v2, pick `lnbtc` from `accepts`, pay BOLT11, budget check before paying | **Built**: `lnbtc` on the gateway (#11078, not live) and pay front |
+| [MPP](https://mpp.dev/) (`Payment` HTTP auth scheme) | Tempo + Stripe; Lightning drafts by Lightspark; `draft-httpauth-payment-01` | Lightning and Stripe SPT/card are the ones we take. The spec also lists Tempo, EVM, Solana and others; we do not take those | `402` + `WWW-Authenticate: Payment id=… method=… intent=charge request=…`; retry `Authorization: Payment <cred>`; `Payment-Receipt` back | `/openapi.json` with `x-service-info` and per-operation `x-payment-info` | `lightning` (same invoice), `stripe` (card); `session` intent for metered use; problem bodies | Parse several challenges, build each method's credential, honor `digest`/`expires` | **Built** on the pay front (`payment_scheme.rs`, Lightning charge, `lnget`-tested) and on the API through the payment router (#11136, off unless `inference.x402.mpp` is set; not live) |
 | [L402](https://github.com/lightninglabs/L402) | Lightning Labs | Lightning | `402` + `WWW-Authenticate: L402 macaroon=…, invoice=…` (also `LSAT`); retry `Authorization: L402 <mac>:<preimage>`; reusable until caveats expire | None standard | Macaroons bound to the payment hash and resource, same invoice and replay key | Pay, cache the token per service | Planned |
-| [Cashu](https://github.com/cashubtc/nuts/blob/main/24.md) NUT-24 | Cashu community | Ecash (sats) at named mints | `402` + `X-Cashu: creqA…`; retry `X-Cashu: cashuB…` | None beyond the `402` | Accepted-mint list, swap before serving | Hold ecash at accepted mints | Planned |
+| [Cashu](https://github.com/cashubtc/nuts/blob/main/24.md) NUT-24 | Cashu community | Ecash (sats) at named mints | `402` + `X-Cashu: creqA…`; retry `X-Cashu: cashuB…` | None beyond the `402` | Accepted-mint list, swap before serving | Hold ecash at accepted mints | Not now, maybe later ([#11140](https://github.com/OpenAgentsInc/openagents/issues/11140) closed) |
 | [ACP](https://www.agenticcommerce.dev/) | OpenAI + Stripe, `2026-04-17` | Card and PSP tokens (Stripe Shared Payment Token) | `POST /checkout_sessions` … `/complete` with `payment_data` (SPT) | `/.well-known/acp.json`, product feed | Checkout sessions for credits and Pro; SPT charged through Stripe | Agent platform role (needs a PSP relationship); later | Planned (Stripe built) |
 | [UCP](https://ucp.dev/) | Google with Shopify, Walmart, Stripe and others, `2026-08-25` | Payment handlers (Google Pay, Shop Pay, tokenizers, AP2) | `POST /checkout-sessions` … `/complete`, with `UCP-Agent: profile=…` | `/.well-known/ucp` (services, capabilities, handlers, keys) | Profile, checkout over REST and MCP, handlers, AP2 mandate check | Platform profile with keys | Planned |
 | [AP2](https://ap2-protocol.org/) | Google, v0.2 (moving to FIDO Alliance) | Cards first; x402 via `a2a-x402` | SD-JWT Checkout and Payment Mandates presented with a purchase | A2A agent card `capabilities.extensions` (AP2 URI, x402 URI) | Sign checkout, verify mandates, return receipts; declare in our agent card | Get user-signed mandates from the phone; open mandates for autonomous spend | Planned |
 | Lightning (our node) | — | Lightning | BOLT11 invoice | `lud16` on our Nostr profile | `crates/wallet` receiver, MoneyDevKit LSPS4 | Spark wallet (phone, desktop) | **Built** (pay host) |
+| [Taproot Assets](https://docs.lightning.engineering/the-lightning-network/taproot-assets) stablecoins | Lightning Labs protocol; our native LDK work in [tap-ldk](https://github.com/OpenAgentsInc/tap-ldk) | Dollar stablecoins issued on Bitcoin, moved over Lightning channels | An asset invoice, quoted in the asset and paid over Lightning | Same as Lightning | Receive asset payments on our own LDK node, no LND or `tapd` sidecar | Pay from an asset channel in the person's wallet | Experimental (tap-ldk demo, not production) |
 | [NWC](https://github.com/nostr-protocol/nips/blob/master/47.md) (NIP-47) | Nostr | Lightning | `pay_invoice` over Nostr | `nostr+walletconnect://` URI | — (wallet transport) | Pay any Lightning challenge from a connected wallet | Named in NIP-X402; planned |
 | [Zaps](https://github.com/nostr-protocol/nips/blob/master/57.md) (NIP-57) | Nostr | Lightning | Zap request `9734` to an LNURL callback | `lud16` with `allowsNostr` | Tips to our agents and plugins (social, never a request payment) | Tip | Planned |
-| Nutzaps (NIP-60/61) | Nostr | Cashu | Nutzap `9321` | `10019` info event | Accept from our accepted mints | Send | Planned |
+| Nutzaps (NIP-60/61) | Nostr | Cashu | Nutzap `9321` | `10019` info event | Accept from our accepted mints | Send | Not now, maybe later |
 | Card (Stripe) | Stripe | Card | Stripe Checkout | — | Pro and credits | MPP `stripe`/SPT later | **Built** (Pro, #11072) |
 
 ## The architecture in five lines
 
 1. **One payment router** in front of the metered API answers an unpaid call
    with one `402` that carries a challenge for every method we accept (x402,
-   the `Payment` scheme used by MPP, L402, Cashu), all priced from the same
-   quote.
+   the `Payment` scheme used by MPP, L402), all priced from the same quote.
 2. **Lightning challenges share one invoice.** x402 `lnbtc`, MPP `lightning`,
    and L402 are three encodings of the same BOLT11 invoice, consumed once by
    payment hash in one replay store, so a preimage can never pay twice.
 3. **Each rail has one adapter** that verifies and settles: Lightning to our
-   node (`crates/wallet`, MoneyDevKit LSPS4 liquidity), stablecoins through an
-   x402 facilitator and Tempo, cards and Shared Payment Tokens through Stripe,
-   ecash by swapping at the named mint.
+   node (`crates/wallet`, MoneyDevKit LSPS4 liquidity), Taproot Assets
+   stablecoins over Lightning to our own node once
+   [tap-ldk](https://github.com/OpenAgentsInc/tap-ldk) is ready, cards and
+   Shared Payment Tokens through Stripe.
 4. **Every settled payment becomes one receipt** (`openagents.payment-receipt.v1`)
    in one ledger, whatever the protocol, and the paid request runs through the
    gateway exactly like a keyed request.
@@ -90,7 +103,7 @@ agent ──HTTPS──▶ api.openagents.com
                                    │          verifies + settles, replay key consumed once
                                    │          → receipt → gateway runs the request
                                    ▼
-                         Lightning node │ x402 facilitator / Tempo │ Stripe │ Cashu mint
+                         Lightning node (sats, later Taproot Assets stablecoins) │ Stripe
 ```
 
 The router is a library in front of the gateway's existing keyless path
@@ -107,31 +120,28 @@ challenges in one response, so the router sends all live ones together:
 
 | Header | Protocol | Carries |
 | --- | --- | --- |
-| `PAYMENT-REQUIRED` | x402 v2 | `accepts[]`: `exact` on `lnbtc` (our invoice), `exact` and `upto` on Base USDC, `exact` on Solana USDC, and other networks a facilitator supports; `extensions.bazaar` |
-| `WWW-Authenticate: Payment …` | MPP (IETF `Payment` scheme) | One challenge per method: `lightning` (the same invoice), `tempo`, `stripe` (card via Shared Payment Token) |
+| `PAYMENT-REQUIRED` | x402 v2 | `accepts[]`: `exact` on `lnbtc` (our invoice); `extensions.bazaar` |
+| `WWW-Authenticate: Payment …` | MPP (IETF `Payment` scheme) | One challenge per method: `lightning` (the same invoice), `stripe` (card via Shared Payment Token) |
 | `WWW-Authenticate: L402 macaroon="…", invoice="…"` (and `LSAT`) | L402 | The same invoice, with a macaroon bound to its payment hash and this request |
-| `X-Cashu: creqA…` | Cashu NUT-24 | A NUT-18 payment request naming our accepted mints and the amount in sats |
 | JSON body | all | Price in sats and USD, the methods, and a link to `/docs/api/for-agents` |
 
 Every challenge comes from one quote. The quote is in USD micros from the
 rate card and is converted once per rail (sats at `inference.sats_rate`,
-USDC at par, card in cents with the card minimum handled by credits, below).
+card in cents with the card minimum handled by credits, below).
 A quote expires with its invoice (default 120 s).
 
 ### 2.3 The paid retry
 
 The router reads whichever credential arrives (`PAYMENT-SIGNATURE` or
-v1 `X-PAYMENT`, `Authorization: Payment`, `Authorization: L402`/`LSAT`,
-`X-Cashu: cashuB…`), hands it to that
+v1 `X-PAYMENT`, `Authorization: Payment`, `Authorization: L402`/`LSAT`),
+hands it to that
 rail's adapter, and admits the request only after settlement:
 
 | Rail | Verify and settle | Replay key |
 | --- | --- | --- |
 | Lightning (x402 `lnbtc`, MPP `lightning`, L402) | Preimage hashes to the invoice's payment hash; invoice is ours, unexpired, exact amount, description hash binds the request; our node shows it received | `lnbtc:<network>:<payment_hash>` (shared by all three encodings) |
-| x402 EVM / Solana | Facilitator `/verify` then `/settle` (EIP-3009 `transferWithAuthorization` on Base USDC; SPL transfer on Solana). Hosted facilitator first; self-hosted later | `<caip2>:<tx or authorization nonce>` |
-| MPP `tempo` | Tempo transaction or Stripe's MPP verification for our account | `tempo:<tx>` |
+| Taproot Assets stablecoin (later) | The asset payment arrives over Lightning at our own LDK node ([tap-ldk](https://github.com/OpenAgentsInc/tap-ldk)); proof checked before running | `tap:<asset_id>:<payment_hash>` |
 | MPP `stripe`, ACP | Charge the Shared Payment Token through Stripe (`PaymentIntent` with `shared_payment_granted_token`) | `stripe:<payment_intent>` |
-| Cashu | Swap the proofs at the named mint (NUT-03) before running; refuse mints we don't accept | `cashu:<mint>:<Y of each proof>` |
 
 Settle before execute, one replay store per receiver, release on "no answer
 at all": the rules in [NIP-X402](../../nips/openagents/NIP-X402.md) and
@@ -139,19 +149,18 @@ at all": the rules in [NIP-X402](../../nips/openagents/NIP-X402.md) and
 
 ### 2.4 Small amounts and cards
 
-Model calls cost fractions of a cent. Lightning, USDC on Base or Solana, Tempo,
-and Cashu handle that directly. Cards don't: a card charge has a floor. Card
+Model calls cost fractions of a cent. Lightning (and Taproot Assets
+stablecoins over Lightning) handles that directly. Cards don't: a card charge has a floor. Card
 and ACP payments therefore buy **credit** (a top-up, or the Pro plan), and
 the credit pays per call. MPP `stripe` on a single call is offered only when
 the quote is above the card floor; otherwise its challenge points at a
 top-up. MPP sessions (pay once, draw down over many calls) map to the same
 credit balance.
 
-x402's `upto` scheme (authorize a ceiling, settle the actual cost) fixes
-the one rough edge of per-request Lightning today: we charge the quoted
-worst case and keep the unused part. On stablecoin rails we use `upto` and
-settle the answer's real cost; on Lightning the worst case stays until an
-MPP Lightning session or credit is used.
+Per-request Lightning has one rough edge today: we charge the quoted worst
+case and keep the unused part. That stays until an MPP Lightning session or
+credit is used. (x402's `upto` scheme, which settles the real cost, exists
+only on stablecoin networks we do not take.)
 
 ### 2.5 Accounts are a payment method too
 
@@ -168,10 +177,10 @@ Every settled payment, any protocol, writes one record:
 {
   "v": "openagents.payment-receipt.v1",
   "id": "pr_…",
-  "protocol": "x402 | mpp | l402 | cashu | acp | ucp | ap2 | stripe-checkout | zap",
-  "rail": "lightning | evm | solana | tempo | card | ecash",
-  "network": "lnbtc:000000000019d6689c085ae165831e93 | eip155:8453 | …",
-  "asset": "BTC | USDC | USD | sat-ecash",
+  "protocol": "x402 | mpp | l402 | acp | ucp | ap2 | stripe-checkout | zap",
+  "rail": "lightning | taproot-assets | card",
+  "network": "lnbtc:000000000019d6689c085ae165831e93 | …",
+  "asset": "BTC | <taproot asset id> | USD",
   "amount": "3000",            // smallest unit of `asset`, decimal string
   "usd_micros": 2100,          // the quote in USD, fixed at challenge time
   "replay_key": "lnbtc:…:<payment_hash>",
@@ -185,8 +194,7 @@ Every settled payment, any protocol, writes one record:
 
 - The protocol's own receipt goes back as the protocol expects
   (`PAYMENT-RESPONSE`, `Payment-Receipt`; an L402 token stays reusable until
-  its caveats run out, so one receipt can cover several calls; Cashu has
-  none), plus `x-openagents-receipt: pr_…` on every paid answer.
+  its caveats run out, so one receipt can cover several calls), plus `x-openagents-receipt: pr_…` on every paid answer.
 - Receipts land in the existing ledger (`crates/pay-ledger`) next to plugin
   and payout records, so `/stats` and the money flow view count every
   protocol. Bearer secrets (preimages, tokens, proofs) never go in a receipt,
@@ -204,7 +212,7 @@ the way `/v1/openapi.json` already adds x402 only when the gateway has it
 | Surface | What it says |
 | --- | --- |
 | `402` responses | Every live challenge (§2.2) |
-| `/v1/openapi.json`, `/openapi.json` | MPP discovery: `x-service-info` at the top and `x-payment-info.offers` on every paid operation; a security scheme per method (`x402`, `payment`, `l402`, `cashu`) and the `402` headers |
+| `/v1/openapi.json`, `/openapi.json` | MPP discovery: `x-service-info` at the top and `x-payment-info.offers` on every paid operation; a security scheme per method (`x402`, `payment`, `l402`) and the `402` headers |
 | `/.well-known/api-catalog` (RFC 9727) | The API plus links to the payment docs and receipt format |
 | `/.well-known/ai-catalog.json` | The API, the MCP servers, the agent card, and the accepted payment protocols |
 | `/.well-known/agent-card.json` (A2A) | The AP2 extension and the x402 extension for A2A, with accepted mandates and methods |
@@ -213,7 +221,7 @@ the way `/v1/openapi.json` already adds x402 only when the gateway has it
 | x402 Bazaar | `extensions.bazaar` (input and output schema) in our `402`, so facilitators list our paid routes |
 | MCP (`/mcp/docs`, and paid MCP tools later) | x402 MCP payment signaling (`_meta["x402/payment"]`) on paid tools |
 | `llms.txt`, `/auth.md`, `/docs/api/for-agents` | Plain words: how to get a key, how to pay per request, each method's one request |
-| Nostr | A NIP-89 handler and a NIP-MKT offering (`3192`/`30192`) with the CAP `oa-x402-v1` descriptor; our profile's `lud16` for zaps; a `10019` nutzap info event once Cashu is on |
+| Nostr | A NIP-89 handler and a NIP-MKT offering (`3192`/`30192`) with the CAP `oa-x402-v1` descriptor; our profile's `lud16` for zaps |
 
 ## 5. Identity, budgets, and approvals
 
@@ -243,8 +251,8 @@ PR #11088's posture is adopted: **coexistence**.
 
 - **First-party sales** (the API, credits, Pro, plugins sold through the pay
   front): we are the merchant, so one receiver of ours is correct and
-  compliant. Lightning lands on our node; stablecoins at our receiving
-  address; cards at Stripe. Splits and payouts stay in `pay-ledger`
+  compliant. Lightning lands on our node; Taproot Assets stablecoins
+  too, once tap-ldk is ready; cards at Stripe. Splits and payouts stay in `pay-ledger`
   ([central receive and splits](2026-10-02-central-receive-and-splits.md)).
 - **Third-party merchants** (Pylon compute providers first, then API and data
   sellers): the [merchant-hosted receiver profile](proposal/2026-10-09-x402-merchant-receiver-profile.md).
@@ -261,12 +269,10 @@ PR #11088's posture is adopted: **coexistence**.
 
 NIP-X402 says Cashu and L402 are not implicit fallbacks for x402 and that
 "protocol conversions require a separate reviewed profile." That stays true,
-and it is how we support them: each is its **own adapter and its own
-challenge**, never a disguised x402 payment. L402 and MPP `lightning` are
-separate encodings of the same invoice and consume the same replay key, as
-`payment_scheme.rs` already does for MPP. Cashu proofs carry mint trust, so
-the Cashu adapter names the mints it accepts and swaps proofs before
-running. Zaps stay social: a zap never pays for a request, and an x402
+and it is how we support L402: its **own adapter and its own challenge**,
+never a disguised x402 payment. L402 and MPP `lightning` are separate
+encodings of the same invoice and consume the same replay key, as
+`payment_scheme.rs` already does for MPP. Zaps stay social: a zap never pays for a request, and an x402
 invoice is never shown as a zap. Each new adapter gets a short profile
 section in NIP-X402's "Wallets" part when it lands.
 
@@ -281,26 +287,41 @@ section in NIP-X402's "Wallets" part when it lands.
 - [For agents](../../crates/openagents-web/content/docs/api/for-agents.md) on the website: how an agent finds us, signs in, and pays. Done in this change.
 - Card for Pro and credits (Stripe), built; in launch copy only if the owner keeps it there.
 
-**Next (the week after launch):** the receipt model (#11138); L402; Cashu NUT-24 with a short accepted-mint list; the buyer
-side in `openagents pay` and Coder (x402, MPP, L402, Cashu, from the
-person's wallet, within budget); NIP-98 identity on the API.
+**Next (the week after launch):** the receipt model (#11138); L402; the
+buyer side in `openagents pay` and Coder (x402, MPP, L402 on Lightning, from
+the person's wallet, within budget); NIP-98 identity on the API.
 
-**Then:** stablecoin rails (x402 on Base and Solana via a facilitator, MPP
-`tempo`), MPP `stripe` and ACP checkout for credits and Pro, the UCP
-profile, AP2 mandates in the agent card, NWC as a buyer wallet, zaps on our
-Nostr profile, nutzaps, and the third-party merchant profile from PR #11088
-(Pylon providers first).
+**Then:** MPP `stripe` and ACP checkout for credits and Pro (#11142,
+#11143), the UCP profile, AP2 mandates in the agent card, NWC as a buyer
+wallet, zaps on our Nostr profile, and the third-party merchant profile from
+PR #11088 (Pylon providers first).
+
+**Later:** Taproot Assets stablecoins, so agents can pay in dollars that
+live on Bitcoin. The path is native LDK support in
+[tap-ldk](https://github.com/OpenAgentsInc/tap-ldk) (asset channels, quotes
+to sats, asset payments, proof checks), with no LND or `tapd` sidecar. It
+joins the router as one more adapter and one more challenge once that work
+leaves demo status.
 
 **Owner decisions** (each named in its issue):
 
-1. Stablecoin receiving: which account receives USDC (a Coinbase CDP or
-   Stripe stablecoin account, or our own address), and whether it converts
-   to dollars on receipt. This changes the Kitchen Sink promise "Bitcoin is
-   the only money" (I8) to "no token; Bitcoin is our own money, and agents
-   may also pay in dollars by card or stablecoin."
-2. Accepted Cashu mints.
-3. Whether MPP `stripe` and ACP need a separate Stripe account setting
+1. Whether MPP `stripe` and ACP need a separate Stripe account setting
    (Shared Payment Tokens, agentic commerce enablement).
+
+### Not now, maybe later
+
+Owner, 2026-10-09: these are off the plan for now and may come back later.
+
+- **Cashu ecash** (NUT-24 `X-Cashu` on the API, NIP-60/61 nutzaps). Closed
+  as won't do for now ([#11140](https://github.com/OpenAgentsInc/openagents/issues/11140)).
+  If it returns: its own adapter and challenge, a short accepted-mint list,
+  proofs swapped at the mint before running, replay key
+  `cashu:<mint>:<Y of each proof>`.
+
+Not taken at all: USDC and other stablecoins on Base, Solana, other EVM
+chains or Tempo, including x402's EVM and Solana schemes and MPP's `tempo`
+method ([#11141](https://github.com/OpenAgentsInc/openagents/issues/11141)
+closed as won't do).
 
 ## 9. Issues
 
@@ -311,14 +332,14 @@ Nostr profile, nutzaps, and the third-party merchant profile from PR #11088
 | [#11137](https://github.com/OpenAgentsInc/openagents/issues/11137) | Discovery: advertise every live payment method (OpenAPI x-payment-info, API catalog, AI catalog, llms.txt, auth.md, Bazaar) | By Monday (on the V1 board) |
 | [#11138](https://github.com/OpenAgentsInc/openagents/issues/11138) | Payment receipts: openagents.payment-receipt.v1 for every protocol, in pay-ledger | Next |
 | [#11139](https://github.com/OpenAgentsInc/openagents/issues/11139) | L402 on the API: same invoice, same replay key | Next |
-| [#11140](https://github.com/OpenAgentsInc/openagents/issues/11140) | Cashu NUT-24 on the API: X-Cashu payment requests and tokens | Next |
-| [#11141](https://github.com/OpenAgentsInc/openagents/issues/11141) | x402 stablecoin rails: Base and Solana USDC (exact and upto) via a facilitator | Then |
-| [#11142](https://github.com/OpenAgentsInc/openagents/issues/11142) | MPP tempo and stripe methods (and sessions) on the payment router | Then |
+| [#11140](https://github.com/OpenAgentsInc/openagents/issues/11140) | Cashu NUT-24 on the API | Closed, won't do for now |
+| [#11141](https://github.com/OpenAgentsInc/openagents/issues/11141) | x402 on Base and Solana USDC | Closed, won't do |
+| [#11142](https://github.com/OpenAgentsInc/openagents/issues/11142) | MPP `stripe` (card) method (and sessions) on the payment router | Then |
 | [#11143](https://github.com/OpenAgentsInc/openagents/issues/11143) | ACP: checkout sessions for credits and Pro, /.well-known/acp.json | Then |
 | [#11144](https://github.com/OpenAgentsInc/openagents/issues/11144) | UCP: /.well-known/ucp profile and checkout for credits and Pro | Then |
 | [#11145](https://github.com/OpenAgentsInc/openagents/issues/11145) | AP2: mandates and the agent card extension | Then |
-| [#11146](https://github.com/OpenAgentsInc/openagents/issues/11146) | Buyer: openagents pay and Coder pay any 402 (x402, MPP, L402, Cashu) within the person's budget | Next |
-| [#11147](https://github.com/OpenAgentsInc/openagents/issues/11147) | Nostr payments: NWC wallet, zaps, nutzaps, and NIP-MKT/NIP-89 announcements of our paid routes | Then |
+| [#11146](https://github.com/OpenAgentsInc/openagents/issues/11146) | Buyer: openagents pay and Coder pay any 402 (x402, MPP, L402 on Lightning) within the person's budget | Next |
+| [#11147](https://github.com/OpenAgentsInc/openagents/issues/11147) | Nostr payments: NWC wallet, zaps, and NIP-MKT/NIP-89 announcements of our paid routes | Then |
 | [#11148](https://github.com/OpenAgentsInc/openagents/issues/11148) | Nostr identity on the API: NIP-98 signed requests | Next |
 | [#11149](https://github.com/OpenAgentsInc/openagents/issues/11149) | Third-party merchants: merchant-hosted x402 receivers (Pylon providers first) and the BuyerAttestation verifier | Then |
 

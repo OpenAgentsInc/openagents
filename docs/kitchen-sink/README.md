@@ -182,7 +182,7 @@ agents doing real work, and where progress and play run on verified work.
 | Plugins and skills | New abilities built with you, tested, shared with everyone | Evals from chat work; registry missing | F1–F7 |
 | Gym, evals, Jev | Measure what helps, publish the evidence, show progress | Internal; Jev's % done in Coder | G1–G7 |
 | Markets, Pylon, compute | Sell spare compute; paid jobs for your agent | Pylon runs free jobs; paid earning paused | J1–J8 |
-| Payments, wallet, Lightning, x402 | Self-custody wallet; card for Pro; pay per request; payouts to authors; agents pay and get paid any way (x402, MPP, L402, Cashu, ACP, UCP, AP2, Nostr, stablecoins), sellers paid directly | Phone wallet in beta; card, x402, and the `Payment` scheme built; payouts owner-only; the rest planned ([agent payments](../payments/agent-payments.md)) | I1–I11, J9 |
+| Payments, wallet, Lightning, x402 | Self-custody wallet; card for Pro; pay per request; payouts to authors; agents pay and get paid on Bitcoin (x402, MPP, L402 on Lightning; ACP, UCP, AP2, card; Nostr; Taproot Assets stablecoins later; no USDC or other chains), sellers paid directly | Phone wallet in beta; card, x402, and the `Payment` scheme built; payouts owner-only; the rest planned ([agent payments](../payments/agent-payments.md)) | I1–I11, J9 |
 | Traces, data, privacy | Every run recorded; private unless shared; later, sell your data | Local traces live; upload launching | H1–H6, E6 |
 | Agent-ready web | Any agent can read our docs, API, and skills, and pay us any way it knows | Built; waiting on deploy; payment methods beyond x402 planned | K1–K9 |
 | Open source | Read, fork, self-host | Live | K4, K5 |

@@ -267,9 +267,10 @@ association and its operational assurance").
   profile — see companion proposal §9.
 - **Cashu / nutzaps (NIP-60/61)** and **L402/LSAT** — NIP-X402 explicitly excludes
   them as implicit fallbacks. Not usable in this profile without a separate reviewed
-  profile. *2026-10-09:* OpenAgents now accepts both as their own adapters on the
-  payment router (L402 on the same invoice and replay key; Cashu with an accepted-mint
-  list); see [agent payments](../agent-payments.md). A merchant may add them the same way.
+  profile. *2026-10-09:* OpenAgents plans L402 as its own adapter on the
+  payment router (same invoice and replay key); Cashu is not planned for now (owner,
+  #11140 closed; maybe later). See [agent payments](../agent-payments.md). A merchant
+  may add L402 the same way.
 - **Shared custodial receiver key for untrusted tenants** — non-compliant by §1; the
   whole reason this profile exists.
 - **MKT/LAB post-acceptance labor payment** — unchanged; this profile is for a single

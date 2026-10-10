@@ -993,7 +993,7 @@ statement = "There is no OpenAgents token, and Bitcoin is our own money."
 surfaces = ["web", "terminal", "mobile", "desktop"]
 status = "shipped"
 link = "/docs/wallet"
-issues = [11141]
+issues = [11085]
 episodes = [1, 200, 220, 230]
 evidence = [
   { doc = "docs/payments/README.md" },
@@ -1165,7 +1165,7 @@ group = "K"
 statement = "Agents can pay us with the payment method they already use, including Lightning and card."
 surfaces = ["network"]
 status = "next"
-issues = [11085, 11136, 11139, 11140, 11141, 11142, 11143, 11144, 11145]
+issues = [11085, 11136, 11139, 11142, 11143, 11144, 11145]
 episodes = [62, 70]
 
 [[promise]]

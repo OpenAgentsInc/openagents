@@ -105,8 +105,10 @@ pub(crate) fn table(methods: &[Method]) -> String {
             "l402",
             "[L402](https://docs.lightning.engineering/the-lightning-network/l402) (`WWW-Authenticate: L402`)",
         ),
-        ("cashu", "[Cashu](https://cashu.space/) ecash (`X-Cashu`)"),
-        ("stablecoins", "Dollar stablecoins through x402 and MPP"),
+        (
+            "taproot-assets",
+            "Dollar stablecoins on Bitcoin ([Taproot Assets](https://github.com/OpenAgentsInc/tap-ldk)) over Lightning",
+        ),
         (
             "checkout",
             "Agent checkout for credits and Pro: [ACP](https://www.agenticcommerce.dev/), [UCP](https://ucp.dev/), [AP2](https://ap2-protocol.org/)",
