@@ -69,6 +69,20 @@ Mac) signs the `3202` release and the `30202` head for the workload
 source commit and the recipe (`deploy/att/Dockerfile`). The demo's notice
 delay is 600 seconds; production releases should use days.
 
+**Measured on production (2026-10-10).** Release
+`4295efa9…2e6e` admits image `sha256:3bd3098d…825d`, built from
+`df789ae8c5` (`psionic-openai-server` `sha256:dd411551…57fc`, `pylon`
+`sha256:54b8a621…c71a`). A second Cloud Build of the same commit
+(`att-provider:df789ae8c5-rebuild`) produced the identical image digest and
+binaries. It is the same build service, not an independent builder, so
+P1's gate is not met yet. In the browser, a round takes about 27 s: the
+checks take under 300 ms, and Clef on 8 TDX vCPUs about 22 s for the short
+question. The demo question answered "yes" at 97.3 %. Both tamper choices
+are refused before anything is encrypted. `crates/oa-att/tests/live_fixture.rs`
+replays the captured records: the valid chain, a changed measurement, an
+unbound key, expired evidence, a head rollback, another publisher, and a
+changed claim (Google's signature then fails).
+
 **Run, stop and cost it.** From a checkout, as the automation account:
 
 ```sh

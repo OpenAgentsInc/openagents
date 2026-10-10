@@ -113,6 +113,7 @@ fn stop(show: &Show, from: Step, headline: &str, detail: &str) {
         }
     }
     show.verdict(false, headline, detail);
+    show.status("");
 }
 
 fn refused(show: &Show, step: Step, t: f64, reason: &str, headline: &str) {
