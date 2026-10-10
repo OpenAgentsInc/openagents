@@ -961,16 +961,21 @@ impl Dispatch {
         self.append(&format!("{}.jsonl", day()), &line);
     }
 
+    /// Append one line off the async runtime: the registry can sit on a
+    /// network disk, and a stalled write must not stall the gateway.
     fn append(&self, name: &str, line: &Value) {
         let path = self.dir.join(name);
-        let result = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-            .and_then(|mut file| writeln!(file, "{line}"));
-        if let Err(e) = result {
-            eprintln!("decisions: {}: {e}", path.display());
-        }
+        let text = line.to_string();
+        tokio::task::spawn_blocking(move || {
+            let result = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&path)
+                .and_then(|mut file| writeln!(file, "{text}"));
+            if let Err(e) = result {
+                eprintln!("decisions: {}: {e}", path.display());
+            }
+        });
     }
 }
 

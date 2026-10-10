@@ -124,20 +124,26 @@ async fn a_connected_pylon_answers_and_the_gateway_fails_over_when_it_stops() {
     for event in &hub.lock().await.stored {
         assert!(!event.content.contains("billed twice"));
     }
-    // The evidence line names the pylon, the model, and the time.
-    let log = std::fs::read_dir(registry.path().join("decisions"))
-        .unwrap()
-        .filter_map(Result::ok)
-        .find(|e| e.file_name().to_string_lossy().ends_with(".jsonl"))
-        .unwrap();
-    let line: Value = serde_json::from_str(
-        std::fs::read_to_string(log.path())
+    // The evidence line names the pylon, the model, and the time (written
+    // off the runtime, so it may land a moment after the answer).
+    let mut line = Value::Null;
+    for _ in 0..100 {
+        let log = std::fs::read_dir(registry.path().join("decisions"))
             .unwrap()
-            .lines()
-            .next()
-            .unwrap(),
-    )
-    .unwrap();
+            .filter_map(Result::ok)
+            .find(|e| {
+                let name = e.file_name().to_string_lossy().into_owned();
+                name.ends_with(".jsonl") && !name.starts_with("shadow")
+            });
+        if let Some(first) = log
+            .and_then(|log| std::fs::read_to_string(log.path()).ok())
+            .and_then(|text| text.lines().next().map(str::to_owned))
+        {
+            line = serde_json::from_str(&first).unwrap();
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
     assert_eq!(line["door"], "pylon:test-clef");
     assert_eq!(line["pylon"], pylon_key.pubkey());
     assert_eq!(line["model"], "clef-flash");
