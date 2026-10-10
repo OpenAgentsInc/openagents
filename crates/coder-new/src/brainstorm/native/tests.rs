@@ -680,9 +680,9 @@ async fn provider_dispatch_uses_host_refs_and_keeps_response_strings_as_bounded_
     let requests = server.join().unwrap();
     assert_eq!(requests.len(), 5);
     let tools = requests[0]["tools"].as_array().unwrap();
-    // Run, the five file tools (#11168) and the two web tools (#11175),
-    // then Brainstorm's two.
-    assert_eq!(tools.len(), 10);
+    // Run, media (#11172), the five file tools (#11168) and the two web
+    // tools (#11175), then Brainstorm's two.
+    assert_eq!(tools.len(), 11);
     assert!(tools.iter().any(|tool| tool["function"]["name"] == "Run"));
     let observation = requests[2]["messages"].as_array().unwrap().last().unwrap();
     assert_eq!(observation["role"], "tool");

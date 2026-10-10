@@ -599,6 +599,11 @@ impl Provider {
                 {
                     looks.push(look);
                 }
+                if safe_name == "media"
+                    && let Some(look) = crate::media::look_message(&output)
+                {
+                    looks.push(look);
+                }
             }
             // A screenshot the model asked to see follows every tool
             // message of the batch, as a user message with the image.

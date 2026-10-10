@@ -27,6 +27,7 @@ pub mod fleet;
 mod fleet_app;
 pub mod jev_plugin;
 pub mod live;
+pub mod media;
 pub mod login_choice;
 mod long_session;
 mod loops;

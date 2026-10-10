@@ -176,6 +176,8 @@ impl ExecutionSettings {
             definitions.extend(crate::shells::tool_definitions(self));
             definitions.extend(crate::file_tools::definitions());
             definitions.extend(crate::web_tools::definitions());
+            // Media files on this computer (#11172), with the same access as Run.
+            definitions.push(crate::media::definition());
         }
         if self.memory.is_some() {
             definitions.extend(crate::memory::Memory::tool_definitions());
@@ -240,6 +242,7 @@ impl ExecutionSettings {
         if self.shell {
             guidance.push_str(crate::file_tools::INSTRUCTIONS);
             guidance.push_str(crate::web_tools::INSTRUCTIONS);
+            guidance.push_str(crate::media::instructions());
             guidance.push_str("The Run tool runs shell commands with full filesystem and network access by default. Follow the user's instructions and any explicit host approval policy; a rejected command stays rejected. Prefer foreground builds/tests so output streams live. Begin long commands with a descriptive shell comment. When waiting for background jobs, stream their logs and print periodic status rather than silently sleeping; in this repository use python3 scripts/wait-job-logs.py LOGDIR build tests --timeout 100.\n");
         }
         if crate::shells::available(self) {
@@ -401,6 +404,7 @@ impl ExecutionSettings {
                 bundled_runtime::run_command(&args.command, &self.cwd, &keys, cancel, &mut emit)
                     .await
             }
+            "media" if self.shell => crate::media::execute(arguments, &self.cwd, cancel).await,
             "boat_delegate" | "boat_job" if self.registered(ToolBinding::BoatDelegate) => {
                 crate::cloud_tools::execute(
                     coder_cloud::Placement::Boat,
@@ -1129,6 +1133,13 @@ mod tests {
         settings.cwd = directory.path().to_path_buf();
         assert_eq!(settings.defs()[0]["function"]["name"], "Run");
         assert!(settings.instructions().contains("Run tool"));
+        assert!(
+            settings
+                .defs()
+                .iter()
+                .any(|tool| tool["function"]["name"] == "media")
+        );
+        assert!(settings.instructions().contains("media tool"));
         let ran = settings
             .execute(
                 "Run",
