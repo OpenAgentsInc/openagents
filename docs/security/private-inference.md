@@ -1,12 +1,121 @@
 # Private inference
 
-Status: **design, 2026-10-10. Nothing in this document is implemented.**
+Status: **design, 2026-10-10. The first sealed path is live** (#11241): one
+Intel TDX machine in Google Confidential Space answers sealed Clef decisions,
+and <https://openagents.com/att> runs a verified round in the browser. See
+[Live today](#live-today). Everything else below is still design.
 Wire formats are in the draft [NIP-ATT](../../nips/openagents/NIP-ATT.md).
 Companion to the [sensitive data vault](sensitive-data-vault.md): the vault
 keeps data sealed at rest, and this keeps it sealed while a model reads it.
 It supersedes the "deferred" decision in
 [confidential hosted inference](../decision-models/service/confidential-inference.md)
 by giving it a design. The threat model there still holds.
+
+## Live today
+
+Recorded 2026-10-10 (#11241). This is milestone P2's shape on a CPU: no
+GPU, Clef instead of a chat model, and the browser page as the client.
+
+**What runs.** One Confidential VM, `oa-att-tdx-1` (`c3-standard-8`, Intel
+TDX, `us-central1-a`, project `openagentsgemini`), boots Google's production
+Confidential Space image (`confidential-space-images/confidential-space`,
+not the debug image) with the workload service account
+`oa-att-workload@` (roles: `confidentialcomputing.workloadUser`,
+`logging.logWriter`, `artifactregistry.reader`). The launcher pulls
+`us-central1-docker.pkg.dev/openagentsgemini/openagents/att-provider` by
+digest and runs `pylon serve --attested` (`crates/pylon/src/attested.rs`):
+
+1. The endpoint key is made in the workload's memory and never written.
+2. The Clef-Flash Q4_K_M weights are fetched from Hugging Face at a pinned
+   revision and refused unless their SHA-256 is
+   `fd3e9060…638c`, which is compiled into the image.
+3. **Psionic (OpenAgents)** `psionic-openai-server` serves Clef on the CPU
+   on loopback (`POST /v1/systemone`); the pylon refuses to serve unless
+   Psionic reports the same artifact digest. No third-party inference
+   server is in the image.
+4. The pylon asks the launcher (`/run/container_launcher/teeserver.sock`)
+   for a PKI token with audience `openagents.att.v1` and the NIP-ATT
+   binding of its key and the release as the nonce, and publishes a
+   `30203` endpoint carrying it, signed by that key, every 30 minutes.
+5. It answers only sealed `25910` decisions that require
+   `openagents.attested.v1` and name its endpoint and release. Its answers
+   carry `response.attested` (endpoint, release, level, measurement,
+   request ciphertext digest, model and weights digest), covered by the
+   receipt's seal. It logs no prompt or answer.
+
+**The client** is `crates/oa-att`, the same Rust in the gateway and, as
+WebAssembly, in the page. It verifies the release, head and endpoint
+signatures; Google's token up to the Confidential Space root, which it pins
+by bytes and SHA-256 (`148b2938…6c39`); `hwmodel GCP_INTEL_TDX`,
+`swname CONFIDENTIAL_SPACE`, `dbgstat disabled-since-boot` and support
+`STABLE`; the image digest against the release; the head's admission and
+notice delay; and the binding in `eat_nonce`. Only then does it seal the
+question with NIP-44 to the endpoint key. The page's "tamper" choices
+change the logged measurement or swap in an unbound key before those
+checks, and the round is refused with nothing sent.
+
+**The gateway** is the website's `/att/api/*` (`crates/openagents-web/src/pages/att.rs`).
+It runs the same checks and refuses to forward to an endpoint that fails
+them, publishes the sealed event unchanged to `wss://relay.openagents.com`,
+and returns the endpoint's sealed answers. It sees kinds, keys, sizes and
+timing, never the text. Rounds are limited to 3 a minute and 20 an hour per
+visitor address, and 240 an hour in all.
+
+**The release.** The publisher key `77fabebb…c56e` (secret: Secret Manager
+`att-publisher-key`, and `~/work/.secrets/att-publisher.key` on the owner's
+Mac) signs the `3202` release and the `30202` head for the workload
+`clef-decisions`. The release lists the image digest, the SHA-256 of
+`psionic-openai-server` and `pylon` inside it, the weights digest, the
+source commit and the recipe (`deploy/att/Dockerfile`). The demo's notice
+delay is 600 seconds; production releases should use days.
+
+**Run, stop and cost it.** From a checkout, as the automation account:
+
+```sh
+cargo build -p oa-att --features net            # the publisher's CLI
+scripts/deploy/att-provider.sh build origin/main  # prints the image digest
+scripts/deploy/att-provider.sh release DIGEST origin/main   # 3202 + 30202
+# wait for the notice delay (600 s), then:
+scripts/deploy/att-provider.sh start RELEASE_ID DIGEST
+scripts/deploy/att-provider.sh status | logs
+scripts/deploy/att-provider.sh stop      # keeps the disk; resume to restart
+scripts/deploy/att-provider.sh delete
+target/debug/oa-att round --publisher 77fabebbeb49a7b9b384422ee6ef5662cf4db7da70acc94981378c0017ecc56e \
+    --state "The weather in Lisbon is sunny today." --question "Is this about the weather?"
+```
+
+A new instance makes a new key; clients find it through the head, so a
+restart needs nothing else. A new image needs a new release, and the page
+admits it only after the notice delay.
+
+Cost: `c3-standard-8` on demand in us-central1 is about $0.40 an hour
+(8 vCPU, 32 GB) before the Confidential VM surcharge, so roughly $300 a
+month left running, plus a 40 GB balanced disk (about $4 a month). Stopped,
+only the disk is billed. `ATT_MACHINE=c3-standard-4` halves the machine
+price at the cost of slower answers.
+
+### On this device
+
+The same flow works with no TEE when Psionic runs on the person's own
+machine, because then the job never leaves the device:
+
+1. Start Psionic on loopback: `psionic-openai-server -m Clef-Flash-Q4_K_M.gguf
+   --host 127.0.0.1 --port 18096` (the CUDA or Metal lane where there is
+   one).
+2. Start a decision pylon on the same machine with a key that stays in its
+   home directory: `pylon serve --decide http://127.0.0.1:18096
+   --decisions-only --allow <the app's own key> --relay ws://127.0.0.1:PORT`,
+   with a relay on loopback (`crates/nostr-relay`, or `pylon`'s in-process
+   fixture relay for tests).
+3. The app seals each `25910` decision with NIP-44 to that pylon's key, as
+   above, and reads the sealed `26910` answer. Nothing crosses the network
+   interface, so no attestation is needed: the level is the person's own
+   device, which the app shows as "On this device".
+
+The checks that matter here are local: the app compares the pylon's served
+identity (`clef-flash@sha256:fd3e9060…`) with the weights it expects, and
+the receipt names that digest. The page at `/att` shows only the sealed
+cloud path today.
 
 ## The ask
 
