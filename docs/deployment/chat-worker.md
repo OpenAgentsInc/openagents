@@ -1769,3 +1769,20 @@ still answers 402 and is skipped). From CoderOS, `openagents chat` answered
 you use?" from the bank, "can I opt out of training?" from the v13 note,
 and "what products do you have?" on Gemini, none naming Jev or TypeSafe as
 ours.
+
+Release `80438d7296` (2026-10-09 UTC) answers "what products do you have?"
+with the reviewed `meta.products` answers (phone, `.here`, `.website`) and
+the `openagents.products` note v1, where the model had said we had no
+documented list. Built on this Mac with `cargo zigbuild --locked --release
+-p coder --bin coder-worker --target x86_64-unknown-linux-musl` at that
+commit (sha256 `51631f4da6605d69…`), installed with `knowledge/` from `git
+archive 80438d7296 knowledge/` (no `._*` files) and `codebase-kb.gz` copied
+from `17ff0e03cc`, checked with `--check`, and put live by moving the `chat`
+symlink and restarting `coder-worker-chat`. The environment file, unit, and
+`coder-worker.service`/`current` did not change; `17ff0e03cc` stays in
+`releases/` for rollback. The log names `product kb
+openagents-product@eead65159fd3 (109 entries)`, `router
+chat-router-v5@bcab1427d09d (Live)`, and bank `chat-answers-v1@f9883275c95b`
+(89 answers). From CoderOS, `openagents chat` answered "what products do you
+have?" with the `openagents.products` note, "what do you make" with
+`meta.products.here`, and "What is OpenAgents?" with `meta.who.here`.
