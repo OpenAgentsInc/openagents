@@ -1,0 +1,24 @@
+[package]
+name = "oa-vault-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The browser half of the Tier A vault (#11240): oa-vault compiled to WebAssembly behind a small session API that keeps the vault master key inside the module."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+oa-vault = { path = "../oa-vault" }
+base64 = "0.22"
+qrcodegen = "1.8.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+zeroize = "1.8"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2.128"
+
+[lints]
+workspace = true

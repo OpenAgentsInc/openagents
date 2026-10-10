@@ -130,7 +130,7 @@ impl Gemini {
         vertex::body(&request, &self.row, self.thinking).map_err(|error| error.to_string())
     }
 
-    async fn call(&self, request: &Value) -> Result<(String, Option<String>), String> {
+    pub(crate) async fn call(&self, request: &Value) -> Result<(String, Option<String>), String> {
         let body = self.body(request)?;
         let token = self.token.token().await?;
         let client = reqwest::Client::builder()

@@ -1,6 +1,7 @@
 # Sensitive data vault
 
-Status: **design, 2026-10-10. Nothing in this document is implemented.**
+Status: **Tier A ("only you") is implemented** (#11240, 2026-10-10): see
+[Tier A as built](#tier-a-as-built). Tiers B and C are design only.
 Wire formats are in the draft [NIP-VAULT](../../nips/openagents/NIP-VAULT.md);
 attested workloads and their public release log are in the draft
 [NIP-ATT](../../nips/openagents/NIP-ATT.md). The model step, where most of
@@ -232,6 +233,37 @@ of the person's devices is online and unlocked. Scheduled jobs (a monthly
 spending summary) need a device to wake and do the work, or a Tier B
 standing lease. Losing every slot and the recovery code loses the data.
 We cannot help, and the copy says so before the person turns it on.
+
+### Tier A as built
+
+- **Core:** `crates/oa-vault` (keys, slots, objects, the key index; vectors
+  in `fixtures/nips/vault/vectors.json`), compiled to WebAssembly as
+  `crates/oa-vault-web` for the browser.
+- **Web:** Settings → Vault (`/settings/vault`) and each project's Vault
+  (`/projects/{id}/vault`). Set up with a passkey (WebAuthn PRF) or a Nostr
+  key (NIP-07), always with the 24-word recovery code; never a passkey
+  alone. Add files, open or download them on this device, delete them,
+  add another device with a 10-minute link and QR code, and unlock with the
+  recovery code. The page runs only `/vault/vault.js` and the WebAssembly,
+  under a policy with no inline script and Trusted Types; the script loads
+  with Subresource Integrity and checks the WebAssembly's SHA-384.
+  `/vault/release.json` lists the digests.
+- **Server:** `crates/openagents-web/src/vault/` serves NIP-VAULT's service
+  API. Ciphertext lives in `openagentsgemini-web-vault-prod`, a bucket with
+  soft delete off and no versions, so a deleted index is gone.
+- **Answers:** a model reads a vault file only when the person's browser
+  decrypts it for that turn and sends it where the person picked: **On this
+  device** (a local Psionic server on `127.0.0.1:8080`, the default when it
+  answers; text files) or **Fast (Google sees it)** (Gemini on Vertex,
+  through `POST /vault/api/answer`, which stores and logs nothing). The
+  answer is kept as a vault object under the person's own key, labelled
+  with where it was made.
+- **Coder:** `openagents vault` (device key in the OS keychain, Nostr key,
+  recovery code, pairing link; `ask` on this device through local Psionic).
+- **Proof tests:** `crates/openagents-web/src/vault/tests.rs` (canary scan
+  of everything the servers wrote, no stored value opens a slot, delete
+  leaves kept ciphertext undecryptable, recovery on a new device,
+  cross-account refusal).
 
 ## Tier B: only sealed hardware, with your share
 

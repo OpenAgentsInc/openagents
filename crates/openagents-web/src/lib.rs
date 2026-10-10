@@ -68,6 +68,7 @@ pub mod theme;
 mod traces;
 pub mod ui_page;
 pub mod upstream;
+mod vault;
 mod wellknown;
 
 use std::path::PathBuf;
@@ -109,6 +110,10 @@ pub struct Config {
     pub chat_store: Arc<chat_store::Store>,
     /// Small Rust/Wasm input and scroll adapter.
     pub chat_build: Option<PathBuf>,
+    /// Where vault ciphertext is kept (#11240): a bucket with no soft
+    /// delete and no object versions, so a deleted key index is gone.
+    /// `None` keeps it beside the chats (local and test servers).
+    pub vault_store: Option<Arc<chat_store::Store>>,
     /// The server's secret the visitors' signing keys are derived from.
     /// Random for each process unless set; a deployment with several
     /// instances sets one, so a visitor keeps one key.
@@ -206,6 +211,7 @@ impl Config {
         Self {
             chat_store: Arc::new(chat_store::Store::local(store.with_file_name("web-chats"))),
             chat_build: None,
+            vault_store: None,
             store,
             customer: None,
             port: 4300,
@@ -306,6 +312,7 @@ pub fn router(config: Config) -> Router {
         .merge(terminal_connect::routes())
         .merge(account::routes())
         .merge(settings::routes())
+        .merge(vault::routes())
         .merge(account_export::routes())
         .merge(projects::routes())
         .merge(github_tools::routes())

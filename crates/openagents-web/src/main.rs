@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIRECTORY] [--listen ADDRESS] \
 [--pay-host http://HOST:PORT] [--inference http://HOST:PORT] [--public-host HOST]... [--upstream http://HOST:PORT] \
-[--chat-store DIRECTORY | --chat-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--att DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
+[--chat-store DIRECTORY | --chat-bucket BUCKET] [--vault-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--att DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
 [--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-byo PRIVATE_DIR [--cloud-byo-keys PRIVATE_JSON]] [--pilot-config PRIVATE_JSON] \
 [--environments PRIVATE_JSON] [--github-oauth PRIVATE_JSON] [--github-app PRIVATE_JSON] [--github-redirect URL] \
 [--plan-meter PRIVATE_FILE] [--plan-checkout PLAN] [--own-runs-token PRIVATE_FILE]";
@@ -14,6 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut config = openagents_web::Config::development(home.join(".openagents/tasks"));
     let mut listen: SocketAddr = "127.0.0.1:4300".parse()?;
     let mut chat_bucket = std::env::var("OPENAGENTS_WEB_CHAT_BUCKET").ok();
+    let mut vault_bucket = std::env::var("OPENAGENTS_WEB_VAULT_BUCKET").ok();
     let mut pay_host = std::env::var("OPENAGENTS_WEB_PAY_HOST").ok();
     let mut inference = std::env::var("OPENAGENTS_WEB_INFERENCE").ok();
     let mut upstream = std::env::var("OPENAGENTS_WEB_UPSTREAM").ok();
@@ -38,6 +39,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ))
             }
             "--chat-bucket" => chat_bucket = Some(value),
+            "--vault-bucket" => vault_bucket = Some(value),
             "--chat-retention-days" => chat_retention = Some(value),
             "--chat-build" => config.chat_build = Some(PathBuf::from(value)),
             "--customer" => config.customer = Some(PathBuf::from(value)),
@@ -192,6 +194,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             oa_auth::Endpoints::default(),
         )?));
         println!("GitHub sign-in returns to {redirect}");
+    }
+    if let Some(bucket) = vault_bucket.filter(|bucket| !bucket.trim().is_empty()) {
+        // The vault's bucket keeps no soft-deleted copies and no versions,
+        // so a deleted key index is gone (#11240).
+        config.vault_store = Some(std::sync::Arc::new(openagents_web::chat_store::Store::gcs(
+            bucket,
+            "vault".into(),
+        )?));
     }
     let shared_chats = chat_bucket.is_some();
     if let Some(bucket) = chat_bucket {

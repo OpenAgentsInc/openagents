@@ -40,8 +40,13 @@ pub(crate) struct World {
 }
 
 impl World {
-    fn origin(&self) -> String {
+    pub(crate) fn origin(&self) -> String {
         self.origin.clone()
+    }
+
+    /// Every file the world's servers keep (chats, vault, accounts).
+    pub(crate) fn root(&self) -> &std::path::Path {
+        self._root.path()
     }
 
     /// The account the person who signed in with GitHub `login` has.
@@ -235,6 +240,32 @@ impl Browser {
             headers,
             body,
         }
+    }
+
+    /// Like [`Browser::send`], for an answer that isn't text.
+    pub(crate) async fn send_bytes(
+        &mut self,
+        world: &World,
+        request: axum::http::request::Builder,
+        body: Body,
+    ) -> (StatusCode, Vec<u8>) {
+        let mut request = request.header(header::HOST, world.host.as_str());
+        if !self.0.is_empty() {
+            let cookies: Vec<String> = self.0.iter().map(|(k, v)| format!("{k}={v}")).collect();
+            request = request.header(header::COOKIE, cookies.join("; "));
+        }
+        let response = world
+            .site
+            .clone()
+            .oneshot(request.body(body).unwrap())
+            .await
+            .unwrap();
+        let status = response.status();
+        let body = to_bytes(response.into_body(), 32 * 1024 * 1024)
+            .await
+            .unwrap()
+            .to_vec();
+        (status, body)
     }
 
     pub(crate) async fn get(&mut self, world: &World, path: &str) -> Answer {

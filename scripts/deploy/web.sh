@@ -275,6 +275,11 @@ envs = web.setdefault("env", [])
 if "OPENAGENTS_WEB_ANALYTICS_BUCKET" not in env:
     envs.append({"name": "OPENAGENTS_WEB_ANALYTICS_BUCKET",
                  "value": "openagentsgemini-web-analytics-prod"})
+# The vault (#11240): ciphertext in its own bucket, with no soft delete
+# and no versions, so a deleted key index is gone.
+if "OPENAGENTS_WEB_VAULT_BUCKET" not in env:
+    envs.append({"name": "OPENAGENTS_WEB_VAULT_BUCKET",
+                 "value": "openagentsgemini-web-vault-prod"})
 if "OPENAGENTS_WEB_ANALYTICS_KEY" not in env:
     envs.append({"name": "OPENAGENTS_WEB_ANALYTICS_KEY",
                  "valueFrom": {"secretKeyRef": {"name": "openagents-web-analytics-key",

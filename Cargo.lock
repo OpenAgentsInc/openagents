@@ -9910,6 +9910,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "oa-vault-web"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "oa-vault",
+ "qrcodegen",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "zeroize",
+]
+
+[[package]]
 name = "oak"
 version = "0.1.0"
 dependencies = [
@@ -10808,6 +10821,8 @@ dependencies = [
  "oa-connections",
  "oa-copy",
  "oa-seal",
+ "oa-vault",
+ "oa-vault-web",
  "openagents-chat",
  "openagents-ui",
  "openagents-wallet",

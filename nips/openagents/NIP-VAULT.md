@@ -332,11 +332,11 @@ Refusals are `{"error": "<plain words>"}`.
 
 | Route | Body | Answer |
 | --- | --- | --- |
-| `GET /vault/api/state` | | `{"vault": null}` or `{"vault": {"id", "slots": [slot], "index": {"epoch", "blob"}, "objects": [{"object", "size"}]}}` |
+| `GET /vault/api/state` | | `{"vault": null}` or `{"vault": {"id", "slots": [slot], "index": {"epoch", "blob"}, "objects": ["<object id>"]}}`. A browser's answer also carries a fresh form token in `x-openagents-csrf` |
 | `POST /vault/api/create` | `{"vault", "slots": [slot], "index": <sealed index, base64>}` | `201`; `409` if a vault exists; `400` unless the slots are [enough](#key-slots) |
-| `POST /vault/api/slots` | `{"slot": slot}` | `201` |
+| `POST /vault/api/slots` | `{"slot": slot}` | `201`; at most 16 slots |
 | `POST /vault/api/slots/{slot}/delete` | | `204`; `409` if the rest wouldn't be enough |
-| `PUT /vault/api/objects/{object}` | the object's bytes | `201 {"object", "size"}`. The service checks the magic, the header, the vault id and tier `user`, and refuses objects over 11 MiB |
+| `PUT /vault/api/objects/{object}` | the object's bytes | `201 {"object", "size"}`. The service checks the magic, the header, the vault id and tier `user`, refuses objects over 11 MiB, objects that carry a wrap, and more than 250 objects |
 | `GET /vault/api/objects/{object}` | | the bytes |
 | `POST /vault/api/index` | `{"after": <current epoch>, "blob": <sealed index>, "delete": [object id]}` | `200 {"epoch"}`. Compare-and-swap: `409` unless `after` is the current epoch and the blob's epoch is `after + 1`. The service writes the new epoch, then deletes the old epoch and the listed objects |
 | `POST /vault/api/delete` | | `204`: every slot, index and object is deleted |

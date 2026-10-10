@@ -1,8 +1,8 @@
 # Security
 
 How we keep people's sensitive data away from everyone who shouldn't see it,
-including us, and how we say plainly when we can see it. Nothing here is
-implemented yet.
+including us, and how we say plainly when we can see it. Tier A of the
+vault ("only you") is implemented; the rest is design.
 
 | Document | What it covers | Issue |
 | --- | --- | --- |

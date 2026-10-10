@@ -175,6 +175,7 @@ async fn settings(
         (crate::connections::settings_row(&app))
         (computers)
         (macs)
+        (crate::vault::settings_row())
     };
     page(&headers, service, &viewer, "Settings", PAGE, body)
 }

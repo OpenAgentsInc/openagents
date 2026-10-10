@@ -50,6 +50,8 @@ oa-seal = { path = "../oa-seal" }
 # The sealed-inference demo at /att (NIP-ATT): the gateway's own checks and
 # its relay reads and exchange.
 oa-att = { path = "../oa-att", features = ["net"] }
+# The vault (#11240): NIP-VAULT shapes the server checks.
+oa-vault = { path = "../oa-vault" }
 openagents-chat = { path = "../openagents-chat" }
 pulldown-cmark = { version = "0.13.4", default-features = false, features = ["html"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
@@ -66,6 +68,8 @@ workbench = { path = "../workbench" }
 [dev-dependencies]
 oa-connections = { path = "../oa-connections", features = ["fake"] }
 oa-copy = { path = "../oa-copy" }
+# The browser vault's client core, driving the vault API in tests (#11240).
+oa-vault-web = { path = "../oa-vault-web" }
 coder-environment = { path = "../coder-environment" }
 coder-environment-build = { path = "../coder-environment-build" }
 coder-environment-operator = { path = "../coder-environment-operator" }

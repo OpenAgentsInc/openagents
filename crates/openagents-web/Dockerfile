@@ -52,7 +52,7 @@ RUN scripts/build-everglade-web.sh /build/everglade \
 # --cloud-build directory) directly in this isolated stage. The local build scripts use the machine's build lease.
 RUN cargo build --locked --release --target wasm32-unknown-unknown \
         -p coder-components-web -p coder-cloud-web -p coder-browser-web \
-        -p coder-chat-web \
+        -p coder-chat-web -p oa-vault-web \
     && mkdir -p /build/components /build/cloud /build/chat \
     && wasm-bindgen --target web --no-typescript --out-dir /build/components \
         target/wasm32-unknown-unknown/release/coder_components_web.wasm \
@@ -62,6 +62,10 @@ RUN cargo build --locked --release --target wasm32-unknown-unknown \
         target/wasm32-unknown-unknown/release/coder_browser_web.wasm \
     && wasm-bindgen --target web --no-typescript --out-dir /build/chat \
         target/wasm32-unknown-unknown/release/coder_chat_web.wasm \
+    && wasm-bindgen --target web --no-typescript --out-dir /build/chat \
+        target/wasm32-unknown-unknown/release/oa_vault_web.wasm \
+    && test -s /build/chat/oa_vault_web.js \
+    && test -s /build/chat/oa_vault_web_bg.wasm \
     && test -s /build/chat/coder_chat_web.js \
     && test -s /build/chat/coder_chat_web_bg.wasm \
     && test -s /build/components/coder_components_web.js \
