@@ -35,13 +35,13 @@ issue ──► find ──► brief ──► agent + verify ──► independ
 
 | Stage | What happens | Where it lives today |
 |---|---|---|
-| 1. Find | The deterministic finder ranks every file the issue may need, in about a second, from indexes mined out of git history: co-change, past issue→fix pairs, identifiers, interface strings, "X changes, so Y changes" rules. A small learned ranker orders the candidates. | `scripts/filefind`, [bench](../inference/file-finding-bench.md) (#11210, measured: 95% of a fix's existing files in a 400-file map) |
+| 1. Find | The deterministic finder ranks every file the issue may need, in about a second, from indexes mined out of git history: co-change, past issue→fix pairs, identifiers, interface strings, "X changes, so Y changes" rules. A small learned ranker orders the candidates. | `scripts/filefind`, [bench](../inference/file-finding-bench.md) (#11210, measured on 100 historical issues: 95% of the existing hand-written files a fix changed appear in the 400-file map; 85% on eight newer fixes. This is recall of changed files, not patch correctness) |
 | 2. Brief | The issue becomes a briefing: a short plan, the files with excerpts and reasons, the most similar past change, the exact checks, and the repo rules that apply. | #11211 briefing generator |
 | 3. Do | A Claude agent with a custom system prompt and a minimal tool set makes the change. Its main custom tool is `verify`, which runs exactly the issue's checks and returns only what's wrong. | `crates/claude_agent_sdk` (in-process tools, #11213), [tool candidates](../inference/briefed-agent-tools.md) |
 | 4. Check | An independent replay re-runs the checks in a clean worktree at the same commit and compares digests. Labels come from the diff and the replayed checks, never from the agent's own summary. | `scripts/bench/traces` (#11218, 41 traces replayed and admitted) |
 | 5. Land | Review, merge and deploy. Staging runs freely; production waits for an owner approval. | #11169, #11170, the serial integrator role |
 | 6. Learn | Verified traces become rows in the decision corpus (time-split train / calibration / locked). The ranker and the Clef decision heads retrain, and calibration maps refit. A new version ships only if it beats the old one on the locked split. | #11215, #11216, #11217, Gym gates |
-| 7. Decide cheaply | Every judgment in the loop (route, rank, relevance, "is this done") is a typed decision. It is answered through our own `/v1/systemone`, which farms NIP-DEC jobs out to connected Pylons running Clef. Vertex Gemini is the fallback, and there is no dependency on a third-party judge. | #11225, [NIP-DEC](../../nips/openagents/NIP-DEC.md), [NIP-PYLON](../../nips/openagents/NIP-PYLON.md) |
+| 7. Decide cheaply | Every judgment in the loop (route, rank, relevance, "is this done") is a typed decision. It is answered through our own `/v1/systemone`, which farms NIP-DEC jobs out to connected Pylons running Clef, then our own hosted Clef, then Vertex Gemini. There is no dependency on a third-party judge. | #11225, [NIP-DEC](../../nips/openagents/NIP-DEC.md), [NIP-PYLON](../../nips/openagents/NIP-PYLON.md) |
 
 You can watch the whole loop in the terminal with `coder issue-run N`
 ([issue-run](../coder/issue-run.md)): decision cards first, then the agent's
@@ -210,13 +210,31 @@ starts:
 
 | # | Milestone | Gate (evidence class `measured`) |
 |---|---|---|
-| S1 | Loop runs on OpenAgents end to end | 20+ V1-class issues taken to merged PRs from a Cloud Environment. Every label is replay-verified. |
+| S1 | Loop runs on OpenAgents end to end | 20+ distinct V1-class issues, selected before execution, taken through the loop from a Cloud Environment. Every attempt (including failures, cancellations and unknown costs) is in the inventory, every label is replay-verified, and merge/deploy state is recorded. |
 | S2 | Briefed beats bare | Cost per accepted PR at least 30% lower than bare Claude Code, at equal or better success and no worse median time, on 20+ issues × 3 runs |
-| S3 | It improves itself | Two consecutive retrain cycles each lower cost per accepted PR (or raise success) on a fixed held-out issue set, beyond run-to-run noise |
-| S4 | Independent of third parties | Production routing and judges run with no Jev key. Decisions are answered by connected Pylons, with Vertex as the only fallback. |
+| S3 | It improves itself | Two consecutive learning cycles: version N's new eligible outcomes train N+1, and N+1's train N+2. Each promotion wins on a *fresh* protected confirmation cohort (consulted once) by at least two standard errors at the issue level, with no worse calibration, and with the learned part ablated to show the gain comes from learning. A fixed held-out set is kept as a labelled development trend only. |
+| S4 | Independent of third parties | Production routing and judges run with no Jev key. Decisions are answered by connected Pylons; fallbacks are our own hosted Clef, then Vertex. Results name the door that answered, and judge quality is measured on its task. |
 | S5 | Second codebase | The loop works on a repository that isn't ours (a public OSS repo), from history alone, with its own corpus and gates |
 | S6 | First customer pilot | Pilot v1 delivered through the loop, accepted, with REV-03 evidence and the customer's own improvement chart |
 | S7 | Product | Self-serve repository connect, per-accepted-PR pricing (after O1), admin view, and training opt-in controls |
+
+## Amendments after the audit (2026-10-10)
+
+The [self-improving codebases audit](../audits/2026-10-10-self-improving-codebases-audit/README.md)
+found that the success signal and the learning intake had to be repaired
+before any gate can be trusted. The gates above were tightened to match it:
+
+- **S1** counts distinct issues chosen before execution, with the full attempt
+  inventory. Repeats don't raise the count, and unknown costs stay unknown.
+- **S3** uses fresh protected confirmation per promotion instead of re-reading
+  one fixed held-out set, which Gym's one-read rule forbids. It requires an
+  ablation.
+- **S4** allows our own hosted Clef between Pylons and Vertex. It is ours, so
+  the "no third-party judge" intent holds.
+
+The fixes come first: the P0 verify fix (#11229), issue-run gating, worktrees
+and costs (#11230), learning integrity (#11231) and the data boundary
+(#11232). No gate is claimed until they land.
 
 ## Risks and how we handle them
 
