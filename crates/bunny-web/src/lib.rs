@@ -18,6 +18,7 @@
 //! when it starts; `scripts/build-bunny-web.sh` builds it.
 
 pub mod copy;
+pub mod kit;
 pub mod look;
 pub mod mesh;
 pub mod scene;

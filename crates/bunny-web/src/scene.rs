@@ -20,11 +20,6 @@ pub const FAR_INK: u32 = 0x9A9A9A;
 pub const HEDGE: u32 = 0xD3D3CE;
 const MARK: u32 = 0xE2E2DE;
 const SHADOW: u32 = 0xDADAD6;
-const POT: u32 = 0xA9A9A4;
-const SOIL: u32 = 0x6E6E6A;
-const STONE: u32 = 0x8F8F8A;
-const WOOD: u32 = 0xBDBDB8;
-const BOARD: u32 = 0x9C9C97;
 const METAL: u32 = 0x7C7C78;
 const SHIRT: u32 = 0x8C8C88;
 const TROUSERS: u32 = 0x5C5C59;
@@ -372,9 +367,13 @@ pub fn edible(kind: bunny_rules::EdibleKind) -> Mesh {
     }
 }
 
-/// The bunny's body, head, tail and face, one unit tall, in `fur`.
+/// The bunny's body, head, tail and face, one unit tall, in `fur`, at
+/// size tier `tier`: bigger bunnies get a rounder belly and fuller cheeks,
+/// so legs look shorter (one rig, scaled per tier, as the spec says).
 #[must_use]
-pub fn bunny(fur: u32) -> Mesh {
+pub fn bunny(fur: u32, tier: u8) -> Mesh {
+    let belly = 1.0 + 0.07 * f32::from(tier);
+    let cheeks = 1.0 + 0.05 * f32::from(tier);
     let mut mesh = Mesh::new();
     let sphere = Shape::Sphere {
         rings: 5,
@@ -383,13 +382,17 @@ pub fn bunny(fur: u32) -> Mesh {
     let none = Quat::IDENTITY;
     mesh.add(
         sphere,
-        part(at(0.72, 0.6, 0.92), none, at(0.0, 0.33, -0.06)),
+        part(
+            at(0.72 * belly, 0.6, 0.92 * belly),
+            none,
+            at(0.0, 0.33, -0.06),
+        ),
         fur,
         1.5,
     );
     mesh.add(
         sphere,
-        part(at(0.5, 0.48, 0.52), none, at(0.0, 0.66, 0.34)),
+        part(at(0.5 * cheeks, 0.48, 0.52), none, at(0.0, 0.66, 0.34)),
         fur,
         1.5,
     );
@@ -555,174 +558,10 @@ pub fn alarm() -> Mesh {
 }
 
 /// The obstacle meshes, each filling one lane, facing `+z` along the
-/// corridor.
+/// corridor (the kit, `kit::obstacle`).
 #[must_use]
 pub fn obstacle(kind: bunny_rules::ObstacleKind) -> Mesh {
-    use bunny_rules::ObstacleKind as CellKind;
-    let mut mesh = Mesh::new();
-    let none = Quat::IDENTITY;
-    let lane = metres(LANE_WIDTH);
-    match kind {
-        CellKind::Pot
-        | CellKind::Hose
-        | CellKind::Puddle
-        | CellKind::Tray
-        | CellKind::Can
-        | CellKind::BirdNet => {
-            mesh.add(
-                Shape::Frustum {
-                    sides: 8,
-                    bottom: 0.36,
-                    top: 0.5,
-                },
-                part(at(0.62, 0.5, 0.62), none, at(0.0, 0.25, 0.0)),
-                POT,
-                1.0,
-            );
-            mesh.add(
-                Shape::Frustum {
-                    sides: 8,
-                    bottom: 0.5,
-                    top: 0.5,
-                },
-                part(at(0.7, 0.08, 0.7), none, at(0.0, 0.52, 0.0)),
-                POT,
-                1.0,
-            );
-            mesh.add(
-                Shape::Disc { sides: 8 },
-                part(at(0.56, 1.0, 0.56), none, at(0.0, 0.53, 0.0)),
-                SOIL,
-                0.0,
-            );
-            for i in 0..3 {
-                let turn = Quat::from_rotation_y(i as f32 * 2.1) * Quat::from_rotation_z(0.5);
-                mesh.add(
-                    Shape::Cube,
-                    part(
-                        at(0.06, 0.34, 0.1),
-                        turn,
-                        at(0.0, 0.62, 0.0) + turn * at(0.0, 0.12, 0.0),
-                    ),
-                    STONE,
-                    1.0,
-                );
-            }
-        }
-        CellKind::Gnome => {
-            mesh.add(
-                Shape::Frustum {
-                    sides: 7,
-                    bottom: 0.5,
-                    top: 0.3,
-                },
-                part(at(0.46, 0.46, 0.46), none, at(0.0, 0.23, 0.0)),
-                STONE,
-                1.0,
-            );
-            mesh.add(
-                Shape::Sphere {
-                    rings: 4,
-                    segments: 7,
-                },
-                part(Vec3::splat(0.32), none, at(0.0, 0.58, 0.0)),
-                SKIN,
-                1.0,
-            );
-            mesh.add(
-                Shape::Frustum {
-                    sides: 6,
-                    bottom: 0.5,
-                    top: 0.0,
-                },
-                part(
-                    at(0.2, 0.3, 0.2),
-                    Quat::from_rotation_x(std::f32::consts::PI),
-                    at(0.0, 0.42, 0.12),
-                ),
-                0xF0F0EE,
-                1.0,
-            );
-            mesh.add(
-                Shape::Frustum {
-                    sides: 7,
-                    bottom: 0.5,
-                    top: 0.0,
-                },
-                part(at(0.36, 0.5, 0.36), none, at(0.0, 0.94, 0.0)),
-                TROUSERS,
-                1.0,
-            );
-        }
-        CellKind::Fence | CellKind::Gap | CellKind::Wire | CellKind::Tunnel => {
-            for side in [-1.0_f32, 1.0] {
-                mesh.block(
-                    at(side * lane * 0.46 - 0.06, 0.0, -0.06),
-                    at(side * lane * 0.46 + 0.06, 1.15, 0.06),
-                    WOOD,
-                    1.0,
-                );
-            }
-            let boards: &[f32] = if kind == CellKind::Fence {
-                &[0.22, 0.58, 0.94]
-            } else {
-                &[0.6, 0.94]
-            };
-            for y in boards {
-                mesh.block(
-                    at(-lane * 0.5, y - 0.1, -0.03),
-                    at(lane * 0.5, y + 0.1, 0.03),
-                    if kind == CellKind::Fence { WOOD } else { BOARD },
-                    1.0,
-                );
-            }
-        }
-        CellKind::Barrow | CellKind::Scarecrow => {
-            mesh.add(
-                Shape::Frustum {
-                    sides: 4,
-                    bottom: 0.45,
-                    top: 0.62,
-                },
-                part(
-                    at(0.95, 0.34, 1.25),
-                    Quat::from_rotation_y(std::f32::consts::FRAC_PI_4),
-                    at(0.0, 0.6, 0.0),
-                ),
-                METAL,
-                1.0,
-            );
-            mesh.add(
-                Shape::Frustum {
-                    sides: 10,
-                    bottom: 0.5,
-                    top: 0.5,
-                },
-                part(
-                    at(0.4, 0.1, 0.4),
-                    Quat::from_rotation_z(std::f32::consts::FRAC_PI_2),
-                    at(0.0, 0.2, 0.5),
-                ),
-                TROUSERS,
-                1.0,
-            );
-            for side in [-1.0_f32, 1.0] {
-                mesh.block(
-                    at(side * 0.3 - 0.04, 0.0, -0.5),
-                    at(side * 0.3 + 0.04, 0.45, -0.42),
-                    WOOD,
-                    1.0,
-                );
-                mesh.block(
-                    at(side * 0.3 - 0.04, 0.5, -1.0),
-                    at(side * 0.3 + 0.04, 0.58, 0.3),
-                    WOOD,
-                    1.0,
-                );
-            }
-        }
-    }
-    mesh
+    crate::kit::obstacle(kind)
 }
 
 /// A soft round shadow on the ground.
@@ -801,7 +640,8 @@ mod tests {
     fn every_model_is_made() {
         for mesh in [
             carrot(),
-            bunny(0xFFFFFF),
+            bunny(0xFFFFFF, 0),
+            bunny(0xFE6B04, 4),
             ear(0xFE6B04),
             farmer(),
             leg(),

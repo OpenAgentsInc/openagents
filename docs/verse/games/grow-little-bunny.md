@@ -1026,8 +1026,8 @@ flat-shaded models). Each phase below says how it maps onto that path.
 | --- | --- | --- |
 | B1 | [#11198](https://github.com/OpenAgentsInc/openagents/issues/11198) | Done, 6c0de441c7 |
 | B2 | [#11199](https://github.com/OpenAgentsInc/openagents/issues/11199) | Done, 67898d1470 |
-| B3 | [#11200](https://github.com/OpenAgentsInc/openagents/issues/11200) | Done in part, see below |
-| B4 | [#11201](https://github.com/OpenAgentsInc/openagents/issues/11201) | Not started |
+| B3 | [#11200](https://github.com/OpenAgentsInc/openagents/issues/11200) | Done in part, 3551012941; the rest is [#11206](https://github.com/OpenAgentsInc/openagents/issues/11206) |
+| B4 | [#11201](https://github.com/OpenAgentsInc/openagents/issues/11201) | Done (see below) |
 | B5 | [#11202](https://github.com/OpenAgentsInc/openagents/issues/11202) | Not started |
 | B6 | [#11203](https://github.com/OpenAgentsInc/openagents/issues/11203) | Not started |
 
@@ -1132,7 +1132,7 @@ Deviations, and why:
   enum the iOS and Android validators mirror; that is a change to the
   desktop and phone hosts, which this browser-first build doesn't use.
   `CommunityGame` is the trait such a registration would take; wiring the
-  `verse` host to it is open (see What's next).
+  `verse` host to it is [#11206](https://github.com/OpenAgentsInc/openagents/issues/11206).
 - **The pack format did not move.** Moving `everglade_pack::format` into
   its own crate was tried: the format moves cleanly, but Everglade adds
   inherent methods to `ZonePack` (`decode_pinned`, `load_local`), which Rust
@@ -1144,6 +1144,38 @@ Deviations, and why:
 - **No line chunk or `gray` and `chroma` fields in the pack format.**
   Adding them changes the encoding, and so every pinned pack's digest;
   they wait for the game's own pack (see B4).
+
+### B4: the kits
+
+`crates/bunny-web/src/kit.rs`: every obstacle in the tables (fence, fence
+gap, bean-pole tunnel, hose, puddle, seed tray, flower pot, watering can,
+gnome, chicken wire, wheelbarrow, scarecrow, bird net), the four power-ups,
+and the meadow's pieces (warren mound, rabbit hole, signpost, stone, pond,
+tree, wildflowers, log, start gate, Carrot Board, exit arch), with the
+edibles and the farmer in `scene.rs`. Gray pieces use the spec's 8-step
+ramp. The bunny is one model per size tier, its belly and cheeks rounder as
+it grows. Tests hold each piece to its triangle budget (obstacles 1,200,
+power-ups 300, meadow pieces 2,500) and the colour rule, and check that a
+bird net leaves room for a ducking bunny and a hose is low enough for a
+Kit's jump. Power-ups now show in the gardens. `#kit` opens a kit sheet of
+every model for review; `scripts/bunny-capture.mjs` captures it.
+
+Deviations, and why:
+
+- **Made in code, not in Blender.** The browser build draws low-poly
+  models made in Rust (`mesh.rs` shapes), a few dozen to a few hundred
+  triangles each, so there is no pack to download (the whole game is about
+  100 KB of compressed wasm against the 4 MiB pack budget), no level of
+  detail is needed, and no Blender is needed to build it. The Blender
+  pipeline (`bunny_common.py`, admission, a pinned VTP pack, `PROVENANCE.md`
+  entries) applies when a Verse host draws the game through `verse-pbr`.
+- **No rigs or clips.** Characters are posed in code: the bunny hops,
+  squashes to duck, arcs through jumps and rolls in a tumble; the farmer
+  walks, swings and staggers.
+
+### What's next
+
+B5: gardens 1 to 5 playable with the full HUD.
 
 ## Engine gaps
 

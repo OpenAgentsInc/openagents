@@ -5,8 +5,8 @@ use std::rc::Rc;
 
 use bunny_rules::game::Move;
 use bunny_rules::{
-    EdibleKind, Event, FarmerState, Game, HZ, Input, ObstacleKind, Status, TIER_HEIGHT, TIER_JUMP,
-    TIER_NAMES, UNIT, level, shade,
+    EdibleKind, Event, FarmerState, Game, HZ, Input, ObstacleKind, PowerKind, Status, TIER_HEIGHT,
+    TIER_JUMP, TIER_NAMES, UNIT, level, shade,
 };
 use glam::{Mat4, Quat, Vec2, Vec3};
 use wasm_bindgen::JsCast;
@@ -17,6 +17,7 @@ use web_sys::{
     WebGlVertexArrayObject, Window,
 };
 
+use crate::kit::{self, Piece};
 use crate::look::{Options, Tier};
 use crate::mesh::{Mesh, STRIDE, rgb};
 use crate::{copy, scene};
@@ -282,7 +283,8 @@ struct Meshes {
     ground: GpuMesh,
     hedges: GpuMesh,
     edibles: Vec<(EdibleKind, GpuMesh)>,
-    bunny: GpuMesh,
+    /// The bunny at each size tier.
+    bunny: Vec<GpuMesh>,
     ear: GpuMesh,
     farmer: GpuMesh,
     leg: GpuMesh,
@@ -291,30 +293,30 @@ struct Meshes {
     shadow: GpuMesh,
     crumb: GpuMesh,
     dot: GpuMesh,
-    pot: GpuMesh,
-    gnome: GpuMesh,
-    fence: GpuMesh,
-    gap: GpuMesh,
-    barrow: GpuMesh,
+    obstacles: Vec<(ObstacleKind, GpuMesh)>,
+    powers: Vec<(PowerKind, GpuMesh)>,
+    pieces: Vec<(Piece, GpuMesh)>,
 }
 
 impl Meshes {
     fn obstacle(&self, kind: ObstacleKind) -> &GpuMesh {
-        match kind {
-            ObstacleKind::Gnome => &self.gnome,
-            ObstacleKind::Fence => &self.fence,
-            ObstacleKind::Gap | ObstacleKind::Tunnel | ObstacleKind::Wire => &self.gap,
-            ObstacleKind::Barrow | ObstacleKind::Scarecrow => &self.barrow,
-            _ => &self.pot,
-        }
+        pick(&self.obstacles, kind)
+    }
+
+    fn power(&self, kind: PowerKind) -> &GpuMesh {
+        pick(&self.powers, kind)
     }
 
     fn edible(&self, kind: EdibleKind) -> &GpuMesh {
-        self.edibles
-            .iter()
-            .find(|(k, _)| *k == kind)
-            .map_or(&self.edibles[0].1, |(_, mesh)| mesh)
+        pick(&self.edibles, kind)
     }
+}
+
+fn pick<K: PartialEq>(meshes: &[(K, GpuMesh)], kind: K) -> &GpuMesh {
+    meshes
+        .iter()
+        .find(|(k, _)| *k == kind)
+        .map_or(&meshes[0].1, |(_, mesh)| mesh)
 }
 
 struct Particle {
@@ -660,7 +662,9 @@ impl App {
 
     fn rebuild_bunny(&mut self) {
         let fur = self.fur();
-        self.gpu.refill(&mut self.meshes.bunny, &scene::bunny(fur));
+        for (tier, mesh) in self.meshes.bunny.iter_mut().enumerate() {
+            self.gpu.refill(mesh, &scene::bunny(fur, tier as u8));
+        }
         self.gpu.refill(&mut self.meshes.ear, &scene::ear(fur));
     }
 
@@ -941,7 +945,13 @@ impl App {
         };
         self.gpu.camera(&view_projection, vw, vh);
         self.gpu.next_id.set(0);
-        self.draw_world(alpha, bunny, farmer);
+        if self.options.kit {
+            let view_projection = kit_camera(aspect);
+            self.gpu.camera(&view_projection, vw, vh);
+            self.draw_kit();
+        } else {
+            self.draw_world(alpha, bunny, farmer);
+        }
         if let (true, Some(outline)) = (offscreen, self.outline.as_ref()) {
             outline.finish(
                 &gl,
@@ -958,7 +968,9 @@ impl App {
         }
         self.gpu.lined.set(false);
         self.gpu.look.set(Look::Gray);
-        self.draw_map(width, height, bunny, farmer);
+        if !self.options.kit {
+            self.draw_map(width, height, bunny, farmer);
+        }
     }
 
     fn camera(&self, bunny: Vec2, farmer: Vec2, aspect: f32) -> Mat4 {
@@ -1048,6 +1060,17 @@ impl App {
             );
             gpu.draw(m.obstacle(cell.kind), &model, WHITE, line);
         }
+        gpu.look.set(Look::Chroma);
+        for (index, p) in garden.powers.iter().enumerate() {
+            if game.taken[index] {
+                continue;
+            }
+            let at = point(garden.point(p.edge, p.s, i32::from(p.lane) * lane));
+            let bob = 0.25 + 0.08 * (self.time * 2.5 + index as f32).sin();
+            let model = scene::place(Vec3::new(at.x, bob, at.y), self.time * 1.8, 1.2);
+            gpu.draw(m.power(p.kind), &model, WHITE, Some((ink, LINE * 1.5)));
+        }
+        gpu.look.set(Look::Gray);
         // The bunny.
         let b = &game.bunny;
         let fur = rgb(self.fur());
@@ -1085,7 +1108,7 @@ impl App {
                 size,
             ));
         let outline = Some(([fur[0] * 0.38, fur[1] * 0.36, fur[2] * 0.36], LINE));
-        gpu.draw(&m.bunny, &body, WHITE, outline);
+        gpu.draw(&m.bunny[usize::from(b.tier)], &body, WHITE, outline);
         let flop = if b.mv == Move::Run {
             -0.45
         } else {
@@ -1115,6 +1138,93 @@ impl App {
                     * Mat4::from_scale(Vec3::splat(scale))),
                 p.colour,
                 None,
+            );
+        }
+    }
+
+    /// The kit sheet (`#kit`): every model in rows, for review.
+    fn draw_kit(&self) {
+        let gpu = &self.gpu;
+        let m = &self.meshes;
+        let ink = rgb(scene::INK);
+        let line = Some((ink, LINE));
+        let place = |row: f32, column: usize, count: usize, spacing: f32| {
+            let x = (column as f32 - (count as f32 - 1.0) / 2.0) * spacing;
+            Vec3::new(x, 0.0, row)
+        };
+        gpu.look.set(Look::Ground);
+        gpu.draw(
+            &m.ground,
+            &Mat4::from_translation(Vec3::new(-30.0, 0.0, -20.0)),
+            WHITE,
+            None,
+        );
+        gpu.look.set(Look::Gray);
+        let count = m.obstacles.len();
+        for (i, (_, mesh)) in m.obstacles.iter().enumerate() {
+            gpu.draw(
+                mesh,
+                &scene::place(place(0.0, i, count, 1.6), 0.5, 1.0),
+                WHITE,
+                line,
+            );
+        }
+        gpu.look.set(Look::Chroma);
+        let count = m.edibles.len() + m.powers.len() + 5;
+        for (i, (_, mesh)) in m.edibles.iter().enumerate() {
+            gpu.draw(
+                mesh,
+                &scene::place(place(3.0, i, count, 1.1), 0.5, 1.0),
+                WHITE,
+                Some((ink, LINE * 1.5)),
+            );
+        }
+        for (i, (_, mesh)) in m.powers.iter().enumerate() {
+            let at = place(3.0, m.edibles.len() + i, count, 1.1);
+            gpu.draw(
+                mesh,
+                &scene::place(at, 0.5, 1.2),
+                WHITE,
+                Some((ink, LINE * 1.5)),
+            );
+        }
+        for (tier, mesh) in m.bunny.iter().enumerate() {
+            let at = place(3.0, m.edibles.len() + m.powers.len() + tier, count, 1.1);
+            let size = scene::metres(TIER_HEIGHT[tier]) * DRAWN;
+            let fur = rgb(shade::SHADES[tier * 5]);
+            gpu.draw(
+                mesh,
+                &scene::place(at, 0.6, size),
+                WHITE,
+                Some(([fur[0] * 0.38, fur[1] * 0.36, fur[2] * 0.36], LINE)),
+            );
+        }
+        gpu.look.set(Look::Gray);
+        gpu.draw(
+            &m.farmer,
+            &scene::place(Vec3::new(-9.0, 0.0, 7.0), 0.5, 1.0),
+            WHITE,
+            line,
+        );
+        gpu.draw(
+            &m.net,
+            &(scene::place(Vec3::new(-9.0, 0.0, 7.0), 0.5, 1.0)
+                * Mat4::from_translation(Vec3::new(0.36, 1.0, 0.28))),
+            WHITE,
+            line,
+        );
+        let count = m.pieces.len();
+        for (i, (kind, mesh)) in m.pieces.iter().enumerate() {
+            let scale = match kind {
+                Piece::Mound | Piece::Pond => 0.18,
+                Piece::Tree | Piece::Arch | Piece::Gate | Piece::Board => 0.45,
+                _ => 0.8,
+            };
+            gpu.draw(
+                mesh,
+                &scene::place(place(8.0, i, count, 2.2), 0.5, scale),
+                WHITE,
+                line,
             );
         }
     }
@@ -1416,7 +1526,9 @@ pub fn start() {
             .iter()
             .map(|kind| (*kind, gpu.upload(&scene::edible(*kind))))
             .collect(),
-        bunny: gpu.upload(&scene::bunny(fur)),
+        bunny: (0..5)
+            .map(|tier| gpu.upload(&scene::bunny(fur, tier)))
+            .collect(),
         ear: gpu.upload(&scene::ear(fur)),
         farmer: gpu.upload(&scene::farmer()),
         leg: gpu.upload(&scene::leg()),
@@ -1425,11 +1537,18 @@ pub fn start() {
         shadow: gpu.upload(&scene::shadow()),
         crumb: gpu.upload(&scene::crumb()),
         dot: gpu.upload(&scene::dot()),
-        pot: obstacle(ObstacleKind::Pot),
-        gnome: obstacle(ObstacleKind::Gnome),
-        fence: obstacle(ObstacleKind::Fence),
-        gap: obstacle(ObstacleKind::Gap),
-        barrow: obstacle(ObstacleKind::Barrow),
+        obstacles: ObstacleKind::ALL
+            .iter()
+            .map(|kind| (*kind, obstacle(*kind)))
+            .collect(),
+        powers: PowerKind::ALL
+            .iter()
+            .map(|kind| (*kind, gpu.upload(&kit::power(*kind))))
+            .collect(),
+        pieces: Piece::ALL
+            .iter()
+            .map(|kind| (*kind, gpu.upload(&kit::piece(*kind))))
+            .collect(),
     };
     let touch = window
         .match_media("(pointer: coarse)")
@@ -1479,6 +1598,9 @@ pub fn start() {
         shown: (usize::MAX, 0, Phase::Over),
     };
     app.new_run();
+    if app.options.kit {
+        show(&app.hud.root, false);
+    }
     let app = Rc::new(RefCell::new(app));
 
     {
@@ -1562,6 +1684,14 @@ pub fn start() {
     if let Some(callback) = first.borrow().as_ref() {
         let _ = window.request_animation_frame(callback.as_ref().unchecked_ref());
     }
+}
+
+/// The kit sheet's fixed camera, over three rows of models.
+fn kit_camera(aspect: f32) -> Mat4 {
+    let eye = Vec3::new(0.0, 9.0, 17.0);
+    let look = Vec3::new(0.0, 0.0, 4.0);
+    Mat4::perspective_rh_gl(45.0_f32.to_radians(), aspect, NEAR, FAR)
+        * Mat4::look_at_rh(eye, look, Vec3::Y)
 }
 
 /// The animation-frame callback, kept so it can ask for the next frame.
