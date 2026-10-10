@@ -14,6 +14,8 @@ Seven themes recur across sections:
 
 Bottom line: the codebase is not in crisis, but most of its safety comes from careful authors, not from checks. The cheapest high-value work is a short list of security and money-path fixes (Phase 0) and making the existing gates actually run and pass (Phase 1). After that, the biggest payoff comes from removing the psionic research code from the serving build and replacing the copied infrastructure helpers with one shared version each. Splitting the hub crates and giant files is worthwhile but should follow, because a lot of it becomes mechanical once the shared helpers and gates exist.
 
+**Remediation:** fixes landed after the snapshot, including the one critical finding (CLI-01), are logged in [remediation.md](remediation.md).
+
 ## Scope and method
 
 - **Snapshot:** commit `3168c986aa11e18a8bd30f52c270f609e49b3815`, audited 2026-10-10.
