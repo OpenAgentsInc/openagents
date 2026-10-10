@@ -11,14 +11,24 @@ use super::*;
 
 const TOKEN: &str = "sess_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
-/// A website whose `/device/token` answers pending until `approve_after`
-/// polls, then the token (or `access_denied` when `deny`).
+/// A website whose `/v1/device/token` answers pending until
+/// `approve_after` polls, then the token (or `access_denied` when `deny`).
 async fn site(approve_after: usize, deny: bool) -> (String, Arc<AtomicUsize>) {
+    site_at("/v1", approve_after, deny).await
+}
+
+/// [`site`] with device sign-in under `prefix`: `""` is a site from
+/// before #11158, which serves only `/device/*`.
+async fn site_at(
+    prefix: &'static str,
+    approve_after: usize,
+    deny: bool,
+) -> (String, Arc<AtomicUsize>) {
     let polls = Arc::new(AtomicUsize::new(0));
     let counted = polls.clone();
     let router = Router::new()
         .route(
-            "/device/code",
+            &format!("{prefix}/device/code"),
             post(|Json(body): Json<Value>| async move {
                 assert_eq!(body["app"], "Coder");
                 assert_eq!(body["computer"], "box");
@@ -31,7 +41,7 @@ async fn site(approve_after: usize, deny: bool) -> (String, Arc<AtomicUsize>) {
             }),
         )
         .route(
-            "/device/token",
+            &format!("{prefix}/device/token"),
             post(move |Json(body): Json<Value>| {
                 let polls = counted.clone();
                 async move {
@@ -60,7 +70,7 @@ async fn site(approve_after: usize, deny: bool) -> (String, Arc<AtomicUsize>) {
             }),
         )
         .route(
-            "/device/sign-out",
+            &format!("{prefix}/device/sign-out"),
             post(|headers: HeaderMap| async move {
                 assert_eq!(
                     headers["authorization"].to_str().unwrap(),
@@ -109,6 +119,16 @@ async fn a_sign_in_waits_for_approval_and_keeps_the_token_private() {
     Saved::forget(&folder).unwrap();
     assert_eq!(Saved::load(&folder), None);
     Saved::forget(&folder).unwrap();
+}
+
+#[tokio::test]
+async fn an_older_site_signs_in_at_its_device_paths() {
+    let (origin, polls) = site_at("", 1, false).await;
+    let started = start(&origin, "Coder", "box").await.unwrap();
+    let saved = wait(&origin, &started).await.unwrap();
+    assert_eq!(polls.load(Ordering::SeqCst), 1);
+    assert_eq!(saved.token(), TOKEN);
+    sign_out(&saved).await.unwrap();
 }
 
 #[tokio::test]

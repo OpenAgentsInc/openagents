@@ -3,12 +3,12 @@
 //!
 //! The device-code flow (RFC 8628) against the website:
 //!
-//! 1. [`start`] asks `POST {origin}/device/code` for a short code and
+//! 1. [`start`] asks `POST {origin}/v1/device/code` for a short code and
 //!    the page to enter it on (`{origin}/device`).
 //! 2. The person opens that page (signed in), checks the code, and
 //!    approves. [`open_browser`] opens it when this computer has a
 //!    browser.
-//! 3. [`wait`] polls `POST {origin}/device/token` at the server's
+//! 3. [`wait`] polls `POST {origin}/v1/device/token` at the server's
 //!    interval (slower on `slow_down`) until the account's token arrives,
 //!    or the code is denied or expires.
 //! 4. [`Saved::store`] keeps the token in a 0600 file; [`sign_out`] ends
@@ -247,7 +247,28 @@ async fn post(
     body: Value,
     bearer: Option<&str>,
 ) -> Result<(u16, Value), Error> {
-    let mut request = http.post(format!("{origin}{path}")).json(&body);
+    if let Some(answer) = send(http, origin, path, &body, bearer).await? {
+        return Ok(answer);
+    }
+    // Device sign-in is at `/v1/device/*` (#11158). A site that doesn't
+    // serve it there yet answers a plain `404`: ask its older `/device/*`.
+    match path.strip_prefix("/v1") {
+        Some(older) => send(http, origin, older, &body, bearer)
+            .await?
+            .ok_or_else(|| Error::Unreachable(origin.to_string())),
+        None => Err(Error::Unreachable(origin.to_string())),
+    }
+}
+
+/// One call. `None` is a `404` without a JSON answer: no such route here.
+async fn send(
+    http: &reqwest::Client,
+    origin: &str,
+    path: &str,
+    body: &Value,
+    bearer: Option<&str>,
+) -> Result<Option<(u16, Value)>, Error> {
+    let mut request = http.post(format!("{origin}{path}")).json(body);
     if let Some(token) = bearer {
         request = request.bearer_auth(token);
     }
@@ -256,11 +277,15 @@ async fn post(
         .await
         .map_err(|_| Error::Unreachable(origin.to_string()))?;
     let status = response.status().as_u16();
-    let body = response
-        .json::<Value>()
+    let text = response
+        .bytes()
         .await
         .map_err(|_| Error::Unreachable(origin.to_string()))?;
-    Ok((status, body))
+    match serde_json::from_slice::<Value>(&text) {
+        Ok(body) => Ok(Some((status, body))),
+        Err(_) if status == 404 => Ok(None),
+        Err(_) => Err(Error::Unreachable(origin.to_string())),
+    }
 }
 
 /// Ask `origin` to start a sign-in for `app` on this computer.
@@ -282,7 +307,7 @@ pub async fn start_paired(
     if let Some(pair) = pair.filter(|pair| valid_pair(pair)) {
         body["pair"] = json!(pair);
     }
-    let (status, body) = post(&http, origin, "/device/code", body, None).await?;
+    let (status, body) = post(&http, origin, "/v1/device/code", body, None).await?;
     if status != 200 {
         return Err(Error::Refused(
             body["error_description"]
@@ -313,7 +338,7 @@ async fn poll_with(http: &reqwest::Client, origin: &str, started: &Started) -> R
     let (status, body) = post(
         http,
         origin,
-        "/device/token",
+        "/v1/device/token",
         json!({
             "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
             "device_code": started.device_code,
@@ -386,7 +411,7 @@ pub async fn sign_out(saved: &Saved) -> Result<(), Error> {
     let (status, body) = post(
         &http,
         &saved.origin,
-        "/device/sign-out",
+        "/v1/device/sign-out",
         json!({}),
         Some(&saved.token),
     )
