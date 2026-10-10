@@ -672,14 +672,15 @@ pub(super) async fn work(output: &Output, request: Request) -> Result<u8, Failur
     let output = *output;
     let pool = Pool::granted().map_err(failed)?;
     let engine_fallback = request.engine_fallback;
-    let credentials = Arc::new(
-        tokio::task::spawn_blocking(move || {
-            super::boat::credentials(EngineLogins::ApiKeys, engine_fallback)
-        })
-        .await
-        .map_err(|_| failed("the run credentials could not be read"))?
-        .map_err(failed)?,
-    );
+    let mut credentials = tokio::task::spawn_blocking(move || {
+        super::boat::credentials(EngineLogins::ApiKeys, engine_fallback)
+    })
+    .await
+    .map_err(|_| failed("the run credentials could not be read"))?
+    .map_err(failed)?;
+    // Each host's runs join the account's agent lists (#11228).
+    super::fleet::lend_sign_in(&mut credentials.variables);
+    let credentials = Arc::new(credentials);
     let project = pool.project.clone();
     let listed = {
         let project = project.clone();

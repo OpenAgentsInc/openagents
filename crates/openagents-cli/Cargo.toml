@@ -69,6 +69,8 @@ libc = "0.2"
 # pull channel (#11223).
 mac-jobs = { path = "../mac-jobs" }
 coder-sync = { path = "../coder-sync" }
+# `chat work`: issue runs as rows of the account's agent lists (#11228).
+agent-fleet = { path = "../agent-fleet" }
 openagents-login = { path = "../openagents-login" }
 # `openagents vault`: the person's "only you" vault (NIP-VAULT tier user).
 oa-vault = { path = "../oa-vault" }

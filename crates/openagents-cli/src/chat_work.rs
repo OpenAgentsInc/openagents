@@ -11,6 +11,8 @@
 //! within the repository's claim window, not released) is skipped, and so
 //! is a closed one. Every flow's events stream here, marked with the
 //! issue, and each issue ends with one `issue` line saying what happened.
+//! Each flow is also a row of this computer's agent list on openagents.com
+//! and the phone, with Stop and Message ([`super::fleet`]).
 
 use std::io::Write;
 use std::path::Path;
@@ -39,6 +41,7 @@ const POLL: Duration = Duration::from_millis(300);
 enum Told {
     Started {
         issue: u64,
+        title: String,
         thread: String,
         task: String,
         project: String,
@@ -202,6 +205,11 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
     }
     drop(sender);
 
+    let fleet: super::fleet::Shared = std::sync::Arc::new((
+        std::sync::Mutex::new(super::fleet::Fleet::new(&openagents_login::computer_name())),
+        tokio::sync::Notify::new(),
+    ));
+    let reporter = super::fleet::spawn(std::sync::Arc::clone(&fleet), store.clone());
     let mut active: Vec<String> = Vec::new();
     let mut results: Vec<Value> = Vec::new();
     let mut tools: std::collections::HashMap<u64, Stream> = std::collections::HashMap::new();
@@ -231,6 +239,7 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
         match told {
             Told::Started {
                 issue,
+                title,
                 thread,
                 task,
                 project,
@@ -240,6 +249,9 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
                     let _ = Local::here(store.clone()).stop(&task);
                 }
                 active.push(task.clone());
+                super::fleet::update(&fleet, |fleet| {
+                    fleet.started(issue, &title, &task, agent_fleet::now_ms());
+                });
                 bind(&mut backend, &thread, &task, &project, issue).await;
                 event(
                     output,
@@ -252,6 +264,9 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
                 }
             }
             Told::Line { issue, line } => {
+                if let Ok(mut fleet) = fleet.0.lock() {
+                    fleet.seen(&line.task, &line.event);
+                }
                 show(output, issue, tools.entry(issue).or_default(), &line);
             }
             Told::Done {
@@ -264,6 +279,9 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
             } => {
                 if let Some(task) = &task {
                     active.retain(|running| running != task);
+                    super::fleet::update(&fleet, |fleet| {
+                        fleet.ended(task, &outcome, &message, agent_fleet::now_ms());
+                    });
                 }
                 let record = json!({"event": "issue", "issue": issue, "outcome": outcome,
                     "message": message, "thread": thread, "task": task, "commits": commits});
@@ -279,6 +297,7 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
     for worker in workers {
         let _ = tokio::task::spawn_blocking(move || worker.join()).await;
     }
+    super::fleet::close(&fleet, reporter).await;
     let good = |record: &Value| {
         matches!(
             record["outcome"].as_str(),
@@ -429,6 +448,7 @@ fn worker(
     let task = started.record.task.clone();
     let _ = sender.send(Told::Started {
         issue,
+        title: started.issue.title.clone(),
         thread: thread.clone(),
         task: task.clone(),
         project: started.record.project.clone(),
