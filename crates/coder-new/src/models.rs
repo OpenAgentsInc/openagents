@@ -17,6 +17,16 @@ pub const SHORTLIST: [&str; 7] = [
     "x-ai/grok-4.7",
 ];
 
+/// Whether `model` is one the person chose (#11132): any model but the
+/// free router, which picks a model itself. A chosen model's turn is never
+/// handed to another model; when it fails or is refused, the chat says so
+/// and offers another model.
+#[must_use]
+pub fn pinned(model: &str) -> bool {
+    let model = model.trim();
+    !model.is_empty() && model != DEFAULT_MODEL
+}
+
 /// Whether `model` takes images in a user message (#11173): the shortlist's
 /// vision models and the model families that all accept images. The free
 /// router and other models get a plain note with the file's path instead.
@@ -388,5 +398,20 @@ impl Picker {
                     .position(|model| model.plugin == selected.plugin && model.id == selected.id)
             })
             .unwrap_or(0);
+    }
+}
+
+#[cfg(test)]
+mod pinned_tests {
+    use super::*;
+
+    #[test]
+    fn every_model_but_the_free_router_is_the_persons_choice() {
+        assert!(!pinned(DEFAULT_MODEL));
+        assert!(!pinned(""));
+        assert!(!pinned("  openrouter/free "));
+        for model in SHORTLIST.iter().skip(1) {
+            assert!(pinned(model), "{model}");
+        }
     }
 }

@@ -17,6 +17,20 @@ use serde_json::{Value, json};
 use crate::bundled_runtime::RuntimeEvent;
 use crate::plugin_tools::{ExecutionSettings, GenerationProvider, redact_value};
 
+/// What a turn's model update names when the model the person chose
+/// failed or refused the turn and Coder did not switch to another
+/// (#11132): the app shows the failure with Try another model.
+pub const PINNED_MISSED: &str = "openagents/pinned-missed";
+
+/// The failure a chosen model's turn ends with: what OpenRouter said, that
+/// Coder kept to the chosen model, and the way to try another.
+#[must_use]
+pub fn pinned_failure(model: &str, reason: &str) -> String {
+    format!(
+        "{reason} {model} didn't answer, and Coder didn't switch because you chose it. Try another model: /models"
+    )
+}
+
 const CHECK_TIMEOUT: Duration = Duration::from_secs(15);
 const STREAM_TIMEOUT: Duration = Duration::from_secs(180);
 const KEY_BODY_LIMIT: usize = 64 * 1024;
@@ -335,6 +349,13 @@ impl Provider {
                         have_usage = true;
                     }
                     let Some(recovery) = recovery(&error, failures) else {
+                        // A model the person chose is never swapped for
+                        // another (#11132): the turn fails, says why, and
+                        // the app offers another model.
+                        if crate::models::pinned(model) {
+                            model_callback(PINNED_MISSED);
+                            return Err(pinned_failure(model, &stream_error(error)));
+                        }
                         return self
                             .fallback(
                                 InterruptedTurn {
@@ -1570,7 +1591,8 @@ mod tests {
         let mut models = vec![];
         let mut events = vec![];
         let reply = runtime().block_on(provider.chat_with_plugins(
-            "fixture/requested",
+            // The free router picks its own model, so another may finish the turn.
+            crate::models::DEFAULT_MODEL,
             &crate::models::GenerationOptions::default(),
             vec![Message::user(format!("Keep the refund judgment. Keep these credentials private: {FIXTURE_TOKEN} fixture-jev-key fixture-other-key."))],
             &execution,
@@ -1644,7 +1666,7 @@ mod tests {
             execution.jev_enabled = false;
             let reply = runtime()
                 .block_on(provider.chat_with_plugins(
-                    "fixture/requested",
+                    crate::models::DEFAULT_MODEL,
                     &crate::models::GenerationOptions::default(),
                     vec![Message::user("Complete the task.")],
                     &execution,
@@ -1658,6 +1680,52 @@ mod tests {
             assert_eq!(reply.model, "fixture/alternate");
             assert_eq!(reply.usage.total_tokens, 11);
             assert!(reply.first_text_ms.is_some());
+            assert_eq!(server.join().unwrap().len(), 1);
+        }
+    }
+
+    /// A model the person chose that fails or refuses the turn is never
+    /// swapped for another: the turn fails, says which model and why, and
+    /// names the way to try another (#11132).
+    #[test]
+    fn a_chosen_model_that_fails_or_refuses_is_not_switched() {
+        for status in [401, 402, 403, 404] {
+            let (base, server) = responses(vec![(
+                status,
+                String::new(),
+                format!("{{\"error\":{{\"message\":\"{FIXTURE_TOKEN}\"}}}}"),
+            )]);
+            let mut provider = Provider::with_base(ApiKey::new(FIXTURE_TOKEN), &base).unwrap();
+            provider.offline_fallback = Some(Arc::new(|_, _| -> Result<Value, String> {
+                panic!("a chosen model's turn must not go to another model")
+            }));
+            let mut execution = jev_settings(jev_plugin_endpoint(), None);
+            execution.jev_enabled = false;
+            let mut text = String::new();
+            let mut models = vec![];
+            let error = runtime()
+                .block_on(provider.chat_with_plugins(
+                    "anthropic/claude-fable-5.1",
+                    &crate::models::GenerationOptions::default(),
+                    vec![Message::user("Complete the task.")],
+                    &execution,
+                    &mut |delta| text.push_str(delta),
+                    &mut |model| models.push(model.to_owned()),
+                    &mut |_| {},
+                    &Arc::new(AtomicBool::new(false)),
+                ))
+                .unwrap_err();
+            assert!(error.contains(&format!("HTTP {status}")), "{error}");
+            assert!(
+                error.contains("anthropic/claude-fable-5.1 didn't answer"),
+                "{error}"
+            );
+            assert!(error.ends_with("Try another model: /models"), "{error}");
+            assert!(!error.contains(FIXTURE_TOKEN));
+            assert!(text.is_empty());
+            assert_eq!(models.last().map(String::as_str), Some(PINNED_MISSED));
+            assert!(!models.iter().any(|model| model == "openagents/fallback"));
+            // The failed request is not repeated either.
             assert_eq!(server.join().unwrap().len(), 1);
         }
     }
@@ -1764,7 +1832,7 @@ mod tests {
             }));
             let error = runtime()
                 .block_on(provider.chat_with_plugins(
-                    "fixture/requested",
+                    crate::models::DEFAULT_MODEL,
                     &crate::models::GenerationOptions::default(),
                     vec![Message::user("Complete the task.")],
                     &jev_settings(jev_plugin_endpoint(), None),

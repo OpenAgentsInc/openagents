@@ -72,6 +72,10 @@ use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKin
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
+/// What the composer holds after the model the person chose failed or
+/// refused a turn (#11132): Enter opens the model picker.
+pub const TRY_ANOTHER_MODEL: &str = "/models";
+
 /// Demo fixtures are available only in local development builds.
 pub const DEMO_AVAILABLE: bool = cfg!(debug_assertions);
 
@@ -749,6 +753,10 @@ impl App {
                 self.scroll_main_to_end();
             }
             live::Update::Model { model, .. } if self.live.busy => {
+                if model == provider::PINNED_MISSED {
+                    self.live.pinned_missed = true;
+                    return;
+                }
                 if model == "openagents/fallback" {
                     self.active_options = models::GenerationOptions::default();
                     return;
@@ -801,6 +809,7 @@ impl App {
                         self.live.partial.clear();
                         self.live.partial_model = None;
                         self.live.notice = None;
+                        self.live.pinned_missed = false;
                         if self.plugins.enabled && self.plugins.key_configured {
                             self.plugins.connection = plugins::Connection::Verified;
                         }
@@ -820,6 +829,16 @@ impl App {
                         self.live.notice = Some(error);
                         // A usage limit pauses the chat until it resets.
                         self.note_turn_error();
+                        // The model the person chose failed or refused the
+                        // turn (#11132): Try another model is one Enter away.
+                        if std::mem::take(&mut self.live.pinned_missed)
+                            && self.draft.text.trim().is_empty()
+                        {
+                            self.draft = Draft {
+                                text: TRY_ANOTHER_MODEL.into(),
+                                cursor: TRY_ANOTHER_MODEL.len(),
+                            };
+                        }
                     }
                 }
                 self.scroll_main_to_end();
@@ -1157,6 +1176,7 @@ impl App {
         self.live.partial.clear();
         self.live.partial_model = None;
         self.live.busy = true;
+        self.live.pinned_missed = false;
         self.live.reply_started_at = Some(std::time::Instant::now());
         self.history.dirty = true;
         self.active_options = if key.is_some() {

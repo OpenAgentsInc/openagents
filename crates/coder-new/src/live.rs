@@ -24,6 +24,10 @@ pub struct Chat {
     pub tokens: u64,
     /// The provider-reported dollars this chat's replies cost (#11179).
     pub cost_usd: f64,
+    /// The model the person chose failed or refused this turn and Coder
+    /// kept to it (#11132, [`crate::provider::PINNED_MISSED`]): the turn's
+    /// failure offers another model.
+    pub pinned_missed: bool,
     /// Standing instructions the model reads as system instructions every
     /// turn (`coder chat --instructions`). They are never an entry, so the
     /// transcript, a follower, and an export never show them.

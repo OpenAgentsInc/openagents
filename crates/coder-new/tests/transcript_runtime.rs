@@ -742,6 +742,48 @@ fn fallback_attribution_drops_options_the_fallback_did_not_receive() {
     );
 }
 
+/// The model the person chose failed or refused the turn (#11132): the
+/// failure stays on screen and Try another model is one Enter away; any
+/// other failure leaves the composer alone.
+#[test]
+fn a_chosen_model_that_misses_offers_another_model() {
+    let root = tempfile::tempdir().unwrap();
+    let mut app = live_app();
+    app.submit("Fix the build", root.path());
+    let request = app.request.take().unwrap();
+    app.apply_update(Update::Model {
+        id: request.id,
+        model: coder_new::provider::PINNED_MISSED.into(),
+    });
+    // The marker names no model that answered.
+    assert_eq!(app.live.partial_model, None);
+    let failure = coder_new::provider::pinned_failure(
+        "anthropic/claude-fable-5.1",
+        "OpenRouter denied this request (HTTP 403).",
+    );
+    app.apply_update(Update::Finished {
+        id: request.id,
+        result: Err(failure.clone()),
+    });
+    assert!(!app.live.busy);
+    assert_eq!(app.live.notice.as_deref(), Some(failure.as_str()));
+    assert!(failure.contains("Try another model"));
+    assert_eq!(app.draft.text, coder_new::TRY_ANOTHER_MODEL);
+    assert!(!app.live.pinned_missed);
+    key(&mut app, KeyCode::Enter);
+    assert!(app.model_picker.is_some());
+
+    // A failure on the free router, which picks its own model, offers nothing.
+    let mut app = live_app();
+    app.submit("Fix the build", root.path());
+    let request = app.request.take().unwrap();
+    app.apply_update(Update::Finished {
+        id: request.id,
+        result: Err("OpenRouter denied this request (HTTP 403).".into()),
+    });
+    assert!(app.draft.text.is_empty());
+}
+
 #[test]
 fn a_judged_step_shows_jevs_estimate_on_the_run_row_and_never_a_budget() {
     let mut app = live_app();
