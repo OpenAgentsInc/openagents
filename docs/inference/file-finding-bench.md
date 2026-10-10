@@ -563,3 +563,94 @@ each token set once and compares only the pairs that can reach the
 threshold (sizes within the ratio, and a shared token among each set's
 rarest). A test checks that its verdict is the all-pairs verdict. The check
 on this corpus takes 3 min 43 s in a debug build.
+
+## A head-only ranker on the frozen finder (#11217, roadmap X2a)
+
+This follows the Tassadar W3 rule. The finder (`scripts/filefind`) stays
+frozen as the exact core: its candidates and its 86 per-candidate features
+are inputs and are never trained. Only a small head learns on top of them.
+Evidence class: `measured`. The target is the one this bench scores:
+existing hand-written files the fix changed.
+
+**What runs.**
+- **Trainer.** `psionic-decision-train` in `crates/psionic` (psionic-train,
+  `src/decision_train.rs`). The head is an MLP: signed-log, standardized
+  finder features, optionally Clef's noul logit, and optionally a learned
+  16-wide projection of Clef's pooled head rows; 32 GELU units; one logit.
+  - Loss: weighted BCE. Optimizer: AdamW, with early stopping on the last
+    10% of the training issues.
+  - Each run writes a `measured` receipt: recipe, data and model digests,
+    seed, loss series and wall time.
+  - On the CPU, a full-pool run (1.3M rows) takes about 5 s, and a run with
+    hidden rows takes 2–3 min.
+  - Gradient check: the analytic gradient matches central differences to
+    1.5e-7 over 5 seeds.
+- **Hidden rows.** `psionic-openai-server --decision-export-rows DIR` wrote
+  them: f16 `last`, `question`, `option:true` and `option:false` rows per
+  question, joined to candidates by request sha256. psionic-train does not
+  depend on psionic-serve.
+- **Data.** `scripts/bench/file-relevance-ranker.py export|fresh|join|compare`.
+  Clef ran on coderos-4080 on these candidates:
+  - the numpy ranker's top 100 for the 100 bench issues (9,948 rows);
+  - its top 400 for the 8 newer-fix issues (3,188 rows);
+  - its top 50 for 220 of the corpus's training-partition issues (12,191
+    rows). The run was cut short to free the 4080 for production decisions.
+- **Comparison.** Recall over every existing hand-written fix file, on the
+  finder's natural candidate pool. The standard error of the difference is
+  clustered by issue. The numpy ranker is the bench's held-out model (trained
+  on the 1,484 older cases) on the bench, and the shipped model on the
+  newer-fix set; each head trains on the same cases as its baseline.
+- **Newer-fix caveat.** The newer-fix set was replayed without the issue
+  embedding for 5 of 8 issues, because OpenRouter is out of credit. Its
+  baseline is therefore 0.81 at 400, not the 0.85 recorded with embeddings.
+
+Mean of 3 seeds; in brackets, the mean difference from the numpy ranker and
+the mean SE:
+
+| Bench (100 issues) | @20 | @50 | @100 | @400 |
+|---|---:|---:|---:|---:|
+| numpy ranker | 0.524 | 0.752 | 0.853 | 0.952 |
+| head, finder features only, full pool | 0.518 (−0.006, 0.014) | 0.716 (−0.036, 0.013) | 0.837 (−0.016, 0.010) | 0.953 (+0.001, 0.004) |
+| re-rank top 100: features only | 0.465 (−0.059, 0.016) | 0.687 (−0.066, 0.017) | = | = |
+| re-rank top 100: + Clef logit | 0.481 (−0.043, 0.020) | 0.700 (−0.052, 0.017) | = | = |
+| re-rank top 100: + Clef logit + hidden rows | 0.470 (−0.055, 0.022) | 0.682 (−0.070, 0.018) | = | = |
+| *no training:* numpy logit + Clef logit, top 100 | **0.593 (+0.068, 0.014)** | **0.786 (+0.034, 0.011)** | = | = |
+
+| Newer-fix set (8 issues, 100 files) | @50 | @100 | @200 | @400 |
+|---|---:|---:|---:|---:|
+| numpy ranker | 0.400 | 0.550 | 0.680 | 0.810 |
+| head, finder features only | 0.407 (+0.007, 0.041) | 0.513 (−0.037, 0.031) | 0.663 (−0.017, 0.023) | 0.797 (−0.013, 0.020) |
+| re-rank top 400: + Clef logit + hidden rows | 0.500 (+0.100, 0.089) | 0.613 (+0.063, 0.043) | 0.750 (+0.070, 0.052) | = |
+| *no training:* numpy logit + Clef logit, top 400 | 0.520 (+0.120, 0.086) | **0.660 (+0.110, 0.041)** | **0.780 (+0.100, 0.043)** | = |
+
+"=" means unchanged by construction: a re-rank of the top K leaves recall
+at K and beyond where it was.
+
+**Verdict: the trained head does not ship.**
+- **Bench.** No trained variant beats the numpy ranker by 2 standard errors
+  at any cut. Every re-ranker trained on the 220 issues loses at @20 and @50.
+  The early-stopped epoch is 1–2, so the hidden-row projection (265k
+  parameters) overfits 11k rows at once.
+- **Calibration.** The full-pool head's calibration is no worse on the bench
+  (ECE 0.0067 against 0.0085). On the newer-fix set it is slightly worse
+  (ECE 0.0064 against 0.0038).
+- **What does help Clef: a frozen fusion.** Adding Clef's logit to the numpy
+  ranker's logit inside its top K, with no learned parameter, wins by more
+  than 2 SE:
+  - bench @20, +0.068 ± 0.014;
+  - bench @50, +0.034 ± 0.011;
+  - newer-fix @100, +0.110 ± 0.041;
+  - newer-fix @200, +0.100 ± 0.043.
+  
+  The trained heads lose because they cannot use the numpy ranker's logit:
+  on its own training cases that logit is in-sample.
+- **@400 (the map).** Clef has to score past rank 400 to change @400, at
+  about 0.18 s a file on the 4080.
+- **Open.** The fusion still needs a frozen evaluation plan and a gated
+  activation. That gate belongs to #11231 (`scripts/filefind/ranker_gate.py`),
+  and nothing here activates it.
+
+Receipts, comparison reports and data metadata are in
+`crates/psionic/fixtures/decision-train/file-relevance-v1/`. They chain the
+corpus manifest, the Clef artifact and head digests, the recipe digest, the
+data digest and the model digest.

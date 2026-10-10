@@ -207,10 +207,12 @@ impl RowExport {
                     bytes.extend_from_slice(&half::f16::from_f32(*value).to_le_bytes());
                 }
             }
-            files
-                .rows
-                .write_all(&bytes)
-                .map_err(|error| format!("row export: {error}"))?;
+            if let Err(error) = files.rows.write_all(&bytes) {
+                // a partial write would shift every later offset: cut it back
+                let keep = files.offset;
+                let _ = files.rows.set_len(keep);
+                return Err(format!("row export: {error}"));
+            }
             let line = json!({
                 "request_sha256": request_sha256,
                 "question": id,

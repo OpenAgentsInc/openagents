@@ -1,0 +1,63 @@
+{
+ "evidence_class": "measured",
+ "predictions_sha256": "sha256:f6a25172bf38be8db9db2069a184031dae86996fb76cb2d203c8ba67c25f9dec",
+ "rerank_k": 400,
+ "sets": {
+  "fresh": {
+   "issues": 8,
+   "fix_files": 100,
+   "@20": {
+    "baseline": 0.31,
+    "head": 0.31,
+    "diff": 0.0,
+    "se": 0.07091242083423346,
+    "wins_by_2se": false
+   },
+   "@50": {
+    "baseline": 0.4,
+    "head": 0.48,
+    "diff": 0.08,
+    "se": 0.09424878930635813,
+    "wins_by_2se": false
+   },
+   "@100": {
+    "baseline": 0.55,
+    "head": 0.64,
+    "diff": 0.09,
+    "se": 0.04686661925080579,
+    "wins_by_2se": false
+   },
+   "@200": {
+    "baseline": 0.68,
+    "head": 0.81,
+    "diff": 0.13,
+    "se": 0.04706324012887947,
+    "wins_by_2se": true
+   },
+   "@300": {
+    "baseline": 0.73,
+    "head": 0.81,
+    "diff": 0.08,
+    "se": 0.04345743401799709,
+    "wins_by_2se": false
+   },
+   "@400": {
+    "baseline": 0.81,
+    "head": 0.81,
+    "diff": 0.0,
+    "se": 0.0,
+    "wins_by_2se": false
+   },
+   "calibration": {
+    "baseline": {
+     "ece": 0.0037753806100181454,
+     "brier": 0.007993751935580936
+    },
+    "head": {
+     "ece": 0.2107775598503461,
+     "brier": 0.06982708719321493
+    }
+   }
+  }
+ }
+}

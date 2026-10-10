@@ -51,5 +51,29 @@
    "mean_p_true": 0.6847,
    "mean_p_false": 0.3354
   }
+ },
+ "target": "the fix changed this file: a commit that fixed the issue (subject carries (#N)) changed it. This is not relevance in general.",
+ "fitted_distribution": {
+  "corpus": "file-relevance-v1",
+  "tenant_corpus_digest": "sha256:4385be4e8bc8415f629df633d9d9a550174d366a9da967e69caf880c0c1069c4",
+  "partition": "calibration",
+  "positive_rate": 0.4795,
+  "candidates": "per issue: the fix's files (<=8), 3 siblings, 2 same-crate, 1 recent, 1 random",
+  "prompt": "file-relevance-v1 state: issue (2,500 chars) + FILE path + first 2,048 bytes; noul `relevant`"
+ },
+ "valid_only_for": "candidate lists drawn like file-relevance-v1 (about half fix files). Do not apply it to the finder's candidate pool.",
+ "natural_pool_check": {
+  "set": "finder top 100 for the 100 #11210 bench issues (9,948 rows, 6.0% fix files)",
+  "raw": {
+   "f1_at_0_5": 0.288,
+   "ece_p_true": 0.114,
+   "brier": 0.076
+  },
+  "mapped": {
+   "f1_at_0_5": 0.208,
+   "ece_p_true": 0.415,
+   "brier": 0.258
+  },
+  "verdict": "worse on the natural distribution: ECE(p) +0.301 +/- 0.006 and F1 -0.079 +/- 0.018 (bootstrap over issues)"
  }
 }

@@ -1,0 +1,90 @@
+{
+  "schema": "openagents.psionic.decision-train.receipt.v1",
+  "evidence_class": "measured",
+  "recipe": {
+    "hidden": 32,
+    "projection": 0,
+    "clef_logit": false,
+    "epochs": 12,
+    "batch": 512,
+    "learning_rate": 0.002,
+    "weight_decay": 0.0001,
+    "pos_weight": 3.0,
+    "neg_keep": 0.3,
+    "holdout": 0.1,
+    "seed": 13,
+    "hidden_rows_only": false
+  },
+  "recipe_digest": "sha256:fc40448f30586f56af1145dd70440dc2a7c917dae88cda02be97c3c95ea9717b",
+  "data_digest": "sha256:9bab7135a765e01f9c173d40cfc0f7761d8737f5462a7e4c283ec6bcaa9f1681",
+  "model_digest": "sha256:c9c1796c831d9fc9456c3b8dc1b111fc7a48cbcb98527e94c32f245def2e5a72",
+  "seed": 13,
+  "train_rows": 1318323,
+  "holdout_rows": 167993,
+  "train_issues": 1336,
+  "loss_series": [
+    {
+      "epoch": 1,
+      "train_loss": 0.07258309644891081,
+      "holdout_loss": 0.08087408676660035
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.04248721228235599,
+      "holdout_loss": 0.07457517080582497
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.04132572333683652,
+      "holdout_loss": 0.07400524096998416
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.04056832745824515,
+      "holdout_loss": 0.07360549191811683
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.04001283920664987,
+      "holdout_loss": 0.07440166737016844
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.03959329304699584,
+      "holdout_loss": 0.07444668418188026
+    },
+    {
+      "epoch": 7,
+      "train_loss": 0.039467815657780035,
+      "holdout_loss": 0.07569294423241181
+    },
+    {
+      "epoch": 8,
+      "train_loss": 0.039161597893024744,
+      "holdout_loss": 0.07426196794959897
+    },
+    {
+      "epoch": 9,
+      "train_loss": 0.038857854983853406,
+      "holdout_loss": 0.07503911048017811
+    },
+    {
+      "epoch": 10,
+      "train_loss": 0.03869864826507616,
+      "holdout_loss": 0.07640585782032941
+    },
+    {
+      "epoch": 11,
+      "train_loss": 0.03848312727582919,
+      "holdout_loss": 0.07545977450509334
+    },
+    {
+      "epoch": 12,
+      "train_loss": 0.038229359808110805,
+      "holdout_loss": 0.07503428296401908
+    }
+  ],
+  "best_epoch": 4,
+  "wall_seconds": 4.384767866,
+  "n_params": 2817
+}

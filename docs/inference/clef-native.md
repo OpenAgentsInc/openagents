@@ -325,12 +325,34 @@ request (about 1k tokens).
 - **Roadmap bar.** The locked F1 of 0.695 improves on the raw baseline,
   as #11216 asks, but stays under the roadmap's 0.75 bar for X1.
 
+**What the target is.** The label says the fix changed the file: a commit
+that fixed the issue changed it. That is not the same as "relevant", which
+is what the prompt asks (audit LEARN-03). The map calibrates the answer to
+that narrower target.
+
+**The map holds only on the distribution it was fitted on (LEARN-06).**
+The corpus is about 48% fix files by construction (fix files plus near
+neighbours), and the map moves the 0.5 crossing to a raw p of about 0.14.
+On the natural candidate distribution, the finder's top 100 for the 100
+#11210 bench issues (9,948 rows, 6.0% fix files), the same map makes things
+worse:
+
+| Finder top 100, bench issues | F1 @ 0.5 | ECE of p(true) | Brier on p(true) |
+|---|---:|---:|---:|
+| raw | 0.288 | 0.114 | 0.076 |
+| mapped | 0.208 | 0.415 | 0.258 |
+
+That is ECE +0.301 ± 0.006 and F1 −0.079 ± 0.018, bootstrapped over
+issues. The map file now records the target, the fitted distribution (the
+corpus digest, the partition, a 0.48 positive rate and the candidate rule)
+and this check, and it says it is valid only for candidate lists drawn the
+same way. It is opt-in (`--decision-calibration`), and no door applies it.
+A map for finder pools would have to be fitted on pool rows from the
+calibration issues. That run was stopped to free the 4080 for production
+decisions and is not done.
+
 **Limits.**
-- **Base rate.** The corpus is about 45% relevant by construction (fix files
-  plus near neighbours). The map moves the 0.5 crossing to a raw p of about
-  0.14, which suits a candidate list at that rate. On the finder's whole pool
-  (about 1% relevant) the mapped probability over-calls, so read it there as
-  a ranking score, or refit on pool-rate data.
+- **Base rate.** See above: the map is bound to the corpus's base rate.
 - **Ranking.** AUC does not change, because a monotone map cannot reorder
   candidates.
 

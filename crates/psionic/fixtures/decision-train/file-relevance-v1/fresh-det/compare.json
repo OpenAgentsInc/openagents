@@ -1,0 +1,63 @@
+{
+ "evidence_class": "measured",
+ "predictions_sha256": "sha256:40a5ff00dd33bb65a8ea32d0a5d944dad4ecdfe6aca530ef7ebc183e95156aac",
+ "rerank_k": 0,
+ "sets": {
+  "fresh": {
+   "issues": 8,
+   "fix_files": 100,
+   "@20": {
+    "baseline": 0.31,
+    "head": 0.26,
+    "diff": -0.05,
+    "se": 0.014658006101006468,
+    "wins_by_2se": false
+   },
+   "@50": {
+    "baseline": 0.4,
+    "head": 0.38,
+    "diff": -0.02,
+    "se": 0.0336244808775647,
+    "wins_by_2se": false
+   },
+   "@100": {
+    "baseline": 0.55,
+    "head": 0.48,
+    "diff": -0.07,
+    "se": 0.03901179308875715,
+    "wins_by_2se": false
+   },
+   "@200": {
+    "baseline": 0.68,
+    "head": 0.65,
+    "diff": -0.03,
+    "se": 0.02580985415357033,
+    "wins_by_2se": false
+   },
+   "@300": {
+    "baseline": 0.73,
+    "head": 0.7,
+    "diff": -0.03,
+    "se": 0.025408210146666037,
+    "wins_by_2se": false
+   },
+   "@400": {
+    "baseline": 0.81,
+    "head": 0.8,
+    "diff": -0.01,
+    "se": 0.023331646197508528,
+    "wins_by_2se": false
+   },
+   "calibration": {
+    "baseline": {
+     "ece": 0.0037753806100181454,
+     "brier": 0.007993751935580936
+    },
+    "head": {
+     "ece": 0.0063910297332908225,
+     "brier": 0.008223045528729126
+    }
+   }
+  }
+ }
+}

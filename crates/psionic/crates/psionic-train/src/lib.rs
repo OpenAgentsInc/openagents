@@ -76,6 +76,7 @@ mod cs336_a1_full_port_conformance;
 mod cs336_a1_reference_training;
 mod cs336_a2_ddp_bucketed_receipt;
 mod cs336_a1_real_gradient_reference;
+pub mod decision_train;
 mod cs336_a3_scaling_reference;
 mod cs336_a5_alignment_reference;
 mod cs336_a2_ddp_individual_parameters_receipt;
