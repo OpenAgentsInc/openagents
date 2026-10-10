@@ -7,7 +7,8 @@ picked. Almost everything is deterministic lookups in indexes precomputed
 from the repository's Git history:
 
   emb    embedding similarity between the issue and each file's path plus
-         head (text-embedding-3-small, 256 dims, cached per blob)
+         head (Vertex AI text-embedding-005, else OpenRouter's
+         text-embedding-3-small; 256 dims, cached per blob and per model)
   sym    paths, file names, crate names, identifiers and literal strings the
          issue names, resolved with `git grep` (definitions and mentions)
   co     files that historically changed together with the seed files
@@ -28,7 +29,8 @@ code identifiers, quoted literals); no keyword decides a route. Ranking is
 the learned scorer.
 
 Usage
-    export OPENROUTER_API_KEY=...          # embeddings (never printed)
+    export GOOGLE_APPLICATION_CREDENTIALS=...  # embeddings on Vertex AI (first door)
+    export OPENROUTER_API_KEY=...          # embeddings fallback (never printed)
     python3 scripts/filefind/filefind.py index --repo . --issues closed.json
     python3 scripts/filefind/filefind.py query --repo . --issue 11210 --k 50
     python3 scripts/filefind/filefind.py query --repo . --text "..." --json
@@ -37,7 +39,7 @@ The index lives in ~/.cache/openagents/filefind/<repo name>/ (override with
 --cache). It holds vectors, paths and issue numbers/titles, no file contents.
 """
 import argparse, bisect, gzip, json, math, os, pickle, re, subprocess, sys, time
-import urllib.request, urllib.error
+import urllib.parse, urllib.request, urllib.error
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
@@ -111,15 +113,172 @@ def cat_heads(repo, shas, n=HEAD_CHARS * 2, cap=HEAD_CHARS):
 
 
 # ---------------------------------------------------------------- embeddings
+#
+# Two embedders. Vertex AI's text-embedding-005 (on the prepaid Google credit,
+# project openagentsgemini) is the first door whenever a Google credential is
+# here; OpenRouter's text-embedding-3-small is the fallback. Their vectors are
+# different models' and never mix: each has its own cache files (Vertex's carry
+# the suffix VERTEX_TAG), and a query reads with the embedder its index was
+# built with (`index_embedder`). FILEFIND_EMBEDDINGS=vertex|openrouter forces one.
 
-def embed(texts, key, batch=128, workers=6, dims=DIMS):
-    """Unit vectors (float32, dims) for texts, in order."""
+EMBEDDINGS_VAR = "FILEFIND_EMBEDDINGS"
+VERTEX_MODEL = os.environ.get("FILEFIND_VERTEX_MODEL", "text-embedding-005")
+VERTEX_TAG = ".vertex-" + VERTEX_MODEL
+VERTEX_MAX_INPUTS = 250
+VERTEX_MAX_CHARS = 45000   # ~15k tokens at 3 chars a token, under the 20k-token request cap
+TOKEN_URL = "https://oauth2.googleapis.com/token"
+
+
+def _http_json(url, body=None, headers=None, timeout=120):
+    data = None if body is None else (body if isinstance(body, bytes) else json.dumps(body).encode())
+    r = urllib.request.Request(url, data=data, headers=headers or {})
+    with urllib.request.urlopen(r, timeout=timeout) as x:
+        return json.load(x)
+
+
+def google_key_file():
+    """GOOGLE_APPLICATION_CREDENTIALS, else the workspace's automation service-account key
+    (~/work/.secrets/gcp-mvp-automation.json, where `coder issue-run` reads its other
+    secrets) when that file is here."""
+    for g in (os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"),
+              os.path.expanduser("~/work/.secrets/gcp-mvp-automation.json")):
+        if g and os.path.exists(g):
+            return g
+    return None
+
+
+class GoogleToken:
+    """A Google OAuth access token, found the way inference::upstream::google::TokenSource
+    finds one: VERTEX_ACCESS_TOKEN, VERTEX_TOKEN_FILE, GOOGLE_APPLICATION_CREDENTIALS (a
+    service-account or authorized-user JSON; else `google_key_file`), the GCE metadata server when GCE_METADATA_HOST
+    or K_SERVICE is set, else `gcloud auth print-access-token` (honours CLOUDSDK_CONFIG).
+    Cached until five minutes before it expires. Never printed."""
+
+    def __init__(self):
+        import threading
+        self.lock = threading.Lock()
+        self.token, self.until = None, 0.0
+
+    @staticmethod
+    def kind():
+        """Which credential is here, without a network call; None when there is none."""
+        if os.environ.get("VERTEX_ACCESS_TOKEN"):
+            return "env"
+        if os.environ.get("VERTEX_TOKEN_FILE"):
+            return "file"
+        if google_key_file():
+            return "adc"
+        if os.environ.get("GCE_METADATA_HOST") or os.environ.get("K_SERVICE"):
+            return "metadata"
+        import shutil
+        if shutil.which("gcloud") and os.environ.get(EMBEDDINGS_VAR) == "vertex":
+            return "gcloud"
+        return None
+
+    def get(self):
+        k = self.kind() or "gcloud"
+        if k == "env":
+            return os.environ["VERTEX_ACCESS_TOKEN"].strip()
+        if k == "file":
+            return open(os.environ["VERTEX_TOKEN_FILE"]).read().strip()
+        with self.lock:
+            if self.token and time.time() < self.until:
+                return self.token
+            if k == "adc":
+                tok, ttl = self._adc(google_key_file())
+            elif k == "metadata":
+                host = os.environ.get("GCE_METADATA_HOST") or "metadata.google.internal"
+                d = _http_json(f"http://{host}/computeMetadata/v1/instance/service-accounts/default/token",
+                               headers={"Metadata-Flavor": "Google"}, timeout=10)
+                tok, ttl = d["access_token"], int(d.get("expires_in", 3600))
+            else:
+                tok = subprocess.run(["gcloud", "auth", "print-access-token"], check=True,
+                                     capture_output=True).stdout.decode().strip()
+                ttl = 1800
+            self.token, self.until = tok, time.time() + max(60, ttl - 300)
+            return tok
+
+    @staticmethod
+    def _adc(path):
+        info = json.load(open(path))
+        if info.get("type") == "authorized_user":
+            form = urllib.parse.urlencode({"grant_type": "refresh_token", "client_id": info["client_id"],
+                                           "client_secret": info["client_secret"],
+                                           "refresh_token": info["refresh_token"]}).encode()
+        else:
+            import base64
+            from cryptography.hazmat.primitives import hashes, serialization
+            from cryptography.hazmat.primitives.asymmetric import padding
+
+            def b64(b):
+                return base64.urlsafe_b64encode(b).rstrip(b"=")
+            now = int(time.time())
+            head = b64(json.dumps({"alg": "RS256", "typ": "JWT"}).encode())
+            claim = b64(json.dumps({"iss": info["client_email"], "aud": TOKEN_URL, "iat": now,
+                                    "exp": now + 3600,
+                                    "scope": "https://www.googleapis.com/auth/cloud-platform"}).encode())
+            key = serialization.load_pem_private_key(info["private_key"].encode(), password=None)
+            sig = b64(key.sign(head + b"." + claim, padding.PKCS1v15(), hashes.SHA256()))
+            form = urllib.parse.urlencode({"grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                                           "assertion": (head + b"." + claim + b"." + sig).decode()}).encode()
+        d = _http_json(TOKEN_URL, form, {"Content-Type": "application/x-www-form-urlencoded"}, timeout=30)
+        return d["access_token"], int(d.get("expires_in", 3600))
+
+
+class VertexEmbedder:
+    """text-embedding-005 on Vertex AI (`predict`), truncated to `dims` dimensions."""
+    name = "vertex"
+
+    def __init__(self):
+        self.model = VERTEX_MODEL
+        self.tag = VERTEX_TAG
+        self.project = (os.environ.get("KB_VERTEX_PROJECT") or os.environ.get("VERTEX_PROJECT")
+                        or "openagentsgemini")
+        self.location = os.environ.get("KB_VERTEX_LOCATION") or "us-central1"
+        self.url = (f"https://{self.location}-aiplatform.googleapis.com/v1/projects/{self.project}"
+                    f"/locations/{self.location}/publishers/google/models/{self.model}:predict")
+        self.token = GoogleToken()
+
+    def __bool__(self):
+        return True
+
+    def chunks(self, texts):
+        out, cur, n = [], [], 0
+        for t in texts:
+            t = t or " "
+            if cur and (len(cur) >= VERTEX_MAX_INPUTS or n + len(t) > VERTEX_MAX_CHARS):
+                out.append(cur)
+                cur, n = [], 0
+            cur.append(t)
+            n += len(t)
+        if cur:
+            out.append(cur)
+        return out
+
+    def call(self, chunk, dims, task):
+        body = {"instances": [{"content": t, "task_type": task} for t in chunk],
+                "parameters": {"outputDimensionality": dims, "autoTruncate": True}}
+        d = _http_json(self.url, body, {"Authorization": f"Bearer {self.token.get()}",
+                                        "Content-Type": "application/json"})
+        if "predictions" not in d:
+            raise RuntimeError(str(d)[:200])
+        return [p["embeddings"]["values"] for p in d["predictions"]]
+
+
+def embed(texts, key, batch=128, workers=6, dims=DIMS, task="RETRIEVAL_DOCUMENT"):
+    """Unit vectors (float32, dims) for texts, in order. `key` is a VertexEmbedder or an
+    OpenRouter key; `task` is Vertex's task type (issue text is RETRIEVAL_QUERY, both when
+    indexed and when asked, so a replayed issue and a live one embed alike)."""
+    vertex = isinstance(key, VertexEmbedder)
+
     def one(chunk):
         body = json.dumps({"model": EMBED_MODEL, "input": chunk, "dimensions": dims}).encode()
         for attempt in range(6):
-            r = urllib.request.Request(EMBED_URL, data=body, headers={
-                "Authorization": f"Bearer {key}", "Content-Type": "application/json"})
             try:
+                if vertex:
+                    return key.call(chunk, dims, task)
+                r = urllib.request.Request(EMBED_URL, data=body, headers={
+                    "Authorization": f"Bearer {key}", "Content-Type": "application/json"})
                 with urllib.request.urlopen(r, timeout=120) as x:
                     d = json.load(x)
                 if "data" not in d:
@@ -134,7 +293,11 @@ def embed(texts, key, batch=128, workers=6, dims=DIMS):
                 if attempt == 5:
                     raise
                 time.sleep(2 ** attempt)
-    chunks = [texts[i:i + batch] for i in range(0, len(texts), batch)]
+    if vertex:
+        chunks = key.chunks(texts)
+        workers = max(workers, 8)
+    else:
+        chunks = [texts[i:i + batch] for i in range(0, len(texts), batch)]
     with ThreadPoolExecutor(workers) as ex:
         res = list(ex.map(one, chunks))
     m = np.array([v for c in res for v in c], dtype=np.float32).reshape(-1, dims)
@@ -142,7 +305,7 @@ def embed(texts, key, batch=128, workers=6, dims=DIMS):
     return m
 
 
-def embed_key(required=True):
+def openrouter_key():
     """OPENROUTER_API_KEY, else the OpenAgents key file ~/.openagents/openrouter.json."""
     k = os.environ.get("OPENROUTER_API_KEY")
     if not k:
@@ -150,9 +313,37 @@ def embed_key(required=True):
             k = json.load(open(os.path.expanduser("~/.openagents/openrouter.json"))).get("api_key")
         except (OSError, ValueError):
             k = None
-    if not k and required:
-        sys.exit("OPENROUTER_API_KEY is not set (embeddings)")
     return k
+
+
+def embed_key(required=True, cache=None):
+    """The embedder to use: Vertex AI when a Google credential is here (or
+    FILEFIND_EMBEDDINGS=vertex), else OpenRouter's key; None when neither. With `cache`,
+    the embedder that matches the vectors already there (`index_embedder`)."""
+    forced = os.environ.get(EMBEDDINGS_VAR, "").strip()
+    if forced not in ("", "vertex", "openrouter"):
+        sys.exit(f"{EMBEDDINGS_VAR} is vertex or openrouter, not {forced}")
+    vertex = VertexEmbedder() if forced == "vertex" or (not forced and GoogleToken.kind()) else None
+    router = openrouter_key() if forced != "vertex" else None
+    k = vertex or router
+    if cache and vertex and router and not forced:
+        k = index_embedder(cache, vertex, router)
+    if not k and required:
+        sys.exit("no embeddings credential: set GOOGLE_APPLICATION_CREDENTIALS (Vertex AI) "
+                 "or OPENROUTER_API_KEY")
+    return k
+
+
+def index_embedder(cache, vertex, router):
+    """Vertex unless the cache holds only OpenRouter vectors (an index built before the
+    switch reads with its own model until it is rebuilt with Vertex)."""
+    has = lambda tag: os.path.exists(os.path.join(cache, f"blobs{tag}.npz"))
+    return router if has("") and not has(VERTEX_TAG) else vertex
+
+
+def emb_tag(key):
+    """The cache-file suffix of an embedder's vectors."""
+    return key.tag if isinstance(key, VertexEmbedder) else ""
 
 
 def file_text(path, head):
@@ -202,9 +393,13 @@ def dirs_index(h):
 
 
 class Index:
-    def __init__(self, cache):
+    def __init__(self, cache, key=None):
         self.cache = cache
         os.makedirs(cache, exist_ok=True)
+        # The embedder whose vectors this index holds: its cache files carry its tag, so
+        # vectors of two models never meet (`embed_key`, `index_embedder`).
+        self.key = key if key is not None else embed_key(required=False, cache=cache)
+        self.tag = emb_tag(self.key)
         self.hist = None
         self.issues = None
         self.blob_rows = {}
@@ -214,7 +409,7 @@ class Index:
     def load(self, need_blobs=True):
         with open(os.path.join(self.cache, "history.pkl"), "rb") as f:
             self.hist = pickle.load(f)
-        p = os.path.join(self.cache, "issues.pkl")
+        p = self.path("issues.pkl")
         if os.path.exists(p):
             with open(p, "rb") as f:
                 self.issues = pickle.load(f)
@@ -228,8 +423,17 @@ class Index:
         self.feedback = load_feedback(self.cache)
         return self
 
+    def path(self, name):
+        """A vector cache file of this index's embedder (`blobs.npz` -> `blobs<tag>.npz`)."""
+        base, ext = name.rsplit(".", 1)
+        return os.path.join(self.cache, f"{base}{self.tag}.{ext}")
+
+    def check(self, key):
+        if emb_tag(key) != self.tag:
+            raise RuntimeError("this index holds another embedding model's vectors")
+
     def load_blobs(self):
-        p = os.path.join(self.cache, "blobs.npz")
+        p = self.path("blobs.npz")
         if os.path.exists(p):
             z = np.load(p)
             keys = z["keys"]
@@ -238,7 +442,7 @@ class Index:
 
     def save_blobs(self):
         keys = np.array(list(self.blob_rows.keys()), dtype="S40") if self.blob_rows else np.zeros(0, "S40")
-        atomic(os.path.join(self.cache, "blobs.npz"), lambda f: np.savez(f, keys=keys, vecs=self.blob_mat))
+        atomic(self.path("blobs.npz"), lambda f: np.savez(f, keys=keys, vecs=self.blob_mat))
 
     def build_history(self, repo, rev):
         raw = git(repo, "log", "--reverse", "--no-merges", "--format=%x00%H%x09%ct%x09%s",
@@ -315,7 +519,8 @@ class Index:
 
     def build_commit_vecs(self, key):
         """Embed every commit subject (cached by sha)."""
-        p = os.path.join(self.cache, "commits.npz")
+        self.check(key)
+        p = self.path("commits.npz")
         rows = {}
         if os.path.exists(p):
             z = np.load(p)
@@ -331,7 +536,7 @@ class Index:
         return len(todo)
 
     def load_commit_vecs(self):
-        p = os.path.join(self.cache, "commits.npz")
+        p = self.path("commits.npz")
         self.commit_vecs = None
         if os.path.exists(p):
             z = np.load(p)
@@ -345,12 +550,14 @@ class Index:
             self.commit_vecs = m
 
     def build_issues(self, issues_json, key):
+        self.check(key)
         rows = json.load(open(issues_json))
         old = {}
         if self.issues:
             old = {n: self.issues["vecs"][i] for i, n in enumerate(self.issues["numbers"])}
         todo = [r for r in rows if r["number"] not in old]
-        vecs = embed([issue_text(r["title"], r["body"]) for r in todo], key) if todo else np.zeros((0, DIMS))
+        vecs = embed([issue_text(r["title"], r["body"]) for r in todo], key,
+                     task="RETRIEVAL_QUERY") if todo else np.zeros((0, DIMS))
         for r, v in zip(todo, vecs):
             old[r["number"]] = v
         titles = dict(self.issues["titles"]) if self.issues else {}
@@ -358,10 +565,11 @@ class Index:
         nums = sorted(old)
         self.issues = {"numbers": np.array(nums), "vecs": np.array([old[n] for n in nums], np.float32),
                        "titles": titles}
-        atomic(os.path.join(self.cache, "issues.pkl"), lambda f: pickle.dump(self.issues, f, protocol=4))
+        atomic(self.path("issues.pkl"), lambda f: pickle.dump(self.issues, f, protocol=4))
 
     def ensure_blobs(self, repo, tree, key, log=True):
         """Embed every blob of `tree` the cache lacks. Returns how many."""
+        self.check(key)
         todo = sorted({s for s in tree.values() if s.encode() not in self.blob_rows})
         if not todo:
             return 0
@@ -1565,10 +1773,16 @@ def cmd_feedback(a):
 
 
 def cmd_index(a):
-    key = embed_key(required=False)
+    # Building uses the first door (Vertex when a Google credential is here), so an index
+    # built before the switch is rebuilt with Vertex beside it; queries read whichever
+    # model's vectors are there (`index_embedder`) until the rebuild is done.
+    ix = Index(a.cache or default_cache(a.repo), embed_key(required=False) or None)
+    key = ix.key
     if not key:
         print("no embeddings key: refreshing history and the token indexes only", file=sys.stderr)
-    ix = Index(a.cache or default_cache(a.repo))
+    else:
+        print(f"embeddings: {key.name + ' ' + key.model if isinstance(key, VertexEmbedder) else 'openrouter ' + EMBED_MODEL}",
+              file=sys.stderr)
     t0 = time.time()
     if os.path.exists(os.path.join(ix.cache, "history.pkl")) and not a.full:
         ix.load(need_blobs=False)
@@ -1586,12 +1800,12 @@ def cmd_index(a):
     if not issues and not a.no_issues:
         issues = os.path.join(ix.cache, "closed-issues.json")
         with open(issues, "wb") as f:
-            limit = a.issue_limit if not os.path.exists(os.path.join(ix.cache, "issues.pkl")) else 300
+            limit = a.issue_limit if not os.path.exists(ix.path("issues.pkl")) else 300
             f.write(subprocess.run(["gh", "issue", "list", "--state", "closed", "--limit", str(limit),
                                     "--json", "number,title,body,closedAt,createdAt"], cwd=a.repo,
                                    check=True, capture_output=True).stdout)
     if issues and key:
-        p = os.path.join(ix.cache, "issues.pkl")
+        p = ix.path("issues.pkl")
         if os.path.exists(p):
             ix.issues = pickle.load(open(p, "rb"))
         try:
@@ -1657,16 +1871,18 @@ def cmd_query(a):
         title, body = a.text.split("\n", 1)[0], a.text
     timing["fetch_issue"] = time.perf_counter() - t0
     t_all = time.perf_counter()  # "total" counts from here: the issue text in hand
-    key = embed_key(required=False)
+    cache = a.cache or default_cache(a.repo)
+    key = embed_key(required=False, cache=cache)
     pool = ThreadPoolExecutor(1)
     if key:  # the one network call runs while the indexes load and the token stages run
-        qvec = pool.submit(embed, [issue_text(title, body)], key)
+        qvec = pool.submit(embed, [issue_text(title, body)], key, task="RETRIEVAL_QUERY")
         qvec = _First(qvec)
     else:  # no embeddings: the deterministic stages still run; similarity features are zero
-        print("OPENROUTER_API_KEY is not set: running without embeddings (lower recall)", file=sys.stderr)
+        print("no embeddings credential (GOOGLE_APPLICATION_CREDENTIALS or OPENROUTER_API_KEY): "
+              "running without embeddings (lower recall)", file=sys.stderr)
         qvec = np.zeros(DIMS, np.float32)
     t0 = time.perf_counter()
-    ix = Index(a.cache or default_cache(a.repo)).load()
+    ix = Index(cache, key).load()
     model = json.load(open(a.model))
     timing["load"] = time.perf_counter() - t0
     t0 = time.perf_counter()

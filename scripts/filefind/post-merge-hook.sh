@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Keep the filefind indexes fresh after every pull or merge (issue #11210).
 # The repository's .githooks/post-merge calls this. Runs in the background, one
-# refresh at a time, and never fails the merge. Embeddings use OPENROUTER_API_KEY or
+# refresh at a time, and never fails the merge. Embeddings use Vertex AI (GOOGLE_APPLICATION_CREDENTIALS
+# or ~/work/.secrets/gcp-mvp-automation.json), else OPENROUTER_API_KEY or
 # ~/.openagents/openrouter.json; without either, history and the token indexes still
 # refresh (queries also refresh history on their own).
 set -u

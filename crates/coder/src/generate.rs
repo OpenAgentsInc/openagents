@@ -1059,12 +1059,25 @@ impl ResponsesDoor {
         location: &str,
         token: inference::upstream::google::TokenSource,
     ) -> Self {
+        Self::vertex_on(project, location, token, VERTEX_LANE.model())
+    }
+
+    /// As [`ResponsesDoor::vertex`], running `model` (a public id such as
+    /// `google/gemini-2.5-flash-lite`). A Gemini 2 model takes no thinking
+    /// level: it is sent `thinkingBudget: 0` when the door's options turn
+    /// reasoning off, and nothing otherwise.
+    #[must_use]
+    pub fn vertex_on(
+        project: &str,
+        location: &str,
+        token: inference::upstream::google::TokenSource,
+        model: &str,
+    ) -> Self {
         let url = if location == "global" {
             VERTEX_DOOR_URL.to_string()
         } else {
             format!("https://{location}-aiplatform.googleapis.com")
         };
-        let model = VERTEX_LANE.model();
         let upstream = model.rsplit('/').next().unwrap_or(model).to_string();
         let mut door = Self::new(url, model, "");
         door.vertex = Some(std::sync::Arc::new(VertexWire {
@@ -1074,6 +1087,19 @@ impl ResponsesDoor {
             token,
         }));
         door
+    }
+
+    /// The same Vertex AI door running `model` instead (a public id such as
+    /// `google/gemini-2.5-flash-lite`); any other door is returned as it is.
+    #[must_use]
+    pub fn on_vertex_model(mut self, model: &str) -> Self {
+        if let Some(wire) = &self.vertex {
+            let mut wire = (**wire).clone();
+            wire.upstream = model.rsplit('/').next().unwrap_or(model).to_string();
+            self.vertex = Some(std::sync::Arc::new(wire));
+            self.model = model.to_string();
+        }
+        self
     }
 
     /// Whether the door is Gemini on Vertex AI.
@@ -1275,16 +1301,30 @@ impl ResponsesDoor {
             .get("reasoning")
             .and_then(|reasoning| reasoning["effort"].as_str())
         {
-            Some("none" | "minimal") => "minimal",
+            // Gemini 3.8 Flash on Vertex refuses `minimal` (HTTP 400,
+            // "Thinking level is unsupported"); `low` is its least.
+            Some("none" | "minimal") => "low",
             Some("medium") => "medium",
             Some("high" | "xhigh") => "high",
             _ => VERTEX_THINKING,
         };
         let mut generation = serde_json::Map::new();
-        generation.insert(
-            "thinkingConfig".to_string(),
-            json!({ "thinkingLevel": level, "includeThoughts": true }),
-        );
+        let second = self
+            .vertex
+            .as_ref()
+            .is_some_and(|wire| wire.upstream.starts_with("gemini-2"));
+        if !second {
+            generation.insert(
+                "thinkingConfig".to_string(),
+                json!({ "thinkingLevel": level, "includeThoughts": true }),
+            );
+        } else if options
+            .get("reasoning")
+            .and_then(|reasoning| reasoning["effort"].as_str())
+            .is_some_and(|effort| matches!(effort, "none" | "minimal"))
+        {
+            generation.insert("thinkingConfig".to_string(), json!({ "thinkingBudget": 0 }));
+        }
         for (theirs, ours) in [
             ("max_output_tokens", "maxOutputTokens"),
             ("temperature", "temperature"),

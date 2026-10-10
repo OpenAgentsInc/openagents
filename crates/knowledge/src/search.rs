@@ -308,7 +308,8 @@ pub enum EmbeddingProvider {
     Openai,
     /// OpenRouter, which forwards the same model to OpenAI.
     Openrouter,
-    /// Vertex AI, with Google's `text-embedding-005`. Opt-in only.
+    /// Vertex AI, with Google's `text-embedding-005`: the house default
+    /// when a Google credential is here ([`Embedder::google`]).
     Vertex,
     /// The Vercel AI Gateway, which forwards the same OpenAI model; the
     /// chat worker's own door key reaches it.
@@ -357,6 +358,10 @@ enum Transport {
     Compatible(openrouter::Client),
     Vertex(vertex::Vertex),
 }
+
+/// The variable that keeps our default embedder off Vertex AI: `off`
+/// ([`Embedder::google`]).
+pub const GOOGLE_FIRST_VAR: &str = "KB_GOOGLE_FIRST";
 
 /// The embedding providers `--embeddings` and `--kb-embeddings` accept.
 pub const EMBEDDINGS_CHOICES: &str = "vertex or gateway";
@@ -559,15 +564,23 @@ impl Embedder {
         ))
     }
 
-    /// OpenAI's API when an OpenAI key is set up, else OpenRouter, with our
-    /// other embedding providers behind it ([`Embedder::with_our_backups`]).
+    /// Our default embedder: Vertex AI when this host holds a Google
+    /// credential ([`Embedder::google`]; owner direction 2026-10-10, Google
+    /// first on the prepaid credit), else OpenAI's API when an OpenAI key is
+    /// set up, else OpenRouter, with our other embedding providers behind it
+    /// ([`Embedder::with_our_backups`]). A person's own keys answer first
+    /// ([`Embedder::theirs`]). Vector caches are keyed by model, so a switch
+    /// re-embeds rather than mixing models.
     ///
     /// # Errors
     ///
-    /// Neither has a key; the message gives both reasons.
+    /// None has a credential; the message gives the reasons.
     pub fn from_env() -> Result<Self, String> {
         if let Some(theirs) = Embedder::theirs(&model_access::current()) {
             return theirs;
+        }
+        if let Some(google) = Embedder::google() {
+            return google;
         }
         Embedder::openai()
             .or_else(|openai| {
@@ -579,6 +592,50 @@ impl Embedder {
                 })
             })
             .map(Embedder::with_our_backups)
+    }
+
+    /// Vertex AI on our Google credential, or `None` when this host has
+    /// none (`inference::upstream::google::TokenSource`: a service-account
+    /// key, `VERTEX_ACCESS_TOKEN`, `VERTEX_TOKEN_FILE`, or the GCE metadata
+    /// server) or [`GOOGLE_FIRST_VAR`] is `off`. The project is
+    /// [`vertex::PROJECT_VAR`], `VERTEX_PROJECT`, or `GOOGLE_CLOUD_PROJECT`,
+    /// else `inference::upstream::vertex::DEFAULT_PROJECT`.
+    #[must_use]
+    pub fn google() -> Option<Result<Self, String>> {
+        if std::env::var(GOOGLE_FIRST_VAR).is_ok_and(|value| value.trim() == "off") {
+            return None;
+        }
+        let token = inference::upstream::google::TokenSource::from_env();
+        if !token.present() {
+            return None;
+        }
+        let named = [
+            vertex::PROJECT_VAR,
+            "VERTEX_PROJECT",
+            "GOOGLE_CLOUD_PROJECT",
+            vertex::URL_VAR,
+        ]
+        .into_iter()
+        .any(|name| std::env::var(name).is_ok_and(|value| !value.trim().is_empty()));
+        if named {
+            return Some(Embedder::vertex());
+        }
+        let location = std::env::var(vertex::LOCATION_VAR)
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| vertex::DEFAULT_LOCATION.to_string());
+        let url = vertex::models_url(inference::upstream::vertex::DEFAULT_PROJECT, &location);
+        let model = match std::env::var(vertex::MODEL_VAR)
+            .ok()
+            .as_deref()
+            .map(str::trim)
+        {
+            Some(vertex::GEMINI_MODEL) => vertex::GEMINI_MODEL,
+            _ => vertex::MODEL,
+        };
+        Some(Ok(Embedder::with_vertex(
+            vertex::Vertex::new(&url, vertex::Token::Google(token)).on(model),
+        )))
     }
 
     /// The same embedder with `backups` asked in order when it fails. A
@@ -1010,6 +1067,28 @@ impl<E: Embed> Retriever<E> {
 #[cfg(test)]
 mod byok_tests {
     use super::*;
+
+    /// A real call: `GOOGLE_APPLICATION_CREDENTIALS=<key> cargo test -p
+    /// knowledge --lib live_house_embedder_is_vertex -- --ignored --nocapture`.
+    #[tokio::test]
+    #[ignore = "calls Vertex AI"]
+    async fn live_house_embedder_is_vertex() {
+        let embedder = Embedder::from_env().unwrap();
+        assert_eq!(embedder.provider, EmbeddingProvider::Vertex);
+        for _ in 0..3 {
+            let started = std::time::Instant::now();
+            let (vectors, usd) = embedder
+                .embed(vec!["Google first for embeddings".to_string()])
+                .await
+                .unwrap();
+            println!(
+                "{} {} dims, {usd:?} USD, {:?}",
+                embedder.model,
+                vectors[0].len(),
+                started.elapsed()
+            );
+        }
+    }
 
     #[test]
     fn embeddings_on_the_persons_key_never_fall_back_to_ours() {

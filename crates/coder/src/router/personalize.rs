@@ -61,8 +61,16 @@ pub const MAX_TOKENS: u32 = 60;
 
 /// The variable that turns personalization on and picks its provider:
 /// `openrouter` (the [`DEFAULT_OPENROUTER_MODEL`]), `openrouter:<model>`,
-/// `gateway` (the door's `glm` lane), `gateway:<lane or model>`, or `off`.
-/// Unset is `off`.
+/// `gateway` (the door's `glm` lane), `gateway:<lane or model>`, `vertex`
+/// (Vertex AI alone), or `off`. Unset is `off`.
+///
+/// Whenever the chat door's Vertex AI switch is on
+/// ([`crate::generate::vertex_door_from_env`]: `VERTEX_PROJECT` with a Google
+/// credential), [`DEFAULT_OPENROUTER_MODEL`] on Vertex AI (thinking off,
+/// about 0.7 s, inside the budget) writes first and the provider named
+/// here is its fallback (owner direction 2026-10-10: Google first on our
+/// keys, the prepaid credit). A person's own keys never take this path
+/// ([`Personalizer::theirs`]).
 pub const PROVIDER_VAR: &str = "CODER_PERSONALIZE";
 
 /// The OpenRouter model personalization uses when the variable names none:
@@ -487,7 +495,9 @@ impl Provider for GatewayLane {
     }
 
     fn host(&self) -> String {
-        if self.door.url == DEFAULT_DOOR_URL {
+        if self.door.is_vertex() {
+            "Vertex AI".to_string()
+        } else if self.door.url == DEFAULT_DOOR_URL {
             "the Vercel AI Gateway".to_string()
         } else {
             "the configured gateway door".to_string()
@@ -565,6 +575,9 @@ pub enum Personalizer {
     Gateway(GatewayLane),
     /// A fixed line, for tests.
     Stub(StubLane),
+    /// One provider first and another when it fails: Vertex AI, then the
+    /// provider [`PROVIDER_VAR`] names.
+    First(Box<Personalizer>, Box<Personalizer>),
 }
 
 impl Personalizer {
@@ -587,6 +600,49 @@ impl Personalizer {
     ///
     /// As [`Personalizer::from_env`].
     pub fn named(asked: &str) -> Result<Option<Self>, String> {
+        let vertex = crate::generate::vertex_door_from_env()?;
+        Self::named_behind(asked, vertex)
+    }
+
+    /// As [`Personalizer::named`], with `vertex` (the Vertex AI door, when
+    /// on) writing first and the named provider behind it. With Vertex on,
+    /// a named provider that has no key here leaves Vertex alone rather than
+    /// stopping the worker.
+    ///
+    /// # Errors
+    ///
+    /// As [`Personalizer::from_env`].
+    pub fn named_behind(
+        asked: &str,
+        vertex: Option<ResponsesDoor>,
+    ) -> Result<Option<Self>, String> {
+        let kind = asked.split_once(':').map_or(asked, |(kind, _)| kind).trim();
+        if kind.is_empty() || kind == "off" {
+            return Ok(None);
+        }
+        let first = vertex.map(|door| {
+            let door = door.on_vertex_model(DEFAULT_OPENROUTER_MODEL);
+            Self::Gateway(GatewayLane::new(door, DEFAULT_OPENROUTER_MODEL))
+        });
+        if kind == "vertex" {
+            return first.map(Some).ok_or_else(|| {
+                format!(
+                    "{PROVIDER_VAR}=vertex needs the Vertex AI door: set VERTEX_PROJECT and a \
+                     Google credential"
+                )
+            });
+        }
+        let named = Self::named_alone(asked);
+        match (first, named) {
+            (Some(first), Ok(Some(named))) => {
+                Ok(Some(Self::First(Box::new(first), Box::new(named))))
+            }
+            (Some(first), Ok(None) | Err(_)) => Ok(Some(first)),
+            (None, named) => named,
+        }
+    }
+
+    fn named_alone(asked: &str) -> Result<Option<Self>, String> {
         let (kind, model) = asked.split_once(':').unwrap_or((asked, ""));
         let model = model.trim();
         match kind.trim() {
@@ -608,7 +664,7 @@ impl Personalizer {
                 GatewayLane::from_env(model).map(|lane| Some(Self::Gateway(lane)))
             }
             other => Err(format!(
-                "{PROVIDER_VAR}={other} names no provider: use openrouter, gateway, or off"
+                "{PROVIDER_VAR}={other} names no provider: use openrouter, gateway, vertex, or off"
             )),
         }
     }
@@ -662,6 +718,7 @@ impl Provider for Personalizer {
             Personalizer::OpenRouter(lane) => lane.model(),
             Personalizer::Gateway(lane) => lane.model(),
             Personalizer::Stub(lane) => lane.model(),
+            Personalizer::First(first, _) => first.model(),
         }
     }
 
@@ -670,6 +727,7 @@ impl Provider for Personalizer {
             Personalizer::OpenRouter(lane) => lane.host(),
             Personalizer::Gateway(lane) => lane.host(),
             Personalizer::Stub(lane) => lane.host(),
+            Personalizer::First(first, then) => format!("{}, then {}", first.host(), then.host()),
         }
     }
 
@@ -682,6 +740,27 @@ impl Provider for Personalizer {
             Personalizer::OpenRouter(lane) => lane.write(prompt, sink).await,
             Personalizer::Gateway(lane) => lane.write(prompt, sink).await,
             Personalizer::Stub(lane) => lane.write(prompt, sink).await,
+            Personalizer::First(first, then) => match first.write_one(prompt, sink).await {
+                Ok(written) => Ok(written),
+                Err(_) => then.write_one(prompt, sink).await,
+            },
+        }
+    }
+}
+
+impl Personalizer {
+    /// One provider's write; a nested [`Personalizer::First`] is not built,
+    /// so it answers a failure rather than recursing.
+    async fn write_one(
+        &self,
+        prompt: &str,
+        sink: &mut (dyn FnMut(&str) + Send),
+    ) -> Result<Written, String> {
+        match self {
+            Personalizer::OpenRouter(lane) => lane.write(prompt, sink).await,
+            Personalizer::Gateway(lane) => lane.write(prompt, sink).await,
+            Personalizer::Stub(lane) => lane.write(prompt, sink).await,
+            Personalizer::First(..) => Err("a nested provider chain".to_string()),
         }
     }
 }
@@ -926,6 +1005,66 @@ mod tests {
         assert!(matches!(Personalizer::named(""), Ok(None)));
         assert!(matches!(Personalizer::named("off"), Ok(None)));
         assert!(Personalizer::named("carrier-pigeon").is_err());
+    }
+
+    #[test]
+    fn vertex_writes_first_and_the_named_provider_is_its_fallback() {
+        let door = || {
+            ResponsesDoor::vertex(
+                "openagentsgemini",
+                "global",
+                inference::upstream::google::TokenSource::none(),
+            )
+        };
+        let first = Personalizer::named_behind("gateway", Some(door()))
+            .unwrap()
+            .unwrap();
+        // With no gateway key here the named provider is missing, so Vertex
+        // writes alone; either way it is first.
+        assert!(
+            Provider::host(&first).starts_with("Vertex AI"),
+            "{}",
+            Provider::host(&first)
+        );
+        let alone = Personalizer::named_behind("vertex", Some(door()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(Provider::host(&alone), "Vertex AI");
+        assert!(Personalizer::named_behind("vertex", None).is_err());
+        assert!(matches!(
+            Personalizer::named_behind("off", Some(door())),
+            Ok(None)
+        ));
+    }
+
+    /// A real call: `VERTEX_PROJECT=openagentsgemini
+    /// GOOGLE_APPLICATION_CREDENTIALS=<key> cargo test -p coder --lib
+    /// live_vertex_personalizes -- --ignored --nocapture`.
+    #[tokio::test]
+    #[ignore = "calls Vertex AI"]
+    async fn live_vertex_personalizes() {
+        let personalizer = Personalizer::named("openrouter").unwrap().unwrap();
+        let ask = ask("can you add dark mode to my settings page");
+        let started = std::time::Instant::now();
+        let continuation = seams::Personalize::continuation(&personalizer, &ask).await;
+        println!(
+            "{} via {}: {:?} in {:?}",
+            Provider::model(&personalizer),
+            Provider::host(&personalizer),
+            continuation.map(|c| c.text),
+            started.elapsed()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failed_first_provider_hands_the_sentence_to_the_next() {
+        let chain = Personalizer::First(
+            Box::new(stub(Err("402"))),
+            Box::new(stub(Ok("fixing the build."))),
+        );
+        let mut sink = |_: &str| {};
+        let written = chain.write("prompt", &mut sink).await.unwrap();
+        assert_eq!(written.text, "fixing the build.");
     }
 
     #[test]

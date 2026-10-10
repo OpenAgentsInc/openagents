@@ -15,7 +15,8 @@ Steps (each writes into --work, a scratch directory):
   judge     ask Jev (batch nouls) about the files the scorer is unsure of
   plan      stage 4: a model writes the change plan; map steps to files
 
-    export OPENROUTER_API_KEY=...   # embeddings and the plan model
+    export GOOGLE_APPLICATION_CREDENTIALS=...  # embeddings on Vertex AI (filefind.embed_key)
+    export OPENROUTER_API_KEY=...   # the plan model; embeddings when no Google credential
     export TYPESAFE_API_KEY=...     # Jev, judge step only
     python3 scripts/bench/file-finding-bench.py prepare --repo . --dataset D --work W
     python3 scripts/bench/file-finding-bench.py features --repo . --dataset D --work W
@@ -83,7 +84,7 @@ def load(a):
 
 def cmd_prepare(a):
     ix = ff.Index(a.cache or ff.default_cache(a.repo)).load()
-    key = ff.embed_key()
+    key = ix.key or ff.embed_key()
     cases = load(a)
     total = 0
     union = {}
@@ -116,7 +117,7 @@ def run_case(ix, repo, c, key, keep_query=False):
         qvec = isx["vecs"][j]
         timing["embed_query"] = None  # measured separately (live call)
     else:
-        qvec = ff.embed([ff.issue_text(c["title"], c["body"])], key)[0]
+        qvec = ff.embed([ff.issue_text(c["title"], c["body"])], key, task="RETRIEVAL_QUERY")[0]
         timing["embed_query"] = time.perf_counter() - t0
     q = ff.Query(ix, repo, c["parent"], tree, cutoff=pos, exclude_issue=c["issue"], timing=timing)
     feats = q.run(c["title"], c["body"], qvec)
@@ -132,7 +133,7 @@ def run_case(ix, repo, c, key, keep_query=False):
 
 def cmd_features(a):
     ix = ff.Index(a.cache or ff.default_cache(a.repo)).load()
-    key = os.environ.get("OPENROUTER_API_KEY")
+    key = ix.key
     cases = load(a)
     out = {}
     path = os.path.join(a.work, "features.pkl")
@@ -229,7 +230,7 @@ def stage2_features(a, cases, feats1, models_for):
     ix = ff.Index(a.cache or ff.default_cache(a.repo)).load()
     out = {}
     for i, c in enumerate(cases):
-        r = run_case(ix, a.repo, c, os.environ.get("OPENROUTER_API_KEY"), keep_query=True)
+        r = run_case(ix, a.repo, c, ix.key, keep_query=True)
         q = r.pop("query")
         first = ff.rank(models_for(c["issue"]), r["feats"])
         r["feats"] = q.stage2(r["feats"], first)
@@ -728,7 +729,7 @@ def cmd_check(a):
     """Run the shipped two-stage finder on every case of a small dataset (e.g. fresh fixes)."""
     ix = ff.Index(a.cache or ff.default_cache(a.repo)).load()
     model = json.load(open(a.model))
-    key = os.environ.get("OPENROUTER_API_KEY")
+    key = ix.key
     print("| Issue | Hand-written files (existing) | " + " | ".join(f"@{k}" for k in KS) + " | Missed at 400 |")
     print("|---|---:|" + "---:|" * len(KS) + "---|")
     tot = Counter()
