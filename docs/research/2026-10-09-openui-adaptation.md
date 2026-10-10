@@ -127,7 +127,7 @@ No new format, dependency or client code is needed for this.
 - #11113 phase 1: Rust OpenUI Lang subset parser + catalog + validator +
   diagnostics; Markdown-with-fence embedding; web renderer (Maud fragments over
   SSE, one swap per completed statement); Markdown fallback stored with each
-  answer. Run the small format benchmark first.
+  answer. Run the small format benchmark first (`scripts/ui-format-bench.sh`, `2026-10-09-ui-format-benchmark.md`).
 - #11113 phase 2: `$state`, pure builtins, host actions, merge-by-name edits,
   diagnostics fed back to the model, line-local repair pass in the gateway.
 - #11114: tool-result IDs and field references (`r3.price`) as plain Markdown

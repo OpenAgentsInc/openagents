@@ -105,6 +105,7 @@ pub mod task;
 pub mod trace;
 pub mod tracker;
 pub mod turn;
+pub mod ui_format;
 pub mod verification;
 pub mod waves;
 pub mod workflow_template;

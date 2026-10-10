@@ -1,0 +1,21 @@
+{
+  "$comment": [
+    "Prompts for the interactive-answer format benchmark (#11113, docs/research/2026-10-09-ui-format-benchmark.md): the OpenUI Lang subset against minified nested JSON.",
+    "Each prompt asks for an answer the catalog can draw: steps, commands, choices side by side, tabs, links. They are tasks, not training data; do not tune the catalog prompt against them one by one."
+  ],
+  "schema": "openagents.ui-format-bench.v1",
+  "prompts": [
+    { "id": "install_coder", "prompt": "How do I install Coder on my laptop and start it in a project?" },
+    { "id": "connect_codebase", "prompt": "Show me the two ways to connect my codebase: on the web and on my computer." },
+    { "id": "sign_in_coder", "prompt": "Walk me through signing Coder in to my account and turning on sync." },
+    { "id": "os_tabs", "prompt": "Give me the install command for macOS, Linux, and Windows, one tab each." },
+    { "id": "compare_plans", "prompt": "Compare a free chat and a Pro plan with cloud environments side by side." },
+    { "id": "useful_links", "prompt": "Link me to the pages for downloads, the API docs, the roadmap, and our promises, each with one line about it." },
+    { "id": "git_undo", "prompt": "How do I undo my last git commit but keep the changes? Show the command and what it does." },
+    { "id": "python_venv", "prompt": "Steps to make a Python virtual environment and install requests, with the commands." },
+    { "id": "ssh_key", "prompt": "How do I make an SSH key and add it to GitHub? Number the steps and include the commands." },
+    { "id": "docker_cleanup", "prompt": "Give me the commands to clean up unused Docker images, containers, and volumes, with a warning about what each removes." },
+    { "id": "pick_editor", "prompt": "Help me pick between three code editors for a beginner: one card each with who it suits and a link." },
+    { "id": "onboarding", "prompt": "Make a short checklist for a new contributor's first day: set up the repository, run the tests, and open a first pull request." }
+  ]
+}
