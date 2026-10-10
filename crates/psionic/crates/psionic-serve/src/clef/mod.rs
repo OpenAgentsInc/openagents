@@ -576,8 +576,40 @@ impl ClefDecisionLane {
                     }
                 }
             });
-            let prefill = trunk
-                .prefill(
+            // The head's lexical vectors (each option's mean output-embedding
+            // row, decoded on the host) need only the token ids, so they are
+            // built on a second thread while the device runs the prefill.
+            // Keyed by the option span's ids (address and length), and summed
+            // in the order the head sums them.
+            let option_ids: Vec<&[u32]> = record
+                .questions
+                .iter()
+                .flat_map(|question| {
+                    question
+                        .option_spans
+                        .iter()
+                        .map(|(start, end)| &record.input_ids[*start..*end])
+                })
+                .collect();
+            let (prefill, lexical_means) = std::thread::scope(|scope| {
+                let means = scope.spawn(|| -> Result<Vec<((usize, usize), Vec<f32>)>, String> {
+                    option_ids
+                        .iter()
+                        .map(|ids| {
+                            let rows = lexical(ids)?;
+                            let mut mean = vec![0.0f32; self.head.config.hidden_size];
+                            for row in &rows {
+                                for (target, value) in mean.iter_mut().zip(row) {
+                                    *target += value;
+                                }
+                            }
+                            let count = rows.len().max(1) as f32;
+                            mean.iter_mut().for_each(|value| *value /= count);
+                            Ok(((ids.as_ptr() as usize, ids.len()), mean))
+                        })
+                        .collect()
+                });
+                let prefill = trunk.prefill(
                     &self.backbone,
                     &tokens,
                     &spans,
@@ -586,8 +618,16 @@ impl ClefDecisionLane {
                     final_rows
                         .as_mut()
                         .map(|f| f as &mut dyn FnMut(usize, usize, &[f32])),
-                )
-                .map_err(|error| ClefRefusal::internal(format!("cuda backbone: {error}")))?;
+                );
+                (prefill, means.join())
+            });
+            let prefill =
+                prefill.map_err(|error| ClefRefusal::internal(format!("cuda backbone: {error}")))?;
+            let lexical_means: std::collections::HashMap<(usize, usize), Vec<f32>> = lexical_means
+                .map_err(|_| ClefRefusal::internal("the lexical thread panicked"))?
+                .map_err(ClefRefusal::internal)?
+                .into_iter()
+                .collect();
             let span_means: Vec<Vec<f32>> = spans
                 .iter()
                 .zip(prefill.span_sums.chunks(width))
@@ -601,20 +641,37 @@ impl ClefDecisionLane {
                 capture.last.clone_from(&prefill.last);
             }
             let head_began = Instant::now();
-            let mut memory = DeviceMemory(trunk);
+            let mut memory = DeviceMemory::new(trunk);
+            let lexical_time = std::cell::Cell::new(0.0f64);
+            let timed_lexical = |ids: &[u32]| {
+                let began = Instant::now();
+                // the prebuilt mean as one row: the head's mean of it is
+                // the same value
+                let rows = match lexical_means.get(&(ids.as_ptr() as usize, ids.len())) {
+                    Some(mean) => Ok(vec![mean.clone()]),
+                    None => lexical(ids),
+                };
+                lexical_time.set(lexical_time.get() + began.elapsed().as_secs_f64());
+                rows
+            };
             let logits = run_head(
                 &self.head,
                 record,
                 &span_means,
                 &prefill.last,
                 &mut memory,
-                &lexical,
+                &timed_lexical,
             )
             .map_err(ClefRefusal::internal);
             if std::env::var_os("PSIONIC_CLEF_PROFILE").is_some() {
                 eprintln!(
-                    "clef head: {:.1} ms",
-                    head_began.elapsed().as_secs_f64() * 1e3
+                    "clef head: {:.1} ms (lexical rows {:.1} ms; {} linears {:.1} ms; {} memory attentions {:.1} ms)",
+                    head_began.elapsed().as_secs_f64() * 1e3,
+                    lexical_time.get() * 1e3,
+                    memory.linear.0,
+                    memory.linear.1 * 1e3,
+                    memory.attend.0,
+                    memory.attend.1 * 1e3,
                 );
             }
             return logits;
@@ -660,6 +717,12 @@ impl ClefDecisionLane {
         let began = Instant::now();
         let request = self.parse_request(body)?;
         let record = self.encode(&request)?;
+        if std::env::var_os("PSIONIC_CLEF_PROFILE").is_some() {
+            eprintln!(
+                "clef request: parse + encode {:.1} ms",
+                began.elapsed().as_secs_f64() * 1e3
+            );
+        }
         let queued = self.waiting.fetch_add(1, Ordering::SeqCst);
         let _waiting = WaitingGuard(&self.waiting);
         if queued > self.limits.max_queue {
@@ -847,7 +910,23 @@ impl ClefDecisionLane {
 
 /// The head's memory attention against the rows the CUDA trunk left on the
 /// device.
-struct DeviceMemory<'a>(&'a ClefCudaTrunk);
+/// The head's device calls, with time spent in each kind
+/// (`PSIONIC_CLEF_PROFILE`).
+struct DeviceMemory<'a> {
+    trunk: &'a ClefCudaTrunk,
+    attend: (usize, f64),
+    linear: (usize, f64),
+}
+
+impl<'a> DeviceMemory<'a> {
+    fn new(trunk: &'a ClefCudaTrunk) -> Self {
+        Self {
+            trunk,
+            attend: (0, 0.0),
+            linear: (0, 0.0),
+        }
+    }
+}
 
 impl MemoryAttention for DeviceMemory<'_> {
     fn attend(
@@ -861,7 +940,11 @@ impl MemoryAttention for DeviceMemory<'_> {
             MemoryView::Evidence(layer) => Some(layer),
             MemoryView::Raw => None,
         };
-        self.0.attend_memory(evidence, queries, rows, scale)
+        let began = Instant::now();
+        let out = self.trunk.attend_memory(evidence, queries, rows, scale);
+        self.attend.0 += 1;
+        self.attend.1 += began.elapsed().as_secs_f64();
+        out
     }
 
     fn linear(
@@ -871,7 +954,23 @@ impl MemoryAttention for DeviceMemory<'_> {
         n: usize,
         bias: Option<&[f32]>,
     ) -> Result<Vec<f32>, String> {
-        let Some(mut out) = self.0.head_linear(&matrix.values, input, n)? else {
+        let began = Instant::now();
+        let out = self.linear_inner(matrix, input, n, bias);
+        self.linear.0 += 1;
+        self.linear.1 += began.elapsed().as_secs_f64();
+        out
+    }
+}
+
+impl DeviceMemory<'_> {
+    fn linear_inner(
+        &mut self,
+        matrix: &head::Matrix,
+        input: &[f32],
+        n: usize,
+        bias: Option<&[f32]>,
+    ) -> Result<Vec<f32>, String> {
+        let Some(mut out) = self.trunk.head_linear(&matrix.values, input, n)? else {
             return Ok(matrix.apply_rows(input, n, bias));
         };
         if let Some(bias) = bias {

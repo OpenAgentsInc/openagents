@@ -549,12 +549,11 @@ impl ClefCudaTrunk {
         let mut timings = ProfileTimings::default();
         let began = std::time::Instant::now();
         let mut last = Vec::new();
-        let mut first = 0usize;
-        while first < length {
-            let chunk_began = std::time::Instant::now();
-            let n = chunk.min(length - first);
+        // The host builds a chunk's embedding rows and rotary table (token
+        // rows decoded from the host `token_embd`) on a second thread while
+        // the device runs the chunk before it.
+        let build_inputs = |first: usize, n: usize| -> Result<(Vec<f32>, Vec<f32>), String> {
             let piece = &tokens[first..first + n];
-            // embeddings (host rows) and the rotary table for these positions
             let mut embedded = vec![0.0f32; n * dims.hidden];
             embedded
                 .par_chunks_mut(dims.hidden)
@@ -567,114 +566,134 @@ impl ClefCudaTrunk {
                     slot.copy_from_slice(&model.token_embedding.decode_row(index).map_err(err)?);
                     Ok(())
                 })?;
+            Ok((embedded, rope.table(first, n, dims.rotary)))
+        };
+        let mut prepared = Some(build_inputs(0, chunk.min(length))?);
+        let mut first = 0usize;
+        while first < length {
+            let chunk_began = std::time::Instant::now();
+            let n = chunk.min(length - first);
+            let (embedded, table) = prepared.take().ok_or("chunk inputs")?;
             let scratch = state.scratch.as_mut().ok_or("scratch")?;
             scratch.x.write_bytes_at_offset(0, f32_bytes(&embedded)).map_err(err)?;
-            let table = rope.table(first, n, dims.rotary);
             scratch.cos_sin.write_bytes_at_offset(0, f32_bytes(&table)).map_err(err)?;
             timings.embed += chunk_began.elapsed().as_secs_f64();
-
-            if layer_observer.is_none() && !profile {
-                // one submission for the whole chunk
-                let mut submission = state.backend.begin_submission().map_err(err)?;
-                for layer_index in 0..state.layers.len() {
-                    encode_layer(
-                        &mut submission,
-                        &state.layers[layer_index],
-                        state.scratch.as_ref().ok_or("scratch")?,
-                        &state.weight_scratch,
-                        &request,
-                        layer_index,
-                        dims,
-                        first,
-                        n,
-                        self.compute_16f,
-                    )?;
-                }
-                submission.commit(CudaCommandWait::Completed).map_err(err)?;
-            }
-            for layer_index in 0..state.layers.len() {
-                if layer_observer.is_none() && !profile {
-                    break;
-                }
-                let layer_began = std::time::Instant::now();
-                {
-                    let mut submission = state.backend.begin_submission().map_err(err)?;
-                    encode_layer(
-                        &mut submission,
-                        state.layers.get(layer_index).ok_or("layer")?,
-                        state.scratch.as_ref().ok_or("scratch")?,
-                        &state.weight_scratch,
-                        &request,
-                        layer_index,
-                        dims,
-                        first,
-                        n,
-                        self.compute_16f,
-                    )?;
-                    submission.commit(CudaCommandWait::Completed).map_err(err)?;
-                }
-                if profile {
-                    let seconds = layer_began.elapsed().as_secs_f64();
-                    match state.layers[layer_index].mixer {
-                        DeviceMixer::Hybrid { .. } => timings.hybrid += seconds,
-                        DeviceMixer::Attention { .. } => timings.attention += seconds,
+            let next_first = first + n;
+            let next_n = chunk.min(length.saturating_sub(next_first));
+            let (device, next) = std::thread::scope(|scope| {
+                let next = (next_first < length)
+                    .then(|| scope.spawn(|| build_inputs(next_first, next_n)));
+                let device = (|| -> Result<(), String> {
+                    if layer_observer.is_none() && !profile {
+                        // one submission for the whole chunk
+                        let mut submission = state.backend.begin_submission().map_err(err)?;
+                        for layer_index in 0..state.layers.len() {
+                            encode_layer(
+                                &mut submission,
+                                &state.layers[layer_index],
+                                state.scratch.as_ref().ok_or("scratch")?,
+                                &state.weight_scratch,
+                                &request,
+                                layer_index,
+                                dims,
+                                first,
+                                n,
+                                self.compute_16f,
+                            )?;
+                        }
+                        submission.commit(CudaCommandWait::Completed).map_err(err)?;
                     }
-                }
-                if let Some(observer) = layer_observer.as_mut() {
-                    let rows = state
-                        .scratch
-                        .as_ref()
-                        .ok_or("scratch")?
-                        .x
-                        .read_f32_at_offset(0, n * dims.hidden)
-                        .map_err(err)?;
-                    observer(layer_index, first, &rows);
-                }
-            }
+                    for layer_index in 0..state.layers.len() {
+                        if layer_observer.is_none() && !profile {
+                            break;
+                        }
+                        let layer_began = std::time::Instant::now();
+                        {
+                            let mut submission = state.backend.begin_submission().map_err(err)?;
+                            encode_layer(
+                                &mut submission,
+                                state.layers.get(layer_index).ok_or("layer")?,
+                                state.scratch.as_ref().ok_or("scratch")?,
+                                &state.weight_scratch,
+                                &request,
+                                layer_index,
+                                dims,
+                                first,
+                                n,
+                                self.compute_16f,
+                            )?;
+                            submission.commit(CudaCommandWait::Completed).map_err(err)?;
+                        }
+                        if profile {
+                            let seconds = layer_began.elapsed().as_secs_f64();
+                            match state.layers[layer_index].mixer {
+                                DeviceMixer::Hybrid { .. } => timings.hybrid += seconds,
+                                DeviceMixer::Attention { .. } => timings.attention += seconds,
+                            }
+                        }
+                        if let Some(observer) = layer_observer.as_mut() {
+                            let rows = state
+                                .scratch
+                                .as_ref()
+                                .ok_or("scratch")?
+                                .x
+                                .read_f32_at_offset(0, n * dims.hidden)
+                                .map_err(err)?;
+                            observer(layer_index, first, &rows);
+                        }
+                    }
 
-            // output norm, hidden LayerNorm, memory rows, span sums
-            {
-                let scratch = state.scratch.as_ref().ok_or("scratch")?;
-                let mut submission = state.backend.begin_submission().map_err(err)?;
-                submission
-                    .clef_rms_norm_f32(&scratch.x, &state.output_norm, &scratch.final_rows, n, dims.hidden, dims.eps)
-                    .map_err(err)?;
-                submission
-                    .clef_layer_norm_f32(
-                        &scratch.final_rows,
-                        Some((&state.hidden_norm_weight, &state.hidden_norm_bias)),
-                        &scratch.norm_rows,
-                        n,
-                        dims.hidden,
-                        dims.head_eps,
-                    )
-                    .map_err(err)?;
-                // fixed order: a memory row does not depend on its chunk
-                submission
-                    .clef_linear_f32_ordered(
-                        &scratch.norm_rows,
-                        &state.memory_projection,
-                        &request.memory,
-                        first * dims.width,
-                        n,
-                        dims.width,
-                        dims.hidden,
-                    )
-                    .map_err(err)?;
-                submission
-                    .clef_span_sums(&scratch.norm_rows, &span_buffer, &span_sums, spans.len(), dims.hidden, first, n)
-                    .map_err(err)?;
-                submission.commit(CudaCommandWait::Completed).map_err(err)?;
-                if let Some(observer) = final_observer.as_mut() {
-                    let rows = scratch.final_rows.read_f32_at_offset(0, n * dims.hidden).map_err(err)?;
-                    observer(state.layers.len(), first, &rows);
-                }
-                if first + n == length {
-                    last = scratch
-                        .norm_rows
-                        .read_f32_at_offset((n - 1) * dims.hidden, dims.hidden)
-                        .map_err(err)?;
-                }
+                    // output norm, hidden LayerNorm, memory rows, span sums
+                    {
+                        let scratch = state.scratch.as_ref().ok_or("scratch")?;
+                        let mut submission = state.backend.begin_submission().map_err(err)?;
+                        submission
+                            .clef_rms_norm_f32(&scratch.x, &state.output_norm, &scratch.final_rows, n, dims.hidden, dims.eps)
+                            .map_err(err)?;
+                        submission
+                            .clef_layer_norm_f32(
+                                &scratch.final_rows,
+                                Some((&state.hidden_norm_weight, &state.hidden_norm_bias)),
+                                &scratch.norm_rows,
+                                n,
+                                dims.hidden,
+                                dims.head_eps,
+                            )
+                            .map_err(err)?;
+                        // fixed order: a memory row does not depend on its chunk
+                        submission
+                            .clef_linear_f32_ordered(
+                                &scratch.norm_rows,
+                                &state.memory_projection,
+                                &request.memory,
+                                first * dims.width,
+                                n,
+                                dims.width,
+                                dims.hidden,
+                            )
+                            .map_err(err)?;
+                        submission
+                            .clef_span_sums(&scratch.norm_rows, &span_buffer, &span_sums, spans.len(), dims.hidden, first, n)
+                            .map_err(err)?;
+                        submission.commit(CudaCommandWait::Completed).map_err(err)?;
+                        if let Some(observer) = final_observer.as_mut() {
+                            let rows = scratch.final_rows.read_f32_at_offset(0, n * dims.hidden).map_err(err)?;
+                            observer(state.layers.len(), first, &rows);
+                        }
+                        if first + n == length {
+                            last = scratch
+                                .norm_rows
+                                .read_f32_at_offset((n - 1) * dims.hidden, dims.hidden)
+                                .map_err(err)?;
+                        }
+                    }
+                    Ok(())
+                })();
+                (device, next.map(|handle| handle.join()))
+            });
+            device?;
+            if let Some(next) = next {
+                prepared = Some(next.map_err(|_| String::from("the embedding thread panicked"))??);
             }
             first += n;
         }
