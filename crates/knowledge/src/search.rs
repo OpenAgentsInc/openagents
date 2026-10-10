@@ -441,6 +441,17 @@ impl Embedder {
         Ok(Embedder::with_vertex(vertex::Vertex::from_env()?))
     }
 
+    /// An embedder on Vertex AI running `model` ([`vertex::MODEL`] or
+    /// [`vertex::GEMINI_MODEL`]) whatever `KB_VERTEX_MODEL` says, so an
+    /// index built with one model is read with that model.
+    ///
+    /// # Errors
+    ///
+    /// No project is named.
+    pub fn vertex_on(model: &str) -> Result<Self, String> {
+        Ok(Embedder::with_vertex(vertex::Vertex::from_env()?.on(model)))
+    }
+
     /// The embedder a command asked for: `None` for the default
     /// ([`Embedder::from_env`]), `vertex`, or `gateway` (the Vercel AI
     /// Gateway with the chat worker's own door key).

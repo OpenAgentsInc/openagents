@@ -100,7 +100,11 @@ pub fn configured_path() -> Option<PathBuf> {
 /// None of the three has a key.
 pub fn embedder() -> Result<knowledge::search::Embedder, String> {
     match std::env::var(EMBEDDINGS_VAR).ok().as_deref().map(str::trim) {
-        Some("vertex") => return knowledge::search::Embedder::vertex(),
+        // Builds batch 250 inputs a request on `text-embedding-005`;
+        // Gemini's model takes one, too slow for tens of thousands of chunks.
+        Some("vertex") => {
+            return knowledge::search::Embedder::vertex_on(knowledge::search::vertex::MODEL);
+        }
         None | Some("" | "gateway") => {}
         Some(other) => {
             return Err(format!(
@@ -128,8 +132,11 @@ pub const EMBEDDINGS_VAR: &str = "CODER_CODEBASE_EMBEDDINGS";
 ///
 /// The embedder for that model cannot be set up.
 pub fn embedder_for(model: &str) -> Result<knowledge::search::Embedder, String> {
-    if model.starts_with("vertex/") {
-        knowledge::search::Embedder::vertex()
+    use knowledge::search::vertex;
+    if model == vertex::GEMINI_CACHE_MODEL {
+        knowledge::search::Embedder::vertex_on(vertex::GEMINI_MODEL)
+    } else if model == vertex::CACHE_MODEL {
+        knowledge::search::Embedder::vertex_on(vertex::MODEL)
     } else {
         knowledge::search::Embedder::gateway().or_else(|gateway| {
             knowledge::search::Embedder::from_env().map_err(|other| format!("{gateway}; {other}"))

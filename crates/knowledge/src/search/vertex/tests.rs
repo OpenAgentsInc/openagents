@@ -213,12 +213,13 @@ fn inputs_are_batched_by_count_and_by_tokens() {
         .map(|i| (format!("entry {i}"), Task::Document))
         .collect();
     assert_eq!(batches(&short), [0..250, 250..500, 500..600]);
-    // Each long input counts as the 2,048 tokens Vertex keeps, plus one,
-    // so nine fit under 20,000 and a tenth doesn't.
-    let long: Vec<(String, Task)> = (0..20)
+    // Each long input counts its whole length (Vertex's request limit is
+    // before truncation): 6,001 tokens, so three fit under 20,000 and a
+    // fourth doesn't.
+    let long: Vec<(String, Task)> = (0..8)
         .map(|_| ("x".repeat(10_000), Task::Document))
         .collect();
-    assert_eq!(batches(&long), [0..9, 9..18, 18..20]);
+    assert_eq!(batches(&long), [0..3, 3..6, 6..8]);
     assert!(batches::<Task>(&[]).is_empty());
 }
 

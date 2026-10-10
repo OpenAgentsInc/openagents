@@ -394,10 +394,12 @@ impl Vertex {
     }
 }
 
-/// An estimate of an input's tokens that errs high: a token per two
-/// characters, capped where Vertex truncates, plus one.
+/// An estimate of an input's tokens that errs high: three tokens per five
+/// characters, plus one. Not capped where Vertex truncates an input: the
+/// request limit counts an input's tokens before truncation (2026-10-10, a
+/// codebase build's batch estimated under 20,000 was refused at 22,565).
 fn estimated_tokens(text: &str) -> usize {
-    text.chars().count().div_ceil(2).min(MAX_INPUT_TOKENS) + 1
+    (text.chars().count() * 3).div_ceil(5) + 1
 }
 
 /// Splits `inputs` into runs of at most [`MAX_INPUTS`] inputs whose
