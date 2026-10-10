@@ -189,6 +189,13 @@ pub struct ClassTable {
 impl Default for ClassTable {
     /// The spec's starting table. Model ids and upstream names are the
     /// ones the P0 adapters use; the gateway's config replaces it.
+    ///
+    /// Gemini on Vertex AI comes first in every class it can serve
+    /// (`classify`, `fast`, `chat`, `long`, and so `openagents/auto` when
+    /// it judges one of them): it bills the prepaid Google credit (owner
+    /// direction, 2026-10-10, #11222). The other upstreams follow in their
+    /// earlier order. `code` and `reason` keep the Pro door first: Vertex
+    /// serves no Gemini Pro model id here yet.
     fn default() -> Self {
         let flash = "google/gemini-3.8-flash";
         let glm = "zai/glm-5.3-flash";
@@ -203,9 +210,9 @@ impl Default for ClassTable {
                 TaskClass::Classify,
                 entry(
                     vec![
+                        ClassModel::on("google/gemini-2.5-flash-lite", "vertex"),
                         ClassModel::on("openai/gpt-5.6-luna", "pro"),
                         ClassModel::on(glm, "zai"),
-                        ClassModel::on("google/gemini-2.5-flash-lite", "vertex"),
                     ],
                     4_000,
                     10_000,
@@ -215,8 +222,8 @@ impl Default for ClassTable {
                 TaskClass::Fast,
                 entry(
                     vec![
-                        ClassModel::on(glm, "zai"),
                         ClassModel::on(flash, "vertex"),
+                        ClassModel::on(glm, "zai"),
                         ClassModel::on(flash, "openrouter"),
                     ],
                     4_000,
