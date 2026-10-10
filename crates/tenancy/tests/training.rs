@@ -144,6 +144,92 @@ fn exact_and_paraphrased_duplicates_leak_across_partitions() {
     );
 }
 
+/// The leakage check's verdict — which pair, and whether exact or near —
+/// is the all-pairs comparison's, on corpora built to sit near the
+/// threshold (the check prunes pairs; it must not change the answer).
+#[test]
+fn the_pruned_leak_check_reports_the_all_pairs_verdict() {
+    use std::collections::HashSet;
+    fn normalized(value: &Value) -> String {
+        serde_json::to_string(value)
+            .unwrap()
+            .to_lowercase()
+            .chars()
+            .map(|c| if c.is_alphanumeric() { c } else { ' ' })
+            .collect::<String>()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+    fn brute(items: &[Value]) -> Option<(String, String, &'static str)> {
+        for i in 0..items.len() {
+            for j in i + 1..items.len() {
+                if items[i]["partition"] == items[j]["partition"] {
+                    continue;
+                }
+                let (a, b) = (normalized(&items[i]["state"]), normalized(&items[j]["state"]));
+                let id = |k: usize| items[k]["id"].as_str().unwrap().to_string();
+                if a == b {
+                    return Some((id(i), id(j), "exact"));
+                }
+                let sa: HashSet<&str> = a.split_whitespace().collect();
+                let sb: HashSet<&str> = b.split_whitespace().collect();
+                let inter = sa.intersection(&sb).count() as f64;
+                let union = sa.union(&sb).count() as f64;
+                if inter / union >= 0.8 {
+                    return Some((id(i), id(j), "near"));
+                }
+            }
+        }
+        None
+    }
+    let mut seed: u64 = 0x5eed;
+    let mut next = move || {
+        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        (seed >> 33) as usize
+    };
+    let parts = ["training", "calibration", "development", "locked"];
+    for round in 0..60 {
+        let n = 20 + next() % 40;
+        let base: Vec<String> = (0..12).map(|k| format!("w{k}")).collect();
+        let mut items = Vec::new();
+        for k in 0..n {
+            // texts drawn from a small vocabulary so near pairs are common
+            let mut words: Vec<String> = base.iter().filter(|_| next() % 3 != 0).cloned().collect();
+            for _ in 0..next() % 4 {
+                words.push(format!("r{}", next() % 30));
+            }
+            let partition = parts[(k + round) % if round % 5 == 0 { 1 } else { 4 }];
+            items.push(item(&format!("i{k}"), &format!("g{k}"), partition, &words.join(" ")));
+        }
+        items[0]["partition"] = json!("training");
+        let expected = brute(&items);
+        let got = match Corpus::check(&corpus(items.clone()).to_string()) {
+            Ok(_) => None,
+            Err(CorpusFault::Leak(leak)) => Some((leak.first, leak.second, leak.kind)),
+            Err(other) => panic!("round {round}: unexpected fault {other}"),
+        };
+        assert_eq!(got, expected, "round {round}");
+    }
+}
+
+/// A teacher answer and an evidence class ride on an item and are bound by
+/// the digest; neither is the label.
+#[test]
+fn teacher_and_evidence_class_are_inside_the_digest() {
+    let mut doc = eligible();
+    doc["items"][0]["teacher"] = json!({"model": "jev", "noul": 0.9});
+    doc["items"][0]["evidence_class"] = json!("measured");
+    let checked = Corpus::check(&doc.to_string()).expect("checks");
+    let mut edited = doc.clone();
+    edited["items"][0]["teacher"]["noul"] = json!(0.1);
+    edited["digest"] = json!(checked.digest);
+    let fault = Corpus::check(&edited.to_string()).unwrap_err();
+    assert!(matches!(fault, CorpusFault::Tampered { .. }), "{fault}");
+    let plain = Corpus::check(&eligible().to_string()).expect("plain");
+    assert_ne!(plain.digest, checked.digest);
+}
+
 #[test]
 fn a_model_label_is_draft_not_ground_truth() {
     let mut doc = eligible();

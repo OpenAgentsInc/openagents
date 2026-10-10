@@ -210,6 +210,15 @@ pub struct CorpusItem {
     /// Reviewer annotations the headroom report reads.
     #[serde(default, skip_serializing_if = "Annotations::is_empty")]
     pub annotations: Annotations,
+    /// A judge model's answer to the same question (e.g. Jev's), kept as a
+    /// teacher target in its own field. It is never the label: labels come
+    /// from outcomes, and a model's answer is a draft (roadmap decision 2).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub teacher: Option<Value>,
+    /// What the label rests on: `measured`, `authored`, `sample`, or
+    /// `contract_only` (roadmap decision 6). Inside the digest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence_class: Option<String>,
 }
 
 impl Annotations {
@@ -553,43 +562,107 @@ impl Corpus {
     /// Exact and near-duplicate detection across partition boundaries.
     /// Same-partition duplicates are the group's business; cross-role
     /// duplication is leakage.
+    ///
+    /// Each item's token set is built once. Pairs are compared in item
+    /// order, and a pair is skipped only when it provably cannot reach the
+    /// threshold: two sets with Jaccard at or over `t` have sizes within a
+    /// ratio of `t` of each other, and share a token among the first
+    /// `|s| - floor(t·|s|) + 1` tokens of each set when tokens are ordered by
+    /// corpus frequency, rarest first (prefix filtering). Exact duplicates
+    /// are found by text before either filter applies, so the verdict is the
+    /// one the all-pairs comparison gives, at a cost that grows with the
+    /// pairs that share rare tokens instead of with every pair.
     fn leak_check(&self) -> Result<(), CorpusFault> {
-        let normalized_items: Vec<(&CorpusItem, String)> = self
-            .items
-            .iter()
-            .map(|item| (item, normalized(&item.state)))
-            .collect();
-        for (index, (first, first_text)) in normalized_items.iter().enumerate() {
-            for (second, second_text) in normalized_items.iter().skip(index + 1) {
-                if first.partition == second.partition {
+        let texts: Vec<String> = self.items.iter().map(|item| normalized(&item.state)).collect();
+        let mut same_text: HashMap<&str, Vec<usize>> = HashMap::new();
+        let mut exact: Option<(usize, usize)> = None;
+        for (index, text) in texts.iter().enumerate() {
+            let earlier = same_text.entry(text.as_str()).or_default();
+            if let Some(&other) = earlier
+                .iter()
+                .find(|&&other| self.items[other].partition != self.items[index].partition)
+            {
+                if exact.is_none_or(|pair| (other, index) < pair) {
+                    exact = Some((other, index));
+                }
+            }
+            earlier.push(index);
+        }
+        let sets: Vec<HashSet<String>> = texts.iter().map(|text| tokens(text)).collect();
+        let mut frequency: HashMap<&str, usize> = HashMap::new();
+        for set in &sets {
+            for token in set {
+                *frequency.entry(token.as_str()).or_default() += 1;
+            }
+        }
+        let prefix = |set: &HashSet<String>| -> Vec<String> {
+            let mut ordered: Vec<&String> = set.iter().collect();
+            ordered.sort_by(|a, b| {
+                frequency[a.as_str()]
+                    .cmp(&frequency[b.as_str()])
+                    .then_with(|| a.cmp(b))
+            });
+            // floor, not ceil: a longer prefix can only admit more candidates
+            let keep = set.len() - (LEAK_JACCARD * set.len() as f64).floor() as usize + 1;
+            ordered.into_iter().take(keep).cloned().collect()
+        };
+        let mut postings: HashMap<String, Vec<usize>> = HashMap::new();
+        for (index, set) in sets.iter().enumerate() {
+            if set.is_empty() {
+                continue;
+            }
+            for token in prefix(set) {
+                postings.entry(token).or_default().push(index);
+            }
+        }
+        let mut near: Option<(usize, usize)> = None;
+        for (index, set) in sets.iter().enumerate() {
+            if set.is_empty() || near.is_some() {
+                continue;
+            }
+            let mut candidates: BTreeSet<usize> = BTreeSet::new();
+            for token in prefix(set) {
+                for &other in &postings[&token] {
+                    if other > index {
+                        candidates.insert(other);
+                    }
+                }
+            }
+            for other in candidates {
+                if self.items[other].partition == self.items[index].partition
+                    || texts[other] == texts[index]
+                {
                     continue;
                 }
-                if first_text == second_text {
-                    return Err(CorpusFault::Leak(Leak {
-                        first: first.id.clone(),
-                        second: second.id.clone(),
-                        between: (first.partition, second.partition),
-                        kind: "exact",
-                    }));
-                }
-                let a = tokens(first_text);
-                let b = tokens(second_text);
-                if a.is_empty() || b.is_empty() {
+                let (a, b) = (set, &sets[other]);
+                let (small, large) = if a.len() <= b.len() { (a.len(), b.len()) } else { (b.len(), a.len()) };
+                if (small as f64) < LEAK_JACCARD * large as f64 {
                     continue;
                 }
-                let overlap = a.intersection(&b).count() as f64;
-                let union = a.union(&b).count() as f64;
+                let overlap = a.intersection(b).count() as f64;
+                let union = a.union(b).count() as f64;
                 if overlap / union >= LEAK_JACCARD {
-                    return Err(CorpusFault::Leak(Leak {
-                        first: first.id.clone(),
-                        second: second.id.clone(),
-                        between: (first.partition, second.partition),
-                        kind: "near",
-                    }));
+                    near = Some((index, other));
+                    break;
                 }
             }
         }
-        Ok(())
+        let leak = |(first, second): (usize, usize), kind: &'static str| {
+            CorpusFault::Leak(Leak {
+                first: self.items[first].id.clone(),
+                second: self.items[second].id.clone(),
+                between: (self.items[first].partition, self.items[second].partition),
+                kind,
+            })
+        };
+        // The all-pairs loop reported whichever pair came first in item
+        // order, exact or near; keep that order.
+        match (exact, near) {
+            (Some(e), Some(n)) if n < e => Err(leak(n, "near")),
+            (Some(e), _) => Err(leak(e, "exact")),
+            (None, Some(n)) => Err(leak(n, "near")),
+            (None, None) => Ok(()),
+        }
     }
 
     /// The items a role holds — every role but `locked`, which no path

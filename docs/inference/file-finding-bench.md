@@ -487,3 +487,55 @@ How to keep it fresh and learning:
   of writing), every stage except emb/sim/hist still runs. The finder
   degrades rather than fails, and new blobs are embedded once the key
   works again.
+
+## The decision corpus built from this bench: file-relevance-v1 (#11215)
+
+Roadmap item N8 of the [training-system audit](../audits/2026-10-10-training-system-audit/roadmap.md)
+turns this bench's issue → fix cases into a labelled corpus in the
+`tenancy::training` format, for calibrating and training the file-relevance
+decision (Clef, #11216; the head-only ranker, #11217). Evidence class:
+`measured`.
+
+- **Items.** One item per (issue, file): the state is
+  `ISSUE #N: title\n\nbody` (body cut to 2,500 characters), then
+  `FILE: path` and the file's first 2,048 bytes at the fix's parent commit.
+  The question is the noul "Is this file relevant to solving the issue?".
+- **Labels come from outcomes.** `true` when a commit that fixed the issue
+  changed the file, read from git; `label_source: measurement`. A judge's
+  answer (Jev) has its own `teacher` field on the item and is never the
+  label. None is recorded yet.
+- **Candidates per issue**, with a seed derived from the issue number: the
+  fix's existing hand-written files (at most 8), 3 siblings from their
+  directories, 2 files of their crates, 1 recently busy file and 1 random
+  text file. Items are about 45% `true`, so this corpus measures and fits
+  probabilities at that rate, not at the finder's pool rate.
+- **Partitions by time.** Issues are ordered by their last fix commit:
+  training (450 issues, 5,419 items) < calibration (150, 1,952) <
+  development (196, 2,520: this bench's window, from its oldest fix
+  `9f5f8ad756` to the ranker's cutoff `63a5197dfb`) < locked (24, 343:
+  fixes after the cutoff). Excluded everywhere: the 10 issues of the
+  [Clef/Jev relevance bench](clef-jev-relevance-bench.md), which tuned its
+  thresholds, and the 8 newer-fix issues above. Three later-partition items
+  that near-duplicated an earlier one (token Jaccard ≥ 0.8) were dropped,
+  and so were four issues left with only one label.
+- **In git:** `crates/gym/suites/file-relevance-v1/` holds `items.tsv.gz`
+  (issue, partition, path, blob, label, candidate kind, text digest),
+  `issues.tsv` (fix and parent commits, issue-text digest) and
+  `manifest.json` (rules, counts, digests). The corpus itself holds file
+  contents and issue text and stays out of git.
+- **Rebuild:** `scripts/bench/file-relevance-corpus.sh OUT_DIR` reads git
+  at the pinned commits and the issue text from GitHub, and checks every
+  digest. `--select` also re-runs the selection from git, which must
+  reproduce the committed manifest. Both runs reproduced the corpus byte for
+  byte (`sha256:6a8a34f0…2619`).
+- **`tenant-train check` passes:** provenance and labels on every item, no
+  group across partitions, and no exact or near duplicate across partitions.
+  Tenant digest `sha256:4385be4e…69c4`. The locked partition has been read
+  zero times.
+
+The leakage check compared every pair of items across partitions, which
+for 10,234 items is about 52 million token-set comparisons. It now builds
+each token set once and compares only the pairs that can reach the
+threshold (sizes within the ratio, and a shared token among each set's
+rarest). A test checks that its verdict is the all-pairs verdict. The check
+on this corpus takes 3 min 43 s in a debug build.

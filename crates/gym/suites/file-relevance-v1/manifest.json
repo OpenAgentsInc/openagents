@@ -1,0 +1,127 @@
+{
+ "candidates": {
+  "crate": 2,
+  "positive_max": 8,
+  "random": 1,
+  "recent": 1,
+  "sibling": 3
+ },
+ "dataset_rule": "scripts/bench/file-finding-dataset.py --multi --max-hand 40",
+ "digests": {
+  "corpus_json_sha256": "sha256:6a8a34f0ff82a4633b5eb6ea051f40de1756adca92d929a314641f3a281d2619",
+  "issues.tsv": "sha256:65ec3c094f3e00f15940ed57faa79839e9413e6f0f6ccbea9cebc012304cb4aa",
+  "items.tsv.gz": "sha256:e93245ef068af678b83d2b3b884a88facf61951edc1b4cdaa9b7e2049269e28b",
+  "tenant_corpus_digest": "sha256:4385be4e8bc8415f629df633d9d9a550174d366a9da967e69caf880c0c1069c4"
+ },
+ "evidence_class": "measured",
+ "excluded": {
+  "clef_relevance_bench": [
+   10170,
+   10177,
+   10179,
+   10201,
+   10206,
+   10283,
+   10295,
+   10998,
+   11117,
+   11123
+  ],
+  "newer_fix_check_set": [
+   11132,
+   11134,
+   11156,
+   11158,
+   11159,
+   11160,
+   11177,
+   11182
+  ],
+  "present_in_dataset": [
+   10170,
+   10177,
+   10179,
+   10201,
+   10206,
+   10283,
+   10295,
+   10998,
+   11117,
+   11123,
+   11156,
+   11158,
+   11159,
+   11160,
+   11182
+  ]
+ },
+ "issues_dropped_unbalanced": 4,
+ "label_rule": "true when a commit that fixed the issue (subject carries (#N)) changed this file, read from git at the fix; false when no such commit changed it",
+ "label_source": "measurement",
+ "leak_dropped": 3,
+ "locked_reads": 0,
+ "name": "file-relevance-v1",
+ "partitions": {
+  "calibration": {
+   "false": 1016,
+   "issues": 150,
+   "items": 1952,
+   "newest_fix": "e8a22f75365af25918c09d395ae8c8214d79ce50",
+   "oldest_fix": "9a380adbfaaf013db5740a7162bff7533890ccb9",
+   "true": 936
+  },
+  "development": {
+   "false": 1337,
+   "issues": 196,
+   "items": 2520,
+   "newest_fix": "3fe12be562b2b8d2526b5a7b8c7871a822299f2f",
+   "oldest_fix": "9f5f8ad756318ac77d792d2233cf5a51557bb504",
+   "true": 1183
+  },
+  "locked": {
+   "false": 167,
+   "issues": 24,
+   "items": 343,
+   "newest_fix": "d3d8b6416307fcf9e53345cb83eb7a769ba208f8",
+   "oldest_fix": "8c0a84a9ef7e548e6e4118a77e5c813e22a0ccf9",
+   "true": 176
+  },
+  "training": {
+   "false": 3065,
+   "issues": 450,
+   "items": 5419,
+   "newest_fix": "f166924c6328e9ed72843246d6a89dbe8df98050",
+   "oldest_fix": "8965d12ddc053db5822566973f4e3b04f08dfb56",
+   "true": 2354
+  }
+ },
+ "question": {
+  "id": "relevant",
+  "instructions": "Is this file relevant to solving the issue?",
+  "type": "noul"
+ },
+ "rebuild": "scripts/bench/file-relevance-corpus.sh OUT_DIR [--select]",
+ "rev": "c531c2b19cdf9968f4601285479166b1664c1d1c",
+ "schema": "openagents.gym.file-relevance-manifest.v1",
+ "sizes": {
+  "calibration": 150,
+  "training": 450
+ },
+ "split_commits": {
+  "development_from": "9f5f8ad756318ac77d792d2233cf5a51557bb504",
+  "locked_after": "63a5197dfb2b3c1e1b5a161b6ff5a0cfaa75df59"
+ },
+ "split_rule": "time: issues ordered by last fix commit; training < calibration < development < locked. locked = fixes after the finder ranker's training cutoff; development = the #11210 bench window (from its oldest fix through that cutoff)",
+ "state_rule": {
+  "format": "ISSUE #N: title\\n\\nbody\\n\\nFILE: path\\n```\\nhead\\n```",
+  "head_bytes": 2048,
+  "issue_chars": 2500
+ },
+ "teacher": "none recorded (field reserved)",
+ "tenant_train_check": "passed on 2026-10-10: tenant-train check --corpus file-relevance-v1.corpus.json (provenance, labels, groups, no cross-partition exact or near duplicates)",
+ "totals": {
+  "issues": 820,
+  "items": 10234,
+  "true": 4649
+ }
+}
