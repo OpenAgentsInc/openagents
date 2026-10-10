@@ -489,8 +489,9 @@ fn short(hex: &str) -> String {
 /// question about `state`, NIP-44 encrypted to the endpoint key, with the
 /// `openagents.attested.v1` fields naming the endpoint, release and level
 /// the client verified. `nonce` is a fresh 32 random bytes and `request`
-/// a fresh logical ID. Returns the event and the body (its digest is what
-/// the receipt must name).
+/// a fresh logical ID. Returns the event, the body (its digest is what
+/// the receipt must name), and the exact plaintext payload that was sealed
+/// (what the worker reads after decrypting).
 ///
 /// # Errors
 ///
@@ -506,7 +507,7 @@ pub fn sealed_request(
     request: &str,
     nonce: [u8; 32],
     now: u64,
-) -> Result<(Event, nostr::decision::RequestBody), Refused> {
+) -> Result<(Event, nostr::decision::RequestBody, Value), Refused> {
     let model = parsed
         .release
         .models
@@ -531,7 +532,8 @@ pub fn sealed_request(
 /// yes-or-no question about `state`, NIP-44 encrypted to that key. With
 /// `attested` (the endpoint address, release and level the client
 /// verified) it requires `openagents.attested.v1`; without, it is an
-/// ordinary NIP-DEC request to an open Pylon.
+/// ordinary NIP-DEC request to an open Pylon. Returns the event, the body,
+/// and the exact plaintext payload that was sealed.
 ///
 /// # Errors
 ///
@@ -548,7 +550,7 @@ pub fn sealed_decision(
     request: &str,
     nonce: [u8; 32],
     now: u64,
-) -> Result<(Event, nostr::decision::RequestBody), Refused> {
+) -> Result<(Event, nostr::decision::RequestBody, Value), Refused> {
     use nostr::decision::{REQUEST_KIND, RequestBody, Seal};
     use nostr::domain::Tag;
     let mut questions = serde_json::Map::new();
@@ -586,7 +588,7 @@ pub fn sealed_decision(
     let event = seal
         .event(REQUEST_KIND, tags, &payload)
         .map_err(|e| Refused(format!("the request does not seal: {e}")))?;
-    Ok((event, body))
+    Ok((event, body, payload))
 }
 
 fn endpoint_key(hex: &str) -> Result<secp256k1::XOnlyPublicKey, Refused> {

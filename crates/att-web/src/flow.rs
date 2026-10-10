@@ -29,7 +29,7 @@ use wasm_bindgen::prelude::JsValue;
 use wasm_bindgen_futures::{JsFuture, spawn_local};
 use web_sys::{Request, RequestInit, Response};
 
-use crate::show::{RunOptions, Show, State, Step, Tamper};
+use crate::show::{Party, RunOptions, Show, State, Step, Tamper};
 
 /// The OpenAgents key that publishes the sealed Clef releases. The page
 /// trusts releases from this key only.
@@ -386,7 +386,8 @@ async fn round(show: &Show, options: RunOptions) {
     } else {
         prompt
     };
-    let (request, body) = match oa_att::sealed_request(
+    show.say(Party::You, &format!("{prompt}\n\n{QUESTION}"));
+    let (request, body, sealed_payload) = match oa_att::sealed_request(
         &signer,
         &secret,
         &parsed,
@@ -510,6 +511,15 @@ async fn round(show: &Show, options: RunOptions) {
         ],
     );
     show.step(Step::Relay, State::Ok, since(t));
+    // The exact event the relay holds, as our gateway published it.
+    let as_relayed = serde_json::to_value(&request).unwrap_or(Value::Null);
+    show.event_bubble(
+        Party::Relay,
+        "What the relay sees",
+        Some("This exact event, passed on unchanged by our gateway. The content is sealed."),
+        &as_relayed,
+        "content",
+    );
 
     // 7–8. Decrypt, answer.
     let t_decrypt = clock_ms();
@@ -561,6 +571,15 @@ async fn round(show: &Show, options: RunOptions) {
                                     "only the key inside the TEE could open your request",
                                 ),
                             ],
+                        );
+                        let mut opened = as_relayed.clone();
+                        opened["content"] = sealed_payload.clone();
+                        show.event_bubble(
+                            Party::Provider,
+                            "What the sealed machine sees (after decrypting inside)",
+                            Some("The same event from the relay, its content opened with the key that never leaves the machine. Drawn from your own copy; the machine sends nothing back but the sealed answer."),
+                            &opened,
+                            "content",
                         );
                         show.step(Step::Decrypt, State::Ok, since(t_decrypt));
                         show.step(Step::Answer, State::Running, None);
@@ -638,6 +657,21 @@ async fn round(show: &Show, options: RunOptions) {
         ],
     );
     show.step(Step::Answer, State::Ok, since(t_decrypt));
+    show.event_bubble(
+        Party::Relay,
+        "What the relay sees (the answer)",
+        Some("The sealed machine's reply, sealed to your browser's one-time key."),
+        &serde_json::to_value(&answer).unwrap_or(Value::Null),
+        "content",
+    );
+    show.say(
+        Party::You,
+        &format!(
+            "{} ({:.1}% yes)",
+            if yes >= 0.5 { "Yes" } else { "No" },
+            yes * 100.0
+        ),
+    );
     show.answer(
         QUESTION,
         &format!(

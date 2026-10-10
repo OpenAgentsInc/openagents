@@ -20,6 +20,16 @@ pub const RUNNING: &str = "Running\u{2026}";
 pub const SHOW_ALL: &str = "Tap to show the whole value";
 pub const SHOW_LESS: &str = "Tap to shorten";
 
+/// A party's name over its bubble in the strip under the scene.
+#[must_use]
+pub fn party(party: crate::bubble::Party) -> &'static str {
+    match party {
+        crate::bubble::Party::You => YOU,
+        crate::bubble::Party::Relay => RELAY,
+        crate::bubble::Party::Provider => "Sealed machine",
+    }
+}
+
 /// A step's short name in the step list.
 #[must_use]
 pub fn name(step: Step) -> &'static str {

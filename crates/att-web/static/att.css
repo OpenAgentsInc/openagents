@@ -93,6 +93,54 @@ button.att-value { padding: 0; border: 0; background: none; text-align: left; cu
 .att-label .att-cant { display: none; align-items: center; justify-content: center; gap: 6px; margin-top: 4px; color: #ff6b5a; }
 .att-label .att-cant span { color: #ff6b5a; display: inline; }
 .att-label-relay:hover .att-cant, .att-label-relay[aria-expanded="true"] .att-cant { display: flex; }
+/* What each party sees: bubbles over the scene, or a strip under it. */
+.att-bubbles { position: absolute; inset: 0; pointer-events: none; }
+.att-bubble {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  visibility: hidden;
+  width: max-content;
+  max-width: 320px;
+  max-height: 45%;
+  padding: 8px 10px;
+  border: 1px solid #fff;
+  border-radius: 6px;
+  background: #000;
+  color: #fff;
+  font: 11px/1.45 var(--font-mono);
+  pointer-events: auto;
+}
+.att-bubble::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: var(--att-tail, 50%);
+  width: 9px;
+  height: 9px;
+  border: solid #fff;
+  border-width: 0 1px 1px 0;
+  background: #000;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+.att-bubble > summary { display: none; }
+.att-bubble-in { flex: 1; min-height: 0; overflow: auto; }
+.att-bubble p { margin: 0; }
+.att-say { font: 13px/1.4 var(--font-sans); white-space: pre-wrap; }
+.att-bubble-title { font: 600 12px/1.4 var(--font-sans); }
+.att-bubble .att-bubble-note { color: #9a9a9a; margin-bottom: 4px; }
+.att-bubble[hidden] { display: none; }
+.att-json { margin: 4px 0 0; font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+.att-k { color: #9a9a9a; }
+.att-json strong { font-weight: 700; }
+.att-bubbles-strip { position: static; grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; padding: 8px 16px; background: #0b0b0c; }
+.att-bubbles-strip:not(:has(.att-bubble:not([hidden]))) { display: none; }
+.att-bubbles-strip .att-bubble { position: static; visibility: visible; width: auto; max-width: none; max-height: none; }
+.att-bubbles-strip .att-bubble::after { display: none; }
+.att-bubbles-strip .att-bubble > summary { display: list-item; cursor: pointer; font: 600 12px/1.4 var(--font-sans); }
+.att-bubbles-strip .att-bubble-in { max-height: 34vh; margin-top: 4px; }
 .att-tag { padding: 2px 8px; border: 1px solid #fff; border-radius: 999px; background: #000; }
 .att-tag-back { background: #fff; color: #000; text-shadow: none; }
 

@@ -16,13 +16,16 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::Closure;
 use web_sys::{Document, Element, HtmlElement, HtmlInputElement, Window};
 
+use crate::bubble;
 use crate::copy;
 use crate::gl::Renderer;
 use crate::icons;
 use crate::scene;
 use crate::steps::{self, Event, Player, ms_label};
 
+pub use crate::bubble::Party;
 pub use crate::steps::{RunOptions, State, Step, Tamper};
+use serde_json::Value;
 
 /// A padlock with a cross: the relay can't open what it carries.
 const LOCK_X: &str = "<svg viewBox=\"0 0 16 16\" width=\"14\" height=\"14\" aria-hidden=\"true\"><path d=\"M4.5 7V5a3.5 3.5 0 0 1 7 0v2\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"/><rect x=\"2.5\" y=\"7\" width=\"11\" height=\"8\" rx=\"1.5\" fill=\"currentColor\"/><path d=\"M5.5 9.2l5 4M10.5 9.2l-5 4\" stroke=\"#000\" stroke-width=\"1.6\"/></svg>";
@@ -38,6 +41,8 @@ enum Later {
     Verdict(bool, String, String),
     Lit(Option<bool>),
     Idle,
+    Say(Party, String),
+    Bubble(Party, String, Option<String>, Value, String),
 }
 
 struct Dom {
@@ -52,6 +57,14 @@ struct Dom {
     labels: Vec<HtmlElement>,
     /// The tag that follows the travelling shard.
     tag: Option<HtmlElement>,
+    /// The stage the scene draws on, and the bubbles over it: one per
+    /// party, floated over the scene, or stacked in a strip under it on
+    /// phones and without WebGL2.
+    stage: Option<Element>,
+    bubble_box: Element,
+    bubbles: Vec<HtmlElement>,
+    narrow: Option<web_sys::MediaQueryList>,
+    strip: Option<bool>,
 }
 
 struct Inner {
@@ -217,8 +230,9 @@ impl Show {
             cards.push(card);
         }
 
-        // Long values: tap to show whole, tap again to shorten.
-        listen::<web_sys::Event>(list.as_ref(), "click", |event| {
+        // Long values in the cards and the bubbles: tap to show whole, tap
+        // again to shorten. One listener for the page.
+        listen::<web_sys::Event>(document.as_ref(), "click", |event| {
             let Some(target) = event.target().and_then(|t| t.dyn_into::<Element>().ok()) else {
                 return;
             };
@@ -293,6 +307,23 @@ impl Show {
             .ok()
             .flatten()
             .is_some_and(|m| m.matches());
+        // One bubble per party, empty and hidden until the flow fills it.
+        let bubble_box = make(&document, "div", "att-bubbles");
+        let mut bubbles = Vec::new();
+        for party in Party::ALL {
+            let bubble = make(&document, "details", "att-bubble");
+            let _ = bubble.set_attribute("data-party", party.id());
+            let _ = bubble.set_attribute("open", "");
+            let _ = bubble.set_attribute("hidden", "");
+            let _ = bubble.append_child(&text(&document, "summary", "", copy::party(party)));
+            let _ = bubble.append_child(&make(&document, "div", "att-bubble-in"));
+            let _ = bubble_box.append_child(&bubble);
+            if let Ok(bubble) = bubble.dyn_into::<HtmlElement>() {
+                bubbles.push(bubble);
+            }
+        }
+        let stage = canvas.parent_element();
+        let narrow = window.match_media("(max-width: 699px)").ok().flatten();
         let renderer = match Renderer::new(canvas) {
             Ok(renderer) => Some(renderer),
             Err(error) => {
@@ -324,6 +355,11 @@ impl Show {
                 run: by_id("att-run").and_then(|b| b.dyn_into::<HtmlElement>().ok()),
                 labels,
                 tag,
+                stage,
+                bubble_box,
+                bubbles,
+                narrow,
+                strip: None,
                 document: document.clone(),
             },
             renderer,
@@ -397,6 +433,12 @@ impl Show {
             }
         }
         inner.dom.answer.set_inner_html("");
+        for bubble in &inner.dom.bubbles {
+            let _ = bubble.set_attribute("hidden", "");
+            if let Some(body) = child(bubble, ".att-bubble-in") {
+                body.set_inner_html("");
+            }
+        }
         if let Some(verdict) = &inner.dom.verdict {
             verdict.set_inner_html("");
             let _ = verdict.remove_attribute("data-ok");
@@ -446,6 +488,39 @@ impl Show {
             )));
     }
 
+    /// A speech bubble over `party` with plain text, replacing that
+    /// party's bubble.
+    pub fn say(&self, party: Party, text: &str) {
+        self.inner
+            .borrow_mut()
+            .player
+            .push(Event::Other(Later::Say(party, text.to_owned())));
+    }
+
+    /// An event bubble over `party`: `title`, an optional one-line `note`
+    /// under it, then `event` (a JSON object) pretty-printed with the
+    /// value of the field named `bold` in bold. Replaces that party's
+    /// bubble.
+    pub fn event_bubble(
+        &self,
+        party: Party,
+        title: &str,
+        note: Option<&str>,
+        event: &Value,
+        bold: &str,
+    ) {
+        self.inner
+            .borrow_mut()
+            .player
+            .push(Event::Other(Later::Bubble(
+                party,
+                title.to_owned(),
+                note.map(str::to_owned),
+                event.clone(),
+                bold.to_owned(),
+            )));
+    }
+
     /// The result, at the end of the transcript.
     pub fn verdict(&self, ok: bool, headline: &str, detail: &str) {
         self.inner
@@ -483,6 +558,156 @@ impl Show {
 }
 
 impl Dom {
+    /// The bubble for `party`, emptied and shown.
+    fn bubble(&self, party: Party, kind: &str) -> Option<Element> {
+        let bubble = &self.bubbles[party.index()];
+        let _ = bubble.set_attribute("data-kind", kind);
+        let _ = bubble.remove_attribute("hidden");
+        let body = child(bubble, ".att-bubble-in")?;
+        body.set_inner_html("");
+        Some(body)
+    }
+
+    fn say(&self, party: Party, words: &str) {
+        if let Some(body) = self.bubble(party, "say") {
+            let _ = body.append_child(&text(&self.document, "p", "att-say", words));
+        }
+    }
+
+    fn event_bubble(
+        &self,
+        party: Party,
+        title: &str,
+        note: Option<&str>,
+        event: &Value,
+        bold: &str,
+    ) {
+        let Some(body) = self.bubble(party, "event") else {
+            return;
+        };
+        let _ = body.append_child(&text(&self.document, "p", "att-bubble-title", title));
+        if let Some(note) = note {
+            let _ = body.append_child(&text(&self.document, "p", "att-bubble-note", note));
+        }
+        let pre = make(&self.document, "pre", "att-json");
+        for (i, line) in bubble::event_lines(event, bold).iter().enumerate() {
+            if i > 0 {
+                let _ = pre.append_child(&self.document.create_text_node("\n"));
+            }
+            for span in line {
+                let node: web_sys::Node = match &span.full {
+                    Some(full) => {
+                        let button = text(
+                            &self.document,
+                            "button",
+                            "att-value att-value-long",
+                            &span.text,
+                        );
+                        let _ = button.set_attribute("type", "button");
+                        let _ = button.set_attribute("aria-expanded", "false");
+                        let _ = button.set_attribute("title", copy::SHOW_ALL);
+                        let _ = button.set_attribute("data-full", full);
+                        let _ = button.set_attribute("data-cut", &span.text);
+                        button.into()
+                    }
+                    None if span.look == bubble::Look::Key => {
+                        text(&self.document, "span", "att-k", &span.text).into()
+                    }
+                    None => self.document.create_text_node(&span.text).into(),
+                };
+                if span.bold {
+                    let strong = make(&self.document, "strong", "");
+                    let _ = strong.append_child(&node);
+                    let _ = pre.append_child(&strong);
+                } else {
+                    let _ = pre.append_child(&node);
+                }
+            }
+        }
+        let _ = body.append_child(&pre);
+    }
+
+    /// Floats the bubbles over the scene, or stacks them under it.
+    fn bubble_mode(&mut self, strip: bool) {
+        if self.strip == Some(strip) {
+            return;
+        }
+        self.strip = Some(strip);
+        let Some(stage) = &self.stage else {
+            return;
+        };
+        if strip {
+            if let Some(parent) = stage.parent_node() {
+                let _ = parent.insert_before(&self.bubble_box, stage.next_sibling().as_ref());
+            }
+            let _ = self.bubble_box.class_list().add_1("att-bubbles-strip");
+            for bubble in &self.bubbles {
+                let style = bubble.style();
+                let _ = style.remove_property("transform");
+                let _ = style.remove_property("visibility");
+                let _ = style.remove_property("--att-tail");
+            }
+        } else {
+            let _ = stage.append_child(&self.bubble_box);
+            let _ = self.bubble_box.class_list().remove_1("att-bubbles-strip");
+            for bubble in &self.bubbles {
+                let _ = bubble.set_attribute("open", "");
+            }
+        }
+    }
+
+    /// Places each shown bubble just over its party's label, side by side,
+    /// with its tail at the party.
+    fn float_bubbles(&self) {
+        let Some(stage) = &self.stage else {
+            return;
+        };
+        let room = stage.get_bounding_client_rect();
+        let labels: Vec<bubble::Rect> = self
+            .labels
+            .iter()
+            .map(|label| {
+                let r = label.get_bounding_client_rect();
+                bubble::Rect {
+                    left: r.left() - room.left(),
+                    top: r.top() - room.top(),
+                    right: r.right() - room.left(),
+                    bottom: r.bottom() - room.top(),
+                }
+            })
+            .collect();
+        let mut shown = Vec::new();
+        let mut wants = Vec::new();
+        for (bubble, label) in self.bubbles.iter().zip(&self.labels) {
+            if bubble.has_attribute("hidden") {
+                continue;
+            }
+            let at = label.get_bounding_client_rect();
+            let size = bubble.get_bounding_client_rect();
+            wants.push(bubble::Want {
+                x: at.left() + at.width() / 2.0 - room.left(),
+                bottom: at.top() - room.top() - 12.0,
+                width: size.width(),
+                height: size.height(),
+            });
+            shown.push(bubble);
+        }
+        for (bubble, placed) in shown.iter().zip(bubble::arrange(
+            &wants,
+            &labels,
+            room.width(),
+            room.height(),
+        )) {
+            let style = bubble.style();
+            let _ = style.set_property(
+                "transform",
+                &format!("translate({:.1}px, {:.1}px)", placed.left, placed.top),
+            );
+            let _ = style.set_property("--att-tail", &format!("{:.1}px", placed.tail));
+            let _ = style.set_property("visibility", "visible");
+        }
+    }
+
     fn user_message(&self, prompt: Option<&str>) {
         let Some(slot) = &self.user else {
             return;
@@ -613,8 +838,16 @@ impl Inner {
                 }
                 Event::Other(Later::Lit(lit)) => self.lit = lit,
                 Event::Other(Later::Idle) => self.set_button(false),
+                Event::Other(Later::Say(party, words)) => self.dom.say(party, &words),
+                Event::Other(Later::Bubble(party, title, note, event, bold)) => {
+                    self.dom
+                        .event_bubble(party, &title, note.as_deref(), &event, &bold);
+                }
             }
         }
+        let strip =
+            self.renderer.is_none() || self.dom.narrow.as_ref().is_some_and(|m| m.matches());
+        self.dom.bubble_mode(strip);
         let Some(renderer) = &self.renderer else {
             return;
         };
@@ -647,6 +880,9 @@ impl Inner {
         };
         for (label, anchor) in self.dom.labels.iter().zip(scene::label_anchors()) {
             place(label, anchor);
+        }
+        if !strip {
+            self.dom.float_bubbles();
         }
         if let Some(tag) = &self.dom.tag {
             match frame.tag {

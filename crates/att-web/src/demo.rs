@@ -7,7 +7,30 @@ use std::rc::Rc;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::Closure;
 
-use crate::show::{RunOptions, Show, State, Step, Tamper};
+use serde_json::{Value, json};
+
+use crate::show::{Party, RunOptions, Show, State, Step, Tamper};
+
+/// A made-up sealed event of `kind`, its content `bytes` of base64.
+fn sealed(kind: u32, bytes: usize, content: &str) -> Value {
+    let body: String = "AtE9xk2Lq0f3Zr8YbW1cVd5Ns7Hm4Pj6Kt2Gu9Fe0Ra3Sy"
+        .chars()
+        .cycle()
+        .take(bytes)
+        .collect();
+    json!({
+        "id": "3f9a0c51d2e8b7a64c1f0e9d8b7a6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b",
+        "pubkey": "5c2e81f0a9d4b7c63e1f20d9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9",
+        "created_at": 1_760_112_345,
+        "kind": kind,
+        "tags": [
+            ["p", "77fabebbeb49a7b9b384422ee6ef5662cf4db7da70acc94981378c0017ecc56e"],
+            ["requires", "openagents.attested.v1"]
+        ],
+        "content": if content.is_empty() { body } else { content.to_owned() },
+        "sig": "9b1e7c4d2a8f0e6b3c5d7a9e1f2b4c6d8e0a1b3c5d7e9f0a2b4c6d8e0f1a3b5c7d9e1f2a4b6c8d0e2f4a6b8c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2b4c6d8e"
+    })
+}
 
 fn after(ms: i32, f: impl FnOnce() + 'static) {
     let closure = Closure::once_into_js(f);
@@ -28,6 +51,10 @@ fn rows(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
 fn round(show: Rc<Show>, options: RunOptions) {
     show.reset();
     show.set_running(true);
+    show.say(
+        Party::You,
+        &format!("{} Is this about the weather?", options.prompt),
+    );
     show.status("Running a round\u{2026}");
     let refuse_at = match options.tamper {
         Tamper::None => None,
@@ -94,17 +121,47 @@ fn round(show: Rc<Show>, options: RunOptions) {
                     ("Your message", &prompt),
                     ("Sealed bytes", "412"),
                 ])),
-                Step::Relay => s.panel(step, "What the relay saw", &rows(&[
+                Step::Relay => {
+                    s.event_bubble(
+                        Party::Relay,
+                        "What the relay sees",
+                        Some("Sealed in your browser. The relay has no key."),
+                        &sealed(25910, 560, ""),
+                        "content",
+                    );
+                    s.panel(step, "What the relay saw", &rows(&[
                     ("Kind", "25910"),
                     ("Size", "412 bytes"),
                     ("First bytes", "02a7f3c91b5e08d44f6a2c90e1b37d58aa04c3e9f1027b6d"),
-                ])),
+                    ]));
+                }
+                Step::Decrypt => s.event_bubble(
+                    Party::Provider,
+                    "What the sealed machine opens",
+                    Some("Only here, inside the sealed machine."),
+                    &sealed(
+                        25910,
+                        0,
+                        &format!(
+                            "{{\"state\":\"{prompt}\",\"question\":\"Is this about the weather?\"}}"
+                        ),
+                    ),
+                    "content",
+                ),
                 Step::Answer => {
                     s.panel(step, "The answer, opened here", &rows(&[
                         ("Result event", "kind 26910 · 3f9a0c51d2e8b7a64c1f0e9d8b7a6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b"),
                         ("Sealed to you", "388 bytes"),
                         ("Answer", "Yes (97.3% yes)"),
                     ]));
+                    s.event_bubble(
+                        Party::Relay,
+                        "What the relay sees",
+                        Some("The answer, sealed to your browser."),
+                        &sealed(26910, 520, ""),
+                        "content",
+                    );
+                    s.say(Party::You, "Yes (97.3% yes)");
                     s.answer("Is this about the weather?", "Yes (97.3% yes)");
                 }
                 Step::Receipt => s.panel(step, "Receipt", &rows(&[("Signed by", "the sealed program")])),

@@ -301,7 +301,7 @@ async fn verify(args: &mut Args, relay: &str, round: bool) -> Result<Value, Stri
     let state = args.need("--state")?;
     let question = args.need("--question")?;
     let request_id = format!("{:x}", Sha256::digest(signer.pubkey().as_bytes()));
-    let (request, body) = oa_att::sealed_request(
+    let (request, body, _) = oa_att::sealed_request(
         &signer,
         &secret,
         &parsed,
@@ -368,7 +368,7 @@ async fn open_round(args: &mut Args, relay: &str) -> Result<Value, String> {
     steps.push(json!({"step": "beacon", "ms": ms(t), "beacon": beacon}));
     let t = Instant::now();
     let request_id = format!("{:x}", Sha256::digest(signer.pubkey().as_bytes()));
-    let (request, body) = oa_att::sealed_decision(
+    let (request, body, _) = oa_att::sealed_decision(
         &signer,
         &secret,
         &beacon.key,

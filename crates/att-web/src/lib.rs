@@ -4,6 +4,7 @@
 //! a chat transcript of the round in the site's own classes (`show`), and
 //! the round itself (`flow`).
 
+pub mod bubble;
 pub mod copy;
 pub mod icons;
 pub mod mesh;
