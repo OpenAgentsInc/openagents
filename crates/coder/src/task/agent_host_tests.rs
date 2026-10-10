@@ -348,7 +348,12 @@ fn stop_runs_the_sequence_and_pause_starts_nothing_new() {
 #[test]
 fn memory_takes_notes_and_waits_for_accepted_preferences() {
     let dir = tempfile::tempdir().unwrap();
-    let agents = host(&dir, vec![turn(vec![], "Understood.")]);
+    // Jev reads the first request as a note and the second as work that
+    // states a preference.
+    let agents = host(&dir, vec![turn(vec![], "Understood.")]).with_router(routed(vec![
+        routing(Route::Remember, 0.95, 0.0, 0.0),
+        routing(Route::Work, 0.9, 0.95, 0.0),
+    ]));
     ask(
         &agents,
         "k1",
@@ -356,7 +361,13 @@ fn memory_takes_notes_and_waits_for_accepted_preferences() {
         false,
     )
     .unwrap();
-    until(&agents, |v| !v.busy && v.headline == "noted");
+    let noted = until(&agents, |v| !v.busy && v.headline == "noted");
+    // Her reply shows no internal entry number.
+    assert!(
+        noted.lines.iter().all(|l| !l.contains("memory entry")),
+        "{:?}",
+        noted.lines
+    );
     ask(
         &agents,
         "k2",
@@ -419,6 +430,129 @@ fn memory_takes_notes_and_waits_for_accepted_preferences() {
     assert_eq!(refused, Err(Code::Conflict));
 }
 
+use super::super::agent_route::{self, Answers, Route, RouterFactory, ScriptedRouter};
+
+/// Jev's answers for one request.
+fn routing(route: Route, route_p: f64, preference: f64, changes_files: f64) -> Answers {
+    Answers {
+        route,
+        route_p,
+        preference,
+        changes_files,
+    }
+}
+
+/// Routers that hand out `answers` in order, one per request.
+fn routed(answers: Vec<Answers>) -> RouterFactory {
+    agent_route::scripted(ScriptedRouter::new(answers))
+}
+
+fn memory_rows(agents: &Agents) -> Vec<wire::MemoryRow> {
+    let memory: wire::Memory = serde_json::from_value(
+        agents
+            .answer(
+                "m",
+                &owner(),
+                &Operation::ListAgentMemory {
+                    agent: "alice".into(),
+                    after: None,
+                },
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    memory.memory
+}
+
+/// No words in a request route it: with no Jev, a request that mentions
+/// merging, remembering, or "never" is ordinary work that merges nothing
+/// and stores nothing (audit X-ROUTE-01, X-ROUTE-02, CD-01).
+#[test]
+fn without_jev_no_request_merges_notes_or_prefers() {
+    let dir = tempfile::tempdir().unwrap();
+    let texts = [
+        "Could you explain this merge conflict for me?",
+        "please merge your change",
+        "don't merge this",
+        "Remember to fix the login bug",
+        "I never got the email",
+    ];
+    let agents = host(&dir, texts.iter().map(|_| turn(vec![], "Done.")).collect());
+    for (i, text) in texts.iter().enumerate() {
+        ask(&agents, &format!("k{i}"), text, false).unwrap();
+        let seen = until(&agents, |v| !v.busy && v.headline == "answered");
+        assert!(seen.pending.is_none(), "{text}");
+    }
+    assert!(
+        memory_rows(&agents)
+            .iter()
+            .all(|m| m.kind != "note" && m.kind != "preference")
+    );
+}
+
+/// Jev reading a request as work, or as a merge it isn't sure of, never
+/// reaches the merge; a sure one waits for the owner's confirm, and a
+/// reject merges nothing.
+#[test]
+fn a_merge_needs_jev_above_its_threshold_and_the_owners_confirm() {
+    let dir = tempfile::tempdir().unwrap();
+    let agents = host(
+        &dir,
+        vec![turn(vec![], "It's a conflict."), turn(vec![], "Done.")],
+    )
+    .with_router(routed(vec![
+        routing(Route::Work, 0.9, 0.0, 0.0),
+        routing(Route::MergeOwn, 0.6, 0.0, 0.0),
+        routing(Route::MergeOwn, 0.97, 0.0, 0.0),
+    ]));
+    ask(&agents, "k1", "explain this merge conflict for me", false).unwrap();
+    let seen = until(&agents, |v| !v.busy && v.headline == "answered");
+    assert!(seen.pending.is_none());
+    ask(&agents, "k2", "maybe merge it later?", false).unwrap();
+    let seen = until(&agents, |v| !v.busy && v.headline == "answered");
+    assert!(seen.pending.is_none());
+    ask(&agents, "k3", "please merge your change", false).unwrap();
+    let proposal = until(&agents, |v| v.pending.is_some()).pending.unwrap();
+    assert_eq!(proposal.command, merge_station::CONFIRM_MERGE);
+    agents
+        .answer(
+            "a1",
+            &owner(),
+            &Operation::AnswerAgent {
+                agent: "alice".into(),
+                step: proposal.step,
+                confirm: false,
+            },
+        )
+        .unwrap();
+    let seen = until(&agents, |v| !v.busy && v.headline == "not merged");
+    assert!(
+        seen.lines.iter().any(|l| l.contains("I didn't merge")),
+        "{:?}",
+        seen.lines
+    );
+}
+
+/// "Remember to ..." that Jev reads as work starts work and keeps no
+/// note.
+#[test]
+fn remember_to_do_something_is_work_when_jev_says_so() {
+    let dir = tempfile::tempdir().unwrap();
+    let agents = host(&dir, vec![turn(vec![], "Fixed.")]).with_router(routed(vec![routing(
+        Route::Work,
+        0.9,
+        0.1,
+        0.0,
+    )]));
+    ask(&agents, "k1", "Remember to fix the login bug", false).unwrap();
+    until(&agents, |v| !v.busy && v.headline == "answered");
+    assert!(
+        memory_rows(&agents)
+            .iter()
+            .all(|m| m.kind != "note" && m.kind != "preference")
+    );
+}
+
 #[test]
 fn the_phase_one_record_moves_to_alice() {
     let dir = tempfile::tempdir().unwrap();
@@ -441,10 +575,6 @@ fn the_phase_one_record_moves_to_alice() {
 
 #[test]
 fn modes_and_ids_are_stable() {
-    assert_eq!(choose_mode("run the atif tests"), Mode::Terminal);
-    assert_eq!(choose_mode("what fails in atif?"), Mode::Terminal);
-    assert_eq!(choose_mode("fix the typo in the README"), Mode::Task);
-    assert_eq!(choose_mode("add a test for the chunk reader"), Mode::Task);
     assert_eq!(thread_id("alice"), thread_id("alice"));
     assert_eq!(thread_id("alice").len(), 32);
     assert_ne!(subject("h", "alice"), subject("h", "bob"));

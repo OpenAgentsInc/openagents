@@ -49,6 +49,7 @@ pub mod agent_queue;
 pub mod agent_recall;
 pub mod agent_reflect;
 pub mod agent_remote;
+pub mod agent_route;
 pub mod agent_share;
 pub mod agent_spend;
 pub mod agent_steer;

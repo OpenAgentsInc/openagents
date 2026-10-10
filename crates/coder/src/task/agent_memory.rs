@@ -408,38 +408,6 @@ impl Memory {
     }
 }
 
-/// A preference the owner's own words propose, such as "always run the
-/// tests first" or "never push": the request text, when it states one.
-#[must_use]
-pub fn proposed_preference(request: &str) -> Option<String> {
-    let lower = request.to_ascii_lowercase();
-    let cue = [
-        "always ",
-        "never ",
-        "i prefer ",
-        "from now on",
-        "in the future",
-    ]
-    .iter()
-    .any(|cue| lower.contains(cue));
-    (cue && request.len() <= 400).then(|| format!("The owner said: {}", request.trim()))
-}
-
-/// What the owner asked to remember: the rest of a request that starts
-/// with "remember" or "note that".
-#[must_use]
-pub fn remembered(request: &str) -> Option<String> {
-    let trimmed = request.trim();
-    let lower = trimmed.to_ascii_lowercase();
-    for cue in ["remember that ", "remember ", "note that "] {
-        if lower.starts_with(cue) {
-            let rest = trimmed[cue.len()..].trim();
-            return (!rest.is_empty()).then(|| rest.to_string());
-        }
-    }
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -536,16 +504,5 @@ mod tests {
         // which the journal never rewrites; the forget line holds none.
         let last = journal.lines().last().unwrap();
         assert!(!last.contains("falcon"));
-    }
-
-    #[test]
-    fn cues_propose_preferences_and_notes() {
-        assert!(proposed_preference("always run the tests first").is_some());
-        assert!(proposed_preference("run the tests").is_none());
-        assert_eq!(
-            remembered("Remember that mobile is its own workspace").as_deref(),
-            Some("mobile is its own workspace")
-        );
-        assert!(remembered("run it").is_none());
     }
 }

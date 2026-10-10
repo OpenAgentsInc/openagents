@@ -330,6 +330,9 @@ pub struct Agents {
     remote: Arc<Mutex<Box<dyn agent_remote::Remote>>>,
     /// What she plans, judges, and reports with in terminal mode.
     mind: super::agent_steer::MindFactory,
+    /// What reads the owner's request for the Merge station, a note, a
+    /// preference, and task mode (`questions/agent-request.json`).
+    router: super::agent_route::RouterFactory,
     /// Runs each agent's engram relay sync while the owner has it on.
     relay_sync: Arc<super::agent_sync::Sweeper>,
     /// Where the owner's NIP-IA archive requests go.
@@ -412,6 +415,7 @@ impl Agents {
             reconciled: Arc::default(),
             remote: Arc::new(Mutex::new(Box::new(agent_remote::Cli::new(None)))),
             mind: super::agent_steer::default_mind(),
+            router: super::agent_route::default_router(),
             relay_sync: super::agent_sync::Sweeper::new(Arc::new(super::agent_sync::Live)),
             relays: Arc::new(super::agent_sync::Live),
             dispatch_revoker: Arc::new(crew_control::NoOutbox),
@@ -635,6 +639,14 @@ impl Agents {
     #[must_use]
     pub fn with_mind(mut self, mind: super::agent_steer::MindFactory) -> Self {
         self.mind = mind;
+        self
+    }
+
+    /// Read requests with the routers `router` makes instead of Jev, as a
+    /// test does.
+    #[must_use]
+    pub fn with_router(mut self, router: super::agent_route::RouterFactory) -> Self {
+        self.router = router;
         self
     }
 
@@ -1060,10 +1072,8 @@ impl Agents {
                         serde_json::json!({"agent":agent,"sales":answer,"headline":steered.report.headline,"thread":thread_id(agent)}),
                     );
                 }
-                if agent_memory::remembered(text).is_none() {
-                    super::sales::privacy::model_available(&privacy_store)
-                        .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
-                }
+                super::sales::privacy::model_available(&privacy_store)
+                    .map_err(|why| coder_host::tasks::refuse(Code::Unavailable, why))?;
                 // The owner asking her is the owner wanting her to work: a
                 // paused agent resumes for it. The kill switch's stop holds
                 // until the owner resumes her.
@@ -2080,8 +2090,7 @@ impl Agents {
             ),
         )
         .is_err()
-            || (agent_memory::remembered(&queued.text).is_none()
-                && super::sales::privacy::model_available(&store).is_err())
+            || super::sales::privacy::model_available(&store).is_err()
         {
             let report = Report {
                 outcome: Outcome::Stopped,
@@ -2109,20 +2118,28 @@ impl Agents {
         self.with_live(name, |live| live.lines.clear());
         self.set_status(name, &format!("Working on: {}", one_line(&queued.text)));
         self.say(name, &format!("you: {}", one_line(&queued.text)));
-        // The Merge station: where it is, and her own merge when the owner
-        // asks for it, with no model call.
-        if record.job_role.is_none()
-            && let Some(report) = self.merge_station(&store, &record, &queued)
-        {
+        // What the request asks for, as Jev reads it over the typed
+        // question set; below a threshold, or with no Jev, it is ordinary
+        // terminal work that stores nothing. A sales seat's request is
+        // never read here.
+        let routing = if record.job_role.is_none() {
+            super::agent_route::route((self.router)(&store), &queued.text)
+        } else {
+            super::agent_route::Routing::abstain()
+        };
+        // The Merge station: where it is, and her own merge once the owner
+        // confirms it at her lectern.
+        if let Some(report) = self.merge_station(&store, &record, &queued, routing.route, &cancel) {
             self.finish(&store, &record, &queued, &report, None);
             return;
         }
         let memory = Memory::new(store.clone(), self.screen.clone());
-        // "Remember ..." is a note, with no model call.
-        if let Some(note) = agent_memory::remembered(&queued.text) {
+        // A note to keep, with no further model call.
+        if routing.route == super::agent_route::Route::Remember {
             let _ = store.append(&request_entry(now, &queued));
-            let reply = match memory.add(MemoryKind::Note, Author::Owner, &note, vec![], now) {
-                Ok(id) => format!("I'll remember that (memory entry {id})."),
+            let note = queued.text.trim();
+            let reply = match memory.add(MemoryKind::Note, Author::Owner, note, vec![], now) {
+                Ok(_) => "Got it, I'll remember that.".to_string(),
                 Err(why) => format!("I can't keep that: {why}."),
             };
             let report = Report {
@@ -2134,7 +2151,8 @@ impl Agents {
             self.finish(&store, &record, &queued, &report, None);
             return;
         }
-        if let Some(preference) = agent_memory::proposed_preference(&queued.text) {
+        if routing.preference {
+            let preference = format!("The owner said: {}", queued.text.trim());
             let _ = memory.add(
                 MemoryKind::Preference,
                 Author::Agent,
@@ -2145,7 +2163,8 @@ impl Agents {
         }
         let mode = match queued.mode {
             Mode::Auto if record.job_role.is_some() => Mode::Terminal,
-            Mode::Auto => choose_mode(&queued.text),
+            Mode::Auto if routing.task => Mode::Task,
+            Mode::Auto => Mode::Terminal,
             mode => mode,
         };
         let workspace = self.workspace_for(&record, queued.workspace.as_deref());
@@ -3763,72 +3782,6 @@ pub fn subject(host: &str, name: &str) -> String {
         .chain_update(name.as_bytes())
         .finalize();
     digest.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-/// Which kind of work a request asks for, when the owner did not say: a
-/// change to files is task mode; anything else, such as running,
-/// checking, or reading, is terminal mode. A word list stands in for the
-/// spec's typed question until it has a measured threshold.
-#[must_use]
-pub fn choose_mode(text: &str) -> Mode {
-    let lower = text.trim().to_ascii_lowercase();
-    let first = lower.split_whitespace().next().unwrap_or("");
-    let terminal_first = [
-        "run",
-        "check",
-        "show",
-        "list",
-        "tell",
-        "what",
-        "why",
-        "how",
-        "which",
-        "is",
-        "are",
-        "does",
-        "do",
-        "find",
-        "count",
-        "read",
-        "look",
-        "explain",
-        "where",
-        "when",
-        "who",
-        "test",
-        "summarize",
-    ];
-    if terminal_first.contains(&first) {
-        return Mode::Terminal;
-    }
-    let task_words = [
-        "fix",
-        "change",
-        "add",
-        "implement",
-        "refactor",
-        "rename",
-        "write",
-        "edit",
-        "update",
-        "remove",
-        "delete",
-        "create",
-        "make",
-        "bump",
-        "port",
-        "rewrite",
-        "improve",
-    ];
-    if task_words.contains(&first)
-        || task_words.iter().any(|w| {
-            lower.contains(&format!(" and {w} ")) || lower.starts_with(&format!("please {w} "))
-        })
-    {
-        Mode::Task
-    } else {
-        Mode::Terminal
-    }
 }
 
 /// The journal as a device reads it, after position `after`.

@@ -692,6 +692,7 @@ mod tests {
                 .map(|set| set.id.as_str())
                 .collect::<Vec<_>>(),
             [
+                "openagents.agent-request.v1",
                 "openagents.agent-steer.v1",
                 "openagents.completion.v1",
                 "openagents.departure-docstring.v1",
@@ -730,6 +731,7 @@ mod tests {
         // set by her knowledge drafts, the world-place set by her plans'
         // place choice, the react-or-continue set by her day plan's
         // reactions, the agent-steer set by her steering loop, the
+        // agent-request set by her request routing, the
         // interview-answer set by `coder interview`, and the rumor-repeat
         // set by `openagents verse town rumor propose`.
         // The inventory says so rather than letting a run find out at
@@ -740,6 +742,7 @@ mod tests {
         assert_eq!(
             inventory.problems(),
             [
+                unbound("openagents.agent-request.v1"),
                 unbound("openagents.agent-steer.v1"),
                 unbound("openagents.departure-docstring.v1"),
                 unbound("openagents.departure-rationale.v1"),

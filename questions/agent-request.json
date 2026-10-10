@@ -1,0 +1,31 @@
+{
+  "v": 1,
+  "id": "openagents.agent-request.v1",
+  "name": "What the owner's request to a workshop agent asks for",
+  "summary": "Asks three independent questions about one request the owner sent a workshop agent: what kind of request it is, whether it states a standing preference for how she should work from now on, and whether doing it changes files. The state holds only the request text. Code acts on each answer only above a provisional threshold and otherwise treats the request as ordinary work in terminal mode that stores nothing; a merge never happens on this answer alone, because the owner must still confirm it at her lectern.",
+  "gate": "route",
+  "questions": {
+    "route": {
+      "type": "choice",
+      "instructions": "What does the owner's request in `request` ask the workshop agent to do? Read what the owner wants done, not which words appear: a request that mentions merging, remembering, or the Merge station while asking for something else is `work`, and a request that tells her not to do something does not ask her to do it.",
+      "criteria": {
+        "work": "Anything else: a question, a check, a change to make, an explanation, or a request that only mentions merging, a merge conflict, the Merge station, or remembering. This includes 'remember to ...' requests that ask her to do a task.",
+        "merge_station_where": "The owner asks where the Merge station is or how to get to it or use it, and asks for nothing else.",
+        "merge_own": "The owner directly asks her to merge her own change that waits at the Merge station now, and does not tell her to hold off, wait, or not merge.",
+        "remember": "The owner asks her to keep a fact in mind for later, such as 'remember that mobile is its own workspace' or 'note that the relay listens on 7447', and asks for no work now."
+      }
+    },
+    "states_preference": {
+      "type": "noul",
+      "instructions": "The request in `request` states a standing preference about how the workshop agent should work from now on, such as 'always run the tests before you report' or 'never push without asking'. A sentence that only uses words like 'never' or 'always' to describe what happened ('I never got the email', 'never mind, show me the diff') states no preference."
+    },
+    "changes_files": {
+      "type": "noul",
+      "instructions": "Doing the request in `request` means changing files in the code: fixing, adding, editing, renaming, or removing something. A request to run, check, show, find, read, or explain something, or a question, changes no files."
+    }
+  },
+  "policy": {
+    "v": 1,
+    "state_max_bytes": 8192
+  }
+}

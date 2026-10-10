@@ -1,13 +1,18 @@
 //! The Merge station from her side: where it is, and her own merge when
-//! the owner asks for it.
+//! the owner asks for it and confirms it.
 //!
 //! The owner reviews and merges at the Merge station; when the owner asks
-//! her directly to merge her own change, she does it for them. She merges
-//! only a change of hers that reached the station, which means its checks
-//! passed, through the same landing path the station's **Merge** takes: it
-//! merges into the checkout's branch and pushes nothing. Neither a
-//! question about the station nor her merge calls a model.
+//! her directly to merge her own change, she does it for them. Whether a
+//! request asks that is Jev's typed answer (`agent_route`), never the
+//! words in it, and even then she merges only after the owner confirms at
+//! her lectern. She merges only a change of hers that reached the station,
+//! which means its checks passed, through the same landing path the
+//! station's **Merge** takes: it merges into the checkout's branch and
+//! pushes nothing.
 
+use std::sync::atomic::AtomicBool;
+
+use super::super::agent_route::Route;
 use super::*;
 use coder_host::access::review::PublishState;
 
@@ -17,92 +22,55 @@ pub(crate) const WHERE: &str = "The Merge station is the strongroom in the Everg
      review TASK --diff` shows a change and `openagents studio merge TASK` merges it. Or ask me \
      to merge my own change.";
 
-fn lower(text: &str) -> String {
-    text.to_lowercase().replace(['\u{2019}', '`'], "'")
-}
-
-/// Whether `text` asks where the Merge station is.
-#[must_use]
-pub(crate) fn asks_where(text: &str) -> bool {
-    let text = lower(text);
-    text.contains("merge station")
-        && ["where", "how do i", "how to"]
-            .iter()
-            .any(|word| text.contains(word))
-}
-
-/// Whether `text` asks her to merge her own change: it names merging and
-/// asks her to do it, and does not tell her not to.
-#[must_use]
-pub(crate) fn asks_to_merge(text: &str) -> bool {
-    let text = lower(text);
-    if !text.contains("merge") {
-        return false;
-    }
-    if ["don't merge", "do not merge", "never merge", "not merge"]
-        .iter()
-        .any(|no| text.contains(no))
-    {
-        return false;
-    }
-    [
-        "can you merge",
-        "could you merge",
-        "please merge",
-        "merge it",
-        "merge that",
-        "merge your",
-        "merge the change",
-        "merge my",
-        "go ahead and merge",
-        "you merge",
-        "instead of me",
-        "for me",
-        "do that",
-        "do it",
-    ]
-    .iter()
-    .any(|ask| text.contains(ask))
-}
+/// What she holds at her lectern before she merges.
+pub(crate) const CONFIRM_MERGE: &str = "merge my change at the Merge station";
 
 impl Agents {
-    /// Answers a request about the Merge station, or `None` when `queued`
-    /// is not one.
+    /// Answers a request `route` reads as one about the Merge station, or
+    /// `None` when it is not one. Her own merge waits for the owner's
+    /// CONFIRM at her lectern; a REJECT, a stop, or no answer merges
+    /// nothing.
     pub(super) fn merge_station(
         &self,
         store: &Store,
         record: &Record,
         queued: &Queued,
+        route: Route,
+        stop: &AtomicBool,
     ) -> Option<Report> {
-        let (place, merge) = (asks_where(&queued.text), asks_to_merge(&queued.text));
-        if !place && !merge {
+        if record.job_role.is_some() || !matches!(route, Route::MergeStationWhere | Route::MergeOwn)
+        {
             return None;
         }
         let now = (self.clock)();
         let _ = store.append(&request_entry(now, queued));
         let name = &record.name;
-        let mut said = Vec::new();
-        let mut outcome = Outcome::Done;
-        let mut headline = "answered".to_string();
-        if place {
+        let (outcome, reply, headline) = if route == Route::MergeStationWhere {
             self.set_status(name, "Checking where the Merge station is");
-            said.push(WHERE.to_string());
-        }
-        if merge {
-            self.set_status(name, "Merging my change at the Merge station");
-            match self.merge_own(store, name) {
-                Ok(line) => {
-                    headline = "merged".into();
-                    said.push(line);
+            (Outcome::Done, WHERE.to_string(), "answered".to_string())
+        } else {
+            self.set_status(name, "Waiting for you to confirm my merge");
+            let decision = self.propose(
+                name,
+                CONFIRM_MERGE,
+                "You asked me to merge my change. Confirm and I merge it into your branch; \
+                 reject and I leave it at the Merge station.",
+                stop,
+            );
+            if decision == Decision::Confirm {
+                self.set_status(name, "Merging my change at the Merge station");
+                match self.merge_own(store, name) {
+                    Ok(line) => (Outcome::Done, line, "merged".to_string()),
+                    Err(line) => (Outcome::Failed, line, "not merged".to_string()),
                 }
-                Err(line) => {
-                    outcome = Outcome::Failed;
-                    headline = "not merged".into();
-                    said.push(line);
-                }
+            } else {
+                (
+                    Outcome::Stopped,
+                    "I didn't merge; my change still waits at the Merge station.".to_string(),
+                    "not merged".to_string(),
+                )
             }
-        }
-        let reply = said.join(" ");
+        };
         let _ = store.append(&Entry::new((self.clock)(), Kind::Report, &reply));
         Some(Report {
             outcome,
@@ -189,23 +157,5 @@ impl Agents {
             "I merged my change (task {short}){into}{at}, as you asked; its checks passed before \
              it reached the Merge station."
         ))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn she_reads_where_and_merge_requests_plainly() {
-        let owner = "where's the merge station and can you do that instead of me";
-        assert!(asks_where(owner) && asks_to_merge(owner));
-        assert!(asks_to_merge("Please merge your change for #10893"));
-        assert!(asks_to_merge("merge it"));
-        assert!(asks_where("How do I get to the Merge station?"));
-        assert!(!asks_where("merge the change"));
-        assert!(!asks_to_merge("don't merge it yet"));
-        assert!(!asks_to_merge("what is a merge conflict?"));
-        assert!(!asks_to_merge("fix the typo in the readme"));
     }
 }

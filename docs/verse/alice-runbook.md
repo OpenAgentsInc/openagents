@@ -171,8 +171,9 @@ Read her state with `openagents agent show alice` and her journal with
 every agent with a service record: requests, finished, and merged.
 
 She runs one request at a time. Up to four more wait in her queue, and the
-host refuses a request beyond that. A request that starts with "Remember"
-becomes a memory note with no model call.
+host refuses a request beyond that. A request Jev reads as a note to keep
+("remember that mobile is its own workspace") becomes a memory note; one
+that asks her to do something ("remember to fix the login bug") is work.
 
 ### Delegate a GitHub issue
 

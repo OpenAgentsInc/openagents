@@ -300,10 +300,14 @@ for later. Three jobs ship as templates:
 
 The agent does two kinds of work. It chooses between them with a typed
 question over the request, the same way the chat router chooses a route; you
-can also force one. Until the typed question has a measured threshold, a
-word list stands in for it (`agent_host::choose_mode`): a request that
-starts with a change verb, such as "fix" or "add", is task mode, and
-anything else is terminal mode.
+can also force one. Jev answers
+[`questions/agent-request.json`](../../questions/agent-request.json)
+([`agent_route.rs`](../../crates/coder/src/task/agent_route.rs)): a request
+that changes files, above a provisional threshold, is task mode, and
+anything else, or any request when Jev isn't set up, is terminal mode. The
+same answers decide whether a request asks about the Merge station, asks
+her to keep a note, or states a preference; no word in a request decides
+any of these.
 
 ### Task mode: changes in a worktree
 
@@ -458,10 +462,13 @@ runs read-only and asks nobody either.
 Ask her where the Merge station is, and she says: the strongroom in the
 Everglade workshop yard, and `openagents studio review TASK --diff` and
 `openagents studio merge TASK` from a terminal. Ask her to merge her change
-("merge it", "can you do that instead of me"), and she merges her newest
-change waiting at the station, whose checks passed to get there, through
-the station's own **Merge**: into the checkout's branch, pushing nothing.
-Neither calls a model. Each request starts her pane on a fresh screen, with
+("please merge your change"), and when Jev reads that as a merge above its
+threshold she holds `merge my change at the Merge station` at her lectern.
+On your CONFIRM she merges her newest change waiting at the station, whose
+checks passed to get there, through the station's own **Merge**: into the
+checkout's branch, pushing nothing. A REJECT, a stop, or no answer merges
+nothing, and a request that only mentions merging ("explain this merge
+conflict for me") is ordinary work. Each request starts her pane on a fresh screen, with
 one `now:` line first that says what she does, such as `Waiting for Codex
 to edit files in my worktree` or `Waiting for you: merge task ID?`. The goal
 bar clears once its goal's tasks are over, merged or rejected included.

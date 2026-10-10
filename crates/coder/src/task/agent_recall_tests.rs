@@ -206,7 +206,7 @@ fn candidates_leave_out_memory_rows_and_what_waits_for_the_owner() {
         row(
             T0,
             Kind::Memory,
-            "wrote note entry 1: the relay listens on 7447",
+            "wrote note entry 1: remember that the relay listens on 7447",
         ),
         row(T0, Kind::Request, "always squash before you push"),
         row(T0, Kind::Request, "run the gym tests"),
@@ -218,14 +218,14 @@ fn candidates_leave_out_memory_rows_and_what_waits_for_the_owner() {
             T0,
             MemoryKind::Note,
             MemoryState::Active,
-            "the relay listens on 7447",
+            "remember that the relay listens on 7447",
         ),
         note(
             2,
             T0,
             MemoryKind::Preference,
             MemoryState::Candidate,
-            "squash first",
+            "The owner said: always squash before you push",
         ),
         note(
             3,

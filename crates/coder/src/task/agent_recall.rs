@@ -28,9 +28,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use super::agent::{Entry, Kind, Store};
-use super::agent_memory::{
-    BRIEFING_MAX, Memory, MemoryEntry, MemoryKind, MemoryState, proposed_preference, remembered,
-};
+use super::agent_memory::{BRIEFING_MAX, Memory, MemoryEntry, MemoryKind, MemoryState};
 use crate::questions::{Fill, Set};
 
 #[path = "agent_recall_live.rs"]
@@ -204,11 +202,21 @@ pub fn day(at: u64) -> String {
     format!("{} {date}, {year}", MONTHS[month.clamp(1, 12) - 1])
 }
 
+/// Whether a note or preference entry in `memory` was kept from the
+/// request `text`: the entry's text holds the request's.
+fn kept_in_memory(text: &str, memory: &[MemoryEntry]) -> bool {
+    let text = text.trim();
+    !text.is_empty()
+        && memory.iter().any(|e| {
+            matches!(e.kind, MemoryKind::Note | MemoryKind::Preference) && e.text.contains(text)
+        })
+}
+
 /// The records a briefing chooses from: every active memory entry, and the
 /// journal rows in `journal` that say something of their own. Memory rows
 /// (receipts and the lines that wrote, accepted, or forgot an entry) and
-/// requests that proposed a preference or asked to remember something
-/// stay out, so a candidate preference waits for you and a forgotten
+/// requests a note or preference entry was kept from (its text holds the
+/// request's) stay out, so a candidate preference waits for you and a forgotten
 /// entry isn't carried back in through the line that wrote it.
 #[must_use]
 pub fn candidates(journal: &[(usize, Entry)], memory: &[MemoryEntry]) -> Vec<Record> {
@@ -226,10 +234,7 @@ pub fn candidates(journal: &[(usize, Entry)], memory: &[MemoryEntry]) -> Vec<Rec
             .iter()
             .skip(skip)
             .filter(|(_, e)| e.kind != Kind::Memory && !e.text.trim().is_empty())
-            .filter(|(_, e)| {
-                e.kind != Kind::Request
-                    || (proposed_preference(&e.text).is_none() && remembered(&e.text).is_none())
-            })
+            .filter(|(_, e)| e.kind != Kind::Request || !kept_in_memory(&e.text, memory))
             .map(|(pos, e)| Record {
                 reference: Ref::Journal(*pos),
                 body: Body::Journal(e.clone()),

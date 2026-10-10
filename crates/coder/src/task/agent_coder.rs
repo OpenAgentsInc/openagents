@@ -1003,7 +1003,13 @@ impl Agents {
 
     /// Holds `command` for the owner's CONFIRM or REJECT at her lectern,
     /// until they answer, `stop`, or [`DECISION_LIMIT`].
-    fn propose(&self, name: &str, command: &str, why: &str, stop: &AtomicBool) -> Decision {
+    pub(super) fn propose(
+        &self,
+        name: &str,
+        command: &str,
+        why: &str,
+        stop: &AtomicBool,
+    ) -> Decision {
         if stop.load(Ordering::SeqCst) {
             return Decision::Reject;
         }
