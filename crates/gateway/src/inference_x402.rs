@@ -82,6 +82,8 @@ pub struct Toll {
     router: Router<FileReplayStore>,
     receipts: FileReceiptStore,
     origin: Option<String>,
+    /// NIP-98 event ids admitted recently (#11148).
+    nostr_seen: crate::inference_nostr::Seen,
 }
 
 impl Toll {
@@ -150,6 +152,7 @@ impl Toll {
             router,
             receipts,
             origin,
+            nostr_seen: crate::inference_nostr::Seen::default(),
         })
     }
 
@@ -267,21 +270,22 @@ impl Receiver for WalletReceiver {
 }
 
 /// Should this request go the pay-per-request way: a toll configured, and
-/// either no `Authorization` at all or a `Payment` credential while that
-/// method is live. A bearer key always takes the keyed path.
+/// every `Authorization` field (if any) is either a `Payment` credential
+/// while that method is live or a NIP-98 `Nostr` identity (#11148). A
+/// bearer key always takes the keyed path.
 pub(crate) fn applies(state: &ServeState, headers: &HeaderMap) -> bool {
     let Some(toll) = &state.inference_x402 else {
         return false;
     };
-    match headers.get("authorization") {
-        None => true,
-        Some(value) => {
-            value
-                .to_str()
-                .is_ok_and(payment_scheme::is_payment_authorization)
-                && toll.has(Method::Mpp)
+    headers.get_all("authorization").iter().all(|value| {
+        if crate::inference_nostr::is_nostr_value(value.as_bytes()) {
+            return true;
         }
-    }
+        value
+            .to_str()
+            .is_ok_and(payment_scheme::is_payment_authorization)
+            && toll.has(Method::Mpp)
+    })
 }
 
 /// The models a request's name can reach: what the price covers.
@@ -546,16 +550,40 @@ pub(crate) fn admit(
         amount_msat,
         usd_micros: micros,
     };
-    // Only the credential headers reach the router.
-    let credentials: Vec<(String, String)> = [PAYMENT_SIGNATURE, payment_scheme::AUTHORIZATION]
-        .into_iter()
-        .filter_map(|name| {
-            headers
-                .get(name)
-                .and_then(|value| value.to_str().ok())
-                .map(|value| (name.to_owned(), value.to_owned()))
-        })
-        .collect();
+    // A NIP-98 identity, when sent, is checked before any invoice or
+    // proof: a payer never pays for a call whose identity we refuse.
+    let buyer = match crate::inference_nostr::find(headers) {
+        Ok(None) => None,
+        Ok(Some(header)) => {
+            let urls = crate::inference_nostr::candidates(&url, toll.origin.is_none());
+            match crate::inference_nostr::verify(&header, &urls, body, openagents_x402::unix_now())
+            {
+                Ok(auth) => Some(auth),
+                Err(message) => {
+                    return Err(refuse(ApiError::new(ErrorType::Unauthorized, message)));
+                }
+            }
+        }
+        Err(message) => return Err(refuse(ApiError::new(ErrorType::Unauthorized, message))),
+    };
+    // Only the credential headers reach the router: `PAYMENT-SIGNATURE`,
+    // and the `Authorization` field with the `Payment` scheme (a `Nostr`
+    // one may sit beside it).
+    let mut credentials: Vec<(String, String)> = Vec::new();
+    if let Some(value) = headers
+        .get(PAYMENT_SIGNATURE)
+        .and_then(|value| value.to_str().ok())
+    {
+        credentials.push((PAYMENT_SIGNATURE.to_owned(), value.to_owned()));
+    }
+    if let Some(value) = headers
+        .get_all(payment_scheme::AUTHORIZATION)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .find(|value| payment_scheme::is_payment_authorization(value))
+    {
+        credentials.push((payment_scheme::AUTHORIZATION.to_owned(), value.to_owned()));
+    }
     let bound = Bound {
         http_method: "POST",
         url: &url,
@@ -631,10 +659,32 @@ pub(crate) fn admit(
         payment_required(message, &fields, &headers, request_id)
     };
 
+    // Hold the signed event while its payment settles; give it back when
+    // no payment is taken, so the paid retry may carry the same signature.
+    let nostr_event = buyer.as_ref().map(|auth| auth.event_id.clone());
+    if let Some(event_id) = &nostr_event
+        && !toll.nostr_seen.hold(event_id, now)
+    {
+        return Err(refuse(ApiError::new(
+            ErrorType::Unauthorized,
+            "This Nostr authorization was already used for a paid request. Sign a new one.",
+        )));
+    }
+    let give_back_nostr = || {
+        if let Some(event_id) = &nostr_event {
+            toll.nostr_seen.release(event_id);
+        }
+    };
     let purchase = format!("inference:{request_id}");
     let settled = match toll.router.settle(&bound, quote, &purchase, now) {
-        None => return Err(challenge(None)),
-        Some(Err(refused)) => return Err(challenge(Some(&refused))),
+        None => {
+            give_back_nostr();
+            return Err(challenge(None));
+        }
+        Some(Err(refused)) => {
+            give_back_nostr();
+            return Err(challenge(Some(&refused)));
+        }
         Some(Ok(settled)) => settled,
     };
     let receipt_id = receipt::receipt_id(&settled.replay_key);
@@ -650,7 +700,10 @@ pub(crate) fn admit(
         replay_key: settled.replay_key.clone(),
         request_hash: request_hash.clone(),
         resource: format!("POST {path}"),
-        payer: Payer::default(),
+        payer: Payer {
+            nostr: buyer.as_ref().map(|auth| auth.pubkey.clone()),
+            ..Payer::default()
+        },
         settled_at: now,
         outcome: "served".to_owned(),
     };
@@ -670,6 +723,7 @@ pub(crate) fn admit(
         models: reachable(gateway, request),
         request_id: request_id.to_owned(),
         receipt: Arc::new(receipt),
+        nostr_event,
         admitted: AtomicBool::new(false),
         given_back: Arc::new(AtomicBool::new(false)),
     });
@@ -726,25 +780,36 @@ struct Run {
     request_id: String,
     /// Written once, when the answer is served.
     receipt: Arc<PaymentReceipt>,
+    /// The NIP-98 event id held for this payment, given back with it.
+    nostr_event: Option<String>,
     admitted: AtomicBool,
     /// Set once the payment is given back, by whichever side does it
     /// first, so a later release can't free a claim a retry made since.
     given_back: Arc<AtomicBool>,
 }
 
-/// Give the payment back once.
-fn release_once(state: &ServeState, key: &str, given_back: &AtomicBool) {
+/// Give the payment back once, and the NIP-98 event it carried, so the
+/// same signed retry is accepted again.
+fn release_once(state: &ServeState, key: &str, nostr_event: Option<&str>, given_back: &AtomicBool) {
     if given_back.swap(true, Ordering::SeqCst) {
         return;
     }
     if let Some(toll) = &state.inference_x402 {
         toll.router.release(key);
+        if let Some(event_id) = nostr_event {
+            toll.nostr_seen.release(event_id);
+        }
     }
 }
 
 impl Run {
     fn give_back(&self) {
-        release_once(&self.state, &self.key, &self.given_back);
+        release_once(
+            &self.state,
+            &self.key,
+            self.nostr_event.as_deref(),
+            &self.given_back,
+        );
     }
 
     async fn record(&self, micros: Option<u64>, settlement: &'static str) {
@@ -805,6 +870,7 @@ impl Admit for Run {
                     paid_micros: self.paid_micros,
                     payment_hash: self.payment_hash.clone(),
                     receipt: self.receipt.clone(),
+                    nostr_event: self.nostr_event.clone(),
                     given_back: self.given_back.clone(),
                 }),
             }) as Box<dyn Admitted>)
@@ -821,6 +887,7 @@ struct RunRef {
     paid_micros: u64,
     payment_hash: String,
     receipt: Arc<PaymentReceipt>,
+    nostr_event: Option<String>,
     given_back: Arc<AtomicBool>,
 }
 
@@ -835,7 +902,12 @@ impl Admitted for Answering {
 
     fn abandon(self: Box<Self>) -> BoxFuture<'static, ()> {
         Box::pin(async move {
-            release_once(&self.run.state, &self.run.key, &self.run.given_back);
+            release_once(
+                &self.run.state,
+                &self.run.key,
+                self.run.nostr_event.as_deref(),
+                &self.run.given_back,
+            );
             if let Some(book) = &self.run.state.inference_book {
                 book.lock().await.record_charge(
                     &self.run.request_id,

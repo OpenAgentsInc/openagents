@@ -36,7 +36,7 @@ want one:
 | --- | --- | --- |
 | An API key | `Authorization: Bearer oak_...`. A person makes it at [Settings, API keys](https://openagents.com/settings/api-keys). | Works now |
 | Sign in for a person (OAuth) | For MCP clients and agents acting for someone | Coming ([#11084](https://github.com/OpenAgentsInc/openagents/issues/11084)) |
-| Your Nostr key | A signed `Authorization: Nostr ...` header (NIP-98) | Coming |
+| Your Nostr key | A signed `Authorization: Nostr ...` header ([NIP-98](https://github.com/nostr-protocol/nips/blob/master/98.md)) beside a paid request. Sign kind 27235 with `u` the request URL, `method` POST, and `payload` the SHA-256 of the body; each signed event pays for one request, and the receipt names your key as the payer. | With pay per request |
 
 ```sh
 curl https://api.openagents.com/v1/responses \

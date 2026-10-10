@@ -1111,3 +1111,116 @@ async fn discovery_lists_exactly_the_configured_methods() {
         );
     }
 }
+
+// ------------------------------------------------------------ NIP-98 (#11148)
+
+const BUYER_KEY: &str = "0707070707070707070707070707070707070707070707070707070707070707";
+
+fn buyer_pubkey() -> String {
+    nostr::domain::RelaySigner::from_secret_hex(BUYER_KEY)
+        .unwrap()
+        .pubkey()
+        .to_owned()
+}
+
+fn nostr_auth(d: &Deployment, path: &str, body: &str) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    gateway::inference_nostr::sign(
+        BUYER_KEY,
+        &format!("{}{path}", d.address),
+        body.as_bytes(),
+        now,
+    )
+    .unwrap()
+}
+
+#[tokio::test]
+async fn a_nostr_signed_paid_request_names_its_buyer_on_the_receipt() {
+    let d = deploy(true, false).await;
+    let body = json!({"model": PAID, "input": "Say hello.", "max_output_tokens": 100}).to_string();
+    let identity = nostr_auth(&d, "/v1/responses", &body);
+
+    // Signed but unpaid: still the 402, and the signature is not used up.
+    let challenge = post_with(&d, "/v1/responses", &body, &[("Authorization", &identity)]).await;
+    assert_eq!(
+        challenge.status,
+        StatusCode::PAYMENT_REQUIRED,
+        "{}",
+        challenge.text
+    );
+
+    let signature = pay(&d, &challenge);
+    let paid = post_with(
+        &d,
+        "/v1/responses",
+        &body,
+        &[
+            ("Authorization", &identity),
+            ("PAYMENT-SIGNATURE", &signature),
+        ],
+    )
+    .await;
+    assert_eq!(paid.status, StatusCode::OK, "{}", paid.text);
+    let written = receipts(&d);
+    assert_eq!(written.len(), 1);
+    assert_eq!(written[0]["payer"]["nostr"], buyer_pubkey());
+    assert_eq!(written[0]["payer"]["account"], Value::Null);
+
+    // The same signed event cannot be used for a second paid request.
+    let fresh = post(&d, "/v1/responses", &body, None).await;
+    let again = pay(&d, &fresh);
+    let replay = post_with(
+        &d,
+        "/v1/responses",
+        &body,
+        &[("Authorization", &identity), ("PAYMENT-SIGNATURE", &again)],
+    )
+    .await;
+    assert_eq!(replay.status, StatusCode::UNAUTHORIZED, "{}", replay.text);
+    // That refusal consumed no payment: the same proof still pays unsigned.
+    let unsigned = post(&d, "/v1/responses", &body, Some(&again)).await;
+    assert_eq!(unsigned.status, StatusCode::OK, "{}", unsigned.text);
+}
+
+#[tokio::test]
+async fn a_nostr_signature_over_other_bytes_is_refused_before_any_invoice() {
+    let d = deploy(true, false).await;
+    let body = json!({"model": PAID, "input": "Say hello.", "max_output_tokens": 100}).to_string();
+    let other =
+        json!({"model": PAID, "input": "Say goodbye.", "max_output_tokens": 100}).to_string();
+    let identity = nostr_auth(&d, "/v1/responses", &other);
+    let refused = post_with(&d, "/v1/responses", &body, &[("Authorization", &identity)]).await;
+    assert_eq!(refused.status, StatusCode::UNAUTHORIZED, "{}", refused.text);
+    assert!(refused.header("PAYMENT-REQUIRED").is_none(), "no invoice");
+    // Signed for another route.
+    let elsewhere = nostr_auth(&d, "/v1/chat/completions", &body);
+    let refused = post_with(&d, "/v1/responses", &body, &[("Authorization", &elsewhere)]).await;
+    assert_eq!(refused.status, StatusCode::UNAUTHORIZED, "{}", refused.text);
+}
+
+#[tokio::test]
+async fn the_payment_scheme_and_a_nostr_identity_ride_two_authorization_fields() {
+    let d = deploy_with(Pay::X402AndMpp, false).await;
+    let body = json!({"model": PAID, "input": "Say hello.", "max_output_tokens": 100}).to_string();
+    let challenge = post(&d, "/v1/responses", &body, None).await;
+    let authorization = pay_mpp(&d, &challenge);
+    let identity = nostr_auth(&d, "/v1/responses", &body);
+    let paid = post_with(
+        &d,
+        "/v1/responses",
+        &body,
+        &[
+            ("Authorization", &identity),
+            ("Authorization", &authorization),
+        ],
+    )
+    .await;
+    assert_eq!(paid.status, StatusCode::OK, "{}", paid.text);
+    let written = receipts(&d);
+    assert_eq!(written.len(), 1);
+    assert_eq!(written[0]["protocol"], "mpp");
+    assert_eq!(written[0]["payer"]["nostr"], buyer_pubkey());
+}

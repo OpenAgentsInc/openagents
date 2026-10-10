@@ -477,6 +477,9 @@ pub fn document(origin: &str, methods: &[MethodInfo]) -> Value {
     document["x-openagents-payment-methods"] = json!(methods);
     if !methods.is_empty() {
         let schemes = &mut document["components"]["securitySchemes"];
+        // An identity beside a payment, never one by itself (#11148).
+        schemes["nostr"] = json!({"type": "http", "scheme": "Nostr",
+            "description": "Optional, with a paid request: say who is paying with a NIP-98 event (https://github.com/nostr-protocol/nips/blob/master/98.md). Sign kind 27235 with `u` the exact request URL, `method` POST, and `payload` the SHA-256 of the body bytes, no more than 60 seconds old, and send it as `Authorization: Nostr <base64 event>` beside the payment (a second `Authorization` field when paying with the `Payment` scheme). Each signed event pays for one request. The receipt names your key as the payer. A signature that doesn't match is refused with `401` before any invoice is made."});
         if has(methods, "x402") {
             schemes["x402"] = json!({"type": "apiKey", "in": "header", "name": "PAYMENT-SIGNATURE",
                 "description": "Pay per request, no account: x402 v2 `exact` on Lightning (`lnbtc`). Send the request with no key to get `402` and the terms in `PAYMENT-REQUIRED`; pay the BOLT11 invoice; send the same bytes again with `PAYMENT-SIGNATURE` (base64 JSON with the accepted terms and `payload.preimage`). The price is the request's worst case from the rate card; set `max_output_tokens` to lower it. A request that gets no answer gives the payment back, so the same signature can be sent again."});
