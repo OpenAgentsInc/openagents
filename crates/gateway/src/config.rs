@@ -303,6 +303,47 @@ pub struct InferenceX402 {
     /// `<registry>/inference/payment-receipts`.
     #[serde(default)]
     pub receipts_dir: Option<PathBuf>,
+    /// The payment ledger (`crates/pay-ledger`, the SQLite file the pay
+    /// host reads for `/stats`) that receipts are kept in (#11138). Set,
+    /// every receipt goes there; absent, to `receipts_dir`.
+    #[serde(default)]
+    pub ledger: Option<PathBuf>,
+    /// L402 on the same invoice (#11139). Absent, L402 is neither offered
+    /// nor advertised.
+    #[serde(default)]
+    pub l402: Option<InferenceL402>,
+    /// Cashu NUT-24 (#11140): ecash at the mints listed here. Absent,
+    /// Cashu is neither offered nor advertised.
+    #[serde(default)]
+    pub cashu: Option<InferenceCashu>,
+}
+
+/// L402's settings.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InferenceL402 {
+    /// The macaroon root key, hex, readable only by this user. Every
+    /// process that settles must share it. Absent,
+    /// `<registry>/inference/l402-root.key`, made on first start.
+    #[serde(default)]
+    pub root_key_file: Option<PathBuf>,
+    /// The macaroon's location (`api.openagents.com`); absent, the bound
+    /// origin's host.
+    #[serde(default)]
+    pub location: Option<String>,
+}
+
+/// Cashu's settings: the owner picks the mints.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InferenceCashu {
+    /// The mint URLs whose ecash is accepted (`https://mint.example.com`).
+    /// At least one.
+    pub mints: Vec<String>,
+    /// Where the ecash received is kept, one private file per proof.
+    /// Absent, `<registry>/inference/cashu-proofs`.
+    #[serde(default)]
+    pub proofs_dir: Option<PathBuf>,
 }
 
 /// The `Payment` scheme's settings.

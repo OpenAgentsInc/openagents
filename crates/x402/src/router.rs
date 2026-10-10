@@ -23,16 +23,16 @@
 //! method: it asks the router for the challenge, the settlement, and the
 //! live list ([`Router::methods`]) that every discovery surface prints.
 //!
-//! - **L402** encodes the same invoice with a macaroon bound to its payment
-//!   hash (`WWW-Authenticate: L402 macaroon=…, invoice=…`), and settles
-//!   through [`Settle::lightning`] like the two adapters here, so it shares
-//!   their replay key. [`Method::L402`] is reserved; no adapter exists yet,
-//!   so nothing can configure or advertise it.
-//! - **Cashu** (NUT-24, `X-Cashu`), **EVM / Solana** stablecoins through an
-//!   x402 facilitator, and **Stripe** (MPP `stripe`, a Shared Payment
-//!   Token) settle on their own rails and return their own replay key
-//!   (`cashu:<mint>:<Y>`, `<caip2>:<nonce>`, `stripe:<payment_intent>`);
-//!   they ignore the shared invoice in [`Offer`].
+//! - **L402** ([`crate::l402`]) encodes the same invoice with a macaroon
+//!   bound to its payment hash (`WWW-Authenticate: L402 macaroon=…,
+//!   invoice=…`, and `LSAT`), and settles through [`Settle::lightning`]
+//!   like the two adapters here, so it shares their replay key.
+//! - **Cashu** ([`crate::cashu`], NUT-24, `X-Cashu`) settles on its own
+//!   rail: it swaps the proofs at the named mint and returns its own replay
+//!   key (`cashu:<mint>:<Y>`); it ignores the shared invoice in [`Offer`].
+//!   **EVM / Solana** stablecoins through an x402 facilitator and
+//!   **Stripe** (MPP `stripe`, a Shared Payment Token) will do the same
+//!   (`<caip2>:<nonce>`, `stripe:<payment_intent>`).
 //!
 //! Every adapter follows the same rules as the x402 front: settle before
 //! execute, one replay key per payment, release only when nothing was
@@ -62,9 +62,9 @@ pub enum Method {
     X402,
     /// The HTTP `Payment` scheme, Lightning `charge` (as MPP uses it).
     Mpp,
-    /// L402 on the same invoice. Reserved: no adapter yet.
+    /// L402 (and its older name LSAT) on the same invoice.
     L402,
-    /// Cashu NUT-24. Reserved: no adapter yet.
+    /// Cashu NUT-24: ecash at the mints the owner accepts.
     Cashu,
 }
 
@@ -199,6 +199,32 @@ pub struct Refused {
     pub problem: String,
     /// Headers the protocol sends with a refusal.
     pub headers: Vec<(String, String)>,
+    /// The HTTP status the refusal is answered with: `402` with a fresh
+    /// challenge for most, `401` for an L402 credential that isn't ours
+    /// or is past its caveats, `400` for ecash at the wrong mint, in the
+    /// wrong unit, or short of the price.
+    pub status: u16,
+}
+
+impl Refused {
+    /// A refusal answered with `402` and a fresh challenge.
+    #[must_use]
+    pub fn payment_required(method: Method, reason: &str, problem: Problem) -> Self {
+        Self {
+            method,
+            reason: reason.to_owned(),
+            problem: problem.type_uri(),
+            headers: Vec::new(),
+            status: 402,
+        }
+    }
+
+    /// The same refusal answered with `status`.
+    #[must_use]
+    pub fn with_status(mut self, status: u16) -> Self {
+        self.status = status;
+        self
+    }
 }
 
 /// The Lightning settlement every Lightning encoding shares: one
@@ -222,6 +248,8 @@ pub trait LightningSettle: Send + Sync {
     ) -> Result<Admission, SettlementResponse>;
     /// The x402 network identifier.
     fn network(&self) -> &'static str;
+    /// The one replay store every method consumes its keys in.
+    fn replay(&self) -> &dyn ReplayStore;
 }
 
 /// What an adapter settles with.
@@ -262,6 +290,7 @@ fn x402_refused(network: &str, reason: &str) -> Refused {
         reason: reason.to_owned(),
         problem: Problem::from_reason(reason).type_uri(),
         headers,
+        status: 402,
     }
 }
 
@@ -341,7 +370,11 @@ impl Adapter for X402Lightning {
     }
 }
 
-fn settled(method: Method, admitted: &Admission, headers: Vec<(String, String)>) -> Settled {
+pub(crate) fn settled(
+    method: Method,
+    admitted: &Admission,
+    headers: Vec<(String, String)>,
+) -> Settled {
     Settled {
         method,
         replay_key: admitted.proof.consumption_key.clone(),
@@ -382,12 +415,7 @@ impl MppLightning {
     }
 
     fn refused(&self, reason: &str, problem: Problem) -> Refused {
-        Refused {
-            method: Method::Mpp,
-            reason: reason.to_owned(),
-            problem: problem.type_uri(),
-            headers: Vec::new(),
-        }
+        Refused::payment_required(Method::Mpp, reason, problem)
     }
 }
 
@@ -578,6 +606,10 @@ impl<S: ReplayStore + Send + Sync> LightningSettle for Lightning<S> {
     fn network(&self) -> &'static str {
         self.network
     }
+
+    fn replay(&self) -> &dyn ReplayStore {
+        self.facilitator.store()
+    }
 }
 
 /// Why no challenge could be issued.
@@ -639,6 +671,14 @@ impl<S: ReplayStore + Send + Sync> Router<S> {
 
     pub fn store(&self) -> &S {
         self.lightning.store()
+    }
+
+    /// Whether `method` is live.
+    #[must_use]
+    pub fn has(&self, method: Method) -> bool {
+        self.adapters
+            .iter()
+            .any(|adapter| adapter.method() == method)
     }
 
     /// Whether `request` carries a credential for a live method.

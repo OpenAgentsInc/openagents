@@ -21,6 +21,7 @@ pub mod contribution;
 pub mod earnings;
 pub mod markets;
 pub mod payee;
+pub mod payment_receipt;
 pub mod payout;
 pub mod pylon;
 pub mod reconcile;
@@ -427,6 +428,7 @@ impl Ledger {
         connection.execute_batch(shared::accounting::TABLES)?;
         connection.execute_batch(pylon::TABLES)?;
         connection.execute_batch(agent_order::TABLES)?;
+        connection.execute_batch(payment_receipt::TABLES)?;
         let mut ledger = Self {
             connection,
             #[cfg(unix)]

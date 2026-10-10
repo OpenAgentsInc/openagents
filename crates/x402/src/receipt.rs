@@ -49,8 +49,14 @@ pub struct PaymentReceipt {
     pub resource: String,
     pub payer: Payer,
     pub settled_at: u64,
-    /// `served`, `refunded`, `failed_before_answer`.
+    /// `served`, `refunded`, `failed_before_answer`. Receipts are written
+    /// only for answered requests, so this is `served` in practice.
     pub outcome: String,
+    /// Which transfer paid, on its rail: the payment hash on Lightning,
+    /// `<mint>#<Y>` of the first proof on Cashu. Public by construction:
+    /// never a preimage, a token, or a proof's secret.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locator: Option<String>,
 }
 
 /// The receipt id for a replay key.
@@ -171,6 +177,7 @@ mod tests {
             payer: Payer::default(),
             settled_at: 1_791_590_400,
             outcome: "served".into(),
+            locator: Some("ab".repeat(32)),
         }
     }
 

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "openagents.payment-receipt.v1",
   "title": "One settled payment, any protocol or rail (docs/payments/agent-payments.md section 3)",
-  "description": "Written once per payment, keyed by its replay key. Never holds a preimage, token, proof, or invoice.",
+  "description": "Written once per payment, keyed by its replay key, and only for an answered request (refusals are not receipts). replay_key names the one payment; request_hash, the http:1 hash of the request as it was received, groups attempts. Never holds a preimage, token, proof, macaroon, or invoice.",
   "type": "object",
   "additionalProperties": false,
   "required": ["v", "id", "protocol", "rail", "network", "asset", "amount", "usd_micros", "replay_key", "request_hash", "resource", "payer", "settled_at", "outcome"],
@@ -29,6 +29,7 @@
       }
     },
     "settled_at": { "type": "integer", "minimum": 0 },
-    "outcome": { "enum": ["served", "refunded", "failed_before_answer"] }
+    "outcome": { "enum": ["served", "refunded", "failed_before_answer"] },
+    "locator": { "type": ["string", "null"], "description": "Which transfer paid, on its rail: the Lightning payment hash, or the Cashu mint and proof point. Public; never a secret." }
   }
 }
