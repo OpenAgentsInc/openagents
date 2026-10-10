@@ -308,10 +308,25 @@ yet; it needs the frozen B0-vs-Bbash run.
 
 ## Next
 
-- Extend S2 prospectively (new frozen plan, more issues) to settle quality.
-- Tier 1 per [briefed-agent-tools.md](briefed-agent-tools.md), one at a
-  time on B0 under the same rules: Bbash, `related`, `outline`/`read_symbol`,
-  `finish`. Arms and harness are ready (`ab.py` arms Bbash, Brelated,
-  Boutline, Bfinish).
-- One-lever ablations (arms Bsmall, Blarge, Bterse, Blow, Bsonnet, Bcold).
-- "Guesses to check": none is settled by S2, which compares only A and B0.
+Frozen 2026-10-10 (3e57b96c4b), running on `oa-dev-env-2` (a GCE
+`c3-standard-22` spot VM, agents, worktrees, builds and grading on one
+machine; the Mac and coderos-4080 are no longer used) by
+`scripts/bench/briefed-ab/run-env.sh`, which publishes each plan's report to
+`scripts/bench/briefed-ab/results/` and powers the VM off when done:
+
+1. `plans/ablate-tools.json`: B0 against Bbash, Brelated, Boutline, Bfinish
+   (tier 1 of [briefed-agent-tools.md](briefed-agent-tools.md)).
+2. `plans/ablate-levers.json`: B0 against Bsmall, Blarge, Bterse, Blow,
+   Bsonnet.
+3. `plans/ablate-cold.json`: B0 against a cold build cache, 7 issues.
+4. `plans/s2b.json`: the quality study, A against B0 on 99 fresh issues
+   chosen by `select_issues.py` (every single-commit Rust fix up to 1,200
+   lines in this repository, S2's excluded). Judge acceptance is primary; a
+   loss of 10 points or more is ruled out if the CI's lower bound is above
+   −0.10 (about 80% power if the true difference is 0). That margin is a
+   proposed amendment to the spec's equal-or-better gate, declared before
+   results.
+
+Each ablation reports every arm against B0 run in the same plan: the
+success difference with its issue-level CI first, then the change in cost
+per accepted change.
