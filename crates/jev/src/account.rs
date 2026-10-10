@@ -48,9 +48,9 @@ pub use policy::TeamPolicyView;
 #[path = "account_team.rs"]
 mod team;
 pub use management::{
-    GatewaySession, KeyGrant, KeyIdentity, KeyRecord, ProviderKeyRecord, PurchaseActivity,
-    PurchaseActivityItem, PurchaseCost, PurchaseReceipt, SessionGrant, WorkspaceIdentity,
-    WorkspaceView,
+    GatewaySession, KeyGrant, KeyIdentity, KeyRecord, KeyScopes, ProviderKeyRecord,
+    PurchaseActivity, PurchaseActivityItem, PurchaseCost, PurchaseReceipt, SessionGrant,
+    WorkspaceIdentity, WorkspaceView,
 };
 pub use referrals::{
     AttributionBinding, AttributionConfirmation, AttributionDecision, AttributionPolicy,

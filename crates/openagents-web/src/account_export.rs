@@ -644,7 +644,7 @@ mod tests {
         assert!(trace["document"].is_null());
         let note = trace["note"].as_str().unwrap();
         assert!(
-            note.starts_with("Too large to fit in this file. Download it on its own from https://openagents.com/api/traces/"),
+            note.starts_with("Too large to fit in this file. Download it on its own from https://openagents.com/v1/traces/"),
             "{note}"
         );
         assert!(trace["url"].as_str().unwrap().contains("/settings/traces/"));

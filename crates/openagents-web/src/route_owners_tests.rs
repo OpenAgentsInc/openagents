@@ -54,7 +54,7 @@ fn consts(text: &str) -> BTreeMap<String, String> {
     let mut rest = text;
     while let Some(at) = rest.find("const ") {
         rest = &rest[at + "const ".len()..];
-        let name = ident(rest);
+        let name = ident(rest).trim_end_matches(':');
         if name.is_empty()
             || !name
                 .chars()

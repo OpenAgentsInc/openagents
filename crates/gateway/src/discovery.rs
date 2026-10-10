@@ -184,7 +184,7 @@ const DOCS_API: &[(&str, &str)] = &[
 /// agents and crawlers, not API routes, so they declare no audience in
 /// [`crate::audience`].
 #[must_use]
-pub fn paths() -> Vec<&'static str> {
+pub fn mounted_paths() -> Vec<&'static str> {
     routes().into_iter().map(|(path, _)| path).collect()
 }
 

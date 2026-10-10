@@ -656,6 +656,7 @@ mod tests {
             name: "laptop".into(),
             created: "2026-10-09".into(),
             active: true,
+            can: "Call models".into(),
         }];
         let html = keys_content(&rows, ("t", "r"), ("t2", "r2")).into_string();
         assert!(html.contains(BASE_URL));

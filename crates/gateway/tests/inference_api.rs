@@ -651,7 +651,7 @@ async fn openapi_describes_exactly_the_mounted_inference_routes() {
     }
     // Every route this deployment mounts declares its audience (the
     // discovery documents aside, which are not API).
-    let discovery = gateway::discovery::paths();
+    let discovery = gateway::discovery::mounted_paths();
     for path in &all {
         assert!(
             discovery.contains(path) || gateway::audience::audience(path).is_some(),
