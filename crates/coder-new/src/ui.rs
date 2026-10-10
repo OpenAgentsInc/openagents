@@ -180,6 +180,7 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         app.model_picker.is_none() && !app.footer_focused,
         &app.plugins,
         &app.composer,
+        app.composer_selected && !app.draft.text.is_empty(),
         // OpenAgents picks the model here, so the rail says `auto` and never
         // the name of whichever vendor answered.
         if app.mode == Mode::Live && !(app.plugins.enabled && app.plugins.key_configured) {
@@ -1157,6 +1158,7 @@ fn composer_view(
     cursor_visible: bool,
     plugins: &crate::plugins::Plugins,
     composer: &crate::composer_state::ComposerState,
+    selected: bool,
     fallback_model: Option<&str>,
 ) {
     let block = Block::default()
@@ -1232,7 +1234,18 @@ fn composer_view(
     let text = Text::from(
         draft
             .iter()
-            .map(|line| Line::from(span(line.clone(), t::TEXT_PRIMARY)))
+            .map(|line| {
+                // Cmd+A selected the whole input: show it as a selection.
+                let style = Style::default().fg(t::TEXT_PRIMARY);
+                Line::from(Span::styled(
+                    line.clone(),
+                    if selected {
+                        style.add_modifier(Modifier::REVERSED)
+                    } else {
+                        style
+                    },
+                ))
+            })
             .collect::<Vec<_>>(),
     );
     frame.render_widget(Paragraph::new(text).scroll((scroll, 0)), text_area);
@@ -1248,6 +1261,26 @@ fn composer_view(
 mod export_notice_tests {
     use super::*;
     use ratatui::{Terminal, backend::TestBackend};
+
+    #[test]
+    fn select_all_shows_the_input_as_a_selection() {
+        let mut app = App::default();
+        app.mode = Mode::Live;
+        app.draft.text = "pick me".into();
+        app.draft.cursor = app.draft.text.len();
+        let selected = |app: &mut App| {
+            let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
+            terminal.draw(|frame| render(frame, app)).unwrap();
+            let buffer = terminal.backend().buffer().clone();
+            buffer
+                .content()
+                .iter()
+                .any(|cell| cell.symbol() == "p" && cell.modifier.contains(Modifier::REVERSED))
+        };
+        assert!(!selected(&mut app));
+        app.composer_selected = true;
+        assert!(selected(&mut app));
+    }
 
     #[test]
     fn scroll_arrow_does_not_repaint_notice_row() {
