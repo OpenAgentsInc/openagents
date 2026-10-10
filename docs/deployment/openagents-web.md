@@ -1149,3 +1149,29 @@ failed, 2 skipped.
 
 Rollback: `scripts/deploy/web.sh rollback coder-web-fe2ddcefc2-20261010165946`
 (Pylons first on `/v1/systemone`).
+
+### 2026-10-10 18:20 UTC: the vault, tier only you (#11240)
+
+`coder-web-da9bcb945f-20261010181820` serves 100% of openagents.com: web
+image `openagents-web@sha256:da9bcb94…` from `7afb21410e`, promoted with
+`scripts/deploy/web.sh promote`, which added
+`OPENAGENTS_WEB_VAULT_BUCKET=openagentsgemini-web-vault-prod` (a new bucket:
+soft delete 0, no versioning, uniform access, public access prevented;
+`roles/storage.objectAdmin` for the runtime account). `/settings/vault`,
+`/projects/{id}/vault` and `/vault/api/*` are new; `/vault/release.json`
+lists the page's script, glue and WebAssembly digests, the same as staging's.
+Staging (`--keep-spec`, the same image): smoke 92 passed, 0 failed; a real
+headless Chrome as an operator-made test account, with a virtual
+authenticator that has PRF, set up a vault (passkey and recovery code),
+added a canary statement, opened it, asked On this device (a local
+`psionic-openai-server` with Qwen2.5 0.5B on `127.0.0.1:8091`, 4 s) and
+Fast (Gemini, 4 s), unlocked with the passkey and with the recovery code,
+paired a second browser through the link and gave it its own passkey,
+deleted the file (404 after) and the vault. A scan of the staging chat and
+analytics buckets (379 objects) and of Cloud Logging found no canary text,
+name, base64 or SHA-256. openagents.com smoke (`--production`) 59 passed,
+0 failed, 2 skipped. Signed-in production use is the owner's (invite-only
+sign-in).
+
+Rollback: `scripts/deploy/web.sh rollback coder-web-36ad21cd90-20261010181422`
+(the site without the vault; vault data stays in its bucket).
