@@ -294,7 +294,7 @@ fn parameter_blocks_keep_keys_readable_and_fit_in_five_physical_rows() {
     assert_eq!(lines.len(), 5);
     assert_eq!(
         lines.last().unwrap().to_string().trim(),
-        "│ … 3 more fields"
+        "│  … 3 more fields"
     );
     for value in [Value::Null, json!({})] {
         assert!(tools::parameter_lines(&value, 40).is_empty());

@@ -446,7 +446,7 @@ pub(crate) fn entry_lines(
         COMPACT_TOOL => {
             let count = input["messages"].as_u64().unwrap_or(0);
             let mut lines = vec![Line::from(vec![
-                styled(" ◆ ".into(), t::ACCENT_SKILL),
+                styled("● ".into(), t::ACCENT_SKILL),
                 bold("Compacted", t::ACCENT_SKILL),
                 styled(
                     crate::ui::truncate(
@@ -463,7 +463,7 @@ pub(crate) fn entry_lines(
                 .collect();
             for row in rows.iter().take(6) {
                 lines.push(Line::from(vec![
-                    styled("   │ ".into(), t::GRAY_DIM),
+                    styled("  │  ".into(), t::GRAY_DIM),
                     styled(
                         crate::ui::truncate(row, width.saturating_sub(5)),
                         t::GRAY_BRIGHT,
@@ -472,7 +472,7 @@ pub(crate) fn entry_lines(
             }
             if rows.len() > 6 {
                 lines.push(Line::from(vec![
-                    styled("   ╰ ".into(), t::GRAY_DIM),
+                    styled("  ⎿  ".into(), t::GRAY_DIM),
                     styled(format!("{} more lines", rows.len() - 6), t::GRAY),
                 ]));
             }
@@ -485,7 +485,7 @@ pub(crate) fn entry_lines(
                     .map(clock)
                     .unwrap_or_else(|| "the reset".into());
                 Line::from(vec![
-                    styled(format!(" {} ", crate::tools::spinner(phase)), t::COMMAND),
+                    styled(format!("{} ", crate::tools::spinner(phase)), t::COMMAND),
                     bold("Paused", t::COMMAND),
                     styled(
                         crate::ui::truncate(
@@ -497,13 +497,13 @@ pub(crate) fn entry_lines(
                 ])
             } else if output.get("error").is_some() {
                 Line::from(vec![
-                    styled(" × ".into(), t::DIFF_DELETE_FG),
+                    styled("× ".into(), t::DIFF_DELETE_FG),
                     bold("Paused", t::DIFF_DELETE_FG),
                     styled(" on a usage limit, then stopped".into(), t::GRAY_BRIGHT),
                 ])
             } else {
                 Line::from(vec![
-                    styled(" ◆ ".into(), t::ACCENT_SUCCESS),
+                    styled("● ".into(), t::ACCENT_SUCCESS),
                     bold("Resumed", t::ACCENT_SUCCESS),
                     styled(" after a usage limit".into(), t::GRAY_BRIGHT),
                 ])

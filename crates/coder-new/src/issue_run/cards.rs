@@ -23,7 +23,7 @@ fn styled(text: impl Into<String>, color: Color) -> Span<'static> {
     Span::styled(text.into(), Style::default().fg(color))
 }
 
-const RAIL: &str = "   │ ";
+const RAIL: &str = "  │  ";
 
 fn rail(spans: Vec<Span<'static>>) -> Line<'static> {
     let mut all = vec![styled(RAIL, t::GRAY_DIM)];
@@ -141,7 +141,7 @@ pub fn decision_lines(
     let room = width.saturating_sub(6 + label.len() as u16);
     let mut lines = vec![Line::from(vec![
         styled(
-            format!(" {glyph} "),
+            format!("{glyph} "),
             if failed { t::DIFF_DELETE_FG } else { accent },
         ),
         Span::styled(
