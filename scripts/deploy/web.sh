@@ -3,7 +3,8 @@
 # to production (docs/deployment/2026-10-09-faster-deploys.md):
 #
 #   scripts/deploy/web.sh stage [--keep-spec] [REF]   # default origin/main
-#   scripts/deploy/web.sh promote DIGEST     # no-traffic revision at the `new` tag
+#   scripts/deploy/web.sh promote [--stack DIGEST] [--serve DIGEST] DIGEST
+#                                            # no-traffic revision at the `new` tag
 #   scripts/deploy/web.sh shift [REVISION]   # 100% of openagents.com to it
 #   scripts/deploy/web.sh rollback [REVISION]
 #
@@ -23,7 +24,13 @@
 # promote: copies the spec of the revision serving production's traffic
 # (service `coder`), swaps only the `web` container's image for DIGEST, and
 # applies it as a new revision with no traffic, tagged `new` (a host the
-# `web` container already serves). JSON, not YAML, so CODER_CHAT_SYNC stays
+# `web` container already serves). --stack also swaps the `gateway`
+# sidecar's image for that openagents-stack digest (its launcher and
+# settings stay as live), and --serve the `coder-serve` sidecar's for that
+# `coder` digest (built by the coder repository's ops/deploy.sh --stage).
+# coder-serve always gets CODER_ACCOUNTS_URL=http://127.0.0.1:8791, the
+# gateway sidecar's account service, so /mcp admits the sessions
+# openagents.com's OAuth sign-in issues (#11084). JSON, not YAML, so CODER_CHAT_SYNC stays
 # the string "on". Then run the smoke against the tag URL:
 #   scripts/smoke/staging.sh https://new---coder-ezxz4mgdsq-uc.a.run.app --production
 #
@@ -199,7 +206,20 @@ print(json.dumps({"apiVersion": "serving.knative.dev/v1", "kind": "Service",
 }
 
 promote() {
+    stack_image=
+    serve_image=
+    while [ $# -gt 1 ]; do
+        case $1 in
+            --stack) stack_image=$REPO/openagents-stack@${2##*@}; shift 2 ;;
+            --serve) serve_image=$REPO/coder@${2##*@}; shift 2 ;;
+            *) break ;;
+        esac
+    done
     [ $# -ge 1 ] || { say "promote needs the staged web image's digest"; exit 2; }
+    for extra in $stack_image $serve_image; do
+        case ${extra##*@} in sha256:*) ;; *) say "Not a digest: $extra"; exit 2 ;; esac
+        g artifacts docker images describe "$extra" --format='value(image_summary.digest)' > /dev/null
+    done
     want=${1##*@}
     case $want in sha256:*) ;; *) say "Not a digest: $1"; exit 2 ;; esac
     started=$(now)
@@ -212,11 +232,11 @@ promote() {
     g run services describe "$SERVICE" --region "$REGION" --project "$PROJECT" --format=json > "$STATE/service.json"
     g run revisions describe "$previous" --region "$REGION" --project "$PROJECT" --format=json > "$STATE/revision.json"
     python3 - "$STATE/service.json" "$STATE/revision.json" "$image" "$name" \
-        "$ROOT/deploy/production/web.sh" > "$spec" << 'PY'
+        "$ROOT/deploy/production/web.sh" "$stack_image" "$serve_image" > "$spec" << 'PY'
 import json, sys
 
 service, revision = (json.load(open(p)) for p in sys.argv[1:3])
-image, name, launcher_path = sys.argv[3:6]
+image, name, launcher_path, stack_image, serve_image = sys.argv[3:8]
 
 def keep(entries, drop):
     return {k: v for k, v in (entries or {}).items() if not k.startswith(drop)}
@@ -293,6 +313,26 @@ for c in spec["containers"]:
             del e["value"]
             e["valueFrom"] = {"secretKeyRef": {"name": SIDECAR_SECRETS[e["name"]], "key": "latest"}}
             sys.stderr.write(f"  coder-serve {e['name']} -> Secret Manager\n")
+# The sidecars' images, when asked (--stack, --serve); everything else in
+# them stays as the live revision has it.
+for container, new in (("gateway", stack_image), ("coder-serve", serve_image)):
+    if not new:
+        continue
+    c = next((c for c in spec["containers"] if c["name"] == container), None)
+    if c is None:
+        sys.exit(f"refusing: the serving revision has no {container} container")
+    sys.stderr.write(f"  {container} image: {c['image']}\n      -> {new}\n")
+    c["image"] = new
+# coder-serve's /mcp checks a `sess_` bearer (an MCP app's OAuth sign-in,
+# #11084) with the account service on the gateway sidecar. A no-op once
+# the live spec has it.
+names = {c["name"] for c in spec["containers"]}
+if {"coder-serve", "gateway"} <= names:
+    serve = next(c for c in spec["containers"] if c["name"] == "coder-serve")
+    serve_env = serve.setdefault("env", [])
+    if not any(e["name"] == "CODER_ACCOUNTS_URL" for e in serve_env):
+        serve_env.append({"name": "CODER_ACCOUNTS_URL", "value": "http://127.0.0.1:8791"})
+        sys.stderr.write("  coder-serve env CODER_ACCOUNTS_URL added\n")
 traffic = []
 for entry in service["spec"].get("traffic", []):
     if entry.get("latestRevision"):

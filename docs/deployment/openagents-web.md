@@ -1018,3 +1018,70 @@ account and applied as `chris@`. openagents.com smoke (`--production`)
 after the shift: 59 passed, 0 failed, 2 skipped. Production has no
 scriptable signed-in account, so the image question there is the owner's.
 Rollback: `scripts/deploy/web.sh rollback coder-web-37e70ce641-20261010035400`.
+
+### 2026-10-10 13:59 UTC: MCP apps sign in with OAuth (#11084)
+
+`coder-web-63d03413b1-20261010135631` serves 100% of openagents.com: the
+same `web` image as the revision before (`openagents-web@sha256:63d03413…`,
+which already carried the OAuth server from `bd25d676b8`), with two sidecars
+swapped and one setting added:
+
+- `gateway`: `openagents-stack@sha256:4c0ca90f…` (built from `c9054b18f2`).
+  The account service's `GET /v1/session` names the account's GitHub
+  `{id, login}`. Its launcher and settings stay as live.
+- `coder-serve`: `coder@sha256:40427881…` (coder `99ff505bdf`, built by
+  `ops/deploy.sh --stage` in the coder repository, which rolled `coder-stage`
+  healthy first). Its `/mcp` admits a `sess_` bearer by asking the account
+  service. The invite list still applies.
+- `coder-serve` env `CODER_ACCOUNTS_URL=http://127.0.0.1:8791`, the gateway
+  sidecar in the same instance.
+
+How it shipped. `scripts/deploy/web.sh promote` takes `--stack DIGEST` and
+`--serve DIGEST` to swap those sidecars' images in the serving spec, and it
+always adds `CODER_ACCOUNTS_URL` (as `deploy/production/render.py` now
+does too):
+
+```sh
+scripts/deploy/web.sh promote --stack sha256:4c0ca90f… --serve sha256:40427881… sha256:63d03413…
+```
+
+Do not roll production's `coder-serve` with the coder repository's
+`ops/deploy.sh`. It updates the service's first container, which is `web`.
+Since 2026-10-09 the `coder` service is openagents.com with three
+containers.
+
+Staging (`scripts/deploy/web.sh stage c9054b18f2`, full render, web and
+stack images): smoke 92 passed, 0 failed, 2 skipped. That stage first
+failed to build at `c531c2b19c`, because both gcloudignore files left out
+`bench/ui-format/`, which the `coder` crate `include_str!`s (fixed in
+`c9054b18f2`). Staging has no `coder-serve`, so `/mcp` answers 404 there.
+
+`scripts/smoke/oauth.py` covers the rest. On staging, as an
+operator-made test account (`--session-env`), all 12 checks passed:
+
+- the three metadata documents;
+- registration, and a refused non-loopback http redirect;
+- signed-out authorize going to `/login`;
+- the consent page and Approve, with the code coming back with `state`
+  and `iss`;
+- a wrong PKCE verifier refused and the right one issuing a 30-day bearer;
+- the code single-use, and the bearer answering `/api/v1/account`.
+
+On openagents.com (`--mcp`, no account), all 7 checks passed, including
+`/mcp` with a made-up `sess_` bearer answering 401 with `WWW-Authenticate`.
+
+The no-traffic candidate failed only its host-bound and gateway checks.
+Its `/mcp` answered 503 for a `sess_` bearer until its gateway held the
+store. After 1% of traffic and then 100%, openagents.com smoke
+(`--production`) gave 59 passed, 0 failed, 2 skipped, the same as before.
+The revision logged no errors after the shift.
+
+Claude Code (`claude mcp add --transport http openagents
+https://openagents.com/mcp`, in a scratch config) reports "Needs
+authentication", so it found the OAuth sign-in. Signing in and `tools/list`
+with an issued token need the owner's GitHub account (invite-only), so they
+are the owner's to check.
+
+Rollback: `scripts/deploy/web.sh rollback coder-web-63d03413b1-20261010135324`.
+That revision has the same site and the old sidecars, and `sess_` bearers
+then name nobody at `/mcp`.

@@ -117,6 +117,9 @@ def main():
         serve["env"] = [e for e in serve.get("env", []) if e["name"] not in THIRD_PARTY_ANALYTICS]
         set_env(serve, [
             secret("coder-github-client-secret", "CODER_GITHUB_CLIENT_SECRET"),
+            # /mcp checks an MCP app's `sess_` bearer (OAuth sign-in on
+            # openagents.com, #11084) with the gateway's account service.
+            plain("CODER_ACCOUNTS_URL", "http://127.0.0.1:8791"),
         ])
 
     gateway = {
