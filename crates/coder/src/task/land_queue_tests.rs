@@ -104,6 +104,7 @@ fn submit(queue: &Queue<'_>, dir: &Path, machine: &str, at: u64, path: &str, tex
         commit: None,
         reason: None,
         worker: None,
+        ..Entry::default()
     };
     queue.submit(&entry).unwrap();
     entry
@@ -174,6 +175,11 @@ fn integrator<'a>(
             first: Duration::from_millis(5),
             cap: Duration::from_millis(20),
         },
+        lane: Lane::Code,
+        slot: "code-1".into(),
+        also: Vec::new(),
+        push: None,
+        regenerate: false,
     }
 }
 
@@ -282,6 +288,7 @@ fn a_conflict_gets_one_repair_turn_then_lands() {
             commit: None,
             reason: None,
             worker: None,
+            ..Entry::default()
         };
         queue.submit(&entry).unwrap();
         entry
@@ -354,6 +361,7 @@ fn an_unrepaired_conflict_or_red_checks_bounce_to_the_author() {
         commit: None,
         reason: None,
         worker: None,
+        ..Entry::default()
     };
     queue.submit(&conflicting).unwrap();
     let red = submit(&queue, &mac, "mac", 300, "notes/c.md", "RED\n");
@@ -406,6 +414,7 @@ fn the_queue_is_oldest_first_and_resumes_its_own_landing() {
         commit: None,
         reason: None,
         worker: None,
+        ..Entry::default()
     };
     let mut b = a.clone();
     b.id = new_id(100, "a");

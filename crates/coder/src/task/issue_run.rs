@@ -856,6 +856,13 @@ pub struct Checked {
 pub trait Checks: Send + Sync {
     /// Checks the staged change in `worktree` (the flow stages it).
     fn check(&self, worktree: &Path, policy: &Policy) -> Checked;
+    /// [`Checks::check`], also testing `also`: packages the change reaches
+    /// without touching their directories (the landing queue's plan finds
+    /// them, #11248).
+    fn check_also(&self, worktree: &Path, policy: &Policy, also: &[String]) -> Checked {
+        let _ = also;
+        self.check(worktree, policy)
+    }
 }
 
 /// The issue flow's gate ([`coder_delegate::issue::gate`]): the touched
@@ -876,7 +883,7 @@ impl Gate {
     /// A build slot for checking `worktree`'s change, waiting up to
     /// [`SLOT_WAIT`] while every slot is taken; `None` without a store, or
     /// when no slot frees up in time.
-    fn slot(&self, worktree: &Path) -> Result<Option<super::targets::Lease>, String> {
+    pub(super) fn slot(&self, worktree: &Path) -> Result<Option<super::targets::Lease>, String> {
         let Some(store) = self.store.as_ref() else {
             return Ok(None);
         };
@@ -921,6 +928,10 @@ impl Gate {
 
 impl Checks for Gate {
     fn check(&self, worktree: &Path, policy: &Policy) -> Checked {
+        self.check_also(worktree, policy, &[])
+    }
+
+    fn check_also(&self, worktree: &Path, policy: &Policy, also: &[String]) -> Checked {
         let runtime = match tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -952,12 +963,13 @@ impl Checks for Gate {
         let target = slot.as_ref().map(|lease| lease.path.as_path());
         runtime.block_on(async {
             let recorder = coder_delegate::record::Recorder::default();
-            let (mut problems, tested) = coder_delegate::issue::gate_in(
+            let (mut problems, tested) = coder_delegate::issue::gate_in_also(
                 worktree,
                 self.jev.as_ref(),
                 &recorder,
                 None,
                 target,
+                also,
             )
             .await;
             let mut ran = Vec::new();

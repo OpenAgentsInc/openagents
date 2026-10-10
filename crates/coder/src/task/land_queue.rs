@@ -32,6 +32,7 @@ use std::process::{Command, Stdio};
 use serde::{Deserialize, Serialize};
 
 use super::issue_run::{Checks, Policy};
+use super::land_plan::{self, Lane};
 use super::landing;
 
 /// The variable naming the queue: `gs://bucket/prefix` or a folder.
@@ -45,10 +46,11 @@ pub const REQUEUES: u32 = 3;
 pub const WORKER_STALE_SECS: u64 = 300;
 
 /// Where an entry stands.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum State {
     /// Waiting its turn.
+    #[default]
     Queued,
     /// The worker has it now.
     Landing,
@@ -80,7 +82,7 @@ impl State {
 }
 
 /// One change waiting to land.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Entry {
     /// `<UTC time>-<machine>-<suffix>`: entries sort oldest first by id.
     pub id: String,
@@ -117,6 +119,19 @@ pub struct Entry {
     /// The worker that has or had it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worker: Option<String>,
+    /// The lane the worker planned for it ([`land_plan::Plan`]), #11248.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lane: Option<Lane>,
+    /// The worker's slot that has or had it: `fast`, `code-1`, `code-2`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slot: Option<String>,
+    /// When the current or last try began.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<u64>,
+    /// The earlier entry it waits for: one whose change can affect its
+    /// checks lands first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub waiting_for: Option<String>,
 }
 
 /// One try at landing an entry.
@@ -148,6 +163,14 @@ pub struct Record {
     /// The landing's progress notes.
     #[serde(default)]
     pub notes: Vec<String>,
+    /// The lane and slot it ran in (#11248).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub lane: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub slot: String,
+    /// Generated files the worker wrote again and folded into the change.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub regenerated: Vec<String>,
 }
 
 /// The worker's heartbeat, so submitters and the status view know whether
@@ -162,6 +185,25 @@ pub struct Heartbeat {
     /// stopped.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub instance: Option<Instance>,
+    /// What each busy slot is landing (#11248).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub slots: Vec<Busy>,
+    /// How many code entries it checks at once.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capacity: Option<u32>,
+    /// Finishing what it has and taking nothing new.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub draining: bool,
+}
+
+/// One busy slot in the heartbeat.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Busy {
+    /// `fast`, `code-1`, ...
+    pub slot: String,
+    pub lane: String,
+    pub entry: String,
+    pub since: u64,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -458,6 +500,35 @@ impl Queue<'_> {
         self.store.write("worker.json", &bytes)
     }
 
+    /// Every entry, oldest first, reading again only those still open:
+    /// `known` keeps the closed ones between calls, so a worker polling a
+    /// long queue reads only what can change.
+    pub fn entries_cached(
+        &self,
+        known: &mut std::collections::HashMap<String, Entry>,
+    ) -> Result<Vec<Entry>, String> {
+        let mut entries = Vec::new();
+        for name in self.store.list("entries")? {
+            let Some(id) = name.strip_suffix(".json") else {
+                continue;
+            };
+            if let Some(entry) = known.get(id)
+                && !entry.state.open()
+            {
+                entries.push(entry.clone());
+                continue;
+            }
+            if let Some(entry) = self.entry(id)? {
+                if !entry.state.open() {
+                    known.insert(id.to_owned(), entry.clone());
+                }
+                entries.push(entry);
+            }
+        }
+        entries.sort_by(|a, b| a.id.cmp(&b.id));
+        Ok(entries)
+    }
+
     /// The oldest entry waiting, or one this worker left mid-landing (a
     /// restart): those go first, in id order.
     pub fn next(&self, machine: &str) -> Result<Option<Entry>, String> {
@@ -562,12 +633,13 @@ pub enum Outcome {
     Requeued(String),
 }
 
-/// The integrator: one checkout, one worktree, entries one at a time.
+/// The integrator for one slot: one checkout, its own worktree, one entry
+/// at a time. [`super::land_lanes::Lanes`] runs several side by side.
 pub struct Integrator<'a> {
     pub queue: Queue<'a>,
     /// The checkout whose `origin` the branches are on.
     pub top: PathBuf,
-    /// The worker's own worktree (created when missing).
+    /// This slot's own worktree (created when missing).
     pub worktree: PathBuf,
     pub machine: String,
     pub checks: &'a dyn Checks,
@@ -575,22 +647,146 @@ pub struct Integrator<'a> {
     /// Landing tries per entry ([`landing::Plan::attempts`]).
     pub attempts: u32,
     pub backoff: landing::Backoff,
+    /// The lane and slot this integrator lands in (#11248).
+    pub lane: Lane,
+    pub slot: String,
+    /// Packages the entry reaches without touching their folders; the
+    /// checks test them too ([`land_plan::Plan::also`]).
+    pub also: Vec<String>,
+    /// The lock every slot takes to push; `None` with one slot.
+    pub push: Option<PushLock>,
+    /// Write generated files again before the checks
+    /// ([`land_plan::Generator`]).
+    pub regenerate: bool,
+}
+
+/// The push lock the slots share: held only for fetch → rebase → push
+/// ([`landing::Hooks::enter`]), never while checks run.
+#[derive(Clone, Default)]
+pub struct PushLock(std::sync::Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>);
+
+impl PushLock {
+    /// Waits for the lock; it is let go when the guard drops.
+    #[must_use]
+    pub fn hold(&self) -> PushGuard {
+        let (held, freed) = &*self.0;
+        let mut taken = held
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        while *taken {
+            taken = freed
+                .wait(taken)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
+        *taken = true;
+        PushGuard(self.0.clone())
+    }
+}
+
+/// A held [`PushLock`].
+pub struct PushGuard(std::sync::Arc<(std::sync::Mutex<bool>, std::sync::Condvar)>);
+
+impl Drop for PushGuard {
+    fn drop(&mut self) {
+        let (held, freed) = &*self.0;
+        *held
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = false;
+        freed.notify_one();
+    }
 }
 
 fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
     super::local::git_out(dir, args).map(|out| out.trim().to_owned())
 }
 
+/// Worktrees of one checkout are added one at a time.
+static WORKTREES: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Makes `worktree` a detached worktree of `top` when it is not one yet.
+pub(super) fn ensure_worktree(top: &Path, worktree: &Path) -> Result<(), String> {
+    if worktree.join(".git").exists() {
+        return Ok(());
+    }
+    let _one = WORKTREES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if worktree.join(".git").exists() {
+        return Ok(());
+    }
+    if let Some(parent) = worktree.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let _ = git(top, &["worktree", "prune"]);
+    git(
+        top,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "--detach",
+            &worktree.to_string_lossy(),
+            "HEAD",
+        ],
+    )
+    .map(|_| ())
+}
+
+/// Fetches the target and the entry's branch into `worktree`'s refs,
+/// under the repository's fetch lock (the slots share refs).
+pub(super) fn fetch_entry(worktree: &Path, entry: &Entry) -> Result<(), String> {
+    let _lock = landing::fetch_lock(worktree)?;
+    git(
+        worktree,
+        &[
+            "fetch",
+            "-q",
+            "origin",
+            &format!("+refs/heads/{0}:refs/remotes/origin/{0}", entry.target),
+            &format!("+refs/heads/{0}:refs/remotes/origin/{0}", entry.branch),
+        ],
+    )
+    .map(|_| ())
+    .map_err(|why| format!("Git could not fetch `{}`: {why}", entry.branch))
+}
+
+/// Problems that say the worker could not run the checks, not that the
+/// change is wrong: the entry goes back in line instead of bouncing (at
+/// most [`REQUEUES`] times, so a change that really fails to link still
+/// bounces).
+fn infrastructure(problems: &[String]) -> bool {
+    problems.iter().any(|p| {
+        p.contains("cargo is not on PATH")
+            || p.starts_with("the tests could not run")
+            || p.starts_with("the checks could not start")
+            || p.contains("cargo fmt could not run")
+            // A build folder emptied or a disk filled under a running
+            // build (seen with two slots, #11248), not the change.
+            || p.contains("linking with `cc` failed")
+            || p.contains("No space left on device")
+            || p.contains("Text file busy")
+    })
+}
+
 impl Integrator<'_> {
     /// Takes the next entry and lands or bounces it; `None` when the queue
     /// is empty.
     pub fn step(&mut self) -> Result<Option<(Entry, Outcome)>, String> {
-        let Some(mut entry) = self.queue.next(&self.machine)? else {
+        let Some(entry) = self.queue.next(&self.machine)? else {
             return Ok(None);
         };
+        self.run(entry).map(Some)
+    }
+
+    /// Lands or bounces `entry`, recording the try.
+    pub fn run(&mut self, mut entry: Entry) -> Result<(Entry, Outcome), String> {
         entry.state = State::Landing;
         entry.tries += 1;
         entry.worker = Some(self.machine.clone());
+        entry.lane = Some(self.lane);
+        entry.slot = Some(self.slot.clone());
+        entry.started_at = Some(now());
+        entry.waiting_for = None;
         entry.updated_at = now();
         self.queue.put(&entry)?;
         let mut record = Record {
@@ -598,6 +794,8 @@ impl Integrator<'_> {
             number: entry.tries,
             worker: self.machine.clone(),
             started_at: now(),
+            lane: self.lane.word().to_owned(),
+            slot: self.slot.clone(),
             ..Record::default()
         };
         let outcome = self.land(&entry, &mut record);
@@ -656,42 +854,16 @@ impl Integrator<'_> {
             }
             Outcome::Requeued(_) => {}
         }
-        Ok(Some((entry, outcome)))
+        Ok((entry, outcome))
     }
 
     fn prepare(&self, entry: &Entry) -> Result<(), String> {
-        if !self.worktree.join(".git").exists() {
-            if let Some(parent) = self.worktree.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-            }
-            let _ = git(&self.top, &["worktree", "prune"]);
-            git(
-                &self.top,
-                &[
-                    "worktree",
-                    "add",
-                    "-q",
-                    "--detach",
-                    &self.worktree.to_string_lossy(),
-                    "HEAD",
-                ],
-            )?;
-        }
+        ensure_worktree(&self.top, &self.worktree)?;
         let w = &self.worktree;
         let _ = git(w, &["rebase", "--abort"]);
         git(w, &["reset", "-q", "--hard"])?;
         git(w, &["clean", "-q", "-fd"])?;
-        git(
-            w,
-            &[
-                "fetch",
-                "-q",
-                "origin",
-                &format!("+refs/heads/{0}:refs/remotes/origin/{0}", entry.target),
-                &format!("+refs/heads/{0}:refs/remotes/origin/{0}", entry.branch),
-            ],
-        )
-        .map_err(|why| format!("Git could not fetch `{}`: {why}", entry.branch))?;
+        fetch_entry(w, entry)?;
         git(
             w,
             &[
@@ -705,12 +877,15 @@ impl Integrator<'_> {
     }
 
     fn land(&mut self, entry: &Entry, record: &mut Record) -> Outcome {
-        if let Err(why) = self.prepare(entry) {
-            return if entry.tries >= REQUEUES {
+        let again = |why: String| {
+            if entry.tries >= REQUEUES {
                 Outcome::Bounced(why)
             } else {
                 Outcome::Requeued(why)
-            };
+            }
+        };
+        if let Err(why) = self.prepare(entry) {
+            return again(why);
         }
         let target = format!("origin/{}", entry.target);
         record.target_before = git(&self.worktree, &["rev-parse", &target]).unwrap_or_default();
@@ -722,6 +897,9 @@ impl Integrator<'_> {
             policy,
             effects: &mut *self.effects,
             record,
+            also: self.also.clone(),
+            push: self.push.clone(),
+            regenerate: self.regenerate,
         };
         // Rebase first so the checks run on the change as it would land;
         // a conflict is left to the landing, whose one repair turn takes it.
@@ -736,6 +914,12 @@ impl Integrator<'_> {
             let problems = landing::Hooks::check(&mut hooks);
             if !problems.is_empty() {
                 hooks.record.problems = problems.clone();
+                if infrastructure(&problems) {
+                    return again(format!(
+                        "The worker could not run the checks: {}",
+                        problems.join("; ")
+                    ));
+                }
                 return Outcome::Bounced(format!(
                     "The checks fail on the change rebased onto `{}`: {}",
                     entry.target,
@@ -763,6 +947,12 @@ impl Integrator<'_> {
             Err(not) => match not.failure {
                 landing::Failure::Red(problems) => {
                     record.problems.clone_from(&problems);
+                    if infrastructure(&problems) {
+                        return again(format!(
+                            "The worker could not run the checks: {}",
+                            problems.join("; ")
+                        ));
+                    }
                     Outcome::Bounced(format!(
                         "The checks fail after rebasing onto the newer `{}`: {}",
                         entry.target,
@@ -773,11 +963,7 @@ impl Integrator<'_> {
                 landing::Failure::Stopped => Outcome::Requeued("The worker stopped.".into()),
                 landing::Failure::GaveUp(why) | landing::Failure::Unreadable(why) => {
                     record.problems.push(why.clone());
-                    if entry.tries >= REQUEUES {
-                        Outcome::Bounced(why)
-                    } else {
-                        Outcome::Requeued(why)
-                    }
+                    again(why)
                 }
             },
         }
@@ -793,25 +979,130 @@ struct Hooks<'a, 'b> {
     policy: Policy,
     effects: &'a mut dyn Effects,
     record: &'b mut Record,
+    also: Vec<String>,
+    push: Option<PushLock>,
+    regenerate: bool,
+}
+
+impl Hooks<'_, '_> {
+    /// Writes the generated files the change is due again and folds them
+    /// into its last commit.
+    fn regenerate(&mut self) {
+        let w = self.worktree.clone();
+        let generators = land_plan::generators(&w);
+        if generators.is_empty() {
+            return;
+        }
+        let files: Vec<String> = git(&w, &["diff", "--name-only", &self.target, "HEAD"])
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_owned)
+            .collect();
+        let read = |file: &str| std::fs::read_to_string(w.join(file)).ok();
+        let due = land_plan::due(&generators, &files, &read);
+        if due.is_empty() {
+            return;
+        }
+        // The regenerating build takes a build slot as the checks do, so
+        // it shares their warm target folders and the slot budget.
+        let gate = super::issue_run::Gate {
+            jev: None,
+            store: Some(super::local::default_store()),
+        };
+        let lease = gate.slot(&w).ok().flatten();
+        let mut rewritten = Vec::new();
+        for generator in due {
+            let mut command = Command::new("bash");
+            command
+                .args(["-c", &generator.regenerate])
+                .current_dir(&w)
+                .stdin(Stdio::null());
+            if let Some(lease) = &lease {
+                command.env("CARGO_TARGET_DIR", &lease.path);
+            }
+            match command.output() {
+                Ok(out) if out.status.success() => {}
+                Ok(out) => {
+                    let tail: String = String::from_utf8_lossy(&out.stderr)
+                        .lines()
+                        .rev()
+                        .take(6)
+                        .collect::<Vec<_>>()
+                        .join(" / ");
+                    landing::Hooks::note(
+                        self,
+                        &format!("Could not write {} again: {tail}", generator.name),
+                    );
+                    continue;
+                }
+                Err(error) => {
+                    landing::Hooks::note(
+                        self,
+                        &format!("Could not run {}'s command: {error}", generator.name),
+                    );
+                    continue;
+                }
+            }
+            let mut args = vec!["status", "--porcelain", "--"];
+            args.extend(generator.files.iter().map(String::as_str));
+            if !git(&w, &args).unwrap_or_default().is_empty() {
+                let mut add = vec!["add", "--"];
+                add.extend(generator.files.iter().map(String::as_str));
+                if git(&w, &add).is_ok() {
+                    rewritten.extend(generator.files.iter().cloned());
+                }
+            }
+        }
+        drop(lease);
+        if rewritten.is_empty() {
+            return;
+        }
+        match git(&w, &["commit", "-q", "--amend", "--no-edit", "--no-verify"]) {
+            Ok(_) => {
+                landing::Hooks::note(
+                    self,
+                    &format!(
+                        "Wrote {} again from the change's sources and folded it into the change.",
+                        rewritten.join(", ")
+                    ),
+                );
+                self.record.regenerated.extend(rewritten);
+            }
+            Err(why) => {
+                let _ = git(&w, &["reset", "-q"]);
+                landing::Hooks::note(
+                    self,
+                    &format!("Could not fold in the generated files: {why}"),
+                );
+            }
+        }
+    }
 }
 
 impl landing::Hooks for Hooks<'_, '_> {
     fn check(&mut self) -> Vec<String> {
         let w = self.worktree.clone();
+        if git(&w, &["rev-parse", "HEAD"]).is_err() {
+            return vec!["Git could not read the change.".into()];
+        }
+        let base = git(&w, &["merge-base", "HEAD", &self.target]).unwrap_or_default();
+        if base.is_empty() || git(&w, &["rev-parse", "HEAD"]).ok().as_deref() == Some(base.as_str())
+        {
+            return vec!["The branch holds no change against the target.".into()];
+        }
+        if self.regenerate {
+            self.regenerate();
+        }
         let held = match git(&w, &["rev-parse", "HEAD"]) {
             Ok(head) => head,
             Err(why) => return vec![format!("Git could not read the change: {why}")],
         };
-        let base = git(&w, &["merge-base", "HEAD", &self.target]).unwrap_or_default();
-        if base.is_empty() || base == held {
-            return vec!["The branch holds no change against the target.".into()];
-        }
         // Every commit of the branch as one staged diff, which the gate
         // reads; then the commits come back exactly as they were.
         if let Err(why) = git(&w, &["reset", "-q", "--soft", &base]) {
             return vec![format!("Git could not stage the change: {why}")];
         }
-        let checked = self.checks.check(&w, &self.policy);
+        let checked = self.checks.check_also(&w, &self.policy, &self.also);
         let restored = git(&w, &["reset", "-q", "--soft", &held]);
         let _ = git(&w, &["reset", "-q"]);
         self.record.checks.extend(checked.ran.iter().cloned());
@@ -826,6 +1117,32 @@ impl landing::Hooks for Hooks<'_, '_> {
     }
 
     fn fix_conflict(&mut self, request: &str) -> Result<(), String> {
+        // A conflict only in generated files is settled without a repair
+        // turn: take the target's copy; the checks that follow write them
+        // again from both sides' sources.
+        if self.regenerate {
+            let unmerged: Vec<String> =
+                git(&self.worktree, &["diff", "--name-only", "--diff-filter=U"])
+                    .unwrap_or_default()
+                    .lines()
+                    .map(str::to_owned)
+                    .collect();
+            let generators = land_plan::generators(&self.worktree);
+            if land_plan::all_generated(&generators, &unmerged) {
+                let mut args = vec!["checkout", "--ours", "--"];
+                args.extend(unmerged.iter().map(String::as_str));
+                git(&self.worktree, &args)?;
+                landing::Hooks::note(
+                    self,
+                    &format!(
+                        "The rebase conflicts only in generated files ({}); took the target's \
+                         copy to write again.",
+                        unmerged.join(", ")
+                    ),
+                );
+                return Ok(());
+            }
+        }
         self.record.repaired = true;
         self.effects.repair(&self.worktree, request)
     }
@@ -837,6 +1154,42 @@ impl landing::Hooks for Hooks<'_, '_> {
 
     fn stopping(&self) -> bool {
         false
+    }
+
+    fn enter(&mut self) -> Option<Box<dyn std::any::Any>> {
+        self.push
+            .as_ref()
+            .map(|lock| Box::new(lock.hold()) as Box<dyn std::any::Any>)
+    }
+}
+
+/// The fast lane's checks: no build, only the diff checks a document
+/// change can fail — conflict markers, broken links, and figures with no
+/// source (#11248).
+pub struct DocChecks;
+
+impl Checks for DocChecks {
+    fn check(&self, worktree: &Path, _policy: &Policy) -> super::issue_run::Checked {
+        let diff = git(worktree, &["diff", "--cached", "-U0"]).unwrap_or_default();
+        let mut problems = Vec::new();
+        let mut file = String::new();
+        for line in diff.lines() {
+            if let Some(path) = line.strip_prefix("+++ b/") {
+                file = path.to_owned();
+            } else if line.starts_with("+<<<<<<< ") || line.starts_with("+>>>>>>> ") {
+                problems.push(format!("{file}: a conflict marker is left in"));
+            }
+        }
+        problems.extend(coder_delegate::issue::broken_links(worktree, &diff));
+        problems.extend(coder_delegate::issue::unsourced_figures(worktree, &diff));
+        super::issue_run::Checked {
+            problems,
+            ran: vec![
+                "Fast lane: the change holds no compiled code, so the build was skipped; the \
+                 diff checks ran (conflict markers, broken links, figures with no source)."
+                    .to_owned(),
+            ],
+        }
     }
 }
 
@@ -850,6 +1203,20 @@ fn landed_text(entry: &Entry, commit: &str, record: &Record) -> String {
         entry.machine,
         record.worker
     );
+    if !record.lane.is_empty() {
+        text.push_str(&format!(
+            "Lane: {} (slot {}), {} s from the start of the try.\n\n",
+            record.lane,
+            record.slot,
+            record.ended_at.saturating_sub(record.started_at)
+        ));
+    }
+    if !record.regenerated.is_empty() {
+        text.push_str(&format!(
+            "Generated files written again and folded in: {}.\n\n",
+            record.regenerated.join(", ")
+        ));
+    }
     if !record.checks.is_empty() {
         text.push_str("Checks:\n");
         for line in &record.checks {

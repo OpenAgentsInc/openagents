@@ -72,6 +72,8 @@ pub mod freshen;
 pub mod interaction;
 pub mod issue_pick;
 pub mod issue_run;
+pub mod land_lanes;
+pub mod land_plan;
 pub mod land_queue;
 pub mod landing;
 pub mod lifecycle;

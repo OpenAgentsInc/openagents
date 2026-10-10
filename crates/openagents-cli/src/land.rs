@@ -1,20 +1,22 @@
 //! `openagents land`: one landing queue for every machine (#11227).
 //!
 //! Agents anywhere submit a branch; one integrator (`land work`, on a cloud
-//! environment) lands entries on `main` one at a time: rebase, the
-//! touched-crate checks, push with retries on a race, a bounded repair turn
-//! on a conflict, else a bounce back to the author; then the issue is
-//! closed or commented. `coder::task::land_queue` is the queue;
-//! `docs/cloud/land-queue.md` is the guide.
+//! environment) lands entries on `main` through lanes (#11248): documents
+//! in a fast lane that skips the build, code entries side by side when
+//! their packages do not overlap, overlapping ones in submission order.
+//! Each landing rebases, runs the touched-crate checks, pushes under one
+//! lock with retries on a race, gets a bounded repair turn on a conflict,
+//! else bounces back to the author; then the issue is closed or commented.
+//! `coder::task::land_queue` is the queue, `coder::task::land_lanes` the
+//! lanes; `docs/cloud/land-queue.md` is the guide.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
 use coder::cli_route::tree::{Declared, Effect};
-use coder::task::land_queue::{
-    self, Entry, Heartbeat, Instance, Integrator, Live, Queue, State, Store,
-};
+use coder::task::land_lanes::{Control, Lanes, RepoPlanner};
+use coder::task::land_queue::{self, Effects, Entry, Instance, Live, Queue, State, Store};
 use serde_json::{Value, json};
 
 use crate::out::table;
@@ -36,11 +38,16 @@ pub(crate) const USAGE: &str = "usage: openagents land COMMAND [--queue URL]
   show ID     One entry and every try at landing it: checks, landing
               attempts, repair, outcome.
   withdraw ID Take a queued entry out of the queue.
-  work [--once] [--every SECONDS] [--repair COMMAND|none]
-              Run the integrator in this checkout: take the oldest entry, land
-              or bounce it, record the try, repeat (polling every 20 s).
-              --repair names the one conflict-repair turn's command (claude
-              by default); none bounces every conflict.
+  work [--once] [--every SECONDS] [--slots N] [--repair COMMAND|none]
+              Run the integrator in this checkout. Documents-only entries
+              land in the fast lane (no build); code entries check side by
+              side, N at once (default 2, OPENAGENTS_LAND_SLOTS), when their
+              packages do not overlap, else in submission order. Pushes are
+              one at a time. Polls every 5 s. --repair names the one
+              conflict-repair turn's command (claude by default); none
+              bounces every conflict. While ~/.openagents/land-queue/drain
+              exists it takes nothing new and finishes what runs. It refuses
+              to start without cargo on PATH.
 The queue is OPENAGENTS_LAND_QUEUE or --queue (gs://bucket/prefix or a
 folder); by default gs://openagentsgemini-coder-artifacts/land-queue/openagents.
 See docs/cloud/land-queue.md.";
@@ -71,7 +78,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     let known: &[&str] = match command {
         "submit" => &["queue", "branch", "issue", "summary", "target"],
         "status" | "show" | "withdraw" => &["queue"],
-        "work" => &["queue", "every", "repair"],
+        "work" => &["queue", "every", "repair", "slots"],
         _ => return output.usage("land", &format!("unknown command `{command}`"), USAGE),
     };
     if let Some(name) = args.option_names().into_iter().find(|n| !known.contains(n)) {
@@ -207,6 +214,10 @@ fn submit(queue: &Queue<'_>, args: &Args) -> Result<Value, String> {
         commit: None,
         reason: None,
         worker: None,
+        lane: None,
+        slot: None,
+        started_at: None,
+        waiting_for: None,
     };
     queue.submit(&entry)?;
     let ahead = queue
@@ -271,6 +282,7 @@ fn status(queue: &Queue<'_>, all: bool) -> Result<Value, String> {
         .is_some_and(|w| land_queue::now().saturating_sub(w.at) < land_queue::WORKER_STALE_SECS);
     Ok(json!({
         "queue": queue.store.location(),
+        "now": land_queue::now(),
         "worker": worker,
         "worker_alive": alive,
         "open": entries.iter().filter(|e| e.state.open()).count(),
@@ -303,7 +315,10 @@ fn withdraw(queue: &Queue<'_>, id: &str) -> Result<Value, String> {
 }
 
 fn ago(at: u64) -> String {
-    let secs = land_queue::now().saturating_sub(at);
+    secs(land_queue::now().saturating_sub(at))
+}
+
+fn secs(secs: u64) -> String {
     match secs {
         0..=89 => format!("{secs}s"),
         90..=5399 => format!("{}m", secs / 60),
@@ -317,20 +332,46 @@ fn render(command: &str, value: &Value) -> String {
         "status" => {
             let mut text = format!("queue: {}\n", value["queue"].as_str().unwrap_or(""));
             match value["worker"].as_object() {
-                Some(w) => text.push_str(&format!(
-                    "integrator: {} ({}, seen {} ago){}\n",
-                    w.get("machine").and_then(Value::as_str).unwrap_or("?"),
-                    if value["worker_alive"].as_bool() == Some(true) {
-                        "running"
-                    } else {
-                        "not running"
-                    },
-                    ago(w.get("at").and_then(Value::as_u64).unwrap_or(0)),
-                    w.get("current")
-                        .and_then(Value::as_str)
-                        .map(|c| format!(", landing {c}"))
-                        .unwrap_or_default()
-                )),
+                Some(w) => {
+                    let slots = w.get("slots").and_then(Value::as_array);
+                    text.push_str(&format!(
+                        "integrator: {} ({}, seen {} ago{}{})\n",
+                        w.get("machine").and_then(Value::as_str).unwrap_or("?"),
+                        if value["worker_alive"].as_bool() == Some(true) {
+                            "running"
+                        } else {
+                            "not running"
+                        },
+                        ago(w.get("at").and_then(Value::as_u64).unwrap_or(0)),
+                        w.get("capacity")
+                            .and_then(Value::as_u64)
+                            .map(|n| format!(", fast lane + {n} code slot(s)"))
+                            .unwrap_or_default(),
+                        if w.get("draining").and_then(Value::as_bool) == Some(true) {
+                            ", draining"
+                        } else {
+                            ""
+                        }
+                    ));
+                    match slots {
+                        Some(slots) if !slots.is_empty() => {
+                            for b in slots {
+                                text.push_str(&format!(
+                                    "  {} ({}): {} for {}\n",
+                                    b["slot"].as_str().unwrap_or(""),
+                                    b["lane"].as_str().unwrap_or(""),
+                                    b["entry"].as_str().unwrap_or(""),
+                                    ago(b["since"].as_u64().unwrap_or(0))
+                                ));
+                            }
+                        }
+                        _ => {
+                            if let Some(c) = w.get("current").and_then(Value::as_str) {
+                                text.push_str(&format!("  landing {c}\n"));
+                            }
+                        }
+                    }
+                }
                 None => text.push_str("integrator: none has run\n"),
             }
             let entries = value["entries"].as_array().cloned().unwrap_or_default();
@@ -341,6 +382,9 @@ fn render(command: &str, value: &Value) -> String {
             let mut rows = vec![vec![
                 "ID".to_owned(),
                 "STATE".into(),
+                "LANE".into(),
+                "SLOT".into(),
+                "ELAPSED".into(),
                 "FROM".into(),
                 "ISSUE".into(),
                 "AGE".into(),
@@ -352,10 +396,31 @@ fn render(command: &str, value: &Value) -> String {
                     .as_str()
                     .map(|c| c.get(..10).unwrap_or(c).to_owned())
                     .or_else(|| e["reason"].as_str().map(|r| clip(r, 70)))
+                    .or_else(|| {
+                        e["waiting_for"]
+                            .as_str()
+                            .filter(|_| e["state"] == "queued")
+                            .map(|w| format!("waits for {w}"))
+                    })
                     .unwrap_or_else(|| clip(e["summary"].as_str().unwrap_or(""), 70));
+                let state = e["state"].as_str().unwrap_or("");
+                let elapsed = match (state, e["started_at"].as_u64()) {
+                    ("landing", Some(at)) => ago(at),
+                    (_, Some(at)) if e["updated_at"].as_u64().is_some_and(|u| u >= at) => {
+                        secs(e["updated_at"].as_u64().unwrap_or(at) - at)
+                    }
+                    _ => String::new(),
+                };
                 rows.push(vec![
                     e["id"].as_str().unwrap_or("").to_owned(),
-                    e["state"].as_str().unwrap_or("").to_owned(),
+                    state.to_owned(),
+                    e["lane"].as_str().unwrap_or("").to_owned(),
+                    if state == "landing" || state == "landed" || state == "bounced" {
+                        e["slot"].as_str().unwrap_or("").to_owned()
+                    } else {
+                        String::new()
+                    },
+                    elapsed,
                     e["machine"].as_str().unwrap_or("").to_owned(),
                     e["issue"]
                         .as_u64()
@@ -388,17 +453,27 @@ fn render(command: &str, value: &Value) -> String {
             }
             for r in value["records"].as_array().cloned().unwrap_or_default() {
                 text.push_str(&format!(
-                    "\ntry {} on {}: {}{}\n",
+                    "\ntry {} on {}{}: {} in {}{}\n",
                     r["number"],
                     r["worker"].as_str().unwrap_or(""),
+                    r["lane"]
+                        .as_str()
+                        .map(|l| format!(", {l} lane, slot {}", r["slot"].as_str().unwrap_or("")))
+                        .unwrap_or_default(),
                     r["outcome"].as_str().unwrap_or(""),
+                    secs(
+                        r["ended_at"]
+                            .as_u64()
+                            .unwrap_or(0)
+                            .saturating_sub(r["started_at"].as_u64().unwrap_or(0))
+                    ),
                     if r["repaired"].as_bool() == Some(true) {
                         " (after a conflict repair turn)"
                     } else {
                         ""
                     }
                 ));
-                for key in ["checks", "landing", "problems"] {
+                for key in ["checks", "regenerated", "landing", "problems"] {
                     for line in r[key].as_array().cloned().unwrap_or_default() {
                         text.push_str(&format!("  {key}: {}\n", line.as_str().unwrap_or("")));
                     }
@@ -470,15 +545,66 @@ fn busy_marker() -> PathBuf {
         .join(".openagents/land-queue/busy")
 }
 
+/// Whether `cargo` runs here; the reason when it does not. The worker's
+/// service once ran with a login shell's PATH that lacked rustup's folder,
+/// and every entry bounced with "cargo is not on PATH" (#11248).
+fn cargo_ready() -> Option<String> {
+    match Command::new("cargo")
+        .arg("--version")
+        .stdin(Stdio::null())
+        .output()
+    {
+        Ok(out) if out.status.success() => None,
+        Ok(out) => Some(format!(
+            "`cargo --version` failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        )),
+        Err(error) => Some(format!(
+            "cargo is not on PATH ({error}); PATH is {}",
+            std::env::var("PATH").unwrap_or_default()
+        )),
+    }
+}
+
+/// How many code entries the worker checks at once: `--slots`, else
+/// `OPENAGENTS_LAND_SLOTS`, else 2. Each check is a full `cargo test` of
+/// its packages using every core; the host broker counts two build leases,
+/// so a third slot would only wait.
+fn slots(args: &Args) -> Result<usize, String> {
+    let named = match args.option("slots") {
+        Some(text) => Some(text.to_owned()),
+        None => std::env::var("OPENAGENTS_LAND_SLOTS").ok(),
+    };
+    match named {
+        None => Ok(2),
+        Some(text) => match text.trim().parse::<usize>() {
+            Ok(n) if (1..=8).contains(&n) => Ok(n),
+            _ => Err(format!("--slots {text} is not a number from 1 to 8")),
+        },
+    }
+}
+
 fn work(output: &Output, store: &dyn Store, args: &Args) -> u8 {
     let top = match top() {
         Ok(top) => top,
         Err(why) => return output.fail("land work", &why),
     };
-    let every = match args.number("every", 20u64) {
+    let every = match args.number("every", 5u64) {
         Ok(every) => every.max(1),
         Err(why) => return output.usage("land", &why, USAGE),
     };
+    let code_slots = match slots(args) {
+        Ok(n) => n,
+        Err(why) => return output.usage("land", &why, USAGE),
+    };
+    if let Some(why) = cargo_ready() {
+        // Loudly, before taking anything: entries stay queued instead of
+        // bouncing with a reason that is the worker's, not theirs.
+        return output.fail(
+            "land work",
+            &format!("The integrator cannot run checks: {why}. Nothing was taken from the queue."),
+        );
+    }
     let repair = match args.option("repair") {
         Some("none") => None,
         Some(command) => Some(command.to_owned()),
@@ -500,78 +626,72 @@ fn work(output: &Output, store: &dyn Store, args: &Args) -> u8 {
         );
     }
     let checks = land_queue::gate();
-    let mut effects = Live {
-        repo: repository(&top),
-        repair,
+    let repo = repository(&top);
+    let effects = move || -> Box<dyn Effects> {
+        Box::new(Live {
+            repo: repo.clone(),
+            repair: repair.clone(),
+        })
     };
-    let state = busy_marker();
-    let _ = std::fs::create_dir_all(state.parent().unwrap_or(Path::new(".")));
-    let worktree = state.with_file_name("work");
+    let marker = busy_marker();
+    let root = coder::task::land_lanes::root_beside(&marker);
+    let _ = std::fs::create_dir_all(&root);
+    let drain = root.join("drain");
+    let planner = RepoPlanner {
+        top: top.clone(),
+        worktree: root.join("plan"),
+    };
     eprintln!(
-        "land: integrator {machine} on {} (queue {})",
+        "land: integrator {machine} on {} (queue {}), fast lane + {code_slots} code slot(s)",
         top.display(),
         store.location()
     );
+    let lanes = Lanes {
+        store,
+        top: top.clone(),
+        root: root.clone(),
+        machine,
+        code_slots,
+        checks: &checks,
+        planner: &planner,
+        effects: &effects,
+        attempts: coder::task::landing::Plan::ATTEMPTS,
+        backoff: coder::task::landing::Backoff::LANDING,
+        instance: here,
+        regenerate: true,
+        every: Duration::from_secs(every),
+    };
     let mut failed = false;
-    loop {
-        let mut beat = Heartbeat {
-            machine: machine.clone(),
-            at: land_queue::now(),
-            current: None,
-            instance: here.clone(),
-        };
-        if let Err(why) = queue.beat(&beat) {
-            eprintln!("land: the heartbeat was not written: {why}");
+    let mut done = |entry: &Entry, outcome: &land_queue::Outcome| {
+        let line = json!({
+            "entry": entry.id,
+            "state": entry.state.word(),
+            "lane": entry.lane.map(|l| l.word()),
+            "slot": entry.slot,
+            "seconds": land_queue::now().saturating_sub(entry.started_at.unwrap_or(0)),
+            "commit": entry.commit,
+            "reason": entry.reason,
+        });
+        output.line(&line, |_| format!("{} {:?}", entry.id, outcome));
+        failed |= entry.state == State::Bounced;
+    };
+    let draining = || drain.exists();
+    let busy = |busy: bool| {
+        if busy {
+            let _ = std::fs::write(&marker, std::process::id().to_string());
+        } else {
+            let _ = std::fs::remove_file(&marker);
         }
-        let next = queue.next(&machine);
-        let taken = match next {
-            Ok(Some(entry)) => {
-                beat.current = Some(entry.id.clone());
-                let _ = queue.beat(&beat);
-                let _ = std::fs::write(&state, std::process::id().to_string());
-                let mut integrator = Integrator {
-                    queue: Queue { store },
-                    top: top.clone(),
-                    worktree: worktree.clone(),
-                    machine: machine.clone(),
-                    checks: &checks,
-                    effects: &mut effects,
-                    attempts: coder::task::landing::Plan::ATTEMPTS,
-                    backoff: coder::task::landing::Backoff::LANDING,
-                };
-                let stepped = integrator.step();
-                let _ = std::fs::remove_file(&state);
-                match stepped {
-                    Ok(Some((entry, outcome))) => {
-                        let line = json!({
-                            "entry": entry.id,
-                            "state": entry.state.word(),
-                            "commit": entry.commit,
-                            "reason": entry.reason,
-                        });
-                        output.line(&line, |_| format!("{} {:?}", entry.id, outcome));
-                        failed |= entry.state == State::Bounced;
-                        true
-                    }
-                    Ok(None) => false,
-                    Err(why) => {
-                        eprintln!("land: {why}");
-                        false
-                    }
-                }
-            }
-            Ok(None) => false,
-            Err(why) => {
-                eprintln!("land: the queue could not be read: {why}");
-                false
-            }
-        };
-        if args.switch("once") && !taken {
-            break;
-        }
-        if !taken {
-            std::thread::sleep(Duration::from_secs(every));
-        }
+    };
+    let mut control = Control {
+        once: args.switch("once"),
+        draining: &draining,
+        busy: &busy,
+        done: &mut done,
+        ready: &cargo_ready,
+    };
+    if let Err(why) = lanes.run(&mut control) {
+        return output.fail("land work", &why);
     }
     if failed { crate::EXIT_FAILURE } else { 0 }
 }

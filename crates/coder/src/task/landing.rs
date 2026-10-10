@@ -533,7 +533,7 @@ fn pause(wait: Duration, hooks: &dyn Hooks) -> bool {
 }
 
 /// Files that make every package build differently.
-fn workspace_wide(path: &str) -> bool {
+pub(super) fn workspace_wide(path: &str) -> bool {
     matches!(
         path,
         "Cargo.toml" | "rust-toolchain" | "rust-toolchain.toml" | "build.rs"
@@ -720,14 +720,14 @@ fn lock_resolution(text: &str, roots: &[String]) -> Option<std::collections::BTr
 }
 
 /// The workspace packages `files` are in.
-fn packages(worktree: &Path, files: &[String]) -> Vec<String> {
+pub(super) fn packages(worktree: &Path, files: &[String]) -> Vec<String> {
     let diff: String = files.iter().map(|file| format!("+++ b/{file}\n")).collect();
     coder_delegate::issue::changed_packages(worktree, &diff)
 }
 
 /// Each workspace package's workspace dependencies, of every kind, from
 /// `cargo metadata`; `None` when it cannot run.
-fn workspace_graph(worktree: &Path) -> Option<Vec<(String, Vec<String>)>> {
+pub(super) fn workspace_graph(worktree: &Path) -> Option<Vec<(String, Vec<String>)>> {
     let output = std::process::Command::new("cargo")
         .args([
             "metadata",
@@ -767,7 +767,7 @@ fn workspace_graph(worktree: &Path) -> Option<Vec<(String, Vec<String>)>> {
 }
 
 /// Whether `from` depends on `to`, directly or through other packages.
-fn reaches(graph: &[(String, Vec<String>)], from: &str, to: &str) -> bool {
+pub(super) fn reaches(graph: &[(String, Vec<String>)], from: &str, to: &str) -> bool {
     let mut seen: Vec<&str> = Vec::new();
     let mut next = vec![from];
     while let Some(at) = next.pop() {

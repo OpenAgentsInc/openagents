@@ -453,6 +453,7 @@ pub async fn work<X: Clone, W: Worker<X>>(
                 worker.seal(&inner).as_ref(),
                 gate_base.as_deref(),
                 None,
+                &[],
             )
             .await;
             remaining = problems;
@@ -1236,8 +1237,22 @@ pub async fn gate_in(
     seal: Option<&crate::seal::Seal>,
     slot: Option<&Path>,
 ) -> (Vec<String>, Option<Confinement>) {
+    gate_in_also(workdir, jev, recorder, seal, slot, &[]).await
+}
+
+/// [`gate_in`], also testing `also`: packages the change reaches without
+/// touching their directories, such as a crate whose `include_str!` reads
+/// a changed file outside it (the landing queue finds those, #11248).
+pub async fn gate_in_also(
+    workdir: &Path,
+    jev: Option<&jev::Client>,
+    recorder: &Recorder,
+    seal: Option<&crate::seal::Seal>,
+    slot: Option<&Path>,
+    also: &[String],
+) -> (Vec<String>, Option<Confinement>) {
     let base = command(workdir, "git", &["rev-parse", "origin/main"]).ok();
-    gate_with_base(workdir, jev, recorder, seal, base.as_deref(), slot).await
+    gate_with_base(workdir, jev, recorder, seal, base.as_deref(), slot, also).await
 }
 
 async fn gate_with_base(
@@ -1247,10 +1262,16 @@ async fn gate_with_base(
     seal: Option<&crate::seal::Seal>,
     base: Option<&str>,
     slot: Option<&Path>,
+    also: &[String],
 ) -> (Vec<String>, Option<Confinement>) {
     let _ = command(workdir, "git", &["add", "-A"]);
     let diff = command(workdir, "git", &["diff", "--cached", "-U0"]).unwrap_or_default();
-    let packages = changed_packages(workdir, &diff);
+    let mut packages = changed_packages(workdir, &diff);
+    for package in also {
+        if !packages.contains(package) {
+            packages.push(package.clone());
+        }
+    }
     let (mut problems, tested) = match confined::Setup::for_run_in(workdir, seal, slot) {
         Ok(setup) => {
             let (problems, tested) = confined::run_with_base(&setup, &packages, base).await;

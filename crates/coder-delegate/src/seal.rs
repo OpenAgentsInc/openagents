@@ -63,11 +63,20 @@ impl Seal {
         std::fs::create_dir_all(&stubs)?;
         std::fs::create_dir_all(&gh_config)?;
         let gh = stubs.join("gh");
-        std::fs::write(&gh, format!("#!/bin/sh\necho '{GH_REFUSAL}' >&2\nexit 1\n"))?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt as _;
-            std::fs::set_permissions(&gh, std::fs::Permissions::from_mode(0o755))?;
+        let script = format!("#!/bin/sh\necho '{GH_REFUSAL}' >&2\nexit 1\n");
+        // Gates running side by side share this folder (the landing
+        // queue's code slots, #11248): rewriting the stub in place could
+        // be read half-written or hit a running copy, so a changed stub
+        // goes in by rename, and an unchanged one is left alone.
+        if std::fs::read_to_string(&gh).ok().as_deref() != Some(script.as_str()) {
+            let fresh = stubs.join(format!(".gh.{}", std::process::id()));
+            std::fs::write(&fresh, &script)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt as _;
+                std::fs::set_permissions(&fresh, std::fs::Permissions::from_mode(0o755))?;
+            }
+            std::fs::rename(&fresh, &gh)?;
         }
         Ok(Seal {
             stubs: stubs.canonicalize()?,

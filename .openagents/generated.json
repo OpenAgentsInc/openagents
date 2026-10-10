@@ -1,0 +1,26 @@
+{
+  "schema": "openagents.generated.v1",
+  "note": "Committed files generated from sources. The landing queue (docs/cloud/land-queue.md) runs `regenerate` before the checks when a change touches one of `sources` (holding one of `markers`, when given) and folds the rewritten files into the change; a rebase conflict only in these files takes the target's copy and writes it again. Commands run at the top of the repository with CARGO_TARGET_DIR set to a build slot.",
+  "generated": [
+    {
+      "name": "cli-tree",
+      "files": ["crates/coder/src/cli_route/tree.json"],
+      "sources": [
+        "crates/openagents-cli/src/",
+        "crates/coder/src/cli_route/",
+        "crates/coder/src/task/cli.rs",
+        "crates/coder-host/src/cli.rs",
+        "crates/coder-host/src/spend/cli.rs",
+        "crates/coder-new/src/programmatic.rs"
+      ],
+      "markers": ["USAGE", "EFFECTS", "Declared::", "fn build", "fn help"],
+      "regenerate": "OPENAGENTS_WRITE_CLI_TREE=1 cargo test -q -p openagents-cli --bin openagents tree::tests::the_bundled_tree_is_generated_from_this_help"
+    },
+    {
+      "name": "first-party-openapi",
+      "files": ["docs/api/openapi.first-party.json"],
+      "sources": ["crates/gateway/src/audience.rs"],
+      "regenerate": "OPENAGENTS_WRITE_OPENAPI=1 cargo test -q -p gateway --lib audience::tests::the_committed_first_party_document_is_current"
+    }
+  ]
+}

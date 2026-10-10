@@ -20,7 +20,9 @@
 # - oa-land-worker.service: the landing queue's integrator
 #   (`openagents land work`) as user coder in ~/openagents, signed in by
 #   dev-env-session.sh at each start. It uses ~/.openagents/bin/openagents
-#   when present (a build from main), else the image's.
+#   when present (a build from main), else the image's. Its PATH names
+#   rustup's ~/.cargo/bin after the login profile, and it will not start
+#   without cargo there.
 #
 # Set the idle time from anywhere:
 #   gcloud compute instances add-metadata oa-dev-env-1 --zone us-central1-b \
@@ -123,9 +125,24 @@ Wants=network-online.target
 [Service]
 User=$user
 WorkingDirectory=$home/openagents
+# A login shell (bash -l) resets PATH from /etc/profile, which drops
+# rustup's folder: the integrator once bounced every entry with "cargo is
+# not on PATH" (#11248). So PATH is set again after the profile and the
+# env file, the unit refuses to start without cargo there, and "land work"
+# itself refuses to take entries when cargo does not run.
 Environment=PATH=$home/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+Environment=CARGO_HOME=$home/.cargo
+# Two code slots check at once on 22 vCPUs: each build takes half the
+# cores (two builds at -j22 reached a load of 183, #11248).
+Environment=CARGO_BUILD_JOBS=11
+Environment=RUST_TEST_THREADS=8
+ExecStartPre=/bin/bash -c 'test -x $home/.cargo/bin/cargo || { echo "oa-land-worker: no cargo at $home/.cargo/bin; install rustup for $user" >&2; exit 1; }'
 ExecStartPre=/bin/bash -lc 'scripts/cloud/dev-env-session.sh >/dev/null'
-ExecStart=/bin/bash -lc 'export PATH=\$HOME/.cargo/bin:\$PATH; set -a; . \$HOME/.openagents/dev-env.env; set +a; bin=\$HOME/.openagents/bin/openagents; [ -x "\$bin" ] || bin=openagents; exec "\$bin" land work'
+ExecStart=/bin/bash -lc 'set -a; . \$HOME/.openagents/dev-env.env; set +a; export PATH=$home/.cargo/bin:\$PATH; cargo --version >&2 || exit 1; bin=\$HOME/.openagents/bin/openagents; [ -x "\$bin" ] || bin=openagents; exec "\$bin" land work'
+# Let a landing finish its push on a restart; an entry cut off mid-check
+# is taken again when the worker comes back (it is still "landing" here).
+KillSignal=SIGTERM
+TimeoutStopSec=30
 Restart=always
 RestartSec=30
 [Install]
