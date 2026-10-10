@@ -127,6 +127,8 @@ mod x402_native;
 #[cfg(unix)]
 mod x402_node;
 #[cfg(unix)]
+mod x402_nwc;
+#[cfg(unix)]
 mod x402_phone;
 #[cfg(unix)]
 mod x402_spark;

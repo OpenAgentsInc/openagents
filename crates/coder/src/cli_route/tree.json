@@ -25333,7 +25333,7 @@
               "fetch"
             ],
             "usage": [
-              "fetch URL [--method M] [--body FILE|-] [--max-msat N] [--max-fee-msat F] [--wait SECONDS] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof] [--pay-with wallet|node|phone]"
+              "fetch URL [--method M] [--body FILE|-] [--max-msat N] [--max-fee-msat F] [--wait SECONDS] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof] [--pay-with wallet|node|phone|nwc]"
             ],
             "forms": [
               {
@@ -25406,18 +25406,19 @@
                   {
                     "kind": "option",
                     "name": "pay-with",
-                    "value": "wallet|node|phone",
+                    "value": "wallet|node|phone|nwc",
                     "choices": [
                       "wallet",
                       "node",
-                      "phone"
+                      "phone",
+                      "nwc"
                     ],
                     "optional": true
                   }
                 ]
               }
             ],
-            "summary": "Buy one call: read the 402, check the invoice against this request, refuse above the ceiling, pay from your wallet, retry with the preimage, print the body. With --cap, resolve that NIP-CAP head first and refuse a challenge whose payTo or URL it does not advertise. --pay-with node pays from this computer's Lightning node instead; --pay-with phone asks the owner's phone to pay through this computer's Coder host (mainnet only; the owner approves each payment there, and the wait is at least 300 seconds).",
+            "summary": "Buy one call: read the 402, check the invoice against this request, refuse above the ceiling, pay from your wallet, retry with the preimage, print the body. With --cap, resolve that NIP-CAP head first and refuse a challenge whose payTo or URL it does not advertise. --pay-with node pays from this computer's Lightning node instead; --pay-with phone asks the owner's phone to pay through this computer's Coder host (mainnet only; the owner approves each payment there, and the wait is at least 300 seconds). --pay-with nwc pays from a wallet connected over Nostr Wallet Connect (NIP-47): put its nostr+walletconnect:// string in OPENAGENTS_NWC (https://nwc.dev).",
             "effect": "spends",
             "runs_on": "screen",
             "screen": "wallet"
@@ -25484,7 +25485,7 @@
               "call"
             ],
             "usage": [
-              "call TOOL [--arg WORD]... [--max-msat N] [--max-fee-msat F] [--wait SECONDS] [--server URI] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof] [--pay-with wallet|node|phone] -- CMD [ARGS...]"
+              "call TOOL [--arg WORD]... [--max-msat N] [--max-fee-msat F] [--wait SECONDS] [--server URI] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof] [--pay-with wallet|node|phone|nwc] -- CMD [ARGS...]"
             ],
             "forms": [
               {
@@ -25555,11 +25556,12 @@
                   {
                     "kind": "option",
                     "name": "pay-with",
-                    "value": "wallet|node|phone",
+                    "value": "wallet|node|phone|nwc",
                     "choices": [
                       "wallet",
                       "node",
-                      "phone"
+                      "phone",
+                      "nwc"
                     ],
                     "optional": true
                   },
@@ -25679,7 +25681,7 @@
               "buy"
             ],
             "usage": [
-              "buy PROVIDER --slug SLUG [--input FILE|-] [--max-msat N] [--max-fee-msat F] [--wait SECONDS] [--as PROFILE] [--relay URL] [--show-proof] [--pay-with wallet|node]"
+              "buy PROVIDER --slug SLUG [--input FILE|-] [--max-msat N] [--max-fee-msat F] [--wait SECONDS] [--as PROFILE] [--relay URL] [--show-proof] [--pay-with wallet|node|nwc]"
             ],
             "forms": [
               {
@@ -25751,10 +25753,11 @@
                   {
                     "kind": "option",
                     "name": "pay-with",
-                    "value": "wallet|node",
+                    "value": "wallet|node|nwc",
                     "choices": [
                       "wallet",
-                      "node"
+                      "node",
+                      "nwc"
                     ],
                     "optional": true
                   }
@@ -27292,11 +27295,12 @@
         {
           "kind": "option",
           "name": "pay-with",
-          "value": "wallet|node|phone",
+          "value": "wallet|node|phone|nwc",
           "choices": [
             "wallet",
             "node",
-            "phone"
+            "phone",
+            "nwc"
           ],
           "optional": true,
           "repeated": true

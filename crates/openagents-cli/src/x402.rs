@@ -67,7 +67,7 @@ pub(crate) const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           updates it.
   fetch URL [--method M] [--body FILE|-] [--max-msat N] [--max-fee-msat F]
         [--wait SECONDS] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof]
-        [--pay-with wallet|node|phone]
+        [--pay-with wallet|node|phone|nwc]
                           Buy one call: read the 402, check the invoice against
                           this request, refuse above the ceiling, pay from your
                           wallet, retry with the preimage, print the body. With
@@ -77,7 +77,10 @@ pub(crate) const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           node instead; --pay-with phone asks the owner's phone
                           to pay through this computer's Coder host (mainnet
                           only; the owner approves each payment there, and the
-                          wait is at least 300 seconds).
+                          wait is at least 300 seconds). --pay-with nwc pays
+                          from a wallet connected over Nostr Wallet Connect
+                          (NIP-47): put its nostr+walletconnect:// string in
+                          OPENAGENTS_NWC (https://nwc.dev).
   mcp-serve --server URI --msat N [--tool GROUP]... [--expiry SECONDS]
                           Serve `openagents mcp serve` over stdio with a toll
                           (x402 exact/lnbtc, mcp:1): a tools/call without
@@ -89,7 +92,7 @@ pub(crate) const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           the buyer must bind to; it is not connected to.
   call TOOL [--arg WORD]... [--max-msat N] [--max-fee-msat F] [--wait SECONDS]
         [--server URI] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof]
-        [--pay-with wallet|node|phone]
+        [--pay-with wallet|node|phone|nwc]
         -- CMD [ARGS...]
                           Buy one tools/call: start CMD as a stdio MCP server,
                           call TOOL with {\"args\": [WORD...]}, check the
@@ -125,7 +128,7 @@ pub(crate) const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           worker_refused, or worker_failed.
   buy PROVIDER --slug SLUG [--input FILE|-] [--max-msat N] [--max-fee-msat F]
         [--wait SECONDS] [--as PROFILE] [--relay URL] [--show-proof]
-        [--pay-with wallet|node]
+        [--pay-with wallet|node|nwc]
                           Buy one run: resolve PROVIDER:SLUG on the relay, seal
                           the input and a request to PROVIDER, check the
                           challenge against them, refuse above the ceiling, pay
@@ -705,6 +708,9 @@ pub(crate) enum Payer {
     Node,
     /// The owner's phone, through this computer's Coder host (`x402_phone`).
     Phone,
+    /// A wallet connected over Nostr Wallet Connect, NIP-47 (`x402_nwc`):
+    /// its connection string in `OPENAGENTS_NWC`.
+    Nwc,
 }
 
 /// `--pay-with wallet|node|phone` (`phone` only where `phone` is true);
@@ -715,8 +721,9 @@ pub(crate) fn payer(args: &Args, phone: bool) -> Result<Payer, String> {
         Some("wallet") => Ok(Payer::Wallet),
         Some("node") => Ok(Payer::Node),
         Some("phone") if phone => Ok(Payer::Phone),
-        Some(_) if phone => Err("--pay-with takes wallet, node, or phone".into()),
-        Some(_) => Err("--pay-with takes wallet or node".into()),
+        Some("nwc") => Ok(Payer::Nwc),
+        Some(_) if phone => Err("--pay-with takes wallet, node, phone, or nwc".into()),
+        Some(_) => Err("--pay-with takes wallet, node, or nwc".into()),
         None => Ok(computer_payer()),
     }
 }
@@ -752,6 +759,7 @@ pub(crate) fn pay_by(
         Payer::Wallet => crate::x402_spark::pay(bolt11, network, max_fee_msat),
         Payer::Node => pay_invoice(bolt11, network, max_fee_msat, wait),
         Payer::Phone => crate::x402_phone::pay(bolt11, network, max_fee_msat, wait, resource),
+        Payer::Nwc => crate::x402_nwc::pay(bolt11, network, max_fee_msat, wait),
     }
 }
 
@@ -2374,6 +2382,8 @@ mod tests {
             Ok(Payer::Phone)
         );
         assert!(payer(&args(&["--pay-with", "phone"]), false).is_err());
+        assert_eq!(payer(&args(&["--pay-with", "nwc"]), false), Ok(Payer::Nwc));
+        assert_eq!(payer(&args(&["--pay-with", "nwc"]), true), Ok(Payer::Nwc));
     }
 
     #[test]
