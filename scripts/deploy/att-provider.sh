@@ -144,7 +144,7 @@ start() {
         g compute instances create "$VM" --project "$PROJECT" --zone "$ZONE" \
             --machine-type "$MACHINE" --confidential-compute-type=TDX \
             --provisioning-model=SPOT --instance-termination-action=STOP \
-            --max-run-duration="$MAX_RUN" \
+            --max-run-duration="$MAX_RUN" --discard-local-ssds-at-termination-timestamp=true \
             --maintenance-policy=TERMINATE --shielded-secure-boot \
             --image-project=confidential-space-images --image-family=confidential-space \
             --boot-disk-size=60GB --service-account="$WORKLOAD_SA" --scopes=cloud-platform \
@@ -166,7 +166,8 @@ case $cmd in
     release) shift; release "$@" ;;
     start) shift; start "$@" ;;
     replace) shift; g compute instances delete "$VM" --project "$PROJECT" --zone "$ZONE" --quiet || true; start "$@" ;;
-    stop) g compute instances stop "$VM" --project "$PROJECT" --zone "$ZONE" ;;
+    stop) if [ "$LANE" = gpu ]; then set -- --discard-local-ssd=true; else set --; fi
+        g compute instances stop "$VM" --project "$PROJECT" --zone "$ZONE" "$@" ;;
     resume) g compute instances start "$VM" --project "$PROJECT" --zone "$ZONE" ;;
     delete) g compute instances delete "$VM" --project "$PROJECT" --zone "$ZONE" --quiet ;;
     status) g compute instances describe "$VM" --project "$PROJECT" --zone "$ZONE" \
