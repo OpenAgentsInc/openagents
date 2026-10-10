@@ -128,6 +128,7 @@ as_root apt-get update -q
 as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
   build-essential pkg-config clang cmake protobuf-compiler libprotobuf-dev libssl-dev \
   ca-certificates curl git gh ripgrep jq xz-utils unzip zstd procps time bubblewrap python3 util-linux \
+  zsh fish \
   >/dev/null
 log packages end
 
