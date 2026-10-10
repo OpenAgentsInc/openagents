@@ -31,6 +31,7 @@ pub mod login_choice;
 pub mod memory;
 pub mod model_catalog;
 pub mod models;
+pub mod ops_tool;
 #[cfg(unix)]
 pub mod plugin_catalog;
 pub mod plugin_definition;
@@ -41,6 +42,7 @@ pub mod programmatic;
 mod prompt_queue;
 pub mod provider;
 pub mod resume;
+pub mod risk_policy;
 pub mod sessions;
 pub mod slash;
 pub mod snapshot;
@@ -188,7 +190,9 @@ impl App {
         if let Some(desk) = &self.disclosure_desk {
             for event in desk.drain() {
                 if event["event"] == "approval"
-                    && (event["kind"] == "disclosure" || event["kind"] == "computer")
+                    && (event["kind"] == "disclosure"
+                        || event["kind"] == "computer"
+                        || event["kind"] == "action")
                 {
                     self.disclosure_event = Some(event);
                     self.disclosure_scroll = 0;
@@ -206,12 +210,21 @@ impl App {
     }
 
     fn answer_disclosure(&mut self, confirm: bool) {
+        self.answer_disclosure_from(confirm, "terminal");
+    }
+
+    /// Answers the open question, saying where the answer came from
+    /// (`terminal`, `phone`, or `web`) for the approval record (#11170).
+    pub(crate) fn answer_disclosure_from(&mut self, confirm: bool, via: &str) {
         if let (Some(desk), Some(event)) = (&self.disclosure_desk, self.disclosure_event.take()) {
-            let _ = desk.answer(&format!(
-                "{} {}",
-                if confirm { "confirm" } else { "reject" },
-                event["id"]
-            ));
+            let _ = desk.answer_from(
+                &format!(
+                    "{} {}",
+                    if confirm { "confirm" } else { "reject" },
+                    event["id"]
+                ),
+                via,
+            );
         }
     }
 

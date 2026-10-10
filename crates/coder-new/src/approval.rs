@@ -40,6 +40,9 @@ pub struct Desk {
     next: AtomicU64,
     events: Mutex<VecDeque<Value>>,
     answers: Mutex<BTreeMap<u64, Option<bool>>>,
+    /// Where each answer came from (`terminal`, `phone`, `web`), for the
+    /// approval record a risky ability keeps (#11170).
+    sources: Mutex<BTreeMap<u64, String>>,
     closed: AtomicBool,
     tool_free: bool,
 }
@@ -63,6 +66,15 @@ impl Desk {
     /// # Errors
     /// The line is neither `confirm ID`, `reject ID`, nor the JSON form.
     pub fn answer(&self, line: &str) -> Result<(), String> {
+        self.answer_from(line, "terminal")
+    }
+
+    /// [`Self::answer`], saying where the answer came from: `terminal`,
+    /// `phone`, or `web`.
+    ///
+    /// # Errors
+    /// As [`Self::answer`].
+    pub fn answer_from(&self, line: &str, via: &str) -> Result<(), String> {
         let line = line.trim();
         if line.is_empty() {
             return Ok(());
@@ -100,6 +112,12 @@ impl Desk {
         if self.closed.load(Ordering::SeqCst) {
             return Err("The approval desk is closed.".into());
         }
+        // Where it came from is recorded before the answer shows, so a
+        // waiter that sees the answer always sees its source too.
+        self.sources
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(id, via.to_owned());
         *pending = Some(confirm);
         Ok(())
     }
@@ -148,6 +166,10 @@ impl Desk {
 
     fn finish(&self, id: u64, confirm: bool) {
         self.answers
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .remove(&id);
+        self.sources
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .remove(&id);
@@ -217,6 +239,49 @@ impl Desk {
         };
         self.finish(id, confirm);
         confirm
+    }
+
+    /// Waits for the owner's answer to one risky ability (#11170): a
+    /// production deploy, a merge, or another ability the approval policy
+    /// ([`crate::risk_policy`]) says asks. The question names the ability,
+    /// exactly what it acts on (`subject`: an image digest, a pull request
+    /// at its head), and why it asks. Answers whether it was approved, and
+    /// where a person answered (`None` when nobody did: canceled, the desk
+    /// closed, or 30 minutes passed).
+    pub(crate) async fn confirm_action(
+        &self,
+        ability: &str,
+        title: &str,
+        subject: &str,
+        detail: &str,
+        cancel: &AtomicBool,
+    ) -> (bool, Option<String>) {
+        if self.closed.load(Ordering::SeqCst) || cancel.load(Ordering::Relaxed) {
+            return (false, None);
+        }
+        let id = self.begin(json!({"kind":"action","ability":ability,"title":title,
+            "subject":subject,"detail":detail}));
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(1800);
+        let confirm = loop {
+            if self.closed.load(Ordering::SeqCst)
+                || cancel.load(Ordering::Relaxed)
+                || tokio::time::Instant::now() >= deadline
+            {
+                break false;
+            }
+            if let Some(confirm) = self.answered(id) {
+                break confirm;
+            }
+            tokio::time::sleep(POLL).await;
+        };
+        let via = self
+            .sources
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&id)
+            .cloned();
+        self.finish(id, confirm);
+        (confirm, via)
     }
 
     /// Asks about `command`, which needs approval for `why`, and waits for

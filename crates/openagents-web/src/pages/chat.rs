@@ -58,6 +58,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(work::routes())
         .merge(agents::routes())
         .merge(continued::routes())
+        .merge(approval::routes())
         .layer(DefaultBodyLimit::max(64 * 1024))
 }
 
@@ -689,7 +690,13 @@ async fn show_terminal(
     let id = &chat.id;
     let online = continued::online(app, chat).await;
     let dock = if online {
-        terminal_composer(app, chat, computer, notice)
+        // A question Coder waits on there (a deploy, a merge) shows above
+        // the composer with Approve and Deny (#11170).
+        let card = approval::current(app, chat).await;
+        html! {
+            (card)
+            (terminal_composer(app, chat, computer, notice))
+        }
     } else if continued::offer(app, headers, chat, online).await.is_some() {
         html! { (terminal_note(computer)) (continued::button(chat)) }
     } else {
@@ -2273,6 +2280,8 @@ mod sidebar;
 
 #[path = "chat_agents.rs"]
 mod agents;
+#[path = "chat_approval.rs"]
+mod approval;
 #[path = "chat_continued.rs"]
 mod continued;
 #[path = "chat_delete_all.rs"]

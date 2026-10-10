@@ -79,6 +79,10 @@ const CODER: &[Declared] = &[
     Declared::computer("import", Effect::LocalWrite),
     Declared::computer("trace upload", Effect::Publishes),
     Declared::computer("trace list", Effect::ReadOnly),
+    Declared::computer("memory list", Effect::ReadOnly),
+    Declared::computer("memory show", Effect::ReadOnly),
+    Declared::computer("memory forget", Effect::LocalWrite),
+    Declared::computer("memory instructions", Effect::ReadOnly),
 ];
 
 const PAIR: &[Declared] = &[Declared::screen("", Effect::Grants, "account.computers")];
@@ -273,6 +277,8 @@ pub fn help() -> Vec<GroupHelp<'static>> {
             crate::efficiency::EFFECTS,
         ),
         group("cloud", Some(crate::cloud::USAGE), crate::cloud::EFFECTS),
+        group("deploy", Some(crate::deploy::USAGE), crate::deploy::EFFECTS),
+        group("pr", Some(crate::pr::USAGE), crate::pr::EFFECTS),
         group("verse", Some(crate::world::USAGE), crate::world::EFFECTS),
         GroupHelp {
             name: "xp",

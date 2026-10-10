@@ -63,9 +63,10 @@ macro_rules! command_usage {
   sessions list                       List saved local chats.
   sessions read ID                    Read one saved chat as an ATIF trajectory.
   sessions delete ID                  Remove one saved chat.
-  memory [list | show NAME | forget NAME | instructions]
-                                      Read or delete what Coder remembers, or list
-                                      the AGENTS.md/CLAUDE.md files it loads here.
+  memory list                         List what Coder remembers here.
+  memory show NAME                    Read one memory.
+  memory forget NAME                  Delete one memory.
+  memory instructions                 List the AGENTS.md/CLAUDE.md files it loads here.
   export ID [--output FILE]            Export a saved chat as ATIF-v1.8.
   import FILE [--session ID]           Open an ATIF file to view or continue it.
   trace upload [ID | --last | --file FILE] [--share]

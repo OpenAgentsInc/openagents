@@ -76,7 +76,9 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         height: area.height.saturating_sub(top_padding + 1),
     };
     if let Some(event) = &app.disclosure_event {
-        let text = if event["kind"] == "computer" {
+        let text = if event["kind"] == "action" {
+            crate::ops_tool::question_screen(event)
+        } else if event["kind"] == "computer" {
             format!(
                 "Run this on {}?\n\n{}\n\nIt asks because {}. This approves this one action only.\n\nY: confirm · N: reject · Esc: cancel · PgUp/PgDn: review",
                 event["host"].as_str().unwrap_or_default(),

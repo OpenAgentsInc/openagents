@@ -205,6 +205,7 @@ impl ExecutionSettings {
                 }
                 if binding == ToolBinding::OpenAgentsCli {
                     definitions.push(crate::computer_tool::definition());
+                    definitions.extend(crate::ops_tool::definitions());
                 }
             }
         }
@@ -220,6 +221,7 @@ impl ExecutionSettings {
         );
         if self.registered(ToolBinding::OpenAgentsCli) {
             guidance.push_str(crate::computer_tool::instructions());
+            guidance.push_str(crate::ops_tool::instructions());
             guidance.push_str("The OpenAgents CLI ships beside Coder and is available through openagents_cli for requested OpenAgents work. Answer conversational questions directly; read [\"--help\"] or a group's --help only when you need a command you do not know. Use argument arrays and its --json output. The command covers computers, Coder tasks and issues, settings, knowledge, plugin registries, relay identities, shared worlds, and wallets. It enforces each command's existing rights; do not assume a chat tool grants access.\n");
         }
         if self.shell {
@@ -399,7 +401,32 @@ impl ExecutionSettings {
                 let args: CliArguments = serde_json::from_value(arguments).map_err(
                     |_| "openagents_cli requires an arguments array and no other fields.",
                 )?;
-                bundled_runtime::cli(&args.arguments, &self.cwd, cancel, &mut emit).await
+                match crate::ops_tool::reserved(&args.arguments) {
+                    Some(why) => Err(why),
+                    None => {
+                        bundled_runtime::cli(&args.arguments, &self.cwd, cancel, &mut emit).await
+                    }
+                }
+            }
+            "deploy" if self.registered(ToolBinding::OpenAgentsCli) => {
+                crate::ops_tool::execute_deploy(
+                    arguments,
+                    &self.cwd,
+                    self.disclosure_desk.as_deref(),
+                    cancel,
+                    &mut emit,
+                )
+                .await
+            }
+            "pull_request" if self.registered(ToolBinding::OpenAgentsCli) => {
+                crate::ops_tool::execute_pull_request(
+                    arguments,
+                    &self.cwd,
+                    self.disclosure_desk.as_deref(),
+                    cancel,
+                    &mut emit,
+                )
+                .await
             }
             "computer" if self.registered(ToolBinding::OpenAgentsCli) => {
                 crate::computer_tool::execute(

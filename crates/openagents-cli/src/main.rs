@@ -17,6 +17,7 @@ use std::process::ExitCode;
 // `connect`, `labor`, `pay`, `service`, `ssh`, `wallet`, and `x402` are Unix-only
 // (see the dispatch below); Windows builds the rest.
 mod agent;
+mod approval_gate;
 mod argv;
 mod artifact;
 #[cfg(unix)]
@@ -34,6 +35,7 @@ mod computer;
 #[cfg(unix)]
 mod connect;
 mod customer;
+mod deploy;
 mod discover;
 mod efficiency;
 mod eval;
@@ -83,6 +85,7 @@ mod plugin_team;
 mod plugin_use;
 #[cfg(unix)]
 mod plugin_workbench;
+mod pr;
 mod provider_key;
 #[cfg(unix)]
 mod pylon_wallet;
@@ -187,6 +190,10 @@ Coder:
   efficiency   Routed against raw delegation, from recorded runs: cost per
                checked result, time to it, and pass rate, with intervals.
   cloud        A GCE spot pool granted as one computer: up, down, status.
+  deploy       Ship the website to staging, then promote that digest to
+               production once the owner approves.
+  pr           Read, review, and merge a GitHub pull request; merge waits for
+               the owner and passing checks.
 
 Verse (NIP-MV):
   verse        See who is around, listen, speak, move, gesture, drive owned
@@ -423,6 +430,10 @@ fn main() -> ExitCode {
         "shadow" => shadow::run(&output, &rest),
         "efficiency" => efficiency::run(&output, &rest),
         "cloud" => cloud::run(&output, &rest),
+        // Website deploys and pull request reviews and merges, under the
+        // owner's approval policy (#11169, #11170).
+        "deploy" => deploy::run(&output, &rest),
+        "pr" => pr::run(&output, &rest),
         #[cfg(unix)]
         "ssh" => ssh::run(&output, &rest),
         "cap" => catalog::cap(&output, &rest),

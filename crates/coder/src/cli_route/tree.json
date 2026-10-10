@@ -5232,6 +5232,139 @@
           ]
         },
         {
+          "name": "memory",
+          "children": [
+            {
+              "name": "list",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "memory",
+                  "list"
+                ],
+                "usage": [
+                  "memory list"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "memory"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "list"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "List what Coder remembers here.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "show",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "memory",
+                  "show"
+                ],
+                "usage": [
+                  "memory show NAME"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "memory"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "show"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Read one memory.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "forget",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "memory",
+                  "forget"
+                ],
+                "usage": [
+                  "memory forget NAME"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "memory"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "forget"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "NAME"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Delete one memory.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "instructions",
+              "leaf": {
+                "path": [
+                  "coder",
+                  "memory",
+                  "instructions"
+                ],
+                "usage": [
+                  "memory instructions"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "memory"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "instructions"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "List the AGENTS.md/CLAUDE.md files it loads here.",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
           "name": "export",
           "leaf": {
             "path": [
@@ -20257,6 +20390,382 @@
           "name": "parallel",
           "value": "M",
           "open": true,
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
+      "name": "deploy",
+      "summary": "Ship the website to staging, then promote that digest to production once the owner approves.",
+      "children": [
+        {
+          "name": "staging",
+          "leaf": {
+            "path": [
+              "deploy",
+              "staging"
+            ],
+            "usage": [
+              "staging [REF] [--keep-spec]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "staging"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "REF",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "keep-spec",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Build REF (default origin/main), deploy it to staging, and run the staging smoke test; answers with the smoke result and the web image's digest.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "production",
+          "leaf": {
+            "path": [
+              "deploy",
+              "production"
+            ],
+            "usage": [
+              "production DIGEST [--approval ID]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "production"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "DIGEST"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "approval",
+                    "value": "ID",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Promote that digest: a revision with no traffic, the production smoke test against it, then all of openagents.com's traffic.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "keep-spec",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "approval",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
+      "name": "pr",
+      "summary": "Read, review, and merge a GitHub pull request; merge waits for the owner and passing checks.",
+      "children": [
+        {
+          "name": "status",
+          "leaf": {
+            "path": [
+              "pr",
+              "status"
+            ],
+            "usage": [
+              "status N [--repo OWNER/NAME]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "status"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "N"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "repo",
+                    "value": "OWNER/NAME",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Whether the pull request can merge now.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "diff",
+          "leaf": {
+            "path": [
+              "pr",
+              "diff"
+            ],
+            "usage": [
+              "diff N [--file PATH] [--repo OWNER/NAME]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "diff"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "N"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "file",
+                    "value": "PATH",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "repo",
+                    "value": "OWNER/NAME",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "The diff, pinned to the head commit it was read at.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "review",
+          "leaf": {
+            "path": [
+              "pr",
+              "review"
+            ],
+            "usage": [
+              "review N --head SHA --findings FILE [--verdict comment|approve|request_changes] [--approval ID] [--repo OWNER/NAME]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "review"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "N"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "head",
+                    "value": "SHA",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "findings",
+                    "value": "FILE",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "verdict",
+                    "value": "comment|approve|request_changes",
+                    "choices": [
+                      "comment",
+                      "approve",
+                      "request_changes"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "approval",
+                    "value": "ID",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "repo",
+                    "value": "OWNER/NAME",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Post FILE's findings ({\"findings\": [...], \"body\": \"...\"}) at exactly --head: a finding on lines the diff adds is a comment on those lines, the others go in the summary.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "merge",
+          "leaf": {
+            "path": [
+              "pr",
+              "merge"
+            ],
+            "usage": [
+              "merge N --head SHA [--method squash|merge|rebase] [--approval ID] [--repo OWNER/NAME]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "merge"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "N"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "head",
+                    "value": "SHA",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "method",
+                    "value": "squash|merge|rebase",
+                    "choices": [
+                      "squash",
+                      "merge",
+                      "rebase"
+                    ],
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "approval",
+                    "value": "ID",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "repo",
+                    "value": "OWNER/NAME",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Merge --head; refused while a check failed or still runs.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "repo",
+          "value": "OWNER/NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "file",
+          "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "head",
+          "value": "SHA",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "findings",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "verdict",
+          "value": "comment|approve|request_changes",
+          "choices": [
+            "comment",
+            "approve",
+            "request_changes"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "approval",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "head:",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "method",
+          "value": "squash|merge|rebase",
+          "choices": [
+            "squash",
+            "merge",
+            "rebase"
+          ],
           "optional": true,
           "repeated": true
         }

@@ -74,7 +74,9 @@ fn short(text: &str, limit: usize) -> String {
 
 /// The approval question as the phone shows it.
 pub(crate) fn question_text(event: &Value) -> String {
-    if event["kind"] == "computer" {
+    if event["kind"] == "action" {
+        crate::ops_tool::question_text(event)
+    } else if event["kind"] == "computer" {
         format!(
             "Run this on {}?\n\n{}",
             event["host"].as_str().unwrap_or_default(),
@@ -293,7 +295,13 @@ impl App {
                         .is_none_or(|id| id == question_id(event))
                 });
                 if matches {
-                    self.answer_disclosure(command.action == "approve");
+                    // The website's confirm card sends `web` (#11170); the
+                    // phone sends nothing.
+                    let via = match command.text.as_deref() {
+                        Some("web") => "web",
+                        _ => "phone",
+                    };
+                    self.answer_disclosure_from(command.action == "approve", via);
                 }
             }
             "message" => {

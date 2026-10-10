@@ -11,6 +11,9 @@ const SKIP: &[&str] = &[];
 const ALLOW_IN: &[(&str, &[&str])] = &[
     // Cursor is the name of a coding agent the terminal can run.
     ("acp_discovery.rs", &["cursor"]),
+    // The deploy tool's answer and its production step name the web image
+    // by its sha256 digest: the exact value the owner approves.
+    ("ops_tool.rs", &["digest"]),
 ];
 
 #[test]

@@ -413,6 +413,19 @@ pub(crate) async fn cli_checked(
     cancel: &Arc<AtomicBool>,
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Value, String> {
+    cli_checked_within(program, arguments, cwd, cancel, emit, None).await
+}
+
+/// [`cli_checked`] with its own deadline, for a command that runs longer
+/// than a lookup: a deploy builds images and smoke-tests them (#11170).
+pub(crate) async fn cli_checked_within(
+    program: &Path,
+    arguments: &[String],
+    cwd: &Path,
+    cancel: &Arc<AtomicBool>,
+    emit: &mut dyn FnMut(RuntimeEvent),
+    deadline_seconds: Option<u64>,
+) -> Result<Value, String> {
     validate_arguments(arguments)?;
     if cancel.load(Ordering::Relaxed) {
         return Err("The CLI call was canceled before it started.".into());
@@ -428,7 +441,7 @@ pub(crate) async fn cli_checked(
             || arguments
                 .windows(2)
                 .any(|words| words == ["remote", "follow"]));
-    let seconds = if cloud_job { 12 * 3600 + 1200 } else { 300 };
+    let seconds = deadline_seconds.unwrap_or(if cloud_job { 12 * 3600 + 1200 } else { 300 });
     let job = supervise::Job::from_command(command)
         .bounded(supervise::Limits::within(Duration::from_secs(seconds)).keeping(TEXT_MAX));
     let stopped = wait_job(job, cancel, Some((&mut bridge, &sink)), &[], None).await?;

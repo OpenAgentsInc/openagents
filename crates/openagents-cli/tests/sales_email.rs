@@ -100,6 +100,7 @@ fn installed_email_configuration_checks_opaque_provider_credentials_without_send
                 source_sha256: sha(b"original requested business contact"),
                 permission_reference_sha256: sha(b"original customer accepted requested email"),
                 owner_reference: "owner verified original fixture request".into(),
+                scope_sha256: None,
                 aliases: vec!["email:buyer@fixture.invalid".into()],
             },
         },
