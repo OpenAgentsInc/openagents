@@ -68,7 +68,7 @@ const CLEF_WEIGHTS: &str =
     "sha256:fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c";
 /// The sealed GPU machine the wake action starts (a stopped spot VM).
 const GPU_VM: &str = "oa-att-h100-1";
-const GPU_ZONE: &str = "us-central1-a";
+const GPU_ZONE: &str = "us-east5-a";
 const PROJECT: &str = "openagentsgemini";
 /// Wakes all visitors may ask for per hour.
 const WAKES_PER_HOUR: usize = 6;
@@ -179,7 +179,7 @@ impl Lane {
 }
 
 /// Measured seconds per answer (gpu, cpu, open), browser round included.
-const LANE_SECONDS: [f64; 3] = [0.0, 27.0, 1.5];
+const LANE_SECONDS: [f64; 3] = [1.0, 27.0, 1.0];
 /// Dollars per hour while the lane's machine runs (gpu, cpu, open).
 const LANE_COST: [f64; 3] = [0.0, 0.40, 0.0];
 
@@ -509,6 +509,19 @@ async fn state(Query(query): Query<LaneQuery>) -> Response {
             ),
         };
     }
+    if lane == Lane::Gpu
+        && let Some(machine) = machine_state(&shared, lane).await
+        && machine != "RUNNING"
+    {
+        return json_response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            &json!({
+                "error": format!("The sealed GPU is asleep ({})", machine.to_lowercase()),
+                "machine": machine,
+                "can_wake": true,
+            }),
+        );
+    }
     match records(&shared, lane).await {
         Ok((records, check, fetched_ms, cached)) => json_response(
             StatusCode::OK,
@@ -603,16 +616,15 @@ async fn lanes() -> Response {
         records(&shared, Lane::Cpu),
         open_beacon(&shared)
     );
-    let machine = if gpu.is_err() {
-        machine_state(&shared, Lane::Gpu).await
-    } else {
-        None
-    };
+    let machine = machine_state(&shared, Lane::Gpu).await;
+    // A stopped machine's last endpoint record stays current for up to an
+    // hour; it is not ready unless Compute Engine says it runs.
+    let gpu_running = machine.as_deref().is_none_or(|m| m == "RUNNING");
     let mut out = Vec::new();
     for lane in Lane::ALL {
         let mut info = lane.info();
         let ready = match lane {
-            Lane::Gpu => gpu.as_ref().is_ok_and(|r| r.1["ok"] == true),
+            Lane::Gpu => gpu_running && gpu.as_ref().is_ok_and(|r| r.1["ok"] == true),
             Lane::Cpu => cpu.as_ref().is_ok_and(|r| r.1["ok"] == true),
             Lane::Open => open.as_ref().is_ok_and(|r| r.1["ok"] == true),
         };
@@ -673,7 +685,7 @@ async fn wake() -> Response {
         if wakes.len() >= WAKES_PER_HOUR {
             return refuse(
                 StatusCode::TOO_MANY_REQUESTS,
-                "The sealed GPU has been woken several times this hour. Try the other lanes, or again later.",
+                "The sealed GPU has been woken several times this hour. Pick another way to answer, or try again later.",
             );
         }
         wakes.push_back(Instant::now());

@@ -97,6 +97,50 @@ pub enum Tamper {
     Measurement,
     /// The key offered is not the one the hardware evidence vouches for.
     UnboundKey,
+    /// The GPU's confidential-computing mode reads as off.
+    GpuOff,
+}
+
+/// Which machine answers: the sealed GPU, the sealed CPU, or an open
+/// Pylon (sealed in transit only).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Lane {
+    Gpu,
+    #[default]
+    Cpu,
+    Open,
+}
+
+impl Lane {
+    /// From the form's radio value.
+    #[must_use]
+    pub fn parse(value: &str) -> Self {
+        match value {
+            "gpu" => Self::Gpu,
+            "open" => Self::Open,
+            _ => Self::Cpu,
+        }
+    }
+
+    /// The gateway's `?lane=` word.
+    #[must_use]
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::Gpu => "gpu",
+            Self::Cpu => "cpu",
+            Self::Open => "open",
+        }
+    }
+
+    /// Whether a tamper choice applies on this lane.
+    #[must_use]
+    pub fn allows(self, tamper: Tamper) -> bool {
+        match tamper {
+            Tamper::None | Tamper::Measurement => true,
+            Tamper::UnboundKey => self != Self::Open,
+            Tamper::GpuOff => self == Self::Gpu,
+        }
+    }
 }
 
 impl Tamper {
@@ -106,6 +150,7 @@ impl Tamper {
         match value {
             "measurement" => Self::Measurement,
             "unbound-key" => Self::UnboundKey,
+            "gpu-off" => Self::GpuOff,
             _ => Self::None,
         }
     }
@@ -114,6 +159,7 @@ impl Tamper {
 /// What the visitor asked for when they pressed Run.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RunOptions {
+    pub lane: Lane,
     pub tamper: Tamper,
     pub prompt: String,
 }
@@ -392,5 +438,10 @@ mod tests {
         assert_eq!(clean_prompt(&format!("  {}", "x".repeat(300))).len(), 200);
         assert_eq!(Tamper::parse("unbound-key"), Tamper::UnboundKey);
         assert_eq!(Tamper::parse("anything"), Tamper::None);
+        assert_eq!(Tamper::parse("gpu-off"), Tamper::GpuOff);
+        assert_eq!(Lane::parse("open"), Lane::Open);
+        assert!(!Lane::Open.allows(Tamper::UnboundKey));
+        assert!(!Lane::Cpu.allows(Tamper::GpuOff));
+        assert!(Lane::Gpu.allows(Tamper::GpuOff));
     }
 }

@@ -62,6 +62,24 @@ pub fn line(step: Step) -> &'static str {
     }
 }
 
+/// A step's line on the open lane, where nothing is sealed hardware;
+/// `None` where the sealed line still holds.
+#[must_use]
+pub fn open_line(step: Step) -> Option<&'static str> {
+    match step {
+        Step::Fetch => Some("Get the Pylon's public key and its signed beacon from the relay."),
+        Step::Chain => Some("This Pylon has no hardware evidence to check."),
+        Step::Measure => Some("Check the weights the Pylon says it serves are the expected ones."),
+        Step::Bind => Some("Nothing ties the Pylon's key to a sealed program."),
+        Step::Encrypt => {
+            Some("Your browser seals the message to the Pylon's key before it leaves.")
+        }
+        Step::Decrypt => Some("The Pylon opens and answers it; its owner could read it."),
+        Step::Receipt => Some("Verify the Pylon's signed receipt names the weights that answered."),
+        Step::Relay | Step::Answer => None,
+    }
+}
+
 /// The word on a step's status chip.
 #[must_use]
 pub fn state_word(state: &State) -> &'static str {
@@ -102,6 +120,10 @@ mod tests {
         .map(str::to_owned)
         .to_vec();
         for step in Step::ALL {
+            if let Some(open) = open_line(step) {
+                assert!(open.ends_with('.') && open.len() < 90, "{open}");
+                all.push(open.to_owned());
+            }
             all.push(name(step).to_owned());
             all.push(line(step).to_owned());
             assert!(line(step).ends_with('.'), "{}", line(step));

@@ -109,7 +109,15 @@ fn gpu_claims(raw: &Value) -> Option<GpuClaims> {
     Some(GpuClaims {
         cc_mode: text(gpu, "cc_mode"),
         cc_feature: text(gpu, "cc_feature"),
-        driver_version: text(gpu, "driver_version"),
+        // Per GPU in tokens seen so far; the top level is the documented spot.
+        driver_version: Some(text(gpu, "driver_version"))
+            .filter(|v| !v.is_empty())
+            .or_else(|| {
+                gpu["gpus"][0]["driver_version"]
+                    .as_str()
+                    .map(str::to_string)
+            })
+            .unwrap_or_default(),
         gpus: gpu["gpus"]
             .as_array()
             .map(|list| {

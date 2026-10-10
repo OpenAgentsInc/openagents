@@ -24,7 +24,7 @@ use crate::scene;
 use crate::steps::{self, Event, Player, ms_label};
 
 pub use crate::bubble::Party;
-pub use crate::steps::{RunOptions, State, Step, Tamper};
+pub use crate::steps::{Lane, RunOptions, State, Step, Tamper};
 use serde_json::Value;
 
 /// A padlock with a cross: the relay can't open what it carries.
@@ -65,6 +65,8 @@ struct Dom {
     bubbles: Vec<HtmlElement>,
     narrow: Option<web_sys::MediaQueryList>,
     strip: Option<bool>,
+    /// Who answers, for the answer's author.
+    provider: String,
 }
 
 struct Inner {
@@ -360,6 +362,7 @@ impl Show {
                 bubbles,
                 narrow,
                 strip: None,
+                provider: copy::PROVIDER.to_string(),
                 document: document.clone(),
             },
             renderer,
@@ -391,10 +394,25 @@ impl Show {
                     .flatten()
                     .and_then(|e| e.dyn_into::<HtmlInputElement>().ok())
                     .map_or(Tamper::None, |input| Tamper::parse(&input.value()));
+                let lane = document
+                    .query_selector("input[name=att-lane]:checked")
+                    .ok()
+                    .flatten()
+                    .and_then(|e| e.dyn_into::<HtmlInputElement>().ok())
+                    .map_or(Lane::Cpu, |input| Lane::parse(&input.value()));
+                let tamper = if lane.allows(tamper) {
+                    tamper
+                } else {
+                    Tamper::None
+                };
                 let prompt = steps::clean_prompt(&prompt);
                 inner.borrow_mut().prompt = Some(prompt.clone());
                 if let Some(f) = run.borrow().as_ref() {
-                    f(RunOptions { tamper, prompt });
+                    f(RunOptions {
+                        lane,
+                        tamper,
+                        prompt,
+                    });
                 }
             });
         }
@@ -548,6 +566,32 @@ impl Show {
             inner.set_button(true);
         } else {
             inner.player.push(Event::Other(Later::Idle));
+        }
+    }
+
+    /// The provider's label over the scene, for the chosen lane.
+    pub fn provider(&self, name: &str, sub: &str) {
+        let mut inner = self.inner.borrow_mut();
+        inner.dom.provider = name.to_string();
+        if let Some(label) = inner.dom.labels.get(2) {
+            label.set_inner_html("");
+            let _ = label.append_child(&text(&inner.dom.document, "strong", "", name));
+            let _ = label.append_child(&text(&inner.dom.document, "span", "", sub));
+        }
+    }
+
+    /// Each step card's plain line for the lane: the open lane's where
+    /// the sealed line would be false.
+    pub fn lines(&self, lane: Lane) {
+        let inner = self.inner.borrow();
+        for step in Step::ALL {
+            let words = match lane {
+                Lane::Open => copy::open_line(step).unwrap_or_else(|| copy::line(step)),
+                Lane::Gpu | Lane::Cpu => copy::line(step),
+            };
+            if let Some(line) = child(&inner.dom.cards[step.index()], ".att-line") {
+                line.set_text_content(Some(words));
+            }
         }
     }
 
@@ -775,7 +819,7 @@ impl Dom {
 
     fn answer(&self, question: &str, answer: &str) {
         self.answer.set_inner_html("");
-        let article = message(&self.document, "assistant", copy::PROVIDER);
+        let article = message(&self.document, "assistant", &self.provider);
         let content = make(&self.document, "div", "oa-message-content");
         let _ = content.append_child(&text(&self.document, "p", "att-answer-question", question));
         let _ = content.append_child(&text(&self.document, "p", "att-answer-text", answer));

@@ -28,7 +28,7 @@
 
         <details class="att-box" open>
           <summary>Who can see what</summary>
-          <dl class="att-legend">
+          <dl class="att-legend" id="att-legend">
             <dt>Your browser</dt><dd>Your question and the answer</dd>
             <dt>OpenAgents relay and gateway</dt><dd>Size, timing, sealed bytes</dd>
             <dt>Google / Intel</dt><dd>That a sealed machine ran, not your data</dd>
@@ -43,15 +43,25 @@
           </div>
           <p class="att-question">Question asked: <span>Is this about the weather?</span></p>
           <fieldset class="oa-field">
+            <legend class="oa-field__label" id="att-lane-label">Who answers</legend>
+            <div class="oa-radio-group" role="radiogroup" data-direction="col" aria-labelledby="att-lane-label">
+              <label class="oa-radio" for="att-lane-gpu"><span class="oa-radio__indicator-wrap"><input class="oa-radio__input" type="radio" id="att-lane-gpu" name="att-lane" value="gpu"><span class="oa-radio__item" aria-hidden="true"></span></span><span class="att-lane"><span>Sealed GPU</span><span class="att-lane-note" id="att-lane-gpu-note">Intel TDX and an NVIDIA H100 in confidential mode. Wakes on request.</span></span></label>
+              <label class="oa-radio" for="att-lane-cpu"><span class="oa-radio__indicator-wrap"><input class="oa-radio__input" type="radio" id="att-lane-cpu" name="att-lane" value="cpu" checked><span class="oa-radio__item" aria-hidden="true"></span></span><span class="att-lane"><span>Sealed CPU</span><span class="att-lane-note" id="att-lane-cpu-note">Intel TDX. About half a minute.</span></span></label>
+              <label class="oa-radio" for="att-lane-open"><span class="oa-radio__indicator-wrap"><input class="oa-radio__input" type="radio" id="att-lane-open" name="att-lane" value="open"><span class="oa-radio__item" aria-hidden="true"></span></span><span class="att-lane"><span>Fast GPU, not sealed</span><span class="att-lane-note" id="att-lane-open-note">An OpenAgents Pylon. Its owner could read your message. About a second.</span></span></label>
+            </div>
+          </fieldset>
+          <fieldset class="oa-field">
             <legend class="oa-field__label" id="att-tamper-label">Try to fool it</legend>
             <div class="oa-radio-group" role="radiogroup" data-direction="col" aria-labelledby="att-tamper-label">
               <label class="oa-radio" for="att-tamper-0"><span class="oa-radio__indicator-wrap"><input class="oa-radio__input" type="radio" id="att-tamper-0" name="att-tamper" value="none" checked><span class="oa-radio__item" aria-hidden="true"></span></span><span>No tampering</span></label>
               <label class="oa-radio" for="att-tamper-1"><span class="oa-radio__indicator-wrap"><input class="oa-radio__input" type="radio" id="att-tamper-1" name="att-tamper" value="measurement"><span class="oa-radio__item" aria-hidden="true"></span></span><span>Change the program's fingerprint</span></label>
               <label class="oa-radio" for="att-tamper-2"><span class="oa-radio__indicator-wrap"><input class="oa-radio__input" type="radio" id="att-tamper-2" name="att-tamper" value="unbound-key"><span class="oa-radio__item" aria-hidden="true"></span></span><span>Swap in a key the hardware didn't vouch for</span></label>
+              <label class="oa-radio" for="att-tamper-3" hidden><span class="oa-radio__indicator-wrap"><input class="oa-radio__input" type="radio" id="att-tamper-3" name="att-tamper" value="gpu-off"><span class="oa-radio__item" aria-hidden="true"></span></span><span>Pretend the GPU's protections are off</span></label>
             </div>
           </fieldset>
           <div class="att-run-row">
             <button class="oa-button" id="att-run" type="submit" data-color="primary" data-variant="solid" data-pill data-size="md"><span class="oa-button-inner">Run</span></button>
+            <button class="oa-button" id="att-wake" type="button" data-color="secondary" data-variant="outline" data-pill data-size="md" hidden><span class="oa-button-inner">Wake the sealed GPU</span></button>
             <p class="att-status" id="att-status" role="status" aria-live="polite"></p>
           </div>
         </form>
