@@ -1,5 +1,8 @@
 /target
 /crates/openagents-mobile/target/
+/crates/psionic/target/
+# Any nested Cargo workspace's build output.
+target/
 /target-mc/
 /target-voyager/
 /target-coder-one/
@@ -7,8 +10,11 @@
 
 # Local build products; measurement records and fixtures stay tracked.
 /swift/lev-bridge/.build/
-/training/**/__pycache__/
-/training/**/*.py[co]
+# Python bytecode anywhere. Recorded bench traces that captured bytecode
+# as produced artifacts stay tracked (their manifests hash them).
+__pycache__/
+*.py[co]
+.pytest_cache/
 mc-bridge/target/
 
 # Local release packaging output
