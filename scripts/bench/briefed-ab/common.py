@@ -13,11 +13,15 @@ import subprocess
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-REPO = Path(os.environ.get("AB_REPO", "/Users/christopherdavid/work/openagents"))
+REPO = Path(os.environ.get("AB_REPO", str(Path.home() / "openagents")
+                          if os.environ.get("AB_HOST") == "local" else "/Users/christopherdavid/work/openagents"))
 WORK = Path(os.environ.get("AB_WORK", str(HERE / ".work")))
 HOST = os.environ.get("AB_HOST", "coderos-4080")
 GH_REPO = "OpenAgentsInc/openagents"
-SSH = [
+# AB_HOST=local: the trials and the build run on this machine (a cloud dev
+# environment, docs/cloud/dogfood-dev-on-prod.md); the build host's scripts
+# run through bash instead of ssh.
+SSH = ["bash", "-c"] if HOST == "local" else [
     "ssh",
     "-o", "ControlMaster=auto",
     "-o", "ControlPath=/tmp/ab-ssh-%C",

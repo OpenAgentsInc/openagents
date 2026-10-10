@@ -22,14 +22,22 @@ for a in "$@"; do a=${a//$root/@ROOT@}; quoted+=" $(printf '%q' "$a")"; done
 size=$(wc -c < "$tmp/local.patch" | tr -d ' ')
 exec 3< <(printf '%s\n' "$size"; cat "$tmp/local.patch"; exec sleep 86400)
 holder=$!
-ssh $ctl "$host" "bash ~/ab/bin/run.sh $slot $base $(printf '%q' "$rel") $limit --$quoted" <&3 &
+if [ "$host" = local ]; then
+  bash -c "bash ~/ab/bin/run.sh $slot $base $(printf '%q' "$rel") $limit --$quoted" <&3 &
+else
+  ssh $ctl "$host" "bash ~/ab/bin/run.sh $slot $base $(printf '%q' "$rel") $limit --$quoted" <&3 &
+fi
 sshpid=$!
 trap 'kill "$holder" "$sshpid" 2>/dev/null; exit 143' TERM INT HUP
 wait "$sshpid"
 rc=$?
 exec 3<&-
 kill "$holder" 2>/dev/null
-ssh $ctl "$host" "cat ~/ab/slot$slot.result.patch" > "$tmp/result.patch" 2>/dev/null
+if [ "$host" = local ]; then
+  cat ~/ab/slot$slot.result.patch > "$tmp/result.patch" 2>/dev/null
+else
+  ssh $ctl "$host" "cat ~/ab/slot$slot.result.patch" > "$tmp/result.patch" 2>/dev/null
+fi
 if ! cmp -s "$tmp/local.patch" "$tmp/result.patch"; then
   if [ -s "$tmp/local.patch" ]; then git -C "$root" apply -R --binary "$tmp/local.patch" 2>/dev/null; fi
   if [ -s "$tmp/result.patch" ]; then git -C "$root" apply --binary "$tmp/result.patch" 2>/dev/null || echo "ab: could not bring the build host's file changes back" >&2; fi
