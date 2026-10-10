@@ -104,10 +104,14 @@ The loop makes those decisions cheaper to make well. It does not make them.
 | Decision cost and agreement | Price and latency per decision; agreement with the shadow door | Proves the decision layer runs on our own supply |
 | Improvement rate | Change in cost per accepted PR per retrain cycle, on a fixed issue set | The proof that the loop is recursive |
 
-First measured signal (2 issues, early, `measured`): briefed agents cost about
-2–5× less than bare Claude Code, at equal success, but were not yet faster.
-The headline claim needs the full #11211 run first: 20+ issues, 3 runs each,
-blind judging.
+S2 measured (2026-10-10, pre-registered, 21 closed issues × 3 runs, blind
+judging, after the #11229 verify fix; [briefed-agent-ab.md](../inference/briefed-agent-ab.md)):
+the briefed agent costs **53.9% less per accepted change** than bare Claude
+Code (95% CI 44.3–60.4%), with a median time of 121 s against 284 s, at the
+same observed success (19/63 each; difference 0.000, CI −0.048 to +0.048).
+Equal-or-better success is **not shown**: the CI spans 0, and judge
+acceptance alone is lower (0.794 vs 0.889, CI −0.254 to +0.048). A larger
+frozen quality study (99 issues) is planned.
 
 ## For us first
 
@@ -211,7 +215,7 @@ starts:
 | # | Milestone | Gate (evidence class `measured`) |
 |---|---|---|
 | S1 | Loop runs on OpenAgents end to end | 20+ distinct V1-class issues, selected before execution, taken through the loop from a Cloud Environment. Every attempt (including failures, cancellations and unknown costs) is in the inventory, every label is replay-verified, and merge/deploy state is recorded. |
-| S2 | Briefed beats bare | Cost per accepted PR at least 30% lower than bare Claude Code, at equal or better success and no worse median time, on 20+ issues × 3 runs |
+| S2 | Briefed beats bare | Cost per accepted PR at least 30% lower than bare Claude Code, at equal or better success and no worse median time, on 20+ issues × 3 runs. **Status 2026-10-10:** cost gate met (−53.9% per accepted change, CI −44.3% to −60.4%); time gate met (median 121 s vs 284 s); quality gate inconclusive (difference 0.000, CI −0.048 to +0.048). Not yet passed. |
 | S3 | It improves itself | Two consecutive learning cycles: version N's new eligible outcomes train N+1, and N+1's train N+2. Each promotion wins on a *fresh* protected confirmation cohort (consulted once) by at least two standard errors at the issue level, with no worse calibration, and with the learned part ablated to show the gain comes from learning. A fixed held-out set is kept as a labelled development trend only. |
 | S4 | Jev first-class; Pylons as fallback and shadow until they pass the router gate | Production routing and judges ask Jev (TypeSafe direct) first. Connected Pylons (Clef), our hosted Clef, then Vertex are the fallbacks, and a shadow share measures the Pylons' agreement with Jev. Pylons move ahead of Jev only when they pass the router gate (latency within the first budget, prepared answers kept). Results name the door that answered. |
 | S5 | Second codebase | The loop works on a repository that isn't ours (a public OSS repo), from history alone, with its own corpus and gates |

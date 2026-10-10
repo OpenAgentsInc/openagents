@@ -292,3 +292,29 @@ Written before the data, so they can be proved wrong:
   worth more while the finder is weak and less once it is strong.
 - `self_review`, `decide` and `brief_more` won't pay for themselves on small
   issues.
+
+### What the data says so far (2026-10-10)
+
+From [briefed-agent-ab.md](briefed-agent-ab.md). The frozen tool ablation
+(`plans/ablate-tools.json`: B0 against Bbash, Brelated, Boutline and
+Bfinish on S2's 21 issues) is running; each line below is updated from it.
+
+- **Briefing plus minimal tools plus `verify` vs bare Claude Code:
+  confirmed large.** S2: 53.9% lower cost per accepted change (CI 44.3% to
+  60.4%) and a median of 121 s against 284 s, at the same observed success.
+  Most of the saving comes from a smaller context, not from fewer turns:
+  bare runs read 1.02M cached tokens a run against B0's 0.46M (Claude Code's
+  own prompt and tool definitions, plus about 23 Bash outputs of 650 tokens
+  each), while B0 takes more turns (23 vs 15).
+- **`verify` replacing Bash is the largest single gain: not supported yet.**
+  In the exploratory round before the #11229 fix, briefed-with-Bash cost no
+  more than briefed-with-`verify` ($15.82 vs $19.62 over 33 and 34 trials;
+  medians $0.50 vs $0.42) and passed the fix's tests as often (13 vs 12).
+  So the gain is the briefing and the lean prompt, not `verify` by itself.
+  The frozen B0-vs-Bbash comparison will settle it.
+- **`verify` usage:** 1.5 calls a run, about 200 tokens out per call, a
+  median 39 s each; it is not being looped as a slow check, so its
+  drop-or-rework rule (over about 6 calls a run) is not triggered.
+- **`outline`/`read_symbol`, `finish`, `related`:** untested so far; in
+  the running ablation.
+- **`self_review`, `decide`, `brief_more`:** not tried.
