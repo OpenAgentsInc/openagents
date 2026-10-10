@@ -1,8 +1,8 @@
 //! The public pages, one module per section.
 
 pub(crate) mod api_docs;
-mod blue_rush;
 mod att;
+mod blue_rush;
 mod bunny;
 pub(crate) mod chat;
 mod cloud;

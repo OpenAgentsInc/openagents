@@ -49,7 +49,8 @@ impl Args {
         self.values(name).pop()
     }
     fn need(&mut self, name: &str) -> Result<String, String> {
-        self.value(name).ok_or_else(|| format!("{name} is required"))
+        self.value(name)
+            .ok_or_else(|| format!("{name} is required"))
     }
     fn flag(&mut self, name: &str) -> bool {
         let found = self.0.iter().any(|w| w == name);
@@ -62,7 +63,9 @@ fn secret_from(path: &str) -> Result<(SecretKey, RelaySigner), String> {
     let text = std::fs::read_to_string(path).map_err(|e| format!("{path}: {e}"))?;
     let hex = text.trim();
     let signer = RelaySigner::from_secret_hex(hex).map_err(|e| e.to_string())?;
-    let secret: SecretKey = hex.parse().map_err(|_| "the key file holds no key".to_string())?;
+    let secret: SecretKey = hex
+        .parse()
+        .map_err(|_| "the key file holds no key".to_string())?;
     Ok((secret, signer))
 }
 
@@ -110,7 +113,10 @@ async fn main() {
         other => Err(format!("unknown command `{other}`")),
     };
     match result {
-        Ok(value) => println!("{}", serde_json::to_string_pretty(&value).unwrap_or_default()),
+        Ok(value) => println!(
+            "{}",
+            serde_json::to_string_pretty(&value).unwrap_or_default()
+        ),
         Err(why) => {
             eprintln!("oa-att: {why}");
             std::process::exit(1);
@@ -121,9 +127,7 @@ async fn main() {
 async fn release(args: &mut Args, relay: &str) -> Result<Value, String> {
     let (secret, signer) = secret_from(&args.need("--key")?)?;
     let image = args.need("--image")?;
-    let (reference, digest) = image
-        .split_once('@')
-        .ok_or("--image is REF@sha256:…")?;
+    let (reference, digest) = image.split_once('@').ok_or("--image is REF@sha256:…")?;
     let models = args
         .values("--model")
         .iter()
@@ -234,14 +238,18 @@ async fn verify(args: &mut Args, relay: &str, round: bool) -> Result<Value, Stri
     let measured = oa_att::measure(&parsed, &claims, now(), tamper);
     let measured = match measured {
         Ok(m) => m,
-        Err(why) => return Ok(json!({"steps": steps, "refused": {"step": "measure", "reason": why.0}})),
+        Err(why) => {
+            return Ok(json!({"steps": steps, "refused": {"step": "measure", "reason": why.0}}));
+        }
     };
     steps.push(json!({"step": "measure", "ms": ms(t), "measured": measured}));
     let t = Instant::now();
     let swapped = (tamper == Tamper::UnboundKey).then(|| ephemeral().1.pubkey().to_string());
     let bound = match oa_att::bind(&parsed, &claims, &policy, swapped.as_deref()) {
         Ok(b) => b,
-        Err(why) => return Ok(json!({"steps": steps, "refused": {"step": "bind", "reason": why.0}})),
+        Err(why) => {
+            return Ok(json!({"steps": steps, "refused": {"step": "bind", "reason": why.0}}));
+        }
     };
     steps.push(json!({"step": "bind", "ms": ms(t), "bound": bound}));
     if !round {
@@ -272,9 +280,13 @@ async fn verify(args: &mut Args, relay: &str, round: bool) -> Result<Value, Stri
         }
     })
     .await?;
-    steps.push(json!({"step": "relay", "ms": accepted, "round_ms": ms(t), "answers": answers.len()}));
+    steps.push(
+        json!({"step": "relay", "ms": accepted, "round_ms": ms(t), "answers": answers.len()}),
+    );
     for event in &answers {
-        match oa_att::open_answer(event, &request, &body, &secret, signer.pubkey()).map_err(|e| e.0)? {
+        match oa_att::open_answer(event, &request, &body, &secret, signer.pubkey())
+            .map_err(|e| e.0)?
+        {
             Opened::Status { word, refusal } => {
                 steps.push(json!({"step": "status", "word": word, "refusal": refusal}));
             }

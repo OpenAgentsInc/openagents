@@ -18,7 +18,18 @@ glam = "0.30.10"
 # The `wasm-bindgen` CLI that `scripts/build-att-web.sh` runs must be the
 # version Cargo.lock resolves here; the script checks.
 wasm-bindgen = "0.2.128"
+wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
+# The checks and the sealing, the same code the gateway runs.
+oa-att = { path = "../oa-att" }
+secp256k1 = { version = "0.31.1", features = ["rand"] }
+serde_json = "1"
+# Key material and nonces from crypto.getRandomValues (.cargo/config.toml
+# selects the wasm_js backend).
+getrandom = { version = "0.3", features = ["wasm_js"] }
+# The RSA verifier's rand_core pulls getrandom 0.2, which needs its `js`
+# backend to compile for the browser (nothing here draws from it).
+getrandom02 = { package = "getrandom", version = "0.2", features = ["js"] }
 console_error_panic_hook = "0.1.7"
 web-sys = { version = "0.3", features = [
     "CssStyleDeclaration",
@@ -33,6 +44,10 @@ web-sys = { version = "0.3", features = [
     "HtmlElement",
     "HtmlFormElement",
     "HtmlInputElement",
+    "Headers",
+    "Request",
+    "RequestInit",
+    "Response",
     "MediaQueryList",
     "Node",
     "NodeList",

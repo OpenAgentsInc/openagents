@@ -23,7 +23,11 @@ pub struct Fetched {
     pub ms: u64,
 }
 
-async fn connect(relay: &str, secret: &SecretKey, lifetime: Duration) -> Result<Connection, String> {
+async fn connect(
+    relay: &str,
+    secret: &SecretKey,
+    lifetime: Duration,
+) -> Result<Connection, String> {
     Connection::connect(relay, secret, lifetime)
         .await
         .map(|c| c.with_frame_budget(4096))
@@ -65,7 +69,10 @@ pub async fn publish_on(conn: &mut Connection, event: &Event) -> Result<(), Stri
             return if frame[2] == true {
                 Ok(())
             } else {
-                Err(format!("the relay refused kind {}: {}", event.kind, frame[3]))
+                Err(format!(
+                    "the relay refused kind {}: {}",
+                    event.kind, frame[3]
+                ))
             };
         }
     }
@@ -183,8 +190,10 @@ pub async fn exchange(
 ) -> Result<u64, String> {
     let wait = wait.min(LIFETIME - Duration::from_secs(5));
     let mut conn = connect(relay, secret, wait + Duration::from_secs(5)).await?;
-    conn.send(json!(["REQ", "answers", {"kinds": [RESULT_KIND, FEEDBACK_KIND], "#e": [request.id]}]))
-        .await?;
+    conn.send(
+        json!(["REQ", "answers", {"kinds": [RESULT_KIND, FEEDBACK_KIND], "#e": [request.id]}]),
+    )
+    .await?;
     let sent = Instant::now();
     conn.send(json!(["EVENT", request])).await?;
     let mut accepted_ms = None;

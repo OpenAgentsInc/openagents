@@ -476,19 +476,28 @@ async fn serve_attested(json_out: bool, args: &mut Args, relay: &str) -> Result<
         .value("--publisher")?
         .or_else(|| env("OA_ATT_PUBLISHER"))
         .ok_or("--attested needs --publisher HEX (or OA_ATT_PUBLISHER)")?;
-    let operator = args.value("--operator")?.unwrap_or_else(|| publisher.clone());
+    let operator = args
+        .value("--operator")?
+        .unwrap_or_else(|| publisher.clone());
     let workload = args
         .value("--workload")?
         .unwrap_or_else(|| "clef-decisions".into());
     let socket = args
         .value("--teeserver")?
         .unwrap_or_else(|| attested::TEESERVER.into());
-    let weights_url = args.value("--weights-url")?.ok_or("--attested needs --weights-url")?;
+    let weights_url = args
+        .value("--weights-url")?
+        .ok_or("--attested needs --weights-url")?;
     let weights_sha256 = args
         .value("--weights-sha256")?
         .ok_or("--attested needs --weights-sha256")?;
-    let weights = PathBuf::from(args.value("--weights")?.ok_or("--attested needs --weights PATH")?);
-    let psionic = args.value("--psionic")?.ok_or("--attested needs --psionic BIN")?;
+    let weights = PathBuf::from(
+        args.value("--weights")?
+            .ok_or("--attested needs --weights PATH")?,
+    );
+    let psionic = args
+        .value("--psionic")?
+        .ok_or("--attested needs --psionic BIN")?;
     let port = args.number("--psionic-port", 18_096)?;
     let slug = args.value("--pylon")?.unwrap_or_else(|| "att-tdx".into());
     let mut config = Config::new(relay, &slug, home());
@@ -505,8 +514,14 @@ async fn serve_attested(json_out: bool, args: &mut Args, relay: &str) -> Result<
     if let Some(extra) = args.words.first() {
         return Err(format!("unexpected argument `{extra}`"));
     }
-    for (value, field) in [(&release, "release"), (&publisher, "publisher"), (&operator, "operator")] {
-        if hex_pubkey(value).as_deref() != Some(value.as_str()) && !(value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit())) {
+    for (value, field) in [
+        (&release, "release"),
+        (&publisher, "publisher"),
+        (&operator, "operator"),
+    ] {
+        if hex_pubkey(value).as_deref() != Some(value.as_str())
+            && !(value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit()))
+        {
             return Err(format!("--{field} is not 64 hex characters"));
         }
     }
@@ -524,7 +539,14 @@ async fn serve_attested(json_out: bool, args: &mut Args, relay: &str) -> Result<
     let mut psionic_child = std::process::Command::new(&psionic)
         .args(["-m"])
         .arg(&weights)
-        .args(["--host", "127.0.0.1", "--port", &port.to_string(), "--decision-device", "cpu"])
+        .args([
+            "--host",
+            "127.0.0.1",
+            "--port",
+            &port.to_string(),
+            "--decision-device",
+            "cpu",
+        ])
         .spawn()
         .map_err(|e| format!("Psionic did not start: {e}"))?;
     let url = format!("http://127.0.0.1:{port}");
@@ -560,7 +582,11 @@ async fn serve_attested(json_out: bool, args: &mut Args, relay: &str) -> Result<
         .ok_or("the launcher's token names no image digest")?
         .to_string();
     let attestation = Attestation {
-        address: format!("{}:{}:{instance}", nostr::att::ENDPOINT_KIND, identity.pubkey()),
+        address: format!(
+            "{}:{}:{instance}",
+            nostr::att::ENDPOINT_KIND,
+            identity.pubkey()
+        ),
         release,
         measurement: measurement.clone(),
         level: nostr::att::Level::TeeCloud,

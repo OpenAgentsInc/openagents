@@ -51,6 +51,28 @@ if [ "$installed" != "$locked" ]; then
   exit 69
 fi
 
+# A clang that targets WebAssembly, for secp256k1's C (Apple's does not).
+wasm_clang() {
+  local candidate
+  for candidate in "$(command -v clang || true)" /opt/homebrew/opt/llvm*/bin/clang /usr/local/opt/llvm*/bin/clang; do
+    if [ -x "$candidate" ] && "$candidate" --print-targets 2>/dev/null | grep -q wasm32; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+if [ -z "${CC_wasm32_unknown_unknown:-}" ]; then
+  if ! CC_wasm32_unknown_unknown="$(wasm_clang)"; then
+    echo "no clang with the WebAssembly target; install LLVM (for example \`brew install llvm\`) or set CC_wasm32_unknown_unknown" >&2
+    exit 69
+  fi
+  export CC_wasm32_unknown_unknown
+fi
+if [ -z "${AR_wasm32_unknown_unknown:-}" ] && [ -x "$(dirname "$CC_wasm32_unknown_unknown")/llvm-ar" ]; then
+  export AR_wasm32_unknown_unknown="$(dirname "$CC_wasm32_unknown_unknown")/llvm-ar"
+fi
+
 cd "$root"
 cargo build --release --locked --target "$target" -p att-web
 mkdir -p "$out"

@@ -391,7 +391,10 @@ impl Head {
             if !seen.insert(&entry.release) {
                 return Err("a release is listed twice".into());
             }
-            if entry.retire_at.is_some_and(|retire| retire <= entry.effective_at) {
+            if entry
+                .retire_at
+                .is_some_and(|retire| retire <= entry.effective_at)
+            {
                 return Err("retire_at is not after effective_at".into());
             }
         }
@@ -677,7 +680,11 @@ pub fn sealed_fields(endpoint_address: &str, release: &str, level: Level) -> (Va
 /// # Errors
 ///
 /// When the payload is not a sealed job for this endpoint and release.
-pub fn check_sealed(payload: &Value, endpoint_address: &str, release: &str) -> Result<Level, String> {
+pub fn check_sealed(
+    payload: &Value,
+    endpoint_address: &str,
+    release: &str,
+) -> Result<Level, String> {
     let requires = payload
         .get("requires")
         .and_then(Value::as_array)

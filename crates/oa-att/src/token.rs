@@ -130,7 +130,9 @@ pub fn verify(token: &str, audience: &str, now: u64) -> Result<Claims, Refused> 
     }
     let x5c: Vec<Vec<u8>> = header["x5c"]
         .as_array()
-        .ok_or_else(|| Refused("the token carries no certificate chain (x5c); it is not a PKI token".into()))?
+        .ok_or_else(|| {
+            Refused("the token carries no certificate chain (x5c); it is not a PKI token".into())
+        })?
         .iter()
         .map(|c| {
             c.as_str()
@@ -142,14 +144,16 @@ pub fn verify(token: &str, audience: &str, now: u64) -> Result<Claims, Refused> 
         return refuse("the chain is shorter than a leaf and a root");
     }
     let chain = check_chain(&x5c, now)?;
-    let leaf = Certificate::from_der(&x5c[0]).map_err(|_| Refused("the leaf certificate does not parse".into()))?;
+    let leaf = Certificate::from_der(&x5c[0])
+        .map_err(|_| Refused("the leaf certificate does not parse".into()))?;
     let key = public_key(&leaf)?;
     let signature = URL_SAFE_NO_PAD
         .decode(signature_b64)
         .map_err(|_| Refused("the token signature is not base64url".into()))?;
     let signed = format!("{header_b64}.{payload_b64}");
-    verify_rsa(&key, signed.as_bytes(), &signature)
-        .map_err(|_| Refused("the token's signature does not verify under the leaf certificate".into()))?;
+    verify_rsa(&key, signed.as_bytes(), &signature).map_err(|_| {
+        Refused("the token's signature does not verify under the leaf certificate".into())
+    })?;
 
     let raw: Value = serde_json::from_slice(
         &URL_SAFE_NO_PAD
@@ -159,10 +163,15 @@ pub fn verify(token: &str, audience: &str, now: u64) -> Result<Claims, Refused> 
     .map_err(|_| Refused("the token claims are not JSON".into()))?;
     let claims = claims(raw, alg, chain)?;
     if claims.iss != ISSUER {
-        return refuse(format!("the token's issuer is {}, not Google's attestation service", claims.iss));
+        return refuse(format!(
+            "the token's issuer is {}, not Google's attestation service",
+            claims.iss
+        ));
     }
     if !claims.aud.iter().any(|a| a == audience) {
-        return refuse(format!("the token was issued for another audience, not {audience}"));
+        return refuse(format!(
+            "the token was issued for another audience, not {audience}"
+        ));
     }
     if claims.exp <= now {
         return refuse("the token has expired");
@@ -171,7 +180,10 @@ pub fn verify(token: &str, audience: &str, now: u64) -> Result<Claims, Refused> 
         return refuse("the token was issued in the future");
     }
     if claims.swname != "CONFIDENTIAL_SPACE" {
-        return refuse(format!("the software is {}, not Confidential Space", claims.swname));
+        return refuse(format!(
+            "the software is {}, not Confidential Space",
+            claims.swname
+        ));
     }
     if claims.dbgstat != "disabled-since-boot" {
         return refuse(format!(
@@ -186,13 +198,18 @@ pub fn verify(token: &str, audience: &str, now: u64) -> Result<Claims, Refused> 
 /// one is signed by the next, names it as issuer, and is valid at `now`.
 fn check_chain(x5c: &[Vec<u8>], now: u64) -> Result<Vec<ChainLink>, Refused> {
     let root = root_der();
-    let last = x5c.last().ok_or_else(|| Refused("the chain is empty".into()))?;
+    let last = x5c
+        .last()
+        .ok_or_else(|| Refused("the chain is empty".into()))?;
     if hex(&Sha256::digest(last)) != ROOT_SHA256 || *last != root {
         return refuse("the chain does not end in Google's Confidential Space root");
     }
     let certs: Vec<Certificate> = x5c
         .iter()
-        .map(|der| Certificate::from_der(der).map_err(|_| Refused("a chain certificate does not parse".into())))
+        .map(|der| {
+            Certificate::from_der(der)
+                .map_err(|_| Refused("a chain certificate does not parse".into()))
+        })
         .collect::<Result<_, _>>()?;
     let mut links = Vec::with_capacity(certs.len());
     for (i, cert) in certs.iter().enumerate() {
@@ -208,7 +225,9 @@ fn check_chain(x5c: &[Vec<u8>], now: u64) -> Result<Vec<ChainLink>, Refused> {
             return refuse(format!("the certificate {subject} names another issuer"));
         }
         if cert.signature_algorithm.oid.to_string() != SHA256_WITH_RSA {
-            return refuse(format!("the certificate {subject} is not signed with RSA and SHA-256"));
+            return refuse(format!(
+                "the certificate {subject} is not signed with RSA and SHA-256"
+            ));
         }
         let key = public_key(issuer_cert)?;
         let tbs_der = tbs
@@ -218,8 +237,11 @@ fn check_chain(x5c: &[Vec<u8>], now: u64) -> Result<Vec<ChainLink>, Refused> {
             .signature
             .as_bytes()
             .ok_or_else(|| Refused("a certificate signature is not whole bytes".into()))?;
-        verify_rsa(&key, &tbs_der, signature)
-            .map_err(|_| Refused(format!("the certificate {subject} is not signed by its issuer")))?;
+        verify_rsa(&key, &tbs_der, signature).map_err(|_| {
+            Refused(format!(
+                "the certificate {subject} is not signed by its issuer"
+            ))
+        })?;
         links.push(ChainLink {
             subject,
             issuer: tbs.issuer.to_string(),
@@ -237,7 +259,8 @@ fn public_key(cert: &Certificate) -> Result<RsaPublicKey, Refused> {
         .subject_public_key_info
         .to_der()
         .map_err(|_| Refused("a certificate key does not encode".into()))?;
-    RsaPublicKey::from_public_key_der(&spki).map_err(|_| Refused("a certificate key is not RSA".into()))
+    RsaPublicKey::from_public_key_der(&spki)
+        .map_err(|_| Refused("a certificate key is not RSA".into()))
 }
 
 fn verify_rsa(key: &RsaPublicKey, message: &[u8], signature: &[u8]) -> Result<(), ()> {
@@ -265,7 +288,11 @@ fn claims(raw: Value, alg: String, chain: Vec<ChainLink>) -> Result<Claims, Refu
         }
         at.as_str().unwrap_or_default().to_string()
     };
-    let number = |key: &str| raw[key].as_u64().ok_or_else(|| Refused(format!("the token has no `{key}`")));
+    let number = |key: &str| {
+        raw[key]
+            .as_u64()
+            .ok_or_else(|| Refused(format!("the token has no `{key}`")))
+    };
     Ok(Claims {
         iss: text(&["iss"]),
         aud: strings(&raw["aud"]),
@@ -301,7 +328,12 @@ mod tests {
         let der = root_der();
         assert_eq!(hex(&Sha256::digest(&der)), ROOT_SHA256);
         let cert = Certificate::from_der(&der).unwrap();
-        assert!(cert.tbs_certificate.subject.to_string().contains("Confidential Space Root CA"));
+        assert!(
+            cert.tbs_certificate
+                .subject
+                .to_string()
+                .contains("Confidential Space Root CA")
+        );
         // The root signs itself.
         check_chain(&[der.clone(), der], 1_791_400_000).unwrap();
     }
@@ -319,8 +351,18 @@ mod tests {
     fn shapes_that_are_not_pki_tokens_are_refused() {
         assert!(verify("abc", "x", 0).is_err());
         let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"none"}"#);
-        assert!(verify(&format!("{header}.e30.x"), "x", 0).unwrap_err().0.contains("RS256"));
+        assert!(
+            verify(&format!("{header}.e30.x"), "x", 0)
+                .unwrap_err()
+                .0
+                .contains("RS256")
+        );
         let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"RS256"}"#);
-        assert!(verify(&format!("{header}.e30.x"), "x", 0).unwrap_err().0.contains("x5c"));
+        assert!(
+            verify(&format!("{header}.e30.x"), "x", 0)
+                .unwrap_err()
+                .0
+                .contains("x5c")
+        );
     }
 }

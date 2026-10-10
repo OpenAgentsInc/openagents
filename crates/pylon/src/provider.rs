@@ -329,10 +329,9 @@ impl Provider {
             requires: Vec::new(),
             // Inert: the attested endpoint this pylon's key serves. The
             // level a reader shows comes only from that endpoint's evidence.
-            meta: self
-                .attested
-                .get()
-                .map(|a| json!({"attested_endpoint": a.address, "claimed_level": a.level.as_str()})),
+            meta: self.attested.get().map(
+                |a| json!({"attested_endpoint": a.address, "claimed_level": a.level.as_str()}),
+            ),
             provider: self.pubkey().into(),
             pylon: self.config.pylon.clone(),
             label: self.config.label.clone(),
@@ -1056,7 +1055,9 @@ impl Provider {
 /// JCS bytes (`nostr::att::response_digest`), which a client in another
 /// language or JSON library recomputes exactly, and the seal is redone.
 fn attested_receipt(receipt: serde_json::Value, response: &serde_json::Value) -> serde_json::Value {
-    let Ok(mut parsed) = serde_json::from_value::<receipts::execution::ExecutionReceipt>(receipt.clone()) else {
+    let Ok(mut parsed) =
+        serde_json::from_value::<receipts::execution::ExecutionReceipt>(receipt.clone())
+    else {
         return receipt;
     };
     parsed.result_digest = Some(nostr::att::response_digest(response));

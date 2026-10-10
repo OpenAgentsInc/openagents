@@ -31,9 +31,9 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use maud::html;
-use oa_att::nostr;
 use nostr::domain::Event;
 use oa_att::net::{self, Exchanged};
+use oa_att::nostr;
 use oa_att::{Policy, Records, Tamper};
 use openagents_ui::content::{MarkdownRoot, PageColumn};
 use secp256k1::SecretKey;
@@ -322,7 +322,9 @@ fn admit(shared: &Shared, who: &str) -> Result<(), String> {
     }
     let mut visitors = shared.visitors.lock().map_err(|_| "busy")?;
     visitors.retain(|_, times| {
-        times.back().is_some_and(|t| now.duration_since(*t) < Duration::from_secs(3_600))
+        times
+            .back()
+            .is_some_and(|t| now.duration_since(*t) < Duration::from_secs(3_600))
     });
     let times = visitors.entry(who.to_string()).or_default();
     while times
@@ -355,10 +357,16 @@ async fn send(headers: HeaderMap, body: Bytes) -> Response {
         || event.validate_structure().is_err()
         || event.validate_crypto().is_err()
     {
-        return refuse(StatusCode::BAD_REQUEST, "That is not a signed decision request.");
+        return refuse(
+            StatusCode::BAD_REQUEST,
+            "That is not a signed decision request.",
+        );
     }
     if event.content.len() > 16 * 1024 || event.created_at.abs_diff(now()) > 120 {
-        return refuse(StatusCode::BAD_REQUEST, "The request is too large or too old.");
+        return refuse(
+            StatusCode::BAD_REQUEST,
+            "The request is too large or too old.",
+        );
     }
     let (records, check, _, _) = match records(&shared).await {
         Ok(found) => found,
@@ -446,7 +454,10 @@ async fn send(headers: HeaderMap, body: Bytes) -> Response {
         let _ = tokio::time::timeout(Duration::from_millis(250), shared.changed.notified()).await;
     };
     if let (None, Some(error)) = &accepted {
-        return refuse(StatusCode::BAD_GATEWAY, &format!("The relay refused the request: {error}"));
+        return refuse(
+            StatusCode::BAD_GATEWAY,
+            &format!("The relay refused the request: {error}"),
+        );
     }
     json_response(
         StatusCode::OK,
@@ -479,14 +490,9 @@ async fn answers(UrlPath(id): UrlPath<String>, Query(have): Query<Have>) -> Resp
     let deadline = Instant::now() + Duration::from_secs(25);
     loop {
         let snapshot = shared.rounds.lock().ok().and_then(|rounds| {
-            rounds.get(&id).map(|(_, r)| {
-                (
-                    r.events.clone(),
-                    r.done,
-                    r.accepted_ms,
-                    r.error.clone(),
-                )
-            })
+            rounds
+                .get(&id)
+                .map(|(_, r)| (r.events.clone(), r.done, r.accepted_ms, r.error.clone()))
         });
         let Some((events, done, accepted_ms, error)) = snapshot else {
             return refuse(StatusCode::NOT_FOUND, "No such round.");
@@ -526,7 +532,13 @@ mod tests {
         assert_eq!(page.matches("<script").count(), 1);
         assert!(!page.contains("style=\""));
         assert!(!page.contains(" onclick="));
-        for id in ["att-canvas", "att-run", "att-steps", "att-panels", "att-verdict"] {
+        for id in [
+            "att-canvas",
+            "att-run",
+            "att-steps",
+            "att-panels",
+            "att-verdict",
+        ] {
             assert!(page.contains(&format!("id=\"{id}\"")), "{id}");
         }
     }

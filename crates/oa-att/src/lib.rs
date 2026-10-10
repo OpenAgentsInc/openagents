@@ -22,9 +22,7 @@
 pub mod net;
 pub mod token;
 
-use nostr::att::{
-    self, ENDPOINT_KIND, EndpointRecord, Head, Level, Release, TOKEN_AUDIENCE,
-};
+use nostr::att::{self, ENDPOINT_KIND, EndpointRecord, Head, Level, Release, TOKEN_AUDIENCE};
 use nostr::domain::Event;
 use nostr::pylon::Beacon;
 use serde::Serialize;
@@ -192,7 +190,12 @@ pub fn chain(parsed: &Parsed, now: u64) -> Result<Claims, Refused> {
 /// # Errors
 ///
 /// When the release is not admitted or the measurement differs.
-pub fn measure(parsed: &Parsed, claims: &Claims, now: u64, tamper: Tamper) -> Result<Measured, Refused> {
+pub fn measure(
+    parsed: &Parsed,
+    claims: &Claims,
+    now: u64,
+    tamper: Tamper,
+) -> Result<Measured, Refused> {
     parsed
         .head
         .admits(&parsed.release_id, &parsed.release, now)
@@ -242,15 +245,24 @@ pub fn measure(parsed: &Parsed, claims: &Claims, now: u64, tamper: Tamper) -> Re
 /// # Errors
 ///
 /// When the binding is absent, or the level is below the policy's.
-pub fn bind(parsed: &Parsed, claims: &Claims, policy: &Policy, swapped: Option<&str>) -> Result<Bound, Refused> {
-    let key = swapped.unwrap_or(&parsed.endpoint.body.endpoint).to_string();
+pub fn bind(
+    parsed: &Parsed,
+    claims: &Claims,
+    policy: &Policy,
+    swapped: Option<&str>,
+) -> Result<Bound, Refused> {
+    let key = swapped
+        .unwrap_or(&parsed.endpoint.body.endpoint)
+        .to_string();
     let hpke = parsed
         .endpoint
         .body
         .hpke
         .as_ref()
         .map(|_| ())
-        .map_or(Ok(None), |()| refuse("an HPKE key is not used by this client"))?;
+        .map_or(Ok(None), |()| {
+            refuse("an HPKE key is not used by this client")
+        })?;
     let binding = att::binding(&key, hpke, &parsed.release_id).map_err(Refused)?;
     let level = level_of(claims);
     let bound = Bound {
@@ -281,7 +293,9 @@ pub fn bind(parsed: &Parsed, claims: &Claims, policy: &Policy, swapped: Option<&
 #[must_use]
 pub fn level_of(claims: &Claims) -> Level {
     match claims.hwmodel.as_str() {
-        "GCP_INTEL_TDX" | "GCP_AMD_SEV_SNP" if claims.swname == "CONFIDENTIAL_SPACE" => Level::TeeCloud,
+        "GCP_INTEL_TDX" | "GCP_AMD_SEV_SNP" if claims.swname == "CONFIDENTIAL_SPACE" => {
+            Level::TeeCloud
+        }
         _ => Level::Open,
     }
 }
@@ -365,7 +379,10 @@ pub fn check_answer(
 /// The endpoint's address, `30203:<key>:<instance>`.
 #[must_use]
 pub fn endpoint_address(record: &EndpointRecord) -> String {
-    format!("{ENDPOINT_KIND}:{}:{}", record.body.endpoint, record.instance)
+    format!(
+        "{ENDPOINT_KIND}:{}:{}",
+        record.body.endpoint, record.instance
+    )
 }
 
 fn flip_last_hex(digest: &str) -> String {
@@ -419,8 +436,14 @@ pub fn sealed_request(
         "answer".into(),
         serde_json::json!({"type": "noul", "instructions": question}),
     );
-    let body = RequestBody::new(request, 1, model, Value::String(state.to_string()), questions)
-        .deadline(now + 180);
+    let body = RequestBody::new(
+        request,
+        1,
+        model,
+        Value::String(state.to_string()),
+        questions,
+    )
+    .deadline(now + 180);
     body.validate()
         .map_err(|e| Refused(format!("the request is out of bounds: {e}")))?;
     let mut payload = body.payload();
@@ -455,7 +478,10 @@ fn endpoint_key(hex: &str) -> Result<secp256k1::XOnlyPublicKey, Refused> {
 pub enum Opened {
     /// A `27010` status: `processing`, or a terminal refusal with its code
     /// and message.
-    Status { word: String, refusal: Option<(String, String)> },
+    Status {
+        word: String,
+        refusal: Option<(String, String)>,
+    },
     /// The `26910` result: the payload to pass to [`check_answer`].
     Result(Value),
 }
@@ -473,7 +499,11 @@ pub fn open_answer(
     client_pubkey: &str,
 ) -> Result<Opened, Refused> {
     use nostr::decision::{Answer, Pending, bind_answer};
-    let worker = request.tag_values("p").next().unwrap_or_default().to_string();
+    let worker = request
+        .tag_values("p")
+        .next()
+        .unwrap_or_default()
+        .to_string();
     let pending = Pending {
         attempt_id: &request.id,
         worker: &worker,
@@ -487,7 +517,9 @@ pub fn open_answer(
     {
         Answer::Status(status) => Ok(Opened::Status {
             word: status.status.as_str().to_string(),
-            refusal: status.refusal.map(|r| (r.code, r.message.unwrap_or_default())),
+            refusal: status
+                .refusal
+                .map(|r| (r.code, r.message.unwrap_or_default())),
         }),
         Answer::Result(result) => Ok(Opened::Result(serde_json::json!({
             "outcome": result.outcome.as_str(),

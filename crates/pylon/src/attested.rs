@@ -93,7 +93,10 @@ pub async fn fetch_weights(url: &str, sha256: &str, path: &Path) -> Result<(), S
         .await
         .map_err(|e| format!("the weights download failed: {e}"))?;
     if !response.status().is_success() {
-        return Err(format!("the weights download answered {}", response.status()));
+        return Err(format!(
+            "the weights download answered {}",
+            response.status()
+        ));
     }
     let partial = path.with_extension("partial");
     let mut file = std::fs::File::create(&partial).map_err(|e| e.to_string())?;
@@ -143,9 +146,12 @@ pub async fn token(socket: &Path, binding: &str) -> Result<String, String> {
         "POST /v1/token HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
     );
-    let mut stream = tokio::net::UnixStream::connect(socket)
-        .await
-        .map_err(|e| format!("the Confidential Space launcher at {} is not there: {e}", socket.display()))?;
+    let mut stream = tokio::net::UnixStream::connect(socket).await.map_err(|e| {
+        format!(
+            "the Confidential Space launcher at {} is not there: {e}",
+            socket.display()
+        )
+    })?;
     stream
         .write_all(request.as_bytes())
         .await
@@ -160,13 +166,19 @@ pub async fn token(socket: &Path, binding: &str) -> Result<String, String> {
         .split_once("\r\n\r\n")
         .ok_or("the launcher's answer is not HTTP")?;
     let status = head.lines().next().unwrap_or_default();
-    let body = if head.to_ascii_lowercase().contains("transfer-encoding: chunked") {
+    let body = if head
+        .to_ascii_lowercase()
+        .contains("transfer-encoding: chunked")
+    {
         unchunk(body)
     } else {
         body.to_string()
     };
     if !status.contains(" 200") {
-        return Err(format!("the launcher refused a token: {status}: {}", body.trim()));
+        return Err(format!(
+            "the launcher refused a token: {status}: {}",
+            body.trim()
+        ));
     }
     Ok(body.trim().to_string())
 }
@@ -235,7 +247,12 @@ pub async fn endpoint_event(
         issued_at,
         valid_until,
     };
-    let event = att::endpoint_event(identity.signer(), &endpoint, instance, &setup.head_address())?;
+    let event = att::endpoint_event(
+        identity.signer(),
+        &endpoint,
+        instance,
+        &setup.head_address(),
+    )?;
     Ok((event, claims))
 }
 
@@ -256,7 +273,10 @@ mod tests {
 
     #[test]
     fn chunked_bodies_are_joined() {
-        assert_eq!(unchunk("5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n"), "hello world");
+        assert_eq!(
+            unchunk("5\r\nhello\r\n6\r\n world\r\n0\r\n\r\n"),
+            "hello world"
+        );
     }
 
     #[test]

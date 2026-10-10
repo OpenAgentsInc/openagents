@@ -94,7 +94,10 @@ fn binding_is_the_documented_hash() {
     with.extend([0x11; 32]);
     with.extend([0x33; 32]);
     with.extend([0x22; 32]);
-    assert_eq!(binding(&key, Some(&hpke), &release).unwrap(), sha256_hex(&with));
+    assert_eq!(
+        binding(&key, Some(&hpke), &release).unwrap(),
+        sha256_hex(&with)
+    );
     assert!(binding("zz", None, &release).is_err());
 }
 
@@ -124,7 +127,12 @@ fn a_head_admits_after_the_notice_delay_only() {
     assert!(parsed.admits(&event.id, &body, NOW).is_ok());
     // Inside the notice delay.
     let early = head(&event.id, body.published_at + 599);
-    assert!(early.admits(&event.id, &body, NOW).unwrap_err().contains("notice"));
+    assert!(
+        early
+            .admits(&event.id, &body, NOW)
+            .unwrap_err()
+            .contains("notice")
+    );
     // Not yet effective.
     let later = head(&event.id, NOW + 10);
     assert!(later.admits(&event.id, &body, NOW).is_err());
@@ -160,7 +168,11 @@ fn a_head_never_rolls_back() {
     assert_eq!(check_generation(None, &h).unwrap(), 3);
     assert_eq!(check_generation(Some(2), &h).unwrap(), 3);
     assert_eq!(check_generation(Some(3), &h).unwrap(), 3);
-    assert!(check_generation(Some(4), &h).unwrap_err().contains("rollback"));
+    assert!(
+        check_generation(Some(4), &h)
+            .unwrap_err()
+            .contains("rollback")
+    );
 }
 
 #[test]
@@ -174,7 +186,10 @@ fn an_endpoint_is_signed_by_its_key_and_bound_to_its_release() {
     let record = parse_endpoint(&event).unwrap();
     assert_eq!(record.body, body);
     assert_eq!(record.head, address);
-    assert_eq!(record.address(), format!("30203:{}:{instance}", key.pubkey()));
+    assert_eq!(
+        record.address(),
+        format!("30203:{}:{instance}", key.pubkey())
+    );
     assert!(body.current(NOW + 10).is_ok());
     assert!(body.current(NOW + 3_600).is_err());
 
