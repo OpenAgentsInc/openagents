@@ -1402,6 +1402,7 @@ fn a_reply_another_provider_answered_says_so() {
                 }),
                 ..openagents_chat::router::Meta::default()
             }),
+            files: Vec::new(),
         }],
         selection: None,
         updated_unix: 1,

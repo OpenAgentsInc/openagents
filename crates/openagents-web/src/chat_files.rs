@@ -59,9 +59,8 @@ const MAX_NAME_CHARS: usize = 96;
 /// How much of a message's text files the answer here reads.
 pub(crate) const ANSWER_BYTES: usize = 12 * 1024;
 
-/// The composer's script and styles for files.
+/// The composer's script for files; its styles are in `/static/ui.css`.
 pub(crate) const SCRIPT_PATH: &str = "/chat/files.js";
-pub(crate) const STYLE_PATH: &str = "/chat/files.css";
 /// The header an upload or removal carries the composer's form token in.
 const TOKEN_HEADER: &str = "x-openagents-csrf";
 const SCHEMA: &str = "openagents.web.chat.file.v1";
@@ -621,7 +620,6 @@ pub(crate) fn routes() -> Router<App> {
         .route("/chat/{id}/files/{file}", get(serve))
         .route("/chat/{id}/files/{file}/delete", post(remove))
         .route(SCRIPT_PATH, get(script))
-        .route(STYLE_PATH, get(style))
 }
 
 #[derive(Deserialize)]
@@ -893,17 +891,6 @@ async fn script() -> Response {
             (header::CACHE_CONTROL, "public, max-age=300"),
         ],
         include_str!("../static/chat-files.js"),
-    )
-        .into_response()
-}
-
-async fn style() -> Response {
-    (
-        [
-            (header::CONTENT_TYPE, "text/css; charset=utf-8"),
-            (header::CACHE_CONTROL, "public, max-age=300"),
-        ],
-        include_str!("../static/chat-files.css"),
     )
         .into_response()
 }

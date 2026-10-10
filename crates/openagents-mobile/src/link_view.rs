@@ -386,6 +386,25 @@ fn chat(state: &State, open: &Open, composer: u64, limit: usize, cut_at: usize) 
         None => (false, "Reply".into()),
     };
     let sending = open.sending;
+    // Photos for the reply (#11174): a web chat takes up to four.
+    if crate::account_link::takes_photos(open) {
+        for (index, (name, _)) in open.photos.iter().enumerate() {
+            children.push(button(
+                &format!("link-photo-{index}"),
+                &format!("Remove {name}"),
+                None,
+                Intent::RemovePhoto { index },
+            ));
+        }
+        if open.photos.len() < crate::account_link::MAX_PHOTOS && !sending {
+            children.push(button(
+                "link-add-photo",
+                "Add photo",
+                None,
+                Intent::AddPhoto,
+            ));
+        }
+    }
     children.push(Node {
         key: "link-composer".into(),
         style: Style::default(),

@@ -4153,8 +4153,10 @@ mod image_fixtures {
     /// a notice, and a dropped document still puts its path in the words.
     #[test]
     fn the_desktop_is_text_only_while_attachments_are_off() {
-        const { assert!(!openagents_chat_app::coder_tab::ATTACHMENTS_ENABLED) };
+        // On again since #11174; this turns them off for the test.
+        const { assert!(openagents_chat_app::coder_tab::ATTACHMENTS_ENABLED) };
         let (mut app, now) = super::tests::chat_fixture(0);
+        app.chat.as_mut().unwrap().set_attachments(false);
         let create = app.chat.as_mut().unwrap().new_chat();
         app.send(vec![create], now);
         app.present();
@@ -4751,6 +4753,9 @@ mod chat_management {
     #[test]
     fn pin_rename_search_archive_and_restore_use_real_host_state() {
         let (mut app, now) = super::tests::chat_fixture(0);
+        // Text only here, as the layout below expects (attachments are on
+        // again since #11174).
+        app.chat.as_mut().unwrap().set_attachments(false);
         // Enough chats for the sidebar's filter (#10072).
         for _ in 0..4 {
             let request = app.chat.as_mut().unwrap().new_chat();
@@ -4886,7 +4891,7 @@ mod chat_management {
                 let hit = scene.hits.iter().find(|h| h.key == key).unwrap();
                 assert!(hit.rect.y + hit.rect.h <= height, "{key}");
             }
-            // Text only (#10095): no attach control.
+            // Text only here: no attach control.
             assert!(!scene.hits.iter().any(|h| h.key == "chat-attach"));
             if let Some(path) = std::env::var_os("OPENAGENTS_LIST_CAPTURE_DIR") {
                 let path = std::path::PathBuf::from(path);
@@ -5668,6 +5673,8 @@ mod command_fixtures {
     #[test]
     fn composer_wraps_and_collapses_without_losing_text_or_clipping_controls() {
         let (mut app, now) = super::tests::chat_fixture(0);
+        // Text only here (attachments are on again since #11174).
+        app.chat.as_mut().unwrap().set_attachments(false);
         key(&mut app, now, "n", true, false);
         for (draft, expected) in [
             ("Prompt with immediate spaces  ", 49.0),

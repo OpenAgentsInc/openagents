@@ -98,6 +98,11 @@ impl Http for Site {
             }))
         })
     }
+
+    /// An upload is seen as a call whose body is the byte count.
+    fn upload(&self, url: String, token: Option<String>, bytes: Vec<u8>) -> Calling {
+        self.call("POST", url, token, Some(json!({"bytes": bytes.len()})))
+    }
 }
 
 struct Fixture {
@@ -767,4 +772,64 @@ fn memory_notes_list_edit_delete_and_go_with_chat_turns() {
     f.link.tap(Intent::DeleteNote { id: "mem-2".into() });
     until(|| !f.site.calls("DELETE /coder/memory/mem-2").is_empty());
     until(|| f.link.lock().memory.iter().all(|note| note.id != "mem-2"));
+}
+
+/// A reply to a web chat carries photos (#11174): each uploads first, and
+/// the reply names them by the ids the website gave them.
+#[test]
+fn a_reply_to_a_web_chat_carries_its_photos() {
+    let mut f = fixture();
+    f.site.answer(
+        "GET /v1/threads/w1",
+        200,
+        json!({
+            "thread": {"id": "w1", "title": "Plans", "surface": "web",
+                       "online": true, "can_reply": true},
+            "messages": [{"role": "user", "text": "hi"}, {"role": "assistant", "text": "Hello."}],
+            "earlier": 0, "waiting": 0,
+        }),
+    );
+    f.site.answer(
+        "POST /v1/threads/w1/files?name=Photo.png",
+        201,
+        json!({"id": "a".repeat(32), "name": "Photo.png", "kind": "png", "size": "1 KB"}),
+    );
+    f.site.answer(
+        "POST /v1/threads/w1/messages",
+        202,
+        json!({"answering": true}),
+    );
+    signed(&mut f);
+    f.link.act(Action::Show {
+        screen: Screen::Chat,
+        id: Some("w1".into()),
+    });
+    until(|| f.link.lock().open.as_ref().is_some_and(|o| o.loaded));
+    // Add photo asks the host for its picker once.
+    f.link.tap(Intent::AddPhoto);
+    assert!(f.link.take_pick());
+    assert!(!f.link.take_pick());
+    let png = openagents_chat_app::attachments::Image::pixels(3, 2, vec![200; 24]).unwrap();
+    f.link.attach("Photo.png", png.bytes.as_ref().clone());
+    f.link.attach("bad.png", b"not an image".to_vec());
+    assert_eq!(f.link.lock().open.as_ref().unwrap().photos.len(), 1);
+    assert!(f.link.lock().notice.is_some());
+    let token = format!("link-reply-w1-{}", f.link.composer);
+    f.link.input(&token, "what is in this?");
+    until(|| !f.site.calls("POST /v1/threads/w1/messages").is_empty());
+    let uploads = f.site.calls("POST /v1/threads/w1/files?name=Photo.png");
+    assert_eq!(uploads.len(), 1);
+    assert_eq!(uploads[0].token.as_deref(), Some("sess_test"));
+    let sent = &f.site.calls("POST /v1/threads/w1/messages")[0];
+    assert_eq!(
+        sent.body.as_ref().unwrap()["files"],
+        json!(["a".repeat(32)])
+    );
+    until(|| {
+        f.link
+            .lock()
+            .open
+            .as_ref()
+            .is_some_and(|o| o.photos.is_empty() && !o.sending)
+    });
 }

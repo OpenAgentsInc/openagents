@@ -19,8 +19,8 @@ pub(crate) fn head() -> Markup {
         script src="/static/htmx.min.js" defer {}
         script src="/static/htmx-sse.js" defer {}
         script type="module" src="/static/chat-start.js" {}
-        // Files in the composer (#11174): paste, drop, or pick.
-        link rel="stylesheet" href=(crate::chat_files::STYLE_PATH);
+        // Files in the composer (#11174): paste, drop, or pick. Their
+        // styles are in `/static/ui.css` (`openagents-ui`'s chat-files.css).
         script src=(crate::chat_files::SCRIPT_PATH) defer {}
         script src=(crate::analytics::SCRIPT) defer {}
     }

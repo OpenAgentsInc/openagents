@@ -277,8 +277,8 @@ impl Panel {
     }
     /// Whether the composer takes images: the shared
     /// [`openagents_chat_app::coder_tab::ATTACHMENTS_ENABLED`] unless
-    /// [`Panel::set_attachments`] changed it. Off as of 2026-10-01 (#10095):
-    /// the desktop is text only, as the phone is (#10093).
+    /// [`Panel::set_attachments`] changed it. Off from 2026-10-01 (#10095,
+    /// as the phone, #10093), on again as of 2026-10-09 (#11174).
     pub fn attachments_enabled(&self) -> bool {
         self.attachments
     }
@@ -4943,6 +4943,7 @@ mod start_setting_tests {
         let now = Instant::now();
         let chat = "c".repeat(32);
         let mut panel = Panel::new(now);
+        panel.set_attachments(false);
         assert!(!panel.attachments_enabled());
         panel.session.states.insert(
             chat.clone(),
@@ -4996,6 +4997,8 @@ mod start_setting_tests {
         let mut panel = replied(|| true);
         let image = openagents_chat_app::attachments::Image::pixels(2, 2, vec![9; 16]).unwrap();
         panel.session.images.add(&chat, image).unwrap();
+        // Attachments are on by default since #11174; this checks the switch.
+        panel.set_attachments(false);
         panel.start_run(&chat);
         let (_, _, request) = next_run(&mut panel);
         let coder_run::Request::Start { images, .. } = &request else {

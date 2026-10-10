@@ -3621,15 +3621,18 @@ fn unsupported_and_oversized_images_are_refused_before_send() {
     assert_eq!(drafts.get("talk:b").len(), 1);
 }
 
-/// The phone is text only (#10093): the chat, new or open, has no attach
-/// control, Attach is never asked of the host, and an image the host hands
-/// it anyway (a paste, a drop, a share) is dropped with no notice.
+/// With attachments off (the switch #10093 turned off and #11174 turned
+/// back on): the chat, new or open, has no attach control, Attach is never
+/// asked of the host, and an image the host hands it anyway (a paste, a
+/// drop, a share) is dropped with no notice.
 #[test]
 fn the_phone_chat_is_text_only_with_no_attach_control() {
-    const { assert!(!crate::coder_tab::ATTACHMENTS_ENABLED) };
+    const { assert!(crate::coder_tab::ATTACHMENTS_ENABLED) };
     let hand = Hand::default();
     let mut fixture =
         Fixture::new(NoComputers(Synthetic::fixture(Platform::Phone, now))).answered_by(&hand);
+    assert!(fixture.coder.attachments_enabled());
+    fixture.coder.set_attachments(false);
     assert!(!fixture.coder.attachments_enabled());
     fixture.list();
     let screen = fixture.tap("coder-back");

@@ -744,9 +744,9 @@ pub struct Packet {
     /// Show this screen of another tab, once: `computers` is Account >
     /// Computers.
     pub coder_go: Option<crate::coder_tab::Go>,
-    /// The chat takes images (`coder_tab::ATTACHMENTS_ENABLED`, off as of
-    /// #10093): the host mounts its photo picker and sends picked images
-    /// only while this is set.
+    /// The chat takes images (`coder_tab::ATTACHMENTS_ENABLED`, off by
+    /// #10093, on again by #11174): the host mounts its photo picker and
+    /// sends picked images only while this is set.
     pub attachments: bool,
     /// **Connect a computer** (`SCR-22`) or **Connected** (`SCR-23`), while
     /// it shows. The host draws the camera and the paste field.
@@ -891,6 +891,11 @@ pub struct App {
     link: crate::account_link::Link,
     /// The account surface's page to open in the browser, once.
     link_open: Option<String>,
+    /// The account surface asked for a photo for its open chat's reply
+    /// (#11174): the next image the host's picker reads goes there.
+    link_photo: bool,
+    /// The host should open its picker for the account surface, once.
+    link_pick: bool,
 }
 
 impl App {
@@ -1122,6 +1127,8 @@ impl App {
         Ok(Self {
             link,
             link_open: None,
+            link_photo: false,
+            link_pick: false,
             runtime,
             link_reads: Arc::new(tokio::sync::Semaphore::new(crate::link_fetch::AT_ONCE)),
             native_computers: launch.native_computers,
@@ -1253,7 +1260,12 @@ impl App {
     /// off (#10093) the image is dropped quietly and the packet is
     /// unchanged.
     pub fn attach_image(&mut self, name: &str, bytes: Vec<u8>) -> Vec<u8> {
-        self.coder.attach_image(name, bytes);
+        if std::mem::take(&mut self.link_photo) {
+            // A photo for a reply on the account surface (#11174).
+            self.link.attach(name, bytes);
+        } else {
+            self.coder.attach_image(name, bytes);
+        }
         serde_json::to_vec(&self.call(Request::Snapshot)).unwrap_or_default()
     }
 
@@ -1812,6 +1824,10 @@ impl App {
                     node,
                 };
                 self.link_open = self.link.activate(&event);
+                if self.link.take_pick() && self.coder.attachments_enabled() {
+                    self.link_photo = true;
+                    self.link_pick = true;
+                }
             }
             Request::LinkInput { token, value } => self.link.input(&token, &value),
             Request::ProviderKeys { keys, mine } => self.provider_keys.load(keys, mine),
@@ -2330,6 +2346,15 @@ impl App {
                 Some(crate::coder_tab::Go::Connect) => {
                     self.connect.open();
                     None
+                }
+                // The chat's own picker: its image goes to the chat.
+                Some(crate::coder_tab::Go::PickImage) => {
+                    self.link_photo = false;
+                    Some(crate::coder_tab::Go::PickImage)
+                }
+                // The account surface's Add photo (#11174).
+                None if std::mem::take(&mut self.link_pick) => {
+                    Some(crate::coder_tab::Go::PickImage)
                 }
                 go => go,
             },

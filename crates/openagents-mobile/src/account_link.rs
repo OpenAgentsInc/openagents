@@ -23,6 +23,13 @@
 //! phone chat uploads like Coder's (`PUT /coder/sessions/phone-{id}`),
 //! screened for credential shapes first.
 //!
+//! **Photos.** A reply to a web chat can carry up to four photos (#11174):
+//! **Add photo** asks the host for its picker ([`Link::take_pick`]), the
+//! picked image joins the open chat's draft ([`Link::attach`]), and the
+//! send uploads each one (`POST /v1/threads/{id}/files`) before the reply
+//! names them by id (`files`). The website keeps them with the chat, and
+//! the answer reads them.
+//!
 //! **Supervise.** `GET /v1/agents` lists what Coder runs on each computer
 //! (status, elapsed, cost, a pending question), and
 //! `POST /v1/agents/actions` approves, denies, stops, or messages one. A
@@ -116,6 +123,8 @@ pub fn kind_label(kind: Option<&str>) -> &'static str {
         _ => "Note",
     }
 }
+/// The most photos one reply carries (the website's own bound).
+pub const MAX_PHOTOS: usize = 4;
 
 /// The signed-in account. The token never appears in `Debug`.
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -277,6 +286,11 @@ pub trait Http: Send + Sync {
         token: Option<String>,
         body: Option<Value>,
     ) -> Calling;
+
+    /// `POST url` with `bytes` as the body (a photo for a chat, #11174).
+    fn upload(&self, _url: String, _token: Option<String>, _bytes: Vec<u8>) -> Calling {
+        Box::pin(async { Err("Photos can't be sent from here.".to_owned()) })
+    }
 }
 
 /// The real client, over HTTPS.
@@ -320,6 +334,31 @@ impl Http for Https {
             }
             if let Some(body) = body {
                 request = request.json(&body);
+            }
+            let response = request
+                .send()
+                .await
+                .map_err(|_| "Couldn't reach openagents.com. Check your connection.".to_owned())?;
+            let status = response.status().as_u16();
+            let bytes = response
+                .bytes()
+                .await
+                .map_err(|_| "Couldn't reach openagents.com. Check your connection.".to_owned())?;
+            let body = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+            Ok(Reply { status, body })
+        })
+    }
+
+    fn upload(&self, url: String, token: Option<String>, bytes: Vec<u8>) -> Calling {
+        let client = self.0.clone();
+        Box::pin(async move {
+            let mut request = client
+                .post(&url)
+                .timeout(Duration::from_secs(120))
+                .header("content-type", "application/octet-stream")
+                .body(bytes);
+            if let Some(token) = token {
+                request = request.bearer_auth(token);
             }
             let response = request
                 .send()
@@ -390,6 +429,9 @@ pub struct Open {
     pub sent: Vec<String>,
     pub sending: bool,
     pub error: Option<String>,
+    /// Photos for the next reply: each one's name and bytes, as the host's
+    /// picker read them ([`Link::attach`]).
+    pub photos: Vec<(String, Vec<u8>)>,
 }
 
 /// A local notification for the host to show once.
@@ -523,6 +565,12 @@ pub enum Intent {
         id: String,
     },
     Retry,
+    /// Add a photo to the open chat's reply: the host opens its picker.
+    AddPhoto,
+    /// Remove the photo at `index` from the open chat's reply.
+    RemovePhoto {
+        index: usize,
+    },
 }
 
 /// The surface's state, shared with its background reads.
@@ -622,6 +670,8 @@ pub struct Link {
     view_revision: u64,
     /// Bumped after each accepted send, so the composer clears.
     pub(crate) composer: u64,
+    /// **Add photo** was tapped: the host opens its picker once.
+    picking: bool,
 }
 
 /// What the encrypted store keeps: the choice and what was uploaded.
@@ -666,6 +716,7 @@ impl Link {
             view: None,
             view_revision: 0,
             composer: 0,
+            picking: false,
         }
     }
 
@@ -871,6 +922,25 @@ impl Link {
                 state.notice = None;
                 state.changed();
             }
+            Intent::AddPhoto => {
+                let state = self.lock();
+                if let Some(open) = &state.open
+                    && takes_photos(open)
+                    && open.photos.len() < MAX_PHOTOS
+                {
+                    drop(state);
+                    self.picking = true;
+                }
+            }
+            Intent::RemovePhoto { index } => {
+                let mut state = self.lock();
+                if let Some(open) = &mut state.open
+                    && index < open.photos.len()
+                {
+                    open.photos.remove(index);
+                    state.changed();
+                }
+            }
         }
         None
     }
@@ -1051,6 +1121,36 @@ impl Link {
         self.nudge.notify_one();
     }
 
+    /// Whether the host should open its photo picker for the open chat
+    /// (**Add photo** was tapped); true once.
+    pub fn take_pick(&mut self) -> bool {
+        std::mem::take(&mut self.picking)
+    }
+
+    /// Add a photo the host's picker read to the open chat's reply. The
+    /// shared attachments code checks it (PNG or JPEG, 8 MiB, 4096 pixels
+    /// a side); a refusal shows as the notice.
+    pub fn attach(&mut self, name: &str, bytes: Vec<u8>) {
+        let checked = openagents_chat_app::attachments::Image::decode(name, bytes);
+        let mut state = self.lock();
+        let Some(open) = state.open.as_mut().filter(|open| takes_photos(open)) else {
+            return;
+        };
+        let notice = match checked {
+            Ok(_) if open.photos.len() >= MAX_PHOTOS => {
+                Some("Send up to four photos with one reply.".to_owned())
+            }
+            Ok(image) => {
+                open.photos
+                    .push((image.name.clone(), (*image.bytes).clone()));
+                None
+            }
+            Err(message) => Some(message),
+        };
+        state.notice = notice;
+        state.changed();
+    }
+
     /// A reply to the open chat.
     fn reply(&mut self, text: String) {
         if secret_screen::credential_in(&text).is_some() {
@@ -1060,7 +1160,7 @@ impl Link {
             state.changed();
             return;
         }
-        let (origin, token, id) = {
+        let (origin, token, id, photos) = {
             let mut state = self.lock();
             let Some(session) = state.session.clone() else {
                 return;
@@ -1073,9 +1173,10 @@ impl Link {
             }
             open.sending = true;
             let id = open.id.clone();
+            let photos = open.photos.clone();
             state.notice = None;
             state.changed();
-            (state.origin.clone(), session.token, id)
+            (state.origin.clone(), session.token, id, photos)
         };
         self.composer += 1;
         let request = uuid::Uuid::new_v4().to_string();
@@ -1084,14 +1185,53 @@ impl Link {
         let wake = self.wake.clone();
         let nudge = self.nudge.clone();
         self.spawn(async move {
-            let reply = http
-                .call(
-                    "POST",
-                    format!("{origin}/v1/threads/{id}/messages"),
-                    Some(token),
-                    Some(json!({"request_id": request, "text": text})),
-                )
-                .await;
+            // The photos first, each by its own upload; the reply names
+            // them by the ids the website gave them.
+            let mut files = Vec::with_capacity(photos.len());
+            let mut failed = None;
+            for (name, bytes) in photos {
+                let url = format!("{origin}/v1/threads/{id}/files?name={}", query_value(&name));
+                match http.upload(url, Some(token.clone()), bytes).await {
+                    Ok(reply) if (200..300).contains(&reply.status) => {
+                        match reply.body["id"].as_str() {
+                            Some(file) => files.push(file.to_owned()),
+                            None => {
+                                failed = Some(Ok(reply));
+                                break;
+                            }
+                        }
+                    }
+                    other => {
+                        failed = Some(other);
+                        break;
+                    }
+                }
+            }
+            let reply = match failed {
+                Some(Ok(reply)) => Ok(Reply {
+                    status: reply.status.max(400),
+                    body: if reply.body["error"]["message"].is_string() {
+                        reply.body
+                    } else {
+                        json!({"error": {"message": "That photo wasn't sent. Try again."}})
+                    },
+                }),
+                Some(Err(error)) => Err(error),
+                None => {
+                    let body = if files.is_empty() {
+                        json!({"request_id": request, "text": text})
+                    } else {
+                        json!({"request_id": request, "text": text, "files": files})
+                    };
+                    http.call(
+                        "POST",
+                        format!("{origin}/v1/threads/{id}/messages"),
+                        Some(token),
+                        Some(body),
+                    )
+                    .await
+                }
+            };
             {
                 let mut state = lock(&state);
                 let notice = match &reply {
@@ -1103,6 +1243,7 @@ impl Link {
                     open.sending = false;
                     if notice.is_none() {
                         open.sent.push(text.clone());
+                        open.photos.clear();
                     }
                 }
                 state.notice = notice;
@@ -1543,6 +1684,30 @@ impl Link {
         let intent = self.view.as_ref()?.activate(event).ok()?.clone();
         self.tap(intent)
     }
+}
+
+/// Whether `open` is a chat a reply with photos can go to: a web chat that
+/// takes replies now. Coder's chats on a computer and the phone's own
+/// take words only.
+pub(crate) fn takes_photos(open: &Open) -> bool {
+    open.thread
+        .as_ref()
+        .is_some_and(|thread| thread.surface == "web" && thread.can_reply)
+}
+
+/// `value` for a URL query: letters, digits, and `-._~` as they are, every
+/// other byte as `%XX`.
+fn query_value(value: &str) -> String {
+    value
+        .bytes()
+        .map(|byte| {
+            if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+                (byte as char).to_string()
+            } else {
+                format!("%{byte:02X}")
+            }
+        })
+        .collect()
 }
 
 fn lock(state: &Arc<Mutex<State>>) -> MutexGuard<'_, State> {

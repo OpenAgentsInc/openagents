@@ -660,7 +660,7 @@ mod file_tests {
         assert_eq!(prompt, Some("Read the plan"));
         assert_eq!(
             task_with_files("x", "/w", &[]),
-            task("x", "/w"),
+            super::task("x", "/w"),
             "no files, no list"
         );
     }

@@ -44,6 +44,11 @@ a pasted or dropped image is dropped, and a draft sends its words only. The
 behavior on this page is kept in code and returns when the switch is turned
 back on.
 
+On 2026-10-10 [#11174](https://github.com/OpenAgentsInc/openagents/issues/11174)
+turned the switch back on: the phone and the desktop show their attach control
+again and the behavior on this page applies. The tests and the `ui-no-attach`
+gate that check the text-only mode turn the switch off for themselves.
+
 ## Checks
 
 On macOS 26.4, M5 Max, Rust 1.97.1:

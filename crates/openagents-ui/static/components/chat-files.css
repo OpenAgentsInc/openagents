@@ -1,5 +1,5 @@
 /* Files in the composer and under sent messages (#11174,
-   `crate::chat_files`). Served from /chat/files.css. */
+   `crate::chat_files`). Bundled into /static/ui.css. */
 
 /* The row above the text box only shows while files are added. */
 .oa-composer-attachments:has(> .oa-file-tray[data-empty]) {

@@ -1749,13 +1749,16 @@ fn contradicts_readings(gate: &Gate, reason: &str) -> Option<String> {
     None
 }
 
-/// The desktop is text only (#10095, the switch the phone shares, #10093):
-/// the composer has no attach control, and an image dropped on the window
-/// or pasted is dropped quietly; the draft stays words only.
+/// With attachments off (the switch the phone shares: off by #10093 and
+/// #10095, on again by #11174, off here for this check) the composer has
+/// no attach control, and an image dropped on the window or pasted is
+/// dropped quietly; the draft stays words only.
 fn ui_no_attach(gate: &mut Gate) -> Outcome {
-    if gate.panel().attachments_enabled() {
-        return Err("attachments are on: the desktop should be text only".into());
-    }
+    gate.app
+        .chat
+        .as_mut()
+        .expect("the chat panel")
+        .set_attachments(false);
     new_chat(gate, "ui-no-attach")?;
     let mut problems = Vec::new();
     for (file, width, height, scale) in [

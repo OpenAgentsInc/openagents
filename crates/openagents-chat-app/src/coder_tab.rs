@@ -516,18 +516,19 @@ const MAX_AWAITING: usize = 32;
 /// The most turns an open basic conversation shows at first.
 const TALK_TURNS: usize = 200;
 
-/// Attachments, everywhere (#10093 phone, #10095 desktop): off as of
-/// 2026-10-01, so the phone and the desktop are text only. The phone chat
-/// shows no attach control, never asks the host for a photo
-/// ([`Go::PickImage`]), drops an image the host hands it
-/// ([`CoderTab::attach_image`]) without a notice, and sends a draft's words
-/// only, dropping any images it still holds. Hosts mount their photo picker
-/// only while the packet says attachments are on. The desktop composer reads
-/// this same switch: no attach control or image picker, text-only paste, a
-/// dropped image dropped, and a draft's words only. The shared image
-/// pipeline (`crate::attachments`, #10066/#10070) is unchanged; set this to
-/// `true` to turn attachments back on in both apps.
-pub const ATTACHMENTS_ENABLED: bool = false;
+/// Attachments, everywhere (#10093 phone, #10095 desktop): off from
+/// 2026-10-01, on again as of 2026-10-09 (#11174), in the phone and the
+/// desktop together. While on, the chat shows its attach control, asks the
+/// host for a photo ([`Go::PickImage`]), and takes the images the host hands
+/// it ([`CoderTab::attach_image`]) through the shared image pipeline
+/// (`crate::attachments`, #10066/#10070): they go with a Coder start. The
+/// phone's account surface sends photos with a reply to a web chat through
+/// the website's chat files (`POST /v1/threads/{id}/files`). Hosts mount
+/// their photo picker only while the packet says attachments are on. Set
+/// this to `false` to make both apps text only again: no attach control or
+/// picker, text-only paste, a dropped image dropped, and a draft's words
+/// only.
+pub const ATTACHMENTS_ENABLED: bool = true;
 
 impl CoderTab {
     pub fn new(instance: String) -> Self {

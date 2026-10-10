@@ -1127,8 +1127,10 @@ mod tests {
         };
         let today = count(0.3);
         let later = count(END + 3.0);
+        // Today's committed map already carries the GitHub route (#11167),
+        // so the grown network is a little under three times today's.
         assert!(
-            later.len() > today.len() * 3,
+            later.len() > today.len() * 5 / 2,
             "{} {}",
             today.len(),
             later.len()
