@@ -13,8 +13,10 @@
 //!   the newest [`KEEP_CAPTURES`] are kept and older ones removed. The
 //!   device reads it back with `read` like any other file.
 //! - A write keeps its chunks in a hidden partial file beside the
-//!   destination, named by the file's digest, and moves it into place only
-//!   once every byte arrived and the digest matched. An existing file is
+//!   destination, named by the file's digest, each at its own place, with
+//!   a record of which chunks arrived; chunks may come in any order, so a
+//!   device keeps several in flight. The file moves into place only once
+//!   every chunk arrived and the digest matched. An existing file is
 //!   replaced only when the request says `overwrite`.
 
 use std::fs::{File, OpenOptions};
@@ -174,11 +176,51 @@ fn read(path: &str, offset: u64, length: u64) -> Answer {
     }
 }
 
-/// The hidden file a write keeps its chunks in until the digest matches.
-fn partial(target: &Path, digest: &str) -> Option<PathBuf> {
+/// The hidden files a write keeps beside the destination until the digest
+/// matches: the bytes so far, and which chunks of them arrived.
+fn partial(target: &Path, digest: &str) -> Option<(PathBuf, PathBuf)> {
     let name = target.file_name()?.to_string_lossy();
     let hex = coder_access::computer::digest_hex(digest).ok()?;
-    Some(target.with_file_name(format!(".{name}.{}.oa-partial", &hex[..16])))
+    let short = &hex[..16];
+    Some((
+        target.with_file_name(format!(".{name}.{short}.oa-partial")),
+        target.with_file_name(format!(".{name}.{short}.oa-chunks")),
+    ))
+}
+
+/// Writes take this lock, so chunks of one file that arrive together
+/// update its chunk record one at a time.
+static WRITES: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Which chunks of a `size`-byte file are held: one byte per chunk, `1`
+/// when held. Without a record, a partial file an earlier host left holds
+/// its whole chunks from the start, as that host appended them in order.
+fn held_chunks(partial: &Path, chunks_at: &Path, size: u64) -> Vec<u8> {
+    let count = usize::try_from(size.div_ceil(CHUNK_BYTES).max(1)).unwrap_or(usize::MAX);
+    match std::fs::read(chunks_at) {
+        Ok(record) if record.len() == count => record,
+        Ok(_) => {
+            // A record of another shape is not this file's: start over.
+            let _ = std::fs::remove_file(partial);
+            let _ = std::fs::remove_file(chunks_at);
+            vec![0; count]
+        }
+        Err(_) => {
+            let appended = std::fs::metadata(partial).map_or(0, |m| m.len());
+            let whole = usize::try_from(appended / CHUNK_BYTES)
+                .unwrap_or(usize::MAX)
+                .min(count);
+            let mut record = vec![0; count];
+            record[..whole].fill(1);
+            record
+        }
+    }
+}
+
+/// The bytes held from the start of the file, in whole chunks.
+fn held_from_start(record: &[u8], size: u64) -> u64 {
+    let leading = record.iter().take_while(|held| **held == 1).count() as u64;
+    (leading * CHUNK_BYTES).min(size)
 }
 
 fn write(put: &FilePut) -> Result<Answer, Code> {
@@ -188,7 +230,7 @@ fn write(put: &FilePut) -> Result<Answer, Code> {
         Err(reason) => return Ok(unable(reason)),
     };
     let shown = target.display().to_string();
-    let Some(partial) = partial(&target, &put.digest) else {
+    let Some((partial, chunks_at)) = partial(&target, &put.digest) else {
         return Ok(unable(format!("{shown} does not name a file")));
     };
     let Some(parent) = target.parent().filter(|p| !p.as_os_str().is_empty()) else {
@@ -203,60 +245,79 @@ fn write(put: &FilePut) -> Result<Answer, Code> {
     if target.is_dir() {
         return Ok(unable(format!("{shown} is a folder; name the file")));
     }
-    let held = std::fs::metadata(&partial).map_or(0, |m| m.len());
-    // A retry of the last chunk after the file was put in place: the
-    // partial is gone and the file there is exactly this one.
-    if held == 0
-        && put.offset > 0
-        && std::fs::metadata(&target).is_ok_and(|m| m.is_file() && m.len() == put.size)
-        && digest_file(&target).is_ok_and(|(_, digest)| digest == put.digest)
-    {
-        return Ok(Answer::Written {
-            received: put.size,
-            complete: true,
-        });
+    let _writing = WRITES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let started = partial.exists() || chunks_at.exists();
+    if !started {
+        // A chunk again after the file was put in place (a lost reply):
+        // the file there is exactly this one.
+        if std::fs::metadata(&target).is_ok_and(|m| m.is_file() && m.len() == put.size)
+            && digest_file(&target).is_ok_and(|(_, digest)| digest == put.digest)
+        {
+            return Ok(Answer::Written {
+                received: put.size,
+                complete: true,
+            });
+        }
+        if target.exists() && !put.overwrite {
+            return Err(Code::Conflict);
+        }
     }
-    if put.offset == 0 && held == 0 && target.exists() && !put.overwrite {
-        return Err(Code::Conflict);
+    let mut record = held_chunks(&partial, &chunks_at, put.size);
+    let index = usize::try_from(put.offset / CHUNK_BYTES).unwrap_or(usize::MAX);
+    let Some(slot) = record.get_mut(index) else {
+        return Err(Code::Malformed);
+    };
+    // A chunk already held changes nothing when it comes again.
+    if *slot == 0 {
+        *slot = 1;
+        // Each chunk goes to its own place, so chunks may arrive in any
+        // order. The record is written after the bytes; the digest check
+        // before the file is put in place catches any chunk a crash lost
+        // in between.
+        let placed = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&partial)
+            .and_then(|mut file| {
+                file.seek(SeekFrom::Start(put.offset))?;
+                file.write_all(&bytes)
+            })
+            .and_then(|()| std::fs::write(&chunks_at, &record));
+        if let Err(error) = placed {
+            return Ok(unable(format!("{shown} can't be written: {error}")));
+        }
     }
-    if put.offset != held {
-        // Already held (a resend) or past what is held: say where to go on.
+    if record.iter().any(|held| *held == 0) {
         return Ok(Answer::Written {
-            received: held.min(put.size),
+            received: held_from_start(&record, put.size),
             complete: false,
         });
     }
-    let appended = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&partial)
-        .and_then(|mut file| file.write_all(&bytes).and_then(|()| file.sync_data()));
-    if let Err(error) = appended {
-        return Ok(unable(format!("{shown} can't be written: {error}")));
-    }
-    let received = held + bytes.len() as u64;
-    if received < put.size {
-        return Ok(Answer::Written {
-            received,
-            complete: false,
-        });
-    }
-    match digest_file(&partial) {
-        Ok((size, digest)) if size == put.size && digest == put.digest => {}
+    let drop_partial = || {
+        let _ = std::fs::remove_file(&partial);
+        let _ = std::fs::remove_file(&chunks_at);
+    };
+    let synced = File::open(&partial).and_then(|file| file.sync_all());
+    match (synced, digest_file(&partial)) {
+        (Ok(()), Ok((size, digest))) if size == put.size && digest == put.digest => {}
         _ => {
-            let _ = std::fs::remove_file(&partial);
+            drop_partial();
             return Err(Code::Conflict);
         }
     }
     if target.exists() && !put.overwrite {
-        let _ = std::fs::remove_file(&partial);
+        drop_partial();
         return Err(Code::Conflict);
     }
     if let Err(error) = std::fs::rename(&partial, &target) {
         return Ok(unable(format!("{shown} can't be written: {error}")));
     }
+    let _ = std::fs::remove_file(&chunks_at);
     Ok(Answer::Written {
-        received,
+        received: put.size,
         complete: true,
     })
 }
@@ -701,13 +762,14 @@ mod tests {
         assert!(!target.exists(), "nothing lands before the last chunk");
         // A resend of a held chunk changes nothing and says where to go on.
         assert_eq!(write(&put(&target, &bytes, 0, false)).unwrap(), first);
-        // A chunk past what is held is not written.
+        // A chunk past a gap is held, and the answer still counts the
+        // bytes held from the start.
         assert_eq!(
             write(&put(&target, &bytes, 2 * CHUNK_BYTES, false)).unwrap(),
             first
         );
-        write(&put(&target, &bytes, CHUNK_BYTES, false)).unwrap();
-        let last = write(&put(&target, &bytes, 2 * CHUNK_BYTES, false)).unwrap();
+        assert!(!target.exists(), "nothing lands with a gap");
+        let last = write(&put(&target, &bytes, CHUNK_BYTES, false)).unwrap();
         assert_eq!(
             last,
             Answer::Written {
@@ -736,6 +798,56 @@ mod tests {
             .map(|e| e.file_name())
             .collect();
         assert_eq!(left.len(), 1, "{left:?}");
+    }
+
+    #[test]
+    fn chunks_land_whole_in_any_order_and_together() {
+        let dir = tempfile::tempdir().unwrap();
+        let bytes: Vec<u8> = (0..(9 * CHUNK_BYTES + 77))
+            .map(|i| (i % 233) as u8)
+            .collect();
+        let offsets: Vec<u64> = (0..10).map(|i| i * CHUNK_BYTES).collect();
+        // In reverse, one at a time.
+        let reverse = dir.path().join("reverse.bin");
+        for (n, offset) in offsets.iter().rev().enumerate() {
+            let answer = write(&put(&reverse, &bytes, *offset, false)).unwrap();
+            let Answer::Written { received, complete } = answer else {
+                panic!("{answer:?}")
+            };
+            // Until the first chunk comes, none is held from the start.
+            assert_eq!(complete, n == offsets.len() - 1);
+            assert_eq!(received, if complete { bytes.len() as u64 } else { 0 });
+        }
+        assert_eq!(std::fs::read(&reverse).unwrap(), bytes);
+        // From several threads at once, as a device's window arrives.
+        let together = dir.path().join("together.bin");
+        std::thread::scope(|scope| {
+            for offset in &offsets {
+                let (bytes, together) = (&bytes, &together);
+                scope.spawn(move || write(&put(together, bytes, *offset, false)).unwrap());
+            }
+        });
+        assert_eq!(std::fs::read(&together).unwrap(), bytes);
+        // Only the two files are left: no partial or chunk record.
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 2);
+    }
+
+    #[test]
+    fn a_partial_an_earlier_host_appended_is_resumed() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("old.bin");
+        let bytes: Vec<u8> = (0..(3 * CHUNK_BYTES)).map(|i| (i % 7) as u8).collect();
+        let (partial, _) = partial(&target, &digest(&bytes)).unwrap();
+        std::fs::write(&partial, &bytes[..CHUNK_BYTES as usize]).unwrap();
+        assert_eq!(
+            write(&put(&target, &bytes, 2 * CHUNK_BYTES, false)).unwrap(),
+            Answer::Written {
+                received: CHUNK_BYTES,
+                complete: false
+            }
+        );
+        write(&put(&target, &bytes, CHUNK_BYTES, false)).unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), bytes);
     }
 
     #[test]

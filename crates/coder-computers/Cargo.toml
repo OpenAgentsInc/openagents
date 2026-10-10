@@ -9,7 +9,7 @@ description = "Coder's Computers screens: host status, enrollment, access, and a
 [features]
 default = ["live"]
 # The live service over the resident host client.
-live = ["dep:coder-host", "dep:tokio"]
+live = ["dep:coder-host", "dep:tokio", "dep:futures-util"]
 # Start or adopt hosts over the system ssh binary. Desktop and terminal
 # clients only; the mobile library leaves it off.
 ssh = ["live", "dep:coder-ssh"]
@@ -20,6 +20,8 @@ coder-access = { path = "../coder-access", default-features = false }
 # Local QR rendering only; no host store.
 coder-connect = { path = "../coder-connect", default-features = false, features = ["qr"] }
 coder-host = { path = "../coder-host", default-features = false, optional = true }
+# A window of file chunks in flight at once over one link.
+futures-util = { version = "0.3", optional = true }
 coder-link = { path = "../coder-link" }
 coder-ssh = { path = "../coder-ssh", optional = true }
 coder-reach = { path = "../coder-reach" }

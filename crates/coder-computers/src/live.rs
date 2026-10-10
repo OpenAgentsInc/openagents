@@ -646,6 +646,46 @@ impl Live {
         }
     }
 
+    /// Several NIP-HOST `computer` requests in flight at once over the
+    /// host's current link, each answered in its place: a window of file
+    /// chunks for `coder_access::computer::{fetch_many, send_many}`. The
+    /// host checks `terminal` on every one.
+    pub fn computer_many(
+        &self,
+        host: &str,
+        requests: Vec<coder_access::computer::Request>,
+    ) -> Vec<Result<coder_access::computer::Answer>> {
+        let (key, connection, link) = match self.shared.link(host) {
+            Ok(link) => link,
+            Err(error) => return requests.iter().map(|_| Err(error.clone())).collect(),
+        };
+        let calls = requests.into_iter().map(|request| {
+            let link = &link;
+            async move { link.call(Operation::Computer { computer: request }).await }
+        });
+        let answers = self.runtime.block_on(futures_util::future::join_all(calls));
+        let mut revoked = false;
+        let answers = answers
+            .into_iter()
+            .map(|answer| match answer {
+                Ok(Outcome::Computer { computer }) => Ok(computer),
+                Ok(_) => Err(Error::new(
+                    Code::Malformed,
+                    "the host did not answer the computer request",
+                )),
+                Err(error) => {
+                    let error = access_error(error);
+                    revoked |= error.code == Code::Revoked;
+                    Err(error)
+                }
+            })
+            .collect();
+        if revoked {
+            self.shared.revoked(host, Some((&key, connection)));
+        }
+        answers
+    }
+
     /// Run one access operation over the host's current link.
     fn call(&self, host: &str, op: Operation) -> Result<Outcome> {
         let (key, connection, link) = self.shared.link(host)?;

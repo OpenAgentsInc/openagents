@@ -10,16 +10,18 @@
 //!   [`FileInfo`]; the device then reads it like any file.
 //! - `apps` lists the windows open on the computer's screen.
 //! - `stat` answers a regular file's size and SHA-256 digest, and `read`
-//!   one chunk of it at an offset. A device reads the chunks in order and
-//!   checks the digest of what it put together against `stat`'s, so a file
-//!   that changed while it was read is refused rather than delivered torn.
+//!   one chunk of it at an offset. A device may keep several reads in
+//!   flight ([`WINDOW`]), puts the chunks together in order, and checks the
+//!   digest of the whole against `stat`'s, so a file that changed while it
+//!   was read is refused rather than delivered torn.
 //! - `write` sends one chunk of a file, each naming the whole file's size
-//!   and digest. The host keeps the chunks beside the destination, checks
-//!   the digest once the last one arrives, and only then puts the file in
-//!   place. It never replaces an existing file unless the request says
-//!   `overwrite`. A chunk is idempotent: sending one again changes nothing,
-//!   and the answer says how many bytes the host holds, so a device resumes
-//!   there.
+//!   and digest. The host keeps the chunks beside the destination in any
+//!   order they arrive, checks the digest once every one is there, and only
+//!   then puts the file in place. It never replaces an existing file unless
+//!   the request says `overwrite`. A chunk is idempotent: sending one again
+//!   changes nothing, and the answer says how many bytes the host holds
+//!   from the start, so a device resumes there. A host that takes chunks
+//!   only in order answers the same way, so [`send_many`] works with both.
 //!
 //! A path is absolute or starts with `~/` (the host user's home). A file
 //! is at most [`MAX_FILE_BYTES`] and a chunk at most [`CHUNK_BYTES`], small
@@ -377,6 +379,38 @@ impl Answer {
     }
 }
 
+/// Chunk calls a device keeps in flight at once with [`fetch_many`] and
+/// [`send_many`]. A chunk call otherwise waits out a whole round trip; with
+/// eight in flight the link carries chunks while earlier answers travel.
+pub const WINDOW: usize = 8;
+
+/// Several `computer` requests sent together, each answered in its place:
+/// the answer list is as long as the request list and in its order. A
+/// client runs them concurrently over one link; answering them one at a
+/// time is correct too, only slower.
+pub type Batch<'a> = dyn FnMut(Vec<Request>) -> Vec<Result<Answer>> + 'a;
+
+/// A [`Batch`] over a one-request `call`: each request in turn, and once
+/// one fails the rest are not sent.
+pub fn one_at_a_time<'a>(
+    call: &'a mut dyn FnMut(Request) -> Result<Answer>,
+) -> impl FnMut(Vec<Request>) -> Vec<Result<Answer>> + 'a {
+    move |requests| {
+        let mut failed = false;
+        requests
+            .into_iter()
+            .map(|request| {
+                if failed {
+                    return Err(Error::new(Code::Transport, "an earlier chunk failed"));
+                }
+                let answer = call(request);
+                failed = answer.is_err();
+                answer
+            })
+            .collect()
+    }
+}
+
 /// Read the file at `path` on the host with `call`, chunk by chunk, into
 /// `sink`, refusing a file over `limit` bytes before reading any of it.
 /// Answers the file's [`FileInfo`] once every byte matched its digest.
@@ -391,14 +425,7 @@ pub fn fetch(
     sink: &mut dyn std::io::Write,
     progress: &mut dyn FnMut(u64, u64),
 ) -> Result<FileInfo> {
-    let Answer::File { file } = call(Request::Stat { path: path.into() })?.able()? else {
-        return Err(Error::new(
-            Code::Malformed,
-            "the host did not describe the file",
-        ));
-    };
-    fetch_described(call, &file, limit, sink, progress)?;
-    Ok(file)
+    fetch_many(&mut one_at_a_time(call), path, limit, sink, progress)
 }
 
 /// Read a file the host already described, as [`fetch`] does.
@@ -407,6 +434,46 @@ pub fn fetch(
 /// As [`fetch`].
 pub fn fetch_described(
     call: &mut dyn FnMut(Request) -> Result<Answer>,
+    file: &FileInfo,
+    limit: u64,
+    sink: &mut dyn std::io::Write,
+    progress: &mut dyn FnMut(u64, u64),
+) -> Result<()> {
+    fetch_described_many(&mut one_at_a_time(call), file, limit, sink, progress)
+}
+
+/// [`fetch`] with up to [`WINDOW`] chunk reads in flight at once. The
+/// chunks still reach `sink` in order and are checked against the digest
+/// as one file.
+///
+/// # Errors
+/// As [`fetch`], or a batch that answers fewer requests than it was sent.
+pub fn fetch_many(
+    batch: &mut Batch<'_>,
+    path: &str,
+    limit: u64,
+    sink: &mut dyn std::io::Write,
+    progress: &mut dyn FnMut(u64, u64),
+) -> Result<FileInfo> {
+    let described = batch(vec![Request::Stat { path: path.into() }])
+        .pop()
+        .ok_or_else(|| Error::new(Code::Malformed, "the host did not describe the file"))??;
+    let Answer::File { file } = described.able()? else {
+        return Err(Error::new(
+            Code::Malformed,
+            "the host did not describe the file",
+        ));
+    };
+    fetch_described_many(batch, &file, limit, sink, progress)?;
+    Ok(file)
+}
+
+/// Read a file the host already described, as [`fetch_many`] does.
+///
+/// # Errors
+/// As [`fetch_many`].
+pub fn fetch_described_many(
+    batch: &mut Batch<'_>,
     file: &FileInfo,
     limit: u64,
     sink: &mut dyn std::io::Write,
@@ -426,33 +493,48 @@ pub fn fetch_described(
     let mut hasher = Sha256::new();
     let mut offset = 0;
     while offset < file.size {
-        let length = CHUNK_BYTES.min(file.size - offset);
-        let Answer::Chunk { offset: at, data } = call(Request::Read {
-            path: file.path.clone(),
-            offset,
-            length,
-        })?
-        .able()?
-        else {
+        let mut requests = Vec::with_capacity(WINDOW);
+        let mut at = offset;
+        while at < file.size && requests.len() < WINDOW {
+            let length = CHUNK_BYTES.min(file.size - at);
+            requests.push(Request::Read {
+                path: file.path.clone(),
+                offset: at,
+                length,
+            });
+            at += length;
+        }
+        let sent = requests.len();
+        let answers = batch(requests);
+        if answers.len() != sent {
             return Err(Error::new(
                 Code::Malformed,
-                "the host did not answer a chunk",
-            ));
-        };
-        let bytes = base64::engine::general_purpose::STANDARD
-            .decode(&data)
-            .map_err(|_| Error::new(Code::Malformed, "chunk is not base64"))?;
-        if at != offset || bytes.len() as u64 != length {
-            return Err(Error::new(
-                Code::Conflict,
-                format!("{} changed while it was read", file.path),
+                "the host did not answer every chunk",
             ));
         }
-        hasher.update(&bytes);
-        sink.write_all(&bytes)
-            .map_err(|e| Error::new(Code::Unavailable, format!("could not write: {e}")))?;
-        offset += length;
-        progress(offset, file.size);
+        for answer in answers {
+            let length = CHUNK_BYTES.min(file.size - offset);
+            let Answer::Chunk { offset: got, data } = answer?.able()? else {
+                return Err(Error::new(
+                    Code::Malformed,
+                    "the host did not answer a chunk",
+                ));
+            };
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(&data)
+                .map_err(|_| Error::new(Code::Malformed, "chunk is not base64"))?;
+            if got != offset || bytes.len() as u64 != length {
+                return Err(Error::new(
+                    Code::Conflict,
+                    format!("{} changed while it was read", file.path),
+                ));
+            }
+            hasher.update(&bytes);
+            sink.write_all(&bytes)
+                .map_err(|e| Error::new(Code::Unavailable, format!("could not write: {e}")))?;
+            offset += length;
+            progress(offset, file.size);
+        }
     }
     if digest_of(hasher) != file.digest {
         return Err(Error::new(
@@ -480,6 +562,26 @@ pub fn send(
     overwrite: bool,
     progress: &mut dyn FnMut(u64, u64),
 ) -> Result<String> {
+    send_many(&mut one_at_a_time(call), path, bytes, overwrite, progress)
+}
+
+/// [`send`] with up to [`WINDOW`] chunks in flight at once.
+///
+/// Each round sends the chunks from the first one the host may not hold.
+/// A host takes them in any order and answers how many bytes it holds from
+/// the start; the next round starts there. A host that takes chunks only
+/// in order still moves on at least one chunk a round, so a device never
+/// needs to know which kind it reached.
+///
+/// # Errors
+/// As [`send`], or a batch that answers fewer requests than it was sent.
+pub fn send_many(
+    batch: &mut Batch<'_>,
+    path: &str,
+    bytes: &[u8],
+    overwrite: bool,
+    progress: &mut dyn FnMut(u64, u64),
+) -> Result<String> {
     let size = bytes.len() as u64;
     if size > MAX_FILE_BYTES {
         return Err(Error::new(
@@ -488,39 +590,68 @@ pub fn send(
         ));
     }
     let digest = digest(bytes);
-    // Where the last chunk starts.
-    let last = size.saturating_sub(1) - size.saturating_sub(1) % CHUNK_BYTES;
-    let mut offset = 0;
-    // Each chunk moves forward, or the host names an earlier place it
-    // holds; a host that answers the same place twice without progress
-    // is refused rather than looped on.
-    let mut stalls = 0;
-    loop {
-        let end = (offset + CHUNK_BYTES).min(size);
-        let start = usize::try_from(offset)
+    // An empty file is one empty chunk.
+    let chunks = size.div_ceil(CHUNK_BYTES).max(1);
+    let put = |index: u64| {
+        let start = usize::try_from(index * CHUNK_BYTES)
             .unwrap_or(usize::MAX)
             .min(bytes.len());
-        let chunk = &bytes[start..usize::try_from(end).unwrap_or(usize::MAX).min(bytes.len())];
-        let put = FilePut {
+        let end = usize::try_from((index + 1) * CHUNK_BYTES)
+            .unwrap_or(usize::MAX)
+            .min(bytes.len());
+        FilePut {
             path: path.into(),
             size,
             digest: digest.clone(),
-            offset,
-            data: base64::engine::general_purpose::STANDARD.encode(chunk),
+            offset: index * CHUNK_BYTES,
+            data: base64::engine::general_purpose::STANDARD.encode(&bytes[start..end]),
             overwrite,
-        };
-        let Answer::Written { received, complete } = call(Request::Write { put })?.able()? else {
+        }
+    };
+    // The first chunk the host may not hold.
+    let mut next = 0;
+    // A host that answers the same place again without progress is
+    // refused rather than looped on.
+    let mut stalls = 0;
+    loop {
+        let end = (next + WINDOW as u64).min(chunks);
+        let requests: Vec<Request> = (next..end)
+            .map(|index| Request::Write { put: put(index) })
+            .collect();
+        let sent = requests.len();
+        let answers = batch(requests);
+        if answers.len() != sent {
             return Err(Error::new(
                 Code::Malformed,
-                "the host did not answer the chunk",
+                "the host did not answer every chunk",
             ));
-        };
-        progress(received, size);
-        if complete {
-            return Ok(digest);
         }
-        let next = received.min(size) - received.min(size) % CHUNK_BYTES;
-        if next <= offset {
+        let mut held = 0;
+        let mut failed = None;
+        for answer in answers {
+            match answer.and_then(Answer::able) {
+                Ok(Answer::Written { complete: true, .. }) => {
+                    progress(size, size);
+                    return Ok(digest);
+                }
+                Ok(Answer::Written { received, .. }) => held = held.max(received.min(size)),
+                Ok(_) => {
+                    return Err(Error::new(
+                        Code::Malformed,
+                        "the host did not answer the chunk",
+                    ));
+                }
+                Err(error) => {
+                    failed.get_or_insert(error);
+                }
+            }
+        }
+        if let Some(error) = failed {
+            return Err(error);
+        }
+        progress(held, size);
+        let reached = (held / CHUNK_BYTES).min(chunks - 1);
+        if reached <= next {
             stalls += 1;
             if stalls > 3 {
                 return Err(Error::new(
@@ -531,7 +662,7 @@ pub fn send(
         } else {
             stalls = 0;
         }
-        offset = next.min(last);
+        next = reached;
     }
 }
 
@@ -724,5 +855,167 @@ mod tests {
         let over = fetch(&mut call, "/tmp/f", 3, &mut Vec::new(), &mut |_, _| {}).unwrap_err();
         assert_eq!(over.code, Code::Bounds);
         send(&mut call, "/tmp/empty", b"", false, &mut |_, _| {}).unwrap();
+    }
+
+    /// Run a batch the way a link that delivers the requests in reverse
+    /// does, answering each in its own place.
+    fn reversed(
+        host: &mut dyn FnMut(Request) -> Result<Answer>,
+        requests: Vec<Request>,
+    ) -> Vec<Result<Answer>> {
+        let mut answers: Vec<Option<Result<Answer>>> = requests.iter().map(|_| None).collect();
+        for (place, request) in requests.into_iter().enumerate().rev() {
+            answers[place] = Some(host(request));
+        }
+        answers.into_iter().map(Option::unwrap).collect()
+    }
+
+    /// A host that takes chunks in any order, as `coder-host` does: it
+    /// answers how many bytes it holds from the start.
+    #[derive(Default)]
+    struct AnyOrder {
+        files: std::collections::BTreeMap<String, Vec<u8>>,
+        pieces: std::collections::BTreeMap<u64, Vec<u8>>,
+    }
+
+    impl AnyOrder {
+        fn call(&mut self, request: Request) -> Result<Answer> {
+            request.validate()?;
+            match request {
+                Request::Write { put } => {
+                    let data = put.bytes()?;
+                    if self.pieces.is_empty()
+                        && self.files.contains_key(&put.path)
+                        && !put.overwrite
+                    {
+                        return Err(Error::new(Code::Conflict, "exists"));
+                    }
+                    self.pieces.insert(put.offset, data);
+                    let mut held = 0;
+                    while let Some(piece) = self.pieces.get(&held) {
+                        if piece.is_empty() {
+                            break;
+                        }
+                        held += piece.len() as u64;
+                    }
+                    let whole = held == put.size || (put.size == 0 && self.pieces.contains_key(&0));
+                    if !whole {
+                        return Ok(Answer::Written {
+                            received: held,
+                            complete: false,
+                        });
+                    }
+                    let bytes: Vec<u8> = std::mem::take(&mut self.pieces)
+                        .into_values()
+                        .flatten()
+                        .collect();
+                    if digest(&bytes) != put.digest {
+                        return Err(Error::new(Code::Conflict, "digest differs"));
+                    }
+                    self.files.insert(put.path, bytes);
+                    Ok(Answer::Written {
+                        received: put.size,
+                        complete: true,
+                    })
+                }
+                Request::Stat { path } => {
+                    let bytes = &self.files[&path];
+                    Ok(Answer::File {
+                        file: FileInfo {
+                            path,
+                            size: bytes.len() as u64,
+                            digest: digest(bytes),
+                            media_type: None,
+                        },
+                    })
+                }
+                Request::Read {
+                    path,
+                    offset,
+                    length,
+                } => {
+                    let bytes = &self.files[&path];
+                    let start = (offset as usize).min(bytes.len());
+                    let end = (start + length as usize).min(bytes.len());
+                    Ok(Answer::Chunk {
+                        offset,
+                        data: base64::engine::general_purpose::STANDARD.encode(&bytes[start..end]),
+                    })
+                }
+                _ => Err(Error::new(Code::Unsupported, "not here")),
+            }
+        }
+    }
+
+    #[test]
+    fn a_window_of_chunks_lands_whole_in_any_order_in_few_rounds() {
+        let mut host = AnyOrder::default();
+        let bytes: Vec<u8> = (0..(20 * CHUNK_BYTES + 9))
+            .map(|i| (i % 241) as u8)
+            .collect();
+        let rounds = std::cell::Cell::new(0);
+        let mut batch = |requests: Vec<Request>| {
+            rounds.set(rounds.get() + 1);
+            reversed(&mut |request| host.call(request), requests)
+        };
+        let sent = send_many(&mut batch, "/tmp/w", &bytes, false, &mut |_, _| {}).unwrap();
+        assert_eq!(sent, digest(&bytes));
+        let mut back = Vec::new();
+        let file = fetch_many(
+            &mut batch,
+            "/tmp/w",
+            MAX_FILE_BYTES,
+            &mut back,
+            &mut |_, _| {},
+        )
+        .unwrap();
+        assert_eq!(back, bytes);
+        assert_eq!(file.digest, digest(&bytes));
+        // 21 chunks go in three rounds of eight; the stat and 21 reads in
+        // one and three.
+        assert_eq!(rounds.get(), 3 + 1 + 3);
+        // The window still refuses a file already there without overwrite.
+        let refused = send_many(&mut batch, "/tmp/w", b"other", false, &mut |_, _| {});
+        assert_eq!(refused.unwrap_err().code, Code::Conflict);
+        send_many(&mut batch, "/tmp/empty", b"", false, &mut |_, _| {}).unwrap();
+    }
+
+    #[test]
+    fn a_host_that_takes_chunks_only_in_order_still_gets_the_whole_file() {
+        let mut host = Memory {
+            files: Default::default(),
+            partial: Vec::new(),
+            drop_every: 0,
+            calls: 0,
+        };
+        let bytes: Vec<u8> = (0..(10 * CHUNK_BYTES + 1))
+            .map(|i| (i % 239) as u8)
+            .collect();
+        // Delivered in reverse, such a host keeps one chunk a round.
+        let mut batch =
+            |requests: Vec<Request>| reversed(&mut |request| host.call(request), requests);
+        let sent = send_many(&mut batch, "/tmp/o", &bytes, false, &mut |_, _| {}).unwrap();
+        assert_eq!(sent, digest(&bytes));
+        assert_eq!(host.files["/tmp/o"], bytes);
+    }
+
+    #[test]
+    fn a_batch_that_drops_answers_is_refused() {
+        let mut short = |requests: Vec<Request>| {
+            let mut answers: Vec<Result<Answer>> = requests
+                .iter()
+                .map(|_| {
+                    Ok(Answer::Written {
+                        received: 0,
+                        complete: false,
+                    })
+                })
+                .collect();
+            answers.pop();
+            answers
+        };
+        let bytes = vec![1u8; (2 * CHUNK_BYTES) as usize];
+        let error = send_many(&mut short, "/tmp/s", &bytes, false, &mut |_, _| {}).unwrap_err();
+        assert_eq!(error.code, Code::Malformed);
     }
 }

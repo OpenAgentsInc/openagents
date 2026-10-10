@@ -897,6 +897,18 @@ fn caller<'a>(
     move |request| live.computer(host, request)
 }
 
+/// A window of `computer` requests in flight at once over the host's
+/// link, for file chunks.
+fn batcher<'a>(
+    live: &'a Live,
+    host: &'a str,
+) -> impl FnMut(
+    Vec<coder_access::computer::Request>,
+) -> Vec<coder_access::Result<coder_access::computer::Answer>>
++ 'a {
+    move |requests| live.computer_many(host, requests)
+}
+
 /// A progress line on standard error while a transfer runs, when a person
 /// watches it.
 fn progress(output: &Output) -> impl FnMut(u64, u64) + use<> {
@@ -962,7 +974,14 @@ fn screenshot(output: &Output, live: &Live, host: &str, args: &Args) -> Result<u
             dir.join(format!("{name}-{}.png", now()))
         }
     };
-    let bytes = fetch_to(&mut call, &file, MAX_SCREENSHOT_BYTES, &local, true, output)?;
+    let bytes = fetch_to(
+        &mut batcher(live, host),
+        &file,
+        MAX_SCREENSHOT_BYTES,
+        &local,
+        true,
+        output,
+    )?;
     output.emit(
         &json!({
             "host": host, "path": local.display().to_string(), "remote": file.path,
@@ -1023,9 +1042,7 @@ fn apps(output: &Output, live: &Live, host: &str) -> Result<u8, String> {
 /// first, renamed only once every byte matched the digest. An existing
 /// `local` is replaced only when `overwrite` is set.
 fn fetch_to(
-    call: &mut dyn FnMut(
-        coder_access::computer::Request,
-    ) -> coder_access::Result<coder_access::computer::Answer>,
+    batch: &mut coder_access::computer::Batch<'_>,
     file: &coder_access::computer::FileInfo,
     limit: u64,
     local: &std::path::Path,
@@ -1048,7 +1065,8 @@ fn fetch_to(
         std::fs::File::create(&partial).map_err(|e| format!("{}: {e}", partial.display()))?,
     );
     let mut shown = progress(output);
-    let fetched = coder_access::computer::fetch_described(call, file, limit, &mut sink, &mut shown);
+    let fetched =
+        coder_access::computer::fetch_described_many(batch, file, limit, &mut sink, &mut shown);
     let flushed = std::io::Write::flush(&mut sink).map_err(|e| e.to_string());
     drop(sink);
     if let Err(error) = fetched
@@ -1093,10 +1111,9 @@ fn push(
         remote.to_owned()
     };
     let started = std::time::Instant::now();
-    let mut call = caller(live, host);
     let mut shown = progress(output);
-    let digest = coder_access::computer::send(
-        &mut call,
+    let digest = coder_access::computer::send_many(
+        &mut batcher(live, host),
         &remote,
         &bytes,
         args.switch("overwrite"),
@@ -1146,7 +1163,7 @@ fn pull(
         local = local.join(name);
     }
     let size = fetch_to(
-        &mut call,
+        &mut batcher(live, host),
         &file,
         limit,
         &local,
