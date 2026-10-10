@@ -619,6 +619,149 @@ impl ClefMetalTrunk {
         scratch.context.read_f32(0, rows * w).map(Some)
     }
 
+    /// Several independent head products `X W^T (+ b)` in one command
+    /// buffer: `(matrix values, input, rows of input, bias)`. `None` when a
+    /// matrix is not resident.
+    pub fn head_linear_batch(&self, jobs: &[(&[f32], &[f32], usize, Option<&[f32]>)]) -> Result<Option<Vec<Vec<f32>>>, String> {
+        let guard = self
+            .device
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let state = &*guard;
+        let mut staged = Vec::with_capacity(jobs.len());
+        for (values, input, n, bias) in jobs {
+            let Some((matrix, rows, columns)) = state.head_matrices.get(&(values.as_ptr() as usize)) else {
+                return Ok(None);
+            };
+            if input.len() != n * columns {
+                return Err(String::from("clef metal head: input width mismatch"));
+            }
+            let input_buffer = state.metal.buffer_f32(input);
+            let output = state.metal.buffer(n * rows * 4);
+            let bias_buffer = bias.map(|bias| state.metal.buffer_f32(bias));
+            staged.push((matrix, *rows, *columns, *n, input_buffer, output, bias_buffer));
+        }
+        let batch = state.metal.batch();
+        for (matrix, rows, columns, n, input, output, bias) in &staged {
+            batch.gemm_f32(input, matrix, output, *n, *rows, *columns)?;
+            if let Some(bias) = bias {
+                batch.bias_act(output, bias, *n, *rows, false)?;
+            }
+        }
+        batch.commit_wait()?;
+        staged
+            .iter()
+            .map(|(_, rows, _, n, _, output, _)| output.read_f32(0, n * rows))
+            .collect::<Result<Vec<_>, _>>()
+            .map(Some)
+    }
+
+    /// The head's feed-forward `down(gelu(up x + b_up)) + b_down` in one
+    /// command buffer; `None` when a matrix is not resident.
+    #[allow(clippy::too_many_arguments)]
+    pub fn head_feedforward(
+        &self,
+        up: &[f32],
+        up_bias: &[f32],
+        down: &[f32],
+        down_bias: &[f32],
+        input: &[f32],
+        n: usize,
+    ) -> Result<Option<Vec<f32>>, String> {
+        let guard = self
+            .device
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let state = &*guard;
+        let (Some((up_m, up_rows, up_cols)), Some((down_m, down_rows, down_cols))) = (
+            state.head_matrices.get(&(up.as_ptr() as usize)),
+            state.head_matrices.get(&(down.as_ptr() as usize)),
+        ) else {
+            return Ok(None);
+        };
+        if input.len() != n * up_cols || *down_cols != *up_rows {
+            return Err(String::from("clef metal head: feed-forward shape mismatch"));
+        }
+        let x = state.metal.buffer_f32(input);
+        let hidden = state.metal.buffer(n * up_rows * 4);
+        let out = state.metal.buffer(n * down_rows * 4);
+        let ub = state.metal.buffer_f32(up_bias);
+        let db = state.metal.buffer_f32(down_bias);
+        let batch = state.metal.batch();
+        batch.gemm_f32(&x, up_m, &hidden, n, *up_rows, *up_cols)?;
+        batch.bias_act(&hidden, &ub, n, *up_rows, true)?;
+        batch.gemm_f32(&hidden, down_m, &out, n, *down_rows, *down_cols)?;
+        batch.bias_act(&out, &db, n, *down_rows, false)?;
+        batch.commit_wait()?;
+        out.read_f32(0, n * down_rows).map(Some)
+    }
+
+    /// A whole memory-attention block in one command buffer: the query
+    /// projection (`q`, `q_bias`), the attention between the projections
+    /// ([`Self::attend_memory_projected`]) and the output projection
+    /// (`out`, `out_bias`). `None` when a matrix is not resident.
+    #[allow(clippy::too_many_arguments)]
+    pub fn head_attend_block(
+        &self,
+        evidence: Option<usize>,
+        q: (&[f32], &[f32]),
+        key_matrix: &[f32],
+        value_matrix: &[f32],
+        value_bias: &[f32],
+        out: (&[f32], &[f32]),
+        queries: &[f32],
+        rows: usize,
+        heads: usize,
+        scale: f32,
+    ) -> Result<Option<Vec<f32>>, String> {
+        let w = self.dims.width;
+        let mut guard = self
+            .device
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let state = &mut *guard;
+        for values in [q.0, key_matrix, value_matrix, out.0] {
+            if !state.head_matrices.contains_key(&(values.as_ptr() as usize)) {
+                return Ok(None);
+            }
+        }
+        if queries.len() != rows * w || heads == 0 || w % heads != 0 {
+            return Err(String::from("memory attention block: shape mismatch"));
+        }
+        ensure_view(state, self.dims, evidence)?;
+        let length = state.request.as_ref().ok_or("no prefill on the device")?.tokens;
+        let side_rows = rows * heads;
+        ensure_head_attention(state, side_rows.max(rows), length, w);
+        let state = &*state;
+        let scratch = state.head_attention.as_ref().ok_or("head attention scratch")?;
+        let input = state.metal.buffer_f32(queries);
+        let q_bias = state.metal.buffer_f32(q.1);
+        let out_bias = state.metal.buffer_f32(out.1);
+        let result = state.metal.buffer(rows * w * 4);
+        scratch.bias.write_f32(0, value_bias)?;
+        let request = state.request.as_ref().ok_or("no prefill")?;
+        let memory = memory_view(request, evidence)?;
+        let matrix = |values: &[f32]| state.head_matrices.get(&(values.as_ptr() as usize)).map(|entry| &entry.0);
+        let (qm, wk, wv, om) = (
+            matrix(q.0).ok_or("q")?,
+            matrix(key_matrix).ok_or("W_k")?,
+            matrix(value_matrix).ok_or("W_v")?,
+            matrix(out.0).ok_or("out")?,
+        );
+        let batch = state.metal.batch();
+        batch.gemm_f32(&input, qm, &scratch.query, rows, w, w)?;
+        batch.bias_act(&scratch.query, &q_bias, rows, w, false)?;
+        batch.head_side(&scratch.query, wk, &scratch.side, rows, heads, w)?;
+        batch.gemm_f32(&scratch.side, memory, &scratch.scores, side_rows, length, w)?;
+        batch.softmax_rows_f32(&scratch.scores, side_rows, length, scale)?;
+        batch.gemm_f32_nn(&scratch.scores, memory, &scratch.mixed, side_rows, w, length)?;
+        batch.head_context(&scratch.mixed, wv, &scratch.bias, &scratch.context, rows, heads, w)?;
+        batch.gemm_f32(&scratch.context, om, &result, rows, w, w)?;
+        batch.bias_act(&result, &out_bias, rows, w, false)?;
+        batch.commit_wait()?;
+        result.read_f32(0, rows * w).map(Some)
+    }
+
     /// `X W^T` for `n` rows against a head matrix uploaded at load; `None`
     /// when the matrix is not resident.
     pub fn head_linear(&self, values: &[f32], input: &[f32], n: usize) -> Result<Option<Vec<f32>>, String> {

@@ -187,6 +187,49 @@ kernel void clef_gemm_f32_nn(device const float *x [[buffer(0)]], device const f
     op.run(sx, sw, so);
 }
 
+// erf for f32 (Abramowitz & Stegun 7.1.26 is too coarse; this is the
+// rational approximation from W. J. Cody's erf, max error ~1e-7 relative),
+// so the head's GELU matches the host's f64 erf to f32 precision.
+inline float clef_erf(float x) {
+    const float ax = fabs(x);
+    float r;
+    if (ax < 0.5f) {
+        const float t = x * x;
+        const float num = fma(fma(fma(fma(0.185777706184603153f, t, 3.16112374387056560f), t, 113.864154151050156f), t,
+                                  377.485237685302021f), t, 3209.37758913846947f);
+        const float den = fma(fma(fma(fma(1.0f, t, 23.6012909523441209f), t, 244.024637934444173f), t,
+                                  1282.61652607737228f), t, 2844.23683343917062f);
+        return x * num / den;
+    } else if (ax < 4.0f) {
+        const float num = fma(fma(fma(fma(fma(fma(fma(fma(2.15311535474403846e-8f, ax, 0.564188496988670089f), ax,
+                                                          8.88314979438837594f), ax, 66.1191906371416295f), ax,
+                                                  298.635138197400131f), ax, 881.952221241769090f), ax,
+                                          1712.04761263407058f), ax, 2051.07837782607147f), ax, 1230.33935479799725f);
+        const float den = fma(fma(fma(fma(fma(fma(fma(fma(1.0f, ax, 15.7449261107098347f), ax, 117.693950891312499f), ax,
+                                                  537.181101862009858f), ax, 1621.38957456669019f), ax,
+                                          3290.79923573345963f), ax, 4362.61909014324716f), ax, 3439.36767414372164f), ax,
+                              1230.33935480374942f);
+        r = 1.0f - exp(-ax * ax) * num / den;
+    } else {
+        r = 1.0f;
+    }
+    return x < 0.0f ? -r : r;
+}
+
+// x[r, c] += b[c], then GELU (erf form) when `gelu` is set. In place.
+kernel void clef_bias_act(device float *x [[buffer(0)]], device const float *b [[buffer(1)]],
+                          constant uint3 &rcg [[buffer(2)]], uint gid [[thread_position_in_grid]]) {
+    const uint rows = rcg.x, cols = rcg.y, gelu = rcg.z;
+    if (gid >= rows * cols) {
+        return;
+    }
+    float v = x[gid] + b[gid % cols];
+    if (gelu != 0) {
+        v = 0.5f * v * (1.0f + clef_erf(v * 0.70710678118654752f));
+    }
+    x[gid] = v;
+}
+
 // ---- norms ----
 
 // out16[t] = RMSNorm(x[t]) * w (f16); one threadgroup per row.

@@ -670,6 +670,39 @@ The Clef-Flash Q4_K_M GGUF (digest `fd3e9060…`) ran on the M5 Max through
   measured on a quiet machine. At 55–60 TF sustained, the projections
   alone would be about 0.26 s at 1k and 3.6 s at 16k.
 
+### Round 3 (2026-10-10): the head in fewer round trips
+
+Before this round, the head made 52 GPU round trips: 46 small products,
+each with its own command buffer and wait, plus 6 memory attentions.
+Under load that took 270 ms at 4k. The head now asks the device in
+batches:
+
+- independent products in one command buffer (`linear_batch`): the three
+  option projections, the question and global projections, and each
+  field layer's `k`, `v` and `q`;
+- each feed-forward as one call: up, bias, GELU (an f32 `erf` within
+  1.5e-8 of the f64 one), down and bias;
+- each memory-attention block as one call: the query projection, the
+  attention and the output projection.
+
+The CPU and CUDA paths keep their per-op behaviour through the trait
+defaults.
+
+Results, under similar load (load average about 30–40):
+
+- **Round trips:** 23 instead of 52.
+- **Head time at 4k:** 58–68 ms, against 270 ms.
+- **Parity:**
+  - against the previous Metal build: max |Δp| 1.8e-7;
+  - against the CPU lane: still 100 % top-answer agreement, max |Δp|
+    0.0008.
+
+**The gate run.** A watcher on the Mac (`gate.sh` in the session
+scratch) waits for a quiet machine: 1- and 5-minute load averages below
+10, and the GPU visualizer closed. It then runs Psionic Metal and Ollama
+0.40 `clef-flash` interleaved, three rounds of median-of-5, and records
+the load for each run.
+
 ### Next
 
 - The M3 gate on a quiet Mac, against Ollama and MLX, with a per-phase

@@ -173,6 +173,67 @@ impl DeviceTrunk {
         }
     }
 
+    /// Independent head products in one round trip (Metal); `None` where
+    /// the device has no batched path or a matrix is not resident.
+    pub fn head_linear_batch(&self, jobs: &[(&[f32], &[f32], usize, Option<&[f32]>)]) -> Result<Option<Vec<Vec<f32>>>, String> {
+        match self {
+            Self::Cuda(_) => {
+                let _ = jobs;
+                Ok(None)
+            }
+            #[cfg(target_os = "macos")]
+            Self::Metal(trunk) => trunk.head_linear_batch(jobs),
+        }
+    }
+
+    /// The head's feed-forward in one round trip (Metal); `None` otherwise.
+    #[allow(clippy::too_many_arguments)]
+    pub fn head_feedforward(
+        &self,
+        up: &[f32],
+        up_bias: &[f32],
+        down: &[f32],
+        down_bias: &[f32],
+        input: &[f32],
+        n: usize,
+    ) -> Result<Option<Vec<f32>>, String> {
+        match self {
+            Self::Cuda(_) => {
+                let _ = (up, up_bias, down, down_bias, input, n);
+                Ok(None)
+            }
+            #[cfg(target_os = "macos")]
+            Self::Metal(trunk) => trunk.head_feedforward(up, up_bias, down, down_bias, input, n),
+        }
+    }
+
+    /// A memory-attention block in one round trip (Metal); `None` otherwise.
+    #[allow(clippy::too_many_arguments)]
+    pub fn head_attend_block(
+        &self,
+        evidence: Option<usize>,
+        q: (&[f32], &[f32]),
+        key_matrix: &[f32],
+        value_matrix: &[f32],
+        value_bias: &[f32],
+        out: (&[f32], &[f32]),
+        queries: &[f32],
+        rows: usize,
+        heads: usize,
+        scale: f32,
+    ) -> Result<Option<Vec<f32>>, String> {
+        match self {
+            Self::Cuda(_) => {
+                let _ = (evidence, q, key_matrix, value_matrix, value_bias, out, queries, rows, heads, scale);
+                Ok(None)
+            }
+            #[cfg(target_os = "macos")]
+            Self::Metal(trunk) => trunk.head_attend_block(
+                evidence, q, key_matrix, value_matrix, value_bias, out, queries, rows, heads, scale,
+            ),
+        }
+    }
+
     /// See [`ClefCudaTrunk::head_linear`].
     pub fn head_linear(&self, values: &[f32], input: &[f32], n: usize) -> Result<Option<Vec<f32>>, String> {
         match self {
@@ -1047,6 +1108,80 @@ impl<'a> DeviceMemory<'a> {
 }
 
 impl MemoryAttention for DeviceMemory<'_> {
+    fn linear_batch(
+        &mut self,
+        jobs: &[(&head::Matrix, &[f32], usize, Option<&[f32]>)],
+    ) -> Result<Vec<Vec<f32>>, String> {
+        let began = Instant::now();
+        let device_jobs: Vec<(&[f32], &[f32], usize, Option<&[f32]>)> = jobs
+            .iter()
+            .map(|(matrix, input, n, bias)| (matrix.values.as_slice(), *input, *n, *bias))
+            .collect();
+        if let Some(out) = self.trunk.head_linear_batch(&device_jobs)? {
+            self.linear.0 += jobs.len();
+            self.linear.1 += began.elapsed().as_secs_f64();
+            return Ok(out);
+        }
+        jobs.iter()
+            .map(|(matrix, input, n, bias)| self.linear(matrix, input, *n, *bias))
+            .collect()
+    }
+
+    fn feedforward_block(
+        &mut self,
+        up: &head::Matrix,
+        up_bias: &[f32],
+        down: &head::Matrix,
+        down_bias: &[f32],
+        input: &[f32],
+        n: usize,
+    ) -> Result<Vec<f32>, String> {
+        let began = Instant::now();
+        if let Some(out) = self
+            .trunk
+            .head_feedforward(&up.values, up_bias, &down.values, down_bias, input, n)?
+        {
+            self.linear.0 += 2;
+            self.linear.1 += began.elapsed().as_secs_f64();
+            return Ok(out);
+        }
+        head::feedforward_host(self, up, up_bias, down, down_bias, input, n)
+    }
+
+    fn attend_memory_block(
+        &mut self,
+        attention: &head::Attention,
+        heads: usize,
+        queries: &[f32],
+        n_query: usize,
+        view: MemoryView,
+        width: usize,
+    ) -> Result<Vec<f32>, String> {
+        let began = Instant::now();
+        let evidence = match view {
+            MemoryView::Evidence(layer) => Some(layer),
+            MemoryView::Raw => None,
+        };
+        let scale = 1.0 / ((width / heads.max(1)) as f32).sqrt();
+        if let Some(out) = self.trunk.head_attend_block(
+            evidence,
+            (&attention.q.values, &attention.q_bias),
+            &attention.k.values,
+            &attention.v.values,
+            &attention.v_bias,
+            (&attention.out.values, &attention.out_bias),
+            queries,
+            n_query,
+            heads,
+            scale,
+        )? {
+            self.attend.0 += 1;
+            self.attend.1 += began.elapsed().as_secs_f64();
+            return Ok(out);
+        }
+        head::attend_memory_host(self, attention, heads, queries, n_query, view, width)
+    }
+
     fn attend(
         &mut self,
         view: MemoryView,

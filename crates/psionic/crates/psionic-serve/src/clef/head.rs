@@ -846,14 +846,13 @@ fn attend(
     backend: &mut dyn MemoryAttention,
     attention: &Attention,
     heads: usize,
-    queries: &[f32],
+    projected: &[f32],
     n_query: usize,
     keys: &[f32],
     values: &[f32],
     n_key: usize,
     width: usize,
 ) -> Result<Vec<f32>, String> {
-    let projected = backend.linear(&attention.q, queries, n_query, Some(&attention.q_bias))?;
     let head_dim = width / heads;
     let scale = 1.0 / (head_dim as f32).sqrt();
     let mut context = vec![0.0f32; n_query * width];
@@ -880,19 +879,6 @@ fn attend(
             }
         });
     backend.linear(&attention.out, &context, n_query, Some(&attention.out_bias))
-}
-
-/// Keys and values of one attention against `n` rows.
-fn project_memory(
-    backend: &mut dyn MemoryAttention,
-    attention: &Attention,
-    memory: &[f32],
-    n: usize,
-) -> Result<(Vec<f32>, Vec<f32>), String> {
-    Ok((
-        backend.linear(&attention.k, memory, n, Some(&attention.k_bias))?,
-        backend.linear(&attention.v, memory, n, Some(&attention.v_bias))?,
-    ))
 }
 
 /// Which memory the attention reads: an evidence layer's `LN_m(M)` or the
@@ -930,6 +916,45 @@ pub trait MemoryAttention {
         width: usize,
     ) -> Result<Vec<f32>, String> {
         attend_projected_host(self, attention, heads, projected, n_query, view, width)
+    }
+
+    /// Several independent products `X W^T (+ b)` at once (`(matrix, X,
+    /// rows of X, bias)`), so a device backend can run them in one round
+    /// trip. The default runs them one by one through [`Self::linear`].
+    fn linear_batch(&mut self, jobs: &[(&Matrix, &[f32], usize, Option<&[f32]>)]) -> Result<Vec<Vec<f32>>, String> {
+        jobs.iter()
+            .map(|(matrix, input, n, bias)| self.linear(matrix, input, *n, *bias))
+            .collect()
+    }
+
+    /// The feed-forward `down(gelu(up x + b_up)) + b_down`, in one round
+    /// trip on a device backend ([`feedforward_host`] by default).
+    #[allow(clippy::too_many_arguments)]
+    fn feedforward_block(
+        &mut self,
+        up: &Matrix,
+        up_bias: &[f32],
+        down: &Matrix,
+        down_bias: &[f32],
+        input: &[f32],
+        n: usize,
+    ) -> Result<Vec<f32>, String> {
+        feedforward_host(self, up, up_bias, down, down_bias, input, n)
+    }
+
+    /// A whole memory-attention block (query projection, attention, output
+    /// projection), in one round trip on a device backend
+    /// ([`attend_memory_host`] by default).
+    fn attend_memory_block(
+        &mut self,
+        attention: &Attention,
+        heads: usize,
+        queries: &[f32],
+        n_query: usize,
+        view: MemoryView,
+        width: usize,
+    ) -> Result<Vec<f32>, String> {
+        attend_memory_host(self, attention, heads, queries, n_query, view, width)
     }
 
     /// `X W^T (+ b)` for `n` rows of `X`: every dense matrix product of the
@@ -1021,6 +1046,20 @@ fn attend_memory(
     view: MemoryView,
     width: usize,
 ) -> Result<Vec<f32>, String> {
+    memory.attend_memory_block(attention, heads, queries, n_query, view, width)
+}
+
+/// [`MemoryAttention::attend_memory_block`] on the host's terms: the query
+/// projection, [`MemoryAttention::attend_projected`], the output projection.
+pub fn attend_memory_host<M: MemoryAttention + ?Sized>(
+    memory: &mut M,
+    attention: &Attention,
+    heads: usize,
+    queries: &[f32],
+    n_query: usize,
+    view: MemoryView,
+    width: usize,
+) -> Result<Vec<f32>, String> {
     let projected = memory.linear(&attention.q, queries, n_query, Some(&attention.q_bias))?;
     let context = memory.attend_projected(attention, heads, &projected, n_query, view, width)?;
     memory.linear(&attention.out, &context, n_query, Some(&attention.out_bias))
@@ -1073,6 +1112,19 @@ pub fn attend_projected_host<M: MemoryAttention + ?Sized>(
 
 fn feedforward(
     backend: &mut dyn MemoryAttention,
+    up: &Matrix,
+    up_bias: &[f32],
+    down: &Matrix,
+    down_bias: &[f32],
+    input: &[f32],
+    n: usize,
+) -> Result<Vec<f32>, String> {
+    backend.feedforward_block(up, up_bias, down, down_bias, input, n)
+}
+
+/// [`MemoryAttention::feedforward_block`] on the host's terms.
+pub fn feedforward_host<M: MemoryAttention + ?Sized>(
+    backend: &mut M,
     up: &Matrix,
     up_bias: &[f32],
     down: &Matrix,
@@ -1268,24 +1320,16 @@ pub fn run_head(
     let flat = |rows: &[Vec<f32>]| rows.concat();
 
     // R = W_oc c + W_ol l + W_oq q
-    let option_question = memory.linear(
-        &weights.option_question_projection,
-        &flat(&question_vectors),
-        question_count,
-        None,
-    )?;
-    let context = memory.linear(
-        &weights.option_context_projection,
-        &flat(&option_context),
-        n_options,
-        None,
-    )?;
-    let lexical_part = memory.linear(
-        &weights.option_lexical_projection,
-        &flat(&lexical),
-        n_options,
-        None,
-    )?;
+    let (questions_flat, context_flat, lexical_flat) =
+        (flat(&question_vectors), flat(&option_context), flat(&lexical));
+    let mut projected = memory.linear_batch(&[
+        (&weights.option_question_projection, &questions_flat, question_count, None),
+        (&weights.option_context_projection, &context_flat, n_options, None),
+        (&weights.option_lexical_projection, &lexical_flat, n_options, None),
+    ])?;
+    let lexical_part = projected.pop().ok_or("option projections")?;
+    let context = projected.pop().ok_or("option projections")?;
+    let option_question = projected.pop().ok_or("option projections")?;
     let mut routed = vec![0.0f32; n_options * w];
     for (index, row) in routed.chunks_mut(w).enumerate() {
         let question = &option_question[owner[index] * w..(owner[index] + 1) * w];
@@ -1322,13 +1366,12 @@ pub fn run_head(
     }
 
     // Fields.
-    let base_fields = memory.linear(
-        &weights.question_projection,
-        &flat(&question_vectors),
-        question_count,
-        None,
-    )?;
-    let global_projected = memory.linear(&weights.global_projection, &global, 1, None)?;
+    let mut projected = memory.linear_batch(&[
+        (&weights.question_projection, &questions_flat, question_count, None),
+        (&weights.global_projection, &global, 1, None),
+    ])?;
+    let global_projected = projected.pop().ok_or("field projections")?;
+    let base_fields = projected.pop().ok_or("field projections")?;
     let mut fields = vec![0.0f32; question_count * w];
     let mut first_option = 0;
     let mut option_ranges = Vec::with_capacity(question_count);
@@ -1362,13 +1405,20 @@ pub fn run_head(
 
     for layer in &weights.layers {
         let normalized = layer.self_norm.apply_rows(&fields, w);
-        let (keys, values) =
-            project_memory(memory, &layer.self_attention, &normalized, question_count)?;
+        let a = &layer.self_attention;
+        let mut kvq = memory.linear_batch(&[
+            (&a.k, &normalized, question_count, Some(&a.k_bias)),
+            (&a.v, &normalized, question_count, Some(&a.v_bias)),
+            (&a.q, &normalized, question_count, Some(&a.q_bias)),
+        ])?;
+        let queries = kvq.pop().ok_or("self-attention projections")?;
+        let values = kvq.pop().ok_or("self-attention projections")?;
+        let keys = kvq.pop().ok_or("self-attention projections")?;
         let attended = attend(
             memory,
             &layer.self_attention,
             config.heads,
-            &normalized,
+            &queries,
             question_count,
             &keys,
             &values,

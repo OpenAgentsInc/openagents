@@ -160,6 +160,7 @@ const KERNELS: &[&str] = &[
     "clef_linear_f32_ordered",
     "clef_head_side",
     "clef_head_context",
+    "clef_bias_act",
 ];
 
 impl ClefMetal {
@@ -881,6 +882,19 @@ impl ClefMetalBatch<'_> {
         let nmk = [int(n, "n")?, int(m, "m")?, int(k, "k")?, 0];
         self.bytes(3, &nmk);
         self.groups(size(m.div_ceil(64), n.div_ceil(64), 1), size(256, 1, 1));
+        Ok(())
+    }
+
+    /// `x[r, c] += b[c]`, then GELU (erf form) when `gelu`; in place.
+    pub fn bias_act(&self, x: &ClefMetalBuffer, b: &ClefMetalBuffer, rows: usize, cols: usize, gelu: bool) -> Result<(), String> {
+        x.check(0, rows * cols * 4, "bias x")?;
+        b.check(0, cols * 4, "bias b")?;
+        self.pipeline("clef_bias_act")?;
+        self.bind(0, x, 0);
+        self.bind(1, b, 0);
+        let rcg = [int(rows, "rows")?, int(cols, "cols")?, u32::from(gelu), 0];
+        self.bytes(2, &rcg);
+        self.threads(rows * cols, 256);
         Ok(())
     }
 
