@@ -1810,3 +1810,26 @@ chat-router-v5@bcab1427d09d (Live)`, and bank `chat-answers-v1@c81c3764a2f3`
 chats?" with the `openagents.chat-privacy` note, "how long do you keep my
 chats?" from the notes on the retention details, and "what is memory in
 coder?" with the `openagents.coder-memory` note shown whole.
+
+Release `8e2b053dfa` (2026-10-10 UTC) gives prepared answers inline
+components (#11187, #11113 phase 1): `meta.codebase` v2,
+`meta.coder.website` v3, `meta.github.website` v3, and the notes on
+connecting a codebase, installing Coder, Coder's sign-in and sync,
+connecting a computer, connecting a repository, getting the apps, and
+signing in carry a one-line lead and a fenced `openui-lang` block (buttons
+that start each flow, copyable install commands per system, numbered
+steps). The website draws the block as components; phone and desktop builds
+from this commit draw its Markdown fallback; earlier app builds show the
+block as a code block. Built with `cargo zigbuild --locked --release -p
+coder --bin coder-worker --target x86_64-unknown-linux-musl` at that commit
+on this Mac (sha256 `64205c8c8c15dbe5…`), installed with `knowledge/` from
+`git archive 8e2b053dfa knowledge/` and `codebase-kb.gz` copied from
+`15020bfbbc`, checked with `--check`, and put live by moving the `chat`
+symlink and restarting `coder-worker-chat`; `15020bfbbc` stays for
+rollback. The log names `product kb openagents-product@d7bef5c538d6 (110
+entries)` and bank `chat-answers-v1@5f318e29b725` (90 answers). From
+CoderOS, `openagents chat` answered "How do I connect my codebase?" with
+`meta.codebase@2` and its block; on openagents.com (web revision
+`coder-web-e4d9859dce-20261010023417`) the same question shows the two
+cards, "Log in to connect" signed out, the install command tabs, and the
+steps.
