@@ -59,8 +59,8 @@ release() {
     digest=$1
     full=$(git -C "$ROOT" rev-parse "$2^{commit}")
     build_id=$(g builds list --project "$PROJECT" --filter="substitutions._TAG=$(printf '%s' "$full" | cut -c1-10) AND status=SUCCESS" --format='value(id)' --limit 1)
-    sums=$(g logging read "resource.type=\"build\" AND resource.labels.build_id=\"$build_id\" AND textPayload:\"/usr/local/bin\" OR (resource.labels.build_id=\"$build_id\" AND textPayload:\"  /p\")" \
-        --project "$PROJECT" --limit 200 --format='value(textPayload)' | grep -Eo '[0-9a-f]{64}  /(psionic-openai-server|pylon)' | sort -u)
+    sums=$(g logging read "resource.type=\"build\" AND resource.labels.build_id=\"$build_id\" AND textPayload:\"  /p\"" \
+        --project "$PROJECT" --limit 50 --format='value(textPayload)' | grep -Eo '[0-9a-f]{64}  /(psionic-openai-server|pylon)' | sort -u)
     psionic=$(printf '%s\n' "$sums" | awk '$2 == "/psionic-openai-server" { print $1; exit }')
     pylon=$(printf '%s\n' "$sums" | awk '$2 == "/pylon" { print $1; exit }')
     [ -n "$psionic" ] && [ -n "$pylon" ] || { say "no binary digests in build $build_id's log"; exit 1; }
