@@ -3964,6 +3964,13 @@ fn supported_prompt_template_family(digest: &str) -> Option<GgufPromptTemplateFa
         "af9c0233881b083b52ff773580215222b5440ac3d0beeeca99b76329b048f8db" => {
             Some(GgufPromptTemplateFamily::Qwen2)
         }
+        // Qwen2.5 Instruct's own GGUF template (Qwen/Qwen2.5-0.5B-Instruct-GGUF):
+        // ChatML, as qwen2's, with Qwen's default system line and tool
+        // blocks this renderer leaves out. A turn that sends its own
+        // system message renders the same (#11240, the vault's local model).
+        "d5495a1e5db0611132a97e46a65dbb64a642a499421228b9c8b93229097fa9a4" => {
+            Some(GgufPromptTemplateFamily::Qwen2)
+        }
         "8d51e8f9694b24924c7795050ecb7a605fcbd0d7980b40c56ad3e0561d465de7" => {
             Some(GgufPromptTemplateFamily::Qwen3)
         }
