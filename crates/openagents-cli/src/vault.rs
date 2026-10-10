@@ -490,7 +490,7 @@ fn media_of(path: &Path) -> &'static str {
 /// that answers this computer's and the browser vault's questions.
 fn serve_local(output: &Output, args: &Args) -> Result<Value, String> {
     let home = home();
-    let port: u16 = args.number("port", 8080)?;
+    let port: u16 = args.number("port", 8091)?;
     let origin = args.option("allow-origin").map_or_else(
         || openagents_login::origin_from(|name| std::env::var(name).ok()),
         str::to_owned,

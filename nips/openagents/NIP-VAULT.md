@@ -353,7 +353,8 @@ for that one turn and sends it to the route the person picked, named in
 the client before they send:
 
 - **On this device** (`device`): a model on the person's own machine, such
-  as a local Psionic server (`psionic-openai-server` on `127.0.0.1`). The
+  as a local Psionic server (`psionic-openai-server` on `127.0.0.1:8091`,
+  started by `openagents vault serve-local` or the apps). The
   plaintext never leaves the machine. Clients make this the default when a
   local model answers.
 - **Fast (Google sees it)** (`fast`): Google Gemini on Vertex AI, through

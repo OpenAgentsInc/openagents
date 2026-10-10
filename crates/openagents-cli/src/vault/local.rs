@@ -12,7 +12,7 @@ use super::api::Plain;
 
 /// Where the local server answers unless `--psionic` or
 /// `OPENAGENTS_PSIONIC_URL` says otherwise.
-pub(crate) const DEFAULT_URL: &str = "http://127.0.0.1:8080";
+pub(crate) const DEFAULT_URL: &str = "http://127.0.0.1:8091";
 /// The most text one question sends to a local model, in characters.
 pub(crate) const MAX_TEXT: usize = 48_000;
 

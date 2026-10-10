@@ -253,7 +253,7 @@ We cannot help, and the copy says so before the person turns it on.
   soft delete off and no versions, so a deleted index is gone.
 - **Answers:** a model reads a vault file only when the person's browser
   decrypts it for that turn and sends it where the person picked: **On this
-  device** (a local Psionic server on `127.0.0.1:8080`, the default when it
+  device** (a local Psionic server on `127.0.0.1:8091` (`openagents vault serve-local` starts it), the default when it
   answers; text files) or **Fast (Google sees it)** (Gemini on Vertex,
   through `POST /vault/api/answer`, which stores and logs nothing). The
   answer is kept as a vault object under the person's own key, labelled

@@ -211,7 +211,7 @@ async fn the_server_stores_ciphertext_only_and_no_canary_anywhere() {
         "{policy}"
     );
     assert!(
-        policy.contains("connect-src 'self' http://127.0.0.1:8080"),
+        policy.contains("connect-src 'self' http://127.0.0.1:8091"),
         "{policy}"
     );
     assert!(!page.body.contains("<script>"), "no inline script");

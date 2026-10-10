@@ -26,7 +26,7 @@ pub mod slot;
 
 use std::fmt;
 
-pub use index::{Entry, Index, Kind};
+pub use index::{Add, Entry, Index, Kind, Route};
 pub use keys::{Dek, Vmk};
 pub use object::{Header, Wrap};
 pub use slot::{Method, Slot};

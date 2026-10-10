@@ -19,7 +19,7 @@ let pairingSlot = null;
 let localModel = null;
 const steps = ["vault-unsupported", "vault-new", "vault-code", "vault-locked", "vault-open"];
 const MAX_FILE = 10 * 1024 * 1024;
-const LOCAL = "http://127.0.0.1:8080";
+const LOCAL = "http://127.0.0.1:8091";
 
 function show(id) {
   for (const step of steps) $(step).hidden = step !== id;
@@ -352,6 +352,12 @@ async function unlockWith(open) {
   clearError();
   try {
     say("Unlocking…");
+    // The vault may have changed since the page loaded or was locked.
+    await fetchState();
+    if (!state) {
+      await setupView();
+      return;
+    }
     vault = await open();
     await afterUnlock();
     say("Unlocked.");
@@ -650,9 +656,10 @@ async function probeLocal() {
   try {
     const response = await fetch(`${LOCAL}/v1/models`, { signal: controller.signal, mode: "cors", credentials: "omit", cache: "no-store" });
     if (response.ok) {
+      // Only a Psionic server counts: the plaintext goes nowhere else.
       const models = await response.json();
-      const first = models && models.data && models.data[0];
-      localModel = first ? first.id : "local";
+      const psionic = ((models && models.data) || []).find((model) => model && model.owned_by === "psionic");
+      localModel = psionic ? psionic.id : null;
     }
   } catch {
     localModel = null;

@@ -527,11 +527,11 @@ fn serve_local_names_the_exact_origin() {
     let command = local::serve_command(
         Path::new("/bin/psionic-openai-server"),
         Path::new("/m/gpt-oss-20b-MXFP4.gguf"),
-        8080,
+        8091,
         "https://openagents.com",
     );
     let line = command.join(" ");
     assert!(line.starts_with("/bin/psionic-openai-server -m /m/gpt-oss-20b-MXFP4.gguf"));
-    assert!(line.ends_with("--host 127.0.0.1 --port 8080 --allow-origin https://openagents.com"));
+    assert!(line.ends_with("--host 127.0.0.1 --port 8091 --allow-origin https://openagents.com"));
     assert!(!line.contains("metal"), "GPT-OSS runs on the CPU");
 }

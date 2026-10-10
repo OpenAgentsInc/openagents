@@ -30,7 +30,7 @@ use crate::ui_page::action_link;
 /// person's own local model server (On this device), and no HTML sinks.
 pub(crate) const POLICY: &str = "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; \
      style-src 'self'; font-src 'self'; img-src 'self' blob:; \
-     connect-src 'self' http://127.0.0.1:8080 http://localhost:8080; \
+     connect-src 'self' http://127.0.0.1:8091 http://localhost:8091; \
      base-uri 'none'; form-action 'self'; frame-ancestors 'none'; \
      require-trusted-types-for 'script'; trusted-types 'none'";
 
