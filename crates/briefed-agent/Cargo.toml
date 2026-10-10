@@ -12,7 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 claude_agent_sdk = { path = "../claude_agent_sdk" }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "fs", "process"] }
 futures = "0.3"
 serde_json = "1"
 

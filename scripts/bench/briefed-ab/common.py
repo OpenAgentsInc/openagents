@@ -38,9 +38,9 @@ LEVERS: dict[str, object] = {
     "history": 2,                # analogous past changes included
     "plan": "deterministic",     # deterministic | none
     # 2 Instructions
-    "template": "v1",            # system prompt template
+    "template": "v3",            # system prompt template (v3: tool-aware)
     # 3 Tools
-    "tools": "Read,Edit,Write,Grep,Glob",
+    "tools": "verify",           # verify (B0) | bash | checks | verify+related|outline|finish ...
     "check_output": "smart",     # smart | full
     # 4 Plugins / MCP / skills
     "mcp": "checks",             # only the bench's check server

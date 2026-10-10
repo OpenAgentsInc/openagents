@@ -22,8 +22,12 @@
 //! limit, and where to write the event log (one JSON line per message) and
 //! the summary.
 
+mod tools;
+mod verify;
+
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -191,6 +195,13 @@ async fn run() -> Result<(), String> {
             allowed.push(format!("mcp__{name}"));
         }
     }
+    let custom = strings(&config["custom"]);
+    let finished = Arc::new(AtomicBool::new(false));
+    if let Some(server) = tools::server(&worktree, &config, &custom, finished.clone()) {
+        allowed.extend(server.allowed_tool_names());
+        allowed.push("mcp__oa".to_owned());
+        options = options.sdk_mcp_server(server);
+    }
     options.env_remove = REMOVED_ENV.iter().map(|&name| name.to_owned()).collect();
 
     let ledger: Shared<Ledger> = Arc::default();
@@ -209,6 +220,7 @@ async fn run() -> Result<(), String> {
     let mut result: Option<Value> = None;
     let mut error: Option<String> = None;
     let mut timed_out = false;
+    let mut interrupted = false;
     let mut query = claude_agent_sdk::query_with_permissions(prompt, options, handler)
         .await
         .map_err(|error| format!("Claude Code didn't start: {error}"))?;
@@ -241,6 +253,11 @@ async fn run() -> Result<(), String> {
                 events.push('\n');
             }
             SdkMessage::User(user) => {
+                if !interrupted && finished.load(Ordering::SeqCst) {
+                    // `finish` passed: end the run without another turn.
+                    interrupted = true;
+                    let _ = query.interrupt().await;
+                }
                 events.push_str(
                     &json!({"type": "user", "t_ms": elapsed_ms, "message": user.message})
                         .to_string(),
@@ -279,6 +296,7 @@ async fn run() -> Result<(), String> {
         "misses": ledger.misses,
         "denied": ledger.denied,
         "check_runs": ledger.check_runs,
+        "finished": finished.load(Ordering::SeqCst),
     });
     std::fs::write(
         &summary_path,
@@ -334,7 +352,8 @@ fn observe(root: &Path, briefed: &BTreeSet<String>, ledger: &Shared<Ledger>, mes
         let name = block["name"].as_str().unwrap_or("?").to_owned();
         let input = &block["input"];
         *ledger.tool_calls.entry(name.clone()).or_default() += 1;
-        if name.starts_with("mcp__checks") {
+        if name.starts_with("mcp__checks") || name == "mcp__oa__verify" || name == "mcp__oa__finish"
+        {
             ledger.check_runs += 1;
         }
         let Some(Some(relative)) = inside(root, input) else {

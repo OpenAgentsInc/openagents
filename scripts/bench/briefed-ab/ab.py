@@ -51,7 +51,7 @@ from prepare import TASKS, grade
 
 SHIM = HERE / "shim"
 AGENT_BIN = Path(os.environ.get(
-    "AB_AGENT_BIN", str(WORK / "bin" / "briefed-agent")))
+    "AB_AGENT_BIN", str(WORK / "bin" / "briefed-agent-2")))
 CLAUDE = shutil.which("claude") or "claude"
 SPARSE = ["/*", "!/bench/terminal-bench/", "!/assets/"]
 BASE_DEPTH = 50
@@ -184,15 +184,31 @@ def run_arm_a(task: dict, root: Path, out: Path, levers: dict, slot: int) -> dic
         argv += ["--max-turns", str(levers["max_turns"])]
     started = time.time()
     timed_out = False
-    with open(out / "events.jsonl", "w") as sink:
-        proc = subprocess.Popen(argv, cwd=root, env=trial_env(root, task, slot), stdout=sink,
-                                stderr=subprocess.PIPE, text=True, start_new_session=True)
+    with open(out / "events.jsonl", "w") as sink, open(out / "stderr.txt", "w") as errf:
+        proc = subprocess.Popen(argv, cwd=root, env=trial_env(root, task, slot), stdout=subprocess.PIPE,
+                                stderr=errf, text=True, start_new_session=True)
+
+        def pump() -> None:
+            # Stamp each event with the time it arrived (t_ms), as arm B's log does.
+            for line in proc.stdout:
+                try:
+                    ev = json.loads(line)
+                    ev["t_ms"] = int((time.time() - started) * 1000)
+                    sink.write(json.dumps(ev) + "\n")
+                except json.JSONDecodeError:
+                    sink.write(line)
+                sink.flush()
+
+        reader = threading.Thread(target=pump)
+        reader.start()
         try:
-            _, err = proc.communicate(timeout=int(levers["timeout_secs"]))
+            proc.wait(timeout=int(levers["timeout_secs"]))
         except subprocess.TimeoutExpired:
             timed_out = True
             os.killpg(proc.pid, signal.SIGKILL)
-            _, err = proc.communicate()
+            proc.wait()
+        reader.join(timeout=30)
+    err = (out / "stderr.txt").read_text()
     wall = time.time() - started
     events = []
     for line in (out / "events.jsonl").read_text().splitlines():
@@ -228,14 +244,111 @@ Rules of work:
 TEMPLATES = {"v1": SYSTEM_V1, "v2": SYSTEM_V2}
 
 
+BUILTIN = ["Read", "Edit", "Write", "Grep", "Glob"]
+
+
+def tool_set(spec: str) -> tuple[list[str], list[str], bool]:
+    """A `tools` lever value -> (built-ins, custom tools, run_check server).
+
+    `verify` (B0): the five file tools plus `verify`. `bash` (B-bash): the
+    five plus Bash, no verify. `checks`: the pilot's run_check server.
+    Extras join with `+`: `verify+related`, `verify+outline` (outline and
+    read_symbol), `verify+finish`. A comma list names built-ins directly
+    (the pilot's form).
+    """
+    if "," in spec:
+        return spec.split(","), [], True
+    parts = spec.split("+")
+    builtins, custom, checks = list(BUILTIN), [], False
+    base = parts[0]
+    if base == "verify":
+        custom.append("verify")
+    elif base == "bash":
+        builtins.append("Bash")
+    elif base == "checks":
+        checks = True
+    for extra in parts[1:]:
+        if extra == "outline":
+            custom += ["outline", "read_symbol"]
+        elif extra == "bash":
+            builtins.append("Bash")
+        else:
+            custom.append(extra)
+    return builtins, custom, checks
+
+
+def how_to_work(builtins: list[str], custom: list[str], checks: bool, pkgs: list[str]) -> str:
+    p = pkgs[0] if pkgs else "CRATE"
+    lines = []
+    if "outline" in custom:
+        lines.append("- Read only what you need: `outline` a file to see its items, `read_symbol` to read one item. "
+                     "Read whole files only when that is not enough.")
+    if "related" in custom:
+        lines.append("- `related` tells you what else changes with a file or symbol (history, uses, tests).")
+    if "verify" in custom:
+        lines.append("- Check your work with `verify` (pass `tests` with your new tests' names). It compiles, runs the "
+                     "tests and formats, and returns only what is wrong; fix that and call it again.")
+    elif "Bash" in builtins:
+        lines.append(f"- Check your work with Bash: `cargo check -p {p} --tests`, then `cargo test -p {p} <your test "
+                     f"names>`, then `cargo fmt -p {p}`. Fix what fails and run again.")
+    elif checks:
+        lines.append("- Check your work with `run_check`: the `check` first, then the `test` with a filter naming "
+                     "your tests, then `fmt`. Fix what fails and run again.")
+    if "finish" in custom:
+        lines.append("- When the checks pass, call `finish` with a short summary; that ends the run.")
+    else:
+        lines.append("- When the checks pass, stop. Reply in two or three lines with what changed.")
+    return "\n".join(lines)
+
+
+SYSTEM_V3 = """You are a senior Rust engineer making one change in the OpenAgents monorepo. Your working directory is the repository checkout at the issue's base commit.
+
+Below is a briefing for this issue: a change plan, the files to change with excerpts (line numbers are the file's own), similar past changes, the checks, and the repo rules.
+
+How to work:
+- Trust the briefing. Start from the listed files and excerpts. Open a file the briefing does not list only when the change, the compiler, or a test demands it.
+- Make the smallest complete change that resolves the issue, in the surrounding style, and add or update a test that pins the new behavior.
+{tools}
+- Do not commit.
+"""
+TEMPLATES["v3"] = SYSTEM_V3
+
+
+def cochange(rev: str, paths: list[str]) -> dict:
+    """path -> partners that changed with it before `rev` (for verify)."""
+    out = {}
+    for path in paths[:6]:
+        log = run(["git", "log", rev, "-n", "300", "--no-merges", "--format=@@", "--name-only", "--", path],
+                  cwd=REPO, check=False).stdout
+        counts: dict[str, int] = {}
+        for chunk in log.split("@@"):
+            files = [f for f in chunk.splitlines() if f.strip()]
+            if not files or len(files) > 40:
+                continue
+            for f in files:
+                if f != path and not f.endswith("Cargo.lock"):
+                    counts[f] = counts.get(f, 0) + 1
+        out[path] = [{"path": f, "count": c} for f, c in sorted(counts.items(), key=lambda x: -x[1])[:6] if c >= 3]
+    return out
+
+
 def run_arm_b(task: dict, root: Path, out: Path, levers: dict, slot: int) -> dict:
     t0 = time.time()
     b = briefing_mod.build(task, levers)
+    builtins, custom, checks = tool_set(levers["tools"])
+    pkgs = []
+    for c in b["checks"]:
+        pkg = c["id"].split(":", 1)[1]
+        if pkg not in pkgs:
+            pkgs.append(pkg)
+    co = cochange(task["parent"], [f["path"] for f in b["files"]]) if "verify" in custom else {}
     brief_secs = time.time() - t0
     md = briefing_mod.render(b)
     dump_json(out / "briefing.json", b)
     (out / "briefing.md").write_text(md)
     template = TEMPLATES[levers["template"]]
+    if "{tools}" in template:
+        template = template.replace("{tools}", how_to_work(builtins, custom, checks, pkgs))
     if levers["briefing_in"] == "system":
         system, prompt = template + "\n\n" + md, f"Complete issue #{task['issue']} as the briefing describes."
     else:
@@ -243,22 +356,35 @@ def run_arm_b(task: dict, root: Path, out: Path, levers: dict, slot: int) -> dic
     (out / "system.md").write_text(system)
     (out / "prompt.md").write_text(prompt)
     env = trial_env(root, task, slot)
-    mcp_env = {k: env[k] for k in ("PATH", "AB_ROOT", "AB_BASE", "AB_SLOT", "HOME") if k in env}
-    mcp_env.update({"AB_CHECKS": json.dumps(b["checks"]), "AB_CHECK_OUTPUT": levers["check_output"],
-                    "AB_CHECK_LOG": str(out / "checks.jsonl")})
     config = {
         "worktree": str(root), "system_prompt_path": str(out / "system.md"), "prompt_path": str(out / "prompt.md"),
         "events_path": str(out / "events.jsonl"), "summary_path": str(out / "summary.json"),
         "briefed_files": [f["path"] for f in b["files"]],
         "model": levers["model"], "effort": None if levers["effort"] == "default" else levers["effort"],
         "max_turns": int(levers["max_turns"]) or None, "timeout_secs": int(levers["timeout_secs"]),
-        "tools": levers["tools"].split(","),
-        "mcp": {"checks": {"command": sys.executable, "args": [str(HERE / "checks_mcp.py")], "env": mcp_env}},
+        "tools": builtins, "custom": custom,
+        "finish_path": str(out / "finish.json"),
+        "related": {"repo": str(REPO), "rev": task["parent"]},
     }
+    if checks:
+        mcp_env = {k: env[k] for k in ("PATH", "AB_ROOT", "AB_BASE", "AB_SLOT", "HOME") if k in env}
+        mcp_env.update({"AB_CHECKS": json.dumps(b["checks"]), "AB_CHECK_OUTPUT": levers["check_output"],
+                        "AB_CHECK_LOG": str(out / "checks.jsonl")})
+        config["mcp"] = {"checks": {"command": sys.executable, "args": [str(HERE / "checks_mcp.py")], "env": mcp_env}}
+    if "verify" in custom or "finish" in custom:
+        v = TASKS / str(task["issue"]) / "validation.json"
+        baseline = load_json(v)["on_parent"].get("errors", []) if v.exists() else []
+        config["verify"] = {
+            "exec": str(SHIM / "remote-exec"), "crates": pkgs,
+            "baseline_errors": [e for e in baseline if not e.startswith("error: could not compile")],
+            "done_when": [p.removeprefix("Required: ") for p in b["plan"] if p.startswith("Required: ")]
+            or [task["title"]],
+            "cochange": co, "log": str(out / "verify.jsonl"),
+        }
     dump_json(out / "agent.json", config)
     started = time.time()
     proc = subprocess.run([str(AGENT_BIN), str(out / "agent.json")], cwd=root, env=env,
-                          capture_output=True, text=True, timeout=int(levers["timeout_secs"]) + 120)
+                          capture_output=True, text=True, timeout=int(levers["timeout_secs"]) + 300)
     wall = time.time() - started + brief_secs
     summary = load_json(out / "summary.json") if (out / "summary.json").exists() else {}
     return {
@@ -268,6 +394,7 @@ def run_arm_b(task: dict, root: Path, out: Path, levers: dict, slot: int) -> dic
         "tool_calls": summary.get("tool_calls", {}), "files_read": summary.get("files_read", []),
         "misses": summary.get("misses", []), "check_runs": summary.get("check_runs"),
         "denied": summary.get("denied", []), "result": summary.get("result"),
+        "finished": summary.get("finished"),
     }
 
 
@@ -309,17 +436,97 @@ def compiles_vs_parent(task: dict, g: dict) -> bool | None:
     return not new_errors(task, g)
 
 
+PATH_RE = re.compile(r"(?:crates|apps|docs|scripts|bins|os)/[\w./@+-]+\.[A-Za-z0-9]+")
+
+
+def tool_log(events: list[dict], root: Path) -> list[dict]:
+    """One row per tool call: tokens in and out (chars / 4), seconds, and
+    whether the agent acted on the result (its next edit touched a file
+    the result named)."""
+    uses, results, order = {}, {}, []
+    prefix = str(root.resolve()) + "/"
+    for ev in events:
+        t = ev.get("t_ms")
+        msg = ev.get("message") or {}
+        for block in msg.get("content") or [] if isinstance(msg.get("content"), list) else []:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "tool_use":
+                uses[block["id"]] = (block.get("name"), block.get("input") or {}, t)
+                order.append(block["id"])
+            elif block.get("type") == "tool_result":
+                content = block.get("content")
+                text = content if isinstance(content, str) else json.dumps(content)
+                results[block.get("tool_use_id")] = (text, t)
+    edits = []
+    for i, uid in enumerate(order):
+        name, inp, _ = uses[uid]
+        if name in ("Edit", "Write", "MultiEdit"):
+            edits.append((i, (inp.get("file_path") or "").replace(prefix, "")))
+    rows = []
+    for i, uid in enumerate(order):
+        name, inp, t0 = uses[uid]
+        text, t1 = results.get(uid, ("", None))
+        named = {p for p in PATH_RE.findall(text.replace(prefix, ""))}
+        nxt = next((f for j, f in edits if j > i), None)
+        rows.append({
+            "tool": name, "tokens_in": len(json.dumps(inp)) // 4, "tokens_out": len(text) // 4,
+            "secs": round((t1 - t0) / 1000, 1) if t0 is not None and t1 is not None else None,
+            "named_files": len(named), "acted_on": bool(nxt and nxt in named) if named else None,
+        })
+    return rows
+
+
+# Arms (docs/inference/briefed-agent-tools.md): every arm but A is the
+# briefed agent with these levers over the batch's.
+ARMS: dict[str, dict] = {
+    "B": {},                                   # the batch's own levers
+    "B0": {"tools": "verify"},                 # briefed, minimal tools + verify
+    "Bbash": {"tools": "bash"},                # briefed, Bash instead of verify
+    "Bchecks": {"tools": "checks"},            # round 0's run_check server
+    "C": {"finder": "oracle"},                 # oracle briefing, B0's tools
+    "Brelated": {"tools": "verify+related"},
+    "Boutline": {"tools": "verify+outline"},
+    "Bfinish": {"tools": "verify+finish"},
+}
+
+
+class RateLimited(RuntimeError):
+    pass
+
+
+def limited(m: dict) -> bool:
+    res = m.get("result") or {}
+    text = json.dumps(res)[:4000] if res else ""
+    return res.get("api_error_status") == 429 or "hit your" in text or "usage limit" in text
+
+
+def wait_for_login() -> None:
+    """Block until the Claude Code login answers again (after a limit)."""
+    while True:
+        proc = subprocess.run([CLAUDE, "-p", "Reply ok", "--output-format", "json", "--model", "haiku"],
+                              capture_output=True, text=True, cwd=str(WORK))
+        try:
+            if not json.loads(proc.stdout).get("is_error"):
+                return
+        except json.JSONDecodeError:
+            pass
+        print("login is at its usage limit; waiting 10 minutes", flush=True)
+        time.sleep(600)
+
+
 def run_trial(task: dict, arm: str, rep: int, levers: dict, slot: int, out: Path) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     root = make_worktree(task, WORK / "wt" / f"slot{slot}")
     try:
         lv = dict(levers)
-        if arm == "C":
-            lv["finder"] = "oracle"
+        lv.update(ARMS.get(arm, {}))
         if arm == "A":
             m = run_arm_a(task, root, out, lv, slot)
         else:
             m = run_arm_b(task, root, out, lv, slot)
+        if limited(m):
+            raise RateLimited("the login hit its usage limit during the trial")
         diff = working_diff(root, task["parent"])
         if lv.get("post_fmt") and diff.strip() and task.get("package"):
             subprocess.run([str(SHIM / "remote-exec"), "cargo", "fmt", "-p", task["package"]],
@@ -328,6 +535,14 @@ def run_trial(task: dict, arm: str, rep: int, levers: dict, slot: int, out: Path
     finally:
         drop_worktree(task, root)
     (out / "change.patch").write_text(diff)
+    events = []
+    if (out / "events.jsonl").exists():
+        for line in (out / "events.jsonl").read_text().splitlines():
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+    tlog = tool_log(events, root)
     changed = diff_files(diff)
     fix_src = [p for p in task["source_files"] if not p.endswith(".md")]
     src_changed = [p for p in changed if not is_test_file(p) and not p.endswith(".md") and not p.endswith(".lock")]
@@ -338,6 +553,7 @@ def run_trial(task: dict, arm: str, rep: int, levers: dict, slot: int, out: Path
         **{k: v for k, v in m.items() if k not in ("result",)},
         **usage_of(m.get("result")),
         "files_changed": changed,
+        "tool_log": tlog,
         "overlap_recall": round(len(hit) / max(1, len(fix_src)), 2),
         "overlap_precision": round(len(hit) / max(1, len(src_changed)), 2) if src_changed else 0.0,
         "diff_lines": sum(1 for l in diff.splitlines() if l[:1] in "+-" and l[:3] not in ("+++", "---")),
@@ -413,7 +629,12 @@ def batch(args) -> None:
                     with _base_lock:
                         run(SSH + ["flock ~/ab/build.lock sh -c 'rm -rf ~/ab/target && mkdir -p ~/ab/target'"], check=False)
                 try:
-                    r = run_trial(task, arm, rep, levers, slot, out)
+                    try:
+                        r = run_trial(task, arm, rep, levers, slot, out)
+                    except RateLimited:
+                        shutil.rmtree(out, ignore_errors=True)
+                        wait_for_login()
+                        r = run_trial(task, arm, rep, levers, slot, out)
                     print(f"[slot{slot}] {issue} {arm}{rep}: ${r['cost_usd']} {r['wall_secs']}s "
                           f"compiles={r['compiles']} tests={r['tests_pass']} overlap={r['overlap_recall']}", flush=True)
                 except Exception as error:  # noqa: BLE001 - record and go on

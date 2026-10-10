@@ -399,7 +399,7 @@ def render(b: dict) -> str:
         for h in b["history"]:
             out += [f"### {h['commit']} {h['subject']}", "", "```diff", h["diff"], "```", ""]
     if b["checks"]:
-        out += ["## Checks (run them with the `run_check` tool)", ""]
+        out += ["## Checks", ""]
         out += [f"- `{c['id']}`: `{' '.join(c['argv'])}{' [FILTER]' if c.get('filter') else ''}` ({c['what']})" for c in b["checks"]]
         out.append("")
     out += ["## Repo rules", ""] + [f"- {r}" for r in b["rules"]] + [""]
