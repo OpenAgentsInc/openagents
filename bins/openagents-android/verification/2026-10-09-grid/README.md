@@ -12,5 +12,9 @@ emulator, light and dark (`--es appearance light|dark`).
   sticks, no Gym or Everglade arch; light status bar icons over the dark
   world in both themes.
 
+- `enter-the-grid-dark.png`: the live chat's answer to "What is the Verse?"
+  ends with the **Enter the Grid** card (the worker's typed `verse` offer);
+  `enter-the-grid-tapped-dark.png` is the Grid after a tap on it.
+
 Also checked by hand on the emulator: **Try it** on a card, the switch into
 the Verse and back to **Coder**, and the back button from the Verse.
