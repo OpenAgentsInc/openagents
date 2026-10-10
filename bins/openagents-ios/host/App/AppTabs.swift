@@ -275,16 +275,21 @@ extension AppTabs {
     @ViewBuilder var current: some View {
         switch tab {
         case .coder, .verse:
-            ZStack {
+            Group {
                 // Out of the Verse's way, keyboard and all; Rust keeps the
                 // chat's state.
-                if !inVerse {
+                if inVerse {
+                    Color.black.ignoresSafeArea()
+                } else {
                     CoderTab(bridge: bridge, openDrawer: openDrawer,
                              report: { reporter.start(bridge: bridge, place: place) })
                 }
-                // The Verse: the Grid world under the shell's top bar, its
-                // switch back to Coder and the menu. The world is dark only
-                // for now (#11028); it pauses while the chat shows.
+            }
+            // The Verse: the Grid world under the shell's top bar, its
+            // switch back to Coder and the menu, over the chat's place so
+            // it never changes the chat's layout or keyboard. The world is
+            // dark only for now (#11028); it pauses while the chat shows.
+            .overlay {
                 if verseMounted {
                     VerseTab(app: bridge, selected: inVerse, studioComputer: bridge.studioComputer,
                              connectStudio: bridge.studioConnect) { bridge.gymTrain() }

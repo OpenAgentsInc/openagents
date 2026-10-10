@@ -183,6 +183,9 @@ struct HomeCardsSurface: View {
     let tryIt: (String) -> Void
     @State private var chosen: String?
     @State private var clock: CarouselClock?
+    /// The keyboard is up: the cards step aside so the composer stays in
+    /// view above it.
+    @State private var keyboard = false
 
     /// How many times the row repeats; the middle copy shows first.
     private static let copies = 7
@@ -221,6 +224,22 @@ struct HomeCardsSurface: View {
     }
 
     var body: some View {
+        Group {
+            if keyboard {
+                Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                cardsBody
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            keyboard = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keyboard = false
+        }
+    }
+
+    private var cardsBody: some View {
         VStack(spacing: 16) {
             Spacer(minLength: 0)
             GeometryReader { outer in

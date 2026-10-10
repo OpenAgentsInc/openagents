@@ -315,7 +315,8 @@ impl CoderTab {
             false,
             &[],
             None,
-            true,
+            // No keyboard over the cards until the person taps the field.
+            false,
         ));
         page(children)
     }
