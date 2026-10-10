@@ -12,4 +12,9 @@ A debug simulator build (iPhone 17 Pro, not a preview build), from
   build. The world is dark in both themes, and so is its status bar.
 - `try-verse-*.png`: **Explore the Verse**'s Try it, straight into the Grid.
 
+- `enter-the-grid-*.png`: the live chat's answer to "What is the Verse?"
+  (`meta.verse@1` from the deployed worker, release `a32a919471`) ends with
+  the **Enter the Grid** card from its typed `verse` offer; a tap switches
+  to the Grid.
+
 The test then taps **Coder** and checks the chat is back with its composer.

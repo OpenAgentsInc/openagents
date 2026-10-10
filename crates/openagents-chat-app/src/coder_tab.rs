@@ -3486,6 +3486,18 @@ impl CoderTab {
         if self.shell.on {
             shell::worked(&mut rows, self.basic.turns(id), skipped);
             shell::link_cards(&mut rows, self.basic.turns(id), &self.links);
+            // A settled reply offering the Verse ends with **Enter the
+            // Grid**, a card in the conversation (its chip is left out
+            // below).
+            if crate::projection::actionable(self.basic.turns(id), busy, failed).is_some_and(
+                |meta| {
+                    meta.offers.contains(&Offer::OpenScreen {
+                        screen: Screen::Verse,
+                    })
+                },
+            ) {
+                rows.push(shell::verse_portal());
+            }
         }
         // What a proposed command printed scrolls with the conversation,
         // so a long result never pushes the composer off the screen.
@@ -3558,10 +3570,7 @@ impl CoderTab {
                     }
                 )
             };
-            if actions.chips.iter().any(portal) {
-                actions.chips.retain(|chip| !portal(chip));
-                children.push(shell::verse_portal());
-            }
+            actions.chips.retain(|chip| !portal(chip));
         }
         // The reply that started Coder, at once or from a tap, shows the
         // start with Stop instead of offering it again (#10101).
