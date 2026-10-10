@@ -3,6 +3,7 @@
 #[cfg(target_os = "android")]
 mod android;
 mod app;
+mod capture_grid;
 mod chamber;
 mod computer_hud;
 mod ffi;

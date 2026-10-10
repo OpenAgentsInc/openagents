@@ -173,7 +173,8 @@ private final class RustWorker {
         // them unchanged; Rust validates them again on the world side.
         var feed: [String: Any] = [:]
         if let raw = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-            for key in ["computers", "computers_input", "computers_qr", "terminal"] {
+            // `computers_capture` is a computer's picture as Rust's grid (#11185).
+            for key in ["computers", "computers_input", "computers_qr", "computers_capture", "terminal"] {
                 if let value = raw[key], !(value is NSNull) { feed[key] = value }
             }
         }

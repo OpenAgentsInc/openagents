@@ -19,6 +19,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use verse::ui::{Atlas, UiBatch, amber, field};
 
+use crate::capture_grid::CaptureGrid;
+
 /// The panel's pages. Chats is the older read-only reader and pairing,
 /// drawn by the native host.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -70,6 +72,9 @@ pub(crate) struct Feed {
     pub computers_input: Option<FeedInput>,
     #[serde(default)]
     pub computers_qr: Option<FeedQr>,
+    /// A computer's screenshot or image file, as a grid (#11185).
+    #[serde(default)]
+    pub computers_capture: Option<CaptureGrid>,
     #[serde(default)]
     pub terminal: Option<Value>,
     /// The worker is running a request.
@@ -86,6 +91,7 @@ struct Checked {
     computers: Option<View<Value>>,
     input: Option<FeedInput>,
     qr: Option<Vec<Vec<bool>>>,
+    capture: Option<CaptureGrid>,
     terminal: Option<View<Value>>,
     busy: bool,
     error: Option<String>,
@@ -128,10 +134,18 @@ impl Feed {
         {
             return Err("The input request is invalid.".into());
         }
+        if self
+            .computers_capture
+            .as_ref()
+            .is_some_and(|grid| !grid.valid())
+        {
+            return Err("The picture is invalid.".into());
+        }
         Ok(Checked {
             computers: view(self.computers)?,
             input: self.computers_input,
             qr,
+            capture: self.computers_capture,
             terminal: view(self.terminal)?,
             busy: self.busy,
             error: self.error.map(|e| e.chars().take(400).collect()),
@@ -203,6 +217,8 @@ enum Kind {
         enabled: bool,
     },
     Qr,
+    /// A computer's picture, drawn from the feed's grid.
+    Capture,
 }
 
 /// One laid-out element in content coordinates (body) or screen
@@ -661,6 +677,16 @@ impl ComputerHud {
             content.y = side + GAP;
             let _ = qr;
         }
+        if self.page == Page::Computers {
+            content.capture = self.feed.capture.as_ref().map(|grid| {
+                (
+                    grid.resource.clone(),
+                    grid.label.clone(),
+                    grid.width,
+                    grid.height,
+                )
+            });
+        }
         match self.surface() {
             Some((surface, view)) => content.block(&view.root, surface),
             None => content.text(
@@ -1065,6 +1091,35 @@ fn draw_laid(
                 );
             }
         }
+        Kind::Capture => {
+            let [_, _, w, h] = laid.rect;
+            let Some(grid) = &hud.feed.capture else {
+                return;
+            };
+            if !visible(origin[1], h) {
+                return;
+            }
+            // Brighter cells in brighter amber over the HUD's field.
+            ui.rect(atlas, origin[0], origin[1], w, h, field(1.0));
+            let cell_w = w / grid.width.max(1) as f32;
+            let cell_h = h / grid.height.max(1) as f32;
+            for (row, cells) in grid.rows.iter().enumerate() {
+                for (col, level) in cells.bytes().enumerate() {
+                    let level = level.saturating_sub(b'0');
+                    if level == 0 {
+                        continue;
+                    }
+                    ui.rect(
+                        atlas,
+                        origin[0] + col as f32 * cell_w,
+                        origin[1] + row as f32 * cell_h,
+                        cell_w.ceil(),
+                        cell_h.ceil(),
+                        amber(Intensity::Full, f32::from(level) / 9.0),
+                    );
+                }
+            }
+        }
         Kind::Qr => {
             let [_, _, side, _] = laid.rect;
             let Some(modules) = &hud.feed.qr else {
@@ -1105,7 +1160,7 @@ fn item(laid: &Laid, frame: [f32; 4]) -> Item {
     let (role, enabled) = match laid.kind {
         Kind::Button { enabled } => ("button", enabled),
         Kind::Text(Intensity::Full) => ("heading", true),
-        Kind::Text(_) | Kind::Run { .. } | Kind::Qr => ("text", true),
+        Kind::Text(_) | Kind::Run { .. } | Kind::Qr | Kind::Capture => ("text", true),
     };
     Item {
         key: laid.key.clone(),
@@ -1162,6 +1217,8 @@ struct Flow<'a> {
     pan: usize,
     y: f32,
     items: Vec<Laid>,
+    /// The picture the feed holds: its resource, label, and grid size.
+    capture: Option<(String, String, usize, usize)>,
 }
 
 impl<'a> Flow<'a> {
@@ -1172,6 +1229,7 @@ impl<'a> Flow<'a> {
             pan: 0,
             y: 0.0,
             items: Vec::new(),
+            capture: None,
         }
     }
 
@@ -1346,7 +1404,26 @@ impl<'a> Flow<'a> {
             | Element::Dialog { .. } => {
                 self.text(&node.key, "Unsupported v3 component", Intensity::Half);
             }
-            Element::Surface { .. } | Element::Composer { .. } => {}
+            Element::Surface { resource, .. } => {
+                // A computer's picture (#11185); other surfaces aren't drawn
+                // in the HUD.
+                if let Some((shown, label, columns, rows)) = &self.capture
+                    && shown == resource
+                {
+                    let width = self.width.min(480.0);
+                    let height = width * *rows as f32 / (*columns).max(1) as f32;
+                    self.items.push(Laid {
+                        key: node.key.clone(),
+                        label: label.clone(),
+                        kind: Kind::Capture,
+                        lines: Vec::new(),
+                        rect: [0.0, self.y, width, height],
+                        action: None,
+                    });
+                    self.y += height + GAP;
+                }
+            }
+            Element::Composer { .. } => {}
         }
     }
 

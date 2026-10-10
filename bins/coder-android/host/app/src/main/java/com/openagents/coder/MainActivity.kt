@@ -73,6 +73,9 @@ class MainActivity : ComponentActivity() {
     private var computersInput: LinearLayout? = null
     private var computersQr: ImageView? = null
     private var shownQr: String? = null
+    /** A computer's screenshot or image file (#11185), drawn from Rust's grid. */
+    private var computersCapture: ImageView? = null
+    private var shownCapture: String? = null
     private var computersToken: String? = null
     private var handledExit: JSONObject? = null
     private var scanned: (String) -> Unit = { submitCode(it) }
@@ -363,7 +366,7 @@ class MainActivity : ComponentActivity() {
             computerMode = mode; lastReading = reading
             clearComputersValue()
             stopCamera(); renderer.clear(); computersRenderer.clear(); panelBody.removeAllViews(); readerContent = null
-            computersContent = null; computersInput = null; computersToken = null; computersQr = null; shownQr = null
+            computersContent = null; computersInput = null; computersToken = null; computersQr = null; shownQr = null; computersCapture = null; shownCapture = null
             worldConnectionStatus = null; worldConnectionError = null
             readerError = label("", "reader-error"); panelBody.addView(readerError)
             readerStatus = label("", "reader-status", 11f); panelBody.addView(readerStatus)
@@ -386,6 +389,7 @@ class MainActivity : ComponentActivity() {
             try { computersContent?.let { computersRenderer.mount(it, packet) } }
             catch (_: Exception) { readerError?.text = "This native view could not be displayed."; readerError?.visibility = View.VISIBLE }
             renderComputersQr(packet.optJSONObject("computers_qr"))
+            renderComputersCapture(packet.optJSONObject("computers_capture"))
             renderComputersInput(packet.optJSONObject("computers_input"))
         }
     }
@@ -408,6 +412,33 @@ class MainActivity : ComponentActivity() {
         view.visibility = View.VISIBLE
     }
 
+    /**
+     * Draw a computer's picture from the grid Rust decoded on this device
+     * (#11185): one pixel per cell, `0` darkest to `9` brightest, in amber.
+     */
+    private fun renderComputersCapture(capture: JSONObject?) {
+        val view = computersCapture ?: return
+        val rows = capture?.optJSONArray("rows")
+        val key = capture?.optString("resource")
+        if (key == shownCapture) return
+        shownCapture = key
+        val width = capture?.optInt("width") ?: 0
+        if (rows == null || rows.length() == 0 || rows.length() > 96 || width <= 0 || width > 128) {
+            view.setImageDrawable(null); view.visibility = View.GONE; return
+        }
+        val bitmap = Bitmap.createBitmap(width, rows.length(), Bitmap.Config.ARGB_8888)
+        for (y in 0 until rows.length()) {
+            val row = rows.optString(y)
+            for (x in 0 until width) {
+                val level = ((row.getOrNull(x) ?: '0') - '0').coerceIn(0, 9)
+                bitmap.setPixel(x, y, Color.rgb(255 * level / 9, 176 * level / 9, 0))
+            }
+        }
+        view.setImageDrawable(BitmapDrawable(resources, bitmap).apply { isFilterBitmap = false })
+        view.contentDescription = capture.optString("label")
+        view.visibility = View.VISIBLE
+    }
+
     private fun buildComputers() {
         val body = column()
         panelBody.addView(ScrollView(this).apply { addView(body) }, LinearLayout.LayoutParams(-1, 0, 1f))
@@ -417,6 +448,11 @@ class MainActivity : ComponentActivity() {
             scaleType = ImageView.ScaleType.FIT_CENTER
         }
         body.addView(computersQr, LinearLayout.LayoutParams(dp(240), dp(240)))
+        computersCapture = ImageView(this).apply {
+            tag = "computers-capture"; visibility = View.GONE
+            scaleType = ImageView.ScaleType.FIT_CENTER; adjustViewBounds = true
+        }
+        body.addView(computersCapture, LinearLayout.LayoutParams(-1, -2))
         computersInput = column(); body.addView(computersInput)
     }
 

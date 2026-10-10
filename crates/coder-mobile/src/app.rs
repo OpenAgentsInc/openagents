@@ -236,6 +236,11 @@ pub struct Packet {
     pub computers_input: Option<InputRequest>,
     /// The invitation QR code the Computers surface shows, if any.
     pub computers_qr: Option<QrModules>,
+    /// What a computer's Screenshot or Files control brought back, when it
+    /// is a picture: a small grid of brightness levels the HUD draws
+    /// (#11185).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub computers_capture: Option<crate::capture_grid::CaptureGrid>,
     /// First run finished on the last call; the host returns to its
     /// existing onboarding.
     pub computers_exit: bool,
@@ -309,6 +314,8 @@ pub struct App {
     pairing_completed: bool,
     push: Option<crate::push::Push>,
     push_status: Option<String>,
+    /// The last capture's grid, by its resource, so it is decoded once.
+    capture_grid: Option<(String, Option<crate::capture_grid::CaptureGrid>)>,
 }
 
 impl App {
@@ -357,6 +364,7 @@ impl App {
             pairing_completed: false,
             push: None,
             push_status: None,
+            capture_grid: None,
         };
         if let Some(push) = config.push.clone() {
             match crate::push::Push::open(
@@ -1135,10 +1143,33 @@ impl App {
         );
         Ok(())
     }
+    /// The grid of the picture the Computers surface shows now, decoded
+    /// once per capture.
+    fn capture(&mut self) -> Option<crate::capture_grid::CaptureGrid> {
+        let capture = self.computers.as_ref().and_then(Computers::capture)?;
+        let resource = capture.resource()?;
+        if self
+            .capture_grid
+            .as_ref()
+            .is_none_or(|(shown, _)| *shown != resource)
+        {
+            let label = match &capture.path {
+                Some(path) => format!("The image {path}"),
+                None => "A screenshot of the computer's screen".to_owned(),
+            };
+            let grid = crate::capture_grid::grid(&capture.bytes, &resource, &label);
+            self.capture_grid = Some((resource, grid));
+        }
+        self.capture_grid
+            .as_ref()
+            .and_then(|(_, grid)| grid.clone())
+    }
+
     fn packet(&mut self) -> Packet {
         if let Some(terminal) = self.terminal.as_mut() {
             terminal.redraw();
         }
+        let capture = self.capture();
         Packet {
             schema: "coder.mobile.v1",
             public_key: self.public_key.clone(),
@@ -1181,6 +1212,7 @@ impl App {
                         })
                         .collect(),
                 }),
+            computers_capture: capture,
             computers_exit: self.computers_exit,
             terminal: self
                 .terminal
