@@ -1,0 +1,23 @@
+# Build the oa-boat service image from a commit on GitHub (no local upload):
+#   gcloud builds submit --no-source --config deploy/oa-boat/cloudbuild.yaml \
+#     --substitutions _COMMIT=$(git rev-parse HEAD) --project openagentsgemini --region us-central1
+substitutions:
+  _COMMIT: ''
+  _IMAGE: us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-boat
+steps:
+  - name: gcr.io/cloud-builders/git
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -e
+        git init -q src && cd src
+        git fetch -q --depth 1 https://github.com/OpenAgentsInc/openagents.git ${_COMMIT}
+        git checkout -q FETCH_HEAD
+  - name: gcr.io/cloud-builders/docker
+    dir: src
+    args: [build, -f, deploy/oa-boat/Dockerfile, -t, '${_IMAGE}:${_COMMIT}', -t, '${_IMAGE}:latest', .]
+images: ['${_IMAGE}:${_COMMIT}', '${_IMAGE}:latest']
+options:
+  machineType: E2_HIGHCPU_8
+timeout: 3600s
