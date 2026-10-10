@@ -1,10 +1,14 @@
-//! `POST /v1/systemone` as the one decision entry point (#11225): every
-//! decision goes to connected Pylons over Nostr first, with no dependency
-//! on TypeSafe's Jev API.
+//! `POST /v1/systemone` as the decision entry point for callers that hold
+//! no Jev key (#11225).
 //!
 //! The chain, each door asked only when every door before it could not
 //! answer:
 //!
+//! 0. **Jev** (TypeSafe's API, first-class since the owner's 2026-10-10
+//!    decision), under the gateway's own house key: `TYPESAFE_API_KEY`, else
+//!    the Secret Manager secret `jev_secret`. `no_jev` turns it off. A
+//!    request with `X-Decision-Order: pylon`, or for `clef-flash` or
+//!    `openagents/pylon`, asks the Pylons first and Jev last.
 //! 1. **Connected Pylons.** The gateway reads NIP-PYLON beacons (`30200`)
 //!    on its relay and keeps the pylons that advertise a decision service
 //!    (`<pylon key>:pylon/decision` on the `cj-decision` lane) and have a
@@ -15,8 +19,10 @@
 //! 2. **Our hosted Clef** (`clef_url`), a Psionic `/v1/systemone` over HTTP.
 //! 3. **Gemini on Vertex AI** answering the same typed questions with
 //!    structured output (`vertex`), on the prepaid Google credit.
-//! 4. **Jev** (TypeSafe), optional and last, off unless `jev` is set and
-//!    `TYPESAFE_API_KEY` is in the environment.
+//!
+//! Pylons stay fallback and shadow until they pass the router gate: one
+//! answer in twenty is asked again at the next door (a Jev answer at the
+//! Pylons), so their agreement with Jev is measured.
 //!
 //! Evidence: every answer names the door (`service.door`: `pylon:<slug>`,
 //! `clef`, `vertex`, or `jev`), the pylon key, the served model and its
@@ -87,10 +93,20 @@ pub struct Decisions {
     /// process has a Google credential.
     #[serde(default = "default_vertex")]
     pub vertex: Option<VertexDoor>,
-    /// TypeSafe's Jev as the last door, under `TYPESAFE_API_KEY`. Off by
-    /// default.
+    /// Kept so older launchers' configs still parse; Jev is on whenever a
+    /// house key is found, unless `no_jev` is set.
     #[serde(default)]
     pub jev: bool,
+    /// Turns the Jev door off.
+    #[serde(default)]
+    pub no_jev: bool,
+    /// The Secret Manager secret holding the house Jev key, read with the
+    /// runtime's Google credential when `TYPESAFE_API_KEY` is unset.
+    #[serde(default = "default_jev_secret")]
+    pub jev_secret: Option<String>,
+    /// How long the Jev door may take, in milliseconds.
+    #[serde(default = "default_jev_ms")]
+    pub jev_ms: u64,
     /// The share of answers asked again at a second door for agreement.
     #[serde(default = "default_shadow")]
     pub shadow: f64,
@@ -133,6 +149,12 @@ fn default_vertex() -> Option<VertexDoor> {
 fn default_vertex_model() -> String {
     "gemini-3.8-flash".into()
 }
+fn default_jev_secret() -> Option<String> {
+    Some("openagents-gateway-production-typesafe-key".into())
+}
+fn default_jev_ms() -> u64 {
+    6_000
+}
 fn default_shadow() -> f64 {
     0.05
 }
@@ -152,6 +174,9 @@ impl Default for Decisions {
             clef_url: None,
             vertex: default_vertex(),
             jev: false,
+            no_jev: false,
+            jev_secret: default_jev_secret(),
+            jev_ms: default_jev_ms(),
             shadow: default_shadow(),
             deadline_ms: default_deadline_ms(),
         }
@@ -241,7 +266,10 @@ pub struct Dispatch {
         String,
         String,
     )>,
-    jev_key: Option<String>,
+    /// The house Jev key from the environment, when set.
+    jev_env: Option<String>,
+    /// The house Jev key, read once (environment, else Secret Manager).
+    jev_key: tokio::sync::OnceCell<Option<String>>,
     count: AtomicU64,
 }
 
@@ -277,18 +305,21 @@ impl Dispatch {
             let settings = inference::upstream::vertex::Config::from_env();
             Some((door, token, settings.project, settings.location))
         });
-        let jev_key = if config.jev {
-            std::env::var("TYPESAFE_API_KEY")
-                .ok()
-                .filter(|key| !key.trim().is_empty())
+        let jev_env = std::env::var("TYPESAFE_API_KEY")
+            .ok()
+            .map(|key| key.trim().to_owned())
+            .filter(|key| !key.is_empty());
+        let jev_line = if config.no_jev {
+            "Jev off (no_jev); ".to_owned()
+        } else if jev_env.is_some() {
+            "Jev first under $TYPESAFE_API_KEY → ".to_owned()
+        } else if let Some(secret) = &config.jev_secret {
+            format!("Jev first under the Secret Manager key {secret} → ")
         } else {
-            None
+            "Jev off: no house key; ".to_owned()
         };
-        if config.jev && jev_key.is_none() {
-            eprintln!("decisions: the Jev door is off: TYPESAFE_API_KEY is not set");
-        }
         eprintln!(
-            "decisions: POST /v1/systemone for {} → connected pylons on {relay} (dispatch key {pubkey}){}{}{}",
+            "decisions: POST /v1/systemone for {} → {jev_line}connected pylons on {relay} (dispatch key {pubkey}){}{}{}",
             config.models.join(", "),
             config
                 .clef_url
@@ -299,7 +330,7 @@ impl Dispatch {
                 .as_ref()
                 .map(|(door, ..)| format!(" → Vertex {}", door.model))
                 .unwrap_or_default(),
-            if jev_key.is_some() { " → Jev" } else { "" },
+            "",
         );
         Ok(Arc::new(Self {
             config,
@@ -313,9 +344,89 @@ impl Dispatch {
                 .build()
                 .map_err(|e| e.to_string())?,
             vertex,
-            jev_key,
+            jev_env,
+            jev_key: tokio::sync::OnceCell::new(),
             count: AtomicU64::new(0),
         }))
+    }
+
+    /// The house Jev key: the environment's, else the Secret Manager
+    /// secret's, read once. `None` leaves the Jev door off.
+    async fn jev_key(&self) -> Option<&str> {
+        if self.config.no_jev {
+            return None;
+        }
+        self.jev_key
+            .get_or_init(|| async {
+                if let Some(key) = &self.jev_env {
+                    return Some(key.clone());
+                }
+                let name = self.config.jev_secret.as_deref()?;
+                let google = if std::env::var_os("K_SERVICE").is_some() {
+                    inference::upstream::google::TokenSource::metadata(
+                        inference::upstream::google::METADATA_TOKEN_URL,
+                    )
+                } else {
+                    inference::upstream::google::TokenSource::from_env()
+                };
+                let project = std::env::var("VERTEX_PROJECT")
+                    .ok()
+                    .filter(|p| !p.trim().is_empty())
+                    .unwrap_or_else(|| "openagentsgemini".into());
+                match inference::upstream::google::access_secret(&google, &project, name).await {
+                    Ok(Some(secret)) => {
+                        eprintln!("decisions: the Jev door holds the house key from {name}");
+                        Some(secret.expose().trim().to_owned())
+                    }
+                    Ok(None) => {
+                        eprintln!("decisions: the Jev door is off: no secret {name}");
+                        None
+                    }
+                    Err(why) => {
+                        eprintln!("decisions: the Jev door is off: {why}");
+                        None
+                    }
+                }
+            })
+            .await
+            .as_deref()
+    }
+
+    /// Jev's door, when it has a key and `skip` does not leave it out.
+    async fn try_jev(
+        &self,
+        state: &Value,
+        questions: &Map<String, Value>,
+        model: &str,
+        deadline: Instant,
+        skip: Option<&str>,
+        attempts: &mut Vec<Attempt>,
+    ) -> Option<(Kind, String, Value)> {
+        if skip == Some("jev") {
+            return None;
+        }
+        let key = self.jev_key().await?.to_owned();
+        let t = Instant::now();
+        let left = deadline
+            .saturating_duration_since(Instant::now())
+            .min(Duration::from_millis(self.config.jev_ms));
+        let canonical = nostr::decision::canonical_model(model);
+        let model = if canonical.starts_with("jev-") {
+            canonical
+        } else {
+            "jev-latest"
+        };
+        let result = self
+            .ask_http(
+                "https://api.typesafe.ai",
+                Some(&key),
+                model,
+                state,
+                questions,
+                left,
+            )
+            .await;
+        self.settle("jev", Kind::Jev, result, questions, t, attempts)
     }
 
     /// The key decision jobs are signed with, hex.
@@ -355,8 +466,21 @@ impl Dispatch {
             .map_or_else(random_id, str::to_owned);
         let started = Instant::now();
         let deadline = started + Duration::from_millis(self.config.deadline_ms);
+        let pylon_first = headers
+            .get("x-decision-order")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v.trim().eq_ignore_ascii_case("pylon"))
+            || matches!(model.as_str(), "clef-flash" | "openagents/pylon");
         let (answer, attempts) = self
-            .chain(&model, &state, &questions, &request, deadline, None)
+            .chain(
+                &model,
+                &state,
+                &questions,
+                &request,
+                deadline,
+                None,
+                !pylon_first,
+            )
             .await;
         let total_ms = millis(started.elapsed());
         let response = match &answer {
@@ -392,7 +516,8 @@ impl Dispatch {
                     &attempts,
                     total_ms,
                 );
-                if self.shadow_due() {
+                // A shadow second opinion a client sent is not shadowed again.
+                if headers.get("x-decision-shadow").is_none() && self.shadow_due() {
                     let this = Arc::clone(self);
                     let (kind, door) = (*kind, door.clone());
                     let first = response.clone();
@@ -453,8 +578,17 @@ impl Dispatch {
         request: &str,
         deadline: Instant,
         skip: Option<&str>,
+        jev_first: bool,
     ) -> (Option<(Kind, String, Value)>, Vec<Attempt>) {
         let mut attempts = Vec::new();
+        // 0. Jev, first-class unless the caller asked for the Pylons first.
+        if jev_first
+            && let Some(found) = self
+                .try_jev(state, questions, model, deadline, skip, &mut attempts)
+                .await
+        {
+            return (Some(found), attempts);
+        }
         // 1. Connected pylons.
         let candidates = self.candidates(skip).await;
         let mut tries = 0;
@@ -551,26 +685,13 @@ impl Dispatch {
                 return (Some(found), attempts);
             }
         }
-        // 4. Jev, optional and last.
-        if let Some(key) = &self.jev_key
-            && skip != Some("jev")
+        // 4. Jev last, when the caller asked for the Pylons first.
+        if !jev_first
+            && let Some(found) = self
+                .try_jev(state, questions, model, deadline, skip, &mut attempts)
+                .await
         {
-            let t = Instant::now();
-            let left = deadline.saturating_duration_since(Instant::now());
-            let result = self
-                .ask_http(
-                    "https://api.typesafe.ai",
-                    Some(key),
-                    "jev-latest",
-                    state,
-                    questions,
-                    left,
-                )
-                .await;
-            if let Some(found) = self.settle("jev", Kind::Jev, result, questions, t, &mut attempts)
-            {
-                return (Some(found), attempts);
-            }
+            return (Some(found), attempts);
         }
         (None, attempts)
     }
@@ -941,7 +1062,15 @@ impl Dispatch {
         };
         let deadline = Instant::now() + Duration::from_millis(self.config.deadline_ms);
         let (second, _) = self
-            .chain(model, state, questions, &random_id(), deadline, Some(&skip))
+            .chain(
+                model,
+                state,
+                questions,
+                &random_id(),
+                deadline,
+                Some(&skip),
+                true,
+            )
             .await;
         let Some((_, second_door, second)) = second else {
             return;

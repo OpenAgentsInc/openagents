@@ -85,11 +85,17 @@ work.
 
 ### Answer decisions (Clef)
 
-Every OpenAgents decision (the chat router, Coder's judges, file
-relevance, the Verse's questions) goes to `POST /v1/systemone` on our API,
-which sends it to a connected pylon first (#11225; NIP-DEC, "The
-OpenAgents decision API"). A pylon answers decisions with a local Psionic
-Clef server:
+OpenAgents decisions (the chat router, Coder's judges, file relevance, the
+Verse's questions) ask Jev (TypeSafe's API) first-class; connected pylons
+are the fallback and the shadow until they pass the router gate (#11225;
+NIP-DEC, "The OpenAgents decision API"). The owner decided this on
+2026-10-10 after the pylon judge measured 4.7–6 s with confidence 0.27–0.35
+on the router's main question set and missed prepared answers. A caller
+with a Jev key falls back to `POST /v1/systemone` on our API with the
+pylons first, and one Jev answer in twenty is asked again at the pylons
+for agreement; a caller without a key asks our API, which asks Jev under
+its house key, then the pylons, then Vertex. A pylon answers decisions with
+a local Psionic Clef server:
 
 ```sh
 # The Clef server (crates/psionic, CUDA on a 4080):

@@ -224,7 +224,7 @@ async fn a_computer_with_no_key_is_answered_by_the_hosted_worker_until_its_quota
     let vars: HashMap<&str, String> = HashMap::from([
         (jev_hosted::RELAY_VAR, relay.clone()),
         (jev_hosted::WORKER_VAR, worker.clone()),
-        (jev_hosted::DECISIONS_VAR, "jev".to_string()),
+        (jev_hosted::DECISIONS_VAR, "legacy".to_string()),
     ]);
     let env = |name: &str| vars.get(name).cloned();
     let resolved = jev_hosted::resolve(&env, home.path(), &pinned(), &|config| config).unwrap();
@@ -284,7 +284,7 @@ async fn an_unreachable_service_says_so() {
     let home = tempfile::tempdir().unwrap();
     let vars: HashMap<&str, String> = HashMap::from([
         (jev_hosted::RELAY_VAR, format!("ws://{address}")),
-        (jev_hosted::DECISIONS_VAR, "jev".to_string()),
+        (jev_hosted::DECISIONS_VAR, "legacy".to_string()),
     ]);
     let env = |name: &str| vars.get(name).cloned();
     let client = jev_hosted::resolve(&env, home.path(), &pinned(), &|config| {
@@ -336,7 +336,7 @@ async fn a_local_key_with_no_credits_is_answered_by_the_hosted_worker() {
     let vars: HashMap<&str, String> = HashMap::from([
         (jev_hosted::RELAY_VAR, relay.clone()),
         (jev_hosted::WORKER_VAR, worker.clone()),
-        (jev_hosted::DECISIONS_VAR, "jev".to_string()),
+        (jev_hosted::DECISIONS_VAR, "legacy".to_string()),
     ]);
     let env = |name: &str| vars.get(name).cloned();
     let backups = jev_hosted::local_doors(&env, home.path());

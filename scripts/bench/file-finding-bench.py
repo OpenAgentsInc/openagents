@@ -24,9 +24,9 @@ Steps (each writes into --work, a scratch directory):
 
     export GOOGLE_APPLICATION_CREDENTIALS=...  # embeddings on Vertex AI (filefind.embed_key)
     export OPENROUTER_API_KEY=...   # the plan model; embeddings when no Google credential
-    # judge step: our decision API at openagents.com, keyless
-    # (OPENAGENTS_DECISIONS_URL names another; OPENAGENTS_DECISIONS=jev asks
-    # TypeSafe with TYPESAFE_API_KEY instead)
+    export TYPESAFE_API_KEY=...     # judge step: Jev directly; without a key,
+    # our decision API at openagents.com, keyless (OPENAGENTS_DECISIONS=pylon
+    # asks its Pylons first; OPENAGENTS_DECISIONS_URL names another)
     python3 scripts/bench/file-finding-bench.py prepare --repo . --dataset D --work W
     python3 scripts/bench/file-finding-bench.py features --repo . --dataset D --work W
     python3 scripts/bench/file-finding-bench.py train --dataset D --work W
@@ -478,9 +478,10 @@ OURS_URL = os.environ.get("OPENAGENTS_DECISIONS_URL", "https://openagents.com/ap
 
 
 def decision_door():
-    """(url, key): our API keyless by default; Jev only when chosen."""
-    if os.environ.get("OPENAGENTS_DECISIONS") == "jev":
-        return JEV_URL, os.environ.get("TYPESAFE_API_KEY") or sys.exit("TYPESAFE_API_KEY is not set")
+    """(url, key): Jev directly with a TypeSafe key, else our API keyless (#11225)."""
+    key = os.environ.get("TYPESAFE_API_KEY")
+    if key and os.environ.get("OPENAGENTS_DECISIONS") != "pylon":
+        return JEV_URL, key
     return OURS_URL, None
 PLAN_URL = "https://openrouter.ai/api/v1/chat/completions"
 

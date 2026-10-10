@@ -22,15 +22,18 @@
 //! that reason back out of a [`jev::Error`], so a caller can stop asking
 //! and say so once.
 //!
-//! **Since #11225 every decision goes through our own API by default.**
-//! [`resolve`] and [`resolve_with_fallbacks`] answer TypeSafe's door with
-//! [`ours`]: `POST /v1/systemone` on the OpenAgents API
-//! (`https://openagents.com/api`, [`DECISIONS_URL_VAR`] names another),
-//! which farms each decision out to connected Pylons over Nostr (Clef on
-//! Psionic), then Gemini on Vertex AI. No TypeSafe key is read or needed.
-//! The older paths below (a local TypeSafe key, the backup doors, the
-//! hosted decision worker) are taken only when the person or operator
-//! chooses Jev with `OPENAGENTS_DECISIONS=jev` ([`DECISIONS_VAR`]).
+//! **Jev first-class, Pylons behind it (#11225, owner decision
+//! 2026-10-10).** For TypeSafe's door, [`resolve`] and
+//! [`resolve_with_fallbacks`] give a caller that holds a Jev key TypeSafe's
+//! API directly, first, with our decision API ([`ours`]: `POST
+//! /v1/systemone` on `https://openagents.com/api`, asked Pylons-first) as
+//! its fallback, and one answer in twenty asked again at the Pylons so
+//! their agreement with Jev is measured ([`SHADOW_EVERY`]). A caller with
+//! no key asks our API, whose gateway asks Jev first under its own house
+//! key, then the Pylons, then Gemini on Vertex. `OPENAGENTS_DECISIONS`
+//! ([`DECISIONS_VAR`]) chooses otherwise: `pylon` asks our API Pylons-first
+//! with no key, and `legacy` takes the older paths below (a local key's
+//! backup doors and the hosted decision worker).
 //!
 //! The hosted client is an ordinary [`jev::Client`] whose attempts go
 //! through [`RelayExchange`]; its [`jev::Client::base_url`] names the door
@@ -72,9 +75,14 @@ pub const OPENAGENTS: &str = "https://openagents.com/api";
 /// Names another OpenAgents decision API base URL (staging, a local
 /// gateway).
 pub const DECISIONS_URL_VAR: &str = "OPENAGENTS_DECISIONS_URL";
-/// `jev` chooses TypeSafe's Jev (a local key, its backup doors, the hosted
-/// decision worker) over our decision API. Unset or anything else is ours.
+/// How decisions for TypeSafe's door go: unset (Jev direct first with a
+/// local key, else our API), `pylon` (our API, Pylons first), or `legacy`
+/// (the older local-key, backup-door, and hosted-worker paths).
 pub const DECISIONS_VAR: &str = "OPENAGENTS_DECISIONS";
+
+/// One Jev answer in this many is asked again at the Pylons (our API,
+/// Pylons first) and the agreement is logged.
+pub const SHADOW_EVERY: u64 = 20;
 /// How long one call to our decision API may take when the caller set
 /// nothing tighter: the gateway tries Pylons, then Vertex, within 25 s.
 pub const OURS_TIMEOUT: Duration = Duration::from_secs(30);
@@ -166,8 +174,18 @@ pub fn resolve(
     door: &Door<'_>,
     tune: &dyn Fn(jev::Config) -> jev::Config,
 ) -> Result<Resolved, String> {
-    if is_ours(env, door) {
-        return ours(env, door, tune);
+    match route(env, door) {
+        Route::Ours => return ours(env, door, tune),
+        Route::JevFirst => {
+            if let Some(resolved) = theirs(&model_access::current(), door, tune)? {
+                return Ok(resolved);
+            }
+            return match local_key(env, dir) {
+                Some((key, source)) => jev_first(env, key, source, door, tune, None),
+                None => ours(env, door, tune),
+            };
+        }
+        Route::Legacy => {}
     }
     if let Some(resolved) = theirs(&model_access::current(), door, tune)? {
         return Ok(resolved);
@@ -336,8 +354,16 @@ pub fn resolve_with_fallbacks(
     tune: &dyn Fn(jev::Config) -> jev::Config,
     primary_timeout: Option<Duration>,
 ) -> Result<(Resolved, Vec<Fallback>), String> {
-    if is_ours(env, door) {
-        return ours(env, door, tune).map(|resolved| (resolved, Vec::new()));
+    match route(env, door) {
+        Route::Ours => return ours(env, door, tune).map(|resolved| (resolved, Vec::new())),
+        Route::JevFirst => {
+            return match local_key(env, dir) {
+                Some((key, source)) => jev_first(env, key, source, door, tune, primary_timeout)
+                    .map(|resolved| (resolved, Vec::new())),
+                None => ours(env, door, tune).map(|resolved| (resolved, Vec::new())),
+            };
+        }
+        Route::Legacy => {}
     }
     let mut found = Vec::new();
     let mut keyed = Vec::new();
@@ -397,18 +423,206 @@ pub fn resolve_with_fallbacks(
     ))
 }
 
-/// Whether a decision for `door` goes to our decision API: TypeSafe's door
-/// or ours, unless `OPENAGENTS_DECISIONS=jev` chooses Jev. Another door (a
-/// local Kev, a loopback Clef, a door the person runs) is that door.
+/// Where a decision for a door goes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Route {
+    /// Jev direct with a local key, our API behind it; our API without one.
+    JevFirst,
+    /// Our API, Pylons first (`OPENAGENTS_DECISIONS=pylon`).
+    Ours,
+    /// The door itself, through the older paths: another door than
+    /// TypeSafe's or ours, or `OPENAGENTS_DECISIONS=legacy`.
+    Legacy,
+}
+
+/// How a decision for `door` is resolved (see [`Route`]).
+#[must_use]
+pub fn route(env: &dyn Fn(&str) -> Option<String>, door: &Door<'_>) -> Route {
+    let url = door.url.trim_end_matches('/');
+    let ours_url = present(env(DECISIONS_URL_VAR))
+        .map(|u| u.trim_end_matches('/').to_string())
+        .unwrap_or_else(|| OPENAGENTS.to_string());
+    if url != DOOR && url != OPENAGENTS && url != ours_url {
+        return Route::Legacy;
+    }
+    match env(DECISIONS_VAR).as_deref().map(str::trim) {
+        Some("legacy") => Route::Legacy,
+        Some("pylon") => Route::Ours,
+        _ => Route::JevFirst,
+    }
+}
+
+/// Whether a decision for `door` goes only to our decision API (Pylons
+/// first): `OPENAGENTS_DECISIONS=pylon`.
 #[must_use]
 pub fn is_ours(env: &dyn Fn(&str) -> Option<String>, door: &Door<'_>) -> bool {
-    if env(DECISIONS_VAR).is_some_and(|value| value.trim() == "jev") {
-        return false;
+    route(env, door) == Route::Ours
+}
+
+/// Jev first-class: TypeSafe's API directly under `key`, with our decision
+/// API (Pylons first, then Vertex) behind it for a decision Jev cannot
+/// answer for its own reasons, and one answer in [`SHADOW_EVERY`] asked
+/// again at the Pylons for agreement. `primary_timeout` caps Jev's share of
+/// an attempt (default [`jev::defaults::TIMEOUT`]).
+///
+/// # Errors
+///
+/// The client cannot be built; the message never carries a key.
+pub fn jev_first(
+    env: &dyn Fn(&str) -> Option<String>,
+    key: String,
+    source: String,
+    door: &Door<'_>,
+    tune: &dyn Fn(jev::Config) -> jev::Config,
+    primary_timeout: Option<Duration>,
+) -> Result<Resolved, String> {
+    let url = present(env(DECISIONS_URL_VAR))
+        .map(|url| url.trim_end_matches('/').to_string())
+        .unwrap_or_else(|| OPENAGENTS.to_string());
+    let pylons = Arc::new(OpenAgentsExchange::new(&url)?.pylon_first());
+    let failover = jev::doors::Failover::new(
+        jev::doors::Door::new(
+            DOOR,
+            DOOR,
+            jev::doors::Naming::Canonical,
+            jev::ApiKey::new(key),
+        ),
+        vec![jev::doors::Door::carried(url.clone(), pylons.clone())],
+    )
+    .primary_timeout(primary_timeout.unwrap_or(jev::defaults::TIMEOUT));
+    let exchange = Shadowed {
+        inner: jev::doors::exchange(failover),
+        pylons: Arc::new(OpenAgentsExchange::new(&url)?.pylon_first().shadow()),
+        count: std::sync::atomic::AtomicU64::new(0),
+    };
+    let client = jev::Client::new(
+        tune(jev::Config::new().timeout(OURS_TIMEOUT))
+            .exchange(Arc::new(exchange))
+            .base_url(DOOR)
+            .default_model(door.model),
+    )
+    .map_err(|error| format!("Jev: {error}"))?;
+    Ok(Resolved {
+        client,
+        via: Via::Direct { source },
+    })
+}
+
+/// Jev's door with a shadow: every [`SHADOW_EVERY`]th answer Jev gave is
+/// asked again at our API, Pylons first, after it is returned, and the
+/// agreement is logged (`decisions shadow: … agrees with Jev on a/b
+/// questions, max |Δp| …`).
+struct Shadowed {
+    inner: Arc<dyn Exchange>,
+    pylons: Arc<OpenAgentsExchange>,
+    count: std::sync::atomic::AtomicU64,
+}
+
+impl std::fmt::Debug for Shadowed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Shadowed").finish_non_exhaustive()
     }
-    let url = door.url.trim_end_matches('/');
-    url == DOOR
-        || url == OPENAGENTS
-        || present(env(DECISIONS_URL_VAR)).is_some_and(|ours| ours.trim_end_matches('/') == url)
+}
+
+impl Exchange for Shadowed {
+    fn exchange(&self, call: Call) -> Pending<'_> {
+        Box::pin(async move {
+            let started = std::time::Instant::now();
+            let reply = self.inner.exchange(call.clone()).await;
+            let jev_ms = started.elapsed().as_millis();
+            if let Ok(reply) = &reply
+                && reply.status == 200
+                && call.path == "/v1/systemone"
+                && self
+                    .count
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                    % SHADOW_EVERY
+                    == 0
+                && let Ok(first) = serde_json::from_slice::<Value>(&reply.body)
+                && first["service"]["door"].is_null()
+                && let Ok(handle) = tokio::runtime::Handle::try_current()
+            {
+                let pylons = Arc::clone(&self.pylons);
+                let mut call = call;
+                call.idempotency_key = None;
+                call.timeout = OURS_TIMEOUT;
+                handle.spawn(async move {
+                    let started = std::time::Instant::now();
+                    let Ok(second) = pylons.exchange(call).await else {
+                        return;
+                    };
+                    let Ok(second) = serde_json::from_slice::<Value>(&second.body) else {
+                        return;
+                    };
+                    if second["answers"].is_null() {
+                        return;
+                    }
+                    let (agreed, asked, max_dp) = agreement(&first["answers"], &second["answers"]);
+                    eprintln!(
+                        "decisions shadow: {} ({}) agrees with Jev on {agreed}/{asked} questions, max |Δp| {max_dp:.3} (Jev {jev_ms} ms, shadow {} ms)",
+                        second["service"]["door"].as_str().unwrap_or("our API"),
+                        second["model"].as_str().unwrap_or("?"),
+                        started.elapsed().as_millis()
+                    );
+                });
+            }
+            reply
+        })
+    }
+
+    fn service(&self) -> String {
+        self.inner.service()
+    }
+
+    fn relays(&self) -> bool {
+        self.inner.relays()
+    }
+}
+
+/// How far two answers agree: the questions whose pick agrees (a choice's
+/// most likely option, a score's most likely level, a noul's side of one
+/// half), out of those both answered, and the largest probability gap.
+#[must_use]
+pub fn agreement(a: &Value, b: &Value) -> (usize, usize, f64) {
+    let (mut agreed, mut asked, mut max_dp) = (0, 0, 0.0_f64);
+    let Some(a) = a.as_object() else {
+        return (0, 0, 0.0);
+    };
+    for (id, x) in a {
+        let y = &b[id];
+        if y.is_null() {
+            continue;
+        }
+        asked += 1;
+        if let (Some(p), Some(q)) = (x["noul"].as_f64(), y["noul"].as_f64()) {
+            if (p >= 0.5) == (q >= 0.5) {
+                agreed += 1;
+            }
+            max_dp = max_dp.max((p - q).abs());
+            continue;
+        }
+        let pick = |v: &Value| {
+            v["probabilities"].as_object().and_then(|o| {
+                o.iter()
+                    .filter_map(|(k, p)| p.as_f64().map(|p| (k.clone(), p)))
+                    .max_by(|l, r| l.1.total_cmp(&r.1).then(r.0.cmp(&l.0)))
+                    .map(|(k, _)| k)
+            })
+        };
+        if pick(x).is_some() && pick(x) == pick(y) {
+            agreed += 1;
+        }
+        if let (Some(px), Some(py)) = (
+            x["probabilities"].as_object(),
+            y["probabilities"].as_object(),
+        ) {
+            for (k, p) in px {
+                let q = py.get(k).and_then(Value::as_f64).unwrap_or(0.0);
+                max_dp = max_dp.max((p.as_f64().unwrap_or(0.0) - q).abs());
+            }
+        }
+    }
+    (agreed, asked, max_dp)
 }
 
 /// Our decision API (#11225): a client whose every call is
@@ -429,7 +643,10 @@ pub fn ours(
     let url = present(env(DECISIONS_URL_VAR))
         .map(|url| url.trim_end_matches('/').to_string())
         .unwrap_or_else(|| OPENAGENTS.to_string());
-    let exchange = OpenAgentsExchange::new(&url)?;
+    let mut exchange = OpenAgentsExchange::new(&url)?;
+    if env(DECISIONS_VAR).is_some_and(|value| value.trim() == "pylon") {
+        exchange = exchange.pylon_first();
+    }
     let client = jev::Client::new(
         tune(jev::Config::new().timeout(OURS_TIMEOUT))
             .exchange(Arc::new(exchange))
@@ -449,6 +666,11 @@ pub fn ours(
 pub struct OpenAgentsExchange {
     url: String,
     http: reqwest::Client,
+    /// Ask the Pylons before Jev (`X-Decision-Order: pylon`).
+    pylon_first: bool,
+    /// A second opinion the gateway does not shadow again
+    /// (`X-Decision-Shadow: 1`).
+    shadow: bool,
 }
 
 impl std::fmt::Debug for OpenAgentsExchange {
@@ -473,7 +695,23 @@ impl OpenAgentsExchange {
         Ok(Self {
             url: url.trim_end_matches('/').to_string(),
             http,
+            pylon_first: false,
+            shadow: false,
         })
+    }
+
+    /// The same exchange asking the gateway for the Pylons first.
+    #[must_use]
+    pub fn pylon_first(mut self) -> Self {
+        self.pylon_first = true;
+        self
+    }
+
+    /// The same exchange marking its calls as shadow second opinions.
+    #[must_use]
+    pub fn shadow(mut self) -> Self {
+        self.shadow = true;
+        self
     }
 
     async fn carry(&self, call: Call) -> Result<Reply, Failure> {
@@ -484,6 +722,12 @@ impl OpenAgentsExchange {
         .timeout(call.timeout)
         .header("content-type", "application/json")
         .header("x-attempt", call.attempt.to_string());
+        if self.pylon_first {
+            request = request.header("x-decision-order", "pylon");
+        }
+        if self.shadow {
+            request = request.header("x-decision-shadow", "1");
+        }
         if let Some(key) = &call.idempotency_key {
             request = request.header("idempotency-key", key);
         }
@@ -1198,16 +1442,16 @@ mod tests {
     use super::*;
 
     /// No variable but the choice of Jev: these tests cover the older
-    /// paths, which only `OPENAGENTS_DECISIONS=jev` takes since #11225.
+    /// paths, which only `OPENAGENTS_DECISIONS=legacy` takes since #11225.
     fn no_env(name: &str) -> Option<String> {
-        (name == DECISIONS_VAR).then(|| "jev".to_string())
+        (name == DECISIONS_VAR).then(|| "legacy".to_string())
     }
 
     /// `env`, with Jev chosen.
     fn jev(env: impl Fn(&str) -> Option<String>) -> impl Fn(&str) -> Option<String> {
         move |name: &str| {
             if name == DECISIONS_VAR {
-                Some("jev".to_string())
+                Some("legacy".to_string())
             } else {
                 env(name)
             }
@@ -1215,29 +1459,49 @@ mod tests {
     }
 
     #[test]
-    fn typesafe_s_door_resolves_to_our_decision_api_with_no_key() {
+    fn jev_is_first_with_a_key_and_our_api_answers_without_one() {
         let dir = tempfile::tempdir().unwrap();
-        let env = |name: &str| (name == TYPESAFE_KEY_VAR).then(|| "ts-local".to_string());
-        for env in [&env as &dyn Fn(&str) -> Option<String>, &|_: &str| None] {
-            let resolved = resolve(env, dir.path(), &DOOR_PIN, &|config| config).unwrap();
-            assert_eq!(
-                resolved.via,
-                Via::OpenAgents {
-                    url: OPENAGENTS.into()
-                }
-            );
-            assert_eq!(resolved.client.base_url(), OPENAGENTS);
-            assert_eq!(resolved.client.default_model(), "jev-1.13.0");
-            assert_eq!(
-                resolved.client.service().as_deref(),
-                Some("OpenAgents decision API at https://openagents.com/api")
-            );
-            assert_eq!(via(&resolved.client), "hosted");
-            let (resolved, found) =
-                resolve_with_fallbacks(env, dir.path(), &DOOR_PIN, &|config| config, None).unwrap();
-            assert_eq!(resolved.client.base_url(), OPENAGENTS);
-            assert!(found.is_empty());
-        }
+        // A Jev key: TypeSafe directly, our API (Pylons first) behind it.
+        let keyed = |name: &str| (name == TYPESAFE_KEY_VAR).then(|| "ts-local".to_string());
+        let resolved = resolve(&keyed, dir.path(), &DOOR_PIN, &|config| config).unwrap();
+        assert_eq!(
+            resolved.via,
+            Via::Direct {
+                source: "$TYPESAFE_API_KEY".into()
+            }
+        );
+        assert_eq!(resolved.client.base_url(), DOOR);
+        assert_eq!(
+            resolved.client.doors().as_deref(),
+            Some("doors https://api.typesafe.ai → https://openagents.com/api")
+        );
+        assert_eq!(via(&resolved.client), "direct");
+        let (resolved, found) =
+            resolve_with_fallbacks(&keyed, dir.path(), &DOOR_PIN, &|config| config, None).unwrap();
+        assert_eq!(resolved.client.base_url(), DOOR);
+        assert!(found.is_empty());
+        // No key: our API, keyless.
+        let none = |_: &str| None;
+        let resolved = resolve(&none, dir.path(), &DOOR_PIN, &|config| config).unwrap();
+        assert_eq!(
+            resolved.via,
+            Via::OpenAgents {
+                url: OPENAGENTS.into()
+            }
+        );
+        assert_eq!(
+            resolved.client.service().as_deref(),
+            Some("OpenAgents decision API at https://openagents.com/api")
+        );
+        assert_eq!(via(&resolved.client), "hosted");
+        // `pylon` asks our API even with a key.
+        let pylon = |name: &str| match name {
+            TYPESAFE_KEY_VAR => Some("ts-local".to_string()),
+            DECISIONS_VAR => Some("pylon".to_string()),
+            _ => None,
+        };
+        let resolved = resolve(&pylon, dir.path(), &DOOR_PIN, &|config| config).unwrap();
+        assert_eq!(resolved.client.base_url(), OPENAGENTS);
         assert!(
             !dir.path().join(KEY_FILE).exists(),
             "no decision key is made"
@@ -1251,13 +1515,22 @@ mod tests {
             url: "http://127.0.0.1:18096",
             model: "clef-flash",
         };
-        assert!(!is_ours(&|_| None, &local));
+        assert_eq!(route(&|_| None, &local), Route::Legacy);
     }
 
     const DOOR_PIN: Door<'static> = Door {
         url: DOOR,
         model: "jev-1.13.0",
     };
+
+    #[test]
+    fn agreement_counts_picks_and_the_largest_gap() {
+        let a = json!({"t": {"type": "choice", "probabilities": {"x": 0.9, "y": 0.1}}, "r": {"type": "noul", "noul": 0.2}});
+        let b = json!({"t": {"type": "choice", "probabilities": {"x": 0.6, "y": 0.4}}, "r": {"type": "noul", "noul": 0.7}});
+        let (agreed, asked, max_dp) = agreement(&a, &b);
+        assert_eq!((agreed, asked), (1, 2));
+        assert!((max_dp - 0.5).abs() < 1e-9);
+    }
 
     #[test]
     fn a_local_key_is_used_unchanged_and_named_by_where_it_came_from() {
@@ -1286,7 +1559,7 @@ mod tests {
         let only = |names: &'static [(&'static str, &'static str)]| {
             move |name: &str| {
                 if name == DECISIONS_VAR {
-                    return Some("jev".to_string());
+                    return Some("legacy".to_string());
                 }
                 names
                     .iter()
@@ -1482,7 +1755,7 @@ mod tests {
         let keys = |names: &'static [(&'static str, &'static str)]| {
             move |name: &str| {
                 if name == DECISIONS_VAR {
-                    return Some("jev".to_string());
+                    return Some("legacy".to_string());
                 }
                 names
                     .iter()

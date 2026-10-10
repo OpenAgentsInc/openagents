@@ -218,50 +218,48 @@ status. OpenRouter's Decisions API puts the HTTP status number in
 ### The OpenAgents decision API
 
 Since 2026-10-10 ([#11225](https://github.com/OpenAgentsInc/openagents/issues/11225))
-every OpenAgents caller sends its decisions to our own API,
-`POST https://openagents.com/api/v1/systemone`, with no key and no
-dependency on TypeSafe. The gateway (`crates/gateway`, `decision_dispatch`)
-answers any `jev-…` or `typesafe/…` model name, `openagents/decide`, and
-`clef-flash`, and asks these doors in order, each only when every door
-before it could not answer:
+OpenAgents serves decisions at `POST https://openagents.com/api/v1/systemone`
+with no key (`crates/gateway`, `decision_dispatch`). It answers any `jev-…`
+or `typesafe/…` model name, `openagents/decide`, and `clef-flash`, and asks
+these doors in order, each only when every door before it could not answer:
 
-1. **Connected Pylons.** The gateway reads [NIP-PYLON](NIP-PYLON.md)
+1. **Jev**, TypeSafe's API directly, under the gateway's own house key
+   (`TYPESAFE_API_KEY`, else the Secret Manager secret `jev_secret`). The
+   owner made Jev first-class again on 2026-10-10 after the Pylon judge
+   proved too slow and unsure for production routing.
+2. **Connected Pylons.** The gateway reads [NIP-PYLON](NIP-PYLON.md)
    beacons on its relay and keeps the fresh, online ones from its trusted
    pylon keys that advertise a decision service (`<pylon key>:pylon/decision`
-   on the `cj-decision` lane) with a free slot, best standing first (fewest
-   failures, then the fastest). It sends the decision as a job of this NIP
-   (`25910`, signed by the gateway's dispatch key), waits up to 8 s, checks
-   the answer's shape (every question answered with its own type,
-   probabilities finite and summing to one over exactly the options asked)
-   and that the served model and identity are the beacon's, and otherwise
-   benches that pylon for a minute and tries the next. At most two pylons
-   are tried.
-2. **Our hosted Clef** (`clef_url`), a Psionic `/v1/systemone` over HTTP.
-3. **Gemini on Vertex AI** (`gemini-3.8-flash`, the prepaid Google credit):
+   on the `cj-decision` lane) with a free slot, best standing first. It
+   sends the decision as a job of this NIP (`25910`, signed by the gateway's
+   dispatch key), waits up to 8 s, checks the answer's shape (every question
+   answered with its own type, probabilities finite and summing to one over
+   exactly the options asked) and that the served model and identity are
+   the beacon's, and otherwise benches that pylon for a minute and tries
+   the next. A busy pylon is asked again shortly.
+3. **Our hosted Clef** (`clef_url`), a Psionic `/v1/systemone` over HTTP.
+4. **Gemini on Vertex AI** (`gemini-3.8-flash`, the prepaid Google credit):
    the same state and questions with a response schema that asks one
    probability per option (`p_yes` for a noul), clamped and normalized
    into the answer shape above.
-4. **Jev**, optional and last, off unless the operator turns it on.
 
-Each answer names its door in `service.door` (`pylon:<slug>`, `clef`,
-`vertex`, `jev`), the pylon's address, key, and identity, the served
-`model`, and `latency_ms`, and the response carries `X-Decision-Door`.
-Every decision is one line in `<registry>/decisions/YYYY-MM-DD.jsonl` with
-each attempt's door, outcome, code, and milliseconds. One answer in twenty
-is asked again at a second door after it is sent, and the agreement (the
-questions whose pick agrees, the largest probability gap) goes to
-`decisions/shadow-YYYY-MM-DD.jsonl`.
+A request with `X-Decision-Order: pylon`, or for `clef-flash` or
+`openagents/pylon`, asks the Pylons first and Jev last. Each answer names
+its door in `service.door` (`jev`, `pylon:<slug>`, `clef`, `vertex`), the
+pylon's address, key, and identity, the served `model`, and `latency_ms`,
+and the response carries `X-Decision-Door`. Every decision is one line in
+`<registry>/decisions/YYYY-MM-DD.jsonl` with each attempt's door, outcome,
+code, and milliseconds. One answer in twenty is asked again at the next
+door after it is sent (a Jev answer at the Pylons), and the agreement goes
+to `decisions/shadow-YYYY-MM-DD.jsonl`; a request marked
+`X-Decision-Shadow: 1` is not shadowed again. The Pylons stay fallback and
+shadow until they pass the router gate.
 
-Deployed 2026-10-10 on staging and openagents.com, with CoderOS-4080 as the
-first pylon (`coderos-4080-clef`, Clef-Flash Q4_K_M on CUDA). A three-question
-decision takes 0.3–0.6 s in the gateway through the pylon; the chat
-router's main question set takes about 4.7 s (Clef 4.3 s on a shared 4080),
-against Jev's 0.37 s median through TypeSafe before.
-
-Clients find it through `jev_hosted::resolve` (below): TypeSafe's door
-resolves to our API unless the person or operator sets
-`OPENAGENTS_DECISIONS=jev`. `OPENAGENTS_DECISIONS_URL` names another base
-URL (staging, a local gateway).
+Clients find it through `jev_hosted::resolve` (below): a caller holding a
+Jev key asks TypeSafe directly first and our API (Pylons first) after it,
+shadowing one answer in twenty there; a caller without one asks our API.
+`OPENAGENTS_DECISIONS=pylon` asks our API Pylons-first, `legacy` takes the
+older paths, and `OPENAGENTS_DECISIONS_URL` names another base URL.
 
 ### Doors and the backup door
 
@@ -498,9 +496,10 @@ records a judgment, not proof that it was right.
   `lane`, `risk`, `tier`, …). The thread's ATIF records the judgment as a
   decision call.
 - **Coder.** Every caller that asks TypeSafe's door finds its door through
-  `jev_hosted::resolve`, which since #11225 answers with our decision API
-  (above), keyless. Only under `OPENAGENTS_DECISIONS=jev` does it take the
-  older order: a local TypeSafe key calls TypeSafe over HTTP; otherwise the
+  `jev_hosted::resolve`: since #11225 a local TypeSafe key asks Jev directly
+  first with our decision API (above) behind it, and a computer without one
+  asks our decision API, keyless. Only under `OPENAGENTS_DECISIONS=legacy`
+  does it take the older order: a local TypeSafe key calls TypeSafe over HTTP; otherwise the
   call goes to the hosted decision worker as a decision job; otherwise there
   is no Jev, and the caller says why. With no decision profile configured,
   the chat worker's and the terminal's router ask our API too

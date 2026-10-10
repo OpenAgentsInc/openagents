@@ -58,14 +58,14 @@ pub fn from_env() -> Result<Option<jev::Client>, String> {
     }
 }
 
-/// With no decision profile configured, our decision API (#11225):
-/// `POST /v1/systemone` on the OpenAgents gateway, answered by connected
-/// Pylons first, keyless (`jev_hosted::ours`). `OPENAGENTS_DECISIONS=off`
-/// keeps the old absence (no classifier); `=jev` asks for Jev, which needs
-/// a configured key, so it is no door here either.
+/// With no decision profile configured (so no Jev key here), our decision
+/// API (#11225): `POST /v1/systemone` on the OpenAgents gateway, which asks
+/// Jev first under its own house key, then the connected Pylons, then
+/// Gemini on Vertex, keyless (`jev_hosted::resolve`).
+/// `OPENAGENTS_DECISIONS=off` keeps the old absence (no classifier).
 fn ours_from_env() -> Result<Option<jev::Client>, String> {
     let env = |name: &str| std::env::var(name).ok();
-    if env(jev_hosted::DECISIONS_VAR).is_some_and(|value| matches!(value.trim(), "off" | "jev")) {
+    if env(jev_hosted::DECISIONS_VAR).is_some_and(|value| value.trim() == "off") {
         return Ok(None);
     }
     jev_hosted::ours(

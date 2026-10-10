@@ -1,12 +1,12 @@
 # The decision worker: Jev with no key on the computer
 
 > **Since 2026-10-10 (#11225) this worker is no longer on the default
-> path.** Every OpenAgents caller sends its decisions to our own API,
-> `POST https://openagents.com/api/v1/systemone`, which farms them out to
-> connected Pylons over Nostr (Clef on Psionic), then Gemini on Vertex AI,
-> with no TypeSafe key anywhere ([NIP-DEC](../../nips/openagents/NIP-DEC.md),
-> "The OpenAgents decision API"). This worker answers only callers that
-> choose Jev (`OPENAGENTS_DECISIONS=jev`) or a `relay` decision profile.
+> path.** A caller with a TypeSafe key asks Jev directly; a caller without
+> one asks our own API, `POST https://openagents.com/api/v1/systemone`,
+> which asks Jev under its house key, then connected Pylons over Nostr, then
+> Gemini on Vertex ([NIP-DEC](../../nips/openagents/NIP-DEC.md), "The
+> OpenAgents decision API"). This worker answers only callers that choose
+> `OPENAGENTS_DECISIONS=legacy` or a `relay` decision profile.
 
 Coder asks Jev, TypeSafe's System One model, for its judgments. A computer
 with a TypeSafe key asks TypeSafe directly. Every other computer asks the

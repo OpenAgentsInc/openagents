@@ -338,7 +338,7 @@ fn doors(decider: Decider) -> (Option<Door>, Option<Door>) {
         Decider::Off => (None, None),
         Decider::Jev => (jev_door(), jev_door()),
         Decider::Clef => (clef_door(), clef_door()),
-        Decider::Auto => (ours_door(), ours_door()),
+        Decider::Auto => (jev_door().or_else(ours_door), jev_door().or_else(ours_door)),
     }
 }
 

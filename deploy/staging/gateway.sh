@@ -50,7 +50,9 @@
 #                               beacons POST /v1/systemone sends decisions to (#11225);
 #                               default CoderOS-4080's pylon key
 #   DECISION_CLEF_URL           optional: our hosted Clef (`/v1/systemone`) after the Pylons
-#   DECISION_JEV                optional: `on` asks Jev (TypeSafe, TYPESAFE_API_KEY) last
+#   DECISION_JEV                ignored since the owner put Jev first again (#11225): the
+#                               gateway asks Jev first under TYPESAFE_API_KEY, else the
+#                               Secret Manager key openagents-gateway-production-typesafe-key
 set -eu
 umask 077
 state=${STACK_STATE:-/stack}
@@ -194,10 +196,10 @@ database=""
 if [ -n "${OPENAGENTS_ACCOUNTS_DATABASE_URL:-}" ]; then
     database='"store": "postgres", "import_files": true,'
 fi
-# Decisions (#11225): POST /v1/systemone sends each decision to a connected
-# Pylon over Nostr (NIP-DEC to the beacons of DECISION_PYLONS), then our
-# hosted Clef, then Gemini on Vertex AI with structured output; Jev only
-# with DECISION_JEV=on.
+# Decisions (#11225): POST /v1/systemone asks Jev (TypeSafe) first under the
+# house key, then a connected Pylon over Nostr (NIP-DEC to the beacons of
+# DECISION_PYLONS), then our hosted Clef, then Gemini on Vertex AI with
+# structured output. `jev` below is kept for older binaries and ignored.
 pylons=$(printf '%s' "${DECISION_PYLONS:-95bc752118e119f852d73741e5f49438cf5e9dce4f3185591014cbb7c311eb32}" |
     tr -d ' ' | sed 's/,*$//; s/,/","/g')
 clef=""

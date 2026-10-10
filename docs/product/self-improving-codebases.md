@@ -41,7 +41,7 @@ issue ──► find ──► brief ──► agent + verify ──► independ
 | 4. Check | An independent replay re-runs the checks in a clean worktree at the same commit and compares digests. Labels come from the diff and the replayed checks, never from the agent's own summary. | `scripts/bench/traces` (#11218, 41 traces replayed and admitted) |
 | 5. Land | Review, merge and deploy. Staging runs freely; production waits for an owner approval. | #11169, #11170, the serial integrator role |
 | 6. Learn | Verified traces become rows in the decision corpus (time-split train / calibration / locked). The ranker and the Clef decision heads retrain, and calibration maps refit. A new version ships only if it beats the old one on the locked split. | #11215, #11216, #11217, Gym gates |
-| 7. Decide cheaply | Every judgment in the loop (route, rank, relevance, "is this done") is a typed decision. It is answered through our own `/v1/systemone`, which farms NIP-DEC jobs out to connected Pylons running Clef, then our own hosted Clef, then Vertex Gemini. There is no dependency on a third-party judge. | #11225, [NIP-DEC](../../nips/openagents/NIP-DEC.md), [NIP-PYLON](../../nips/openagents/NIP-PYLON.md) |
+| 7. Decide cheaply | Every judgment in the loop (route, rank, relevance, "is this done") is a typed decision. Jev (TypeSafe's API) answers first-class; connected Pylons running Clef over NIP-DEC are the fallback and the shadow (one answer in twenty asked again for agreement) until they pass the router gate, then Vertex Gemini. Callers without a Jev key use our own `/v1/systemone`, which asks in the same order. | #11225, [NIP-DEC](../../nips/openagents/NIP-DEC.md), [NIP-PYLON](../../nips/openagents/NIP-PYLON.md) |
 
 You can watch the whole loop in the terminal with `coder issue-run N`
 ([issue-run](../coder/issue-run.md)): decision cards first, then the agent's
@@ -213,7 +213,7 @@ starts:
 | S1 | Loop runs on OpenAgents end to end | 20+ distinct V1-class issues, selected before execution, taken through the loop from a Cloud Environment. Every attempt (including failures, cancellations and unknown costs) is in the inventory, every label is replay-verified, and merge/deploy state is recorded. |
 | S2 | Briefed beats bare | Cost per accepted PR at least 30% lower than bare Claude Code, at equal or better success and no worse median time, on 20+ issues × 3 runs |
 | S3 | It improves itself | Two consecutive learning cycles: version N's new eligible outcomes train N+1, and N+1's train N+2. Each promotion wins on a *fresh* protected confirmation cohort (consulted once) by at least two standard errors at the issue level, with no worse calibration, and with the learned part ablated to show the gain comes from learning. A fixed held-out set is kept as a labelled development trend only. |
-| S4 | Independent of third parties | Production routing and judges run with no Jev key. Decisions are answered by connected Pylons; fallbacks are our own hosted Clef, then Vertex. Results name the door that answered, and judge quality is measured on its task. |
+| S4 | Jev first-class; Pylons as fallback and shadow until they pass the router gate | Production routing and judges ask Jev (TypeSafe direct) first. Connected Pylons (Clef), our hosted Clef, then Vertex are the fallbacks, and a shadow share measures the Pylons' agreement with Jev. Pylons move ahead of Jev only when they pass the router gate (latency within the first budget, prepared answers kept). Results name the door that answered. |
 | S5 | Second codebase | The loop works on a repository that isn't ours (a public OSS repo), from history alone, with its own corpus and gates |
 | S6 | First customer pilot | Pilot v1 delivered through the loop, accepted, with REV-03 evidence and the customer's own improvement chart |
 | S7 | Product | Self-serve repository connect, per-accepted-PR pricing (after O1), admin view, and training opt-in controls |
@@ -229,8 +229,10 @@ before any gate can be trusted. The gates above were tightened to match it:
 - **S3** uses fresh protected confirmation per promotion instead of re-reading
   one fixed held-out set, which Gym's one-read rule forbids. It requires an
   ablation.
-- **S4** allows our own hosted Clef between Pylons and Vertex. It is ours, so
-  the "no third-party judge" intent holds.
+- **S4** changed on 2026-10-10 (owner decision, #11225): the Pylon judge was
+  too slow (5.7–6 s) and too unsure (confidence 0.27–0.35, prepared answers
+  missed) for production routing, so Jev is first-class again and the
+  Pylons are fallback and shadow until they pass the router gate.
 
 The fixes come first: the P0 verify fix (#11229), issue-run gating, worktrees
 and costs (#11230), learning integrity (#11231) and the data boundary

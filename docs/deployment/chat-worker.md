@@ -174,16 +174,20 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   they are what a router eval report pins as the subject's configuration
   ([#9959](https://github.com/OpenAgentsInc/openagents/issues/9959),
   [`docs/coder/measurements/2026-09-29-chat-router-claims.md`](../coder/measurements/2026-09-29-chat-router-claims.md)).
-- **The judge's door since #11225.** The router's judgment is
-  `POST /v1/systemone` on our API (`https://openagents.com/api`, or
-  `OPENAGENTS_DECISIONS_URL`), with no TypeSafe key: the gateway asks a
-  connected Pylon (Clef on CoderOS-4080 first) and then Gemini on Vertex AI
-  (NIP-DEC, "The OpenAgents decision API"). With no decision profile
-  configured, the worker resolves to it (`coder::decision::from_env`); with
-  `TYPESAFE_API_KEY` set it still goes to our API unless
-  `OPENAGENTS_DECISIONS=jev`. The startup line reads `judge
-  https://openagents.com/api (jev-latest)`. The doors below are what
-  `OPENAGENTS_DECISIONS=jev` brings back.
+- **The judge's doors since #11225 (owner decision, 2026-10-10).** Jev is
+  first-class: with `TYPESAFE_API_KEY` in the environment the judge asks
+  TypeSafe's API directly (`jev_hosted::jev_first`), and only a decision
+  Jev cannot answer for its own reasons goes to our `POST /v1/systemone`
+  (`https://openagents.com/api`, or `OPENAGENTS_DECISIONS_URL`) with
+  `X-Decision-Order: pylon`: the connected Pylon (Clef on CoderOS-4080),
+  then Gemini on Vertex. One Jev answer in twenty is asked again at the
+  Pylons after it is served, and the journal logs `decisions shadow:
+  pylon:coderos-4080-clef (clef-flash) agrees with Jev on a/b questions,
+  max |Δp| …`. The startup line reads `judge doors https://api.typesafe.ai
+  → https://openagents.com/api (jev-latest)`. Without a key the judge asks
+  our API, whose gateway asks Jev first under its own house key;
+  `OPENAGENTS_DECISIONS=pylon` asks the Pylons first, and
+  `OPENAGENTS_DECISIONS=legacy` brings back the doors below.
 - **Jev's doors.** The judge asks the Vercel AI Gateway's
   TypeSafe-compatible API first (`typesafe-ai/jev`, under
   `AI_GATEWAY_API_KEY`; the gateway routes Jev to TypeSafe itself, with the

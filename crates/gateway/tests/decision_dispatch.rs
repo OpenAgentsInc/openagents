@@ -38,6 +38,7 @@ async fn a_connected_pylon_answers_and_the_gateway_fails_over_when_it_stops() {
     let decisions = Decisions {
         relay: Some(url.clone()),
         vertex: None,
+        no_jev: true,
         shadow: 0.0,
         deadline_ms: 8_000,
         pylon_ms: 4_000,
