@@ -134,6 +134,8 @@ build() {
         || echo "The chat Wasm build failed; the site starts without it." >&2
     "$root/scripts/build-coder-components-web.sh" "$state/build/components" > /dev/null 2>&1 \
         || echo "The components Wasm build failed; the site starts without it." >&2
+    "$root/scripts/build-bunny-web.sh" "$state/build/bunny" > /dev/null 2>&1 \
+        || echo "The Grow Little Bunny build failed; /games/grow-little-bunny can't be played." >&2
 }
 
 status() {
@@ -361,6 +363,7 @@ EOF
         [ -s "$state/build/chat/coder_chat_web_bg.wasm" ] && set -- "$@" --chat-build "$state/build/chat"
         [ -s "$state/build/components/coder_components_web_bg.wasm" ] \
             && set -- "$@" --components-build "$state/build/components"
+        [ -s "$state/build/bunny/bunny_web_bg.wasm" ] && set -- "$@" --bunny "$state/build/bunny"
         export OPENAGENTS_WEB_CHAT_WORKER="$key"
         cd "$state"
         exec nohup "$target/debug/openagents-web" --listen "127.0.0.1:$web_port" \
