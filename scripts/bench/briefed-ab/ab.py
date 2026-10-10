@@ -187,6 +187,7 @@ def run_arm_a(task: dict, root: Path, out: Path, levers: dict, slot: int) -> dic
     timed_out = False
     with open(out / "events.jsonl", "w") as sink, open(out / "stderr.txt", "w") as errf:
         proc = subprocess.Popen(argv, cwd=root, env=trial_env(root, task, slot), stdout=subprocess.PIPE,
+                                stdin=subprocess.DEVNULL,
                                 stderr=errf, text=True, start_new_session=True)
 
         def pump() -> None:
