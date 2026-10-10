@@ -1,12 +1,13 @@
 //! Stamps the build with the commit it came from and whether the tree was
 //! dirty, so `coder --version` says which Coder is running.
 //!
-//! `scripts/install-coder.sh` sets `CODER_BUILD_COMMIT` and
-//! `CODER_BUILD_DIRTY` from the checkout it builds, which is exact. A
-//! plain `cargo build` asks Git itself, and reruns when `HEAD`, the branch
-//! it points at, or the index moves. An edit to a file outside this crate
-//! that is never staged does not rerun the script, so such a build can say
-//! `clean` for a tree that is not; the install script is the exact path.
+//! `scripts/install-coder.sh` and the release scripts set
+//! `CODER_BUILD_COMMIT` and `CODER_BUILD_DIRTY` from the checkout they
+//! build, which is exact. A plain `cargo build` asks Git for the commit and
+//! reruns only when `HEAD` or the branch it points at moves. It does not
+//! watch the index or run `git status`: staging a file anywhere in the
+//! monorepo must not rebuild this crate and its dependents, so without
+//! `CODER_BUILD_DIRTY` the tree is reported as `unknown`.
 
 use std::path::Path;
 use std::process::Command;
@@ -26,7 +27,7 @@ fn main() {
             .success()
             .then(|| String::from_utf8_lossy(&output.stdout).trim().to_string())
     };
-    for path in ["HEAD", "index", "packed-refs"] {
+    for path in ["HEAD", "packed-refs"] {
         if let Some(found) = git(&["rev-parse", "--git-path", path]) {
             watch(&dir, &found);
         }
@@ -45,11 +46,7 @@ fn main() {
     let dirty = match std::env::var("CODER_BUILD_DIRTY").ok().as_deref() {
         Some("1" | "true" | "dirty") => "dirty".to_string(),
         Some("0" | "false" | "clean") => "clean".to_string(),
-        _ => match git(&["status", "--porcelain", "--untracked-files=no"]) {
-            Some(status) if status.is_empty() => "clean".to_string(),
-            Some(_) => "dirty".to_string(),
-            None => "unknown".to_string(),
-        },
+        _ => "unknown".to_string(),
     };
     println!("cargo:rustc-env=CODER_GIT_COMMIT={commit}");
     println!("cargo:rustc-env=CODER_GIT_TREE={dirty}");

@@ -28,10 +28,11 @@ fn main() {
     if let Some(path) = git(&["rev-parse", "--git-path", "HEAD"]) {
         println!("cargo:rerun-if-changed={path}");
     }
-    for name in ["index", "packed-refs"] {
-        if let Some(path) = git(&["rev-parse", "--git-path", name]) {
-            println!("cargo:rerun-if-changed={path}");
-        }
+    // Not the index: staging any file in the monorepo would rerun this
+    // script. The source paths above already rerun it when a file that
+    // feeds the `-modified` flag changes.
+    if let Some(path) = git(&["rev-parse", "--git-path", "packed-refs"]) {
+        println!("cargo:rerun-if-changed={path}");
     }
     if let Some(reference) = git(&["symbolic-ref", "-q", "HEAD"]) {
         if let Some(path) = git(&["rev-parse", "--git-path", &reference]) {
