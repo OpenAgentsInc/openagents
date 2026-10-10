@@ -150,7 +150,17 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         .collect::<Vec<_>>();
     frame.render_widget(Paragraph::new(pending), queued);
     match app.screen {
-        Screen::Conversation => conversation(frame, body, app),
+        // The transcript runs edge to edge, as Claude Code's does: the
+        // person's `❯` and the replies' `●` sit in column 0.
+        Screen::Conversation => conversation(
+            frame,
+            Rect {
+                x: terminal_x,
+                width: terminal_width,
+                ..body
+            },
+            app,
+        ),
         Screen::Plugins | Screen::PluginSettings | Screen::Appearance => unreachable!(),
     }
     let hints = app.slash_hints();
@@ -511,17 +521,48 @@ fn message_body(text: &str, width: u16) -> Vec<Line<'static>> {
     t::noir_lines(markdown_body(text, width, Ladder::new(Colors::True)))
 }
 
+/// The columns the transcript keeps clear at its right edge. Its rows are
+/// laid out `GUTTER` narrower than the screen; only the person's band
+/// reaches the edge.
+const GUTTER: u16 = 2;
+
+/// The person's message as Claude Code shows it: `❯` in column 0, wrapped
+/// rows hanging under the text, on a band that runs through the gutter to
+/// the screen's edge.
 fn prompt(text: &str, width: u16) -> Vec<Line<'static>> {
-    let mut rows = message_body(text, width.saturating_sub(3));
+    let mut rows = message_body(text, width.saturating_sub(2));
     if rows.is_empty() {
         rows.push(Line::default());
     }
     for (index, row) in rows.iter_mut().enumerate() {
         row.spans.insert(
             0,
-            span(if index == 0 { " ❯ " } else { "   " }, t::TEXT_SECONDARY),
+            span(if index == 0 { "❯ " } else { "  " }, t::TEXT_SECONDARY),
         );
+        let band = usize::from(width.saturating_add(GUTTER));
+        let used = row.width();
+        if used < band {
+            row.spans.push(Span::raw(" ".repeat(band - used)));
+        }
         row.style = row.style.bg(t::BG_LIGHT);
+    }
+    rows
+}
+
+/// An assistant reply as Claude Code shows it: `●` in column 0, then the
+/// text, every further row indented two columns to hang under it.
+fn bulleted(text: &str, width: u16) -> Vec<Line<'static>> {
+    let mut rows = message_body(text, width.saturating_sub(2));
+    let mut first = true;
+    for row in &mut rows {
+        let blank = row.spans.iter().all(|span| span.content.trim().is_empty());
+        let lead = if first && !blank {
+            first = false;
+            span("● ", t::TEXT_PRIMARY)
+        } else {
+            Span::raw("  ")
+        };
+        row.spans.insert(0, lead);
     }
     rows
 }
@@ -559,72 +600,67 @@ fn wrap_display(lines: Vec<Line<'static>>, width: u16) -> Vec<Line<'static>> {
 }
 
 fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
+    let content = area.width.saturating_sub(GUTTER);
     if app.mode == Mode::Live {
         live_conversation(frame, area, app);
         return;
     }
     let mut lines = if app.mode == Mode::Live {
-        live_lines(app, area.width)
+        live_lines(app, content)
     } else if let Some(agent) = app.selected_agent.and_then(|index| DEMOS.get(index)) {
         let mut lines = Vec::new();
-        for (index, message) in agent.conversation.iter().enumerate() {
+        for message in agent.conversation.iter() {
             match message {
-                DemoMessage::User(text) => lines.extend(prompt(text, area.width)),
+                DemoMessage::User(text) => lines.extend(prompt(text, content)),
                 DemoMessage::Tool(call) => {
                     lines.extend(wrap_display(
-                        tool_lines(call, app.animation_frame, area.width),
-                        area.width,
+                        tool_lines(call, app.animation_frame, content),
+                        content,
                     ));
                 }
                 DemoMessage::Plugin(call) => lines.extend(wrap_display(
                     plugin_lines(call, app.animation_frame),
-                    area.width,
+                    content,
                 )),
                 DemoMessage::Assistant(text) => {
-                    lines.extend(message_body(text, area.width));
+                    lines.extend(bulleted(text, content));
                 }
             }
-            let grouped = matches!(message, DemoMessage::Tool(_) | DemoMessage::Plugin(_))
-                && matches!(
-                    agent.conversation.get(index + 1),
-                    Some(DemoMessage::Tool(_) | DemoMessage::Plugin(_))
-                );
-            if !grouped {
-                lines.push(Line::default());
-            }
+            lines.push(Line::default());
         }
         lines
     } else {
-        let mut lines = prompt("Review the terminal with four agents.", area.width);
+        let mut lines = prompt("Review the terminal with four agents.", content);
         lines.push(Line::default());
         for call in &MAIN_TOOLS {
             lines.extend(wrap_display(
-                tool_lines(call, app.animation_frame, area.width),
-                area.width,
+                tool_lines(call, app.animation_frame, content),
+                content,
             ));
+            lines.push(Line::default());
         }
         for call in &MAIN_PLUGINS {
             lines.extend(wrap_display(
                 plugin_lines(call, app.animation_frame),
-                area.width,
+                content,
             ));
+            lines.push(Line::default());
         }
-        lines.push(Line::default());
         for agent in &DEMOS {
-            lines.extend(delegation_lines(agent, app.animation_frame, area.width));
+            lines.extend(delegation_lines(agent, app.animation_frame, content));
+            lines.push(Line::default());
         }
-        lines.push(Line::default());
         lines
     };
     for message in app.messages.iter().filter(|_| app.mode == Mode::Demo) {
-        lines.extend(prompt(message, area.width));
+        lines.extend(prompt(message, content));
         lines.push(Line::default());
         lines.extend(wrap_display(
             vec![Line::from(span(
                 "Preview message added. No agent is connected.",
                 t::GRAY,
             ))],
-            area.width,
+            content,
         ));
         lines.push(Line::default());
     }
@@ -634,7 +670,7 @@ fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
                 .lines()
                 .map(|text| Line::from(span(text, t::GRAY)))
                 .collect(),
-            area.width,
+            content,
         ));
         lines.push(Line::default());
     }
@@ -665,10 +701,10 @@ fn run_lines(
     } else if output.get("error").is_some() {
         "×"
     } else {
-        "◆"
+        "●"
     };
     let mut lines = vec![Line::from(vec![
-        span(format!(" {glyph} "), t::ACCENT_SKILL),
+        span(format!("{glyph} "), t::ACCENT_SKILL),
         Span::styled(
             "Run",
             Style::default()
@@ -684,7 +720,7 @@ fn run_lines(
         ),
     ])];
     if running {
-        lines.push(Line::from(span("   Running", t::GRAY)));
+        lines.push(Line::from(span(format!("{RESULT_INDENT}Running"), t::GRAY)));
     }
     if let Some(fields) = output.as_object() {
         let status = fields
@@ -708,7 +744,10 @@ fn run_lines(
             .join(" · ");
         if !status.is_empty() {
             lines.push(Line::from(span(
-                format!("   {}", truncate(&status, width.saturating_sub(3))),
+                format!(
+                    "{RESULT_INDENT}{}",
+                    truncate(&status, width.saturating_sub(5))
+                ),
                 t::GRAY,
             )));
         }
@@ -719,18 +758,55 @@ fn run_lines(
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
         {
-            let rows = wrap_display(
-                text.lines()
-                    .map(|row| Line::from(span(format!("   {row}"), t::GRAY_BRIGHT)))
-                    .collect(),
-                width,
-            );
+            let inner = usize::from(width.saturating_sub(5)).max(1);
+            let rows = text.lines().flat_map(|row| {
+                let ranges = coder_terminal::wrap_rows(row, inner);
+                if ranges.is_empty() {
+                    vec![Line::from(span(RESULT_INDENT, t::GRAY_BRIGHT))]
+                } else {
+                    ranges
+                        .into_iter()
+                        .map(|range| {
+                            Line::from(span(
+                                format!("{RESULT_INDENT}{}", &row[range]),
+                                t::GRAY_BRIGHT,
+                            ))
+                        })
+                        .collect()
+                }
+            });
             // The whole retained output (bounded and redacted upstream) stays
             // in the transcript, where PageUp/PageDown review it (#11117).
             lines.extend(rows);
         }
     }
+    mark_result(&mut lines);
     lines
+}
+
+/// The indent result rows sit at, under a tool's name (Claude Code's
+/// hanging indent).
+const RESULT_INDENT: &str = "     ";
+/// The mark on a tool's first result row.
+const RESULT_MARK: &str = "  ⎿  ";
+
+/// Put [`RESULT_MARK`] on the first row after a tool's header that starts
+/// with [`RESULT_INDENT`].
+fn mark_result(lines: &mut [Line<'static>]) {
+    let Some(row) = lines.get_mut(1) else {
+        return;
+    };
+    let Some(first) = row.spans.first_mut() else {
+        return;
+    };
+    if let Some(rest) = first.content.strip_prefix(RESULT_INDENT) {
+        let rest = rest.to_owned();
+        let style = first.style;
+        row.spans.splice(
+            0..1,
+            [span(RESULT_MARK, t::GRAY_DIM), Span::styled(rest, style)],
+        );
+    }
 }
 
 fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'static>> {
@@ -739,12 +815,10 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
         crate::live::Entry::User(text) => {
             lines.extend(prompt(text, width));
         }
-        crate::live::Entry::Assistant {
-            text,
-            model,
-            elapsed_ms,
-        } => {
-            reply_lines(&mut lines, text, model.as_deref(), *elapsed_ms, width);
+        // The reply's model and time stay in the entry (exports read them);
+        // the transcript shows neither.
+        crate::live::Entry::Assistant { text, .. } => {
+            reply_lines(&mut lines, text, width);
         }
         crate::live::Entry::Tool {
             name,
@@ -789,12 +863,12 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
             } else if output.get("error").is_some() {
                 "×"
             } else {
-                "◆"
+                "●"
             };
             let native = matches!(name.as_str(), "Run" | "Read" | "Edit" | "Search");
             let label = if native { name.as_str() } else { "Plugin" };
             lines.push(Line::from(vec![
-                span(format!(" {glyph} "), t::ACCENT_SKILL),
+                span(format!("{glyph} "), t::ACCENT_SKILL),
                 Span::styled(
                     label.to_owned(),
                     Style::default()
@@ -816,7 +890,7 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
             lines.extend(crate::tools::parameter_lines(input, width));
             if *running {
                 lines.push(Line::from(vec![
-                    span("   ╰ ", t::GRAY_DIM),
+                    span("  ⎿  ", t::GRAY_DIM),
                     span("Running", t::GRAY_BRIGHT),
                 ]));
             } else {
@@ -838,13 +912,13 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
             lines.push(Line::from(vec![
                 span(
                     format!(
-                        " {} ",
+                        "{} ",
                         if *running {
                             crate::tools::spinner(phase)
                         } else if output.get("error").is_some() {
                             "×"
                         } else {
-                            "◆"
+                            "●"
                         }
                     ),
                     t::ACCENT_DELEGATE,
@@ -877,7 +951,7 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
                     )
                 );
             lines.push(Line::from(vec![
-                span("   ╰ ", t::GRAY_DIM),
+                span("  ⎿  ", t::GRAY_DIM),
                 span(detail, t::GRAY_BRIGHT),
             ]));
         }
@@ -1025,8 +1099,6 @@ fn live_lines(app: &App, width: u16) -> Vec<Line<'static>> {
         reply_lines(
             &mut lines,
             &markdown_stream::renderable(&shown(&app.live.partial)),
-            app.live.partial_model.as_deref(),
-            None,
             width,
         );
     }
@@ -1034,6 +1106,7 @@ fn live_lines(app: &App, width: u16) -> Vec<Line<'static>> {
 }
 
 fn live_conversation(frame: &mut Frame, area: Rect, app: &mut App) {
+    let content = area.width.saturating_sub(GUTTER);
     let phase = app.animation_frame;
     let notice = app.notice.clone();
     let chat = app
@@ -1041,7 +1114,7 @@ fn live_conversation(frame: &mut Frame, area: Rect, app: &mut App) {
         .and_then(|index| app.delegations.get_mut(index))
         .map_or(&mut app.live, |agent| &mut agent.chat);
     let mut cache = std::mem::take(&mut chat.cache);
-    cache.refresh(chat, area.width, phase);
+    cache.refresh(chat, content, phase);
     let mut tail = Vec::new();
     if chat.busy {
         tail.extend(wrap_display(
@@ -1052,7 +1125,7 @@ fn live_conversation(frame: &mut Frame, area: Rect, app: &mut App) {
                 ),
                 span("Working", t::GRAY),
             ])],
-            area.width,
+            content,
         ));
     }
     for (message, color) in [
@@ -1060,17 +1133,13 @@ fn live_conversation(frame: &mut Frame, area: Rect, app: &mut App) {
         (notice.as_ref(), t::GRAY),
     ] {
         if let Some(message) = message {
-            tail.extend(
-                message_body(message, area.width)
-                    .into_iter()
-                    .map(|mut line| {
-                        line.style.fg = Some(color);
-                        for span in &mut line.spans {
-                            span.style.fg = Some(color);
-                        }
-                        line
-                    }),
-            );
+            tail.extend(message_body(message, content).into_iter().map(|mut line| {
+                line.style.fg = Some(color);
+                for span in &mut line.spans {
+                    span.style.fg = Some(color);
+                }
+                line
+            }));
             tail.push(Line::default());
         }
     }
@@ -1102,26 +1171,8 @@ fn live_conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     chat.cache = cache;
 }
 
-fn reply_lines(
-    lines: &mut Vec<Line<'static>>,
-    text: &str,
-    model: Option<&str>,
-    elapsed_ms: Option<u64>,
-    width: u16,
-) {
-    lines.extend(message_body(&shown(text), width));
-    let elapsed = elapsed_ms.map(|ms| format!("{:.1}s", ms as f64 / 1000.0));
-    let footer = match (model, elapsed) {
-        (Some(model), Some(elapsed)) => {
-            let suffix = format!(" · {elapsed}");
-            let available = width.saturating_sub(suffix.width() as u16);
-            format!("{}{suffix}", truncate(model, available))
-        }
-        (Some(model), None) => model.to_owned(),
-        (None, Some(elapsed)) => elapsed,
-        (None, None) => return,
-    };
-    lines.push(Line::from(span(truncate(&footer, width), t::GRAY)).right_aligned());
+fn reply_lines(lines: &mut Vec<Line<'static>>, text: &str, width: u16) {
+    lines.extend(bulleted(&shown(text), width));
 }
 
 /// A reply as the terminal shows it: each component block
@@ -1353,7 +1404,7 @@ mod streaming_tests {
     #[test]
     fn a_component_block_shows_as_markdown() {
         let mut lines = Vec::new();
-        super::reply_lines(&mut lines, BLOCK, None, None, 80);
+        super::reply_lines(&mut lines, BLOCK, 80);
         let text = lines
             .iter()
             .map(ToString::to_string)
