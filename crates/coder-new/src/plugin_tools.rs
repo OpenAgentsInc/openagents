@@ -56,6 +56,9 @@ pub struct GenerationProvider {
     pub client: openrouter::Client,
     pub model: String,
     pub effort: Option<String>,
+    /// The chat's OpenRouter base URL and key, for `web_search` when no
+    /// Exa key is set (#11175).
+    pub search_key: Option<(String, String)>,
 }
 
 #[derive(Deserialize)]
@@ -163,6 +166,7 @@ impl ExecutionSettings {
         if self.shell {
             definitions.push(bundled_runtime::run_tool_definition());
             definitions.extend(crate::file_tools::definitions());
+            definitions.extend(crate::web_tools::definitions());
         }
         if self.memory.is_some() {
             definitions.extend(crate::memory::Memory::tool_definitions());
@@ -226,6 +230,7 @@ impl ExecutionSettings {
         }
         if self.shell {
             guidance.push_str(crate::file_tools::INSTRUCTIONS);
+            guidance.push_str(crate::web_tools::INSTRUCTIONS);
             guidance.push_str("The Run tool runs shell commands with full filesystem and network access by default. Follow the user's instructions and any explicit host approval policy; a rejected command stays rejected. Prefer foreground builds/tests so output streams live. Begin long commands with a descriptive shell comment. When waiting for background jobs, stream their logs and print periodic status rather than silently sleeping; in this repository use python3 scripts/wait-job-logs.py LOGDIR build tests --timeout 100.\n");
         }
         if self.registered(ToolBinding::Microcoder) {
@@ -347,6 +352,24 @@ impl ExecutionSettings {
             }
             name if crate::file_tools::is_tool(name) && self.shell => {
                 crate::file_tools::execute(name, arguments, &self.cwd)
+            }
+            "web_fetch" | "web_search" if self.shell => {
+                let call = async {
+                    if name == "web_fetch" {
+                        crate::web_tools::fetch(arguments).await
+                    } else {
+                        let searcher = crate::web_tools::Searcher::choose(
+                            provider
+                                .as_ref()
+                                .and_then(|provider| provider.search_key.clone()),
+                        );
+                        crate::web_tools::search(arguments, searcher.as_ref()).await
+                    }
+                };
+                tokio::select! {
+                    result = call => result,
+                    () = async { while !cancel.load(Ordering::Relaxed) { tokio::time::sleep(std::time::Duration::from_millis(50)).await; } } => Err("The web request was canceled.".into()),
+                }
             }
             "Run" if self.shell => {
                 let args: RunArguments = serde_json::from_value(arguments)
@@ -819,6 +842,11 @@ mod tests {
 
     #[tokio::test]
     async fn named_delegation_never_dispatches_another_installed_agent() {
+        // The approval gate is process-wide; another test's tool-free gate
+        // would refuse these calls.
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let settings = available_agents();
         for request in [
             "can u delegate example to codex",
@@ -878,6 +906,11 @@ mod tests {
 
     #[tokio::test]
     async fn disabled_and_unregistered_tools_never_dispatch() {
+        // The approval gate is process-wide; another test's tool-free gate
+        // would refuse these calls.
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut settings = settings();
         assert!(settings.defs().is_empty());
         let cancel = Arc::new(AtomicBool::new(false));
@@ -914,6 +947,11 @@ mod tests {
 
     #[tokio::test]
     async fn connected_keys_never_enter_arguments_or_results() {
+        // The approval gate is process-wide; another test's tool-free gate
+        // would refuse these calls.
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut settings = settings();
         settings.jev_enabled = true;
         let marker = "fixture-credential-marker";
@@ -937,6 +975,11 @@ mod tests {
     #[tokio::test]
     #[cfg(unix)]
     async fn acp_streams_and_final_results_redact_configured_credentials() {
+        // The approval gate is process-wide; another test's tool-free gate
+        // would refuse these calls.
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = tempfile::tempdir().unwrap();
         let request_key = "synthetic-acp-request-credential";
         let jev_key = "synthetic-acp-jev-credential";
@@ -1002,6 +1045,11 @@ mod tests {
 
     #[test]
     fn saved_keys_are_redacted_when_their_plugins_are_disabled() {
+        // The approval gate is process-wide; another test's tool-free gate
+        // would refuse these calls.
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut settings = settings();
         settings.redaction_keys = vec![ApiKey::new("fixture-saved-credential")];
         let mut value = json!({"message":"before fixture-saved-credential after"});
@@ -1015,7 +1063,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn web_tools_come_with_the_shell_and_refuse_private_addresses() {
+        // The approval gate is process-wide; another test's tool-free gate
+        // would refuse these calls.
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut settings = settings();
+        let names = |settings: &ExecutionSettings| -> Vec<String> {
+            settings
+                .defs()
+                .iter()
+                .map(|tool| tool["function"]["name"].as_str().unwrap().to_owned())
+                .collect()
+        };
+        assert!(!names(&settings).iter().any(|name| name == "web_fetch"));
+        settings.shell = true;
+        let offered = names(&settings);
+        assert!(offered.iter().any(|name| name == "web_fetch"));
+        assert!(offered.iter().any(|name| name == "web_search"));
+        assert!(settings.instructions().contains("cite its URL"));
+        let error = settings
+            .execute(
+                "web_fetch",
+                json!({"url":"http://169.254.169.254/latest/meta-data/"}),
+                None,
+                &Arc::new(AtomicBool::new(false)),
+                &mut |_| {},
+            )
+            .await
+            .unwrap_err();
+        assert!(error.contains("private address"), "{error}");
+    }
+
+    #[tokio::test]
     async fn a_gated_chat_offers_the_run_tool_in_its_working_directory() {
+        // The approval gate is process-wide; another test's tool-free gate
+        // would refuse these calls.
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let directory = tempfile::tempdir().unwrap();
         std::fs::write(directory.path().join("marker.txt"), "here").unwrap();
         let mut settings = settings();

@@ -48,6 +48,7 @@ impl App {
             client,
             model: self.plugins.model.clone(),
             effort: self.plugins.options.reasoning.clone(),
+            search_key: Some((openrouter::BASE_URL.to_owned(), key.expose().to_owned())),
         })
     }
 

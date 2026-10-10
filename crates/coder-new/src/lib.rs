@@ -53,6 +53,7 @@ pub mod trace_upload;
 pub mod trajectory;
 pub mod ui;
 pub mod update;
+pub mod web_tools;
 
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 use unicode_segmentation::UnicodeSegmentation;

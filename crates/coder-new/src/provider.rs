@@ -288,6 +288,7 @@ impl Provider {
             client: self.chat.clone(),
             model: model.into(),
             effort: options.reasoning.clone(),
+            search_key: Some((self.base_url.clone(), self.key.expose().to_owned())),
         };
         loop {
             if cancel.load(Ordering::Relaxed) {
@@ -2125,6 +2126,10 @@ mod tests {
 
     #[test]
     fn an_explicit_codex_request_rejects_opencode_before_starting_a_child() {
+        // Another test's tool-free gate would remove every tool.
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let wrong = format!(
             "data: {}\n\ndata: [DONE]\n\n",
             json!({"choices":[{"delta":{"tool_calls":[{"index":0,"id":"wrong-agent","function":{"name":"acp_subagent","arguments":"{\"agent\":\"opencode\",\"task\":\"Provide a delegation example.\"}"}}]},"finish_reason":"tool_calls"}]})
@@ -2447,6 +2452,10 @@ mod tests {
     /// image part; a text-only model gets the note line and why.
     #[test]
     fn an_attached_screenshot_reaches_a_vision_model_and_a_note_reaches_others() {
+        // Another test's tool-free gate would remove every tool.
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = tempfile::tempdir().unwrap();
         let store = dir.path().join("attachments");
         let image = crate::attachments::from_data_url(&format!(

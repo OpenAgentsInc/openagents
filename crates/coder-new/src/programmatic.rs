@@ -1316,6 +1316,7 @@ fn delegate(
                 client,
                 model: app.plugins.model.clone(),
                 effort: app.plugins.options.reasoning.clone(),
+                search_key: Some((openrouter::BASE_URL.to_owned(), key.expose().to_owned())),
             })
         })
         .transpose()

@@ -459,7 +459,7 @@ fn run_with_provider(
                     };
                     events(RuntimeEvent::Tool { name: tool.clone(), input: arguments.clone(), output: serde_json::Value::Null, running: true });
                     let provider = if request.key.expose().is_empty() { None } else {
-                        openrouter::Client::new(openrouter::Config::new(openrouter::ApiKey::new(request.key.expose()))).ok().map(|client| crate::plugin_tools::GenerationProvider { client, model, effort: options.reasoning })
+                        openrouter::Client::new(openrouter::Config::new(openrouter::ApiKey::new(request.key.expose()))).ok().map(|client| crate::plugin_tools::GenerationProvider { client, model, effort: options.reasoning, search_key: Some((openrouter::BASE_URL.to_owned(), request.key.expose().to_owned())) })
                     };
                     let result = execution.execute(&tool, arguments, provider, &cancel, &mut events).await;
                     let output = match &result { Ok(value) => value.clone(), Err(error) => serde_json::json!({"error":error}) };

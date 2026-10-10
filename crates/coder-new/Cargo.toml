@@ -51,7 +51,7 @@ globset = "0.4"
 ignore = "0.4"
 regex = "1"
 crc32fast = "1"
-tokio = { version = "1", features = ["macros", "rt", "sync", "time", "process", "io-util", "signal"] }
+tokio = { version = "1", features = ["macros", "rt", "sync", "time", "process", "io-util", "signal", "net"] }
 unicode-segmentation = "1"
 unicode-width = "0.2"
 
