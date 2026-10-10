@@ -52,7 +52,7 @@ fn takes(session: &str, sent_here: bool, open_here: bool, saved_here: bool) -> b
 /// The terminal's sync state.
 pub(crate) struct SyncState {
     pub(crate) settings: Settings,
-    worker: Option<Worker>,
+    pub(crate) worker: Option<Worker>,
     screen: secret_screen::Screen,
     computer: String,
     /// The last heartbeat sent for the open chat: working, and when.
