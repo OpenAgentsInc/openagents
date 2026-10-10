@@ -272,6 +272,54 @@ pub const ENGINE_LOGIN_ENV: &[&str] = &[
     "CODEX_API_KEY",
 ];
 
+/// Variable names that hold or point at a credential without a telling
+/// suffix: a cloud key pair's halves, a service-account key file, and the
+/// Codex login's path.
+const CREDENTIAL_NAMES: &[&str] = &[
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "GOOGLE_APPLICATION_CREDENTIALS",
+    "CODEX_AUTH_JSON_PATH",
+    "PGPASSWORD",
+    "MYSQL_PWD",
+];
+
+/// Name endings (after an underscore, or the whole name) that mark a
+/// credential.
+const CREDENTIAL_STEMS: &[&str] = &[
+    "API_KEY",
+    "APIKEY",
+    "TOKEN",
+    "SECRET",
+    "SECRET_KEY",
+    "ACCESS_KEY",
+    "PRIVATE_KEY",
+    "PASSWORD",
+    "PASSWD",
+    "PASS",
+    "PAT",
+    "CREDENTIAL",
+    "CREDENTIALS",
+];
+
+/// Whether an environment variable's name names a credential that a
+/// model's commands and an agent's child processes must not inherit. One
+/// policy for every scrubber: case-insensitive; a known name such as
+/// `AWS_SECRET_ACCESS_KEY` or `GOOGLE_APPLICATION_CREDENTIALS`; or a name
+/// that is, or ends in `_` and, `API_KEY`, `TOKEN`, `SECRET`, `ACCESS_KEY`,
+/// `PRIVATE_KEY`, `PASSWORD`, `PASS`, `PAT`, `CREDENTIALS`, and the like.
+#[must_use]
+pub fn is_credential_name(name: &str) -> bool {
+    let upper = name.to_ascii_uppercase();
+    CREDENTIAL_NAMES.contains(&upper.as_str())
+        || CREDENTIAL_STEMS.iter().any(|stem| {
+            upper == *stem
+                || upper
+                    .strip_suffix(stem)
+                    .is_some_and(|head| head.ends_with('_'))
+        })
+}
+
 /// Whether a relative or absolute path names an engine login file:
 /// Claude Code's `.credentials.json` anywhere, or Codex's `auth.json`
 /// under `.codex`.
@@ -676,5 +724,48 @@ mod tests {
         let text = format!("start{}é{}end", "x".repeat(200), "y".repeat(200));
         let cut = head_and_tail(&text, 64);
         assert!(cut.len() <= 64 && cut.starts_with("start") && cut.ends_with("end"));
+    }
+
+    #[test]
+    fn credential_names_cover_keys_tokens_passwords_and_cloud_credentials() {
+        for name in [
+            "OPENAI_API_KEY",
+            "github_token",
+            "GH_TOKEN",
+            "AWS_SECRET",
+            "AWS_SECRET_ACCESS_KEY",
+            "aws_access_key_id",
+            "AWS_SESSION_TOKEN",
+            "GOOGLE_APPLICATION_CREDENTIALS",
+            "DB_PASSWORD",
+            "PGPASSWORD",
+            "MYSQL_PWD",
+            "SMTP_PASS",
+            "GITHUB_PAT",
+            "STRIPE_SECRET_KEY",
+            "SSH_PRIVATE_KEY",
+            "SOME_CREDENTIALS",
+            "CODEX_AUTH_JSON_PATH",
+            "TOKEN",
+            "PASSWORD",
+        ] {
+            assert!(is_credential_name(name), "{name}");
+        }
+        for name in [
+            "PATH",
+            "HOME",
+            "LANG",
+            "TERM",
+            "TMPDIR",
+            "TOKENIZER",
+            "TOKENIZERS_PARALLELISM",
+            "BYPASS",
+            "SKIPPATH",
+            "CODER_ONE_DEEP",
+            "PYTHONDONTWRITEBYTECODE",
+            "",
+        ] {
+            assert!(!is_credential_name(name), "{name}");
+        }
     }
 }

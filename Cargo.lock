@@ -132,6 +132,7 @@ version = "0.1.0"
 dependencies = [
  "coder-lease",
  "libc",
+ "secret-screen",
  "serde",
  "serde_json",
  "tempfile",

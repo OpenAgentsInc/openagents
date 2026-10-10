@@ -75,6 +75,24 @@ const SHELL: &str = "if command -v bash >/dev/null 2>&1; then exec bash -s; else
 /// environment gets 022 from a stock daemon.
 pub const UMASK: &str = "umask 022";
 
+/// The names among `vars` that hold a credential, by the workspace's one
+/// policy. Names that are not valid Unicode are judged lossily, so a
+/// non-UTF-8 variable can neither crash a step nor slip a key through.
+fn credential_vars(
+    vars: impl Iterator<Item = (std::ffi::OsString, std::ffi::OsString)>,
+) -> Vec<std::ffi::OsString> {
+    vars.map(|(name, _)| name)
+        .filter(|name| acp_client::process::is_credential_name(&name.to_string_lossy()))
+        .collect()
+}
+
+/// Remove every credential in this process's environment from `child`'s.
+fn scrub_credentials(child: &mut Command) {
+    for name in credential_vars(std::env::vars_os()) {
+        child.env_remove(name);
+    }
+}
+
 impl Env for Local {
     async fn run(&self, command: &str, deadline: Duration) -> CommandResult {
         let mut child = Command::new("sh");
@@ -83,11 +101,7 @@ impl Env for Local {
         // on `PATH`, once this process turned the shims on.
         child.envs(coder_lease::shim::delegate_vars_here());
         // The model's commands never see a key.
-        for (name, _) in std::env::vars() {
-            if name.ends_with("_API_KEY") || name.ends_with("_TOKEN") || name.ends_with("_SECRET") {
-                child.env_remove(name);
-            }
-        }
+        scrub_credentials(&mut child);
         execute(child, command, deadline).await
     }
 
@@ -153,11 +167,7 @@ impl Env for Bounded {
         if let Some(scratch) = self.boundary.scratch() {
             child.env("TMPDIR", scratch);
         }
-        for (name, _) in std::env::vars() {
-            if name.ends_with("_API_KEY") || name.ends_with("_TOKEN") || name.ends_with("_SECRET") {
-                child.env_remove(name);
-            }
-        }
+        scrub_credentials(&mut child);
         execute(child, command, deadline).await
     }
 
@@ -295,6 +305,38 @@ async fn read_capped<R: tokio::io::AsyncRead + Unpin>(source: Option<R>) -> Stri
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    #[cfg(unix)]
+    fn credential_scrubbing_survives_non_utf8_names_and_catches_more_than_suffixes() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+        let vars = [
+            (
+                OsString::from_vec(vec![b'X', 0xff, b'Y']),
+                OsString::from("v"),
+            ),
+            (
+                OsString::from_vec(b"BAD\xff_TOKEN".to_vec()),
+                OsString::from("v"),
+            ),
+            (OsString::from("PATH"), OsString::from_vec(vec![0xfe])),
+            (OsString::from("aws_secret_access_key"), OsString::from("v")),
+            (OsString::from("DB_PASSWORD"), OsString::from("v")),
+            (OsString::from("OPENAI_API_KEY"), OsString::from("v")),
+            (OsString::from("HOME"), OsString::from("v")),
+        ];
+        let removed = super::credential_vars(vars.into_iter());
+        assert_eq!(
+            removed,
+            [
+                OsString::from_vec(b"BAD\xff_TOKEN".to_vec()),
+                OsString::from("aws_secret_access_key"),
+                OsString::from("DB_PASSWORD"),
+                OsString::from("OPENAI_API_KEY"),
+            ]
+        );
+    }
     use super::*;
 
     #[tokio::test]

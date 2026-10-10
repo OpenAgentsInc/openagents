@@ -376,15 +376,8 @@ mod windows {
 }
 
 /// Whether a variable name names a credential the agent must not inherit:
-/// it ends in `_API_KEY`, `_TOKEN`, or `_SECRET`, as the task owner's full
-/// access leaves out.
-#[must_use]
-pub fn is_credential_name(name: &str) -> bool {
-    let upper = name.to_ascii_uppercase();
-    ["_API_KEY", "_TOKEN", "_SECRET"]
-        .iter()
-        .any(|suffix| upper.ends_with(suffix))
-}
+/// the workspace's one policy, [`secret_screen::is_credential_name`].
+pub use secret_screen::is_credential_name;
 
 /// `path` relative to `home`, for a message that names a location without
 /// the account's home directory.
@@ -405,6 +398,9 @@ mod tests {
         assert!(is_credential_name("OPENAI_API_KEY"));
         assert!(is_credential_name("github_token"));
         assert!(is_credential_name("AWS_SECRET"));
+        assert!(is_credential_name("AWS_SECRET_ACCESS_KEY"));
+        assert!(is_credential_name("DB_PASSWORD"));
+        assert!(is_credential_name("GOOGLE_APPLICATION_CREDENTIALS"));
         assert!(!is_credential_name("HOME"));
         assert!(!is_credential_name("TOKENIZER"));
     }

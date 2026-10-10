@@ -176,25 +176,11 @@ pub fn is_github(name: &str) -> bool {
     upper.starts_with("GH_") || upper.starts_with("GITHUB_")
 }
 
-/// A variable a model's command must not see: a named credential, any
-/// `*_API_KEY`, `*_TOKEN`, or `*_SECRET`, the Codex login's path, or the
-/// host's policy manifest.
+/// A variable a model's command must not see: a credential by the
+/// workspace's one policy ([`acp_client::process::is_credential_name`],
+/// which covers the Codex login's path), or the host's policy manifest.
 pub fn is_withheld(name: &str) -> bool {
-    const NAMED: &[&str] = &[
-        "OPENAGENTS_API_KEY",
-        "TYPESAFE_API_KEY",
-        "CLAUDE_CODE_OAUTH_TOKEN",
-        "ANTHROPIC_API_KEY",
-        "ANTHROPIC_AUTH_TOKEN",
-        "OPENAI_API_KEY",
-        "CODEX_AUTH_JSON_PATH",
-        "CODER_ONE_POLICY",
-    ];
-    let upper = name.to_ascii_uppercase();
-    NAMED.contains(&upper.as_str())
-        || upper.ends_with("_API_KEY")
-        || upper.ends_with("_TOKEN")
-        || upper.ends_with("_SECRET")
+    acp_client::process::is_credential_name(name) || name.eq_ignore_ascii_case("CODER_ONE_POLICY")
 }
 
 #[cfg(test)]

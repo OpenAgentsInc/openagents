@@ -526,8 +526,7 @@ async fn wait_job(
 
 pub(crate) fn scrub_credentials(command: &mut std::process::Command) {
     for (name, _) in std::env::vars_os() {
-        let text = name.to_string_lossy();
-        if text.ends_with("_API_KEY") || text.ends_with("_TOKEN") || text.ends_with("_SECRET") {
+        if acp_client::process::is_credential_name(&name.to_string_lossy()) {
             command.env_remove(name);
         }
     }
@@ -620,7 +619,10 @@ pub async fn acp(
     }
     let cursor = agent.id == "cursor";
     let admitted = std::env::var("OA_CODER_CLOUD_CREDENTIAL_NAMES").unwrap_or_default();
-    let mut environment: Vec<(String, String)> = std::env::vars()
+    // `vars_os`, not `vars`: a non-UTF-8 variable is left out rather than
+    // crashing the run.
+    let mut environment: Vec<(String, String)> = std::env::vars_os()
+        .filter_map(|(name, value)| Some((name.into_string().ok()?, value.into_string().ok()?)))
         .filter(|(name, _)| {
             admitted.split(',').any(|allowed| allowed == name)
                 || (cursor && acp_client::cursor::CREDENTIAL_VARS.contains(&name.as_str()))

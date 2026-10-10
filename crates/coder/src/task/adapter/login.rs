@@ -91,10 +91,11 @@ impl Environment {
     }
 }
 
-/// Whether `name` holds a credential that commands never receive.
+/// Whether `name` holds a credential that commands never receive, by the
+/// workspace's one policy.
 #[must_use]
 pub fn credential(name: &str) -> bool {
-    name.ends_with("_API_KEY") || name.ends_with("_TOKEN") || name.ends_with("_SECRET")
+    acp_client::process::is_credential_name(name)
 }
 
 /// The owner's login-shell environment, or the fallback when the shell

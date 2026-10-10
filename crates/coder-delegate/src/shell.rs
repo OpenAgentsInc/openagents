@@ -123,23 +123,10 @@ impl Shell for Checkout {
 }
 
 /// Whether an environment variable holds a credential the agent's commands
-/// must not inherit: the doors' and delegates' keys by name, and any name
-/// that ends like one.
+/// must not inherit, by the workspace's one policy
+/// ([`acp_client::process::is_credential_name`]).
 pub fn is_credential(name: &str) -> bool {
-    const NAMED: &[&str] = &[
-        "OPENAGENTS_API_KEY",
-        "TYPESAFE_API_KEY",
-        "CLAUDE_CODE_OAUTH_TOKEN",
-        "ANTHROPIC_API_KEY",
-        "ANTHROPIC_AUTH_TOKEN",
-        "OPENAI_API_KEY",
-        "CODEX_AUTH_JSON_PATH",
-    ];
-    let upper = name.to_ascii_uppercase();
-    NAMED.contains(&upper.as_str())
-        || upper.ends_with("_API_KEY")
-        || upper.ends_with("_TOKEN")
-        || upper.ends_with("_SECRET")
+    acp_client::process::is_credential_name(name)
 }
 
 fn print_tail(output: &str) {
@@ -165,6 +152,9 @@ mod tests {
             "CLAUDE_CODE_OAUTH_TOKEN",
             "GITHUB_TOKEN",
             "some_service_secret",
+            "CODEX_AUTH_JSON_PATH",
+            "AWS_SECRET_ACCESS_KEY",
+            "DB_PASSWORD",
         ] {
             assert!(is_credential(name), "{name}");
         }
