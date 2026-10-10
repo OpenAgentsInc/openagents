@@ -241,10 +241,12 @@ pub fn choose_folder() -> openagents_desktop::folder::Chosen {
 /// Build when it is installed. On Windows Codex and Claude Code
 /// keep their sign-in in a file under the profile.
 pub fn signed_in(home: &Path) -> Agents {
+    let claude = home.join(".claude").join(".credentials.json").exists();
     Agents {
         codex: openagents_desktop::model::codex_login(home).exists(),
-        claude: home.join(".claude").join(".credentials.json").exists(),
+        claude,
         grok: openagents_desktop::model::grok(home),
+        claude_problem: openagents_desktop::claude_setup::check(home, claude),
     }
 }
 

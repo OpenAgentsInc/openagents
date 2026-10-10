@@ -199,9 +199,11 @@ pub fn signed_in(home: &Path) -> Agents {
         .stderr(Stdio::null())
         .status()
         .is_ok_and(|status| status.success());
+    let claude = claude_item || home.join(".claude/.credentials.json").exists();
     Agents {
         codex: openagents_desktop::model::codex_login(home).exists(),
-        claude: claude_item || home.join(".claude/.credentials.json").exists(),
+        claude,
         grok: openagents_desktop::model::grok(home),
+        claude_problem: openagents_desktop::claude_setup::check(home, claude),
     }
 }

@@ -294,6 +294,7 @@ impl LocalLane {
                         codex: true,
                         claude: false,
                         grok: None,
+                        claude_problem: None,
                     }
                 } else {
                     platform::signed_in(&self.home)

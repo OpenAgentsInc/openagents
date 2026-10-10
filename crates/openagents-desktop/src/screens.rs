@@ -400,6 +400,12 @@ fn connected(model: &Model, device: &str) -> Node<Intent> {
     if let Some(grok) = model.agents.grok {
         agents.push(signed_in("grok", "Grok Build", grok));
     }
+    let another = model.agents.codex || model.agents.grok == Some(true);
+    let claude = model
+        .agents
+        .claude_problem
+        .filter(|problem| !another || problem.shows_beside_another_agent())
+        .map(claude_card);
     if !model.agents.codex && !model.agents.claude && model.agents.grok != Some(true) {
         agents.push(text(
             "agents-help",
@@ -422,10 +428,26 @@ fn connected(model: &Model, device: &str) -> Node<Intent> {
             ),
             card("project-card", project),
             card("agents-card", agents),
-            autostart(model),
-            button("done", "Done", Intent::Done, true),
-        ],
+        ]
+        .into_iter()
+        .chain(claude)
+        .chain([autostart(model), button("done", "Done", Intent::Done, true)])
+        .collect(),
     )
+}
+
+/// Why Claude Code can't run on this computer yet (#11234): the title,
+/// what to do, the exact command, and Retry, which checks again.
+fn claude_card(problem: crate::claude_setup::Problem) -> Node<Intent> {
+    let mut rows = vec![
+        bold("claude-problem-title", problem.title()),
+        text("claude-problem-detail", problem.detail(), TextRole::Body),
+    ];
+    if let Some(command) = problem.command() {
+        rows.push(text("claude-problem-command", command, TextRole::Code));
+    }
+    rows.push(button("claude-retry", "Retry", Intent::CheckClaude, true));
+    card("claude-card", rows)
 }
 
 /// `DSK-03`: status, phones with Remove and Connect another phone, and

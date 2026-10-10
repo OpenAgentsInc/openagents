@@ -53,6 +53,29 @@
   min-width: 0;
 }
 
+/* Claude Code picked before Claude is connected (#11234): one card on
+   its own line in the row, with the one action that works. */
+.oa-composer-connect {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: calc(var(--spacing) * 1) calc(var(--spacing) * 2);
+  flex-basis: 100%;
+  min-width: 0;
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--composer-border-radius);
+  background: var(--color-background-composer-surface);
+  font-size: var(--font-text-sm-size, 0.875rem);
+}
+.oa-composer-connect > span {
+  color: var(--color-text-secondary);
+}
+.oa-composer-connect-action {
+  font-weight: 600;
+  text-decoration: underline;
+}
+
 .oa-composer-body {
   position: relative;
   display: flex;

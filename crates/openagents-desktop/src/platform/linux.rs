@@ -896,10 +896,12 @@ mod portal {
 /// Build when it is installed. On Linux Codex and Claude Code keep
 /// their sign-in in a file.
 pub fn signed_in(home: &Path) -> Agents {
+    let claude = home.join(".claude/.credentials.json").exists();
     Agents {
         codex: openagents_desktop::model::codex_login(home).exists(),
-        claude: home.join(".claude/.credentials.json").exists(),
+        claude,
         grok: openagents_desktop::model::grok(home),
+        claude_problem: openagents_desktop::claude_setup::check(home, claude),
     }
 }
 

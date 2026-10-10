@@ -60,6 +60,7 @@ pub mod background_pane;
 #[cfg(all(feature = "app", not(windows)))]
 pub mod chat_gym;
 pub mod chrome;
+pub mod claude_setup;
 pub mod codes;
 pub mod control;
 pub mod fake;

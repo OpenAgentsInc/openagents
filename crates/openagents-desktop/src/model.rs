@@ -140,6 +140,9 @@ pub enum Intent {
     NearbyDecline { id: u64 },
     /// "Try again", once Coder has not answered for [`STALL`].
     Retry,
+    /// "Retry" on the Claude Code card ([`crate::claude_setup`]): check
+    /// again whether Claude Code can run here (#11234).
+    CheckClaude,
 }
 
 /// A request for the shell to run.
@@ -262,6 +265,9 @@ pub struct Agents {
     /// Grok Build, allowed by default (#10091): `None` when it is not
     /// installed here, else whether it is signed in.
     pub grok: Option<bool>,
+    /// Why Claude Code can't run here yet (#11234): not found, running as
+    /// root, or not signed in; `None` when it can.
+    pub claude_problem: Option<crate::claude_setup::Problem>,
 }
 
 /// Grok Build for the person whose home is `home` ([`Agents::grok`]): `None`
@@ -752,6 +758,10 @@ impl Model {
                 vec![Request::Revoke { device }, Request::Refresh]
             }
             Intent::OpenLoginItems => vec![Request::OpenLoginItems],
+            Intent::CheckClaude => {
+                self.next_coder = now + CODER_POLL;
+                vec![Request::Coder]
+            }
             Intent::Retry => {
                 if self.host.is_some() {
                     return Vec::new();
@@ -1083,6 +1093,7 @@ mod tests {
                             codex: true,
                             claude: false,
                             grok: None,
+                            claude_problem: None,
                         },
                         tasks: vec![Task {
                             title: "Fix the login test".into(),

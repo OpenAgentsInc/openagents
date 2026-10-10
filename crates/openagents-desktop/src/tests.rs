@@ -156,6 +156,7 @@ fn states() -> Vec<(&'static str, Model)> {
         codex: true,
         claude: false,
         grok: None,
+        claude_problem: None,
     };
     states.push(("dsk-02-connected", connected));
 
@@ -173,6 +174,7 @@ fn states() -> Vec<(&'static str, Model)> {
         codex: false,
         claude: false,
         grok: Some(true),
+        claude_problem: None,
     };
     states.push(("dsk-02-connected-grok", grok));
 
@@ -185,6 +187,7 @@ fn states() -> Vec<(&'static str, Model)> {
         codex: true,
         claude: false,
         grok: None,
+        claude_problem: None,
     };
     states.push(("dsk-02-connected-unnamed", scanned));
 
@@ -607,4 +610,97 @@ fn every_screen_lays_out_on_the_desktop() {
             }
         }
     }
+}
+
+/// The intent of the button labelled `label` in `node`, if there is one.
+fn button_intent(node: &Node<Intent>, label: &str) -> Option<Intent> {
+    let mut pending = vec![node];
+    while let Some(node) = pending.pop() {
+        match &node.element {
+            rust_native::Element::Button {
+                label: shown,
+                intent,
+                ..
+            } if shown == label => return Some(intent.clone()),
+            rust_native::Element::Stack { children, .. }
+            | rust_native::Element::List { children, .. } => pending.extend(children),
+            _ => {}
+        }
+    }
+    None
+}
+
+/// #11234: Claude Code that can't run on this computer shows one card
+/// with what to do, the exact command, and Retry, which checks again. A
+/// missing Claude Code stays quiet while another agent can work.
+#[test]
+fn claude_code_problems_show_a_card_with_the_command_and_retry() {
+    use crate::claude_setup::Problem;
+    use crate::model::Request;
+    for (problem, codex, shown) in [
+        (Problem::NotFound, false, true),
+        (Problem::NotFound, true, false),
+        (Problem::NotSignedIn, true, true),
+        (Problem::NotSignedIn, false, true),
+        (Problem::Root, false, true),
+    ] {
+        let (mut model, start) = model(Screen::Connected {
+            device: "d".repeat(64),
+        });
+        model.host = Some(host(
+            vec![phone('d', "Kai's iPhone", false, 5)],
+            false,
+            false,
+        ));
+        model.agents = Agents {
+            codex,
+            claude: false,
+            grok: None,
+            claude_problem: Some(problem),
+        };
+        let view = view_of(&model);
+        let text = words(&view);
+        assert_eq!(
+            text.iter().any(|line| line == problem.title()),
+            shown,
+            "{problem:?}: {text:?}"
+        );
+        if shown {
+            assert!(text.iter().any(|line| line == problem.detail()));
+            if let Some(command) = problem.command() {
+                assert!(text.iter().any(|line| line == command), "{text:?}");
+            }
+            assert_eq!(button_intent(&view, "Retry"), Some(Intent::CheckClaude));
+        } else {
+            assert_eq!(button_intent(&view, "Retry"), None);
+        }
+        for line in &text {
+            let banned = banned_in(line);
+            assert!(
+                banned.is_empty(),
+                "{problem:?} shows {banned:?} in {line:?}"
+            );
+        }
+        let mut presenter = Presenter::new("openagents-desktop");
+        assert!(presenter.present(view), "{problem:?} did not validate");
+        // Retry asks Coder again at once.
+        let requests = model.activate(Intent::CheckClaude, start + Duration::from_secs(1));
+        assert!(requests.contains(&Request::Coder), "{problem:?}");
+    }
+    // Once Claude Code can run, the card is gone.
+    let (mut model, _) = model(Screen::Connected {
+        device: "d".repeat(64),
+    });
+    model.host = Some(host(
+        vec![phone('d', "Kai's iPhone", false, 5)],
+        false,
+        false,
+    ));
+    model.agents = Agents {
+        codex: false,
+        claude: true,
+        grok: None,
+        claude_problem: None,
+    };
+    assert_eq!(button_intent(&view_of(&model), "Retry"), None);
 }

@@ -18,6 +18,13 @@
 //!   when Coder with sync on checked in from that computer lately
 //!   ([`crate::coder_sync`]).
 //!
+//! Claude Code in an environment is offered even before the person has
+//! connected Claude (#11234), when this server keeps their own key
+//! ([`crate::cloud::byo`]): picking it then shows one card right in the
+//! row, **Use a key**, which opens Settings, Claude, instead of an error
+//! after the message is sent. A message sent anyway is refused with the
+//! same words and stays in the box ([`CONNECT`]).
+//!
 //! The row carries its picks as three fields of `#chat-form` (`project`,
 //! `branch`, `target`), so a plain form post sends them too. The dropdowns
 //! load their choices into `#composer-panel` (`GET /composer/row/{kind}`);
@@ -133,7 +140,18 @@ pub(crate) struct Choices {
     /// Computers where Coder with sync on checked in lately, newest first
     /// (offered for a new chat only).
     pub computers: Vec<String>,
+    /// Claude Code is offered in [`Self::environments`] but can't run until
+    /// the person adds their Claude key (#11234): picking it shows the
+    /// connect card ([`connect_card`]).
+    pub claude_connect: bool,
 }
+
+/// Why a message for Claude Code wasn't sent while Claude isn't connected
+/// yet; the message stays in the box (#11234).
+pub(crate) const CONNECT: Refused = "Claude Code needs your Claude key before it can run here. Add it in Settings, Claude, then send again: your message stays in the box.";
+
+/// Where the connect card's button goes: Settings, Claude, at the key.
+pub(crate) const CONNECT_KEY: &str = "/settings/claude#key";
 
 /// What the row shows and a message sent now uses.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -214,10 +232,15 @@ pub(crate) async fn choices(
     let sidebar = crate::projects::sidebar(app).await?;
     let connected = !matches!(sidebar.status.access, Access::None);
     let mut environments = Vec::new();
+    let mut claude_connect = false;
     if let Some(studio) = app.config.environments.as_ref()
         && let Some(scope) = crate::agent_work::scope(app, headers).await
-        && crate::environments::claude_ready(app, studio, headers).await
+        // Not connected yet, but the person can add their own key here:
+        // offered, with the connect card (#11234).
+        && let Some(ready) = Some(crate::environments::claude_ready(app, studio, headers).await)
+            .filter(|ready| *ready || app.config.cloud_byo.is_some())
     {
+        claude_connect = !ready;
         environments = scope
             .rows(studio)
             .into_iter()
@@ -250,6 +273,7 @@ pub(crate) async fn choices(
         connected,
         environments,
         computers,
+        claude_connect,
     })
 }
 
@@ -278,6 +302,9 @@ pub(crate) async fn checked(
         });
     };
     let picked = choices.resolve(wanted);
+    if matches!(picked.target, Target::Claude(_)) && choices.claude_connect {
+        return Err(CONNECT);
+    }
     if !wanted.project.trim().is_empty() && picked.project.is_none() {
         return Err("That project isn't available anymore. Pick another one.");
     }
@@ -387,7 +414,25 @@ pub(crate) fn row(
                         .hx(load("target"))
                         .autofocus(focus == Some("target")))
                 }
+                @if matches!(picked.target, Target::Claude(_)) && choices.claude_connect {
+                    (connect_card())
+                }
             }
+        }
+    }
+}
+
+/// The card shown when Claude Code is picked before Claude is connected
+/// (#11234): what it needs, in plain words, and the one control that
+/// works from here.
+pub(crate) fn connect_card() -> Markup {
+    html! {
+        div.oa-composer-connect #composer-connect role="status" {
+            strong { "Connect Claude to run Claude Code" }
+            span {
+                "Each run starts on a fresh computer, so it needs your Anthropic API key or cloud credential. Your message stays in the box."
+            }
+            a.oa-composer-connect-action href=(CONNECT_KEY) { "Use a key" }
         }
     }
 }

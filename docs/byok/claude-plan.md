@@ -112,6 +112,16 @@ Amp may have that approval; we don't. So our default is the sign-in made inside
 the unmodified binary, and server-held subscription tokens stay limited until
 Anthropic approves them in writing (see item 9).
 
+**Status (October 10, 2026).** Settings → Claude leads with signing in inside
+the environment, explains the Max and Team API credits, and offers a
+subscription token only to the allowlist (`cloud::byo::TokenAllow`, #11235).
+On the web, picking "Claude Code in REPO" before Claude is connected shows a
+card in the composer row with **Use a key** (`composer_row::connect_card`),
+and a message sent anyway is refused with the same words and kept in the box
+(#11234). **Sign in to Claude** for an environment run is not offered yet:
+each run starts on a fresh computer with no terminal to sign in from, so it
+needs a sign-in terminal on the environment and a per-person checkpoint first.
+
 ### 2. Your computer (Coder) or our Cloud Environments
 
 **Today.** On the person's own computer, Coder runs Claude Code on the local
@@ -138,6 +148,12 @@ parallel work. Only our briefed agent strips `ANTHROPIC_API_KEY` and
 it runs on the owner's own Claude Code login. Anthropic's terms
 also forbid disabling the binary's sign-in methods, so we only pass or withhold
 variables; we never patch the binary.
+
+**Status (October 10, 2026).** The desktop app's Coder card shows "Claude Code
+not found" (with the install one-liner), "Claude Code can't run as root", or
+"Claude Code isn't signed in" (`claude`, then `/login`), each with **Retry**
+(`openagents_desktop::claude_setup`, #11234). It looks on `$PATH`, then
+`~/.local/bin`, then `~/bin`.
 
 ### 3. `claude_agent_sdk` as the engine for our briefed agents
 

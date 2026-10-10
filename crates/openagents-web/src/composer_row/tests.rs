@@ -36,6 +36,7 @@ fn choices() -> Choices {
         connected: true,
         environments: vec![environment()],
         computers: vec!["studio-mac".into()],
+        claude_connect: false,
     }
 }
 
@@ -283,4 +284,34 @@ fn a_chat_row_keeps_its_project_branch_and_claude_code() {
         request_id: None,
     });
     assert_eq!(wanted_for(&chat).target, "");
+}
+
+/// Picking Claude Code before Claude is connected shows the connect card
+/// in the row, with the one control that works from here (#11234).
+#[test]
+fn claude_code_before_claude_is_connected_shows_the_connect_card() {
+    let mut choices = choices();
+    choices.claude_connect = true;
+    // Offered, so it can be picked.
+    let picked = choices.resolve(&wanted(APP, "", "claude:env-1"));
+    assert_eq!(picked.target, Target::Claude("env-1".into()));
+    let html = render(Some(&choices), &picked);
+    assert!(html.contains(r#"id="composer-connect""#), "{html}");
+    assert!(html.contains("Connect Claude to run Claude Code"), "{html}");
+    assert!(html.contains(r#"href="/settings/claude#key""#), "{html}");
+    assert!(html.contains("Use a key"), "{html}");
+    // No button that can't work from here: one link.
+    let card = connect_card().into_string();
+    assert!(!card.contains("<button"), "{card}");
+    assert_eq!(card.matches("<a ").count(), 1, "{card}");
+    crate::copy_guard::assert_plain("/composer/row", &card);
+    // Chat, or Claude Code once connected: no card.
+    let chat = choices.resolve(&wanted(APP, "", ""));
+    assert!(!render(Some(&choices), &chat).contains("composer-connect"));
+    choices.claude_connect = false;
+    let ready = choices.resolve(&wanted(APP, "", "claude:env-1"));
+    assert!(!render(Some(&choices), &ready).contains("composer-connect"));
+    // The refusal a send gets says the same, plainly.
+    assert!(CONNECT.contains("your message stays in the box"));
+    crate::copy_guard::assert_plain("/composer/row", CONNECT);
 }
