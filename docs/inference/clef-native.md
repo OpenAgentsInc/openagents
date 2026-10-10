@@ -617,14 +617,43 @@ What was tried and dropped:
   ran at 2.4–2.7 ms. Threadgroups of 128 to 1,024 threads ran at 1.7–2.8
   ms.
 
+### Round 2 (2026-10-10): the model on Metal
+
+The Clef-Flash Q4_K_M GGUF (digest `fd3e9060…`) ran on the M5 Max through
+`psionic-openai-server --decision-device metal`, built from `50f2f1bcc0`.
+
+- **Parity.** On the 40 e2e requests (104 questions):
+  - against the CPU lane: top answer 100 %, max |Δp| 0.0008, median
+    6e-5, tighter than CUDA's f16 path (max 0.0045);
+  - against the HF f32 reference: 94.2 %, the CPU lane's own figure;
+  - against the CUDA lane: 100 %, max |Δp| 0.0044.
+- **Chunk invariance.** `cuda_chunks_and_cpu_agree` ran with
+  `PSIONIC_CLEF_TEST_DEVICE=metal`, and every chunk size matched the whole
+  prompt bitwise: max |Δlogit| **0** over {2048, 512, 64} on the 155- and
+  7,274-token records, in both modes. Against the CPU lane the logits
+  differ by at most 2.8e-4, inside the 1e-3 bound. The test passes.
+  - So on Metal the M2 chunk bound holds as written, in the default mode.
+  - That is because every projection is a fixed-order tensor-op GEMM, and
+    attention reads keys at absolute positions with exact zeros past the
+    diagonal.
+- **Latency under load.** The Mac's load average was 65–155 here, with a
+  GPU visualizer and browser GPU work running, so these are not gate
+  numbers. Psionic and Ollama 0.40 `clef-flash` were interleaved in one
+  session, median of 5, fresh nonce:
+
+  | Prompt | Psionic Metal, rounds 1 / 2 | Ollama 0.40, rounds 1 / 2 |
+  | --- | --- | --- |
+  | 1,082 tokens | 1.15 / 1.18 s | 1.16 / 1.05 s |
+  | 3,916 tokens | 3.75 / 3.60 s | 4.27 / 3.81 s |
+  | 15,510 tokens | 15.8 / 15.8 s | 18.2 / 16.3 s |
+
+  Under the same load Psionic is ahead at 4k and 16k and even at 1k. The
+  official gate needs a quiet Mac.
+
 ### Next
 
-- **A model-level run on the Mac.** It needs the Clef-Flash GGUF, about
-  6.5 GB, and a release build, about 3 GB. The Mac has 48 GB free against
-  the 40 GB floor this work keeps, so the run waits for disk headroom.
-- **Then:** the e2e parity against the CPU lane, the chunk test with
-  `PSIONIC_CLEF_TEST_DEVICE=metal`, and the M3 gate against Ollama and MLX
-  on an idle Mac.
+- The M3 gate on a quiet Mac, against Ollama and MLX, with a per-phase
+  profile to show where 1k goes.
 
 ## File-relevance calibration (X1, 2026-10-10)
 
