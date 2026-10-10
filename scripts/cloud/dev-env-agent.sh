@@ -9,7 +9,8 @@
 #
 # - oa-dev-env-idle.timer: every minute, is anything running? A job (cargo,
 #   rustc, claude, codex, microcoder, a Coder run, the landing queue's busy
-#   marker), an ssh session, or ~/.openagents/keep-awake. After
+#   marker), an ssh session running a shell or command, or
+#   ~/.openagents/keep-awake. After
 #   `oa-dev-env-idle-minutes` (instance metadata, default 30; 0 never stops)
 #   with none of them, the VM powers itself off: a stopped GCE instance
 #   bills only its disk. Starting it again (`gcloud compute instances start`,
@@ -41,9 +42,14 @@ check() {
   if [[ -f $marker ]] && kill -0 "$(cat "$marker" 2>/dev/null)" 2>/dev/null; then
     why+=("job: the landing queue is landing an entry")
   fi
-  local ssh
-  ssh=$(pgrep -fc '^sshd(-session)?: [^ ]+@' 2>/dev/null || true)
-  [[ ${ssh:-0} -gt 0 ]] && why+=("ssh: $ssh session(s)")
+  # An ssh session counts while it runs something (a shell or a command).
+  # IAP leaves dead connections open with nothing under them; those do not
+  # count, and sshd's keepalive (installed below) reaps them.
+  local ssh=0 pid
+  for pid in $(pgrep -f '^sshd(-session)?: [^ ]+@' 2>/dev/null); do
+    pgrep -P "$pid" >/dev/null 2>&1 && ssh=$((ssh + 1))
+  done
+  ((ssh > 0)) && why+=("ssh: $ssh session(s)")
   [[ -e $home/.openagents/keep-awake ]] && why+=("keep-awake: $home/.openagents/keep-awake")
   if ((${#why[@]})); then
     printf 'busy: %s\n' "${why[@]}"
@@ -125,6 +131,10 @@ RestartSec=30
 [Install]
 WantedBy=multi-user.target
 UNIT
+# Reap ssh connections whose client is gone (IAP keeps them open).
+install -d /etc/ssh/sshd_config.d
+printf 'ClientAliveInterval 60\nClientAliveCountMax 3\n' >/etc/ssh/sshd_config.d/oa-dev-env.conf
+systemctl reload ssh 2>/dev/null || systemctl reload sshd 2>/dev/null || true
 systemctl daemon-reload
 systemctl enable --now oa-dev-env-idle.timer
 systemctl enable --now oa-land-worker.service
