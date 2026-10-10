@@ -148,7 +148,16 @@ impl Upstream for Echo {
                         "response": response("completed", json!([call]), usage())})),
                 ]);
             } else {
-                let text = format!("items:{}", items.len());
+                let mut text = format!("items:{}", items.len());
+                // A model told its search results' ids cites one by
+                // reference, for the gateway to fill in (#11114).
+                if request
+                    .instructions
+                    .as_deref()
+                    .is_some_and(|brief| brief.contains("- r1 (web_search)"))
+                {
+                    text.push_str(" from {cite:r1.results[0]}");
+                }
                 let message = json!({"type": "message", "id": "msg_1", "status": "completed",
                     "role": "assistant",
                     "content": [{"type": "output_text", "text": text, "annotations": []}]});
@@ -654,8 +663,42 @@ async fn web_search_runs_between_model_turns_as_one_stream() {
     let search_item = serde_json::to_value(&response.output[0]).unwrap();
     assert_eq!(search_item["action"]["query"], "rust news");
     assert_eq!(search_item["results"][0]["url"], "https://example.com/rust");
-    // The answer turn saw the call and its output.
-    assert_eq!(response.output_text(), "items:3");
+    // The answer turn saw the call and its output, with the result's id
+    // and the ledger's brief, and its reference was filled from the
+    // result (#11114): in the final text, the streamed deltas, and the
+    // done event.
+    let cited = "items:3 from [Rust 2026](https://example.com/rust)";
+    assert_eq!(response.output_text(), cited);
+    let streamed: String = events
+        .iter()
+        .filter_map(|event| match &event.body {
+            EventBody::OutputTextDelta(delta) => Some(delta.delta.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(streamed, cited);
+    assert!(events.iter().any(|event| matches!(
+        &event.body,
+        EventBody::OutputTextDone(done) if done.text == cited
+    )));
+    let answer_turn = echo.seen().pop().unwrap();
+    assert!(
+        answer_turn
+            .instructions
+            .as_deref()
+            .is_some_and(|brief| brief.contains("- r1 (web_search): query, results[0].title")),
+        "{:?}",
+        answer_turn.instructions
+    );
+    let output = answer_turn
+        .input_items()
+        .into_iter()
+        .find_map(|item| match item {
+            Item::FunctionCallOutput(output) => Some(serde_json::to_value(&output.output).unwrap()),
+            _ => None,
+        })
+        .expect("the search's output");
+    assert!(output.to_string().contains("result_id"), "{output}");
     assert_eq!(*unverified.queries.lock().unwrap(), ["rust news"]);
     // Usage and cost sum both turns and the search: two turns of 1,000 in
     // at $1/M and 500 out at $2/M ($0.004) plus $0.01 for the search.

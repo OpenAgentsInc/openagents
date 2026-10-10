@@ -60,6 +60,10 @@ pub struct Grounded {
     pub source: String,
     /// The result as the tool returned it.
     pub value: Value,
+    /// What [`Ledger::brief`] says about the result in place of listing
+    /// its paths, for a result too wide to list (the rate card).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hint: Option<String>,
 }
 
 /// The turn's tool results, each with a stable id in the order recorded.
@@ -83,6 +87,7 @@ impl Ledger {
             id: id.clone(),
             source: source.to_owned(),
             value,
+            hint: None,
         });
         id
     }
@@ -110,7 +115,8 @@ impl Ledger {
                 );
             }
         }
-        self.record(
+        let ids: Vec<String> = models.keys().cloned().collect();
+        let id = self.record(
             source::RATE_CARD,
             json!({
                 "unit": card.unit,
@@ -118,7 +124,16 @@ impl Ledger {
                 "models": models,
                 "rows": card.rows,
             }),
-        )
+        );
+        if let Some(result) = self.results.last_mut() {
+            result.hint = Some(format!(
+                "prices in US dollars per million tokens, by model id: \
+                 models[\"<model id>\"].model, .provider, .input.price_usd, \
+                 .cached_input.price_usd, .output.price_usd; model ids: {}",
+                ids.join(", ")
+            ));
+        }
+        id
     }
 
     /// The result with `id`.
@@ -164,6 +179,10 @@ impl Ledger {
              title and url. A reference that does not resolve is left out.\n",
         );
         for result in &self.results {
+            if let Some(hint) = &result.hint {
+                note.push_str(&format!("- {} ({}): {hint}\n", result.id, result.source));
+                continue;
+            }
             let mut paths = Vec::new();
             leaf_paths(&result.value, &mut Vec::new(), &mut paths);
             let shown = paths.len().min(BRIEF_PATHS);
@@ -659,6 +678,113 @@ pub fn untraced(answer: &str, ledger: &Ledger) -> Vec<Untraced> {
     missing
 }
 
+/// The longest reference [`Stream`] holds back waiting for its `}`: past
+/// this, or past a line end, the `{` was not a reference.
+pub const MAX_REFERENCE: usize = 256;
+
+/// Resolves a reply as it streams: text goes out as it comes, except
+/// from a `{` to its closing `}`, which is held and resolved first. What
+/// it emits, joined, is the start of [`resolve`] over everything pushed,
+/// and [`Stream::finish`] emits the rest.
+#[derive(Clone, Debug, Default)]
+pub struct Stream {
+    ledger: Ledger,
+    seen: String,
+    emitted: String,
+}
+
+impl Stream {
+    /// A stream resolving against `ledger`.
+    #[must_use]
+    pub fn new(ledger: Ledger) -> Self {
+        Self {
+            ledger,
+            ..Self::default()
+        }
+    }
+
+    /// The ledger it resolves against.
+    #[must_use]
+    pub fn ledger(&self) -> &Ledger {
+        &self.ledger
+    }
+
+    /// Takes the next piece of the reply and returns the text ready to
+    /// send, which may be empty while a reference is open.
+    pub fn push(&mut self, delta: &str) -> String {
+        self.seen.push_str(delta);
+        let cut = hold_from(&self.seen);
+        self.emit(cut)
+    }
+
+    /// Everything not yet sent, the held tail included.
+    pub fn finish(&mut self) -> String {
+        self.emit(self.seen.len())
+    }
+
+    /// The whole reply so far, resolved, with what each reference wrote
+    /// and what was dropped.
+    #[must_use]
+    pub fn resolved(&self) -> Resolved {
+        resolve(&self.seen, &self.ledger)
+    }
+
+    fn emit(&mut self, cut: usize) -> String {
+        let resolved = resolve(&self.seen[..cut], &self.ledger).text;
+        match resolved.strip_prefix(self.emitted.as_str()) {
+            Some(new) => {
+                let new = new.to_owned();
+                self.emitted = resolved;
+                new
+            }
+            // A cut that reads differently once more text came (it never
+            // should): send nothing more now; the final text stands.
+            None => String::new(),
+        }
+    }
+}
+
+/// Where the text stops being safe to send: at an open `{` that may still
+/// become a reference, else its end.
+fn hold_from(text: &str) -> usize {
+    match text.rfind('{') {
+        Some(open)
+            if !text[open..].contains('}')
+                && !text[open..].contains('\n')
+                && text.len() - open <= MAX_REFERENCE =>
+        {
+            open
+        }
+        _ => text.len(),
+    }
+}
+
+/// Fills references in the text of a message item's output text parts;
+/// returns what was dropped.
+pub fn resolve_item(item: &mut crate::item::Item, ledger: &Ledger) -> Vec<Diagnostic> {
+    use crate::item::{ContentPart, Item, MessageContent};
+    let mut dropped = Vec::new();
+    let Item::Message(message) = item else {
+        return dropped;
+    };
+    let mut fill = |text: &mut String| {
+        let resolved = resolve(text, ledger);
+        *text = resolved.text;
+        dropped.extend(resolved.diagnostics);
+    };
+    match &mut message.content {
+        MessageContent::Text(text) => fill(text),
+        MessageContent::Parts(parts) => {
+            for part in parts {
+                if let ContentPart::OutputText(output) = part {
+                    fill(&mut output.text);
+                }
+            }
+        }
+    }
+    dropped
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -846,6 +972,10 @@ mod tests {
             &ledger,
         );
         assert_eq!(name.text, row.model);
+        // The brief names the model ids rather than every path.
+        let brief = ledger.brief();
+        assert!(brief.contains(&row.model), "{brief}");
+        assert!(brief.contains(".input.price_usd"), "{brief}");
     }
 
     /// The golden check: a grounded answer's numbers and URLs all trace to
@@ -880,6 +1010,53 @@ mod tests {
         );
         // Code is not checked.
         assert!(untraced("Run `sleep 30` first.", &ledger).is_empty());
+    }
+
+    /// A streamed reply goes out as it comes, except a reference, which
+    /// waits for its `}` and goes out filled; joined, the pieces are the
+    /// resolved reply.
+    #[test]
+    fn a_stream_holds_only_open_references() {
+        let ledger = ledger();
+        let mut stream = Stream::new(ledger.clone());
+        let pieces = [
+            "You hold ",
+            "{r3.bal",
+            "ance_sats} sats",
+            " and a set {a, b}",
+            ", see {cite:r1.res",
+        ];
+        let sent: Vec<String> = pieces.iter().map(|piece| stream.push(piece)).collect();
+        assert_eq!(sent[0], "You hold ");
+        assert_eq!(sent[1], "", "an open reference is held");
+        assert_eq!(sent[2], "12500 sats");
+        assert_eq!(sent[3], " and a set {a, b}");
+        assert_eq!(sent[4], ", see ");
+        let mut joined: String = sent.concat();
+        joined.push_str(&stream.push("ults[1]}."));
+        joined.push_str(&stream.finish());
+        let whole = stream.resolved();
+        assert_eq!(joined, whole.text);
+        assert!(joined.ends_with("[The \\[Cargo\\] book](https://doc.rust-lang.org/cargo/)."));
+        // A `{` that never closes goes out at the line end.
+        let mut open = Stream::new(ledger);
+        assert_eq!(open.push("a {b"), "a ");
+        assert_eq!(open.push("\nc"), "{b\nc");
+        assert_eq!(open.finish(), "");
+    }
+
+    #[test]
+    fn a_message_items_text_is_filled() {
+        let mut item: crate::item::Item = serde_json::from_value(json!({
+            "type": "message", "role": "assistant",
+            "content": [{"type": "output_text", "text": "{r3.balance_sats} {r9.x}",
+                         "annotations": []}],
+        }))
+        .unwrap();
+        let dropped = resolve_item(&mut item, &ledger());
+        assert_eq!(dropped.len(), 1);
+        let value = serde_json::to_value(&item).unwrap();
+        assert_eq!(value["content"][0]["text"], "12500 ");
     }
 
     #[test]

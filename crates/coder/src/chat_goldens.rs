@@ -114,6 +114,65 @@ pub struct Golden {
     pub required: Vec<Vec<String>>,
     #[serde(default)]
     pub forbidden: Vec<String>,
+    /// The sources every number and URL in a right reply must trace to
+    /// (#11114): [`GROUNDING_SOURCES`] words. Empty is no trace check.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub grounded: Vec<String>,
+}
+
+/// The sources a golden's `grounded` may name: the public rate card
+/// (prices and model names).
+pub const GROUNDING_SOURCES: [&str; 1] = [inference::grounded::source::RATE_CARD];
+
+/// The ledger a golden's replies are traced against: one result per
+/// source it names, or the first source no ledger can be built for.
+///
+/// # Errors
+///
+/// Returns a source that is not one of [`GROUNDING_SOURCES`].
+pub fn grounding(golden: &Golden) -> Result<inference::grounded::Ledger, String> {
+    let mut ledger = inference::grounded::Ledger::new();
+    for source in &golden.grounded {
+        match source.as_str() {
+            inference::grounded::source::RATE_CARD => {
+                ledger.record_rates(&router::grounding::rate_card());
+            }
+            other => return Err(other.to_string()),
+        }
+    }
+    Ok(ledger)
+}
+
+/// The trace check (#11114): every number and URL in `text` comes from
+/// one of the golden's [`Golden::grounded`] sources; skipped when it
+/// names none.
+#[must_use]
+pub fn trace_check(golden: &Golden, text: &str) -> Check {
+    if golden.grounded.is_empty() {
+        return mk("grounded", Status::Skip, "no sources named");
+    }
+    let ledger = match grounding(golden) {
+        Ok(ledger) => ledger,
+        Err(source) => return mk("grounded", Status::Fail, format!("unknown source {source}")),
+    };
+    let untraced = inference::grounded::untraced(text, &ledger);
+    if untraced.is_empty() {
+        mk("grounded", Status::Pass, "")
+    } else {
+        mk(
+            "grounded",
+            Status::Fail,
+            format!(
+                "not from {}: {}",
+                golden.grounded.join(", "),
+                untraced
+                    .iter()
+                    .map(|found| format!("`{}`", found.text))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        )
+    }
 }
 
 /// Instant: Jev picks a prepared answer or note, shown at once. Model: the
@@ -451,7 +510,11 @@ pub fn grade(set: &Set, case: &Case<'_>, observed: Observed) -> Grade {
         (false, None, None) => mk("answer", Status::Skip, "not observed"),
     });
     match &observed.text {
-        Some(text) => checks.extend(text_checks(set, golden, &readable(text))),
+        Some(text) => {
+            let text = readable(text);
+            checks.extend(text_checks(set, golden, &text));
+            checks.push(trace_check(golden, &text));
+        }
         None => checks.push(mk("text", Status::Skip, "no reply text in this mode")),
     }
     let budget = set.budget(golden.speed);
@@ -515,6 +578,9 @@ pub fn check(
                     problems.push(format!("{at}: unknown tier {tier}"));
                 }
             }
+            if let Err(source) = grounding(golden) {
+                problems.push(format!("{at}: unknown grounding source {source}"));
+            }
             if golden.speed == Speed::Instant && golden.answers.is_empty() {
                 problems.push(format!(
                     "{at}: an instant golden lists the answers that are right"
@@ -548,8 +614,10 @@ pub fn check(
                         continue;
                     }
                 };
-                for failed in text_checks(set, golden, &readable(&text))
+                let text = readable(&text);
+                for failed in text_checks(set, golden, &text)
                     .into_iter()
+                    .chain([trace_check(golden, &text)])
                     .filter(|c| c.status == Status::Fail)
                 {
                     problems.push(format!(
@@ -1037,5 +1105,52 @@ mod tests {
         let missed = GateResult::of(&gate, &[right, page, wrong]);
         assert!(!missed.met);
         assert_eq!(missed.critical_failures, vec!["coder.login#1".to_string()]);
+    }
+
+    /// A golden that names the rate card checks that every number and URL
+    /// in the reply comes from it (#11114): the card's own price passes, a
+    /// retyped one fails, and a golden naming no source skips the check.
+    #[test]
+    fn a_grounded_golden_traces_numbers_to_the_rate_card() {
+        let set = set();
+        let mut golden = case(&set, "pricing.cost").golden.clone();
+        let skipped = trace_check(&golden, "It costs $9.99.");
+        assert_eq!(skipped.status, Status::Skip);
+        golden.grounded = vec!["rate_card".into()];
+        let card = router::grounding::rate_card();
+        let row = card
+            .rows
+            .iter()
+            .find(|row| row.kind == inference::rates::Kind::List)
+            .expect("a list row");
+        let right = format!(
+            "{} costs ${} per million input tokens.",
+            row.model, row.input.price_usd
+        );
+        assert_eq!(trace_check(&golden, &right).status, Status::Pass);
+        let retyped = trace_check(&golden, "It costs $987.65 per million input tokens.");
+        assert_eq!(retyped.status, Status::Fail);
+        assert!(retyped.detail.contains("`987.65`"), "{}", retyped.detail);
+        // An unknown source is a golden bug, caught offline.
+        golden.grounded = vec!["horoscope".into()];
+        assert_eq!(trace_check(&golden, &right).status, Status::Fail);
+        let mut broken = set.clone();
+        broken.flows[0].goldens[0].grounded = vec!["horoscope".into()];
+        let problems = check(
+            &broken,
+            Bank::builtin(),
+            &web_facts(&crate::router::worker_facts(
+                crate::generate::DEFAULT_MODEL,
+                Some(crate::generate::DEFAULT_DOOR_URL),
+                &crate::router::Seams::default(),
+            )),
+            &BTreeMap::new(),
+        );
+        assert!(
+            problems
+                .iter()
+                .any(|problem| problem.contains("unknown grounding source horoscope")),
+            "{problems:?}"
+        );
     }
 }

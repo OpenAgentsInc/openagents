@@ -38,7 +38,8 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{ApiError, ErrorType, ResponseError};
-use crate::event::{Event, EventBody, ItemEvent, Lifecycle};
+use crate::event::{ContentDelta, Event, EventBody, ItemEvent, Lifecycle};
+use crate::grounded::{self, Ledger};
 use crate::hosted::{self, WebSearch};
 use crate::item::{
     Compaction, ContentPart, FunctionCall, FunctionCallOutput, Item, ItemStatus, Message,
@@ -748,11 +749,80 @@ struct TurnRead {
     cost_margin: u64,
 }
 
+/// A turn's answer text resolved against the searches so far (#11114):
+/// each output text part streams through its own [`grounded::Stream`],
+/// keyed by its global output and content index.
+#[derive(Default)]
+struct Grounding {
+    ledger: Ledger,
+    streams: HashMap<(u64, u64), grounded::Stream>,
+}
+
+impl Grounding {
+    fn stream(&mut self, output_index: u64, content_index: u64) -> &mut grounded::Stream {
+        let ledger = &self.ledger;
+        self.streams
+            .entry((output_index, content_index))
+            .or_insert_with(|| grounded::Stream::new(ledger.clone()))
+    }
+
+    /// Fills the event's references. Returns the events to send in its
+    /// place: none for a delta that is all held reference, and a delta
+    /// with the held tail before a part's final text.
+    fn fill(&mut self, body: EventBody) -> Vec<EventBody> {
+        if self.ledger.is_empty() {
+            return vec![body];
+        }
+        match body {
+            EventBody::OutputTextDelta(mut delta) => {
+                delta.delta = self
+                    .stream(delta.output_index, delta.content_index)
+                    .push(&delta.delta);
+                if delta.delta.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![EventBody::OutputTextDelta(delta)]
+                }
+            }
+            EventBody::OutputTextDone(mut done) => {
+                let tail = self.stream(done.output_index, done.content_index).finish();
+                done.text = grounded::resolve(&done.text, &self.ledger).text;
+                let mut out = Vec::new();
+                if !tail.is_empty() {
+                    out.push(EventBody::OutputTextDelta(ContentDelta {
+                        item_id: done.item_id.clone(),
+                        output_index: done.output_index,
+                        content_index: done.content_index,
+                        delta: tail,
+                        logprobs: None,
+                        obfuscation: None,
+                        extra: Extra::new(),
+                    }));
+                }
+                out.push(EventBody::OutputTextDone(done));
+                out
+            }
+            EventBody::ContentPartDone(mut part) => {
+                if let ContentPart::OutputText(text) = &mut part.part {
+                    text.text = grounded::resolve(&text.text, &self.ledger).text;
+                }
+                vec![EventBody::ContentPartDone(part)]
+            }
+            EventBody::OutputItemDone(mut done) => {
+                grounded::resolve_item(&mut done.item, &self.ledger);
+                vec![EventBody::OutputItemDone(done)]
+            }
+            other => vec![other],
+        }
+    }
+}
+
 async fn read_turn(
     events: &mut Events,
     first_turn: bool,
     offset: &mut u64,
     tx: &tokio::sync::mpsc::Sender<EventBody>,
+    grounding: &mut Grounding,
 ) -> Option<TurnRead> {
     // The turn's output index, to ours (`None`: a hosted call, held back).
     let mut map: HashMap<u64, Option<u64>> = HashMap::new();
@@ -823,8 +893,10 @@ async fn read_turn(
                 }
             }
         }
-        if tx.send(body).await.is_err() {
-            return None;
+        for body in grounding.fill(body) {
+            if tx.send(body).await.is_err() {
+                return None;
+            }
         }
     }
     Some(read)
@@ -877,8 +949,14 @@ async fn drive(job: HostedLoop, tx: tokio::sync::mpsc::Sender<EventBody>) {
     let mut margin = 0u64;
     let mut searched = 0u64;
     let mut first_turn = true;
+    // Each search's results get an id the model references (#11114); the
+    // model's later turns read the ledger's brief and their text is
+    // resolved against it.
+    let mut grounding = Grounding::default();
+    let instructions = request.instructions.clone();
     loop {
-        let Some(read) = read_turn(&mut events, first_turn, &mut offset, &tx).await else {
+        let Some(read) = read_turn(&mut events, first_turn, &mut offset, &tx, &mut grounding).await
+        else {
             return;
         };
         first_turn = false;
@@ -893,7 +971,12 @@ async fn drive(job: HostedLoop, tx: tokio::sync::mpsc::Sender<EventBody>) {
         if let Some(turn_usage) = &response.usage {
             add_usage(&mut usage, turn_usage);
         }
-        let turn_output = std::mem::take(&mut response.output);
+        let mut turn_output = std::mem::take(&mut response.output);
+        if !grounding.ledger.is_empty() {
+            for item in &mut turn_output {
+                grounded::resolve_item(item, &grounding.ledger);
+            }
+        }
         let mut calls = read.calls;
         for item in &turn_output {
             if let Item::FunctionCall(call) = item
@@ -963,16 +1046,27 @@ async fn drive(job: HostedLoop, tx: tokio::sync::mpsc::Sender<EventBody>) {
             }
             offset += 1;
             output.push(item);
+            let result_id = match &outcome {
+                Ok(results) => Some(grounding.ledger.record_search(&shown, results)),
+                Err(_) => None,
+            };
             input.push(Item::FunctionCallOutput(FunctionCallOutput {
                 id: None,
                 status: None,
                 call_id: call.call_id.clone(),
-                output: ToolOutput::Text(hosted::function_output(&outcome)),
+                output: ToolOutput::Text(hosted::grounded_output(result_id.as_deref(), &outcome)),
                 extra: Extra::new(),
             }));
         }
         let mut next = request.clone();
         next.input = Some(Input::Items(input.clone()));
+        if !grounding.ledger.is_empty() {
+            let brief = grounding.ledger.brief();
+            next.instructions = Some(match &instructions {
+                Some(own) if !own.is_empty() => format!("{own}\n\n{brief}"),
+                _ => brief,
+            });
+        }
         if searched >= rounds
             && let Some(tools) = next.tools.as_mut()
         {

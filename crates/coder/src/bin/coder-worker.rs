@@ -2883,6 +2883,10 @@ impl Job {
         // as the reply streams, with the items the model was given.
         // A grounded product reply's `[openagents.…]` citations likewise.
         let mut tidy: Option<(router::gym::Tidy, Cites)> = None;
+        // A product reply's references to the rate card and its passages
+        // (#11114): an open `{...}` is held until it closes and filled,
+        // everything else streams as it comes.
+        let mut grounding: Option<inference::grounded::Stream> = None;
         // When the turn began, the Gym seam answered, and the model's first
         // words went out: durations for the `router gym reply` line.
         let begun = Instant::now();
@@ -3313,13 +3317,22 @@ impl Job {
                                     }
                                 }
                                 grounded => {
-                                    let (note, passages) = match &grounded {
+                                    let (mut note, passages) = match &grounded {
                                         router::Grounded::Passages(passages) => (
                                             router::grounded_note(*corpus, passages, found.commit.as_deref()),
                                             passages.clone(),
                                         ),
                                         _ => (router::NO_DOCS_NOTE.to_string(), Vec::new()),
                                     };
+                                    // A product reply, where prices are
+                                    // answered, references the rate card
+                                    // and its passages by id (#11114).
+                                    grounding = None;
+                                    if *corpus == router::Corpus::Product {
+                                        let ledger = router::grounding::product_ledger(&passages);
+                                        note = format!("{note}\n\n{}", router::grounding::note(&ledger));
+                                        grounding = Some(router::grounding::stream(ledger));
+                                    }
                                     (generating, incoming, said) = start_model(
                                         self.door.clone(),
                                         format!("{instructions}\n\n{note}"),
@@ -3481,9 +3494,13 @@ impl Job {
                 }
                 delta = incoming.recv(), if draining => match delta {
                     Some(delta) => {
-                        match &mut tidy {
-                            Some((tidying, _)) => buffer.push_str(&tidying.push(&delta)),
-                            None => buffer.push_str(&delta),
+                        let piece = match &mut tidy {
+                            Some((tidying, _)) => tidying.push(&delta),
+                            None => delta,
+                        };
+                        match &mut grounding {
+                            Some(stream) => buffer.push_str(&stream.push(&piece)),
+                            None => buffer.push_str(&piece),
                         }
                         // Held words wait for the judgment. Otherwise the
                         // model's first delta goes at once, so a reader
@@ -3568,6 +3585,17 @@ impl Job {
                                     begun.elapsed().as_millis()
                                 );
                                 shown
+                            }
+                            None => text,
+                        };
+                        // The whole reply's references, filled; what the
+                        // thread keeps (#11114).
+                        let text = match &grounding {
+                            Some(stream) => {
+                                let finished =
+                                    router::grounding::finish(&text, stream.ledger());
+                                eprintln!("{}", finished.line());
+                                finished.text
                             }
                             None => text,
                         };

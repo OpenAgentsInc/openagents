@@ -63,6 +63,13 @@ forbidden list (wrong claims such as "we don't train on", "there's no
 account", a `.dmg`, Coder on "a computer you've connected") and for machine
 talk (`oa-copy`).
 
+A golden may also name `grounded` sources (today `rate_card`, the public
+rate card). Then every number and URL in its reply must come from those
+sources (`inference::grounded::untraced`, #11114). A retyped or made-up
+price fails the `grounded` check, and that failure counts as a wrong
+answer. The offline `check` runs the same check on each listed answer's
+own text, and it rejects a source name it doesn't know.
+
 | Flow | What people ask |
 | --- | --- |
 | starters | the four questions under the chat box, exactly as the chips send them (What is OpenAgents?, What models do you use?, How do I connect my codebase?, What are plugins?), plus two casual phrasings each (#11095) |

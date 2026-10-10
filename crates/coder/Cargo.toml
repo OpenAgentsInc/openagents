@@ -26,6 +26,9 @@ coder-lease = { path = "../coder-lease" }
 acp-client = { path = "../acp-client" }
 coder-terminal = { path = "../coder-terminal" }
 jev = { path = "../jev" }
+# Grounded values in chat replies: the turn's result ledger, references
+# filled from it, and the rate card (`inference::grounded`, #11114).
+inference = { path = "../inference" }
 tenancy = { path = "../tenancy" }
 jev-hosted = { path = "../jev-hosted" }
 # Who pays for a model call (BYOK, #10176).

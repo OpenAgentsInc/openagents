@@ -200,6 +200,20 @@ pub fn function_output(outcome: &Result<Vec<SearchResult>, String>) -> String {
     }
 }
 
+/// [`function_output`] with the search's result id in the turn
+/// (`crate::grounded`, #11114): `{"result_id": "r1", "results": [...]}`, so
+/// the model can reference a result's fields instead of copying them.
+#[must_use]
+pub fn grounded_output(
+    result_id: Option<&str>,
+    outcome: &Result<Vec<SearchResult>, String>,
+) -> String {
+    match (result_id, outcome) {
+        (Some(id), Ok(results)) => json!({"result_id": id, "results": results}).to_string(),
+        _ => function_output(outcome),
+    }
+}
+
 /// Whether `provider` may take a query at `level`.
 #[must_use]
 pub fn allowed(provider: &dyn WebSearch, level: &Privacy) -> bool {

@@ -137,5 +137,9 @@ No new format, dependency or client code is needed for this.
   result ledger (`r1`, `r2`, ...), `{r3.path}` and `{cite:r3.results[0]}`
   references filled on the server with dropped-reference diagnostics fed back
   to the model, rate-card rows by model id, and the golden check that every
-  number and URL traces to a result. Wiring it into the hosted search loop
-  and the chat worker's reply is next.
+  number and URL traces to a result. It is wired in: the gateway's hosted
+  web search records each search, tells the model the ids, and fills the
+  answer's references as it streams (an open `{...}` is held until it
+  closes). The chat worker's product replies reference the rate card and
+  their passages the same way. A golden that names `grounded` sources fails
+  on any number or URL that is not from them.

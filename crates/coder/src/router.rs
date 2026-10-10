@@ -44,6 +44,7 @@ pub mod calibration;
 pub mod capability;
 pub mod card;
 pub mod decisions;
+pub mod grounding;
 pub mod gym;
 pub mod judge;
 pub mod personalize;

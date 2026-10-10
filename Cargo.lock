@@ -2795,6 +2795,7 @@ dependencies = [
  "gym",
  "ignore",
  "indexmap 2.14.2",
+ "inference",
  "jev",
  "jev-hosted",
  "jiff",
