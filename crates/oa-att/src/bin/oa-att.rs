@@ -3,6 +3,7 @@
 //!
 //! ```text
 //! oa-att pubkey --key FILE
+//! oa-att delete --key FILE --id EVENT_ID --kind KIND   # NIP-09, the key's own record
 //! oa-att release --key FILE --image REF@sha256:… --model ID=sha256:…
 //!     [--component NAME=sha256:…]… [--gpu nvidia:cc:H100] [--workload SLUG]
 //!     --commit SHA --recipe PATH --changes TEXT [--publish]
@@ -110,6 +111,7 @@ async fn main() {
             .need("--key")
             .and_then(|k| secret_from(&k))
             .map(|(_, signer)| json!({"pubkey": signer.pubkey()})),
+        "delete" => delete(&mut args, &relay).await,
         "release" => release(&mut args, &relay).await,
         "head" => head(&mut args, &relay).await,
         "verify" => verify(&mut args, &relay, false).await,
@@ -126,6 +128,25 @@ async fn main() {
             std::process::exit(1);
         }
     }
+}
+
+/// A NIP-09 deletion of one of the key's own records.
+async fn delete(args: &mut Args, relay: &str) -> Result<Value, String> {
+    use nostr::domain::Tag;
+    let (secret, signer) = secret_from(&args.need("--key")?)?;
+    let id = args.need("--id")?;
+    let kind = args.need("--kind")?;
+    let event = signer.sign(
+        now(),
+        5,
+        vec![
+            Tag::new(vec!["e".into(), id]),
+            Tag::new(vec!["k".into(), kind]),
+        ],
+        args.value("--reason").unwrap_or_default(),
+    );
+    net::publish(relay, &secret, std::slice::from_ref(&event)).await?;
+    Ok(json!({"deletion": event.id}))
 }
 
 async fn release(args: &mut Args, relay: &str) -> Result<Value, String> {

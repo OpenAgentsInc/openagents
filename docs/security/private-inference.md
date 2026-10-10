@@ -54,6 +54,26 @@ question with NIP-44 to the endpoint key. The page's "tamper" choices
 change the logged measurement or swap in an unbound key before those
 checks, and the round is refused with nothing sent.
 
+**What a browser still trusts.** In a browser, the page and its
+WebAssembly are fetched from openagents.com on every visit, so in principle
+they could be swapped for one person and read the text before it is sealed.
+`/att/release.json` publishes the page's files by SHA-256 (and SRI form),
+from the reproducible `scripts/build-att-web.sh` build. The apps (coming,
+#11246) and the command line run the same check-and-seal from a signed,
+versioned program instead, so they don't have this exposure:
+
+```sh
+cargo install --git https://github.com/OpenAgentsInc/openagents oa-att --features net
+oa-att round --publisher 77fabebbeb49a7b9b384422ee6ef5662cf4db7da70acc94981378c0017ecc56e \
+    --state "The weather in Lisbon is sunny today." --question "Is this about the weather?"
+```
+
+Every path still trusts Google and Intel for the hardware evidence. The
+page's legend says who sees what: the browser sees the question and the
+answer; the OpenAgents relay and gateway see sizes, timing and sealed
+bytes; Google and Intel see that a sealed machine ran, not the data; the
+sealed program sees the question, inside the TEE only.
+
 **The gateway** is the website's `/att/api/*` (`crates/openagents-web/src/pages/att.rs`).
 It runs the same checks and refuses to forward to an endpoint that fails
 them, publishes the sealed event unchanged to `wss://relay.openagents.com`,

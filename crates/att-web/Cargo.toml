@@ -4,10 +4,15 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "The live sealed-inference demo at openagents.com/att: a Greco-futurist scene drawn with WebGL2, and its step list and panels."
+description = "The live sealed-inference demo at openagents.com/att: a Grid scene drawn with WebGL2 beside a chat transcript of the round."
 
 [lib]
 crate-type = ["cdylib", "rlib"]
+
+[features]
+# Captures only: a scripted round with made-up values instead of the live
+# flow, so the page can be shown without the network.
+demo = []
 
 [dependencies]
 glam = "0.30.10"
@@ -24,6 +29,8 @@ js-sys = "0.3"
 oa-att = { path = "../oa-att" }
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 serde_json = "1"
+# The sealed bytes the relay saw, decoded from NIP-44's base64 for the panel.
+base64 = "0.22"
 # Key material and nonces from crypto.getRandomValues (.cargo/config.toml
 # selects the wasm_js backend).
 getrandom = { version = "0.3", features = ["wasm_js"] }
@@ -64,6 +71,14 @@ web-sys = { version = "0.3", features = [
 
 [dev-dependencies]
 oa-copy = { path = "../oa-copy" }
+# `examples/bake_grid.rs` only: reads the Grid robot from the Grid pack and
+# poses it, to write `assets/grid-robot.bin`. The page never links these.
+verse-engine = { path = "../verse-engine" }
+serde_json = "1"
+
+[[example]]
+name = "bake_grid"
+test = false
 
 [lints]
 workspace = true

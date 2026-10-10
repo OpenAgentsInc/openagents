@@ -45,6 +45,7 @@ use crate::ui_page::{UiPage, action_link};
 /// The page.
 pub(crate) const ATT_PATH: &str = "/att";
 const ATT_FILE: &str = "/att/{file}";
+const RELEASE_PATH: &str = "/att/release.json";
 const STATE_PATH: &str = "/att/api/state";
 const SEND_PATH: &str = "/att/api/send";
 const ANSWERS_PATH: &str = "/att/api/answers/{id}";
@@ -82,6 +83,7 @@ const ROUND_TTL: Duration = Duration::from_secs(600);
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route(ATT_PATH, get(page))
+        .route(RELEASE_PATH, get(release))
         .route(ATT_FILE, get(build_file))
         .route(STATE_PATH, get(state))
         .route(SEND_PATH, post(send))
@@ -101,6 +103,10 @@ fn build(app: &App) -> Option<&Path> {
 fn markup() -> String {
     include_str!("../../../att-web/index.html")
         .replace("href=\"att.css\"", "href=\"/att/att.css\"")
+        .replace(
+            "<link rel=\"stylesheet\" href=\"/static/ui.css\">",
+            &crate::theme::style_tag(),
+        )
         .replace("src=\"start.js\"", "src=\"/att/start.js\"")
 }
 
@@ -166,6 +172,46 @@ async fn build_file(
         return crate::not_found().await;
     };
     super::everglade::serve_build(directory, &file, content_type, &request).await
+}
+
+/// `GET /att/release.json`: the page's code by digest (SHA-256, and the
+/// SHA-384 subresource-integrity form), so anyone can compare what this
+/// page runs with a rebuild of `crates/att-web`
+/// (`scripts/build-att-web.sh`) at the named commit.
+async fn release(State(app): State<App>) -> Response {
+    use base64::Engine as _;
+    use sha2::{Digest, Sha256, Sha384};
+    let Some(directory) = build(&app) else {
+        return crate::not_found().await;
+    };
+    let mut files = Vec::new();
+    for name in [START, GLUE, WASM, STYLE] {
+        let Ok(bytes) = tokio::fs::read(directory.join(name)).await else {
+            continue;
+        };
+        files.push(json!({
+            "path": format!("{ATT_PATH}/{name}"),
+            "bytes": bytes.len(),
+            "sha256": format!("{:x}", Sha256::digest(&bytes)),
+            "integrity": format!(
+                "sha384-{}",
+                base64::engine::general_purpose::STANDARD.encode(Sha384::digest(&bytes))
+            ),
+        }));
+    }
+    let page = markup();
+    json_response(
+        StatusCode::OK,
+        &json!({
+            "v": "openagents.att-page-release.v1",
+            "commit": option_env!("OPENAGENTS_COMMIT").unwrap_or("unknown"),
+            "source": "crates/att-web (built by scripts/build-att-web.sh)",
+            "page": {"path": ATT_PATH, "sha256": format!("{:x}", Sha256::digest(page.as_bytes()))},
+            "files": files,
+            "verify_without_this_page": "cargo run -p oa-att --features net -- round --publisher PUBLISHER --state TEXT --question TEXT",
+            "publisher": PUBLISHER,
+        }),
+    )
 }
 
 fn now() -> u64 {
@@ -530,6 +576,7 @@ mod tests {
         assert!(page.contains("<script type=\"module\" src=\"/att/start.js\"></script>"));
         assert!(page.contains("href=\"/att/att.css\""));
         assert_eq!(page.matches("<script").count(), 1);
+        assert!(page.contains(&crate::theme::style_tag()));
         assert!(!page.contains("style=\""));
         assert!(!page.contains(" onclick="));
         for id in [

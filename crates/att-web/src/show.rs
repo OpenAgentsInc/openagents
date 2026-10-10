@@ -1,25 +1,31 @@
-//! The page: the scene on its canvas, the step list, the per-step panels,
-//! the verdict, and the Run form.
+//! The page: the Grid scene on its canvas beside a chat transcript of the
+//! round, in the site's own chat classes (`openagents-ui`): your message
+//! as a user bubble, each step as a tool-call card with its raw data, the
+//! answer as an assistant message, and the result.
 //!
 //! The live flow (`flow`) reports through [`Show`]. Reports go through the
 //! timeline (`steps::Player`) so each step is seen for long enough, and the
-//! step list, panels and verdict change as the scene reaches them. Without
-//! WebGL2 the page still works: the canvas is hidden and the lists update.
+//! cards, the answer and the result change as the scene reaches them.
+//! Without WebGL2 the page still works: the canvas is hidden and the
+//! transcript updates.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use glam::Vec3;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::Closure;
 use web_sys::{Document, Element, HtmlElement, HtmlInputElement, Window};
 
 use crate::copy;
 use crate::gl::Renderer;
+use crate::icons;
 use crate::scene;
 use crate::steps::{self, Event, Player, ms_label};
 
 pub use crate::steps::{RunOptions, State, Step, Tamper};
+
+/// A padlock with a cross: the relay can't open what it carries.
+const LOCK_X: &str = "<svg viewBox=\"0 0 16 16\" width=\"14\" height=\"14\" aria-hidden=\"true\"><path d=\"M4.5 7V5a3.5 3.5 0 0 1 7 0v2\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"/><rect x=\"2.5\" y=\"7\" width=\"11\" height=\"8\" rx=\"1.5\" fill=\"currentColor\"/><path d=\"M5.5 9.2l5 4M10.5 9.2l-5 4\" stroke=\"#000\" stroke-width=\"1.6\"/></svg>";
 
 /// Values longer than this many characters are cut in the middle until
 /// tapped.
@@ -28,6 +34,7 @@ const VALUE_MAX: usize = 44;
 /// A report that waits its turn behind the step animations.
 enum Later {
     Panel(Step, String, Vec<(String, String)>),
+    Answer(String, String),
     Verdict(bool, String, String),
     Lit(Option<bool>),
     Idle,
@@ -35,14 +42,16 @@ enum Later {
 
 struct Dom {
     document: Document,
-    rows: Vec<Element>,
-    panels: Vec<Element>,
+    /// One tool-call card per step.
+    cards: Vec<Element>,
+    user: Option<Element>,
+    answer: Element,
     verdict: Option<Element>,
     status: Option<Element>,
     run: Option<HtmlElement>,
     labels: Vec<HtmlElement>,
-    left: Option<Element>,
-    right: Option<Element>,
+    /// The tag that follows the travelling shard.
+    tag: Option<HtmlElement>,
 }
 
 struct Inner {
@@ -50,6 +59,8 @@ struct Inner {
     lit: Option<bool>,
     motion: bool,
     running: bool,
+    /// The message the visitor last sent, for its bubble.
+    prompt: Option<String>,
     dom: Dom,
     renderer: Option<Renderer>,
 }
@@ -57,7 +68,7 @@ struct Inner {
 /// What runs when the visitor presses Run.
 type OnRun = Rc<RefCell<Option<Box<dyn Fn(RunOptions)>>>>;
 
-/// The page's scene and HUD.
+/// The page's scene and transcript.
 pub struct Show {
     inner: Rc<RefCell<Inner>>,
     run: OnRun,
@@ -75,6 +86,12 @@ fn make(document: &Document, tag: &str, class: &str) -> Element {
     element
 }
 
+fn text(document: &Document, tag: &str, class: &str, words: &str) -> Element {
+    let element = make(document, tag, class);
+    element.set_text_content(Some(words));
+    element
+}
+
 fn listen<E: wasm_bindgen::convert::FromWasmAbi + 'static>(
     target: &web_sys::EventTarget,
     name: &str,
@@ -89,10 +106,93 @@ fn child(parent: &Element, selector: &str) -> Option<Element> {
     parent.query_selector(selector).ok().flatten()
 }
 
+fn icon(step: Step) -> &'static str {
+    match step {
+        Step::Fetch => icons::DOWNLOAD,
+        Step::Chain => icons::CERTIFICATE,
+        Step::Measure => icons::COMPARE,
+        Step::Bind => icons::KEY,
+        Step::Encrypt => icons::LOCK,
+        Step::Relay => icons::SEND,
+        Step::Decrypt => icons::SHIELD_LOCK,
+        Step::Answer => icons::REPLY,
+        Step::Receipt => icons::SHIELD_CHECK,
+    }
+}
+
+/// A chat message: `article.oa-message[data-role]` with its author for
+/// screen readers.
+fn message(document: &Document, role: &str, author: &str) -> Element {
+    let article = make(document, "article", "oa-message");
+    let _ = article.set_attribute("data-role", role);
+    let _ = article.append_child(&text(
+        document,
+        "h2",
+        "oa-message-author oa-visually-hidden",
+        author,
+    ));
+    article
+}
+
+/// A step's tool-call card, as the chat draws one: a `<details>` whose
+/// summary has an icon, the step's name, a mono detail and a status badge,
+/// and whose body has the step's plain line and its raw data.
+fn card(document: &Document, step: Step) -> Element {
+    let card = make(document, "details", "oa-tool-call");
+    let _ = card.set_attribute("data-status", "waiting");
+    let _ = card.set_attribute("data-step", step.id());
+    let summary = make(document, "summary", "oa-tool-call__summary");
+    let glyph = make(document, "span", "oa-tool-call__icon");
+    let _ = glyph.set_attribute("aria-hidden", "true");
+    glyph.set_inner_html(&icons::svg(icon(step)));
+    let _ = summary.append_child(&glyph);
+    let _ = summary.append_child(&text(
+        document,
+        "span",
+        "oa-tool-call__title",
+        copy::name(step),
+    ));
+    let _ = summary.append_child(&make(document, "code", "oa-tool-call__detail"));
+    let status = make(document, "span", "oa-tool-call__status");
+    let badge = make(document, "span", "oa-badge");
+    let _ = status.append_child(&badge);
+    let _ = summary.append_child(&status);
+    let chevron = make(document, "span", "oa-tool-call__chevron");
+    let _ = chevron.set_attribute("aria-hidden", "true");
+    chevron.set_inner_html(&icons::svg(icons::CHEVRON_DOWN));
+    let _ = summary.append_child(&chevron);
+    let body = make(document, "div", "oa-tool-call__body");
+    let _ = body.append_child(&text(document, "p", "att-line", copy::line(step)));
+    let _ = body.append_child(&make(document, "p", "att-reason"));
+    let _ = body.append_child(&make(document, "p", "att-panel-title"));
+    let _ = body.append_child(&make(document, "dl", "att-kv"));
+    let _ = card.append_child(&summary);
+    let _ = card.append_child(&body);
+    badge_for(&card, &State::Pending);
+    card
+}
+
+/// Sets a card's status and badge.
+fn badge_for(card: &Element, state: &State) {
+    let (status, colour) = match state {
+        State::Pending | State::Skipped => ("waiting", "secondary"),
+        State::Running => ("running", "info"),
+        State::Ok => ("done", "success"),
+        State::Refused(_) => ("failed", "danger"),
+    };
+    let _ = card.set_attribute("data-status", status);
+    if let Some(badge) = child(card, ".oa-badge") {
+        let _ = badge.set_attribute("data-color", colour);
+        let _ = badge.set_attribute("data-size", "sm");
+        let _ = badge.set_attribute("data-variant", "soft");
+        badge.set_text_content(Some(copy::state_word(state)));
+    }
+}
+
 impl Show {
-    /// Finds the page's parts (`#att-canvas`, `#att-steps`, `#att-panels`,
-    /// `#att-form`), builds the step list and panels, and starts the loop.
-    /// `None` when the page lacks them.
+    /// Finds the page's parts (`#att-canvas`, `#att-steps`, `#att-form`),
+    /// builds the step cards and labels, and starts the loop. `None` when
+    /// the page lacks them.
     pub fn mount() -> Option<Rc<Self>> {
         let window = web_sys::window()?;
         let document = window.document()?;
@@ -101,55 +201,24 @@ impl Show {
             .dyn_into::<web_sys::HtmlCanvasElement>()
             .ok()?;
         let list = by_id("att-steps")?;
-        let panels_box = by_id("att-panels")?;
         let form = by_id("att-form")?;
         let root = document.document_element()?;
 
-        // The step list and one hidden panel per step.
+        // The step cards, and a place for the answer after its card.
         list.set_inner_html("");
-        panels_box.set_inner_html("");
-        let mut rows = Vec::new();
-        let mut panels = Vec::new();
-        for (i, step) in Step::ALL.into_iter().enumerate() {
-            let row = make(&document, "li", "att-step");
-            let _ = row.set_attribute("data-step", step.id());
-            let _ = row.set_attribute("data-state", "pending");
-            let mark = make(&document, "span", "att-step-mark");
-            mark.set_text_content(Some(&(i + 1).to_string()));
-            let body = make(&document, "div", "att-step-body");
-            let head = make(&document, "div", "att-step-head");
-            let name = make(&document, "span", "att-step-name");
-            name.set_text_content(Some(copy::name(step)));
-            let state = make(&document, "span", "att-step-state");
-            state.set_text_content(Some(copy::state_word(&State::Pending)));
-            let ms = make(&document, "span", "att-step-ms");
-            let _ = head.append_child(&name);
-            let _ = head.append_child(&ms);
-            let _ = head.append_child(&state);
-            let line = make(&document, "p", "att-step-line");
-            line.set_text_content(Some(copy::line(step)));
-            let reason = make(&document, "p", "att-step-reason");
-            let _ = body.append_child(&head);
-            let _ = body.append_child(&line);
-            let _ = body.append_child(&reason);
-            let _ = row.append_child(&mark);
-            let _ = row.append_child(&body);
-            let _ = list.append_child(&row);
-            rows.push(row);
-
-            let panel = make(&document, "section", "att-panel");
-            let _ = panel.set_attribute("data-step", step.id());
-            let _ = panel.set_attribute("hidden", "");
-            let title = make(&document, "h3", "att-panel-title");
-            let rows_box = make(&document, "dl", "att-panel-rows");
-            let _ = panel.append_child(&title);
-            let _ = panel.append_child(&rows_box);
-            let _ = panels_box.append_child(&panel);
-            panels.push(panel);
+        let mut cards = Vec::new();
+        let answer = make(&document, "div", "att-answer");
+        for step in Step::ALL {
+            let card = card(&document, step);
+            let _ = list.append_child(&card);
+            if step == Step::Answer {
+                let _ = list.append_child(&answer);
+            }
+            cards.push(card);
         }
 
         // Long values: tap to show whole, tap again to shorten.
-        listen::<web_sys::Event>(panels_box.as_ref(), "click", |event| {
+        listen::<web_sys::Event>(list.as_ref(), "click", |event| {
             let Some(target) = event.target().and_then(|t| t.dyn_into::<Element>().ok()) else {
                 return;
             };
@@ -157,12 +226,12 @@ impl Show {
                 return;
             };
             let open = button.get_attribute("aria-expanded").as_deref() == Some("true");
-            let text = if open {
+            let words = if open {
                 button.get_attribute("data-cut")
             } else {
                 button.get_attribute("data-full")
             };
-            button.set_text_content(text.as_deref());
+            button.set_text_content(words.as_deref());
             let _ = button.set_attribute("aria-expanded", if open { "false" } else { "true" });
             let _ = button.set_attribute(
                 "title",
@@ -174,8 +243,10 @@ impl Show {
             );
         });
 
-        // Station labels over the scene.
+        // Labels over the scene. The relay's is a button: hover or tap it
+        // to see that it can't open what it carries.
         let mut labels = Vec::new();
+        let mut tag = None;
         if let Some(layer) = by_id("att-labels") {
             layer.set_inner_html("");
             for (name, sub) in [
@@ -183,18 +254,38 @@ impl Show {
                 (copy::RELAY, copy::RELAY_SUB),
                 (copy::PROVIDER, copy::PROVIDER_SUB),
             ] {
-                let label = make(&document, "div", "att-label");
-                let strong = make(&document, "strong", "");
-                strong.set_text_content(Some(name));
-                let small = make(&document, "span", "");
-                small.set_text_content(Some(sub));
-                let _ = label.append_child(&strong);
-                let _ = label.append_child(&small);
+                let relay = name == copy::RELAY;
+                let label = if relay {
+                    let button = make(&document, "button", "att-label att-label-relay");
+                    let _ = button.set_attribute("type", "button");
+                    let _ = button.set_attribute("aria-expanded", "false");
+                    button
+                } else {
+                    make(&document, "div", "att-label")
+                };
+                let _ = label.append_child(&text(&document, "strong", "", name));
+                let _ = label.append_child(&text(&document, "span", "", sub));
+                if relay {
+                    let cant = make(&document, "span", "att-cant");
+                    cant.set_inner_html(LOCK_X);
+                    let _ = cant.append_child(&text(&document, "span", "", copy::CANT_OPEN));
+                    let _ = label.append_child(&cant);
+                    let toggle = label.clone();
+                    listen::<web_sys::Event>(label.as_ref(), "click", move |_| {
+                        let open = toggle.get_attribute("aria-expanded").as_deref() == Some("true");
+                        let _ = toggle
+                            .set_attribute("aria-expanded", if open { "false" } else { "true" });
+                    });
+                }
                 let _ = layer.append_child(&label);
                 if let Ok(label) = label.dyn_into::<HtmlElement>() {
                     labels.push(label);
                 }
             }
+            let moving = make(&document, "div", "att-tag");
+            let _ = moving.set_attribute("aria-hidden", "true");
+            let _ = layer.append_child(&moving);
+            tag = moving.dyn_into::<HtmlElement>().ok();
         }
 
         let motion = !window
@@ -218,24 +309,21 @@ impl Show {
         }
         let mut player = Player::default();
         player.reduced_motion = !motion;
-        let run_button = by_id("att-run").and_then(|b| b.dyn_into::<HtmlElement>().ok());
-        if let Some(button) = &run_button {
-            button.set_text_content(Some(copy::RUN));
-        }
         let inner = Rc::new(RefCell::new(Inner {
             player,
             lit: None,
             motion,
             running: false,
+            prompt: None,
             dom: Dom {
-                rows,
-                panels,
+                cards,
+                user: by_id("att-user"),
+                answer,
                 verdict: by_id("att-verdict"),
                 status: by_id("att-status"),
-                run: run_button,
+                run: by_id("att-run").and_then(|b| b.dyn_into::<HtmlElement>().ok()),
                 labels,
-                left: by_id("att-left"),
-                right: by_id("att-right"),
+                tag,
                 document: document.clone(),
             },
             renderer,
@@ -245,7 +333,8 @@ impl Show {
             run: Rc::new(RefCell::new(None)),
         });
 
-        // Run: read the form and hand it to the flow.
+        // Run: read the form, keep the message for its bubble, and hand it
+        // to the flow.
         {
             let run = show.run.clone();
             let inner = inner.clone();
@@ -266,11 +355,10 @@ impl Show {
                     .flatten()
                     .and_then(|e| e.dyn_into::<HtmlInputElement>().ok())
                     .map_or(Tamper::None, |input| Tamper::parse(&input.value()));
+                let prompt = steps::clean_prompt(&prompt);
+                inner.borrow_mut().prompt = Some(prompt.clone());
                 if let Some(f) = run.borrow().as_ref() {
-                    f(RunOptions {
-                        tamper,
-                        prompt: steps::clean_prompt(&prompt),
-                    });
+                    f(RunOptions { tamper, prompt });
                 }
             });
         }
@@ -292,22 +380,30 @@ impl Show {
         Some(show)
     }
 
-    /// Every step back to waiting, the vault dark, the panels and verdict
-    /// cleared.
+    /// Every step back to waiting, the box dark, the transcript cleared
+    /// down to the visitor's message.
     pub fn reset(&self) {
         let mut inner = self.inner.borrow_mut();
         inner.player.reset();
         inner.lit = None;
         for step in Step::ALL {
             inner.dom.row(step, &State::Pending, None);
-            let panel = &inner.dom.panels[step.index()];
-            let _ = panel.set_attribute("hidden", "");
+            let card = &inner.dom.cards[step.index()];
+            let _ = card.remove_attribute("open");
+            for selector in [".att-reason", ".att-panel-title", ".att-kv"] {
+                if let Some(part) = child(card, selector) {
+                    part.set_inner_html("");
+                }
+            }
         }
+        inner.dom.answer.set_inner_html("");
         if let Some(verdict) = &inner.dom.verdict {
             verdict.set_inner_html("");
             let _ = verdict.remove_attribute("data-ok");
             let _ = verdict.set_attribute("hidden", "");
         }
+        let prompt = inner.prompt.clone();
+        inner.dom.user_message(prompt.as_deref());
     }
 
     /// Reports a step's state, with the real milliseconds it took.
@@ -318,7 +414,7 @@ impl Show {
             .push(Event::Step(step, state, ms));
     }
 
-    /// The vault: `None` dark, `Some(true)` lit gold, `Some(false)` refused.
+    /// The box: `None` dark, `Some(true)` lit, `Some(false)` refused.
     pub fn provider_lit(&self, lit: Option<bool>) {
         self.inner
             .borrow_mut()
@@ -326,7 +422,7 @@ impl Show {
             .push(Event::Other(Later::Lit(lit)));
     }
 
-    /// Fills a step's panel with `(label, value)` rows.
+    /// Fills a step's card with `(label, value)` rows.
     pub fn panel(&self, step: Step, title: &str, rows: &[(String, String)]) {
         self.inner
             .borrow_mut()
@@ -338,7 +434,19 @@ impl Show {
             )));
     }
 
-    /// The big result line.
+    /// The answer, opened in the browser, as an assistant message after
+    /// the Answer card.
+    pub fn answer(&self, question: &str, answer: &str) {
+        self.inner
+            .borrow_mut()
+            .player
+            .push(Event::Other(Later::Answer(
+                question.to_owned(),
+                answer.to_owned(),
+            )));
+    }
+
+    /// The result, at the end of the transcript.
     pub fn verdict(&self, ok: bool, headline: &str, detail: &str) {
         self.inner
             .borrow_mut()
@@ -375,36 +483,50 @@ impl Show {
 }
 
 impl Dom {
+    fn user_message(&self, prompt: Option<&str>) {
+        let Some(slot) = &self.user else {
+            return;
+        };
+        slot.set_inner_html("");
+        let Some(prompt) = prompt else {
+            return;
+        };
+        let article = message(&self.document, "user", copy::YOU);
+        let bubble = make(&self.document, "div", "oa-message-bubble");
+        bubble.set_text_content(Some(&format!("{prompt}\n\n{}", copy::QUESTION)));
+        let _ = article.append_child(&bubble);
+        let _ = slot.append_child(&article);
+    }
+
     fn row(&self, step: Step, state: &State, ms: Option<f64>) {
-        let row = &self.rows[step.index()];
-        let _ = row.set_attribute("data-state", state.id());
-        if let Some(chip) = child(row, ".att-step-state") {
-            chip.set_text_content(Some(copy::state_word(state)));
+        let card = &self.cards[step.index()];
+        badge_for(card, state);
+        if let Some(detail) = child(card, ".oa-tool-call__detail") {
+            detail.set_text_content(Some(&ms.map(ms_label).unwrap_or_default()));
         }
-        if let Some(cell) = child(row, ".att-step-ms") {
-            cell.set_text_content(Some(&ms.map(ms_label).unwrap_or_default()));
-        }
-        if let Some(reason) = child(row, ".att-step-reason") {
-            let text = match state {
+        if let Some(reason) = child(card, ".att-reason") {
+            let words = match state {
                 State::Refused(why) => why.as_str(),
                 _ => "",
             };
-            reason.set_text_content(Some(text));
+            reason.set_text_content(Some(words));
+        }
+        if matches!(state, State::Refused(_)) {
+            let _ = card.set_attribute("open", "");
         }
     }
 
     fn panel(&self, step: Step, title: &str, rows: &[(String, String)]) {
-        let panel = &self.panels[step.index()];
-        if let Some(head) = child(panel, ".att-panel-title") {
+        let card = &self.cards[step.index()];
+        if let Some(head) = child(card, ".att-panel-title") {
             head.set_text_content(Some(title));
         }
-        let Some(list) = child(panel, ".att-panel-rows") else {
+        let Some(list) = child(card, ".att-kv") else {
             return;
         };
         list.set_inner_html("");
         for (label, value) in rows {
-            let dt = make(&self.document, "dt", "");
-            dt.set_text_content(Some(label));
+            let _ = list.append_child(&text(&self.document, "dt", "", label));
             let dd = make(&self.document, "dd", "");
             match steps::cut_value(value, VALUE_MAX) {
                 Some(cut) => {
@@ -418,15 +540,28 @@ impl Dom {
                     let _ = dd.append_child(&button);
                 }
                 None => {
-                    let span = make(&self.document, "span", "att-value");
-                    span.set_text_content(Some(value));
-                    let _ = dd.append_child(&span);
+                    let _ = dd.append_child(&text(&self.document, "span", "att-value", value));
                 }
             }
-            let _ = list.append_child(&dt);
             let _ = list.append_child(&dd);
         }
-        let _ = panel.remove_attribute("hidden");
+        let _ = card.set_attribute("open", "");
+    }
+
+    fn answer(&self, question: &str, answer: &str) {
+        self.answer.set_inner_html("");
+        let article = message(&self.document, "assistant", copy::PROVIDER);
+        let content = make(&self.document, "div", "oa-message-content");
+        let _ = content.append_child(&text(&self.document, "p", "att-answer-question", question));
+        let _ = content.append_child(&text(&self.document, "p", "att-answer-text", answer));
+        let _ = content.append_child(&text(
+            &self.document,
+            "p",
+            "att-answer-note",
+            copy::OPENED_HERE,
+        ));
+        let _ = article.append_child(&content);
+        let _ = self.answer.append_child(&article);
     }
 
     fn verdict(&self, ok: bool, headline: &str, detail: &str) {
@@ -434,34 +569,14 @@ impl Dom {
             return;
         };
         verdict.set_inner_html("");
-        let head = make(&self.document, "p", "att-verdict-head");
-        head.set_text_content(Some(headline));
-        let body = make(&self.document, "p", "att-verdict-detail");
-        body.set_text_content(Some(detail));
-        let _ = verdict.append_child(&head);
-        let _ = verdict.append_child(&body);
+        let article = message(&self.document, "assistant", copy::RESULT);
+        let content = make(&self.document, "div", "oa-message-content");
+        let _ = content.append_child(&text(&self.document, "p", "att-verdict-head", headline));
+        let _ = content.append_child(&text(&self.document, "p", "", detail));
+        let _ = article.append_child(&content);
+        let _ = verdict.append_child(&article);
         let _ = verdict.set_attribute("data-ok", if ok { "true" } else { "false" });
         let _ = verdict.remove_attribute("hidden");
-    }
-
-    /// The share of the canvas between the two HUD columns, and its centre
-    /// in clip space; the whole canvas when the columns are stacked.
-    fn region(&self, width: f64) -> (f32, f32) {
-        let (Some(left), Some(right)) = (&self.left, &self.right) else {
-            return (1.0, 0.0);
-        };
-        let (l, r) = (
-            left.get_bounding_client_rect(),
-            right.get_bounding_client_rect(),
-        );
-        let gap = r.left() - l.right();
-        if width <= 0.0 || gap < width * 0.3 || l.width() <= 0.0 || r.width() <= 0.0 {
-            return (1.0, 0.0);
-        }
-        let centre = (l.right() + r.left()) / 2.0;
-        // Leave room for the vault's label beside the panels.
-        let gap = gap - 80.0;
-        ((gap / width) as f32, (centre / width * 2.0 - 1.0) as f32)
     }
 }
 
@@ -469,14 +584,15 @@ impl Inner {
     fn set_button(&mut self, running: bool) {
         self.running = running;
         if let Some(button) = &self.dom.run {
+            let label = child(button, ".oa-button-inner").unwrap_or_else(|| button.clone().into());
             if running {
                 let _ = button.set_attribute("disabled", "");
                 let _ = button.set_attribute("aria-busy", "true");
-                button.set_text_content(Some(copy::RUNNING));
+                label.set_text_content(Some(copy::RUNNING));
             } else {
                 let _ = button.remove_attribute("disabled");
                 let _ = button.remove_attribute("aria-busy");
-                button.set_text_content(Some(copy::RUN));
+                label.set_text_content(Some(copy::RUN));
             }
         }
     }
@@ -487,10 +603,13 @@ impl Inner {
             match event {
                 Event::Step(step, state, ms) => self.dom.row(step, &state, ms),
                 Event::Other(Later::Panel(step, title, rows)) => {
-                    self.dom.panel(step, &title, &rows)
+                    self.dom.panel(step, &title, &rows);
+                }
+                Event::Other(Later::Answer(question, answer)) => {
+                    self.dom.answer(&question, &answer);
                 }
                 Event::Other(Later::Verdict(ok, head, detail)) => {
-                    self.dom.verdict(ok, &head, &detail)
+                    self.dom.verdict(ok, &head, &detail);
                 }
                 Event::Other(Later::Lit(lit)) => self.lit = lit,
                 Event::Other(Later::Idle) => self.set_button(false),
@@ -503,38 +622,49 @@ impl Inner {
         if w < 2.0 || h < 2.0 {
             return;
         }
-        let (region, centre) = self.dom.region(w);
         let sway = if self.motion {
-            0.07 * (now * 0.11).sin() as f32
+            0.08 * (now * 0.11).sin() as f32
         } else {
             0.0
         };
-        let camera = scene::camera((w / h) as f32, region, centre, sway);
+        let camera = scene::camera((w / h) as f32, 1.0, 0.0, sway);
         let frame = scene::frame(&self.player.anims, self.lit, now, self.motion);
-        let vault = match self.lit {
-            Some(true) => scene::gold().map(|c| c * 0.9),
-            Some(false) => scene::red().map(|c| c * 0.35),
-            None => [0.0; 3],
-        };
-        let lamps = [
-            (scene::ORB + Vec3::new(0.0, 0.2, 0.8), [0.55, 0.38, 0.2]),
-            (scene::OBELISK_FOOT + Vec3::new(0.0, 2.2, 1.6), vault),
-        ];
-        renderer.draw(&camera, &frame, lamps);
-        for (label, anchor) in self.dom.labels.iter().zip(scene::label_anchors()) {
+        renderer.draw(&camera, &frame);
+        let place = |label: &HtmlElement, anchor: glam::Vec3| {
             let clip = camera.view_proj * anchor.extend(1.0);
             let style = label.style();
             if clip.w <= 0.0 {
                 let _ = style.set_property("visibility", "hidden");
-                continue;
+                return;
             }
             let x = (f64::from(clip.x / clip.w) * 0.5 + 0.5) * w;
             let y = (0.5 - f64::from(clip.y / clip.w) * 0.5) * h;
             let _ = style.set_property("visibility", "visible");
             let _ = style.set_property(
                 "transform",
-                &format!("translate(-50%, -100%) translate({x:.1}px, {y:.1}px)"),
+                &format!("translate({x:.1}px, {y:.1}px) translate(-50%, -100%)"),
             );
+        };
+        for (label, anchor) in self.dom.labels.iter().zip(scene::label_anchors()) {
+            place(label, anchor);
+        }
+        if let Some(tag) = &self.dom.tag {
+            match frame.tag {
+                Some((at, kind)) => {
+                    let (words, class) = match kind {
+                        scene::Tag::SealedInYourBrowser => (copy::TAG_OUT, "att-tag"),
+                        scene::Tag::SealedToYourBrowser => (copy::TAG_BACK, "att-tag att-tag-back"),
+                    };
+                    if tag.text_content().as_deref() != Some(words) {
+                        tag.set_text_content(Some(words));
+                        tag.set_class_name(class);
+                    }
+                    place(tag, at);
+                }
+                None => {
+                    let _ = tag.style().set_property("visibility", "hidden");
+                }
+            }
         }
     }
 }

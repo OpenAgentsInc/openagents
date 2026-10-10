@@ -464,20 +464,49 @@ async fn round(show: &Show, options: RunOptions) {
         }
     };
     let saw = &sent["saw"];
+    // The sealed bytes exactly as the relay holds them: the NIP-44 payload
+    // under its base64, shown as hex so it is visibly unreadable.
+    let sealed = base64::Engine::decode(
+        &base64::engine::general_purpose::STANDARD,
+        request.content.as_bytes(),
+    )
+    .unwrap_or_default();
+    let head: String = sealed
+        .iter()
+        .take(24)
+        .map(|b| format!("{b:02x}"))
+        .collect::<Vec<_>>()
+        .chunks(4)
+        .map(|c| c.concat())
+        .collect::<Vec<_>>()
+        .join(" ");
     show.panel(
         Step::Relay,
-        "What the gateway and relay saw",
+        "What the relay saw",
         &[
-            row("Kind", saw["kind"].to_string()),
-            row("From", saw["from"].as_str().unwrap_or_default()),
-            row("To", saw["to"].as_str().unwrap_or_default()),
-            row("Ciphertext", format!("{} bytes", saw["ciphertext_bytes"])),
+            row("Sealed bytes", format!("{} bytes", sealed.len())),
+            row("First bytes", format!("{head} …")),
             row(
-                "Ciphertext SHA-256",
+                "SHA-256",
                 saw["ciphertext_sha256"].as_str().unwrap_or_default(),
             ),
-            row("Readable text", "none"),
-            row("Relay accepted in", format!("{} ms", sent["accepted_ms"])),
+            row("Event kind", saw["kind"].to_string()),
+            row(
+                "From",
+                format!(
+                    "{} (your one-time key)",
+                    saw["from"].as_str().unwrap_or_default()
+                ),
+            ),
+            row(
+                "To",
+                format!(
+                    "{} (the sealed machine)",
+                    saw["to"].as_str().unwrap_or_default()
+                ),
+            ),
+            row("Keys the relay holds", "none: it cannot open this"),
+            row("Accepted in", format!("{} ms", sent["accepted_ms"])),
         ],
     );
     show.step(Step::Relay, State::Ok, since(t));
@@ -609,6 +638,14 @@ async fn round(show: &Show, options: RunOptions) {
         ],
     );
     show.step(Step::Answer, State::Ok, since(t_decrypt));
+    show.answer(
+        QUESTION,
+        &format!(
+            "{}. ({:.1}% yes, answered inside the sealed machine and sealed back to your browser.)",
+            if yes >= 0.5 { "Yes" } else { "No" },
+            yes * 100.0
+        ),
+    );
 
     // 9. Receipt.
     let t = clock_ms();

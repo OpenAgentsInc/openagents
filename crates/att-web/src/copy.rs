@@ -4,11 +4,17 @@ use crate::steps::{State, Step};
 
 pub const YOU: &str = "You";
 pub const YOU_SUB: &str = "Your browser";
-pub const RELAY: &str = "Relay and gateway";
-pub const RELAY_SUB: &str = "relay.openagents.com \u{b7} openagents.com";
+pub const RELAY: &str = "OpenAgents relay";
+pub const RELAY_SUB: &str = "carries sealed bytes, holds no key";
+pub const CANT_OPEN: &str = "Can't open: it has no key";
+pub const TAG_OUT: &str = "Sealed in your browser";
+pub const TAG_BACK: &str = "Sealed to your browser";
+pub const QUESTION: &str = "Is this about the weather?";
+pub const OPENED_HERE: &str = "Opened here, in your browser.";
+pub const RESULT: &str = "Result";
 pub const PROVIDER: &str = "Sealed provider";
 pub const PROVIDER_SUB: &str = "Psionic (OpenAgents) in Intel TDX, Google Confidential Space";
-pub const NO_WEBGL: &str = "This browser can't draw the scene, so the steps are shown as a list.";
+pub const NO_WEBGL: &str = "This browser can't draw the scene, so the round is shown as a list.";
 pub const RUN: &str = "Run";
 pub const RUNNING: &str = "Running\u{2026}";
 pub const SHOW_ALL: &str = "Tap to show the whole value";
@@ -38,10 +44,10 @@ pub fn line(step: Step) -> &'static str {
         Step::Chain => "Confirm the evidence is signed by Google, link by link, back to its root.",
         Step::Measure => "Check the program's fingerprint matches the publicly logged build.",
         Step::Bind => "Make sure the key we encrypt to belongs to that exact sealed program.",
-        Step::Encrypt => "Your browser locks the message so only the sealed program can open it.",
-        Step::Relay => "The relay and our gateway pass on ciphertext they cannot read.",
-        Step::Decrypt => "The message is opened and answered only inside the sealed machine.",
-        Step::Answer => "The answer comes back locked to you, through the same relay.",
+        Step::Encrypt => "Your browser seals the message to the machine's key before it leaves.",
+        Step::Relay => "The OpenAgents relay carries the sealed bytes; it has no key to open them.",
+        Step::Decrypt => "Only inside the sealed machine is the message opened and answered.",
+        Step::Answer => "The answer comes back sealed to your browser and opens only here.",
         Step::Receipt => "Verify the provider's signed receipt names the program that answered.",
     }
 }
@@ -69,6 +75,12 @@ mod tests {
             YOU_SUB,
             RELAY,
             RELAY_SUB,
+            CANT_OPEN,
+            TAG_OUT,
+            TAG_BACK,
+            QUESTION,
+            OPENED_HERE,
+            RESULT,
             PROVIDER,
             PROVIDER_SUB,
             NO_WEBGL,

@@ -1,59 +1,79 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Sealed inference, live</title>
-    <meta name="description" content="Watch your browser check a sealed machine, then send it a message only that machine can read.">
+    <meta name="description" content="Watch your browser check a sealed machine, then send it a message only that machine can open. The OpenAgents relay only carries sealed bytes.">
+    <link rel="stylesheet" href="/static/ui.css">
     <link rel="stylesheet" href="att.css">
   </head>
   <body class="att">
     <!-- The reference markup for openagents.com/att. No inline scripts,
-         styles or handlers: the page passes a strict CSP. start.js is the
-         only script; the wasm fills the step list, panels and labels. -->
-    <div class="att-stage" id="att-stage" aria-hidden="true">
-      <canvas id="att-canvas"></canvas>
-      <div class="att-labels" id="att-labels"></div>
-    </div>
+         styles or handlers: the page passes a strict CSP. The site's own
+         stylesheet gives the chat classes (oa-*); att.css lays out the
+         scene. start.js is the only script; the wasm fills the step cards,
+         the answer, the result and the scene's labels. -->
+    <div class="att-page">
+      <div class="att-stage" id="att-stage">
+        <canvas id="att-canvas" aria-hidden="true"></canvas>
+        <div class="att-labels" id="att-labels"></div>
+      </div>
 
-    <main class="att-hud">
-      <div class="att-left" id="att-left">
+      <main class="att-side">
         <header class="att-header">
-          <p class="att-kicker">OpenAgents</p>
           <h1>Sealed inference, live</h1>
-          <p class="att-lede">Your browser checks that a sealed machine runs exactly the published program, then sends it a message that only that machine can read.</p>
+          <p>Your browser checks that a sealed machine runs exactly the published program, then seals your message so only that machine can open it. The OpenAgents relay only carries the sealed bytes. It has no key.</p>
         </header>
 
-        <form class="att-box att-controls" id="att-form" autocomplete="off">
-          <label class="att-field-label" for="att-prompt">Your message</label>
-          <input class="att-input" id="att-prompt" name="prompt" type="text" maxlength="200" value="The weather in Lisbon is sunny today." spellcheck="false">
-          <p class="att-question"><span class="att-field-label">Question asked</span> <span class="att-chip">Is this about the weather?</span></p>
+        <details class="att-box" open>
+          <summary>Who can see what</summary>
+          <dl class="att-legend">
+            <dt>Your browser</dt><dd>Your question and the answer</dd>
+            <dt>OpenAgents relay and gateway</dt><dd>Size, timing, sealed bytes</dd>
+            <dt>Google / Intel</dt><dd>That a sealed machine ran, not your data</dd>
+            <dt>Sealed program</dt><dd>Your question, inside the sealed machine only</dd>
+          </dl>
+        </details>
 
-          <fieldset class="att-tamper">
-            <legend class="att-field-label">Try to fool it</legend>
-            <label class="att-radio"><input type="radio" name="att-tamper" value="none" checked> <span>No tampering</span></label>
-            <label class="att-radio"><input type="radio" name="att-tamper" value="measurement"> <span>Change the program's fingerprint</span></label>
-            <label class="att-radio"><input type="radio" name="att-tamper" value="unbound-key"> <span>Swap in a key the hardware didn't vouch for</span></label>
+        <form class="att-form" id="att-form" autocomplete="off">
+          <div class="oa-field">
+            <label class="oa-field__label" for="att-prompt">Your message</label>
+            <span class="oa-input" data-variant="outline" data-size="md"><input class="oa-input__control" id="att-prompt" name="prompt" type="text" maxlength="200" value="The weather in Lisbon is sunny today." spellcheck="false"></span>
+          </div>
+          <p class="att-question">Question asked: <span>Is this about the weather?</span></p>
+          <fieldset class="oa-field">
+            <legend class="oa-field__label" id="att-tamper-label">Try to fool it</legend>
+            <div class="oa-radio-group" role="radiogroup" data-direction="col" aria-labelledby="att-tamper-label">
+              <label class="oa-radio" for="att-tamper-0"><span class="oa-radio__indicator-wrap"><input class="oa-radio__input" type="radio" id="att-tamper-0" name="att-tamper" value="none" checked><span class="oa-radio__item" aria-hidden="true"></span></span><span>No tampering</span></label>
+              <label class="oa-radio" for="att-tamper-1"><span class="oa-radio__indicator-wrap"><input class="oa-radio__input" type="radio" id="att-tamper-1" name="att-tamper" value="measurement"><span class="oa-radio__item" aria-hidden="true"></span></span><span>Change the program's fingerprint</span></label>
+              <label class="oa-radio" for="att-tamper-2"><span class="oa-radio__indicator-wrap"><input class="oa-radio__input" type="radio" id="att-tamper-2" name="att-tamper" value="unbound-key"><span class="oa-radio__item" aria-hidden="true"></span></span><span>Swap in a key the hardware didn't vouch for</span></label>
+            </div>
           </fieldset>
-
           <div class="att-run-row">
-            <button class="att-run" id="att-run" type="submit">Run</button>
+            <button class="oa-button" id="att-run" type="submit" data-color="primary" data-variant="solid" data-pill data-size="md"><span class="oa-button-inner">Run</span></button>
             <p class="att-status" id="att-status" role="status" aria-live="polite"></p>
           </div>
         </form>
 
-        <section class="att-box att-steps-box" aria-labelledby="att-steps-title">
-          <h2 class="att-box-title" id="att-steps-title">Steps</h2>
-          <p class="att-note" id="att-note"></p>
-          <ol class="att-steps" id="att-steps"></ol>
-        </section>
-      </div>
+        <p class="att-note" id="att-note"></p>
 
-      <div class="att-right" id="att-right">
-        <div class="att-verdict" id="att-verdict" role="status" aria-live="polite" hidden></div>
-        <div class="att-panels" id="att-panels"></div>
-      </div>
-    </main>
+        <section class="att-thread" id="att-panels" aria-label="This round">
+          <div id="att-user"></div>
+          <div id="att-steps"></div>
+          <div class="att-verdict" id="att-verdict" role="status" aria-live="polite" hidden></div>
+        </section>
+
+        <details class="att-box" open>
+          <summary>What you still have to trust</summary>
+          <p>In a browser, this page and its WebAssembly are fetched fresh from openagents.com on every visit, so in principle they could be swapped for one person and read your text before sealing it. The page's code is published by digest at <a href="/att/release.json">/att/release.json</a> from a reproducible build.</p>
+          <p>Apps and the command line don't have this exposure: they run the same check and seal from a signed, versioned program whose fingerprint is checked against the public release log. For the strongest guarantee, use the app (coming soon) or the command line:</p>
+          <div class="oa-code-block" data-wrap><div class="oa-code-block__pane" tabindex="0" role="region" aria-label="Command line"><pre class="oa-code-block__pre"><code class="oa-code-block__code">cargo install --git https://github.com/OpenAgentsInc/openagents oa-att --features net
+oa-att round --publisher 77fabebbeb49a7b9b384422ee6ef5662cf4db7da70acc94981378c0017ecc56e --state "The weather in Lisbon is sunny today." --question "Is this about the weather?"</code></pre></div></div>
+          <p>Google and Intel are trusted for the hardware evidence.</p>
+        </details>
+      </main>
+    </div>
 
     <script type="module" src="start.js"></script>
   </body>

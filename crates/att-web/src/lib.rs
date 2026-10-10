@@ -1,13 +1,18 @@
 //! The live sealed-inference demo at openagents.com/att.
 //!
-//! A Greco-futurist scene drawn with WebGL2 (`scene`, `gl`), the step list
-//! and per-step panels (`show`), and the round itself (`flow`).
+//! A scene in the Grid's look drawn with WebGL2 (`scene`, `robot`, `gl`),
+//! a chat transcript of the round in the site's own classes (`show`), and
+//! the round itself (`flow`).
 
 pub mod copy;
+pub mod icons;
 pub mod mesh;
+pub mod robot;
 pub mod scene;
 pub mod steps;
 
+#[cfg(all(target_arch = "wasm32", feature = "demo"))]
+mod demo;
 #[cfg(target_arch = "wasm32")]
 pub mod flow;
 #[cfg(target_arch = "wasm32")]
@@ -21,6 +26,9 @@ pub mod show;
 pub fn start() {
     console_error_panic_hook::set_once();
     if let Some(show) = show::Show::mount() {
+        #[cfg(feature = "demo")]
+        demo::start(show);
+        #[cfg(not(feature = "demo"))]
         flow::start(show);
     }
 }

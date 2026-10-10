@@ -74,7 +74,9 @@ if [ -z "${AR_wasm32_unknown_unknown:-}" ] && [ -x "$(dirname "$CC_wasm32_unknow
 fi
 
 cd "$root"
-cargo build --release --locked --target "$target" -p att-web
+# ATT_FEATURES=demo builds the capture page, a scripted round without the
+# network.
+cargo build --release --locked --target "$target" -p att-web ${ATT_FEATURES:+--features "$ATT_FEATURES"}
 mkdir -p "$out"
 wasm-bindgen --target web --no-typescript --out-dir "$out" \
   "$target_dir/$target/release/att_web.wasm"

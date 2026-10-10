@@ -1,5 +1,6 @@
-//! Draws the scene with WebGL2: lit stone and bronze, unlit inlay lines,
-//! translucent glass, and additive light (sparks and beams).
+//! Draws the scene with WebGL2 in the Grid's flat look: shaded faces and
+//! edge lines drawn as they are, the box's dark glass, and additive light
+//! (sparks and beams).
 
 use glam::{Mat4, Vec3};
 use wasm_bindgen::JsCast;
@@ -36,46 +37,16 @@ in vec3 v_normal;
 in vec3 v_colour;
 uniform vec3 u_tint;
 uniform vec3 u_glow;
-uniform vec3 u_eye;
 uniform vec3 u_fog;
 uniform float u_alpha;
-uniform float u_unlit;
-uniform vec3 u_lamp_pos[2];
-uniform vec3 u_lamp_colour[2];
 out vec4 o_colour;
-vec3 tone(vec3 c) {
-  c = c * (2.51 * c + 0.03) / (c * (2.43 * c + 0.59) + 0.14);
-  return pow(clamp(c, 0.0, 1.0), vec3(1.0 / 2.2));
-}
 void main() {
-  vec3 base = v_colour * u_tint;
-  float fog = smoothstep(15.0, 36.0, length(v_world.xz));
-  if (u_unlit > 0.5) {
-    o_colour = vec4(tone(mix(base, u_fog, fog * 0.6)), u_alpha);
-    return;
-  }
-  vec3 n = normalize(v_normal);
-  if (!gl_FrontFacing) n = -n;
-  vec3 v = normalize(u_eye - v_world);
-  vec3 key = normalize(vec3(-0.45, 0.8, 0.55));
-  float diffuse = max(dot(n, key), 0.0);
-  vec3 h = normalize(key + v);
-  float spec = pow(max(dot(n, h), 0.0), 40.0) * 0.25;
-  vec3 light = vec3(1.0, 0.8, 0.58) * 0.62 * diffuse;
-  vec3 fill = normalize(vec3(0.6, 0.35, -0.7));
-  light += vec3(0.32, 0.36, 0.5) * 0.16 * max(dot(n, fill), 0.0);
-  light += mix(vec3(0.03, 0.025, 0.02), vec3(0.11, 0.095, 0.08), n.y * 0.5 + 0.5);
-  vec3 colour = base * light + vec3(1.0, 0.85, 0.65) * spec * diffuse;
-  for (int i = 0; i < 2; i++) {
-    vec3 d = u_lamp_pos[i] - v_world;
-    float r2 = dot(d, d);
-    float lambert = max(dot(n, normalize(d)), 0.0) * 0.7 + 0.3;
-    colour += base * u_lamp_colour[i] * lambert / (1.0 + r2 * 0.12);
-  }
-  float rim = pow(1.0 - max(dot(n, v), 0.0), 3.0);
-  colour += base * vec3(1.0, 0.6, 0.3) * rim * 0.12;
-  colour += u_glow;
-  o_colour = vec4(tone(mix(colour, u_fog, fog)), u_alpha);
+  // The Grid's flat look: every colour is drawn as it is (faces carry
+  // their shade), plus glow, fading to the field with distance.
+  vec3 colour = v_colour * u_tint + u_glow;
+  float fog = smoothstep(14.0, 34.0, length(v_world.xz));
+  colour = mix(colour, u_fog, fog);
+  o_colour = vec4(pow(clamp(colour, 0.0, 1.0), vec3(1.0 / 2.2)), u_alpha);
 }
 ";
 
@@ -133,12 +104,8 @@ struct Uniforms {
     model: Option<WebGlUniformLocation>,
     tint: Option<WebGlUniformLocation>,
     glow: Option<WebGlUniformLocation>,
-    eye: Option<WebGlUniformLocation>,
     fog: Option<WebGlUniformLocation>,
     alpha: Option<WebGlUniformLocation>,
-    unlit: Option<WebGlUniformLocation>,
-    lamp_pos: Option<WebGlUniformLocation>,
-    lamp_colour: Option<WebGlUniformLocation>,
 }
 
 struct LightUniforms {
@@ -162,13 +129,15 @@ pub struct Renderer {
     u: Uniforms,
     l: LightUniforms,
     statics: GpuMesh,
-    inlay: GpuMesh,
+    lines: GpuMesh,
     parts: Vec<(Part, GpuMesh)>,
     quad: WebGlVertexArrayObject,
 }
 
 /// The background, and the colour distance fades to.
-const FOG: [f32; 3] = [0.006, 0.0045, 0.0035];
+fn fog() -> [f32; 3] {
+    scene::field()
+}
 
 fn compile(gl: &Gl, kind: u32, source: &str) -> Result<web_sys::WebGlShader, String> {
     let shader = gl.create_shader(kind).ok_or("no shader")?;
@@ -257,12 +226,8 @@ impl Renderer {
             model: at(&solid, "u_model"),
             tint: at(&solid, "u_tint"),
             glow: at(&solid, "u_glow"),
-            eye: at(&solid, "u_eye"),
             fog: at(&solid, "u_fog"),
             alpha: at(&solid, "u_alpha"),
-            unlit: at(&solid, "u_unlit"),
-            lamp_pos: at(&solid, "u_lamp_pos"),
-            lamp_colour: at(&solid, "u_lamp_colour"),
         };
         let l = LightUniforms {
             view_proj: at(&light, "u_view_proj"),
@@ -291,7 +256,7 @@ impl Renderer {
         let quad = upload(&gl, &corners, &[(0, 2)], Gl::TRIANGLES)?.vao;
         Ok(Self {
             statics: upload_mesh(&gl, &statics.solid)?,
-            inlay: upload_lines(&gl, &statics.inlay)?,
+            lines: upload_lines(&gl, &statics.lines)?,
             parts,
             quad,
             u,
@@ -334,7 +299,7 @@ impl Renderer {
     }
 
     /// Draws one frame.
-    pub fn draw(&self, camera: &Camera, frame: &Frame, lamps: [(Vec3, [f32; 3]); 2]) {
+    pub fn draw(&self, camera: &Camera, frame: &Frame) {
         let gl = &self.gl;
         gl.viewport(
             0,
@@ -342,10 +307,7 @@ impl Renderer {
             self.canvas.width() as i32,
             self.canvas.height() as i32,
         );
-        let bg = FOG.map(|c| {
-            let t = c * (2.51 * c + 0.03) / (c * (2.43 * c + 0.59) + 0.14);
-            t.clamp(0.0, 1.0).powf(1.0 / 2.2)
-        });
+        let bg = fog().map(|c| c.clamp(0.0, 1.0).powf(1.0 / 2.2));
         gl.clear_color(bg[0], bg[1], bg[2], 1.0);
         gl.clear(Gl::COLOR_BUFFER_BIT | Gl::DEPTH_BUFFER_BIT);
         gl.enable(Gl::DEPTH_TEST);
@@ -360,35 +322,29 @@ impl Renderer {
             false,
             &camera.view_proj.to_cols_array(),
         );
-        gl.uniform3fv_with_f32_array(u.eye.as_ref(), &camera.eye.to_array());
-        gl.uniform3fv_with_f32_array(u.fog.as_ref(), &FOG);
-        let pos: Vec<f32> = lamps.iter().flat_map(|(p, _)| p.to_array()).collect();
-        let col: Vec<f32> = lamps.iter().flat_map(|(_, c)| *c).collect();
-        gl.uniform3fv_with_f32_array(u.lamp_pos.as_ref(), &pos);
-        gl.uniform3fv_with_f32_array(u.lamp_colour.as_ref(), &col);
-        let set = |model: &Mat4, tint: [f32; 3], glow: [f32; 3], alpha: f32, unlit: bool| {
+        gl.uniform3fv_with_f32_array(u.fog.as_ref(), &fog());
+        let set = |model: &Mat4, tint: [f32; 3], glow: [f32; 3], alpha: f32| {
             gl.uniform_matrix4fv_with_f32_array(u.model.as_ref(), false, &model.to_cols_array());
             gl.uniform3fv_with_f32_array(u.tint.as_ref(), &tint);
             gl.uniform3fv_with_f32_array(u.glow.as_ref(), &glow);
             gl.uniform1f(u.alpha.as_ref(), alpha);
-            gl.uniform1f(u.unlit.as_ref(), if unlit { 1.0 } else { 0.0 });
         };
-        // Opaque stone and bronze.
-        set(&Mat4::IDENTITY, [1.0; 3], [0.0; 3], 1.0, false);
+        // Faces.
+        set(&Mat4::IDENTITY, [1.0; 3], [0.0; 3], 1.0);
         self.draw_mesh(&self.statics);
         for d in frame
             .draws
             .iter()
             .filter(|d| d.alpha >= 1.0 && !d.part.is_lines())
         {
-            set(&d.model, d.tint, d.glow, 1.0, false);
+            set(&d.model, d.tint, d.glow, 1.0);
             self.draw_mesh(self.mesh(d.part));
         }
-        // Inlay and edges.
-        set(&Mat4::IDENTITY, [1.0; 3], [0.0; 3], 1.0, true);
-        self.draw_mesh(&self.inlay);
+        // Lines.
+        set(&Mat4::IDENTITY, [1.0; 3], [0.0; 3], 1.0);
+        self.draw_mesh(&self.lines);
         for d in frame.draws.iter().filter(|d| d.part.is_lines()) {
-            set(&d.model, d.tint, d.glow, 1.0, true);
+            set(&d.model, d.tint, d.glow, 1.0);
             self.draw_mesh(self.mesh(d.part));
         }
         // Glass.
@@ -400,7 +356,7 @@ impl Renderer {
             .iter()
             .filter(|d| d.alpha < 1.0 && !d.part.is_lines())
         {
-            set(&d.model, d.tint, d.glow, d.alpha, false);
+            set(&d.model, d.tint, d.glow, d.alpha);
             self.draw_mesh(self.mesh(d.part));
         }
         // Light: beams then sparks, added.
@@ -413,7 +369,7 @@ impl Renderer {
             &camera.view_proj.to_cols_array(),
         );
         gl.uniform3fv_with_f32_array(l.eye.as_ref(), &camera.eye.to_array());
-        let forward = (Vec3::new(0.0, scene::TARGET_Y, 0.4) - camera.eye).normalize();
+        let forward = (camera.target - camera.eye).normalize();
         let right = forward.cross(Vec3::Y).normalize();
         let up = right.cross(forward);
         gl.uniform3fv_with_f32_array(l.right.as_ref(), &right.to_array());
