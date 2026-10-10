@@ -471,6 +471,18 @@ fn settings_content(
                     div class="oa-settings-control" { (action_link("Manage", crate::account_memory::PAGE)) }
                 }
             }
+            section class="oa-settings-group" aria-labelledby="settings-schedules" {
+                h2 #settings-schedules { "Scheduled prompts" }
+                div class="oa-settings-row" {
+                    div class="oa-settings-text" {
+                        span class="oa-settings-label" { "Your scheduled prompts" }
+                        span class="oa-settings-hint" {
+                            "Prompts that run on your computers on a schedule, as a new Coder run or in one of their chats."
+                        }
+                    }
+                    div class="oa-settings-control" { (action_link("Manage", crate::account_schedules::PAGE)) }
+                }
+            }
             section class="oa-settings-group" aria-labelledby="settings-traces" {
                 h2 #settings-traces { "Traces" }
                 div class="oa-settings-row" {

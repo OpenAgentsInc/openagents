@@ -15,6 +15,7 @@
 pub mod account;
 mod account_export;
 mod account_memory;
+mod account_schedules;
 mod agent_ready;
 mod agent_work;
 pub mod analytics;
@@ -278,6 +279,7 @@ pub fn router(config: Config) -> Router {
         .merge(own_runs::routes())
         .merge(traces::routes())
         .merge(account_memory::routes())
+        .merge(account_schedules::routes())
         .merge(terminal_connect::routes())
         .merge(account::routes())
         .merge(settings::routes())
