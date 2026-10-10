@@ -70,7 +70,7 @@ pub(super) fn routes() -> Router<App> {
 }
 
 fn studio(app: &App) -> Option<&Arc<Studio>> {
-    app.config.environments.as_ref()
+    app.config.environments.studio()
 }
 
 /// Whether this request may show environment and run links: environments

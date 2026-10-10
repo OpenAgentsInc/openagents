@@ -546,7 +546,7 @@ pub(super) fn slot(chat: &Conversation) -> Markup {
 async fn rows(app: &App, headers: &HeaderMap, chat: &Conversation) -> Vec<Row> {
     let links = super::work::links(app, headers).await;
     let now_unix = now();
-    let studio = app.config.environments.clone();
+    let studio = app.config.environments.get();
     let mut rows = run_rows(
         chat,
         |task| {
@@ -690,7 +690,7 @@ async fn stop_route(
 
 async fn stop_run(app: &App, headers: &HeaderMap, owner: &str, id: &str, run: &str) -> String {
     let (Some(studio), true) = (
-        app.config.environments.clone(),
+        app.config.environments.get(),
         super::work::links(app, headers).await,
     ) else {
         return "Agents can't be stopped from here.".to_owned();
@@ -844,7 +844,7 @@ async fn deliver(app: &App, headers: &HeaderMap, chat: &Conversation) -> Option<
     if due.is_empty() {
         return None;
     }
-    let studio = app.config.environments.clone()?;
+    let studio = app.config.environments.get()?;
     if !super::work::links(app, headers).await {
         return None;
     }

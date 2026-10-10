@@ -163,7 +163,7 @@ async fn world_at(port: u16, options: Options) -> World {
     if options.public {
         config.public_hosts = vec![host.clone()];
     }
-    config.environments = options.environments;
+    config.environments = options.environments.into();
     if let Some((store, google)) = options.connections {
         config.connections = Some(store);
         config.google = Some(google);
