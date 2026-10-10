@@ -68,10 +68,61 @@ pub struct Claims {
     pub project_id: String,
     /// The JWT header's `alg`.
     pub alg: String,
+    /// `submods.nvidia_gpu`, when the machine has a GPU attached and the
+    /// launcher attested it (Google checks the GPU's NVIDIA evidence and
+    /// signs these claims in the same token).
+    pub gpu: Option<GpuClaims>,
     /// Leaf first, root last.
     pub chain: Vec<ChainLink>,
     /// Every claim, as decoded.
     pub raw: Value,
+}
+
+/// `submods.nvidia_gpu` of a Confidential Space token.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct GpuClaims {
+    /// `OFF`, `ON` or `DEVTOOLS`. Only `ON` has every NVIDIA confidential
+    /// computing protection active.
+    pub cc_mode: String,
+    /// `SPT` (single GPU passthrough), the only mode Confidential Space runs.
+    pub cc_feature: String,
+    pub driver_version: String,
+    pub gpus: Vec<GpuDevice>,
+}
+
+/// One attested GPU.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct GpuDevice {
+    /// `GCP_NVIDIA_H100`.
+    pub hwmodel: String,
+    /// The device's universal entity ID (RFC 9711).
+    pub ueid: String,
+    pub vbios_version: String,
+}
+
+fn gpu_claims(raw: &Value) -> Option<GpuClaims> {
+    let gpu = raw["submods"].get("nvidia_gpu")?;
+    if !gpu.is_object() {
+        return None;
+    }
+    let text = |v: &Value, key: &str| v[key].as_str().unwrap_or_default().to_string();
+    Some(GpuClaims {
+        cc_mode: text(gpu, "cc_mode"),
+        cc_feature: text(gpu, "cc_feature"),
+        driver_version: text(gpu, "driver_version"),
+        gpus: gpu["gpus"]
+            .as_array()
+            .map(|list| {
+                list.iter()
+                    .map(|d| GpuDevice {
+                        hwmodel: text(d, "hwmodel"),
+                        ueid: text(d, "ueid"),
+                        vbios_version: text(d, "vbios_version"),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+    })
 }
 
 /// Why a token was refused.
@@ -309,6 +360,7 @@ fn claims(raw: Value, alg: String, chain: Vec<ChainLink>) -> Result<Claims, Refu
         zone: text(&["submods", "gce", "zone"]),
         instance_name: text(&["submods", "gce", "instance_name"]),
         project_id: text(&["submods", "gce", "project_id"]),
+        gpu: gpu_claims(&raw),
         alg,
         chain,
         raw,
@@ -345,6 +397,18 @@ mod tests {
         let n = other.len();
         other[n - 5] ^= 1;
         assert!(check_chain(&[der, other], 1_791_400_000).is_err());
+    }
+
+    #[test]
+    fn gpu_claims_are_read_from_submods() {
+        let raw = serde_json::json!({"submods": {"nvidia_gpu": {
+            "cc_mode": "ON", "cc_feature": "SPT", "driver_version": "590.48.01",
+            "gpus": [{"hwmodel": "GCP_NVIDIA_H100", "ueid": "ab", "vbios_version": "96.00.CF.00.01"}]
+        }}});
+        let gpu = gpu_claims(&raw).unwrap();
+        assert_eq!(gpu.cc_mode, "ON");
+        assert_eq!(gpu.gpus[0].hwmodel, "GCP_NVIDIA_H100");
+        assert!(gpu_claims(&serde_json::json!({"submods": {}})).is_none());
     }
 
     #[test]

@@ -76,7 +76,12 @@ fn expired_evidence_is_refused() {
 fn a_head_rollback_is_refused() {
     let (records, mut policy, now) = fixture();
     policy.seen_generation = Some(u64::MAX);
-    assert!(oa_att::parse(&records, &policy, now).unwrap_err().0.contains("rollback"));
+    assert!(
+        oa_att::parse(&records, &policy, now)
+            .unwrap_err()
+            .0
+            .contains("rollback")
+    );
 }
 
 #[test]

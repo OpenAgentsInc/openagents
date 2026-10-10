@@ -29,7 +29,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 pub use nostr;
-pub use token::{Claims, Refused};
+pub use token::{Claims, GpuClaims, GpuDevice, Refused};
 
 /// The workload slug of the sealed Clef decision service.
 pub const WORKLOAD: &str = "clef-decisions";
@@ -77,6 +77,9 @@ pub enum Tamper {
     Measurement,
     /// Swap in a key that the hardware never bound.
     UnboundKey,
+    /// Read the GPU's confidential-computing mode as `DEVTOOLS` (its
+    /// protections off) before comparing it with the release.
+    GpuOff,
 }
 
 /// What [`measure`] compared.
@@ -90,6 +93,84 @@ pub struct Measured {
     pub support: Vec<String>,
     /// Why the head admits the release.
     pub admitted: String,
+    /// The GPU evidence compared, when the release requires a GPU.
+    pub gpu: Option<GpuSeen>,
+}
+
+/// What [`check_gpu`] compared.
+#[derive(Debug, Clone, Serialize)]
+pub struct GpuSeen {
+    /// What the release requires, such as `nvidia cc H100`.
+    pub required: String,
+    /// `ON` (changed when tampered).
+    pub cc_mode: String,
+    pub cc_feature: String,
+    pub driver_version: String,
+    /// Each attested GPU's hardware model and VBIOS.
+    pub gpus: Vec<GpuDevice>,
+}
+
+/// The token's hardware model for a release's GPU model name.
+#[must_use]
+pub fn gpu_hwmodel(model: &str) -> String {
+    format!("GCP_NVIDIA_{}", model.to_ascii_uppercase())
+}
+
+/// The GPU part of step 3: when the release requires a GPU, the token
+/// must carry Google's attestation of it (`submods.nvidia_gpu`): mode
+/// `ON`, at least one GPU, and every GPU one of the release's models.
+/// Releases without a GPU pass with `None`.
+///
+/// # Errors
+///
+/// When the evidence is missing or does not match.
+pub fn check_gpu(
+    release: &Release,
+    claims: &Claims,
+    tamper: Tamper,
+) -> Result<Option<GpuSeen>, Refused> {
+    let Some(required) = &release.gpu else {
+        return Ok(None);
+    };
+    if required.vendor != "nvidia" || required.mode != "cc" || required.models.is_empty() {
+        return refuse("the release asks for GPU evidence this client does not know");
+    }
+    let Some(gpu) = &claims.gpu else {
+        return refuse("the release needs a confidential GPU, but the hardware attested none");
+    };
+    let mut cc_mode = gpu.cc_mode.clone();
+    if tamper == Tamper::GpuOff {
+        cc_mode = "DEVTOOLS".into();
+    }
+    let seen = GpuSeen {
+        required: format!(
+            "{} {} {}",
+            required.vendor,
+            required.mode,
+            required.models.join(",")
+        ),
+        cc_mode: cc_mode.clone(),
+        cc_feature: gpu.cc_feature.clone(),
+        driver_version: gpu.driver_version.clone(),
+        gpus: gpu.gpus.clone(),
+    };
+    if cc_mode != "ON" {
+        return refuse(format!(
+            "the GPU's confidential-computing mode is {cc_mode}, not ON: its memory and transfers are not protected"
+        ));
+    }
+    if gpu.gpus.is_empty() {
+        return refuse("the GPU evidence lists no GPU");
+    }
+    let allowed: Vec<String> = required.models.iter().map(|m| gpu_hwmodel(m)).collect();
+    if let Some(other) = gpu.gpus.iter().find(|d| !allowed.contains(&d.hwmodel)) {
+        return refuse(format!(
+            "an attested GPU is {}, not one the release names ({})",
+            other.hwmodel,
+            allowed.join(", ")
+        ));
+    }
+    Ok(Some(seen))
 }
 
 /// What [`bind`] found.
@@ -217,6 +298,7 @@ pub fn measure(
             "listed in head generation {}, notice {} s, published {}",
             parsed.head.generation, parsed.head.notice_seconds, parsed.release.published_at
         ),
+        gpu: None,
     };
     if claims.hwmodel != platform.hwmodel {
         return refuse(format!(
@@ -236,7 +318,8 @@ pub fn measure(
             claims.image_digest, expected
         )));
     }
-    Ok(measured)
+    let gpu = check_gpu(&parsed.release, claims, tamper)?;
+    Ok(Measured { gpu, ..measured })
 }
 
 /// Step 4: the binding of the endpoint key and the release is one of the
@@ -527,5 +610,120 @@ pub fn open_answer(
             "receipt": result.receipt,
             "error": result.refusal.map(|r| serde_json::json!({"code": r.code, "message": r.message})),
         }))),
+    }
+}
+
+#[cfg(test)]
+mod gpu_tests {
+    use super::*;
+
+    fn release(gpu: Option<serde_json::Value>) -> Release {
+        serde_json::from_value(serde_json::json!({
+            "v": att::RELEASE_V, "requires": [], "workload": "clef-decisions-gpu",
+            "publisher": "ab".repeat(32),
+            "image": {"reference": "r", "digest": format!("sha256:{}", "cd".repeat(32))},
+            "platforms": [{"kind": PLATFORM, "hwmodel": "GCP_INTEL_TDX", "support": "STABLE"}],
+            "measurements": [], "gpu": gpu, "models": [], "components": [],
+            "source": {"repo": "x", "commit": "e".repeat(40), "recipe": "r",
+                       "recipe_digest": format!("sha256:{}", "ef".repeat(32))},
+            "rebuilds": [], "transparency": [], "changes": "", "published_at": 0
+        }))
+        .unwrap()
+    }
+
+    fn claims(gpu: Option<GpuClaims>) -> Claims {
+        Claims {
+            iss: token::ISSUER.into(),
+            aud: vec![TOKEN_AUDIENCE.into()],
+            iat: 0,
+            exp: 1,
+            hwmodel: "GCP_INTEL_TDX".into(),
+            swname: "CONFIDENTIAL_SPACE".into(),
+            swversion: Vec::new(),
+            dbgstat: "disabled-since-boot".into(),
+            support: vec!["STABLE".into()],
+            image_digest: String::new(),
+            image_reference: String::new(),
+            nonces: Vec::new(),
+            zone: String::new(),
+            instance_name: String::new(),
+            project_id: String::new(),
+            gpu,
+            alg: "RS256".into(),
+            chain: Vec::new(),
+            raw: Value::Null,
+        }
+    }
+
+    fn h100(mode: &str, model: &str) -> GpuClaims {
+        GpuClaims {
+            cc_mode: mode.into(),
+            cc_feature: "SPT".into(),
+            driver_version: "590.48.01".into(),
+            gpus: vec![GpuDevice {
+                hwmodel: model.into(),
+                ueid: "00".into(),
+                vbios_version: "96.00.CF.00.01".into(),
+            }],
+        }
+    }
+
+    #[test]
+    fn a_release_without_a_gpu_needs_no_gpu_evidence() {
+        assert!(
+            check_gpu(&release(None), &claims(None), Tamper::None)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn a_gpu_release_needs_an_h100_in_cc_mode() {
+        let gpu = Some(serde_json::json!({"vendor": "nvidia", "mode": "cc", "models": ["H100"]}));
+        let r = release(gpu);
+        r.validate().unwrap();
+        let ok = check_gpu(
+            &r,
+            &claims(Some(h100("ON", "GCP_NVIDIA_H100"))),
+            Tamper::None,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(ok.cc_mode, "ON");
+        for (evidence, word) in [
+            (None, "attested none"),
+            (Some(h100("DEVTOOLS", "GCP_NVIDIA_H100")), "DEVTOOLS"),
+            (Some(h100("OFF", "GCP_NVIDIA_H100")), "OFF"),
+            (Some(h100("ON", "GCP_NVIDIA_A100")), "A100"),
+        ] {
+            let why = check_gpu(&r, &claims(evidence), Tamper::None)
+                .unwrap_err()
+                .0;
+            assert!(why.contains(word), "{why}");
+        }
+        let tampered = check_gpu(
+            &r,
+            &claims(Some(h100("ON", "GCP_NVIDIA_H100"))),
+            Tamper::GpuOff,
+        )
+        .unwrap_err()
+        .0;
+        assert!(tampered.contains("DEVTOOLS"), "{tampered}");
+    }
+
+    #[test]
+    fn an_unknown_gpu_requirement_is_refused() {
+        let r = release(Some(
+            serde_json::json!({"vendor": "amd", "mode": "cc", "models": ["MI300X"]}),
+        ));
+        assert!(r.validate().is_err());
+        assert!(
+            check_gpu(
+                &r,
+                &claims(Some(h100("ON", "GCP_NVIDIA_H100"))),
+                Tamper::None
+            )
+            .is_err()
+        );
     }
 }

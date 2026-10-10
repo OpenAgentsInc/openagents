@@ -344,6 +344,11 @@ impl Release {
                 return Err(format!("unknown platform kind {}", platform.kind));
             }
         }
+        if let Some(gpu) = &self.gpu
+            && (gpu.vendor != "nvidia" || gpu.mode != "cc" || gpu.models.is_empty())
+        {
+            return Err("gpu must be nvidia in cc mode with at least one model".into());
+        }
         for model in &self.models {
             sha256_ref(&model.digest, "model digest")?;
         }

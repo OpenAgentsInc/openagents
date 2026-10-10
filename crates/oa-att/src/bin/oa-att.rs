@@ -4,11 +4,12 @@
 //! ```text
 //! oa-att pubkey --key FILE
 //! oa-att release --key FILE --image REF@sha256:… --model ID=sha256:…
-//!     [--component NAME=sha256:…]… --commit SHA --recipe PATH --changes TEXT [--publish]
+//!     [--component NAME=sha256:…]… [--gpu nvidia:cc:H100] [--workload SLUG]
+//!     --commit SHA --recipe PATH --changes TEXT [--publish]
 //! oa-att head --key FILE --release ID [--release ID]… --generation N
 //!     --notice SECS --effective-at UNIX [--publish]
-//! oa-att verify --publisher HEX [--tamper measurement|unbound]
-//! oa-att round --publisher HEX --state TEXT --question TEXT [--tamper …]
+//! oa-att verify --publisher HEX [--workload SLUG] [--tamper measurement|unbound|gpu]
+//! oa-att round --publisher HEX [--workload SLUG] --state TEXT --question TEXT [--tamper …]
 //! ```
 //!
 //! Every command takes `--relay URL` (default wss://relay.openagents.com)
@@ -17,7 +18,9 @@
 
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use nostr::att::{self, Admitted, Component, Head, Image, Level, Model, Platform, Release, Source};
+use nostr::att::{
+    self, Admitted, Component, Gpu, Head, Image, Level, Model, Platform, Release, Source,
+};
 use nostr::domain::{Event, RelaySigner};
 use oa_att::{Opened, Policy, Tamper, WORKLOAD, net};
 use secp256k1::SecretKey;
@@ -87,6 +90,7 @@ fn tamper(args: &mut Args) -> Result<Tamper, String> {
         None | Some("none") => Ok(Tamper::None),
         Some("measurement") => Ok(Tamper::Measurement),
         Some("unbound") => Ok(Tamper::UnboundKey),
+        Some("gpu") => Ok(Tamper::GpuOff),
         Some(other) => Err(format!("unknown tamper `{other}`")),
     }
 }
@@ -138,6 +142,20 @@ async fn release(args: &mut Args, relay: &str) -> Result<Value, String> {
         .iter()
         .map(|m| pair(m).map(|(name, digest)| Component { name, digest }))
         .collect::<Result<Vec<_>, _>>()?;
+    let gpu = match args.value("--gpu") {
+        None => None,
+        Some(spec) => {
+            let parts: Vec<&str> = spec.split(':').collect();
+            let [vendor, mode, models] = parts.as_slice() else {
+                return Err("--gpu is VENDOR:MODE:MODEL[,MODEL], such as nvidia:cc:H100".into());
+            };
+            Some(Gpu {
+                vendor: (*vendor).into(),
+                mode: (*mode).into(),
+                models: models.split(',').map(str::to_string).collect(),
+            })
+        }
+    };
     let recipe = args.need("--recipe")?;
     let recipe_bytes = std::fs::read(&recipe).map_err(|e| format!("{recipe}: {e}"))?;
     let release = Release {
@@ -155,7 +173,7 @@ async fn release(args: &mut Args, relay: &str) -> Result<Value, String> {
             support: "STABLE".into(),
         }],
         measurements: Vec::new(),
-        gpu: None,
+        gpu,
         models,
         components,
         source: Source {
