@@ -16055,6 +16055,7 @@ dependencies = [
  "gym",
  "gym-bridge",
  "gym-leaderboard",
+ "jev",
  "knowledge",
  "libc",
  "memmap2",

@@ -182,6 +182,8 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [dev-dependencies]
 verse-pbr = { path = "../verse-pbr", features = ["diagnostics"] }
+# The relevance visualizer's System One client (examples/relevance).
+jev = { path = "../jev" }
 verse-host = { path = "../verse-host" }
 verse-net = { path = "../verse-net", features = ["test-support"] }
 # The in-process chamber the remote-chamber tests play against.
@@ -327,6 +329,10 @@ required-features = ["capture", "panels"]
 
 [[example]]
 name = "verse_play"
+required-features = ["imported-desktop"]
+
+[[example]]
+name = "relevance"
 required-features = ["imported-desktop"]
 
 [[example]]
