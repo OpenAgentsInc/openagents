@@ -139,16 +139,16 @@ pub(crate) fn qualified_identity(p: &Profile) -> bool {
             }
             // Claude Code never takes a claude.ai login from a profile
             // (docs/cloud/claude-code-byo.md); only the user's own API key
-            // or Bedrock/Vertex/Foundry credential (BYO-04), at most one.
+            // or Bedrock/Vertex/Foundry credential (BYO-04), at most one. A
+            // subscription token reaches a run only as the person's own
+            // release from Settings (#11204), never from an operator file.
             crate::claude::ENGINE => {
-                p.credentials.keys().all(|name| {
-                    crate::claude::OwnCredential::from_name(name).is_some() || tools(name)
-                }) && p
-                    .credentials
-                    .keys()
-                    .filter(|name| crate::claude::OwnCredential::from_name(name).is_some())
-                    .count()
-                    <= 1
+                let own = |name: &str| {
+                    crate::claude::OwnCredential::from_name(name)
+                        .is_some_and(|c| c != crate::claude::OwnCredential::SubscriptionToken)
+                };
+                p.credentials.keys().all(|name| own(name) || tools(name))
+                    && p.credentials.keys().filter(|name| own(name)).count() <= 1
             }
             _ => false,
         }

@@ -127,6 +127,11 @@ impl Policy {
             for path in p.paths.iter().chain(&p.include) {
                 workspace::validate_path(path)?;
             }
+            // A subscription token is only ever a person's own release
+            // (#11204); an operator profile never names one.
+            if p.credentials.contains_key(crate::claude::OAUTH_TOKEN) {
+                return Err(crate::claude::REFUSAL.into());
+            }
             let spec = spec(p, "policy validation", p.max_timeout_seconds);
             spec.validate()?;
             match (&p.adapter, p.placement) {

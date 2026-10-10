@@ -34,6 +34,8 @@ const PROVIDERS: [(&str, &str); 2] = [
     ("openrouter", "OpenRouter"),
     ("vercel", "Vercel AI Gateway"),
 ];
+/// Why a Claude subscription token is refused as a provider key.
+pub(crate) const SUBSCRIPTION_REFUSAL: &str = "That's a Claude subscription token (from claude setup-token). Anthropic allows those only in Claude Code, so the API can't call models with it. Save it under Settings, Claude credential, for Claude Code runs, or paste a provider API key here.";
 const MAKE_SCOPE: &str = "api-key-make";
 const REVOKE_SCOPE: &str = "api-key-revoke";
 
@@ -320,6 +322,14 @@ pub(crate) async fn own_save(
     let key = jev::ApiKey::new(std::mem::take(&mut form.key).trim().to_owned());
     if key.expose().is_empty() {
         return problem(StatusCode::BAD_REQUEST, "Paste the key to save it.");
+    }
+    // Anthropic allows a subscription token only inside Claude Code, so the
+    // API never calls models with one (the gateway refuses it too).
+    if key
+        .expose()
+        .starts_with(coder_cloud::claude::SUBSCRIPTION_PREFIX)
+    {
+        return problem(StatusCode::BAD_REQUEST, SUBSCRIPTION_REFUSAL);
     }
     match viewer
         .client()

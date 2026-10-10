@@ -416,11 +416,16 @@ def durable(base, token, service, region, project):
     page = web.follow("/settings/claude")
     form = re.search(r'<form[^>]*action="/settings/claude"[^>]*>(.*?)</form>', page.text, re.S)
     fields = hidden_fields(form.group(1)) if form else {}
+    # A fake Bedrock credential: Anthropic keys and subscription tokens are
+    # checked with Anthropic before they are kept (#11204), and this one is
+    # not real.
+    bedrock = json.dumps({"region": "us-east-1", "access_key_id": "AKIASMOKEDURABLE",
+                          "secret_access_key": "smoke-durable-not-a-real-secret"})
     saved = web.request("/settings/claude", method="POST", form={
         "csrf": fields.get("csrf", ""), "request": fields.get("request", ""),
-        "material": "anthropic_api_key", "value": "sk-ant-api03-smoke-durable-not-a-real-key",
+        "material": "bedrock_credential", "value": bedrock,
         "consent": "custody"})
-    claude_saved = saved.status in (302, 303) and "Saved: Anthropic API key" in web.follow(
+    claude_saved = saved.status in (302, 303) and "Saved: Amazon Bedrock" in web.follow(
         "/settings/claude").text
     record("durable: account, API key, provider key and own-Claude key made",
            bool(fingerprint) and claude_saved,
@@ -448,7 +453,7 @@ def durable(base, token, service, region, project):
                f"{listed.status}")
         mine = web.follow("/settings/claude")
         record(f"durable: {label}: the saved own-Claude key is kept",
-               mine.status == 200 and "Saved: Anthropic API key" in mine.text, f"{mine.status}")
+               mine.status == 200 and "Saved: Amazon Bedrock" in mine.text, f"{mine.status}")
 
     still("before")
     where = ["--region", region, "--project", project]

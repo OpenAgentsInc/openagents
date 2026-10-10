@@ -737,8 +737,14 @@ impl Studio {
         }
         let key = match own {
             Some(key) => key,
+            // The server's own key may be an API key or a subscription
+            // token; it runs under the variable its prefix names.
             None => Config::secret(&self.config.claude_key)
-                .and_then(|value| claude::Key::new(coder_cloud::claude::API_KEY, value).ok())
+                .and_then(|value| {
+                    let name = coder_cloud::claude::detect(&value)
+                        .map_or(coder_cloud::claude::API_KEY, |class| class.name());
+                    claude::Key::new(name, value).ok()
+                })
                 .ok_or("Add your Claude key in Settings to run Claude Code here.")?,
         };
         self.runs

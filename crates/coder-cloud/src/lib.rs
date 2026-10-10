@@ -82,7 +82,8 @@ impl Spec {
                     "Credential names must be uppercase environment variable names.".into(),
                 );
             }
-            claude::admit_name(name)?;
+            // CLAUDE_CODE_OAUTH_TOKEN names the user's own subscription
+            // token (#11204); its value is admitted in `Credentials`.
         }
         Ok(())
     }

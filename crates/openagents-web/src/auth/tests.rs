@@ -90,7 +90,8 @@ async fn world_with(
     std::fs::set_permissions(&byo, std::fs::Permissions::from_mode(0o700)).unwrap();
     config.cloud_byo = Some(Arc::new(
         crate::cloud::byo::Computers::open(&byo, oa_seal::Keyring::scratch("test").unwrap().0)
-            .unwrap(),
+            .unwrap()
+            .checking(None),
     ));
     World {
         root,

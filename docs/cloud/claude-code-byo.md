@@ -33,9 +33,12 @@ October 8, 2026. Recheck both before each availability decision.
    flow. In a hosted terminal, the browser shows a code that the user pastes
    back into that same terminal. Our web app never shows its own Claude login
    form and never asks for a token.
-2. **We never collect a Claude.ai credential.** No openagents.com field, API,
-   Secret Manager entry, or Coder setting accepts a claude.ai OAuth token or a
-   `claude setup-token` value. The login lives only in that user's computer
+2. **We collect no Claude.ai credential except the user's own subscription
+   token, saved by them.** Since 2026-10-09 (owner-directed, #11204) Settings,
+   Claude accepts the user's own `claude setup-token` value (below). No other
+   openagents.com field, API, Secret Manager entry, or Coder setting accepts a
+   claude.ai OAuth token, and no path ever takes a login document or refresh
+   token. A login made inside a computer lives only there
    (`~/.claude/.credentials.json` in its isolated home).
 3. **No path reads it back out.** Evidence capture, terminal recording, ATIF,
    export, logs, crash reports, support tooling, and saved environment images
@@ -237,6 +240,51 @@ directory (a disk snapshot, a backup, a stolen volume) holds only ciphertext.
   the user's own released key. Tests use fake keys and synthetic owners
   and check that the effect journal, the resident's access book, and the
   operator's records, admissions, journals, and archives never hold it.
+
+## Claude subscription tokens (#11204)
+
+Owner-directed on 2026-10-09: "I need to support OAuth tokens, not just API
+keys." `claude setup-token` prints a one-year token (`sk-ant-oat01-…`) that
+Claude Code reads from `CLAUDE_CODE_OAUTH_TOKEN` and that bills the person's
+Claude plan. This relaxes rule 2 for that one value. Anthropic's terms quoted
+above say third parties may not collect or store Claude.ai credentials; the
+owner accepted that risk for this class. Recheck the terms before opening it
+beyond the invite-only site.
+
+- **Settings, Claude** offers "Claude subscription token (from claude
+  setup-token)" beside "Anthropic API key". A pasted value is told apart by
+  its prefix (`sk-ant-oat` or `sk-ant-api`), whichever of the two was picked
+  (`cloud::byo::detect`). Only the bare token is accepted
+  (`OwnCredential::SubscriptionToken.canonical`): never a credentials
+  document, a refresh token (`sk-ant-ort`), or a token with anything around
+  it.
+- **Checked before it is kept.** `Computers::check` sends one
+  `GET https://api.anthropic.com/v1/models?limit=1` with
+  `anthropic-version: 2023-06-01` and, for a token, `Authorization: Bearer`
+  plus `anthropic-beta: oauth-2025-04-20` (the header Claude Code sends); for
+  an API key, `x-api-key`. No model call is made. 2xx or 429 keeps it; 400,
+  401, or 403 is "Anthropic didn't accept that…"; anything else is "couldn't
+  be reached", and nothing is saved either way.
+- **Kept like an API key.** Material `claude_subscription_token` in the same
+  sealed custody (#11041), subject `byo:computers`, scoped to the account,
+  workspace, and membership epoch; status and Settings show a digest and the
+  label only. Saving one replaces any other class.
+- **Runs.** The release names it `CLAUDE_CODE_OAUTH_TOKEN`
+  (`OwnCredential::SubscriptionToken`), and the launch environment holds that
+  variable alone, never `ANTHROPIC_API_KEY`. `coder_cloud::claude::admit`
+  admits a token only under that exact name; any other name still refuses a
+  claude.ai login. Inside the computer, `claude -p` gets the token only when
+  the run admitted it (`OA_CODER_CLOUD_CREDENTIAL_NAMES`); otherwise it is
+  removed and the computer's own login is used. Runs on a Boat image whose
+  Coder runtime predates this change remove the variable, so those need a
+  runtime template built from this commit or later. The job evidence names
+  the type `claude_subscription_token`.
+- **Plan concurrency.** A token bills a plan, so `admit_turns` treats it like
+  a plan login: one automated turn at a time, no fan-out (rule 7).
+- **Not in the API.** The gateway's own-key path (`pay: "mine"`) and the
+  Settings API-keys form refuse a subscription token for every provider
+  (`subscription_token`): Anthropic permits it only inside Claude Code, and
+  the gateway calls the Messages API directly.
 
 ## Existing docs this supersedes
 

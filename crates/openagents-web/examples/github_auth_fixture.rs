@@ -139,10 +139,11 @@ async fn main() -> Result<(), String> {
         let (_, document) = oa_seal::Keyring::scratch("fixture")?;
         private_file(&keys, document.as_bytes())?;
     }
-    config.cloud_byo = Some(Arc::new(openagents_web::cloud::byo::Computers::open(
-        &byo,
-        oa_seal::Keyring::load(&keys)?,
-    )?));
+    // Fixture keys are fake: they are kept without a check with Anthropic.
+    config.cloud_byo = Some(Arc::new(
+        openagents_web::cloud::byo::Computers::open(&byo, oa_seal::Keyring::load(&keys)?)?
+            .checking(None),
+    ));
 
     println!(
         "{}",

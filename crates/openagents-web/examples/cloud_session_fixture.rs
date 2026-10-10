@@ -215,10 +215,11 @@ pub async fn serve(
     let keys = directory.join("byo-keys.json");
     let (_, document) = oa_seal::Keyring::scratch("fixture")?;
     private_file(&keys, document.as_bytes())?;
-    config.cloud_byo = Some(Arc::new(openagents_web::cloud::byo::Computers::open(
-        &byo,
-        oa_seal::Keyring::load(&keys)?,
-    )?));
+    // Fixture keys are fake: they are kept without a check with Anthropic.
+    config.cloud_byo = Some(Arc::new(
+        openagents_web::cloud::byo::Computers::open(&byo, oa_seal::Keyring::load(&keys)?)?
+            .checking(None),
+    ));
     config.cloud_hosts = hosts
         .map(|path| openagents_web::cloud::hosts::Hosts::load(FilePath::new(path)))
         .transpose()?

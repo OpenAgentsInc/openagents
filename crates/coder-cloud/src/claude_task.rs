@@ -82,6 +82,7 @@ fn credential_word(sign_in: crate::claude::SignIn) -> &'static str {
         SignIn::Own(OwnCredential::Bedrock) => "bedrock",
         SignIn::Own(OwnCredential::Vertex) => "vertex",
         SignIn::Own(OwnCredential::Foundry) => "foundry",
+        SignIn::Own(OwnCredential::SubscriptionToken) => "claude_subscription_token",
     }
 }
 
@@ -94,6 +95,7 @@ pub fn turn_sign_in(record: &Record) -> crate::claude::SignIn {
         Some("bedrock") => SignIn::Own(OwnCredential::Bedrock),
         Some("vertex") => SignIn::Own(OwnCredential::Vertex),
         Some("foundry") => SignIn::Own(OwnCredential::Foundry),
+        Some("claude_subscription_token") => SignIn::Own(OwnCredential::SubscriptionToken),
         Some(_) => SignIn::PlanLogin,
         None => crate::claude::sign_in(record.spec.credential_names.iter().map(String::as_str)),
     }

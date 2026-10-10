@@ -18,8 +18,9 @@ impl Credentials {
             if value.len() > 1024 * 1024 || value.contains('\0') {
                 return Err("A selected credential has an invalid value.".into());
             }
-            crate::claude::admit_name(name)?;
-            crate::claude::admit_value(&value)?;
+            // A claude.ai login is refused everywhere except the user's own
+            // subscription token under CLAUDE_CODE_OAUTH_TOKEN.
+            crate::claude::admit(name, &value)?;
             // A user's own Bedrock, Vertex, or Foundry credential must keep
             // its admitted shape so launch-time expansion cannot fail.
             if let Some(class) = crate::claude::OwnCredential::from_name(name)
@@ -432,17 +433,38 @@ mod tests {
         use base64::Engine;
         // Assembled at run time so no credential-shaped literal sits here.
         let token = format!("sk-ant-oat01-{}", "z3".repeat(40));
-        assert!(
+        // The user's own subscription token is admitted under its own name
+        // only, launches as CLAUDE_CODE_OAUTH_TOKEN alone, and is redacted
+        // and refused in artifacts like every selected credential.
+        let own =
             Credentials::from_names(&["CLAUDE_CODE_OAUTH_TOKEN".into()], |_| Some(token.clone()))
-                .is_err()
-        );
+                .unwrap();
+        let env = own.environment();
+        assert_eq!(env.len(), 1);
+        assert_eq!(env["CLAUDE_CODE_OAUTH_TOKEN"], token);
+        assert!(!env.contains_key("ANTHROPIC_API_KEY"));
+        let mut said = json!({"text": format!("the token is {token}")});
+        own.redact(&mut said);
+        assert!(!said.to_string().contains(&token));
+        let mut leaked = json!({"files":[{"path":"notes.txt","content":base64::engine::general_purpose::STANDARD.encode(token.as_bytes())}]});
+        assert!(own.sanitize_artifacts(&mut leaked).is_err());
         // A login value under any other name is refused as well.
         assert!(
             Credentials::from_names(&["CUSTOM_TOKEN".into()], |_| Some(token.clone())).is_err()
         );
+        assert!(
+            Credentials::from_names(&["ANTHROPIC_API_KEY".into()], |_| Some(token.clone()))
+                .is_err()
+        );
         let document = format!(r#"{{"claudeAiOauth":{{"accessToken":"{token}"}}}}"#);
         assert!(
             Credentials::from_names(&["CUSTOM_JSON".into()], |_| Some(document.clone())).is_err()
+        );
+        assert!(
+            Credentials::from_names(&["CLAUDE_CODE_OAUTH_TOKEN".into()], |_| Some(
+                document.clone()
+            ))
+            .is_err()
         );
         let credentials = Credentials::default();
         let mut trace =

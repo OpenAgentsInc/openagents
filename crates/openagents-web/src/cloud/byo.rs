@@ -12,9 +12,18 @@
 //! Revocation erases the entry, so the next boot or turn of a running
 //! computer, and every future one, finds nothing.
 //!
-//! Plan logins are never stored here; a computer without this credential
-//! runs on the login made inside it and is limited to one automated turn at
-//! a time ([`coder_cloud::claude::admit_turns`]).
+//! A login made inside a computer is never stored here; a computer without
+//! this credential runs on that login and is limited to one automated turn
+//! at a time ([`coder_cloud::claude::admit_turns`]). The one Claude login
+//! value kept here is the user's own subscription token from `claude
+//! setup-token` (owner-directed, 2026-10-09): the bare token, kept and
+//! released exactly like an API key, and launched as
+//! `CLAUDE_CODE_OAUTH_TOKEN` (never `ANTHROPIC_API_KEY`). It bills the
+//! user's Claude plan, so it keeps the plan's one-turn-at-a-time rule.
+//!
+//! An Anthropic API key or subscription token is checked with Anthropic
+//! before it is kept ([`Computers::check`]): one model-list request, no
+//! model call.
 
 use super::custody::{self, CustodyError, Key, Material, Scope, Status, Vault};
 use super::hosts::Binding;
@@ -31,13 +40,47 @@ use std::path::Path;
 pub const SUBJECT: &str = "byo:computers";
 /// A credential stays in custody at most 90 days unless added again.
 const SECONDS: u64 = 90 * 24 * 60 * 60;
-const MATERIALS: [Material; 4] = [
+const MATERIALS: [Material; 5] = [
     Material::AnthropicApiKey,
+    Material::ClaudeSubscriptionToken,
     Material::BedrockCredential,
     Material::VertexCredential,
     Material::FoundryCredential,
 ];
-pub const TERMS: &str = "OpenAgents keeps your own Anthropic API key or Bedrock, Vertex, or Foundry credential in private server custody for your account and workspace. It is applied only to your own computers, fresh at each start and automated Claude turn, and is never put in a checkpoint, saved environment image, export, log, or evidence. Usage bills to your own Anthropic or cloud account; OpenAgents never meters, pays for, or resells it. Remove it at any time: running computers stop using it at their next start or turn, and future computers never see it.";
+pub const TERMS: &str = "OpenAgents keeps your own Claude subscription token, Anthropic API key, or Bedrock, Vertex, or Foundry credential in private server custody for your account and workspace. It is applied only to your own computers and Claude Code runs, fresh at each start and automated Claude turn, and is never put in a checkpoint, saved environment image, export, log, or evidence. Usage bills to your own Claude plan, Anthropic account, or cloud account; OpenAgents never meters, pays for, or resells it. Remove it at any time: running computers stop using it at their next start or turn, and future computers never see it.";
+
+/// Where an Anthropic API key or subscription token is checked.
+pub const ANTHROPIC_API: &str = "https://api.anthropic.com";
+/// The beta header Claude Code sends with a subscription (OAuth) token.
+pub const OAUTH_BETA: &str = "oauth-2025-04-20";
+const ANTHROPIC_VERSION: &str = "2023-06-01";
+
+/// Why a credential was not kept after its check with Anthropic.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CheckError {
+    /// Anthropic refused it (401 or 403).
+    Refused,
+    /// Anthropic could not be reached, or answered with an error.
+    Unreachable,
+}
+
+/// The material a pasted Anthropic credential is, by its prefix: a
+/// subscription token (`sk-ant-oat…`) or an API key (`sk-ant-api…`),
+/// whichever of the two was picked. Other materials stay as picked.
+#[must_use]
+pub fn detect(selected: Material, value: &str) -> Material {
+    if !matches!(
+        selected,
+        Material::AnthropicApiKey | Material::ClaudeSubscriptionToken
+    ) {
+        return selected;
+    }
+    match claude::detect(value) {
+        Some(OwnCredential::SubscriptionToken) => Material::ClaudeSubscriptionToken,
+        Some(OwnCredential::AnthropicApiKey) => Material::AnthropicApiKey,
+        _ => selected,
+    }
+}
 
 /// The account, workspace, and membership epoch that own the computers.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -74,16 +117,66 @@ impl Owner {
 /// Custody of users' own Claude credentials for their own computers.
 pub struct Computers {
     vault: Vault,
+    /// Anthropic's API base for the check before a key is kept; `None`
+    /// keeps keys unchecked (tests and local fixtures).
+    check_base: Option<String>,
 }
 
 impl Computers {
     /// Open an operator-provisioned private directory (mode 0700). Saved
     /// credentials are encrypted under `keyring`, which must be kept
-    /// outside that directory.
+    /// outside that directory. Anthropic keys and subscription tokens are
+    /// checked with [`ANTHROPIC_API`] before they are kept.
     pub fn open(directory: &Path, keyring: oa_seal::Keyring) -> Result<Self, String> {
         Ok(Self {
             vault: Vault::open(directory, keyring)?,
+            check_base: Some(ANTHROPIC_API.to_owned()),
         })
+    }
+
+    /// Check Anthropic keys at `base` instead, or (with `None`) not at all.
+    #[must_use]
+    pub fn checking(mut self, base: Option<String>) -> Self {
+        self.check_base = base;
+        self
+    }
+
+    /// Check an Anthropic API key or subscription token with Anthropic
+    /// before it is kept: one `GET /v1/models` (no model call, no usage),
+    /// with `x-api-key` for an API key, or `Authorization: Bearer` and the
+    /// OAuth beta header Claude Code sends for a subscription token. Other
+    /// materials are not checked. The key is never logged, and the answer
+    /// is read only for its status.
+    pub async fn check(&self, material: Material, key: &Key) -> Result<(), CheckError> {
+        let Some(base) = self.check_base.as_deref() else {
+            return Ok(());
+        };
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(15))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|_| CheckError::Unreachable)?;
+        let request = client
+            .get(format!("{}/v1/models?limit=1", base.trim_end_matches('/')))
+            .header("anthropic-version", ANTHROPIC_VERSION);
+        let request = match material {
+            Material::AnthropicApiKey => request.header("x-api-key", key.reveal()),
+            Material::ClaudeSubscriptionToken => request
+                .bearer_auth(key.reveal())
+                .header("anthropic-beta", OAUTH_BETA),
+            _ => return Ok(()),
+        };
+        let status = request
+            .send()
+            .await
+            .map_err(|_| CheckError::Unreachable)?
+            .status();
+        match status.as_u16() {
+            // A rate limit means the credential authenticated.
+            200..=299 | 429 => Ok(()),
+            400 | 401 | 403 => Err(CheckError::Refused),
+            _ => Err(CheckError::Unreachable),
+        }
     }
 
     /// The current credential's masked standing, if any.
@@ -389,9 +482,198 @@ mod tests {
         let root = temp.path().canonicalize().unwrap().join("byo");
         std::fs::create_dir(&root).unwrap();
         std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
-        let computers =
-            Computers::open(&root, oa_seal::Keyring::scratch("test").unwrap().0).unwrap();
+        let computers = Computers::open(&root, oa_seal::Keyring::scratch("test").unwrap().0)
+            .unwrap()
+            .checking(None);
         (temp, root, computers)
+    }
+
+    /// A fake subscription token, assembled at run time so no token-shaped
+    /// literal sits in the source.
+    fn fake_token() -> String {
+        format!("sk-ant-oat01-{}", "t9".repeat(40))
+    }
+
+    #[test]
+    fn a_pasted_credential_is_told_apart_by_its_prefix() {
+        let token = fake_token();
+        for picked in [Material::AnthropicApiKey, Material::ClaudeSubscriptionToken] {
+            assert_eq!(detect(picked, &token), Material::ClaudeSubscriptionToken);
+            assert_eq!(detect(picked, FAKE_KEY), Material::AnthropicApiKey);
+            assert_eq!(detect(picked, "neither"), picked);
+        }
+        // A cloud credential stays what was picked.
+        assert_eq!(
+            detect(Material::BedrockCredential, &token),
+            Material::BedrockCredential
+        );
+    }
+
+    #[test]
+    fn a_subscription_token_is_sealed_scoped_and_runs_as_the_oauth_variable() {
+        let (_temp, root, computers) = computers();
+        let alice = owner(3);
+        let token = fake_token();
+        let key = Key::for_material(Material::ClaudeSubscriptionToken, token.clone()).unwrap();
+        assert_eq!(format!("{key:?}"), "Key(redacted)");
+        let status = computers
+            .store(&alice, Material::ClaudeSubscriptionToken, key, true, 10)
+            .unwrap();
+        // Status and its masked form carry a digest, never the token.
+        assert!(!format!("{status:?}{}", status.masked()).contains(&token));
+        for entry in std::fs::read_dir(&root).unwrap() {
+            let bytes = std::fs::read(entry.unwrap().path()).unwrap();
+            assert!(!String::from_utf8_lossy(&bytes).contains(&token));
+            assert!(!String::from_utf8_lossy(&bytes).contains("sk-ant-oat"));
+        }
+        // Plan rules: one turn at a time.
+        assert_eq!(
+            computers.sign_in(&alice, 11).unwrap(),
+            SignIn::Own(OwnCredential::SubscriptionToken)
+        );
+        assert_eq!(
+            computers.admit_turns(&alice, 0, 4, 11).unwrap_err(),
+            claude::PLAN_FAN_OUT_REFUSAL
+        );
+        // A run gets CLAUDE_CODE_OAUTH_TOKEN, never ANTHROPIC_API_KEY.
+        let run = computers.run_key(&alice, 11).unwrap();
+        assert_eq!(run.name(), claude::OAUTH_TOKEN);
+        assert!(!format!("{run:?}").contains(&token));
+        let credentials = computers
+            .credentials(&alice, OwnCredential::SubscriptionToken, 11)
+            .unwrap();
+        let env = credentials.environment();
+        assert_eq!(env[claude::OAUTH_TOKEN], token);
+        assert!(!env.contains_key(claude::API_KEY));
+        let mut trace = serde_json::json!({"error": format!("401 for {token}")});
+        credentials.redact(&mut trace);
+        assert!(!trace.to_string().contains(&token));
+
+        // Another account, workspace, or membership epoch sees nothing.
+        let mut bob = alice.clone();
+        bob.account = "bob".into();
+        let mut other = alice.clone();
+        other.workspace = "alice-team".into();
+        for stranger in [&bob, &other, &owner(4)] {
+            assert_eq!(computers.status(stranger, 11).unwrap(), None);
+            assert!(computers.run_key(stranger, 11).is_none());
+        }
+
+        // Replacing it with an API key removes the token; removal erases it.
+        let api = Key::for_material(Material::AnthropicApiKey, FAKE_KEY.into()).unwrap();
+        computers
+            .store(&alice, Material::AnthropicApiKey, api, true, 12)
+            .unwrap();
+        assert_eq!(
+            computers.run_key(&alice, 12).unwrap().name(),
+            claude::API_KEY
+        );
+        assert_eq!(std::fs::read_dir(&root).unwrap().count(), 1);
+        assert!(computers.revoke(&alice).unwrap());
+        assert!(computers.run_key(&alice, 13).is_none());
+    }
+
+    /// A stand-in for Anthropic's model list that answers 200 only to the
+    /// header each credential kind must send, and records what it saw.
+    async fn anthropic_stub() -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use axum::http::HeaderMap;
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let log = seen.clone();
+        let app = axum::Router::new().route(
+            "/v1/models",
+            axum::routing::get(move |headers: HeaderMap| {
+                let log = log.clone();
+                async move {
+                    let get = |name: &str| {
+                        headers
+                            .get(name)
+                            .and_then(|v| v.to_str().ok())
+                            .unwrap_or("")
+                            .to_owned()
+                    };
+                    let bearer = get("authorization");
+                    let api_key = get("x-api-key");
+                    let beta = get("anthropic-beta");
+                    log.lock().unwrap().push(format!(
+                        "bearer={} api_key={} beta={beta} version={}",
+                        !bearer.is_empty(),
+                        !api_key.is_empty(),
+                        get("anthropic-version")
+                    ));
+                    let good_token = bearer.ends_with(&"t9".repeat(40)) && beta == OAUTH_BETA;
+                    let good_key = api_key == FAKE_KEY && bearer.is_empty();
+                    if good_token || good_key {
+                        axum::http::StatusCode::OK
+                    } else {
+                        axum::http::StatusCode::UNAUTHORIZED
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        (format!("http://{address}"), seen)
+    }
+
+    #[tokio::test]
+    async fn each_kind_is_checked_with_its_own_header_before_it_is_kept() {
+        let (base, seen) = anthropic_stub().await;
+        let (_temp, _root, computers) = computers();
+        let computers = computers.checking(Some(base));
+        let token = Key::for_material(Material::ClaudeSubscriptionToken, fake_token()).unwrap();
+        assert_eq!(
+            computers
+                .check(Material::ClaudeSubscriptionToken, &token)
+                .await,
+            Ok(())
+        );
+        let key = Key::for_material(Material::AnthropicApiKey, FAKE_KEY.into()).unwrap();
+        assert_eq!(
+            computers.check(Material::AnthropicApiKey, &key).await,
+            Ok(())
+        );
+        // A token sent the API-key way, or a wrong token, is refused.
+        assert_eq!(
+            computers.check(Material::AnthropicApiKey, &token).await,
+            Err(CheckError::Refused)
+        );
+        let wrong = Key::for_material(
+            Material::ClaudeSubscriptionToken,
+            format!("sk-ant-oat01-{}", "w0".repeat(40)),
+        )
+        .unwrap();
+        assert_eq!(
+            computers
+                .check(Material::ClaudeSubscriptionToken, &wrong)
+                .await,
+            Err(CheckError::Refused)
+        );
+        let seen = seen.lock().unwrap().clone();
+        assert_eq!(
+            seen[0],
+            "bearer=true api_key=false beta=oauth-2025-04-20 version=2023-06-01"
+        );
+        assert_eq!(
+            seen[1],
+            "bearer=false api_key=true beta= version=2023-06-01"
+        );
+        // Unreachable: nothing is kept, and it is not called a bad key.
+        let (_temp, _root, offline) = computers_at(Some("http://127.0.0.1:9".into()));
+        assert_eq!(
+            offline.check(Material::AnthropicApiKey, &key).await,
+            Err(CheckError::Unreachable)
+        );
+        // Cloud credentials are not checked.
+        assert_eq!(
+            offline.check(Material::BedrockCredential, &key).await,
+            Ok(())
+        );
+    }
+
+    fn computers_at(base: Option<String>) -> (tempfile::TempDir, std::path::PathBuf, Computers) {
+        let (temp, root, computers) = computers();
+        (temp, root, computers.checking(base))
     }
 
     fn owner(epoch: u64) -> Owner {
@@ -530,10 +812,16 @@ mod tests {
     fn claude_logins_and_malformed_documents_are_refused() {
         for material in MATERIALS {
             let login = format!("sk-ant-oat01-{}", "q7".repeat(40));
-            assert_eq!(
-                Key::for_material(material, login).unwrap_err(),
-                CustodyError::Invalid
-            );
+            // Only the subscription-token material takes a bare token.
+            if material == Material::ClaudeSubscriptionToken {
+                assert!(Key::for_material(material, login).is_ok());
+                assert!(Key::for_material(material, FAKE_KEY.into()).is_err());
+            } else {
+                assert_eq!(
+                    Key::for_material(material, login).unwrap_err(),
+                    CustodyError::Invalid
+                );
+            }
             assert!(
                 Key::for_material(material, r#"{"claudeAiOauth":{"accessToken":"a"}}"#.into())
                     .is_err()

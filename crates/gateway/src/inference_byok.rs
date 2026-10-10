@@ -633,6 +633,9 @@ async fn store(
     };
     let input = Zeroizing::new(input.key);
     let key = input.trim();
+    if let Err((code, message)) = admit_key(key) {
+        return refused(StatusCode::BAD_REQUEST, code, message);
+    }
     if key.is_empty() || key.len() > KEY_MAX || key.chars().any(char::is_whitespace) {
         return refused(
             StatusCode::BAD_REQUEST,
@@ -652,6 +655,19 @@ async fn store(
             "The key couldn't be saved right now. Try again in a minute.",
         ),
     }
+}
+
+/// Why a Claude subscription token is refused as a provider key.
+pub const SUBSCRIPTION_REFUSAL: &str = "That's a Claude subscription token (from claude setup-token). Anthropic allows those only in Claude Code, so the API can't call models with it. Use an Anthropic API key (sk-ant-api...) here; save the token on openagents.com under Settings, Claude credential, for Claude Code runs.";
+
+/// Refuse a key the API may not call models with: a Claude subscription
+/// (OAuth) token, for every provider. Anthropic permits those only inside
+/// Claude Code; the gateway calls the Messages API directly.
+fn admit_key(key: &str) -> Result<(), (&'static str, &'static str)> {
+    if key.starts_with("sk-ant-oat") || key.starts_with("sk-ant-ort") {
+        return Err(("subscription_token", SUBSCRIPTION_REFUSAL));
+    }
+    Ok(())
 }
 
 async fn remove(
@@ -688,6 +704,19 @@ async fn remove(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_claude_subscription_token_is_never_a_provider_key() {
+        // Assembled at run time so no token-shaped literal sits here.
+        let token = format!("sk-ant-oat01-{}", "g5".repeat(40));
+        let (code, message) = admit_key(&token).unwrap_err();
+        assert_eq!(code, "subscription_token");
+        assert!(message.contains("only in Claude Code"));
+        assert!(!message.contains(&token));
+        assert!(admit_key(&format!("sk-ant-ort01-{}", "g5".repeat(40))).is_err());
+        assert!(admit_key("sk-ant-api03-stub").is_ok());
+        assert!(admit_key("sk-or-v1-stub").is_ok());
+    }
 
     #[test]
     fn direct_provider_keys_are_sealed_and_bound_to_the_workspace() {

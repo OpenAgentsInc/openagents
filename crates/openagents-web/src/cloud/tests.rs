@@ -245,7 +245,9 @@ async fn fixture_with(configure: impl FnOnce(&mut crate::Config)) -> Fixture {
     let mut config = crate::Config::development(local_store.clone());
     config.cloud = Some(Arc::new(CloudSession::load(&path).unwrap()));
     config.cloud_byo = Some(Arc::new(
-        super::byo::Computers::open(&byo, oa_seal::Keyring::scratch("test").unwrap().0).unwrap(),
+        super::byo::Computers::open(&byo, oa_seal::Keyring::scratch("test").unwrap().0)
+            .unwrap()
+            .checking(None),
     ));
     configure(&mut config);
     Fixture {

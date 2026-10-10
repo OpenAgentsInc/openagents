@@ -519,9 +519,12 @@ fn chats_section(saved: Option<usize>) -> Markup {
     }
 }
 
+const SUBSCRIPTION_LABEL: &str = "Claude subscription token (from claude setup-token)";
+
 fn material_label(material: Material) -> &'static str {
     match material {
         Material::AnthropicApiKey => "Anthropic API key",
+        Material::ClaudeSubscriptionToken => SUBSCRIPTION_LABEL,
         Material::BedrockCredential => "Amazon Bedrock",
         Material::VertexCredential => "Google Vertex AI",
         Material::FoundryCredential => "Microsoft Foundry",
@@ -575,7 +578,7 @@ fn custody_failure(error: CustodyError) -> Response {
     let (status, text, back) = match error {
         CustodyError::Invalid => (
             StatusCode::BAD_REQUEST,
-            "That isn't a valid key for this provider. Anthropic API keys start with sk-ant-api. Claude.ai logins and setup tokens aren't accepted.",
+            "That isn't a valid credential for this provider. Anthropic API keys start with sk-ant-api, and Claude subscription tokens (from claude setup-token) start with sk-ant-oat.",
             CLAUDE,
         ),
         CustodyError::Consent => (
@@ -595,6 +598,26 @@ fn custody_failure(error: CustodyError) -> Response {
         ),
     };
     problem(status, text, back)
+}
+
+/// Why a credential failed its check with Anthropic. Nothing was kept.
+fn check_failure(material: Material, error: byo::CheckError) -> Response {
+    let text = match (material, error) {
+        (Material::ClaudeSubscriptionToken, byo::CheckError::Refused) => {
+            "Anthropic didn't accept that subscription token. Run claude setup-token again and paste the new token. Nothing was saved."
+        }
+        (_, byo::CheckError::Refused) => {
+            "Anthropic didn't accept that API key. Check it at console.anthropic.com and try again. Nothing was saved."
+        }
+        (_, byo::CheckError::Unreachable) => {
+            "Anthropic couldn't be reached to check it, so nothing was saved. Try again in a minute."
+        }
+    };
+    let status = match error {
+        byo::CheckError::Refused => StatusCode::BAD_REQUEST,
+        byo::CheckError::Unreachable => StatusCode::BAD_GATEWAY,
+    };
+    problem(status, text, CLAUDE)
 }
 
 async fn claude(State(app): State<App>, headers: HeaderMap) -> Response {
@@ -640,14 +663,16 @@ fn claude_content(saved: Option<Material>, add: (&str, &str), remove: (&str, &st
     let material = Field::new("claude-credential-material", "Provider");
     let value = Field::new("claude-credential-value", "Key")
         .required(true)
-        .description("Anthropic: the API key, from console.anthropic.com. Bedrock, Vertex, or Foundry: the JSON credential.");
+        .description("Claude subscription token: the token claude setup-token prints (sk-ant-oat…). Anthropic API key: from console.anthropic.com (sk-ant-api…). Either is recognized by how it starts. Bedrock, Vertex, or Foundry: the JSON credential.");
     html! {
         p { (action_link("Settings", PAGE)) }
         (MarkdownRoot::new(html! {
             h1 { "Claude credential" }
-            p { "Add your own Anthropic API key, or an Amazon Bedrock, Google Vertex AI, or Microsoft Foundry credential, to run Claude Code tasks in parallel. Usage bills to your own account." }
+            p { "Add your own Claude subscription token or Anthropic API key, or an Amazon Bedrock, Google Vertex AI, or Microsoft Foundry credential, to run Claude Code tasks. Usage bills to your own account." }
             p {
-                "Create an Anthropic API key at "
+                "A subscription token bills your Claude plan and runs one task at a time: run "
+                code { "claude setup-token" }
+                " in a terminal on your computer and paste the token it prints. An API key bills your Anthropic account and can run tasks in parallel: create one at "
                 a href="https://console.anthropic.com/settings/keys" { "console.anthropic.com" } "."
             }
             @match saved {
@@ -676,6 +701,7 @@ fn claude_content(saved: Option<Material>, add: (&str, &str), remove: (&str, &st
             (material.clone().control(
                 Select::new("material")
                     .aria(material.aria())
+                    .option("claude_subscription_token", SUBSCRIPTION_LABEL)
                     .option("anthropic_api_key", "Anthropic API key")
                     .option("bedrock_credential", "Amazon Bedrock")
                     .option("vertex_credential", "Google Vertex AI")
@@ -733,14 +759,23 @@ async fn add(
     ) {
         return refused(error);
     }
-    let key = match Key::for_material(form.material, std::mem::take(&mut form.value)) {
+    // A pasted subscription token or API key is told apart by its prefix,
+    // whichever of the two was picked.
+    let material = byo::detect(form.material, &form.value);
+    let key = match Key::for_material(material, std::mem::take(&mut form.value)) {
         Ok(value) => value,
         Err(error) => return custody_failure(error),
     };
     let consent = form.consent.as_deref() == Some("custody");
+    if !consent {
+        return custody_failure(CustodyError::Consent);
+    }
+    if let Err(error) = context.computers.check(material, &key).await {
+        return check_failure(material, error);
+    }
     match context
         .computers
-        .store(&context.owner, form.material, key, consent, now())
+        .store(&context.owner, material, key, consent, now())
     {
         Ok(_) => protect(Redirect::to(CLAUDE).into_response()),
         Err(error) => custody_failure(error),
@@ -815,6 +850,28 @@ mod tests {
         assert!(byo::TERMS.contains(
             "never put in a checkpoint, saved environment image, export, log, or evidence"
         ));
+        // Both Anthropic kinds have their own clear label.
+        assert!(html.contains("value=\"claude_subscription_token\""));
+        assert!(html.contains("Claude subscription token (from claude setup-token)"));
+        assert!(html.contains(">Anthropic API key<"));
+        assert!(html.contains("claude setup-token"));
+        let token = claude_content(
+            Some(Material::ClaudeSubscriptionToken),
+            ("t", "r"),
+            ("t", "r"),
+        )
+        .into_string();
+        assert!(token.contains("Saved: Claude subscription token (from claude setup-token)"));
+    }
+
+    #[test]
+    fn a_check_failure_never_repeats_the_credential_and_says_nothing_was_saved() {
+        for material in [Material::AnthropicApiKey, Material::ClaudeSubscriptionToken] {
+            for error in [byo::CheckError::Refused, byo::CheckError::Unreachable] {
+                let response = check_failure(material, error);
+                assert!(response.status().is_client_error() || response.status().is_server_error());
+            }
+        }
     }
 
     #[test]

@@ -5,8 +5,9 @@
 //! unmodified binary as `claude -p` with the task on standard input, inside
 //! the user's own computer, on whatever sign-in that computer holds: the
 //! login made there through Anthropic's own flow, or the user's own API key
-//! when their run admitted one (`docs/cloud/claude-code-byo.md`). It never
-//! passes a claude.ai token, and never reads a login file.
+//! or subscription token when their run admitted one
+//! (`docs/cloud/claude-code-byo.md`). It passes `CLAUDE_CODE_OAUTH_TOKEN`
+//! only when the run admitted it, and never reads a login file.
 //!
 //! A run that ends on a usage limit, or on a login that is missing or
 //! expired, fails with a sentence the Cloud job reads back with
@@ -70,9 +71,34 @@ pub fn credential_type(source: Option<&str>) -> &'static str {
         Some(s) if s.is_empty() || s == "none" || s.contains("/login") => "claude_ai_login",
         Some("ANTHROPIC_API_KEY") => "anthropic_api_key",
         Some("ANTHROPIC_AUTH_TOKEN") => "anthropic_auth_token",
+        Some("CLAUDE_CODE_OAUTH_TOKEN") => "claude_subscription_token",
         Some("apiKeyHelper") => "api_key_helper",
         Some(_) => "other",
     }
+}
+
+/// The variables Claude Code must not see. Only credentials the run
+/// admitted pass (`OA_CODER_CLOUD_CREDENTIAL_NAMES`: the user's own API
+/// key, subscription token, or cloud credential); every other key, token,
+/// or secret is removed. A subscription token passes only when admitted, so
+/// without one a plan runs on the login inside this computer.
+fn removed_env(
+    names: impl Iterator<Item = std::ffi::OsString>,
+    admitted: &str,
+) -> Vec<std::ffi::OsString> {
+    let allowed = |name: &str| admitted.split(',').any(|allowed| allowed == name);
+    let mut out: Vec<_> = names
+        .filter(|name| {
+            let text = name.to_string_lossy();
+            let secret =
+                text.ends_with("_API_KEY") || text.ends_with("_TOKEN") || text.ends_with("_SECRET");
+            secret && !allowed(&text)
+        })
+        .collect();
+    if !allowed(secret_screen::CLAUDE_CODE_OAUTH_TOKEN) {
+        out.push(secret_screen::CLAUDE_CODE_OAUTH_TOKEN.into());
+    }
+    out
 }
 
 /// Drive `claude -p` once and answer, or fail with a typed sentence.
@@ -96,19 +122,10 @@ pub(super) async fn run(
         .current_dir(cwd);
     let (mark, value) = Agent::ClaudeCode.engine_mark();
     command.env(mark, value);
-    // Only credentials the run admitted pass (the user's own API key or
-    // cloud credential); a claude.ai token is never passed, so a plan runs
-    // on the login inside this computer.
     let admitted = std::env::var("OA_CODER_CLOUD_CREDENTIAL_NAMES").unwrap_or_default();
-    for (name, _) in std::env::vars_os() {
-        let text = name.to_string_lossy();
-        let secret =
-            text.ends_with("_API_KEY") || text.ends_with("_TOKEN") || text.ends_with("_SECRET");
-        if secret && !admitted.split(',').any(|allowed| allowed == text) {
-            command.env_remove(&name);
-        }
+    for name in removed_env(std::env::vars_os().map(|(name, _)| name), &admitted) {
+        command.env_remove(name);
     }
-    command.env_remove(secret_screen::CLAUDE_CODE_OAUTH_TOKEN);
     crate::bundled_runtime::apply_child_env(&mut command);
     let started = Instant::now();
     let mut live = supervise::Job::from_command(command)
@@ -270,6 +287,48 @@ mod tests {
             "anthropic_api_key"
         );
         assert_eq!(credential_type(Some("sk-ant-api03-xyz")), "other");
+        assert_eq!(
+            credential_type(Some("CLAUDE_CODE_OAUTH_TOKEN")),
+            "claude_subscription_token"
+        );
+    }
+
+    #[test]
+    fn only_the_admitted_credential_reaches_claude_code() {
+        let names = || {
+            [
+                "CLAUDE_CODE_OAUTH_TOKEN",
+                "ANTHROPIC_API_KEY",
+                "GH_TOKEN",
+                "PATH",
+            ]
+            .map(std::ffi::OsString::from)
+            .into_iter()
+        };
+        let removed = |admitted: &str| -> Vec<String> {
+            let mut out: Vec<String> = removed_env(names(), admitted)
+                .into_iter()
+                .map(|n| n.to_string_lossy().into_owned())
+                .collect();
+            out.sort();
+            out.dedup();
+            out
+        };
+        // No admitted credential: the computer's own login, nothing else.
+        assert_eq!(
+            removed(""),
+            ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "GH_TOKEN"]
+        );
+        // The user's own subscription token: it alone, never an API key.
+        assert_eq!(
+            removed("CLAUDE_CODE_OAUTH_TOKEN"),
+            ["ANTHROPIC_API_KEY", "GH_TOKEN"]
+        );
+        // The user's own API key: unchanged, and never a subscription token.
+        assert_eq!(
+            removed("ANTHROPIC_API_KEY"),
+            ["CLAUDE_CODE_OAUTH_TOKEN", "GH_TOKEN"]
+        );
     }
 
     #[test]

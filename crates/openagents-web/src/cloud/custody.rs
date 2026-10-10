@@ -3,8 +3,10 @@
 //! This is the custody class [Bring your own Claude](../../../../docs/cloud/claude-code-byo.md)
 //! rule 8 describes: a user's own API key, stored for that user's own scope,
 //! revocable, released only to one exact admitted flow, and never exported.
-//! It is deliberately not a store for Claude.ai logins: an OAuth or
-//! `claude setup-token` value is refused for every material.
+//! It is not a store for Claude.ai logins: an OAuth or `claude setup-token`
+//! value is refused for every material except
+//! [`Material::ClaudeSubscriptionToken`] (owner-directed, 2026-10-09), which
+//! holds only the bare `claude setup-token` value, never a login document.
 //!
 //! Each entry binds the account, workspace, membership epoch, subject (the
 //! flow that may receive it), and material. A changed epoch or subject finds
@@ -37,8 +39,9 @@ pub const SEALED_SCHEMA: &str = "openagents.cloud.provider-key-custody.v2";
 const ENTRY_MAX: u64 = 24 * 1024;
 const KEY_MAX: usize = 8192;
 
-/// The kind of customer-owned credential. Claude.ai plan logins are not a
-/// material and can never be stored here.
+/// The kind of customer-owned credential. A Claude.ai login document is not
+/// a material and can never be stored here; a bare subscription token is
+/// its own material.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Material {
@@ -52,6 +55,9 @@ pub enum Material {
     VertexCredential,
     /// The customer's own Microsoft Foundry credential (BYO-04).
     FoundryCredential,
+    /// The customer's own Claude subscription token from `claude
+    /// setup-token`, billed to their Claude plan.
+    ClaudeSubscriptionToken,
 }
 
 impl Material {
@@ -71,6 +77,7 @@ impl Material {
             Self::BedrockCredential => Some(OwnCredential::Bedrock),
             Self::VertexCredential => Some(OwnCredential::Vertex),
             Self::FoundryCredential => Some(OwnCredential::Foundry),
+            Self::ClaudeSubscriptionToken => Some(OwnCredential::SubscriptionToken),
         }
     }
 }
@@ -112,7 +119,7 @@ impl std::fmt::Display for CustodyError {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         out.write_str(match self {
             Self::Invalid => {
-                "Enter one API key without spaces or control characters. Claude.ai logins and setup tokens are never accepted."
+                "Enter one key without spaces or control characters. A Claude subscription token is accepted only as a Claude credential."
             }
             Self::Consent => "Custody needs your explicit consent.",
             Self::Absent => "No current key is in custody for this workspace and flow.",
@@ -127,15 +134,18 @@ pub struct Key(String);
 
 impl Key {
     pub fn new(value: String) -> Result<Self, CustodyError> {
+        Self::checked(value, false)
+    }
+
+    /// A key; a subscription token (`sk-ant-oat…`) only when `token` says
+    /// the material is [`Material::ClaudeSubscriptionToken`].
+    fn checked(value: String, token: bool) -> Result<Self, CustodyError> {
         let key = Self(value);
         let text = key.0.as_str();
         if text.is_empty()
             || text.len() > KEY_MAX
-            || text
-                .chars()
-                .any(|c| c.is_control() || c.is_whitespace())
-            // Claude.ai OAuth and `claude setup-token` values: never collected.
-            || text.starts_with("sk-ant-oat")
+            || text.chars().any(|c| c.is_control() || c.is_whitespace())
+            || (!token && text.starts_with("sk-ant-oat"))
         {
             return Err(CustodyError::Invalid);
         }
@@ -143,7 +153,8 @@ impl Key {
     }
     /// Validate `value` for `material`. A Claude Code class is stored in its
     /// canonical form (a key, or a compact JSON document whose private-key
-    /// text may hold spaces); every class refuses Claude.ai logins.
+    /// text may hold spaces); every class but a subscription token refuses
+    /// Claude.ai logins, and that one takes only the bare token.
     pub fn for_material(material: Material, value: String) -> Result<Self, CustodyError> {
         let Some(class) = material.claude() else {
             return Self::new(value);
@@ -158,11 +169,16 @@ impl Key {
         if key.0.is_empty()
             || key.0.len() > KEY_MAX
             || key.0.chars().any(char::is_control)
-            || key.0.starts_with("sk-ant-oat")
+            || (material != Material::ClaudeSubscriptionToken && key.0.starts_with("sk-ant-oat"))
         {
             return Err(CustodyError::Invalid);
         }
         Ok(key)
+    }
+    /// The key itself, for the one check request that must carry it
+    /// ([`super::byo::Computers::check`]). Never printed or stored.
+    pub(super) fn reveal(&self) -> &str {
+        &self.0
     }
     /// SHA-256 hex of the key, which reviews and status bind.
     pub fn digest(&self) -> String {
@@ -435,7 +451,8 @@ impl Vault {
         if entry.digest != digest {
             return Err(CustodyError::Changed);
         }
-        Key::new(std::mem::take(&mut entry.key)).map_err(|_| CustodyError::Unavailable)
+        let token = scope.material == Material::ClaudeSubscriptionToken;
+        Key::checked(std::mem::take(&mut entry.key), token).map_err(|_| CustodyError::Unavailable)
     }
 
     /// Overwrite and remove the entry. Returns whether one existed.

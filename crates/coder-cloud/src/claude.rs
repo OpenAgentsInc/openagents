@@ -5,8 +5,14 @@
 //! [`VERSION`] and unmodified, at [`PROGRAM`]. The user signs in by running
 //! that program in their own computer's granted terminal and completing
 //! Anthropic's flow there; the login stays in that computer's isolated home.
-//! No OpenAgents field, API, operator profile, or Coder credential path
-//! accepts a claude.ai login, and evidence never carries one.
+//!
+//! Since 2026-10-09 (owner-directed) a user may also save their own Claude
+//! subscription token, the long-lived value `claude setup-token` prints, as
+//! their own credential ([`OwnCredential::SubscriptionToken`]). It is
+//! carried only under [`OAUTH_TOKEN`], only into the unmodified binary, and
+//! bills that user's Claude plan. Every other credential name and value
+//! still refuses a claude.ai login, no login file is ever read or carried,
+//! and evidence never holds one.
 
 /// The executor name an operator profile and the Coder runtime use.
 pub const ENGINE: &str = "claude";
@@ -28,19 +34,49 @@ pub const PROGRAM: &str = coder_engine_status::claude::PROGRAM;
 /// profile with none uses the login inside the user's computer.
 pub const API_KEY: &str = "ANTHROPIC_API_KEY";
 
+/// The variable the unmodified binary reads a subscription token from: the
+/// user's own `claude setup-token` value ([`OwnCredential::SubscriptionToken`]).
+pub const OAUTH_TOKEN: &str = secret_screen::CLAUDE_CODE_OAUTH_TOKEN;
+
+/// The prefix of a Claude subscription (OAuth) token.
+pub const SUBSCRIPTION_PREFIX: &str = "sk-ant-oat";
+/// The prefix of an Anthropic API key.
+pub const API_KEY_PREFIX: &str = "sk-ant-api";
+
 /// The plain-text engine label. No Anthropic or Claude Code logo is used.
 pub const LABEL: &str = "This computer runs Claude Code.";
 
-/// Refuse a credential name that would carry a claude.ai login.
+/// Admit one selected credential: a subscription token only under
+/// [`OAUTH_TOKEN`] and only in its bare `claude setup-token` shape; under
+/// any other name a claude.ai login is refused.
 ///
 /// # Errors
-/// For `CLAUDE_CODE_OAUTH_TOKEN`, which holds a claude.ai OAuth or
-/// `claude setup-token` value that OpenAgents may not collect or inject.
-pub fn admit_name(name: &str) -> crate::Result<()> {
-    if name.eq_ignore_ascii_case(secret_screen::CLAUDE_CODE_OAUTH_TOKEN) {
+/// When the name is another letter case of [`OAUTH_TOKEN`], when the value
+/// under [`OAUTH_TOKEN`] is not a bare subscription token, or when another
+/// name carries a claude.ai login.
+pub fn admit(name: &str, value: &str) -> crate::Result<()> {
+    if name == OAUTH_TOKEN {
+        return OwnCredential::SubscriptionToken.canonical(value).map(drop);
+    }
+    if name.eq_ignore_ascii_case(OAUTH_TOKEN) {
         return Err(REFUSAL.into());
     }
-    Ok(())
+    admit_value(value)
+}
+
+/// Which own Claude credential a pasted value is, by its prefix: a
+/// subscription token (`sk-ant-oat…`) or an Anthropic API key
+/// (`sk-ant-api…`). `None` for anything else.
+#[must_use]
+pub fn detect(value: &str) -> Option<OwnCredential> {
+    let value = value.trim();
+    if value.starts_with(SUBSCRIPTION_PREFIX) {
+        Some(OwnCredential::SubscriptionToken)
+    } else if value.starts_with(API_KEY_PREFIX) {
+        Some(OwnCredential::AnthropicApiKey)
+    } else {
+        None
+    }
 }
 
 /// Refuse a credential value that is a claude.ai login.
@@ -56,7 +92,10 @@ pub fn admit_value(value: &str) -> crate::Result<()> {
 }
 
 /// Why a claude.ai login was refused.
-pub const REFUSAL: &str = "OpenAgents does not accept a Claude.ai login or token. Sign in to Claude inside your computer's terminal instead.";
+pub const REFUSAL: &str = "A Claude.ai login or subscription token can't be used here. Save a subscription token under Settings, Claude, or sign in to Claude inside your computer's terminal.";
+
+/// Why a value saved as a subscription token was refused.
+pub const TOKEN_SHAPE: &str = "That isn't a Claude subscription token. Run claude setup-token and paste the token it prints (it starts with sk-ant-oat).";
 
 /// Whether an artifact path is Claude Code's login file.
 #[must_use]
@@ -91,6 +130,10 @@ pub enum OwnCredential {
     Vertex,
     /// `{"resource", "api_key"}`, carried as [`FOUNDRY`].
     Foundry,
+    /// The user's own Claude subscription token from `claude setup-token`
+    /// (`sk-ant-oat…`), carried as [`OAUTH_TOKEN`]. It bills the user's
+    /// Claude plan, so it keeps the plan's one-turn-at-a-time rule.
+    SubscriptionToken,
 }
 
 /// Credential names for the cloud-provider classes. Their values are the
@@ -103,7 +146,7 @@ pub const FOUNDRY: &str = "OA_CLAUDE_FOUNDRY";
 pub const VERTEX_SERVICE_ACCOUNT: &str = "OA_CLAUDE_VERTEX_SERVICE_ACCOUNT";
 
 /// Shown wherever a user adds, sees, or relies on their own credential.
-pub const BILLING: &str = "Claude usage on your own API key or cloud credential bills to your own Anthropic or cloud account. OpenAgents never meters, pays for, or resells it; our charges cover only your computer.";
+pub const BILLING: &str = "Claude usage on your own subscription token, API key, or cloud credential bills to your own Claude plan, Anthropic account, or cloud account. OpenAgents never meters, pays for, or resells it; our charges cover only your computer.";
 
 /// Why a fan-out on a Claude plan login was refused.
 pub const PLAN_FAN_OUT_REFUSAL: &str = "Parallel Claude Code tasks need your own Anthropic API key or Bedrock, Vertex, or Foundry credential. A Claude plan runs one automated turn at a time. Add a key under Settings, Claude credential.";
@@ -139,11 +182,12 @@ fn field(
 }
 
 impl OwnCredential {
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::AnthropicApiKey,
         Self::Bedrock,
         Self::Vertex,
         Self::Foundry,
+        Self::SubscriptionToken,
     ];
 
     /// The credential name this class is carried under.
@@ -154,6 +198,7 @@ impl OwnCredential {
             Self::Bedrock => BEDROCK,
             Self::Vertex => VERTEX,
             Self::Foundry => FOUNDRY,
+            Self::SubscriptionToken => OAUTH_TOKEN,
         }
     }
 
@@ -169,6 +214,7 @@ impl OwnCredential {
             Self::Bedrock => "your own Amazon Bedrock credential",
             Self::Vertex => "your own Google Vertex AI credential",
             Self::Foundry => "your own Microsoft Foundry credential",
+            Self::SubscriptionToken => "your own Claude subscription token",
         }
     }
 
@@ -176,8 +222,28 @@ impl OwnCredential {
     /// trimmed key, or a compact JSON document with only the known fields.
     ///
     /// # Errors
-    /// When the value is malformed, oversized, or a claude.ai login.
+    /// When the value is malformed, oversized, or a claude.ai login (for a
+    /// subscription token: anything but the bare token).
     pub fn canonical(self, value: &str) -> crate::Result<String> {
+        if self == Self::SubscriptionToken {
+            let value = value.trim();
+            let shaped = value.len() <= 1024
+                && value
+                    .strip_prefix(SUBSCRIPTION_PREFIX)
+                    .and_then(|rest| rest.split_once('-'))
+                    .is_some_and(|(version, body)| {
+                        version.chars().all(|c| c.is_ascii_digit())
+                            && body.len() >= 16
+                            && body
+                                .chars()
+                                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                    });
+            return if shaped {
+                Ok(value.into())
+            } else {
+                Err(TOKEN_SHAPE.into())
+            };
+        }
         admit_value(value)?;
         let value = value.trim();
         if value.is_empty() || value.len() > 8192 {
@@ -201,7 +267,7 @@ impl OwnCredential {
             })
         };
         match self {
-            Self::AnthropicApiKey => {}
+            Self::AnthropicApiKey | Self::SubscriptionToken => {}
             Self::Bedrock => {
                 put("region", true)?;
                 if put("bearer_token", false)? {
@@ -249,8 +315,10 @@ impl OwnCredential {
     ) -> crate::Result<std::collections::BTreeMap<String, String>> {
         let canonical = self.canonical(value)?;
         let mut out = std::collections::BTreeMap::new();
-        if self == Self::AnthropicApiKey {
-            out.insert(API_KEY.to_owned(), canonical);
+        if matches!(self, Self::AnthropicApiKey | Self::SubscriptionToken) {
+            // One variable only: a subscription token never goes in beside
+            // an API key, which Claude Code would prefer.
+            out.insert(self.name().to_owned(), canonical);
             return Ok(out);
         }
         let d: serde_json::Value = serde_json::from_str(&canonical).map_err(|_| SHAPE)?;
@@ -261,7 +329,7 @@ impl OwnCredential {
         };
         let get = |name: &str| d.get(name).and_then(serde_json::Value::as_str);
         match self {
-            Self::AnthropicApiKey => {}
+            Self::AnthropicApiKey | Self::SubscriptionToken => {}
             Self::Bedrock => {
                 put("CLAUDE_CODE_USE_BEDROCK", Some("1"));
                 put("AWS_REGION", get("region"));
@@ -302,15 +370,23 @@ pub fn sign_in<'a>(names: impl IntoIterator<Item = &'a str>) -> SignIn {
 /// on the same plan login or credential.
 ///
 /// # Errors
-/// On a plan login, a fan-out (`requested > 1`) is refused with a pointer to
-/// adding a key, and a second concurrent turn is refused until the first
-/// finishes. Own credentials are not limited here.
+/// On a plan login or a subscription token (both bill a Claude plan), a
+/// fan-out (`requested > 1`) is refused with a pointer to adding a key, and
+/// a second concurrent turn is refused until the first finishes. API keys
+/// and cloud credentials are not limited here.
 pub fn admit_turns(sign_in: SignIn, active: usize, requested: usize) -> crate::Result<()> {
-    match sign_in {
-        SignIn::Own(_) => Ok(()),
-        SignIn::PlanLogin if requested > 1 => Err(PLAN_FAN_OUT_REFUSAL.into()),
-        SignIn::PlanLogin if active > 0 && requested > 0 => Err(PLAN_BUSY_REFUSAL.into()),
-        SignIn::PlanLogin => Ok(()),
+    let plan = matches!(
+        sign_in,
+        SignIn::PlanLogin | SignIn::Own(OwnCredential::SubscriptionToken)
+    );
+    if !plan {
+        Ok(())
+    } else if requested > 1 {
+        Err(PLAN_FAN_OUT_REFUSAL.into())
+    } else if active > 0 && requested > 0 {
+        Err(PLAN_BUSY_REFUSAL.into())
+    } else {
+        Ok(())
     }
 }
 
@@ -332,10 +408,19 @@ mod tests {
 
     #[test]
     fn claude_logins_are_refused_as_injectable_credentials() {
-        assert!(admit_name("CLAUDE_CODE_OAUTH_TOKEN").is_err());
-        assert!(admit_name("claude_code_oauth_token").is_err());
-        assert!(admit_name(API_KEY).is_ok());
         let setup_token = format!("sk-ant-oat01-{}", "x1".repeat(40));
+        let api_key = format!("sk-ant-api03-{}", "k2".repeat(40));
+        // A subscription token is admitted only under its own name, bare.
+        assert!(admit(OAUTH_TOKEN, &setup_token).is_ok());
+        assert!(admit("claude_code_oauth_token", &setup_token).is_err());
+        assert!(admit("CUSTOM_TOKEN", &setup_token).is_err());
+        assert!(admit(API_KEY, &setup_token).is_err());
+        let document = format!(r#"{{"claudeAiOauth":{{"accessToken":"{setup_token}"}}}}"#);
+        assert_eq!(admit(OAUTH_TOKEN, &document), Err(TOKEN_SHAPE.into()));
+        let refresh = format!("sk-ant-ort01-{}", "x1".repeat(40));
+        assert!(admit(OAUTH_TOKEN, &refresh).is_err());
+        assert!(admit(OAUTH_TOKEN, &api_key).is_err());
+        assert!(admit(API_KEY, &api_key).is_ok());
         assert_eq!(admit_value(&setup_token), Err(REFUSAL.into()));
         assert!(admit_value(r#"{"claudeAiOauth":{"accessToken":"a"}}"#).is_err());
         assert!(admit_value(&format!("sk-ant-api03-{}", "k2".repeat(40))).is_ok());
@@ -362,7 +447,12 @@ mod tests {
         );
         let own = SignIn::Own(OwnCredential::AnthropicApiKey);
         assert!(admit_turns(own, 7, 16).is_ok());
-        assert!(BILLING.contains("your own Anthropic or cloud account"));
+        // A subscription token bills a Claude plan: one turn at a time.
+        let token = SignIn::Own(OwnCredential::SubscriptionToken);
+        assert!(admit_turns(token, 0, 1).is_ok());
+        assert_eq!(admit_turns(token, 0, 2), Err(PLAN_FAN_OUT_REFUSAL.into()));
+        assert_eq!(admit_turns(token, 1, 1), Err(PLAN_BUSY_REFUSAL.into()));
+        assert!(BILLING.contains("your own Claude plan"));
     }
 
     #[test]
@@ -373,10 +463,26 @@ mod tests {
         assert_eq!(class.environment(&key).unwrap()[API_KEY], key);
         let login = format!("sk-ant-oat01-{}", "x1".repeat(40));
         for class in OwnCredential::ALL {
-            assert_eq!(class.canonical(&login), Err(REFUSAL.into()));
             assert_eq!(OwnCredential::from_name(class.name()), Some(class));
-            assert!(admit_name(class.name()).is_ok());
+            if class != OwnCredential::SubscriptionToken {
+                assert_eq!(class.canonical(&login), Err(REFUSAL.into()));
+            }
         }
+
+        // A subscription token: told apart by prefix, trimmed, and carried
+        // alone under CLAUDE_CODE_OAUTH_TOKEN, never as ANTHROPIC_API_KEY.
+        let token = OwnCredential::SubscriptionToken;
+        assert_eq!(detect(&format!(" {login}\n")), Some(token));
+        assert_eq!(detect(&key), Some(OwnCredential::AnthropicApiKey));
+        assert_eq!(detect("AKIAFAKE"), None);
+        assert_eq!(token.canonical(&format!(" {login}\n")).unwrap(), login);
+        let env = token.environment(&login).unwrap();
+        assert_eq!(env.len(), 1);
+        assert_eq!(env[OAUTH_TOKEN], login);
+        assert!(token.canonical(&key).is_err());
+        assert!(token.canonical("sk-ant-oat01-short").is_err());
+        assert!(token.canonical(&format!("{login} extra")).is_err());
+        assert_eq!(sign_in([OAUTH_TOKEN]), SignIn::Own(token));
 
         let bedrock = OwnCredential::Bedrock
             .canonical(r#"{"region":"us-east-1","access_key_id":"AKIAFAKE","secret_access_key":"fake/secret","extra":"dropped"}"#)

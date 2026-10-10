@@ -29,8 +29,9 @@ use std::time::Duration;
 pub const RUN_SECONDS: u64 = 3600;
 pub const MAX_PROMPT: usize = 16 * 1024;
 
-/// A Claude credential for one run: its name (`ANTHROPIC_API_KEY`, or the
-/// Bedrock, Vertex, or Foundry name) and value. It never prints, and its
+/// A Claude credential for one run: its name (`ANTHROPIC_API_KEY`,
+/// `CLAUDE_CODE_OAUTH_TOKEN` for a subscription token, or the Bedrock,
+/// Vertex, or Foundry name) and value. It never prints, and its
 /// bytes are zeroed when it drops.
 pub struct Key {
     name: String,
@@ -344,6 +345,17 @@ mod tests {
         );
         assert!(Key::new("GITHUB_TOKEN", value.clone()).is_err());
         assert!(Key::new(coder_cloud::claude::API_KEY, " ".into()).is_err());
+
+        // A saved subscription token runs as CLAUDE_CODE_OAUTH_TOKEN alone.
+        let token = format!("sk-ant-oat01-{}", "b2".repeat(40));
+        let key = Key::new(coder_cloud::claude::OAUTH_TOKEN, token.clone()).unwrap();
+        assert!(!format!("{key:?}").contains(&token));
+        let env = key.credentials().unwrap().environment();
+        assert_eq!(env.len(), 1);
+        assert_eq!(env[coder_cloud::claude::OAUTH_TOKEN], token);
+        // A token under the API key's name never reaches a run.
+        let wrong = Key::new(coder_cloud::claude::API_KEY, token.clone()).unwrap();
+        assert!(wrong.credentials().is_err());
     }
 
     #[test]
