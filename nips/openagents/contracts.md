@@ -2,7 +2,7 @@
 
 `draft` `optional` — normative for CAP, PRG, EXT, RUN, CJ, CTX, POL, COORD,
 EVAL, OPT, KB, XP, CTRL, MKT, LAB, X402, SESS, WS, WORK, AUTO, ENV, LIVE,
-HOST, REACH, TERM, SOV, and REG v1.
+HOST, REACH, TERM, SOV, REG, ATT, and VAULT v1.
 
 The uppercase requirement words express conformance requirements. A reader
 MUST validate the complete required contract before any effect. Signatures
@@ -341,7 +341,7 @@ profile defines read ACLs, retention, fanout, and COUNT/search behavior.
 
 Kind `3188` is a regular immutable declaration of one scoped artifact for
 one recipient. CTX, POL, COORD, EVAL, OPT, KB, CTRL, MKT, LAB, SESS, WS,
-WORK, AUTO, ENV, LIVE, HOST, REACH, TERM, SOV, X402, ATIF, and private EXT records use it when
+WORK, AUTO, ENV, LIVE, HOST, REACH, TERM, SOV, X402, ATIF, VAULT, ATT, and private EXT records use it when
 a separately signed artifact is needed outside a RUN controller's journal.
 It does not dispatch work. A control or market consumer separately validates
 and admits the operation; receiving an artifact alone grants no effect. The event has

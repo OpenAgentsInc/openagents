@@ -25,7 +25,10 @@ primitives they reuse. The [implementation plan](../docs/protocol/implementation
 tracks remaining work across all lanes. A draft revision changes the target;
 it does not make an existing reader conformant.
 
-The OpenAgents lane now contains 30 NIPs plus its shared contracts.
+The OpenAgents lane now contains 33 NIPs plus its shared contracts.
+[NIP-VAULT](openagents/NIP-VAULT.md) and [NIP-ATT](openagents/NIP-ATT.md) are
+**Designed** drafts for sealed personal data and attested workloads (the
+[security docs](../docs/security/README.md)).
 [NIP-X402](openagents/NIP-X402.md) is a **Designed** draft for Lightning-paid
 operations before execution, separate from MKT/LAB payment after acceptance.
 It preserves standard x402 HTTP/MCP bindings; its `nostr:openagents:1` binding

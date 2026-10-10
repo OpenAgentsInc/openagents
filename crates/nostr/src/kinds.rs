@@ -97,6 +97,12 @@ pub const ATIF_DECLARATION: u16 = 3_198;
 pub const ATIF_CHUNK: u16 = 3_199;
 /// NIP-PYLON service receipt.
 pub const PYLON_RECEIPT: u16 = 3_201;
+/// NIP-ATT attested workload release.
+pub const ATT_RELEASE: u16 = 3_202;
+/// NIP-ATT release head.
+pub const ATT_HEAD: u16 = 30_202;
+/// NIP-ATT attested endpoint.
+pub const ATT_ENDPOINT: u16 = 30_203;
 /// NIP-PYLON pylon beacon.
 pub const PYLON_BEACON: u16 = 30_200;
 /// NIP-PYLON pool aggregate.
@@ -147,6 +153,7 @@ pub const REGISTRY: &[Claim] = &[
     ),
     claim(ATIF_CHUNK, "NIP-ATIF", "Public trajectory chunk"),
     claim(PYLON_RECEIPT, "NIP-PYLON", "Service receipt"),
+    claim(ATT_RELEASE, "NIP-ATT", "Attested workload release"),
     claim(XP_PROFILE, "NIP-XP", "Trainer profile"),
     claim(XP_LINK, "NIP-XP", "Key link"),
     claim(MV_FRAME, "NIP-MV", "Pose frame"),
@@ -198,6 +205,8 @@ pub const REGISTRY: &[Claim] = &[
     claim(XP_CARD, "NIP-XP", "Trainer card"),
     claim(PYLON_BEACON, "NIP-PYLON", "Pylon beacon"),
     claim(PYLON_POOL, "NIP-PYLON", "Pool aggregate"),
+    claim(ATT_HEAD, "NIP-ATT", "Release head"),
+    claim(ATT_ENDPOINT, "NIP-ATT", "Attested endpoint"),
     claim(MV_WORLD, "NIP-MV", "World definition"),
     claim(MV_STATE, "NIP-MV", "Entity state"),
 ];
