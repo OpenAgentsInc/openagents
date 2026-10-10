@@ -82,7 +82,8 @@ final class ReleaseGateUITests: XCTestCase {
         // and back to Coder with the switch.
         app.swipeDown()
         open(app, "shell-place-verse")
-        sleep(6)
+        // A simulator build's world takes a while to load.
+        sleep(20)
         record(app, "08-verse")
         let coder = app.buttons["shell-switch-coder"].firstMatch
         XCTAssertTrue(coder.waitForExistence(timeout: 10))
