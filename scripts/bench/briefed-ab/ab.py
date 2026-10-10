@@ -314,6 +314,11 @@ How to work:
 """
 TEMPLATES["v3"] = SYSTEM_V3
 
+SYSTEM_V4 = """Fix the issue in the briefing below, in this Rust checkout. Smallest complete change plus a test.
+{tools}
+"""
+TEMPLATES["v4"] = SYSTEM_V4
+
 
 def cochange(rev: str, paths: list[str]) -> dict:
     """path -> partners that changed with it before `rev` (for verify)."""
@@ -489,6 +494,13 @@ ARMS: dict[str, dict] = {
     "Brelated": {"tools": "verify+related"},
     "Boutline": {"tools": "verify+outline"},
     "Bfinish": {"tools": "verify+finish"},
+    # one-lever ablations on B0
+    "Bsmall": {"tools": "verify", "briefing_files": 4, "excerpt_lines": 60, "history": 0},
+    "Blarge": {"tools": "verify", "briefing_files": 12, "excerpt_lines": 220, "history": 3},
+    "Bterse": {"tools": "verify", "template": "v4"},
+    "Blow": {"tools": "verify", "effort": "low"},
+    "Bsonnet": {"tools": "verify", "model": "sonnet"},
+    "Bcold": {"tools": "verify", "build_cache": "cold"},
 }
 
 
@@ -647,7 +659,7 @@ def batch(args) -> None:
                     arm, rep = pending.pop(0)
                 out = tag_dir / f"{issue}-{arm}-{rep}"
                 mac_guard()
-                if levers["build_cache"] == "cold":
+                if dict(levers, **ARMS.get(arm, {}))["build_cache"] == "cold":
                     with _base_lock:
                         run(SSH + ["flock ~/ab/build.lock sh -c 'rm -rf ~/ab/target && mkdir -p ~/ab/target'"], check=False)
                 try:
@@ -879,6 +891,24 @@ def report(args) -> None:
         behavioral = {int(i) for i in args.issues.split(",")}
         rows = [r for r in rows if r["issue"] in behavioral]
         out = {f"{t}/{a}": summarize([r for r in rows if r["tag"] == t and r["arm"] == a]) for t, a in arms}
+    if args.md:
+        if args.tools:
+            print("| Arm | Tool | Calls/run | Share of runs | Tokens in/call | Tokens out/call | Median s | Acted on |")
+            print("|---|---|---|---|---|---|---|---|")
+            for arm, tools in out.items():
+                for name, t in tools.items():
+                    print(f"| {arm} | {name} | {t['calls_per_run']} | {t['share_of_runs']} | {t['tokens_in_per_call']} | "
+                          f"{t['tokens_out_per_call']} | {t['median_secs']} | {t['acted_on']} |")
+        else:
+            print("| Arm | Trials | Pass fix tests | Judge accepts | Accepted (both) | Total $ | $ / accepted | "
+                  "$ / judge-accepted | Median $ (sd) | Median s (sd) | Median turns | Same outcome all reps |")
+            print("|---|---|---|---|---|---|---|---|---|---|---|---|")
+            for arm, v in out.items():
+                print(f"| {arm} | {v['trials']} | {round(v['tests_pass_rate'] * v['trials'])} | {v['accepted_judge']} | "
+                      f"{v['accepted']} | {v['total_cost']} | {v['cost_per_accepted']} | {v['cost_per_accepted_judge']} | "
+                      f"{v['median_cost']} ({v['sd_cost']}) | {v['median_secs']} ({v['sd_secs']}) | {v['median_turns']} | "
+                      f"{v['issues_all_reps_same']} |")
+        return
     print(json.dumps(out, indent=2))
     if args.csv:
         import csv
@@ -916,6 +946,7 @@ def main() -> None:
     r.add_argument("--tag", action="append", required=True)
     r.add_argument("--csv")
     r.add_argument("--tools", action="store_true", help="per-tool statistics")
+    r.add_argument("--md", action="store_true", help="a Markdown table")
     r.add_argument("--issues", help="only these issues (e.g. the behavioral subset)")
     g = sub.add_parser("regrade")
     g.add_argument("--tag", action="append", required=True)
