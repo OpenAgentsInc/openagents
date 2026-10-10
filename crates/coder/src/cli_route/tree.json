@@ -25940,7 +25940,7 @@
               "mcp-serve"
             ],
             "usage": [
-              "mcp-serve --server URI --msat N [--tool GROUP]... [--expiry SECONDS]"
+              "mcp-serve --server URI --msat N --tool GROUP [--tool GROUP]... [--expiry SECONDS]"
             ],
             "forms": [
               {
@@ -25965,6 +25965,12 @@
                     "kind": "option",
                     "name": "tool",
                     "value": "GROUP",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "tool",
+                    "value": "GROUP",
                     "open": true,
                     "optional": true,
                     "repeated": true
@@ -25979,7 +25985,7 @@
                 ]
               }
             ],
-            "summary": "Serve `openagents mcp serve` over stdio with a toll (x402 exact/lnbtc, mcp:1): a tools/call without _meta[\"x402/payment\"] gets an error result carrying PaymentRequired with an invoice bound to URI, the tool name, and its arguments; a paid call runs and returns its result with _meta[\"x402/payment-response\"]. --tool narrows the served groups. URI is the name the buyer must bind to; it is not connected to.",
+            "summary": "Serve `openagents mcp serve` over stdio with a toll (x402 exact/lnbtc, mcp:1): a tools/call without _meta[\"x402/payment\"] gets an error result carrying PaymentRequired with an invoice bound to URI, the tool name, and its arguments; a paid call runs and returns its result with _meta[\"x402/payment-response\"]. --tool names each group sold (at least one); only their read-only commands run, and wallet, pay, x402, key, ssh, service, and host are never sold. URI is the name the buyer must bind to; it is not connected to.",
             "effect": "long_running",
             "runs_on": "screen",
             "screen": "wallet"
@@ -34451,7 +34457,7 @@
                 ]
               }
             ],
-            "summary": "Serve every command group as an MCP tool over stdio. A tool call `GROUP {\"args\": [...]}` runs `openagents --json GROUP ARGS...` with no stdin and returns its document; a nonzero exit is an error result. --timeout bounds one call (default 120).",
+            "summary": "Serve the read-only commands as MCP tools over stdio, one tool per command group. A tool call `GROUP {\"args\": [...]}` runs `openagents --json GROUP ARGS...` with no stdin and returns its document; a nonzero exit is an error result. Commands that spend, write, publish, grant access, reveal secrets, or run until stopped are refused, as are --yes, --show-words, and --replace; wallet, pay, x402, key, ssh, service, and host are never served. --timeout bounds one call (default 120).",
             "effect": "long_running",
             "runs_on": "connected_computer"
           }
@@ -34463,6 +34469,24 @@
           "name": "json",
           "value": "GROUP",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "yes",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "show-words",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "replace",
           "optional": true,
           "repeated": true
         },

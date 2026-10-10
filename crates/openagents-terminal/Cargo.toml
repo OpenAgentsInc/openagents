@@ -4,7 +4,7 @@ name = "openagents-terminal"
 # `openagents --version` and the welcome card name. It moves apart from the
 # workspace version; scripts/release/terminal.sh refuses a release whose
 # version differs from this one, in both crates (docs/release/terminal.md).
-version = "1.0.0-rc.2"
+version = "1.0.0"
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true

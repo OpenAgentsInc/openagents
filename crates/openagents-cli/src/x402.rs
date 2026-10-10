@@ -78,15 +78,18 @@ pub(crate) const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           to pay through this computer's Coder host (mainnet
                           only; the owner approves each payment there, and the
                           wait is at least 300 seconds).
-  mcp-serve --server URI --msat N [--tool GROUP]... [--expiry SECONDS]
+  mcp-serve --server URI --msat N --tool GROUP [--tool GROUP]... [--expiry SECONDS]
                           Serve `openagents mcp serve` over stdio with a toll
                           (x402 exact/lnbtc, mcp:1): a tools/call without
                           _meta[\"x402/payment\"] gets an error result carrying
                           PaymentRequired with an invoice bound to URI, the
                           tool name, and its arguments; a paid call runs and
                           returns its result with _meta[\"x402/payment-response\"].
-                          --tool narrows the served groups. URI is the name
-                          the buyer must bind to; it is not connected to.
+                          --tool names each group sold (at least one); only
+                          their read-only commands run, and wallet, pay, x402,
+                          key, ssh, service, and host are never sold. URI is
+                          the name the buyer must bind to; it is not
+                          connected to.
   call TOOL [--arg WORD]... [--max-msat N] [--max-fee-msat F] [--wait SECONDS]
         [--server URI] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof]
         [--pay-with wallet|node|phone]
@@ -1070,6 +1073,23 @@ fn mcp_serve(output: &Output, words: &[String]) -> u8 {
         .collect();
     if let Some(unknown) = tools.iter().find(|t| !known.contains(t)) {
         return output.usage("x402", &format!("--tool {unknown} is not a group"), USAGE);
+    }
+    // A paid server sells only the groups its operator names, and never
+    // one that moves money, holds keys, or opens shells (audit CLI-01).
+    if tools.is_empty() {
+        return output.usage(
+            "x402",
+            "mcp-serve needs at least one --tool GROUP to sell",
+            USAGE,
+        );
+    }
+    if let Some(refused) = tools.iter().find(|t| !crate::mcp::served(t)) {
+        let why = if crate::mcp::NEVER_SERVED.contains(&refused.as_str()) {
+            "is never served over MCP"
+        } else {
+            "has no read-only command to serve"
+        };
+        return output.usage("x402", &format!("--tool {refused} {why}"), USAGE);
     }
 
     let (wallet, wallet_config) = match open_wallet() {

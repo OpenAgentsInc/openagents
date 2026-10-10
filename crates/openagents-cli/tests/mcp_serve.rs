@@ -45,13 +45,14 @@ fn lists_groups_and_runs_version() {
         .iter()
         .map(|t| t["name"].as_str().unwrap())
         .collect();
-    for expected in ["verse", "zone", "sov", "computer", "key", "version", "chat"] {
+    for expected in ["verse", "zone", "sov", "computer", "version"] {
         assert!(names.contains(&expected), "{names:?}");
     }
-    assert!(
-        !names.contains(&"host") && !names.contains(&"mcp"),
-        "{names:?}"
-    );
+    for never in [
+        "host", "mcp", "wallet", "pay", "x402", "key", "ssh", "service",
+    ] {
+        assert!(!names.contains(&never), "{never} is served: {names:?}");
+    }
     let version = &replies[2]["result"];
     assert_eq!(version["isError"], false, "{version}");
     assert_eq!(version["structuredContent"]["exit_code"], 0);
@@ -62,6 +63,101 @@ fn lists_groups_and_runs_version() {
     let usage = &replies[3]["result"];
     assert_eq!(usage["isError"], true);
     assert_eq!(usage["structuredContent"]["exit_code"], 64, "{usage}");
+}
+
+/// Audit CLI-01: no MCP caller spends, signs in a shell, installs a
+/// service, or passes a consent switch. Each call is refused before any
+/// command runs (`unknown tool` for a group never served, an error result
+/// for a command or switch that is not read-only).
+#[test]
+fn mcp_serve_refuses_money_shells_services_and_consent_switches() {
+    let call = |id: u64, name: &str, args: &[&str]| json!({ "jsonrpc": "2.0", "id": id, "method": "tools/call", "params": { "name": name, "arguments": { "args": args } } });
+    let mut messages = vec![
+        json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "protocolVersion": "2025-06-18" } }),
+        json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),
+    ];
+    let never: [(&str, &[&str]); 7] = [
+        ("wallet", &["send", "lnbc1fake", "--yes"]),
+        ("wallet", &["balance"]),
+        ("pay", &["--help"]),
+        ("ssh", &["somehost"]),
+        ("service", &["install"]),
+        (
+            "x402",
+            &["call", "version", "--", "openagents", "mcp", "serve"],
+        ),
+        ("key", &["--help"]),
+    ];
+    for (index, (name, args)) in never.iter().enumerate() {
+        messages.push(call(10 + index as u64, name, args));
+    }
+    // Served groups still refuse a spend, a consent switch, and a command
+    // word smuggled after a read-only one.
+    messages.push(call(30, "computer", &["exec", "laptop", "rm", "-rf", "x"]));
+    messages.push(call(31, "version", &["--yes"]));
+    messages.push(call(32, "version", &["--show-words"]));
+    messages.push(call(33, "version", &["--replace=1"]));
+    messages.push(call(34, "computer", &["link"]));
+    messages.push(call(35, "computer", &["list", "--", "exec"]));
+    let replies = round_trip(&messages);
+    assert_eq!(replies.len(), 1 + never.len() + 6, "{replies:?}");
+    for reply in &replies[1..=never.len()] {
+        assert!(
+            reply["error"]["message"]
+                .as_str()
+                .is_some_and(|m| m.starts_with("unknown tool")),
+            "{reply}"
+        );
+    }
+    for reply in &replies[1 + never.len()..] {
+        let result = &reply["result"];
+        assert_eq!(result["isError"], true, "{reply}");
+        assert_eq!(result["structuredContent"]["exit_code"], 1, "{reply}");
+        assert!(
+            result["content"][0]["text"]
+                .as_str()
+                .is_some_and(|t| t.starts_with("refused")),
+            "{reply}"
+        );
+    }
+}
+
+/// Audit CLI-01: `x402 mcp-serve` sells only named groups, and never one
+/// that moves money, holds keys, or opens shells. Refused at argument
+/// parsing, before any wallet opens.
+#[test]
+fn x402_mcp_serve_requires_tools_and_refuses_spend_class_groups() {
+    let home = std::env::temp_dir().join(format!("openagents-x402-mcp-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let run = |tools: &[&str]| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_openagents"));
+        command
+            .env("OPENAGENTS_WALLET_HOME", home.join("wallet"))
+            .env("OPENAGENTS_X402_HOME", home.join("x402"))
+            .args([
+                "--json",
+                "x402",
+                "mcp-serve",
+                "--server",
+                "https://example.com/mcp",
+                "--msat",
+                "1000",
+            ]);
+        for tool in tools {
+            command.args(["--tool", tool]);
+        }
+        command.stdin(Stdio::null()).output().unwrap()
+    };
+    let none = run(&[]);
+    assert_eq!(none.status.code(), Some(64), "{none:?}");
+    assert!(String::from_utf8_lossy(&none.stdout).contains("--tool"));
+    for group in ["wallet", "pay", "x402", "key", "ssh", "service", "host"] {
+        let out = run(&["version", group]);
+        assert_eq!(out.status.code(), Some(64), "{group}: {out:?}");
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(text.contains(group), "{group}: {text}");
+    }
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 #[test]

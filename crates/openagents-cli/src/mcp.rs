@@ -26,6 +26,8 @@ use std::time::Duration;
 use openagents_x402::mcp::{Gate, with_settlement};
 use serde_json::{Value, json};
 
+use coder::cli_route::tree::{self, Effect, Node};
+
 use crate::{Args, Output};
 
 mod completion_scripts;
@@ -44,10 +46,14 @@ const METHOD_NOT_FOUND: i64 = -32601;
 const INVALID_PARAMS: i64 = -32602;
 
 pub const USAGE: &str = "usage: openagents mcp serve [--timeout SECONDS]
-  serve    Serve every command group as an MCP tool over stdio. A tool
-           call `GROUP {\"args\": [...]}` runs `openagents --json GROUP ARGS...`
-           with no stdin and returns its document; a nonzero exit is an
-           error result. --timeout bounds one call (default 120).";
+  serve    Serve the read-only commands as MCP tools over stdio, one tool
+           per command group. A tool call `GROUP {\"args\": [...]}` runs
+           `openagents --json GROUP ARGS...` with no stdin and returns its
+           document; a nonzero exit is an error result. Commands that
+           spend, write, publish, grant access, reveal secrets, or run
+           until stopped are refused, as are --yes, --show-words, and
+           --replace; wallet, pay, x402, key, ssh, service, and host are
+           never served. --timeout bounds one call (default 120).";
 
 pub const COMPLETIONS_USAGE: &str = "usage: openagents completions SHELL
   SHELL is bash, zsh, or fish. Prints a completion script for the command
@@ -89,21 +95,153 @@ pub fn groups(usage: &str) -> Vec<Group> {
     groups
 }
 
-/// The groups a tool call may run: everything in the table except the
-/// resident `host`, which is a long-running server, the full-screen
-/// `terminal`, and `mcp` itself, narrowed to `only` when that names any
-/// group.
+/// Groups no MCP tool serves whatever their commands declare: the resident
+/// `host`, the full-screen `terminal`, `mcp` and `completions` themselves,
+/// and every group that holds money, keys, or remote shells (`wallet`,
+/// `pay`, `x402`, `key`, `ssh`, `service`). A connected agent reaches none
+/// of them, paid or not (audit CLI-01).
+pub const NEVER_SERVED: &[&str] = &[
+    "host",
+    "terminal",
+    "mcp",
+    "completions",
+    "wallet",
+    "pay",
+    "x402",
+    "key",
+    "ssh",
+    "service",
+];
+
+/// Switches that stand in for a person's consent or reveal a secret. An
+/// MCP-supplied `args` that carries one is refused before anything runs.
+pub const REFUSED_SWITCHES: &[&str] = &["yes", "show-words", "replace"];
+
+/// The group's node in the command tree when MCP may serve it: not in
+/// [`NEVER_SERVED`] and holding at least one read-only command.
+fn served_node(name: &str) -> Option<&'static Node> {
+    if NEVER_SERVED.contains(&name) {
+        return None;
+    }
+    let node = tree::bundled().group(name)?;
+    node.leaves()
+        .iter()
+        .any(|leaf| leaf.effect == Effect::ReadOnly)
+        .then_some(node)
+}
+
+/// Whether MCP may serve the group `name` at all.
+pub fn served(name: &str) -> bool {
+    served_node(name).is_some()
+}
+
+/// The groups a tool call may run: the table's groups that
+/// [`served_node`] admits, narrowed to `only` when that names any group.
 fn callable(usage: &str, only: &[String]) -> Vec<Group> {
     groups(usage)
         .into_iter()
-        .filter(|group| {
-            !matches!(
-                group.name.as_str(),
-                "host" | "terminal" | "mcp" | "completions"
-            )
-        })
+        .filter(|group| served_node(&group.name).is_some())
         .filter(|group| only.is_empty() || only.contains(&group.name))
         .collect()
+}
+
+/// Why one call's `args` may not run: the message, and the exit code the
+/// refusal reports (64 for words that name no served command, 1 for a
+/// command MCP does not run).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Refusal {
+    pub exit_code: i32,
+    pub message: String,
+}
+
+/// Whether `openagents GROUP ARGS...` may run for an MCP caller. Only a
+/// command the tree declares [`Effect::ReadOnly`] runs, or a `--help`
+/// read. Anything that spends, writes, publishes, grants, prints a secret,
+/// or runs long is refused, as is any consent or secret switch
+/// ([`REFUSED_SWITCHES`]) anywhere in `args`.
+///
+/// # Errors
+///
+/// The [`Refusal`] the caller gets instead of a run.
+pub fn admit(group: &str, args: &[String]) -> Result<(), Refusal> {
+    let refuse = |exit_code: i32, message: String| Err(Refusal { exit_code, message });
+    for word in args {
+        if let Some(name) = word.strip_prefix("--") {
+            let name = name.split_once('=').map_or(name, |(name, _)| name);
+            if REFUSED_SWITCHES.contains(&name) {
+                return refuse(
+                    1,
+                    format!(
+                        "refused: --{name} is never accepted over MCP; it stands for a person's consent or reveals a secret"
+                    ),
+                );
+            }
+        }
+    }
+    let Some(group_node) = served_node(group) else {
+        return refuse(1, format!("refused: `{group}` is not served over MCP"));
+    };
+    let end = args.iter().position(|w| w == "--").unwrap_or(args.len());
+    // `main` turns any `--help` before `--` into a help read.
+    if args[..end].iter().any(|w| w == "--help" || w == "-h") {
+        return Ok(());
+    }
+    let mut node = group_node;
+    let mut path = vec![group.to_owned()];
+    let mut used = 0;
+    for word in &args[..end] {
+        match node.child(word) {
+            Some(child) if !word.starts_with('-') => {
+                node = child;
+                path.push(word.clone());
+                used += 1;
+            }
+            _ => break,
+        }
+    }
+    let command = path.join(" ");
+    let Some(leaf) = node.leaf.as_ref() else {
+        return refuse(
+            64,
+            format!("`{command}` is not a command; pass [\"--help\"] for the syntax"),
+        );
+    };
+    if leaf.effect != Effect::ReadOnly {
+        return refuse(
+            1,
+            format!(
+                "refused: `{command}` {} and MCP runs read-only commands only",
+                match leaf.effect {
+                    Effect::Spends => "spends money",
+                    Effect::Secret => "reveals a secret",
+                    Effect::Grants => "grants access",
+                    Effect::Publishes => "publishes",
+                    Effect::LocalWrite => "changes this computer",
+                    Effect::LongRunning => "runs until stopped",
+                    Effect::ReadOnly => "reads",
+                }
+            ),
+        );
+    }
+    // A command word of anything that is not read-only, later in `args`,
+    // could be dispatched by a module that reads its subcommand from the
+    // positional words, so it is refused too.
+    let unsafe_words: Vec<&str> = group_node
+        .leaves()
+        .into_iter()
+        .filter(|leaf| leaf.effect != Effect::ReadOnly)
+        .flat_map(|leaf| leaf.path.iter().skip(1).map(String::as_str))
+        .collect();
+    if let Some(word) = args[used..]
+        .iter()
+        .find(|word| unsafe_words.contains(&word.as_str()))
+    {
+        return refuse(
+            1,
+            format!("refused: `{word}` after `{command}` names a command MCP does not run"),
+        );
+    }
+    Ok(())
 }
 
 /// Decides whether one validated `tools/call` may run, and on what terms.
@@ -329,7 +467,7 @@ impl Server {
                     "title": "openagents, the OpenAgents command",
                     "version": env!("CARGO_PKG_VERSION"),
                 },
-                "instructions": "Each tool is one `openagents` command group. Pass the words that would follow the group on the command line as `args`; the result is the `--json` document the command prints, with its exit code (0 success, 1 refused or failed, 64 invalid usage). Pass [\"--help\"] to read a group's syntax. Commands never prompt: stdin is closed.",
+                "instructions": "Each tool is one `openagents` command group; only its read-only commands run. Pass the words that would follow the group on the command line as `args`; the result is the `--json` document the command prints, with its exit code (0 success, 1 refused or failed, 64 invalid usage). Pass [\"--help\"] to read a group's syntax. Commands never prompt: stdin is closed.",
             }),
         )
     }
@@ -426,6 +564,17 @@ impl Server {
                 );
             }
         };
+        // Refused before the toll, so a buyer never pays for a refusal.
+        if let Err(refusal) = admit(name, &args) {
+            return result(
+                id,
+                json!({
+                    "content": [{ "type": "text", "text": refusal.message }],
+                    "structuredContent": { "exit_code": refusal.exit_code, "stderr": refusal.message },
+                    "isError": true,
+                }),
+            );
+        }
         let settlement = match &self.toll {
             None => None,
             Some(toll) => match toll.gate(params.unwrap_or(&Value::Null)) {
@@ -727,6 +876,95 @@ Exit codes: 0 success, 1 refused or failed, 64 invalid usage.";
             json!(true)
         );
         assert!(paid["result"]["structuredContent"]["exit_code"].is_number());
+    }
+
+    fn words(list: &[&str]) -> Vec<String> {
+        list.iter().map(|w| (*w).to_owned()).collect()
+    }
+
+    #[test]
+    fn admission_follows_declared_effects() {
+        assert_eq!(admit("version", &[]), Ok(()));
+        assert_eq!(admit("computer", &words(&["list"])), Ok(()));
+        assert_eq!(admit("computer", &words(&["exec", "--help"])), Ok(()));
+        for (group, args) in [
+            ("wallet", &["send", "lnbc1", "--yes"][..]),
+            ("wallet", &["balance"][..]),
+            ("pay", &["--help"][..]),
+            ("x402", &["call", "version"][..]),
+            ("ssh", &["add"][..]),
+            ("service", &["status"][..]),
+            ("key", &[][..]),
+            ("computer", &["exec", "laptop", "ls"][..]),
+            ("computer", &["link"][..]),
+            ("computer", &["shell"][..]),
+            ("computer", &["list", "exec"][..]),
+            ("computer", &["list", "--", "exec"][..]),
+            ("version", &["--yes"][..]),
+            ("version", &["--show-words"][..]),
+            ("version", &["--replace=true"][..]),
+            ("version", &["--", "--yes"][..]),
+        ] {
+            let refusal = admit(group, &words(args)).expect_err(&format!("{group} {args:?}"));
+            assert_eq!(
+                refusal.exit_code, 1,
+                "{group} {args:?}: {}",
+                refusal.message
+            );
+        }
+        assert_eq!(admit("computer", &[]).unwrap_err().exit_code, 64);
+        assert_eq!(
+            admit("computer", &words(&["--relay", "x", "list"]))
+                .unwrap_err()
+                .exit_code,
+            64
+        );
+        for group in NEVER_SERVED {
+            assert!(!served(group), "{group}");
+        }
+    }
+
+    #[test]
+    fn a_paid_server_refuses_before_the_toll() {
+        let challenge =
+            json!({ "isError": true, "structuredContent": { "x402Version": 2 }, "content": [] });
+        let server = Server {
+            usage: crate::USAGE.to_owned(),
+            timeout: Duration::from_secs(1),
+            tools: vec!["wallet".into(), "computer".into()],
+            toll: Some(Arc::new(FixedToll(Gate::Challenge(challenge.clone())))),
+        };
+        let mut phase = ready(&server);
+        let list = server
+            .handle(
+                &mut phase,
+                &json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/list" }),
+            )
+            .unwrap();
+        let names: Vec<&str> = list["result"]["tools"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(names, ["computer"], "wallet is never sold");
+        let wallet = server
+            .handle(&mut phase, &json!({ "jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": { "name": "wallet", "arguments": { "args": ["send", "lnbc1", "--yes"] } } }))
+            .unwrap();
+        assert_eq!(wallet["error"]["code"], INVALID_PARAMS);
+        let exec = server
+            .handle(&mut phase, &json!({ "jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": { "name": "computer", "arguments": { "args": ["exec", "laptop", "ls"] } } }))
+            .unwrap();
+        assert_eq!(exec["result"]["isError"], true);
+        assert_eq!(exec["result"]["structuredContent"]["exit_code"], 1);
+        assert_ne!(exec["result"], challenge, "refused, not offered for sale");
+        let list_call = server
+            .handle(&mut phase, &json!({ "jsonrpc": "2.0", "id": 6, "method": "tools/call", "params": { "name": "computer", "arguments": { "args": ["list"] } } }))
+            .unwrap();
+        assert_eq!(
+            list_call["result"], challenge,
+            "a read-only call is offered"
+        );
     }
 
     #[test]
