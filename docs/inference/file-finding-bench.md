@@ -405,18 +405,85 @@ feature to every client, the clients that do not yet share a string with
 the server are what the map misses: the desktop pane and the phone screen
 for #11177. Those need the plan stage, or the agent's own exploration.
 
-## Next steps
+## Last round: two experiments, neither kept
 
-1. **Consumers of a changed result type.** When a top file defines a
-   serde struct or a result enum, follow its *type name* (not its fields)
-   to every file that matches on it or constructs it, across crates. This
-   is the #11132 miss: a field is added to a result type, and every
-   consumer has to emit it.
-2. **Rank with the plan for broad issues.** On the newer fixes, recall
-   rises from 0.85 at 400 to 0.93 at 1,000. For issues the scorer is
-   unsure about, let the planner's named crates and files re-rank the map,
-   instead of growing it.
-3. **Let the feedback flow back automatically.** Run `filefind.py
-   feedback` after every `coder issue-run` and every A/B round (the
-   post-merge hook already does it for issue-runs), and run
-   `retrain.sh` weekly, so the ranker is trained up to the newest fix.
+**Planner re-rank of the top 1,000.** Claude Sonnet reads the issue and the
+finder's top 1,000 paths, each with a one-line summary (the first doc line
+of the file). It returns up to 150 file numbers, most likely first. Its
+picks go to the front of the list, and the rest keep the finder's order.
+Run with `file-finding-bench.py rerank`.
+
+| Ranking | Bench @100 | Bench @400 | Newer fixes @100 | Newer fixes @400 |
+|---|---:|---:|---:|---:|
+| finder (shipped) | 0.853 | 0.952 | 0.66 | 0.85 |
+| + planner re-rank on unsure queries (72 of 100) | 0.863 | 0.956 | | |
+| + planner re-rank on every query | 0.872 | 0.956 | 0.68 | 0.86 |
+
+Cost and latency:
+
+- **Latency:** a median of 6–8 s per query (p90 8.6 s).
+- **Cost:** $0.09 per query through OpenRouter's Sonnet 5.5, about 25k
+  input tokens. Claude Code's own estimate for the same prompt was
+  $0.34.
+- **Exception:** in two newer-fix cases the base order was rebuilt from
+  an earlier run, because the embeddings account was out of credit.
+
+The bar was +5 points on newer fixes at 400. The re-rank adds 1–2 points
+at 100 and 0–1 at 400, so **it is not part of the finder**. The planner
+mostly reorders files the finder already has. The files it would need to
+pull up, such as #11132's CLI output paths ranked 441–1,036, are files it
+also does not see as related.
+
+**Consumers of a changed result type.** I followed the module of each of
+the top 8 Rust files (`generate::` and similar) to every file in the same
+crate that names it.
+
+- **What it reached:** only files the finder already had. On the
+  newer-fix set it hit 1–3 files per issue.
+- **What it missed:** none of #11132's misses, because `turn.rs`,
+  `headless.rs` and `relay.rs` use the types without naming the
+  module.
+- **What it cost:** up to 3.2 s per query on large crates.
+
+I checked type names too. `Usage`, `Meta` and `Door` occur in 86–301
+files, so following them is noise. **Not kept.**
+
+## Conclusion
+
+The finder gives a coding agent, in about a second:
+
+- a "start here" list of 100 files;
+- a 400-file map grouped by crate.
+
+The map holds **95%** of the existing files a fix edits on the bench, and
+**85%** on the newer, larger fixes. The 98% target in this issue is
+**re-scoped to "map + verify"**, for two reasons:
+
+- **The misses are files that are not yet related to anything.** About
+  20% of a fix's hand-written files are created by the fix itself. Most
+  of the remaining misses are consumers of a field, route or feature that
+  does not exist yet at the parent commit: #11132's new `switched` field,
+  and #11182's new memory routes. No index of the parent commit can link
+  them; neither the planner nor the type-consumer pass found them.
+- **The agent's own checks catch them.** The briefed agent's `verify` tool
+  compiles and tests the change (#11211). A missing consumer shows up as
+  a compile error or a failing test, and the agent then opens the file.
+  `filefind.py feedback` records it as a late file, and `retrain.sh`
+  learns from it.
+
+How to keep it fresh and learning:
+
+- **Every query refreshes history.** `filefind.py query` appends new
+  commits, embeds them and indexes unseen file versions.
+- **A post-merge hook refreshes after pulls.** `.githooks/post-merge` (the
+  repository's hooks path) runs `scripts/filefind/post-merge-hook.sh` in
+  the background after every pull. One refresh runs at a time, and it
+  never fails the merge. It refreshes history, recently closed issues,
+  embeddings and the token indexes, then collects run feedback.
+- **Retrain weekly** with `scripts/filefind/retrain.sh`, so the ranker is
+  trained up to the newest fix and on the late files.
+- **Embeddings are optional.** Without an embeddings key, or with an
+  account out of credit (as the shared OpenRouter account is at the time
+  of writing), every stage except emb/sim/hist still runs. The finder
+  degrades rather than fails, and new blobs are embedded once the key
+  works again.

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# After a pull or merge, refresh the filefind indexes in the background (#11210).
+# Never fails the merge.
+root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+hook="$root/scripts/filefind/post-merge-hook.sh"
+[ -x "$hook" ] && "$hook"
+exit 0

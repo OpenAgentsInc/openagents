@@ -125,6 +125,11 @@ def embed(texts, key, batch=128, workers=6, dims=DIMS):
                 if "data" not in d:
                     raise RuntimeError(str(d)[:200])
                 return [e["embedding"] for e in sorted(d["data"], key=lambda e: e["index"])]
+            except urllib.error.HTTPError as e:  # 4xx other than 429 will not get better
+                if attempt == 5 or (400 <= e.code < 500 and e.code != 429):
+                    raise
+                time.sleep(2 ** attempt)
+                continue
             except Exception as e:  # retry transient errors
                 if attempt == 5:
                     raise
@@ -137,9 +142,15 @@ def embed(texts, key, batch=128, workers=6, dims=DIMS):
     return m
 
 
-def embed_key():
+def embed_key(required=True):
+    """OPENROUTER_API_KEY, else the OpenAgents key file ~/.openagents/openrouter.json."""
     k = os.environ.get("OPENROUTER_API_KEY")
     if not k:
+        try:
+            k = json.load(open(os.path.expanduser("~/.openagents/openrouter.json"))).get("api_key")
+        except (OSError, ValueError):
+            k = None
+    if not k and required:
         sys.exit("OPENROUTER_API_KEY is not set (embeddings)")
     return k
 
@@ -1524,7 +1535,9 @@ def cmd_feedback(a):
 
 
 def cmd_index(a):
-    key = embed_key()
+    key = embed_key(required=False)
+    if not key:
+        print("no embeddings key: refreshing history and the token indexes only", file=sys.stderr)
     ix = Index(a.cache or default_cache(a.repo))
     t0 = time.time()
     if os.path.exists(os.path.join(ix.cache, "history.pkl")) and not a.full:
@@ -1534,8 +1547,11 @@ def cmd_index(a):
         ix.build_history(a.repo, a.rev)
     print(f"history: {len(ix.hist['commits'])} commits, {len(ix.hist['paths'])} paths "
           f"({time.time()-t0:.1f}s)", file=sys.stderr)
-    n = ix.build_commit_vecs(key)
-    print(f"commit subjects embedded: {n} new", file=sys.stderr)
+    try:
+        n = ix.build_commit_vecs(key) if key else 0
+        print(f"commit subjects embedded: {n} new", file=sys.stderr)
+    except Exception as e:  # e.g. the embeddings account is out of credit: keep going
+        print(f"commit subjects not embedded: {str(e)[:120]}", file=sys.stderr)
     issues = a.issues
     if not issues and not a.no_issues:
         issues = os.path.join(ix.cache, "closed-issues.json")
@@ -1544,16 +1560,23 @@ def cmd_index(a):
             f.write(subprocess.run(["gh", "issue", "list", "--state", "closed", "--limit", str(limit),
                                     "--json", "number,title,body,closedAt,createdAt"], cwd=a.repo,
                                    check=True, capture_output=True).stdout)
-    if issues:
+    if issues and key:
         p = os.path.join(ix.cache, "issues.pkl")
         if os.path.exists(p):
             ix.issues = pickle.load(open(p, "rb"))
-        ix.build_issues(issues, key)
-        print(f"issues: {len(ix.issues['numbers'])}", file=sys.stderr)
+        try:
+            ix.build_issues(issues, key)
+            print(f"issues: {len(ix.issues['numbers'])}", file=sys.stderr)
+        except Exception as e:
+            print(f"issues not embedded: {str(e)[:120]}", file=sys.stderr)
     ix.load_blobs()
     tree = worktree_tree(a.repo) if a.rev == "WORKTREE" else ls_tree(a.repo, a.rev)
-    ix.ensure_blobs(a.repo, tree, key)
-    ix.save_blobs()
+    if key:
+        try:
+            ix.ensure_blobs(a.repo, tree, key)
+            ix.save_blobs()
+        except Exception as e:
+            print(f"blobs not embedded: {str(e)[:120]}", file=sys.stderr)
     print(f"blobs: {len(ix.blob_rows)}", file=sys.stderr)
     TokenIndex(ix.cache).ensure(a.repo, tree)
     IfaceIndex(ix.cache).ensure(a.repo, tree)
@@ -1581,7 +1604,11 @@ class _First:
         self.fut = fut
 
     def result(self):
-        return self.fut.result()[0]
+        try:
+            return self.fut.result()[0]
+        except Exception as e:  # no embeddings this time: the deterministic stages still run
+            print(f"issue not embedded ({str(e)[:80]}); running without embeddings", file=sys.stderr)
+            return np.zeros(DIMS, np.float32)
 
 
 def issue_from_gh(repo, n):
@@ -1600,7 +1627,7 @@ def cmd_query(a):
         title, body = a.text.split("\n", 1)[0], a.text
     timing["fetch_issue"] = time.perf_counter() - t0
     t_all = time.perf_counter()  # "total" counts from here: the issue text in hand
-    key = os.environ.get("OPENROUTER_API_KEY")
+    key = embed_key(required=False)
     pool = ThreadPoolExecutor(1)
     if key:  # the one network call runs while the indexes load and the token stages run
         qvec = pool.submit(embed, [issue_text(title, body)], key)
@@ -1614,7 +1641,10 @@ def cmd_query(a):
     timing["load"] = time.perf_counter() - t0
     t0 = time.perf_counter()
     if ix.refresh_history(a.repo, a.rev) and key:  # new commits since the index: keep it fresh
-        ix.build_commit_vecs(key)
+        try:
+            ix.build_commit_vecs(key)
+        except Exception as e:
+            print(f"new commit subjects not embedded ({str(e)[:80]})", file=sys.stderr)
         ix.hist.setdefault("by_dir", dirs_index(ix.hist))
     timing["refresh_history"] = time.perf_counter() - t0
     t0 = time.perf_counter()
@@ -1623,8 +1653,11 @@ def cmd_query(a):
     timing["tree"] = time.perf_counter() - t0
     t0 = time.perf_counter()
     if key:
-        if ix.ensure_blobs(a.repo, tree, key, log=False):
-            ix.save_blobs()
+        try:
+            if ix.ensure_blobs(a.repo, tree, key, log=False):
+                ix.save_blobs()
+        except Exception as e:
+            print(f"new blobs not embedded ({str(e)[:80]})", file=sys.stderr)
     ix.tokens.ensure(a.repo, tree, log=False)
     ix.iface.ensure(a.repo, tree, log=False)
     timing["refresh_index"] = time.perf_counter() - t0

@@ -22,7 +22,7 @@ Steps (each writes into --work, a scratch directory):
     python3 scripts/bench/file-finding-bench.py train --dataset D --work W
     python3 scripts/bench/file-finding-bench.py eval --dataset D --work W
 """
-import argparse, json, math, os, pickle, statistics, sys, time
+import argparse, json, math, os, pickle, re, statistics, sys, time
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
@@ -607,6 +607,123 @@ def cmd_plan(a):
           f"{hit['added by plan']}/{tot_add}")
 
 
+RERANK_PROMPT = """You are choosing which files a code change needs. Here is a GitHub issue, then {n}
+files of this repository that a file finder ranked for it (best guess first), each with a
+short summary.
+
+{issue}
+
+FILES
+{files}
+
+Pick the files the change resolving this issue will most likely edit or must read: the code
+that changes, its tests, the modules and registries that wire it in, docs kept in sync, and
+every client or consumer of what changes. Return up to {k} file numbers, most likely first,
+as JSON only: {{"files": [12, 3, ...]}}"""
+
+
+def summary_line(text):
+    for line in (text or "").splitlines():
+        t = line.strip().lstrip("/!#*-> ").strip()
+        if len(t) >= 12 and not t.startswith(("use ", "import ", "package ", "[", "{", "<")):
+            return t[:80]
+    return ""
+
+
+def planner_rerank(a, key, c, ranked, n=1000, k=150):
+    """The planner re-orders the finder's top n: its picks first, then the rest as ranked."""
+    top = [p for p, _ in ranked[:n]]
+    tree = ff.ls_tree(a.repo, c["parent"])
+    heads = ff.cat_heads(a.repo, [tree[p] for p in top if p in tree], n=600, cap=600)
+    lines = [f"{i}. {p} — {summary_line(heads.get(tree.get(p)))}" for i, p in enumerate(top, 1)]
+    prompt = RERANK_PROMPT.format(n=len(top), k=k, files="\n".join(lines),
+                                  issue=f"ISSUE #{c['issue']}: {c['title']}\n\n{c['body'].strip()[:8000]}")
+    t0 = time.perf_counter()
+    if a.plan_backend == "claude-cli":  # this computer's Claude Code login
+        import subprocess as sp
+        r = sp.run(["claude", "-p", "--model", a.plan_cli_model, "--output-format", "json", "--max-turns", "1"],
+                   input=prompt, capture_output=True, text=True, timeout=600)
+        d = json.loads(r.stdout or "{}")
+        text = d.get("result") or ""
+        usage = {"cost": d.get("total_cost_usd"), **(d.get("usage") or {})}
+    else:
+        d = post(PLAN_URL, key, {"model": a.plan_model, "messages": [{"role": "user", "content": prompt}],
+                                 "max_tokens": 4000, "temperature": 0})
+        text = d["choices"][0]["message"]["content"]
+        usage = d.get("usage")
+    tail = text[text.find('"files"'):] if '"files"' in text else text
+    picks = [int(x) for x in re.findall(r"\d+", tail)]  # tolerant of a cut-off or chatty reply
+    chosen = []
+    for i in picks:
+        if isinstance(i, int) and 1 <= i <= len(top) and top[i - 1] not in chosen:
+            chosen.append(top[i - 1])
+    rest = [p for p, _ in ranked if p not in set(chosen)]
+    return chosen + rest, {"latency_s": time.perf_counter() - t0, "usage": usage, "picked": len(chosen),
+                           "raw": text[:400]}
+
+
+def cmd_rerank(a):
+    """Planner re-rank on the finder's top 1,000, for unsure queries (sureness < 0.7)."""
+    key = os.environ.get("OPENROUTER_API_KEY")
+    model = json.load(open(a.model))
+    cases = load(a)
+    f2p = os.path.join(a.work, "features2.pkl")
+    f2 = pickle.load(open(f2p, "rb")) if os.path.exists(f2p) and not a.live else {}
+    if f2:
+        cases, _ = split(cases, a.eval)
+    ix = None if f2 else ff.Index(a.cache or ff.default_cache(a.repo)).load()
+    out_path = os.path.join(a.work, f"rerank-{os.path.basename(a.dataset)}.json")
+    done = json.load(open(out_path)) if os.path.exists(out_path) else {}
+
+    def ranking(c):
+        if f2:
+            return ff.rank(model["stage2"], f2[c["issue"]]["feats"]), set(f2[c["issue"]]["hand"])
+        r = run_case(ix, a.repo, c, key, keep_query=True)
+        q = r.pop("query")
+        ranked, _ = ff.rank_two_stage(model, q, r["feats"])
+        return ranked, set(r["hand"])
+    rows = []
+    todo = []
+    for c in cases:
+        ranked, hand = ranking(c)
+        rows.append((c, ranked, hand))
+        if str(c["issue"]) not in done:
+            todo.append((c, ranked))
+
+    def one(x):
+        c, ranked = x
+        order, info = planner_rerank(a, key, c, ranked)
+        return c["issue"], {"order": order[:1000], **info}
+    with ThreadPoolExecutor(4) as ex:
+        for n, r in ex.map(one, todo):
+            done[str(n)] = r
+            json.dump(done, open(out_path, "w"))
+            print(f"#{n}: picked {r['picked']} in {r['latency_s']:.0f}s", file=sys.stderr)
+    KK = (100, 400)
+    tot = Counter()
+    lat, cost, gated = [], 0.0, 0
+    for c, ranked, hand in rows:
+        order = [p for p, _ in ranked]
+        unsure = ff.sureness(ranked) < 0.7
+        rr = done[str(c["issue"])]["order"]
+        gated += unsure
+        tot["n"] += len(hand)
+        for k in KK:
+            tot[f"base{k}"] += len(hand & set(order[:k]))
+            tot[f"all{k}"] += len(hand & set(rr[:k]))
+            tot[f"gated{k}"] += len(hand & set((rr if unsure else order)[:k]))
+        lat.append(done[str(c["issue"])]["latency_s"])
+        cost += (done[str(c["issue"])].get("usage") or {}).get("cost", 0) or 0
+    print(f"{len(rows)} cases, {tot['n']} existing files; {gated} unsure (sureness < 0.7)")
+    print("| Ranking | @100 | @400 |")
+    print("|---|---:|---:|")
+    for name, lab in (("base", "finder"), ("gated", "planner re-rank, unsure queries only"),
+                      ("all", "planner re-rank, every query")):
+        print(f"| {lab} | {tot[name + '100']/tot['n']:.3f} | {tot[name + '400']/tot['n']:.3f} |")
+    print(f"planner latency median {statistics.median(lat):.1f}s p90 {sorted(lat)[int(0.9*(len(lat)-1))]:.1f}s; "
+          f"cost ${cost:.2f} total, ${cost/len(rows):.3f} per query")
+
+
 def cmd_check(a):
     """Run the shipped two-stage finder on every case of a small dataset (e.g. fresh fixes)."""
     ix = ff.Index(a.cache or ff.default_cache(a.repo)).load()
@@ -633,7 +750,7 @@ def cmd_check(a):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("cmd", choices=["prepare", "features", "train", "eval", "judge", "judge-eval", "plan", "check"])
+    ap.add_argument("cmd", choices=["prepare", "features", "train", "eval", "judge", "judge-eval", "plan", "check", "rerank"])
     ap.add_argument("--repo", default=".")
     ap.add_argument("--dataset", required=True)
     ap.add_argument("--work", required=True)
@@ -646,6 +763,9 @@ def main():
     ap.add_argument("--neg-keep", type=float, default=0.3)
     ap.add_argument("--reuse-stage2", action="store_true")
     ap.add_argument("--all", action="store_true", help="train on every case (with --reuse-stage2)")
+    ap.add_argument("--plan-backend", choices=["openrouter", "claude-cli"], default="claude-cli")
+    ap.add_argument("--plan-cli-model", default="sonnet")
+    ap.add_argument("--live", action="store_true", help="rerank: run the finder live instead of features2.pkl")
     ap.add_argument("--drop", default="", help="comma-separated feature-name prefixes to leave out (ablation)")
     ap.add_argument("--band-lo", type=int, default=30)
     ap.add_argument("--band-hi", type=int, default=150)
@@ -655,7 +775,7 @@ def main():
     a = ap.parse_args()
     os.makedirs(a.work, exist_ok=True)
     {"prepare": cmd_prepare, "features": cmd_features, "train": cmd_train, "eval": cmd_eval,
-     "judge": cmd_judge, "judge-eval": cmd_judge_eval, "plan": cmd_plan, "check": cmd_check}[a.cmd](a)
+     "judge": cmd_judge, "judge-eval": cmd_judge_eval, "plan": cmd_plan, "check": cmd_check, "rerank": cmd_rerank}[a.cmd](a)
 
 
 if __name__ == "__main__":
