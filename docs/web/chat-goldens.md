@@ -175,7 +175,11 @@ answer, the failed checks, and the reply.
   embeddings key is set (the script uses the AI Gateway key). It reports
   routes, tiers, answers, the prepared text, and why
   (route and answer probabilities, the needs-specifics reading, and the
-  notes' relevance); it doesn't write model replies.
+  notes' relevance); it doesn't write model replies. With
+  `CHAT_GOLDENS_REQUESTS=FILE` it also appends each turn's split router
+  requests, the NIP-DEC bodies with `main` first, as one JSON line per
+  turn. That file is the router corpus of the decision throughput bench
+  ([decision-throughput.md](../inference/decision-throughput.md)).
 - **http** sends each phrasing through a running site's chat endpoints as a
   visitor's browser does: a fresh visitor from `GET /`, `POST /chat` (later
   turns `POST /chat/{id}`), then `GET /chat/{id}/transcript` until the reply

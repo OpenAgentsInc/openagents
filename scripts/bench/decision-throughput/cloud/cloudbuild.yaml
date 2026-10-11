@@ -1,0 +1,17 @@
+# Builds the daily decision-throughput job image. From a `git archive` of
+# one commit (setup.sh image does this):
+#
+#   gcloud builds submit --config scripts/bench/decision-throughput/cloud/cloudbuild.yaml \
+#     --ignore-file scripts/bench/decision-throughput/cloud/image.gcloudignore --substitutions _TAG=<sha> .
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "scripts/bench/decision-throughput/cloud/Dockerfile",
+           "-t", "us-central1-docker.pkg.dev/$PROJECT_ID/openagents/decision-throughput:${_TAG}", "."]
+images:
+  - us-central1-docker.pkg.dev/$PROJECT_ID/openagents/decision-throughput:${_TAG}
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+timeout: 3600s
+substitutions:
+  _TAG: dev
