@@ -166,8 +166,13 @@ may stop only that instance).
   `submods.nvidia_gpu` = `cc_mode ON`, `cc_feature SPT`, `gpus: [{hwmodel
   GCP_NVIDIA_H100, driver_version 595.58.03, vbios_version
   96.00.D9.00.01, ueid, l4_serial_number}]`. The driver version is per GPU.
+- **Current release** (2026-10-10): `eab32c6a…ef41` admits image
+  `att-provider-gpu@sha256:49879f43…c45f`, built from `b1830058ae`; the
+  head for `clef-decisions-gpu` admits only it. Verified: the VM stopped
+  itself 979 s after the last decision (900 s idle, the 15 s check, the
+  stop), well inside its 1 hour cap.
 - **Measured.** A wake (`instances.start` to the `30203` on the relay)
-  takes about 4 minutes: about 2 for boot and the CC driver install, then
+  takes about 4 minutes (236 s and 219 s measured): about 2 for boot and the CC driver install, then
   about 80 s to fetch and check the 6.5 GB weights, load Clef on the GPU and
   get the token. A first create took about 3 m 45 s. A verified `oa-att
   round` takes 355 to 460 ms end to end (six runs), of which Psionic spends
