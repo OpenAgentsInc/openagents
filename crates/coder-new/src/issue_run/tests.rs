@@ -756,3 +756,52 @@ fn the_issue_text_carries_its_newest_comments() {
     assert!(!text.contains("note 1"), "only the newest six");
     assert_eq!(with_comments("The bug.", &[]), "The bug.");
 }
+
+#[test]
+fn a_crate_outside_the_root_workspace_is_checked_through_its_manifest() {
+    use crate::issue_run::setup::checks_for_paths;
+    let root = std::env::temp_dir().join(format!("coder-nested-check-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    for dir in ["crates/a/src", "crates/phone/src"] {
+        std::fs::create_dir_all(root.join(dir)).unwrap();
+    }
+    std::fs::write(
+        root.join("Cargo.toml"),
+        "[workspace]\nmembers = [\"crates/a\"]\nexclude = [\"crates/phone\"]\nresolver = \"2\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("crates/a/Cargo.toml"),
+        "[package]\nname = \"a\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("crates/a/src/lib.rs"), "").unwrap();
+    std::fs::write(
+        root.join("crates/phone/Cargo.toml"),
+        "[package]\nname = \"phone\"\nversion = \"0.1.0\"\nedition = \"2021\"\n[workspace]\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("crates/phone/src/lib.rs"), "").unwrap();
+    let checks = checks_for_paths(
+        &root,
+        &[
+            "crates/a/src/lib.rs".to_owned(),
+            "crates/phone/src/lib.rs".to_owned(),
+        ],
+    );
+    let _ = std::fs::remove_dir_all(&root);
+    let argv = |id: &str| {
+        checks
+            .iter()
+            .find(|c| c.id == id)
+            .map(|c| c.argv.join(" "))
+            .unwrap_or_default()
+    };
+    assert!(argv("check:a").contains("-p a"), "{}", argv("check:a"));
+    assert!(
+        argv("check:phone").contains("--manifest-path crates/phone/Cargo.toml"),
+        "{}",
+        argv("check:phone")
+    );
+    assert!(argv("test:phone").starts_with("cargo test --manifest-path crates/phone/Cargo.toml"));
+}

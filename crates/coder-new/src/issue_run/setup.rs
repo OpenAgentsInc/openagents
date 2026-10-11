@@ -530,9 +530,10 @@ pub async fn change_checks(worktree: &Path, base: &str) -> Vec<Check> {
 /// [`change_checks`] for a list of changed paths.
 #[must_use]
 pub fn checks_for_paths(worktree: &Path, paths: &[String]) -> Vec<Check> {
+    let members = workspace_members(worktree);
     let mut found: Vec<Check> = Vec::new();
     for path in paths {
-        for check in package_checks(worktree, path, "the change touched") {
+        for check in package_checks(worktree, path, "the change touched", members.as_deref()) {
             if !found.iter().any(|have| have.id == check.id) {
                 found.push(check);
             }
@@ -560,7 +561,12 @@ pub fn checks_for_paths(worktree: &Path, paths: &[String]) -> Vec<Check> {
 /// The compile checks for the Rust package that holds `path`: `check:<name>`,
 /// and `wasm:<name>` when the package is a browser build (a `cdylib` with
 /// wasm32-only code), whose browser half a native check never compiles.
-fn package_checks(worktree: &Path, path: &str, why: &str) -> Vec<Check> {
+fn package_checks(
+    worktree: &Path,
+    path: &str,
+    why: &str,
+    members: Option<&[PathBuf]>,
+) -> Vec<Check> {
     let mut dir = worktree.join(path);
     while dir.pop() && dir.starts_with(worktree) {
         let Ok(toml) = std::fs::read_to_string(dir.join("Cargo.toml")) else {
@@ -570,13 +576,30 @@ fn package_checks(worktree: &Path, path: &str, why: &str) -> Vec<Check> {
             return Vec::new();
         };
         let argv = |words: &[&str]| words.iter().map(|word| (*word).to_owned()).collect();
+        // A package outside the root workspace (its own nested workspace,
+        // like the phone app) builds only through its manifest.
+        let manifest = dir
+            .join("Cargo.toml")
+            .strip_prefix(worktree)
+            .map(|rel| rel.display().to_string())
+            .unwrap_or_default();
+        let outside = members.is_some_and(|members| {
+            !members
+                .iter()
+                .any(|member| member == &dir.join("Cargo.toml"))
+        });
+        let (flag, target) = if outside {
+            ("--manifest-path", manifest.as_str())
+        } else {
+            ("-p", name.as_str())
+        };
         let mut out = vec![Check {
             id: format!("check:{name}"),
             argv: argv(&[
                 "cargo",
                 "check",
-                "-p",
-                &name,
+                flag,
+                target,
                 "--tests",
                 "--message-format",
                 "short",
@@ -589,7 +612,7 @@ fn package_checks(worktree: &Path, path: &str, why: &str) -> Vec<Check> {
         // edit that moved a committed digest, #11329), so they must pass.
         out.push(Check {
             id: format!("test:{name}"),
-            argv: argv(&["cargo", "test", "-p", &name]),
+            argv: argv(&["cargo", "test", flag, target]),
             filter: true,
             what: format!("run {name}'s tests, which {why}"),
             required: true,
@@ -600,8 +623,8 @@ fn package_checks(worktree: &Path, path: &str, why: &str) -> Vec<Check> {
                 argv: argv(&[
                     "cargo",
                     "check",
-                    "-p",
-                    &name,
+                    flag,
+                    target,
                     "--lib",
                     "--target",
                     "wasm32-unknown-unknown",
@@ -618,6 +641,32 @@ fn package_checks(worktree: &Path, path: &str, why: &str) -> Vec<Check> {
     Vec::new()
 }
 
+/// The manifests of the root workspace's members under `worktree`, from
+/// `cargo metadata`; `None` when there is no workspace to ask.
+fn workspace_members(worktree: &Path) -> Option<Vec<PathBuf>> {
+    let out = std::process::Command::new("cargo")
+        .args(["metadata", "--no-deps", "--format-version", "1"])
+        .current_dir(worktree)
+        .output()
+        .ok()
+        .filter(|out| out.status.success())?;
+    let meta: Value = serde_json::from_slice(&out.stdout).ok()?;
+    let root = worktree.canonicalize().ok()?;
+    Some(
+        meta["packages"]
+            .as_array()?
+            .iter()
+            .filter_map(|package| package["manifest_path"].as_str())
+            .filter_map(|path| {
+                Path::new(path)
+                    .strip_prefix(&root)
+                    .ok()
+                    .map(|rel| worktree.join(rel))
+            })
+            .collect(),
+    )
+}
+
 /// A package built for the browser: a `cdylib` with wasm32-only code.
 pub(crate) fn is_browser_build(toml: &str) -> bool {
     toml.contains("cdylib") && toml.contains("target_arch = \"wasm32\"")
@@ -627,9 +676,10 @@ pub(crate) fn is_browser_build(toml: &str) -> bool {
 /// Coder can compile the browser half it changes (a native `check:` skips it).
 #[must_use]
 pub fn briefed_wasm_checks(worktree: &Path, briefing: &Briefing) -> Vec<Check> {
+    let members = workspace_members(worktree);
     let mut found: Vec<Check> = Vec::new();
     for path in &briefing.files {
-        for check in package_checks(worktree, path, "the briefing names") {
+        for check in package_checks(worktree, path, "the briefing names", members.as_deref()) {
             if check.id.starts_with("wasm:")
                 && !briefing
                     .checks
