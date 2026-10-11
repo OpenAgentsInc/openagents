@@ -209,13 +209,15 @@ def finder_env() -> dict:
     return env
 
 
-def finder_files(task: dict, levers: dict) -> tuple[list[dict], str]:
-    """The #11210 context finder at the base commit; `lite` if it fails."""
+def finder_files(task: dict, levers: dict, no_cards: bool = False) -> tuple[list[dict], str]:
+    """The #11210 context finder at the base commit; `lite` if it fails.
+    `no_cards` leaves out its card decision (the Haiku briefer's input)."""
     tool = finder_tool()
     if tool is not None:
         proc = subprocess.run(
             [sys.executable, str(tool), "query", "--repo", str(REPO), "--rev", task["parent"],
-             "--issue", str(task["issue"]), "--k", str(int(levers["briefing_files"])), "--json"],
+             "--issue", str(task["issue"]), "--k", str(int(levers["briefing_files"])), "--json"]
+            + (["--no-cards"] if no_cards else []),
             cwd=REPO, capture_output=True, text=True, timeout=600, env=finder_env(),
         )
         try:
@@ -374,14 +376,47 @@ def budget_by_package(briefing: dict, budget_chars: int) -> str:
 TESTED_KINDS = ("rust", "rust-nested", "python", "shell")
 
 
-def build(task: dict, levers: dict, seeds: list[dict] | None = None, wrong: str | None = None) -> dict:
+def haiku_files(task: dict, levers: dict, root: Path | None) -> tuple[list[dict], str, dict]:
+    """The Haiku briefer (haiku_briefer.py): filefind's candidates without its
+    card decision (none for `haiku-solo`), then a constrained Haiku agent
+    reading the checkout at the base. Falls back to filefind's own list."""
+    import haiku_briefer as hb
+
+    solo = levers["finder"] == "haiku-solo"
+    t0 = time.time()
+    cands, used = ([], "none") if solo else finder_files(
+        task, dict(levers, briefing_files=int(levers.get("briefer_candidates", hb.DEFAULTS["briefer_candidates"]))),
+        no_cards=True)
+    meta = {"finder_secs": round(time.time() - t0, 2), "candidates": [c["path"] for c in cands]}
+    if root is None:
+        meta["fallback"] = "no checkout at the base commit"
+    else:
+        r = hb.ask(task, Path(root), levers, cands or None)
+        meta.update({k: r[k] for k in r if k != "answer"})
+        files = hb.to_files(r["answer"], Path(root), int(levers["briefing_files"])) if r["ok"] else []
+        if files:
+            meta["plan"] = hb.plan_lines(r["answer"])
+            meta["answer"] = r["answer"]
+            return files, f"haiku briefer ({hb.MODEL}{', solo' if solo else ''})", meta
+        meta["fallback"] = r["error"] or "Haiku named no file that exists"
+    if solo:
+        cands, used = finder_files(task, levers)
+    return cands[: int(levers["briefing_files"])], f"{used}; Haiku fell back", meta
+
+
+def build(task: dict, levers: dict, seeds: list[dict] | None = None, wrong: str | None = None,
+          root: Path | None = None) -> dict:
     """The briefing. `seeds` and `wrong` make a re-briefing (#11311): the
-    first attempt's evidence files first, and what went wrong."""
+    first attempt's evidence files first, and what went wrong. `root`: a
+    checkout at the base commit (the Haiku briefer, `finder=haiku`, reads it)."""
     started = time.time()
     rev = task["parent"]
     finder = levers["finder"]
+    briefer = None
     if finder == "oracle":
         files, finder_used = oracle_files(task), "oracle"
+    elif finder in ("haiku", "haiku-solo"):
+        files, finder_used, briefer = haiku_files(task, levers, root)
     elif finder == "finder":
         files, finder_used = finder_files(task, levers)
     else:
@@ -445,6 +480,9 @@ def build(task: dict, levers: dict, seeds: list[dict] | None = None, wrong: str 
         plan.append(f"Goal: {task['title']}")
         for ask in asks:
             plan.append(f"Required: {ask[:220]}")
+        # Haiku's acceptance points only when typed acceptance (#11310) is off.
+        plan += [line for line in (briefer or {}).get("plan", [])
+                 if acc is None or not line.startswith("Acceptance: ")]
         if top:
             plan.append("Change the behavior where it lives, most likely in " + ", ".join(f"`{p}`" for p in top) + ".")
         tested = not kinds_mode or any(p["kind"] in TESTED_KINDS for p in pkgs)
@@ -477,6 +515,8 @@ def build(task: dict, levers: dict, seeds: list[dict] | None = None, wrong: str 
         briefing["wrong"] = wrong
     if seeds:
         briefing["seeds"] = [s_["path"] for s_ in seeds]
+    if briefer is not None:
+        briefing["briefer"] = {k: v for k, v in briefer.items() if k != "plan"}
     budget = int(levers["briefing_tokens"]) * 4
     if kinds_mode:
         md = budget_by_package(briefing, budget)
@@ -542,7 +582,15 @@ def main() -> None:
     if args.finder:
         levers["finder"] = args.finder
     task = load_json(TASKS / str(args.issue) / "task.json")
-    b = build(task, levers)
+    root = None
+    if levers["finder"].startswith("haiku"):
+        import ab  # the bench's shallow worktree at the base (the fix is not visible)
+        root = ab.make_worktree(task, WORK / "wt" / f"brief-{args.issue}")
+    try:
+        b = build(task, levers, root=root)
+    finally:
+        if root is not None:
+            ab.drop_worktree(task, root)
     out = Path(args.out) if args.out else TASKS / str(args.issue) / f"briefing-{levers['finder']}"
     out.mkdir(parents=True, exist_ok=True)
     dump_json(out / "briefing.json", b)

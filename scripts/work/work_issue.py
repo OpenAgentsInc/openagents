@@ -320,10 +320,12 @@ def checks_pass(checks: list[dict]) -> bool:
 # ------------------------------------------------------------------ engines
 
 def briefing_for(issue: dict, base: str, checkout: Path, seeds: list[dict] | None = None,
-                 wrong: str | None = None) -> dict:
+                 wrong: str | None = None, briefer: str = "filefind") -> dict:
     """The #11211 briefing, built at `base` in `checkout`, with checks per
     package kind and typed acceptance (#11310); `seeds` and `wrong` make the
-    re-briefing (#11311)."""
+    re-briefing (#11311). `briefer=haiku` swaps the finder's decision step
+    for the constrained Haiku agent (docs/inference/haiku-briefer.md), which
+    reads a worktree of its own at `base`, read-only."""
     os.environ["AB_REPO"] = str(checkout)
     os.environ.setdefault("AB_WORK", str(Path.home() / ".openagents" / "work" / "briefing"))
     sys.path.insert(0, str(BENCH))
@@ -337,7 +339,17 @@ def briefing_for(issue: dict, base: str, checkout: Path, seeds: list[dict] | Non
     levers = dict(LEVERS)
     levers["checks"] = os.environ.get("OA_WORK_CHECKS", "kinds")
     levers["acceptance"] = os.environ.get("OA_WORK_ACCEPTANCE", "typed")
-    b = briefing_mod.build(task, levers, seeds=seeds, wrong=wrong)
+    if briefer != "haiku":
+        b = briefing_mod.build(task, levers, seeds=seeds, wrong=wrong)
+    else:
+        # Haiku reads files, so it gets a worktree at `base` of its own (the
+        # checkout itself may sit on another commit or hold local edits).
+        levers["finder"] = "haiku"
+        root = add_worktree(checkout, Path.home() / ".openagents" / "work" / "briefer" / uuid.uuid4().hex[:12], base)
+        try:
+            b = briefing_mod.build(task, levers, seeds=seeds, wrong=wrong, root=root)
+        finally:
+            drop_worktree(checkout, root)
     b["markdown"] = briefing_mod.render(b)
     b["digest"] = "sha256:" + __import__("hashlib").sha256(b["markdown"].encode()).hexdigest()[:16]
     return b
@@ -659,6 +671,8 @@ def main() -> int:
     ap.add_argument("--land", choices=["queue", "pr", "none"], default="pr")
     ap.add_argument("--engine", choices=["briefed", "briefed:codex", "briefed:opencode", "briefed:gemini", "bare"],
                     default="briefed")
+    ap.add_argument("--briefer", choices=["filefind", "haiku"], default=os.environ.get("OA_WORK_BRIEFER", "filefind"),
+                    help="the briefing's file step: filefind (default) or the Haiku briefer (experimental)")
     ap.add_argument("--checkout")
     ap.add_argument("--out")
     ap.add_argument("--run-id")
@@ -697,12 +711,15 @@ def main() -> int:
         if engine.startswith("briefed"):
             run.say("briefing", "finding the files this issue needs")
             t0 = time.time()
-            b = briefing_for(issue, base, checkout)
+            b = briefing_for(issue, base, checkout, briefer=args.briefer)
             conf = confidence_of(b)
             (out / "briefing.md").write_text(b["markdown"])
             result["briefing"] = {"secs": round(time.time() - t0, 1), "finder": b["finder"],
                                   "files": [f["path"] for f in b["files"]], "confidence": conf,
                                   "checks": [c["id"] for c in b["checks"]]}
+            if b.get("briefer"):  # the Haiku stage's own time, spend and any fallback
+                result["briefing"]["briefer"] = {k: b["briefer"].get(k) for k in
+                                                 ("model", "secs", "cost_usd", "turns", "fallback", "error")}
             run.say("briefing", f"briefing ready: {len(b['files'])} files, finder {b['finder']}",
                     files=[f["path"] for f in b["files"]][:8], confidence=conf)
             agent = os.environ.get("OA_BRIEFED_AGENT") or shutil.which("briefed-agent")

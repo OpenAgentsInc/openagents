@@ -373,7 +373,7 @@ def run_arm_b(task: dict, root: Path, out: Path, levers: dict, slot: int, seeds:
               wrong: str | None = None) -> dict:
     t0 = time.time()
     out.mkdir(parents=True, exist_ok=True)
-    b = briefing_mod.build(task, levers, seeds=seeds, wrong=wrong)
+    b = briefing_mod.build(task, levers, seeds=seeds, wrong=wrong, root=root)
     builtins, custom, checks = tool_set(levers["tools"])
     if "packages" in b:
         pkgs = [p["id"] for p in b["packages"] if p["kind"] == "rust"]
@@ -451,6 +451,7 @@ def run_arm_b(task: dict, root: Path, out: Path, levers: dict, slot: int, seeds:
         "acceptance_source": (b.get("acceptance") or {}).get("source"),
         "engine": summary.get("engine", "claude"),
         "engine_model": summary.get("model") or config["model"], "agent_error": summary.get("error"),
+        "briefer": b.get("briefer"),
     }
 
 
@@ -555,6 +556,7 @@ ARMS: dict[str, dict] = {
     "Bbash": {"tools": "bash"},                # briefed, Bash instead of verify
     "Bchecks": {"tools": "checks"},            # round 0's run_check server
     "C": {"finder": "oracle"},                 # oracle briefing, B0's tools
+    "BH": {"tools": "verify", "finder": "haiku"},  # Haiku briefer (docs/inference/haiku-briefer.md)
     "Brelated": {"tools": "verify+related"},
     "Boutline": {"tools": "verify+outline"},
     "Bfinish": {"tools": "verify+finish"},
@@ -801,6 +803,8 @@ def run_trial(task: dict, arm: str, rep: int, levers: dict, slot: int, out: Path
         "issue": task["issue"], "arm": arm, "rep": rep, "slot": slot, "levers": lv,
         **{k: v for k, v in m.items() if k not in ("result",)},
         **usage_of(m.get("result"), m.get("engine_model")),
+        # The Haiku briefer's own spend, apart and in the trial's total.
+        "briefer_cost_usd": (m.get("briefer") or {}).get("cost_usd"),
         "lock_wait_secs": lock_wait,
         "files_changed": changed,
         "tool_log": tlog,
@@ -817,6 +821,9 @@ def run_trial(task: dict, arm: str, rep: int, levers: dict, slot: int, out: Path
         "engine_version": tool_version(lv["engine"] if lv.get("engine") in ("codex", "opencode") else
                                        "opencode" if lv.get("engine") == "gemini" else CLAUDE),
     }
+    if record["briefer_cost_usd"] and record["cost_usd"] is not None:
+        record["agent_cost_usd"] = record["cost_usd"]
+        record["cost_usd"] = round(record["cost_usd"] + record["briefer_cost_usd"], 6)
     dump_json(out / "result.json", record)
     try:  # a trace for verify-replay before corpus admission (#11218)
         sys.path.insert(0, str(HERE.parent / "traces"))

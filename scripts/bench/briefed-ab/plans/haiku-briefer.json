@@ -1,0 +1,23 @@
+{
+  "tag": "hb1",
+  "frozen": "2026-10-11",
+  "question": "Local pilot (#11323): does the Haiku briefer (BH: filefind candidates without the card decision, then a constrained Haiku agent) keep B0's success while naming more of the fix's files, and what do its own seconds and dollars add?",
+  "issues": [10074, 10181, 10201, 10289, 10301, 10986],
+  "issue_selection": "Six S2 issues on which at least one S2 trial was accepted (so a difference can show), chosen before any BH trial. A pilot, not a claim: S2's own A and B0 trials on these issues are the larger baseline.",
+  "arms": ["A", "B0", "BH"],
+  "reps": 2,
+  "seed": 11323,
+  "levers": {"interface": true, "model": "claude-opus-5-5", "effort": "default", "timeout_secs": 1200, "finder": "finder", "template": "v3"},
+  "pins": {
+    "agent_sha256": "2d1f5e86ad87a2af94de670c7b87254f69b090f37e6bede4010e6354809614fe",
+    "agent_source": "crates/briefed-agent at 90c1d76b4c (release build)",
+    "claude_version": "2.1.296 (Claude Code)",
+    "briefer_model": "claude-haiku-5-5",
+    "judge_model": "claude-opus-5-5",
+    "build_host": "coderos-4080, one build checkout, warm target (prewarmed per issue); agents, worktrees and the Haiku stage on the Mac"
+  },
+  "budget_usd": 45,
+  "budget_rule": "Agent trials (with the Haiku stage's own cost) stop at $45 of CLI-reported list price; a stopped run is reported as incomplete.",
+  "outcome": "accepted = the fix commit's own tests pass on the change and the blind judge accepts (score >= 4), as S2.",
+  "workers": 2
+}

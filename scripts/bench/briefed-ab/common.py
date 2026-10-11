@@ -34,7 +34,11 @@ SSH = ["bash", "-c"] if HOST == "local" else [
 # full settings, so any two runs can be compared lever by lever.
 LEVERS: dict[str, object] = {
     # 1 Briefing
-    "finder": "finder",          # finder (#11210 filefind) | lite | oracle
+    "finder": "finder",          # finder (#11210 filefind) | lite | oracle | haiku | haiku-solo
+    "briefer_turns": 14,         # haiku: most agent turns (haiku_briefer.py)
+    "briefer_secs": 120,         # haiku: hard time cap, seconds
+    "briefer_usd": 0.4,          # haiku: list-price cap
+    "briefer_candidates": 15,    # haiku: filefind candidates it starts from
     "briefing_files": 8,         # most files listed
     "excerpt": "windows",        # windows | whole (whole file when small)
     "excerpt_lines": 140,        # most excerpt lines per file
