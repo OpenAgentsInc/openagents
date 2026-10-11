@@ -25,8 +25,9 @@
 # (service `coder`), swaps only the `web` container's image for DIGEST, and
 # applies it as a new revision with no traffic, tagged `new` (a host the
 # `web` container already serves). --stack also swaps the `gateway`
-# sidecar's image for that openagents-stack digest (its launcher and
-# settings stay as live), and --serve the `coder-serve` sidecar's for that
+# sidecar's image for that openagents-stack digest and refreshes its
+# launcher from this checkout's deploy/staging/gateway.sh (its environment
+# stays as live), and --serve the `coder-serve` sidecar's for that
 # `coder` digest (built by the coder repository's ops/deploy.sh --stage).
 # coder-serve always gets CODER_ACCOUNTS_URL=http://127.0.0.1:8791, the
 # gateway sidecar's account service, so /mcp admits the sessions
@@ -241,11 +242,12 @@ promote() {
     g run services describe "$SERVICE" --region "$REGION" --project "$PROJECT" --format=json > "$STATE/service.json"
     g run revisions describe "$previous" --region "$REGION" --project "$PROJECT" --format=json > "$STATE/revision.json"
     python3 - "$STATE/service.json" "$STATE/revision.json" "$image" "$name" \
-        "$ROOT/deploy/production/web.sh" "$stack_image" "$serve_image" > "$spec" << 'PY'
+        "$ROOT/deploy/production/web.sh" "$stack_image" "$serve_image" \
+        "$ROOT/deploy/staging/gateway.sh" > "$spec" << 'PY'
 import json, sys
 
 service, revision = (json.load(open(p)) for p in sys.argv[1:3])
-image, name, launcher_path, stack_image, serve_image = sys.argv[3:8]
+image, name, launcher_path, stack_image, serve_image, gateway_launcher_path = sys.argv[3:9]
 # Our own Boat-compatible service on GCE (crates/oa-boat, #11256).
 OA_BOAT_BASE = "https://oa-boat-157437760789.us-central1.run.app/api/v1"
 
@@ -358,6 +360,16 @@ for container, new in (("gateway", stack_image), ("coder-serve", serve_image)):
         sys.exit(f"refusing: the serving revision has no {container} container")
     sys.stderr.write(f"  {container} image: {c['image']}\n      -> {new}\n")
     c["image"] = new
+    # A new stack image runs this checkout's gateway launcher too, so its
+    # settings (the free allowance, #11264) arrive with it; the launcher's
+    # environment stays as the live revision has it.
+    if container == "gateway":
+        gateway_launcher = open(gateway_launcher_path).read()
+        gargs = c.get("args") or []
+        if c.get("command") == ["/bin/sh"] and len(gargs) >= 2 and gargs[0] == "-c" \
+                and gargs[1] != gateway_launcher:
+            gargs[1] = gateway_launcher
+            sys.stderr.write("  gateway launcher refreshed from deploy/staging/gateway.sh\n")
 # coder-serve's /mcp checks a `sess_` bearer (an MCP app's OAuth sign-in,
 # #11084) with the account service on the gateway sidecar. A no-op once
 # the live spec has it.
