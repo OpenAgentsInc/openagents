@@ -509,7 +509,7 @@ pub(super) fn render(chat_id: &str, csrf: &str, rows: &[Row], notice: Option<&st
                 h2.oa-agents-title { "Agents" }
                 @for (index, row) in rows.iter().enumerate() {
                     div.oa-task-row.oa-agents-row id=(format!("chat-agent-{index}")) data-status=(row.standing.key()) {
-                        span.oa-task-row-title { (row.name) }
+                        span.oa-task-row-title { (crate::github_refs::linked(&row.name, crate::github_refs::DEFAULT_REPOSITORY)) }
                         span.oa-task-row-detail {
                             (row.engine) " · " (row.place) " · " (agent_fleet::elapsed_words(row.elapsed_seconds))
                             @if let Some(cost) = row.cost_usd { " · " (agent_fleet::dollars(cost)) }

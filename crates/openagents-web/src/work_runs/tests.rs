@@ -80,6 +80,7 @@ async fn a_run_goes_from_the_request_to_a_host_and_back_with_its_result() {
                 secs: 6.2,
                 phase: "briefing".into(),
                 text: "briefing ready: 8 files".into(),
+                ..Progress::default()
             }],
             title: Some("briefed-agent: the run summary says how verify went".into()),
             ..Report::default()
@@ -152,6 +153,187 @@ async fn a_run_goes_from_the_request_to_a_host_and_back_with_its_result() {
     let item = item(&done);
     assert_eq!(item.status, "done");
     assert_eq!(item.engine.as_deref(), Some("Briefed agent"));
+}
+
+/// A run's fleet row (#11250) through each stage the engine reports, from
+/// a fixture stream of its progress lines: the line says the stage, the
+/// cost and tokens follow each attempt, and the title starts `#N`.
+#[tokio::test]
+async fn a_runs_row_moves_through_the_stages_with_its_cost() {
+    let (_dir, store) = store();
+    let owner = account_owner("acct_alice");
+    let mut asked = ask(11250);
+    asked.land = Land::Queue;
+    let run = submit(&store, &owner, requester("acct_alice"), asked)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(item(&run).line.as_deref(), Some("waiting for a computer"));
+    claim(&store, &SIGNED_IN, "oa-work-1")
+        .await
+        .unwrap()
+        .unwrap();
+    let taken = load(&store, &owner, &run.id).await.unwrap().unwrap();
+    assert_eq!(item(&taken).line.as_deref(), Some("starting"));
+    let progress = |phase: &str, text: &str| Progress {
+        phase: phase.into(),
+        text: text.into(),
+        ..Progress::default()
+    };
+    let cost = |usd: Option<f64>, tokens: u64| Progress {
+        cost_usd: usd,
+        tokens: Some(tokens),
+        ..progress("cost", "so far")
+    };
+    let steps: Vec<(Vec<Progress>, &str, Option<f64>, Option<u64>)> = vec![
+        (
+            vec![
+                progress("start", "working OpenAgentsInc/openagents#11250"),
+                progress("issue", "#11250 Fleet rows for cloud runs"),
+            ],
+            "starting",
+            None,
+            None,
+        ),
+        (
+            vec![progress("briefing", "finding the files this issue needs")],
+            "finding files",
+            None,
+            None,
+        ),
+        (
+            vec![progress("agent", "the briefed agent is working")],
+            "coding",
+            None,
+            None,
+        ),
+        (
+            vec![progress("verify", "verify: passed"), cost(Some(0.4), 1_000)],
+            "coding",
+            Some(0.4),
+            Some(1_000),
+        ),
+        (
+            vec![progress("checks", "running coder's tests")],
+            "checks",
+            Some(0.4),
+            Some(1_000),
+        ),
+        (
+            vec![
+                progress("escalate", "the replayed checks failed; falling back"),
+                progress("agent", "Claude Code is working"),
+            ],
+            "coding again with Claude Code",
+            Some(0.4),
+            Some(1_000),
+        ),
+        (
+            vec![cost(None, 3_000)],
+            "coding again with Claude Code",
+            None,
+            Some(3_000),
+        ),
+        (
+            vec![progress("commit", "committed 18d6ee1d2b")],
+            "landing",
+            None,
+            Some(3_000),
+        ),
+        (
+            vec![Progress {
+                entry: Some("20261011T080000Z-oa-work-1-ab12".into()),
+                ..progress("land", "handed to the landing queue")
+            }],
+            "queued 20261011T080000Z-oa-work-1-ab12",
+            None,
+            Some(3_000),
+        ),
+    ];
+    for (lines, stage_words, usd, tokens) in steps {
+        report(
+            &store,
+            "oa-work-1",
+            &run.id,
+            Report {
+                lines,
+                title: Some("Fleet rows for cloud runs".into()),
+                ..Report::default()
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let now = load(&store, &owner, &run.id).await.unwrap().unwrap();
+        let row = item(&now);
+        assert_eq!(row.line.as_deref(), Some(stage_words));
+        assert_eq!(row.cost_usd, usd, "{stage_words}");
+        assert_eq!(row.tokens, tokens, "{stage_words}");
+        assert_eq!(row.title, "#11250 Fleet rows for cloud runs");
+        assert_eq!(row.status, "working");
+        assert_eq!(row.finished_unix, None);
+    }
+    report(
+        &store,
+        "oa-work-1",
+        &run.id,
+        Report {
+            result: Some(json!({"engine": "bare", "ok": true, "cost_usd": 1.25,
+                "commit": "18d6ee1d2b0000000000000000000000000000ab",
+                "landed": {"how": "queue", "entry": {"id": "20261011T080000Z-oa-work-1-ab12"}}})),
+            ..Report::default()
+        },
+    )
+    .await
+    .unwrap();
+    let done = load(&store, &owner, &run.id).await.unwrap().unwrap();
+    let row = item(&done);
+    assert_eq!(row.status, "done");
+    assert_eq!(
+        row.line.as_deref(),
+        Some("queued 20261011T080000Z-oa-work-1-ab12")
+    );
+    assert_eq!(row.cost_usd, Some(1.25));
+    assert!(row.finished_unix.is_some());
+
+    // A run that fails says why in one line.
+    let failing = submit(&store, &owner, requester("acct_alice"), ask(7))
+        .await
+        .unwrap()
+        .unwrap();
+    claim(&store, &SIGNED_IN, "oa-work-1")
+        .await
+        .unwrap()
+        .unwrap();
+    report(
+        &store,
+        "oa-work-1",
+        &failing.id,
+        Report {
+            result: Some(json!({"engine": "bare", "ok": false, "cost_usd": null,
+                "error": "no change passed its checks"})),
+            ..Report::default()
+        },
+    )
+    .await
+    .unwrap();
+    let failed = load(&store, &owner, &failing.id).await.unwrap().unwrap();
+    let row = item(&failed);
+    assert_eq!(
+        row.line.as_deref(),
+        Some("failed: no change passed its checks")
+    );
+    assert_eq!(row.cost_usd, None, "unknown, never zero");
+    assert_eq!(row.title, "#7 in OpenAgentsInc/openagents");
+    let mut pr = done.clone();
+    pr.outcome = Some(Outcome {
+        pr: Some("https://github.com/OpenAgentsInc/openagents/pull/9".into()),
+        ..Outcome::default()
+    });
+    assert_eq!(
+        stage(&pr),
+        "pull request https://github.com/OpenAgentsInc/openagents/pull/9"
+    );
 }
 
 #[tokio::test]

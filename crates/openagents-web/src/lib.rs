@@ -41,6 +41,7 @@ mod demo;
 mod device;
 mod docs_mcp;
 mod environments;
+mod github_refs;
 mod github_tools;
 mod layout;
 pub mod mac_jobs;

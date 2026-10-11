@@ -253,14 +253,27 @@ pub(crate) struct Requester {
 }
 
 /// One progress line from the host.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub(crate) struct Progress {
     /// Seconds since the run started on its host.
     #[serde(default)]
     pub secs: f64,
+    /// The engine's step (`work_issue.py`): `start`, `issue`, `briefing`,
+    /// `escalate`, `agent`, `verify`, `checks`, `cost`, `commit`, `land`,
+    /// `done`.
     #[serde(default)]
     pub phase: String,
     pub text: String,
+    /// On a `cost` line: dollars so far, Claude Code's reported cost of
+    /// every attempt; absent when any is unknown (never zero for unknown).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost_usd: Option<f64>,
+    /// On a `cost` line: tokens so far.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tokens: Option<u64>,
+    /// On a `land` line: the landing queue entry it was handed to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry: Option<String>,
 }
 
 /// One replayed check on the change.
@@ -352,13 +365,6 @@ impl WorkRun {
             Some(title) => format!("{}#{} {title}", self.repo, self.issue),
             None => format!("{}#{}", self.repo, self.issue),
         }
-    }
-
-    /// The run's own words for its last news.
-    pub(crate) fn last_line(&self) -> Option<String> {
-        self.why
-            .clone()
-            .or_else(|| self.lines.last().map(|line| line.text.clone()))
     }
 
     fn end(&mut self, state: RunState, why: Option<String>) {
@@ -946,6 +952,15 @@ pub(crate) async fn report(
             },
             phase: line(&progress.phase, 24),
             text: secret_screen::redact(&line(&progress.text, 400)),
+            cost_usd: progress.cost_usd.filter(|c| c.is_finite() && *c >= 0.0),
+            tokens: progress.tokens,
+            entry: progress.entry.filter(|entry| {
+                !entry.is_empty()
+                    && entry.len() <= 80
+                    && entry
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
+            }),
         })
         .filter(|progress| !progress.text.is_empty())
         .collect();
@@ -1155,19 +1170,86 @@ pub(crate) fn item(run: &WorkRun) -> Item {
         .outcome
         .as_ref()
         .map_or(run.engine.word(), |o| o.engine.as_str());
+    let so_far = run.lines.iter().rev().find(|l| l.phase == "cost");
     Item {
         id: run.id.clone(),
         kind: "agent".into(),
-        title: line(&run.title(), 120),
+        title: line(&board_title(run), 120),
         engine: Some(engine_words(engine).into()),
         status: status.into(),
         started_unix: run.created_unix,
         finished_unix: run.finished_unix,
-        cost_usd: run.outcome.as_ref().and_then(|o| o.cost_usd),
-        tokens: None,
+        cost_usd: run
+            .outcome
+            .as_ref()
+            .and_then(|o| o.cost_usd)
+            .or_else(|| so_far.and_then(|l| l.cost_usd)),
+        tokens: so_far.and_then(|l| l.tokens),
         session: None,
         question: None,
-        line: run.last_line().map(|text| line(&text, 200)),
+        line: Some(line(&stage(run), 200)),
+    }
+}
+
+/// A run's title on the boards: `#N` first (#11250), then the issue's
+/// title.
+pub(crate) fn board_title(run: &WorkRun) -> String {
+    match &run.title {
+        Some(title) => format!("#{} {title}", run.issue),
+        None => format!("#{} in {}", run.issue, run.repo),
+    }
+}
+
+/// Where a run is, in the fleet rows' words (#11250): `waiting for a
+/// computer`, `starting`, `finding files`, `coding`, `coding again with
+/// Claude Code`, `checks`, `landing`, `queued <entry>`, then how it
+/// ended: `queued <entry>`, `pull request <url>`, `committed <commit>`,
+/// `failed: <reason>`, `stopped`.
+pub(crate) fn stage(run: &WorkRun) -> String {
+    let short = |commit: &str| commit[..commit.len().min(10)].to_owned();
+    match run.state {
+        RunState::Waiting => return "waiting for a computer".into(),
+        RunState::Done => {
+            let outcome = run.outcome.as_ref();
+            if let Some(entry) = outcome.and_then(|o| o.landing.as_deref()) {
+                return format!("queued {entry}");
+            }
+            if let Some(url) = outcome.and_then(|o| o.pr.as_deref()) {
+                return format!("pull request {url}");
+            }
+            return match outcome.and_then(|o| o.commit.as_deref()) {
+                Some(commit) => format!("committed {}", short(commit)),
+                None => "done".into(),
+            };
+        }
+        RunState::Failed => {
+            let why = run
+                .why
+                .as_deref()
+                .or_else(|| run.outcome.as_ref().and_then(|o| o.error.as_deref()))
+                .unwrap_or("it stopped");
+            return format!("failed: {}", why.lines().next().unwrap_or(why).trim());
+        }
+        RunState::Cancelled => return "stopped".into(),
+        RunState::Running => {}
+    }
+    let again = run.lines.iter().any(|l| l.phase == "escalate");
+    let last = run
+        .lines
+        .iter()
+        .rev()
+        .find(|l| !matches!(l.phase.as_str(), "cost" | "escalate"));
+    match last.map(|l| l.phase.as_str()) {
+        Some("briefing") => "finding files".into(),
+        Some("agent" | "verify") if again => "coding again with Claude Code".into(),
+        Some("agent" | "verify") => "coding".into(),
+        Some("checks") => "checks".into(),
+        Some("commit") => "landing".into(),
+        Some("land") => match last.and_then(|l| l.entry.as_deref()) {
+            Some(entry) => format!("queued {entry}"),
+            None => "landing".into(),
+        },
+        _ => "starting".into(),
     }
 }
 
@@ -1781,8 +1863,7 @@ fn run_row(run: &WorkRun, now: u64) -> Markup {
                 span class="oa-settings-label" { a href=(href) { (run.title()) } }
                 span class="oa-settings-hint" {
                     (run.state.words()) " · " (ago(run.created_unix, now))
-                    @if !run.state.finished() { @if let Some(line) = run.last_line() { " · " (line) } }
-                    @else if let Some(why) = &run.why { " · " (why) }
+                    " · " (crate::github_refs::linked(&stage(run), &run.repo))
                 }
                 (result_markup(run))
             }
