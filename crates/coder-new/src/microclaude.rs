@@ -21,7 +21,6 @@
 
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
-use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
@@ -56,9 +55,17 @@ pub const TEXT_ONLY: &str = "Microclaude reads text only, so your picture was le
 /// What a stopped turn says.
 pub const STOPPED: &str = "The turn was stopped.";
 
-/// Credentials the CLI must not inherit, so the session uses the Claude Code
-/// login this computer holds rather than an API key.
-const REMOVED_ENV: [&str; 2] = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"];
+/// Credentials and provider switches the CLI must not inherit, so the session
+/// uses the Claude Code login this computer holds rather than an API key or a
+/// cloud provider. The three `CLAUDE_CODE_USE_*` names are the ones
+/// [`crate::claude_plan::plan_login`] treats as leaving the plan.
+const REMOVED_ENV: [&str; 5] = [
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "CLAUDE_CODE_USE_BEDROCK",
+    "CLAUDE_CODE_USE_VERTEX",
+    "CLAUDE_CODE_USE_FOUNDRY",
+];
 
 /// The most of a conversation one turn carries into its prompt.
 const TASK_LIMIT: usize = 48 * 1024;
@@ -202,32 +209,52 @@ fn inside(root: &Path, path: &Path) -> bool {
     real.starts_with(root)
 }
 
-static AVAILABLE: OnceLock<bool> = OnceLock::new();
+static AVAILABLE: std::sync::Mutex<Option<bool>> = std::sync::Mutex::new(None);
 
 /// Whether this computer has Claude Code on a Claude account login: the
 /// `claude` program is present, and it is signed in to a Claude account
 /// rather than with an API key or a cloud credential.
 ///
-/// The answer is read once per process, because it runs `claude auth
+/// The answer is read once and kept, because the check runs `claude auth
 /// status`, which is the command that names the credential's kind. A chat
 /// here runs interactively on the person's plan, not on the plan's
-/// automated-run book, so it never takes a plan slot.
+/// automated-run book, so it never takes a plan slot. A turn that will not
+/// start calls [`recheck`], so a sign-out after startup stops the mode from
+/// being offered rather than failing every turn.
 #[must_use]
 pub fn available() -> bool {
-    *AVAILABLE.get_or_init(|| {
-        let Some(agent) = crate::bundled_runtime::claude_print::agent() else {
-            return false;
-        };
-        let status =
-            coder_engine_status::claude::check(&agent.program, None, atif::now_ms() / 1_000);
-        matches!(
-            status.state,
-            coder_engine_status::State::SignedIn | coder_engine_status::State::Expiring
-        ) && matches!(
-            status.method,
-            Some(coder_engine_status::Method::ClaudeAi | coder_engine_status::Method::OauthToken)
-        )
-    })
+    let mut cache = AVAILABLE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(known) = *cache {
+        return known;
+    }
+    let known = probe();
+    *cache = Some(known);
+    known
+}
+
+/// Forget the cached answer, so the next [`available`] asks the computer
+/// again.
+pub fn recheck() {
+    *AVAILABLE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+}
+
+/// Ask the computer whether the login is there, without touching the cache.
+fn probe() -> bool {
+    let Some(agent) = crate::bundled_runtime::claude_print::agent() else {
+        return false;
+    };
+    let status = coder_engine_status::claude::check(&agent.program, None, atif::now_ms() / 1_000);
+    matches!(
+        status.state,
+        coder_engine_status::State::SignedIn | coder_engine_status::State::Expiring
+    ) && matches!(
+        status.method,
+        Some(coder_engine_status::Method::ClaudeAi | coder_engine_status::Method::OauthToken)
+    )
 }
 
 /// One running tool call, kept between its `tool_use` and its `tool_result`.
@@ -256,6 +283,12 @@ pub async fn run(
 /// set and, beside them, the tools of an in-process `server` (the solver's
 /// conversational Intaker gives it a read-only `gh`).
 ///
+/// # Panics
+/// If `tools` names anything outside [`TOOLS`]. The mode offers only file
+/// tools; a caller that asked for a shell here would widen what the mode can
+/// do without its own approval path. The check is a developer guard, not a
+/// runtime condition.
+///
 /// # Errors
 /// As [`run`].
 pub async fn run_with(
@@ -266,6 +299,10 @@ pub async fn run_with(
     cancel: &AtomicBool,
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Streamed, String> {
+    assert!(
+        tools.iter().all(|tool| allows(tool)),
+        "run_with may take only the file tools, got {tools:?}"
+    );
     run_inner(prompt, cwd, tools, server, None, cancel, emit).await
 }
 
@@ -367,7 +404,13 @@ async fn run_inner(
     });
     let mut query = claude_agent_sdk::query_with_permissions(prompt, options, handler)
         .await
-        .map_err(|error| format!("Claude Code did not start: {error}"))?;
+        .map_err(|error| {
+            // A start that fails is often a login that went away after
+            // startup, so the next look at availability asks again rather
+            // than trusting the answer read at startup.
+            recheck();
+            format!("Claude Code did not start: {error}")
+        })?;
     let started = Instant::now();
     let mut reply = Streamed::default();
     let mut calls: HashMap<String, Call> = HashMap::new();
@@ -501,11 +544,23 @@ async fn run_inner(
             }
             Ok(SdkMessage::Unknown { type_name, raw }) if type_name == "result" => {
                 let _ = query.kill().await;
-                return Err(raw["result"]
-                    .as_str()
-                    .filter(|text| !text.is_empty())
-                    .unwrap_or("The turn ended without a reply.")
-                    .to_owned());
+                if let Some(delegations) = delegations.as_mut() {
+                    while let Ok(event) = delegations.receiver.try_recv() {
+                        emit(event);
+                    }
+                }
+                // A result the SDK did not model still ends the turn. It says
+                // what happened when it carries a reason; otherwise its text is
+                // the reply, and an empty one is no reply.
+                if raw["is_error"].as_bool().unwrap_or(false) {
+                    return Err(said_or_ended(raw["result"].as_str())?);
+                }
+                return Ok(Streamed {
+                    text: said_or_ended(raw["result"].as_str())?,
+                    milliseconds: elapsed_ms(started),
+                    first_text_ms,
+                    ..Streamed::default()
+                });
             }
             Ok(_) => {}
         }
@@ -521,6 +576,16 @@ async fn run_inner(
 
 fn elapsed_ms(started: Instant) -> u64 {
     started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64
+}
+
+/// The sentence a result carries, or the no-reply sentence when it carries
+/// none. Both the modeled and the unmodeled result paths end here, so an
+/// empty result reads the same either way.
+fn said_or_ended(text: Option<&str>) -> Result<String, String> {
+    match text.filter(|text| !text.trim().is_empty()) {
+        Some(text) => Ok(text.to_owned()),
+        None => Err("The turn ended without a reply.".into()),
+    }
 }
 
 /// The answer a finished turn gives, or the sentence it fails with.
@@ -577,10 +642,8 @@ fn finish(result: SdkResultMessage) -> Result<Streamed, String> {
             .unwrap_or_else(|| "The turn ended on an error.".to_owned()));
     }
     // An empty success is no reply, the same as a turn that streamed none.
-    if text.trim().is_empty() {
-        return Err("The turn ended without a reply.".into());
-    }
-    let prompt_tokens = usage.input_tokens;
+    let text = said_or_ended(Some(&text))?;
+    let prompt_tokens = counted_input(&usage);
     let completion_tokens = usage.output_tokens;
     Ok(Streamed {
         text,
@@ -598,9 +661,27 @@ fn finish(result: SdkResultMessage) -> Result<Streamed, String> {
     })
 }
 
+/// The input a turn used: fresh input plus the cached prompt it was read
+/// against. Claude Code reports them apart, and most of a long conversation's
+/// input arrives from the cache, so counting `input_tokens` alone undercounts
+/// every turn after the first.
+fn counted_input(usage: &claude_agent_sdk::Usage) -> u64 {
+    usage
+        .input_tokens
+        .saturating_add(usage.cache_read_input_tokens.unwrap_or(0))
+        .saturating_add(usage.cache_creation_input_tokens.unwrap_or(0))
+}
+
 /// The model the engine reported for a turn, from its per-model usage.
+///
+/// A turn can name more than one model (a subagent, for instance), and the
+/// map has no order, so the pinned [`MODEL`] wins when it appears and any
+/// other reported name is the fallback rather than an arbitrary one.
 fn first_model(usage: &std::collections::HashMap<String, claude_agent_sdk::ModelUsage>) -> String {
-    usage.keys().next().cloned().unwrap_or_default()
+    if usage.contains_key(MODEL) {
+        return MODEL.to_owned();
+    }
+    usage.keys().min().cloned().unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -851,6 +932,83 @@ mod tests {
         assert_eq!(reply.model, "claude-haiku-5-5");
         assert_eq!(reply.usage.total_tokens, 34);
         assert_eq!(reply.usage.cost, Some(0.0125));
+    }
+
+    /// Cached input is input the model read, and Claude Code reports it apart
+    /// from `input_tokens`. Counting only the fresh tokens undercounts every
+    /// turn after the first, so all three are added.
+    #[test]
+    fn cached_input_counts_toward_the_prompt_tokens() {
+        let success = SdkResultMessage::Success(
+            serde_json::from_value(serde_json::json!({
+                "duration_ms": 5, "duration_api_ms": 4, "is_error": false, "num_turns": 1,
+                "result": "done", "total_cost_usd": 0.02,
+                "usage": {"input_tokens": 3, "output_tokens": 10,
+                    "cache_read_input_tokens": 1000, "cache_creation_input_tokens": 500},
+                "modelUsage": {}, "permission_denials": [],
+                "uuid": "u", "session_id": "s"
+            }))
+            .unwrap(),
+        );
+        let reply = finish(success).unwrap();
+        assert_eq!(reply.usage.prompt_tokens, 1503);
+        assert_eq!(reply.usage.completion_tokens, 10);
+        assert_eq!(reply.usage.total_tokens, 1513);
+    }
+
+    /// A turn can report more than one model; the map has no order, so the
+    /// pinned one is chosen rather than whichever the map happened to yield.
+    #[test]
+    fn the_reported_model_is_the_pinned_one_when_it_appears() {
+        let mut usage = std::collections::HashMap::new();
+        usage.insert("claude-opus-5-5".to_owned(), model_usage());
+        usage.insert(MODEL.to_owned(), model_usage());
+        assert_eq!(first_model(&usage), MODEL);
+        // Only one model, and not the pinned one: that name is the answer.
+        let mut other = std::collections::HashMap::new();
+        other.insert("claude-opus-5-5".to_owned(), model_usage());
+        assert_eq!(first_model(&other), "claude-opus-5-5");
+        assert_eq!(first_model(&std::collections::HashMap::new()), "");
+    }
+
+    fn model_usage() -> claude_agent_sdk::ModelUsage {
+        serde_json::from_value(serde_json::json!({
+            "inputTokens": 1, "outputTokens": 1, "cacheReadInputTokens": 0,
+            "cacheCreationInputTokens": 0, "webSearchRequests": 0, "costUSD": 0.0,
+            "contextWindow": 200000
+        }))
+        .unwrap()
+    }
+
+    /// A result the SDK did not model still ends the turn, and it reads the
+    /// same way the modeled one does: text is the reply, empty is no reply.
+    #[test]
+    fn an_unmodeled_result_reads_the_same_as_a_modeled_one() {
+        assert_eq!(said_or_ended(Some("hello")).unwrap(), "hello");
+        assert_eq!(
+            said_or_ended(Some("   ")).unwrap_err(),
+            "The turn ended without a reply."
+        );
+        assert_eq!(
+            said_or_ended(None).unwrap_err(),
+            "The turn ended without a reply."
+        );
+    }
+
+    /// A run must not fall back to an API key or a cloud provider: the login
+    /// this computer holds is the only credential it may use.
+    #[test]
+    fn a_run_strips_api_keys_and_cloud_provider_switches() {
+        let (options, _) = turn_options(Path::new("/work/tree"), &TOOLS, None);
+        for name in [
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_AUTH_TOKEN",
+            "CLAUDE_CODE_USE_BEDROCK",
+            "CLAUDE_CODE_USE_VERTEX",
+            "CLAUDE_CODE_USE_FOUNDRY",
+        ] {
+            assert!(options.env_remove.contains(&name.to_owned()), "{name}");
+        }
     }
 
     /// One real turn on this computer's Claude login, proving the checkout

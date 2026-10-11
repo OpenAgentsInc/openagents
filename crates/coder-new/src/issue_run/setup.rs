@@ -220,22 +220,22 @@ pub async fn prepare(
         if let Err(why) = output("git", &["fetch", "-q", &remote, "main"], &repo).await {
             fetch_error = Some(why);
         }
-        let upstream = format!("{remote}/main");
-        let Ok(head) = output("git", &["rev-parse", &upstream], &repo).await else {
+        let remote_main = format!("{remote}/main");
+        let Ok(head) = output("git", &["rev-parse", &remote_main], &repo).await else {
             card["rows"] = json!(rows);
             return fail(
                 transcript,
                 &mut card,
-                format!("This repository has no {upstream}."),
+                format!("This repository has no {remote_main}."),
             );
         };
         let head = newest_main(&repo, head.trim()).await;
         rows.push(row(
             "start",
             match &fetch_error {
-                None => format!("{} ({upstream})", short(&head)),
+                None => format!("{} ({remote_main})", short(&head)),
                 Some(why) => format!(
-                    "{} ({upstream} as last fetched; the fetch failed, so it may be stale: {why})",
+                    "{} ({remote_main} as last fetched; the fetch failed, so it may be stale: {why})",
                     short(&head)
                 ),
             },
