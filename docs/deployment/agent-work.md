@@ -102,6 +102,15 @@ App](../auth/github.md#github-app)); never a server-wide token.
    the repository, or on the local address, the run gets no access and is
    told it can't push.
 
+Pushing needs the deployment's GitHub App (#11056): neither staging nor
+production has one yet, so today the broker answers `github_not_configured`
+and runs are told they can't push. The launchers (`deploy/staging/gateway.sh`,
+`deploy/{staging,production}/web.sh`) take it from the optional
+`GITHUB_APP_JSON` (the App's private file, `private_key` set to
+`github-app.pem`) and `GITHUB_APP_PEM`; the owner creates the App and the
+two Secret Manager secrets (workspace `NEEDS_OWNER.md`), then `render.py`
+and the production spec pass them to both containers.
+
 The GitHub token never reaches the machine's environment, a file, the
 saved image, or the run's records; the machine is deleted when the run
 ends. Tests: `cargo test -p coder-environment-operator push` (real Git and
