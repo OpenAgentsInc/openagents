@@ -81,7 +81,7 @@ pub(super) async fn links(app: &App, headers: &HeaderMap) -> bool {
 
 /// The environment a chat page offers.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) struct Offer {
+pub(crate) struct Offer {
     pub id: String,
     pub repository: String,
     /// The version the chat's tasks ran on, else the newest saved one.
@@ -188,7 +188,7 @@ async fn mark_removed(app: &App, owner: &str, id: &str, environment: &str) {
 }
 
 /// The header's breadcrumb: the environment (linked) before the title.
-pub(super) fn breadcrumb(chat: &Conversation, offer: Option<&Offer>) -> Breadcrumb {
+pub(crate) fn breadcrumb(chat: &Conversation, offer: Option<&Offer>) -> Breadcrumb {
     let crumb = Breadcrumb::new(chat.title.clone());
     match offer {
         Some(offer) => crumb.crumb(offer.label(), format!("/environments/{}", offer.id)),
@@ -198,7 +198,7 @@ pub(super) fn breadcrumb(chat: &Conversation, offer: Option<&Offer>) -> Breadcru
 
 /// The header's chat actions: Run Claude Code when it can start. `oob`
 /// replaces the page's copy when another chat opens in place.
-pub(super) fn actions(chat: &Conversation, offer: Option<&Offer>, oob: bool) -> Markup {
+pub(crate) fn actions(chat: &Conversation, offer: Option<&Offer>, oob: bool) -> Markup {
     html! {
         span #chat-actions hx-swap-oob=[oob.then_some("outerHTML")] {
             @if offer.is_some_and(|offer| offer.runnable) {

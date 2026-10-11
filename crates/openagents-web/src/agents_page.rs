@@ -181,7 +181,7 @@ fn ago(at: u64, now: u64) -> String {
 }
 
 /// What the list says after an action, by the code the action left.
-fn notice_words(code: &str) -> Option<&'static str> {
+pub(crate) fn notice_words(code: &str) -> Option<&'static str> {
     Some(match code {
         "stopping" => "Asked it to stop. It stops at its next step.",
         "sent" => "Sent. It reads your message at its next step.",

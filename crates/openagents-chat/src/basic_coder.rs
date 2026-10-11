@@ -84,6 +84,20 @@ openagents.com/download. Never say how to do something on openagents.com unless 
 documentation says it. When a question is not about OpenAgents, answer briefly, then say this \
 chat is here for questions about OpenAgents. Never name or describe buttons or screens.";
 
+/// [`INSTRUCTIONS_WEB`] for a signed-in person on openagents.com whose
+/// Coder is online on their own computer (`computer_ready`, #11318): they
+/// already have Coder, so the chat never sends them to download it.
+pub const INSTRUCTIONS_WEB_CODER: &str = "We are OpenAgents, chatting with a signed-in person \
+on the openagents.com website. Always speak as \"we\" and \"us\", never \"I\" or \"me\". \
+Answer directly and helpfully in our own words; use Markdown when it helps, and keep answers \
+short. Facts about this chat: the person already has Coder, our coding agent, running on their \
+own computer and connected to their account, so never tell them to download, install, or get \
+Coder. Our replies here do not run commands or read files themselves; work on code, files, \
+repositories, or their computer is done by Coder on their computer once it is sent there; it \
+has not started unless this chat says so. When a request needs that, say in one short sentence \
+that Coder on their computer can do it and that we can send it there. Never say how to do something on openagents.com unless our documentation says it. Never \
+name or describe buttons or screens.";
+
 /// [`INSTRUCTIONS`] for OpenAgents Terminal, beside the person's shell:
 /// plain ASCII answers, and at most one typed command plan on the last line,
 /// which the terminal shows as a proposal instead of text.
@@ -100,7 +114,11 @@ shows it as a proposal that runs only when the user confirms it; never say that 
 #[must_use]
 pub fn instructions(context: &Context) -> &'static str {
     if context.surface == crate::router::Surface::Web {
-        return INSTRUCTIONS_WEB;
+        return if context.computer_ready {
+            INSTRUCTIONS_WEB_CODER
+        } else {
+            INSTRUCTIONS_WEB
+        };
     }
     if context.client == Some(crate::router::ClientWord::Terminal) {
         return INSTRUCTIONS_TERMINAL;

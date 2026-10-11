@@ -164,3 +164,35 @@ async fn site_states_show_their_sample_data() {
         assert!(html.contains(text), "{screen}/{state} lacks {text:?}");
     }
 }
+
+#[tokio::test]
+async fn the_chat_states_show_their_sample_data() {
+    let expected = [
+        ("chat-thread", "long", "Read earlier messages"),
+        ("chat-thread", "code-and-links", "items.reverse()"),
+        ("chat-work", "approval", "Coder is waiting for your answer"),
+        ("chat-work", "files", "sample-photo-2.jpg"),
+        ("chat-work", "coder-offline", "/sync on"),
+        ("chat-sidebar", "search-none", "No chats found"),
+        ("chat-sidebar", "archived", "Archived chats"),
+        ("chat-sidebar", "move", "Move here"),
+        (
+            "composer",
+            "typing",
+            "Plan a quiet weekend in the mountains",
+        ),
+        ("work-run", "finished", "The change"),
+        ("work-run", "running", "Running the tests"),
+        ("demo", "chat", "Fix the lease table reset"),
+    ];
+    let screens = super::screens();
+    for (screen, id, text) in expected {
+        let state = screens
+            .iter()
+            .find(|s| s.id == screen)
+            .and_then(|s| s.states.iter().find(|st| st.id == id))
+            .unwrap_or_else(|| panic!("{screen}/{id}"));
+        let html = body((state.render)(&HeaderMap::new())).await;
+        assert!(html.contains(text), "{screen}/{id} lacks {text:?}");
+    }
+}

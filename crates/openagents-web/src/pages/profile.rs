@@ -55,6 +55,15 @@ async fn profile(
     let Some(profile) = backend.profile(&login).await else {
         return missing(&headers);
     };
+    profile_page(&headers, path, &profile)
+}
+
+/// A person's profile page.
+pub(crate) fn profile_page(
+    headers: &HeaderMap,
+    path: String,
+    profile: &crate::backend::Profile,
+) -> Response {
     let name = profile.name.as_deref().unwrap_or(&profile.login);
     let github = format!("https://github.com/{}", segment(&profile.login));
     UiPage::new(format!("@{}", profile.login))
@@ -70,10 +79,10 @@ async fn profile(
                 div.oa-page-actions { (action_link("GitHub profile", &github)) }
             }
         }))
-        .respond(&headers)
+        .respond(headers)
 }
 
-fn missing(headers: &HeaderMap) -> Response {
+pub(crate) fn missing(headers: &HeaderMap) -> Response {
     problem(
         headers,
         StatusCode::NOT_FOUND,

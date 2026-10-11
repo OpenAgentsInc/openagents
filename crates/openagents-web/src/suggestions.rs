@@ -76,12 +76,17 @@ fn fields(app: &App, owner: &str, words: &str, selection: String) -> Vec<(String
 /// its message, as the composer there does (a plain post; the server
 /// redirects to the chat).
 pub(crate) fn starters(app: &App, owner: &str, used: &[String]) -> Markup {
+    starter_chips(used, |message| fields(app, owner, message, String::new()))
+}
+
+/// The starter questions not in `used`, each sending `fields` for its
+/// message.
+pub(crate) fn starter_chips(
+    used: &[String],
+    fields: impl Fn(&str) -> Vec<(String, String)>,
+) -> Markup {
     let chips = suggestions::suggestions(used).map(|suggestion| {
-        SuggestionChip::send(
-            suggestion.label,
-            "/chat",
-            fields(app, owner, suggestion.message, String::new()),
-        )
+        SuggestionChip::send(suggestion.label, "/chat", fields(suggestion.message))
     });
     html! { (SuggestionChips::new("Suggestions").id("chat-suggestions").chips(chips)) }
 }

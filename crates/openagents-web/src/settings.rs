@@ -100,6 +100,17 @@ pub(crate) fn page(
         picture: viewer.avatar_url.is_some(),
         admin: viewer.admin,
     };
+    page_as(headers, account, title, path, body)
+}
+
+/// A Settings page for `account`.
+pub(crate) fn page_as(
+    headers: &HeaderMap,
+    account: Account,
+    title: &str,
+    path: &str,
+    body: Markup,
+) -> Response {
     protect(
         UiPage::new(title)
             .path(path)
@@ -437,7 +448,7 @@ async fn extra_hours(
 /// The Settings page: profile, theme, plan, and (when this server keeps
 /// keys) the Claude credential row with its hint and whether Manage can
 /// work.
-fn settings_content(
+pub(crate) fn settings_content(
     name: &str,
     claude: Option<(String, bool)>,
     chats: Option<usize>,

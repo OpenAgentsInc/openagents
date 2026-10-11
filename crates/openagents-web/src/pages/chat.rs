@@ -60,6 +60,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(continued::routes())
         .merge(approval::routes())
         .merge(computer::routes())
+        .merge(to_coder::routes())
         .layer(DefaultBodyLimit::max(64 * 1024))
 }
 
@@ -302,11 +303,11 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         } else {
             None
         };
-    let picked =
-        match crate::composer_row::checked(&app, &headers, &owner, &prompt.wanted(), true).await {
-            Ok(picked) => picked,
-            Err(message) => return refusal(StatusCode::CONFLICT, message),
-        };
+    let picked = match crate::composer_row::checked(&app, &headers, &owner, &prompt.wanted()).await
+    {
+        Ok(picked) => picked,
+        Err(message) => return refusal(StatusCode::CONFLICT, message),
+    };
     let project = picked.project.as_ref().map(|project| project.id.clone());
     match &picked.target {
         crate::composer_row::Target::Chat => {}
@@ -314,7 +315,8 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
             return refusal(StatusCode::BAD_REQUEST, crate::chat_files::NOT_TO_CODER);
         }
         crate::composer_row::Target::Coder(computer) => {
-            return start_on_coder(&app, &owner, computer, &id, &text, project).await;
+            return start_on_coder(&app, &headers, &owner, computer, &id, &text, project, &[])
+                .await;
         }
         crate::composer_row::Target::Claude(_) => {
             return start_claude(&app, &headers, &owner, &id, text, digest, &picked, files).await;
@@ -451,20 +453,23 @@ async fn saved_soon(
 
 /// A new chat whose first message goes to Coder on `computer`
 /// ([`crate::coder_sync::start_from_web`]); on to its page.
+#[allow(clippy::too_many_arguments)]
 async fn start_on_coder(
     app: &App,
+    headers: &HeaderMap,
     owner: &str,
     computer: &str,
     request: &str,
     text: &str,
     project: Option<String>,
+    earlier: &[Message],
 ) -> Response {
     use crate::coder_sync::Started;
     let store = &app.config.chat_store;
-    match crate::coder_sync::start_from_web(store, owner, computer, request, text, project).await {
-        Ok(Started::Started(id)) => {
-            crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response())
-        }
+    match crate::coder_sync::start_from_web(store, owner, computer, request, text, project, earlier)
+        .await
+    {
+        Ok(Started::Started(id)) => to_chat(headers, &id),
         Ok(Started::Offline) => refusal(
             StatusCode::CONFLICT,
             &format!("Coder on {computer} isn't online now. Pick where it runs again."),
@@ -505,7 +510,7 @@ async fn start_claude(
         Ok(attached) => attached,
         Err(message) => return refusal(StatusCode::BAD_REQUEST, message),
     };
-    let Some(env) = claude_environment(app, headers, owner, picked, true).await else {
+    let Some(env) = claude_environment(app, headers, owner, picked).await else {
         return refusal(
             StatusCode::CONFLICT,
             "Claude Code can't run there now. Pick where it runs again.",
@@ -601,12 +606,11 @@ async fn claude_environment(
     headers: &HeaderMap,
     owner: &str,
     picked: &crate::composer_row::Picked,
-    new_chat: bool,
 ) -> Option<crate::composer_row::Environment> {
     let crate::composer_row::Target::Claude(id) = &picked.target else {
         return None;
     };
-    let choices = crate::composer_row::choices(app, headers, owner, new_chat).await?;
+    let choices = crate::composer_row::choices(app, headers, owner).await?;
     let env = choices.environment(picked.project.as_ref()?)?;
     (env.id == *id).then(|| env.clone())
 }
@@ -719,31 +723,59 @@ async fn show_page(app: &App, headers: &HeaderMap, id: &str, notice: Option<&Not
     let chips = crate::suggestions::reply_chips(&app, chat).await;
     let offer = work::offer(&app, &headers, chat).await;
     let links = work::links(&app, &headers).await;
-    let mut page = UiPage::new(chat.title.clone())
-        .path(format!("/chat/{id}"))
-        .app()
-        .breadcrumb(work::breadcrumb(chat, offer.as_ref()))
-        .actions(work::actions(chat, offer.as_ref(), false))
-        .head(crate::chat_html::head())
-        .boosted();
     // A move in place keeps the list it has (`chat_html::main_only`).
-    if !crate::chat_html::main_only(&headers) {
-        page =
-            page.sidebar_section(chat_list(&app, &chat.owner, Some(&chat.id), true, false).await);
-    }
-    let page = page
-        .content(html! {
-            // The thread is private: HTMX never snapshots it into history.
-            div #chat-content.oa-thread-view hx-history="false" { (content(chat, None, chips, links)) }
-        })
-        .composer(composer_with(
+    let sidebar = if crate::chat_html::main_only(&headers) {
+        None
+    } else {
+        Some(chat_list(&app, &chat.owner, Some(&chat.id), true, false).await)
+    };
+    let parts = Parts {
+        breadcrumb: work::breadcrumb(chat, offer.as_ref()),
+        actions: Some(work::actions(chat, offer.as_ref(), false)),
+        sidebar,
+        thread: content(chat, None, chips, links),
+        dock: composer_with(
             &format!("/chat/{id}"),
             "Continue this chat",
             Some(row),
             dock,
             notice,
-        ));
-    crate::chat_html::protect(page.respond(&headers))
+        ),
+    };
+    chat_page(&headers, chat, parts)
+}
+
+/// What a chat's page is drawn from.
+pub(crate) struct Parts {
+    pub(crate) breadcrumb: Breadcrumb,
+    pub(crate) actions: Option<Markup>,
+    pub(crate) sidebar: Option<Markup>,
+    pub(crate) thread: Markup,
+    pub(crate) dock: Markup,
+}
+
+/// A chat's page from its parts, as its route and the screens gallery
+/// draw it.
+pub(crate) fn chat_page(headers: &HeaderMap, chat: &Conversation, parts: Parts) -> Response {
+    let mut page = UiPage::new(chat.title.clone())
+        .path(format!("/chat/{}", chat.id))
+        .app()
+        .breadcrumb(parts.breadcrumb)
+        .head(crate::chat_html::head())
+        .boosted();
+    if let Some(actions) = parts.actions {
+        page = page.actions(actions);
+    }
+    if let Some(sidebar) = parts.sidebar {
+        page = page.sidebar_section(sidebar);
+    }
+    let page = page
+        .content(html! {
+            // The thread is private: HTMX never snapshots it into history.
+            div #chat-content.oa-thread-view hx-history="false" { (parts.thread) }
+        })
+        .composer(parts.dock);
+    crate::chat_html::protect(page.respond(headers))
 }
 
 /// A chat synced from Coder (#11047): the transcript, and a composer
@@ -767,7 +799,7 @@ async fn show_terminal(
         let card = approval::current(app, chat).await;
         html! {
             (card)
-            (terminal_composer(app, chat, computer, notice))
+            (terminal_composer(chat, computer, notice, ticket(app, chat, false)))
         }
     } else if continued::offer(app, headers, chat, online).await.is_some() {
         html! { (terminal_note(computer)) (continued::button(chat)) }
@@ -775,22 +807,19 @@ async fn show_terminal(
         terminal_note(computer)
     };
     let links = work::links(app, headers).await;
-    let mut page = UiPage::new(chat.title.clone())
-        .path(format!("/chat/{id}"))
-        .app()
-        .breadcrumb(Breadcrumb::new(chat.title.clone()))
-        .head(crate::chat_html::head())
-        .boosted();
-    if !crate::chat_html::main_only(headers) {
-        page = page
-            .sidebar_section(chat_list(app, &chat.owner, Some(id.as_str()), false, false).await);
-    }
-    let page = page
-        .content(html! {
-            div #chat-content.oa-thread-view hx-history="false" { (content(chat, None, html! {}, links)) }
-        })
-        .composer(dock);
-    crate::chat_html::protect(page.respond(headers))
+    let sidebar = if crate::chat_html::main_only(headers) {
+        None
+    } else {
+        Some(chat_list(app, &chat.owner, Some(id.as_str()), false, false).await)
+    };
+    let parts = Parts {
+        breadcrumb: Breadcrumb::new(chat.title.clone()),
+        actions: None,
+        sidebar,
+        thread: content(chat, None, html! {}, links),
+        dock,
+    };
+    chat_page(headers, chat, parts)
 }
 
 /// What a Coder chat shows where the composer would be when Coder on its
@@ -807,11 +836,11 @@ pub(crate) fn terminal_note(computer: &str) -> Markup {
 /// The composer on a Coder chat while Coder on its computer is online: a
 /// reply waits for Coder there, which answers it with that computer's
 /// tools.
-fn terminal_composer(
-    app: &App,
+pub(crate) fn terminal_composer(
     chat: &Conversation,
     computer: &str,
     notice: Option<&Notice>,
+    hidden: Markup,
 ) -> Markup {
     let composer = Composer::new("chat-form", format!("/chat/{}", chat.id))
         .label("Reply in Coder")
@@ -822,7 +851,7 @@ fn terminal_composer(
         .placeholder(format!("Reply to Coder on {computer}"))
         .autofocus(true)
         .after(html! {
-            (ticket(app, chat, false))
+            (hidden)
             p #chat-feedback.oa-composer-feedback role="status" aria-live="polite" {}
         });
     match notice {
@@ -1106,11 +1135,11 @@ async fn follow(
             "This chat is full. Start a new chat to keep going.",
         );
     }
-    let picked =
-        match crate::composer_row::checked(&app, &headers, &owner, &prompt.wanted(), false).await {
-            Ok(picked) => picked,
-            Err(message) => return refusal(StatusCode::CONFLICT, message),
-        };
+    let picked = match crate::composer_row::checked(&app, &headers, &owner, &prompt.wanted()).await
+    {
+        Ok(picked) => picked,
+        Err(message) => return refusal(StatusCode::CONFLICT, message),
+    };
     // The row's project and branch, recorded when the composer has the row.
     let place = prompt.project.is_some().then(|| {
         (
@@ -1118,6 +1147,29 @@ async fn follow(
             picked.branch.clone(),
         )
     });
+    // Coder on a computer for a chat that began here (#11319): the chat
+    // moves to a Coder chat on that computer, its messages so far with it.
+    if let crate::composer_row::Target::Coder(computer) = &picked.target {
+        if !files.is_empty() {
+            return refusal(StatusCode::BAD_REQUEST, crate::chat_files::NOT_TO_CODER);
+        }
+        let project = picked
+            .project
+            .as_ref()
+            .map(|project| project.id.clone())
+            .or_else(|| loaded.conversation.project.clone());
+        return start_on_coder(
+            &app,
+            &headers,
+            &owner,
+            computer,
+            &prompt.request_id,
+            &text,
+            project,
+            &loaded.conversation.messages,
+        )
+        .await;
+    }
     if matches!(picked.target, crate::composer_row::Target::Claude(_)) {
         return follow_claude(
             &app,
@@ -1420,7 +1472,7 @@ async fn follow_claude(
             Ok(attached) => attached,
             Err(message) => return refusal(StatusCode::BAD_REQUEST, message),
         };
-    let Some(env) = claude_environment(app, headers, &chat.owner, picked, false).await else {
+    let Some(env) = claude_environment(app, headers, &chat.owner, picked).await else {
         return refusal(
             StatusCode::CONFLICT,
             "Claude Code can't run there now. Pick where it runs again.",
@@ -1659,6 +1711,19 @@ async fn answer(
     } else {
         Vec::new()
     };
+    // A signed-in person with Coder online (#11318): a message the typed
+    // router reads as work on code goes to Coder on that computer
+    // ([`hand_to_coder`]), and the answer here knows Coder is theirs.
+    let coder_here =
+        if door.is_some() && chat.terminal.is_none() && crate::chat_store::is_account_owner(&owner)
+        {
+            crate::composer_row::online_computers(&app, &owner)
+                .await
+                .into_iter()
+                .next()
+        } else {
+            None
+        };
     // In a project with Google Drive sources, Gemini answers from them,
     // or hands the message to the hosted chat (#11238).
     let drive = match (&door, parts.is_empty()) {
@@ -1721,6 +1786,7 @@ async fn answer(
                         }),
                     memory,
                     repository,
+                    computer_ready: coder_here.is_some(),
                     ..Context::default()
                 },
                 reply.clone(),
@@ -1733,11 +1799,12 @@ async fn answer(
     let mut asked = door_unavailable;
     let mut shown = String::new();
     let mut settled = false;
+    let mut handed = false;
     loop {
         if let Some(job) = &mut job {
             tokio::select! { ()=job,if !asked=>asked=true, ()=tokio::time::sleep(Duration::from_millis(400))=>{} }
         }
-        let (text, done, failure, meta) = {
+        let (text, done, failure, meta, route) = {
             let r = basic_coder::lock(&reply);
             (
                 r.text.clone(),
@@ -1756,7 +1823,18 @@ async fn answer(
                         meta
                     })
                     .filter(|meta| !meta.is_empty()),
+                r.meta.route.clone(),
             )
+        };
+        let (text, done, failure, meta) = match &coder_here {
+            Some(computer) if !handed && route.as_deref() == Some(crate::work_runs::WORK_ROUTE) => {
+                handed = true;
+                match hand_to_coder(&app, &loaded.conversation, &request_id, computer).await {
+                    Some(said) => (said, true, None, None),
+                    None => (text, done, failure, meta),
+                }
+            }
+            _ => (text, done, failure, meta),
         };
         let expired = tokio::time::Instant::now() >= deadline;
         let ended = done || failure.is_some() || asked || expired;
@@ -1875,6 +1953,60 @@ async fn answer(
     }
 }
 
+/// A message the typed router read as work on code (`work.dispatch`), in a
+/// chat of a signed-in person with Coder online on `computer` (#11318):
+/// it starts a Coder chat there with the chat so far
+/// ([`crate::coder_sync::start_from_web`]), like picking Coder on
+/// {computer}, instead of the website saying it can't. What this chat
+/// says in place of the answer, or `None` to keep answering here (the
+/// computer just went offline, or the message carries files).
+async fn hand_to_coder(
+    app: &App,
+    chat: &Conversation,
+    request_id: &str,
+    computer: &str,
+) -> Option<String> {
+    use crate::coder_sync::Started;
+    if chat
+        .requests
+        .iter()
+        .any(|r| r.id == request_id && !r.files.is_empty())
+    {
+        return None;
+    }
+    let at = chat
+        .messages
+        .iter()
+        .position(|m| m.role == Role::User && m.request_id.as_deref() == Some(request_id))?;
+    let started = crate::coder_sync::start_from_web(
+        &app.config.chat_store,
+        &chat.owner,
+        computer,
+        request_id,
+        &chat.messages[at].text,
+        chat.project.clone(),
+        &chat.messages[..at],
+    )
+    .await
+    .ok()?;
+    Some(match started {
+        Started::Started(id) => {
+            format!("Coder on {computer} is doing this. [Open the Coder chat](/chat/{id})")
+        }
+        Started::Offline => return None,
+        Started::Full => {
+            "Coder couldn't take this: your account has no room for more chats. Delete some first."
+                .into()
+        }
+        Started::Busy => {
+            "Coder has too many messages waiting. Try again when it has answered them.".into()
+        }
+        Started::Secret => {
+            "This looks like it holds a password or key, so it wasn't sent to Coder.".into()
+        }
+    })
+}
+
 /// The visitor's chats in the left panel: a search box, the Pinned group in
 /// pin order, then the rest newest first (the store sorts by last update),
 /// `current` marked, archived chats left out (see [`sidebar`]). On a chat
@@ -1986,7 +2118,12 @@ pub(crate) fn ticket(app: &App, chat: &Conversation, oob: bool) -> Markup {
 /// The thread, its suggestion chips, and the scroll-to-bottom button over
 /// it. The title is the header row's breadcrumb, not part of the thread.
 /// `links` links task rows to their runs ([`work::links`]).
-fn content(chat: &Conversation, before: Option<usize>, chips: Markup, links: bool) -> Markup {
+pub(crate) fn content(
+    chat: &Conversation,
+    before: Option<usize>,
+    chips: Markup,
+    links: bool,
+) -> Markup {
     html! {
         section #chat-thread.oa-thread aria-label="Chat" {
             div.oa-thread-column hx-ext="sse" sse-connect=(format!("/chat/{}/events?after={}",chat.id,chat.revision)) sse-close="retired" {
@@ -2101,6 +2238,8 @@ fn messages(chat: &Conversation, before: Option<usize>, links: bool) -> Markup {
                 (computer::turn(chat, &terminal.computer, index, ask))
             }
         }
+        // Run the last message in Coder on the person's computer (#11318).
+        @if before.is_none() { (to_coder::slot(chat)) }
         // The chat's agents (#11164): they load themselves.
         @if before.is_none() { (agents::slot(chat)) }
         div #chat-status.oa-thread-status role="status" aria-live="polite"
@@ -2565,13 +2704,13 @@ mod uuid_tests {
 }
 
 #[path = "chat_sidebar.rs"]
-mod sidebar;
+pub(crate) mod sidebar;
 
 #[path = "chat_agents.rs"]
 mod agents;
 pub(crate) use agents::{choose_paused, paused_items};
 #[path = "chat_approval.rs"]
-mod approval;
+pub(crate) mod approval;
 #[path = "chat_computer.rs"]
 mod computer;
 #[path = "chat_continued.rs"]
@@ -2580,8 +2719,10 @@ mod continued;
 pub(crate) mod delete_all;
 #[path = "chat_live.rs"]
 mod live;
+#[path = "chat_to_coder.rs"]
+mod to_coder;
 #[path = "chat_work.rs"]
-mod work;
+pub(crate) mod work;
 
 #[cfg(test)]
 #[path = "chat_tests.rs"]
