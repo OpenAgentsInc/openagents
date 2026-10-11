@@ -596,3 +596,36 @@ async fn the_reaper_stops_on_ttl_and_on_idle_but_not_while_busy() {
         })
         .await;
 }
+
+#[tokio::test]
+async fn a_restarted_service_finds_its_ready_sandboxes_at_once() {
+    let r = rig(|_| {}).await;
+    let id = create(&r.client, CreateSandboxRequest::default(), None).await;
+    r.client.wait_until_ready(&id, &fast()).await.unwrap();
+    // A second service over the same GCE and the same VMs, with no memory.
+    let again = Service::new(
+        Config::for_tests(),
+        r.fake.clone(),
+        Local {
+            root: r._dir.path().to_owned(),
+        },
+    );
+    let app = router(again, Token::new(TOKEN));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let c = Client::builder(ApiKey::new(TOKEN).unwrap())
+        .base_url(format!("http://127.0.0.1:{port}/api/v1"))
+        .build()
+        .unwrap();
+    // No "still starting" in between: the first command runs.
+    assert_eq!(run(&c, &id, "echo again").await.stdout, "again\n");
+    let got = c
+        .get(&GetParams {
+            sandbox_id: id.clone(),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(got.sandbox.state, "ready");
+}

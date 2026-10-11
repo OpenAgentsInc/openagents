@@ -474,6 +474,36 @@ impl<C: Compute, R: Remote> Service<C, R> {
         }
     }
 
+    /// After a restart of this service, a running VM it has not seen yet
+    /// may already be ready for this boot: ask it (one short SSH call)
+    /// before calling it "starting".
+    async fn confirm_ready(&self, suffix: &str, i: &Instance) -> bool {
+        if self.ready_for(suffix, i) {
+            return true;
+        }
+        if i.status != "RUNNING" || self.st().preparing.contains(suffix) {
+            return false;
+        }
+        let (Some(ip), Some(boot)) = (&i.ip, &i.last_start) else {
+            return false;
+        };
+        let o = self
+            .remote
+            .run(
+                ip,
+                &format!("test -f \"{}/ready\"", self.cfg.run_dir),
+                vec![],
+                Duration::from_secs(15),
+                1024,
+            )
+            .await;
+        if o.code == Some(0) {
+            self.st().ready.insert(suffix.into(), boot.clone());
+            return true;
+        }
+        false
+    }
+
     /// A sandbox's view; a running VM of unknown readiness (this service
     /// restarted) is checked and, when needed, prepared again.
     async fn describe(self: &Arc<Self>, suffix: &str) -> Res<Sandbox> {
@@ -481,7 +511,7 @@ impl<C: Compute, R: Remote> Service<C, R> {
             Found::Pending(p) => Ok(Self::pending_view(suffix, &p)),
             Found::Vm(i) => {
                 if i.status == "RUNNING"
-                    && !self.ready_for(suffix, &i)
+                    && !self.confirm_ready(suffix, &i).await
                     && !self.st().preparing.contains(suffix)
                 {
                     self.spawn_prepare(suffix.to_owned(), i.zone.clone(), true);
@@ -1437,7 +1467,7 @@ fi
 
     async fn ready_vm(self: &Arc<Self>, id: &str) -> Res<(String, String)> {
         let (suffix, i) = self.vm(id).await?;
-        if !self.ready_for(&suffix, &i) {
+        if !self.confirm_ready(&suffix, &i).await {
             if i.status == "RUNNING" && !self.st().preparing.contains(&suffix) {
                 self.spawn_prepare(suffix.clone(), i.zone.clone(), true);
             }
