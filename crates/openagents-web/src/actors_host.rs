@@ -130,8 +130,8 @@ impl Host {
     }
 
     /// The HTTP and SSE routes, behind our authentication.
-    pub fn router(&self) -> Router {
-        actors::http::router(self.store.clone(), self.auth.clone())
+    pub fn router<S: Clone + Send + Sync + 'static>(&self) -> Router<S> {
+        actors::http::router::<S>(self.store.clone(), self.auth.clone())
             .layer(middleware::from_fn(reads_only_with_cookies))
     }
 
