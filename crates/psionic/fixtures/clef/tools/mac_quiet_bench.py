@@ -49,6 +49,8 @@ environment overrides produce diagnostic-only summaries.
 Owned Psionic latency variants explicitly disable prefix caching; nonzero
 PSIONIC_CLEF_PREFIX_CACHE_BYTES settings are refused by this latency runner.
 The shared server helper still accepts them for the separate prefix check.
+Both usage.cached_input_tokens and top-level prompt_eval_cached_count must be
+zero when reported. A unique state can still reuse a shared template prefix.
 """
 
 import argparse
@@ -327,6 +329,10 @@ def validate_uncached_response(code, response):
     cached = usage.get("cached_input_tokens", 0)
     if type(cached) is not int or cached != 0:
         raise RuntimeError("cached input invalidates an uncached comparison")
+    if "prompt_eval_cached_count" in response:
+        cached = response["prompt_eval_cached_count"]
+        if type(cached) is not int or cached != 0:
+            raise RuntimeError("cached input invalidates an uncached comparison")
     timing = response.get("psionic", {}).get("timing", {})
     if timing.get("cached"):
         raise RuntimeError("cached answers invalidate an uncached comparison")
@@ -1137,12 +1143,15 @@ def self_test():
         assert shared.phase == "run"
         valid = {"answers": [], "usage": {"input_tokens": 10, "cached_input_tokens": 0}}
         validate_uncached_response(200, valid)
+        validate_uncached_response(200, dict(valid, prompt_eval_cached_count=0))
         invalid = [
             {"answers": [], "usage": {"input_tokens": 0}},
             {"answers": [], "usage": {"input_tokens": True}},
             {"answers": [], "usage": {"input_tokens": 10, "cached_input_tokens": 1}},
             dict(valid, psionic={"timing": {"cached": True}}),
         ]
+        invalid.extend(dict(valid, prompt_eval_cached_count=value)
+                       for value in (37, -1, None, False, "0", 0.0))
         for response in invalid:
             try:
                 validate_uncached_response(200, response)

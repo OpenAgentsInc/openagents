@@ -1,0 +1,17 @@
+{
+  "applied": false,
+  "source_sha256": "ce5f832d0eeb2ec5c954755c07d00fafcc2bb1c59d6aa6c1d993a2f84bcce9fb",
+  "proposal": "Reject a present top-level prompt_eval_cached_count unless it is an integer zero, in addition to the existing usage.cached_input_tokens check. A caller claiming fully uncached Ollama must also require the known telemetry field to be present; absence is unknown, not proof of zero.",
+  "targeted_test_cases": [
+    "native cached_input_tokens=0 accepted",
+    "Ollama prompt_eval_cached_count=0 accepted",
+    "positive top-level count 37 rejected",
+    "negative count rejected",
+    "boolean count rejected",
+    "null count rejected",
+    "string count rejected",
+    "positive usage field rejected even when top-level zero",
+    "positive top-level count rejected even when usage zero"
+  ],
+  "scope": "Source proposal only, not applied to the shared harness or any frozen source."
+}

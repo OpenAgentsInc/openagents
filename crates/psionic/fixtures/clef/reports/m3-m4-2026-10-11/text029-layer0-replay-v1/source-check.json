@@ -1,0 +1,25 @@
+{
+  "status": "source_ready_not_executed",
+  "checks": [
+    "AST parse of three Python files only"
+  ],
+  "source_sha256": {
+    "layer0_reference.py": "dfe436ccee6c82cf5547f9b3d7a71738496cbe04e57f2a7649dda8db1b89e4de",
+    "layer0_math.py": "432a1e97996b923e4e16119d6733d9a39df604fcfcac02286eda4f62c670ee91",
+    "guard_layer0.py": "99f10d544b176692bf97aa30d6491434a9a4cc7d65f65da89343528064626452",
+    "layer0-plan.md": "2368f7db713570b53ea573f8195b51717112684ee4e8f02645d250d5983ccb73"
+  },
+  "runtime_bounds": {
+    "group_gib": 12,
+    "start_gib": 24,
+    "available_floor_gib": 12,
+    "deadline_seconds": 120,
+    "cpu_threads": 2,
+    "disk_lease_gib": 2,
+    "disk_floor_gib": 25
+  },
+  "planned_variants": 6,
+  "checkpoints_per_variant": 31,
+  "checkpoint_comparisons": 248,
+  "static_raw_checkpoint_bytes": 1599806976
+}

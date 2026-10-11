@@ -1,0 +1,26 @@
+{
+  "schema": "openagents.lease.receipt.v1",
+  "id": "1791730571783-81727-0",
+  "resource": "build",
+  "amount": 1,
+  "holder": {
+    "session": "codex:01a128ee-daef-7590-baae-4e932a581a2c",
+    "agent": "codex",
+    "pid": 81727,
+    "command": "openagents"
+  },
+  "priority": "normal",
+  "nested": false,
+  "requested_at_ms": 1791730571783,
+  "acquired_at_ms": 1791730571783,
+  "released_at_ms": 1791730575235,
+  "wait_ms": 0,
+  "held_ms": 3452,
+  "held_whole_run": true,
+  "exit": 1,
+  "disk": {
+    "worktree": "<REPO>",
+    "worktree_bytes": 1978159104,
+    "allocated_bytes": 1978159104
+  }
+}

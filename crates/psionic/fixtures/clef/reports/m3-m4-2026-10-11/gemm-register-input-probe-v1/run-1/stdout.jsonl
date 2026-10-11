@@ -1,0 +1,3 @@
+{"cases":19,"criterion_version":2,"kind":"half_ulp_self_test","passed":true}
+{"current_allocated_bytes":720896,"driver_allocation_limit_bytes":1610612736,"explicit_buffer_limit_bytes":1073741824,"kind":"device","load_average":[12.9453125,15.345703125,16.0703125],"name":"Apple M5 Max","recommended_working_set_bytes":115448725504}
+{"commands":1,"dispatches":1,"error":"cooperative operand coordinates differ from documented NT orientation","kind":"failure","seconds":0.38853983332955977}

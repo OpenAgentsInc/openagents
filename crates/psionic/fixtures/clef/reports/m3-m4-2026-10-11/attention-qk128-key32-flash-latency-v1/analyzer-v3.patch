@@ -1,0 +1,101 @@
+--- analyze_v2.py
++++ analyze_v3.py
+@@ -22,6 +22,61 @@
+   require(bench.file_sha(canonical)==digest,'pinned binary hash changed')
+   result[canonical]=digest
+  return result
++def validate_ollama_response(response, request):
++    if response.get("model") != request["model"] or set(response["answers"]) != set(request["questions"]):
++        raise ValueError("response model or question set does not match the request")
++    usage = response["usage"]
++    if (type(usage["input_tokens"]) is not int or usage["input_tokens"] <= 0
++            or type(usage["output_tokens"]) is not int or usage["output_tokens"] != 0):
++        raise ValueError("response has invalid token counts")
++    if (usage.get("cached_input_tokens", 0) != 0 or response.get("cached", False)
++            or response.get("psionic", {}).get("timing", {}).get("cached", False)):
++        raise ValueError("response contains a full-answer or usage cache hit")
++    for key, question in request["questions"].items():
++        answer = response["answers"][key]
++        if answer["type"] != question["type"]:
++            raise ValueError(f"wrong answer type for {key}")
++        if answer["type"] == "noul":
++            probabilities = [answer["noul"]]
++        else:
++            options = (list(question["criteria"]) if answer["type"] == "choice" else
++                       [str(i) for i in range(len(question["criteria"]))])
++            if set(answer["probabilities"]) != set(options):
++                raise ValueError(f"wrong probability options for {key}")
++            probabilities = list(answer["probabilities"].values())
++            if any(type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= 1
++                   for value in probabilities):
++                raise ValueError(f"invalid probability for {key}")
++            if not math.isclose(sum(probabilities), 1.0, abs_tol=len(options) * 0.0001):
++                raise ValueError(f"probabilities do not sum to one for {key}")
++            if answer["type"] == "choice" and answer["choice"] not in options:
++                raise ValueError(f"invalid chosen option for {key}")
++            if (type(answer["confidence"]) not in (int, float)
++                    or not math.isfinite(answer["confidence"]) or not 0 <= answer["confidence"] <= 1):
++                raise ValueError(f"invalid confidence for {key}")
++            # Ollama v0.40.2 decision/systemone.go uses normalized entropy.
++            # Validate the actual contract without modifying response values.
++            entropy = -sum(p * math.log(p) for p in probabilities if p > 0)
++            concentration = max(0.0, min(1.0, 1.0 - entropy / math.log(len(probabilities))))
++            if not math.isclose(answer["confidence"], concentration, rel_tol=0, abs_tol=1e-12):
++                raise ValueError(f"confidence disagrees with probabilities for {key}")
++            if (answer["type"] == "choice"
++                    and max(probabilities) - answer["probabilities"][answer["choice"]] > 0.000100001):
++                raise ValueError(f"choice is not a most probable option for {key}")
++            if answer["type"] == "score" and (
++                type(answer["score"]) not in (int, float) or not math.isfinite(answer["score"])
++                or not 0 <= answer["score"] <= len(options) - 1
++            ):
++                raise ValueError(f"invalid score for {key}")
++            if answer["type"] == "score":
++                expectation = sum(index * answer["probabilities"][option] for index, option in enumerate(options))
++                tolerance = 0.00005 * (1 + sum(range(len(options)))) + 1e-9
++                if not math.isclose(answer["score"], expectation, abs_tol=tolerance):
++                    raise ValueError(f"score disagrees with probabilities for {key}")
++        if any(type(value) not in (int, float) or not math.isfinite(value) or not 0 <= value <= 1
++               for value in probabilities):
++            raise ValueError(f"invalid probability for {key}")
++
+ def analyze(directory):
+  config=bench.load_config(ROOT/'config.json');proof=load(ROOT/'provenance.json');summary=load(directory/'summary.json');metadata=load(directory/'metadata.json')
+  binaries=canonical_binary_hashes(proof['binary_sha256'])
+@@ -55,7 +110,12 @@
+   base=load(row['workload']);state=base['state'] if isinstance(base['state'],str) else bench.encoded(base['state']).decode()
+   body=dict(base,state=f"RUN {row['nonce']}\n\n{state}",model='clef-flash')
+   require(row['request_sha256']==bench.sha(bench.encoded(body)),'reconstructed exact request differs')
+-  bench.validate_uncached_response(row['http_status'],row['response']);image_parity.validate_response(row['response'],body)
++  bench.validate_uncached_response(row['http_status'],row['response'])
++  validator=validate_ollama_response if row['variant']=='ollama' else image_parity.validate_response
++  validator(row['response'],body)
++  cached=row['response'].get('prompt_eval_cached_count')
++  require(cached is None or (type(cached) is int and 0<=cached<=row['usage']['input_tokens']),'invalid top-level cached token count')
++  if row['variant']!='ollama':require(cached in (None,0),'native top-level cache use')
+   tokens=row['response']['usage']['input_tokens'];lo,hi=ranges[Path(row['workload']).stem]
+   require(type(tokens) is int and lo<=tokens<=hi,'actual token count outside fixed workload range')
+   if row['variant']!='ollama':
+@@ -69,7 +129,7 @@
+   require(set(pair)==set(NAMES),'missing paired variant')
+   require(len({r['nonce'] for r in pair.values()})==len({r['request_sha256'] for r in pair.values()})==len({r['usage']['input_tokens'] for r in pair.values()})==1,'paired bytes or token counts differ')
+   nonces.append(pair[NAMES[0]]['nonce'])
+-  paired.append({'round':key[0],'workload':Path(key[1]).stem,'sample':key[2],'warmup':key[2]==0,'actual_tokens':pair[NAMES[0]]['usage']['input_tokens'],'seconds':{v:r['elapsed_seconds'] for v,r in pair.items()},'native_phase_ms':{v:{k:pair[v]['response']['psionic']['timing'][k] for k in PHASES} for v in NAMES[:2]}})
++  paired.append({'round':key[0],'workload':Path(key[1]).stem,'sample':key[2],'warmup':key[2]==0,'actual_tokens':pair[NAMES[0]]['usage']['input_tokens'],'seconds':{v:r['elapsed_seconds'] for v,r in pair.items()},'top_level_prompt_eval_cached_count':{v:r['response'].get('prompt_eval_cached_count') for v,r in pair.items()},'usage_cached_input_tokens':{v:r['response']['usage'].get('cached_input_tokens') for v,r in pair.items()},'native_phase_ms':{v:{k:pair[v]['response']['psionic']['timing'][k] for k in PHASES} for v in NAMES[:2]}})
+  require(len(set(nonces))==36,'nonce reused across samples')
+  measured=[r for r in paired if not r['warmup']];groups=[]
+  targets={'len1k':.35,'len4k':1.3,'len16k':7.5}
+@@ -77,9 +137,11 @@
+   subset=[r for r in measured if r['workload']==workload];require(len(subset)==10,'measured workload coverage differs')
+   medians={v:statistics.median(r['seconds'][v] for r in subset) for v in NAMES}
+   groups.append({'workload':workload,'measured_pairs':10,'actual_tokens':sorted({r['actual_tokens'] for r in subset}),'median_seconds':medians,'candidate_over_stage6_paired_ratios':[r['seconds'][NAMES[1]]/r['seconds'][NAMES[0]] for r in subset],'candidate_over_ollama_paired_ratios':[r['seconds'][NAMES[1]]/r['seconds']['ollama'] for r in subset],'median_native_phase_ms':{v:{k:statistics.median(r['native_phase_ms'][v][k] for r in subset) for k in PHASES} for v in NAMES[:2]},'shared_machine_target_seconds':targets[workload],'candidate_meets_shared_machine_target':medians[NAMES[1]]<=targets[workload],'per_round_median_seconds':{str(i):{v:statistics.median(r['seconds'][v] for r in subset if r['round']==i) for v in NAMES} for i in range(2)}})
+- return {'passed':True,'offline_analyzer_version':2,'reverified_canonical_binary_sha256':binaries,'scope':'shared-machine latency; actual token counts retained; no idle-machine or causal hardware claim','records_sha256':bench.file_sha(directory/'records.jsonl'),'requests':108,'measured_requests':90,'warmups':18,'owned_servers_stopped':6,'all_exact_request_bytes_and_actual_token_counts_pair':True,'native_prefix_and_answer_cache':'prefix disabled; all native cached counts zero; no cached timing','ollama_cache_limit':'unique leading nonces; internal prefix reuse is not directly observed when cached_input_tokens is absent','groups':groups,'paired_samples_including_warmups':paired,'peak_accounted_bytes':max(r['peak_accounted_bytes'] for r in stops),'lowest_available_memory_bytes':min(r['lowest_available_memory_bytes'] for r in stops)}
++ cache_counts=collections.Counter(r['response'].get('prompt_eval_cached_count') for r in samples if r['variant']=='ollama')
++ uncached=all(k==0 for k in cache_counts)
++ return {'passed':uncached,'structural_validation_passed':True,'native_uncached_validation_passed':True,'all_engine_uncached_comparison_passed':uncached,'ollama_top_level_cached_count_histogram':{str(k):v for k,v in cache_counts.items()},'offline_analyzer_version':3,'reverified_canonical_binary_sha256':binaries,'scope':'shared-machine timing; native comparison is uncached; Ollama prefix reuse is disclosed and fails all-engine uncached acceptance; no idle-machine or causal hardware claim','records_sha256':bench.file_sha(directory/'records.jsonl'),'requests':108,'measured_requests':90,'warmups':18,'owned_servers_stopped':6,'all_exact_request_bytes_and_actual_token_counts_pair':True,'native_prefix_and_answer_cache':'prefix disabled; all native cached counts zero; no cached timing','ollama_cache_limit':'prompt_eval_cached_count is present and records prefix reuse. Unique leading nonces prevent whole-answer reuse but do not eliminate the shared template prefix.','groups':groups,'paired_samples_including_warmups':paired,'peak_accounted_bytes':max(r['peak_accounted_bytes'] for r in stops),'lowest_available_memory_bytes':min(r['lowest_available_memory_bytes'] for r in stops)}
+ if __name__=='__main__':
+  p=argparse.ArgumentParser();p.add_argument('directory',type=Path);args=p.parse_args()
+  try:result=analyze(args.directory)
+  except Exception as e:result={'passed':False,'error_type':type(e).__name__,'error':str(e)}
+- (args.directory/'analysis-v2.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result,indent=2));raise SystemExit(0 if result['passed'] else 1)
++ (args.directory/'analysis-v3.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result,indent=2));raise SystemExit(0 if result['passed'] else 1)

@@ -1,0 +1,96 @@
+{
+  "schema": "clef.text029-layer0-publication.v1",
+  "scope": "Single-layer precision factorial and separately labeled official recurrence controls; no change to full-model acceptance.",
+  "path_tokens": {
+    "@@CLEF_WORKTREE@@": "Worktree root",
+    "@@CLEF_SCRATCH@@": "Task scratch root",
+    "@@CLEF_PYTHON_ENV@@": "Pinned Python environment",
+    "@@CLEF_TARGET@@": "Persistent Cargo target",
+    "@@CLEF_HOME@@": "User home"
+  },
+  "files": [
+    {
+      "path": "source/layer0_reference.py",
+      "original_bytes": 16108,
+      "original_sha256": "dfe436ccee6c82cf5547f9b3d7a71738496cbe04e57f2a7649dda8db1b89e4de",
+      "published_bytes": 16108,
+      "published_sha256": "dfe436ccee6c82cf5547f9b3d7a71738496cbe04e57f2a7649dda8db1b89e4de",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/layer0_math.py",
+      "original_bytes": 3438,
+      "original_sha256": "432a1e97996b923e4e16119d6733d9a39df604fcfcac02286eda4f62c670ee91",
+      "published_bytes": 3438,
+      "published_sha256": "432a1e97996b923e4e16119d6733d9a39df604fcfcac02286eda4f62c670ee91",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/guard_layer0.py",
+      "original_bytes": 6669,
+      "original_sha256": "99f10d544b176692bf97aa30d6491434a9a4cc7d65f65da89343528064626452",
+      "published_bytes": 6524,
+      "published_sha256": "82375c093d2c7c086baba6d7b667381251002204acfbc83e57968ff484b50f03",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "plan.md",
+      "original_bytes": 7166,
+      "original_sha256": "2368f7db713570b53ea573f8195b51717112684ee4e8f02645d250d5983ccb73",
+      "published_bytes": 7166,
+      "published_sha256": "2368f7db713570b53ea573f8195b51717112684ee4e8f02645d250d5983ccb73",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source-check.json",
+      "original_bytes": 834,
+      "original_sha256": "e2b8a65a9497a24d1ac156947c1298d2d2cdb3e0023ad7e657e1cdc2922292ca",
+      "published_bytes": 834,
+      "published_sha256": "e2b8a65a9497a24d1ac156947c1298d2d2cdb3e0023ad7e657e1cdc2922292ca",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "guard.json",
+      "original_bytes": 41320,
+      "original_sha256": "16880ff229fcab16956dbc9bd1047dedd5051ba6c68cb8fb0f0abd966427edc6",
+      "published_bytes": 27404,
+      "published_sha256": "62af76994c5c191164cad9d0a63ac43600849864f098cd556f2439b26d017258",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "receipt.json",
+      "original_bytes": 205450,
+      "original_sha256": "a9b5c1f31da198229dd32564b8cae0fea4f1d7fc01bae339e6ce223128c1c9e3",
+      "published_bytes": 205450,
+      "published_sha256": "a9b5c1f31da198229dd32564b8cae0fea4f1d7fc01bae339e6ce223128c1c9e3",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "stdout.log",
+      "original_bytes": 266,
+      "original_sha256": "168d851032463f13f4305873c19282be7d284747670f7f56b9d9b993daa85731",
+      "published_bytes": 266,
+      "published_sha256": "168d851032463f13f4305873c19282be7d284747670f7f56b9d9b993daa85731",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "checkpoint-errors.csv",
+      "published_bytes": 29996,
+      "published_sha256": "8c81cb8eeb99923d49fc99a1ea5776a3aac30887c6173a1266e54c9ccc0f38fa",
+      "derived_from": "receipt.json/checkpoint_comparisons",
+      "rows": 248
+    },
+    {
+      "path": "README.md",
+      "published_bytes": 4399,
+      "published_sha256": "eda99b4c1c3195ed00692affdfdd0505336c622d35cae1790a8937f084b61051"
+    }
+  ],
+  "excluded": [
+    "raw tensor checkpoints",
+    "weights",
+    "executables",
+    "raw memory samples"
+  ],
+  "all_original_files_preserved": true
+}

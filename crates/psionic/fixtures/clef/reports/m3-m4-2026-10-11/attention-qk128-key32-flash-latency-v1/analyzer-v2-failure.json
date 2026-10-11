@@ -1,0 +1,18 @@
+{
+  "passed": false,
+  "analyzer_version": 2,
+  "error_type": "ValueError",
+  "error": "confidence disagrees with probabilities for team",
+  "traceback": "Traceback (most recent call last):\n  File \"<stdin>\", line 6, in <module>\n  File \"<LATENCY>/analyze_v2.py\", line 58, in analyze\n    bench.validate_uncached_response(row['http_status'],row['response']);image_parity.validate_response(row['response'],body)\n  File \"<WORKTREE>/crates/psionic/fixtures/clef/tools/image_parity.py\", line 108, in validate_response\n    raise ValueError(f\"confidence disagrees with probabilities for {key}\")\nValueError: confidence disagrees with probabilities for team\n",
+  "analyzer_sha256": "aeec7cabdbcecc76697fd361877d34ce82bdbc443c9186c10c7b592094906cb4",
+  "frozen_analyzer_sha256": "bfb4fe1547f7f2f7704bb469b63bfa15b0a0331e32dcee58c3ce6abb7dd75fec",
+  "original_run_receipt_sha256": "149bd33d76c0bc2d9fdd66519ddd98075f4a4db1b1cc427d61df0e94084a65e1",
+  "records_sha256": "9ed38e8769149e40e682c94827221441ac625a2a8b1af3f5b1a343fa9aa3a003",
+  "models_launched": 0,
+  "selftests_completed_before_analysis": [
+    "symlink resolves to exact pinned hash",
+    "wrong hash refused",
+    "duplicate canonical identity refused",
+    "missing binary refused"
+  ]
+}

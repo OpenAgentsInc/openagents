@@ -89,6 +89,15 @@ All three variants, 50 checkpoint comparisons, hashes, and cleanup checks are
 retained. The CPU-only run finishes in 10.51 seconds at 3.71 GB peak accounted
 memory under its fixed 12 GiB cap.
 
+The [layer-0 controls](text029-layer0-replay-v1/README.md) separate the first
+projection rounding differences from later amplification. The f32 baseline
+reproduces its saved output bit for bit. Rounding both linear weights and inputs
+through f16 reduces relative L2 distance from native from `0.00009055` to
+`0.000008106`, about 11.2 times closer. Changing only the official Delta operator
+from chunked to recurrent has little effect. All six variants and 248 checkpoint
+comparisons are retained. This supports a local precision explanation without
+establishing the cause of the final answer change or revising the runtime gate.
+
 The [activation-weighted Q4 preparation](activation-weighted-q4-preparation-v1/README.md)
 preserves the frozen corpus, recipes, and checks. The two-record pilot passed;
 the full collector was deliberately stopped after 70 of 96 records and
@@ -199,6 +208,14 @@ The [MPP and MLX source review](mpp-register-input-review-v1/README.md) finds
 no documented half-input speed benefit from MPP's relaxed-precision flag.
 MLX's explicit register-input fragments differ from the rejected direct-device
 SIMD probe, so that loading organization remains a separate unmeasured lead.
+
+The [register-input attempt](gemm-register-input-probe-v1/README.md) remains
+unqualified. Its first build rejected a missing Metal address-space qualifier;
+the retained one-line repair compiles. The first GPU dispatch then fails the
+exact cooperative-coordinate check before any GEMM, real-weight read, or timing.
+This is a layout-interface failure, not evidence about multiplication accuracy
+or speed. Both builds and the failed dispatch complete owned-process cleanup
+within their unchanged bounds. No product change follows.
 The review records the public source versions, license, and SDK/specification
 identities; it introduces no product change or speed claim.
 
@@ -245,8 +262,34 @@ match all 110 text answers, with exactly equal raw logits and pooled rows,
 including the 3,886-token and 15,480-token requests. All 14 image answers and
 ten HTTP refusals also pass. Every owned server stops within the fixed
 resource bounds. The three-file change preserves the staged default and only
-changes the opt-in fused kernel. Fresh paired latency remains pending; this
-optimization does not resolve the separate independent-Q4 answer discrepancy.
+changes the opt-in fused kernel. This optimization does not resolve the separate
+independent-Q4 answer discrepancy.
+
+The [fresh Flash comparison](attention-qk128-key32-flash-latency-v1/README.md)
+completes 108 requests in two reversed-order rounds. Native answer objects are
+exactly equal in all 36 paired samples and native cache counts remain zero.
+The whole-model results do not establish a consistent speed improvement:
+
+| Actual token range | Stage 6 median | Candidate median | Median paired candidate / Stage 6 |
+| --- | ---: | ---: | ---: |
+| 1,079–1,083 | 0.674974 s | 0.511324 s | 0.8990 |
+| 3,915–3,921 | 2.256425 s | 2.374397 s | 1.0418 |
+| 15,506–15,515 | 10.002488 s | 10.325572 s | 1.0385 |
+
+Run-order variation is substantial; all samples, per-round medians, and serving
+phase timers remain in the bundle. No target median is met. Ollama reports
+37–39 cached template tokens on 31 of 36 requests, so the all-engine uncached
+gate fails. Its `0.818 / 2.817 / 11.757 s` medians are descriptive with that
+known asymmetry. Unique states prevent full-request repetition but do not
+remove the shared template prefix.
+
+The retained offline analysis also corrects an executable path-alias lookup
+and validates Ollama's source-defined entropy confidence separately from
+native top-probability confidence. Original failed analyzers and receipts stay
+unchanged. The shared harness now rejects positive or malformed top-level
+`prompt_eval_cached_count`; eight focused fixtures and all 108 retained
+responses confirm the fix, with no new model requests. All six owned servers
+clean up within their fixed bounds, with peak accounted memory of 23.05 GB.
 
 ## Stage 6 fused field head
 
@@ -324,9 +367,12 @@ ordinary serving phase timers, including zero queue time for native requests.
 Profiling is off throughout.
 
 There are 90 measured requests and 18 warmups. Native prefix and answer caches
-are disabled. Ollama does not report `cached_input_tokens`; unique state nonces
-prevent repeated complete requests, but internal prefix reuse is not directly
-observed. No task-owned build, probe, or second model runs concurrently. Other
+are disabled. Retrospective inspection finds that Ollama reports prefix reuse
+in top-level `prompt_eval_cached_count`, which the original analyzer overlooked:
+four responses report zero, and 32 report 37–39 reused tokens. Unique states
+prevent repeated complete requests but leave the template prefix reusable.
+These results therefore do not establish a fully uncached Ollama comparison.
+No task-owned build, probe, or second model runs concurrently. Other
 applications remain running, so these are shared-machine results. All six
 owned servers stop successfully. The largest sampled process-group accounting
 is 23,091,128,160 bytes, and recorded available memory stays above
@@ -352,8 +398,11 @@ variant. Request bytes and actual token counts pair exactly: 1,076–1,080,
 separate BF16 text-quality failure. One fixed-order round on a shared machine
 does not establish idle-machine performance or explain differences from earlier
 runs. Native reports zero queue time and disabled prefix and answer caches.
-Ollama omits cache-use telemetry; unique state nonces prevent repeated complete
-requests, but do not prove that internal prefix reuse is absent.
+Retrospective inspection finds that Ollama's top-level `prompt_eval_cached_count`
+reports zero in four responses and 37–39 reused prefix tokens in 14. The original
+analyzer overlooked that field. These measurements do not establish a fully
+uncached Ollama comparison; unique states prevent repeated complete requests
+but leave the template prefix reusable.
 
 The [resource plan](27b-ollama-stage6/resource-plan.json) estimates the extra
 resident FFN allocation before the run. The guard uses a 76 GiB process-group

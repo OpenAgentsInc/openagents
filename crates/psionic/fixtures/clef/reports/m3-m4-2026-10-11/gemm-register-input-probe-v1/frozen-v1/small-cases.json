@@ -1,0 +1,89 @@
+{
+  "status": "fixed before compilation or GPU execution",
+  "fields": [
+    "n",
+    "m",
+    "k",
+    "fixture"
+  ],
+  "cases": [
+    [
+      1,
+      1,
+      1,
+      "zero"
+    ],
+    [
+      3,
+      7,
+      15,
+      "nonsymmetric"
+    ],
+    [
+      7,
+      31,
+      16,
+      "onehot"
+    ],
+    [
+      257,
+      1,
+      17,
+      "nonsymmetric"
+    ],
+    [
+      31,
+      32,
+      31,
+      "mixedrange"
+    ],
+    [
+      32,
+      16,
+      32,
+      "cancellation"
+    ],
+    [
+      33,
+      65,
+      33,
+      "nonsymmetric"
+    ],
+    [
+      63,
+      1,
+      127,
+      "correlated"
+    ],
+    [
+      64,
+      33,
+      128,
+      "nonsymmetric"
+    ],
+    [
+      65,
+      1,
+      129,
+      "mixedrange"
+    ],
+    [
+      17,
+      1,
+      4096,
+      "cancellation"
+    ],
+    [
+      1,
+      33,
+      12288,
+      "nonsymmetric"
+    ]
+  ],
+  "accumulate_modes": [
+    false,
+    true
+  ],
+  "projection_checks": 24,
+  "input_roundtrip_checks": 12
+}

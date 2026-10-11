@@ -1,0 +1,13 @@
+--- a/crates/psionic/fixtures/clef/tools/mac_quiet_bench.py
++++ b/crates/psionic/fixtures/clef/tools/mac_quiet_bench.py
+@@ -327,6 +327,10 @@
+     cached = usage.get("cached_input_tokens", 0)
+     if type(cached) is not int or cached != 0:
+         raise RuntimeError("cached input invalidates an uncached comparison")
++    if "prompt_eval_cached_count" in response:
++        cached = response["prompt_eval_cached_count"]
++        if type(cached) is not int or cached != 0:
++            raise RuntimeError("cached input invalidates an uncached comparison")
+     timing = response.get("psionic", {}).get("timing", {})
+     if timing.get("cached"):
+         raise RuntimeError("cached answers invalidate an uncached comparison")

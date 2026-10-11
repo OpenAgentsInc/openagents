@@ -1,0 +1,60 @@
+<TASK_SCRATCH>/gemm-register-input-probe/candidate.metal:9:16: error: program scope variable must reside in constant address space
+constexpr auto register_desc = matmul2d_descriptor(
+               ^
+<TASK_SCRATCH>/gemm-register-input-probe/candidate.metal:99:5: error: unknown type name 'RegisterOp'
+    RegisterOp op;
+    ^
+<TASK_SCRATCH>/gemm-register-input-probe/candidate.metal:100:15: error: use of undeclared identifier 'RegisterOp'
+    using A = RegisterOp::cooperative_tensor_left_input_t<half, half, float>;
+              ^
+<TASK_SCRATCH>/gemm-register-input-probe/candidate.metal:101:15: error: use of undeclared identifier 'RegisterOp'
+    using B = RegisterOp::cooperative_tensor_right_input_t<half, half, float>;
+              ^
+<TASK_SCRATCH>/gemm-register-input-probe/candidate.metal:102:53: error: use of undeclared identifier 'A'
+    auto c0 = op.get_destination_cooperative_tensor<A, B, float>();
+                                                    ^
+<TASK_SCRATCH>/gemm-register-input-probe/candidate.metal:102:56: error: declaration of variable 'B' with deduced type 'auto' requires an initializer
+    auto c0 = op.get_destination_cooperative_tensor<A, B, float>();
+                                                       ^
+<TASK_SCRATCH>/gemm-register-input-probe/candidate.metal:102:59: error: expected unqualified-id
+    auto c0 = op.get_destination_cooperative_tensor<A, B, float>();
+                                                          ^
+<TASK_SCRATCH>/gemm-register-input-probe/candidate.metal:102:58: error: expected ';' at end of declaration
+    auto c0 = op.get_destination_cooperative_tensor<A, B, float>();
+                                                         ^
+                                                         ;
+<TASK_SCRATCH>/gemm-register-input-probe/candidate.metal:102:64: error: expected unqualified-id
+    auto c0 = op.get_destination_cooperative_tensor<A, B, float>();
+                                                               ^
+<TASK_SCRATCH>/gemm-register-input-probe/candidate.metal:103:53: error: use of undeclared identifier 'A'
+    auto c1 = op.get_destination_cooperative_tensor<A, B, float>();
+                                                    ^
+<TASK_SCRATCH>/gemm-register-input-probe/candidate.metal:103:56: error: redefinition of 'B'
+    auto c1 = op.get_destination_cooperative_tensor<A, B, float>();
+                                                       ^
+<TASK_SCRATCH>/gemm-register-input-probe/candidate.metal:102:56: note: previous definition is here
+    auto c0 = op.get_destination_cooperative_tensor<A, B, float>();
+                                                       ^
+<TASK_SCRATCH>/gemm-register-input-probe/candidate.metal:103:56: error: declaration of variable 'B' with deduced type 'auto' requires an initializer
+    auto c1 = op.get_destination_cooperative_tensor<A, B, float>();
+                                                       ^
+<TASK_SCRATCH>/gemm-register-input-probe/candidate.metal:103:59: error: expected unqualified-id
+    auto c1 = op.get_destination_cooperative_tensor<A, B, float>();
+                                                          ^
+<TASK_SCRATCH>/gemm-register-input-probe/candidate.metal:103:58: error: expected ';' at end of declaration
+    auto c1 = op.get_destination_cooperative_tensor<A, B, float>();
+                                                         ^
+                                                         ;
+<TASK_SCRATCH>/gemm-register-input-probe/candidate.metal:103:64: error: expected unqualified-id
+    auto c1 = op.get_destination_cooperative_tensor<A, B, float>();
+                                                               ^
+<TASK_SCRATCH>/gemm-register-input-probe/candidate.metal:183:5: error: unknown type name 'RegisterOp'
+    RegisterOp op;
+    ^
+16 errors generated.
+Traceback (most recent call last):
+  File "<TASK_SCRATCH>/gemm-register-input-probe/build.py", line 16, in <module>
+    print(json.dumps({'command':command}),flush=True);subprocess.run(command,check=True)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/subprocess.py", line 528, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['xcrun', '-sdk', 'macosx', 'metal', '-std=metal4.0', '-c', '<TASK_SCRATCH>/gemm-register-input-probe/candidate.metal', '-o', '<TASK_SCRATCH>/gemm-register-input-probe/candidate.metal.air']' returned non-zero exit status 1.

@@ -1,0 +1,15 @@
+{
+  "observed_version": "0.40.2",
+  "version_evidence": "run-1/server-r0-ollama.log:8",
+  "commit": "b061384d90ff455462bc32745dd0de479de717a3",
+  "source_url": "https://raw.githubusercontent.com/ollama/ollama/b061384d90ff455462bc32745dd0de479de717a3/decision/systemone.go",
+  "source_sha256": "1b98d2649c0494443010a5eee5bdeea7b47ca67a4fb16a24d99eee6685224d68",
+  "source_bytes": 8506,
+  "formula": "max(0,min(1,1-H(p)/ln(N)))",
+  "exact_formula_lines": [
+    277
+  ],
+  "local_native_contract": "crates/psionic/crates/psionic-serve/src/clef/mod.rs:23-24,1667,1685",
+  "local_caller_contract": "docs/decision-models/guides/caller.md:86-88",
+  "scope": "Matching release source supports normalized-entropy confidence. Installed executable is pinned by SHA-256; this is not a reproducible-build attestation."
+}

@@ -1,0 +1,65 @@
+{
+  "model_path": "<OWNER_HOME>/.openagents/scratch/codex-01a12620-209f-7ec3-9846-7e94fc1b965b/mac-quiet-2026-10-10/model.gguf",
+  "measurement_mode": "shared",
+  "max_start_load": 150,
+  "max_run_load": 180,
+  "rounds": 2,
+  "runs": 5,
+  "request_timeout": 300,
+  "variants": [
+    {
+      "name": "stage6-key32",
+      "binary": "<SCRATCH>/stage6/psionic-openai-server",
+      "chunk": 2048,
+      "model": "clef-flash",
+      "env": {
+        "RAYON_NUM_THREADS": "2",
+        "OMP_NUM_THREADS": "2",
+        "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0",
+        "PSIONIC_CLEF_BATCH_REQUESTS": "1",
+        "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+        "PSIONIC_CLEF_METAL_GEMM": "weight-shapes",
+        "PSIONIC_CLEF_METAL_HEAD": "fused-fields",
+        "PSIONIC_CLEF_METAL_DELTA": "sequential",
+        "PSIONIC_CLEF_METAL_FFN_WEIGHTS": "resident-f16"
+      }
+    },
+    {
+      "name": "candidate-qk128-key32",
+      "binary": "<SCRATCH>/attention-qk128-key32-integration/psionic-openai-server",
+      "chunk": 2048,
+      "model": "clef-flash",
+      "env": {
+        "RAYON_NUM_THREADS": "2",
+        "OMP_NUM_THREADS": "2",
+        "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0",
+        "PSIONIC_CLEF_BATCH_REQUESTS": "1",
+        "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+        "PSIONIC_CLEF_METAL_GEMM": "weight-shapes",
+        "PSIONIC_CLEF_METAL_HEAD": "fused-fields",
+        "PSIONIC_CLEF_METAL_DELTA": "sequential",
+        "PSIONIC_CLEF_METAL_FFN_WEIGHTS": "resident-f16"
+      }
+    },
+    {
+      "name": "ollama",
+      "engine": "ollama",
+      "binary": "/opt/homebrew/bin/ollama",
+      "models_dir": "<OWNER_HOME>/.ollama/models",
+      "model": "clef-flash",
+      "env": {
+        "RAYON_NUM_THREADS": "2",
+        "OMP_NUM_THREADS": "2"
+      }
+    }
+  ],
+  "requests": [
+    "<OWNER_HOME>/.openagents/scratch/codex-01a12620-209f-7ec3-9846-7e94fc1b965b/mac-quiet-2026-10-10/requests/len1k.json",
+    "<OWNER_HOME>/.openagents/scratch/codex-01a12620-209f-7ec3-9846-7e94fc1b965b/mac-quiet-2026-10-10/requests/len4k.json",
+    "<OWNER_HOME>/.openagents/scratch/codex-01a12620-209f-7ec3-9846-7e94fc1b965b/mac-quiet-2026-10-10/requests/len16k.json"
+  ],
+  "output_dir": "<LATENCY>/run-1",
+  "max_rss_gib": 36,
+  "minimum_available_memory_gib": 12,
+  "startup_timeout": 180
+}

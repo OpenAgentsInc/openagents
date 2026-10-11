@@ -1,0 +1,11 @@
+--- frozen-v1/candidate.metal
++++ candidate.metal
+@@ -6,7 +6,7 @@
+ using namespace metal;
+ using namespace mpp::tensor_ops;
+ 
+-constexpr auto register_desc = matmul2d_descriptor(
++constant constexpr auto register_desc = matmul2d_descriptor(
+     16, 32, 16, false, true, false, matmul2d_descriptor::mode::multiply_accumulate);
+ using RegisterOp = matmul2d<register_desc, execution_simdgroup>;
+ 

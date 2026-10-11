@@ -1,0 +1,19 @@
+{
+  "status": "failed",
+  "config_sha256": "9912bbe7ef04556dda6d4a8994d638f2904ddc8cccab8ed6aa0020574e7abca8",
+  "provenance_sha256": "26ea91c7659734ddf176f4b46a64fd8b07d833993a8254f17c356c9042979e04",
+  "source_sha256": {
+    "run.py": "2ba31a04fbcca5652565ac03c0782ecef6bb8592e6ecc34d66d8bc9b572f0c1f",
+    "analyze.py": "bfb4fe1547f7f2f7704bb469b63bfa15b0a0331e32dcee58c3ce6abb7dd75fec",
+    "PLAN.md": "d7d69409c66bf2896c57a525645825c1a297e726cfc30308ce7f4afc28726d48"
+  },
+  "preparation_manifest_sha256": "032aa81bccbcc0fead93b8a674424e89ebf8f55d7a3433bffbe5a75086b361ab",
+  "deadline_seconds": 1800,
+  "preflight_hash_deadline_seconds": 120,
+  "conditions": "shared-machine latency; caller must coordinate a window with no task-owned build, CPU model or GPU model overlap",
+  "preflight_hash_seconds": 9.407525875,
+  "verified_ollama_blobs": 893,
+  "error_type": "KeyError",
+  "error": "'/Applications/Ollama.app/Contents/Resources/ollama'",
+  "seconds": 583.9046310000001
+}

@@ -1,0 +1,163 @@
+{
+  "status": "complete",
+  "error_type": null,
+  "finished_at": "2026-10-11T14:55:10.959678+00:00",
+  "groups": [
+    {
+      "variant": "stage6-key32",
+      "workload": "<OWNER_HOME>/.openagents/scratch/codex-01a12620-209f-7ec3-9846-7e94fc1b965b/mac-quiet-2026-10-10/requests/len1k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 0.6749741040000004,
+      "input_tokens": [
+        1079,
+        1080,
+        1081,
+        1082,
+        1083
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "stage6-key32",
+      "workload": "<OWNER_HOME>/.openagents/scratch/codex-01a12620-209f-7ec3-9846-7e94fc1b965b/mac-quiet-2026-10-10/requests/len4k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 2.2564247290000203,
+      "input_tokens": [
+        3915,
+        3916,
+        3918,
+        3919,
+        3921
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "stage6-key32",
+      "workload": "<OWNER_HOME>/.openagents/scratch/codex-01a12620-209f-7ec3-9846-7e94fc1b965b/mac-quiet-2026-10-10/requests/len16k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 10.002488291999988,
+      "input_tokens": [
+        15506,
+        15508,
+        15510,
+        15511,
+        15512,
+        15513,
+        15515
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "candidate-qk128-key32",
+      "workload": "<OWNER_HOME>/.openagents/scratch/codex-01a12620-209f-7ec3-9846-7e94fc1b965b/mac-quiet-2026-10-10/requests/len1k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 0.5113237500000025,
+      "input_tokens": [
+        1079,
+        1080,
+        1081,
+        1082,
+        1083
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "candidate-qk128-key32",
+      "workload": "<OWNER_HOME>/.openagents/scratch/codex-01a12620-209f-7ec3-9846-7e94fc1b965b/mac-quiet-2026-10-10/requests/len4k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 2.374396728999997,
+      "input_tokens": [
+        3915,
+        3916,
+        3918,
+        3919,
+        3921
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "candidate-qk128-key32",
+      "workload": "<OWNER_HOME>/.openagents/scratch/codex-01a12620-209f-7ec3-9846-7e94fc1b965b/mac-quiet-2026-10-10/requests/len16k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 10.325572041499996,
+      "input_tokens": [
+        15506,
+        15508,
+        15510,
+        15511,
+        15512,
+        15513,
+        15515
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "ollama",
+      "workload": "<OWNER_HOME>/.openagents/scratch/codex-01a12620-209f-7ec3-9846-7e94fc1b965b/mac-quiet-2026-10-10/requests/len1k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 0.8179503539999899,
+      "input_tokens": [
+        1079,
+        1080,
+        1081,
+        1082,
+        1083
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "ollama",
+      "workload": "<OWNER_HOME>/.openagents/scratch/codex-01a12620-209f-7ec3-9846-7e94fc1b965b/mac-quiet-2026-10-10/requests/len4k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 2.8170552494999868,
+      "input_tokens": [
+        3915,
+        3916,
+        3918,
+        3919,
+        3921
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "ollama",
+      "workload": "<OWNER_HOME>/.openagents/scratch/codex-01a12620-209f-7ec3-9846-7e94fc1b965b/mac-quiet-2026-10-10/requests/len16k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 11.75655966650001,
+      "input_tokens": [
+        15506,
+        15508,
+        15510,
+        15511,
+        15512,
+        15513,
+        15515
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    }
+  ],
+  "measurement_mode": "shared",
+  "monitor_error": null,
+  "diagnostic_only": false,
+  "gpu_interference_detection": "not enforced in shared mode; total GPU activity sampled",
+  "idle_machine_acceptance": "not applicable: shared machine",
+  "note": "Medians exclude warmups and rejected samples. No quality verdict or tail-latency claim."
+}

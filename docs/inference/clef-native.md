@@ -989,8 +989,8 @@ contention and do not pass the idle-Mac gate. The tested runtime patch remains
 an experiment; this audit changes no production runtime default.
 
 The Metal lane runs the model; the dated rounds below record its measurements.
-The current implementation adds opt-in kernels and M4 features whose integrated
-model checks are still pending. Issue:
+The current implementation adds opt-in kernels and M4 features with the
+passing checks and remaining acceptance gaps recorded below. Issue:
 [#11196](https://github.com/OpenAgentsInc/openagents/issues/11196).
 
 - **Kernels:** `crates/psionic/crates/psionic-backend-metal/src/kernels/clef_prefill.metal`,
@@ -1377,14 +1377,23 @@ still needs an operator-level explanation. A
 [layer-35 replay](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/text029-layer35-replay-v1/README.md)
 shows that this layer mostly amplifies incoming differences. Modeling native
 half-precision boundaries reduces the smaller local residual, but does not
-identify an earlier defect or change the failed all-top gate. The revised
+identify an earlier defect or change the failed all-top gate. The
+[layer-0 controls](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/text029-layer0-replay-v1/README.md)
+bring the independent result about 11.2 times closer to native by rounding both
+linear weights and inputs through f16. A change to the Delta formulation alone
+has little effect. This local result does not resolve the full-model gate. The revised
 [QK128/key32 attention probe](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/attention-qk128-key32-probe-v1/README.md)
 preserves bitwise output agreement in synthetic checks and reduces median
 kernel time by 8–18%. Its
 [compiled integration](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/attention-qk128-key32-integration-v1/README.md)
 passes 25 CPU and four GPU tests, with exactly equal logits and pooled rows
 for 110 Flash and 110 27B text answers, including long histories. All 14 image
-answers and ten refusals pass. Fresh paired latency remains pending, and the
+answers and ten refusals pass. The
+[fresh Flash latency comparison](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/attention-qk128-key32-flash-latency-v1/README.md)
+reports candidate medians of `0.511 / 2.374 / 10.326 s`, missing the targets
+without a consistent gain over Stage 6. Native cache counts are zero; Ollama
+reports 37–39 reused template tokens on 31 of 36 requests, so the all-engine
+uncached gate fails. The shared harness now checks that top-level field. The
 independent same-Q4 runtime discrepancy remains unresolved.
 
 ### Metal controls and memory
@@ -1601,8 +1610,8 @@ complete before the native comparison starts; do not overlap their model loads.
 | Two-/four-request Flash HTTP batch acceptance | Passed: 15 successful requests per mode have identical full-precision probabilities to serial references. Actual grouped FFN work, disconnect recovery, and saturation recovery pass. Each overload burst returns three `busy` refusals. The run overlaps compilation; no throughput improvement is claimed. |
 | Prefix raw-logit parity and reuse speed | Passed on Flash and 27B: all 21 question comparisons per model have zero logit difference; repeated-state medians improve by 6.83× and 9.42×, respectively. Changed schemas, state changes, eviction, and restored hits pass. Shared-machine runs overlap CPU compilation and export raw logits. |
 | 27B batching | Passed on Stage 5: two and four slots each compare 15 successful responses with identical serial probabilities, actual grouped FFN work, disconnect recovery, and overload recovery. Each burst returns three `busy` refusals. This functional run overlaps CPU diagnostics and does not establish a throughput target. |
-| Flash paired latency | Stage 6 runs two rounds in reversed order, with ten measured requests per size and variant. Staged-head medians are `0.749 / 2.555 / 11.450 s`; fused-field medians are `0.740 / 2.576 / 11.328 s`; Ollama 0.40.2 medians are `0.841 / 2.914 / 11.964 s`. Both native modes beat Ollama in each round but **fail M3’s absolute targets**. No consistent head speedup is established. Native caches are disabled; Ollama omits cache-use telemetry. |
-| 27B paired latency | Stage 6 resident-f16 medians are `2.490 / 9.193 / 43.437 s`, versus Ollama 0.40.2 at `3.112 / 10.520 / 43.243 s`: `1.250× / 1.144× / 0.996×`, all **below M4’s 1.5× target**. One fixed-order round has five measured requests per size. Both latency comparisons pair request bytes and token counts, run on the shared machine with no task-owned build or second model, and preserve load and memory receipts. They do not establish idle-machine acceptance. |
+| Flash paired latency | Stage 6 runs two rounds in reversed order, with ten measured requests per size and variant. Staged-head medians are `0.749 / 2.555 / 11.450 s`; fused-field medians are `0.740 / 2.576 / 11.328 s`; Ollama 0.40.2 medians are `0.841 / 2.914 / 11.964 s`. Both native modes beat Ollama in each round but **fail M3’s absolute targets**. No consistent head speedup is established. Native caches are disabled. Retrospective inspection finds 37–39 cached prefix tokens in 32 of 36 Ollama responses; the original analyzer overlooked its top-level cache field. |
+| 27B paired latency | Stage 6 resident-f16 medians are `2.490 / 9.193 / 43.437 s`, versus Ollama 0.40.2 at `3.112 / 10.520 / 43.243 s`: `1.250× / 1.144× / 0.996×`, all **below M4’s 1.5× target**. One fixed-order round has five measured requests per size. Retrospective inspection finds 37–39 cached prefix tokens in 14 of 18 Ollama responses. Both comparisons pair request bytes and token counts, run on the shared machine without task-owned competing work, and preserve load and memory receipts. They establish neither idle-machine nor fully uncached Ollama acceptance. |
 
 Stage 5 corrects DeltaNet normalization in CPU, Metal prefill, and CUDA
 prefill to `x / sqrt(sum(x*x) + 1e-6)`, matching the executed Transformers

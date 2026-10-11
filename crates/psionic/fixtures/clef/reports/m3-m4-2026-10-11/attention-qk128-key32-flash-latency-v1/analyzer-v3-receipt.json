@@ -1,0 +1,38 @@
+{
+  "selftests_passed": true,
+  "checks": [
+    "original Ollama entropy confidence accepted",
+    "original native maximum-probability confidence accepted",
+    "Ollama maximum-probability confidence refused",
+    "nonfinite confidence refused",
+    "wrong top answer refused",
+    "missing probability refused",
+    "wrong score expectation refused",
+    "wrong question set refused",
+    "cached answer refused",
+    "native entropy confidence refused",
+    "binary symlink exact identity accepted",
+    "wrong binary hash refused",
+    "duplicate canonical identity refused",
+    "missing binary refused",
+    "all-engine uncached gate remains failed with exact disclosed cache histogram"
+  ],
+  "models_launched": 0,
+  "original_evidence_unchanged": {
+    "run-receipt.json": "149bd33d76c0bc2d9fdd66519ddd98075f4a4db1b1cc427d61df0e94084a65e1",
+    "analyze.py": "bfb4fe1547f7f2f7704bb469b63bfa15b0a0331e32dcee58c3ce6abb7dd75fec",
+    "analyze_v2.py": "aeec7cabdbcecc76697fd361877d34ce82bdbc443c9186c10c7b592094906cb4",
+    "analyzer-v2-failure.json": "023c25f17bebd3751067672f7842cb2a6f13f19f89a78b6e3f8e2bdcd016c7ba",
+    "run-1/records.jsonl": "9ed38e8769149e40e682c94827221441ac625a2a8b1af3f5b1a343fa9aa3a003"
+  },
+  "source_sha256": {
+    "analyze_v3.py": "3f2a2af059a6e3cecb3c1aaf11f2c7e91aed87c08f3978820656748da7c7dcbd",
+    "check_analyzer_v3.py": "4392c600f7163ba6076ab497e51b4665d271ab300da7004d73dcd23e953c256d"
+  },
+  "analysis_sha256": "d02e71c9f54d143869c8a28e228c61b3e63b0c7a1af70f84f2ae5873ba0d511a",
+  "structural_validation_passed": true,
+  "native_uncached_validation_passed": true,
+  "all_engine_uncached_comparison_passed": false,
+  "native_paired_responses": 36,
+  "native_answers_exact_equal_pairs": 36
+}

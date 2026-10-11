@@ -1,0 +1,2 @@
+{"command": ["xcrun", "-sdk", "macosx", "metal", "-std=metal4.0", "-c", "<TASK_SCRATCH>/gemm-register-input-probe/baseline.metal", "-o", "<TASK_SCRATCH>/gemm-register-input-probe/baseline.metal.air"]}
+{"command": ["xcrun", "-sdk", "macosx", "metal", "-std=metal4.0", "-c", "<TASK_SCRATCH>/gemm-register-input-probe/candidate.metal", "-o", "<TASK_SCRATCH>/gemm-register-input-probe/candidate.metal.air"]}

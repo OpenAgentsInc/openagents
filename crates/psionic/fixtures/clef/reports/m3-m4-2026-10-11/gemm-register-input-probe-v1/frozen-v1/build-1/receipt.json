@@ -1,0 +1,69 @@
+{
+  "mode": "build",
+  "status": "failed",
+  "preflight": {
+    "available_memory_bytes": 102093897728,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 4295468,
+      "inactive": 1541112,
+      "speculative": 394737
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "max_owned_group_bytes": 4294967296,
+  "minimum_available_bytes": 12884901888,
+  "minimum_start_bytes": 17179869184,
+  "deadline_seconds": 180,
+  "conditions": "shared machine; fixed K32 cooperative-input Flash projections with K128 barriers; no model execution",
+  "source_sha256": {
+    "baseline.metal": "9505a34d21d4d6bd11a532a62549d00c8cafbad90ab92f2bd07cccb4eae30725",
+    "candidate.metal": "c89d66dee379132b0890648f8f5494503965d3962206a7db4202c5052230a8e2",
+    "production-shapes.metal": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+    "production-fixed-extract.metal": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+    "production-silu-extract.metal": "fe7844912a63f4219dc05a5a50a5b269ad48a0e3aa5f60cef221ae9223880e61",
+    "production-planner.rs": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac",
+    "probe.swift": "d4f864fa83b1a2ba9852085375210770cfb39e8eb554963e881463f6fc73f0e0",
+    "weights.json": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+    "build.py": "705b5097c335167d90fc36344466b103ccd0ced74c215a2fce34634621444cf2",
+    "guard.py": "4e4cd1fe1d414dbd3c96cbbc75d102eb4c9ed1c1fcebe32135ba6478a660889f",
+    "manifest.json": "2952afc4c0e2ffbccb9d813d68b69003a4ccd796e7143c30789e66ca69b2148a",
+    "summarize.py": "7b4f707b520221e24ef698e44e574be177d7a36168ee5922cec51219bf8fe26d",
+    "source_check.py": "c436ab60c1671b7b3be55da672ca6d4ba4b01ab12dbea18ee01cd6b71e1019c0",
+    "README.md": "dd88a68575fd9b2896275e68c718422a10b0af8ca54820f564b6b2bbb88939a8",
+    "half_ulp_check.py": "f5f1d3dcbe7cd4da54c45b9ea2698047ba861bc26575144e0ae4c6f53f015aa4",
+    "half-ulp-fixtures.json": "bc0a57a7088795ab57884782326d9a1de7285c6bbfd109c68271309381f046d5",
+    "small-cases.json": "2b3f459f8ea221c786fa71f38fe6acba83bf271d31dc297c31898cad26f4bb94"
+  },
+  "guard_dependency_sha256": {
+    "mac_quiet_bench.py": "ce5f832d0eeb2ec5c954755c07d00fafcc2bb1c59d6aa6c1d993a2f84bcce9fb",
+    "mac_memory.py": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd"
+  },
+  "command": [
+    "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+    "<TASK_SCRATCH>/gemm-register-input-probe/build.py"
+  ],
+  "exit": 1,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 81744,
+    "max_rss_bytes": 4294967296,
+    "peak_rss_bytes": 36945920,
+    "peak_physical_footprint_bytes": 12550888,
+    "peak_accounted_bytes": 36945920,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 2,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 101848072192,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 1.034654625
+}

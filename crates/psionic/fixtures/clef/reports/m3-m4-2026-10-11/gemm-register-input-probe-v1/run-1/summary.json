@@ -1,0 +1,11 @@
+{
+  "coverage_and_correctness_passed": false,
+  "numerical_gate": "exact cooperative input/residual roundtrips before GEMM; f32 gate/up/down absolute .001; finite half activation absolute .001 OR at most one half ULP; independent f64 checks; exact matching-variant repeat bytes; frozen before first compile/run",
+  "timing_included": true,
+  "checks": 0,
+  "exact_input_roundtrips": 0,
+  "timing_rows": 0,
+  "scope": "same-weight synthetic-input projections; shared-machine microbenchmark, not model latency",
+  "conditions": "fixed ABBA order within each round; temporal drift and cache effects remain possible",
+  "by_tokens": []
+}

@@ -1,0 +1,95 @@
+{
+  "commit": "b061384d90ff455462bc32745dd0de479de717a3",
+  "observed_version": "0.40.2",
+  "files": {
+    "decision/systemone.go": {
+      "url": "https://github.com/ollama/ollama/blob/b061384d90ff455462bc32745dd0de479de717a3/decision/systemone.go",
+      "sha256": "1b98d2649c0494443010a5eee5bdeea7b47ca67a4fb16a24d99eee6685224d68",
+      "bytes": 8506
+    },
+    "decision/types.go": {
+      "url": "https://github.com/ollama/ollama/blob/b061384d90ff455462bc32745dd0de479de717a3/decision/types.go",
+      "sha256": "2a28de79d0dc49ef75429202253594b1da9070bf4f29d8798a0b52c1fc36c8d9",
+      "bytes": 2290
+    },
+    "envconfig/config.go": {
+      "url": "https://github.com/ollama/ollama/blob/b061384d90ff455462bc32745dd0de479de717a3/envconfig/config.go",
+      "sha256": "0b0ea669b31cfe2b54313427257326a2b7a909bbc7bf8a671035efc446fb1895",
+      "bytes": 16343
+    },
+    "mlxrunner/client_score.go": {
+      "url": "https://github.com/ollama/ollama/blob/b061384d90ff455462bc32745dd0de479de717a3/mlxrunner/client_score.go",
+      "sha256": "dfc1c177fbd9481d363fef82d7b71a86a98c07964769aca37fdd0a3f537b055a",
+      "bytes": 1150
+    },
+    "mlxrunner/model/clef/score.go": {
+      "url": "https://github.com/ollama/ollama/blob/b061384d90ff455462bc32745dd0de479de717a3/mlxrunner/model/clef/score.go",
+      "sha256": "3f2aef1da5c90832bb5048d7ac495e951a3ce43ccf4ae2b9d2253f22ea2cd981",
+      "bytes": 3911
+    },
+    "mlxrunner/prefix_cache.go": {
+      "url": "https://github.com/ollama/ollama/blob/b061384d90ff455462bc32745dd0de479de717a3/mlxrunner/prefix_cache.go",
+      "sha256": "059c5f6ad264003a97e256b74dd0fd6eedc1cb717c7fc1ff916dd5b2f5bc46b8",
+      "bytes": 23830
+    },
+    "mlxrunner/runner.go": {
+      "url": "https://github.com/ollama/ollama/blob/b061384d90ff455462bc32745dd0de479de717a3/mlxrunner/runner.go",
+      "sha256": "1eb36e0905f8100065af9cc27bfb844cc9029d46f79e3b9d54ab9f9d3a600527",
+      "bytes": 9771
+    },
+    "mlxrunner/score.go": {
+      "url": "https://github.com/ollama/ollama/blob/b061384d90ff455462bc32745dd0de479de717a3/mlxrunner/score.go",
+      "sha256": "8ad59845214141d75fb9a829c1b343a6ca2e6840cc999fb4b46fd4de4af4dea8",
+      "bytes": 8038
+    },
+    "mlxrunner/server.go": {
+      "url": "https://github.com/ollama/ollama/blob/b061384d90ff455462bc32745dd0de479de717a3/mlxrunner/server.go",
+      "sha256": "57574b795d995eee292dca0c51a94a0ee4bf050011c3b11f311e8c9cd32734e2",
+      "bytes": 7556
+    }
+  },
+  "findings": [
+    {
+      "claim": "Top-level prompt_eval_cached_count is the scorer CachedTokens count, not generated output or answer-cache telemetry.",
+      "sources": [
+        "decision/types.go",
+        "decision/systemone.go",
+        "mlxrunner/model/clef/score.go"
+      ]
+    },
+    {
+      "claim": "The MLX scoring path obtains a prefix session, computes offset as input length minus remaining length, forwards only remaining tokens, and reports that offset.",
+      "sources": [
+        "mlxrunner/score.go",
+        "mlxrunner/prefix_cache.go"
+      ]
+    },
+    {
+      "claim": "The inspected System One Request type has model/state/images/videos/questions/keep_alive and no cache-disabling request option.",
+      "sources": [
+        "decision/types.go"
+      ]
+    },
+    {
+      "claim": "The inspected published environment registry has no prefix-cache disable option. OLLAMA_KV_CACHE_TYPE selects representation, not whether prefixes are reused.",
+      "sources": [
+        "envconfig/config.go"
+      ]
+    },
+    {
+      "claim": "The inspected MLX scorer constructs/reuses a model-local scoring cache unconditionally. No supported cache-disable control was found in these source paths; this is a scoped source review, not a claim about every possible private or future control.",
+      "sources": [
+        "mlxrunner/score.go",
+        "mlxrunner/prefix_cache.go",
+        "mlxrunner/runner.go"
+      ]
+    },
+    {
+      "claim": "Unique leading state nonces did not remove shared template-prefix reuse in this run; 31 of 36 Ollama responses reported 37\u201339 cached tokens. No controlled cache-free Ollama rerun was performed.",
+      "sources": [
+        "../run-1/records.jsonl"
+      ]
+    }
+  ],
+  "next_step": "A separately reviewed future comparison must either explicitly allow and match prefix reuse, or establish a supported zero-cache path and verify prompt_eval_cached_count==0 per request. No rerun or server change is authorized by this audit."
+}

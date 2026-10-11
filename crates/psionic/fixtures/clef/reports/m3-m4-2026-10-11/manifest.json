@@ -20029,6 +20029,1176 @@
       "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       "published_bytes": 0,
       "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/layer0-publishable-v1/README.md",
+      "original_sha256": "eda99b4c1c3195ed00692affdfdd0505336c622d35cae1790a8937f084b61051",
+      "original_bytes": 4399,
+      "published": "text029-layer0-replay-v1/README.md",
+      "published_sha256": "eda99b4c1c3195ed00692affdfdd0505336c622d35cae1790a8937f084b61051",
+      "published_bytes": 4399,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/layer0-publishable-v1/checkpoint-errors.csv",
+      "original_sha256": "8c81cb8eeb99923d49fc99a1ea5776a3aac30887c6173a1266e54c9ccc0f38fa",
+      "original_bytes": 29996,
+      "published": "text029-layer0-replay-v1/checkpoint-errors.csv",
+      "published_sha256": "8c81cb8eeb99923d49fc99a1ea5776a3aac30887c6173a1266e54c9ccc0f38fa",
+      "published_bytes": 29996,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/layer0-publishable-v1/guard.json",
+      "original_sha256": "62af76994c5c191164cad9d0a63ac43600849864f098cd556f2439b26d017258",
+      "original_bytes": 27404,
+      "published": "text029-layer0-replay-v1/guard.json",
+      "published_sha256": "62af76994c5c191164cad9d0a63ac43600849864f098cd556f2439b26d017258",
+      "published_bytes": 27404,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/layer0-publishable-v1/manifest.json",
+      "original_sha256": "6b297f53c9910ebbef32b7b0b0d03bf2a807ffab8f1fab3746e022ac63a28e60",
+      "original_bytes": 3732,
+      "published": "text029-layer0-replay-v1/manifest.json",
+      "published_sha256": "6b297f53c9910ebbef32b7b0b0d03bf2a807ffab8f1fab3746e022ac63a28e60",
+      "published_bytes": 3732,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/layer0-publishable-v1/plan.md",
+      "original_sha256": "2368f7db713570b53ea573f8195b51717112684ee4e8f02645d250d5983ccb73",
+      "original_bytes": 7166,
+      "published": "text029-layer0-replay-v1/plan.md",
+      "published_sha256": "2368f7db713570b53ea573f8195b51717112684ee4e8f02645d250d5983ccb73",
+      "published_bytes": 7166,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/layer0-publishable-v1/receipt.json",
+      "original_sha256": "a9b5c1f31da198229dd32564b8cae0fea4f1d7fc01bae339e6ce223128c1c9e3",
+      "original_bytes": 205450,
+      "published": "text029-layer0-replay-v1/receipt.json",
+      "published_sha256": "a9b5c1f31da198229dd32564b8cae0fea4f1d7fc01bae339e6ce223128c1c9e3",
+      "published_bytes": 205450,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/layer0-publishable-v1/source/guard_layer0.py",
+      "original_sha256": "82375c093d2c7c086baba6d7b667381251002204acfbc83e57968ff484b50f03",
+      "original_bytes": 6524,
+      "published": "text029-layer0-replay-v1/source/guard_layer0.py",
+      "published_sha256": "82375c093d2c7c086baba6d7b667381251002204acfbc83e57968ff484b50f03",
+      "published_bytes": 6524,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/layer0-publishable-v1/source/layer0_math.py",
+      "original_sha256": "432a1e97996b923e4e16119d6733d9a39df604fcfcac02286eda4f62c670ee91",
+      "original_bytes": 3438,
+      "published": "text029-layer0-replay-v1/source/layer0_math.py",
+      "published_sha256": "432a1e97996b923e4e16119d6733d9a39df604fcfcac02286eda4f62c670ee91",
+      "published_bytes": 3438,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/layer0-publishable-v1/source/layer0_reference.py",
+      "original_sha256": "dfe436ccee6c82cf5547f9b3d7a71738496cbe04e57f2a7649dda8db1b89e4de",
+      "original_bytes": 16108,
+      "published": "text029-layer0-replay-v1/source/layer0_reference.py",
+      "published_sha256": "dfe436ccee6c82cf5547f9b3d7a71738496cbe04e57f2a7649dda8db1b89e4de",
+      "published_bytes": 16108,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/layer0-publishable-v1/source-check.json",
+      "original_sha256": "e2b8a65a9497a24d1ac156947c1298d2d2cdb3e0023ad7e657e1cdc2922292ca",
+      "original_bytes": 834,
+      "published": "text029-layer0-replay-v1/source-check.json",
+      "published_sha256": "e2b8a65a9497a24d1ac156947c1298d2d2cdb3e0023ad7e657e1cdc2922292ca",
+      "published_bytes": 834,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/layer0-publishable-v1/stdout.log",
+      "original_sha256": "168d851032463f13f4305873c19282be7d284747670f7f56b9d9b993daa85731",
+      "original_bytes": 266,
+      "published": "text029-layer0-replay-v1/stdout.log",
+      "published_sha256": "168d851032463f13f4305873c19282be7d284747670f7f56b9d9b993daa85731",
+      "published_bytes": 266,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/PREPARED_PLAN.md",
+      "original_sha256": "13820b053c41bf56c77c46e99bc5cee863a310ca2e7ff3b9e6939fe2ae19a10b",
+      "original_bytes": 7401,
+      "published": "gemm-register-input-probe-v1/PREPARED_PLAN.md",
+      "published_sha256": "13820b053c41bf56c77c46e99bc5cee863a310ca2e7ff3b9e6939fe2ae19a10b",
+      "published_bytes": 7401,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/README.md",
+      "original_sha256": "96b468faa6e0a05e8b7a1a1ccd50f2f0df2434cb655ef174bdf44a31f7cc88c0",
+      "original_bytes": 2842,
+      "published": "gemm-register-input-probe-v1/README.md",
+      "published_sha256": "96b468faa6e0a05e8b7a1a1ccd50f2f0df2434cb655ef174bdf44a31f7cc88c0",
+      "published_bytes": 2842,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/address-space-repair.json",
+      "original_sha256": "fed2f3cb059d8396e1631d1123df725087538eba64c76f7e69b0bc384fa7b125",
+      "original_bytes": 1968,
+      "published": "gemm-register-input-probe-v1/address-space-repair.json",
+      "published_sha256": "fed2f3cb059d8396e1631d1123df725087538eba64c76f7e69b0bc384fa7b125",
+      "published_bytes": 1968,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/address-space-repair.patch",
+      "original_sha256": "d5084de8f225476b8e5f5ae5ae1d9e3092951a0c0bb5076163f62a2ada0dbb0b",
+      "original_bytes": 395,
+      "published": "gemm-register-input-probe-v1/address-space-repair.patch",
+      "published_sha256": "d5084de8f225476b8e5f5ae5ae1d9e3092951a0c0bb5076163f62a2ada0dbb0b",
+      "published_bytes": 395,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/baseline.metal",
+      "original_sha256": "9505a34d21d4d6bd11a532a62549d00c8cafbad90ab92f2bd07cccb4eae30725",
+      "original_bytes": 6660,
+      "published": "gemm-register-input-probe-v1/baseline.metal",
+      "published_sha256": "9505a34d21d4d6bd11a532a62549d00c8cafbad90ab92f2bd07cccb4eae30725",
+      "published_bytes": 6660,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/build-1/memory.jsonl",
+      "original_sha256": "ebadbbf572e08ca000336946722466daf929949361e1beb09630ee79ac35633d",
+      "original_bytes": 1609,
+      "published": "gemm-register-input-probe-v1/build-1/memory.jsonl",
+      "published_sha256": "ebadbbf572e08ca000336946722466daf929949361e1beb09630ee79ac35633d",
+      "published_bytes": 1609,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/build-1/receipt.json",
+      "original_sha256": "3d8f7277625c38e199d44625a2b5c34b30dde75e7dd495ef56554266def3b1a5",
+      "original_bytes": 3403,
+      "published": "gemm-register-input-probe-v1/build-1/receipt.json",
+      "published_sha256": "3d8f7277625c38e199d44625a2b5c34b30dde75e7dd495ef56554266def3b1a5",
+      "published_bytes": 3403,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/build-1/stderr.log",
+      "original_sha256": "ffe0f17579864e96e5da92f71bc9f1fb32cb895375776fda9bf721c6ae9741bb",
+      "original_bytes": 4495,
+      "published": "gemm-register-input-probe-v1/build-1/stderr.log",
+      "published_sha256": "ffe0f17579864e96e5da92f71bc9f1fb32cb895375776fda9bf721c6ae9741bb",
+      "published_bytes": 4495,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/build-1/stdout.jsonl",
+      "original_sha256": "87b1bddc7002e0552bef2479ad4ac739d153b3ea650f10e815e8f76cc0c649b8",
+      "original_bytes": 404,
+      "published": "gemm-register-input-probe-v1/build-1/stdout.jsonl",
+      "published_sha256": "87b1bddc7002e0552bef2479ad4ac739d153b3ea650f10e815e8f76cc0c649b8",
+      "published_bytes": 404,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/build-1/summary.json",
+      "original_sha256": "0dd6303263649e959c6408eef8e87a4dd3b0b97f2ae425c03aeeb40ad6cde08b",
+      "original_bytes": 635,
+      "published": "gemm-register-input-probe-v1/build-1/summary.json",
+      "published_sha256": "0dd6303263649e959c6408eef8e87a4dd3b0b97f2ae425c03aeeb40ad6cde08b",
+      "published_bytes": 635,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/build-2/memory.jsonl",
+      "original_sha256": "c33293328d24e39edf1d28c8bab27961e78a64b4296d21e595c180939d9f496c",
+      "original_bytes": 8470,
+      "published": "gemm-register-input-probe-v1/build-2/memory.jsonl",
+      "published_sha256": "c33293328d24e39edf1d28c8bab27961e78a64b4296d21e595c180939d9f496c",
+      "published_bytes": 8470,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/build-2/receipt.json",
+      "original_sha256": "0b4093eb45ada9368b179cb6f12a0ad26670ecf7792d2d8f8afbfd3012539157",
+      "original_bytes": 3406,
+      "published": "gemm-register-input-probe-v1/build-2/receipt.json",
+      "published_sha256": "0b4093eb45ada9368b179cb6f12a0ad26670ecf7792d2d8f8afbfd3012539157",
+      "published_bytes": 3406,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/build-2/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "gemm-register-input-probe-v1/build-2/stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/build-2/stdout.jsonl",
+      "original_sha256": "f4951b065d3b4c56a1f366b89a361bffcd4ff54d8e7fb91781a11d6e6c76f746",
+      "original_bytes": 2545,
+      "published": "gemm-register-input-probe-v1/build-2/stdout.jsonl",
+      "published_sha256": "f4951b065d3b4c56a1f366b89a361bffcd4ff54d8e7fb91781a11d6e6c76f746",
+      "published_bytes": 2545,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/build-artifacts.json",
+      "original_sha256": "90465944fb334c264ff29d8d5b32c880036fa2779f5b56d767a4cc142f78aedb",
+      "original_bytes": 1814,
+      "published": "gemm-register-input-probe-v1/build-artifacts.json",
+      "published_sha256": "90465944fb334c264ff29d8d5b32c880036fa2779f5b56d767a4cc142f78aedb",
+      "published_bytes": 1814,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/build-lease-1.json",
+      "original_sha256": "4dcb68e021f17890e7d5c7a6df07620f5c78f352fd42c6241936443ac978979f",
+      "original_bytes": 599,
+      "published": "gemm-register-input-probe-v1/build-lease-1.json",
+      "published_sha256": "4dcb68e021f17890e7d5c7a6df07620f5c78f352fd42c6241936443ac978979f",
+      "published_bytes": 599,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/build-lease-2.json",
+      "original_sha256": "61221d7b4b77d0601f6d485e5357db218eaa78db6f05129662df0b8344ea8b2d",
+      "original_bytes": 599,
+      "published": "gemm-register-input-probe-v1/build-lease-2.json",
+      "published_sha256": "61221d7b4b77d0601f6d485e5357db218eaa78db6f05129662df0b8344ea8b2d",
+      "published_bytes": 599,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/build-memory-lease-1.json",
+      "original_sha256": "c82be45df45f9f2033ed5012ec118079224e2c851075895a55314b76abb149d4",
+      "original_bytes": 486,
+      "published": "gemm-register-input-probe-v1/build-memory-lease-1.json",
+      "published_sha256": "c82be45df45f9f2033ed5012ec118079224e2c851075895a55314b76abb149d4",
+      "published_bytes": 486,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/build-memory-lease-2.json",
+      "original_sha256": "2f32f7925164cd1e422f3c7d1eb439a605c63c3ff07609a01c6c3adca47e5d9d",
+      "original_bytes": 486,
+      "published": "gemm-register-input-probe-v1/build-memory-lease-2.json",
+      "published_sha256": "2f32f7925164cd1e422f3c7d1eb439a605c63c3ff07609a01c6c3adca47e5d9d",
+      "published_bytes": 486,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/build.py",
+      "original_sha256": "705b5097c335167d90fc36344466b103ccd0ced74c215a2fce34634621444cf2",
+      "original_bytes": 1578,
+      "published": "gemm-register-input-probe-v1/build.py",
+      "published_sha256": "705b5097c335167d90fc36344466b103ccd0ced74c215a2fce34634621444cf2",
+      "published_bytes": 1578,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/candidate.metal",
+      "original_sha256": "b5b5d77dc4406cd3023cd69f6838d670bfc774ad1e4196af16c2b536d47e9821",
+      "original_bytes": 10618,
+      "published": "gemm-register-input-probe-v1/candidate.metal",
+      "published_sha256": "b5b5d77dc4406cd3023cd69f6838d670bfc774ad1e4196af16c2b536d47e9821",
+      "published_bytes": 10618,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/README.md",
+      "original_sha256": "13820b053c41bf56c77c46e99bc5cee863a310ca2e7ff3b9e6939fe2ae19a10b",
+      "original_bytes": 7401,
+      "published": "gemm-register-input-probe-v1/frozen-v1/README.md",
+      "published_sha256": "13820b053c41bf56c77c46e99bc5cee863a310ca2e7ff3b9e6939fe2ae19a10b",
+      "published_bytes": 7401,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/baseline.metal",
+      "original_sha256": "9505a34d21d4d6bd11a532a62549d00c8cafbad90ab92f2bd07cccb4eae30725",
+      "original_bytes": 6660,
+      "published": "gemm-register-input-probe-v1/frozen-v1/baseline.metal",
+      "published_sha256": "9505a34d21d4d6bd11a532a62549d00c8cafbad90ab92f2bd07cccb4eae30725",
+      "published_bytes": 6660,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/build-1/memory.jsonl",
+      "original_sha256": "ebadbbf572e08ca000336946722466daf929949361e1beb09630ee79ac35633d",
+      "original_bytes": 1609,
+      "published": "gemm-register-input-probe-v1/frozen-v1/build-1/memory.jsonl",
+      "published_sha256": "ebadbbf572e08ca000336946722466daf929949361e1beb09630ee79ac35633d",
+      "published_bytes": 1609,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/build-1/receipt.json",
+      "original_sha256": "3d8f7277625c38e199d44625a2b5c34b30dde75e7dd495ef56554266def3b1a5",
+      "original_bytes": 3403,
+      "published": "gemm-register-input-probe-v1/frozen-v1/build-1/receipt.json",
+      "published_sha256": "3d8f7277625c38e199d44625a2b5c34b30dde75e7dd495ef56554266def3b1a5",
+      "published_bytes": 3403,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/build-1/stderr.log",
+      "original_sha256": "ffe0f17579864e96e5da92f71bc9f1fb32cb895375776fda9bf721c6ae9741bb",
+      "original_bytes": 4495,
+      "published": "gemm-register-input-probe-v1/frozen-v1/build-1/stderr.log",
+      "published_sha256": "ffe0f17579864e96e5da92f71bc9f1fb32cb895375776fda9bf721c6ae9741bb",
+      "published_bytes": 4495,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/build-1/stdout.jsonl",
+      "original_sha256": "87b1bddc7002e0552bef2479ad4ac739d153b3ea650f10e815e8f76cc0c649b8",
+      "original_bytes": 404,
+      "published": "gemm-register-input-probe-v1/frozen-v1/build-1/stdout.jsonl",
+      "published_sha256": "87b1bddc7002e0552bef2479ad4ac739d153b3ea650f10e815e8f76cc0c649b8",
+      "published_bytes": 404,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/build-1/summary.json",
+      "original_sha256": "0dd6303263649e959c6408eef8e87a4dd3b0b97f2ae425c03aeeb40ad6cde08b",
+      "original_bytes": 635,
+      "published": "gemm-register-input-probe-v1/frozen-v1/build-1/summary.json",
+      "published_sha256": "0dd6303263649e959c6408eef8e87a4dd3b0b97f2ae425c03aeeb40ad6cde08b",
+      "published_bytes": 635,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/build-lease-1.json",
+      "original_sha256": "4dcb68e021f17890e7d5c7a6df07620f5c78f352fd42c6241936443ac978979f",
+      "original_bytes": 599,
+      "published": "gemm-register-input-probe-v1/frozen-v1/build-lease-1.json",
+      "published_sha256": "4dcb68e021f17890e7d5c7a6df07620f5c78f352fd42c6241936443ac978979f",
+      "published_bytes": 599,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/build-memory-lease-1.json",
+      "original_sha256": "c82be45df45f9f2033ed5012ec118079224e2c851075895a55314b76abb149d4",
+      "original_bytes": 486,
+      "published": "gemm-register-input-probe-v1/frozen-v1/build-memory-lease-1.json",
+      "published_sha256": "c82be45df45f9f2033ed5012ec118079224e2c851075895a55314b76abb149d4",
+      "published_bytes": 486,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/build.py",
+      "original_sha256": "705b5097c335167d90fc36344466b103ccd0ced74c215a2fce34634621444cf2",
+      "original_bytes": 1578,
+      "published": "gemm-register-input-probe-v1/frozen-v1/build.py",
+      "published_sha256": "705b5097c335167d90fc36344466b103ccd0ced74c215a2fce34634621444cf2",
+      "published_bytes": 1578,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/candidate.metal",
+      "original_sha256": "c89d66dee379132b0890648f8f5494503965d3962206a7db4202c5052230a8e2",
+      "original_bytes": 10609,
+      "published": "gemm-register-input-probe-v1/frozen-v1/candidate.metal",
+      "published_sha256": "c89d66dee379132b0890648f8f5494503965d3962206a7db4202c5052230a8e2",
+      "published_bytes": 10609,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/guard.py",
+      "original_sha256": "15ddf2a350fca884c662e7f744d7fa0c5c9d1e70483876bbf76f8fbdaf187427",
+      "original_bytes": 5763,
+      "published": "gemm-register-input-probe-v1/frozen-v1/guard.py",
+      "published_sha256": "15ddf2a350fca884c662e7f744d7fa0c5c9d1e70483876bbf76f8fbdaf187427",
+      "published_bytes": 5763,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/half-ulp-fixtures.json",
+      "original_sha256": "bc0a57a7088795ab57884782326d9a1de7285c6bbfd109c68271309381f046d5",
+      "original_bytes": 2039,
+      "published": "gemm-register-input-probe-v1/frozen-v1/half-ulp-fixtures.json",
+      "published_sha256": "bc0a57a7088795ab57884782326d9a1de7285c6bbfd109c68271309381f046d5",
+      "published_bytes": 2039,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/half_ulp_check.py",
+      "original_sha256": "f5f1d3dcbe7cd4da54c45b9ea2698047ba861bc26575144e0ae4c6f53f015aa4",
+      "original_bytes": 2360,
+      "published": "gemm-register-input-probe-v1/frozen-v1/half_ulp_check.py",
+      "published_sha256": "f5f1d3dcbe7cd4da54c45b9ea2698047ba861bc26575144e0ae4c6f53f015aa4",
+      "published_bytes": 2360,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/manifest.json",
+      "original_sha256": "2952afc4c0e2ffbccb9d813d68b69003a4ccd796e7143c30789e66ca69b2148a",
+      "original_bytes": 5123,
+      "published": "gemm-register-input-probe-v1/frozen-v1/manifest.json",
+      "published_sha256": "2952afc4c0e2ffbccb9d813d68b69003a4ccd796e7143c30789e66ca69b2148a",
+      "published_bytes": 5123,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/probe.swift",
+      "original_sha256": "d4f864fa83b1a2ba9852085375210770cfb39e8eb554963e881463f6fc73f0e0",
+      "original_bytes": 38410,
+      "published": "gemm-register-input-probe-v1/frozen-v1/probe.swift",
+      "published_sha256": "d4f864fa83b1a2ba9852085375210770cfb39e8eb554963e881463f6fc73f0e0",
+      "published_bytes": 38410,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/production-fixed-extract.metal",
+      "original_sha256": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+      "original_bytes": 2111,
+      "published": "gemm-register-input-probe-v1/frozen-v1/production-fixed-extract.metal",
+      "published_sha256": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+      "published_bytes": 2111,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/production-planner.rs",
+      "original_sha256": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac",
+      "original_bytes": 11864,
+      "published": "gemm-register-input-probe-v1/frozen-v1/production-planner.rs",
+      "published_sha256": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac",
+      "published_bytes": 11864,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/production-shapes.metal",
+      "original_sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+      "original_bytes": 4117,
+      "published": "gemm-register-input-probe-v1/frozen-v1/production-shapes.metal",
+      "published_sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+      "published_bytes": 4117,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/production-silu-extract.metal",
+      "original_sha256": "fe7844912a63f4219dc05a5a50a5b269ad48a0e3aa5f60cef221ae9223880e61",
+      "original_bytes": 430,
+      "published": "gemm-register-input-probe-v1/frozen-v1/production-silu-extract.metal",
+      "published_sha256": "fe7844912a63f4219dc05a5a50a5b269ad48a0e3aa5f60cef221ae9223880e61",
+      "published_bytes": 430,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/small-cases.json",
+      "original_sha256": "2b3f459f8ea221c786fa71f38fe6acba83bf271d31dc297c31898cad26f4bb94",
+      "original_bytes": 991,
+      "published": "gemm-register-input-probe-v1/frozen-v1/small-cases.json",
+      "published_sha256": "2b3f459f8ea221c786fa71f38fe6acba83bf271d31dc297c31898cad26f4bb94",
+      "published_bytes": 991,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/source-check.json",
+      "original_sha256": "d5b90ac6101260cc7838a070b144d860141dd855a6a5a5b416adf5931e2e81cd",
+      "original_bytes": 2010,
+      "published": "gemm-register-input-probe-v1/frozen-v1/source-check.json",
+      "published_sha256": "d5b90ac6101260cc7838a070b144d860141dd855a6a5a5b416adf5931e2e81cd",
+      "published_bytes": 2010,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/source_check.py",
+      "original_sha256": "14ba07f534e3034f23148ac4ce19809cbb37a7e55b4cbf283673fbc3077456d7",
+      "original_bytes": 5889,
+      "published": "gemm-register-input-probe-v1/frozen-v1/source_check.py",
+      "published_sha256": "14ba07f534e3034f23148ac4ce19809cbb37a7e55b4cbf283673fbc3077456d7",
+      "published_bytes": 5889,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/summarize.py",
+      "original_sha256": "7b4f707b520221e24ef698e44e574be177d7a36168ee5922cec51219bf8fe26d",
+      "original_bytes": 10435,
+      "published": "gemm-register-input-probe-v1/frozen-v1/summarize.py",
+      "published_sha256": "7b4f707b520221e24ef698e44e574be177d7a36168ee5922cec51219bf8fe26d",
+      "published_bytes": 10435,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/frozen-v1/weights.json",
+      "original_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+      "original_bytes": 2473,
+      "published": "gemm-register-input-probe-v1/frozen-v1/weights.json",
+      "published_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+      "published_bytes": 2473,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/gpu-lease-1.json",
+      "original_sha256": "8e3af2d3aaceae27a1ac4084d712e7cbabc448361d162251bd33fffd4daabd5d",
+      "original_bytes": 485,
+      "published": "gemm-register-input-probe-v1/gpu-lease-1.json",
+      "published_sha256": "8e3af2d3aaceae27a1ac4084d712e7cbabc448361d162251bd33fffd4daabd5d",
+      "published_bytes": 485,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/gpu-memory-lease-1.json",
+      "original_sha256": "8eda7162678262d818aeaa04c4f5ca72cd845ce52b9eb92d3d208599d4c7b182",
+      "original_bytes": 485,
+      "published": "gemm-register-input-probe-v1/gpu-memory-lease-1.json",
+      "published_sha256": "8eda7162678262d818aeaa04c4f5ca72cd845ce52b9eb92d3d208599d4c7b182",
+      "published_bytes": 485,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/guard.py",
+      "original_sha256": "15ddf2a350fca884c662e7f744d7fa0c5c9d1e70483876bbf76f8fbdaf187427",
+      "original_bytes": 5763,
+      "published": "gemm-register-input-probe-v1/guard.py",
+      "published_sha256": "15ddf2a350fca884c662e7f744d7fa0c5c9d1e70483876bbf76f8fbdaf187427",
+      "published_bytes": 5763,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/half-ulp-fixtures.json",
+      "original_sha256": "bc0a57a7088795ab57884782326d9a1de7285c6bbfd109c68271309381f046d5",
+      "original_bytes": 2039,
+      "published": "gemm-register-input-probe-v1/half-ulp-fixtures.json",
+      "published_sha256": "bc0a57a7088795ab57884782326d9a1de7285c6bbfd109c68271309381f046d5",
+      "published_bytes": 2039,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/half_ulp_check.py",
+      "original_sha256": "f5f1d3dcbe7cd4da54c45b9ea2698047ba861bc26575144e0ae4c6f53f015aa4",
+      "original_bytes": 2360,
+      "published": "gemm-register-input-probe-v1/half_ulp_check.py",
+      "published_sha256": "f5f1d3dcbe7cd4da54c45b9ea2698047ba861bc26575144e0ae4c6f53f015aa4",
+      "published_bytes": 2360,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/manifest.json",
+      "original_sha256": "2952afc4c0e2ffbccb9d813d68b69003a4ccd796e7143c30789e66ca69b2148a",
+      "original_bytes": 5123,
+      "published": "gemm-register-input-probe-v1/manifest.json",
+      "published_sha256": "2952afc4c0e2ffbccb9d813d68b69003a4ccd796e7143c30789e66ca69b2148a",
+      "published_bytes": 5123,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/probe.swift",
+      "original_sha256": "d4f864fa83b1a2ba9852085375210770cfb39e8eb554963e881463f6fc73f0e0",
+      "original_bytes": 38410,
+      "published": "gemm-register-input-probe-v1/probe.swift",
+      "published_sha256": "d4f864fa83b1a2ba9852085375210770cfb39e8eb554963e881463f6fc73f0e0",
+      "published_bytes": 38410,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/production-fixed-extract.metal",
+      "original_sha256": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+      "original_bytes": 2111,
+      "published": "gemm-register-input-probe-v1/production-fixed-extract.metal",
+      "published_sha256": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+      "published_bytes": 2111,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/production-planner.rs",
+      "original_sha256": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac",
+      "original_bytes": 11864,
+      "published": "gemm-register-input-probe-v1/production-planner.rs",
+      "published_sha256": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac",
+      "published_bytes": 11864,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/production-shapes.metal",
+      "original_sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+      "original_bytes": 4117,
+      "published": "gemm-register-input-probe-v1/production-shapes.metal",
+      "published_sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+      "published_bytes": 4117,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/production-silu-extract.metal",
+      "original_sha256": "fe7844912a63f4219dc05a5a50a5b269ad48a0e3aa5f60cef221ae9223880e61",
+      "original_bytes": 430,
+      "published": "gemm-register-input-probe-v1/production-silu-extract.metal",
+      "published_sha256": "fe7844912a63f4219dc05a5a50a5b269ad48a0e3aa5f60cef221ae9223880e61",
+      "published_bytes": 430,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/run-1/memory.jsonl",
+      "original_sha256": "4334a4e9c2e15952356c757c6573ca2707115581b0ed5a0f11640b7395e8719a",
+      "original_bytes": 1488,
+      "published": "gemm-register-input-probe-v1/run-1/memory.jsonl",
+      "published_sha256": "4334a4e9c2e15952356c757c6573ca2707115581b0ed5a0f11640b7395e8719a",
+      "published_bytes": 1488,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/run-1/receipt.json",
+      "original_sha256": "64e5d17fc983677ad45fa324e854a7e99e2c5470dc5b5c012c76ffa82c7202fa",
+      "original_bytes": 5317,
+      "published": "gemm-register-input-probe-v1/run-1/receipt.json",
+      "published_sha256": "64e5d17fc983677ad45fa324e854a7e99e2c5470dc5b5c012c76ffa82c7202fa",
+      "published_bytes": 5317,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/run-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "gemm-register-input-probe-v1/run-1/stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/run-1/stdout.jsonl",
+      "original_sha256": "54b01b701e460557eb13490b744acdba64d0b12337045e2bd91d333729019c7d",
+      "original_bytes": 488,
+      "published": "gemm-register-input-probe-v1/run-1/stdout.jsonl",
+      "published_sha256": "54b01b701e460557eb13490b744acdba64d0b12337045e2bd91d333729019c7d",
+      "published_bytes": 488,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/run-1/summary.json",
+      "original_sha256": "6a0c81616c09a8997924190a861cb62c71375d02331d570ae0ed2c945ab4eac2",
+      "original_bytes": 634,
+      "published": "gemm-register-input-probe-v1/run-1/summary.json",
+      "published_sha256": "6a0c81616c09a8997924190a861cb62c71375d02331d570ae0ed2c945ab4eac2",
+      "published_bytes": 634,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/sanitization.json",
+      "original_sha256": "632418e00f67b0d5b99d75e6f8a4996474eaf82e5e4955a8487bb200d20dd1dd",
+      "original_bytes": 25457,
+      "published": "gemm-register-input-probe-v1/sanitization.json",
+      "published_sha256": "632418e00f67b0d5b99d75e6f8a4996474eaf82e5e4955a8487bb200d20dd1dd",
+      "published_bytes": 25457,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/small-cases.json",
+      "original_sha256": "2b3f459f8ea221c786fa71f38fe6acba83bf271d31dc297c31898cad26f4bb94",
+      "original_bytes": 991,
+      "published": "gemm-register-input-probe-v1/small-cases.json",
+      "published_sha256": "2b3f459f8ea221c786fa71f38fe6acba83bf271d31dc297c31898cad26f4bb94",
+      "published_bytes": 991,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/source-check.json",
+      "original_sha256": "720c95b2f8da8401df59036d8d62b7df8d234835634821b0c41c9229ded77827",
+      "original_bytes": 2010,
+      "published": "gemm-register-input-probe-v1/source-check.json",
+      "published_sha256": "720c95b2f8da8401df59036d8d62b7df8d234835634821b0c41c9229ded77827",
+      "published_bytes": 2010,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/source_check.py",
+      "original_sha256": "14ba07f534e3034f23148ac4ce19809cbb37a7e55b4cbf283673fbc3077456d7",
+      "original_bytes": 5889,
+      "published": "gemm-register-input-probe-v1/source_check.py",
+      "published_sha256": "14ba07f534e3034f23148ac4ce19809cbb37a7e55b4cbf283673fbc3077456d7",
+      "published_bytes": 5889,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/summarize.py",
+      "original_sha256": "7b4f707b520221e24ef698e44e574be177d7a36168ee5922cec51219bf8fe26d",
+      "original_bytes": 10435,
+      "published": "gemm-register-input-probe-v1/summarize.py",
+      "published_sha256": "7b4f707b520221e24ef698e44e574be177d7a36168ee5922cec51219bf8fe26d",
+      "published_bytes": 10435,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-probe/publication-v1/weights.json",
+      "original_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+      "original_bytes": 2473,
+      "published": "gemm-register-input-probe-v1/weights.json",
+      "published_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+      "published_bytes": 2473,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/PLAN.md",
+      "original_sha256": "d7d69409c66bf2896c57a525645825c1a297e726cfc30308ce7f4afc28726d48",
+      "original_bytes": 4786,
+      "published": "attention-qk128-key32-flash-latency-v1/PLAN.md",
+      "published_sha256": "d7d69409c66bf2896c57a525645825c1a297e726cfc30308ce7f4afc28726d48",
+      "published_bytes": 4786,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/README.md",
+      "original_sha256": "c313092325825d729dc2999bdcc76fc6371688466d58737987dbeb01c53e6028",
+      "original_bytes": 7429,
+      "published": "attention-qk128-key32-flash-latency-v1/README.md",
+      "published_sha256": "c313092325825d729dc2999bdcc76fc6371688466d58737987dbeb01c53e6028",
+      "published_bytes": 7429,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/analyze.py",
+      "original_sha256": "4b91b739bf2773ee4721f730edf24786ed65318b59bb7c14669f05ac857498be",
+      "original_bytes": 7600,
+      "published": "attention-qk128-key32-flash-latency-v1/analyze.py",
+      "published_sha256": "4b91b739bf2773ee4721f730edf24786ed65318b59bb7c14669f05ac857498be",
+      "published_bytes": 7600,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/analyze_v2.py",
+      "original_sha256": "499ff159c797a217cb25a2d95a5abf1c1bb75e7ca045612c8edcbb271750e5bd",
+      "original_bytes": 8078,
+      "published": "attention-qk128-key32-flash-latency-v1/analyze_v2.py",
+      "published_sha256": "499ff159c797a217cb25a2d95a5abf1c1bb75e7ca045612c8edcbb271750e5bd",
+      "published_bytes": 8078,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/analyze_v3.py",
+      "original_sha256": "ce6a32a6bf2346e291221d267de0fe20fd2e216e6b685fa729aa2ef548db89c1",
+      "original_bytes": 12967,
+      "published": "attention-qk128-key32-flash-latency-v1/analyze_v3.py",
+      "published_sha256": "ce6a32a6bf2346e291221d267de0fe20fd2e216e6b685fa729aa2ef548db89c1",
+      "published_bytes": 12967,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/analyzer-v2-failure.json",
+      "original_sha256": "f816de47386f24e63db9a98240c36ae694f83ae64f3d8b7cd25a6b3c97d33c8c",
+      "original_bytes": 1256,
+      "published": "attention-qk128-key32-flash-latency-v1/analyzer-v2-failure.json",
+      "published_sha256": "f816de47386f24e63db9a98240c36ae694f83ae64f3d8b7cd25a6b3c97d33c8c",
+      "published_bytes": 1256,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/analyzer-v2.patch",
+      "original_sha256": "db7c1da20ec2ef06a2687076ea99a22c6ac5d85a4ac07a0e9693f3599abb6311",
+      "original_bytes": 5047,
+      "published": "attention-qk128-key32-flash-latency-v1/analyzer-v2.patch",
+      "published_sha256": "db7c1da20ec2ef06a2687076ea99a22c6ac5d85a4ac07a0e9693f3599abb6311",
+      "published_bytes": 5047,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/analyzer-v3-output.json",
+      "original_sha256": "a4bc17bd7d843d3cc446ea5cc3cc9bf6f9eeeaf5301154857aab378a9e8ef4ea",
+      "original_bytes": 39879,
+      "published": "attention-qk128-key32-flash-latency-v1/analyzer-v3-output.json",
+      "published_sha256": "a4bc17bd7d843d3cc446ea5cc3cc9bf6f9eeeaf5301154857aab378a9e8ef4ea",
+      "published_bytes": 39879,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/analyzer-v3-receipt.json",
+      "original_sha256": "e8f6f47dfd8d8badeda1fe2faf21be1db932f4a9670403f4e2a69f1ca5a2e11a",
+      "original_bytes": 1733,
+      "published": "attention-qk128-key32-flash-latency-v1/analyzer-v3-receipt.json",
+      "published_sha256": "e8f6f47dfd8d8badeda1fe2faf21be1db932f4a9670403f4e2a69f1ca5a2e11a",
+      "published_bytes": 1733,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/analyzer-v3.patch",
+      "original_sha256": "8e8f072639d9f42018a9bc1cd59625a24c639e9ede27d9c9aec5e163f9a402d5",
+      "original_bytes": 10535,
+      "published": "attention-qk128-key32-flash-latency-v1/analyzer-v3.patch",
+      "published_sha256": "8e8f072639d9f42018a9bc1cd59625a24c639e9ede27d9c9aec5e163f9a402d5",
+      "published_bytes": 10535,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/cache-source-audit.json",
+      "original_sha256": "2f206c78ef12a95c9470e6d1ee29f02fc95fd028f63a0675024302ac43473edb",
+      "original_bytes": 4441,
+      "published": "attention-qk128-key32-flash-latency-v1/cache-source-audit.json",
+      "published_sha256": "2f206c78ef12a95c9470e6d1ee29f02fc95fd028f63a0675024302ac43473edb",
+      "published_bytes": 4441,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/check_analyzer_v2.py",
+      "original_sha256": "79ab8f5bb881bcad24af3bdc9b02f9625296c19a201ad5d8aec04edc314e91a6",
+      "original_bytes": 2173,
+      "published": "attention-qk128-key32-flash-latency-v1/check_analyzer_v2.py",
+      "published_sha256": "79ab8f5bb881bcad24af3bdc9b02f9625296c19a201ad5d8aec04edc314e91a6",
+      "published_bytes": 2173,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/check_analyzer_v3.py",
+      "original_sha256": "4392c600f7163ba6076ab497e51b4665d271ab300da7004d73dcd23e953c256d",
+      "original_bytes": 4355,
+      "published": "attention-qk128-key32-flash-latency-v1/check_analyzer_v3.py",
+      "published_sha256": "4392c600f7163ba6076ab497e51b4665d271ab300da7004d73dcd23e953c256d",
+      "published_bytes": 4355,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/confidence-contract-diagnostic.json",
+      "original_sha256": "995cfb876d1a7b12e12132e1a9b7a6cc84e466e48d928ab483caca72241b4f23",
+      "original_bytes": 84418,
+      "published": "attention-qk128-key32-flash-latency-v1/confidence-contract-diagnostic.json",
+      "published_sha256": "995cfb876d1a7b12e12132e1a9b7a6cc84e466e48d928ab483caca72241b4f23",
+      "published_bytes": 84418,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/confidence-source.json",
+      "original_sha256": "b0975237f4852f8bceea1d3883231340ed254381c272cca16a35bf87a8065d8d",
+      "original_bytes": 808,
+      "published": "attention-qk128-key32-flash-latency-v1/confidence-source.json",
+      "published_sha256": "b0975237f4852f8bceea1d3883231340ed254381c272cca16a35bf87a8065d8d",
+      "published_bytes": 808,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/config.json",
+      "original_sha256": "858a660d73e81cb75d88684ce24e7c4e76b7d6dcc1ca41e494bc56eae1d8b76b",
+      "original_bytes": 2310,
+      "published": "attention-qk128-key32-flash-latency-v1/config.json",
+      "published_sha256": "858a660d73e81cb75d88684ce24e7c4e76b7d6dcc1ca41e494bc56eae1d8b76b",
+      "published_bytes": 2310,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/gpu-lease.json",
+      "original_sha256": "2a48fa0c9a4ea49403490b8b0de9be379e051459f714d39e5c776b8827550fc8",
+      "original_bytes": 488,
+      "published": "attention-qk128-key32-flash-latency-v1/gpu-lease.json",
+      "published_sha256": "2a48fa0c9a4ea49403490b8b0de9be379e051459f714d39e5c776b8827550fc8",
+      "published_bytes": 488,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/harness/e2e.py",
+      "original_sha256": "a54793ddf44e9898c3ae13276c82e01b9c5a34734eae3689979fc186cafa15e5",
+      "original_bytes": 5339,
+      "published": "attention-qk128-key32-flash-latency-v1/harness/e2e.py",
+      "published_sha256": "a54793ddf44e9898c3ae13276c82e01b9c5a34734eae3689979fc186cafa15e5",
+      "published_bytes": 5339,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/harness/image_parity.py",
+      "original_sha256": "780b1ff00bf9c99dd3cf5be27a603657abdfce7dc803ed1c3073f72917ad989a",
+      "original_bytes": 39265,
+      "published": "attention-qk128-key32-flash-latency-v1/harness/image_parity.py",
+      "published_sha256": "780b1ff00bf9c99dd3cf5be27a603657abdfce7dc803ed1c3073f72917ad989a",
+      "published_bytes": 39265,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/harness/mac_memory.py",
+      "original_sha256": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd",
+      "original_bytes": 5508,
+      "published": "attention-qk128-key32-flash-latency-v1/harness/mac_memory.py",
+      "published_sha256": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd",
+      "published_bytes": 5508,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/harness/mac_quiet_bench.py",
+      "original_sha256": "ce5f832d0eeb2ec5c954755c07d00fafcc2bb1c59d6aa6c1d993a2f84bcce9fb",
+      "original_bytes": 71636,
+      "published": "attention-qk128-key32-flash-latency-v1/harness/mac_quiet_bench.py",
+      "published_sha256": "ce5f832d0eeb2ec5c954755c07d00fafcc2bb1c59d6aa6c1d993a2f84bcce9fb",
+      "published_bytes": 71636,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/memory-lease.json",
+      "original_sha256": "6dbcbf8ff273574aa1af74225c41f98a8b57cc21fe78fa3ce25937051f6d88bc",
+      "original_bytes": 489,
+      "published": "attention-qk128-key32-flash-latency-v1/memory-lease.json",
+      "published_sha256": "6dbcbf8ff273574aa1af74225c41f98a8b57cc21fe78fa3ce25937051f6d88bc",
+      "published_bytes": 489,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/preparation-manifest.json",
+      "original_sha256": "032aa81bccbcc0fead93b8a674424e89ebf8f55d7a3433bffbe5a75086b361ab",
+      "original_bytes": 422,
+      "published": "attention-qk128-key32-flash-latency-v1/preparation-manifest.json",
+      "published_sha256": "032aa81bccbcc0fead93b8a674424e89ebf8f55d7a3433bffbe5a75086b361ab",
+      "published_bytes": 422,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/proposed-shared-cache-check.patch",
+      "original_sha256": "49cdbe11b2690cb7a2a20b04bbf9f9917c8b4f5a477508747c875099855e28ad",
+      "original_bytes": 726,
+      "published": "attention-qk128-key32-flash-latency-v1/proposed-shared-cache-check.patch",
+      "published_sha256": "49cdbe11b2690cb7a2a20b04bbf9f9917c8b4f5a477508747c875099855e28ad",
+      "published_bytes": 726,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/provenance.json",
+      "original_sha256": "f30a859f3cab42f21fc1f743a3aff4f96a71cbae13af580a19072c665d11e3df",
+      "original_bytes": 219147,
+      "published": "attention-qk128-key32-flash-latency-v1/provenance.json",
+      "published_sha256": "f30a859f3cab42f21fc1f743a3aff4f96a71cbae13af580a19072c665d11e3df",
+      "published_bytes": 219147,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/publication-manifest.json",
+      "original_sha256": "55745e5083acb4e0e66d45c34f0da5ae9a3f619c912ec40310146c10cbfdee15",
+      "original_bytes": 15306,
+      "published": "attention-qk128-key32-flash-latency-v1/publication-manifest.json",
+      "published_sha256": "c6797d03b77ef70fae6bf5fe6e1150e378177c6918005816c8de4ba8123392fc",
+      "published_bytes": 14804,
+      "path_replacements": [
+        {
+          "replacement": "repo",
+          "occurrences": 4
+        },
+        {
+          "replacement": "task-scratch",
+          "occurrences": 3
+        }
+      ]
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/requests/len16k.json",
+      "original_sha256": "7e2d3fc74517af655466c1951fba8fbed6aef652e6cb5953b3ac4b7f614e2daa",
+      "original_bytes": 54274,
+      "published": "attention-qk128-key32-flash-latency-v1/requests/len16k.json",
+      "published_sha256": "7e2d3fc74517af655466c1951fba8fbed6aef652e6cb5953b3ac4b7f614e2daa",
+      "published_bytes": 54274,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/requests/len1k.json",
+      "original_sha256": "0f98f1ce7b7e54063e93ab8dbdf714f4bfb3a7a5822f0012ddd37f7bd7137eab",
+      "original_bytes": 3198,
+      "published": "attention-qk128-key32-flash-latency-v1/requests/len1k.json",
+      "published_sha256": "0f98f1ce7b7e54063e93ab8dbdf714f4bfb3a7a5822f0012ddd37f7bd7137eab",
+      "published_bytes": 3198,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/requests/len4k.json",
+      "original_sha256": "5cadcbb4d5204128c73dbb8087ec0b6f27c81fffbd8e16416324396ce4c26dff",
+      "original_bytes": 14143,
+      "published": "attention-qk128-key32-flash-latency-v1/requests/len4k.json",
+      "published_sha256": "5cadcbb4d5204128c73dbb8087ec0b6f27c81fffbd8e16416324396ce4c26dff",
+      "published_bytes": 14143,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/retrospective-cache-audit.json",
+      "original_sha256": "6061da621e0cd7f77f149b9319b011a6b5f614513d38761624bc37f799d2b89a",
+      "original_bytes": 16939,
+      "published": "attention-qk128-key32-flash-latency-v1/retrospective-cache-audit.json",
+      "published_sha256": "6061da621e0cd7f77f149b9319b011a6b5f614513d38761624bc37f799d2b89a",
+      "published_bytes": 16939,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/run-1/analysis-v3.json",
+      "original_sha256": "a4bc17bd7d843d3cc446ea5cc3cc9bf6f9eeeaf5301154857aab378a9e8ef4ea",
+      "original_bytes": 39879,
+      "published": "attention-qk128-key32-flash-latency-v1/run-1/analysis-v3.json",
+      "published_sha256": "a4bc17bd7d843d3cc446ea5cc3cc9bf6f9eeeaf5301154857aab378a9e8ef4ea",
+      "published_bytes": 39879,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/run-1/host.jsonl",
+      "original_sha256": "3972f43158763456fb59ac6ca2e2efe745b7c0e934e878f157ade38728e0e77c",
+      "original_bytes": 25766,
+      "published": "attention-qk128-key32-flash-latency-v1/run-1/host.jsonl",
+      "published_sha256": "3972f43158763456fb59ac6ca2e2efe745b7c0e934e878f157ade38728e0e77c",
+      "published_bytes": 25766,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/run-1/metadata.json",
+      "original_sha256": "a6d25b88ed736b5251e5b74137dd243e2d76cd441c189c3916db5271d03ade6a",
+      "original_bytes": 5521,
+      "published": "attention-qk128-key32-flash-latency-v1/run-1/metadata.json",
+      "published_sha256": "a6d25b88ed736b5251e5b74137dd243e2d76cd441c189c3916db5271d03ade6a",
+      "published_bytes": 5521,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/run-1/records.jsonl",
+      "original_sha256": "eb2f3662a153c48e8249e68fc453756fdbbf6f5a46d0055133fd6c44ab342252",
+      "original_bytes": 212175,
+      "published": "attention-qk128-key32-flash-latency-v1/run-1/records.jsonl",
+      "published_sha256": "eb2f3662a153c48e8249e68fc453756fdbbf6f5a46d0055133fd6c44ab342252",
+      "published_bytes": 212175,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/run-1/rss-r0-candidate-qk128-key32.jsonl",
+      "original_sha256": "a6ad325f2ce06478536cfd01b0f7cfebdd067b5967bf1258b9816c679872f3c8",
+      "original_bytes": 131064,
+      "published": "attention-qk128-key32-flash-latency-v1/run-1/rss-r0-candidate-qk128-key32.jsonl",
+      "published_sha256": "a6ad325f2ce06478536cfd01b0f7cfebdd067b5967bf1258b9816c679872f3c8",
+      "published_bytes": 131064,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/run-1/rss-r0-ollama.jsonl",
+      "original_sha256": "998c6a70a5e99c51f88e32e1a01108735268d41cfe6fe91eae416af7ec68a251",
+      "original_bytes": 151597,
+      "published": "attention-qk128-key32-flash-latency-v1/run-1/rss-r0-ollama.jsonl",
+      "published_sha256": "998c6a70a5e99c51f88e32e1a01108735268d41cfe6fe91eae416af7ec68a251",
+      "published_bytes": 151597,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/run-1/rss-r0-stage6-key32.jsonl",
+      "original_sha256": "c9cba542d81b8d17b0f57b7398eaf0f1fbc0deffd7a8ac3144d0546c2430e986",
+      "original_bytes": 123376,
+      "published": "attention-qk128-key32-flash-latency-v1/run-1/rss-r0-stage6-key32.jsonl",
+      "published_sha256": "c9cba542d81b8d17b0f57b7398eaf0f1fbc0deffd7a8ac3144d0546c2430e986",
+      "published_bytes": 123376,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/run-1/rss-r1-candidate-qk128-key32.jsonl",
+      "original_sha256": "4a81521504bfa50b057adbe98227acae92e025421e9311dc2669e298a1b3d35b",
+      "original_bytes": 139521,
+      "published": "attention-qk128-key32-flash-latency-v1/run-1/rss-r1-candidate-qk128-key32.jsonl",
+      "published_sha256": "4a81521504bfa50b057adbe98227acae92e025421e9311dc2669e298a1b3d35b",
+      "published_bytes": 139521,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/run-1/rss-r1-ollama.jsonl",
+      "original_sha256": "e04fd02080c5246955f32f67ee56a638e00cc5857d99c78aad29535f851e0127",
+      "original_bytes": 148190,
+      "published": "attention-qk128-key32-flash-latency-v1/run-1/rss-r1-ollama.jsonl",
+      "published_sha256": "e04fd02080c5246955f32f67ee56a638e00cc5857d99c78aad29535f851e0127",
+      "published_bytes": 148190,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/run-1/rss-r1-stage6-key32.jsonl",
+      "original_sha256": "927a85b9bc5ffbbed6d152f11157429b21f2676281d238047a97eed62a17e8bd",
+      "original_bytes": 143396,
+      "published": "attention-qk128-key32-flash-latency-v1/run-1/rss-r1-stage6-key32.jsonl",
+      "published_sha256": "927a85b9bc5ffbbed6d152f11157429b21f2676281d238047a97eed62a17e8bd",
+      "published_bytes": 143396,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/run-1/server-r0-candidate-qk128-key32.log",
+      "original_sha256": "7758c60bec1a8b18cc8df0c4d90b507ae519877a64dd9171031ebf0a5a6a4684",
+      "original_bytes": 1444,
+      "published": "attention-qk128-key32-flash-latency-v1/run-1/server-r0-candidate-qk128-key32.log",
+      "published_sha256": "7758c60bec1a8b18cc8df0c4d90b507ae519877a64dd9171031ebf0a5a6a4684",
+      "published_bytes": 1444,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/run-1/server-r0-ollama.log",
+      "original_sha256": "187df47a2fe96e3dfe3c14bb36c7a5f9d00de990f24571e953deaebef9a32d75",
+      "original_bytes": 13268,
+      "published": "attention-qk128-key32-flash-latency-v1/run-1/server-r0-ollama.log",
+      "published_sha256": "187df47a2fe96e3dfe3c14bb36c7a5f9d00de990f24571e953deaebef9a32d75",
+      "published_bytes": 13268,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/run-1/server-r0-stage6-key32.log",
+      "original_sha256": "80fa284d466f00821a948eec2504609591b76d7d11ff6e5f801c4f85f1ab7d7a",
+      "original_bytes": 1438,
+      "published": "attention-qk128-key32-flash-latency-v1/run-1/server-r0-stage6-key32.log",
+      "published_sha256": "80fa284d466f00821a948eec2504609591b76d7d11ff6e5f801c4f85f1ab7d7a",
+      "published_bytes": 1438,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/run-1/server-r1-candidate-qk128-key32.log",
+      "original_sha256": "09aa01ccf8a1b37591271356521fbd1d95355bfc9ee0cf5b76caf9a7bbdbffae",
+      "original_bytes": 1444,
+      "published": "attention-qk128-key32-flash-latency-v1/run-1/server-r1-candidate-qk128-key32.log",
+      "published_sha256": "09aa01ccf8a1b37591271356521fbd1d95355bfc9ee0cf5b76caf9a7bbdbffae",
+      "published_bytes": 1444,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/run-1/server-r1-ollama.log",
+      "original_sha256": "3d9c626c18102e638ff9dabd746401217ed8d323bbfd25959444d6e29dd9d208",
+      "original_bytes": 13262,
+      "published": "attention-qk128-key32-flash-latency-v1/run-1/server-r1-ollama.log",
+      "published_sha256": "3d9c626c18102e638ff9dabd746401217ed8d323bbfd25959444d6e29dd9d208",
+      "published_bytes": 13262,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/run-1/server-r1-stage6-key32.log",
+      "original_sha256": "102d125a954b1dd79208d95809ba8e0036024832de9e3fd7183bb8cf8fbf04de",
+      "original_bytes": 1444,
+      "published": "attention-qk128-key32-flash-latency-v1/run-1/server-r1-stage6-key32.log",
+      "published_sha256": "102d125a954b1dd79208d95809ba8e0036024832de9e3fd7183bb8cf8fbf04de",
+      "published_bytes": 1444,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/run-1/summary.json",
+      "original_sha256": "1a77484e5969153e25a591dd91cb464eaad2efbcc0d384bf8c1a7e5191ac809e",
+      "original_bytes": 4697,
+      "published": "attention-qk128-key32-flash-latency-v1/run-1/summary.json",
+      "published_sha256": "1a77484e5969153e25a591dd91cb464eaad2efbcc0d384bf8c1a7e5191ac809e",
+      "published_bytes": 4697,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/run-receipt.json",
+      "original_sha256": "149bd33d76c0bc2d9fdd66519ddd98075f4a4db1b1cc427d61df0e94084a65e1",
+      "original_bytes": 982,
+      "published": "attention-qk128-key32-flash-latency-v1/run-receipt.json",
+      "published_sha256": "149bd33d76c0bc2d9fdd66519ddd98075f4a4db1b1cc427d61df0e94084a65e1",
+      "published_bytes": 982,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/run.py",
+      "original_sha256": "707e767587a536238dd68eb7b9389b21394480c404e4150f2738384b86050046",
+      "original_bytes": 4010,
+      "published": "attention-qk128-key32-flash-latency-v1/run.py",
+      "published_sha256": "707e767587a536238dd68eb7b9389b21394480c404e4150f2738384b86050046",
+      "published_bytes": 4010,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-flash-latency/publication-v1/shared-cache-check-proposal.json",
+      "original_sha256": "0445931bcfa3d31d408741c93c7bd52d7fc390c12f62fbf9403919b594390080",
+      "original_bytes": 911,
+      "published": "attention-qk128-key32-flash-latency-v1/shared-cache-check-proposal.json",
+      "published_sha256": "0445931bcfa3d31d408741c93c7bd52d7fc390c12f62fbf9403919b594390080",
+      "published_bytes": 911,
+      "path_replacements": []
     }
   ],
   "current_source_snapshot": [
