@@ -336,14 +336,50 @@ fn clef_door() -> Option<Door> {
     })
 }
 
-/// The door for the issue's kind, then the one for the per-file questions.
-fn doors(decider: Decider) -> (Option<Door>, Option<Door>) {
-    match decider {
-        Decider::Off => (None, None),
-        Decider::Jev => (jev_door(), jev_door()),
-        Decider::Clef => (clef_door(), clef_door()),
-        Decider::Auto => (jev_door().or_else(ours_door), jev_door().or_else(ours_door)),
+/// The doors to ask, in order: a question that fails at one (out of
+/// credit, unreachable) is asked again at the next, which then answers the
+/// rest (#11339).
+struct Doors(Vec<Door>);
+
+impl Doors {
+    fn first(&self) -> Option<&Door> {
+        self.0.first()
     }
+
+    /// Asks `request`, failing over door by door; the answer and the door
+    /// that gave it, or the last door's error.
+    async fn system_one(
+        &mut self,
+        request: jev::SystemOneRequest,
+    ) -> Result<(jev::SystemOneResponse, &Door), String> {
+        let mut last = "No System One door is set up".to_owned();
+        while !self.0.is_empty() {
+            match self.0[0].client.system_one(request.clone()).await {
+                Ok(response) => return Ok((response, &self.0[0])),
+                Err(error) => {
+                    last = format!("{}: {error}", self.0[0].label);
+                    if self.0.len() == 1 {
+                        break;
+                    }
+                    self.0.remove(0);
+                }
+            }
+        }
+        Err(last)
+    }
+}
+
+/// The doors for the issue's kind, then the ones for the per-file questions.
+fn doors(decider: Decider) -> (Doors, Doors) {
+    let list = || -> Vec<Door> {
+        match decider {
+            Decider::Off => Vec::new(),
+            Decider::Jev => jev_door().into_iter().collect(),
+            Decider::Clef => clef_door().into_iter().collect(),
+            Decider::Auto => jev_door().into_iter().chain(ours_door()).collect(),
+        }
+    };
+    (Doors(list()), Doors(list()))
 }
 
 fn issue_state(base: &Base) -> String {
@@ -377,7 +413,7 @@ async fn issue_kind(
         ("config", "Build, release, settings or dependency change"),
     ];
     let question = "What kind of change does this issue ask for?";
-    let (door, _) = doors(options.decider);
+    let (mut doors, _) = doors(options.decider);
     let mut card = json!({
         "kind": "model",
         "title": "Issue kind",
@@ -385,7 +421,7 @@ async fn issue_kind(
         "used_for": "Recorded with the run; the agent's instructions are the same for every kind today",
         "options": KINDS.iter().map(|(name, _)| json!({"name": name})).collect::<Vec<_>>(),
     });
-    let Some(door) = door else {
+    let Some(door) = doors.first() else {
         card["skipped"] =
             json!("No System One door is set up (TYPESAFE_API_KEY or Ollama with clef-flash)");
         let index = transcript.card(card.clone());
@@ -405,11 +441,11 @@ async fn issue_kind(
         jev::Questions::new().with("kind", choice),
     );
     let started = Instant::now();
-    let result = door.client.system_one(request).await;
+    let result = doors.system_one(request).await;
     card["ms"] = json!(started.elapsed().as_millis() as u64);
     match result {
-        Ok(response) => {
-            card["door"] = json!(answered_by(&door, &response));
+        Ok((response, door)) => {
+            card["door"] = json!(answered_by(door, &response));
             card["model"] = json!(response.model);
             let cost = response.usage.cost_usd();
             spent.add(cost);
@@ -435,7 +471,7 @@ async fn issue_kind(
             Some(chosen)
         }
         Err(error) => {
-            transcript.finish(index, card, json!({"error": error.to_string()}));
+            transcript.finish(index, card, json!({"error": error}));
             None
         }
     }
@@ -459,7 +495,7 @@ async fn file_questions(
     if asked.is_empty() {
         return Vec::new();
     }
-    let (_, door) = doors(options.decider);
+    let (_, mut doors) = doors(options.decider);
     let mut card = json!({
         "kind": "model",
         "title": "Does the fix need each file?",
@@ -467,7 +503,7 @@ async fn file_questions(
         "used_for": format!("A file under {KEEP_AT} leaves the briefing (at least {MIN_FILES} stay)"),
         "files": asked.iter().map(|path| json!({"name": path})).collect::<Vec<_>>(),
     });
-    let Some(door) = door else {
+    let Some(door) = doors.first() else {
         card["skipped"] = json!("No System One door is set up; the scorer's ranking stands");
         let index = transcript.card(card.clone());
         transcript.finish(index, card, json!({"ok": true}));
@@ -500,10 +536,10 @@ async fn file_questions(
             jev::Questions::new().with("relevant", jev::Noul::new(question)),
         );
         let asked_at = Instant::now();
-        match door.client.system_one(request).await {
-            Ok(response) => {
+        match doors.system_one(request).await {
+            Ok((response, door)) => {
                 let ms = asked_at.elapsed().as_millis() as u64;
-                last_door = answered_by(&door, &response);
+                last_door = answered_by(door, &response);
                 cost_total.add(response.usage.cost_usd());
                 tokens += response.usage.input_tokens.unwrap_or(0);
                 if let Ok(answer) = response.noul("relevant") {
@@ -517,7 +553,7 @@ async fn file_questions(
                 }
             }
             Err(error) => {
-                rows[row] = json!({"name": path, "error": error.to_string()});
+                rows[row] = json!({"name": path, "error": error});
             }
         }
         card["files"] = json!(rows);
@@ -748,4 +784,35 @@ async fn run_with_input(script: &Path, input: &Value, cwd: &Path) -> Result<Valu
     }
     serde_json::from_slice(&out.stdout)
         .map_err(|_| "The briefing script's answer did not parse.".to_owned())
+}
+
+#[cfg(test)]
+mod door_tests {
+    use super::{Door, Doors};
+
+    fn dead(label: &str) -> Door {
+        let config = jev::Config::local("http://127.0.0.1:9", "clef-flash")
+            .timeout(std::time::Duration::from_secs(2));
+        Door {
+            client: jev::Client::new(config).unwrap(),
+            label: label.into(),
+            model: "clef-flash".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn a_failing_door_hands_the_question_to_the_next() {
+        let mut doors = Doors(vec![dead("first"), dead("second")]);
+        let request = jev::SystemOneRequest::new(
+            "state",
+            jev::Questions::new().with("relevant", jev::Noul::new("q")),
+        );
+        let Err(error) = doors.system_one(request).await else {
+            panic!("a dead door answered");
+        };
+        // The first door failed and was dropped; the second was asked.
+        assert!(error.starts_with("second:"), "{error}");
+        assert_eq!(doors.0.len(), 1);
+        assert_eq!(doors.first().map(|d| d.label.as_str()), Some("second"));
+    }
 }
