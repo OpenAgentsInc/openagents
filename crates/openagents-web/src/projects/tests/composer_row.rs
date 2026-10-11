@@ -1,13 +1,15 @@
 //! The composer's selector row through the whole site
 //! (`crate::composer_row`): nothing for a signed-out visitor; Project
 //! (with Connect a GitHub repository) once signed in; Branch from GitHub
-//! with a project; Where it runs while Coder on a computer is online; and
-//! a message sent with each pick records it or starts the run, while a
-//! pick that can't work is refused, never answered some other way.
+//! with a project; Where it runs for an account, offering Coder on a
+//! computer while it is online, on new and existing chats alike (#11319);
+//! and a message sent with each pick records it or starts the run, while
+//! a pick that can't work is refused, never answered some other way.
 
 use super::*;
 
 const REQUEST: &str = "32345678-1234-4234-8234-123456789abc";
+const LATER: &str = "42345678-1234-4234-8234-123456789abc";
 
 /// Adds `repository` as a project for a browser that connected GitHub;
 /// its id.
@@ -64,7 +66,21 @@ async fn the_row_offers_only_what_works_and_sending_uses_each_pick() {
         "{}",
         home.body
     );
-    assert!(!home.body.contains("Branch:") && !home.body.contains("Where it runs"));
+    assert!(!home.body.contains("Branch:"));
+    // Where it runs shows for an account even with no computer online,
+    // and its panel says how to bring one online (#11319).
+    assert!(
+        home.body.contains(r#"aria-label="Where it runs: Chat""#),
+        "{}",
+        home.body
+    );
+    let panel = quiet.get(&world, "/composer/row/target").await;
+    assert!(
+        panel.body.contains("None of your computers is online"),
+        "{}",
+        panel.body
+    );
+    crate::copy_guard::assert_plain("/composer/row/target", &panel.body);
     let panel = quiet.get(&world, "/composer/row/project").await;
     assert_eq!(panel.status, StatusCode::OK, "{}", panel.body);
     assert!(panel.body.contains("Connect a GitHub repository"));
@@ -92,7 +108,7 @@ async fn the_row_offers_only_what_works_and_sending_uses_each_pick() {
         row.body
             .contains(r#"id="composer-panel" hx-swap-oob="innerHTML""#)
     );
-    assert!(!row.body.contains("Where it runs"), "{}", row.body);
+    assert!(!row.body.contains("Coder on"), "{}", row.body);
     let branches = octo
         .get(&world, &format!("/composer/row/branch?project={project}"))
         .await;
@@ -187,9 +203,21 @@ async fn the_row_offers_only_what_works_and_sending_uses_each_pick() {
     assert!(panel.body.contains("Coder on studio-mac"), "{}", panel.body);
     assert!(panel.body.contains("target=coder%3Astudio-mac"));
     crate::copy_guard::assert_plain("/composer/row/target", &panel.body);
-    // Not on an existing chat's row: Coder starts new chats.
+    // On an existing chat's row too (#11319), and after the first
+    // message: the chat's page and its row's panel offer Coder.
     let page = octo.get(&world, &format!("/chat/{LOOSE}")).await;
-    assert!(!page.body.contains("Where it runs"), "{}", page.body);
+    assert!(
+        page.body.contains(r#"aria-label="Where it runs: Chat""#),
+        "{}",
+        page.body
+    );
+    let panel = octo
+        .get(
+            &world,
+            &format!("/composer/row/target?chat={LOOSE}&project={project}&branch=main&target="),
+        )
+        .await;
+    assert!(panel.body.contains("Coder on studio-mac"), "{}", panel.body);
 
     // Sent there: a Coder chat whose first message waits for Coder.
     let sent = octo
@@ -253,6 +281,164 @@ async fn the_row_offers_only_what_works_and_sending_uses_each_pick() {
         matches!(&taken, crate::coder_sync::Taken::Replies { replies, .. } if replies.len() == 1),
         "{taken:?}"
     );
+
+    // A later message in the chat that began here, sent to Coder (#11319):
+    // the chat moves to a Coder chat on that computer, its messages so
+    // far shown there and handed to Coder before the new one.
+    for _ in 0..600 {
+        let chat = world.store.load(&owner, LOOSE).await.unwrap().unwrap();
+        if chat.conversation.pending.is_none() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    let before = world
+        .store
+        .load(&owner, LOOSE)
+        .await
+        .unwrap()
+        .unwrap()
+        .conversation;
+    assert!(before.pending.is_none() && before.terminal.is_none());
+    let page = octo.get(&world, &format!("/chat/{LOOSE}")).await;
+    let csrf = chat_csrf(&page.body);
+    let sent = octo
+        .post(
+            &world,
+            &format!("/chat/{LOOSE}"),
+            &[
+                ("q", "Push a README"),
+                ("request_id", LATER),
+                ("csrf", &csrf),
+                ("project", &project),
+                ("branch", "main"),
+                ("target", "coder:studio-mac"),
+            ],
+        )
+        .await;
+    let session = crate::coder_sync::web_session(LATER);
+    let id = crate::coder_sync::chat_id(&owner, &session);
+    assert_eq!(sent.location(), format!("/chat/{id}"), "{}", sent.body);
+    let moved = world
+        .store
+        .load(&owner, &id)
+        .await
+        .unwrap()
+        .unwrap()
+        .conversation;
+    let terminal = moved.terminal.as_ref().unwrap();
+    assert_eq!(terminal.computer, "studio-mac");
+    assert_eq!(terminal.replies[0].text, "Push a README");
+    assert_eq!(moved.messages[0].text, "What does this repository do?");
+    assert_eq!(terminal.continued[0].text, "What does this repository do?");
+    assert_eq!(moved.project.as_deref(), Some(project.as_str()));
+    let taken = crate::coder_sync::take_replies(&world.store, &owner, &session)
+        .await
+        .unwrap();
+    assert!(
+        matches!(&taken, crate::coder_sync::Taken::Replies { replies, continued, .. }
+            if replies.len() == 1 && continued[0].text == "What does this repository do?"),
+        "{taken:?}"
+    );
+    // The Coder chat's own row has no Where it runs: its messages go to
+    // its computer.
+    let page = octo.get(&world, &format!("/chat/{id}")).await;
+    assert!(!page.body.contains("Where it runs"), "{}", page.body);
+}
+
+/// #11318: under the newest answer of a chat that began here, a signed-in
+/// person with Coder online gets Run in Coder on {computer}, whatever the
+/// answer said; it sends their last message there with the chat so far
+/// and opens the Coder chat, after which the offer is gone.
+#[tokio::test]
+async fn the_newest_answer_offers_to_run_the_message_in_coder() {
+    let world = world().await;
+    let mut octo = Browser::default();
+    octo.sign_in(&world, "octo-local").await;
+    let owner = account_owner_of(&world, "octo-local");
+    let said = |role, text: &str| crate::chat_store::Message {
+        role,
+        text: text.into(),
+        request_id: Some(REQUEST.into()),
+    };
+    world
+        .store
+        .create(&crate::chat_store::Conversation {
+            id: REQUEST.into(),
+            owner: owner.clone(),
+            revision: 1,
+            title: "Finances".into(),
+            messages: vec![
+                said(
+                    crate::chat_store::Role::User,
+                    "push a README to AtlantisPleb/finances",
+                ),
+                said(
+                    crate::chat_store::Role::Assistant,
+                    "Coder on your computer can do that.",
+                ),
+            ],
+            pending: None,
+            requests: Vec::new(),
+            selection: None,
+            updated_unix: 1,
+            pinned_unix: None,
+            archived_unix: None,
+            project: None,
+            terminal: None,
+            environment: None,
+            tasks: Vec::new(),
+            opened_unix: None,
+            branch: None,
+        })
+        .await
+        .unwrap();
+    let offer = format!("/chat/{REQUEST}/to-coder");
+    let page = octo.get(&world, &format!("/chat/{REQUEST}")).await;
+    assert!(page.body.contains(&offer), "{}", page.body);
+    // No computer online: nothing to offer.
+    let loaded = octo.get(&world, &offer).await;
+    assert_eq!(loaded.status, StatusCode::OK);
+    assert!(!loaded.body.contains("Run in Coder"), "{}", loaded.body);
+
+    online(&world, &owner, "studio-mac").await;
+    let loaded = octo.get(&world, &offer).await;
+    assert!(
+        loaded.body.contains("Run in Coder on studio-mac"),
+        "{}",
+        loaded.body
+    );
+    crate::copy_guard::assert_plain("/chat/to-coder", &loaded.body);
+    let csrf = hidden(&loaded.body, &format!(r#"action="{offer}""#), "csrf");
+    let sent = octo
+        .post(
+            &world,
+            &offer,
+            &[
+                ("csrf", &csrf),
+                ("request_id", REQUEST),
+                ("computer", "studio-mac"),
+            ],
+        )
+        .await;
+    let session = crate::coder_sync::web_session(REQUEST);
+    let id = crate::coder_sync::chat_id(&owner, &session);
+    assert_eq!(sent.location(), format!("/chat/{id}"), "{}", sent.body);
+    let moved = world
+        .store
+        .load(&owner, &id)
+        .await
+        .unwrap()
+        .unwrap()
+        .conversation;
+    let terminal = moved.terminal.as_ref().unwrap();
+    assert_eq!(terminal.computer, "studio-mac");
+    assert_eq!(
+        terminal.replies[0].text,
+        "push a README to AtlantisPleb/finances"
+    );
+    let loaded = octo.get(&world, &offer).await;
+    assert!(!loaded.body.contains("Run in Coder"), "{}", loaded.body);
 }
 
 /// Serves a signed-in world on `OA_SCREEN_PORT` for headless screenshots
@@ -312,6 +498,7 @@ async fn serve_for_screenshots() {
             version: 3,
         }],
         computers: vec!["studio-mac".into()],
+        account: true,
         claude_connect: false,
         claude_subscription: false,
         claude_signed_in: vec![],

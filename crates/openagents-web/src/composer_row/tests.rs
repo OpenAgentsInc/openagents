@@ -36,6 +36,7 @@ fn choices() -> Choices {
         connected: true,
         environments: vec![environment()],
         computers: vec!["studio-mac".into()],
+        account: true,
         claude_connect: false,
         claude_subscription: false,
         claude_signed_in: vec![],
@@ -175,11 +176,28 @@ fn coder_is_offered_while_a_computer_is_online() {
         html.contains(r#"aria-label="Where it runs: Coder on studio-mac""#),
         "{html}"
     );
-    // Offline: back to Chat, and with nothing else, no selector.
+    // Offline: back to Chat. An account still sees Where it runs, whose
+    // panel says how to bring a computer online (#11319); a browser that
+    // isn't an account, with nothing else, sees no selector.
     choices.computers.clear();
     choices.environments.clear();
     let picked = choices.resolve(&wanted("", "", "coder:studio-mac"));
     assert_eq!(picked.target, Target::Chat);
+    let html = render(Some(&choices), &picked);
+    assert!(
+        html.contains(r#"aria-label="Where it runs: Chat""#),
+        "{html}"
+    );
+    let panel = target_panel(&choices, &picked, &|_: &dyn Fn(&mut Picked), _: &str| {
+        String::new()
+    })
+    .into_string();
+    assert!(
+        panel.contains("None of your computers is online"),
+        "{panel}"
+    );
+    assert!(panel.contains(r#"href="/download""#), "{panel}");
+    choices.account = false;
     let html = render(Some(&choices), &picked);
     assert!(!html.contains("Where it runs"), "{html}");
 }

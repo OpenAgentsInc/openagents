@@ -60,6 +60,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(continued::routes())
         .merge(approval::routes())
         .merge(computer::routes())
+        .merge(to_coder::routes())
         .layer(DefaultBodyLimit::max(64 * 1024))
 }
 
@@ -302,11 +303,11 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
         } else {
             None
         };
-    let picked =
-        match crate::composer_row::checked(&app, &headers, &owner, &prompt.wanted(), true).await {
-            Ok(picked) => picked,
-            Err(message) => return refusal(StatusCode::CONFLICT, message),
-        };
+    let picked = match crate::composer_row::checked(&app, &headers, &owner, &prompt.wanted()).await
+    {
+        Ok(picked) => picked,
+        Err(message) => return refusal(StatusCode::CONFLICT, message),
+    };
     let project = picked.project.as_ref().map(|project| project.id.clone());
     match &picked.target {
         crate::composer_row::Target::Chat => {}
@@ -314,7 +315,8 @@ async fn start(State(app): State<App>, headers: HeaderMap, Form(prompt): Form<Pr
             return refusal(StatusCode::BAD_REQUEST, crate::chat_files::NOT_TO_CODER);
         }
         crate::composer_row::Target::Coder(computer) => {
-            return start_on_coder(&app, &owner, computer, &id, &text, project).await;
+            return start_on_coder(&app, &headers, &owner, computer, &id, &text, project, &[])
+                .await;
         }
         crate::composer_row::Target::Claude(_) => {
             return start_claude(&app, &headers, &owner, &id, text, digest, &picked, files).await;
@@ -451,20 +453,23 @@ async fn saved_soon(
 
 /// A new chat whose first message goes to Coder on `computer`
 /// ([`crate::coder_sync::start_from_web`]); on to its page.
+#[allow(clippy::too_many_arguments)]
 async fn start_on_coder(
     app: &App,
+    headers: &HeaderMap,
     owner: &str,
     computer: &str,
     request: &str,
     text: &str,
     project: Option<String>,
+    earlier: &[Message],
 ) -> Response {
     use crate::coder_sync::Started;
     let store = &app.config.chat_store;
-    match crate::coder_sync::start_from_web(store, owner, computer, request, text, project).await {
-        Ok(Started::Started(id)) => {
-            crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response())
-        }
+    match crate::coder_sync::start_from_web(store, owner, computer, request, text, project, earlier)
+        .await
+    {
+        Ok(Started::Started(id)) => to_chat(headers, &id),
         Ok(Started::Offline) => refusal(
             StatusCode::CONFLICT,
             &format!("Coder on {computer} isn't online now. Pick where it runs again."),
@@ -505,7 +510,7 @@ async fn start_claude(
         Ok(attached) => attached,
         Err(message) => return refusal(StatusCode::BAD_REQUEST, message),
     };
-    let Some(env) = claude_environment(app, headers, owner, picked, true).await else {
+    let Some(env) = claude_environment(app, headers, owner, picked).await else {
         return refusal(
             StatusCode::CONFLICT,
             "Claude Code can't run there now. Pick where it runs again.",
@@ -601,12 +606,11 @@ async fn claude_environment(
     headers: &HeaderMap,
     owner: &str,
     picked: &crate::composer_row::Picked,
-    new_chat: bool,
 ) -> Option<crate::composer_row::Environment> {
     let crate::composer_row::Target::Claude(id) = &picked.target else {
         return None;
     };
-    let choices = crate::composer_row::choices(app, headers, owner, new_chat).await?;
+    let choices = crate::composer_row::choices(app, headers, owner).await?;
     let env = choices.environment(picked.project.as_ref()?)?;
     (env.id == *id).then(|| env.clone())
 }
@@ -1106,11 +1110,11 @@ async fn follow(
             "This chat is full. Start a new chat to keep going.",
         );
     }
-    let picked =
-        match crate::composer_row::checked(&app, &headers, &owner, &prompt.wanted(), false).await {
-            Ok(picked) => picked,
-            Err(message) => return refusal(StatusCode::CONFLICT, message),
-        };
+    let picked = match crate::composer_row::checked(&app, &headers, &owner, &prompt.wanted()).await
+    {
+        Ok(picked) => picked,
+        Err(message) => return refusal(StatusCode::CONFLICT, message),
+    };
     // The row's project and branch, recorded when the composer has the row.
     let place = prompt.project.is_some().then(|| {
         (
@@ -1118,6 +1122,29 @@ async fn follow(
             picked.branch.clone(),
         )
     });
+    // Coder on a computer for a chat that began here (#11319): the chat
+    // moves to a Coder chat on that computer, its messages so far with it.
+    if let crate::composer_row::Target::Coder(computer) = &picked.target {
+        if !files.is_empty() {
+            return refusal(StatusCode::BAD_REQUEST, crate::chat_files::NOT_TO_CODER);
+        }
+        let project = picked
+            .project
+            .as_ref()
+            .map(|project| project.id.clone())
+            .or_else(|| loaded.conversation.project.clone());
+        return start_on_coder(
+            &app,
+            &headers,
+            &owner,
+            computer,
+            &prompt.request_id,
+            &text,
+            project,
+            &loaded.conversation.messages,
+        )
+        .await;
+    }
     if matches!(picked.target, crate::composer_row::Target::Claude(_)) {
         return follow_claude(
             &app,
@@ -1420,7 +1447,7 @@ async fn follow_claude(
             Ok(attached) => attached,
             Err(message) => return refusal(StatusCode::BAD_REQUEST, message),
         };
-    let Some(env) = claude_environment(app, headers, &chat.owner, picked, false).await else {
+    let Some(env) = claude_environment(app, headers, &chat.owner, picked).await else {
         return refusal(
             StatusCode::CONFLICT,
             "Claude Code can't run there now. Pick where it runs again.",
@@ -1659,6 +1686,19 @@ async fn answer(
     } else {
         Vec::new()
     };
+    // A signed-in person with Coder online (#11318): a message the typed
+    // router reads as work on code goes to Coder on that computer
+    // ([`hand_to_coder`]), and the answer here knows Coder is theirs.
+    let coder_here =
+        if door.is_some() && chat.terminal.is_none() && crate::chat_store::is_account_owner(&owner)
+        {
+            crate::composer_row::online_computers(&app, &owner)
+                .await
+                .into_iter()
+                .next()
+        } else {
+            None
+        };
     // In a project with Google Drive sources, Gemini answers from them,
     // or hands the message to the hosted chat (#11238).
     let drive = match (&door, parts.is_empty()) {
@@ -1721,6 +1761,7 @@ async fn answer(
                         }),
                     memory,
                     repository,
+                    computer_ready: coder_here.is_some(),
                     ..Context::default()
                 },
                 reply.clone(),
@@ -1733,11 +1774,12 @@ async fn answer(
     let mut asked = door_unavailable;
     let mut shown = String::new();
     let mut settled = false;
+    let mut handed = false;
     loop {
         if let Some(job) = &mut job {
             tokio::select! { ()=job,if !asked=>asked=true, ()=tokio::time::sleep(Duration::from_millis(400))=>{} }
         }
-        let (text, done, failure, meta) = {
+        let (text, done, failure, meta, route) = {
             let r = basic_coder::lock(&reply);
             (
                 r.text.clone(),
@@ -1756,7 +1798,18 @@ async fn answer(
                         meta
                     })
                     .filter(|meta| !meta.is_empty()),
+                r.meta.route.clone(),
             )
+        };
+        let (text, done, failure, meta) = match &coder_here {
+            Some(computer) if !handed && route.as_deref() == Some(crate::work_runs::WORK_ROUTE) => {
+                handed = true;
+                match hand_to_coder(&app, &loaded.conversation, &request_id, computer).await {
+                    Some(said) => (said, true, None, None),
+                    None => (text, done, failure, meta),
+                }
+            }
+            _ => (text, done, failure, meta),
         };
         let expired = tokio::time::Instant::now() >= deadline;
         let ended = done || failure.is_some() || asked || expired;
@@ -1873,6 +1926,60 @@ async fn answer(
     {
         let _ = app.config.chat_store.release(&owner, &request_id).await;
     }
+}
+
+/// A message the typed router read as work on code (`work.dispatch`), in a
+/// chat of a signed-in person with Coder online on `computer` (#11318):
+/// it starts a Coder chat there with the chat so far
+/// ([`crate::coder_sync::start_from_web`]), like picking Coder on
+/// {computer}, instead of the website saying it can't. What this chat
+/// says in place of the answer, or `None` to keep answering here (the
+/// computer just went offline, or the message carries files).
+async fn hand_to_coder(
+    app: &App,
+    chat: &Conversation,
+    request_id: &str,
+    computer: &str,
+) -> Option<String> {
+    use crate::coder_sync::Started;
+    if chat
+        .requests
+        .iter()
+        .any(|r| r.id == request_id && !r.files.is_empty())
+    {
+        return None;
+    }
+    let at = chat
+        .messages
+        .iter()
+        .position(|m| m.role == Role::User && m.request_id.as_deref() == Some(request_id))?;
+    let started = crate::coder_sync::start_from_web(
+        &app.config.chat_store,
+        &chat.owner,
+        computer,
+        request_id,
+        &chat.messages[at].text,
+        chat.project.clone(),
+        &chat.messages[..at],
+    )
+    .await
+    .ok()?;
+    Some(match started {
+        Started::Started(id) => {
+            format!("Coder on {computer} is doing this. [Open the Coder chat](/chat/{id})")
+        }
+        Started::Offline => return None,
+        Started::Full => {
+            "Coder couldn't take this: your account has no room for more chats. Delete some first."
+                .into()
+        }
+        Started::Busy => {
+            "Coder has too many messages waiting. Try again when it has answered them.".into()
+        }
+        Started::Secret => {
+            "This looks like it holds a password or key, so it wasn't sent to Coder.".into()
+        }
+    })
 }
 
 /// The visitor's chats in the left panel: a search box, the Pinned group in
@@ -2101,6 +2208,8 @@ fn messages(chat: &Conversation, before: Option<usize>, links: bool) -> Markup {
                 (computer::turn(chat, &terminal.computer, index, ask))
             }
         }
+        // Run the last message in Coder on the person's computer (#11318).
+        @if before.is_none() { (to_coder::slot(chat)) }
         // The chat's agents (#11164): they load themselves.
         @if before.is_none() { (agents::slot(chat)) }
         div #chat-status.oa-thread-status role="status" aria-live="polite"
@@ -2580,6 +2689,8 @@ mod continued;
 pub(crate) mod delete_all;
 #[path = "chat_live.rs"]
 mod live;
+#[path = "chat_to_coder.rs"]
+mod to_coder;
 #[path = "chat_work.rs"]
 mod work;
 
