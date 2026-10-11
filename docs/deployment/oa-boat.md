@@ -55,6 +55,20 @@ Production's previous revision, for rollback:
 - `bx_gh548gv7v2`, which the service could not reach, was stopped at its
   TTL ("stop bx_gh548gv7v2 (ttl)"): the deadline does not need SSH.
 
+## The daily template on our backend
+
+The Cloud Run job `oa-boat-template` (image from `9e82dc419e`, key
+`oa-boat-api-key`, base `BOAT_API_BASE` = this service) built
+`oa-coder-main-20261011` on a `large` sandbox: cold build (no shared cache
+on sandboxes) from `02:44` to `03:52` UTC, then a `32498907520`-byte GCE
+image saved in `214.5s`; the job exited 0. The schedule
+`oa-boat-template-daily` runs the same job each day.
+
+A sandbox from it (`bx_olo0d58cat`, `large`): ready in `33 s`; the first
+`cargo build -p openagents-cli` in the warm slot compiled one crate in
+`93 s`; the whole check cost `$0.010421`. There is no lazy restore to wait
+for, which on hosted Boat took minutes before a warm build could start.
+
 ## Measured
 
 Live, against the deployed service, with `curl` and the SDK's own calls:
