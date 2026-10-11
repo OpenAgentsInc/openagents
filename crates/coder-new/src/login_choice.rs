@@ -83,7 +83,15 @@ pub fn apply(
     out: &mut impl Write,
 ) -> Result<(), String> {
     let computer = openagents_login::computer_name();
-    let mut settings = Settings::load(dir);
+    let mut settings = match Settings::load_checked(dir) {
+        Ok(settings) => settings,
+        Err(why) => {
+            // The person asked to sync; tell them their old settings file was
+            // unreadable instead of silently starting from off.
+            let _ = writeln!(out, "{why}");
+            Settings::default()
+        }
+    };
     settings.chosen = true;
     settings.on = choice == Choice::All;
     settings.store(dir)?;

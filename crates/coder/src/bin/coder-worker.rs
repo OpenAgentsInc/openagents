@@ -870,6 +870,21 @@ async fn serve(options: &Options) -> Result<(), String> {
         ),
         None => eprintln!("calibration off: raw probabilities"),
     }
+    // Staged turns (#11297): on by default when the judge asks a Clef door
+    // first, and Clef's staged map reads them.
+    eprintln!(
+        "router  turns {}{}",
+        if router::judge::staged_on() {
+            "staged (route_hint, then route and answer over its shortlist)"
+        } else {
+            "flat (one main request, answer beside it)"
+        },
+        routing
+            .clef_calibration
+            .as_ref()
+            .map(|map| format!("; Clef answers on {}", map.id()))
+            .unwrap_or_default()
+    );
     match routing.news.as_deref() {
         Some(Door::Fallback(news)) => eprintln!(
             "gym news {} first, then {} with its reasoning off",
@@ -2667,8 +2682,9 @@ impl Job {
         } else {
             request
         };
-        // Only the questions a rule reads on this surface (#11247).
-        let request = request.for_surface(turn.context.surface());
+        // Only the questions a rule reads on this surface, and `route`
+        // and `answer` over a shortlist the main request picks (#11247).
+        let request = request.for_surface(turn.context.surface()).configured();
         let (mode, shadow, context) = (turn.mode, turn.shadow, turn.context.clone());
         let draft = turn.draft.is_some();
         // Whether the latest message has earlier ones to refer to: a

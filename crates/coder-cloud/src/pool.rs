@@ -335,15 +335,22 @@ pub fn ensure_key() -> Result<String, String> {
 }
 
 /// Makes `dir` (and its parents) and leaves it readable by its owner alone.
+/// Off Unix the directory keeps the account's default access.
 fn private_dir(dir: &std::path::Path) -> Result<(), String> {
-    use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _};
-    std::fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder
         .create(dir)
         .map_err(|e| format!("{}: {e}", dir.display()))?;
-    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
-        .map_err(|e| format!("{}: {e}", dir.display()))
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
+            .map_err(|e| format!("{}: {e}", dir.display()))?;
+    }
+    Ok(())
 }
 
 /// Whether `name` is a GCE instance name: lowercase letters, digits and
@@ -508,12 +515,12 @@ fn pin_host_keys(project: &str, host: &Host) -> Result<PathBuf, String> {
 
 /// Writes `text` to `path` readable by its owner alone, atomically.
 fn write_private(path: &std::path::Path, text: &str) -> Result<(), String> {
-    use std::os::unix::fs::OpenOptionsExt as _;
     let temp = path.with_extension(format!("writing-{}", word(6)));
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .mode(0o600)
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let mut file = options
         .open(&temp)
         .map_err(|e| format!("{}: {e}", temp.display()))?;
     file.write_all(text.as_bytes())

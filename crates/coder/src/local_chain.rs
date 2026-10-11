@@ -214,6 +214,29 @@ pub fn local_generator(
     })
 }
 
+/// Coder's own agent on the OpenAgents AI Gateway only: no Codex login and
+/// no Claude Code, for a task a Claude plan's usage limit paused and the
+/// person handed to OpenAgents (#11295). It never starts `claude`.
+///
+/// # Errors
+///
+/// The gateway is turned off or unreachable.
+pub fn gateway_generator() -> Result<LocalGenerator, String> {
+    if std::env::var("CODER_CLOUD").as_deref() == Ok("off") {
+        return Err("OpenAgents can't continue it here: OpenAgents is turned off on this computer (CODER_CLOUD=off).".into());
+    }
+    let door = crate::cloud::door(&|name| std::env::var(name).ok())
+        .map_err(|error| format!("Cannot connect to the OpenAgents AI Gateway: {error}"))?;
+    Ok(LocalGenerator {
+        providers: GeneratorChain {
+            providers: vec![LocalProvider::Gateway(crate::cloud::CloudLane::new(
+                Arc::new(door),
+            ))],
+            current: Cell::new(0),
+        },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

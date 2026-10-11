@@ -102,7 +102,12 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             None => return output.usage("land", "withdraw takes an entry id", USAGE),
         },
         "submit" => submit(&queue, &args),
-        "work" => return work(output, store.as_ref(), &args),
+        "work" => {
+            // The queue's entries as rows on openagents.com and the phone
+            // (#11250).
+            crate::land_fleet::spawn(args.option("queue").map(str::to_owned));
+            return work(output, store.as_ref(), &args);
+        }
         _ => unreachable!("checked above"),
     };
     match result {

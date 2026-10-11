@@ -35,7 +35,7 @@ pub struct Question {
 pub struct Item {
     /// Stable while it runs: the chat's session id, or the agent's id.
     pub id: String,
-    /// `chat` or `agent`.
+    /// `chat`, `agent`, or `landing` (a landing queue entry, #11250).
     pub kind: String,
     pub title: String,
     pub engine: Option<String>,
@@ -50,6 +50,11 @@ pub struct Item {
     pub question: Option<Question>,
     /// A short line about what it is doing.
     pub line: Option<String>,
+    /// While a Claude plan's usage limit pauses it: what the person may do,
+    /// `your_key` (continue on their own API key) and/or `openagents`
+    /// (hand it to Coder's own agent), as [`Command::action`]s (#11295).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub choices: Vec<String>,
 }
 
 impl Item {
@@ -66,7 +71,8 @@ pub struct Command {
     pub id: String,
     /// The [`Item::id`] it is for.
     pub item: String,
-    /// `stop`, `approve`, `deny`, or `message`.
+    /// `stop`, `approve`, `deny`, `message`, or a paused item's choice
+    /// (`your_key`, `openagents`).
     pub action: String,
     #[serde(default)]
     pub question: Option<String>,
@@ -126,6 +132,37 @@ pub async fn report(
     }
 }
 
+/// The kind of a landing queue entry's item (#11250).
+pub const LANDING: &str = "landing";
+
+/// Report the landing queue's entries (`items`, each of kind [`LANDING`])
+/// on `computer`'s list: they replace only its landing items, keep the
+/// work Coder reports there, and take no actions.
+pub async fn report_landing(
+    http: &reqwest::Client,
+    saved: &Saved,
+    computer: &str,
+    items: &[Item],
+) -> Result<(), Answer> {
+    let items = &items[..items.len().min(MAX_ITEMS)];
+    let body = json!({"items": items});
+    match call(
+        http,
+        saved,
+        reqwest::Method::POST,
+        &format!(
+            "/v1/computers/{}/activity?kind={LANDING}",
+            segment(computer)
+        ),
+        Some(&body),
+    )
+    .await
+    {
+        (Answer::Done, _) => Ok(()),
+        (answer, _) => Err(answer),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -144,6 +181,7 @@ mod tests {
             session: Some("s1".into()),
             question: None,
             line: None,
+            choices: Vec::new(),
         }
     }
 

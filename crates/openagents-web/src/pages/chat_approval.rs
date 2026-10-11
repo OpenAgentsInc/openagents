@@ -162,7 +162,7 @@ async fn answer(
         Ok(Acted::Queued) => {
             crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response())
         }
-        Ok(Acted::Unknown) => refusal(
+        Ok(Acted::Unknown | Acted::NotOffered) => refusal(
             StatusCode::CONFLICT,
             "Coder isn't waiting on that question anymore. Go back to the chat.",
         ),
@@ -201,6 +201,7 @@ mod tests {
                 text: "Deploy this image to production (openagents.com)?\n\nsha256:abc".to_owned(),
             }),
             line: None,
+            choices: Vec::new(),
         }
     }
 

@@ -14,15 +14,20 @@
 //! person saved in Settings, released for this run only, else the key this
 //! server's environment names (BYO-04/05: applied fresh at the turn, never
 //! stored in the record or the image). A fresh computer from a saved image
-//! has no Claude login inside it, so the web offers runs only when a
-//! credential is available.
+//! has no Claude login inside it; without a credential, a run uses the
+//! environment's own computer the person signed in to Claude on
+//! ([`super::sign_in`], #11294), started again with its disk.
 
+use coder_cloud::claude::OwnCredential;
+use coder_cloud::claude_task::{self, Applied, PauseChoice};
 use coder_cloud::runtime::Credentials;
 use coder_cloud::{Backend, Mode, Observation, Placement, Record, Spec, State, Store, Task};
 use coder_environment::Environment;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
+use std::sync::{LazyLock, Mutex, mpsc};
 use std::time::Duration;
 
 /// The longest one run may take.
@@ -111,14 +116,6 @@ impl Key {
     pub fn name(&self) -> &str {
         &self.name
     }
-
-    /// Runtime credentials holding a copy of the value, which redact it
-    /// from traces.
-    fn credentials(&self) -> Result<Credentials, String> {
-        Credentials::from_names(std::slice::from_ref(&self.name), |_| {
-            Some(self.value.clone())
-        })
-    }
 }
 
 impl Drop for Key {
@@ -151,6 +148,9 @@ pub struct Run {
     pub cost_usd: Option<f64>,
     /// While a usage limit pauses it: when it continues, in Unix seconds.
     pub paused_until: Option<u64>,
+    /// Coder's own agent took this run over from a paused Claude Code run
+    /// (#11293); it never starts Claude Code.
+    pub openagents: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -206,6 +206,115 @@ impl Runs {
         self.store(environment).cancel(id)
     }
 
+    /// What a paused run offers the person whose saved Claude credential is
+    /// `saved` ([`claude_task::pause_choices`]); nothing when it isn't
+    /// paused.
+    pub fn choices(
+        &self,
+        environment: &str,
+        id: &str,
+        saved: Option<OwnCredential>,
+    ) -> Vec<PauseChoice> {
+        self.store(environment)
+            .read(id)
+            .map(|record| claude_task::pause_choices(&record, saved))
+            .unwrap_or_default()
+    }
+
+    /// Apply the person's choice to a paused run (#11293), under the run's
+    /// own lease: the driver that holds it applies it, or, when no driver
+    /// holds it (the server restarted), this takes the lease and applies
+    /// it here. `key` is the person's own saved credential, needed only to
+    /// continue on it; a subscription token is refused, since it bills the
+    /// same plan. Handing to OpenAgents starts Coder's own agent as a new
+    /// run in the same environment version and never starts Claude Code.
+    pub fn choose(
+        &self,
+        environment: &str,
+        id: &str,
+        choice: PauseChoice,
+        key: Option<Key>,
+    ) -> Result<Chosen, String> {
+        let key = match choice {
+            PauseChoice::ContinueOnYourKey(class) => {
+                let key = key.ok_or("Add your own key in Settings to continue now.")?;
+                if class == OwnCredential::SubscriptionToken
+                    || OwnCredential::from_name(key.name()) != Some(class)
+                {
+                    return Err(SUBSCRIPTION_REFUSAL.into());
+                }
+                Some(key)
+            }
+            _ => None,
+        };
+        let slot = self.root.join(environment).join(id);
+        let driver = lock(&PAUSED).get(&slot).cloned();
+        let (applied, record) = match driver {
+            Some(driver) => {
+                let (reply, answer) = mpsc::channel();
+                driver
+                    .send(Ask { choice, key, reply })
+                    .map_err(|_| "The run moved on. Look again.")?;
+                answer
+                    .recv_timeout(Duration::from_secs(30))
+                    .map_err(|_| "The run didn't answer. Try again.")??
+            }
+            None => {
+                let store = self.store(environment);
+                let lease = store.lease(id)?;
+                let mut record = lease.read(id)?;
+                let saved = key
+                    .as_ref()
+                    .and_then(|key| OwnCredential::from_name(key.name()));
+                let applied = claude_task::choose(&mut record, choice, saved, now())?;
+                if matches!(applied, Applied::ResumeOn(_)) {
+                    claude_task::resume(&mut record, now());
+                }
+                lease.save(&record)?;
+                if matches!(applied, Applied::ResumeOn(_)) {
+                    let state = self.root.clone();
+                    let slot = slot.clone();
+                    let run = record.clone();
+                    std::thread::Builder::new()
+                        .name(format!("claude-{id}"))
+                        .spawn(move || drive(lease, run, key, Vec::new(), None, None, &state, slot))
+                        .map_err(|_| "The run couldn't continue.")?;
+                }
+                (applied, record)
+            }
+        };
+        match applied {
+            Applied::Waiting => Ok(Chosen::Waiting),
+            Applied::ResumeOn(_) => Ok(Chosen::OnYourKey),
+            Applied::HandOff { task } => self
+                .hand_off(environment, &record, task)
+                .map(|run| Chosen::HandedOff { run }),
+        }
+    }
+
+    /// Start Coder's own agent on `task` where the paused Claude Code run
+    /// `paused` was: the same environment version, size, and folder.
+    fn hand_off(&self, environment: &str, paused: &Record, task: String) -> Result<String, String> {
+        let store = self.store(environment);
+        let n = store.list().map(|l| l.len()).unwrap_or(0) + 1;
+        let id = format!("openagents-{environment}-{n}");
+        let lease = store.lease(&id)?;
+        if lease.exists() {
+            return Err("That run already exists.".into());
+        }
+        let mut record = Record::new(&id, claude_task::handoff_spec(paused, task))?;
+        record.environment = paused.environment.clone();
+        claude_task::mark_handoff(&mut record, &paused.id);
+        lease.save(&record)?;
+        let state = self.root.clone();
+        let slot = self.root.join(environment).join(&id);
+        std::thread::Builder::new()
+            .name(format!("openagents-{n}"))
+            .spawn(move || drive(lease, record, None, Vec::new(), None, None, &state, slot))
+            .map_err(|_| "OpenAgents couldn't start.")?;
+        Ok(id)
+    }
+
     /// Record a new run of `prompt` on the environment's selected version
     /// and start it on its own thread. `key` is the Claude credential, if
     /// any; it lives in memory for the run only.
@@ -231,6 +340,48 @@ impl Runs {
         key: Option<Key>,
         files: Vec<Attachment>,
     ) -> Result<String, String> {
+        self.start_pushing(env, prompt, workdir, size, key, files, None)
+    }
+
+    /// [`Self::start_with_files`], with GitHub access for the run's
+    /// repository when `push` is given ([`super::push`]); without it the
+    /// run is told it can't push.
+    #[allow(clippy::too_many_arguments)]
+    pub fn start_pushing(
+        &self,
+        env: &Environment,
+        prompt: &str,
+        workdir: &str,
+        size: &str,
+        key: Option<Key>,
+        files: Vec<Attachment>,
+        push: Option<super::push::Push>,
+    ) -> Result<String, String> {
+        self.start_on(env, prompt, workdir, size, key, files, push, None)
+    }
+
+    /// [`Self::start_pushing`], on the environment's own signed-in
+    /// computer `home` when one is given ([`super::sign_in::Home`]): that
+    /// computer starts again instead of a fresh one, Claude Code runs on
+    /// the login inside it, and it stops with its disk kept afterwards.
+    /// One run at a time uses it.
+    #[allow(clippy::too_many_arguments)]
+    pub fn start_on(
+        &self,
+        env: &Environment,
+        prompt: &str,
+        workdir: &str,
+        size: &str,
+        key: Option<Key>,
+        files: Vec<Attachment>,
+        push: Option<super::push::Push>,
+        home: Option<String>,
+    ) -> Result<String, String> {
+        if home.is_some() && self.list(&env.id).iter().any(|run| !run.state.finished()) {
+            return Err(
+                "Claude Code is still working on your computer for this environment. Wait for it to finish, or stop it.".into(),
+            );
+        }
         if files.len() > MAX_FILES {
             return Err("Send up to four files with one message.".into());
         }
@@ -250,12 +401,15 @@ impl Runs {
         let store = self.store(&env.id);
         let n = store.list().map(|l| l.len()).unwrap_or(0) + 1;
         let id = format!("claude-{}-{n}", env.id);
-        let names: Vec<String> = key.iter().map(|k| k.name.clone()).collect();
+        let mut names: Vec<String> = key.iter().map(|k| k.name.clone()).collect();
+        names.extend(push.iter().map(|p| p.name().to_owned()));
+        let mut task = task_with_files(prompt, workdir, &file_names(&files));
+        task.push_str(&super::push::task_note(push.as_ref()));
         let spec = Spec {
             placement: Placement::Boat,
             mode: Mode::Coder,
             agent: coder_cloud::claude::ENGINE.into(),
-            task: task_with_files(prompt, workdir, &file_names(&files)),
+            task,
             model: None,
             reasoning: None,
             cwd: PathBuf::from(workdir),
@@ -274,7 +428,11 @@ impl Runs {
         lease.save(&record)?;
         std::thread::Builder::new()
             .name(format!("claude-{n}"))
-            .spawn(move || drive(lease, record, key, files))
+            .spawn({
+                let state = self.root.clone();
+                let slot = self.root.join(&env.id).join(&id);
+                move || drive(lease, record, key, files, push, home, &state, slot)
+            })
             .map_err(|_| "The run couldn't start.")?;
         Ok(id)
     }
@@ -304,6 +462,12 @@ pub fn task_with_files(prompt: &str, workdir: &str, names: &[String]) -> String 
 struct WithFiles {
     boat: coder_cloud::boat_backend::Boat,
     files: Vec<Attachment>,
+    /// The command that readies the working directory for pushing
+    /// ([`super::push::setup_script`]); it holds no credential.
+    push: Option<String>,
+    /// The environment's own signed-in computer, started again instead of
+    /// a fresh one.
+    home: Option<String>,
 }
 
 impl WithFiles {
@@ -350,14 +514,45 @@ impl WithFiles {
 
 impl Backend for WithFiles {
     async fn provision(&self, r: &mut Record) -> coder_cloud::Result<String> {
-        self.boat.provision(r).await
+        let Some(home) = &self.home else {
+            return self.boat.provision(r).await;
+        };
+        let pin = r
+            .environment
+            .clone()
+            .ok_or("A run on your computer needs a saved environment.")?;
+        r.binding = serde_json::json!({
+            "origin": self.boat.client.origin(),
+            "template": pin.image.image_id,
+            "environment": pin.version_id,
+            "home": home,
+        });
+        self.boat
+            .client
+            .resume(&boat::models::ResumeParams {
+                sandbox_id: home.clone(),
+                body: Some(boat::models::ResumeRequest {
+                    no_env: Some(true),
+                    env: Some(Default::default()),
+                    ttl_seconds: boat::Nullable::Value(r.spec.timeout_seconds as i64),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(home.clone())
     }
     async fn resolve(&self, r: &mut Record) -> coder_cloud::Result<()> {
         self.boat.resolve(r).await
     }
     async fn prepare(&self, r: &Record) -> coder_cloud::Result<()> {
         self.boat.prepare(r).await?;
-        self.put(r).await
+        self.put(r).await?;
+        if let Some(script) = &self.push {
+            self.boat.command(r, script.clone()).await?;
+        }
+        Ok(())
     }
     async fn dispatch(&self, r: &Record) -> coder_cloud::Result<Task> {
         self.boat.dispatch(r).await
@@ -382,7 +577,115 @@ impl Backend for WithFiles {
     }
 }
 
-fn drive(lease: coder_cloud::Lease, mut record: Record, key: Option<Key>, files: Vec<Attachment>) {
+/// How often a paused run looks at its reset and at a stop request.
+const PAUSE_CHECK: Duration = Duration::from_secs(1);
+
+/// Why "Continue on your key" refuses a subscription token.
+pub const SUBSCRIPTION_REFUSAL: &str = "A subscription token uses the same Claude plan. Add an API key or your own cloud key in Settings to continue now.";
+
+/// What a choice on a paused run did.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Chosen {
+    /// It keeps waiting for the reset.
+    Waiting,
+    /// It continues now on the person's own key.
+    OnYourKey,
+    /// Coder's own agent took it over as the new run `run`.
+    HandedOff { run: String },
+}
+
+/// A choice sent to the driver that holds a paused run's lease.
+struct Ask {
+    choice: PauseChoice,
+    key: Option<Key>,
+    reply: mpsc::Sender<Result<(Applied, Record), String>>,
+}
+
+/// The paused runs whose driver is waiting, by record path: where a choice
+/// goes.
+static PAUSED: LazyLock<Mutex<HashMap<PathBuf, mpsc::Sender<Ask>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+fn now() -> u64 {
+    coder_cloud::now_ms() / 1000
+}
+
+/// While a paused run waits: a stop, the reset, or a choice.
+enum Waited {
+    Stop,
+    Resume,
+    /// Continue now on these credentials, for the next turn only.
+    OnKey(Credentials),
+    HandedOff,
+}
+
+/// Wait out a pause, taking the person's choices as they come.
+async fn wait_paused(
+    lease: &coder_cloud::Lease,
+    record: &mut Record,
+    slot: &Path,
+) -> Result<Waited, String> {
+    let (sender, asks) = mpsc::channel::<Ask>();
+    lock(&PAUSED).insert(slot.to_path_buf(), sender);
+    let waited = loop {
+        if lease.cancelled() {
+            break Ok(Waited::Stop);
+        }
+        if let Ok(ask) = asks.try_recv() {
+            let saved = ask
+                .key
+                .as_ref()
+                .and_then(|key| OwnCredential::from_name(key.name()));
+            let credentials = ask
+                .key
+                .as_ref()
+                .map(|key| credentials(Some(key), None))
+                .transpose();
+            drop(ask.key);
+            let applied = credentials.and_then(|credentials| {
+                let applied = claude_task::choose(record, ask.choice, saved, now())?;
+                lease.save(record)?;
+                Ok((applied, credentials))
+            });
+            match applied {
+                Ok((applied, credentials)) => {
+                    let _ = ask.reply.send(Ok((applied.clone(), record.clone())));
+                    match (applied, credentials) {
+                        (Applied::ResumeOn(_), Some(credentials)) => {
+                            break Ok(Waited::OnKey(credentials));
+                        }
+                        (Applied::HandOff { .. }, _) => break Ok(Waited::HandedOff),
+                        _ => {}
+                    }
+                }
+                Err(error) => {
+                    let _ = ask.reply.send(Err(error));
+                }
+            }
+        }
+        if claude_task::due(record, now()) {
+            break Ok(Waited::Resume);
+        }
+        tokio::time::sleep(PAUSE_CHECK).await;
+    };
+    lock(&PAUSED).remove(slot);
+    waited
+}
+
+fn drive(
+    lease: coder_cloud::Lease,
+    mut record: Record,
+    key: Option<Key>,
+    files: Vec<Attachment>,
+    push: Option<super::push::Push>,
+    home: Option<String>,
+    state: &Path,
+    slot: PathBuf,
+) {
     let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -391,29 +694,82 @@ fn drive(lease: coder_cloud::Lease, mut record: Record, key: Option<Key>, files:
     };
     // The runtime credentials hold the only copy from here on; the key's
     // own bytes are zeroed now.
-    let credentials = key.as_ref().map(Key::credentials).transpose();
+    // The GitHub broker credential alone, kept for a turn that runs on the
+    // person's own key after a pause.
+    let broker = credentials(None, push.as_ref());
+    let credentials = credentials(key.as_ref(), push.as_ref());
     drop(key);
+    let script = push.as_ref().map(|push| {
+        super::push::setup_script(
+            push,
+            &record.spec.cwd.display().to_string(),
+            super::push::GITHUB_API,
+        )
+    });
+    drop(push);
     let result = runtime.block_on(async {
-        let credentials = credentials?.unwrap_or_default();
+        let credentials = credentials?;
+        let broker = broker?;
         let client = boat::Client::from_env()
             .await
             .map_err(|e| format!("Boat is unavailable: {e}"))?;
-        let backend = WithFiles {
+        let mut backend = WithFiles {
             boat: coder_cloud::boat_backend::Boat {
                 client,
                 credentials,
             },
             files,
+            push: script,
+            home,
         };
-        coder_cloud::drive(
-            &backend,
-            &lease,
-            &mut record,
-            &AtomicBool::new(false),
-            Duration::from_secs(2),
-            &mut |_| {},
-        )
-        .await
+        // The person's own key, released for one turn after a pause.
+        let mut one_turn: Option<Credentials> = None;
+        loop {
+            let usual = one_turn
+                .take()
+                .map(|key| std::mem::replace(&mut backend.boat.credentials, key.merged(&broker)));
+            let driven = coder_cloud::drive(
+                &backend,
+                &lease,
+                &mut record,
+                &AtomicBool::new(false),
+                Duration::from_secs(2),
+                &mut |_| {},
+            )
+            .await;
+            if let Some(usual) = usual {
+                backend.boat.credentials = usual;
+            }
+            driven?;
+            // A usage limit pauses the run until Claude Code's reported
+            // reset, then the same conversation continues; a login that
+            // needs the person stops it with the sign-in prompt (#11293).
+            let book = coder_cloud::claude_task::book(state, &record);
+            match coder_cloud::claude_task::settle(&mut record, &book, now()) {
+                Ok(Some(coder_cloud::claude_task::Outcome::Limited { .. })) => {
+                    lease.save(&record)?;
+                }
+                Ok(Some(coder_cloud::claude_task::Outcome::SignIn)) => {
+                    return lease.save(&record);
+                }
+                Ok(None) | Err(_) => return Ok(()),
+            }
+            match wait_paused(&lease, &mut record, &slot).await? {
+                Waited::Stop => {
+                    record.cancel_requested = true;
+                    record.state = State::Cancelled;
+                    record.updated_ms = coder_cloud::now_ms();
+                    return lease.save(&record);
+                }
+                Waited::HandedOff => return Ok(()),
+                Waited::OnKey(credentials) => one_turn = Some(credentials),
+                Waited::Resume => {}
+            }
+            if !coder_cloud::claude_task::resume(&mut record, now()) {
+                return Ok(());
+            }
+            lease.save(&record)?;
+        }
     });
     if let Err(error) = result
         && !record.state.terminal()
@@ -422,6 +778,22 @@ fn drive(lease: coder_cloud::Lease, mut record: Record, key: Option<Key>, files:
         record.error = Some(error);
         let _ = lease.save(&record);
     }
+}
+
+/// The run's credentials: the Claude credential and the GitHub broker
+/// credential, each under its own name. The runtime credentials hold the
+/// only copies; they redact both from what the run records.
+fn credentials(key: Option<&Key>, push: Option<&super::push::Push>) -> Result<Credentials, String> {
+    let mut names: Vec<String> = key.iter().map(|k| k.name.clone()).collect();
+    names.extend(push.iter().map(|p| p.name().to_owned()));
+    if names.is_empty() {
+        return Ok(Credentials::default());
+    }
+    Credentials::from_names(&names, |name| match (key, push) {
+        (Some(key), _) if key.name == name => Some(key.value.clone()),
+        (_, Some(push)) if push.name() == name => Some(push.value()),
+        _ => None,
+    })
 }
 
 /// What a run cost: the computer's time ([`Record::usage`]) plus Claude
@@ -449,6 +821,7 @@ pub fn cost(record: &Record) -> Option<f64> {
 fn view(environment: &str, r: Record) -> Run {
     let cost_usd = cost(&r);
     let paused_until = coder_cloud::claude_task::pause(&r).map(|pause| pause.until);
+    let openagents = claude_task::is_handoff(&r);
     let state = match r.state {
         State::Created | State::Provisioning | State::Resuming | State::Ready => RunState::Starting,
         State::Dispatching | State::Running => RunState::Running,
@@ -483,6 +856,7 @@ fn view(environment: &str, r: Record) -> Run {
         created_ms: r.created_ms,
         cost_usd,
         paused_until,
+        openagents,
     }
 }
 
@@ -544,11 +918,8 @@ mod tests {
         let key = Key::new(coder_cloud::claude::API_KEY, value.clone()).unwrap();
         assert_eq!(key.name(), coder_cloud::claude::API_KEY);
         assert!(!format!("{key:?}").contains(&value));
-        let credentials = key.credentials().unwrap();
-        assert_eq!(
-            credentials.environment()[coder_cloud::claude::API_KEY],
-            value
-        );
+        let held = credentials(Some(&key), None).unwrap();
+        assert_eq!(held.environment()[coder_cloud::claude::API_KEY], value);
         assert!(Key::new("GITHUB_TOKEN", value.clone()).is_err());
         assert!(Key::new(coder_cloud::claude::API_KEY, " ".into()).is_err());
 
@@ -556,12 +927,12 @@ mod tests {
         let token = format!("sk-ant-oat01-{}", "b2".repeat(40));
         let key = Key::new(coder_cloud::claude::OAUTH_TOKEN, token.clone()).unwrap();
         assert!(!format!("{key:?}").contains(&token));
-        let env = key.credentials().unwrap().environment();
+        let env = credentials(Some(&key), None).unwrap().environment();
         assert_eq!(env.len(), 1);
         assert_eq!(env[coder_cloud::claude::OAUTH_TOKEN], token);
         // A token under the API key's name never reaches a run.
         let wrong = Key::new(coder_cloud::claude::API_KEY, token.clone()).unwrap();
-        assert!(wrong.credentials().is_err());
+        assert!(credentials(Some(&wrong), None).is_err());
     }
 
     #[test]
@@ -590,6 +961,129 @@ mod tests {
         let run = view("env-1", record);
         assert_eq!(run.cost_usd, Some(0.5));
         assert_eq!(run.paused_until, None);
+    }
+
+    fn paused_run(runs: &Runs, environment: &str, id: &str) {
+        let spec = Spec {
+            placement: Placement::Boat,
+            mode: Mode::Coder,
+            agent: coder_cloud::claude::ENGINE.into(),
+            task: task("Fix the fixture", "/home/user/repo"),
+            model: None,
+            reasoning: None,
+            cwd: PathBuf::from("/home/user/repo"),
+            timeout_seconds: RUN_SECONDS,
+            size: "small".into(),
+            template: None,
+            credential_names: vec![coder_cloud::claude::OAUTH_TOKEN.into()],
+        };
+        let mut record = Record::new(id, spec).unwrap();
+        claude_task::admit(&mut record, environment);
+        record.state = State::Failed;
+        record.error = Some(
+            "Claude Code reached a usage limit on this computer's Claude sign-in. Claude AI usage limit reached|4102444800"
+                .into(),
+        );
+        record
+            .events
+            .push(json!({"event":"engine","engine":"claude"}));
+        let book = claude_task::book(&runs.root, &record);
+        claude_task::settle(&mut record, &book, 1_790_000_000).unwrap();
+        assert_eq!(record.state, State::Paused);
+        runs.store(environment)
+            .lease(id)
+            .unwrap()
+            .save(&record)
+            .unwrap();
+    }
+
+    #[test]
+    fn a_paused_run_offers_its_choices_and_never_continues_on_a_subscription_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let runs = Runs::under(dir.path());
+        paused_run(&runs, "env-1", "claude-env-1-1");
+        assert_eq!(
+            runs.read("env-1", "claude-env-1-1").unwrap().state,
+            RunState::Paused
+        );
+        // A saved subscription token is never offered as "your key".
+        assert_eq!(
+            runs.choices(
+                "env-1",
+                "claude-env-1-1",
+                Some(OwnCredential::SubscriptionToken)
+            ),
+            vec![
+                PauseChoice::KeepWaiting,
+                PauseChoice::ContinueWithOpenAgents
+            ]
+        );
+        assert_eq!(
+            runs.choices(
+                "env-1",
+                "claude-env-1-1",
+                Some(OwnCredential::AnthropicApiKey)
+            ),
+            vec![
+                PauseChoice::KeepWaiting,
+                PauseChoice::ContinueOnYourKey(OwnCredential::AnthropicApiKey),
+                PauseChoice::ContinueWithOpenAgents
+            ]
+        );
+        // Nor accepted when asked for.
+        let token = format!("sk-ant-oat01-{}", "b2".repeat(40));
+        let key = Key::new(coder_cloud::claude::OAUTH_TOKEN, token).unwrap();
+        for choice in [
+            PauseChoice::ContinueOnYourKey(OwnCredential::SubscriptionToken),
+            PauseChoice::ContinueOnYourKey(OwnCredential::AnthropicApiKey),
+        ] {
+            let refused = runs.choose(
+                "env-1",
+                "claude-env-1-1",
+                choice,
+                Some(Key::new(coder_cloud::claude::OAUTH_TOKEN, key.value.clone()).unwrap()),
+            );
+            assert_eq!(refused, Err(SUBSCRIPTION_REFUSAL.into()));
+        }
+        assert_eq!(
+            runs.choose("env-1", "claude-env-1-1", PauseChoice::KeepWaiting, None),
+            Ok(Chosen::Waiting)
+        );
+        assert_eq!(
+            runs.read("env-1", "claude-env-1-1").unwrap().state,
+            RunState::Paused
+        );
+    }
+
+    #[test]
+    fn handing_a_paused_run_to_openagents_starts_coders_own_agent_never_claude() {
+        let dir = tempfile::tempdir().unwrap();
+        let runs = Runs::under(dir.path());
+        paused_run(&runs, "env-1", "claude-env-1-1");
+        let Ok(Chosen::HandedOff { run }) = runs.choose(
+            "env-1",
+            "claude-env-1-1",
+            PauseChoice::ContinueWithOpenAgents,
+            None,
+        ) else {
+            panic!("expected a hand-off")
+        };
+        let paused = runs.read("env-1", "claude-env-1-1").unwrap();
+        assert_eq!(paused.state, RunState::Stopped);
+        let record = runs.store("env-1").read(&run).unwrap();
+        assert_eq!(record.spec.agent, claude_task::HANDOFF_AGENT);
+        assert!(!claude_task::applies(&record.spec));
+        assert!(record.spec.credential_names.is_empty());
+        assert_eq!(record.binding[claude_task::HANDED_FROM], "claude-env-1-1");
+        assert!(record.spec.task.contains("Fix the fixture"));
+        let view = runs.read("env-1", &run).unwrap();
+        assert!(view.openagents);
+        assert!(
+            coder_cloud::runtime::launch_script(&record, "/d")
+                .contains("export CLAUDE_BIN=/dev/null")
+        );
+        // A run that isn't paused offers nothing.
+        assert!(runs.choices("env-1", "claude-env-1-1", None).is_empty());
     }
 
     #[test]

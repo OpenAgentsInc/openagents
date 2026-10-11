@@ -91,6 +91,58 @@ pub struct Note {
     pub text: String,
 }
 
+/// Where an issue flow is now (#11250), for its row on openagents.com and
+/// the phone: set as the flow moves, read with the flow file.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "at", rename_all = "snake_case")]
+pub enum Stage {
+    /// Claimed; the engine hasn't started on the change.
+    FindingFiles,
+    /// The first turn.
+    Coding,
+    /// The repository's checks on the change.
+    Checks,
+    /// A turn that fixes what the checks, or a rebase conflict, found.
+    Fix { turn: usize },
+    /// Landing on the branch: its rebase, the checks again, the push.
+    Landing { step: LandingStep },
+    /// Handed to the landing queue as this entry.
+    Queued { entry: String },
+}
+
+/// One step of landing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LandingStep {
+    Rebase,
+    Recheck,
+    Push,
+}
+
+impl Stage {
+    /// The stage in the rows' words: `finding files`, `coding`, `checks`,
+    /// `fix turn N`, `landing: rebase` / `re-check` / `push`, `queued
+    /// <entry>`.
+    #[must_use]
+    pub fn words(&self) -> String {
+        match self {
+            Self::FindingFiles => "finding files".into(),
+            Self::Coding => "coding".into(),
+            Self::Checks => "checks".into(),
+            Self::Fix { turn } => format!("fix turn {turn}"),
+            Self::Landing { step } => format!(
+                "landing: {}",
+                match step {
+                    LandingStep::Rebase => "rebase",
+                    LandingStep::Recheck => "re-check",
+                    LandingStep::Push => "push",
+                }
+            ),
+            Self::Queued { entry } => format!("queued {entry}"),
+        }
+    }
+}
+
 /// An issue flow as its followers read it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Flow {
@@ -113,6 +165,9 @@ pub struct Flow {
     /// first base, which a rebase moved.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub files: Option<Vec<FileChange>>,
+    /// Where the flow is now, while it runs ([`Stage`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage: Option<Stage>,
 }
 
 impl Flow {
@@ -124,7 +179,7 @@ impl Flow {
         let closing = self.closing.trim().to_owned();
         let landed = matches!(
             link.outcome.as_str(),
-            "landed" | "pull_request" | "unchanged"
+            "landed" | "pull_request" | "queued" | "unchanged"
         );
         let failure = |turn: usize, message: String, ending: &str| {
             CoderEvent::Failure(coder_events::Failure {
@@ -197,7 +252,11 @@ pub fn load(store: &Path, task: &str) -> Option<Flow> {
         .filter(|flow| flow.schema == FLOW_SCHEMA && flow.task == task)
 }
 
-pub(crate) fn save(store: &Path, flow: &Flow) -> Result<(), String> {
+/// Write `flow` as its followers read it ([`load`]).
+///
+/// # Errors
+/// When the flow file can't be written.
+pub fn save(store: &Path, flow: &Flow) -> Result<(), String> {
     let bytes = serde_json::to_vec_pretty(flow).map_err(|e| e.to_string())?;
     super::autostart::write_private(&flow_path(store, &flow.task), &bytes)
 }
@@ -225,10 +284,14 @@ pub enum Land {
     Main,
     /// Push a branch and open a pull request.
     PullRequest,
+    /// Push a branch and hand it to the landing queue
+    /// ([`super::land_queue`]), whose integrator lands it and closes the
+    /// issue (#11242).
+    Queue,
 }
 
 impl Land {
-    /// Reads `main` or `pr` (`pull_request`).
+    /// Reads `main`, `pr` (`pull_request`), or `queue`.
     ///
     /// # Errors
     /// Any other word.
@@ -236,7 +299,8 @@ impl Land {
         match word.trim() {
             "main" => Ok(Land::Main),
             "pr" | "pull_request" | "pull-request" => Ok(Land::PullRequest),
-            other => Err(format!("--land is `main` or `pr`, not `{other}`")),
+            "queue" => Ok(Land::Queue),
+            other => Err(format!("--land is `main`, `pr`, or `queue`, not `{other}`")),
         }
     }
 }
@@ -281,6 +345,10 @@ pub struct Policy {
     /// The GitHub Project names a claim moves ([`crate::claim::Project`]).
     #[serde(default)]
     pub project: crate::claim::Project,
+    /// The landing queue `land: queue` submits to: `gs://bucket/prefix` or
+    /// a folder. `OPENAGENTS_LAND_QUEUE`, else the shared queue, when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queue: Option<String>,
 }
 
 impl Default for Policy {
@@ -296,6 +364,7 @@ impl Default for Policy {
             continue_turns: None,
             trailer: None,
             project: crate::claim::Project::default(),
+            queue: None,
         }
     }
 }
@@ -596,7 +665,7 @@ pub fn stale_claims(
         if flow.link.number == 0
             || matches!(
                 flow.link.outcome.as_str(),
-                "landed" | "pull_request" | "unchanged"
+                "landed" | "pull_request" | "queued" | "unchanged"
             )
         {
             continue;
@@ -863,6 +932,20 @@ pub trait Checks: Send + Sync {
         let _ = also;
         self.check(worktree, policy)
     }
+    /// [`Checks::check_also`] against `base`: a test that also fails on
+    /// `base` is reported, not counted against the change. The landing
+    /// queue passes the target it rebased onto, on the first check and on
+    /// every re-check after a rebase (#11300).
+    fn check_against(
+        &self,
+        worktree: &Path,
+        policy: &Policy,
+        also: &[String],
+        base: &str,
+    ) -> Checked {
+        let _ = base;
+        self.check_also(worktree, policy, also)
+    }
 }
 
 /// The issue flow's gate ([`coder_delegate::issue::gate`]): the touched
@@ -932,6 +1015,28 @@ impl Checks for Gate {
     }
 
     fn check_also(&self, worktree: &Path, policy: &Policy, also: &[String]) -> Checked {
+        self.run(worktree, policy, also, None)
+    }
+
+    fn check_against(
+        &self,
+        worktree: &Path,
+        policy: &Policy,
+        also: &[String],
+        base: &str,
+    ) -> Checked {
+        self.run(worktree, policy, also, Some(base))
+    }
+}
+
+impl Gate {
+    fn run(
+        &self,
+        worktree: &Path,
+        policy: &Policy,
+        also: &[String],
+        base: Option<&str>,
+    ) -> Checked {
         let runtime = match tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -963,13 +1068,14 @@ impl Checks for Gate {
         let target = slot.as_ref().map(|lease| lease.path.as_path());
         runtime.block_on(async {
             let recorder = coder_delegate::record::Recorder::default();
-            let (mut problems, tested) = coder_delegate::issue::gate_in_also(
+            let (mut problems, tested) = coder_delegate::issue::gate_in_against(
                 worktree,
                 self.jev.as_ref(),
                 &recorder,
                 None,
                 target,
                 also,
+                base,
             )
             .await;
             let mut ran = Vec::new();
@@ -979,6 +1085,9 @@ impl Checks for Gate {
                 .unwrap_or_default();
             if let Some(tested) = &tested {
                 ran.push(tested.describe());
+                // Flaky tests and tests the base already fails are
+                // reported here, not held against the change.
+                ran.extend(tested.notes.iter().cloned());
             }
             ran.push(
                 "The diff checks ran: style, figures with no source, broken links, code that \
@@ -1441,6 +1550,9 @@ impl Runner {
         let land = match policy.land {
             Land::Main => format!("lands it on `{branch}` when the checks pass"),
             Land::PullRequest => "opens a pull request when the checks pass".to_owned(),
+            Land::Queue => {
+                format!("hands it to the landing queue for `{branch}` when the checks pass")
+            }
         };
         let claim = format!(
             "Claimed: Coder is working on this from an OpenAgents chat {} (task `{}`), in its \
@@ -1469,6 +1581,7 @@ impl Runner {
             process_id: Some(std::process::id()),
             closing: String::new(),
             files: None,
+            stage: Some(Stage::FindingFiles),
         };
         for said in
             crate::claim::claim(&*self.tracker, &repository, number, &claim, &policy.project)
@@ -1614,6 +1727,7 @@ impl Started {
             process_id: Some(std::process::id()),
             closing: String::new(),
             files: None,
+            stage: Some(Stage::FindingFiles),
         });
         let worktree = PathBuf::from(&record.worktree);
         let mut run = Run {
@@ -1838,6 +1952,14 @@ struct Run<'a> {
 }
 
 impl Run<'_> {
+    /// The flow is at `stage` now; followers read it with the flow file.
+    fn stage(&mut self, stage: Stage) {
+        if self.flow.stage.as_ref() != Some(&stage) {
+            self.flow.stage = Some(stage);
+            let _ = save(&self.work.store, self.flow);
+        }
+    }
+
     fn note(&mut self, text: impl Into<String>) {
         self.flow.notes.push(Note {
             after_turn: self.turn,
@@ -1851,6 +1973,9 @@ impl Run<'_> {
     }
 
     fn drive(&mut self) {
+        if self.rounds == 0 {
+            self.stage(Stage::Coding);
+        }
         loop {
             match self.wait() {
                 Turn::Finished { summary } => {
@@ -1880,6 +2005,7 @@ impl Run<'_> {
                 return self.unchanged();
             }
             self.note("Running the repository's checks on the change.");
+            self.stage(Stage::Checks);
             self.checked = self.work.checks.check(self.worktree, &self.work.policy);
             if self.stopping() {
                 return self.stopped("Stopped by the person who started it.");
@@ -1906,6 +2032,7 @@ impl Run<'_> {
                 );
             }
             self.rounds += 1;
+            self.stage(Stage::Fix { turn: self.rounds });
             self.note(format!(
                 "The checks find {count} problem(s): {listed}. Coder fixes them (fix turn {} of {}).",
                 self.rounds, self.work.policy.fix_rounds
@@ -1945,6 +2072,7 @@ impl Run<'_> {
         match self.work.policy.land {
             Land::Main => self.land_main(),
             Land::PullRequest => self.land_pull_request(),
+            Land::Queue => self.land_queue(),
         }
     }
 
@@ -2061,6 +2189,9 @@ impl Run<'_> {
         if let Err(why) = self.commit() {
             return self.failed(&why, None);
         }
+        self.stage(Stage::Landing {
+            step: LandingStep::Rebase,
+        });
         let worktree = self.worktree;
         let plan = landing::Plan {
             worktree,
@@ -2245,6 +2376,99 @@ impl Run<'_> {
             }
             Err(why) => self.failed(&format!("The pull request was not opened: {why}"), None),
         }
+    }
+
+    /// Push the committed change to `land/<entry>` and submit it to the
+    /// landing queue (#11242). The integrator lands it, closes the issue,
+    /// and comments the reason if it bounces, so the flow keeps its claim
+    /// and closes nothing itself.
+    fn land_queue(&mut self) {
+        use super::land_queue;
+        if self.stopping() {
+            return self.stopped("Stopped by the person who started it, before queueing.");
+        }
+        let commit = match self.commit() {
+            Ok(commit) => commit,
+            Err(why) => return self.failed(&why, None),
+        };
+        let at = land_queue::now();
+        let machine = land_queue::machine();
+        let id = land_queue::new_id(at, &machine);
+        let branch = format!("land/{id}");
+        if let Err(why) = local::git_out(
+            self.worktree,
+            &["push", "-q", "origin", &format!("HEAD:refs/heads/{branch}")],
+        ) {
+            let _ = local::git_out(self.worktree, &["reset", "-q", "--soft", "HEAD~1"]);
+            self.flow.link.not_landed = Some("push_refused".into());
+            return self.failed(&format!("Git could not push {branch}: {why}"), None);
+        }
+        let target = self.work.branch.clone();
+        let entry = land_queue::Entry {
+            id: id.clone(),
+            branch: branch.clone(),
+            target: target.clone(),
+            issue: Some(self.issue.number),
+            close: true,
+            author: local::git_out(self.worktree, &["config", "user.name"])
+                .map(|name| name.trim().to_owned())
+                .unwrap_or_default(),
+            machine,
+            summary: self.issue.title.clone(),
+            head: commit.clone(),
+            submitted_at: at,
+            state: land_queue::State::Queued,
+            updated_at: at,
+            ..land_queue::Entry::default()
+        };
+        let submitted = match &self.work.policy.queue {
+            Some(url) => land_queue::open(url),
+            None => land_queue::open_default(None),
+        }
+        .and_then(|store| land_queue::Queue { store: &*store }.submit(&entry));
+        if let Err(why) = submitted {
+            self.note(format!("Kept the change on `{branch}` on origin."));
+            self.stranded = Some(branch);
+            return self.failed(
+                &format!("The landing queue refused the change: {why}"),
+                None,
+            );
+        }
+        self.stage(Stage::Queued { entry: id.clone() });
+        let files = changed_by(self.worktree, &format!("{commit}~1"), &commit);
+        self.flow.files = Some(files.clone());
+        self.flow.link.commits = vec![commit.clone()];
+        self.flow.link.outcome = "queued".into();
+        let mut comment = self
+            .evidence(
+                &format!(
+                    "Coder queued this change to land on `{target}`: entry `{id}`, branch \
+                     [`{branch}`](https://github.com/{}/tree/{branch}). The landing queue \
+                     lands it and closes this issue, or comments here if it bounces.",
+                    self.repository
+                ),
+                &files,
+            )
+            .replace(
+                "- The checks passed on the exact change that landed.\n",
+                "- The checks passed on the queued change; the landing queue runs them again \
+                 after its rebase.\n",
+            );
+        comment.push_str(&self.artifacts(Some(&format!("{commit}~1"))));
+        let commented = self
+            .work
+            .tracker
+            .comment(self.repository, self.issue.number, &comment);
+        let mut closing = format!(
+            "Queued {} to land on {target} (entry {id}, branch {branch}); #{} closes when it lands",
+            &commit[..10],
+            self.issue.number
+        );
+        match commented {
+            Ok(()) => closing.push('.'),
+            Err(why) => closing.push_str(&format!("; {why}.")),
+        }
+        self.end(closing)
     }
 
     /// The evidence comment: `headline`, what changed, the checks, and
@@ -2541,7 +2765,10 @@ impl Run<'_> {
     }
 
     fn end(&mut self, closing: String) {
-        if !matches!(self.flow.link.outcome.as_str(), "landed" | "pull_request") {
+        if !matches!(
+            self.flow.link.outcome.as_str(),
+            "landed" | "pull_request" | "queued"
+        ) {
             let release = format!("Coder released its claim; nothing landed. {RELEASE_MARK}");
             for said in crate::claim::release(
                 &*self.work.tracker,
@@ -2590,7 +2817,12 @@ impl landing::Hooks for Run<'_> {
         self.work.local.answer(&task, request)?;
         self.turn += 1;
         self.rounds += 1;
-        match self.wait() {
+        self.stage(Stage::Fix { turn: self.rounds });
+        let ended = self.wait();
+        self.stage(Stage::Landing {
+            step: LandingStep::Rebase,
+        });
+        match ended {
             Turn::Finished { summary } => {
                 self.summaries.push(summary);
                 Ok(())
@@ -2601,6 +2833,34 @@ impl landing::Hooks for Run<'_> {
     }
 
     fn check(&mut self) -> Vec<String> {
+        self.stage(Stage::Landing {
+            step: LandingStep::Recheck,
+        });
+        let problems = self.recheck();
+        if problems.is_empty() {
+            self.stage(Stage::Landing {
+                step: LandingStep::Push,
+            });
+        }
+        problems
+    }
+
+    fn note(&mut self, text: &str) {
+        Run::note(self, text);
+    }
+
+    fn stopping(&self) -> bool {
+        Run::stopping(self)
+    }
+
+    fn enter(&mut self) -> Option<Box<dyn std::any::Any>> {
+        self.enter_landing()
+    }
+}
+
+impl Run<'_> {
+    /// The checks again on the rebased change ([`landing::Hooks::check`]).
+    fn recheck(&mut self) -> Vec<String> {
         let held = local::git_out(self.worktree, &["rev-parse", "HEAD"])
             .map(|head| head.trim().to_owned())
             .unwrap_or_default();
@@ -2619,15 +2879,8 @@ impl landing::Hooks for Run<'_> {
         self.checked.problems.clone()
     }
 
-    fn note(&mut self, text: &str) {
-        Run::note(self, text);
-    }
-
-    fn stopping(&self) -> bool {
-        Run::stopping(self)
-    }
-
-    fn enter(&mut self) -> Option<Box<dyn std::any::Any>> {
+    /// This machine's landing lock ([`landing::Hooks::enter`]).
+    fn enter_landing(&mut self) -> Option<Box<dyn std::any::Any>> {
         const WAITING: &str = "Waiting to land behind another run…";
         let mut said = false;
         let local = match LANDING.try_lock() {

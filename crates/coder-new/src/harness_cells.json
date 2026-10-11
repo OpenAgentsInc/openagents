@@ -1,0 +1,4 @@
+{
+  "about": "Promoted harness defaults per (model, task, budget) cell (#11289). A cell not listed runs on the study's defaults (harness::Config::study). Add an entry only on a paired win (harness::paired_verdict) and record it in docs/coder/harness-promotions.md.",
+  "cells": []
+}

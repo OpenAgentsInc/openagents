@@ -16,4 +16,12 @@ pub enum Action {
     /// **Stop** on an agent in the Agents panel: the `coder` process
     /// `pid` stops its agent `agent`.
     Stop { pid: u32, agent: String },
+    /// **Continue on your key** or **Continue with OpenAgents** on an agent
+    /// a Claude plan's usage limit paused (#11295): the `coder` process
+    /// `pid` applies `choice` (`your_key` or `openagents`) to `agent`.
+    Choose {
+        pid: u32,
+        agent: String,
+        choice: String,
+    },
 }

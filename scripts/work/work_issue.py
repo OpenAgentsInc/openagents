@@ -454,6 +454,23 @@ def default_model() -> str | None:
 
 # --------------------------------------------------------------------- main
 
+def cost_so_far(attempts: list[dict]) -> tuple[float | None, int | None]:
+    """Claude Code's reported cost of every attempt so far (None when any is
+    unknown, never 0 for unknown) and their tokens."""
+    usages = [a["agent"]["usage"] for a in attempts]
+    costs = [u.get("cost_usd") for u in usages]
+    cost = None if not costs or any(c is None for c in costs) else round(sum(costs), 4)
+    tokens = sum((u.get("input_tokens") or 0) + (u.get("output_tokens") or 0) for u in usages)
+    return cost, (tokens or None)
+
+
+def say_cost(run: Run, attempts: list[dict]) -> None:
+    """A `cost` line after each attempt, for the fleet rows (#11250)."""
+    cost, tokens = cost_so_far(attempts)
+    text = f"${cost:.2f} so far" if cost is not None else "cost not known yet"
+    run.say("cost", text, cost_usd=cost, tokens=tokens)
+
+
 def attempt(run: Run, engine: str, issue: dict, checkout: Path, base: str, out: Path, args, b: dict | None) -> dict:
     wt = add_worktree(checkout, out / "worktree", base)
     if engine == "briefed":
@@ -528,6 +545,7 @@ def main() -> int:
             result["escalated"] = why
         a = attempt(run, engine, issue, checkout, base, out / engine, args, b)
         result["attempts"].append(a)
+        say_cost(run, result["attempts"])
         if engine == "briefed" and not a["ok"]:
             ag = a["agent"]
             if not a["diff"]["files"]:
@@ -541,10 +559,10 @@ def main() -> int:
             engine = "bare"
             a = attempt(run, engine, issue, checkout, base, out / engine, args, None)
             result["attempts"].append(a)
+            say_cost(run, result["attempts"])
         result["engine"], result["ok"] = engine, a["ok"]
         result["checks"], result["diff"] = a["checks"], a["diff"]
-        costs = [x["agent"]["usage"]["cost_usd"] for x in result["attempts"]]
-        result["cost_usd"] = None if any(c is None for c in costs) else round(sum(costs), 4)
+        result["cost_usd"] = cost_so_far(result["attempts"])[0]
         if a["ok"]:
             wt = Path(a["worktree"])
             result["commit"] = commit(wt, issue, engine, base)

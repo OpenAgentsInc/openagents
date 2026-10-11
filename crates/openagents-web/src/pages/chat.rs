@@ -2558,6 +2558,7 @@ mod sidebar;
 
 #[path = "chat_agents.rs"]
 mod agents;
+pub(crate) use agents::{choose_paused, paused_items};
 #[path = "chat_approval.rs"]
 mod approval;
 #[path = "chat_computer.rs"]

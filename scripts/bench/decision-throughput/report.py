@@ -21,7 +21,7 @@ import argparse, glob, json, os, re, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-ORDER = ["jev", "gateway-jev", "gateway-pylon", "vertex-gemini", "coderos-clef", "coderos-llamacpp",
+ORDER = ["jev", "gateway-jev", "gateway-pylon", "vertex-gemini", "coderos-clef-prod", "coderos-clef", "coderos-llamacpp",
          "coderos-ollama", "h100-clef-flash", "h100-clef-27b", "sealed-gpu", "sealed-cpu", "mac-clef"]
 
 

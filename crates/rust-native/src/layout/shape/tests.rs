@@ -3,22 +3,36 @@
 //! `corpus()` lays out a sample of real prose, code, tables, and mixed
 //! scripts (`fixtures/shaping-corpus.md`) as transcript rows at several
 //! widths and text sizes, and records every paragraph the layout measures.
-//! `fixtures/coretext-lines.json` holds CoreText's line breaks for the same
-//! paragraphs with the same bundled font, made by
-//! `tools/coretext-lines.swift`. The gate: at most one paragraph the face
-//! covers breaks into a different number of lines, and at least 99.7% of
-//! lines start where CoreText's do. Paragraphs with characters Paper Mono
-//! lacks are reported but not gated, since a platform fallback face draws
-//! them.
+//! `tools/coretext-lines.swift` records CoreText's line breaks for the same
+//! paragraphs: `fixtures/coretext-lines.json` with the bundled Paper Mono,
+//! and `fixtures/coretext-lines-system.json` with the faces the desktop
+//! draws with on a Mac, SF Pro for prose and SF Mono for code (#11291),
+//! read from `/System/Library/Fonts` and never committed; only the break
+//! positions are. The system gate runs where those files exist.
+//!
+//! Each gate: every paragraph breaks exactly where CoreText's does. Line
+//! widths stay within half a point where the faces cover the text, and
+//! within 2 points where characters the faces lack (CJK, emoji, and Greek
+//! and Cyrillic in Paper Mono) are drawn from CoreText's fallback faces,
+//! whose widths the shaper takes from a table measured on a Mac
+//! (`shape/fallback.rs`, #11301) but without their kerning.
 //!
 //! Regenerate the ground truth after changing the corpus, the fonts, or the
 //! layout's paragraphs:
 //!
 //! ```text
+//! swift crates/rust-native/tools/fallback-metrics.swift \
+//!     crates/paper-mono/fonts crates/rust-native/src/layout/shape/fallback.rs
 //! RUST_NATIVE_WRITE_CORPUS=/tmp/corpus.json cargo test -p rust-native \
 //!     --features shaping --lib shape::tests::write_corpus -- --ignored
 //! swift crates/rust-native/tools/coretext-lines.swift /tmp/corpus.json \
 //!     crates/paper-mono/fonts crates/rust-native/fixtures/coretext-lines.json
+//! RUST_NATIVE_WRITE_CORPUS=/tmp/system.json RUST_NATIVE_CORPUS_FACES=system \
+//!     cargo test -p rust-native --features shaping --lib \
+//!     shape::tests::write_corpus -- --ignored
+//! swift crates/rust-native/tools/coretext-lines.swift /tmp/system.json \
+//!     /System/Library/Fonts/SFNS.ttf,/System/Library/Fonts/SFNSMono.ttf \
+//!     crates/rust-native/fixtures/coretext-lines-system.json
 //! ```
 
 use super::super::testing::FixedMeasurer;
@@ -190,14 +204,14 @@ struct Corpus {
     cases: Vec<Case>,
 }
 
-fn corpus_json() -> Corpus {
+fn corpus_json(measurer: &ShapingMeasurer) -> Corpus {
     let cases = corpus()
         .into_iter()
         .map(|(text, runs, width)| Case {
             runs: runs
                 .iter()
                 .map(|r| {
-                    let spec = FontSpec::of(r.font);
+                    let spec = measurer.spec(r.font);
                     (
                         spec.face,
                         f64::from(spec.size),
@@ -227,48 +241,107 @@ fn digest(bytes: &[u8]) -> String {
     format!("{hash:016x}")
 }
 
+/// The system faces the desktop draws with on a Mac
+/// (`openagents-desktop/src/typeface.rs`): SF Pro for text and SF Mono for
+/// code. Read from this computer, never bundled; `None` off a Mac.
+fn system_faces() -> Option<(&'static [u8], &'static [u8])> {
+    let read = |path: &str| -> Option<&'static [u8]> {
+        let bytes = std::fs::read(path).ok()?;
+        Some(Box::leak(bytes.into_boxed_slice()))
+    };
+    Some((
+        read("/System/Library/Fonts/SFNS.ttf")?,
+        read("/System/Library/Fonts/SFNSMono.ttf")?,
+    ))
+}
+
 #[test]
 #[ignore = "writes the corpus for tools/coretext-lines.swift"]
 fn write_corpus() {
     let path = std::env::var("RUST_NATIVE_WRITE_CORPUS").expect("RUST_NATIVE_WRITE_CORPUS");
-    let bytes = serde_json::to_vec(&corpus_json()).unwrap();
+    // RUST_NATIVE_CORPUS_FACES=system writes the runs as the system faces
+    // draw them: code in the second face, and SF Pro's optical size.
+    let measurer = match std::env::var("RUST_NATIVE_CORPUS_FACES").as_deref() {
+        Ok("system") => {
+            let (text, code) = system_faces().expect("SF Pro and SF Mono on this Mac");
+            ShapingMeasurer::with_faces(text, code).unwrap()
+        }
+        _ => ShapingMeasurer::new(),
+    };
+    let corpus = corpus_json(&measurer);
+    let bytes = serde_json::to_vec(&corpus).unwrap();
     std::fs::write(&path, &bytes).unwrap();
     eprintln!(
         "wrote {} cases, digest {}",
-        corpus_json().cases.len(),
+        corpus.cases.len(),
         digest(&bytes)
     );
 }
 
-#[test]
-fn line_breaks_match_coretext_for_the_bundled_fonts() {
-    let truth: Value =
-        serde_json::from_str(include_str!("../../../fixtures/coretext-lines.json")).unwrap();
+/// Line breaks over a set of paragraphs, against CoreText's.
+#[derive(Debug, Default)]
+struct Tally {
+    paragraphs: usize,
+    lines: usize,
+    /// Lines that start where CoreText's do.
+    same: usize,
+    /// Paragraphs that break into a different number of lines.
+    counts: usize,
+    /// Paragraphs with any line break different from CoreText's.
+    differ: usize,
+}
+
+impl Tally {
+    fn ratio(&self) -> f64 {
+        self.same as f64 / self.lines.max(1) as f64
+    }
+}
+
+/// How the shaper's breaks compare with CoreText's: paragraphs the faces
+/// cover, and paragraphs a platform fallback face partly draws.
+struct Comparison {
+    covered: Tally,
+    fallback: Tally,
+}
+
+/// Measures the corpus with `measurer` and compares its breaks with
+/// `truth` (a `tools/coretext-lines.swift` output), printing a summary and
+/// every differing paragraph.
+fn compare(measurer: &mut ShapingMeasurer, truth: &str, fixture: &str) -> Comparison {
+    let truth: Value = serde_json::from_str(truth).unwrap();
     let corpus = corpus();
-    let bytes = serde_json::to_vec(&corpus_json()).unwrap();
+    let bytes = serde_json::to_vec(&corpus_json(measurer)).unwrap();
     assert_eq!(
         truth["corpus"].as_str().unwrap(),
         digest(&bytes),
-        "the corpus changed; regenerate fixtures/coretext-lines.json (see this module's docs)"
+        "the corpus changed; regenerate {fixture} (see this module's docs)"
     );
     let truth = truth["cases"].as_array().unwrap();
     assert_eq!(truth.len(), corpus.len());
-    let mut measurer = ShapingMeasurer::new();
-    let (mut lines, mut same, mut counts) = (0usize, 0usize, 0usize);
-    let (mut fallback, mut fallback_counts) = (0usize, 0usize);
-    let face = FontRef::from_index(FACES[0], 0).unwrap();
+    let mut comparison = Comparison {
+        covered: Tally::default(),
+        fallback: Tally::default(),
+    };
+    let faces: Vec<FontRef<'_>> = measurer.fonts.clone();
     let mut worst_width = 0.0f32;
+    let mut worst_fallback = 0.0f32;
     let mut report = vec![];
     for (index, ((text, runs, width), expected)) in corpus.iter().zip(truth).enumerate() {
-        // A paragraph with characters Paper Mono lacks is drawn partly in
-        // the platform's fallback face, whose proportional widths the
-        // shaper only estimates, so its line count is reported, not gated.
-        let covered = text
-            .chars()
-            .all(|c| c.is_control() || face.charmap().map(c) != 0);
-        if !covered {
-            fallback += 1;
-        }
+        // A paragraph with characters its faces lack is drawn partly in
+        // CoreText's fallback faces, whose widths the shaper takes from a
+        // measured table (`fallback_advance`).
+        let covered = text.chars().all(|c| {
+            c.is_control()
+                || runs.iter().all(|r| {
+                    let face = faces[measurer.spec(r.font).face];
+                    face.charmap().map(c) != 0
+                })
+        });
+        let tally = if covered {
+            &mut comparison.covered
+        } else {
+            &mut comparison.fallback
+        };
         let measured = measurer.measure(text, runs, *width).unwrap();
         let ends: Vec<u32> = expected["ends"]
             .as_array()
@@ -283,12 +356,10 @@ fn line_breaks_match_coretext_for_the_bundled_fonts() {
             .map(|v| v.as_f64().unwrap() as f32)
             .collect();
         let got: Vec<u32> = measured.lines.iter().map(|l| l.end16).collect();
-        lines += ends.len();
-        if got.len() != ends.len() && !covered {
-            fallback_counts += 1;
-        } else if got.len() != ends.len() {
-            counts += 1;
-        }
+        tally.paragraphs += 1;
+        tally.lines += ends.len();
+        tally.counts += usize::from(got.len() != ends.len());
+        tally.differ += usize::from(got != ends);
         let starts = |ends: &[u32]| {
             std::iter::once(0)
                 .chain(ends.iter().copied())
@@ -296,12 +367,15 @@ fn line_breaks_match_coretext_for_the_bundled_fonts() {
                 .collect::<std::collections::HashSet<u32>>()
         };
         let mine = starts(&got);
-        let matched = starts(&ends).intersection(&mine).count();
-        same += matched;
+        tally.same += starts(&ends).intersection(&mine).count();
         if got == ends {
             for (line, width) in measured.lines.iter().zip(&widths) {
                 let delta = (line.width - width).abs();
-                worst_width = worst_width.max(delta);
+                if covered {
+                    worst_width = worst_width.max(delta);
+                } else {
+                    worst_fallback = worst_fallback.max(delta);
+                }
                 if delta > 0.05 && std::env::var_os("SHAPE_WIDTHS").is_some() {
                     let units: Vec<u16> = text.encode_utf16().collect();
                     eprintln!(
@@ -323,7 +397,8 @@ fn line_breaks_match_coretext_for_the_bundled_fonts() {
             let cut = got.iter().zip(&ends).position(|(a, b)| a != b).unwrap_or(0);
             let start = if cut == 0 { 0 } else { ends[cut - 1] };
             report.push(format!(
-                "case {index} width {width:?} ({} lines, Rust {}): CoreText line {:?} Rust line {:?}",
+                "{} case {index} width {width:?} ({} lines, Rust {}): CoreText line {:?} Rust line {:?}",
+                if covered { "covered" } else { "fallback" },
                 ends.len(),
                 got.len(),
                 piece(start, ends.get(cut).copied().unwrap_or(0)),
@@ -331,28 +406,71 @@ fn line_breaks_match_coretext_for_the_bundled_fonts() {
             ));
         }
     }
-    let ratio = same as f64 / lines.max(1) as f64;
+    for (name, tally) in [
+        ("covered", &comparison.covered),
+        ("fallback-face", &comparison.fallback),
+    ] {
+        eprintln!(
+            "{fixture}: {} {name} paragraphs, {} lines: {} with a different line count, {} with any different break, {:.4}% exact line starts",
+            tally.paragraphs,
+            tally.lines,
+            tally.counts,
+            tally.differ,
+            tally.ratio() * 100.0
+        );
+    }
     eprintln!(
-        "{} paragraphs, {lines} lines: {counts} line-count differences, {:.4}% exact line starts, worst width difference {worst_width:.3} pt",
-        corpus.len(),
-        ratio * 100.0
-    );
-    eprintln!(
-        "{fallback} paragraphs use fallback faces; {fallback_counts} of them differ in line count"
+        "worst width difference on lines that match: covered {worst_width:.3} pt, fallback-face {worst_fallback:.3} pt"
     );
     for line in &report {
         eprintln!("{line}");
     }
-    // Paper Mono's fixed 0.606 em advance puts more line ends right at the
-    // edge than the proportional faces before it did, which exposes where
-    // CoreText's UAX #14 tailoring differs from ours: one paragraph breaks
-    // after a space before a code run that starts with a period. Paragraphs
-    // that need fallback faces are reported above, not gated.
     assert!(
-        counts <= 1,
-        "{counts} paragraphs with a different line count"
+        worst_width < 0.5,
+        "covered line widths drift from CoreText's by {worst_width} pt"
     );
-    assert!(ratio >= 0.997, "exact line starts {ratio}");
+    // Fallback widths are each character's alone; Hiragino kerns kana
+    // against the long-vowel mark (サー, バー) by up to 0.05 em.
+    assert!(
+        worst_fallback < 2.0,
+        "fallback-face line widths drift from CoreText's by {worst_fallback} pt"
+    );
+    comparison
+}
+
+// Both gates hold every paragraph to CoreText's breaks exactly, those the
+// faces cover and those partly drawn from fallback faces (#11291, #11301).
+
+#[test]
+fn line_breaks_match_coretext_for_the_bundled_fonts() {
+    let Comparison { covered, fallback } = compare(
+        &mut ShapingMeasurer::over(None).with_fallback_widths(FallbackWidths::CoreText),
+        include_str!("../../../fixtures/coretext-lines.json"),
+        "fixtures/coretext-lines.json",
+    );
+    assert_eq!(covered.differ, 0, "{covered:?}");
+    assert_eq!(fallback.differ, 0, "{fallback:?}");
+}
+
+/// The desktop's faces on a Mac, SF Pro for prose and SF Mono for code,
+/// against CoreText with the same font files. SF Pro is proportional, has
+/// an optical-size axis, and a `trak` table CoreText applies by size. Runs
+/// only where those files exist; the fixture holds only break positions.
+#[test]
+fn line_breaks_match_coretext_for_the_system_fonts() {
+    let Some((text, code)) = system_faces() else {
+        eprintln!("SF Pro and SF Mono are not on this computer; skipping");
+        return;
+    };
+    let Comparison { covered, fallback } = compare(
+        &mut ShapingMeasurer::with_faces(text, code)
+            .unwrap()
+            .with_fallback_widths(FallbackWidths::CoreText),
+        include_str!("../../../fixtures/coretext-lines-system.json"),
+        "fixtures/coretext-lines-system.json",
+    );
+    assert_eq!(covered.differ, 0, "{covered:?}");
+    assert_eq!(fallback.differ, 0, "{fallback:?}");
 }
 
 #[test]
@@ -566,4 +684,145 @@ fn every_font_is_paper_mono_at_its_weight() {
     // Setting the one family again changes nothing, so nothing is measured.
     layout.set_font_family(FontFamily::PaperMono);
     assert_eq!(layout.update(update(), &mut measurer).unwrap().relaid, 0);
+}
+
+/// CoreText's fallback widths on a Mac (#11301), as
+/// `tools/fallback-metrics.swift` measured them: Apple Color Emoji in whole points that grow faster than
+/// the size at text sizes, Apple SD Gothic Neo's Hangul at 0.865 em, Han an
+/// em, and Menlo under a monospace face.
+#[test]
+fn fallback_widths_are_coretexts() {
+    use Fallback::{Monospace, Proportional};
+    for (size, points) in [
+        (12.0, 16.0),
+        (14.4, 19.0),
+        (16.75, 21.0),
+        (20.0, 23.0),
+        (27.0, 27.0),
+        (40.0, 40.0),
+    ] {
+        for emoji in ["🎉", "🇺🇸", "👨\u{200d}👩\u{200d}👧", "👍🏽", "✔\u{fe0f}"]
+        {
+            assert_eq!(
+                fallback_advance(emoji, size, Proportional),
+                points,
+                "{emoji} at {size}"
+            );
+            assert_eq!(
+                fallback_advance(emoji, size, Monospace),
+                points,
+                "{emoji} at {size}"
+            );
+        }
+    }
+    let close = |cluster: &str, fallback, em: f64| {
+        let got = fallback_advance(cluster, 10.0, fallback) / 10.0;
+        assert!((got - em).abs() < 0.001, "{cluster}: {got} em, not {em}");
+    };
+    close("가", Proportional, 0.865);
+    close("한", Monospace, 0.865);
+    close("中", Proportional, 1.0);
+    close("、", Monospace, 1.0);
+    close("✔", Monospace, 0.602);
+    close("✔\u{fe0e}", Monospace, 0.602);
+    close("✔", Proportional, 0.846);
+    close("Ж", Monospace, 0.602);
+    // A flag the face shapes as two clusters is one grapheme.
+    assert_eq!(grapheme_at("a🇺🇸", 1), Some("🇺🇸"));
+    assert_eq!(grapheme_at("a🇺🇸", 5), None);
+    // Paper Mono's Regular instance falls back like a proportional face.
+    let font = |weight| Font {
+        family: Default::default(),
+        size: 15.0,
+        weight,
+        italic: false,
+        mono: false,
+    };
+    assert_eq!(FontSpec::of(font(Weight::Regular)).fallback, Proportional);
+    assert_eq!(FontSpec::of(font(Weight::Bold)).fallback, Monospace);
+}
+
+/// On Linux and Windows a character the faces lack is measured from the
+/// fallback face the painter draws it with (#11304): the measured width is
+/// that face's shaped advance, and CoreText's only where no face on this
+/// computer has the character. Where the usual faces are installed, their
+/// widths are pinned.
+#[test]
+fn fallback_widths_are_the_system_faces_where_the_platform_draws_them() {
+    use swash::{StringId, shape::ShapeContext};
+    let font = Font {
+        family: Default::default(),
+        size: 20.0,
+        weight: Weight::Regular,
+        italic: false,
+        mono: false,
+    };
+    let mut measurer = ShapingMeasurer::over(None).with_fallback_widths(FallbackWidths::System);
+    let spec = measurer.spec(font);
+    let mut context = ShapeContext::new();
+    // (cluster, the face's family, its width in ems)
+    let pins: &[(&str, &str, f64)] = if cfg!(target_os = "linux") {
+        &[
+            ("中", "Noto Sans CJK", 1.0),
+            ("あ", "Noto Sans CJK", 1.0),
+            ("가", "Noto Sans CJK", 0.92),
+            ("😀", "Noto Color Emoji", 1.2451),
+            ("🇺🇸", "Noto Color Emoji", 1.2451),
+            ("👨\u{200d}👩\u{200d}👧", "Noto Color Emoji", 1.2451),
+            ("Ж", "DejaVu Sans", 1.0771), // check-fonts: allow
+            ("α", "DejaVu Sans", 0.6592), // check-fonts: allow
+        ]
+    } else {
+        &[("中", "Microsoft YaHei", 1.0)]
+    };
+    let mut pinned = 0;
+    for cluster in [
+        "中",
+        "あ",
+        "가",
+        "😀",
+        "🇺🇸",
+        "👨\u{200d}👩\u{200d}👧",
+        "Ж",
+        "α",
+        "✔",
+    ] {
+        let length = cluster.encode_utf16().count() as u32;
+        let run = MeasureRun {
+            start16: 0,
+            end16: length,
+            font,
+        };
+        let measured = f64::from(measurer.measure(cluster, &[run], None).unwrap().lines[0].width);
+        let Some(glyphs) = system::fallback_glyphs(&mut context, cluster, &spec) else {
+            let table = fallback_advance(cluster, 20.0, spec.fallback);
+            assert!((measured - table).abs() < 1e-3, "{cluster}: {measured}");
+            continue;
+        };
+        assert!(
+            (measured - glyphs.advance).abs() < 1e-3,
+            "{cluster}: measured {measured}, drawn {}",
+            glyphs.advance
+        );
+        let face = system::face_at(glyphs.face).unwrap();
+        let family = face
+            .localized_strings()
+            .find_by_id(StringId::Family, Some("en"))
+            .map(|name| name.chars().collect::<String>())
+            .unwrap_or_default();
+        eprintln!("{cluster}: {family}, {:.4} em", measured / 20.0);
+        if cfg!(any(target_os = "linux", target_os = "windows")) {
+            for (pin, name, em) in pins {
+                if *pin == cluster && family.starts_with(name) {
+                    pinned += 1;
+                    assert!(
+                        (measured / 20.0 - em).abs() < 1e-3,
+                        "{cluster} in {family}: {} em, not {em}",
+                        measured / 20.0
+                    );
+                }
+            }
+        }
+    }
+    eprintln!("{pinned} widths pinned");
 }

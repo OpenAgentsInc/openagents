@@ -38,6 +38,7 @@
 #                               suite's test account (staging only); open sign-up stays off
 #   OPENAGENTS_ACCOUNTS_DATABASE_URL  optional: the account database's connection
 #                               string; set, the account stores live in Postgres (#11154)
+#   GITHUB_APP_JSON, GITHUB_APP_PEM  optional: the deployment's GitHub App (below)
 #   INVITE_ONLY_JSON            optional: accounts.invite_only, the GitHub people who
 #                               may sign in ({"github": [{"id": N, "login": L, "admin": true}]})
 #   GATEWAY_HOLD                optional: `serving` (above)
@@ -187,6 +188,18 @@ invite=""
 if [ -n "${INVITE_ONLY_JSON:-}" ]; then
     invite="\"invite_only\": $INVITE_ONLY_JSON,"
 fi
+# The deployment's GitHub App (#11056, #11226; docs/auth/github.md "GitHub
+# App"), optional: its private file (GITHUB_APP_JSON, whose private_key is
+# "github-app.pem") and the key GitHub generated (GITHUB_APP_PEM). With it,
+# people install the App on repositories, and Claude Code runs push through
+# the credential broker with tokens scoped to one repository.
+github_app=""
+if [ -n "${GITHUB_APP_JSON:-}" ] && [ -n "${GITHUB_APP_PEM:-}" ]; then
+    printf '%s' "$GITHUB_APP_JSON" > "$private/github-app.json"
+    printf '%s\n' "$GITHUB_APP_PEM" > "$private/github-app.pem"
+    github_app="\"github_app\": {\"credentials\": \"$private/github-app.json\", \"redirect_url\": \"$PUBLIC_ORIGIN/auth/github/callback\"},"
+fi
+unset GITHUB_APP_JSON GITHUB_APP_PEM
 # With the account database's connection string (Secret Manager, through
 # the Cloud SQL connector's socket), accounts, sessions, API keys, GitHub
 # access and provider keys live in Postgres (#11154,
@@ -218,6 +231,7 @@ cat > "$private/gateway.json" << EOF
     $operator
     $invite
     $database
+    $github_app
     "github": {
       "credentials": "$private/github-oauth.json",
       "redirect_url": "$PUBLIC_ORIGIN/auth/github/callback"

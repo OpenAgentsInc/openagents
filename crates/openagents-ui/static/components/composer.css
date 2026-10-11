@@ -76,6 +76,37 @@
   text-decoration: underline;
 }
 
+/* Sign in to Claude inside an environment: the terminal's screen and the
+   line typed into it (#11294). */
+.oa-sign-in {
+  display: grid;
+  gap: calc(var(--spacing) * 3);
+  min-width: 0;
+}
+.oa-sign-in-screen {
+  margin: 0;
+  max-height: 20rem;
+  overflow: auto;
+  padding: calc(var(--spacing) * 3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-secondary);
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.oa-sign-in-input {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: calc(var(--spacing) * 2);
+}
+.oa-sign-in-input > :first-child {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
 .oa-composer-body {
   position: relative;
   display: flex;

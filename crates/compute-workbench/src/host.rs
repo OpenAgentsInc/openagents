@@ -42,6 +42,7 @@ pub fn read_observing(
     for funded in journal
         .all_funded()?
         .into_iter()
+        .rev()
         .filter(|f| f.account == principal.account)
         .take(64)
     {
@@ -500,6 +501,63 @@ mod tests {
             )
             .is_err()
         );
+    }
+    #[test]
+    fn account_view_keeps_the_newest_receipts_when_more_than_the_cap_exist() {
+        // The view caps receipts at 64. Funded requests are listed oldest
+        // first, so without a reverse the cap kept the 64 oldest and hid
+        // every newer one. Each confirmation gets its own time so "newest"
+        // is well defined (a shared time would leave the order to the
+        // execution id).
+        let mut ledger = Ledger::in_memory().unwrap();
+        let mut journal = Journal::in_memory().unwrap();
+        common::funded_account(&mut ledger, "acct", 100_000);
+        let book = retail_cloud::contract::price_book();
+        for n in 0..70u64 {
+            let offer = retail_cloud::offer::make_offer(
+                &book,
+                "acct",
+                &format!("offer-{n:02}"),
+                &common::request(60),
+                common::FREE,
+                common::NOW as u64,
+            )
+            .unwrap();
+            retail_cloud::offer::confirm(
+                &mut journal,
+                &offer,
+                &offer.offer.digest,
+                retail_cloud::offer::ConfirmedVia::OfferControl,
+                &book,
+                common::FREE,
+                common::NOW as u64 + 1 + n,
+            )
+            .unwrap();
+        }
+        let view = read(
+            &ledger,
+            &journal,
+            "cli:acct",
+            &credential_digest("acct"),
+            &[],
+            common::NOW,
+        )
+        .unwrap();
+        assert_eq!(view.receipts.len(), 64);
+        // Newest first: offer-69 (the last confirmed) leads.
+        assert_eq!(view.receipts[0].offer, "offer-69");
+        assert!(
+            view.receipts.iter().any(|r| r.offer == "offer-06"),
+            "the newest 64 must survive the cap"
+        );
+        for dropped in [
+            "offer-00", "offer-01", "offer-02", "offer-03", "offer-04", "offer-05",
+        ] {
+            assert!(
+                !view.receipts.iter().any(|r| r.offer == dropped),
+                "{dropped} is the oldest and must fall outside the cap"
+            );
+        }
     }
     #[test]
     fn quotes_refuse_expired_changed_terms_and_foreign_accounts_without_holds() {

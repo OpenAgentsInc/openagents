@@ -171,6 +171,46 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
     if let Some(notice) = &chat.notice {
         result["extra"]["notice"] = json!(notice);
     }
+    // The harness the chat ran under (#11289): its configuration, its
+    // (model, task, budget) cell, how that was decided, and the part a
+    // sibling run changed.
+    if let Some(run) = &chat.harness {
+        result["extra"]["harness"] = serde_json::to_value(run).unwrap_or_default();
+    }
+    // Context management (#11286): the peak the model read, whether old
+    // outputs were stubbed, and how many summaries were written.
+    if chat.peak_context_tokens > 0 {
+        result["final_metrics"]["extra"]["peak_context_tokens"] = json!(chat.peak_context_tokens);
+    }
+    result["final_metrics"]["extra"]["outputs_elided"] = json!(chat.elide_old_outputs);
+    result["final_metrics"]["extra"]["summaries"] = json!(
+        chat.entries
+            .iter()
+            .filter(|entry| crate::long_session::is_summary(entry))
+            .count()
+    );
+    // Identical consecutive tool calls, and whether they reached stuck
+    // detection's reminder or stop (#11285).
+    let streaks = crate::stuck::streaks(chat.entries.iter().enumerate().filter_map(
+        |(index, entry)| match entry {
+            Entry::Tool {
+                name,
+                input,
+                output,
+                running: false,
+            } => Some((index, name.as_str(), input, output)),
+            _ => None,
+        },
+    ));
+    if !streaks.is_empty() {
+        result["final_metrics"]["extra"]["longest_identical_streak"] = json!(
+            streaks
+                .iter()
+                .filter_map(|streak| streak["length"].as_u64())
+                .max()
+        );
+        result["extra"]["identical_call_streaks"] = json!(streaks);
+    }
     result
 }
 
@@ -716,6 +756,52 @@ mod tests {
             );
         }
     }
+    #[test]
+    fn identical_call_streaks_are_recorded_with_their_thresholds() {
+        let mut chat = Chat::default();
+        chat.entries.push(Entry::User("Fix it".into()));
+        for _ in 0..8 {
+            chat.entries.push(Entry::Tool {
+                name: "Run".into(),
+                input: json!({"command":"cargo test"}),
+                output: json!({"exit":101,"output":"failed"}),
+                running: false,
+            });
+        }
+        let document = document(&chat, "test", "auto", Path::new("/workspace"));
+        assert!(atif::validate(&document).is_empty());
+        let streak = &document["extra"]["identical_call_streaks"][0];
+        assert_eq!(streak["tool"], "Run");
+        assert_eq!(streak["first_step"], 2);
+        assert_eq!(streak["length"], 8);
+        assert_eq!(streak["reminded"], true);
+        assert_eq!(streak["stopped"], true);
+        assert_eq!(
+            document["final_metrics"]["extra"]["longest_identical_streak"],
+            8
+        );
+        let quiet = super::document(&Chat::default(), "test", "auto", Path::new("/w"));
+        assert!(quiet["extra"].get("identical_call_streaks").is_none());
+    }
+    #[test]
+    fn the_harness_is_recorded_in_the_export() {
+        let chat = Chat {
+            harness: Some(crate::harness::Run::choose(
+                None,
+                crate::harness::DecidedBy::Fallback,
+                999,
+            )),
+            ..Chat::default()
+        };
+        let document = document(&chat, "h", "auto", Path::new("/w"));
+        let harness = &document["extra"]["harness"];
+        assert_eq!(harness["config"]["context"], "t4");
+        assert_eq!(harness["config"]["plan"], "on");
+        assert_eq!(harness["config"]["stuck"]["stop"], 8);
+        assert_eq!(harness["decided_by"], "fallback");
+        assert!(harness["sibling"].is_null());
+    }
+
     #[test]
     fn foreign_or_malformed_trajectory_is_rejected() {
         assert!(from_document(&json!({"schema_version":"ATIF-v9","steps":[]})).is_err());

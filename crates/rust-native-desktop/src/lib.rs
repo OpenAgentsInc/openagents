@@ -34,7 +34,6 @@ pub mod access;
 pub mod backdrop;
 pub mod canvas;
 pub mod composer;
-mod fallback;
 mod icons;
 pub use icons::paint as paint_icon;
 pub mod image;

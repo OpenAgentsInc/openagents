@@ -293,7 +293,7 @@ fn default_key() -> Result<PathBuf, String> {
 pub async fn main(args: &[String]) -> u8 {
     let result = async {
         let command = args.first().ok_or(knowledge::cli::USAGE)?;
-        let o = knowledge::cli::parse(&args[1..])?;
+        let o = knowledge::cli::parse(&args[1..]).map_err(|error| error.to_string())?;
         if matches!(
             command.as_str(),
             "snapshot-create"
@@ -335,7 +335,7 @@ pub async fn result(args: &[String]) -> Result<(u8, Value), (u8, String)> {
         let command = args
             .first()
             .ok_or((64, "a kb command is required".to_string()))?;
-        let o = knowledge::cli::parse(&args[1..]).map_err(|error| (64, error))?;
+        let o = knowledge::cli::parse(&args[1..]).map_err(|error| (64, error.to_string()))?;
         if !matches!(command.as_str(), "publish" | "sync" | "head") {
             return Err((64, format!("unknown kb command `{command}`")));
         }

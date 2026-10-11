@@ -24,15 +24,118 @@ use coder_delegate::delegate::{Agent, Report, Status, Summary};
 /// The id a Cloud computer's background task uses for this engine.
 pub const ID: &str = coder_cloud::claude::ENGINE;
 
-/// What a usage limit says, so the Cloud job pauses until the reset.
+/// What a usage limit says, so the Cloud job pauses until the reset. It
+/// names the run's Claude Code conversation (`session`), which is kept, so
+/// Continue on your key can pick it up (#11295).
 #[must_use]
-pub fn limited(resets_at: Option<u64>) -> String {
-    match resets_at {
+pub fn limited(resets_at: Option<u64>, session: Option<&str>) -> String {
+    let base = match resets_at {
         Some(at) => format!(
             "Claude Code reached a usage limit on this computer's Claude sign-in. Claude AI usage limit reached|{at}"
         ),
         None => "Claude Code reached a usage limit on this computer's Claude sign-in and did not say when it resets.".into(),
+    };
+    match session.filter(|id| session_id(id)) {
+        Some(id) => format!("{base} {SESSION_MARK}{id}."),
+        None => base,
     }
+}
+
+/// What precedes the conversation id in a usage-limit error.
+const SESSION_MARK: &str = "Conversation ";
+
+/// Whether `id` can be a Claude Code session id (a UUID).
+#[must_use]
+pub fn session_id(id: &str) -> bool {
+    id.len() == 36 && id.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
+}
+
+/// The kept conversation a usage-limit error names, if any.
+#[must_use]
+pub fn limited_session(error: &str) -> Option<String> {
+    if !coder_engine_status::limit::says_limited(error) {
+        return None;
+    }
+    let (_, rest) = error.rsplit_once(SESSION_MARK)?;
+    let id: String = rest
+        .chars()
+        .take_while(|c| c.is_ascii_hexdigit() || *c == '-')
+        .collect();
+    session_id(&id).then_some(id)
+}
+
+/// A fresh Claude Code session id (a random UUID), so the run's
+/// conversation is kept under a name Coder knows.
+#[must_use]
+pub fn new_session() -> String {
+    let mut bytes = [0u8; 16];
+    if getrandom::fill(&mut bytes).is_err() {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos());
+        bytes = (nanos ^ u128::from(std::process::id()).rotate_left(64)).to_le_bytes();
+    }
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    format!(
+        "{}-{}-{}-{}-{}",
+        &hex[..8],
+        &hex[8..12],
+        &hex[12..16],
+        &hex[16..20],
+        &hex[20..]
+    )
+}
+
+/// The person's own Anthropic API key, from the environment Coder started
+/// in: what Continue on your key runs one turn on (#11295). A Claude
+/// subscription token (`sk-ant-oat…`) bills the same plan that hit its
+/// limit, so it is never one.
+#[must_use]
+pub fn own_key(env: &dyn Fn(&str) -> Option<String>) -> Option<ApiKey> {
+    env("ANTHROPIC_API_KEY")
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty() && !subscription_token(value))
+        .map(ApiKey::new)
+}
+
+/// Whether `value` is a Claude subscription token.
+fn subscription_token(value: &str) -> bool {
+    value.trim().starts_with("sk-ant-oat")
+}
+
+/// The class of [`own_key`], for [`coder_cloud::claude_task::offered`].
+#[must_use]
+pub fn saved_class(
+    env: &dyn Fn(&str) -> Option<String>,
+) -> Option<coder_cloud::claude::OwnCredential> {
+    own_key(env).map(|_| coder_cloud::claude::OwnCredential::AnthropicApiKey)
+}
+
+/// How the next print-mode run on this thread goes: continue a kept
+/// conversation, and on the person's own key for that one turn (#11295).
+#[derive(Default)]
+pub(crate) struct Turn {
+    /// The conversation to continue (`claude --resume`).
+    pub resume: Option<String>,
+    /// The person's own API key for this turn only; never a subscription
+    /// token.
+    pub key: Option<ApiKey>,
+}
+
+thread_local! {
+    static NEXT: std::cell::RefCell<Turn> = std::cell::RefCell::new(Turn::default());
+}
+
+/// Sets how the next run on this thread goes; it applies once.
+pub(crate) fn set_next_turn(turn: Turn) {
+    NEXT.with(|next| *next.borrow_mut() = turn);
+}
+
+/// Takes how the next run on this thread goes.
+pub(crate) fn take_next_turn() -> Turn {
+    NEXT.with(|next| std::mem::take(&mut *next.borrow_mut()))
 }
 
 /// What a missing or expired login says, so the Cloud job stops with a
@@ -102,25 +205,41 @@ fn removed_env(
 }
 
 /// Drive `claude -p` once and answer, or fail with a typed sentence.
+/// The conversation is kept under a session id Coder chooses (or the one
+/// `turn` continues), so a run a usage limit stops can go on later.
 pub(super) async fn run(
     program: &Path,
     task: &str,
     cwd: &Path,
     cancel: &Arc<AtomicBool>,
     emit: &mut dyn FnMut(RuntimeEvent),
+    turn: Turn,
 ) -> Result<Value, String> {
     if !crate::approval::tools_allowed() {
         return Err("Claude Code cannot run when tools are disabled.".into());
     }
+    if turn
+        .key
+        .as_ref()
+        .is_some_and(|key| subscription_token(key.expose()))
+    {
+        return Err(
+            "A subscription token bills the same Claude plan; use an API key to continue now."
+                .into(),
+        );
+    }
+    if turn.resume.as_deref().is_some_and(|id| !session_id(id)) {
+        return Err("That Claude Code conversation can't be continued.".into());
+    }
+    let session = turn.resume.clone().unwrap_or_else(new_session);
+    let on_key = turn.key.is_some();
     let mut command = std::process::Command::new(program);
     command
-        .args([
-            "-p",
-            "--output-format",
-            "stream-json",
-            "--verbose",
-            "--no-session-persistence",
-        ])
+        .args(["-p", "--output-format", "stream-json", "--verbose"])
+        .args(match &turn.resume {
+            Some(id) => ["--resume", id.as_str()],
+            None => ["--session-id", session.as_str()],
+        })
         .current_dir(cwd);
     if crate::approval::gated() {
         command.args([
@@ -146,6 +265,15 @@ pub(super) async fn run(
         command.env_remove(name);
     }
     crate::bundled_runtime::apply_child_env(&mut command);
+    // Their own key, for this turn only: the plan's login and any plan
+    // token stay out of it.
+    if let Some(key) = &turn.key {
+        command
+            .env_remove(secret_screen::CLAUDE_CODE_OAUTH_TOKEN)
+            .env_remove("ANTHROPIC_AUTH_TOKEN")
+            .env("ANTHROPIC_API_KEY", key.expose());
+    }
+    drop(turn);
     let started = Instant::now();
     let mut live = supervise::Job::from_command(command)
         .bounded(supervise::Limits::until_stopped().keeping(TEXT_MAX))
@@ -169,7 +297,7 @@ pub(super) async fn run(
             reader.dropped(gap.offset, gap.bytes);
         }
         for record in reader.feed(delivery.offset, &delivery.bytes) {
-            line(&record.text, &mut kept, emit);
+            line(&record.text, &mut kept, emit, !on_key);
         }
     };
     let stopped = loop {
@@ -184,7 +312,7 @@ pub(super) async fn run(
     };
     keep(stopped.rest.clone(), &mut reader, emit);
     if let Some(record) = reader.finish() {
-        line(&record.text, &mut kept, emit);
+        line(&record.text, &mut kept, emit, !on_key);
     }
     if stopped.requested || cancel.load(Ordering::Relaxed) {
         return Err(format!(
@@ -202,16 +330,48 @@ pub(super) async fn run(
         stream: None,
     };
     // The computer's sign-in status remembers what Claude Code reported.
-    coder_delegate::delegate::remember_engine_notice(ID, &report);
-    answer(&report, coder_delegate::limit::now())
+    if !on_key {
+        coder_delegate::delegate::remember_engine_notice(ID, &report);
+    }
+    answer(&report, coder_delegate::limit::now(), &session)
 }
 
-fn line(text: &str, kept: &mut String, emit: &mut dyn FnMut(RuntimeEvent)) {
+/// One line of the stream. `plan` is false on a turn that runs on the
+/// person's own key: what it reports is about that key, not the plan.
+fn line(text: &str, kept: &mut String, emit: &mut dyn FnMut(RuntimeEvent), plan: bool) {
     let Ok(value) = serde_json::from_str::<Value>(text) else {
         return;
     };
     match value["type"].as_str() {
         Some("system" | "result" | "rate_limit_event") => {
+            match value["type"].as_str() {
+                _ if !plan => {}
+                Some("rate_limit_event") => {
+                    let now = coder_delegate::limit::now();
+                    let info = &value["rate_limit_info"];
+                    crate::claude_plan::observe_rate_limit(info, now);
+                    // The run's cards show where the plan stands (#11292).
+                    if let Some(usage) = crate::claude_plan::plan_usage() {
+                        emit(RuntimeEvent::Plan(usage));
+                    }
+                    // Claude Code's own report of where the plan stands is
+                    // the usage reading (#11233); nothing reads the login.
+                    if let Some(window) = microcoder_loop::usage::rate_limit_window(info, now) {
+                        let _ = microcoder_loop::usage::record_reported(
+                            &coder::task::local::default_store(),
+                            microcoder_loop::capacity::Provider::Claude,
+                            window,
+                            now,
+                        );
+                    }
+                }
+                Some("system") if value["subtype"] == "init" => {
+                    crate::claude_plan::observe_credential(credential_type(
+                        value["apiKeySource"].as_str(),
+                    ));
+                }
+                _ => {}
+            }
             kept.push_str(text);
             kept.push('\n');
         }
@@ -229,7 +389,7 @@ fn line(text: &str, kept: &mut String, emit: &mut dyn FnMut(RuntimeEvent)) {
 }
 
 /// The answer a finished run gives, or the sentence it fails with.
-pub(super) fn answer(report: &Report, now: u64) -> Result<Value, String> {
+pub(super) fn answer(report: &Report, now: u64, session: &str) -> Result<Value, String> {
     let summary = &report.summary;
     let engine = json!({
         "engine": ID,
@@ -237,7 +397,12 @@ pub(super) fn answer(report: &Report, now: u64) -> Result<Value, String> {
         "credential": credential_type(summary.api_key_source.as_deref()),
     });
     if let Some(limit) = report.limit(ID) {
-        return Err(limited(limit.resets_at));
+        let kept = summary
+            .session_id
+            .as_deref()
+            .filter(|id| session_id(id))
+            .unwrap_or(session);
+        return Err(limited(limit.resets_at, Some(kept)));
     }
     let notice = coder_delegate::delegate::engine_notice(ID, report, now);
     if matches!(
@@ -258,7 +423,7 @@ pub(super) fn answer(report: &Report, now: u64) -> Result<Value, String> {
         .filter_map(|k| summary.usage.as_ref().and_then(|u| u[k].as_u64()))
         .sum::<u64>();
     Ok(json!({
-        "session": summary.session_id,
+        "session": summary.session_id.as_deref().filter(|id| session_id(id)).unwrap_or(session),
         "reply": summary.result.clone().unwrap_or_default(),
         "model": summary.model,
         "stop_reason": "end_turn",
@@ -273,6 +438,8 @@ pub(super) fn answer(report: &Report, now: u64) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const SESSION: &str = "0f8a2c4e-1b3d-4e5f-8a6b-7c8d9e0f1a2b";
 
     const INIT: &str = r#"{"type":"system","subtype":"init","model":"claude-opus-5-5","claude_code_version":"2.1.295","apiKeySource":"none","session_id":"s1"}"#;
 
@@ -294,7 +461,7 @@ mod tests {
             "{INIT}\n{}",
             r#"{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"s1","usage":{"input_tokens":3,"output_tokens":4}}"#
         );
-        let answer = answer(&report(&stream, 0, ""), 1).unwrap();
+        let answer = answer(&report(&stream, 0, ""), 1, SESSION).unwrap();
         assert_eq!(answer["reply"], "done");
         assert_eq!(answer["tokens"], 7);
         assert_eq!(
@@ -356,8 +523,11 @@ mod tests {
             "{INIT}\n{}",
             r#"{"type":"result","subtype":"success","is_error":true,"api_error_status":429,"result":"Claude AI usage limit reached|1790164200"}"#
         );
-        let error = answer(&report(&stream, 1, ""), 1_790_163_058).unwrap_err();
-        assert_eq!(error, limited(Some(1_790_164_200)));
+        let error = answer(&report(&stream, 1, ""), 1_790_163_058, SESSION).unwrap_err();
+        // The init event named session s1, which is no UUID: the run's own
+        // id is the one kept.
+        assert_eq!(error, limited(Some(1_790_164_200), Some(SESSION)));
+        assert_eq!(limited_session(&error).as_deref(), Some(SESSION));
         assert_eq!(
             coder_engine_status::Notice::from_text(&error, 5),
             Some(coder_engine_status::Notice::Limited {
@@ -370,9 +540,15 @@ mod tests {
     #[test]
     fn a_missing_or_expired_login_fails_with_a_sign_in_prompt() {
         let expired = r#"{"type":"result","subtype":"error_during_execution","is_error":true,"result":"OAuth token has expired. Please run /login"}"#;
-        assert_eq!(answer(&report(expired, 1, ""), 1).unwrap_err(), SIGN_IN);
+        assert_eq!(
+            answer(&report(expired, 1, ""), 1, SESSION).unwrap_err(),
+            SIGN_IN
+        );
         let missing = r#"{"type":"result","subtype":"success","is_error":true,"result":"Invalid API key · Please run /login"}"#;
-        assert_eq!(answer(&report(missing, 1, ""), 1).unwrap_err(), SIGN_IN);
+        assert_eq!(
+            answer(&report(missing, 1, ""), 1, SESSION).unwrap_err(),
+            SIGN_IN
+        );
         assert_eq!(
             coder_engine_status::Notice::from_text(SIGN_IN, 5),
             Some(coder_engine_status::Notice::LoginExpired { at: 5 })
@@ -426,7 +602,14 @@ mod tests {
         assert_eq!(texts, ["working"]);
         let args = std::fs::read_to_string(args).unwrap();
         assert!(args.starts_with("-p --output-format stream-json"), "{args}");
-        assert!(args.contains("--no-session-persistence"), "{args}");
+        // The conversation is kept under an id Coder chose (#11295).
+        assert!(!args.contains("--no-session-persistence"), "{args}");
+        let kept = args
+            .split_once("--session-id ")
+            .map(|(_, rest)| rest.split(' ').next().unwrap_or_default().to_owned())
+            .unwrap_or_default();
+        assert!(session_id(&kept), "{args}");
+        assert_eq!(answer["session"], kept);
         crate::approval::install(Some(crate::approval::Gate {
             desk: crate::approval::Desk::new(),
             cancel: Arc::new(AtomicBool::new(false)),
@@ -437,6 +620,7 @@ mod tests {
             dir.path(),
             &Arc::new(AtomicBool::new(false)),
             &mut |_| {},
+            Turn::default(),
         )
         .await;
         crate::approval::install(None);
@@ -445,5 +629,89 @@ mod tests {
         assert!(args.contains("--tools Read,Glob,Grep"));
         assert!(args.contains("--permission-mode dontAsk"));
         assert!(!args.contains("bypassPermissions"));
+    }
+
+    /// #11295: Continue on your key resumes the kept conversation on the
+    /// person's own API key for that one turn, with no plan token beside it,
+    /// and a subscription token is never one.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn your_key_resumes_the_kept_conversation_on_that_key_only() {
+        let _lock = crate::approval::test_lock().lock().unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let program = dir.path().join("claude");
+        let seen = dir.path().join("seen");
+        std::fs::write(
+            &program,
+            format!(
+                "#!/bin/sh\nprintf '%s |key=%s|oauth=%s' \"$*\" \"$ANTHROPIC_API_KEY\" \"$CLAUDE_CODE_OAUTH_TOKEN\" > {seen}\nread task\necho '{INIT}'\nprintf '{{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"ok\"}}\\n'\n",
+                seen = seen.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let turn = Turn {
+            resume: Some(SESSION.into()),
+            key: Some(ApiKey::new("sk-ant-api03-fixture")),
+        };
+        let answer = run(
+            &program,
+            "go on",
+            dir.path(),
+            &Arc::new(AtomicBool::new(false)),
+            &mut |_| {},
+            turn,
+        )
+        .await
+        .unwrap();
+        assert_eq!(answer["session"], SESSION);
+        let seen = std::fs::read_to_string(&seen).unwrap();
+        assert!(seen.contains(&format!("--resume {SESSION}")), "{seen}");
+        assert!(!seen.contains("--session-id"), "{seen}");
+        assert!(seen.contains("|key=sk-ant-api03-fixture|oauth="), "{seen}");
+        assert!(
+            seen.ends_with("oauth="),
+            "no plan token beside the key: {seen}"
+        );
+        // A subscription token is never your key.
+        let token = Turn {
+            resume: Some(SESSION.into()),
+            key: Some(ApiKey::new("sk-ant-oat01-fixture")),
+        };
+        let refused = run(
+            &program,
+            "go on",
+            dir.path(),
+            &Arc::new(AtomicBool::new(false)),
+            &mut |_| {},
+            token,
+        )
+        .await;
+        assert!(refused.unwrap_err().contains("subscription token"));
+        let env = |value: &'static str| {
+            move |name: &str| (name == "ANTHROPIC_API_KEY").then(|| value.to_owned())
+        };
+        assert!(own_key(&env("sk-ant-oat01-x")).is_none());
+        assert!(own_key(&env("  ")).is_none());
+        assert_eq!(
+            own_key(&env("sk-ant-api03-x")).unwrap().expose(),
+            "sk-ant-api03-x"
+        );
+        assert!(saved_class(&env("sk-ant-oat01-x")).is_none());
+    }
+
+    #[test]
+    fn a_new_session_is_a_uuid_and_a_limit_names_it() {
+        let id = new_session();
+        assert!(session_id(&id), "{id}");
+        assert_ne!(id, new_session());
+        let error = limited(None, Some(&id));
+        assert_eq!(limited_session(&error), Some(id));
+        assert_eq!(limited_session(&limited(Some(5), None)), None);
+        assert_eq!(
+            limited_session("Conversation 0f8a2c4e-1b3d-4e5f-8a6b-7c8d9e0f1a2b."),
+            None
+        );
     }
 }

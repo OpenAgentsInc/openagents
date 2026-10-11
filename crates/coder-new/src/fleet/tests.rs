@@ -555,3 +555,113 @@ fn the_desktop_board_lists_agents_and_carries_out_stop() {
     drop(app);
     assert!(agent_fleet::board::read(&dir, |_, _| true).is_empty());
 }
+
+/// #11295: a Claude Code agent a usage limit stops keeps its conversation
+/// and offers its choices; Continue on your key resumes that conversation
+/// on the person's own API key for one turn; a subscription token is never
+/// a key, and a choice that isn't offered is refused.
+#[test]
+fn a_limited_claude_agent_continues_on_your_key_in_the_same_conversation() {
+    let _lock = crate::approval::test_lock().lock().unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    let mut f = fixture(ANSWER);
+    let reset = coder_delegate::limit::now() + 3_600;
+    let seen = f.root.join("seen");
+    let claude = f.root.join("claude");
+    std::fs::write(
+        &claude,
+        format!(
+            r#"#!/bin/sh
+printf '%s |key=%s\n' "$*" "$ANTHROPIC_API_KEY" >> '{seen}'
+read task
+echo '{{"type":"system","subtype":"init","apiKeySource":"none"}}'
+if [ -n "$ANTHROPIC_API_KEY" ]; then
+  echo '{{"type":"result","subtype":"success","is_error":false,"result":"finished on the key"}}'
+else
+  echo '{{"type":"result","subtype":"success","is_error":true,"api_error_status":429,"result":"Claude AI usage limit reached|{reset}"}}'
+  exit 1
+fi
+"#,
+            seen = seen.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&claude, std::fs::Permissions::from_mode(0o700)).unwrap();
+    f.execution.agents.push(AcpAgent {
+        id: "claude".into(),
+        name: "Claude Code".into(),
+        program: claude,
+        transport: AgentTransport::ClaudeCli,
+        arguments: vec![],
+        mode: None,
+        enabled: true,
+    });
+    let row = start(
+        &f.host,
+        &f.execution,
+        StartArguments {
+            engine: "claude".into(),
+            task: "fix the login test".into(),
+            name: None,
+            background: None,
+            worktree: Some(false),
+        },
+        None,
+    )
+    .unwrap();
+    let notices = wait_notices(&f.host.fleet, 1);
+    assert_eq!(notices[0].status, agent_fleet::Status::Failed);
+    let limited = f.host.fleet.get(&row.id).unwrap();
+    let session =
+        crate::bundled_runtime::claude_print::limited_session(limited.error.as_deref().unwrap())
+            .expect("the conversation is kept");
+    assert!(
+        limit_words(&limited)
+            .unwrap()
+            .starts_with("Paused by the Claude plan limit until")
+    );
+    let first = std::fs::read_to_string(&seen).unwrap();
+    assert!(
+        first.contains(&format!("--session-id {session}")),
+        "{first}"
+    );
+
+    let none = |_: &str| None;
+    let token = |name: &str| (name == "ANTHROPIC_API_KEY").then(|| "sk-ant-oat01-plan".to_owned());
+    let key = |name: &str| (name == "ANTHROPIC_API_KEY").then(|| "sk-ant-api03-own".to_owned());
+    assert_eq!(pause_choices(&limited, &none), [agent_fleet::OPENAGENTS]);
+    assert_eq!(pause_choices(&limited, &token), [agent_fleet::OPENAGENTS]);
+    assert_eq!(
+        pause_choices(&limited, &key),
+        [agent_fleet::YOUR_KEY, agent_fleet::OPENAGENTS]
+    );
+    assert!(
+        choose(
+            &f.host,
+            &f.execution,
+            &row.id,
+            agent_fleet::YOUR_KEY,
+            &token
+        )
+        .is_err()
+    );
+    assert!(choose(&f.host, &f.execution, &row.id, "keep_waiting", &key).is_err());
+
+    let said = choose(&f.host, &f.execution, &row.id, agent_fleet::YOUR_KEY, &key).unwrap();
+    assert!(said.contains("on your key"), "{said}");
+    let notices = wait_notices(&f.host.fleet, 1);
+    assert_eq!(notices[0].status, agent_fleet::Status::Done);
+    assert_eq!(notices[0].report.as_deref(), Some("finished on the key"));
+    let both = std::fs::read_to_string(&seen).unwrap();
+    let second = both.lines().nth(1).unwrap();
+    assert!(second.contains(&format!("--resume {session}")), "{second}");
+    assert!(second.ends_with("|key=sk-ant-api03-own"), "{second}");
+    // Only that turn: the row offers nothing now.
+    let done = f.host.fleet.get(&row.id).unwrap();
+    assert!(done.choices.is_empty());
+    assert!(pause_choices(&done, &key).is_empty());
+    assert_eq!(
+        engine_call(&f.execution, OPENAGENTS_ENGINE, "t").unwrap().0,
+        OPENAGENTS_ENGINE
+    );
+}

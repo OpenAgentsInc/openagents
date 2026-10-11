@@ -31,7 +31,15 @@ This page lists each capability, where it stands on each surface today, what is 
 - **Desktop app:** hosts the terminal and runs agents locally. It is the "computer" that the website and phone reach.
 - **Phone:** supervises. It shows the agent list, push notices, Approve/Deny, Stop and Message, chat, and a screenshot of a computer. It never runs agents itself.
 
-## Status today (22 capabilities)
+## Status on 2026-10-11
+
+Every issue this page's build order names is closed: #11162 to #11180, and the
+related #11107, #11094, #11132 and #11152. The table below is the 2026-10-09
+starting point, kept for the record. What remains is the owner's own check:
+redo a working session from openagents.com plus `coder`, and supervise it from
+the phone (workspace `NEEDS_OWNER.md`). A gap found there gets its own issue.
+
+## Status on 2026-10-09 (22 capabilities)
 
 | Surface | Works | Partial | Missing |
 | --- | --- | --- | --- |

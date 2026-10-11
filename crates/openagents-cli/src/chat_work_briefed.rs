@@ -179,7 +179,52 @@ fn finished(output: &Output, issue: u64, result: &Value) -> Value {
     record
 }
 
-/// Works `numbers` here, `parallel` at once, each with the engine.
+/// Each running issue's engine process group, by its row's id, so Stop
+/// from openagents.com or the phone can end it (#11228).
+pub(super) type Groups = std::sync::Arc<std::sync::Mutex<std::collections::HashMap<String, u32>>>;
+
+/// Stop and Message for the briefed agent's rows (#11228).
+pub(super) struct EngineRuns(pub Groups);
+
+impl super::fleet::Actions for EngineRuns {
+    fn stop(&self, task: &str) -> Result<(), String> {
+        let group = self
+            .0
+            .lock()
+            .ok()
+            .and_then(|groups| groups.get(task).copied())
+            .ok_or("it already ended")?;
+        let ended = Command::new("kill")
+            .args(["-TERM", "--", &format!("-{group}")])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map_err(|error| format!("kill didn't run: {error}"))?;
+        if ended.success() {
+            Ok(())
+        } else {
+            Err("it already ended".into())
+        }
+    }
+
+    fn steer(&self, _: &str, _: &str) -> Result<(), String> {
+        Err(
+            "the briefed agent can't read messages while it works; Stop it and start the \
+             issue again with what you want"
+                .into(),
+        )
+    }
+}
+
+/// The row id of `issue`'s run started at `now_ms`.
+pub(super) fn row_id(issue: u64, now_ms: u64) -> String {
+    format!("briefed-{issue}-{now_ms}")
+}
+
+/// Works `numbers` here, `parallel` at once, each with the engine. With
+/// `fleet`, each issue is also a row of this computer's agent list on
+/// openagents.com and the phone (#11228).
 pub(super) fn work_here(
     output: &Output,
     top: &Path,
@@ -187,6 +232,7 @@ pub(super) fn work_here(
     numbers: &[u64],
     parallel: u64,
     land: &str,
+    fleet: Option<(super::fleet::Shared, Groups)>,
 ) -> Result<u8, Failure> {
     let driver = engine_dir().map_err(failed)?;
     let agent = agent_binary();
@@ -214,9 +260,14 @@ pub(super) fn work_here(
             .collect::<std::collections::VecDeque<u64>>(),
     ));
     let (sender, receiver) = std::sync::mpsc::channel::<(u64, Value)>();
+    let groups: Groups = fleet
+        .as_ref()
+        .map(|(_, groups)| std::sync::Arc::clone(groups))
+        .unwrap_or_default();
     let mut workers = Vec::new();
     for _ in 0..parallel {
         let (queue, sender) = (std::sync::Arc::clone(&queue), sender.clone());
+        let groups = std::sync::Arc::clone(&groups);
         let (driver, agent, top, repository, land) = (
             driver.clone(),
             agent.clone(),
@@ -230,7 +281,12 @@ pub(super) fn work_here(
                 let Some(issue) = next else {
                     return;
                 };
+                let task = row_id(issue, agent_fleet::now_ms());
+                let _ = sender.send((issue, json!({"type": "started", "task": task})));
                 let mut command = Command::new("python3");
+                // Its own process group, so Stop ends the engine and the
+                // agent it runs.
+                std::os::unix::process::CommandExt::process_group(&mut command, 0);
                 command
                     .arg(&driver)
                     .args([
@@ -256,18 +312,23 @@ pub(super) fn work_here(
                     Err(error) => {
                         let _ = sender.send((
                             issue,
-                            json!({"type": "result", "ok": false,
+                            json!({"type": "result", "ok": false, "task": task,
                                 "error": format!("python3 didn't start: {error}")}),
                         ));
                         continue;
                     }
                 };
+                if let Ok(mut groups) = groups.lock() {
+                    groups.insert(task.clone(), child.id());
+                }
                 let mut result = None;
                 if let Some(stdout) = child.stdout.take() {
                     for line in BufReader::new(stdout).lines().map_while(Result::ok) {
                         let Ok(row) = serde_json::from_str::<Value>(&line) else {
                             continue;
                         };
+                        let mut row = row;
+                        row["task"] = json!(task);
                         if row["type"] == "result" {
                             result = Some(row.clone());
                         }
@@ -275,10 +336,13 @@ pub(super) fn work_here(
                     }
                 }
                 let _ = child.wait();
+                if let Ok(mut groups) = groups.lock() {
+                    groups.remove(&task);
+                }
                 if result.is_none() {
                     let _ = sender.send((
                         issue,
-                        json!({"type": "result", "ok": false,
+                        json!({"type": "result", "ok": false, "task": task,
                             "error": "the engine stopped without a result"}),
                     ));
                 }
@@ -288,10 +352,21 @@ pub(super) fn work_here(
     drop(sender);
     let mut results = Vec::new();
     for (issue, row) in receiver {
-        if row["type"] == "result" {
-            results.push(finished(output, issue, &row));
-        } else {
-            shown(output, issue, &row);
+        if let Some((shared, _)) = &fleet {
+            let task = row["task"].as_str().unwrap_or_default().to_owned();
+            super::fleet::update(shared, |fleet| match row["type"].as_str() {
+                Some("started") => {
+                    fleet.started(issue, "starting", &task, agent_fleet::now_ms());
+                    fleet.engine_said(&task, &json!({"phase": "agent", "engine": "briefed"}));
+                }
+                Some("result") => fleet.engine_finished(&task, &row, agent_fleet::now_ms()),
+                _ => fleet.engine_said(&task, &row),
+            });
+        }
+        match row["type"].as_str() {
+            Some("result") => results.push(finished(output, issue, &row)),
+            Some("started") => {}
+            _ => shown(output, issue, &row),
         }
     }
     for worker in workers {

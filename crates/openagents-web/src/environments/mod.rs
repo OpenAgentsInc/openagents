@@ -26,7 +26,8 @@
 //! after it ([`repositories`]), a page of 30 at a time, most recently
 //! pushed first, from the account service's per-account cache.
 
-mod view;
+pub(crate) mod push;
+pub(crate) mod view;
 
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -52,23 +53,39 @@ use crate::cloud::session::SessionError;
 use crate::cloud::session::github::RepoCallError;
 use crate::ui_page::UiPage;
 
+#[cfg(not(test))]
 static SHOWN: AtomicBool = AtomicBool::new(false);
+
+// Tests build many sites at once, each on its own runtime thread; one
+// site's studio must not put Environments in another's left panel
+// (#11300: `without_a_studio_the_pages_say_so_and_stay_local` raced).
+#[cfg(test)]
+thread_local! {
+    static SHOWN: AtomicBool = const { AtomicBool::new(false) };
+}
+
+fn set_shown(shown: bool) {
+    #[cfg(not(test))]
+    SHOWN.store(shown, Ordering::Relaxed);
+    #[cfg(test)]
+    SHOWN.with(|flag| flag.store(shown, Ordering::Relaxed));
+}
 
 /// Whether the left panel offers Environments (a studio is configured).
 pub(crate) fn shown() -> bool {
-    SHOWN.load(Ordering::Relaxed)
+    #[cfg(not(test))]
+    return SHOWN.load(Ordering::Relaxed);
+    #[cfg(test)]
+    SHOWN.with(|flag| flag.load(Ordering::Relaxed))
 }
 
 /// Offer Environments in the left panel: the studio opened after start.
 pub(crate) fn mark_shown() {
-    SHOWN.store(true, Ordering::Relaxed);
+    set_shown(true);
 }
 
 pub(crate) fn routes(app: &App) -> Router<App> {
-    SHOWN.store(
-        app.config.environments.is_some() || app.config.environments.configured(),
-        Ordering::Relaxed,
-    );
+    set_shown(app.config.environments.is_some() || app.config.environments.configured());
     Router::new()
         .route("/environments", get(index).post(create))
         .route("/environments/new", get(new))
@@ -79,14 +96,22 @@ pub(crate) fn routes(app: &App) -> Router<App> {
         .route("/environments/{id}/retry", post(retry))
         .route("/environments/{id}/save", post(save))
         .route("/environments/{id}/claude", post(claude))
+        .route(
+            "/environments/{id}/sign-in",
+            get(sign_in_page).post(sign_in_start),
+        )
+        .route("/environments/{id}/sign-in/screen", get(sign_in_screen))
+        .route("/environments/{id}/sign-in/input", post(sign_in_input))
         .route("/environments/{id}/runs/{run}", get(run))
         .route("/environments/{id}/runs/{run}/events", get(run_events))
         .route("/environments/{id}/runs/{run}/stop", post(stop))
+        .route("/environments/{id}/runs/{run}/choose", post(choose))
         .route_layer(axum::middleware::from_fn_with_state(
             app.clone(),
             signed_in_only,
         ))
         .layer(DefaultBodyLimit::max(64 * 1024))
+        .merge(push::routes())
 }
 
 /// Where one page of the person's repositories loads from.
@@ -470,12 +495,18 @@ async fn create(
 /// Whether Claude Code can run for this request: the signed-in person
 /// saved their own Claude key in Settings, or this server names one.
 pub(crate) async fn claude_ready(app: &App, studio: &Studio, headers: &HeaderMap) -> bool {
-    claude_offer(app, studio, headers).await == view::Claude::Ready
+    crate::cloud::byo::saved(app, headers).await || studio.claude_ready()
 }
 
-/// What the Claude Code card offers this request.
-async fn claude_offer(app: &App, studio: &Studio, headers: &HeaderMap) -> view::Claude {
-    if crate::cloud::byo::saved(app, headers).await || studio.claude_ready() {
+/// What the Claude Code card offers this request in environment `id`: the
+/// person's own key first, then the login they made inside the
+/// environment (#11294), then this server's key.
+async fn claude_offer(app: &App, studio: &Studio, headers: &HeaderMap, id: &str) -> view::Claude {
+    if crate::cloud::byo::saved(app, headers).await {
+        view::Claude::Ready
+    } else if studio.claude_signed_in(id) {
+        view::Claude::SignedIn
+    } else if studio.claude_ready() {
         view::Claude::Ready
     } else if app.config.cloud_byo.is_some() {
         view::Claude::AddKey
@@ -500,7 +531,7 @@ async fn page(
     };
     let rows = scope.rows(studio);
     let stream = format!("/environments/{id}/events?after={}", v.records.len());
-    let ready = claude_offer(app, studio, headers).await;
+    let ready = claude_offer(app, studio, headers, id).await;
     let body = view::transcript(&v, ready, notice);
     protect(
         UiPage::new(v.summary.repository.clone())
@@ -547,7 +578,7 @@ async fn events(
     if owner_of(&app, &studio, &headers, &id).await.is_none() || studio.view(&id).is_none() {
         return StatusCode::NOT_FOUND.into_response();
     }
-    let ready = claude_offer(&app, &studio, &headers).await;
+    let ready = claude_offer(&app, &studio, &headers, &id).await;
     let shutdown = app.config.shutdown.clone();
     let stream = futures_util::stream::unfold(
         (studio, id, after.after, 0u16),
@@ -673,7 +704,8 @@ async fn claude(
         return missing(&headers);
     }
     let own = crate::cloud::byo::run_key(&app, &headers).await;
-    match studio.run_claude(&id, &form.prompt, own) {
+    let push = push::access(&app, &headers, studio, &id).await;
+    match studio.run_claude_pushing(&id, &form.prompt, own, Vec::new(), push) {
         Ok(run) => protect(Redirect::to(&format!("/environments/{id}/runs/{run}")).into_response()),
         Err(e) => page(&app, studio, &headers, &id, Some(e.as_str())).await,
     }
@@ -684,6 +716,17 @@ async fn run(
     headers: HeaderMap,
     Path((id, run)): Path<(String, String)>,
 ) -> Response {
+    run_page(&app, &headers, id, run, None).await
+}
+
+async fn run_page(
+    app: &App,
+    headers: &HeaderMap,
+    id: String,
+    run: String,
+    notice: Option<&str>,
+) -> Response {
+    let (app, headers) = (app.clone(), headers.clone());
     let Some(studio) = studio(&app) else {
         return unavailable(&app, &headers);
     };
@@ -698,6 +741,8 @@ async fn run(
     };
     let stream = format!("/environments/{id}/runs/{run}/events");
     let rows = scope.rows(studio);
+    let saved = crate::cloud::byo::saved_class(&app, &headers).await;
+    let offered = studio.claude_choices(&id, &run, saved);
     protect(
         UiPage::new("Claude Code")
             .path(format!("/environments/{id}/runs/{run}"))
@@ -711,7 +756,10 @@ async fn run(
             )
             .sidebar_section(view::sidebar(&rows, Some(&id)))
             .content(html! {
-                div class="oa-thread-view" { (view::thread(&stream, view::run_transcript(&r))) }
+                div class="oa-thread-view" {
+                    (view::thread(&stream, view::run_transcript_with(&r, &offered)))
+                    @if let Some(notice) = notice { p role="status" { (notice) } }
+                }
             })
             .respond(&headers),
     )
@@ -732,17 +780,19 @@ async fn run_events(
     {
         return StatusCode::NOT_FOUND.into_response();
     }
+    let saved = crate::cloud::byo::saved_class(&app, &headers).await;
     let shutdown = app.config.shutdown.clone();
     let stream = futures_util::stream::unfold(
         (studio, id, run, String::new(), 0u16),
-        |(studio, id, run, mut last, ticks)| async move {
+        move |(studio, id, run, mut last, ticks)| async move {
             if ticks >= 600 {
                 return None;
             }
             tokio::time::sleep(Duration::from_secs(2)).await;
             let event = match studio.claude_run(&id, &run) {
                 Some(r) => {
-                    let body = view::run_transcript(&r).into_string();
+                    let offered = studio.claude_choices(&id, &run, saved);
+                    let body = view::run_transcript_with(&r, &offered).into_string();
                     if body != last {
                         last = body.clone();
                         Event::default().event("transcript").data(body)
@@ -787,5 +837,258 @@ async fn stop(
     protect(response)
 }
 
+#[derive(Deserialize)]
+struct ChooseForm {
+    choice: String,
+}
+
+/// A paused run's choice (#11293): keep waiting, continue now on the
+/// person's own key (never a subscription token), or hand the rest to
+/// Coder's own agent, which never starts Claude Code.
+async fn choose(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((id, run)): Path<(String, String)>,
+    Form(form): Form<ChooseForm>,
+) -> Response {
+    let Some(studio) = studio(&app).cloned() else {
+        return unavailable(&app, &headers);
+    };
+    if !same_site(&headers) {
+        return refused();
+    }
+    if owner_of(&app, &studio, &headers, &id).await.is_none() || !valid_id(&run) {
+        return missing(&headers);
+    }
+    let saved = crate::cloud::byo::saved_class(&app, &headers).await;
+    let offered = studio.claude_choices(&id, &run, saved);
+    let Some(choice) = view::chosen(&form.choice, &offered) else {
+        return run_page(&app, &headers, id, run, Some("That choice isn't open now.")).await;
+    };
+    let own = match choice {
+        coder_cloud::claude_task::PauseChoice::ContinueOnYourKey(_) => {
+            crate::cloud::byo::run_key(&app, &headers).await
+        }
+        _ => None,
+    };
+    let chosen = {
+        let (studio, id, run) = (studio.clone(), id.clone(), run.clone());
+        tokio::task::spawn_blocking(move || studio.choose_claude(&id, &run, choice, own))
+            .await
+            .unwrap_or_else(|_| Err("That didn't go through. Try again.".into()))
+    };
+    let to = match chosen {
+        Ok(coder_environment_operator::studio::claude::Chosen::HandedOff { run: next }) => next,
+        Ok(_) => run,
+        Err(error) => return run_page(&app, &headers, id, run, Some(&error)).await,
+    };
+    let mut response = Redirect::to(&format!("/environments/{id}/runs/{to}")).into_response();
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    protect(response)
+}
+
 #[cfg(test)]
 mod tests;
+
+/// Where a sign-in started from the composer returns: a chat, or the home
+/// page; anything else is no chat at all.
+fn chat_back(raw: Option<&str>) -> Option<String> {
+    let raw = raw?.trim();
+    let chat = raw.strip_prefix("/chat/").is_some_and(|id| {
+        !id.is_empty()
+            && id.len() <= 128
+            && id
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    });
+    (raw == "/" || chat).then(|| raw.to_owned())
+}
+
+#[derive(Deserialize, Default)]
+struct SignInQuery {
+    part: Option<String>,
+    back: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+struct SignInInput {
+    #[serde(default)]
+    text: String,
+}
+
+/// Sign in to Claude inside the environment (#11294): its page, or
+/// (`?part=dialog`) the same panel as a dialog for the composer.
+async fn sign_in_page(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Query(query): Query<SignInQuery>,
+) -> Response {
+    let Some(studio) = studio(&app) else {
+        return unavailable(&app, &headers);
+    };
+    if owner_of(&app, studio, &headers, &id).await.is_none() {
+        return missing(&headers);
+    }
+    let back = chat_back(query.back.as_deref());
+    let current = studio.sign_in_view(&id);
+    sign_in_answer(
+        &headers,
+        studio,
+        &id,
+        current.as_ref(),
+        back.as_deref(),
+        query.part.as_deref(),
+    )
+}
+
+fn sign_in_answer(
+    headers: &HeaderMap,
+    studio: &Studio,
+    id: &str,
+    current: Option<&coder_environment_operator::studio::sign_in::View>,
+    back: Option<&str>,
+    part: Option<&str>,
+) -> Response {
+    let panel = view::sign_in_panel(id, current, back);
+    match part {
+        Some("panel") => protect(axum::response::Html(panel.into_string()).into_response()),
+        Some("dialog") => protect(
+            axum::response::Html(
+                html! {
+                    (openagents_ui::overlays::Dialog::new(view::SIGN_IN_DIALOG, "Sign in to Claude", panel)
+                        .open_on_load(true))
+                }
+                .into_string(),
+            )
+            .into_response(),
+        ),
+        _ => {
+            let repository = studio
+                .view(id)
+                .map_or_else(|| "Environment".to_owned(), |v| v.summary.repository);
+            protect(
+                UiPage::new("Sign in to Claude")
+                    .path(format!("/environments/{id}/sign-in"))
+                    .section("/environments")
+                    .head(head())
+                    .breadcrumb(
+                        openagents_ui::shell::Breadcrumb::new("Sign in to Claude")
+                            .crumb("Environments", "/environments")
+                            .crumb(repository, format!("/environments/{id}")),
+                    )
+                    .content(html! { div.oa-page-column { h1 { "Sign in to Claude" } (panel) } })
+                    .respond(headers),
+            )
+        }
+    }
+}
+
+/// Start (or start again) the sign-in on the environment's computer.
+async fn sign_in_start(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Query(query): Query<SignInQuery>,
+) -> Response {
+    let Some(studio) = studio(&app) else {
+        return unavailable(&app, &headers);
+    };
+    if !same_site(&headers) {
+        return refused();
+    }
+    if owner_of(&app, studio, &headers, &id).await.is_none() {
+        return missing(&headers);
+    }
+    let back = chat_back(query.back.as_deref());
+    let current = match studio.start_sign_in(&id) {
+        Ok(()) => studio.sign_in_view(&id),
+        Err(why) => Some(coder_environment_operator::studio::sign_in::View {
+            phase: coder_environment_operator::studio::sign_in::Phase::Failed(why),
+            screen: String::new(),
+            link: None,
+        }),
+    };
+    if query.part.is_none() {
+        return protect(Redirect::to(&view::sign_in_path(&id, back.as_deref())).into_response());
+    }
+    sign_in_answer(
+        &headers,
+        studio,
+        &id,
+        current.as_ref(),
+        back.as_deref(),
+        query.part.as_deref(),
+    )
+}
+
+/// The terminal's screen while sign-in is open; once it has ended, the
+/// whole panel, in the panel's place.
+async fn sign_in_screen(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Query(query): Query<SignInQuery>,
+) -> Response {
+    let Some(studio) = studio(&app) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    if owner_of(&app, studio, &headers, &id).await.is_none() {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let back = chat_back(query.back.as_deref());
+    let current = studio.sign_in_view(&id);
+    if current.as_ref().is_some_and(|v| !v.phase.finished()) {
+        return protect(
+            axum::response::Html(
+                view::sign_in_screen(&id, current.as_ref(), back.as_deref()).into_string(),
+            )
+            .into_response(),
+        );
+    }
+    let mut response = axum::response::Html(
+        view::sign_in_panel(&id, current.as_ref(), back.as_deref()).into_string(),
+    )
+    .into_response();
+    response
+        .headers_mut()
+        .insert("hx-retarget", HeaderValue::from_static("#claude-sign-in"));
+    response
+        .headers_mut()
+        .insert("hx-reswap", HeaderValue::from_static("outerHTML"));
+    protect(response)
+}
+
+/// Type a line into the open sign-in. It goes to the computer and is
+/// kept nowhere here.
+async fn sign_in_input(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Query(query): Query<SignInQuery>,
+    Form(form): Form<SignInInput>,
+) -> Response {
+    let Some(studio) = studio(&app) else {
+        return unavailable(&app, &headers);
+    };
+    if !same_site(&headers) {
+        return refused();
+    }
+    if owner_of(&app, studio, &headers, &id).await.is_none() {
+        return missing(&headers);
+    }
+    let back = chat_back(query.back.as_deref());
+    let sent = studio.sign_in_send(&id, &form.text);
+    drop(form);
+    if query.part.as_deref() == Some("input") {
+        return protect(
+            axum::response::Html(
+                view::sign_in_input(&id, back.as_deref(), sent.err().as_deref()).into_string(),
+            )
+            .into_response(),
+        );
+    }
+    protect(Redirect::to(&view::sign_in_path(&id, back.as_deref())).into_response())
+}

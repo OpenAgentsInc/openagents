@@ -572,7 +572,23 @@ fn item_card(computer: &Agents, item: &Item, now: u64) -> Node<Intent> {
             act("deny", Some(question.id.clone())),
         ));
     }
-    if item.running() {
+    // A run a usage limit paused: its choices, and nothing else to tap
+    // (#11295).
+    for (choice, label, glyph) in [
+        ("your_key", "Continue on your key", Glyph::Check),
+        ("openagents", "Continue with OpenAgents", Glyph::Ask),
+    ] {
+        if item.choices.iter().any(|c| c == choice) {
+            controls.push(button(
+                &format!("{key}-{choice}"),
+                label,
+                Some(glyph),
+                act(choice, None),
+            ));
+        }
+    }
+    // A landing queue entry (#11250) takes no Stop or Message here.
+    if item.running() && item.kind != "landing" && item.choices.is_empty() {
         controls.push(button(
             &format!("{key}-stop"),
             "Stop",

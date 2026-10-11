@@ -65,7 +65,7 @@ fn items_start_in_column_zero_hang_two_columns_and_sit_one_blank_row_apart() {
         }
         for y in user..end {
             for x in 0..width {
-                assert_eq!(buffer[(x, y as u16)].bg, theme::BG_LIGHT, "{width}");
+                assert_eq!(buffer[(x, y as u16)].bg, theme::USER_MESSAGE_BG, "{width}");
             }
         }
         assert_eq!(text[end], "", "{width}: one blank row after the message");

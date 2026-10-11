@@ -12,7 +12,11 @@ fn cloud_work_refuses_short_login_before_any_network_or_launch() {
     .unwrap();
     for placement in ["gce", "boat"] {
         let output = Command::new(env!("CARGO_BIN_EXE_openagents"))
-            .args(["chat", "work", "--on", placement, "--issues", "10419"])
+            // The Coder issue flow on a cloud host (the briefed agent is the
+            // default engine since #11258 and uses no Codex login).
+            .args([
+                "chat", "work", "--engine", "bare", "--on", placement, "--issues", "10419",
+            ])
             .env("HOME", home.path())
             .env("OA_CODER_CODEX_AUTH", &auth)
             .env_remove("OA_BOAT_ENGINE_LOGINS")

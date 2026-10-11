@@ -177,10 +177,16 @@ async fn settings(
         &crate::chat_store::account_owner(&viewer.account_id),
     )
     .await;
+    let agents = crate::agents_page::settings_row(
+        &app.config.chat_store,
+        &crate::chat_store::account_owner(&viewer.account_id),
+    )
+    .await;
     let body = html! {
         (settings_content(&viewer.account_label, claude, chats, plan))
         (crate::connections::settings_row(&app))
         (computers)
+        (agents)
         (macs)
         (crate::vault::settings_row())
     };

@@ -38,6 +38,8 @@ use crate::chat_store::{
     ChatEnvironment, ChatTask, MAX_AGENT_INBOX, MAX_AGENT_MESSAGE, TaskAgent, TaskKind, TaskState,
 };
 use crate::phone_api::{self, Acted, Command};
+use coder_cloud::claude_task::PauseChoice;
+use coder_environment_operator::studio::claude::Chosen;
 
 use super::*;
 
@@ -60,6 +62,7 @@ pub(super) fn routes() -> Router<App> {
         .route("/chat/{id}/agents", get(panel_route))
         .route("/chat/{id}/agents/stop", post(stop_route))
         .route("/chat/{id}/agents/message", post(message_route))
+        .route("/chat/{id}/agents/choose", post(choose_route))
 }
 
 /// How many agents a form asked for: 1 when it asked for none.
@@ -307,6 +310,11 @@ pub(super) struct Row {
     pub can_message: bool,
     /// Its transcript's page, when this person may open it.
     pub transcript: Option<String>,
+    /// While a usage limit pauses it: what the person may do (#11293).
+    pub choices: Vec<PauseChoice>,
+    /// Where the Claude plan stands, as Claude Code last reported it in
+    /// this run: "Claude plan: 5h 62% · week 31% · resets 14:20 UTC".
+    pub plan: Option<String>,
 }
 
 impl Row {
@@ -330,6 +338,10 @@ fn standing(state: TaskState, paused_until: Option<u64>) -> Standing {
 pub(super) struct Live {
     pub cost_usd: Option<f64>,
     pub paused_until: Option<u64>,
+    /// The pause choices this viewer has, while it is paused.
+    pub choices: Vec<PauseChoice>,
+    /// The plan windows Claude Code reported during the run (#11292).
+    pub plan: Option<coder_engine_status::PlanUsage>,
 }
 
 /// The panel's rows for the chat's runs: one per agent (its newest run,
@@ -405,6 +417,7 @@ pub(super) fn run_rows(
                 TaskKind::Claude => ENGINE.to_owned(),
                 TaskKind::Continue => "Cloud computer".to_owned(),
                 TaskKind::Work => "Briefed agent".to_owned(),
+                TaskKind::OpenAgents => "OpenAgents".to_owned(),
             },
             standing: standing(task.state, live.paused_until),
             elapsed_seconds,
@@ -413,6 +426,14 @@ pub(super) fn run_rows(
             can_message: task.agent.is_some() && links && !gone,
             transcript: (links && !gone)
                 .then(|| format!("/environments/{}/runs/{}", task.environment, task.id)),
+            choices: if links && !gone && task.state == TaskState::Paused {
+                live.choices.clone()
+            } else {
+                Vec::new()
+            },
+            plan: live
+                .plan
+                .and_then(|plan| plan.text(now_unix, &|ms| clock(ms / 1000))),
         });
     }
     rows
@@ -454,10 +475,36 @@ pub(super) fn computer_rows(agents: &phone_api::Agents, session: &str, now_unix:
                 cost_usd: item.cost_usd,
                 waiting: 0,
                 transcript: None,
+                choices: item_choices(&item.choices),
+                plan: None,
             });
         }
     }
     rows
+}
+
+/// The pause choices a reported item offers, as the panel's buttons
+/// (#11295). Coder never sends a key's class; the label is the same.
+pub(super) fn item_choices(choices: &[String]) -> Vec<PauseChoice> {
+    choices
+        .iter()
+        .filter_map(|choice| match choice.as_str() {
+            phone_api::YOUR_KEY => Some(PauseChoice::ContinueOnYourKey(
+                coder_cloud::claude::OwnCredential::AnthropicApiKey,
+            )),
+            phone_api::OPENAGENTS => Some(PauseChoice::ContinueWithOpenAgents),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The board action a panel form's choice key names (#11295).
+fn item_action(key: &str) -> Option<&'static str> {
+    match key {
+        "key" => Some(phone_api::YOUR_KEY),
+        "openagents" => Some(phone_api::OPENAGENTS),
+        _ => None,
+    }
 }
 
 fn target_fields(target: &Target) -> Markup {
@@ -486,12 +533,15 @@ pub(super) fn render(chat_id: &str, csrf: &str, rows: &[Row], notice: Option<&st
                 h2.oa-agents-title { "Agents" }
                 @for (index, row) in rows.iter().enumerate() {
                     div.oa-task-row.oa-agents-row id=(format!("chat-agent-{index}")) data-status=(row.standing.key()) {
-                        span.oa-task-row-title { (row.name) }
+                        span.oa-task-row-title { (crate::github_refs::linked(&row.name, crate::github_refs::DEFAULT_REPOSITORY)) }
                         span.oa-task-row-detail {
                             (row.engine) " · " (row.place) " · " (agent_fleet::elapsed_words(row.elapsed_seconds))
                             @if let Some(cost) = row.cost_usd { " · " (agent_fleet::dollars(cost)) }
                             @if row.waiting == 1 { " · 1 message waiting" }
                             @else if row.waiting > 1 { " · " (row.waiting) " messages waiting" }
+                        }
+                        @if let Some(plan) = &row.plan {
+                            span.oa-task-row-detail.oa-agents-plan { (plan) }
                         }
                         span.oa-chat-status.oa-task-row-status data-status=(row.standing.key()) {
                             @if row.standing == Standing::Working {
@@ -517,6 +567,17 @@ pub(super) fn render(chat_id: &str, csrf: &str, rows: &[Row], notice: Option<&st
                                 (Textarea::new("text").rows(1).maxlength(MAX_AGENT_MESSAGE as u32).aria_label(format!("Message {}", row.name)))
                                 (Button::new("Message").kind(ButtonType::Submit).size(ControlSize::Sm).variant(ButtonVariant::Outline))
                             }
+                        }
+                        @if row.choices.iter().any(|choice| crate::environments::view::choice_label(*choice).is_some()) {
+                            (crate::environments::view::pause_choices(
+                                &format!("{url}/choose"),
+                                html! {
+                                    input type="hidden" name="csrf" value=(csrf);
+                                    (target_fields(&row.target))
+                                },
+                                &row.choices,
+                                Some("#chat-agents"),
+                            ))
                         }
                         @if let Some(href) = &row.transcript {
                             (ButtonLink::new("Open transcript", href.clone()).variant(ButtonVariant::Ghost).size(ControlSize::Sm))
@@ -548,13 +609,17 @@ async fn rows(app: &App, headers: &HeaderMap, chat: &Conversation) -> Vec<Row> {
     let links = super::work::links(app, headers).await;
     let now_unix = now();
     let studio = app.config.environments.get();
+    let saved = crate::cloud::byo::saved_class(app, headers).await;
     let mut rows = run_rows(
         chat,
         |task| {
-            let run = studio.as_ref()?.claude_run(&task.environment, &task.id)?;
+            let studio = studio.as_ref()?;
+            let run = studio.claude_run(&task.environment, &task.id)?;
             Some(Live {
                 cost_usd: run.cost_usd,
                 paused_until: run.paused_until,
+                choices: studio.claude_choices(&task.environment, &task.id, saved),
+                plan: coder_engine_status::PlanUsage::from_events(&run.events),
             })
         },
         links,
@@ -626,6 +691,8 @@ struct Act {
     item: String,
     #[serde(default)]
     text: String,
+    #[serde(default)]
+    choice: String,
 }
 
 impl Act {
@@ -665,6 +732,7 @@ async fn to_computer(
         Ok(Acted::Queued) => format!("Sent to Coder on {computer}."),
         Ok(Acted::Unknown) => "That agent isn't running on that computer anymore.".to_owned(),
         Ok(Acted::Offline) => format!("Coder on {computer} isn't online now."),
+        Ok(Acted::NotOffered) => "That choice isn't open now.".to_owned(),
         Err(_) => "That didn't go through. Try again.".to_owned(),
     }
 }
@@ -742,6 +810,255 @@ async fn message_route(
         }
     };
     respond(&app, &headers, &owner, &id, Some(&notice)).await
+}
+
+async fn choose_route(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Form(form): Form<Act>,
+) -> Response {
+    let owner = match validate_form(&app, &headers, &form.csrf).await {
+        Ok(owner) => owner,
+        Err(response) => return response,
+    };
+    let notice = match form.target() {
+        Some(Target::Run(run)) => choose_run(&app, &headers, &owner, &id, &run, &form.choice).await,
+        Some(Target::Computer { computer, item }) => match item_action(&form.choice) {
+            Some(action) => to_computer(&app, &owner, &computer, &item, action, None).await,
+            None => "That choice isn't open now.".to_owned(),
+        },
+        None => "Pick a paused agent.".to_owned(),
+    };
+    respond(&app, &headers, &owner, &id, Some(&notice)).await
+}
+
+/// Who asks for a pause choice: a browser signed in to the site, or the
+/// phone with its own token (#11295).
+pub(crate) enum Asker<'a> {
+    Browser(&'a HeaderMap),
+    App(&'a crate::cloud::session::Viewer),
+}
+
+impl Asker<'_> {
+    async fn saved(&self, app: &App) -> Option<coder_cloud::claude::OwnCredential> {
+        match self {
+            Self::Browser(headers) => crate::cloud::byo::saved_class(app, headers).await,
+            Self::App(viewer) => crate::cloud::byo::saved_class_for(app, viewer),
+        }
+    }
+
+    async fn key(&self, app: &App) -> Option<coder_environment_operator::studio::claude::Key> {
+        match self {
+            Self::Browser(headers) => crate::cloud::byo::run_key(app, headers).await,
+            Self::App(viewer) => crate::cloud::byo::run_key_for(app, viewer),
+        }
+    }
+}
+
+/// Applies a paused run's choice (#11293). Handing to OpenAgents adds Coder's
+/// own run to the chat in the paused run's place.
+async fn choose_run(
+    app: &App,
+    headers: &HeaderMap,
+    owner: &str,
+    id: &str,
+    run: &str,
+    key: &str,
+) -> String {
+    if !super::work::links(app, headers).await {
+        return "Agents can't be changed from here.".to_owned();
+    }
+    apply_choice(app, &Asker::Browser(headers), owner, id, run, key).await
+}
+
+/// [`choose_run`] for whoever asks: re-reads what the run offers this
+/// person, releases their own key only to continue on it, and records a
+/// hand-off in the chat. `key` is a choice key (`key`, `openagents`).
+pub(crate) async fn apply_choice(
+    app: &App,
+    asker: &Asker<'_>,
+    owner: &str,
+    id: &str,
+    run: &str,
+    key: &str,
+) -> String {
+    let Some(studio) = app.config.environments.get() else {
+        return "Agents can't be changed from here.".to_owned();
+    };
+    let loaded = match load_owned(app, owner, id).await {
+        Ok(loaded) => loaded,
+        Err(_) => return "That chat couldn't be opened. Reload the page.".to_owned(),
+    };
+    let Some(task) = loaded
+        .conversation
+        .tasks
+        .iter()
+        .find(|task| task.id == run)
+        .cloned()
+    else {
+        return "That agent isn't in this chat.".to_owned();
+    };
+    let saved = asker.saved(app).await;
+    let offered = studio.claude_choices(&task.environment, &task.id, saved);
+    let Some(choice) = crate::environments::view::chosen(key, &offered) else {
+        return "That choice isn't open now.".to_owned();
+    };
+    let own = match choice {
+        PauseChoice::ContinueOnYourKey(_) => asker.key(app).await,
+        _ => None,
+    };
+    let chosen = {
+        let (studio, environment, run) =
+            (studio.clone(), task.environment.clone(), task.id.clone());
+        tokio::task::spawn_blocking(move || studio.choose_claude(&environment, &run, choice, own))
+            .await
+            .unwrap_or_else(|_| Err("That didn't go through. Try again.".into()))
+    };
+    match chosen {
+        Ok(Chosen::Waiting) => "It keeps waiting and continues on its own.".to_owned(),
+        Ok(Chosen::OnYourKey) => "It's continuing now on your key.".to_owned(),
+        Ok(Chosen::HandedOff { run: next }) => {
+            let handed = handed_task(&task, next, now());
+            let Some(environment) = loaded.conversation.environment.clone() else {
+                return "OpenAgents is continuing it.".to_owned();
+            };
+            let recorded = sidebar::update(app, owner, id, |chat| {
+                super::work::record(chat, environment.clone(), handed.clone());
+                true
+            })
+            .await;
+            if recorded.is_ok() {
+                super::work::watch(app.clone(), owner.to_owned(), id.to_owned());
+            }
+            "OpenAgents is continuing it.".to_owned()
+        }
+        Err(error) => error,
+    }
+}
+
+/// The phone's board of this person's paused environment runs (#11295):
+/// one item per Claude Code run a usage limit paused, in any chat, with
+/// the choices it offers them. Waiting is what happens anyway, so it is
+/// the line, not a choice.
+pub(crate) async fn paused_items(
+    app: &App,
+    owner: &str,
+    viewer: Option<&crate::cloud::session::Viewer>,
+) -> Vec<phone_api::Item> {
+    let Some(studio) = app.config.environments.get() else {
+        return Vec::new();
+    };
+    let Ok(chats) = app.config.chat_store.list(owner).await else {
+        return Vec::new();
+    };
+    let mut paused = Vec::new();
+    for chat in chats.iter().filter(|chat| !chat.deleted()) {
+        for task in chat
+            .tasks
+            .iter()
+            .filter(|task| task.kind == TaskKind::Claude && task.state == TaskState::Paused)
+        {
+            if let Some(run) = studio.claude_run(&task.environment, &task.id)
+                && run.state == coder_environment_operator::studio::claude::RunState::Paused
+            {
+                paused.push((chat.id.clone(), task.clone(), run));
+            }
+        }
+    }
+    if paused.is_empty() {
+        return Vec::new();
+    }
+    let saved = viewer.and_then(|viewer| crate::cloud::byo::saved_class_for(app, viewer));
+    paused
+        .into_iter()
+        .take(phone_api::MAX_ITEMS)
+        .map(|(chat, task, run)| {
+            let offered = studio.claude_choices(&task.environment, &task.id, saved);
+            paused_item(&chat, &task, run.paused_until, run.cost_usd, &offered)
+        })
+        .collect()
+}
+
+/// One paused run as a phone board item; its id is `chat/run`.
+pub(super) fn paused_item(
+    chat: &str,
+    task: &ChatTask,
+    until: Option<u64>,
+    cost_usd: Option<f64>,
+    offered: &[PauseChoice],
+) -> phone_api::Item {
+    let when = until.map_or_else(
+        || "until the limit resets".to_owned(),
+        |at| format!("until {:02}:{:02} UTC", at / 3600 % 24, at / 60 % 60),
+    );
+    phone_api::Item {
+        id: format!("{chat}/{}", task.id),
+        kind: "agent".into(),
+        title: crate::coder_sync::line(&task.title, 120),
+        engine: Some(ENGINE.to_owned()),
+        status: "working".into(),
+        started_unix: task.started_unix,
+        finished_unix: None,
+        cost_usd,
+        tokens: None,
+        session: None,
+        question: None,
+        line: Some(format!("Paused {when} on the Claude plan limit.")),
+        choices: offered
+            .iter()
+            .filter_map(|choice| match choice {
+                PauseChoice::ContinueOnYourKey(_) => Some(phone_api::YOUR_KEY.to_owned()),
+                PauseChoice::ContinueWithOpenAgents => Some(phone_api::OPENAGENTS.to_owned()),
+                PauseChoice::KeepWaiting => None,
+            })
+            .collect(),
+    }
+}
+
+/// The phone's choice on a paused environment run's item (`chat/run`).
+pub(crate) async fn choose_paused(
+    app: &App,
+    viewer: &crate::cloud::session::Viewer,
+    owner: &str,
+    item: &str,
+    action: &str,
+) -> Result<String, String> {
+    let (chat, run) = item
+        .split_once('/')
+        .filter(|(chat, run)| valid_id(chat) && valid_id(run))
+        .ok_or("That isn't a paused agent.")?;
+    let key = match action {
+        phone_api::YOUR_KEY => "key",
+        phone_api::OPENAGENTS => "openagents",
+        _ => return Err("That choice isn't open now.".to_owned()),
+    };
+    // A choice not offered now is refused inside, with the same words.
+    let said = apply_choice(app, &Asker::App(viewer), owner, chat, run, key).await;
+    match said.as_str() {
+        "It's continuing now on your key." | "OpenAgents is continuing it." => Ok(said),
+        _ => Err(said),
+    }
+}
+
+/// The chat task for Coder's own run `run`, taking over the paused `task`.
+pub(super) fn handed_task(task: &ChatTask, run: String, started_unix: u64) -> ChatTask {
+    ChatTask {
+        id: run,
+        kind: TaskKind::OpenAgents,
+        environment: task.environment.clone(),
+        title: task.title.clone(),
+        state: TaskState::Working,
+        started_unix,
+        after_message: 0,
+        version: task.version,
+        finished_unix: None,
+        agent: task.agent.as_ref().map(|agent| TaskAgent {
+            run: agent.run.saturating_add(1),
+            inbox: Vec::new(),
+            ..agent.clone()
+        }),
+    }
 }
 
 /// What adding a message to a run's agent did.

@@ -136,6 +136,8 @@ Environment=CARGO_HOME=$home/.cargo
 # cores (two builds at -j22 reached a load of 183, #11248).
 Environment=CARGO_BUILD_JOBS=11
 Environment=RUST_TEST_THREADS=8
+# A cold build of coder alone outruns the gate's default 1,200 s (S1, 2026-10-10).
+Environment=OPENAGENTS_GATE_DEADLINE_SECS=3600
 ExecStartPre=/bin/bash -c 'test -x $home/.cargo/bin/cargo || { echo "oa-land-worker: no cargo at $home/.cargo/bin; install rustup for $user" >&2; exit 1; }'
 ExecStartPre=/bin/bash -lc 'scripts/cloud/dev-env-session.sh >/dev/null'
 ExecStart=/bin/bash -lc 'set -a; . \$HOME/.openagents/dev-env.env; set +a; export PATH=$home/.cargo/bin:\$PATH; cargo --version >&2 || exit 1; bin=\$HOME/.openagents/bin/openagents; [ -x "\$bin" ] || bin=openagents; exec "\$bin" land work'

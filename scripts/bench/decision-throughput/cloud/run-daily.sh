@@ -24,7 +24,9 @@ repo=/tmp/openagents
 tok=$(printf %s "$GH_TOKEN" | tr -d '\r\n')
 auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$tok" | base64 | tr -d '\n')"
 gitq() { git -c http.extraHeader="$auth" "$@" 2>&1 | sed "s/$tok/***/g"; }
-gitq clone -q --depth 1 https://github.com/OpenAgentsInc/openagents.git "$repo"
+# Only the doc: a shallow, blob-filtered, sparse clone fits the job's memory.
+gitq clone -q --depth 1 --filter=blob:none --sparse https://github.com/OpenAgentsInc/openagents.git "$repo"
+gitq -C "$repo" sparse-checkout set --no-cone /docs/inference/decision-throughput.md
 [ -d "$repo/.git" ] || { echo "clone failed"; exit 1; }
 git -C "$repo" config user.name "decision-throughput bot"
 git -C "$repo" config user.email "bot@openagents.com"
@@ -35,6 +37,6 @@ for attempt in 1 2 3 4 5; do
     if gitq -C "$repo" push -q origin HEAD:main && [ "$(git -C "$repo" rev-parse HEAD)" = "$(gitq -C "$repo" ls-remote origin refs/heads/main | cut -f1)" ]; then
         echo "pushed"; exit 0
     fi
-    gitq -C "$repo" fetch -q --depth 1 origin main && git -C "$repo" reset -q --hard origin/main
+    gitq -C "$repo" fetch -q --depth 1 --filter=blob:none origin main && git -C "$repo" reset -q --hard origin/main
 done
 echo "push failed"; exit 1

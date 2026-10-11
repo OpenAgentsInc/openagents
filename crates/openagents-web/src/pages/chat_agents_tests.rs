@@ -240,6 +240,21 @@ fn the_list_shows_one_row_per_agent_with_its_time_and_cost() {
                 _ => 1.0,
             }),
             paused_until: (task.id == "c").then_some(50_700),
+            choices: Vec::new(),
+            plan: (task.id == "b").then(|| {
+                let mut plan = coder_engine_status::PlanUsage::default();
+                plan.record(coder_engine_status::PlanWindow {
+                    kind: coder_engine_status::WindowKind::FiveHour,
+                    used_percent: 62,
+                    resets_at: Some(51_600),
+                });
+                plan.record(coder_engine_status::PlanWindow {
+                    kind: coder_engine_status::WindowKind::SevenDay,
+                    used_percent: 31,
+                    resets_at: Some(600_000),
+                });
+                plan
+            }),
         })
     };
     let rows = run_rows(&chat, read, true, 2_030);
@@ -248,6 +263,11 @@ fn the_list_shows_one_row_per_agent_with_its_time_and_cost() {
     assert_eq!(rows[0].target, Target::Run("b".into()));
     assert_eq!(rows[0].elapsed_seconds, 60 + 30, "both runs count");
     assert_eq!(rows[0].cost_usd, Some(0.75), "both runs' costs");
+    assert_eq!(
+        rows[0].plan.as_deref(),
+        Some("Claude plan: 5h 62% · week 31% · resets 14:20 UTC")
+    );
+    assert_eq!(rows[1].plan, None);
     assert_eq!(rows[0].standing, Standing::Working);
     assert!(rows[0].can_message);
     assert_eq!(
@@ -283,6 +303,7 @@ fn coder_background_agents_for_this_chat_join_the_list() {
         session: Some(session.into()),
         question: None,
         line: None,
+        choices: Vec::new(),
     };
     let mut agents = Agents::default();
     agents.boards.insert(
@@ -328,6 +349,8 @@ fn the_panel_offers_stop_message_and_the_transcript_and_reloads_while_working() 
         waiting: 1,
         can_message: true,
         transcript: Some("/environments/env-1/runs/claude-env-1-2".into()),
+        choices: Vec::new(),
+        plan: Some("Claude plan: 5h 62% · week 31% · resets 14:20 UTC".into()),
     };
     let paused = Row {
         standing: Standing::Paused(Some(50_700)),
@@ -351,6 +374,7 @@ fn the_panel_offers_stop_message_and_the_transcript_and_reloads_while_working() 
         r#"href="/environments/env-1/runs/claude-env-1-2""#,
         "Open transcript",
         "Paused until 14:05 UTC",
+        "Claude plan: 5h 62% · week 31% · resets 14:20 UTC",
         r#"hx-trigger="every 5s""#,
         "Sent.",
     ] {
@@ -421,4 +445,135 @@ fn a_clock_reads_hours_and_minutes_in_utc() {
     assert_eq!(clock(0), "00:00 UTC");
     assert_eq!(clock(50_700), "14:05 UTC");
     assert_eq!(clock(86_400 + 3_660), "01:01 UTC");
+}
+
+/// A Claude Code run a usage limit paused, as the studio keeps it.
+fn paused_record() -> coder_cloud::Record {
+    let spec = coder_cloud::Spec {
+        placement: coder_cloud::Placement::Boat,
+        mode: coder_cloud::Mode::Coder,
+        agent: coder_cloud::claude::ENGINE.into(),
+        task: "Fix the login".into(),
+        model: None,
+        reasoning: None,
+        cwd: "/home/user/repo".into(),
+        timeout_seconds: 60,
+        size: "small".into(),
+        template: None,
+        credential_names: vec![coder_cloud::claude::OAUTH_TOKEN.into()],
+    };
+    let mut record = coder_cloud::Record::new("claude-env-1-2", spec).unwrap();
+    coder_cloud::claude_task::admit(&mut record, "env-1");
+    record.state = coder_cloud::State::Failed;
+    record.error = Some("Claude AI usage limit reached|4102444800".into());
+    let dir = tempfile::tempdir().unwrap();
+    let book = coder_cloud::claude_task::book(dir.path(), &record);
+    coder_cloud::claude_task::settle(&mut record, &book, 1_790_000_000).unwrap();
+    assert_eq!(record.state, coder_cloud::State::Paused);
+    record
+}
+
+#[test]
+fn a_paused_agent_shows_exactly_the_choices_its_limit_allows() {
+    use coder_cloud::claude::OwnCredential;
+    use coder_cloud::claude_task::pause_choices;
+    let record = paused_record();
+    let mut chat = chat();
+    chat.tasks = vec![task("claude-env-1-2", TaskState::Paused, None)];
+    let rows_for = |saved: Option<OwnCredential>| {
+        let choices = pause_choices(&record, saved);
+        run_rows(
+            &chat,
+            |_| {
+                Some(Live {
+                    cost_usd: None,
+                    paused_until: Some(4_102_444_800),
+                    choices: choices.clone(),
+                    plan: None,
+                })
+            },
+            true,
+            2_000,
+        )
+    };
+    // A saved API key: wait, continue on it, or OpenAgents.
+    let html = render(
+        "c1",
+        "token",
+        &rows_for(Some(OwnCredential::AnthropicApiKey)),
+        None,
+    )
+    .into_string();
+    for needle in [
+        r#"action="/chat/c1/agents/choose""#,
+        r#"name="choice" value="key""#,
+        r#"name="choice" value="openagents""#,
+        "Continue on your key",
+        "Continue with OpenAgents",
+        r#"name="run" value="claude-env-1-2""#,
+    ] {
+        assert!(html.contains(needle), "{needle} in {html}");
+    }
+    assert!(!html.contains(r#"value="wait""#), "waiting needs no button");
+    crate::copy_guard::assert_plain("/chat/c1", &html);
+    // A saved subscription token bills the same plan: never offered as a key.
+    for saved in [Some(OwnCredential::SubscriptionToken), None] {
+        let html = render("c1", "token", &rows_for(saved), None).into_string();
+        assert!(!html.contains("Continue on your key"), "{html}");
+        assert!(!html.contains(r#"value="key""#), "{html}");
+        assert!(html.contains("Continue with OpenAgents"), "{html}");
+    }
+    // A form naming a choice the run doesn't offer is refused.
+    let offered = pause_choices(&record, Some(OwnCredential::SubscriptionToken));
+    assert_eq!(crate::environments::view::chosen("key", &offered), None);
+    assert_eq!(
+        crate::environments::view::chosen("openagents", &offered),
+        Some(coder_cloud::claude_task::PauseChoice::ContinueWithOpenAgents)
+    );
+}
+
+#[test]
+fn a_hand_off_takes_the_paused_agents_place_as_openagents() {
+    let paused = task("claude-env-1-2", TaskState::Paused, Some(agent("fix-1")));
+    let handed = handed_task(&paused, "openagents-env-1-3".into(), 9);
+    assert_eq!(handed.kind, TaskKind::OpenAgents);
+    assert_eq!(handed.environment, paused.environment);
+    assert_eq!(handed.agent.as_ref().unwrap().name, "fix-1");
+    let mut chat = chat();
+    chat.tasks = vec![paused, handed];
+    let rows = run_rows(&chat, |_| None, true, 10);
+    assert_eq!(rows.len(), 1, "one row per agent");
+    assert_eq!(rows[0].engine, "OpenAgents");
+}
+
+/// #11295: a paused run on the phone's board says when it continues and
+/// offers exactly the buttons the web offers; a reported item's choices
+/// become the panel's buttons.
+#[test]
+fn paused_runs_carry_their_choices_to_the_phone_and_back() {
+    use coder_cloud::claude::OwnCredential;
+    let paused = task("run-1", TaskState::Paused, None);
+    let item = paused_item(
+        "chat-1",
+        &paused,
+        Some(1_790_164_200),
+        Some(0.5),
+        &[
+            PauseChoice::KeepWaiting,
+            PauseChoice::ContinueOnYourKey(OwnCredential::Vertex),
+            PauseChoice::ContinueWithOpenAgents,
+        ],
+    );
+    assert_eq!(item.id, "chat-1/run-1");
+    assert_eq!(item.status, "working");
+    assert_eq!(item.choices, ["your_key", "openagents"]);
+    assert!(item.line.as_deref().unwrap().starts_with("Paused until "));
+    let none = paused_item("chat-1", &paused, None, None, &[PauseChoice::KeepWaiting]);
+    assert!(none.choices.is_empty());
+    assert_eq!(
+        item_choices(&["openagents".into(), "nope".into()]),
+        vec![PauseChoice::ContinueWithOpenAgents]
+    );
+    assert_eq!(item_action("key"), Some("your_key"));
+    assert_eq!(item_action("wait"), None);
 }

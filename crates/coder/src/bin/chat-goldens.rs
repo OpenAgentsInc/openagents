@@ -441,8 +441,9 @@ impl Routed {
         } else {
             request
         };
-        // Only the questions a rule reads on the website (#11247).
-        let request = request.for_surface(context.surface());
+        // Only the questions a rule reads on the website, and `route` and
+        // `answer` over a shortlist the main request picks (#11247).
+        let request = request.for_surface(context.surface()).configured();
         record_requests(case, &request);
         let response = match router::ask(&self.judge, request).await {
             Ok(r) => r,

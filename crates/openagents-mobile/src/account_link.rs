@@ -399,6 +399,11 @@ pub struct Item {
     pub session: Option<String>,
     pub question: Option<Question>,
     pub line: Option<String>,
+    /// While a usage limit pauses it: `your_key` (Continue on your key)
+    /// and `openagents` (Continue with OpenAgents), the ones it offers
+    /// now (#11295).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub choices: Vec<String>,
 }
 
 impl Item {
@@ -1676,6 +1681,7 @@ impl Link {
                 "approve" => "Approving…".into(),
                 "deny" => "Denying…".into(),
                 "stop" => "Stopping…".into(),
+                "your_key" | "openagents" => "Continuing…".into(),
                 _ => "Sending…".into(),
             });
             state.changed();
@@ -1713,7 +1719,10 @@ impl Link {
                         "approve" => format!("Approved. Coder on {computer} goes on."),
                         "deny" => format!("Denied. Coder on {computer} won't run it."),
                         "stop" => format!("Coder on {computer} stops in a few seconds."),
-                        _ => format!("Sent to Coder on {computer}."),
+                        _ => reply.body["message"]
+                            .as_str()
+                            .filter(|m| !m.is_empty())
+                            .map_or_else(|| format!("Sent to Coder on {computer}."), str::to_owned),
                     },
                     Ok(reply) => reply.message("That didn't reach your computer. Try again."),
                     Err(error) => error.clone(),

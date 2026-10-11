@@ -11,6 +11,7 @@ pub mod attachments;
 pub mod brainstorm;
 pub mod bundled_runtime;
 pub mod bundled_settings;
+pub mod claude_plan;
 pub mod cloud;
 pub mod cloud_settings;
 pub mod cloud_tools;
@@ -29,6 +30,7 @@ pub mod fleet;
 mod fleet_app;
 mod git_guard;
 pub mod github_tool;
+pub mod harness;
 pub mod identity;
 pub mod issue_run;
 pub mod jev_plugin;
@@ -43,6 +45,7 @@ pub mod model_catalog;
 pub mod models;
 pub mod ops_tool;
 mod own_runs;
+mod plan;
 #[cfg(unix)]
 pub mod plugin_catalog;
 pub mod plugin_definition;
@@ -60,6 +63,7 @@ pub mod sessions;
 mod shells;
 pub mod slash;
 pub mod snapshot;
+mod stuck;
 mod supervise;
 pub mod theme;
 pub mod tools;
@@ -332,6 +336,7 @@ impl App {
         match event {
             bundled_runtime::RuntimeEvent::Tokens(tokens) => child.chat.tokens = tokens,
             bundled_runtime::RuntimeEvent::Usage(usage) => child.chat.round(*usage),
+            bundled_runtime::RuntimeEvent::Harness(run) => child.chat.harness = Some(*run),
             bundled_runtime::RuntimeEvent::Text(text) => child.chat.partial.push_str(&text),
             bundled_runtime::RuntimeEvent::Model(model) => {
                 child.chat.partial_model = live::model_slug(&model)
@@ -407,7 +412,8 @@ impl App {
                     *progress = Some((step, complete));
                 }
             }
-            bundled_runtime::RuntimeEvent::Delegation { .. } => {}
+            bundled_runtime::RuntimeEvent::Delegation { .. }
+            | bundled_runtime::RuntimeEvent::Plan(_) => {}
         }
         if self.selected_agent == Some(index) {
             self.scroll = u16::MAX;
@@ -774,6 +780,9 @@ impl App {
                 self.live.turn_counted.0 = self.live.turn_counted.0.saturating_add(tokens);
                 self.live.turn_counted.1 += cost;
                 self.live.round(usage);
+            }
+            live::Update::Harness { run, .. } if self.live.busy => {
+                self.live.harness = Some(run);
             }
             live::Update::Delta { text, .. } if self.live.busy => {
                 self.live.partial.push_str(&text);
@@ -1322,6 +1331,8 @@ impl App {
             .as_deref()
             .and_then(connection_tools::signed_in);
         execution.fleet = Some(self.fleet_host());
+        // The chat keeps the harness its first tool turn chose (#11289).
+        execution.harness = self.live.harness.clone();
         if key.is_some()
             && (execution.brainstorm.is_some() || execution.cli)
             && execution.disclosure_desk.is_none()

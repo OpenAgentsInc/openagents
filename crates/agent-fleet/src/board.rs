@@ -163,24 +163,73 @@ impl Publisher {
     }
 
     fn take_stops_now(&self) -> Vec<String> {
+        self.take_requests_now()
+            .into_iter()
+            .filter(|(_, action)| action == STOP)
+            .map(|(id, _)| id)
+            .collect()
+    }
+
+    /// Every request someone left since the last look, each read once:
+    /// `(agent id, action)`, the action [`STOP`], [`crate::YOUR_KEY`] or
+    /// [`crate::OPENAGENTS`] (#11295). Looks at most every half second.
+    #[must_use]
+    pub fn take_requests(&mut self) -> Vec<(String, String)> {
+        let now = Instant::now();
+        if self
+            .stops_checked
+            .is_some_and(|checked| now.saturating_duration_since(checked) < STOP_POLL)
+        {
+            return Vec::new();
+        }
+        self.stops_checked = Some(now);
+        self.take_requests_now()
+    }
+
+    fn take_requests_now(&self) -> Vec<(String, String)> {
         let Ok(entries) = std::fs::read_dir(&self.dir) else {
             return Vec::new();
         };
         let prefix = format!("{}.", self.pid);
-        let mut ids: Vec<String> = entries
+        let mut requests: Vec<(String, String)> = entries
             .flatten()
             .filter_map(|entry| {
                 let name = entry.file_name().into_string().ok()?;
-                let id = name.strip_prefix(&prefix)?.strip_suffix(".stop")?;
-                let id = valid_id(id).then(|| id.to_owned());
+                let rest = name.strip_prefix(&prefix)?;
+                let (id, action) = rest.rsplit_once('.')?;
+                if !ACTIONS.contains(&action) || !valid_id(id) {
+                    return None;
+                }
                 remove(&entry.path());
-                id
+                Some((id.to_owned(), action.to_owned()))
             })
             .collect();
-        ids.sort();
-        ids.dedup();
-        ids
+        requests.sort();
+        requests.dedup();
+        requests
     }
+}
+
+/// The request a Stop leaves.
+pub const STOP: &str = "stop";
+/// Every request the app may leave for an agent.
+const ACTIONS: [&str; 3] = [STOP, crate::YOUR_KEY, crate::OPENAGENTS];
+
+/// Asks process `pid` to apply `choice` ([`crate::YOUR_KEY`] or
+/// [`crate::OPENAGENTS`]) to paused agent `id` (#11295).
+///
+/// # Errors
+/// `id` is not an agent id, `choice` is not a choice, or the request
+/// can't be written.
+pub fn request_choice(dir: &Path, pid: u32, id: &str, choice: &str) -> std::io::Result<()> {
+    if !valid_id(id) || crate::choice_label(choice).is_none() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "not an agent id or a choice",
+        ));
+    }
+    std::fs::create_dir_all(dir)?;
+    std::fs::write(dir.join(format!("{pid}.{id}.{choice}")), b"")
 }
 
 impl Drop for Publisher {
@@ -188,7 +237,7 @@ impl Drop for Publisher {
         if self.last.as_ref().is_some_and(|last| !last.is_empty()) {
             remove(&self.path());
         }
-        let _ = self.take_stops_now();
+        let _ = self.take_requests_now();
     }
 }
 
@@ -276,6 +325,8 @@ mod tests {
             pending_messages: 0,
             runs: 1,
             run_started_ms: 1_000,
+            waiting: None,
+            choices: Vec::new(),
         }
     }
 
@@ -381,6 +432,32 @@ mod tests {
         mine.stops_checked = None;
         assert!(mine.take_stops().is_empty(), "read once");
         assert_eq!(theirs.take_stops(), vec!["agent-1".to_owned()]);
+    }
+
+    /// #11295: a paused agent's choice from the app is read once, by its
+    /// own process, and only the two choices are requests.
+    #[test]
+    fn a_choice_request_is_read_once_beside_stops() {
+        let home = tempfile::tempdir().unwrap();
+        let dir = dir(home.path());
+        let mut mine = Publisher::new(&dir, 30, None);
+        request_choice(&dir, 30, "agent-2", crate::YOUR_KEY).unwrap();
+        request_choice(&dir, 30, "agent-4", crate::OPENAGENTS).unwrap();
+        request_stop(&dir, 30, "agent-5").unwrap();
+        assert!(request_choice(&dir, 30, "agent-2", "keep_waiting").is_err());
+        assert!(request_choice(&dir, 30, "../x", crate::YOUR_KEY).is_err());
+        std::fs::write(dir.join("30.agent-6.other"), b"").unwrap();
+        assert_eq!(
+            mine.take_requests(),
+            vec![
+                ("agent-2".to_owned(), crate::YOUR_KEY.to_owned()),
+                ("agent-4".to_owned(), crate::OPENAGENTS.to_owned()),
+                ("agent-5".to_owned(), STOP.to_owned()),
+            ]
+        );
+        mine.stops_checked = None;
+        assert!(mine.take_requests().is_empty(), "read once");
+        assert!(dir.join("30.agent-6.other").exists(), "foreign files stay");
     }
 
     #[test]

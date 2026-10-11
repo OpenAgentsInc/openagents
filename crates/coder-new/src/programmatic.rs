@@ -1414,6 +1414,7 @@ fn delegate(
                 match event {
                     RuntimeEvent::Tokens(tokens) => app.live.tokens = tokens,
                     RuntimeEvent::Usage(usage) => app.live.round(*usage),
+                    RuntimeEvent::Harness(run) => app.live.harness = Some(*run),
                     RuntimeEvent::Text(text) => app.live.partial.push_str(&text),
                     RuntimeEvent::Model(model) => app.live.partial_model = Some(model),
                     RuntimeEvent::Tool {
@@ -1424,7 +1425,7 @@ fn delegate(
                     } => app.live.tool(name, input, output, running),
                     // A step of this chat's own loop: the JSON event above
                     // carries it; a delegation's step reaches its row.
-                    RuntimeEvent::Progress { .. } => {}
+                    RuntimeEvent::Progress { .. } | RuntimeEvent::Plan(_) => {}
                     RuntimeEvent::Delegation {
                         id,
                         name,
@@ -1483,10 +1484,12 @@ fn delegate(
 fn runtime_value(event: &RuntimeEvent) -> Value {
     match event {
         RuntimeEvent::Tokens(tokens) => json!({"event":"usage","tokens":tokens}),
+        RuntimeEvent::Plan(usage) => usage.event(),
         RuntimeEvent::Usage(usage) => json!({"event":"call_usage","model":usage.model,
             "prompt_tokens":usage.prompt_tokens,"completion_tokens":usage.completion_tokens,
             "reasoning_tokens":usage.reasoning_tokens,"cost_usd":usage.cost,
             "duration_ms":usage.milliseconds,"first_token_ms":usage.first_token_ms}),
+        RuntimeEvent::Harness(run) => json!({"event":"harness","harness":run}),
         RuntimeEvent::Text(text) => json!({"event":"delta","text":text}),
         RuntimeEvent::Model(model) => json!({"event":"model","model":model}),
         RuntimeEvent::Progress { step, complete } => {

@@ -118,9 +118,17 @@ subscription token only to the allowlist (`cloud::byo::TokenAllow`, #11235).
 On the web, picking "Claude Code in REPO" before Claude is connected shows a
 card in the composer row with **Use a key** (`composer_row::connect_card`),
 and a message sent anyway is refused with the same words and kept in the box
-(#11234). **Sign in to Claude** for an environment run is not offered yet:
-each run starts on a fresh computer with no terminal to sign in from, so it
-needs a sign-in terminal on the environment and a per-person checkpoint first.
+(#11234). Since #11294 the card leads with **Sign in to Claude**: a dialog
+runs the unmodified `claude auth login` in a terminal on the environment's own
+computer (made from the saved version's image, `studio::sign_in`), shows what
+it prints with Anthropic's sign-in page as a link, and types the pasted code
+into that terminal; nothing on our side keeps it. The computer then stops with
+its disk kept, which is the person's own checkpoint holding the login (rule
+4 of `docs/cloud/claude-code-byo.md`); later runs without a key start that
+computer again instead of a fresh one, one at a time, and **Send your
+message** sends the message waiting in the box. A new saved version needs
+signing in again. The phone app has no Claude Code in environments yet, so
+it has no card; the sign-in page works in a phone browser.
 
 ### 2. Your computer (Coder) or our Cloud Environments
 
@@ -215,14 +223,29 @@ is the person's own choice in their own Claude settings.
 **Today.** Local Coder already orders providers Codex → Claude → our cloud
 worker on Vertex (`capacity::Provider::Vertex`), which holds the Google
 credential on the worker; the person's own Vertex credential for Claude Code is
-supported in Cloud (`OA_CLAUDE_VERTEX`, BYO-04). A paused Cloud Claude task only
-waits.
+supported in Cloud (`OA_CLAUDE_VERTEX`, BYO-04).
 
 **Change.** A paused task offers **Keep waiting** (default), **Continue on your
 key** (the same Claude Code session on the person's own API key or their own
 Vertex/Bedrock/Foundry credential), or **Continue with OpenAgents** (Coder's own
 agent on our Vertex Gemini door, billed as our normal usage)
-([#11236](https://github.com/OpenAgentsInc/openagents/issues/11236)).
+([#11236](https://github.com/OpenAgentsInc/openagents/issues/11236)). On the web
+this is live for Claude Code runs in saved environments
+([#11293](https://github.com/OpenAgentsInc/openagents/issues/11293)): the run
+page and the chat's Agents panel show the two buttons beside "It continues on
+its own at …". The driver that holds the run's lease applies the choice; a
+saved subscription token is never offered or accepted as "your key"; and the
+OpenAgents hand-off is a new run of Coder's own agent in the same environment
+version whose launch finds no `claude` binary. Local Coder does the same for
+its background agents ([#11295](https://github.com/OpenAgentsInc/openagents/issues/11295)):
+`claude -p` runs now keep their conversation under a session id Coder picks
+(`--session-id`), and a usage limit names it, so **Continue on your key**
+re-runs `claude -p --resume <id>` for that one turn with the person's own
+`ANTHROPIC_API_KEY` (never a subscription token, and off the plan's slot), and
+**Continue with OpenAgents** hands the task to Coder's own agent on the
+OpenAgents gateway only, with `CLAUDE_BIN=/dev/null`. The choices show in
+`/agents` (keys 1 and 2), as buttons on the desktop app's Agents panel, and on
+the phone's agent rows, which also list paused saved-environment runs.
 
 **Different on purpose.** We never continue a customer's Claude Code session on
 Claude billed to our account, even on our Vertex: Anthropic's terms forbid

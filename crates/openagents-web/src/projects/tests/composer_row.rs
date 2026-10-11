@@ -314,6 +314,8 @@ async fn serve_for_screenshots() {
         computers: vec!["studio-mac".into()],
         claude_connect: false,
         claude_subscription: false,
+        claude_signed_in: vec![],
+        claude_keys: false,
     };
     let picked = choices.resolve(&crate::composer_row::Wanted {
         project: project.clone(),

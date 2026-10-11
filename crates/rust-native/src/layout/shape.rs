@@ -9,20 +9,26 @@
 //! contextual alternates (`calt`).
 //!
 //! Lines break at Unicode line-break opportunities (UAX #14, with CoreText's
-//! break between a word's closing slash and a digit), greedily, as CoreText's
-//! word wrapping does: trailing spaces hang past the width, a hard
-//! line break ends a line, and a word longer than the line breaks between
-//! grapheme clusters. Tabs advance to the next multiple of 28 points, as
-//! CoreText's default tab stops do. A character the bundled faces lack is
-//! measured as a platform fallback would roughly draw it: a full em for wide
-//! characters and emoji, else 0.6 em. The ground-truth test in
-//! `shape::tests` checks the breaks against CoreText's for the same fonts.
+//! break between a word's closing slash and a digit, and LB15a/LB15b around
+//! quotation marks), greedily, as CoreText's word wrapping does: trailing
+//! spaces hang past the width, and when the spaces themselves cross it the
+//! line breaks after them whatever UAX #14 says; a hard line break ends a
+//! line, and a word longer than the line breaks between grapheme clusters.
+//! Tabs advance to the next multiple of 28 points, as CoreText's default tab
+//! stops do. A character the faces lack is measured as this platform draws
+//! it from its fallback faces ([`FallbackWidths`]): on Apple platforms as
+//! CoreText does ([`fallback_advance`]), with widths measured on a Mac
+//! (`shape/fallback.rs`, from `tools/fallback-metrics.swift`), and on Linux
+//! and Windows from the system fallback face the painter draws it with
+//! ([`system::fallback_glyphs`]). The ground-truth test in `shape::tests`
+//! checks the breaks against CoreText's for the same fonts.
 //!
 //! An app may instead draw with faces of its own, such as the computer's
 //! system fonts, by calling [`install_faces`] once at start: a face for text
 //! and a face for code. Measuring ([`ShapingMeasurer`]) and painting then
-//! use [`faces`], and [`FontSpec::of`] sends code to the second face and
-//! sets the text face's optical size when it has an `opsz` axis.
+//! use [`faces`], and [`FontSpec::of`] sends code to the second face, sets
+//! the text face's optical size when it has an `opsz` axis, and carries the
+//! face's size-specific `trak` tracking, which CoreText applies to SF Pro.
 
 use super::display::{Font, FontFamily, Weight};
 use super::measure::{Line, MeasureRun, Measured, Measurer};
@@ -30,14 +36,22 @@ use swash::shape::ShapeContext;
 use swash::text::cluster::Boundary;
 use swash::{FontRef, Metrics};
 
+mod fallback;
+pub mod system;
+
+pub use system::FallbackWidths;
+
 /// The bundled faces, by [`FontSpec::face`]: Paper Mono's variable font.
 pub const FACES: [&[u8]; 1] = [paper_mono::VARIABLE];
 
 /// Faces an app installed with [`install_faces`].
+#[derive(Clone)]
 struct Installed {
     faces: [&'static [u8]; 2],
     /// Whether each face has an `opsz` axis.
     optical: [bool; 2],
+    /// Each face's size-specific tracking, if it has a `trak` table.
+    tracks: [Option<Tracking>; 2],
 }
 
 static INSTALLED: std::sync::OnceLock<Installed> = std::sync::OnceLock::new();
@@ -56,19 +70,28 @@ pub fn faces() -> &'static [&'static [u8]] {
 /// the first measurer or painter. Fails when a face is not a font this
 /// shaper reads, or when faces were already installed.
 pub fn install_faces(text: &'static [u8], code: &'static [u8]) -> Result<(), &'static str> {
-    let mut optical = [false; 2];
-    for (index, data) in [text, code].into_iter().enumerate() {
-        let face = FontRef::from_index(data, 0).ok_or("not a font")?;
-        optical[index] = face
-            .variations()
-            .any(|axis| axis.tag() == swash::tag_from_bytes(b"opsz"));
-    }
     INSTALLED
-        .set(Installed {
+        .set(Installed::new(text, code)?)
+        .map_err(|_| "faces are already installed")
+}
+
+impl Installed {
+    fn new(text: &'static [u8], code: &'static [u8]) -> Result<Self, &'static str> {
+        let mut optical = [false; 2];
+        let mut tracks = [None, None];
+        for (index, data) in [text, code].into_iter().enumerate() {
+            let face = FontRef::from_index(data, 0).ok_or("not a font")?;
+            optical[index] = face
+                .variations()
+                .any(|axis| axis.tag() == swash::tag_from_bytes(b"opsz"));
+            tracks[index] = Tracking::of(&face);
+        }
+        Ok(Self {
             faces: [text, code],
             optical,
+            tracks,
         })
-        .map_err(|_| "faces are already installed")
+    }
 }
 
 /// Distance between default tab stops, in points.
@@ -88,10 +111,21 @@ pub struct FontSpec {
     pub optical: f32,
     /// Whether contextual alternates (`calt`) are on.
     pub calt: bool,
+    /// Points added after every glyph: the face's `trak` tracking at this
+    /// size, which CoreText applies (SF Pro has it); zero for faces without.
+    /// Painters add it to each glyph's advance, as the measurer does.
+    pub tracking: f32,
+    /// Which fallback faces draw the characters this face lacks.
+    pub fallback: Fallback,
 }
 
 impl FontSpec {
     pub fn of(font: Font) -> Self {
+        Self::with(font, INSTALLED.get())
+    }
+
+    /// How to draw `font` with `installed` faces, or the bundled ones.
+    fn with(font: Font, installed: Option<&Installed>) -> Self {
         let weight = match font.weight {
             Weight::Regular => 400.0,
             Weight::Medium => 500.0,
@@ -101,17 +135,31 @@ impl FontSpec {
         let FontFamily::PaperMono = font.family;
         // Installed faces: code draws from the second; the bundled face
         // draws both.
-        let face = usize::from(font.mono && faces().len() > 1);
-        let optical = INSTALLED
-            .get()
+        let face = usize::from(font.mono && installed.is_some());
+        let optical = installed
             .filter(|installed| installed.optical[face])
             .map_or(0.0, |_| font.size);
+        let tracking = installed
+            .and_then(|installed| installed.tracks[face].as_ref())
+            .map_or(0.0, |track| track.points(font.size));
+        // CoreText falls back from a monospace face to Menlo, and from a
+        // proportional one to the system's default list. It counts Paper
+        // Mono's Regular instance as proportional, its other weights as
+        // monospace; an app's installed faces are text, then code.
+        let fallback = match installed {
+            Some(_) if face == 1 => Fallback::Monospace,
+            Some(_) => Fallback::Proportional,
+            None if weight == 400.0 => Fallback::Proportional,
+            None => Fallback::Monospace,
+        };
         Self {
             face,
             size: font.size,
             weight,
             optical,
             calt: !font.mono,
+            tracking,
+            fallback,
         }
     }
 }
@@ -120,6 +168,10 @@ impl FontSpec {
 pub struct ShapingMeasurer {
     context: ShapeContext,
     fonts: Vec<FontRef<'static>>,
+    /// The faces this measurer shapes with, when not the bundled ones.
+    installed: Option<Installed>,
+    /// How it measures characters the faces lack.
+    widths: FallbackWidths,
 }
 
 impl Default for ShapingMeasurer {
@@ -144,13 +196,48 @@ struct Char {
 
 impl ShapingMeasurer {
     pub fn new() -> Self {
+        Self::over(INSTALLED.get().cloned())
+    }
+
+    /// A measurer that shapes with `text` and `code` faces of its own,
+    /// whatever this process installed, so a test can compare faces side
+    /// by side. Fails when a face is not a font this shaper reads.
+    pub fn with_faces(text: &'static [u8], code: &'static [u8]) -> Result<Self, &'static str> {
+        Ok(Self::over(Some(Installed::new(text, code)?)))
+    }
+
+    fn over(installed: Option<Installed>) -> Self {
+        let faces = installed.as_ref().map_or(&FACES[..], |i| &i.faces[..]);
         Self {
             context: ShapeContext::new(),
-            fonts: faces()
+            fonts: faces
                 .iter()
                 .map(|data| FontRef::from_index(data, 0).expect("a checked face"))
                 .collect(),
+            installed,
+            widths: FallbackWidths::platform(),
         }
+    }
+
+    /// This measurer, measuring characters its faces lack with `widths`
+    /// instead of this platform's ([`FallbackWidths::platform`]).
+    #[must_use]
+    pub fn with_fallback_widths(mut self, widths: FallbackWidths) -> Self {
+        self.widths = widths;
+        self
+    }
+
+    /// How this measurer measures characters its faces lack; a painter
+    /// draws them in the same widths ([`fallback_width`]).
+    #[must_use]
+    pub fn fallback_widths(&self) -> FallbackWidths {
+        self.widths
+    }
+
+    /// How this measurer draws `font`.
+    #[must_use]
+    pub fn spec(&self, font: Font) -> FontSpec {
+        FontSpec::with(font, self.installed.as_ref())
     }
 
     /// Font metrics in points: ascent, descent, and leading.
@@ -185,7 +272,6 @@ impl ShapingMeasurer {
     fn shape_run(&mut self, text: &str, chars: &mut [Char], spec: &FontSpec) {
         let upem = f64::from(self.fonts[spec.face].metrics(&[]).units_per_em.max(1));
         let scale = f64::from(spec.size) / upem;
-        let size = f64::from(spec.size);
         // Byte offset of each character within `text`.
         let mut starts = Vec::with_capacity(chars.len() + 1);
         let mut at = 0;
@@ -193,25 +279,48 @@ impl ShapingMeasurer {
             starts.push(at);
             at += c.ch.len_utf8();
         }
+        // Tracking CoreText adds after every glyph, in font units.
+        let track = f64::from(spec.tracking) / scale;
         let mut shaper = self.shaper(spec);
         shaper.add_str(text);
-        let mut clusters: Vec<(usize, f64, bool)> = Vec::new();
+        let mut clusters: Vec<(usize, f64, bool)> = Vec::with_capacity(chars.len());
         shaper.shape_with(|cluster| {
-            let advance: f64 = cluster.glyphs.iter().map(|g| f64::from(g.advance)).sum();
+            let advance: f64 = cluster
+                .glyphs
+                .iter()
+                .map(|g| f64::from(g.advance) + track)
+                .sum();
             // A cluster with any glyph the face lacks is drawn by a fallback
             // face, as a whole: a precomposed letter the face lacks may
             // shape as a missing base and a combining mark the face has.
             let missing = cluster.glyphs.iter().any(|g| g.id == 0);
             clusters.push((cluster.source.start as usize, advance * scale, missing));
         });
-        for (byte, advance, missing) in clusters {
+        clusters.sort_by_key(|cluster| cluster.0);
+        for &(byte, advance, missing) in &clusters {
             let Ok(index) = starts.binary_search(&byte) else {
                 continue;
             };
             let c = &mut chars[index];
             c.cluster = true;
             c.advance = if missing {
-                fallback_em(c.ch) * size
+                // The face may split a grapheme it lacks, such as a flag's
+                // two regional indicators, which a fallback face draws as one.
+                match grapheme_at(text, byte) {
+                    Some(grapheme) => {
+                        let glyphs = match self.widths {
+                            FallbackWidths::CoreText => None,
+                            FallbackWidths::System => {
+                                system::fallback_glyphs(&mut self.context, grapheme, spec)
+                            }
+                        };
+                        fallback_width(glyphs.as_ref(), grapheme, spec, self.widths)
+                    }
+                    None => {
+                        c.cluster = false;
+                        0.0
+                    }
+                }
             } else {
                 advance
             };
@@ -219,15 +328,192 @@ impl ShapingMeasurer {
     }
 }
 
-/// The width, in ems, a platform fallback face roughly gives a character
-/// the bundled faces lack.
+/// A face's normal track from its `trak` table: the spacing, in font units,
+/// added after every glyph at a point size. SF Pro has one, tightening text
+/// sizes and loosening small ones, and CoreText applies it by default, so
+/// the shaper does too.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Tracking {
+    /// Point sizes, ascending, and the track at each, in font units.
+    sizes: Vec<(f64, f64)>,
+    units_per_em: f64,
+}
+
+impl Tracking {
+    /// The normal (0) track of `font`'s horizontal `trak` data, if any.
+    #[must_use]
+    pub fn of(font: &FontRef<'_>) -> Option<Self> {
+        use swash::TableProvider;
+        let table = font.table_by_tag(swash::tag_from_bytes(b"trak"))?;
+        let u16_at = |at: usize| -> Option<u16> {
+            Some(u16::from_be_bytes(table.get(at..at + 2)?.try_into().ok()?))
+        };
+        let i32_at = |at: usize| -> Option<i32> {
+            Some(i32::from_be_bytes(table.get(at..at + 4)?.try_into().ok()?))
+        };
+        // Header: version, format, then the horizontal data's offset.
+        let horizontal = usize::from(u16_at(6)?);
+        if horizontal == 0 {
+            return None;
+        }
+        let tracks = usize::from(u16_at(horizontal)?);
+        let count = usize::from(u16_at(horizontal + 2)?);
+        let size_table = usize::try_from(i32_at(horizontal + 4)?).ok()?;
+        let normal = (0..tracks).find_map(|index| {
+            let entry = horizontal + 8 + index * 8;
+            (i32_at(entry)? == 0).then(|| u16_at(entry + 6)).flatten()
+        })?;
+        let sizes = (0..count)
+            .map(|index| {
+                let size = f64::from(i32_at(size_table + index * 4)?) / 65536.0;
+                let value = u16_at(usize::from(normal) + index * 2)? as i16;
+                Some((size, f64::from(value)))
+            })
+            .collect::<Option<Vec<_>>>()?;
+        let units_per_em = f64::from(font.metrics(&[]).units_per_em.max(1));
+        (!sizes.is_empty()).then_some(Self {
+            sizes,
+            units_per_em,
+        })
+    }
+
+    /// The track at `size` points, in points.
+    #[must_use]
+    pub fn points(&self, size: f32) -> f32 {
+        (self.at(f64::from(size)) * f64::from(size) / self.units_per_em) as f32
+    }
+
+    /// The track at `size` points, in font units: interpolated between the
+    /// table's sizes, and the nearest one's outside them.
+    #[must_use]
+    pub fn at(&self, size: f64) -> f64 {
+        let after = self.sizes.partition_point(|(s, _)| *s < size);
+        if after == 0 {
+            return self.sizes[0].1;
+        }
+        let Some(&(s1, v1)) = self.sizes.get(after) else {
+            return self.sizes[after - 1].1;
+        };
+        let (s0, v0) = self.sizes[after - 1];
+        v0 + (v1 - v0) * (size - s0) / (s1 - s0)
+    }
+}
+
+/// Which fallback faces CoreText draws a face's missing characters from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Fallback {
+    /// Menlo first, as under SF Mono.
+    Monospace,
+    /// The system's default list (Helvetica, Lucida Grande, Zapf Dingbats,
+    /// ...), as under SF Pro.
+    Proportional,
+}
+
+/// The width, in points, CoreText gives `cluster`, a grapheme cluster the
+/// drawing face lacks, at `size` points: the fallback face's width measured
+/// on a Mac (`shape/fallback.rs`). Emoji are drawn from Apple Color Emoji,
+/// whose width is whole points and wider than an em at text sizes (16 pt at
+/// 12 pt, 23 pt at 20 pt); Hangul is 0.865 em, Han and kana an em, and
+/// Menlo 0.602 em. A character the table has no width for is 0.6 em.
+/// On Apple platforms measuring and painting both use this, so they agree
+/// whatever fonts a computer has; Linux and Windows measure the fallback
+/// face they draw instead ([`fallback_width`]).
 #[must_use]
-pub fn fallback_em(ch: char) -> f64 {
-    let wide = matches!(u32::from(ch),
-        0x1100..=0x115F | 0x2E80..=0xA4CF | 0xAC00..=0xD7A3 | 0xF900..=0xFAFF
-        | 0xFE30..=0xFE4F | 0xFF00..=0xFF60 | 0xFFE0..=0xFFE6
-        | 0x1F000..=0x1FAFF | 0x20000..=0x3FFFD | 0x2600..=0x27BF);
-    if wide { 1.0 } else { 0.6 }
+pub fn fallback_advance(cluster: &str, size: f32, fallback: Fallback) -> f64 {
+    if cluster.is_empty() {
+        return 0.0;
+    }
+    let thousandths = milli(cluster, fallback);
+    if presents_as_emoji(cluster, fallback) {
+        return f64::from(emoji_advance(size));
+    }
+    let em = if thousandths == 0 || thousandths == fallback::EMOJI {
+        0.6
+    } else {
+        f64::from(thousandths) / 1000.0
+    };
+    em * f64::from(size)
+}
+
+/// The width, in points, a measurer with `widths` gives `cluster`, a
+/// grapheme cluster `spec`'s face lacks, which `glyphs` draw (from
+/// [`system::fallback_glyphs`]): their own advance under
+/// [`FallbackWidths::System`], and CoreText's ([`fallback_advance`])
+/// otherwise or when no face on this computer has the cluster. A painter
+/// draws `glyphs` centered in this width.
+#[must_use]
+pub fn fallback_width(
+    glyphs: Option<&system::FallbackGlyphs>,
+    cluster: &str,
+    spec: &FontSpec,
+    widths: FallbackWidths,
+) -> f64 {
+    match (widths, glyphs) {
+        (FallbackWidths::System, Some(glyphs)) => glyphs.advance,
+        _ => fallback_advance(cluster, spec.size, spec.fallback),
+    }
+}
+
+/// Whether CoreText draws `cluster` as emoji: a variation selector or
+/// keycap picks the presentation; otherwise the character's default does.
+#[must_use]
+pub fn presents_as_emoji(cluster: &str, fallback: Fallback) -> bool {
+    match cluster
+        .chars()
+        .find(|c| matches!(c, '\u{fe0e}' | '\u{fe0f}' | '\u{20e3}'))
+    {
+        Some('\u{fe0e}') => false,
+        Some(_) => true,
+        None => milli(cluster, fallback) == fallback::EMOJI,
+    }
+}
+
+/// The table's width for `cluster`'s first character, in thousandths of an
+/// em: [`fallback::EMOJI`] for emoji, 0 for none.
+fn milli(cluster: &str, fallback: Fallback) -> u16 {
+    let Some(first) = cluster.chars().next() else {
+        return 0;
+    };
+    let table = match fallback {
+        Fallback::Monospace => fallback::MONOSPACE,
+        Fallback::Proportional => fallback::PROPORTIONAL,
+    };
+    let at = table.partition_point(|(start, _)| *start <= u32::from(first));
+    at.checked_sub(1).map_or(0, |index| table[index].1)
+}
+
+/// The grapheme cluster of `text` that starts at byte `at`, or `None` when
+/// `at` is inside one. A painter draws a cluster the face lacks as
+/// [`fallback_advance`] of its grapheme, and nothing for the rest of it.
+#[must_use]
+pub fn grapheme_at(text: &str, at: usize) -> Option<&str> {
+    use unicode_segmentation::GraphemeCursor;
+    let mut cursor = GraphemeCursor::new(at, text.len(), true);
+    if !cursor.is_boundary(text, 0).unwrap_or(true) {
+        return None;
+    }
+    let end = cursor
+        .next_boundary(text, 0)
+        .ok()
+        .flatten()
+        .unwrap_or(text.len());
+    Some(&text[at..end])
+}
+
+/// Apple Color Emoji's width at `size` points: whole points, stepping up at
+/// the measured sizes, then the size rounded.
+fn emoji_advance(size: f32) -> f32 {
+    let steps = fallback::EMOJI_STEPS;
+    if size < fallback::EMOJI_FROM {
+        return fallback::EMOJI_LOW * size / fallback::EMOJI_FROM;
+    }
+    let passed = steps.partition_point(|step| *step <= size);
+    let width = fallback::EMOJI_LOW + passed as f32;
+    if passed == steps.len() {
+        width.max(size.round())
+    } else {
+        width
+    }
 }
 
 /// Whitespace that hangs at the end of a line.
@@ -268,17 +554,6 @@ impl Measurer for ShapingMeasurer {
                 chars[index].boundary = Boundary::Line;
             }
         }
-        // CoreText also breaks before a slash that stands alone between
-        // spaces, which UAX #14 (LB13) forbids, as in "probes / Jev".
-        for index in 1..chars.len().saturating_sub(1) {
-            if matches!(chars[index].boundary, Boundary::None | Boundary::Word)
-                && chars[index].ch == '/'
-                && chars[index - 1].ch == ' '
-                && chars[index + 1].ch == ' '
-            {
-                chars[index].boundary = Boundary::Line;
-            }
-        }
         // UAX #14 LB15a: no break after an opening quotation mark and the
         // spaces that follow it, as in "« déjà vu »".
         for index in 1..chars.len() {
@@ -292,11 +567,41 @@ impl Measurer for ShapingMeasurer {
                 }
             }
         }
+        // UAX #14 LB15b: no break before a closing quotation mark that ends
+        // a quote, as in "« déjà vu »," and "the “word” here".
+        for index in 1..chars.len() {
+            if chars[index].boundary == Boundary::Line
+                && matches!(chars[index].ch, '»' | '›' | '”' | '’')
+                && chars.get(index + 1).is_none_or(|next| {
+                    next.ch.is_whitespace()
+                        || matches!(
+                            next.ch,
+                            ',' | '.'
+                                | ';'
+                                | ':'
+                                | '!'
+                                | '?'
+                                | ')'
+                                | ']'
+                                | '}'
+                                | '/'
+                                | '»'
+                                | '›'
+                                | '”'
+                                | '’'
+                                | '"'
+                                | '\''
+                        )
+                })
+            {
+                chars[index].boundary = Boundary::None;
+            }
+        }
         let length = at16;
         if runs.is_empty() || length == 0 {
             return (length == 0).then(Measured::default);
         }
-        let specs: Vec<FontSpec> = runs.iter().map(|r| FontSpec::of(r.font)).collect();
+        let specs: Vec<FontSpec> = runs.iter().map(|r| self.spec(r.font)).collect();
         // Assign characters to runs; runs tile the paragraph in order.
         let mut first = 0;
         let mut spans = Vec::with_capacity(runs.len());
@@ -415,6 +720,12 @@ fn break_line(chars: &[Char], start: usize, limit: f64) -> usize {
         }
         let step = advance(c, x);
         if index > start && !hangs(c.ch) && !hard_break(c.ch) && x + step > limit + 1e-6 {
+            // When the spaces before this character already cross the
+            // width, CoreText breaks after them whatever UAX #14 says, as
+            // in "list |.coder/" and "vu |»".
+            if x > limit + 1e-6 && c.cluster && hangs(chars[index - 1].ch) {
+                return index;
+            }
             if let Some(at) = last_break {
                 return at;
             }

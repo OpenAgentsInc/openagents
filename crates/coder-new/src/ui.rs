@@ -561,6 +561,10 @@ fn context_text(app: &App) -> String {
             crate::long_session::clock(until)
         ));
     }
+    let now = atif::now_ms() / 1000;
+    if let Some(plan) = crate::claude_plan::status_text(now, &crate::long_session::clock) {
+        parts.push(plan);
+    }
     // The signed-in account's name is never shown under the input.
     if let Some(update) = &app.update_line {
         parts.push(update.clone());
@@ -895,6 +899,14 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
                 lines.push(Line::default());
                 return lines;
             }
+            if name == crate::plan::TOOL
+                && let Some(plan) = crate::plan::text(output)
+            {
+                lines.push(Line::from(span("Plan", t::TEXT_PRIMARY)));
+                lines.extend(message_body(&plan, width));
+                lines.push(Line::default());
+                return lines;
+            }
             if name == "Run" {
                 lines.extend(run_lines(input, output, *running, width, phase));
                 lines.push(Line::default());
@@ -967,6 +979,15 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
                     crate::bundled_runtime::RuntimeEvent::progress_line(*step, *complete)
                 }
                 _ if *running => "Running".into(),
+                // A Claude plan limit stopped it (#11295); a background
+                // agent's choices are in /agents.
+                _ if output
+                    .get("error")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(coder_engine_status::limit::says_limited) =>
+                {
+                    "Paused by the Claude plan limit".into()
+                }
                 _ if output.get("error").is_some() => "Failed".into(),
                 _ => "Done".into(),
             };

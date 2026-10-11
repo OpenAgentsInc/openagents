@@ -47,8 +47,8 @@ Ships with the web deploy after the owner's local test (#11094).
 ## Terminal (Coder 1.0.0)
 
 Ships with the Coder 1.0.0 release on the stable channel (#11091). The new
-lines below need a build from `main` at `35e41fd528` or later; the 1.0.0-rc.6
-on `/download` doesn't have them.
+lines below need a build from `main` at `35e41fd528` or later; release
+candidate 1.0.0-rc.7 has them.
 
 Install or update, on macOS and Linux:
 

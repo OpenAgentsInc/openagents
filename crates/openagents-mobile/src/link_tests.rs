@@ -472,6 +472,54 @@ fn running_notices_a_question_and_answers_it() {
     );
 }
 
+/// A landing queue entry (#11250) shows with the computer's other rows,
+/// its stage as its line, and no Stop or Message.
+#[test]
+fn a_landing_queue_entry_shows_its_stage_without_controls() {
+    let mut f = fixture();
+    let rows = json!({"computers": [{"name": "oa-dev-env-1", "online": true, "updated_unix": 1,
+        "items": [
+            {"id": "t1", "kind": "agent", "title": "#11228 Fleet rows", "status": "working",
+             "started_unix": 1, "cost_usd": 1.7, "line": "fix turn 1"},
+            {"id": "20261011T080000Z-oa-dev-env-1-ab12", "kind": "landing",
+             "title": "#11250 Fleet rows for cloud runs", "status": "working",
+             "started_unix": 1, "line": "landing: checks"}]}]});
+    f.site.answer("GET /v1/agents", 200, rows);
+    signed(&mut f);
+    until(|| f.link.lock().agents_read);
+    f.link.act(Action::Show {
+        screen: Screen::Running,
+        id: None,
+    });
+    until(|| {
+        f.link
+            .lock()
+            .agents
+            .first()
+            .is_some_and(|c| c.items.len() == 2)
+    });
+    let packet = f.link.packet();
+    let mut words = vec![];
+    texts(packet.view.as_ref().unwrap(), &mut words);
+    for shown in [
+        "#11250 Fleet rows for cloud runs",
+        "landing: checks",
+        "fix turn 1",
+    ] {
+        assert!(words.iter().any(|w| w == shown), "{shown}: {words:?}");
+    }
+    assert_eq!(
+        words.iter().filter(|w| *w == "Stop").count(),
+        1,
+        "{words:?}"
+    );
+    assert_eq!(
+        words.iter().filter(|w| *w == "Message").count(),
+        1,
+        "{words:?}"
+    );
+}
+
 #[test]
 fn a_message_to_an_agent_goes_through_its_composer() {
     let mut f = fixture();
@@ -505,6 +553,74 @@ fn a_message_to_an_agent_goes_through_its_composer() {
     assert_eq!(body["action"], "message");
     assert_eq!(body["text"], "also update the README");
     until(|| f.link.lock().screen == Screen::Running);
+}
+
+/// #11295: a run a usage limit paused shows its two choices and nothing
+/// else to tap, and a choice posts like Stop does.
+#[test]
+fn a_paused_run_offers_its_choices_and_posts_one() {
+    let mut f = fixture();
+    f.site.answer(
+        "GET /v1/agents",
+        200,
+        json!({"computers": [{"name": "Environments", "online": true, "updated_unix": 1,
+        "items": [
+            {"id": "c1/r1", "kind": "agent", "title": "Fix the docs", "status": "working",
+             "started_unix": 1, "line": "Paused until 14:00 UTC on the Claude plan limit.",
+             "choices": ["your_key", "openagents"]},
+            {"id": "c1/r2", "kind": "agent", "title": "Tidy tests", "status": "working",
+             "started_unix": 1, "choices": ["openagents"]}
+        ]}]}),
+    );
+    f.site.answer(
+        "POST /v1/agents/actions",
+        202,
+        json!({"queued": true, "message": "OpenAgents is continuing it."}),
+    );
+    signed(&mut f);
+    until(|| f.link.lock().agents_read);
+    f.link.act(Action::Show {
+        screen: Screen::Running,
+        id: None,
+    });
+    let packet = f.link.packet();
+    let mut words = vec![];
+    texts(packet.view.as_ref().unwrap(), &mut words);
+    assert_eq!(
+        words
+            .iter()
+            .filter(|w| *w == "Continue on your key")
+            .count(),
+        1,
+        "{words:?}"
+    );
+    assert_eq!(
+        words
+            .iter()
+            .filter(|w| *w == "Continue with OpenAgents")
+            .count(),
+        2,
+        "{words:?}"
+    );
+    assert!(
+        !words.iter().any(|w| w == "Stop" || w == "Message"),
+        "{words:?}"
+    );
+    f.link.tap(Intent::Act {
+        computer: "Environments".into(),
+        item: "c1/r2".into(),
+        action: "openagents".into(),
+        question: None,
+    });
+    until(|| !f.site.calls("POST /v1/agents/actions").is_empty());
+    let body = f.site.calls("POST /v1/agents/actions")[0]
+        .body
+        .clone()
+        .unwrap();
+    assert_eq!(body["action"], "openagents");
+    assert_eq!(body["item"], "c1/r2");
+    assert_eq!(body["computer"], "Environments");
+    until(|| f.link.lock().notice.as_deref() == Some("OpenAgents is continuing it."));
 }
 
 #[test]

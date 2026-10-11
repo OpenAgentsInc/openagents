@@ -19,6 +19,9 @@ use serde::{Deserialize, Serialize};
 
 pub mod claude;
 pub mod limit;
+pub mod plan;
+
+pub use plan::{PlanUsage, PlanWindow, WindowKind};
 
 /// The engine a status describes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -100,6 +103,11 @@ pub struct Status {
     pub resets_at: Option<u64>,
     /// When the computer checked, in Unix seconds.
     pub checked_at: u64,
+    /// Where the Claude plan's windows stand, as Claude Code last reported
+    /// them on this computer (#11292). A host fills it only for a read that
+    /// names [`plan::FEATURE`], so a client from before it never sees it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan_usage: Option<PlanUsage>,
 }
 
 /// What Claude Code itself printed during a Coder run on this computer
@@ -137,6 +145,7 @@ impl Status {
             expires_at: None,
             resets_at: None,
             checked_at: now,
+            plan_usage: None,
         }
     }
 
@@ -336,6 +345,24 @@ mod tests {
                         expires_at: Some(u64::MAX),
                         resets_at: Some(u64::MAX),
                         checked_at: u64::MAX,
+                        plan_usage: Some(PlanUsage {
+                            five_hour: Some(PlanWindow {
+                                kind: WindowKind::FiveHour,
+                                used_percent: 100,
+                                resets_at: Some(u64::MAX),
+                            }),
+                            seven_day: Some(PlanWindow {
+                                kind: WindowKind::SevenDay,
+                                used_percent: 0,
+                                resets_at: None,
+                            }),
+                            seven_day_top_model: Some(PlanWindow {
+                                kind: WindowKind::SevenDayTopModel,
+                                used_percent: 50,
+                                resets_at: None,
+                            }),
+                            warning: true,
+                        }),
                     });
                 }
             }
@@ -364,6 +391,9 @@ mod tests {
             "max",
             "team",
             "enterprise",
+            "five_hour",
+            "seven_day",
+            "seven_day_top_model",
         ];
         for status in every_status() {
             let value = serde_json::to_value(status).unwrap();
@@ -391,6 +421,7 @@ mod tests {
             ("engine", Value::String(token.clone())),
             ("expires_at", Value::String(token.clone())),
             ("resets_at", Value::String(token.clone())),
+            ("plan_usage", Value::String(token.clone())),
         ] {
             let mut forged = base.clone();
             forged[field] = value;
@@ -433,6 +464,7 @@ mod tests {
             expires_at: None,
             resets_at: Some(1_790_164_200),
             checked_at: 1_790_163_058,
+            plan_usage: None,
         };
         let text = status.summary();
         assert!(text.contains("runs Claude Code"), "{text}");

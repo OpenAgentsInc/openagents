@@ -809,6 +809,13 @@ impl IssueLink {
                 Some(url) => format!("pull request {url}"),
                 None => "pull request".to_owned(),
             },
+            "queued" => match self.commits.last() {
+                Some(commit) => format!(
+                    "queued {} to land; closes when it lands",
+                    &commit[..commit.len().min(10)]
+                ),
+                None => "queued to land; closes when it lands".to_owned(),
+            },
             "unchanged" => "nothing changed; left open".to_owned(),
             "stopped" => "stopped; left open".to_owned(),
             _ => "not landed; left open with a comment".to_owned(),

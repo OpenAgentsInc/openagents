@@ -277,7 +277,7 @@ unset OPENAGENTS_CODER_EVENT_CHANNEL OPENAGENTS_CODER_MODEL_INPUT
 # Claude Code's own usage-limit and login notices, kept as typed records
 # in this computer for its sign-in status (BYO-02). No text is kept.
 export OA_ENGINE_NOTICE_DIR="$HOME/.openagents/engine"
-{model_env}
+{model_env}{handoff}
 export OA_CODER_CLOUD_CREDENTIAL_NAMES={credential_names}
 "$p" --json coder --in {workdir} --state "/tmp/oa-coder-{job}/state" delegate {agent} --task "$(cat "$d/task")" --session {session} > "$d/out" 2> "$d/err"
 rc=$?
@@ -295,6 +295,13 @@ exit "$rc"
             boat::shell_quote(record.spec.model.as_deref().unwrap_or("")),
             boat::shell_quote(record.spec.reasoning.as_deref().unwrap_or(""))
         ),
+        // A task handed to OpenAgents never starts `claude` (#11293): no
+        // Claude Code binary is found, and the OpenAgents gateway stays on.
+        handoff = if crate::claude_task::is_handoff(record) {
+            "export CLAUDE_BIN=/dev/null\nunset CODER_CLOUD\n"
+        } else {
+            ""
+        },
         credential_names = boat::shell_quote(&record.spec.credential_names.join(",")),
         agent = boat::shell_quote(&record.spec.agent),
         session = boat::shell_quote(&record.id)

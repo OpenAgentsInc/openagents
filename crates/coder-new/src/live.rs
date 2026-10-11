@@ -44,6 +44,15 @@ pub struct Chat {
     /// How long each finished tool call ran, by entry index.
     pub tool_ms: std::collections::BTreeMap<usize, u64>,
     pub open_tools: std::collections::BTreeSet<usize>,
+    /// Once the chat passes [`crate::long_session::ELIDE_PERCENT`] of the
+    /// context window (#11286), bulky tool outputs older than the newest
+    /// [`crate::long_session::VERBATIM_TURNS`] requests reach the model as
+    /// short stubs. The transcript and the export keep them whole.
+    pub elide_old_outputs: bool,
+    /// The largest estimated context the model read, for the export.
+    pub peak_context_tokens: u64,
+    /// The harness this chat's tool turns run under (#11289), once decided.
+    pub harness: Option<crate::harness::Run>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -187,69 +196,94 @@ impl Chat {
         // A compacted chat (#11179): the model reads from the newest
         // summary on; earlier entries stay on screen only.
         let start = crate::long_session::context_start(&self.entries);
-        self.entries
-            .iter()
-            .enumerate()
-            .skip(start)
-            .filter_map(|(index, entry)| {
-                if let Entry::Tool { name, .. } = entry
-                    && crate::long_session::hidden_from_model(name)
-                {
-                    return None;
-                }
-                if let Entry::Tool {
-                    name,
-                    output,
-                    running: false,
-                    ..
-                } = entry
-                {
-                    if name == crate::long_session::COMPACT_TOOL {
-                        return crate::long_session::summary_message(output);
-                    }
-                    if crate::brainstorm::is_tool(name) {
-                        if newest_brainstorm != Some(index) {
+        let elide_before = if self.elide_old_outputs {
+            crate::long_session::verbatim_start(&self.entries)
+        } else {
+            0
+        };
+        let current_plan = self.entries.iter().rev().find_map(|entry| match entry {
+            Entry::Tool {
+                name,
+                output,
+                running: false,
+                ..
+            } if name == crate::plan::TOOL => crate::plan::message(output),
+            _ => None,
+        });
+        current_plan
+            .into_iter()
+            .chain(
+                self.entries
+                    .iter()
+                    .enumerate()
+                    .skip(start)
+                    .filter_map(|(index, entry)| {
+                        if let Entry::Tool { name, .. } = entry
+                            && (crate::long_session::hidden_from_model(name)
+                                || name == crate::plan::TOOL)
+                        {
                             return None;
                         }
-                        return crate::brainstorm::context(output).map(|content| Message {
-                            role: "assistant".into(),
-                            content,
-                        });
-                    }
-                }
-                Some(match entry {
-                    Entry::User(text) => Message::user(text.clone()),
-                    Entry::Assistant { text, .. } => Message {
-                        role: "assistant".into(),
-                        content: text.clone(),
-                    },
-                    Entry::Tool {
-                        name,
-                        output,
-                        running,
-                        ..
-                    } => Message {
-                        role: "assistant".into(),
-                        content: format!(
-                            "Tool observation from {name} ({}): {output}",
-                            if *running { "running" } else { "finished" }
-                        ),
-                    },
-                    Entry::Delegation {
-                        name,
-                        task,
-                        running,
-                        output,
-                        ..
-                    } => Message {
-                        role: "assistant".into(),
-                        content: format!(
-                            "Delegation to {name}: {task} ({}): {output}",
-                            if *running { "running" } else { "finished" }
-                        ),
-                    },
-                })
-            })
+                        if let Entry::Tool {
+                            name,
+                            output,
+                            running: false,
+                            ..
+                        } = entry
+                        {
+                            if name == crate::long_session::COMPACT_TOOL {
+                                return crate::long_session::summary_message(output);
+                            }
+                            if crate::brainstorm::is_tool(name) {
+                                if newest_brainstorm != Some(index) {
+                                    return None;
+                                }
+                                return crate::brainstorm::context(output).map(|content| Message {
+                                    role: "assistant".into(),
+                                    content,
+                                });
+                            }
+                        }
+                        Some(match entry {
+                            Entry::User(text) => Message::user(text.clone()),
+                            Entry::Assistant { text, .. } => Message {
+                                role: "assistant".into(),
+                                content: text.clone(),
+                            },
+                            Entry::Tool {
+                                name,
+                                input,
+                                output,
+                                running,
+                            } => Message {
+                                role: "assistant".into(),
+                                content: match (index < elide_before && !*running)
+                                    .then(|| crate::long_session::stub(name, input, output))
+                                    .flatten()
+                                {
+                                    Some(stub) => stub,
+                                    None => format!(
+                                        "Tool observation from {name} ({}): {output}",
+                                        if *running { "running" } else { "finished" }
+                                    ),
+                                },
+                            },
+                            Entry::Delegation {
+                                name,
+                                task,
+                                running,
+                                output,
+                                ..
+                            } => Message {
+                                role: "assistant".into(),
+                                content: format!(
+                                    "Delegation to {name}: {task} ({}): {output}",
+                                    if *running { "running" } else { "finished" }
+                                ),
+                            },
+                        })
+                    }),
+            )
             .collect()
     }
 }
@@ -346,6 +380,10 @@ pub enum Update {
         id: u64,
         usage: crate::bundled_runtime::RoundUsage,
     },
+    Harness {
+        id: u64,
+        run: crate::harness::Run,
+    },
     Model {
         id: u64,
         model: String,
@@ -366,6 +404,7 @@ impl Update {
             | Self::Delegation { id, .. }
             | Self::Delta { id, .. }
             | Self::Usage { id, .. }
+            | Self::Harness { id, .. }
             | Self::Model { id, .. }
             | Self::Finished { id, .. } => *id,
         }
@@ -522,6 +561,9 @@ fn run_with_provider(
             },
             RuntimeEvent::Usage(usage) => {
                 let _ = sender.send(Update::Usage { id, usage: *usage });
+            },
+            RuntimeEvent::Harness(run) => {
+                let _ = sender.send(Update::Harness { id, run: *run });
             },
             _ => {},
         };
@@ -730,7 +772,9 @@ async fn local_turn(
         RuntimeEvent::Delegation { .. }
         | RuntimeEvent::Tokens(_)
         | RuntimeEvent::Usage(_)
-        | RuntimeEvent::Progress { .. } => event_callback(event),
+        | RuntimeEvent::Harness(_)
+        | RuntimeEvent::Progress { .. }
+        | RuntimeEvent::Plan(_) => event_callback(event),
     };
     let result = async {
         let task = local_task(&messages, &execution)?;

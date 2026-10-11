@@ -28,6 +28,16 @@ if [ -n "${VERTEX_SA_JSON:-}" ]; then
     export GOOGLE_APPLICATION_CREDENTIALS="$p/vertex.json"
 fi
 unset VERTEX_SA_JSON
+# The deployment's GitHub App (optional; docs/auth/github.md "GitHub App"):
+# with it, /projects offers Install on repositories, which Claude Code runs
+# need to push (#11226). GITHUB_APP_JSON's private_key is "github-app.pem".
+github_app=""
+if [ -n "${GITHUB_APP_JSON:-}" ] && [ -n "${GITHUB_APP_PEM:-}" ]; then
+    printf '%s' "$GITHUB_APP_JSON" > "$p/github-app.json"
+    printf '%s\n' "$GITHUB_APP_PEM" > "$p/github-app.pem"
+    github_app="--github-app $p/github-app.json"
+fi
+unset GITHUB_APP_JSON GITHUB_APP_PEM
 # INVITE_ONLY_JSON: only these GitHub people may sign in (docs/auth/github.md).
 invite=""
 if [ -n "${INVITE_ONLY_JSON:-}" ]; then
@@ -53,9 +63,10 @@ if [ -n "${BOAT_API_KEY:-}" ] && [ -s "$stack/service.key" ]; then
         "$envs" "${ENVIRONMENTS_MODEL:-google/gemini-3.8-flash}" "$p" > "$p/environments.json"
     environments="--environments $p/environments.json"
 fi
-# $environments is one flag and a path without spaces, split on purpose.
+# $environments and $github_app are each one flag and a path without
+# spaces, split on purpose.
 # shellcheck disable=SC2086
-exec /usr/local/bin/openagents-web "$@" $environments \
+exec /usr/local/bin/openagents-web "$@" $environments $github_app \
     --cloud-config "$p/cloud.json" --github-oauth "$p/github-oauth.json" \
     --cloud-byo "$byo" --plan-meter /tmp/plan-meter.sqlite \
     --inference http://127.0.0.1:8791 --own-runs-token "$stack/own-runs.key"

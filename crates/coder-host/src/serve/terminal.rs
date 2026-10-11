@@ -222,10 +222,20 @@ fn engine_status(
         ));
     }
     let coder_pty::engine::Engine::Claude = read.engine;
-    let status = match &shared.config.engine_status {
+    let mut status = match &shared.config.engine_status {
         Some(engine) => claude::check(&engine.program, engine.notices.as_deref(), now),
         None => coder_pty::engine::Status::unavailable(read.engine, now),
     };
+    // The plan's windows, from the usage book alone, only for a reader
+    // that asked: a client from before them refuses an unknown field.
+    if read.wants_plan_usage() {
+        status.plan_usage = shared
+            .config
+            .engine_status
+            .as_ref()
+            .and_then(|engine| engine.usage_home.as_deref())
+            .and_then(|home| coder_pty::engine::PlanUsage::read(home, now));
+    }
     Ok((
         coder_pty::wire::Status::Accepted,
         coder_pty::wire::Value::EngineStatus { status },

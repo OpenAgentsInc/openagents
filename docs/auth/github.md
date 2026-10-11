@@ -272,7 +272,10 @@ The machine's credential (`OPENAGENTS_GIT_BROKER`, value `<broker URL>
 <ticket>`, `oa_auth::repos::broker::credential_value`) feeds
 `coder_environment_setup::git_auth_env`, whose helper answers only
 `https://github.com` with a path, posts the ticket on standard input with
-`curl`, and has no older token to fall back to.
+`curl`, and has no older token to fall back to. A website Claude Code run
+(#11226, [agent work](../deployment/agent-work.md#pushing-from-a-run))
+redeems its ticket at the site's `POST /github/git-credential`, which
+forwards the form to this route.
 
 Tests: `cargo test -p oa-auth --test app` (install and listing, another
 GitHub account, the broker's host and repository checks, reuse until 50

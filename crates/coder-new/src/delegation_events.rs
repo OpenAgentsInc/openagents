@@ -237,6 +237,9 @@ pub(crate) fn decode(value: &Value, depth: usize) -> Option<RuntimeEvent> {
         "delta" => RuntimeEvent::Text(word("text")?),
         "model" => RuntimeEvent::Model(word("model")?),
         "usage" => RuntimeEvent::Tokens(value.get("tokens")?.as_u64()?),
+        coder_engine_status::plan::EVENT => {
+            RuntimeEvent::Plan(serde_json::from_value(value.get("usage")?.clone()).ok()?)
+        }
         "progress" => RuntimeEvent::Progress {
             step: usize::try_from(value.get("step")?.as_u64()?).ok()?,
             complete: value

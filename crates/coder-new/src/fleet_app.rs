@@ -97,6 +97,13 @@ impl App {
             self.apply_delegation(id, row.name, row.task, event);
         }
         for notice in self.fleet.drain_notices() {
+            // A Claude Code agent a usage limit stopped offers its choices
+            // here, in /agents, on the desktop and on the phone (#11295).
+            if let Some(row) = self.fleet.get(&notice.id) {
+                let env = |name: &str| std::env::var(name).ok();
+                self.fleet
+                    .set_choices(&row.id, fleet::pause_choices(&row, &env));
+            }
             if let Some(row) = self.fleet.get(&notice.id) {
                 let index = self.agent_delegation(&row);
                 let child = &mut self.delegations[index];
@@ -158,11 +165,22 @@ impl App {
         let Some(board) = &mut self.board else {
             return;
         };
-        for id in board.take_stops() {
-            if let Ok(row) = self.fleet.stop(&id) {
-                self.notice = Some(format!("Stopping {} from the desktop app.", row.name));
+        let mut choices = Vec::new();
+        for (id, action) in board.take_requests() {
+            if action == agent_fleet::board::STOP {
+                if let Ok(row) = self.fleet.stop(&id) {
+                    self.notice = Some(format!("Stopping {} from the desktop app.", row.name));
+                }
+            } else {
+                choices.push((id, action));
             }
         }
+        for (id, action) in choices {
+            self.choose_for_agent(&id, &action, "the desktop app");
+        }
+        let Some(board) = &mut self.board else {
+            return;
+        };
         // A board that can't be written leaves the desktop's panel
         // without this process; the agents run on.
         let _ = board.publish(&self.fleet.list());
@@ -286,6 +304,42 @@ impl App {
         }
     }
 
+    /// Applies a paused agent's choice (#11295), from `/agents`, the
+    /// desktop app or the phone (`via`), and says what happened.
+    pub(crate) fn choose_for_agent(&mut self, id: &str, choice: &str, via: &str) {
+        let execution = self.agent_execution();
+        let host = self.fleet_host();
+        let env = |name: &str| std::env::var(name).ok();
+        let result = fleet::choose(&host, &execution, id, choice, &env);
+        let Some(row) = self.fleet.get(id) else {
+            self.notice = result.err();
+            return;
+        };
+        let index = self.agent_delegation(&row);
+        let child = &mut self.delegations[index];
+        match result {
+            Ok(said) => {
+                let said = if via == "here" {
+                    said
+                } else {
+                    format!("{said} (from {via})")
+                };
+                child.chat.notice = Some(said.clone());
+                child.running = true;
+                child.chat.busy = true;
+                child.chat.reply_started_at = Some(std::time::Instant::now());
+                child.started_at = self.elapsed_seconds;
+                self.notice = Some(said);
+                self.history.dirty = true;
+            }
+            Err(error) => {
+                child.chat.notice = Some(error.clone());
+                self.notice = Some(error);
+            }
+        }
+        self.publish_board();
+    }
+
     /// Opens the `/agents` panel.
     pub(crate) fn open_agents_panel(&mut self) {
         self.resume_picker = None;
@@ -304,8 +358,31 @@ impl App {
         let chosen = rows.get(panel.selected).cloned();
         match key.code {
             KeyCode::Esc | KeyCode::Char('q') => self.agents_panel = None,
+            KeyCode::Char('+' | '=' | '-') => {
+                let n = crate::claude_plan::limit();
+                let n = if key.code == KeyCode::Char('-') {
+                    n.saturating_sub(1)
+                } else {
+                    n + 1
+                };
+                self.notice = Some(match crate::claude_plan::set_limit(n) {
+                    Ok(_) => crate::claude_plan::panel_line(),
+                    Err(error) => error,
+                });
+            }
             KeyCode::Up | KeyCode::Char('k') => panel.selected = panel.selected.saturating_sub(1),
             KeyCode::Down | KeyCode::Char('j') => panel.selected = (panel.selected + 1).min(last),
+            KeyCode::Char(key @ ('1' | '2')) => {
+                let Some(row) = chosen else { return };
+                let want = if key == '1' {
+                    agent_fleet::YOUR_KEY
+                } else {
+                    agent_fleet::OPENAGENTS
+                };
+                if row.choices.iter().any(|choice| choice == want) {
+                    self.choose_for_agent(&row.id, want, "here");
+                }
+            }
             KeyCode::Char('s') => {
                 if let Some(row) = chosen {
                     self.notice = Some(match self.fleet.stop(&row.id) {

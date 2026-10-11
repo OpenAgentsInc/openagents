@@ -38,6 +38,8 @@ fn choices() -> Choices {
         computers: vec!["studio-mac".into()],
         claude_connect: false,
         claude_subscription: false,
+        claude_signed_in: vec![],
+        claude_keys: true,
     }
 }
 
@@ -301,21 +303,36 @@ fn claude_code_before_claude_is_connected_shows_the_connect_card() {
     assert!(html.contains("Connect Claude to run Claude Code"), "{html}");
     assert!(html.contains(r#"href="/settings/claude#key""#), "{html}");
     assert!(html.contains("Use a key"), "{html}");
-    // No button that can't work from here: one link.
-    let card = connect_card(false, None).into_string();
+    // No button that can't work from here: Sign in to Claude inside the
+    // environment (#11294) and Use a key, both links.
+    let card = connect_card("env-1", false, true, None).into_string();
     assert!(!card.contains("<button"), "{card}");
-    assert_eq!(card.matches("<a ").count(), 1, "{card}");
+    assert_eq!(card.matches("<a ").count(), 2, "{card}");
     assert!(!card.contains("subscription"), "{card}");
+    assert!(
+        card.contains(r#"href="/environments/env-1/sign-in?back=%2F""#)
+            && card.contains(
+                r#"hx-post="/environments/env-1/sign-in?back=%2F&amp;part=dialog" hx-target="body" hx-swap="beforeend""#
+            ),
+        "{card}"
+    );
     crate::copy_guard::assert_plain("/composer/row", &card);
+    // A server that keeps no keys offers sign-in alone, never a dead Use a key.
+    let card = connect_card("env-1", false, false, None).into_string();
+    assert_eq!(card.matches("<a ").count(), 1, "{card}");
+    assert!(
+        card.contains("Sign in to Claude") && !card.contains("Use a key"),
+        "{card}"
+    );
     // On the subscription allowlist the card leads with the subscription:
     // the same dialog as Settings, Claude, loaded over the page and back
     // to this chat; without script, the same steps as a page.
-    let card = connect_card(true, Some("chat-1")).into_string();
+    let card = connect_card("env-1", true, true, Some("chat-1")).into_string();
     assert!(
         !card.contains("<button") && !card.contains("<form"),
         "{card}"
     );
-    assert_eq!(card.matches("<a ").count(), 2, "{card}");
+    assert_eq!(card.matches("<a ").count(), 3, "{card}");
     let lead = card.find("Use your Claude subscription").unwrap();
     assert!(lead < card.find("Use a key").unwrap(), "{card}");
     assert!(
@@ -339,6 +356,13 @@ fn claude_code_before_claude_is_connected_shows_the_connect_card() {
     choices.claude_connect = false;
     let ready = choices.resolve(&wanted(APP, "", "claude:env-1"));
     assert!(!render(Some(&choices), &ready).contains("composer-connect"));
+    // Signed in to Claude inside that environment: no card, and a send
+    // is allowed there; another environment still needs connecting.
+    choices.claude_connect = true;
+    choices.claude_signed_in = vec!["env-1".into()];
+    let signed = choices.resolve(&wanted(APP, "", "claude:env-1"));
+    assert!(!render(Some(&choices), &signed).contains("composer-connect"));
+    assert!(!choices.needs_connect("env-1") && choices.needs_connect("env-2"));
     // The refusal a send gets says the same, plainly.
     assert!(CONNECT.contains("your message stays in the box"));
     crate::copy_guard::assert_plain("/composer/row", CONNECT);

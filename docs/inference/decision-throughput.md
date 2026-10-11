@@ -208,7 +208,8 @@ in git because they hold repository file contents.
 | `gateway-jev` | `openagents.com/api/v1/systemone`, keyless: Jev first under the gateway's house key |
 | `gateway-pylon` | the same, with `X-Decision-Order: pylon`: the production CoderOS-4080 Clef pylon over NIP-DEC on the relay first. Capped at 8 clients, the pylon's slots, so production decisions aren't starved |
 | `vertex-gemini` | Gemini 3.8 Flash on Vertex with structured output: the prompt and schema of the gateway's Vertex door (`decision_dispatch.rs` `vertex_body`), thinking `low` |
-| `coderos-clef` | Psionic Clef-Flash Q4_K_M on CUDA (RTX 4080), a separate bench server on port 18097, beside the untouched production `pylon-clef` |
+| `coderos-clef-prod` | the production `pylon-clef` server itself (Psionic Clef-Flash Q4_K_M on CUDA, RTX 4080, port 18096), read-only at 1 and 2 clients, 45 s a point, under the harness guard (below). Its numbers include the production traffic that shared the card. The daily CoderOS run since #11303 |
+| `coderos-clef` | Psionic Clef-Flash Q4_K_M on CUDA (RTX 4080), a separate bench server on port 18097. Manual only, and never while production `pylon-clef` holds the GPU: on 2026-10-11 the daily run of this target ran production out of GPU memory (#11303) |
 | `coderos-llamacpp`, `coderos-ollama` | llama.cpp and Ollama on the same 4080, for reference |
 | `h100-clef-flash`, `h100-clef-27b` | Psionic on one H100 80 GB, a plain spot `a3-highgpu-1g` |
 | `sealed-gpu` | `oa-att round` per request against `clef-decisions-gpu` (H100 in CC mode + TDX). Each round verifies the endpoint, seals with NIP-44, crosses the relay, then opens the answer and checks its receipt. One question per request |
@@ -456,8 +457,8 @@ tables are regenerated from all of them.
 
 | What | Where | When (UTC) | Backends | Cost |
 | --- | --- | --- | --- | --- |
-| CoderOS daily | user timer `decision-throughput.timer` on coderos-4080 → `~/decision-bench/daily.sh` ([coderos-daily.sh](../../scripts/bench/decision-throughput/coderos-daily.sh)) | daily 09:30 | `coderos-clef` on the `daily` plan. A bench server on 18097 starts, runs and stops; the text pylon is paused and restored only if VRAM is short. It writes as `oa-decision-bench-writer@`, which holds only `storage.objectAdmin` on the bucket | electricity |
-| Cloud daily | Cloud Scheduler `decision-throughput-daily` → Cloud Run job `decision-throughput-daily` ([cloud/](../../scripts/bench/decision-throughput/cloud/)), as `oa-decision-bench@` | daily 11:00 | `jev`, `gateway-jev`, `gateway-pylon`, `vertex-gemini`, `sealed-cpu`, on the `daily` plan: 1 and 4 clients, plus 13 questions and the router at one client. Afterwards it regenerates this doc's tables and pushes them to `main` | about $0.37 of Jev direct, $0.37 of Jev under the gateway's key, up to $0.30 of Vertex, and Cloud Run time: about $1.2 a day |
+| CoderOS daily | user timer `decision-throughput.timer` on coderos-4080 → `~/decision-bench/daily.sh` ([coderos-daily.sh](../../scripts/bench/decision-throughput/coderos-daily.sh)) | daily 09:30 | `coderos-clef-prod` on the `daily` plan: the production `pylon-clef` itself at 1 and 2 clients, then 13 questions and the router at one client, 45 s a point, about 4 minutes. It starts no second server and never stops, restarts or pauses a Pylon service. The guard stops it at the first sign of pressure. It writes as `oa-decision-bench-writer@`, which holds only `storage.objectAdmin` on the bucket | electricity |
+| Cloud daily | Cloud Scheduler `decision-throughput-daily` → Cloud Run job `decision-throughput-daily` ([cloud/](../../scripts/bench/decision-throughput/cloud/)), as `oa-decision-bench@` | daily 11:00 | `jev`, `gateway-jev`, `gateway-pylon`, `vertex-gemini`, `sealed-cpu`, on the `daily` plan: 1 and 4 clients (1 for `gateway-jev`), plus 13 questions and the router at one client, each hosted target under a daily spend cap. Afterwards it regenerates this doc's tables and pushes them to `main` | at most $0.60 of Jev direct, $0.40 of Jev under the gateway's key and $0.30 of Vertex, plus Cloud Run time: at most about $1.4 a day |
 | H100 weekly | Cloud Scheduler `decision-throughput-h100-weekly` → Compute `instances.insert` of a spot `a3-highgpu-1g` ([h100/](../../scripts/bench/decision-throughput/h100/)) | Saturdays 10:00 | `h100-clef-flash`, `h100-clef-27b`, and the sealed GPU, which the VM wakes, measures and stops. The VM deletes itself when done, and after 75 minutes at most | about $6–7 a week: about 35 minutes of plain H100 plus about 25 of sealed |
 
 - **Changing the harness.** The weekly run reads it from
@@ -470,6 +471,13 @@ tables are regenerated from all of them.
   one. On CoderOS: `systemctl --user disable --now decision-throughput.timer`.
 - **Not scheduled.** The Mac (below) and llama.cpp/Ollama, which are
   reference points only.
+- **Where the client runs matters.** The first scheduled run, from Cloud
+  Run in us-central1, saw Jev at 6.3 decisions/s from one client (p50
+  0.16 s), against 3.5/s from the Mac. Compare a backend's trend only
+  within one client location: the `host` field of each point.
+- **The pylon path at 16k tokens falls over to Vertex.** On the
+  Pylon-first gateway path, 34 of 36 16k-token requests in that run timed
+  out at the pylon and were answered by Vertex.
 
 
 ## Run it
@@ -480,11 +488,20 @@ export CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config            # GCS + Verte
 set -a; . ~/work/.secrets/typesafe.env; set +a                     # TYPESAFE_API_KEY, jev only
 python3 $H/harness.py --target jev --plan full --corpus gs://openagentsgemini-decision-throughput/corpus/v1 \
     --out results.jsonl --gcs gs://openagentsgemini-decision-throughput/runs
-python3 $H/harness.py --target coderos-clef --plan daily ... \
+python3 $H/harness.py --target coderos-clef-prod --plan daily ... \
     --gpu-cmd 'nvidia-smi --query-gpu=utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits'
 python3 $H/report.py --gcs gs://openagentsgemini-decision-throughput/runs --doc docs/inference/decision-throughput.md
 ```
 
+- **Sharing a production server.** A target with a `guard` in
+  `targets.json` (`coderos-clef-prod`) checks the server's `/health` and
+  the free GPU memory before every point, samples GPU memory every 2 s,
+  and stops the whole run (exit 3) when free memory falls under
+  `min_free_mib` (768 MiB), health fails, or any request goes unanswered,
+  503 busy included (no busy retries). `--guard-health`,
+  `--guard-min-free-mib` and `--abort-on-error` set the same by hand, and
+  `--dry-run` prints the plan and the guard's verdict without sending a
+  request (`DRY_RUN=1 sh ~/decision-bench/daily.sh` on CoderOS).
 - **Plans.** `--plan full | daily | smoke`. `--only c1,c8,t16000q1-cold,router-cold`
   picks points. `--duration`, `--max-conc`, `--budget-usd` and
   `--usd-per-hour` override the target.

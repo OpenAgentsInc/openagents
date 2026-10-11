@@ -811,27 +811,31 @@ fn transcript_uses_the_full_terminal_width_without_side_margins() {
     for width in [24, 40, 80] {
         let mut app = App::default();
         app.set_mode(Mode::Live);
+        // A reply starts with its ● in column 0 and keeps the two-column
+        // gutter at the right edge, as Claude Code's transcript does.
+        let fits = usize::from(width - 4);
         app.live.entries.push(Entry::Assistant {
-            text: "x".repeat(usize::from(width)),
+            text: "x".repeat(fits),
             model: None,
             elapsed_ms: None,
         });
         let canvas = render(&mut app, width, 24);
         assert_eq!(
-            canvas.lines().next().unwrap(),
-            "x".repeat(usize::from(width))
+            canvas.lines().next().unwrap().trim_end(),
+            format!("● {}", "x".repeat(fits))
         );
         app.live.entries = vec![Entry::User("x".repeat(usize::from(width - 3)))];
         let mut terminal = Terminal::new(TestBackend::new(width, 24)).unwrap();
         terminal.draw(|frame| ui::render(frame, &mut app)).unwrap();
         let buffer = terminal.backend().buffer();
-        assert_eq!(buffer[(0, 0)].bg, coder_new::theme::BG_LIGHT);
-        assert_eq!(buffer[(width - 1, 0)].bg, coder_new::theme::BG_LIGHT);
+        // The person's band runs through the gutter to the screen's edge.
+        assert_eq!(buffer[(0, 0)].bg, coder_new::theme::USER_MESSAGE_BG);
+        assert_eq!(buffer[(width - 1, 0)].bg, coder_new::theme::USER_MESSAGE_BG);
     }
 }
 
 #[test]
-fn working_spinner_is_left_aligned_and_context_reaches_the_bottom_row() {
+fn working_spinner_is_left_aligned_and_the_input_reaches_the_bottom_row() {
     let mut app = App::default();
     app.set_mode(Mode::Live);
     app.live.busy = true;
@@ -844,10 +848,12 @@ fn working_spinner_is_left_aligned_and_context_reaches_the_bottom_row() {
             coder_new::tools::spinner(app.animation_frame)
         );
         assert_eq!(buffer[(2, 0)].symbol(), "W");
+        // With nothing to say under the input, its rail (the folder) is
+        // the screen's last row.
         let bottom: String = (0..width).map(|x| buffer[(x, 23)].symbol()).collect();
         assert!(
-            bottom.contains(" / "),
-            "context missing from bottom row: {bottom:?}"
+            bottom.starts_with('└') && bottom.ends_with('┘'),
+            "the input's rail is not the bottom row: {bottom:?}"
         );
     }
 }

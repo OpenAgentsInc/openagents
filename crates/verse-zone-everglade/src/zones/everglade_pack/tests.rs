@@ -805,6 +805,37 @@ fn pruning_removes_only_named_history_and_stale_own_temps() {
     assert!(cache.join(file.cache_name()).exists());
 }
 
+#[cfg(unix)]
+#[test]
+fn pruning_reaches_past_the_oldest_thirty_two_history_digests() {
+    // History can exceed 32 entries (the Everglade pack has 42). Pruning must
+    // remove every non-current digest, not only the first 32.
+    let bytes = tiny_contents_bytes();
+    let mut file = test_pinned(&bytes);
+    let digests: Vec<&'static str> = (0..40u32)
+        .map(|n| {
+            let digest = sha(format!("pack {n}").as_bytes());
+            Box::leak(digest.into_boxed_str()) as &'static str
+        })
+        .collect();
+    file.history = Box::leak(digests.clone().into_boxed_slice());
+    let cache = tempfile::tempdir().unwrap();
+    let cache = cache.path();
+    file.install_cache(cache, &bytes, &AtomicBool::new(false))
+        .unwrap();
+    for digest in &digests {
+        std::fs::write(cache.join(format!("{digest}.vtp")), b"old").unwrap();
+    }
+    file.prune(cache);
+    for digest in &digests {
+        assert!(
+            !cache.join(format!("{digest}.vtp")).exists(),
+            "history digest {digest} was not pruned"
+        );
+    }
+    assert!(cache.join(file.cache_name()).exists());
+}
+
 /// A one-triangle character on the tiny pack's material.
 fn tiny_character() -> format::Character {
     use format::{Character, Clip, Joint, SkinnedPrimitive, SkinnedVertex, Track, Vertex};

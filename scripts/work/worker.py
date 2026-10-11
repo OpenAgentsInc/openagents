@@ -170,7 +170,10 @@ def work(site: Site, job: dict, stop: threading.Event) -> None:
         nonlocal title
         with lock:
             lines, pending[:] = list(pending), []
-        body: dict = {"lines": [{"secs": ln.get("secs", 0), "phase": ln.get("phase", ""), "text": ln.get("text", "")}
+        # The cost so far and the landing queue entry ride along for the
+        # fleet rows (#11250).
+        body: dict = {"lines": [{"secs": ln.get("secs", 0), "phase": ln.get("phase", ""), "text": ln.get("text", ""),
+                                 **{k: ln[k] for k in ("cost_usd", "tokens", "entry") if ln.get(k) is not None}}
                                 for ln in lines]}
         if title:
             body["title"], title = title, None

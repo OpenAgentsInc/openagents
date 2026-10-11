@@ -675,15 +675,23 @@ impl Runtime {
                         // The computer's Claude Code sign-in status, read by
                         // running the binary there. Only the typed status
                         // arrives; a host that cannot answer shows as such.
-                        let status = link
-                            .request(TermRequest::EngineStatus(
-                                coder_pty::engine::EngineStatusRead::new(
-                                    coder_browser::new_request_id(),
-                                    coder_pty::engine::Engine::Claude,
-                                ),
-                            ))
-                            .await
-                            .map_err(|_| failure())?;
+                        // It asks for the plan's windows too (#11292); a host
+                        // from before them refuses that, so it asks plainly.
+                        let read = |plan: bool| {
+                            let read = coder_pty::engine::EngineStatusRead::new(
+                                coder_browser::new_request_id(),
+                                coder_pty::engine::Engine::Claude,
+                            );
+                            TermRequest::EngineStatus(if plan {
+                                read.with_plan_usage()
+                            } else {
+                                read
+                            })
+                        };
+                        let mut status = link.request(read(true)).await.map_err(|_| failure())?;
+                        if status.reason == Some(coder_pty::wire::Reason::UnsupportedFeature) {
+                            status = link.request(read(false)).await.map_err(|_| failure())?;
+                        }
                         if !self.enrollment_current(epoch) {
                             return Err(failure());
                         }
@@ -956,6 +964,15 @@ impl Runtime {
             "p",
             &format!("{}. {}", status.headline(), status.summary()),
         )?;
+        let now = (js_sys::Date::now() / 1000.0) as u64;
+        if let Some(plan) = status.plan_usage.and_then(|plan| {
+            plan.text(now, &|ms| {
+                let unix = ms / 1000;
+                format!("{:02}:{:02} UTC", unix / 3600 % 24, unix / 60 % 60)
+            })
+        }) {
+            text(&self.engine, "p", &plan)?;
+        }
         if let Some(label) = status.action() {
             // The same page with BYO-01's sign-in: a terminal on this
             // computer running the unmodified program.

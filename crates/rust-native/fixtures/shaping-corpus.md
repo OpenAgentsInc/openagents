@@ -1080,3 +1080,13 @@ fn main() {
 |---|:-:|--:|
 | short | a cell with several words in it | 1,234 |
 | another row | x | 99.5% |
+
+## CJK and emoji
+
+中文：快速的棕色狐狸跳过了懒狗，服务器在回答请求的同时继续处理下一批任务。
+
+日本語：素早い茶色の狐が怠け者の犬を飛び越え、サーバーは要求に応答しました。
+
+한국어: 빠른 갈색 여우가 게으른 개를 뛰어넘고, 서버는 요청에 응답했습니다.
+
+Emoji in prose: the build passed ✅ 🎉, the deploy is waiting ⏳, the cat 🐈‍⬛ approves 👍🏽, and the 🇺🇸 flag and 👨‍👩‍👧 family stay whole.

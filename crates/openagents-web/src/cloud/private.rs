@@ -78,6 +78,33 @@ fn read(_: &File, _: usize) -> Result<Vec<u8>, String> {
     Err(UNAVAILABLE.into())
 }
 
+/// How many leading directories of `parts` (an absolute path's
+/// components, the root first) the ownership walk takes on trust: none
+/// outside tests. A test build trusts the directories strictly above its
+/// temporary directory, the fixtures' root, and checks that root and
+/// everything under it as production does. Inside the land queue's write
+/// boundary (`bwrap` in a user namespace) `/` and `/tmp` are owned by the
+/// overflow user, not root, so no fixture path could pass the walk from
+/// `/` (#11300).
+pub(super) fn trusted_depth(parts: &[Component<'_>]) -> usize {
+    #[cfg(test)]
+    {
+        let temp = std::env::temp_dir();
+        let temp = temp.canonicalize().unwrap_or(temp);
+        let above = temp.components().count().saturating_sub(1);
+        if parts.len() > above
+            && temp
+                .components()
+                .take(above)
+                .eq(parts[..above].iter().copied())
+        {
+            return above;
+        }
+    }
+    let _ = parts;
+    0
+}
+
 #[cfg(unix)]
 fn open(path: &Path, maximum: usize) -> Result<File, String> {
     use std::ffi::CString;
@@ -98,6 +125,7 @@ fn open(path: &Path, maximum: usize) -> Result<File, String> {
         return Err(UNAVAILABLE.into());
     }
     let user = unsafe { libc::geteuid() };
+    let trusted = trusted_depth(&parts);
     let mut directory = File::open("/").map_err(|_| UNAVAILABLE)?;
     for (index, part) in parts[1..].iter().enumerate() {
         let Component::Normal(name) = part else {
@@ -105,12 +133,15 @@ fn open(path: &Path, maximum: usize) -> Result<File, String> {
         };
         let final_part = index + 2 == parts.len();
         let parent = directory.metadata().map_err(|_| UNAVAILABLE)?;
+        // `parent` is `parts[..=index]`; the directories above a test's
+        // temporary directory are taken on trust (never in production).
+        let trusted = index < trusted && !final_part;
         // A root-owned sticky temporary base cannot rename another user's
         // private child. The final containing directory must still be private.
         let protected_sticky = parent.uid() == 0 && parent.mode() & 0o1000 != 0;
         if !parent.is_dir()
-            || parent.uid() != 0 && parent.uid() != user
-            || parent.mode() & 0o022 != 0 && !protected_sticky
+            || !trusted && parent.uid() != 0 && parent.uid() != user
+            || !trusted && parent.mode() & 0o022 != 0 && !protected_sticky
             || final_part && (parent.uid() != user || parent.mode() & 0o077 != 0)
         {
             return Err(UNAVAILABLE.into());
@@ -200,5 +231,21 @@ mod tests {
         )
         .unwrap();
         assert!(ProtectedFile::open(&path, 64).is_err());
+    }
+
+    /// Tests trust only the directories above their temporary directory
+    /// (#11300): the fixture's own root is still checked, and a path
+    /// outside the temporary directory is checked from `/`.
+    #[test]
+    fn tests_trust_only_what_is_above_the_temporary_directory() {
+        let (root, path) = fixture();
+        let outside = Path::new("/nonexistent-11300/private/config");
+        assert_eq!(trusted_depth(&outside.components().collect::<Vec<_>>()), 0);
+        assert!(trusted_depth(&path.components().collect::<Vec<_>>()) > 0);
+        let root = root.path().canonicalize().unwrap();
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o777)).unwrap();
+        assert!(ProtectedFile::open(&path, 64).is_err());
+        std::fs::set_permissions(&root, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(ProtectedFile::open(&path, 64).is_ok());
     }
 }

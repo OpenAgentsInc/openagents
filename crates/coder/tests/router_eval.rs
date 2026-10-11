@@ -9,7 +9,15 @@
 //!   cargo test -p coder --test router_eval -- --ignored --nocapture --test-threads 1
 //! ```
 //!
-//! `ROUTER_EVAL_SPLIT` is `held_out` (the default), `tune`, or `all`.
+//! `ROUTER_EVAL_SPLIT` is `held_out` (the default), `tune`, `all`, or
+//! `published` (the published eval's rows, held_out and the calibration
+//! partition, without publishing). `ROUTER_EVAL_MAPS=on` reads each
+//! question on its answering model's calibration map before the policy
+//! decides, as the worker does (a Clef server's answers on Clef's map for
+//! the shape asked, `CODER_ROUTER_STAGED`; Gemini's, like Jev's, on Jev's
+//! map, #11302); the published eval refuses it.
+//! `ROUTER_EVAL_EVERY=N` keeps every Nth row of the split (a paid door on
+//! a share of the set: Gemini on Vertex ran every fifth row, #11302).
 //! `ROUTER_EVAL_ROWS` is `all` (the default), `v1` (the rows of
 //! `routes-v1.json`, for comparing with the v1 measurements), `gym` (the
 //! rows `routes-v2.json` added), `capability` (the rows `routes-v3.json`
@@ -248,7 +256,24 @@ async fn run_router(name: &str, mode: router::Mode) {
         plugin: false,
     };
     let set = Set::fixture();
-    let (rows, split_label) = if publishing() {
+    // `ROUTER_EVAL_MAPS=on` reads each question on the map of the model
+    // that answered it before the policy decides, as the worker does
+    // (#11297): Jev's `calibration-v2`, and Clef's map for the shape this
+    // run asks (`Calibration::clef_from_env`). Off by default: the
+    // published eval scores and fits raw readings.
+    let maps = std::env::var("ROUTER_EVAL_MAPS").as_deref() == Ok("on");
+    assert!(
+        !(maps && publishing()),
+        "the published eval fits its maps on raw readings; leave ROUTER_EVAL_MAPS unset"
+    );
+    let jev_map = maps.then(|| router::calibration::Calibration::builtin().expect("Jev's map"));
+    let clef_map = maps.then(|| {
+        router::calibration::Calibration::clef_from_env(&bank.id())
+            .expect("Clef's map")
+            .expect("Clef's map serves")
+    });
+    let published = std::env::var("ROUTER_EVAL_SPLIT").as_deref() == Ok("published");
+    let (rows, split_label) = if publishing() || published {
         // The held-out rows the record is on, and the calibration
         // partition the maps are fitted on.
         let rows: Vec<&Row> = set
@@ -267,6 +292,19 @@ async fn run_router(name: &str, mode: router::Mode) {
     } else {
         rows(&set, &split())
     };
+    // `ROUTER_EVAL_EVERY=N` keeps every Nth row of the split, in order, so
+    // each partition shrinks alike: a paid door (Gemini on Vertex, #11302)
+    // can be measured on a fixed share of the set.
+    let (rows, split_label) = match std::env::var("ROUTER_EVAL_EVERY")
+        .ok()
+        .and_then(|n| n.trim().parse::<usize>().ok())
+    {
+        Some(every) if every > 1 => (
+            rows.into_iter().step_by(every).collect::<Vec<_>>(),
+            format!("{split_label} (every {every})"),
+        ),
+        _ => (rows, split_label),
+    };
     let started_at = now();
     let mut readings = Vec::new();
     let mut traces = Vec::new();
@@ -276,6 +314,7 @@ async fn run_router(name: &str, mode: router::Mode) {
     let starter = starter_records(&tools);
     let mut offers = Offers::default();
     let mut engines = Engines::default();
+    let mut staging = Staging::default();
     // `ROUTER_EVAL_READINGS`: replay a run's readings file instead of
     // asking the judge (refits the maps from a finished run).
     let replay: Option<Vec<Reading>> = std::env::var_os("ROUTER_EVAL_READINGS").map(|path| {
@@ -313,13 +352,23 @@ async fn run_router(name: &str, mode: router::Mode) {
                 // The set's default phone context asks no `deck` question.
                 decks,
             )
-            .for_surface(context.surface()),
+            .for_surface(context.surface())
+            .configured(),
         )
         .await;
         let ms = started.elapsed().as_millis();
         readings.push(match asked {
             Ok(response) => {
-                let routing = router::reading(&response, bank, &facts, &admitted);
+                staging.count(row, &response);
+                let mut routing = router::reading(&response, bank, &facts, &admitted);
+                if maps {
+                    router::calibration::apply_served(
+                        &response,
+                        &mut routing,
+                        jev_map.as_ref(),
+                        clef_map.as_ref(),
+                    );
+                }
                 // A multi-turn row has messages before its latest (#10138).
                 let situation = router::Situation {
                     earlier: row.messages.len() > 1,
@@ -350,6 +399,7 @@ async fn run_router(name: &str, mode: router::Mode) {
         );
     }
     engines.print(&split_label);
+    staging.print(&split_label);
     write_traces(name, &split_label, &traces);
     write_readings(name, &split_label, &readings);
     print_thresholds(&split_label, &rows, &readings);
@@ -361,6 +411,60 @@ async fn run_router(name: &str, mode: router::Mode) {
                 format!("{}:jev", profile.name())
             });
         record(&set, &rows, &readings, &profile, started_at, ended_at);
+    }
+}
+
+/// What each turn sent and how the staged route shortlist did (#11247):
+/// the judge's input tokens per turn, and on a staged turn whether the
+/// labeled route was among the routes the second request asked over.
+#[derive(Default)]
+struct Staging {
+    tokens: Vec<u64>,
+    staged: usize,
+    in_shortlist: usize,
+    shortlisted: usize,
+}
+
+impl Staging {
+    fn count(&mut self, row: &Row, response: &jev::SystemOneResponse) {
+        if let Some(tokens) = response.usage.input_tokens {
+            self.tokens.push(tokens);
+        }
+        let Some(jev::Answer::Choice(hint)) = response.answers.get(router::judge::ROUTE_HINT)
+        else {
+            return;
+        };
+        let routes = router::judge::shortlist(hint);
+        self.staged += 1;
+        self.shortlisted += routes.len();
+        let labeled = router::RouteId::parse(&row.route);
+        if labeled == router::RouteId::Unknown || routes.contains(&labeled) {
+            self.in_shortlist += 1;
+        }
+    }
+
+    fn print(&self, split: &str) {
+        let mut tokens = self.tokens.clone();
+        tokens.sort_unstable();
+        if !tokens.is_empty() {
+            let mean = tokens.iter().sum::<u64>() as f64 / tokens.len() as f64;
+            let at = |q: f64| tokens[((tokens.len() - 1) as f64 * q).round() as usize];
+            println!(
+                "judge input tokens per turn ({split}): mean {mean:.0}, p50 {}, p90 {}, over {} turns",
+                at(0.5),
+                at(0.9),
+                tokens.len()
+            );
+        }
+        if self.staged > 0 {
+            println!(
+                "staged shortlist ({split}): the labeled route was shortlisted on {} of {} turns ({:.1} %), {:.1} routes on average",
+                self.in_shortlist,
+                self.staged,
+                100.0 * self.in_shortlist as f64 / self.staged as f64,
+                self.shortlisted as f64 / self.staged as f64
+            );
+        }
     }
 }
 

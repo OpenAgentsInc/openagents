@@ -2,9 +2,11 @@
 //! repository picker, the setup conversation (the same activity components
 //! as the demo), the Save card, and Claude Code runs.
 
+use coder_cloud::claude_task::PauseChoice;
 use coder_environment_operator::activity::{Entry, Record, Stage};
 use coder_environment_operator::agent::Phase;
 use coder_environment_operator::studio::claude::{self, Run, RunState};
+use coder_environment_operator::studio::sign_in;
 use coder_environment_operator::studio::{Status, Summary, View};
 use maud::{Markup, PreEscaped, Render, html};
 use openagents_ui::actions::{
@@ -664,6 +666,8 @@ fn failed_card(id: &str, reason: &str) -> Markup {
 pub(crate) enum Claude {
     /// A Claude key is available: the person's own, or this server's.
     Ready,
+    /// The person signed in to Claude inside this environment (#11294).
+    SignedIn,
     /// The person can add their own key in Settings.
     AddKey,
     /// This server keeps no keys and names none.
@@ -689,9 +693,12 @@ fn claude_card(view: &View, claude: Claude) -> Markup {
             }
         }
     };
-    let card = ResultCard::new(title)
-        .subtitle("Claude Code starts on a fresh computer made from this environment.");
-    if claude == Claude::Ready {
+    let card = ResultCard::new(title).subtitle(if claude == Claude::SignedIn {
+        "Claude Code runs on your computer for this environment, signed in to your Claude."
+    } else {
+        "Claude Code starts on a fresh computer made from this environment."
+    });
+    if matches!(claude, Claude::Ready | Claude::SignedIn) {
         card.body(runs)
             .footer(html! {
                 form action=(format!("/environments/{id}/claude")) method="post" {
@@ -705,13 +712,15 @@ fn claude_card(view: &View, claude: Claude) -> Markup {
     } else {
         card.body(html! {
             (MarkdownRoot::new(html! {
+                p { "To run Claude Code here, sign in to Claude once inside this environment, with Anthropic's own sign-in." }
                 @if claude == Claude::AddKey {
-                    p { "To run Claude Code here, add your Claude key in " a href="/settings/claude" { "Settings" } "." }
-                } @else {
-                    p { "To run Claude Code here, add your Anthropic API key to this server's settings." }
+                    p { "Or add your Claude key in " a href="/settings/claude" { "Settings" } "." }
                 }
             }).size(MarkdownSize::Sm))
             (runs)
+        })
+        .footer(html! {
+            (ButtonLink::new("Sign in to Claude", sign_in_path(id, None)))
         })
         .render()
     }
@@ -728,8 +737,79 @@ pub(crate) fn run_word(state: RunState) -> &'static str {
     }
 }
 
+/// The form value naming a pause choice (#11293).
+pub(crate) fn choice_key(choice: PauseChoice) -> &'static str {
+    match choice {
+        PauseChoice::KeepWaiting => "wait",
+        PauseChoice::ContinueOnYourKey(_) => "key",
+        PauseChoice::ContinueWithOpenAgents => "openagents",
+    }
+}
+
+/// The button a pause choice shows; waiting shows no button, since it is
+/// what happens anyway.
+pub(crate) fn choice_label(choice: PauseChoice) -> Option<&'static str> {
+    match choice {
+        PauseChoice::KeepWaiting => None,
+        PauseChoice::ContinueOnYourKey(_) => Some("Continue on your key"),
+        PauseChoice::ContinueWithOpenAgents => Some("Continue with OpenAgents"),
+    }
+}
+
+/// The choice a form's `key` names among those `offered`.
+pub(crate) fn chosen(key: &str, offered: &[PauseChoice]) -> Option<PauseChoice> {
+    offered
+        .iter()
+        .copied()
+        .find(|choice| choice_key(*choice) == key)
+}
+
+/// What a paused run's card says about its choices.
+pub(crate) fn pause_line(until: Option<u64>, offered: &[PauseChoice]) -> String {
+    let when = until.map_or_else(
+        || "when the usage limit resets".to_owned(),
+        |at| format!("at {:02}:{:02} UTC", at / 3600 % 24, at / 60 % 60),
+    );
+    let more = offered.iter().any(|choice| choice_label(*choice).is_some());
+    if more {
+        format!("Paused by a Claude usage limit. It continues on its own {when}, or now:")
+    } else {
+        format!("Paused by a Claude usage limit. It continues on its own {when}.")
+    }
+}
+
+/// The pause choices of a paused run, as buttons posting to `action`.
+pub(crate) fn pause_choices(
+    action: &str,
+    hidden: Markup,
+    offered: &[PauseChoice],
+    htmx_target: Option<&str>,
+) -> Markup {
+    html! {
+        @for choice in offered {
+            @if let Some(label) = choice_label(*choice) {
+                form.oa-pause-choice method="post" action=(action)
+                    hx-post=[htmx_target.map(|_| action)]
+                    hx-target=[htmx_target]
+                    hx-swap=[htmx_target.map(|_| "outerHTML")] {
+                    (hidden)
+                    input type="hidden" name="choice" value=(choice_key(*choice));
+                    (submit(label, matches!(choice, PauseChoice::ContinueOnYourKey(_))))
+                }
+            }
+        }
+    }
+}
+
 /// A Claude Code run as a conversation.
+#[cfg(test)]
 pub(crate) fn run_transcript(run: &Run) -> Markup {
+    run_transcript_with(run, &[])
+}
+
+/// [`run_transcript`], with the pause choices `offered` to the viewer
+/// while a usage limit pauses it.
+pub(crate) fn run_transcript_with(run: &Run, offered: &[PauseChoice]) -> Markup {
     let mut turns: Vec<Markup> = vec![Message::user(&run.prompt).render()];
     if let Some(n) = run.version {
         turns.push(note(format!("Started from environment version {n}")).render());
@@ -755,8 +835,17 @@ pub(crate) fn run_transcript(run: &Run) -> Markup {
         RunState::Starting => {
             turns.push(note("Starting a computer from the environment…").render())
         }
+        RunState::Running if run.openagents => turns.push(note("OpenAgents is working…").render()),
         RunState::Running => turns.push(note("Claude Code is working…").render()),
-        RunState::Paused => turns.push(note(run_word(run.state)).render()),
+        RunState::Paused => {
+            turns.push(note(pause_line(run.paused_until, offered)).render());
+            turns.push(pause_choices(
+                &format!("/environments/{}/runs/{}/choose", run.environment, run.id),
+                html! {},
+                offered,
+                None,
+            ));
+        }
         RunState::Done => {}
         RunState::Failed => turns.push(
             note(
@@ -767,6 +856,19 @@ pub(crate) fn run_transcript(run: &Run) -> Markup {
             .render(),
         ),
         RunState::Stopped => turns.push(note("Stopped").render()),
+    }
+    // Where the Claude plan stands, as Claude Code reported it in this run
+    // (#11292); a window that has reset is left out.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    if let Some(plan) = coder_engine_status::PlanUsage::from_events(&run.events).and_then(|plan| {
+        plan.text(now, &|ms| {
+            let unix = ms / 1000;
+            format!("{:02}:{:02} UTC", unix / 3600 % 24, unix / 60 % 60)
+        })
+    }) {
+        turns.push(note(plan).render());
     }
     if !run.state.finished() {
         turns.push(html! {
@@ -818,5 +920,130 @@ mod tests {
     fn diffs_show_removed_and_added_lines() {
         let d = diff("a\nb\nc", "a\nc\nd");
         assert_eq!(d, " a\n-b\n c\n+d\n");
+    }
+}
+
+/// The sign-in page for environment `id`, coming back to `back`.
+pub(crate) fn sign_in_path(id: &str, back: Option<&str>) -> String {
+    let path = format!("/environments/{id}/sign-in");
+    match back {
+        Some(back) => format!(
+            "{path}?{}",
+            url::form_urlencoded::Serializer::new(String::new())
+                .append_pair("back", back)
+                .finish()
+        ),
+        None => path,
+    }
+}
+
+/// The sign-in dialog's id.
+pub(crate) const SIGN_IN_DIALOG: &str = "claude-sign-in";
+
+/// Sign in to Claude inside environment `id` (#11294): a small terminal
+/// running Claude Code's own `claude auth login` on the environment's
+/// computer. `view` is the sign-in so far; `back` is the chat it came
+/// from, whose message is sent once signed in.
+pub(crate) fn sign_in_panel(id: &str, view: Option<&sign_in::View>, back: Option<&str>) -> Markup {
+    let start_form = |label: &str| {
+        html! {
+            form method="post" action=(sign_in_url(id, "", back, None))
+                hx-post=(sign_in_url(id, "", back, Some("panel")))
+                hx-target="#claude-sign-in" hx-swap="outerHTML" {
+                (Button::new(label).kind(ButtonType::Submit))
+            }
+        }
+    };
+    let phase = view.map(|v| &v.phase);
+    html! {
+        div #claude-sign-in.oa-sign-in {
+            @match phase {
+                None => {
+                    p { "Claude Code's own sign-in opens in a terminal on your computer for this environment. Sign in with your Claude account, then paste the code Anthropic shows back here. OpenAgents never sees your login, and you sign in once for this environment." }
+                    (start_form("Start sign-in"))
+                }
+                Some(sign_in::Phase::Starting) | Some(sign_in::Phase::Open) => {
+                    (sign_in_screen(id, view, back))
+                    (sign_in_input(id, back, None))
+                }
+                Some(sign_in::Phase::SignedIn) => {
+                    p role="status" { "Signed in to Claude on your computer for this environment." }
+                    @if back.is_some() {
+                        // Sends the message waiting in the chat's box.
+                        (Button::new("Send your message").kind(ButtonType::Submit).attr("form", "chat-form"))
+                    } @else {
+                        (ButtonLink::new("Back to the environment", format!("/environments/{id}")))
+                    }
+                }
+                Some(sign_in::Phase::Failed(why)) => {
+                    p role="alert" { (why) }
+                    (start_form("Start again"))
+                }
+            }
+        }
+    }
+}
+
+/// Where the sign-in's screen is read from, keeping `back`.
+fn sign_in_url(id: &str, tail: &str, back: Option<&str>, part: Option<&str>) -> String {
+    let mut query = url::form_urlencoded::Serializer::new(String::new());
+    if let Some(back) = back {
+        query.append_pair("back", back);
+    }
+    if let Some(part) = part {
+        query.append_pair("part", part);
+    }
+    let query = query.finish();
+    let path = format!("/environments/{id}/sign-in{tail}");
+    if query.is_empty() {
+        path
+    } else {
+        format!("{path}?{query}")
+    }
+}
+
+/// The line the person types into the terminal: the code Anthropic shows,
+/// or Enter alone. It is sent straight to the computer and kept nowhere.
+pub(crate) fn sign_in_input(id: &str, back: Option<&str>, error: Option<&str>) -> Markup {
+    let field = Field::new("claude-sign-in-text", "Type or paste here, then Send").error_opt(error);
+    html! {
+        form #claude-sign-in-input.oa-sign-in-input method="post"
+            action=(sign_in_url(id, "/input", back, None))
+            hx-post=(sign_in_url(id, "/input", back, Some("input")))
+            hx-swap="outerHTML" autocomplete="off" {
+            (field.clone().control(
+                Input::new("text")
+                    .maxlength(2048)
+                    .autocomplete("off")
+                    .spellcheck(false)
+                    .invalid(error.is_some())
+                    .aria(field.aria())
+            ))
+            (Button::new("Send").kind(ButtonType::Submit))
+        }
+    }
+}
+
+/// The terminal's screen, read again every two seconds while sign-in is
+/// open; once it ends, the whole panel comes back in its place.
+pub(crate) fn sign_in_screen(id: &str, view: Option<&sign_in::View>, back: Option<&str>) -> Markup {
+    html! {
+        div #claude-sign-in-screen hx-get=(sign_in_url(id, "/screen", back, None))
+            hx-trigger="every 2s" hx-swap="outerHTML" {
+            @match view {
+                Some(v) if v.phase == sign_in::Phase::Starting || v.screen.is_empty() => {
+                    p role="status" { "Starting your computer for this environment. This can take a minute or two." }
+                }
+                Some(v) => {
+                    @if let Some(link) = &v.link {
+                        p {
+                            a href=(link) target="_blank" rel="noopener noreferrer" { "Open Anthropic's sign-in page ↗" }
+                        }
+                    }
+                    pre.oa-sign-in-screen aria-live="polite" { (v.screen) }
+                }
+                None => {}
+            }
+        }
     }
 }

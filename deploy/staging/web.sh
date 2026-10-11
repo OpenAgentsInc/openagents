@@ -25,6 +25,16 @@ if [ -n "${VERTEX_SA_JSON:-}" ]; then
     export GOOGLE_APPLICATION_CREDENTIALS="$p/vertex.json"
 fi
 unset VERTEX_SA_JSON
+# The deployment's GitHub App (optional; docs/auth/github.md "GitHub App"):
+# with it, /projects offers Install on repositories, which Claude Code runs
+# need to push (#11226). GITHUB_APP_JSON's private_key is "github-app.pem".
+github_app=""
+if [ -n "${GITHUB_APP_JSON:-}" ] && [ -n "${GITHUB_APP_PEM:-}" ]; then
+    printf '%s' "$GITHUB_APP_JSON" > "$p/github-app.json"
+    printf '%s\n' "$GITHUB_APP_PEM" > "$p/github-app.pem"
+    github_app="--github-app $p/github-app.json"
+fi
+unset GITHUB_APP_JSON GITHUB_APP_PEM
 # INVITE_ONLY_JSON (optional): only these GitHub people may sign in.
 invite=""
 if [ -n "${INVITE_ONLY_JSON:-}" ]; then
@@ -50,7 +60,9 @@ if [ -n "${BOAT_API_KEY:-}" ] && [ -s "$stack/service.key" ]; then
         "$envs" "${ENVIRONMENTS_MODEL:-google/gemini-3.8-flash}" "$p" > "$p/environments.json"
     set -- --environments "$p/environments.json"
 fi
-exec /usr/local/bin/openagents-web --listen 0.0.0.0:8080 "$@" \
+# $github_app is one flag and a path without spaces, split on purpose.
+# shellcheck disable=SC2086
+exec /usr/local/bin/openagents-web --listen 0.0.0.0:8080 "$@" $github_app \
   --public-host "${PUBLIC_ORIGIN#https://}" --public-host "$ALT_HOST" --public-host "$RUN_HOST" \
   --everglade /srv/everglade --components-build /srv/components \
   --cloud-build /srv/cloud --chat-build /srv/chat --bunny /srv/bunny \

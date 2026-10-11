@@ -618,6 +618,7 @@ mod tests {
             process_id: None,
             closing: String::new(),
             files: None,
+            stage: None,
         };
         super::super::issue_run::save(&scratch.store, &flow).unwrap();
         assert_eq!(retire(&scratch.store, &scratch.task), Retired::NotEnded);

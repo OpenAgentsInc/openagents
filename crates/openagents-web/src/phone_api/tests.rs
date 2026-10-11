@@ -20,6 +20,7 @@ fn item(id: &str, status: &str) -> Item {
         session: Some("s1".into()),
         question: None,
         line: None,
+        choices: Vec::new(),
     }
 }
 
@@ -124,6 +125,78 @@ async fn a_report_keeps_items_and_hands_each_command_out_once() {
     assert_eq!(board.items[0].status, "stopped");
 }
 
+/// The landing queue's entries (#11250) share the integrator computer's
+/// list with Coder's own items: each lane replaces only its own kind, and
+/// a landing report takes no commands.
+#[tokio::test]
+async fn landing_entries_and_coder_items_share_a_computers_list() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::local(dir.path().to_path_buf());
+    let entry = |id: &str, status: &str| Item {
+        kind: LANDING.into(),
+        title: "#11250 Fleet rows".into(),
+        line: Some("queued".into()),
+        ..item(id, status)
+    };
+    assert!(checked_item(entry("e1", "working")).is_some());
+    report(
+        &store,
+        &owner(),
+        "oa-dev-env-1",
+        vec![item("t1", "working")],
+    )
+    .await
+    .unwrap();
+    coder_sync::check_in(&store, &owner(), "oa-dev-env-1")
+        .await
+        .unwrap()
+        .unwrap();
+    queue_action(&store, &owner(), "oa-dev-env-1", command("cmd-0003", "t1"))
+        .await
+        .unwrap();
+    let handed = report_lane(
+        &store,
+        &owner(),
+        "oa-dev-env-1",
+        vec![entry("e1", "working")],
+        true,
+    )
+    .await
+    .unwrap();
+    assert!(handed.is_empty(), "the landing lane takes no commands");
+    let ids = |board: &Board| board.items.iter().map(|i| i.id.clone()).collect::<Vec<_>>();
+    let agents = read_agents(&store, &owner()).await.unwrap();
+    assert_eq!(ids(&agents.boards["oa-dev-env-1"]), ["t1", "e1"]);
+    assert!(
+        landing_item(&store, &owner(), "oa-dev-env-1", "e1")
+            .await
+            .unwrap()
+    );
+    assert!(
+        !landing_item(&store, &owner(), "oa-dev-env-1", "t1")
+            .await
+            .unwrap()
+    );
+    // Coder's next report keeps the entry and takes its command.
+    let handed = report(
+        &store,
+        &owner(),
+        "oa-dev-env-1",
+        vec![item("t2", "working")],
+    )
+    .await
+    .unwrap();
+    assert_eq!(handed, vec![command("cmd-0003", "t1")]);
+    let agents = read_agents(&store, &owner()).await.unwrap();
+    assert_eq!(ids(&agents.boards["oa-dev-env-1"]), ["t2", "e1"]);
+    // An emptied queue clears only the entries.
+    report_lane(&store, &owner(), "oa-dev-env-1", vec![], true)
+        .await
+        .unwrap();
+    let agents = read_agents(&store, &owner()).await.unwrap();
+    assert_eq!(ids(&agents.boards["oa-dev-env-1"]), ["t2"]);
+}
+
 #[tokio::test]
 async fn an_offline_computer_takes_no_action() {
     let dir = tempfile::tempdir().unwrap();
@@ -183,4 +256,58 @@ async fn threads_list_web_terminal_and_phone_chats_with_their_lines() {
             .0
             .is_empty()
     );
+}
+
+/// #11295: an item offers only the two pause choices, once each and in
+/// order, and a choice it doesn't offer is refused.
+#[tokio::test]
+async fn pause_choices_are_cleaned_and_only_offered_ones_queue() {
+    let mut paused = item("agent-1", "failed");
+    paused.kind = "agent".into();
+    paused.choices = vec![
+        "openagents".into(),
+        "delete_everything".into(),
+        "your_key".into(),
+        "openagents".into(),
+    ];
+    let paused = checked_item(paused).unwrap();
+    assert_eq!(paused.choices, ["your_key", "openagents"]);
+    let mut only = item("agent-2", "failed");
+    only.kind = "agent".into();
+    only.choices = vec!["openagents".into()];
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::local(dir.path().to_path_buf());
+    report(
+        &store,
+        &owner(),
+        "Studio",
+        vec![paused, checked_item(only).unwrap(), item("s1", "working")],
+    )
+    .await
+    .unwrap();
+    coder_sync::check_in(&store, &owner(), "Studio")
+        .await
+        .unwrap()
+        .unwrap();
+    let choose = |id: &str, item: &str, action: &str| Command {
+        action: action.into(),
+        ..command(id, item)
+    };
+    for (id, item, action, acted) in [
+        ("cmd-0001", "agent-1", "your_key", Acted::Queued),
+        ("cmd-0002", "agent-2", "your_key", Acted::NotOffered),
+        ("cmd-0003", "agent-2", "openagents", Acted::Queued),
+        ("cmd-0004", "s1", "openagents", Acted::NotOffered),
+    ] {
+        assert_eq!(
+            queue_action(&store, &owner(), "Studio", choose(id, item, action))
+                .await
+                .unwrap(),
+            acted,
+            "{id}"
+        );
+    }
+    // Reported to the phone, the list carries the choices.
+    let json = serde_json::to_value(item("x", "working")).unwrap();
+    assert!(json.get("choices").is_none(), "no choices, no field");
 }

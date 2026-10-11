@@ -196,6 +196,12 @@ pub enum RuntimeEvent {
     /// One model call's usage, as the provider reported it, sent as soon as
     /// the call's stream ends.
     Usage(Box<RoundUsage>),
+    /// The harness a chat's tool turns run under, sent when it is decided
+    /// (#11289).
+    Harness(Box<crate::harness::Run>),
+    /// Where the Claude plan's windows stand, each time Claude Code reports
+    /// one (#11292): run cards show it.
+    Plan(coder_engine_status::PlanUsage),
 }
 
 /// What one model call used and how long it took.
@@ -226,7 +232,11 @@ impl RuntimeEvent {
 
     pub(crate) fn redact(&mut self, keys: &[ApiKey]) {
         match self {
-            Self::Tokens(_) | Self::Progress { .. } | Self::Usage(_) => {}
+            Self::Tokens(_)
+            | Self::Progress { .. }
+            | Self::Usage(_)
+            | Self::Harness(_)
+            | Self::Plan(_) => {}
             Self::Text(text) | Self::Model(text) => *text = redact_text(text, keys),
             Self::Delegation {
                 id,
@@ -631,7 +641,17 @@ pub async fn acp(
         return codex_cli(&program, task, cwd, sandbox, cancel, emit).await;
     }
     if agent.transport == AgentTransport::ClaudeCli {
-        return claude_print::run(&program, task, cwd, cancel, emit).await;
+        // An automated run on a Claude plan login takes a plan slot first
+        // (#11237); a chat the person types into never waits. A turn on the
+        // person's own key (#11295) isn't on the plan.
+        let turn = claude_print::take_next_turn();
+        let _slot = match turn.key {
+            Some(_) => None,
+            None => {
+                Some(crate::claude_plan::admit(cancel, &|name| std::env::var(name).ok()).await?)
+            }
+        };
+        return claude_print::run(&program, task, cwd, cancel, emit, turn).await;
     }
     let cursor = agent.id == "cursor";
     let admitted = std::env::var("OA_CODER_CLOUD_CREDENTIAL_NAMES").unwrap_or_default();
@@ -1204,6 +1224,30 @@ pub async fn microcoder_local(
     if !fell_back_from.is_empty() {
         result["fell_back_from"] = json!(fell_back_from);
     }
+    Ok(result)
+}
+
+/// Coder's own agent on the OpenAgents AI Gateway only, for a task a
+/// Claude plan's usage limit paused that the person handed to OpenAgents
+/// (#11295). It runs no Codex or Claude Code login, and its commands get
+/// `CLAUDE_BIN=/dev/null`, so `claude` never starts.
+pub async fn microcoder_gateway(
+    task: &str,
+    cwd: &Path,
+    jev: Option<jev::Client>,
+    redaction_keys: &[ApiKey],
+    cancel: &Arc<AtomicBool>,
+    emit: &mut dyn FnMut(RuntimeEvent),
+) -> Result<Value, String> {
+    validate_task(task)?;
+    let generator = coder::local_chain::gateway_generator()?;
+    let mut vars = child_env();
+    vars.retain(|(name, _)| name != "CLAUDE_BIN");
+    vars.push(("CLAUDE_BIN".into(), "/dev/null".into()));
+    set_child_env(vars);
+    let mut result =
+        run_microcoder(task, cwd, &generator, jev, redaction_keys, cancel, emit).await?;
+    result["provider"] = json!(generator.provider());
     Ok(result)
 }
 
@@ -2035,6 +2079,11 @@ mod tests {
     #[cfg(unix)]
     async fn native_codex_starts_with_full_permissions_and_streams_its_protocol() {
         use std::os::unix::fs::PermissionsExt;
+        // The sandbox follows the process-wide approval gate and write
+        // setting, which other tests change while they hold this lock.
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = tempfile::tempdir().unwrap();
         let program = dir.path().join("codex");
         std::fs::write(&program, r#"#!/bin/sh

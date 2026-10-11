@@ -467,6 +467,7 @@ fn run_script(issue: u64, land: Option<Land>, build: bool) -> String {
     let land = match land {
         Some(Land::Main) => " --land main",
         Some(Land::PullRequest) => " --land pr",
+        Some(Land::Queue) => " --land queue",
         None => "",
     };
     format!(

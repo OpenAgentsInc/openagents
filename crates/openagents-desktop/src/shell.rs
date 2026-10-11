@@ -350,6 +350,7 @@ impl DesktopApp {
                 restart = true;
             }
             Action::Stop { pid, agent } => terminal.stop(pid, &agent),
+            Action::Choose { pid, agent, choice } => terminal.choose(pid, &agent, &choice),
         }
         if restart
             && self.live
@@ -1520,6 +1521,14 @@ impl App for DesktopApp {
                 } else {
                     self.present();
                 }
+                return;
+            }
+            if action == chrome::Action::Environments {
+                // Tests walk every sidebar row; only a real window opens
+                // the browser.
+                #[cfg(not(test))]
+                openagents_desktop::chat::open_link(chrome::ENVIRONMENTS_URL);
+                self.present();
                 return;
             }
             if action == chrome::Action::Update {

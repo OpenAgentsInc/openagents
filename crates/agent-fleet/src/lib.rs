@@ -123,6 +123,32 @@ pub struct AgentRow {
     pub runs: u32,
     /// When this run started.
     pub run_started_ms: u64,
+    /// Why it has not started its next step yet, such as waiting for the
+    /// person's Claude plan (#11237); `None` while it works.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub waiting: Option<String>,
+    /// What the person may do now that a Claude plan's usage limit paused
+    /// it (#11295): [`YOUR_KEY`] and/or [`OPENAGENTS`], in that order.
+    /// Empty otherwise.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub choices: Vec<String>,
+}
+
+/// A paused agent's choice: continue the same Claude Code conversation now
+/// on the person's own API key, for that one turn.
+pub const YOUR_KEY: &str = "your_key";
+/// A paused agent's choice: hand the rest to Coder's own agent on
+/// OpenAgents, which never starts Claude Code.
+pub const OPENAGENTS: &str = "openagents";
+
+/// The button words for a choice, or `None` for anything else.
+#[must_use]
+pub fn choice_label(choice: &str) -> Option<&'static str> {
+    match choice {
+        YOUR_KEY => Some("Continue on your key"),
+        OPENAGENTS => Some("Continue with OpenAgents"),
+        _ => None,
+    }
 }
 
 impl AgentRow {
@@ -465,6 +491,8 @@ impl<E> Registry<E> {
                 pending_messages: 0,
                 runs: 1,
                 run_started_ms: now,
+                waiting: None,
+                choices: Vec::new(),
             },
             cancel: Arc::clone(&cancel),
             inbox: Vec::new(),
@@ -598,6 +626,7 @@ impl<E> Registry<E> {
         slot.row.status = Status::Running;
         slot.row.ended_ms = None;
         slot.row.error = None;
+        slot.row.choices.clear();
         slot.row.runs += 1;
         slot.row.run_started_ms = now;
         slot.cancel = Arc::new(AtomicBool::new(false));
@@ -607,6 +636,21 @@ impl<E> Registry<E> {
             registry: self.clone(),
             finished: false,
         })
+    }
+
+    /// Sets what an ended agent offers now (#11295); a running agent
+    /// offers nothing, and resuming clears it.
+    pub fn set_choices(&self, key: &str, choices: Vec<String>) {
+        let mut inner = self.lock();
+        let Some(index) = inner.find(key) else {
+            return;
+        };
+        let slot = &mut inner.agents[index];
+        if slot.row.status == Status::Running || slot.row.choices == choices {
+            return;
+        }
+        slot.row.choices = choices;
+        inner.revision += 1;
     }
 
     /// The notices produced since the last call, oldest first.
@@ -692,6 +736,33 @@ impl<E> Control<E> {
             slot.row.worktree = worktree;
             slot.row.branch = branch;
         });
+    }
+
+    /// Says why it is waiting, or that it no longer is.
+    pub fn set_waiting(&self, waiting: Option<String>) {
+        self.registry
+            .with_slot(&self.id, |slot| slot.row.waiting = waiting);
+    }
+
+    /// A handle that sets [`Self::set_waiting`] from another place, such as
+    /// a callback the run hands down.
+    #[must_use]
+    pub fn waiting_setter(&self) -> impl Fn(Option<&str>) + 'static
+    where
+        E: 'static,
+    {
+        let registry = self.registry.clone();
+        let id = self.id.clone();
+        move |waiting| {
+            registry.with_slot(&id, |slot| slot.row.waiting = waiting.map(str::to_owned));
+        }
+    }
+
+    /// Names the engine it now runs on, such as `openagents` after a
+    /// paused Claude Code agent was handed to OpenAgents (#11295).
+    pub fn set_engine(&self, engine: &str) {
+        self.registry
+            .with_slot(&self.id, |slot| slot.row.engine = engine.to_owned());
     }
 
     /// Records where its transcript is kept.

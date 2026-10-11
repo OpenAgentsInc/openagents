@@ -11,6 +11,12 @@ const APP_SECRET: &str = "web-test-app-secret";
 const SETUP_URL: &str = "http://127.0.0.1:4300/auth/github/setup";
 
 async fn world_with_app() -> (World, String) {
+    let (world, install_url, _) = world_with_session().await;
+    (world, install_url)
+}
+
+/// [`world_with_app`], and the site's account-service session.
+async fn world_with_session() -> (World, String, Arc<crate::cloud::session::CloudSession>) {
     let fake = Fake::new(CLIENT, SECRET, REDIRECT, vec![fake::octo(), fake::quiet()]);
     let github_origin = fake.spawn().await.unwrap();
     let credentials = fake::credentials(&github_origin, CLIENT, SECRET, REDIRECT).unwrap();
@@ -56,9 +62,8 @@ async fn world_with_app() -> (World, String) {
     let mut config = crate::Config::development(root.path().join("tasks"));
     let store = Arc::new(Store::local(root.path().join("chats")));
     config.chat_store = store.clone();
-    config.cloud = Some(Arc::new(
-        crate::cloud::session::CloudSession::load(&path).unwrap(),
-    ));
+    let session = Arc::new(crate::cloud::session::CloudSession::load(&path).unwrap());
+    config.cloud = Some(session.clone());
     config.github = Some(Arc::new(oauth));
     let install_url = install.install_url();
     config.github_install = Some(Arc::new(install));
@@ -76,6 +81,7 @@ async fn world_with_app() -> (World, String) {
             origin: ORIGIN.to_owned(),
         },
         install_url,
+        session,
     )
 }
 
@@ -202,4 +208,133 @@ async fn installing_the_app_lists_only_the_chosen_repositories() {
     let again = browser.get(&world, INSTALL).await;
     assert_eq!(again.status, StatusCode::SEE_OTHER);
     assert_eq!(again.location(), install_url);
+}
+
+/// Install the App as `octo-local` on `octo-local/hello-world` only.
+async fn install(browser: &mut Browser, world: &World, install_url: &str) {
+    let start = browser.get(world, INSTALL).await;
+    assert_eq!(start.status, StatusCode::SEE_OTHER, "{}", start.body);
+    let at_github = world
+        .github
+        .get(format!("{}&login=octo-local", start.location()))
+        .send()
+        .await
+        .unwrap();
+    let back = at_github.headers()["location"]
+        .to_str()
+        .unwrap()
+        .to_string();
+    let callback = browser.get(world, back.strip_prefix(ORIGIN).unwrap()).await;
+    let next = callback.body[callback.body.find(FINISH).unwrap()..]
+        .split('"')
+        .next()
+        .unwrap()
+        .replace("&amp;", "&");
+    let finished = browser.get(world, &next).await;
+    assert_eq!(finished.location(), install_url);
+    let installed = world
+        .github
+        .get(format!(
+            "{install_url}?login=octo-local&repos=octo-local/hello-world"
+        ))
+        .send()
+        .await
+        .unwrap();
+    let setup = installed.headers()["location"]
+        .to_str()
+        .unwrap()
+        .to_string();
+    let back = browser
+        .get(world, setup.strip_prefix(ORIGIN).unwrap())
+        .await;
+    assert_eq!(back.location(), PAGE);
+}
+
+/// A run's Git credential helper (#11226): the person's ticket for one
+/// project trades at the site for a token for that repository only, with
+/// no session; anything else gets an error line and no token.
+#[tokio::test]
+async fn a_runs_ticket_trades_for_one_repositorys_token_at_the_site() {
+    let (world, install_url, session) = world_with_session().await;
+    let mut browser = Browser::default();
+    browser.sign_in(&world, "octo-local").await;
+    install(&mut browser, &world, &install_url).await;
+    let mut headers = HeaderMap::new();
+    headers.insert(header::HOST, world.host.parse().unwrap());
+    let cookies: Vec<String> = browser.0.iter().map(|(k, v)| format!("{k}={v}")).collect();
+    headers.insert(header::COOKIE, cookies.join("; ").parse().unwrap());
+
+    // Not a project yet: the account service says so, and the run adds it.
+    let missing = session
+        .github_broker_ticket(&headers, "octo-local/hello-world", 3600)
+        .await;
+    assert!(
+        matches!(
+            missing,
+            Err(crate::cloud::session::github::RepoCallError::Repo(
+                oa_auth::repos::RepoError::NotFound
+            ))
+        ),
+        "{missing:?}"
+    );
+    session
+        .add_project(&headers, "octo-local/hello-world")
+        .await
+        .unwrap();
+    let ticket = session
+        .github_broker_ticket(&headers, "octo-local/hello-world", 3600)
+        .await
+        .unwrap();
+    assert!(ticket.starts_with("ogb_"));
+
+    let redeem = |path: &str| {
+        url::form_urlencoded::Serializer::new(String::new())
+            .extend_pairs([
+                ("ticket", ticket.as_str()),
+                ("protocol", "https"),
+                ("host", "github.com"),
+                ("path", path),
+            ])
+            .finish()
+    };
+    // A machine has no cookie and comes from elsewhere.
+    let mut machine = Browser::default();
+    let answer = machine
+        .send(
+            &world,
+            Request::post(crate::environments::push::CREDENTIAL)
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded"),
+            Body::from(redeem("octo-local/hello-world.git")),
+        )
+        .await;
+    assert_eq!(answer.status, StatusCode::OK, "{}", answer.body);
+    assert!(
+        answer
+            .body
+            .starts_with("username=x-access-token\npassword="),
+        "{}",
+        answer.body
+    );
+    assert!(answer.body.contains("password_expiry_utc="));
+    assert_eq!(answer.headers[header::CACHE_CONTROL], "no-store");
+
+    let other = machine
+        .send(
+            &world,
+            Request::post(crate::environments::push::CREDENTIAL)
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded"),
+            Body::from(redeem("octo-local/secret-plans")),
+        )
+        .await;
+    assert_eq!(other.status, StatusCode::FORBIDDEN, "{}", other.body);
+    assert!(!other.body.contains("password"));
+    let forged = machine
+        .send(
+            &world,
+            Request::post(crate::environments::push::CREDENTIAL)
+                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded"),
+            Body::from(redeem("octo-local/hello-world").replace("ogb_", "ogb_x")),
+        )
+        .await;
+    assert_eq!(forged.status, StatusCode::UNAUTHORIZED, "{}", forged.body);
 }

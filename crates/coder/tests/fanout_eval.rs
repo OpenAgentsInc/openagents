@@ -225,7 +225,8 @@ async fn live_jev() {
                 &admitted,
                 &[],
             )
-            .for_surface(context.surface()),
+            .for_surface(context.surface())
+            .configured(),
         )
         .await
         .expect("Jev answered");

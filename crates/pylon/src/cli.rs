@@ -731,8 +731,12 @@ async fn serve_attested(json_out: bool, args: &mut Args, relay: &str) -> Result<
         })
     });
     let stop = async {
+        #[cfg(unix)]
         let mut term =
             tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).ok();
+        // No SIGTERM off Unix; Ctrl-C still stops the provider.
+        #[cfg(not(unix))]
+        let mut term: Option<NoTerm> = None;
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {}
             () = async { match term.as_mut() { Some(t) => { t.recv().await; } None => std::future::pending().await } } => {}
@@ -1019,4 +1023,15 @@ async fn league(json_out: bool, relay: &str, checkers: BTreeSet<String>) -> Resu
         &crate::league::render(&league),
     );
     Ok(())
+}
+
+/// Stands in for the SIGTERM stream where there is none (Windows).
+#[cfg(not(unix))]
+struct NoTerm;
+
+#[cfg(not(unix))]
+impl NoTerm {
+    async fn recv(&mut self) -> Option<()> {
+        std::future::pending().await
+    }
 }
