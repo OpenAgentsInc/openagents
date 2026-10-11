@@ -876,7 +876,11 @@ mod tests {
             }),
         };
         let event = state_event(&signer(), WORLD, &state, 1);
-        assert!(event.content.contains(r#""look":{"rig":"bunny-v1","shade":7}"#));
+        assert!(
+            event
+                .content
+                .contains(r#""look":{"rig":"bunny-v1","shade":7}"#)
+        );
         assert!(matches!(
             decode(&event, WORLD),
             Ok(Received::State { state: got, .. }) if got == state
@@ -886,7 +890,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(old.look, None);
-        let plain = State { look: None, ..state };
+        let plain = State {
+            look: None,
+            ..state
+        };
         assert!(!serde_json::to_string(&plain).unwrap().contains("look"));
     }
 

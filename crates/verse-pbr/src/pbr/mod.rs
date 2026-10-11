@@ -31,8 +31,8 @@ pub mod instanced;
 pub mod output;
 pub mod relight;
 pub mod screen;
-pub mod taa;
 pub mod sky;
+pub mod taa;
 pub mod textured;
 pub mod textured_bake;
 /// The water a frame draws, at its old path ([`crate::water::frame`]).
