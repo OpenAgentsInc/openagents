@@ -4,7 +4,7 @@ set -eu
 cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 
 # cargo-deny does not expire advisory exceptions. Refuse an overdue review.
-if [ "$(date -u +%Y%m%d)" -ge 20261020 ]; then
+if [ "$(date -u +%Y%m%d)" -ge 20270120 ]; then
     echo 'RUSTSEC-2024-0436 requires a new maintainer review; see docs/dependencies.md.' >&2
     exit 1
 fi

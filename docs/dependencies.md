@@ -95,7 +95,7 @@ that `paste` is unmaintained and lists no patched version. It is not an
 established exploitable vulnerability. The exception applies only to that
 advisory and the inspected `paste 1.0.15`; it does not waive future advisories.
 
-Owner: **OpenAgents Kev maintainers**. Review before **2026-10-20 UTC**.
+Owner: **OpenAgents Kev maintainers**. Review before **2027-01-20 UTC**.
 The script refuses on that date or later and refuses a different resolved
 `paste` version. `cargo-deny` also fails if an ignored advisory is no longer
 encountered, so obsolete exceptions must be removed.
@@ -124,8 +124,9 @@ pass as numerical equivalence or suppress the whole maintenance category.
 
 ## Source provenance and repository licensing
 
-All registry packages in the inspected graph originate from crates.io; no
-Git dependency is admitted. Cargo.lock pins their versions and registry
+Registry packages in the inspected graph originate from crates.io. The seven
+Git repositories listed in `deny.toml` are approved by the owner in #11277;
+keep their revisions pinned in Cargo.lock. Cargo.lock pins their versions and registry
 checksums. This does not review a newly introduced local or vendored source
 by itself. For each such addition, identify its public source, license, and
 revision, preserve required attribution, and review the actual copied files.
@@ -349,3 +350,20 @@ compiled object code is exempt from that notice condition. `deny.toml` admits
 only these two reviewed versions. It does not add a graph-wide license waiver
 or an advisory exception. The dependency gate retains the same 29 errors that
 precede this slice.
+
+## Owner deferral for #11277
+
+On 2026-10-11, the owner requested immediate small fixes, waiver or postponement
+of the remaining work, and closure of #11277. The seven existing Git sources
+are approved, and the paste review deadline moves to 2027-01-20 UTC.
+
+The remaining findings reported in #11277 (missing or rejected licenses,
+unmaintained dependencies, cgmath unsoundness, yanked yoke-derive, and the
+platform-utils wildcard) are waived as release blockers for the existing
+locked graph until 2027-01-20. Replacement and license investigation are
+postponed to that review. This decision does not establish license rights,
+remove distribution notice obligations, or apply to new dependencies or new
+advisories. No license declarations or lockfile versions were invented or changed.
+
+The checker continues to report these findings and can exit nonzero; this is
+an owner risk acceptance, not a claim that all four automated checks pass.
