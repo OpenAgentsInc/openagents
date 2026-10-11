@@ -18,6 +18,7 @@ use crate::settings::accounts::{
     self, AccountsSnapshotCache, UsageLevel, render_usage_meter, reports_usage, signs_in,
     usage_color, usage_level,
 };
+use crate::settings::widgets;
 use crate::state::AppState;
 use crate::theme::Theme;
 
@@ -300,6 +301,7 @@ impl AccountUsage {
     fn accounts_card(&self, cx: &mut Context<Self>) -> gpui::Div {
         let theme = &Theme::of(cx).for_popup();
         let harness = self.harness;
+        let now = chrono::Utc::now();
         let rows: Vec<AgentAccount> = match (harness, self.snapshot(cx)) {
             (Some(harness), Some(snapshot)) => accounts::provider_accounts(snapshot, harness)
                 .into_iter()
@@ -372,13 +374,25 @@ impl AccountUsage {
                             }),
                     )
                     .child(
-                        div().flex_none().flex().flex_col().gap(px(2.0)).children(
-                            account
-                                .usage_windows
-                                .iter()
-                                .take(2)
-                                .map(|window| render_usage_meter(window, theme)),
-                        ),
+                        div()
+                            .id(("account-usage-meters", ix))
+                            .flex_none()
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.0))
+                            .when(!account.usage_windows.is_empty(), |meters| {
+                                meters.tooltip(widgets::text_tooltip(accounts::usage_resets(
+                                    &account.usage_windows,
+                                    now,
+                                )))
+                            })
+                            .children(
+                                account
+                                    .usage_windows
+                                    .iter()
+                                    .take(2)
+                                    .map(|window| render_usage_meter(window, theme)),
+                            ),
                     )
             }))
             .children(self.error.clone().map(|error| {
