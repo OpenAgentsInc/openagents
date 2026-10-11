@@ -304,7 +304,24 @@ fn a_claude_code_run_reads_as_a_conversation() {
     ] {
         assert!(html.contains(needle), "{needle} missing");
     }
+    assert!(!html.contains("Cost"), "{html}");
     assert!(oa_copy::violations(&text(&html), &[]).is_empty());
+    let costed = view::run_transcript(&Run {
+        cost_usd: Some(0.125),
+        ..run.clone()
+    })
+    .into_string();
+    assert!(costed.contains("Cost so far: "), "{costed}");
+    let done = view::run_transcript(&Run {
+        cost_usd: Some(0.125),
+        state: RunState::Done,
+        ..run.clone()
+    })
+    .into_string();
+    assert!(
+        done.contains("Cost: ") && !done.contains("so far"),
+        "{done}"
+    );
 
     // Paused by a usage limit: the choices it offers, as buttons.
     use coder_cloud::claude::OwnCredential;

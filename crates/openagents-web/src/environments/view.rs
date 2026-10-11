@@ -857,6 +857,16 @@ pub(crate) fn run_transcript_with(run: &Run, offered: &[PauseChoice]) -> Markup 
         ),
         RunState::Stopped => turns.push(note("Stopped").render()),
     }
+    // What the run has cost: its computer's time plus Claude Code's own
+    // reported cost, the same figure the chat's Agents panel shows.
+    if let Some(cost) = run.cost_usd {
+        let word = if run.state.finished() {
+            "Cost"
+        } else {
+            "Cost so far"
+        };
+        turns.push(note(format!("{word}: {}", agent_fleet::dollars(cost))).render());
+    }
     // Where the Claude plan stands, as Claude Code reported it in this run
     // (#11292); a window that has reset is left out.
     let now = std::time::SystemTime::now()
