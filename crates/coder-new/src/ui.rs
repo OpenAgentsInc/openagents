@@ -77,7 +77,7 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         x: area.x + 2,
         y: area.y + top_padding,
         width: area.width.saturating_sub(4),
-        height: area.height.saturating_sub(top_padding + 1),
+        height: area.height.saturating_sub(top_padding),
     };
     if let Some(event) = &app.disclosure_event {
         let text = if event["kind"] == "action" {
@@ -131,13 +131,15 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
     .min(usize::from(area.height.saturating_sub(6))) as u16;
     let composer_height = (draft.len() as u16).clamp(1, 6) + 2;
     let header_height = u16::from(app.selected_agent.is_some());
-    let reserved = rail_height + 2 + header_height;
+    let context_text = context_text(app);
+    let context_height = u16::from(!context_text.is_empty());
+    let reserved = rail_height + 1 + context_height + header_height;
     let [header, body, queued, composer, context, rail] = Layout::vertical([
         Constraint::Length(header_height),
         Constraint::Min(1),
         Constraint::Length(app.queued_prompts.len().min(3) as u16),
         Constraint::Length(composer_height.min(area.height.saturating_sub(reserved))),
-        Constraint::Length(1),
+        Constraint::Length(context_height),
         Constraint::Length(rail_height),
     ])
     .areas(area);
@@ -217,7 +219,10 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         None,
         Some((&path, Style::default().fg(t::GRAY))),
     );
-    context_view(frame, context, app);
+    frame.render_widget(
+        Paragraph::new(span(truncate(&context_text, context.width), t::GRAY)),
+        context,
+    );
     agent_rail(frame, rail, app);
     if app.model_picker.is_some() {
         models::render(frame, app);
@@ -516,7 +521,7 @@ fn repository_rail(app: &App) -> String {
     text
 }
 
-fn context_view(frame: &mut Frame, area: Rect, app: &App) {
+fn context_text(app: &App) -> String {
     let mut parts = Vec::new();
     if let Some(until) = crate::long_session::paused_until(app) {
         parts.push(format!(
@@ -530,10 +535,7 @@ fn context_view(frame: &mut Frame, area: Rect, app: &App) {
     if let Some(update) = &app.update_line {
         parts.push(update.clone());
     }
-    frame.render_widget(
-        Paragraph::new(span(truncate(&parts.join(" · "), area.width), t::GRAY)),
-        area,
-    );
+    parts.join(" · ")
 }
 
 fn message_body(text: &str, width: u16) -> Vec<Line<'static>> {
@@ -1516,6 +1518,32 @@ mod export_notice_tests {
                 assert_eq!(buffer[(x, y)].symbol(), glyph);
             }
         }
+    }
+
+    #[test]
+    fn empty_footer_does_not_leave_a_row_below_the_composer() {
+        for (width, height) in [(24, 12), (60, 20), (100, 30)] {
+            let mut app = App::default();
+            app.mode = Mode::Live;
+            let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+            terminal.draw(|frame| render(frame, &mut app)).unwrap();
+            let buffer = terminal.backend().buffer();
+            assert_eq!(buffer[(0, height - 1)].symbol(), "└");
+            assert_eq!(buffer[(width - 1, height - 1)].symbol(), "┘");
+        }
+    }
+
+    #[test]
+    fn populated_footer_keeps_its_row_below_the_composer() {
+        let mut app = App::default();
+        app.mode = Mode::Live;
+        app.account = Some("Signed in".into());
+        let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
+        terminal.draw(|frame| render(frame, &mut app)).unwrap();
+        let buffer = terminal.backend().buffer();
+        assert_eq!(buffer[(0, 18)].symbol(), "└");
+        let text: String = (0..60).map(|x| buffer[(x, 19)].symbol()).collect();
+        assert_eq!(text.trim(), "Signed in");
     }
 
     #[test]
