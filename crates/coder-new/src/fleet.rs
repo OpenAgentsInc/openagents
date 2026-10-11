@@ -181,6 +181,158 @@ struct StopArguments {
     agent: String,
 }
 
+/// The engine of an agent handed to OpenAgents (#11295): Coder's own agent
+/// on the OpenAgents AI Gateway, which never starts Claude Code.
+pub const OPENAGENTS_ENGINE: &str = "openagents";
+
+/// What a Claude Code agent a usage limit stopped says, in short plain
+/// words, or `None` for any other row.
+#[must_use]
+pub fn limit_words(row: &agent_fleet::AgentRow) -> Option<String> {
+    if row.engine != crate::bundled_runtime::claude_print::ID
+        || row.status != agent_fleet::Status::Failed
+    {
+        return None;
+    }
+    let error = row.error.as_deref()?;
+    if !coder_engine_status::limit::says_limited(error) {
+        return None;
+    }
+    let now = coder_delegate::limit::now();
+    Some(
+        match coder_engine_status::limit::reset_from_message(error, now).filter(|at| *at > now) {
+            Some(at) => format!(
+                "Paused by the Claude plan limit until {}",
+                crate::long_session::clock(at.saturating_mul(1000))
+            ),
+            None => "Paused by the Claude plan limit".to_owned(),
+        },
+    )
+}
+
+/// The choices a Claude Code agent a usage limit stopped offers (#11295),
+/// by the rule Cloud tasks use ([`coder_cloud::claude_task::offered`]):
+/// [`agent_fleet::YOUR_KEY`] when the person's own API key is here and the
+/// conversation was kept, then [`agent_fleet::OPENAGENTS`]. Waiting is not
+/// a button. Any other row offers none.
+#[must_use]
+pub fn pause_choices(
+    row: &agent_fleet::AgentRow,
+    env: &dyn Fn(&str) -> Option<String>,
+) -> Vec<String> {
+    use coder_cloud::claude_task::PauseChoice;
+    if limit_words(row).is_none() {
+        return Vec::new();
+    }
+    let kept = row
+        .error
+        .as_deref()
+        .and_then(crate::bundled_runtime::claude_print::limited_session)
+        .is_some();
+    coder_cloud::claude_task::offered(crate::bundled_runtime::claude_print::saved_class(env))
+        .into_iter()
+        .filter_map(|choice| match choice {
+            PauseChoice::KeepWaiting => None,
+            PauseChoice::ContinueOnYourKey(_) => kept.then(|| agent_fleet::YOUR_KEY.to_owned()),
+            PauseChoice::ContinueWithOpenAgents => Some(agent_fleet::OPENAGENTS.to_owned()),
+        })
+        .collect()
+}
+
+/// Applies a paused agent's choice (#11295): [`agent_fleet::YOUR_KEY`]
+/// continues the same Claude Code conversation now on the person's own API
+/// key for one turn; [`agent_fleet::OPENAGENTS`] hands the rest to Coder's
+/// own agent on OpenAgents, which never starts Claude Code. Returns what to
+/// tell the person.
+///
+/// # Errors
+/// No such agent, or the choice isn't open for it now.
+pub(crate) fn choose(
+    host: &Host,
+    execution: &ExecutionSettings,
+    key: &str,
+    choice: &str,
+    env: &dyn Fn(&str) -> Option<String>,
+) -> Result<String, String> {
+    let row = host
+        .fleet
+        .get(key)
+        .ok_or_else(|| format!("There is no agent called {key}."))?;
+    if !pause_choices(&row, env)
+        .iter()
+        .any(|offered| offered == choice)
+    {
+        return Err("That choice isn't open now.".into());
+    }
+    let checkout = kept_checkout(execution, &row);
+    let worktree = row.worktree.is_some() || checkout.is_some();
+    let (engine, tool, task, turn) = match choice {
+        agent_fleet::YOUR_KEY => {
+            let own = crate::bundled_runtime::claude_print::own_key(env)
+                .ok_or("Add your own Anthropic API key to continue now.")?;
+            let session = row
+                .error
+                .as_deref()
+                .and_then(crate::bundled_runtime::claude_print::limited_session)
+                .ok_or("That Claude Code conversation can't be continued.")?;
+            (
+                row.engine.clone(),
+                "acp_subagent".to_owned(),
+                crate::long_session::RESUME_TEXT.to_owned(),
+                Some(crate::bundled_runtime::claude_print::Turn {
+                    resume: Some(session),
+                    key: Some(own),
+                }),
+            )
+        }
+        _ => (
+            OPENAGENTS_ENGINE.to_owned(),
+            OPENAGENTS_ENGINE.to_owned(),
+            coder_cloud::claude_task::handoff_prompt(&row.task),
+            None,
+        ),
+    };
+    let control = host.fleet.resume(key)?;
+    control.set_engine(&engine);
+    let handed = engine == OPENAGENTS_ENGINE;
+    let run = Run {
+        host: host.clone(),
+        execution: execution.clone(),
+        engine,
+        tool,
+        task,
+        provider: None,
+        worktree,
+        checkout,
+        history: vec![format!("Your task was: {}", row.task)],
+        turn,
+    };
+    launch(control, run)?;
+    Ok(if handed {
+        format!("OpenAgents is continuing {}.", row.name)
+    } else {
+        format!("{} is continuing now on your key.", row.name)
+    })
+}
+
+/// The agent's own checkout, when it still has one.
+fn kept_checkout(
+    execution: &ExecutionSettings,
+    row: &agent_fleet::AgentRow,
+) -> Option<coder::branch_checkout::BranchCheckout> {
+    match (&row.worktree, &row.branch) {
+        (Some(path), Some(branch)) if path.exists() => {
+            Some(coder::branch_checkout::BranchCheckout {
+                repository: execution.cwd.clone(),
+                path: path.clone(),
+                branch: branch.clone(),
+                base: String::new(),
+            })
+        }
+        _ => None,
+    }
+}
+
 /// The plugin tool and its arguments that run `engine` on `task`.
 ///
 /// # Errors
@@ -190,6 +342,9 @@ pub fn engine_call(
     engine: &str,
     task: &str,
 ) -> Result<(String, Value), String> {
+    if engine == OPENAGENTS_ENGINE {
+        return Ok((OPENAGENTS_ENGINE.into(), json!({"task":task})));
+    }
     if engine == "microcoder" {
         return if execution.microcoder {
             Ok(("microcoder".into(), json!({"task":task})))
@@ -316,6 +471,7 @@ pub(crate) fn start(
         worktree,
         checkout: None,
         history: Vec::new(),
+        turn: None,
     };
     launch(control, run)?;
     Ok(row)
@@ -338,17 +494,7 @@ pub(crate) fn resume(
         .get(key)
         .ok_or_else(|| format!("There is no agent called {key}."))?;
     let (tool, _) = engine_call(execution, &row.engine, message)?;
-    let checkout = match (&row.worktree, &row.branch) {
-        (Some(path), Some(branch)) if path.exists() => {
-            Some(coder::branch_checkout::BranchCheckout {
-                repository: execution.cwd.clone(),
-                path: path.clone(),
-                branch: branch.clone(),
-                base: String::new(),
-            })
-        }
-        _ => None,
-    };
+    let checkout = kept_checkout(execution, &row);
     let control = host.fleet.resume(key)?;
     let history = vec![
         format!("Your task was: {}", row.task),
@@ -373,6 +519,7 @@ pub(crate) fn resume(
         worktree: row.worktree.is_some() || checkout.is_some(),
         checkout,
         history,
+        turn: None,
     };
     launch(control, run)
 }
@@ -387,6 +534,8 @@ struct Run {
     worktree: bool,
     checkout: Option<coder::branch_checkout::BranchCheckout>,
     history: Vec<String>,
+    /// How its first Claude Code turn goes, after a usage limit (#11295).
+    turn: Option<crate::bundled_runtime::claude_print::Turn>,
 }
 
 fn launch(control: agent_fleet::Control<RuntimeEvent>, run: Run) -> Result<(), String> {
@@ -449,9 +598,12 @@ impl Run {
         let outcome = loop {
             chat.entries.push(Entry::User(task.clone()));
             let arguments = match self.tool.as_str() {
-                "microcoder" => json!({"task":task}),
+                "microcoder" | OPENAGENTS_ENGINE => json!({"task":task}),
                 _ => json!({"agent":self.engine,"task":task}),
             };
+            if let Some(turn) = self.turn.take() {
+                crate::bundled_runtime::claude_print::set_next_turn(turn);
+            }
             control.event(RuntimeEvent::Tool {
                 name: self.tool.clone(),
                 input: arguments.clone(),
@@ -463,15 +615,30 @@ impl Run {
                 record(&mut chat, &event);
                 control.event(event);
             };
-            let result = execution
-                .execute(
-                    &self.tool,
-                    arguments,
-                    self.provider.clone(),
+            let result = if self.tool == OPENAGENTS_ENGINE {
+                // Handed to OpenAgents: Coder's own agent on the gateway
+                // only; claude never starts.
+                let jev = execution.jev_client().ok().flatten();
+                crate::bundled_runtime::microcoder_gateway(
+                    &task,
+                    &cwd,
+                    jev,
+                    &execution.redaction_keys,
                     &cancel,
                     &mut emit,
                 )
-                .await;
+                .await
+            } else {
+                execution
+                    .execute(
+                        &self.tool,
+                        arguments,
+                        self.provider.clone(),
+                        &cancel,
+                        &mut emit,
+                    )
+                    .await
+            };
             let output = match &result {
                 Ok(value) => value.clone(),
                 Err(error) => json!({"error":error}),

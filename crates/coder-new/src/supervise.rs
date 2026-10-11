@@ -138,7 +138,9 @@ impl App {
                 tokens: (row.tokens > 0).then_some(row.tokens),
                 session: row.parent_session.clone(),
                 question: None,
-                line: Some(short(&row.task, 200)).filter(|t| !t.is_empty()),
+                line: crate::fleet::limit_words(&row)
+                    .or_else(|| Some(short(&row.task, 200)).filter(|t| !t.is_empty())),
+                choices: row.choices.clone(),
             })
             .collect()
     }
@@ -190,6 +192,7 @@ impl App {
                     session: None,
                     question: None,
                     line: Some(short(&agent.task, 200)).filter(|t| !t.is_empty()),
+                    choices: Vec::new(),
                 }
             })
             .collect();
@@ -206,6 +209,7 @@ impl App {
             session: Some(session.to_owned()),
             question: None,
             line: None,
+            choices: Vec::new(),
         };
         // A reply that ended (or whose chat closed) is finished work.
         let ended = match (&board.turn, &session) {
@@ -268,6 +272,10 @@ impl App {
                         let id = command.item.clone();
                         self.deliver_agent_message(&id, text);
                     }
+                }
+                agent_fleet::YOUR_KEY | agent_fleet::OPENAGENTS => {
+                    let id = command.item.clone();
+                    self.choose_for_agent(&id, &command.action, "your phone");
                 }
                 _ => {}
             }
@@ -417,6 +425,47 @@ mod tests {
         assert_eq!(agents[0].cost_usd, Some(0.42));
         app.apply_command(&command(control.id(), "stop"));
         assert!(control.stopped());
+    }
+
+    /// #11295: a Claude Code agent a usage limit paused carries its
+    /// choices and pause line to the phone; a choice it doesn't offer is
+    /// refused plainly.
+    #[test]
+    fn a_paused_agent_offers_its_choices_to_the_phone() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = signed_in_app(dir.path());
+        let control = app
+            .fleet
+            .start(agent_fleet::Spec {
+                engine: "claude".into(),
+                task: "fix the login".into(),
+                ..agent_fleet::Spec::default()
+            })
+            .unwrap();
+        let id = control.id().to_owned();
+        let error = crate::bundled_runtime::claude_print::limited(
+            Some(coder_delegate::limit::now() + 600),
+            Some(&crate::bundled_runtime::claude_print::new_session()),
+        );
+        control.finish(agent_fleet::Outcome::Failed(error));
+        app.poll_fleet();
+        let items = app.activity_items();
+        let agent = items.iter().find(|item| item.id == id).unwrap();
+        assert!(agent.choices.contains(&agent_fleet::OPENAGENTS.to_owned()));
+        assert!(
+            agent
+                .line
+                .as_deref()
+                .is_some_and(|line| line.starts_with("Paused by the Claude plan limit")),
+            "{agent:?}"
+        );
+        // Without the person's own key here, Continue on your key isn't
+        // open, so the phone's ask is refused.
+        if std::env::var_os("ANTHROPIC_API_KEY").is_none() {
+            assert_eq!(agent.choices, [agent_fleet::OPENAGENTS]);
+            app.apply_command(&command(&id, agent_fleet::YOUR_KEY));
+            assert_eq!(app.notice.as_deref(), Some("That choice isn't open now."));
+        }
     }
 
     #[test]

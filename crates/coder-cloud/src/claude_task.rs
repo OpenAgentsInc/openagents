@@ -368,6 +368,14 @@ pub fn pause_choices(record: &Record, saved: Option<OwnCredential>) -> Vec<Pause
     if pause(record).is_none() {
         return Vec::new();
     }
+    offered(saved)
+}
+
+/// The choices any task a usage limit paused offers, given the credential
+/// the person saved: the same rule for Cloud tasks, saved-environment runs
+/// and Coder's local agents (#11295).
+#[must_use]
+pub fn offered(saved: Option<OwnCredential>) -> Vec<PauseChoice> {
     let mut choices = vec![PauseChoice::KeepWaiting];
     if let Some(class) = saved.filter(|class| *class != OwnCredential::SubscriptionToken) {
         choices.push(PauseChoice::ContinueOnYourKey(class));

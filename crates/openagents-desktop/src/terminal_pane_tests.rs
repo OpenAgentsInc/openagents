@@ -33,6 +33,7 @@ fn row(id: &str, status: Status, started_ms: u64) -> AgentRow {
         runs: 1,
         run_started_ms: started_ms,
         waiting: None,
+        choices: Vec::new(),
     }
 }
 
@@ -268,6 +269,42 @@ fn the_agents_panel_lists_every_coder_s_agents_with_stop_for_running_ones() {
     drop(second);
     assert!(pane.refresh_agents(now + AGENTS_EVERY));
     assert_eq!(pane.agent_lines().len(), 2);
+}
+
+/// #11295: an agent a Claude plan's usage limit paused shows exactly the
+/// choices it offers, as buttons, and says it is paused.
+#[test]
+fn a_paused_agent_shows_its_choices() {
+    let home = tempfile::tempdir().unwrap();
+    let dir = agent_fleet::board::dir(home.path());
+    let mut paused = row("agent-3", Status::Failed, 1_000);
+    paused.engine = "claude".into();
+    paused.choices = vec![agent_fleet::OPENAGENTS.into()];
+    let mut publisher = agent_fleet::board::Publisher::new(&dir, 300, None);
+    publisher.publish(&[paused]).unwrap();
+    let mut pane = TerminalPane::new(Some(dir.clone()));
+    pane.alive = |_, _| true;
+    assert!(pane.refresh_agents(Instant::now()));
+    pane.fit(1200.0);
+    assert!(
+        pane.agent_lines()[0]
+            .words(0)
+            .ends_with("paused by the Claude plan limit")
+    );
+    let keys = all_keys(&pane.pane(10_000));
+    assert!(
+        keys.iter()
+            .any(|k| k == "terminal-agent-300-agent-3-openagents")
+    );
+    assert!(
+        !keys
+            .iter()
+            .any(|k| k == "terminal-agent-300-agent-3-your_key")
+    );
+    assert!(!keys.iter().any(|k| k == "terminal-agent-300-agent-3-stop"));
+    pane.choose(300, "agent-3", agent_fleet::OPENAGENTS);
+    assert!(dir.join("300.agent-3.openagents").exists());
+    assert_eq!(engine_name("openagents"), "OpenAgents");
 }
 
 #[test]

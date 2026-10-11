@@ -198,6 +198,7 @@ fn elapsed_counts_every_run() {
         runs: 2,
         run_started_ms: 10_000,
         waiting: None,
+        choices: Vec::new(),
     };
     assert_eq!(row.elapsed_seconds(999_999), 90);
     row.ended_ms = None;
@@ -252,4 +253,31 @@ fn transcripts_are_grouped_by_parent_chat() {
         transcript_path(root, None, "agent-2"),
         PathBuf::from("/t/unsaved/agent-2.json")
     );
+}
+
+/// #11295: an ended agent's pause choices show until it runs again, and a
+/// hand-off can name the engine it now runs on.
+#[test]
+fn pause_choices_show_on_an_ended_agent_until_it_resumes() {
+    let registry: Registry<String> = Registry::default();
+    let control = registry.start(spec("claude", "fix it")).unwrap();
+    registry.set_choices("agent-1", vec![OPENAGENTS.into()]);
+    assert!(
+        registry.get("agent-1").unwrap().choices.is_empty(),
+        "a running agent offers nothing"
+    );
+    control.finish(Outcome::Failed("limit".into()));
+    registry.set_choices("agent-1", vec![YOUR_KEY.into(), OPENAGENTS.into()]);
+    let row = registry.get("agent-1").unwrap();
+    assert_eq!(row.choices, [YOUR_KEY, OPENAGENTS]);
+    assert_eq!(row.to_json(0)["choices"][1], OPENAGENTS);
+    assert_eq!(choice_label(YOUR_KEY), Some("Continue on your key"));
+    assert_eq!(choice_label("keep_waiting"), None);
+    let again = registry.resume("agent-1").unwrap();
+    again.set_engine("openagents");
+    let row = registry.get("agent-1").unwrap();
+    assert!(row.choices.is_empty());
+    assert_eq!(row.engine, "openagents");
+    assert!(row.to_json(0).get("choices").is_none());
+    again.finish(Outcome::Done("ok".into()));
 }

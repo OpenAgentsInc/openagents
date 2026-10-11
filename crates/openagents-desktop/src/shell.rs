@@ -350,6 +350,7 @@ impl DesktopApp {
                 restart = true;
             }
             Action::Stop { pid, agent } => terminal.stop(pid, &agent),
+            Action::Choose { pid, agent, choice } => terminal.choose(pid, &agent, &choice),
         }
         if restart
             && self.live

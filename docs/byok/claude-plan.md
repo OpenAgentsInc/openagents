@@ -236,9 +236,16 @@ page and the chat's Agents panel show the two buttons beside "It continues on
 its own at …". The driver that holds the run's lease applies the choice; a
 saved subscription token is never offered or accepted as "your key"; and the
 OpenAgents hand-off is a new run of Coder's own agent in the same environment
-version whose launch finds no `claude` binary. Not yet: the same row in local
-Coder (`claude -p` runs with `--no-session-persistence`, so there is no
-session to resume yet) and the desktop and phone agent rows.
+version whose launch finds no `claude` binary. Local Coder does the same for
+its background agents ([#11295](https://github.com/OpenAgentsInc/openagents/issues/11295)):
+`claude -p` runs now keep their conversation under a session id Coder picks
+(`--session-id`), and a usage limit names it, so **Continue on your key**
+re-runs `claude -p --resume <id>` for that one turn with the person's own
+`ANTHROPIC_API_KEY` (never a subscription token, and off the plan's slot), and
+**Continue with OpenAgents** hands the task to Coder's own agent on the
+OpenAgents gateway only, with `CLAUDE_BIN=/dev/null`. The choices show in
+`/agents` (keys 1 and 2), as buttons on the desktop app's Agents panel, and on
+the phone's agent rows, which also list paused saved-environment runs.
 
 **Different on purpose.** We never continue a customer's Claude Code session on
 Claude billed to our account, even on our Vertex: Anthropic's terms forbid

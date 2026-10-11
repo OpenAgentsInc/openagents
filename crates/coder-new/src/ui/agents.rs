@@ -86,6 +86,9 @@ pub(crate) fn lines(app: &App, width: u16) -> Vec<Line<'static>> {
         if let Some(waiting) = &row.waiting {
             detail = format!("{waiting} · {detail}");
         }
+        if let Some(paused) = crate::fleet::limit_words(row) {
+            detail = format!("{paused} · {detail}");
+        }
         if row.pending_messages > 0 {
             detail = format!("{} message(s) waiting · {detail}", row.pending_messages);
         }
@@ -95,6 +98,22 @@ pub(crate) fn lines(app: &App, width: u16) -> Vec<Line<'static>> {
         )));
     }
     lines.push(Line::default());
+    // A paused agent's choices (#11295), only the ones it offers.
+    let offered = rows
+        .get(selected.min(rows.len().saturating_sub(1)))
+        .map(|row| {
+            [("1", agent_fleet::YOUR_KEY), ("2", agent_fleet::OPENAGENTS)]
+                .iter()
+                .filter(|(_, choice)| row.choices.iter().any(|c| c == choice))
+                .filter_map(|(key, choice)| {
+                    agent_fleet::choice_label(choice).map(|label| format!("{key} {label}"))
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if !offered.is_empty() {
+        lines.push(Line::from(span(offered.join(" · "), t::ACCENT_MODEL)));
+    }
     lines.push(Line::from(span(
         "↑↓ choose · Enter open · s stop · m message · r resume · Esc close",
         t::GRAY,

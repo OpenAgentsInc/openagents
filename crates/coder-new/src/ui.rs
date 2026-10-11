@@ -979,6 +979,15 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
                     crate::bundled_runtime::RuntimeEvent::progress_line(*step, *complete)
                 }
                 _ if *running => "Running".into(),
+                // A Claude plan limit stopped it (#11295); a background
+                // agent's choices are in /agents.
+                _ if output
+                    .get("error")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(coder_engine_status::limit::says_limited) =>
+                {
+                    "Paused by the Claude plan limit".into()
+                }
                 _ if output.get("error").is_some() => "Failed".into(),
                 _ => "Done".into(),
             };

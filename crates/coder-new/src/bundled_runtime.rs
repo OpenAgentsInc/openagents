@@ -642,9 +642,16 @@ pub async fn acp(
     }
     if agent.transport == AgentTransport::ClaudeCli {
         // An automated run on a Claude plan login takes a plan slot first
-        // (#11237); a chat the person types into never waits.
-        let _slot = crate::claude_plan::admit(cancel, &|name| std::env::var(name).ok()).await?;
-        return claude_print::run(&program, task, cwd, cancel, emit).await;
+        // (#11237); a chat the person types into never waits. A turn on the
+        // person's own key (#11295) isn't on the plan.
+        let turn = claude_print::take_next_turn();
+        let _slot = match turn.key {
+            Some(_) => None,
+            None => {
+                Some(crate::claude_plan::admit(cancel, &|name| std::env::var(name).ok()).await?)
+            }
+        };
+        return claude_print::run(&program, task, cwd, cancel, emit, turn).await;
     }
     let cursor = agent.id == "cursor";
     let admitted = std::env::var("OA_CODER_CLOUD_CREDENTIAL_NAMES").unwrap_or_default();
@@ -1217,6 +1224,30 @@ pub async fn microcoder_local(
     if !fell_back_from.is_empty() {
         result["fell_back_from"] = json!(fell_back_from);
     }
+    Ok(result)
+}
+
+/// Coder's own agent on the OpenAgents AI Gateway only, for a task a
+/// Claude plan's usage limit paused that the person handed to OpenAgents
+/// (#11295). It runs no Codex or Claude Code login, and its commands get
+/// `CLAUDE_BIN=/dev/null`, so `claude` never starts.
+pub async fn microcoder_gateway(
+    task: &str,
+    cwd: &Path,
+    jev: Option<jev::Client>,
+    redaction_keys: &[ApiKey],
+    cancel: &Arc<AtomicBool>,
+    emit: &mut dyn FnMut(RuntimeEvent),
+) -> Result<Value, String> {
+    validate_task(task)?;
+    let generator = coder::local_chain::gateway_generator()?;
+    let mut vars = child_env();
+    vars.retain(|(name, _)| name != "CLAUDE_BIN");
+    vars.push(("CLAUDE_BIN".into(), "/dev/null".into()));
+    set_child_env(vars);
+    let mut result =
+        run_microcoder(task, cwd, &generator, jev, redaction_keys, cancel, emit).await?;
+    result["provider"] = json!(generator.provider());
     Ok(result)
 }
 

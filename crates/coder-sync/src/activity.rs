@@ -50,6 +50,11 @@ pub struct Item {
     pub question: Option<Question>,
     /// A short line about what it is doing.
     pub line: Option<String>,
+    /// While a Claude plan's usage limit pauses it: what the person may do,
+    /// `your_key` (continue on their own API key) and/or `openagents`
+    /// (hand it to Coder's own agent), as [`Command::action`]s (#11295).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub choices: Vec<String>,
 }
 
 impl Item {
@@ -66,7 +71,8 @@ pub struct Command {
     pub id: String,
     /// The [`Item::id`] it is for.
     pub item: String,
-    /// `stop`, `approve`, `deny`, or `message`.
+    /// `stop`, `approve`, `deny`, `message`, or a paused item's choice
+    /// (`your_key`, `openagents`).
     pub action: String,
     #[serde(default)]
     pub question: Option<String>,
@@ -175,6 +181,7 @@ mod tests {
             session: Some("s1".into()),
             question: None,
             line: None,
+            choices: Vec::new(),
         }
     }
 

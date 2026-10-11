@@ -93,6 +93,7 @@ pub(crate) fn item(entry: &Entry) -> Item {
         session: None,
         question: None,
         line: Some(line(entry)),
+        choices: Vec::new(),
     }
 }
 

@@ -402,6 +402,9 @@ impl AgentLine {
         if let Some(cost) = row.cost_usd {
             parts.push(agent_fleet::dollars(cost));
         }
+        if !row.choices.is_empty() {
+            parts.push("paused by the Claude plan limit".into());
+        }
         parts.join(" · ")
     }
 }
@@ -415,6 +418,8 @@ pub fn engine_name(engine: &str) -> &str {
         "grok" | "grok-build" => "Grok Build",
         // Coder's own engine; its inner name is not shown (#11031).
         "microcoder" | "coder" => "Coder",
+        // A paused Claude Code agent handed to OpenAgents (#11295).
+        "openagents" => "OpenAgents",
         other if crate::words::banned_in(other).is_empty() => other,
         _ => "Coder",
     }
@@ -659,6 +664,15 @@ impl TerminalPane {
     pub fn stop(&mut self, pid: u32, id: &str) {
         if let Some(dir) = &self.board {
             let _ = agent_fleet::board::request_stop(dir, pid, id);
+        }
+        self.agents_read = None;
+    }
+
+    /// Asks the `coder` running paused agent `id` to apply `choice`
+    /// (#11295); the panel shows it working again once it does.
+    pub fn choose(&mut self, pid: u32, id: &str, choice: &str) {
+        if let Some(dir) = &self.board {
+            let _ = agent_fleet::board::request_choice(dir, pid, id, choice);
         }
         self.agents_read = None;
     }
@@ -1007,6 +1021,20 @@ impl TerminalPane {
                         agent: line.row.id.clone(),
                     },
                 ));
+            }
+            // A paused agent's choices (#11295), only the ones it offers.
+            for choice in &line.row.choices {
+                if let Some(label) = agent_fleet::choice_label(choice) {
+                    row.push(button(
+                        &format!("{key}-{choice}"),
+                        label,
+                        Action::Choose {
+                            pid: line.pid,
+                            agent: line.row.id.clone(),
+                            choice: choice.clone(),
+                        },
+                    ));
+                }
             }
             children.push(stack(&key, Axis::Horizontal, row));
         }

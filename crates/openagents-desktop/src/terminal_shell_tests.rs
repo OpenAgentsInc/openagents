@@ -128,3 +128,24 @@ fn stop_in_the_agents_panel_reaches_the_coder_that_runs_the_agent() {
     );
     assert!(dir.join("4242.agent-2.stop").exists());
 }
+
+/// #11295: a paused agent's choice in the Agents panel leaves the request
+/// for the `coder` that runs it.
+#[test]
+fn a_pause_choice_in_the_agents_panel_reaches_the_coder_that_runs_the_agent() {
+    let home = tempfile::tempdir().unwrap();
+    let dir = agent_fleet::board::dir(home.path());
+    let (mut app, now) = window();
+    app.terminal = Some(TerminalPane::new(Some(dir.clone())));
+    app.activate(
+        Intent::Terminal {
+            action: TerminalAction::Choose {
+                pid: 4242,
+                agent: "agent-2".into(),
+                choice: agent_fleet::OPENAGENTS.into(),
+            },
+        },
+        now,
+    );
+    assert!(dir.join("4242.agent-2.openagents").exists());
+}
