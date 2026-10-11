@@ -713,6 +713,14 @@ pub fn next_turn_prompt(request: &str, messages: &[String]) -> String {
     text
 }
 
+/// Whether a drive that failed did so only in cleanup, after its turn
+/// ended.
+fn ended_but_cleanup(record: &Record) -> bool {
+    matches!(record.state, State::Completed | State::Failed)
+        && !record.cleanup_complete
+        && record.cleanup_error.is_some()
+}
+
 /// Turn a run whose turn ended into its next turn with `messages`, on the
 /// same computer (the continuation path a usage-limit resume takes). False
 /// when it can't go on: it was stopped, or never had a computer.
@@ -923,7 +931,15 @@ fn drive(
             if let Some(usual) = usual {
                 backend.boat.credentials = usual;
             }
-            driven?;
+            // A turn that ended but whose computer didn't confirm its stop
+            // (oa-boat answers "still reports a running meter") has still
+            // ended: its waiting messages still get their next turn
+            // (#11314), which starts the computer again anyway.
+            if let Err(error) = driven
+                && !ended_but_cleanup(&record)
+            {
+                return Err(error);
+            }
             // A usage limit pauses the run until Claude Code's reported
             // reset, then the same conversation continues; a login that
             // needs the person stops it with the sign-in prompt (#11293).
@@ -1216,6 +1232,13 @@ mod tests {
             Sent::Ended
         );
         assert!(runs.waiting("env-1", "claude-env-1-1").is_empty());
+        // A turn whose stop wasn't confirmed has still ended.
+        record.cleanup_complete = false;
+        record.cleanup_error = Some("Boat still reports a running meter after stop.".into());
+        assert!(ended_but_cleanup(&record));
+        record.state = State::Running;
+        assert!(!ended_but_cleanup(&record));
+        record.state = State::Completed;
         // A stopped run takes no next turn.
         record.cancel_requested = true;
         assert!(!next_turn(&mut record, &["x".into()]));
