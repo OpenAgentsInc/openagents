@@ -1,0 +1,10 @@
+{
+  "command": [
+    "/opt/homebrew/Cellar/go/1.26.3/libexec/bin/go",
+    "version",
+    "-m",
+    "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/bin/reset/ollama"
+  ],
+  "cwd": null,
+  "network_enabled": false
+}

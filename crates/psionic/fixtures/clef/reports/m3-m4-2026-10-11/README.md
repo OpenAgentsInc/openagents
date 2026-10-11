@@ -392,6 +392,16 @@ unchanged. The shared harness now rejects positive or malformed top-level
 responses confirm the fix, with no new model requests. All six owned servers
 clean up within their fixed bounds, with peak accounted memory of 23.05 GB.
 
+The [cache-free Ollama build preparation](ollama-zero-cache-build-v1/README.md)
+now passes pinned public-source staging, paired offline builds, and 16 scalar
+lifecycle tests. Both builds use Go 1.26.3 and the same installed MLX payload;
+the only product-source difference clears the score cache before each request.
+Tests cover first/repeated calls, divergent suffixes, chunking, cancellation,
+cleanup, unchanged generation reuse, and loaded-library identity. They create
+no model arrays and establish neither real-tensor cleanup nor numerical or
+latency parity. All three guarded phases complete and release their groups and
+leases. Real-model qualification remains pending.
+
 ## Stage 6 fused field head
 
 The opt-in `PSIONIC_CLEF_METAL_HEAD=fused-fields` path encodes the four field

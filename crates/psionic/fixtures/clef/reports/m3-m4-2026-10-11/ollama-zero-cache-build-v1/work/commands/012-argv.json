@@ -1,0 +1,17 @@
+{
+  "command": [
+    "git",
+    "-c",
+    "credential.helper=",
+    "-c",
+    "core.hooksPath=/dev/null",
+    "-c",
+    "core.fsmonitor=false",
+    "-c",
+    "protocol.file.allow=never",
+    "apply",
+    "$SCRATCH/ollama-zero-cache-plan/candidate.patch"
+  ],
+  "cwd": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/reset",
+  "network_enabled": false
+}

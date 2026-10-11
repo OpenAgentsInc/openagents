@@ -1,0 +1,18 @@
+{
+  "frozen_sources_sha256": "cbc7e6d902405a941aec083b325c1dad7f87580ed3877253ec2f59dcfe10bded",
+  "all_source_and_dependency_hashes_match": true,
+  "python_ast_files": [
+    "build.py",
+    "common.py",
+    "guard.py",
+    "run_tests.py",
+    "stage.py"
+  ],
+  "local_markdown_links_exist": true,
+  "retained_prefix_path_exists": true,
+  "go_source_gofmt_only": true,
+  "go_compiler_or_tests_executed": false,
+  "download_or_stage_executed": false,
+  "work_directory_exists": false,
+  "models_or_gpu_executed": false
+}

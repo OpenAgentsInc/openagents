@@ -1,0 +1,780 @@
+{
+	"Path": "github.com/TheTitanrain/w32",
+	"Version": "v0.0.0-20180517000239-4f5cfb03fabf",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/!the!titanrain/w32/@v/v0.0.0-20180517000239-4f5cfb03fabf.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/!the!titanrain/w32/@v/v0.0.0-20180517000239-4f5cfb03fabf.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/!the!titanrain/w32/@v/v0.0.0-20180517000239-4f5cfb03fabf.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/!the!titanrain/w32@v0.0.0-20180517000239-4f5cfb03fabf",
+	"Sum": "h1:FPsprx82rdrX2jiKyS17BH6IrTmUBYqZa/CXT4uvb+I=",
+	"GoModSum": "h1:peYoMncQljjNS6tZwI9WVyQB3qZS6u79/N3mBOcnd3I="
+}
+{
+	"Path": "github.com/containerd/console",
+	"Version": "v1.0.3",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/containerd/console/@v/v1.0.3.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/containerd/console/@v/v1.0.3.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/containerd/console/@v/v1.0.3.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/containerd/console@v1.0.3",
+	"Sum": "h1:lIr7SlA5PxZyMV30bDW0MGbiOPXwc63yRuCP0ARubLw=",
+	"GoModSum": "h1:7LqA/THxQ86k76b8c/EMSiaJ3h1eZkMkXar0TQ1gf3U="
+}
+{
+	"Path": "github.com/gin-gonic/gin",
+	"Version": "v1.10.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/gin-gonic/gin/@v/v1.10.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/gin-gonic/gin/@v/v1.10.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/gin-gonic/gin/@v/v1.10.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/gin-gonic/gin@v1.10.0",
+	"Sum": "h1:nTuyha1TYqgedzytsKYqna+DfLos46nTv2ygFy86HFU=",
+	"GoModSum": "h1:4PMNQiOhvDRa013RKVbsiNwoyezlm2rm0uX/T7kzp5Y="
+}
+{
+	"Path": "github.com/google/go-cmp",
+	"Version": "v0.7.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/google/go-cmp/@v/v0.7.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/google/go-cmp/@v/v0.7.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/google/go-cmp/@v/v0.7.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/google/go-cmp@v0.7.0",
+	"Sum": "h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=",
+	"GoModSum": "h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU="
+}
+{
+	"Path": "github.com/google/uuid",
+	"Version": "v1.6.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/google/uuid/@v/v1.6.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/google/uuid/@v/v1.6.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/google/uuid/@v/v1.6.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/google/uuid@v1.6.0",
+	"Sum": "h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=",
+	"GoModSum": "h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo="
+}
+{
+	"Path": "github.com/ledongthuc/pdf",
+	"Version": "v0.0.0-20250511090121-5959a4027728",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/ledongthuc/pdf/@v/v0.0.0-20250511090121-5959a4027728.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/ledongthuc/pdf/@v/v0.0.0-20250511090121-5959a4027728.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/ledongthuc/pdf/@v/v0.0.0-20250511090121-5959a4027728.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/ledongthuc/pdf@v0.0.0-20250511090121-5959a4027728",
+	"Sum": "h1:QwWKgMY28TAXaDl+ExRDqGQltzXqN/xypdKP86niVn8=",
+	"GoModSum": "h1:1fEHWurg7pvf5SG6XNE5Q8UZmOwex51Mkx3SLhrW5B4="
+}
+{
+	"Path": "github.com/mattn/go-sqlite3",
+	"Version": "v1.14.24",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/mattn/go-sqlite3/@v/v1.14.24.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/mattn/go-sqlite3/@v/v1.14.24.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/mattn/go-sqlite3/@v/v1.14.24.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/mattn/go-sqlite3@v1.14.24",
+	"Sum": "h1:tpSp2G2KyMnnQu99ngJ47EIkWVmliIizyZBfPrBWDRM=",
+	"GoModSum": "h1:Uh1q+B4BYcTPb+yiD3kU8Ct7aC0hY9fxUwlHK0RXw+Y="
+}
+{
+	"Path": "github.com/olekukonko/tablewriter",
+	"Version": "v0.0.5",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/olekukonko/tablewriter/@v/v0.0.5.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/olekukonko/tablewriter/@v/v0.0.5.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/olekukonko/tablewriter/@v/v0.0.5.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/olekukonko/tablewriter@v0.0.5",
+	"Sum": "h1:P2Ga83D34wi1o9J6Wh1mRuqd4mF/x/lgBS7N7AbDhec=",
+	"GoModSum": "h1:hPp6KlRPjbx+hW8ykQs1w3UBbZlj6HuIJcUGPhkA7kY="
+}
+{
+	"Path": "github.com/spf13/cobra",
+	"Version": "v1.7.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/spf13/cobra/@v/v1.7.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/spf13/cobra/@v/v1.7.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/spf13/cobra/@v/v1.7.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/spf13/cobra@v1.7.0",
+	"Sum": "h1:hyqWnYt1ZQShIddO5kBpj3vu05/++x6tJ6dg8EC572I=",
+	"GoModSum": "h1:uLxZILRyS/50WlhOIKD7W6V5bgeIt+4sICxh6uRMrb0="
+}
+{
+	"Path": "github.com/stretchr/testify",
+	"Version": "v1.10.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/stretchr/testify/@v/v1.10.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/stretchr/testify/@v/v1.10.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/stretchr/testify/@v/v1.10.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/stretchr/testify@v1.10.0",
+	"Sum": "h1:Xv5erBjTwe/5IxqUQTdXv5kgmIvbHo3QQyRwhJsOfJA=",
+	"GoModSum": "h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY="
+}
+{
+	"Path": "github.com/x448/float16",
+	"Version": "v0.8.4",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/x448/float16/@v/v0.8.4.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/x448/float16/@v/v0.8.4.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/x448/float16/@v/v0.8.4.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/x448/float16@v0.8.4",
+	"Sum": "h1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=",
+	"GoModSum": "h1:14CWIYCyZA/cWjXOioeEpHeN/83MdbZDRQHoFcYsOfg="
+}
+{
+	"Path": "golang.org/x/sync",
+	"Version": "v0.17.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/sync/@v/v0.17.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/sync/@v/v0.17.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/sync/@v/v0.17.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/golang.org/x/sync@v0.17.0",
+	"Sum": "h1:l60nONMj9l5drqw6jlhIELNv9I0A4OFgRsG9k2oT9Ug=",
+	"GoModSum": "h1:9KTHXmSnoGruLpwFjVSX0lNNA75CykiMECbovNTZqGI="
+}
+{
+	"Path": "golang.org/x/sys",
+	"Version": "v0.37.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/sys/@v/v0.37.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/sys/@v/v0.37.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/sys/@v/v0.37.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/golang.org/x/sys@v0.37.0",
+	"Sum": "h1:fdNQudmxPjkdUTPnLn5mdQv7Zwvbvpaxqs831goi9kQ=",
+	"GoModSum": "h1:OgkHotnGiDImocRcuBABYBEXf8A9a87e/uXjp9XT3ks="
+}
+{
+	"Path": "github.com/agnivade/levenshtein",
+	"Version": "v1.1.1",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/agnivade/levenshtein/@v/v1.1.1.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/agnivade/levenshtein/@v/v1.1.1.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/agnivade/levenshtein/@v/v1.1.1.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/agnivade/levenshtein@v1.1.1",
+	"Sum": "h1:QY8M92nrzkmr798gCo3kmMyqXFzdQVpxLlGPRBij0P8=",
+	"GoModSum": "h1:veldBMzWxcCG2ZvUTKD2kJNRdCk5hVbJomOvKkmgYbo="
+}
+{
+	"Path": "github.com/charmbracelet/bubbletea",
+	"Version": "v1.3.10",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/charmbracelet/bubbletea/@v/v1.3.10.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/charmbracelet/bubbletea/@v/v1.3.10.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/charmbracelet/bubbletea/@v/v1.3.10.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/charmbracelet/bubbletea@v1.3.10",
+	"Sum": "h1:otUDHWMMzQSB0Pkc87rm691KZ3SWa4KUlvF9nRvCICw=",
+	"GoModSum": "h1:ORQfo0fk8U+po9VaNvnV95UPWA1BitP1E0N6xJPlHr4="
+}
+{
+	"Path": "github.com/charmbracelet/lipgloss",
+	"Version": "v1.1.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/charmbracelet/lipgloss/@v/v1.1.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/charmbracelet/lipgloss/@v/v1.1.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/charmbracelet/lipgloss/@v/v1.1.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/charmbracelet/lipgloss@v1.1.0",
+	"Sum": "h1:vYXsiLHVkK7fp74RkV7b2kq9+zDLoEU4MZoFqR/noCY=",
+	"GoModSum": "h1:/6Q8FR2o+kj8rz4Dq0zQc3vYf7X+B0binUUBwA0aL30="
+}
+{
+	"Path": "github.com/d4l3k/go-bfloat16",
+	"Version": "v0.0.0-20211005043715-690c3bdd05f1",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/d4l3k/go-bfloat16/@v/v0.0.0-20211005043715-690c3bdd05f1.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/d4l3k/go-bfloat16/@v/v0.0.0-20211005043715-690c3bdd05f1.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/d4l3k/go-bfloat16/@v/v0.0.0-20211005043715-690c3bdd05f1.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/d4l3k/go-bfloat16@v0.0.0-20211005043715-690c3bdd05f1",
+	"Sum": "h1:cBzrdJPAFBsgCrDPnZxlp1dF2+k4r1kVpD7+1S1PVjY=",
+	"GoModSum": "h1:uw2gLcxEuYUlAd/EXyjc/v55nd3+47YAgWbSXVxPrNI="
+}
+{
+	"Path": "github.com/emirpasic/gods/v2",
+	"Version": "v2.0.0-alpha",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/emirpasic/gods/v2/@v/v2.0.0-alpha.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/emirpasic/gods/v2/@v/v2.0.0-alpha.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/emirpasic/gods/v2/@v/v2.0.0-alpha.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/emirpasic/gods/v2@v2.0.0-alpha",
+	"Sum": "h1:dwFlh8pBg1VMOXWGipNMRt8v96dKAIvBehtCt6OtunU=",
+	"GoModSum": "h1:W0y4M2dtBB9U5z3YlghmpuUhiaZT2h6yoeE+C1sCp6A="
+}
+{
+	"Path": "github.com/klauspost/compress",
+	"Version": "v1.18.3",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/klauspost/compress/@v/v1.18.3.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/klauspost/compress/@v/v1.18.3.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/klauspost/compress/@v/v1.18.3.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/klauspost/compress@v1.18.3",
+	"Sum": "h1:9PJRvfbmTabkOX8moIpXPbMMbYN60bWImDDU7L+/6zw=",
+	"GoModSum": "h1:R0h/fSBs8DE4ENlcrlib3PsXS61voFxhIs2DeRhCvJ4="
+}
+{
+	"Path": "github.com/mattn/go-runewidth",
+	"Version": "v0.0.16",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/mattn/go-runewidth/@v/v0.0.16.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/mattn/go-runewidth/@v/v0.0.16.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/mattn/go-runewidth/@v/v0.0.16.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/mattn/go-runewidth@v0.0.16",
+	"Sum": "h1:E5ScNMtiwvlvB5paMFdw9p4kSQzbXFikJ5SQO6TULQc=",
+	"GoModSum": "h1:Jdepj2loyihRzMpdS35Xk/zdY8IAYHsh153qUoGf23w="
+}
+{
+	"Path": "github.com/pelletier/go-toml/v2",
+	"Version": "v2.2.2",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/pelletier/go-toml/v2/@v/v2.2.2.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/pelletier/go-toml/v2/@v/v2.2.2.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/pelletier/go-toml/v2/@v/v2.2.2.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/pelletier/go-toml/v2@v2.2.2",
+	"Sum": "h1:aYUidT7k73Pcl9nb2gScu7NSrKCSHIDE89b3+6Wq+LM=",
+	"GoModSum": "h1:1t835xjRzz80PqgE6HHgN2JOsmgYu/h4qDAS4n929Rs="
+}
+{
+	"Path": "github.com/pkg/browser",
+	"Version": "v0.0.0-20240102092130-5ac0b6a4141c",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/pkg/browser/@v/v0.0.0-20240102092130-5ac0b6a4141c.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/pkg/browser/@v/v0.0.0-20240102092130-5ac0b6a4141c.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/pkg/browser/@v/v0.0.0-20240102092130-5ac0b6a4141c.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/pkg/browser@v0.0.0-20240102092130-5ac0b6a4141c",
+	"Sum": "h1:+mdjkGKdHQG3305AYmdv1U2eRNDiU2ErMBj1gwrq8eQ=",
+	"GoModSum": "h1:7rwL4CYBLnjLxUqIJNnCWiEdr3bn6IUYi15bNlnbCCU="
+}
+{
+	"Path": "github.com/tkrajina/typescriptify-golang-structs",
+	"Version": "v0.2.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/tkrajina/typescriptify-golang-structs/@v/v0.2.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/tkrajina/typescriptify-golang-structs/@v/v0.2.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/tkrajina/typescriptify-golang-structs/@v/v0.2.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/tkrajina/typescriptify-golang-structs@v0.2.0",
+	"Sum": "h1:ZedWk82egydDspGTryAatbX0/1NZDQbdiZLoCbOk4f8=",
+	"GoModSum": "h1:sjU00nti/PMEOZb07KljFlR+lJ+RotsC0GBQMv9EKls="
+}
+{
+	"Path": "github.com/tree-sitter/go-tree-sitter",
+	"Version": "v0.25.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/tree-sitter/go-tree-sitter/@v/v0.25.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/tree-sitter/go-tree-sitter/@v/v0.25.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/tree-sitter/go-tree-sitter/@v/v0.25.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/tree-sitter/go-tree-sitter@v0.25.0",
+	"Sum": "h1:sx6kcg8raRFCvc9BnXglke6axya12krCJF5xJ2sftRU=",
+	"GoModSum": "h1:r77ig7BikoZhHrrsjAnv8RqGti5rtSyvDHPzgTPsUuU="
+}
+{
+	"Path": "github.com/tree-sitter/tree-sitter-cpp",
+	"Version": "v0.23.4",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/tree-sitter/tree-sitter-cpp/@v/v0.23.4.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/tree-sitter/tree-sitter-cpp/@v/v0.23.4.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/tree-sitter/tree-sitter-cpp/@v/v0.23.4.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/tree-sitter/tree-sitter-cpp@v0.23.4",
+	"Sum": "h1:LaWZsiqQKvR65yHgKmnaqA+uz6tlDJTJFCyFIeZU/8w=",
+	"GoModSum": "h1:doqNW64BriC7WBCQ1klf0KmJpdEvfxyXtoEybnBo6v8="
+}
+{
+	"Path": "github.com/wk8/go-ordered-map/v2",
+	"Version": "v2.1.8",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/wk8/go-ordered-map/v2/@v/v2.1.8.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/wk8/go-ordered-map/v2/@v/v2.1.8.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/wk8/go-ordered-map/v2/@v/v2.1.8.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/wk8/go-ordered-map/v2@v2.1.8",
+	"Sum": "h1:5h/BUHu93oj4gIdvHHHGsScSTMijfx5PeYkE/fJgbpc=",
+	"GoModSum": "h1:5nJHM5DyteebpVlHnWMV0rPz6Zp7+xBAnxjb1X5vnTw="
+}
+{
+	"Path": "golang.org/x/image",
+	"Version": "v0.22.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/image/@v/v0.22.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/image/@v/v0.22.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/image/@v/v0.22.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/golang.org/x/image@v0.22.0",
+	"Sum": "h1:UtK5yLUzilVrkjMAZAZ34DXGpASN8i8pj8g+O+yd10g=",
+	"GoModSum": "h1:9hPFhljd4zZ1GNSIZJ49sqbp45GKK9t6w+iXvGqZUz4="
+}
+{
+	"Path": "golang.org/x/mod",
+	"Version": "v0.30.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/mod/@v/v0.30.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/mod/@v/v0.30.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/mod/@v/v0.30.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/golang.org/x/mod@v0.30.0",
+	"Sum": "h1:fDEXFVZ/fmCKProc/yAXXUijritrDzahmwwefnjoPFk=",
+	"GoModSum": "h1:lAsf5O2EvJeSFMiBxXDki7sCgAxEUcZHXoXMKT4GJKc="
+}
+{
+	"Path": "github.com/aymanbagabas/go-osc52/v2",
+	"Version": "v2.0.1",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/aymanbagabas/go-osc52/v2/@v/v2.0.1.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/aymanbagabas/go-osc52/v2/@v/v2.0.1.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/aymanbagabas/go-osc52/v2/@v/v2.0.1.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/aymanbagabas/go-osc52/v2@v2.0.1",
+	"Sum": "h1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiErDT4WkJ2k=",
+	"GoModSum": "h1:uYgXzlJ7ZpABp8OJ+exZzJJhRNQ2ASbcXHWsFqH8hp8="
+}
+{
+	"Path": "github.com/bahlo/generic-list-go",
+	"Version": "v0.2.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/bahlo/generic-list-go/@v/v0.2.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/bahlo/generic-list-go/@v/v0.2.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/bahlo/generic-list-go/@v/v0.2.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/bahlo/generic-list-go@v0.2.0",
+	"Sum": "h1:5sz/EEAK+ls5wF+NeqDpk5+iNdMDXrh3z3nPnH1Wvgk=",
+	"GoModSum": "h1:2KvAjgMlE5NNynlg/5iLrrCCZ2+5xWbdbCW3pNTGyYg="
+}
+{
+	"Path": "github.com/buger/jsonparser",
+	"Version": "v1.1.1",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/buger/jsonparser/@v/v1.1.1.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/buger/jsonparser/@v/v1.1.1.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/buger/jsonparser/@v/v1.1.1.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/buger/jsonparser@v1.1.1",
+	"Sum": "h1:2PnMjfWD7wBILjqQbt530v576A/cAbQvEW9gGIpYMUs=",
+	"GoModSum": "h1:6RYKKt7H4d4+iWqouImQ9R2FZql3VbhNgx27UK13J/0="
+}
+{
+	"Path": "github.com/bytedance/sonic/loader",
+	"Version": "v0.1.1",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/bytedance/sonic/loader/@v/v0.1.1.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/bytedance/sonic/loader/@v/v0.1.1.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/bytedance/sonic/loader/@v/v0.1.1.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/bytedance/sonic/loader@v0.1.1",
+	"Sum": "h1:c+e5Pt1k/cy5wMveRDyk2X4B9hF4g7an8N3zCYjJFNM=",
+	"GoModSum": "h1:ncP89zfokxS5LZrJxl5z0UJcsk4M4yY2JpfqGeCtNLU="
+}
+{
+	"Path": "github.com/charmbracelet/colorprofile",
+	"Version": "v0.2.3-0.20250311203215-f60798e515dc",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/charmbracelet/colorprofile/@v/v0.2.3-0.20250311203215-f60798e515dc.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/charmbracelet/colorprofile/@v/v0.2.3-0.20250311203215-f60798e515dc.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/charmbracelet/colorprofile/@v/v0.2.3-0.20250311203215-f60798e515dc.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/charmbracelet/colorprofile@v0.2.3-0.20250311203215-f60798e515dc",
+	"Sum": "h1:4pZI35227imm7yK2bGPcfpFEmuY1gc2YSTShr4iJBfs=",
+	"GoModSum": "h1:X4/0JoqgTIPSFcRA/P6INZzIuyqdFY5rm8tb41s9okk="
+}
+{
+	"Path": "github.com/charmbracelet/x/ansi",
+	"Version": "v0.10.1",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/charmbracelet/x/ansi/@v/v0.10.1.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/charmbracelet/x/ansi/@v/v0.10.1.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/charmbracelet/x/ansi/@v/v0.10.1.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/charmbracelet/x/ansi@v0.10.1",
+	"Sum": "h1:rL3Koar5XvX0pHGfovN03f5cxLbCF2YvLeyz7D2jVDQ=",
+	"GoModSum": "h1:3RQDQ6lDnROptfpWuUVIUG64bD2g2BgntdxH0Ya5TeE="
+}
+{
+	"Path": "github.com/charmbracelet/x/cellbuf",
+	"Version": "v0.0.13-0.20250311204145-2c3ea96c31dd",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/charmbracelet/x/cellbuf/@v/v0.0.13-0.20250311204145-2c3ea96c31dd.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/charmbracelet/x/cellbuf/@v/v0.0.13-0.20250311204145-2c3ea96c31dd.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/charmbracelet/x/cellbuf/@v/v0.0.13-0.20250311204145-2c3ea96c31dd.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/charmbracelet/x/cellbuf@v0.0.13-0.20250311204145-2c3ea96c31dd",
+	"Sum": "h1:vy0GVL4jeHEwG5YOXDmi86oYw2yuYUGqz6a8sLwg0X8=",
+	"GoModSum": "h1:xe0nKWGd3eJgtqZRaN9RjMtK7xUYchjzPr7q6kcvCCs="
+}
+{
+	"Path": "github.com/charmbracelet/x/term",
+	"Version": "v0.2.1",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/charmbracelet/x/term/@v/v0.2.1.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/charmbracelet/x/term/@v/v0.2.1.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/charmbracelet/x/term/@v/v0.2.1.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/charmbracelet/x/term@v0.2.1",
+	"Sum": "h1:AQeHeLZ1OqSXhrAWpYUtZyX1T3zVxfpZuEQMIQaGIAQ=",
+	"GoModSum": "h1:oQ4enTYFV7QN4m0i9mzHrViD7TQKvNEEkHUMCmsxdUg="
+}
+{
+	"Path": "github.com/cloudwego/base64x",
+	"Version": "v0.1.4",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/cloudwego/base64x/@v/v0.1.4.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/cloudwego/base64x/@v/v0.1.4.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/cloudwego/base64x/@v/v0.1.4.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/cloudwego/base64x@v0.1.4",
+	"Sum": "h1:jwCgWpFanWmN8xoIUHa2rtzmkd5J2plF/dnLS6Xd/0Y=",
+	"GoModSum": "h1:0zlkT4Wn5C6NdauXdJRhSKRlJvmclQ1hhJgA0rcu/8w="
+}
+{
+	"Path": "github.com/cloudwego/iasm",
+	"Version": "v0.2.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/cloudwego/iasm/@v/v0.2.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/cloudwego/iasm/@v/v0.2.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/cloudwego/iasm/@v/v0.2.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/cloudwego/iasm@v0.2.0",
+	"Sum": "h1:1KNIy1I1H9hNNFEEH3DVnI4UujN+1zjpuk6gwHLTssg=",
+	"GoModSum": "h1:8rXZaNYT2n95jn+zTI1sDr+IgcD2GVs0nlbbQPiEFhY="
+}
+{
+	"Path": "github.com/davecgh/go-spew",
+	"Version": "v1.1.1",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/davecgh/go-spew/@v/v1.1.1.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/davecgh/go-spew/@v/v1.1.1.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/davecgh/go-spew/@v/v1.1.1.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/davecgh/go-spew@v1.1.1",
+	"Sum": "h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=",
+	"GoModSum": "h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38="
+}
+{
+	"Path": "github.com/erikgeiser/coninput",
+	"Version": "v0.0.0-20211004153227-1c3628e74d0f",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/erikgeiser/coninput/@v/v0.0.0-20211004153227-1c3628e74d0f.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/erikgeiser/coninput/@v/v0.0.0-20211004153227-1c3628e74d0f.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/erikgeiser/coninput/@v/v0.0.0-20211004153227-1c3628e74d0f.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/erikgeiser/coninput@v0.0.0-20211004153227-1c3628e74d0f",
+	"Sum": "h1:Y/CXytFA4m6baUTXGLOoWe4PQhGxaX0KpnayAqC48p4=",
+	"GoModSum": "h1:vw97MGsxSvLiUE2X8qFplwetxpGLQrlU1Q9AUEIzCaM="
+}
+{
+	"Path": "github.com/kr/text",
+	"Version": "v0.2.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/kr/text/@v/v0.2.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/kr/text/@v/v0.2.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/kr/text/@v/v0.2.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/kr/text@v0.2.0",
+	"Sum": "h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=",
+	"GoModSum": "h1:eLer722TekiGuMkidMxC/pM04lWEeraHUUmBw8l2grE="
+}
+{
+	"Path": "github.com/lucasb-eyer/go-colorful",
+	"Version": "v1.2.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/lucasb-eyer/go-colorful/@v/v1.2.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/lucasb-eyer/go-colorful/@v/v1.2.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/lucasb-eyer/go-colorful/@v/v1.2.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/lucasb-eyer/go-colorful@v1.2.0",
+	"Sum": "h1:1nnpGOrhyZZuNyfu1QjKiUICQ74+3FNCN69Aj6K7nkY=",
+	"GoModSum": "h1:R4dSotOR9KMtayYi1e77YzuveK+i7ruzyGqttikkLy0="
+}
+{
+	"Path": "github.com/mailru/easyjson",
+	"Version": "v0.7.7",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/mailru/easyjson/@v/v0.7.7.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/mailru/easyjson/@v/v0.7.7.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/mailru/easyjson/@v/v0.7.7.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/mailru/easyjson@v0.7.7",
+	"Sum": "h1:UGYAvKxe3sBsEDzO8ZeWOSlIQfWFlxbzLZe7hwFURr0=",
+	"GoModSum": "h1:xzfreul335JAWq5oZzymOObrkdz5UnU4kGfJJLY9Nlc="
+}
+{
+	"Path": "github.com/mattn/go-localereader",
+	"Version": "v0.0.2-0.20220822084737-6bae6c923850",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/mattn/go-localereader/@v/v0.0.2-0.20220822084737-6bae6c923850.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/mattn/go-localereader/@v/v0.0.2-0.20220822084737-6bae6c923850.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/mattn/go-localereader/@v/v0.0.2-0.20220822084737-6bae6c923850.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/mattn/go-localereader@v0.0.2-0.20220822084737-6bae6c923850",
+	"Sum": "h1:3wTbcd6IAtyC45hpBhisgmnAl/+twARH7FyVSh5NbcY=",
+	"GoModSum": "h1:8fBrzywKY7BI3czFoHkuzRoWE9C+EiG4R1k4Cjx5p88="
+}
+{
+	"Path": "github.com/mattn/go-pointer",
+	"Version": "v0.0.1",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/mattn/go-pointer/@v/v0.0.1.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/mattn/go-pointer/@v/v0.0.1.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/mattn/go-pointer/@v/v0.0.1.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/mattn/go-pointer@v0.0.1",
+	"Sum": "h1:n+XhsuGeVO6MEAp7xyEukFINEa+Quek5psIR/ylA6o0=",
+	"GoModSum": "h1:2zXcozF6qYGgmsG+SeTZz3oAbFLdD3OWqnUbNvJZAlc="
+}
+{
+	"Path": "github.com/muesli/ansi",
+	"Version": "v0.0.0-20230316100256-276c6243b2f6",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/muesli/ansi/@v/v0.0.0-20230316100256-276c6243b2f6.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/muesli/ansi/@v/v0.0.0-20230316100256-276c6243b2f6.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/muesli/ansi/@v/v0.0.0-20230316100256-276c6243b2f6.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/muesli/ansi@v0.0.0-20230316100256-276c6243b2f6",
+	"Sum": "h1:ZK8zHtRHOkbHy6Mmr5D264iyp3TiX5OmNcI5cIARiQI=",
+	"GoModSum": "h1:CJlz5H+gyd6CUWT45Oy4q24RdLyn7Md9Vj2/ldJBSIo="
+}
+{
+	"Path": "github.com/muesli/cancelreader",
+	"Version": "v0.2.2",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/muesli/cancelreader/@v/v0.2.2.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/muesli/cancelreader/@v/v0.2.2.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/muesli/cancelreader/@v/v0.2.2.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/muesli/cancelreader@v0.2.2",
+	"Sum": "h1:3I4Kt4BQjOR54NavqnDogx/MIoWBFa0StPA8ELUXHmA=",
+	"GoModSum": "h1:3XuTXfFS2VjM+HTLZY9Ak0l6eUKfijIfMUZ4EgX0QYo="
+}
+{
+	"Path": "github.com/muesli/termenv",
+	"Version": "v0.16.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/muesli/termenv/@v/v0.16.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/muesli/termenv/@v/v0.16.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/muesli/termenv/@v/v0.16.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/muesli/termenv@v0.16.0",
+	"Sum": "h1:S5AlUN9dENB57rsbnkPyfdGuWIlkmzJjbFf0Tf5FWUc=",
+	"GoModSum": "h1:ZRfOIKPFDYQoDFF4Olj7/QJbW60Ol/kL1pU3VfY/Cnk="
+}
+{
+	"Path": "github.com/pmezard/go-difflib",
+	"Version": "v1.0.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/pmezard/go-difflib/@v/v1.0.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/pmezard/go-difflib/@v/v1.0.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/pmezard/go-difflib/@v/v1.0.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/pmezard/go-difflib@v1.0.0",
+	"Sum": "h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=",
+	"GoModSum": "h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4="
+}
+{
+	"Path": "github.com/rivo/uniseg",
+	"Version": "v0.4.7",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/rivo/uniseg/@v/v0.4.7.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/rivo/uniseg/@v/v0.4.7.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/rivo/uniseg/@v/v0.4.7.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/rivo/uniseg@v0.4.7",
+	"Sum": "h1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=",
+	"GoModSum": "h1:FN3SvrM+Zdj16jyLfmOkMNblXMcoc8DfTHruCPUcx88="
+}
+{
+	"Path": "github.com/tkrajina/go-reflector",
+	"Version": "v0.5.5",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/tkrajina/go-reflector/@v/v0.5.5.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/tkrajina/go-reflector/@v/v0.5.5.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/tkrajina/go-reflector/@v/v0.5.5.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/tkrajina/go-reflector@v0.5.5",
+	"Sum": "h1:gwoQFNye30Kk7NrExj8zm3zFtrGPqOkzFMLuQZg1DtQ=",
+	"GoModSum": "h1:ECbqLgccecY5kPmPmXg1MrHW585yMcDkVl6IvJe64T4="
+}
+{
+	"Path": "github.com/xo/terminfo",
+	"Version": "v0.0.0-20220910002029-abceb7e1c41e",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/xo/terminfo/@v/v0.0.0-20220910002029-abceb7e1c41e.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/xo/terminfo/@v/v0.0.0-20220910002029-abceb7e1c41e.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/xo/terminfo/@v/v0.0.0-20220910002029-abceb7e1c41e.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/xo/terminfo@v0.0.0-20220910002029-abceb7e1c41e",
+	"Sum": "h1:JVG44RsyaB9T2KIHavMF/ppJZNG9ZpyihvCd0w101no=",
+	"GoModSum": "h1:RbqR21r5mrJuqunuUZ/Dhy/avygyECGrLceyNeo4LiM="
+}
+{
+	"Path": "github.com/bytedance/sonic",
+	"Version": "v1.11.6",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/bytedance/sonic/@v/v1.11.6.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/bytedance/sonic/@v/v1.11.6.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/bytedance/sonic/@v/v1.11.6.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/bytedance/sonic@v1.11.6",
+	"Sum": "h1:oUp34TzMlL+OY1OUWxHqsdkgC/Zfc85zGqw9siXjrc0=",
+	"GoModSum": "h1:LysEHSvpvDySVdC2f87zGWf6CIKJcAvqab1ZaiQtds4="
+}
+{
+	"Path": "github.com/gabriel-vasile/mimetype",
+	"Version": "v1.4.3",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/gabriel-vasile/mimetype/@v/v1.4.3.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/gabriel-vasile/mimetype/@v/v1.4.3.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/gabriel-vasile/mimetype/@v/v1.4.3.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/gabriel-vasile/mimetype@v1.4.3",
+	"Sum": "h1:in2uUcidCuFcDKtdcBxlR0rJ1+fsokWf+uqxgUFjbI0=",
+	"GoModSum": "h1:d8uq/6HKRL6CGdk+aubisF/M5GcPfT7nKyLpA0lbSSk="
+}
+{
+	"Path": "github.com/gin-contrib/cors",
+	"Version": "v1.7.2",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/gin-contrib/cors/@v/v1.7.2.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/gin-contrib/cors/@v/v1.7.2.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/gin-contrib/cors/@v/v1.7.2.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/gin-contrib/cors@v1.7.2",
+	"Sum": "h1:oLDHxdg8W/XDoN/8zamqk/Drgt4oVZDvaV0YmvVICQw=",
+	"GoModSum": "h1:SUJVARKgQ40dmrzgXEVxj2m7Ig1v1qIboQkPDTQ9t2E="
+}
+{
+	"Path": "github.com/gin-contrib/sse",
+	"Version": "v0.1.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/gin-contrib/sse/@v/v0.1.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/gin-contrib/sse/@v/v0.1.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/gin-contrib/sse/@v/v0.1.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/gin-contrib/sse@v0.1.0",
+	"Sum": "h1:Y/yl/+YNO8GZSjAhjMsSuLt29uWRFHdHYUb5lYOV9qE=",
+	"GoModSum": "h1:RHrZQHXnP2xjPF+u1gW/2HnVO7nvIa9PG3Gm+fLHvGI="
+}
+{
+	"Path": "github.com/go-playground/locales",
+	"Version": "v0.14.1",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/go-playground/locales/@v/v0.14.1.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/go-playground/locales/@v/v0.14.1.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/go-playground/locales/@v/v0.14.1.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/go-playground/locales@v0.14.1",
+	"Sum": "h1:EWaQ/wswjilfKLTECiXz7Rh+3BjFhfDFKv/oXslEjJA=",
+	"GoModSum": "h1:hxrqLVvrK65+Rwrd5Fc6F2O76J/NuW9t0sjnWqG1slY="
+}
+{
+	"Path": "github.com/go-playground/universal-translator",
+	"Version": "v0.18.1",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/go-playground/universal-translator/@v/v0.18.1.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/go-playground/universal-translator/@v/v0.18.1.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/go-playground/universal-translator/@v/v0.18.1.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/go-playground/universal-translator@v0.18.1",
+	"Sum": "h1:Bcnm0ZwsGyWbCzImXv+pAJnYK9S473LQFuzCbDbfSFY=",
+	"GoModSum": "h1:xekY+UJKNuX9WP91TpwSH2VMlDf28Uj24BCp08ZFTUY="
+}
+{
+	"Path": "github.com/go-playground/validator/v10",
+	"Version": "v10.20.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/go-playground/validator/v10/@v/v10.20.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/go-playground/validator/v10/@v/v10.20.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/go-playground/validator/v10/@v/v10.20.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/go-playground/validator/v10@v10.20.0",
+	"Sum": "h1:K9ISHbSaI0lyB2eWMPJo+kOS/FBExVwjEviJTixqxL8=",
+	"GoModSum": "h1:dbuPbCMFw/DrkbEynArYaCwl3amGuJotoKCe95atGMM="
+}
+{
+	"Path": "github.com/goccy/go-json",
+	"Version": "v0.10.2",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/goccy/go-json/@v/v0.10.2.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/goccy/go-json/@v/v0.10.2.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/goccy/go-json/@v/v0.10.2.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/goccy/go-json@v0.10.2",
+	"Sum": "h1:CrxCmQqYDkv1z7lO7Wbh2HN93uovUHgrECaO5ZrCXAU=",
+	"GoModSum": "h1:6MelG93GURQebXPDq3khkgXZkazVtN9CRI+MGFi0w8I="
+}
+{
+	"Path": "github.com/inconshreveable/mousetrap",
+	"Version": "v1.1.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/inconshreveable/mousetrap/@v/v1.1.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/inconshreveable/mousetrap/@v/v1.1.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/inconshreveable/mousetrap/@v/v1.1.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/inconshreveable/mousetrap@v1.1.0",
+	"Sum": "h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=",
+	"GoModSum": "h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw="
+}
+{
+	"Path": "github.com/json-iterator/go",
+	"Version": "v1.1.12",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/json-iterator/go/@v/v1.1.12.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/json-iterator/go/@v/v1.1.12.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/json-iterator/go/@v/v1.1.12.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/json-iterator/go@v1.1.12",
+	"Sum": "h1:PV8peI4a0ysnczrg+LtxykD8LfKY9ML6u2jnxaEnrnM=",
+	"GoModSum": "h1:e30LSqwooZae/UwlEbR2852Gd8hjQvJoHmT4TnhNGBo="
+}
+{
+	"Path": "github.com/klauspost/cpuid/v2",
+	"Version": "v2.2.7",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/klauspost/cpuid/v2/@v/v2.2.7.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/klauspost/cpuid/v2/@v/v2.2.7.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/klauspost/cpuid/v2/@v/v2.2.7.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/klauspost/cpuid/v2@v2.2.7",
+	"Sum": "h1:ZWSB3igEs+d0qvnxR/ZBzXVmxkgt8DdzP6m9pfuVLDM=",
+	"GoModSum": "h1:Lcz8mBdAVJIBVzewtcLocK12l3Y+JytZYpaMropDUws="
+}
+{
+	"Path": "github.com/leodido/go-urn",
+	"Version": "v1.4.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/leodido/go-urn/@v/v1.4.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/leodido/go-urn/@v/v1.4.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/leodido/go-urn/@v/v1.4.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/leodido/go-urn@v1.4.0",
+	"Sum": "h1:WT9HwE9SGECu3lg4d/dIA+jxlljEa1/ffXKmRjqdmIQ=",
+	"GoModSum": "h1:bvxc+MVxLKB4z00jd1z+Dvzr47oO32F/QSNjSBOlFxI="
+}
+{
+	"Path": "github.com/mattn/go-isatty",
+	"Version": "v0.0.20",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/mattn/go-isatty/@v/v0.0.20.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/mattn/go-isatty/@v/v0.0.20.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/mattn/go-isatty/@v/v0.0.20.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/mattn/go-isatty@v0.0.20",
+	"Sum": "h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=",
+	"GoModSum": "h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y="
+}
+{
+	"Path": "github.com/modern-go/concurrent",
+	"Version": "v0.0.0-20180306012644-bacd9c7ef1dd",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/modern-go/concurrent/@v/v0.0.0-20180306012644-bacd9c7ef1dd.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/modern-go/concurrent/@v/v0.0.0-20180306012644-bacd9c7ef1dd.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/modern-go/concurrent/@v/v0.0.0-20180306012644-bacd9c7ef1dd.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/modern-go/concurrent@v0.0.0-20180306012644-bacd9c7ef1dd",
+	"Sum": "h1:TRLaZ9cD/w8PVh93nsPXa1VrQ6jlwL5oN8l14QlcNfg=",
+	"GoModSum": "h1:6dJC0mAP4ikYIbvyc7fijjWJddQyLn8Ig3JB5CqoB9Q="
+}
+{
+	"Path": "github.com/modern-go/reflect2",
+	"Version": "v1.0.2",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/modern-go/reflect2/@v/v1.0.2.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/modern-go/reflect2/@v/v1.0.2.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/modern-go/reflect2/@v/v1.0.2.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/modern-go/reflect2@v1.0.2",
+	"Sum": "h1:xBagoLtFs94CBntxluKeaWgTMpvLxC4ur3nMaC9Gz0M=",
+	"GoModSum": "h1:yWuevngMOJpCy52FWWMvUC8ws7m/LJsjYzDa0/r8luk="
+}
+{
+	"Path": "github.com/spf13/pflag",
+	"Version": "v1.0.5",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/spf13/pflag/@v/v1.0.5.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/spf13/pflag/@v/v1.0.5.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/spf13/pflag/@v/v1.0.5.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/spf13/pflag@v1.0.5",
+	"Sum": "h1:iy+VFUOCP1a+8yFto/drg2CJ5u0yRoB7fZw3DKv/JXA=",
+	"GoModSum": "h1:McXfInJRrz4CZXVZOBLb0bTZqETkiAhM9Iw0y3An2Bg="
+}
+{
+	"Path": "github.com/twitchyliquid64/golang-asm",
+	"Version": "v0.15.1",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/twitchyliquid64/golang-asm/@v/v0.15.1.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/twitchyliquid64/golang-asm/@v/v0.15.1.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/twitchyliquid64/golang-asm/@v/v0.15.1.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/twitchyliquid64/golang-asm@v0.15.1",
+	"Sum": "h1:SU5vSMR7hnwNxj24w34ZyCi/FmDZTkS4MhqMhdFk5YI=",
+	"GoModSum": "h1:a1lVb/DtPvCB8fslRZhAngC2+aY1QWCk3Cedj/Gdt08="
+}
+{
+	"Path": "github.com/ugorji/go/codec",
+	"Version": "v1.2.12",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/ugorji/go/codec/@v/v1.2.12.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/ugorji/go/codec/@v/v1.2.12.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/github.com/ugorji/go/codec/@v/v1.2.12.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/github.com/ugorji/go/codec@v1.2.12",
+	"Sum": "h1:9LC83zGrHhuUA9l16C9AHXAqEV/2wBQ4nkvumAE65EE=",
+	"GoModSum": "h1:UNopzCgEMSXjBc6AOMqYvWC1ktqTAfzJZUZgYf6w6lg="
+}
+{
+	"Path": "golang.org/x/arch",
+	"Version": "v0.8.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/arch/@v/v0.8.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/arch/@v/v0.8.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/arch/@v/v0.8.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/golang.org/x/arch@v0.8.0",
+	"Sum": "h1:3wRIsP3pM4yUptoR96otTUOXI367OS0+c9eeRi9doIc=",
+	"GoModSum": "h1:FEVrYAQjsQXMVJ1nsMoVVXPZg6p2JE2mx8psSWTDQys="
+}
+{
+	"Path": "golang.org/x/crypto",
+	"Version": "v0.43.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/crypto/@v/v0.43.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/crypto/@v/v0.43.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/crypto/@v/v0.43.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/golang.org/x/crypto@v0.43.0",
+	"Sum": "h1:dduJYIi3A3KOfdGOHX8AVZ/jGiyPa3IbBozJ5kNuE04=",
+	"GoModSum": "h1:BFbav4mRNlXJL4wNeejLpWxB7wMbc79PdRGhWKncxR0="
+}
+{
+	"Path": "golang.org/x/exp",
+	"Version": "v0.0.0-20250218142911-aa4b98e5adaa",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/exp/@v/v0.0.0-20250218142911-aa4b98e5adaa.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/exp/@v/v0.0.0-20250218142911-aa4b98e5adaa.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/exp/@v/v0.0.0-20250218142911-aa4b98e5adaa.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/golang.org/x/exp@v0.0.0-20250218142911-aa4b98e5adaa",
+	"Sum": "h1:t2QcU6V556bFjYgu4L6C+6VrCPyJZ+eyRsABUPs1mz4=",
+	"GoModSum": "h1:BHOTPb3L19zxehTsLoJXVaTktb06DFgmdW6Wb9s8jqk="
+}
+{
+	"Path": "golang.org/x/net",
+	"Version": "v0.46.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/net/@v/v0.46.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/net/@v/v0.46.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/net/@v/v0.46.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/golang.org/x/net@v0.46.0",
+	"Sum": "h1:giFlY12I07fugqwPuWJi68oOnpfqFnJIJzaIIm2JVV4=",
+	"GoModSum": "h1:Q9BGdFy1y4nkUwiLvT5qtyhAnEHgnQ/zd8PfU6nc210="
+}
+{
+	"Path": "golang.org/x/term",
+	"Version": "v0.36.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/term/@v/v0.36.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/term/@v/v0.36.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/term/@v/v0.36.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/golang.org/x/term@v0.36.0",
+	"Sum": "h1:zMPR+aF8gfksFprF/Nc/rd1wRS1EI6nDBGyWAvDzx2Q=",
+	"GoModSum": "h1:Qu394IJq6V6dCBRgwqshf3mPF85AqzYEzofzRdZkWss="
+}
+{
+	"Path": "golang.org/x/text",
+	"Version": "v0.30.0",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/text/@v/v0.30.0.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/text/@v/v0.30.0.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/golang.org/x/text/@v/v0.30.0.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/golang.org/x/text@v0.30.0",
+	"Sum": "h1:yznKA/E9zq54KzlzBEAWn1NXSQ8DIp/NYMy88xJjl4k=",
+	"GoModSum": "h1:yDdHFIX9t+tORqspjENWgzaCVXgk0yYnYuSZ8UzzBVM="
+}
+{
+	"Path": "google.golang.org/protobuf",
+	"Version": "v1.34.1",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/google.golang.org/protobuf/@v/v1.34.1.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/google.golang.org/protobuf/@v/v1.34.1.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/google.golang.org/protobuf/@v/v1.34.1.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/google.golang.org/protobuf@v1.34.1",
+	"Sum": "h1:9ddQBjfCyZPOHPUiPxpYESBLc+T8P3E+Vo4IbKZgFWg=",
+	"GoModSum": "h1:c6P6GXX6sHbq/GpV6MGZEdwhWPcYBgnhAHhKbcUYpos="
+}
+{
+	"Path": "gopkg.in/yaml.v3",
+	"Version": "v3.0.1",
+	"Info": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/gopkg.in/yaml.v3/@v/v3.0.1.info",
+	"GoMod": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/gopkg.in/yaml.v3/@v/v3.0.1.mod",
+	"Zip": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/cache/download/gopkg.in/yaml.v3/@v/v3.0.1.zip",
+	"Dir": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/modules/gopkg.in/yaml.v3@v3.0.1",
+	"Sum": "h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=",
+	"GoModSum": "h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM="
+}

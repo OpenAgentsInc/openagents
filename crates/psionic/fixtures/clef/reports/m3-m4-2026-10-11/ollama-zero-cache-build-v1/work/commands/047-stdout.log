@@ -1,0 +1,97 @@
+{"Time":"2026-10-11T11:29:05.138671-05:00","Action":"start","Package":"github.com/ollama/ollama/mlxrunner"}
+{"Time":"2026-10-11T11:29:05.15186-05:00","Action":"run","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose"}
+{"Time":"2026-10-11T11:29:05.151929-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose","Output":"=== RUN   TestPrefixCacheClose\n"}
+{"Time":"2026-10-11T11:29:05.151943-05:00","Action":"run","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/Transformer"}
+{"Time":"2026-10-11T11:29:05.151952-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/Transformer","Output":"=== RUN   TestPrefixCacheClose/Transformer\n"}
+{"Time":"2026-10-11T11:29:05.152128-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/Transformer","Output":"2026/10/11 11:29:05 INFO cache miss total=5 matched=0 cached=0 left=5\n"}
+{"Time":"2026-10-11T11:29:05.152208-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/Transformer","Output":"2026/10/11 11:29:05 INFO cache hit total=5 matched=2 cached=2 left=3\n"}
+{"Time":"2026-10-11T11:29:05.15222-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/Transformer","Output":"--- PASS: TestPrefixCacheClose/Transformer (0.00s)\n"}
+{"Time":"2026-10-11T11:29:05.152228-05:00","Action":"pass","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/Transformer","Elapsed":0}
+{"Time":"2026-10-11T11:29:05.152237-05:00","Action":"run","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/Transformer+Lookahead"}
+{"Time":"2026-10-11T11:29:05.152241-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/Transformer+Lookahead","Output":"=== RUN   TestPrefixCacheClose/Transformer+Lookahead\n"}
+{"Time":"2026-10-11T11:29:05.152248-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/Transformer+Lookahead","Output":"2026/10/11 11:29:05 INFO cache miss total=5 matched=0 cached=0 left=5\n"}
+{"Time":"2026-10-11T11:29:05.152252-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/Transformer+Lookahead","Output":"2026/10/11 11:29:05 INFO cache hit total=5 matched=1 cached=1 left=4\n"}
+{"Time":"2026-10-11T11:29:05.152258-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/Transformer+Lookahead","Output":"--- PASS: TestPrefixCacheClose/Transformer+Lookahead (0.00s)\n"}
+{"Time":"2026-10-11T11:29:05.152262-05:00","Action":"pass","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/Transformer+Lookahead","Elapsed":0}
+{"Time":"2026-10-11T11:29:05.152269-05:00","Action":"run","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/SlidingWindow"}
+{"Time":"2026-10-11T11:29:05.152273-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/SlidingWindow","Output":"=== RUN   TestPrefixCacheClose/SlidingWindow\n"}
+{"Time":"2026-10-11T11:29:05.152278-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/SlidingWindow","Output":"2026/10/11 11:29:05 INFO cache miss total=5 matched=0 cached=0 left=5\n"}
+{"Time":"2026-10-11T11:29:05.152284-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/SlidingWindow","Output":"2026/10/11 11:29:05 INFO cache hit total=5 matched=2 cached=2 left=3\n"}
+{"Time":"2026-10-11T11:29:05.15229-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/SlidingWindow","Output":"--- PASS: TestPrefixCacheClose/SlidingWindow (0.00s)\n"}
+{"Time":"2026-10-11T11:29:05.152295-05:00","Action":"pass","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/SlidingWindow","Elapsed":0}
+{"Time":"2026-10-11T11:29:05.152313-05:00","Action":"run","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/SlidingWindow+Lookahead"}
+{"Time":"2026-10-11T11:29:05.152333-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/SlidingWindow+Lookahead","Output":"=== RUN   TestPrefixCacheClose/SlidingWindow+Lookahead\n"}
+{"Time":"2026-10-11T11:29:05.152341-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/SlidingWindow+Lookahead","Output":"2026/10/11 11:29:05 INFO cache miss total=5 matched=0 cached=0 left=5\n"}
+{"Time":"2026-10-11T11:29:05.152347-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/SlidingWindow+Lookahead","Output":"2026/10/11 11:29:05 INFO cache hit total=5 matched=1 cached=1 left=4\n"}
+{"Time":"2026-10-11T11:29:05.152351-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/SlidingWindow+Lookahead","Output":"--- PASS: TestPrefixCacheClose/SlidingWindow+Lookahead (0.00s)\n"}
+{"Time":"2026-10-11T11:29:05.152356-05:00","Action":"pass","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/SlidingWindow+Lookahead","Elapsed":0}
+{"Time":"2026-10-11T11:29:05.15236-05:00","Action":"run","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/Recurrent"}
+{"Time":"2026-10-11T11:29:05.152367-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/Recurrent","Output":"=== RUN   TestPrefixCacheClose/Recurrent\n"}
+{"Time":"2026-10-11T11:29:05.152371-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/Recurrent","Output":"2026/10/11 11:29:05 INFO cache miss total=5 matched=0 cached=0 left=5\n"}
+{"Time":"2026-10-11T11:29:05.152374-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/Recurrent","Output":"2026/10/11 11:29:05 INFO cache hit total=5 matched=2 cached=2 left=3\n"}
+{"Time":"2026-10-11T11:29:05.152386-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/Recurrent","Output":"--- PASS: TestPrefixCacheClose/Recurrent (0.00s)\n"}
+{"Time":"2026-10-11T11:29:05.152402-05:00","Action":"pass","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/Recurrent","Elapsed":0}
+{"Time":"2026-10-11T11:29:05.152408-05:00","Action":"run","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/Recurrent+Lookahead"}
+{"Time":"2026-10-11T11:29:05.152412-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/Recurrent+Lookahead","Output":"=== RUN   TestPrefixCacheClose/Recurrent+Lookahead\n"}
+{"Time":"2026-10-11T11:29:05.152416-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/Recurrent+Lookahead","Output":"2026/10/11 11:29:05 INFO cache miss total=5 matched=0 cached=0 left=5\n"}
+{"Time":"2026-10-11T11:29:05.15242-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/Recurrent+Lookahead","Output":"2026/10/11 11:29:05 INFO cache hit total=5 matched=1 cached=1 left=4\n"}
+{"Time":"2026-10-11T11:29:05.152423-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/Recurrent+Lookahead","Output":"--- PASS: TestPrefixCacheClose/Recurrent+Lookahead (0.00s)\n"}
+{"Time":"2026-10-11T11:29:05.152427-05:00","Action":"pass","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/Recurrent+Lookahead","Elapsed":0}
+{"Time":"2026-10-11T11:29:05.15243-05:00","Action":"run","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/StatelessLayers"}
+{"Time":"2026-10-11T11:29:05.152433-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/StatelessLayers","Output":"=== RUN   TestPrefixCacheClose/StatelessLayers\n"}
+{"Time":"2026-10-11T11:29:05.152443-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/StatelessLayers","Output":"2026/10/11 11:29:05 INFO cache miss total=5 matched=0 cached=0 left=5\n"}
+{"Time":"2026-10-11T11:29:05.152445-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/StatelessLayers","Output":"2026/10/11 11:29:05 INFO cache hit total=5 matched=2 cached=2 left=3\n"}
+{"Time":"2026-10-11T11:29:05.152448-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/StatelessLayers","Output":"--- PASS: TestPrefixCacheClose/StatelessLayers (0.00s)\n"}
+{"Time":"2026-10-11T11:29:05.152451-05:00","Action":"pass","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/StatelessLayers","Elapsed":0}
+{"Time":"2026-10-11T11:29:05.152454-05:00","Action":"run","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/StatelessLayers+Lookahead"}
+{"Time":"2026-10-11T11:29:05.152457-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/StatelessLayers+Lookahead","Output":"=== RUN   TestPrefixCacheClose/StatelessLayers+Lookahead\n"}
+{"Time":"2026-10-11T11:29:05.152461-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/StatelessLayers+Lookahead","Output":"2026/10/11 11:29:05 INFO cache miss total=5 matched=0 cached=0 left=5\n"}
+{"Time":"2026-10-11T11:29:05.152463-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/StatelessLayers+Lookahead","Output":"2026/10/11 11:29:05 INFO cache hit total=5 matched=1 cached=1 left=4\n"}
+{"Time":"2026-10-11T11:29:05.152472-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/StatelessLayers+Lookahead","Output":"--- PASS: TestPrefixCacheClose/StatelessLayers+Lookahead (0.00s)\n"}
+{"Time":"2026-10-11T11:29:05.152476-05:00","Action":"pass","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose/StatelessLayers+Lookahead","Elapsed":0}
+{"Time":"2026-10-11T11:29:05.15248-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose","Output":"--- PASS: TestPrefixCacheClose (0.00s)\n"}
+{"Time":"2026-10-11T11:29:05.152483-05:00","Action":"pass","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestPrefixCacheClose","Elapsed":0}
+{"Time":"2026-10-11T11:29:05.152486-05:00","Action":"run","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheFirstAndRepeat"}
+{"Time":"2026-10-11T11:29:05.152488-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheFirstAndRepeat","Output":"=== RUN   TestScratchZeroCacheFirstAndRepeat\n"}
+{"Time":"2026-10-11T11:29:05.152492-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheFirstAndRepeat","Output":"2026/10/11 11:29:05 INFO cache miss total=41 matched=0 cached=0 left=41\n"}
+{"Time":"2026-10-11T11:29:05.152497-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheFirstAndRepeat","Output":"2026/10/11 11:29:05 INFO cache hit total=41 matched=41 cached=41 left=0\n"}
+{"Time":"2026-10-11T11:29:05.152525-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheFirstAndRepeat","Output":"--- PASS: TestScratchZeroCacheFirstAndRepeat (0.00s)\n"}
+{"Time":"2026-10-11T11:29:05.15253-05:00","Action":"pass","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheFirstAndRepeat","Elapsed":0}
+{"Time":"2026-10-11T11:29:05.152534-05:00","Action":"run","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheDivergent"}
+{"Time":"2026-10-11T11:29:05.152537-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheDivergent","Output":"=== RUN   TestScratchZeroCacheDivergent\n"}
+{"Time":"2026-10-11T11:29:05.152548-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheDivergent","Output":"2026/10/11 11:29:05 INFO cache miss total=47 matched=0 cached=0 left=47\n"}
+{"Time":"2026-10-11T11:29:05.152552-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheDivergent","Output":"2026/10/11 11:29:05 INFO cache hit total=47 matched=23 cached=7 left=40\n"}
+{"Time":"2026-10-11T11:29:05.152557-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheDivergent","Output":"2026/10/11 11:29:05 INFO cache hit total=47 matched=47 cached=47 left=0\n"}
+{"Time":"2026-10-11T11:29:05.152578-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheDivergent","Output":"--- PASS: TestScratchZeroCacheDivergent (0.00s)\n"}
+{"Time":"2026-10-11T11:29:05.152586-05:00","Action":"pass","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheDivergent","Elapsed":0}
+{"Time":"2026-10-11T11:29:05.15259-05:00","Action":"run","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheLongChunks"}
+{"Time":"2026-10-11T11:29:05.152593-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheLongChunks","Output":"=== RUN   TestScratchZeroCacheLongChunks\n"}
+{"Time":"2026-10-11T11:29:05.152603-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheLongChunks","Output":"2026/10/11 11:29:05 INFO cache miss total=1057 matched=0 cached=0 left=1057\n"}
+{"Time":"2026-10-11T11:29:05.152764-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheLongChunks","Output":"2026/10/11 11:29:05 INFO cache hit total=1057 matched=1057 cached=1057 left=0\n"}
+{"Time":"2026-10-11T11:29:05.15277-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheLongChunks","Output":"--- PASS: TestScratchZeroCacheLongChunks (0.00s)\n"}
+{"Time":"2026-10-11T11:29:05.152775-05:00","Action":"pass","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheLongChunks","Elapsed":0}
+{"Time":"2026-10-11T11:29:05.15278-05:00","Action":"run","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheCancelThenFresh"}
+{"Time":"2026-10-11T11:29:05.152783-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheCancelThenFresh","Output":"=== RUN   TestScratchZeroCacheCancelThenFresh\n"}
+{"Time":"2026-10-11T11:29:05.152787-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheCancelThenFresh","Output":"2026/10/11 11:29:05 INFO cache miss total=211 matched=0 cached=0 left=211\n"}
+{"Time":"2026-10-11T11:29:05.15281-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheCancelThenFresh","Output":"2026/10/11 11:29:05 INFO cache hit total=211 matched=113 cached=113 left=98\n"}
+{"Time":"2026-10-11T11:29:05.152833-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheCancelThenFresh","Output":"--- PASS: TestScratchZeroCacheCancelThenFresh (0.00s)\n"}
+{"Time":"2026-10-11T11:29:05.152837-05:00","Action":"pass","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheCancelThenFresh","Elapsed":0}
+{"Time":"2026-10-11T11:29:05.152842-05:00","Action":"run","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheRepeatedClose"}
+{"Time":"2026-10-11T11:29:05.152845-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheRepeatedClose","Output":"=== RUN   TestScratchZeroCacheRepeatedClose\n"}
+{"Time":"2026-10-11T11:29:05.15285-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheRepeatedClose","Output":"2026/10/11 11:29:05 INFO cache miss total=61 matched=0 cached=0 left=61\n"}
+{"Time":"2026-10-11T11:29:05.152868-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheRepeatedClose","Output":"2026/10/11 11:29:05 INFO cache miss total=61 matched=0 cached=0 left=61\n"}
+{"Time":"2026-10-11T11:29:05.152882-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheRepeatedClose","Output":"--- PASS: TestScratchZeroCacheRepeatedClose (0.00s)\n"}
+{"Time":"2026-10-11T11:29:05.152886-05:00","Action":"pass","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchZeroCacheRepeatedClose","Elapsed":0}
+{"Time":"2026-10-11T11:29:05.152889-05:00","Action":"run","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchGenerationUnchanged"}
+{"Time":"2026-10-11T11:29:05.152892-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchGenerationUnchanged","Output":"=== RUN   TestScratchGenerationUnchanged\n"}
+{"Time":"2026-10-11T11:29:05.152897-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchGenerationUnchanged","Output":"2026/10/11 11:29:05 INFO cache miss total=31 matched=0 cached=0 left=31\n"}
+{"Time":"2026-10-11T11:29:05.1529-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchGenerationUnchanged","Output":"2026/10/11 11:29:05 INFO cache hit total=31 matched=30 cached=30 left=1\n"}
+{"Time":"2026-10-11T11:29:05.152903-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchGenerationUnchanged","Output":"--- PASS: TestScratchGenerationUnchanged (0.00s)\n"}
+{"Time":"2026-10-11T11:29:05.152908-05:00","Action":"pass","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchGenerationUnchanged","Elapsed":0}
+{"Time":"2026-10-11T11:29:05.152911-05:00","Action":"run","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchLibraryIdentity"}
+{"Time":"2026-10-11T11:29:05.152914-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchLibraryIdentity","Output":"=== RUN   TestScratchLibraryIdentity\n"}
+{"Time":"2026-10-11T11:29:05.153037-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchLibraryIdentity","Output":"    scratch_zero_cache_test.go:220: native library /Applications/Ollama.app/Contents/Resources/mlx_metal_v4/libmlxc.dylib, MLX 0.32.3-53-ga59cc23; no arrays or model created\n"}
+{"Time":"2026-10-11T11:29:05.15305-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchLibraryIdentity","Output":"--- PASS: TestScratchLibraryIdentity (0.00s)\n"}
+{"Time":"2026-10-11T11:29:05.153054-05:00","Action":"pass","Package":"github.com/ollama/ollama/mlxrunner","Test":"TestScratchLibraryIdentity","Elapsed":0}
+{"Time":"2026-10-11T11:29:05.153066-05:00","Action":"output","Package":"github.com/ollama/ollama/mlxrunner","Output":"PASS\n"}
+{"Time":"2026-10-11T11:29:05.153924-05:00","Action":"pass","Package":"github.com/ollama/ollama/mlxrunner","Elapsed":0.015}

@@ -1,0 +1,9 @@
+{
+  "command": [
+    "git",
+    "init",
+    "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/public-git"
+  ],
+  "cwd": null,
+  "network_enabled": false
+}

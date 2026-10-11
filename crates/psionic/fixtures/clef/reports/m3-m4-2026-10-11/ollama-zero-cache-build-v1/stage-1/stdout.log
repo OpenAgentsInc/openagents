@@ -1,0 +1,20 @@
+{"command": ["/opt/homebrew/Cellar/go/1.26.3/libexec/bin/go", "version"], "cwd": null, "network_enabled": false}
+{"command": ["/usr/bin/xcrun", "--find", "clang"], "cwd": null, "network_enabled": false}
+{"command": ["/usr/bin/clang", "--version"], "cwd": null, "network_enabled": false}
+{"command": ["/usr/bin/xcrun", "--sdk", "macosx", "--show-sdk-path"], "cwd": null, "network_enabled": false}
+{"command": ["/usr/bin/xcrun", "--sdk", "macosx", "--show-sdk-version"], "cwd": null, "network_enabled": false}
+{"command": ["git", "init", "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/public-git"], "cwd": null, "network_enabled": false}
+{"command": ["git", "-c", "credential.helper=", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "protocol.file.allow=never", "fetch", "--depth=1", "https://github.com/ollama/ollama.git", "b061384d90ff455462bc32745dd0de479de717a3"], "cwd": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/public-git", "network_enabled": true}
+{"command": ["git", "-c", "credential.helper=", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "protocol.file.allow=never", "rev-parse", "FETCH_HEAD^{commit}"], "cwd": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/public-git", "network_enabled": false}
+{"command": ["git", "-c", "credential.helper=", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "protocol.file.allow=never", "checkout", "--detach", "b061384d90ff455462bc32745dd0de479de717a3"], "cwd": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/public-git", "network_enabled": false}
+{"command": ["git", "-c", "credential.helper=", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "protocol.file.allow=never", "diff", "--exit-code", "b061384d90ff455462bc32745dd0de479de717a3", "--"], "cwd": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/public-git", "network_enabled": false}
+{"command": ["git", "-c", "credential.helper=", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "protocol.file.allow=never", "ls-files", "-z"], "cwd": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/public-git", "network_enabled": false}
+{"command": ["git", "-c", "credential.helper=", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "protocol.file.allow=never", "apply", "--check", "$SCRATCH/ollama-zero-cache-plan/candidate.patch"], "cwd": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/reset", "network_enabled": false}
+{"command": ["git", "-c", "credential.helper=", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "protocol.file.allow=never", "apply", "$SCRATCH/ollama-zero-cache-plan/candidate.patch"], "cwd": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/reset", "network_enabled": false}
+{"command": ["/opt/homebrew/Cellar/go/1.26.3/libexec/bin/go", "mod", "download", "-json"], "cwd": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/stock", "network_enabled": true}
+{"command": ["/opt/homebrew/Cellar/go/1.26.3/libexec/bin/go", "mod", "verify"], "cwd": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/stock", "network_enabled": false}
+{"command": ["/opt/homebrew/Cellar/go/1.26.3/libexec/bin/go", "version"], "cwd": null, "network_enabled": false}
+{"command": ["/usr/bin/xcrun", "--find", "clang"], "cwd": null, "network_enabled": false}
+{"command": ["/usr/bin/clang", "--version"], "cwd": null, "network_enabled": false}
+{"command": ["/usr/bin/xcrun", "--sdk", "macosx", "--show-sdk-path"], "cwd": null, "network_enabled": false}
+{"command": ["/usr/bin/xcrun", "--sdk", "macosx", "--show-sdk-version"], "cwd": null, "network_enabled": false}

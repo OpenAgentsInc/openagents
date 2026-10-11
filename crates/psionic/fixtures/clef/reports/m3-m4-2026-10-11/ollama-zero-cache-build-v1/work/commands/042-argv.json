@@ -1,0 +1,9 @@
+{
+  "command": [
+    "/usr/bin/xcrun",
+    "--find",
+    "clang"
+  ],
+  "cwd": null,
+  "network_enabled": false
+}

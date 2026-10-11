@@ -1,0 +1,9 @@
+{
+  "command": [
+    "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/bin/stock/lifecycle.test",
+    "-test.list",
+    "^(TestPrefixCacheClose|TestScratchGenerationUnchanged|TestScratchLibraryIdentity|TestScratchZeroCacheCancelThenFresh|TestScratchZeroCacheDivergent|TestScratchZeroCacheFirstAndRepeat|TestScratchZeroCacheLongChunks|TestScratchZeroCacheRepeatedClose)$"
+  ],
+  "cwd": null,
+  "network_enabled": false
+}

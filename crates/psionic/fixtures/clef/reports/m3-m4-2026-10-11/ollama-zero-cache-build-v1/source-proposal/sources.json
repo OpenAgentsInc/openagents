@@ -1,0 +1,80 @@
+{
+  "status": "source-only proposal; no build or execution",
+  "upstream_commit": "b061384d90ff455462bc32745dd0de479de717a3",
+  "upstream_version": "0.40.2",
+  "files": {
+    "mlxrunner/prefix_cache.go": {
+      "url": "https://github.com/ollama/ollama/blob/b061384d90ff455462bc32745dd0de479de717a3/mlxrunner/prefix_cache.go",
+      "sha256": "059c5f6ad264003a97e256b74dd0fd6eedc1cb717c7fc1ff916dd5b2f5bc46b8",
+      "bytes": 23830,
+      "source": "existing pinned public source copy"
+    },
+    "mlxrunner/score.go": {
+      "url": "https://github.com/ollama/ollama/blob/b061384d90ff455462bc32745dd0de479de717a3/mlxrunner/score.go",
+      "sha256": "8ad59845214141d75fb9a829c1b343a6ca2e6840cc999fb4b46fd4de4af4dea8",
+      "bytes": 8038,
+      "source": "existing pinned public source copy"
+    },
+    "mlxrunner/runner.go": {
+      "url": "https://github.com/ollama/ollama/blob/b061384d90ff455462bc32745dd0de479de717a3/mlxrunner/runner.go",
+      "sha256": "1eb36e0905f8100065af9cc27bfb844cc9029d46f79e3b9d54ab9f9d3a600527",
+      "bytes": 9771,
+      "source": "existing pinned public source copy"
+    },
+    "mlxrunner/model/clef/score.go": {
+      "url": "https://github.com/ollama/ollama/blob/b061384d90ff455462bc32745dd0de479de717a3/mlxrunner/model/clef/score.go",
+      "sha256": "3f2aef1da5c90832bb5048d7ac495e951a3ce43ccf4ae2b9d2253f22ea2cd981",
+      "bytes": 3911,
+      "source": "existing pinned public source copy"
+    },
+    "mlxrunner/server.go": {
+      "url": "https://github.com/ollama/ollama/blob/b061384d90ff455462bc32745dd0de479de717a3/mlxrunner/server.go",
+      "sha256": "57574b795d995eee292dca0c51a94a0ee4bf050011c3b11f311e8c9cd32734e2",
+      "bytes": 7556,
+      "source": "existing pinned public source copy"
+    },
+    "decision/types.go": {
+      "url": "https://github.com/ollama/ollama/blob/b061384d90ff455462bc32745dd0de479de717a3/decision/types.go",
+      "sha256": "2a28de79d0dc49ef75429202253594b1da9070bf4f29d8798a0b52c1fc36c8d9",
+      "bytes": 2290,
+      "source": "existing pinned public source copy"
+    },
+    "envconfig/config.go": {
+      "url": "https://github.com/ollama/ollama/blob/b061384d90ff455462bc32745dd0de479de717a3/envconfig/config.go",
+      "sha256": "0b0ea669b31cfe2b54313427257326a2b7a909bbc7bf8a671035efc446fb1895",
+      "bytes": 16343,
+      "source": "existing pinned public source copy"
+    },
+    "decision/systemone.go": {
+      "url": "https://github.com/ollama/ollama/blob/b061384d90ff455462bc32745dd0de479de717a3/decision/systemone.go",
+      "sha256": "1b98d2649c0494443010a5eee5bdeea7b47ca67a4fb16a24d99eee6685224d68",
+      "bytes": 8506,
+      "source": "existing pinned public source copy"
+    },
+    "mlxrunner/cache/hidden.go": {
+      "url": "https://github.com/ollama/ollama/blob/b061384d90ff455462bc32745dd0de479de717a3/mlxrunner/cache/hidden.go",
+      "sha256": "8a420db85f4896507ac9302b19a165377ead160d3811b09f04231c475e012094",
+      "bytes": 4345,
+      "source": "pinned public source read"
+    },
+    "mlxrunner/cache/recurrent.go": {
+      "url": "https://github.com/ollama/ollama/blob/b061384d90ff455462bc32745dd0de479de717a3/mlxrunner/cache/recurrent.go",
+      "sha256": "e9d69dd000d9c0fcfffb9dea60bda5efdb7bb7856819bd6ceeb1881a1f835251",
+      "bytes": 9276,
+      "source": "pinned public source read"
+    },
+    "mlxrunner/cache/kvcache.go": {
+      "url": "https://github.com/ollama/ollama/blob/b061384d90ff455462bc32745dd0de479de717a3/mlxrunner/cache/kvcache.go",
+      "sha256": "f9988eb66ede8723081f2314d1e4f3ff8caa760c2c18b17fc77e1b763f277e24",
+      "bytes": 12122,
+      "source": "pinned public source read"
+    }
+  },
+  "original_prefix_cache_sha256": "059c5f6ad264003a97e256b74dd0fd6eedc1cb717c7fc1ff916dd5b2f5bc46b8",
+  "proposed_prefix_cache_sha256": "b4bbc0347611c83cb099ba0c45b559136705ccc1281e62547af13b0b8c30ef0d",
+  "patch_sha256": "3e7eebb9d5a588116de20dec5f4c3be5f341d01fc92ff4a3a7d4d5d8c8556d35",
+  "patch_applied": false,
+  "no_request_payload_change": true,
+  "no_model_kernel_or_head_change": true,
+  "no_installed_app_or_service_change": true
+}

@@ -1,0 +1,11 @@
+--- a/mlxrunner/prefix_cache.go
++++ b/mlxrunner/prefix_cache.go
+@@ -102,6 +102,8 @@
+ 
+ // Scoring retains backbone outputs, so an exact hit needs no decode seed.
+ func (c *prefixCache) beginScore(inputs []int32, items []mediaItem) *cacheSession {
++	// Scratch benchmark only: start every scoring row with empty model state.
++	c.close()
+ 	return c.beginAt(inputs, items, len(inputs))
+ }
+ 

@@ -1,0 +1,8 @@
+{
+  "command": [
+    "/usr/bin/clang",
+    "--version"
+  ],
+  "cwd": null,
+  "network_enabled": false
+}

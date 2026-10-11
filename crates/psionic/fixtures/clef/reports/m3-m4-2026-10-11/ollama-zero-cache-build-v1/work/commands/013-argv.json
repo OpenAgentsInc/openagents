@@ -1,0 +1,10 @@
+{
+  "command": [
+    "/opt/homebrew/Cellar/go/1.26.3/libexec/bin/go",
+    "mod",
+    "download",
+    "-json"
+  ],
+  "cwd": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/stock",
+  "network_enabled": true
+}

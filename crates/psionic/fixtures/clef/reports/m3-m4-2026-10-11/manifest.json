@@ -1572,6 +1572,2382 @@
       "published_sha256": "e2f08c098358ea6240a36cba8d5d298f9082597dd2d4804fc521d3a49b905a40",
       "published_bytes": 970,
       "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/PLAN.md",
+      "original_sha256": "0cb1a059f8ffba92516f3986aa6c549ae7a898444b7302e791e9e7348daae43f",
+      "original_bytes": 7001,
+      "published": "ollama-zero-cache-build-v1/PLAN.md",
+      "published_sha256": "0cb1a059f8ffba92516f3986aa6c549ae7a898444b7302e791e9e7348daae43f",
+      "published_bytes": 7001,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/README.md",
+      "original_sha256": "a2b03ef0bd1c6a5daf2ec5d7a3fe93076ba866a3b56b0b33034402d1438aacdb",
+      "original_bytes": 1722,
+      "published": "ollama-zero-cache-build-v1/README.md",
+      "published_sha256": "a2b03ef0bd1c6a5daf2ec5d7a3fe93076ba866a3b56b0b33034402d1438aacdb",
+      "published_bytes": 1722,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/build-1/disk.jsonl",
+      "original_sha256": "c3e5e72d214e09d085aa71dff97e4f1f1827ad26d66f3004e6fc84c6cf3a4319",
+      "original_bytes": 4016,
+      "published": "ollama-zero-cache-build-v1/build-1/disk.jsonl",
+      "published_sha256": "c3e5e72d214e09d085aa71dff97e4f1f1827ad26d66f3004e6fc84c6cf3a4319",
+      "published_bytes": 4016,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/build-1/memory.jsonl",
+      "original_sha256": "9ec9294d7374e1e6afe90a3a1c179ceef95500f3c4e245506a7763ad013ec7bb",
+      "original_bytes": 92909,
+      "published": "ollama-zero-cache-build-v1/build-1/memory.jsonl",
+      "published_sha256": "9ec9294d7374e1e6afe90a3a1c179ceef95500f3c4e245506a7763ad013ec7bb",
+      "published_bytes": 92909,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/build-1/receipt.json",
+      "original_sha256": "998eee2c50ce75f4fcd64f28b912296f429d642d1b6af3e00b764d21b2e33dc3",
+      "original_bytes": 4236,
+      "published": "ollama-zero-cache-build-v1/build-1/receipt.json",
+      "published_sha256": "998eee2c50ce75f4fcd64f28b912296f429d642d1b6af3e00b764d21b2e33dc3",
+      "published_bytes": 4236,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/build-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/build-1/stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/build-1/stdout.log",
+      "original_sha256": "2926ea0c7e0dd9255cd1c276c1a7eaa34af5a90564f165e182cd4baab9c31307",
+      "original_bytes": 2778,
+      "published": "ollama-zero-cache-build-v1/build-1/stdout.log",
+      "published_sha256": "2926ea0c7e0dd9255cd1c276c1a7eaa34af5a90564f165e182cd4baab9c31307",
+      "published_bytes": 2778,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/build-disk-lease-1.json",
+      "original_sha256": "61f46a8b79bc2e78ed45eda39210876e68e75c83dfd2771f9778efa3f8b291ac",
+      "original_bytes": 485,
+      "published": "ollama-zero-cache-build-v1/build-disk-lease-1.json",
+      "published_sha256": "61f46a8b79bc2e78ed45eda39210876e68e75c83dfd2771f9778efa3f8b291ac",
+      "published_bytes": 485,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/build-lease-1.json",
+      "original_sha256": "63b40657ce31fb4252a93568963e90cc298ed1dd3cc1c4a6d2e3c580ae794439",
+      "original_bytes": 492,
+      "published": "ollama-zero-cache-build-v1/build-lease-1.json",
+      "published_sha256": "63b40657ce31fb4252a93568963e90cc298ed1dd3cc1c4a6d2e3c580ae794439",
+      "published_bytes": 492,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/build-memory-lease-1.json",
+      "original_sha256": "035aa7ba84d9428903bb775f1b1ab89560dc39531295085d07743bf65886e0c9",
+      "original_bytes": 490,
+      "published": "ollama-zero-cache-build-v1/build-memory-lease-1.json",
+      "published_sha256": "035aa7ba84d9428903bb775f1b1ab89560dc39531295085d07743bf65886e0c9",
+      "published_bytes": 490,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/build.py",
+      "original_sha256": "9d4025be54283ff14f94cd4a0f226acddfa4e9280cbe3a6441a416a54ad51bed",
+      "original_bytes": 1504,
+      "published": "ollama-zero-cache-build-v1/build.py",
+      "published_sha256": "9d4025be54283ff14f94cd4a0f226acddfa4e9280cbe3a6441a416a54ad51bed",
+      "published_bytes": 1504,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/common.py",
+      "original_sha256": "174151e65cbf8075da8985d8744a4b4ecf55f5db522ffb2fe88c20ce8d8d1279",
+      "original_bytes": 8740,
+      "published": "ollama-zero-cache-build-v1/common.py",
+      "published_sha256": "174151e65cbf8075da8985d8744a4b4ecf55f5db522ffb2fe88c20ce8d8d1279",
+      "published_bytes": 8740,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/frozen-sources.json",
+      "original_sha256": "569887c308ddd77903bb34528427d903e3df30a492f63a4cb585530f959b7ba3",
+      "original_bytes": 1616,
+      "published": "ollama-zero-cache-build-v1/frozen-sources.json",
+      "published_sha256": "569887c308ddd77903bb34528427d903e3df30a492f63a4cb585530f959b7ba3",
+      "published_bytes": 1616,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/guard.py",
+      "original_sha256": "3f13a459786ec8979735ead743c904852289aafef7168c92bc7a42c7e43dcf92",
+      "original_bytes": 6882,
+      "published": "ollama-zero-cache-build-v1/guard.py",
+      "published_sha256": "3f13a459786ec8979735ead743c904852289aafef7168c92bc7a42c7e43dcf92",
+      "published_bytes": 6882,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/local-inventory.json",
+      "original_sha256": "012c67d5f699f0d3cc656007d6f3cdf5520ea0db4f9d750cf079977d396654b0",
+      "original_bytes": 41748,
+      "published": "ollama-zero-cache-build-v1/local-inventory.json",
+      "published_sha256": "012c67d5f699f0d3cc656007d6f3cdf5520ea0db4f9d750cf079977d396654b0",
+      "published_bytes": 41748,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/preparation-checks.json",
+      "original_sha256": "31d66dba4545d416ec90c959b5973b98b501b4f591157ee2e7e6e51eaa2bd107",
+      "original_bytes": 520,
+      "published": "ollama-zero-cache-build-v1/preparation-checks.json",
+      "published_sha256": "31d66dba4545d416ec90c959b5973b98b501b4f591157ee2e7e6e51eaa2bd107",
+      "published_bytes": 520,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/publication-index.json",
+      "original_sha256": "1519b09faac492baae5ea334628eb9b2fc76b5018f3f3a04e0d1da57a9a8f7bd",
+      "original_bytes": 76027,
+      "published": "ollama-zero-cache-build-v1/publication-index.json",
+      "published_sha256": "1519b09faac492baae5ea334628eb9b2fc76b5018f3f3a04e0d1da57a9a8f7bd",
+      "published_bytes": 76027,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/run_tests.py",
+      "original_sha256": "ab826f81a45e1e217d49240fc2176a7edd6cfe7c209fb5c262141438f47d7825",
+      "original_bytes": 2530,
+      "published": "ollama-zero-cache-build-v1/run_tests.py",
+      "published_sha256": "ab826f81a45e1e217d49240fc2176a7edd6cfe7c209fb5c262141438f47d7825",
+      "published_bytes": 2530,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/scratch_zero_cache_test.go",
+      "original_sha256": "ec3520f4823a3b13df0d4dda6d58d421ccfe5da5d0ac13dc56b81d517a65cfd5",
+      "original_bytes": 6286,
+      "published": "ollama-zero-cache-build-v1/scratch_zero_cache_test.go",
+      "published_sha256": "ec3520f4823a3b13df0d4dda6d58d421ccfe5da5d0ac13dc56b81d517a65cfd5",
+      "published_bytes": 6286,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/source-proposal/README.md",
+      "original_sha256": "22af2f7fe7661be64ce366d3e2201c488f02f9947616e1234c477496f71d9023",
+      "original_bytes": 5308,
+      "published": "ollama-zero-cache-build-v1/source-proposal/README.md",
+      "published_sha256": "22af2f7fe7661be64ce366d3e2201c488f02f9947616e1234c477496f71d9023",
+      "published_bytes": 5308,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/source-proposal/candidate.patch",
+      "original_sha256": "3e7eebb9d5a588116de20dec5f4c3be5f341d01fc92ff4a3a7d4d5d8c8556d35",
+      "original_bytes": 388,
+      "published": "ollama-zero-cache-build-v1/source-proposal/candidate.patch",
+      "published_sha256": "3e7eebb9d5a588116de20dec5f4c3be5f341d01fc92ff4a3a7d4d5d8c8556d35",
+      "published_bytes": 388,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/source-proposal/sources.json",
+      "original_sha256": "6f34312f1b205caaaee99ce7a1de5105ba82ef0e282501a6511ed7f94d43c1af",
+      "original_bytes": 4066,
+      "published": "ollama-zero-cache-build-v1/source-proposal/sources.json",
+      "published_sha256": "6f34312f1b205caaaee99ce7a1de5105ba82ef0e282501a6511ed7f94d43c1af",
+      "published_bytes": 4066,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/stage-1/disk.jsonl",
+      "original_sha256": "b00d310d999bd9640b2156cd2114e9e3051c3513ab892ad856301314b11cd96f",
+      "original_bytes": 1725,
+      "published": "ollama-zero-cache-build-v1/stage-1/disk.jsonl",
+      "published_sha256": "b00d310d999bd9640b2156cd2114e9e3051c3513ab892ad856301314b11cd96f",
+      "published_bytes": 1725,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/stage-1/memory.jsonl",
+      "original_sha256": "8eaa59f7a4a9887b6f064afebafb8665b557c705d493418ff84ed8262963b442",
+      "original_bytes": 32244,
+      "published": "ollama-zero-cache-build-v1/stage-1/memory.jsonl",
+      "published_sha256": "8eaa59f7a4a9887b6f064afebafb8665b557c705d493418ff84ed8262963b442",
+      "published_bytes": 32244,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/stage-1/receipt.json",
+      "original_sha256": "5fd027864e3e9282fbb5a21731456ac7f4e0022204bce9ae16443ea99398d1b0",
+      "original_bytes": 3921,
+      "published": "ollama-zero-cache-build-v1/stage-1/receipt.json",
+      "published_sha256": "5fd027864e3e9282fbb5a21731456ac7f4e0022204bce9ae16443ea99398d1b0",
+      "published_bytes": 3921,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/stage-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/stage-1/stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/stage-1/stdout.log",
+      "original_sha256": "27958b0d6f2d6a3db37f0a3ea9edf34ddb7543a69202bf3d27c6d360531fedca",
+      "original_bytes": 3628,
+      "published": "ollama-zero-cache-build-v1/stage-1/stdout.log",
+      "published_sha256": "27958b0d6f2d6a3db37f0a3ea9edf34ddb7543a69202bf3d27c6d360531fedca",
+      "published_bytes": 3628,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/stage-disk-lease-1.json",
+      "original_sha256": "176c6413e1975ee8acd94cc5420247b4debc3a30c28e74f6781d4f7b38958d9d",
+      "original_bytes": 485,
+      "published": "ollama-zero-cache-build-v1/stage-disk-lease-1.json",
+      "published_sha256": "176c6413e1975ee8acd94cc5420247b4debc3a30c28e74f6781d4f7b38958d9d",
+      "published_bytes": 485,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/stage-memory-lease-1.json",
+      "original_sha256": "dfa0b08b150fac4faa59bcd1803a2066c80ea6ecc3d9e8530e923a5abf0a6b4d",
+      "original_bytes": 490,
+      "published": "ollama-zero-cache-build-v1/stage-memory-lease-1.json",
+      "published_sha256": "dfa0b08b150fac4faa59bcd1803a2066c80ea6ecc3d9e8530e923a5abf0a6b4d",
+      "published_bytes": 490,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/stage.py",
+      "original_sha256": "902519698bdc518b1c8643bd107c2b108f41c6f10390ee27bc755a1e38a3ecdd",
+      "original_bytes": 5457,
+      "published": "ollama-zero-cache-build-v1/stage.py",
+      "published_sha256": "902519698bdc518b1c8643bd107c2b108f41c6f10390ee27bc755a1e38a3ecdd",
+      "published_bytes": 5457,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/summary.json",
+      "original_sha256": "b10e27e02e8470ed464bee1b569db780adcf7bf547ee128866bf3b628704d5bb",
+      "original_bytes": 2437,
+      "published": "ollama-zero-cache-build-v1/summary.json",
+      "published_sha256": "b10e27e02e8470ed464bee1b569db780adcf7bf547ee128866bf3b628704d5bb",
+      "published_bytes": 2437,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/test-1/disk.jsonl",
+      "original_sha256": "cc187323c263a89e9914bfd13265c2d5a2cbe61f09c19371a1e1d216c9386f38",
+      "original_bytes": 569,
+      "published": "ollama-zero-cache-build-v1/test-1/disk.jsonl",
+      "published_sha256": "cc187323c263a89e9914bfd13265c2d5a2cbe61f09c19371a1e1d216c9386f38",
+      "published_bytes": 569,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/test-1/memory.jsonl",
+      "original_sha256": "4c923a639e3f5d45c0342d615499bdf90030b0cde556d75a54989ef23acd49f3",
+      "original_bytes": 12104,
+      "published": "ollama-zero-cache-build-v1/test-1/memory.jsonl",
+      "published_sha256": "4c923a639e3f5d45c0342d615499bdf90030b0cde556d75a54989ef23acd49f3",
+      "published_bytes": 12104,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/test-1/receipt.json",
+      "original_sha256": "fc2616dc824a71f4be2cecffc4dd6494ffa9ad4c4dcc8c2389c95bcb9774e85a",
+      "original_bytes": 4538,
+      "published": "ollama-zero-cache-build-v1/test-1/receipt.json",
+      "published_sha256": "fc2616dc824a71f4be2cecffc4dd6494ffa9ad4c4dcc8c2389c95bcb9774e85a",
+      "published_bytes": 4538,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/test-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/test-1/stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/test-1/stdout.log",
+      "original_sha256": "c5e4bb0019693e6e7d7d5a8e90be7594e7a4fdad7ac2e7d0f64a1035e353389c",
+      "original_bytes": 2996,
+      "published": "ollama-zero-cache-build-v1/test-1/stdout.log",
+      "published_sha256": "c5e4bb0019693e6e7d7d5a8e90be7594e7a4fdad7ac2e7d0f64a1035e353389c",
+      "published_bytes": 2996,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/test-disk-lease-1.json",
+      "original_sha256": "b2c93e26bdeffa343e43ae162157183ad8b5e661badda4f7754b786e7945b705",
+      "original_bytes": 480,
+      "published": "ollama-zero-cache-build-v1/test-disk-lease-1.json",
+      "published_sha256": "b2c93e26bdeffa343e43ae162157183ad8b5e661badda4f7754b786e7945b705",
+      "published_bytes": 480,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/test-memory-lease-1.json",
+      "original_sha256": "5dac29f6eb2c4281eb58b2932f033abd6a3aaa5fc8d25c8b625a2c79c980913d",
+      "original_bytes": 485,
+      "published": "ollama-zero-cache-build-v1/test-memory-lease-1.json",
+      "published_sha256": "5dac29f6eb2c4281eb58b2932f033abd6a3aaa5fc8d25c8b625a2c79c980913d",
+      "published_bytes": 485,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/build.json",
+      "original_sha256": "48bcec7a0a8c73a11838f65bdea654e90892e0c4002d584d815ad7ba9f538c86",
+      "original_bytes": 11386,
+      "published": "ollama-zero-cache-build-v1/work/build.json",
+      "published_sha256": "48bcec7a0a8c73a11838f65bdea654e90892e0c4002d584d815ad7ba9f538c86",
+      "published_bytes": 11386,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/000-argv.json",
+      "original_sha256": "8ff7845bbfbdf6ceac4f80ff0061d3e2fc4400ea87722b3e2b44bce6ffd152b1",
+      "original_bytes": 133,
+      "published": "ollama-zero-cache-build-v1/work/commands/000-argv.json",
+      "published_sha256": "8ff7845bbfbdf6ceac4f80ff0061d3e2fc4400ea87722b3e2b44bce6ffd152b1",
+      "published_bytes": 133,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/000-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/000-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/000-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/000-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/000-stdout.log",
+      "original_sha256": "b2fdffd04ae5a836eca9bfdd1d3d10c524b2920dcd5aca393f80258a93a3f0f4",
+      "original_bytes": 33,
+      "published": "ollama-zero-cache-build-v1/work/commands/000-stdout.log",
+      "published_sha256": "b2fdffd04ae5a836eca9bfdd1d3d10c524b2920dcd5aca393f80258a93a3f0f4",
+      "published_bytes": 33,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/001-argv.json",
+      "original_sha256": "a93f38def12382ce2727c76c2397018136252f9e879380c005aeb207a7d21820",
+      "original_bytes": 114,
+      "published": "ollama-zero-cache-build-v1/work/commands/001-argv.json",
+      "published_sha256": "a93f38def12382ce2727c76c2397018136252f9e879380c005aeb207a7d21820",
+      "published_bytes": 114,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/001-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/001-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/001-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/001-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/001-stdout.log",
+      "original_sha256": "083060ae79a9cc17bc69cb6166b1e16396c638b533de036324d8c6d49b77af24",
+      "original_bytes": 93,
+      "published": "ollama-zero-cache-build-v1/work/commands/001-stdout.log",
+      "published_sha256": "083060ae79a9cc17bc69cb6166b1e16396c638b533de036324d8c6d49b77af24",
+      "published_bytes": 93,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/002-argv.json",
+      "original_sha256": "c5712dd5187bee9d4018167172fcabcada427c51ef83893653adcc01c7e81ae4",
+      "original_bytes": 104,
+      "published": "ollama-zero-cache-build-v1/work/commands/002-argv.json",
+      "published_sha256": "c5712dd5187bee9d4018167172fcabcada427c51ef83893653adcc01c7e81ae4",
+      "published_bytes": 104,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/002-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/002-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/002-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/002-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/002-stdout.log",
+      "original_sha256": "2b188bca1426b3565f2be4f2f50d8dd8badc022b100945e2fed04e54a7426c38",
+      "original_bytes": 202,
+      "published": "ollama-zero-cache-build-v1/work/commands/002-stdout.log",
+      "published_sha256": "2b188bca1426b3565f2be4f2f50d8dd8badc022b100945e2fed04e54a7426c38",
+      "published_bytes": 202,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/003-argv.json",
+      "original_sha256": "56623d4a44745c4586f02c933ee7ca53b5fe8b8e6fb937d7c2ee3ca3b09acc56",
+      "original_bytes": 137,
+      "published": "ollama-zero-cache-build-v1/work/commands/003-argv.json",
+      "published_sha256": "56623d4a44745c4586f02c933ee7ca53b5fe8b8e6fb937d7c2ee3ca3b09acc56",
+      "published_bytes": 137,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/003-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/003-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/003-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/003-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/003-stdout.log",
+      "original_sha256": "c2206d451c0f37ff92c73e016a829888392894a99b15cddd3f365a6195412818",
+      "original_bytes": 99,
+      "published": "ollama-zero-cache-build-v1/work/commands/003-stdout.log",
+      "published_sha256": "c2206d451c0f37ff92c73e016a829888392894a99b15cddd3f365a6195412818",
+      "published_bytes": 99,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/004-argv.json",
+      "original_sha256": "fd87c4ccd9d5ffe76ce5826d805c83e221453e045cf1e3d158e7e55e4bdd8b5c",
+      "original_bytes": 140,
+      "published": "ollama-zero-cache-build-v1/work/commands/004-argv.json",
+      "published_sha256": "fd87c4ccd9d5ffe76ce5826d805c83e221453e045cf1e3d158e7e55e4bdd8b5c",
+      "published_bytes": 140,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/004-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/004-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/004-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/004-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/004-stdout.log",
+      "original_sha256": "25205f2e2f02dc71036ee827e19c49b893b231a3d1af240e35a3ac55aa8cdcb6",
+      "original_bytes": 5,
+      "published": "ollama-zero-cache-build-v1/work/commands/004-stdout.log",
+      "published_sha256": "25205f2e2f02dc71036ee827e19c49b893b231a3d1af240e35a3ac55aa8cdcb6",
+      "published_bytes": 5,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/005-argv.json",
+      "original_sha256": "434166c5bcef444b314d909c812f6cc5d52034fd16dcc993c5e7422ae0c62348",
+      "original_bytes": 155,
+      "published": "ollama-zero-cache-build-v1/work/commands/005-argv.json",
+      "published_sha256": "434166c5bcef444b314d909c812f6cc5d52034fd16dcc993c5e7422ae0c62348",
+      "published_bytes": 155,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/005-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/005-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/005-stderr.log",
+      "original_sha256": "c07563dfd27dd9cefcbda7905796c9cd61c31b68f588650c504e3e0454a3a49c",
+      "original_bytes": 568,
+      "published": "ollama-zero-cache-build-v1/work/commands/005-stderr.log",
+      "published_sha256": "c07563dfd27dd9cefcbda7905796c9cd61c31b68f588650c504e3e0454a3a49c",
+      "published_bytes": 568,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/005-stdout.log",
+      "original_sha256": "8ee562d516a6e8d5944579bd9429b2fd2a5deec3d1d8756919733d542051f6dc",
+      "original_bytes": 102,
+      "published": "ollama-zero-cache-build-v1/work/commands/005-stdout.log",
+      "published_sha256": "8ee562d516a6e8d5944579bd9429b2fd2a5deec3d1d8756919733d542051f6dc",
+      "published_bytes": 102,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/006-argv.json",
+      "original_sha256": "6f364fa86e4c0c885138962b3e5029748f26aeab846287b9e375c0f3c830d2b3",
+      "original_bytes": 413,
+      "published": "ollama-zero-cache-build-v1/work/commands/006-argv.json",
+      "published_sha256": "6f364fa86e4c0c885138962b3e5029748f26aeab846287b9e375c0f3c830d2b3",
+      "published_bytes": 413,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/006-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/006-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/006-stderr.log",
+      "original_sha256": "6c08c934e4ee8a2133e048a51e174f23de793aaf3a3a648ce85bf4bd8a0b4701",
+      "original_bytes": 114,
+      "published": "ollama-zero-cache-build-v1/work/commands/006-stderr.log",
+      "published_sha256": "6c08c934e4ee8a2133e048a51e174f23de793aaf3a3a648ce85bf4bd8a0b4701",
+      "published_bytes": 114,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/006-stdout.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/006-stdout.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/007-argv.json",
+      "original_sha256": "aee4a506778b656bf3cdbab7b6194f983359e94cc087761488b1129b3357c562",
+      "original_bytes": 336,
+      "published": "ollama-zero-cache-build-v1/work/commands/007-argv.json",
+      "published_sha256": "aee4a506778b656bf3cdbab7b6194f983359e94cc087761488b1129b3357c562",
+      "published_bytes": 336,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/007-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/007-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/007-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/007-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/007-stdout.log",
+      "original_sha256": "7ea62c2dfb258973c73866274ebc9decb85f4291f599702f93d2a2b44656eb6b",
+      "original_bytes": 41,
+      "published": "ollama-zero-cache-build-v1/work/commands/007-stdout.log",
+      "published_sha256": "7ea62c2dfb258973c73866274ebc9decb85f4291f599702f93d2a2b44656eb6b",
+      "published_bytes": 41,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/008-argv.json",
+      "original_sha256": "3e0b7d145971907c8a8a22409f91c909d80b9f3114a4c9f70e0cd8fe08fbecf3",
+      "original_bytes": 372,
+      "published": "ollama-zero-cache-build-v1/work/commands/008-argv.json",
+      "published_sha256": "3e0b7d145971907c8a8a22409f91c909d80b9f3114a4c9f70e0cd8fe08fbecf3",
+      "published_bytes": 372,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/008-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/008-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/008-stderr.log",
+      "original_sha256": "f1d143dd262bfafd7f4393e787b66960ef4dd85f63552eae4ecb33d2279ee2bb",
+      "original_bytes": 156,
+      "published": "ollama-zero-cache-build-v1/work/commands/008-stderr.log",
+      "published_sha256": "f1d143dd262bfafd7f4393e787b66960ef4dd85f63552eae4ecb33d2279ee2bb",
+      "published_bytes": 156,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/008-stdout.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/008-stdout.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/009-argv.json",
+      "original_sha256": "51c1774294dafba38d2fe51df15d3be21ad763c37b1b4ffc803b894c411f9848",
+      "original_bytes": 381,
+      "published": "ollama-zero-cache-build-v1/work/commands/009-argv.json",
+      "published_sha256": "51c1774294dafba38d2fe51df15d3be21ad763c37b1b4ffc803b894c411f9848",
+      "published_bytes": 381,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/009-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/009-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/009-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/009-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/009-stdout.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/009-stdout.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/010-argv.json",
+      "original_sha256": "e3fd9940168e5bb6cf0225924d990dac6ee68f470d2aee4f57eefb6fcd3e4581",
+      "original_bytes": 318,
+      "published": "ollama-zero-cache-build-v1/work/commands/010-argv.json",
+      "published_sha256": "e3fd9940168e5bb6cf0225924d990dac6ee68f470d2aee4f57eefb6fcd3e4581",
+      "published_bytes": 318,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/010-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/010-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/010-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/010-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/010-stdout.log",
+      "original_sha256": "b9ccb2a7fe0c3abd8f2916fcfa83811e813aa179ca2dcb04ecdc5214e32205d8",
+      "original_bytes": 43462,
+      "published": "ollama-zero-cache-build-v1/work/commands/010-stdout.log",
+      "published_sha256": "b9ccb2a7fe0c3abd8f2916fcfa83811e813aa179ca2dcb04ecdc5214e32205d8",
+      "published_bytes": 43462,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/011-argv.json",
+      "original_sha256": "421fff0171ad671c44a6989357863cc9dfa2c180115723e0eba444b03d6fc058",
+      "original_bytes": 370,
+      "published": "ollama-zero-cache-build-v1/work/commands/011-argv.json",
+      "published_sha256": "421fff0171ad671c44a6989357863cc9dfa2c180115723e0eba444b03d6fc058",
+      "published_bytes": 370,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/011-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/011-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/011-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/011-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/011-stdout.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/011-stdout.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/012-argv.json",
+      "original_sha256": "99ed5d9f0aaaa50200c33f76b6d0321095c7bada1e4dca6ebf08961090dcd8e5",
+      "original_bytes": 355,
+      "published": "ollama-zero-cache-build-v1/work/commands/012-argv.json",
+      "published_sha256": "99ed5d9f0aaaa50200c33f76b6d0321095c7bada1e4dca6ebf08961090dcd8e5",
+      "published_bytes": 355,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/012-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/012-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/012-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/012-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/012-stdout.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/012-stdout.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/013-argv.json",
+      "original_sha256": "bf7b0014f5c32d223c649dc814615b53c6f5623ff2ce4613401e75f6360f395b",
+      "original_bytes": 209,
+      "published": "ollama-zero-cache-build-v1/work/commands/013-argv.json",
+      "published_sha256": "bf7b0014f5c32d223c649dc814615b53c6f5623ff2ce4613401e75f6360f395b",
+      "published_bytes": 209,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/013-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/013-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/013-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/013-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/013-stdout.log",
+      "original_sha256": "d02e08102728a7ff2d4daa77ceeaa30cb8ad33b7f1162fbfadba95f403630305",
+      "original_bytes": 54343,
+      "published": "ollama-zero-cache-build-v1/work/commands/013-stdout.log",
+      "published_sha256": "d02e08102728a7ff2d4daa77ceeaa30cb8ad33b7f1162fbfadba95f403630305",
+      "published_bytes": 54343,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/014-argv.json",
+      "original_sha256": "8b578e619825db41203bfbf06b799a7c72f9c433b3c72935fbc6afc63c2c5266",
+      "original_bytes": 195,
+      "published": "ollama-zero-cache-build-v1/work/commands/014-argv.json",
+      "published_sha256": "8b578e619825db41203bfbf06b799a7c72f9c433b3c72935fbc6afc63c2c5266",
+      "published_bytes": 195,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/014-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/014-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/014-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/014-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/014-stdout.log",
+      "original_sha256": "b4537ed75f533f993f371954de47e42a793b8e5b0587577de7e27fb3e50696bd",
+      "original_bytes": 21,
+      "published": "ollama-zero-cache-build-v1/work/commands/014-stdout.log",
+      "published_sha256": "b4537ed75f533f993f371954de47e42a793b8e5b0587577de7e27fb3e50696bd",
+      "published_bytes": 21,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/015-argv.json",
+      "original_sha256": "8ff7845bbfbdf6ceac4f80ff0061d3e2fc4400ea87722b3e2b44bce6ffd152b1",
+      "original_bytes": 133,
+      "published": "ollama-zero-cache-build-v1/work/commands/015-argv.json",
+      "published_sha256": "8ff7845bbfbdf6ceac4f80ff0061d3e2fc4400ea87722b3e2b44bce6ffd152b1",
+      "published_bytes": 133,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/015-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/015-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/015-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/015-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/015-stdout.log",
+      "original_sha256": "b2fdffd04ae5a836eca9bfdd1d3d10c524b2920dcd5aca393f80258a93a3f0f4",
+      "original_bytes": 33,
+      "published": "ollama-zero-cache-build-v1/work/commands/015-stdout.log",
+      "published_sha256": "b2fdffd04ae5a836eca9bfdd1d3d10c524b2920dcd5aca393f80258a93a3f0f4",
+      "published_bytes": 33,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/016-argv.json",
+      "original_sha256": "a93f38def12382ce2727c76c2397018136252f9e879380c005aeb207a7d21820",
+      "original_bytes": 114,
+      "published": "ollama-zero-cache-build-v1/work/commands/016-argv.json",
+      "published_sha256": "a93f38def12382ce2727c76c2397018136252f9e879380c005aeb207a7d21820",
+      "published_bytes": 114,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/016-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/016-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/016-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/016-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/016-stdout.log",
+      "original_sha256": "083060ae79a9cc17bc69cb6166b1e16396c638b533de036324d8c6d49b77af24",
+      "original_bytes": 93,
+      "published": "ollama-zero-cache-build-v1/work/commands/016-stdout.log",
+      "published_sha256": "083060ae79a9cc17bc69cb6166b1e16396c638b533de036324d8c6d49b77af24",
+      "published_bytes": 93,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/017-argv.json",
+      "original_sha256": "c5712dd5187bee9d4018167172fcabcada427c51ef83893653adcc01c7e81ae4",
+      "original_bytes": 104,
+      "published": "ollama-zero-cache-build-v1/work/commands/017-argv.json",
+      "published_sha256": "c5712dd5187bee9d4018167172fcabcada427c51ef83893653adcc01c7e81ae4",
+      "published_bytes": 104,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/017-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/017-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/017-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/017-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/017-stdout.log",
+      "original_sha256": "2b188bca1426b3565f2be4f2f50d8dd8badc022b100945e2fed04e54a7426c38",
+      "original_bytes": 202,
+      "published": "ollama-zero-cache-build-v1/work/commands/017-stdout.log",
+      "published_sha256": "2b188bca1426b3565f2be4f2f50d8dd8badc022b100945e2fed04e54a7426c38",
+      "published_bytes": 202,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/018-argv.json",
+      "original_sha256": "56623d4a44745c4586f02c933ee7ca53b5fe8b8e6fb937d7c2ee3ca3b09acc56",
+      "original_bytes": 137,
+      "published": "ollama-zero-cache-build-v1/work/commands/018-argv.json",
+      "published_sha256": "56623d4a44745c4586f02c933ee7ca53b5fe8b8e6fb937d7c2ee3ca3b09acc56",
+      "published_bytes": 137,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/018-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/018-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/018-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/018-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/018-stdout.log",
+      "original_sha256": "c2206d451c0f37ff92c73e016a829888392894a99b15cddd3f365a6195412818",
+      "original_bytes": 99,
+      "published": "ollama-zero-cache-build-v1/work/commands/018-stdout.log",
+      "published_sha256": "c2206d451c0f37ff92c73e016a829888392894a99b15cddd3f365a6195412818",
+      "published_bytes": 99,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/019-argv.json",
+      "original_sha256": "fd87c4ccd9d5ffe76ce5826d805c83e221453e045cf1e3d158e7e55e4bdd8b5c",
+      "original_bytes": 140,
+      "published": "ollama-zero-cache-build-v1/work/commands/019-argv.json",
+      "published_sha256": "fd87c4ccd9d5ffe76ce5826d805c83e221453e045cf1e3d158e7e55e4bdd8b5c",
+      "published_bytes": 140,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/019-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/019-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/019-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/019-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/019-stdout.log",
+      "original_sha256": "25205f2e2f02dc71036ee827e19c49b893b231a3d1af240e35a3ac55aa8cdcb6",
+      "original_bytes": 5,
+      "published": "ollama-zero-cache-build-v1/work/commands/019-stdout.log",
+      "published_sha256": "25205f2e2f02dc71036ee827e19c49b893b231a3d1af240e35a3ac55aa8cdcb6",
+      "published_bytes": 5,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/020-argv.json",
+      "original_sha256": "8ff7845bbfbdf6ceac4f80ff0061d3e2fc4400ea87722b3e2b44bce6ffd152b1",
+      "original_bytes": 133,
+      "published": "ollama-zero-cache-build-v1/work/commands/020-argv.json",
+      "published_sha256": "8ff7845bbfbdf6ceac4f80ff0061d3e2fc4400ea87722b3e2b44bce6ffd152b1",
+      "published_bytes": 133,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/020-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/020-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/020-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/020-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/020-stdout.log",
+      "original_sha256": "b2fdffd04ae5a836eca9bfdd1d3d10c524b2920dcd5aca393f80258a93a3f0f4",
+      "original_bytes": 33,
+      "published": "ollama-zero-cache-build-v1/work/commands/020-stdout.log",
+      "published_sha256": "b2fdffd04ae5a836eca9bfdd1d3d10c524b2920dcd5aca393f80258a93a3f0f4",
+      "published_bytes": 33,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/021-argv.json",
+      "original_sha256": "a93f38def12382ce2727c76c2397018136252f9e879380c005aeb207a7d21820",
+      "original_bytes": 114,
+      "published": "ollama-zero-cache-build-v1/work/commands/021-argv.json",
+      "published_sha256": "a93f38def12382ce2727c76c2397018136252f9e879380c005aeb207a7d21820",
+      "published_bytes": 114,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/021-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/021-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/021-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/021-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/021-stdout.log",
+      "original_sha256": "083060ae79a9cc17bc69cb6166b1e16396c638b533de036324d8c6d49b77af24",
+      "original_bytes": 93,
+      "published": "ollama-zero-cache-build-v1/work/commands/021-stdout.log",
+      "published_sha256": "083060ae79a9cc17bc69cb6166b1e16396c638b533de036324d8c6d49b77af24",
+      "published_bytes": 93,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/022-argv.json",
+      "original_sha256": "c5712dd5187bee9d4018167172fcabcada427c51ef83893653adcc01c7e81ae4",
+      "original_bytes": 104,
+      "published": "ollama-zero-cache-build-v1/work/commands/022-argv.json",
+      "published_sha256": "c5712dd5187bee9d4018167172fcabcada427c51ef83893653adcc01c7e81ae4",
+      "published_bytes": 104,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/022-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/022-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/022-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/022-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/022-stdout.log",
+      "original_sha256": "2b188bca1426b3565f2be4f2f50d8dd8badc022b100945e2fed04e54a7426c38",
+      "original_bytes": 202,
+      "published": "ollama-zero-cache-build-v1/work/commands/022-stdout.log",
+      "published_sha256": "2b188bca1426b3565f2be4f2f50d8dd8badc022b100945e2fed04e54a7426c38",
+      "published_bytes": 202,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/023-argv.json",
+      "original_sha256": "56623d4a44745c4586f02c933ee7ca53b5fe8b8e6fb937d7c2ee3ca3b09acc56",
+      "original_bytes": 137,
+      "published": "ollama-zero-cache-build-v1/work/commands/023-argv.json",
+      "published_sha256": "56623d4a44745c4586f02c933ee7ca53b5fe8b8e6fb937d7c2ee3ca3b09acc56",
+      "published_bytes": 137,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/023-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/023-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/023-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/023-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/023-stdout.log",
+      "original_sha256": "c2206d451c0f37ff92c73e016a829888392894a99b15cddd3f365a6195412818",
+      "original_bytes": 99,
+      "published": "ollama-zero-cache-build-v1/work/commands/023-stdout.log",
+      "published_sha256": "c2206d451c0f37ff92c73e016a829888392894a99b15cddd3f365a6195412818",
+      "published_bytes": 99,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/024-argv.json",
+      "original_sha256": "fd87c4ccd9d5ffe76ce5826d805c83e221453e045cf1e3d158e7e55e4bdd8b5c",
+      "original_bytes": 140,
+      "published": "ollama-zero-cache-build-v1/work/commands/024-argv.json",
+      "published_sha256": "fd87c4ccd9d5ffe76ce5826d805c83e221453e045cf1e3d158e7e55e4bdd8b5c",
+      "published_bytes": 140,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/024-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/024-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/024-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/024-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/024-stdout.log",
+      "original_sha256": "25205f2e2f02dc71036ee827e19c49b893b231a3d1af240e35a3ac55aa8cdcb6",
+      "original_bytes": 5,
+      "published": "ollama-zero-cache-build-v1/work/commands/024-stdout.log",
+      "published_sha256": "25205f2e2f02dc71036ee827e19c49b893b231a3d1af240e35a3ac55aa8cdcb6",
+      "published_bytes": 5,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/025-argv.json",
+      "original_sha256": "8ff7845bbfbdf6ceac4f80ff0061d3e2fc4400ea87722b3e2b44bce6ffd152b1",
+      "original_bytes": 133,
+      "published": "ollama-zero-cache-build-v1/work/commands/025-argv.json",
+      "published_sha256": "8ff7845bbfbdf6ceac4f80ff0061d3e2fc4400ea87722b3e2b44bce6ffd152b1",
+      "published_bytes": 133,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/025-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/025-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/025-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/025-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/025-stdout.log",
+      "original_sha256": "b2fdffd04ae5a836eca9bfdd1d3d10c524b2920dcd5aca393f80258a93a3f0f4",
+      "original_bytes": 33,
+      "published": "ollama-zero-cache-build-v1/work/commands/025-stdout.log",
+      "published_sha256": "b2fdffd04ae5a836eca9bfdd1d3d10c524b2920dcd5aca393f80258a93a3f0f4",
+      "published_bytes": 33,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/026-argv.json",
+      "original_sha256": "a93f38def12382ce2727c76c2397018136252f9e879380c005aeb207a7d21820",
+      "original_bytes": 114,
+      "published": "ollama-zero-cache-build-v1/work/commands/026-argv.json",
+      "published_sha256": "a93f38def12382ce2727c76c2397018136252f9e879380c005aeb207a7d21820",
+      "published_bytes": 114,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/026-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/026-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/026-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/026-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/026-stdout.log",
+      "original_sha256": "083060ae79a9cc17bc69cb6166b1e16396c638b533de036324d8c6d49b77af24",
+      "original_bytes": 93,
+      "published": "ollama-zero-cache-build-v1/work/commands/026-stdout.log",
+      "published_sha256": "083060ae79a9cc17bc69cb6166b1e16396c638b533de036324d8c6d49b77af24",
+      "published_bytes": 93,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/027-argv.json",
+      "original_sha256": "c5712dd5187bee9d4018167172fcabcada427c51ef83893653adcc01c7e81ae4",
+      "original_bytes": 104,
+      "published": "ollama-zero-cache-build-v1/work/commands/027-argv.json",
+      "published_sha256": "c5712dd5187bee9d4018167172fcabcada427c51ef83893653adcc01c7e81ae4",
+      "published_bytes": 104,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/027-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/027-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/027-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/027-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/027-stdout.log",
+      "original_sha256": "2b188bca1426b3565f2be4f2f50d8dd8badc022b100945e2fed04e54a7426c38",
+      "original_bytes": 202,
+      "published": "ollama-zero-cache-build-v1/work/commands/027-stdout.log",
+      "published_sha256": "2b188bca1426b3565f2be4f2f50d8dd8badc022b100945e2fed04e54a7426c38",
+      "published_bytes": 202,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/028-argv.json",
+      "original_sha256": "56623d4a44745c4586f02c933ee7ca53b5fe8b8e6fb937d7c2ee3ca3b09acc56",
+      "original_bytes": 137,
+      "published": "ollama-zero-cache-build-v1/work/commands/028-argv.json",
+      "published_sha256": "56623d4a44745c4586f02c933ee7ca53b5fe8b8e6fb937d7c2ee3ca3b09acc56",
+      "published_bytes": 137,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/028-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/028-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/028-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/028-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/028-stdout.log",
+      "original_sha256": "c2206d451c0f37ff92c73e016a829888392894a99b15cddd3f365a6195412818",
+      "original_bytes": 99,
+      "published": "ollama-zero-cache-build-v1/work/commands/028-stdout.log",
+      "published_sha256": "c2206d451c0f37ff92c73e016a829888392894a99b15cddd3f365a6195412818",
+      "published_bytes": 99,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/029-argv.json",
+      "original_sha256": "fd87c4ccd9d5ffe76ce5826d805c83e221453e045cf1e3d158e7e55e4bdd8b5c",
+      "original_bytes": 140,
+      "published": "ollama-zero-cache-build-v1/work/commands/029-argv.json",
+      "published_sha256": "fd87c4ccd9d5ffe76ce5826d805c83e221453e045cf1e3d158e7e55e4bdd8b5c",
+      "published_bytes": 140,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/029-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/029-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/029-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/029-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/029-stdout.log",
+      "original_sha256": "25205f2e2f02dc71036ee827e19c49b893b231a3d1af240e35a3ac55aa8cdcb6",
+      "original_bytes": 5,
+      "published": "ollama-zero-cache-build-v1/work/commands/029-stdout.log",
+      "published_sha256": "25205f2e2f02dc71036ee827e19c49b893b231a3d1af240e35a3ac55aa8cdcb6",
+      "published_bytes": 5,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/030-argv.json",
+      "original_sha256": "18e0fcd63e1f23d6043dd6183a5731d9a8ce287fe7eb8f2d9174d096c687c6cb",
+      "original_bytes": 443,
+      "published": "ollama-zero-cache-build-v1/work/commands/030-argv.json",
+      "published_sha256": "18e0fcd63e1f23d6043dd6183a5731d9a8ce287fe7eb8f2d9174d096c687c6cb",
+      "published_bytes": 443,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/030-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/030-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/030-stderr.log",
+      "original_sha256": "52ccd090cb7f98f1016cc9a24ddf7b164f7169a0ef4aea5c60ed6b54efb14d19",
+      "original_bytes": 78,
+      "published": "ollama-zero-cache-build-v1/work/commands/030-stderr.log",
+      "published_sha256": "52ccd090cb7f98f1016cc9a24ddf7b164f7169a0ef4aea5c60ed6b54efb14d19",
+      "published_bytes": 78,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/030-stdout.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/030-stdout.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/031-argv.json",
+      "original_sha256": "2f84963d5d427e4f5009471e399d443d9fb3b74e8bc2f90ea0f5753f7940a927",
+      "original_bytes": 342,
+      "published": "ollama-zero-cache-build-v1/work/commands/031-argv.json",
+      "published_sha256": "2f84963d5d427e4f5009471e399d443d9fb3b74e8bc2f90ea0f5753f7940a927",
+      "published_bytes": 342,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/031-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/031-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/031-stderr.log",
+      "original_sha256": "1da15ad64d47cdc3767eb4db5cf91438bc142f8bddd029037d1f697442f8fff4",
+      "original_bytes": 93,
+      "published": "ollama-zero-cache-build-v1/work/commands/031-stderr.log",
+      "published_sha256": "1da15ad64d47cdc3767eb4db5cf91438bc142f8bddd029037d1f697442f8fff4",
+      "published_bytes": 93,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/031-stdout.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/031-stdout.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/032-argv.json",
+      "original_sha256": "1229d6cdf4ceabbfbe0776fc38c22e96be4b47cad705164cc31cd520df88c915",
+      "original_bytes": 216,
+      "published": "ollama-zero-cache-build-v1/work/commands/032-argv.json",
+      "published_sha256": "1229d6cdf4ceabbfbe0776fc38c22e96be4b47cad705164cc31cd520df88c915",
+      "published_bytes": 216,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/032-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/032-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/032-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/032-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/032-stdout.log",
+      "original_sha256": "0ed2ed9ed8286218825c94f966e6f16a5004bb9335364b66410ea1b6050f843d",
+      "original_bytes": 4967,
+      "published": "ollama-zero-cache-build-v1/work/commands/032-stdout.log",
+      "published_sha256": "0ed2ed9ed8286218825c94f966e6f16a5004bb9335364b66410ea1b6050f843d",
+      "published_bytes": 4967,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/033-argv.json",
+      "original_sha256": "dc17a016ac6761b85c7f25ca35a835f126ecca05e0b8be8c42c0bc9e2826dc6f",
+      "original_bytes": 443,
+      "published": "ollama-zero-cache-build-v1/work/commands/033-argv.json",
+      "published_sha256": "dc17a016ac6761b85c7f25ca35a835f126ecca05e0b8be8c42c0bc9e2826dc6f",
+      "published_bytes": 443,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/033-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/033-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/033-stderr.log",
+      "original_sha256": "52ccd090cb7f98f1016cc9a24ddf7b164f7169a0ef4aea5c60ed6b54efb14d19",
+      "original_bytes": 78,
+      "published": "ollama-zero-cache-build-v1/work/commands/033-stderr.log",
+      "published_sha256": "52ccd090cb7f98f1016cc9a24ddf7b164f7169a0ef4aea5c60ed6b54efb14d19",
+      "published_bytes": 78,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/033-stdout.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/033-stdout.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/034-argv.json",
+      "original_sha256": "8f743b03974535292c4aa33cbca6a35c7cf6960276be9227a1c9d48137a7b560",
+      "original_bytes": 342,
+      "published": "ollama-zero-cache-build-v1/work/commands/034-argv.json",
+      "published_sha256": "8f743b03974535292c4aa33cbca6a35c7cf6960276be9227a1c9d48137a7b560",
+      "published_bytes": 342,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/034-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/034-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/034-stderr.log",
+      "original_sha256": "1da15ad64d47cdc3767eb4db5cf91438bc142f8bddd029037d1f697442f8fff4",
+      "original_bytes": 93,
+      "published": "ollama-zero-cache-build-v1/work/commands/034-stderr.log",
+      "published_sha256": "1da15ad64d47cdc3767eb4db5cf91438bc142f8bddd029037d1f697442f8fff4",
+      "published_bytes": 93,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/034-stdout.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/034-stdout.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/035-argv.json",
+      "original_sha256": "06b7001e7ab0d649c972bd75b29a556be2ac08cffe0e77cd521b3bf9e5b39ffb",
+      "original_bytes": 216,
+      "published": "ollama-zero-cache-build-v1/work/commands/035-argv.json",
+      "published_sha256": "06b7001e7ab0d649c972bd75b29a556be2ac08cffe0e77cd521b3bf9e5b39ffb",
+      "published_bytes": 216,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/035-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/035-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/035-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/035-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/035-stdout.log",
+      "original_sha256": "033b5ddc3db3ed4784412febad6c2219240db5a12dae35b173e6cbd3f514ed5c",
+      "original_bytes": 4967,
+      "published": "ollama-zero-cache-build-v1/work/commands/035-stdout.log",
+      "published_sha256": "033b5ddc3db3ed4784412febad6c2219240db5a12dae35b173e6cbd3f514ed5c",
+      "published_bytes": 4967,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/036-argv.json",
+      "original_sha256": "8ff7845bbfbdf6ceac4f80ff0061d3e2fc4400ea87722b3e2b44bce6ffd152b1",
+      "original_bytes": 133,
+      "published": "ollama-zero-cache-build-v1/work/commands/036-argv.json",
+      "published_sha256": "8ff7845bbfbdf6ceac4f80ff0061d3e2fc4400ea87722b3e2b44bce6ffd152b1",
+      "published_bytes": 133,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/036-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/036-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/036-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/036-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/036-stdout.log",
+      "original_sha256": "b2fdffd04ae5a836eca9bfdd1d3d10c524b2920dcd5aca393f80258a93a3f0f4",
+      "original_bytes": 33,
+      "published": "ollama-zero-cache-build-v1/work/commands/036-stdout.log",
+      "published_sha256": "b2fdffd04ae5a836eca9bfdd1d3d10c524b2920dcd5aca393f80258a93a3f0f4",
+      "published_bytes": 33,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/037-argv.json",
+      "original_sha256": "a93f38def12382ce2727c76c2397018136252f9e879380c005aeb207a7d21820",
+      "original_bytes": 114,
+      "published": "ollama-zero-cache-build-v1/work/commands/037-argv.json",
+      "published_sha256": "a93f38def12382ce2727c76c2397018136252f9e879380c005aeb207a7d21820",
+      "published_bytes": 114,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/037-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/037-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/037-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/037-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/037-stdout.log",
+      "original_sha256": "083060ae79a9cc17bc69cb6166b1e16396c638b533de036324d8c6d49b77af24",
+      "original_bytes": 93,
+      "published": "ollama-zero-cache-build-v1/work/commands/037-stdout.log",
+      "published_sha256": "083060ae79a9cc17bc69cb6166b1e16396c638b533de036324d8c6d49b77af24",
+      "published_bytes": 93,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/038-argv.json",
+      "original_sha256": "c5712dd5187bee9d4018167172fcabcada427c51ef83893653adcc01c7e81ae4",
+      "original_bytes": 104,
+      "published": "ollama-zero-cache-build-v1/work/commands/038-argv.json",
+      "published_sha256": "c5712dd5187bee9d4018167172fcabcada427c51ef83893653adcc01c7e81ae4",
+      "published_bytes": 104,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/038-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/038-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/038-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/038-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/038-stdout.log",
+      "original_sha256": "2b188bca1426b3565f2be4f2f50d8dd8badc022b100945e2fed04e54a7426c38",
+      "original_bytes": 202,
+      "published": "ollama-zero-cache-build-v1/work/commands/038-stdout.log",
+      "published_sha256": "2b188bca1426b3565f2be4f2f50d8dd8badc022b100945e2fed04e54a7426c38",
+      "published_bytes": 202,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/039-argv.json",
+      "original_sha256": "56623d4a44745c4586f02c933ee7ca53b5fe8b8e6fb937d7c2ee3ca3b09acc56",
+      "original_bytes": 137,
+      "published": "ollama-zero-cache-build-v1/work/commands/039-argv.json",
+      "published_sha256": "56623d4a44745c4586f02c933ee7ca53b5fe8b8e6fb937d7c2ee3ca3b09acc56",
+      "published_bytes": 137,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/039-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/039-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/039-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/039-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/039-stdout.log",
+      "original_sha256": "c2206d451c0f37ff92c73e016a829888392894a99b15cddd3f365a6195412818",
+      "original_bytes": 99,
+      "published": "ollama-zero-cache-build-v1/work/commands/039-stdout.log",
+      "published_sha256": "c2206d451c0f37ff92c73e016a829888392894a99b15cddd3f365a6195412818",
+      "published_bytes": 99,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/040-argv.json",
+      "original_sha256": "fd87c4ccd9d5ffe76ce5826d805c83e221453e045cf1e3d158e7e55e4bdd8b5c",
+      "original_bytes": 140,
+      "published": "ollama-zero-cache-build-v1/work/commands/040-argv.json",
+      "published_sha256": "fd87c4ccd9d5ffe76ce5826d805c83e221453e045cf1e3d158e7e55e4bdd8b5c",
+      "published_bytes": 140,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/040-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/040-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/040-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/040-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/040-stdout.log",
+      "original_sha256": "25205f2e2f02dc71036ee827e19c49b893b231a3d1af240e35a3ac55aa8cdcb6",
+      "original_bytes": 5,
+      "published": "ollama-zero-cache-build-v1/work/commands/040-stdout.log",
+      "published_sha256": "25205f2e2f02dc71036ee827e19c49b893b231a3d1af240e35a3ac55aa8cdcb6",
+      "published_bytes": 5,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/041-argv.json",
+      "original_sha256": "8ff7845bbfbdf6ceac4f80ff0061d3e2fc4400ea87722b3e2b44bce6ffd152b1",
+      "original_bytes": 133,
+      "published": "ollama-zero-cache-build-v1/work/commands/041-argv.json",
+      "published_sha256": "8ff7845bbfbdf6ceac4f80ff0061d3e2fc4400ea87722b3e2b44bce6ffd152b1",
+      "published_bytes": 133,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/041-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/041-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/041-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/041-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/041-stdout.log",
+      "original_sha256": "b2fdffd04ae5a836eca9bfdd1d3d10c524b2920dcd5aca393f80258a93a3f0f4",
+      "original_bytes": 33,
+      "published": "ollama-zero-cache-build-v1/work/commands/041-stdout.log",
+      "published_sha256": "b2fdffd04ae5a836eca9bfdd1d3d10c524b2920dcd5aca393f80258a93a3f0f4",
+      "published_bytes": 33,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/042-argv.json",
+      "original_sha256": "a93f38def12382ce2727c76c2397018136252f9e879380c005aeb207a7d21820",
+      "original_bytes": 114,
+      "published": "ollama-zero-cache-build-v1/work/commands/042-argv.json",
+      "published_sha256": "a93f38def12382ce2727c76c2397018136252f9e879380c005aeb207a7d21820",
+      "published_bytes": 114,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/042-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/042-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/042-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/042-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/042-stdout.log",
+      "original_sha256": "083060ae79a9cc17bc69cb6166b1e16396c638b533de036324d8c6d49b77af24",
+      "original_bytes": 93,
+      "published": "ollama-zero-cache-build-v1/work/commands/042-stdout.log",
+      "published_sha256": "083060ae79a9cc17bc69cb6166b1e16396c638b533de036324d8c6d49b77af24",
+      "published_bytes": 93,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/043-argv.json",
+      "original_sha256": "c5712dd5187bee9d4018167172fcabcada427c51ef83893653adcc01c7e81ae4",
+      "original_bytes": 104,
+      "published": "ollama-zero-cache-build-v1/work/commands/043-argv.json",
+      "published_sha256": "c5712dd5187bee9d4018167172fcabcada427c51ef83893653adcc01c7e81ae4",
+      "published_bytes": 104,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/043-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/043-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/043-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/043-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/043-stdout.log",
+      "original_sha256": "2b188bca1426b3565f2be4f2f50d8dd8badc022b100945e2fed04e54a7426c38",
+      "original_bytes": 202,
+      "published": "ollama-zero-cache-build-v1/work/commands/043-stdout.log",
+      "published_sha256": "2b188bca1426b3565f2be4f2f50d8dd8badc022b100945e2fed04e54a7426c38",
+      "published_bytes": 202,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/044-argv.json",
+      "original_sha256": "56623d4a44745c4586f02c933ee7ca53b5fe8b8e6fb937d7c2ee3ca3b09acc56",
+      "original_bytes": 137,
+      "published": "ollama-zero-cache-build-v1/work/commands/044-argv.json",
+      "published_sha256": "56623d4a44745c4586f02c933ee7ca53b5fe8b8e6fb937d7c2ee3ca3b09acc56",
+      "published_bytes": 137,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/044-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/044-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/044-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/044-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/044-stdout.log",
+      "original_sha256": "c2206d451c0f37ff92c73e016a829888392894a99b15cddd3f365a6195412818",
+      "original_bytes": 99,
+      "published": "ollama-zero-cache-build-v1/work/commands/044-stdout.log",
+      "published_sha256": "c2206d451c0f37ff92c73e016a829888392894a99b15cddd3f365a6195412818",
+      "published_bytes": 99,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/045-argv.json",
+      "original_sha256": "fd87c4ccd9d5ffe76ce5826d805c83e221453e045cf1e3d158e7e55e4bdd8b5c",
+      "original_bytes": 140,
+      "published": "ollama-zero-cache-build-v1/work/commands/045-argv.json",
+      "published_sha256": "fd87c4ccd9d5ffe76ce5826d805c83e221453e045cf1e3d158e7e55e4bdd8b5c",
+      "published_bytes": 140,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/045-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/045-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/045-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/045-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/045-stdout.log",
+      "original_sha256": "25205f2e2f02dc71036ee827e19c49b893b231a3d1af240e35a3ac55aa8cdcb6",
+      "original_bytes": 5,
+      "published": "ollama-zero-cache-build-v1/work/commands/045-stdout.log",
+      "published_sha256": "25205f2e2f02dc71036ee827e19c49b893b231a3d1af240e35a3ac55aa8cdcb6",
+      "published_bytes": 5,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/046-argv.json",
+      "original_sha256": "c05eb699c3840abaf6e6df444d4cb3750021eee49d69616a47573fe524e94dab",
+      "original_bytes": 420,
+      "published": "ollama-zero-cache-build-v1/work/commands/046-argv.json",
+      "published_sha256": "c05eb699c3840abaf6e6df444d4cb3750021eee49d69616a47573fe524e94dab",
+      "published_bytes": 420,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/046-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/046-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/046-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/046-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/046-stdout.log",
+      "original_sha256": "0e6bbe4ea465737db660606c6775db48aef5c8ea5b9fda9f1294ed1313775048",
+      "original_bytes": 245,
+      "published": "ollama-zero-cache-build-v1/work/commands/046-stdout.log",
+      "published_sha256": "0e6bbe4ea465737db660606c6775db48aef5c8ea5b9fda9f1294ed1313775048",
+      "published_bytes": 245,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/047-argv.json",
+      "original_sha256": "21e061d4d6c7e42c1991934fc586969f35f9ef1fdbba38b0958621fa6b5062f2",
+      "original_bytes": 658,
+      "published": "ollama-zero-cache-build-v1/work/commands/047-argv.json",
+      "published_sha256": "21e061d4d6c7e42c1991934fc586969f35f9ef1fdbba38b0958621fa6b5062f2",
+      "published_bytes": 658,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/047-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/047-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/047-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/047-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/047-stdout.log",
+      "original_sha256": "cf5a6e187f96d3dc47b0bc663568244b8d8b6080c74aac84e21332eb4cdb263b",
+      "original_bytes": 19455,
+      "published": "ollama-zero-cache-build-v1/work/commands/047-stdout.log",
+      "published_sha256": "cf5a6e187f96d3dc47b0bc663568244b8d8b6080c74aac84e21332eb4cdb263b",
+      "published_bytes": 19455,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/048-argv.json",
+      "original_sha256": "465d5ed6a408200deb11768081d2bcc9fea33c034d291b50a0bd1c9bacc77ea5",
+      "original_bytes": 420,
+      "published": "ollama-zero-cache-build-v1/work/commands/048-argv.json",
+      "published_sha256": "465d5ed6a408200deb11768081d2bcc9fea33c034d291b50a0bd1c9bacc77ea5",
+      "published_bytes": 420,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/048-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/048-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/048-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/048-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/048-stdout.log",
+      "original_sha256": "0e6bbe4ea465737db660606c6775db48aef5c8ea5b9fda9f1294ed1313775048",
+      "original_bytes": 245,
+      "published": "ollama-zero-cache-build-v1/work/commands/048-stdout.log",
+      "published_sha256": "0e6bbe4ea465737db660606c6775db48aef5c8ea5b9fda9f1294ed1313775048",
+      "published_bytes": 245,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/049-argv.json",
+      "original_sha256": "e3e1481ef6bc5e1a5b31bd743b3dfc8a374a0435be360529f9873b0b43c1f4e1",
+      "original_bytes": 658,
+      "published": "ollama-zero-cache-build-v1/work/commands/049-argv.json",
+      "published_sha256": "e3e1481ef6bc5e1a5b31bd743b3dfc8a374a0435be360529f9873b0b43c1f4e1",
+      "published_bytes": 658,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/049-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/049-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/049-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/049-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/049-stdout.log",
+      "original_sha256": "09ff7e26cf294d20ca2fd793f565cdc482cb36e76906d3890c5d50e3c35e0c01",
+      "original_bytes": 19459,
+      "published": "ollama-zero-cache-build-v1/work/commands/049-stdout.log",
+      "published_sha256": "09ff7e26cf294d20ca2fd793f565cdc482cb36e76906d3890c5d50e3c35e0c01",
+      "published_bytes": 19459,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/050-argv.json",
+      "original_sha256": "8ff7845bbfbdf6ceac4f80ff0061d3e2fc4400ea87722b3e2b44bce6ffd152b1",
+      "original_bytes": 133,
+      "published": "ollama-zero-cache-build-v1/work/commands/050-argv.json",
+      "published_sha256": "8ff7845bbfbdf6ceac4f80ff0061d3e2fc4400ea87722b3e2b44bce6ffd152b1",
+      "published_bytes": 133,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/050-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/050-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/050-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/050-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/050-stdout.log",
+      "original_sha256": "b2fdffd04ae5a836eca9bfdd1d3d10c524b2920dcd5aca393f80258a93a3f0f4",
+      "original_bytes": 33,
+      "published": "ollama-zero-cache-build-v1/work/commands/050-stdout.log",
+      "published_sha256": "b2fdffd04ae5a836eca9bfdd1d3d10c524b2920dcd5aca393f80258a93a3f0f4",
+      "published_bytes": 33,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/051-argv.json",
+      "original_sha256": "a93f38def12382ce2727c76c2397018136252f9e879380c005aeb207a7d21820",
+      "original_bytes": 114,
+      "published": "ollama-zero-cache-build-v1/work/commands/051-argv.json",
+      "published_sha256": "a93f38def12382ce2727c76c2397018136252f9e879380c005aeb207a7d21820",
+      "published_bytes": 114,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/051-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/051-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/051-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/051-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/051-stdout.log",
+      "original_sha256": "083060ae79a9cc17bc69cb6166b1e16396c638b533de036324d8c6d49b77af24",
+      "original_bytes": 93,
+      "published": "ollama-zero-cache-build-v1/work/commands/051-stdout.log",
+      "published_sha256": "083060ae79a9cc17bc69cb6166b1e16396c638b533de036324d8c6d49b77af24",
+      "published_bytes": 93,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/052-argv.json",
+      "original_sha256": "c5712dd5187bee9d4018167172fcabcada427c51ef83893653adcc01c7e81ae4",
+      "original_bytes": 104,
+      "published": "ollama-zero-cache-build-v1/work/commands/052-argv.json",
+      "published_sha256": "c5712dd5187bee9d4018167172fcabcada427c51ef83893653adcc01c7e81ae4",
+      "published_bytes": 104,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/052-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/052-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/052-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/052-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/052-stdout.log",
+      "original_sha256": "2b188bca1426b3565f2be4f2f50d8dd8badc022b100945e2fed04e54a7426c38",
+      "original_bytes": 202,
+      "published": "ollama-zero-cache-build-v1/work/commands/052-stdout.log",
+      "published_sha256": "2b188bca1426b3565f2be4f2f50d8dd8badc022b100945e2fed04e54a7426c38",
+      "published_bytes": 202,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/053-argv.json",
+      "original_sha256": "56623d4a44745c4586f02c933ee7ca53b5fe8b8e6fb937d7c2ee3ca3b09acc56",
+      "original_bytes": 137,
+      "published": "ollama-zero-cache-build-v1/work/commands/053-argv.json",
+      "published_sha256": "56623d4a44745c4586f02c933ee7ca53b5fe8b8e6fb937d7c2ee3ca3b09acc56",
+      "published_bytes": 137,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/053-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/053-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/053-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/053-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/053-stdout.log",
+      "original_sha256": "c2206d451c0f37ff92c73e016a829888392894a99b15cddd3f365a6195412818",
+      "original_bytes": 99,
+      "published": "ollama-zero-cache-build-v1/work/commands/053-stdout.log",
+      "published_sha256": "c2206d451c0f37ff92c73e016a829888392894a99b15cddd3f365a6195412818",
+      "published_bytes": 99,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/054-argv.json",
+      "original_sha256": "fd87c4ccd9d5ffe76ce5826d805c83e221453e045cf1e3d158e7e55e4bdd8b5c",
+      "original_bytes": 140,
+      "published": "ollama-zero-cache-build-v1/work/commands/054-argv.json",
+      "published_sha256": "fd87c4ccd9d5ffe76ce5826d805c83e221453e045cf1e3d158e7e55e4bdd8b5c",
+      "published_bytes": 140,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/054-result.json",
+      "original_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "original_bytes": 16,
+      "published": "ollama-zero-cache-build-v1/work/commands/054-result.json",
+      "published_sha256": "3e42a2ad3dbeab9d1167d20261ad6305bdea31103ffc09c30f25558345966de2",
+      "published_bytes": 16,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/054-stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "ollama-zero-cache-build-v1/work/commands/054-stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/commands/054-stdout.log",
+      "original_sha256": "25205f2e2f02dc71036ee827e19c49b893b231a3d1af240e35a3ac55aa8cdcb6",
+      "original_bytes": 5,
+      "published": "ollama-zero-cache-build-v1/work/commands/054-stdout.log",
+      "published_sha256": "25205f2e2f02dc71036ee827e19c49b893b231a3d1af240e35a3ac55aa8cdcb6",
+      "published_bytes": 5,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/module-download.jsonl",
+      "original_sha256": "d02e08102728a7ff2d4daa77ceeaa30cb8ad33b7f1162fbfadba95f403630305",
+      "original_bytes": 54343,
+      "published": "ollama-zero-cache-build-v1/work/module-download.jsonl",
+      "published_sha256": "d02e08102728a7ff2d4daa77ceeaa30cb8ad33b7f1162fbfadba95f403630305",
+      "published_bytes": 54343,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/reset-tests.jsonl",
+      "original_sha256": "09ff7e26cf294d20ca2fd793f565cdc482cb36e76906d3890c5d50e3c35e0c01",
+      "original_bytes": 19459,
+      "published": "ollama-zero-cache-build-v1/work/reset-tests.jsonl",
+      "published_sha256": "09ff7e26cf294d20ca2fd793f565cdc482cb36e76906d3890c5d50e3c35e0c01",
+      "published_bytes": 19459,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/stage.json",
+      "original_sha256": "c4a58fa04df06be913b66cdf826b8df7a33ff4d38cbc87063c4a95488380526b",
+      "original_bytes": 313349,
+      "published": "ollama-zero-cache-build-v1/work/stage.json",
+      "published_sha256": "c4a58fa04df06be913b66cdf826b8df7a33ff4d38cbc87063c4a95488380526b",
+      "published_bytes": 313349,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/stock-tests.jsonl",
+      "original_sha256": "cf5a6e187f96d3dc47b0bc663568244b8d8b6080c74aac84e21332eb4cdb263b",
+      "original_bytes": 19455,
+      "published": "ollama-zero-cache-build-v1/work/stock-tests.jsonl",
+      "published_sha256": "cf5a6e187f96d3dc47b0bc663568244b8d8b6080c74aac84e21332eb4cdb263b",
+      "published_bytes": 19455,
+      "path_replacements": []
+    },
+    {
+      "source": "ollama-zero-cache-plan/workflow-v1/publication-v1/work/tests.json",
+      "original_sha256": "f7390e20bc9c5a20d5f82a669e76a3d6dd79c08f34cc5a08f92befcdc6b388bd",
+      "original_bytes": 1551,
+      "published": "ollama-zero-cache-build-v1/work/tests.json",
+      "published_sha256": "f7390e20bc9c5a20d5f82a669e76a3d6dd79c08f34cc5a08f92befcdc6b388bd",
+      "published_bytes": 1551,
+      "path_replacements": []
     }
   ],
   "current_source_snapshot": [
@@ -1679,5 +4055,5 @@
       "file_count": 573
     }
   ],
-  "file_count": 2546
+  "file_count": 2810
 }

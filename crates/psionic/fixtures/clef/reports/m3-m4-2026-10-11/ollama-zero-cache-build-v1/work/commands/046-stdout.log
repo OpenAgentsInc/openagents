@@ -1,0 +1,8 @@
+TestPrefixCacheClose
+TestScratchZeroCacheFirstAndRepeat
+TestScratchZeroCacheDivergent
+TestScratchZeroCacheLongChunks
+TestScratchZeroCacheCancelThenFresh
+TestScratchZeroCacheRepeatedClose
+TestScratchGenerationUnchanged
+TestScratchLibraryIdentity

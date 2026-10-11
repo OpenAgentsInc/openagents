@@ -1,0 +1,39 @@
+{
+  "results": {
+    "stock": {
+      "top_level_tests": [
+        "TestPrefixCacheClose",
+        "TestScratchZeroCacheFirstAndRepeat",
+        "TestScratchZeroCacheDivergent",
+        "TestScratchZeroCacheLongChunks",
+        "TestScratchZeroCacheCancelThenFresh",
+        "TestScratchZeroCacheRepeatedClose",
+        "TestScratchGenerationUnchanged",
+        "TestScratchLibraryIdentity"
+      ],
+      "test_sha256": "60807d5008df80b38895d733b22b8f3ff50c92327082dffa048f255235da53c8",
+      "events_sha256": "cf5a6e187f96d3dc47b0bc663568244b8d8b6080c74aac84e21332eb4cdb263b"
+    },
+    "reset": {
+      "top_level_tests": [
+        "TestPrefixCacheClose",
+        "TestScratchZeroCacheFirstAndRepeat",
+        "TestScratchZeroCacheDivergent",
+        "TestScratchZeroCacheLongChunks",
+        "TestScratchZeroCacheCancelThenFresh",
+        "TestScratchZeroCacheRepeatedClose",
+        "TestScratchGenerationUnchanged",
+        "TestScratchLibraryIdentity"
+      ],
+      "test_sha256": "c43d6b6f49e874651f5ea4aeb3d85be7379601ac644c3bb67ff81661d7d2c01c",
+      "events_sha256": "09ff7e26cf294d20ca2fd793f565cdc482cb36e76906d3890c5d50e3c35e0c01"
+    }
+  },
+  "frozen_sources_sha256": "cbc7e6d902405a941aec083b325c1dad7f87580ed3877253ec2f59dcfe10bded",
+  "stage_sha256": "c4a58fa04df06be913b66cdf826b8df7a33ff4d38cbc87063c4a95488380526b",
+  "build_sha256": "3797a2b6cdf45efe7bfe37ead46476b069379d7fa4e576e09d6d47f5ac9a9726",
+  "model_loaded": false,
+  "arrays_created": false,
+  "gpu_dispatched": false,
+  "real_tensor_cache_cleanup_proved": false
+}

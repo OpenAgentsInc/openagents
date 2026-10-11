@@ -1,0 +1,14 @@
+{
+  "command": [
+    "/opt/homebrew/Cellar/go/1.26.3/libexec/bin/go",
+    "test",
+    "-c",
+    "-trimpath",
+    "-buildvcs=false",
+    "-o",
+    "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/bin/reset/lifecycle.test",
+    "./mlxrunner"
+  ],
+  "cwd": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/reset",
+  "network_enabled": false
+}

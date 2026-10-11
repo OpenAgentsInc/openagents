@@ -1,0 +1,8 @@
+{
+  "command": [
+    "/opt/homebrew/Cellar/go/1.26.3/libexec/bin/go",
+    "version"
+  ],
+  "cwd": null,
+  "network_enabled": false
+}

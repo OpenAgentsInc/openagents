@@ -1,0 +1,10 @@
+{
+  "command": [
+    "/usr/bin/xcrun",
+    "--sdk",
+    "macosx",
+    "--show-sdk-version"
+  ],
+  "cwd": null,
+  "network_enabled": false
+}

@@ -1,0 +1,59 @@
+{
+  "scope": "Paired scratch builds and scalar cache lifecycle tests only; no real model or latency acceptance.",
+  "frozen_descriptor_sha256": "cbc7e6d902405a941aec083b325c1dad7f87580ed3877253ec2f59dcfe10bded",
+  "phases": [
+    {
+      "phase": "stage",
+      "status": "complete",
+      "seconds": 20.097984708,
+      "disk_after_bytes": 575443605,
+      "minimum_free_disk_bytes": 48463073280,
+      "peak_accounted_bytes": 64176128,
+      "lowest_available_memory_bytes": 82039717888,
+      "owned_group_stopped": true
+    },
+    {
+      "phase": "build",
+      "status": "complete",
+      "seconds": 45.470677375,
+      "disk_after_bytes": 1061894278,
+      "minimum_free_disk_bytes": 40104366080,
+      "peak_accounted_bytes": 654213120,
+      "lowest_available_memory_bytes": 93300555776,
+      "owned_group_stopped": true
+    },
+    {
+      "phase": "test",
+      "status": "complete",
+      "seconds": 7.2866325,
+      "disk_after_bytes": 1111702615,
+      "minimum_free_disk_bytes": 39902244864,
+      "peak_accounted_bytes": 308609024,
+      "lowest_available_memory_bytes": 91822178304,
+      "owned_group_stopped": true
+    }
+  ],
+  "binary_artifacts": {
+    "stock": {
+      "binary_sha256": "6259d1402780a165af73d8696a2013f31c3693d0b3e136c23abb23f18f4edb6d",
+      "binary_bytes": 25056258,
+      "test_sha256": "60807d5008df80b38895d733b22b8f3ff50c92327082dffa048f255235da53c8",
+      "test_bytes": 15242578
+    },
+    "reset": {
+      "binary_sha256": "a315f9910089887905e6e523e91b981c2f3522b200786bb19a6d72acbb7dbb1a",
+      "binary_bytes": 25056258,
+      "test_sha256": "c43d6b6f49e874651f5ea4aeb3d85be7379601ac644c3bb67ff81661d7d2c01c",
+      "test_bytes": 15242658
+    }
+  },
+  "top_level_tests_per_variant": 8,
+  "total_top_level_tests": 16,
+  "model_loaded": false,
+  "gpu_dispatched": false,
+  "arrays_created": false,
+  "real_tensor_cache_cleanup_proved": false,
+  "installed_app_modified": false,
+  "reporting_note": "After stage succeeded, a separate lightweight reporting snippet completed prepared() then failed while printing nonexistent common.D. This did not rerun staging, alter frozen source, or change the guarded phase outcomes. Its metadata commands remain in commands/.",
+  "other_workload_note": "The build lease waited 8 seconds for an unrelated Cargo holder. After our build released, a separate Cargo holder appeared during scalar checks; this is correctness evidence, not timing evidence."
+}

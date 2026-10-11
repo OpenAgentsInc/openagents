@@ -1,0 +1,1799 @@
+{
+  "read_only": true,
+  "module_cache": [
+    {
+      "module": "github.com/TheTitanrain/w32",
+      "version": "v0.0.0-20180517000239-4f5cfb03fabf",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/containerd/console",
+      "version": "v1.0.3",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/gin-gonic/gin",
+      "version": "v1.10.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/google/go-cmp",
+      "version": "v0.7.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/google/uuid",
+      "version": "v1.6.0",
+      "files": {
+        ".zip": {
+          "exists": true,
+          "bytes": 31981
+        },
+        ".mod": {
+          "exists": true,
+          "bytes": 30
+        },
+        ".info": {
+          "exists": true,
+          "bytes": 187
+        },
+        ".ziphash": {
+          "exists": true,
+          "bytes": 47
+        }
+      }
+    },
+    {
+      "module": "github.com/ledongthuc/pdf",
+      "version": "v0.0.0-20250511090121-5959a4027728",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/mattn/go-sqlite3",
+      "version": "v1.14.24",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/olekukonko/tablewriter",
+      "version": "v0.0.5",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/spf13/cobra",
+      "version": "v1.7.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/stretchr/testify",
+      "version": "v1.10.0",
+      "files": {
+        ".zip": {
+          "exists": true,
+          "bytes": 130241
+        },
+        ".mod": {
+          "exists": true,
+          "bytes": 417
+        },
+        ".info": {
+          "exists": true,
+          "bytes": 194
+        },
+        ".ziphash": {
+          "exists": true,
+          "bytes": 47
+        }
+      }
+    },
+    {
+      "module": "github.com/x448/float16",
+      "version": "v0.8.4",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "golang.org/x/sync",
+      "version": "v0.17.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "golang.org/x/sys",
+      "version": "v0.37.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/agnivade/levenshtein",
+      "version": "v1.1.1",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/charmbracelet/bubbletea",
+      "version": "v1.3.10",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/charmbracelet/lipgloss",
+      "version": "v1.1.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/d4l3k/go-bfloat16",
+      "version": "v0.0.0-20211005043715-690c3bdd05f1",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/emirpasic/gods/v2",
+      "version": "v2.0.0-alpha",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/klauspost/compress",
+      "version": "v1.18.3",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/mattn/go-runewidth",
+      "version": "v0.0.16",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/pelletier/go-toml/v2",
+      "version": "v2.2.2",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/pkg/browser",
+      "version": "v0.0.0-20240102092130-5ac0b6a4141c",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/tkrajina/typescriptify-golang-structs",
+      "version": "v0.2.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/tree-sitter/go-tree-sitter",
+      "version": "v0.25.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/tree-sitter/tree-sitter-cpp",
+      "version": "v0.23.4",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/wk8/go-ordered-map/v2",
+      "version": "v2.1.8",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "golang.org/x/image",
+      "version": "v0.22.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "golang.org/x/mod",
+      "version": "v0.30.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/aymanbagabas/go-osc52/v2",
+      "version": "v2.0.1",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/bahlo/generic-list-go",
+      "version": "v0.2.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/buger/jsonparser",
+      "version": "v1.1.1",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/bytedance/sonic/loader",
+      "version": "v0.1.1",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/charmbracelet/colorprofile",
+      "version": "v0.2.3-0.20250311203215-f60798e515dc",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/charmbracelet/x/ansi",
+      "version": "v0.10.1",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/charmbracelet/x/cellbuf",
+      "version": "v0.0.13-0.20250311204145-2c3ea96c31dd",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/charmbracelet/x/term",
+      "version": "v0.2.1",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/cloudwego/base64x",
+      "version": "v0.1.4",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/cloudwego/iasm",
+      "version": "v0.2.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/davecgh/go-spew",
+      "version": "v1.1.1",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/erikgeiser/coninput",
+      "version": "v0.0.0-20211004153227-1c3628e74d0f",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/kr/text",
+      "version": "v0.2.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/lucasb-eyer/go-colorful",
+      "version": "v1.2.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/mailru/easyjson",
+      "version": "v0.7.7",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/mattn/go-localereader",
+      "version": "v0.0.2-0.20220822084737-6bae6c923850",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/mattn/go-pointer",
+      "version": "v0.0.1",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/muesli/ansi",
+      "version": "v0.0.0-20230316100256-276c6243b2f6",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/muesli/cancelreader",
+      "version": "v0.2.2",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/muesli/termenv",
+      "version": "v0.16.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/pmezard/go-difflib",
+      "version": "v1.0.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/rivo/uniseg",
+      "version": "v0.4.7",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/tkrajina/go-reflector",
+      "version": "v0.5.5",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/xo/terminfo",
+      "version": "v0.0.0-20220910002029-abceb7e1c41e",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/bytedance/sonic",
+      "version": "v1.11.6",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/gabriel-vasile/mimetype",
+      "version": "v1.4.3",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/gin-contrib/cors",
+      "version": "v1.7.2",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/gin-contrib/sse",
+      "version": "v0.1.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/go-playground/locales",
+      "version": "v0.14.1",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/go-playground/universal-translator",
+      "version": "v0.18.1",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/go-playground/validator/v10",
+      "version": "v10.20.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/goccy/go-json",
+      "version": "v0.10.2",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/inconshreveable/mousetrap",
+      "version": "v1.1.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/json-iterator/go",
+      "version": "v1.1.12",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/klauspost/cpuid/v2",
+      "version": "v2.2.7",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/leodido/go-urn",
+      "version": "v1.4.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/mattn/go-isatty",
+      "version": "v0.0.20",
+      "files": {
+        ".zip": {
+          "exists": true,
+          "bytes": 8936
+        },
+        ".mod": {
+          "exists": true,
+          "bytes": 76
+        },
+        ".info": {
+          "exists": true,
+          "bytes": 193
+        },
+        ".ziphash": {
+          "exists": true,
+          "bytes": 47
+        }
+      }
+    },
+    {
+      "module": "github.com/modern-go/concurrent",
+      "version": "v0.0.0-20180306012644-bacd9c7ef1dd",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/modern-go/reflect2",
+      "version": "v1.0.2",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/spf13/pflag",
+      "version": "v1.0.5",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/twitchyliquid64/golang-asm",
+      "version": "v0.15.1",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "github.com/ugorji/go/codec",
+      "version": "v1.2.12",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "golang.org/x/arch",
+      "version": "v0.8.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "golang.org/x/crypto",
+      "version": "v0.43.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "golang.org/x/exp",
+      "version": "v0.0.0-20250218142911-aa4b98e5adaa",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "golang.org/x/net",
+      "version": "v0.46.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "golang.org/x/term",
+      "version": "v0.36.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "golang.org/x/text",
+      "version": "v0.30.0",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "google.golang.org/protobuf",
+      "version": "v1.34.1",
+      "files": {
+        ".zip": {
+          "exists": false,
+          "bytes": null
+        },
+        ".mod": {
+          "exists": false,
+          "bytes": null
+        },
+        ".info": {
+          "exists": false,
+          "bytes": null
+        },
+        ".ziphash": {
+          "exists": false,
+          "bytes": null
+        }
+      }
+    },
+    {
+      "module": "gopkg.in/yaml.v3",
+      "version": "v3.0.1",
+      "files": {
+        ".zip": {
+          "exists": true,
+          "bytes": 104623
+        },
+        ".mod": {
+          "exists": true,
+          "bytes": 95
+        },
+        ".info": {
+          "exists": true,
+          "bytes": 50
+        },
+        ".ziphash": {
+          "exists": true,
+          "bytes": 47
+        }
+      }
+    }
+  ],
+  "mlx_layout": {
+    "libjaccl.dylib": {
+      "bytes": 2137056,
+      "mtime_ns": 1791684085682142451,
+      "mode": 33261
+    },
+    "libmlx.dylib": {
+      "bytes": 21042848,
+      "mtime_ns": 1791684085814593296,
+      "mode": 33261
+    },
+    "mlx.metallib": {
+      "bytes": 202670448,
+      "mtime_ns": 1791684087275558335,
+      "mode": 33261
+    },
+    "libmlxc.dylib": {
+      "bytes": 1029744,
+      "mtime_ns": 1791684087281904573,
+      "mode": 33261
+    },
+    "libollama_xgrammar.dylib": {
+      "bytes": 2489552,
+      "mtime_ns": 1791684087299821308,
+      "mode": 33261
+    }
+  },
+  "metadata": {
+    "go": {
+      "argv": [
+        "/opt/homebrew/bin/go",
+        "version"
+      ],
+      "stdout": "go version go1.26.3 darwin/arm64\n",
+      "stderr": ""
+    },
+    "go_env": {
+      "argv": [
+        "/opt/homebrew/bin/go",
+        "env",
+        "GOROOT",
+        "GOPATH",
+        "GOCACHE",
+        "GOMODCACHE",
+        "GOVERSION",
+        "GOHOSTOS",
+        "GOHOSTARCH"
+      ],
+      "stdout": "/opt/homebrew/Cellar/go/1.26.3/libexec\n$HOME/go\n$HOME/Library/Caches/go-build\n$HOME/go/pkg/mod\ngo1.26.3\ndarwin\narm64\n",
+      "stderr": ""
+    },
+    "installed_build_info": {
+      "argv": [
+        "/opt/homebrew/bin/go",
+        "version",
+        "-m",
+        "/Applications/Ollama.app/Contents/Resources/ollama"
+      ],
+      "stdout": "/Applications/Ollama.app/Contents/Resources/ollama: go1.26.0\n\tpath\tgithub.com/ollama/ollama\n\tmod\tgithub.com/ollama/ollama\tv0.40.2+dirty\t\n\tdep\tgithub.com/agnivade/levenshtein\tv1.1.1\th1:QY8M92nrzkmr798gCo3kmMyqXFzdQVpxLlGPRBij0P8=\n\tdep\tgithub.com/aymanbagabas/go-osc52/v2\tv2.0.1\th1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiErDT4WkJ2k=\n\tdep\tgithub.com/bahlo/generic-list-go\tv0.2.0\th1:5sz/EEAK+ls5wF+NeqDpk5+iNdMDXrh3z3nPnH1Wvgk=\n\tdep\tgithub.com/buger/jsonparser\tv1.1.1\th1:2PnMjfWD7wBILjqQbt530v576A/cAbQvEW9gGIpYMUs=\n\tdep\tgithub.com/charmbracelet/bubbletea\tv1.3.10\th1:otUDHWMMzQSB0Pkc87rm691KZ3SWa4KUlvF9nRvCICw=\n\tdep\tgithub.com/charmbracelet/colorprofile\tv0.2.3-0.20250311203215-f60798e515dc\th1:4pZI35227imm7yK2bGPcfpFEmuY1gc2YSTShr4iJBfs=\n\tdep\tgithub.com/charmbracelet/lipgloss\tv1.1.0\th1:vYXsiLHVkK7fp74RkV7b2kq9+zDLoEU4MZoFqR/noCY=\n\tdep\tgithub.com/charmbracelet/x/ansi\tv0.10.1\th1:rL3Koar5XvX0pHGfovN03f5cxLbCF2YvLeyz7D2jVDQ=\n\tdep\tgithub.com/charmbracelet/x/cellbuf\tv0.0.13-0.20250311204145-2c3ea96c31dd\th1:vy0GVL4jeHEwG5YOXDmi86oYw2yuYUGqz6a8sLwg0X8=\n\tdep\tgithub.com/charmbracelet/x/term\tv0.2.1\th1:AQeHeLZ1OqSXhrAWpYUtZyX1T3zVxfpZuEQMIQaGIAQ=\n\tdep\tgithub.com/containerd/console\tv1.0.3\th1:lIr7SlA5PxZyMV30bDW0MGbiOPXwc63yRuCP0ARubLw=\n\tdep\tgithub.com/d4l3k/go-bfloat16\tv0.0.0-20211005043715-690c3bdd05f1\th1:cBzrdJPAFBsgCrDPnZxlp1dF2+k4r1kVpD7+1S1PVjY=\n\tdep\tgithub.com/emirpasic/gods/v2\tv2.0.0-alpha\th1:dwFlh8pBg1VMOXWGipNMRt8v96dKAIvBehtCt6OtunU=\n\tdep\tgithub.com/gabriel-vasile/mimetype\tv1.4.3\th1:in2uUcidCuFcDKtdcBxlR0rJ1+fsokWf+uqxgUFjbI0=\n\tdep\tgithub.com/gin-contrib/cors\tv1.7.2\th1:oLDHxdg8W/XDoN/8zamqk/Drgt4oVZDvaV0YmvVICQw=\n\tdep\tgithub.com/gin-contrib/sse\tv0.1.0\th1:Y/yl/+YNO8GZSjAhjMsSuLt29uWRFHdHYUb5lYOV9qE=\n\tdep\tgithub.com/gin-gonic/gin\tv1.10.0\th1:nTuyha1TYqgedzytsKYqna+DfLos46nTv2ygFy86HFU=\n\tdep\tgithub.com/go-playground/locales\tv0.14.1\th1:EWaQ/wswjilfKLTECiXz7Rh+3BjFhfDFKv/oXslEjJA=\n\tdep\tgithub.com/go-playground/universal-translator\tv0.18.1\th1:Bcnm0ZwsGyWbCzImXv+pAJnYK9S473LQFuzCbDbfSFY=\n\tdep\tgithub.com/go-playground/validator/v10\tv10.20.0\th1:K9ISHbSaI0lyB2eWMPJo+kOS/FBExVwjEviJTixqxL8=\n\tdep\tgithub.com/google/uuid\tv1.6.0\th1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=\n\tdep\tgithub.com/klauspost/compress\tv1.18.3\th1:9PJRvfbmTabkOX8moIpXPbMMbYN60bWImDDU7L+/6zw=\n\tdep\tgithub.com/leodido/go-urn\tv1.4.0\th1:WT9HwE9SGECu3lg4d/dIA+jxlljEa1/ffXKmRjqdmIQ=\n\tdep\tgithub.com/lucasb-eyer/go-colorful\tv1.2.0\th1:1nnpGOrhyZZuNyfu1QjKiUICQ74+3FNCN69Aj6K7nkY=\n\tdep\tgithub.com/mailru/easyjson\tv0.7.7\th1:UGYAvKxe3sBsEDzO8ZeWOSlIQfWFlxbzLZe7hwFURr0=\n\tdep\tgithub.com/mattn/go-isatty\tv0.0.20\th1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=\n\tdep\tgithub.com/mattn/go-runewidth\tv0.0.16\th1:E5ScNMtiwvlvB5paMFdw9p4kSQzbXFikJ5SQO6TULQc=\n\tdep\tgithub.com/mattn/go-sqlite3\tv1.14.24\th1:tpSp2G2KyMnnQu99ngJ47EIkWVmliIizyZBfPrBWDRM=\n\tdep\tgithub.com/muesli/ansi\tv0.0.0-20230316100256-276c6243b2f6\th1:ZK8zHtRHOkbHy6Mmr5D264iyp3TiX5OmNcI5cIARiQI=\n\tdep\tgithub.com/muesli/cancelreader\tv0.2.2\th1:3I4Kt4BQjOR54NavqnDogx/MIoWBFa0StPA8ELUXHmA=\n\tdep\tgithub.com/muesli/termenv\tv0.16.0\th1:S5AlUN9dENB57rsbnkPyfdGuWIlkmzJjbFf0Tf5FWUc=\n\tdep\tgithub.com/olekukonko/tablewriter\tv0.0.5\th1:P2Ga83D34wi1o9J6Wh1mRuqd4mF/x/lgBS7N7AbDhec=\n\tdep\tgithub.com/pelletier/go-toml/v2\tv2.2.2\th1:aYUidT7k73Pcl9nb2gScu7NSrKCSHIDE89b3+6Wq+LM=\n\tdep\tgithub.com/pkg/browser\tv0.0.0-20240102092130-5ac0b6a4141c\th1:+mdjkGKdHQG3305AYmdv1U2eRNDiU2ErMBj1gwrq8eQ=\n\tdep\tgithub.com/rivo/uniseg\tv0.4.7\th1:WUdvkW8uEhrYfLC4ZzdpI2ztxP1I582+49Oc5Mq64VQ=\n\tdep\tgithub.com/spf13/cobra\tv1.7.0\th1:hyqWnYt1ZQShIddO5kBpj3vu05/++x6tJ6dg8EC572I=\n\tdep\tgithub.com/spf13/pflag\tv1.0.5\th1:iy+VFUOCP1a+8yFto/drg2CJ5u0yRoB7fZw3DKv/JXA=\n\tdep\tgithub.com/ugorji/go/codec\tv1.2.12\th1:9LC83zGrHhuUA9l16C9AHXAqEV/2wBQ4nkvumAE65EE=\n\tdep\tgithub.com/wk8/go-ordered-map/v2\tv2.1.8\th1:5h/BUHu93oj4gIdvHHHGsScSTMijfx5PeYkE/fJgbpc=\n\tdep\tgithub.com/x448/float16\tv0.8.4\th1:qLwI1I70+NjRFUR3zs1JPUCgaCXSh3SW62uAKT1mSBM=\n\tdep\tgithub.com/xo/terminfo\tv0.0.0-20220910002029-abceb7e1c41e\th1:JVG44RsyaB9T2KIHavMF/ppJZNG9ZpyihvCd0w101no=\n\tdep\tgolang.org/x/crypto\tv0.43.0\th1:dduJYIi3A3KOfdGOHX8AVZ/jGiyPa3IbBozJ5kNuE04=\n\tdep\tgolang.org/x/image\tv0.22.0\th1:UtK5yLUzilVrkjMAZAZ34DXGpASN8i8pj8g+O+yd10g=\n\tdep\tgolang.org/x/mod\tv0.30.0\th1:fDEXFVZ/fmCKProc/yAXXUijritrDzahmwwefnjoPFk=\n\tdep\tgolang.org/x/net\tv0.46.0\th1:giFlY12I07fugqwPuWJi68oOnpfqFnJIJzaIIm2JVV4=\n\tdep\tgolang.org/x/sync\tv0.17.0\th1:l60nONMj9l5drqw6jlhIELNv9I0A4OFgRsG9k2oT9Ug=\n\tdep\tgolang.org/x/sys\tv0.37.0\th1:fdNQudmxPjkdUTPnLn5mdQv7Zwvbvpaxqs831goi9kQ=\n\tdep\tgolang.org/x/term\tv0.36.0\th1:zMPR+aF8gfksFprF/Nc/rd1wRS1EI6nDBGyWAvDzx2Q=\n\tdep\tgolang.org/x/text\tv0.30.0\th1:yznKA/E9zq54KzlzBEAWn1NXSQ8DIp/NYMy88xJjl4k=\n\tdep\tgoogle.golang.org/protobuf\tv1.34.1\th1:9ddQBjfCyZPOHPUiPxpYESBLc+T8P3E+Vo4IbKZgFWg=\n\tdep\tgopkg.in/yaml.v3\tv3.0.1\th1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=\n\tbuild\t-buildmode=exe\n\tbuild\t-compiler=gc\n\tbuild\t-trimpath=true\n\tbuild\tCGO_ENABLED=1\n\tbuild\tGOARCH=amd64\n\tbuild\tGOOS=darwin\n\tbuild\tGOAMD64=v1\n\tbuild\tvcs=git\n\tbuild\tvcs.revision=b061384d90ff455462bc32745dd0de479de717a3\n\tbuild\tvcs.time=2026-10-08T17:44:45Z\n\tbuild\tvcs.modified=true\n",
+      "stderr": ""
+    },
+    "installed_arches": {
+      "argv": [
+        "/usr/bin/lipo",
+        "-archs",
+        "/Applications/Ollama.app/Contents/Resources/ollama"
+      ],
+      "stdout": "x86_64 arm64\n",
+      "stderr": ""
+    }
+  },
+  "source_checked_paths": {
+    "task_scratch_complete_source_found": false,
+    "work_ollama_exists": false,
+    "src_ollama_exists": false,
+    "go_src_ollama_exists": false
+  },
+  "note": "Module cache inspection used only declared public go.mod paths. No module download or build ran."
+}

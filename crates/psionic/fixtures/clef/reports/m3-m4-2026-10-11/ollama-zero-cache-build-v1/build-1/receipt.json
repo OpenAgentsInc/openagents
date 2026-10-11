@@ -1,0 +1,91 @@
+{
+  "phase": "build",
+  "status": "complete",
+  "cap_bytes": 4294967296,
+  "minimum_start_bytes": 17179869184,
+  "floor_bytes": 12884901888,
+  "disk_cap_bytes": 4294967296,
+  "free_disk_floor_bytes": 26843545600,
+  "timeout_seconds": 900,
+  "network_enabled": false,
+  "model_or_server_started": false,
+  "no_quiet_lease": true,
+  "source_freeze_sha256": "cbc7e6d902405a941aec083b325c1dad7f87580ed3877253ec2f59dcfe10bded",
+  "source_identity": {
+    "sources": {
+      "PLAN.md": "f11f157656c8df2fe8e8ea629bd9ec37dddedd49b43bf9c1a833aeea94d3bad2",
+      "build.py": "9d4025be54283ff14f94cd4a0f226acddfa4e9280cbe3a6441a416a54ad51bed",
+      "common.py": "ee4b56889ebc6efcf632ce2377e74edfd35dd892b4315bf235fd1b23ed37ac81",
+      "guard.py": "3f13a459786ec8979735ead743c904852289aafef7168c92bc7a42c7e43dcf92",
+      "local-inventory.json": "bfdc559f6fc0e248093888c2f6461a840474289822af8cb8ea583008481ad1b3",
+      "run_tests.py": "ab826f81a45e1e217d49240fc2176a7edd6cfe7c209fb5c262141438f47d7825",
+      "scratch_zero_cache_test.go": "ec3520f4823a3b13df0d4dda6d58d421ccfe5da5d0ac13dc56b81d517a65cfd5",
+      "stage.py": "949760c977a3f4205862a3eab09e4d431ae6ff33bb1f4ebf446720c96a27905e"
+    },
+    "dependencies": {
+      "$WORKTREE/crates/psionic/fixtures/clef/tools/mac_quiet_bench.py": "7018be065710be9ffe5dfc2d289770015ca617e2fdd3da253a98e07ba1bc997b",
+      "$WORKTREE/crates/psionic/fixtures/clef/tools/mac_memory.py": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd",
+      "$SCRATCH/ollama-zero-cache-plan/candidate.patch": "3e7eebb9d5a588116de20dec5f4c3be5f341d01fc92ff4a3a7d4d5d8c8556d35",
+      "$SCRATCH/ollama-zero-cache-plan/stock-runner/go.mod": "c8330ba5f762c4bded1401cc8ecadbe85ebe8e5d159fd81da122da986b26cda5",
+      "$SCRATCH/ollama-zero-cache-plan/stock-runner/mlxrunner-prefix_cache_test.go": "dc8a360616639c48139ee8de6017e1c16256e64ead634820c3e35cfdbcfcc57d",
+      "$SCRATCH/attention-qk128-key32-flash-latency/ollama-source-review/mlxrunner-prefix_cache.go": "059c5f6ad264003a97e256b74dd0fd6eedc1cb717c7fc1ff916dd5b2f5bc46b8"
+    },
+    "source_only": true
+  },
+  "disk_sampling_seconds": 1,
+  "disk_scope": "work plus workflow receipts; symlink targets excluded",
+  "disk_bound_kind": "sampled logical bytes; overshoot fails and is retained",
+  "prerequisites": {
+    "stage": {
+      "receipt_sha256": "9c41f6731740ca46345abcfc18fccdb62e2fc7eb1bb5169d0d1b0b132016234c",
+      "artifact_sha256": "c4a58fa04df06be913b66cdf826b8df7a33ff4d38cbc87063c4a95488380526b",
+      "source_freeze_sha256": "cbc7e6d902405a941aec083b325c1dad7f87580ed3877253ec2f59dcfe10bded"
+    }
+  },
+  "minimum_free_disk_bytes": 40104366080,
+  "free_disk_before_bytes": 40940298240,
+  "memory_before": {
+    "available_memory_bytes": 94148214784,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 2074292,
+      "inactive": 2901352,
+      "speculative": 770707
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "disk_before_bytes": 575449562,
+  "command": [
+    "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+    "$SCRATCH/ollama-zero-cache-plan/workflow-v1/build.py"
+  ],
+  "exit": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 96054,
+    "max_rss_bytes": 4294967296,
+    "peak_rss_bytes": 654213120,
+    "peak_physical_footprint_bytes": 452217496,
+    "peak_accounted_bytes": 654213120,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 84,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 93300555776,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "disk_after_bytes": 1061894278,
+  "free_disk_after_bytes": 40239603712,
+  "phase_artifact": {
+    "path": "work/build.json",
+    "sha256": "3797a2b6cdf45efe7bfe37ead46476b069379d7fa4e576e09d6d47f5ac9a9726"
+  },
+  "seconds": 45.470677375
+}

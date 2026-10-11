@@ -1,0 +1,1 @@
+HEAD is now at b061384 Merge pull request #18855 from ollama/launch-claude-max-context-tokens: Set CLAUDE_CODE_MAX_CONTEXT_TOKENS to model's context length

@@ -1,0 +1,15 @@
+{
+  "command": [
+    "/opt/homebrew/Cellar/go/1.26.3/libexec/bin/go",
+    "build",
+    "-trimpath",
+    "-buildvcs=false",
+    "-ldflags",
+    "-s -w -X=github.com/ollama/ollama/version.Version=0.40.2 -X=github.com/ollama/ollama/server.mode=release",
+    "-o",
+    "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/bin/stock/ollama",
+    "."
+  ],
+  "cwd": "$SCRATCH/ollama-zero-cache-plan/workflow-v1/work/stock",
+  "network_enabled": false
+}
