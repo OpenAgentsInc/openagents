@@ -14,7 +14,7 @@
 //! | `GET`/`DELETE /v1/threads/{id}/files/{file}` | A file of the chat; remove one not sent yet (`204`) |
 //! | `GET /v1/computers` | `{computers: [Computer]}` |
 //! | `GET`/`PUT /v1/computers/{name}/sync` `{choice}` | The computer's (or phone's) sync choice, as `/coder/sync` |
-//! | `POST /v1/computers/{name}/activity` `{items: [Item]}` | Coder's running work on the computer; answers `{commands: [Command]}`, each handed out once |
+//! | `POST /v1/computers/{name}/activity` `{items: [Item]}` | Coder's running work on the computer; answers `{commands: [Command]}`, each handed out once. With `?kind=landing` (#11250), the landing queue's entries on the integrator computer (kind `landing`): they replace only that computer's landing items, keep its other items, and take no commands |
 //! | `GET /v1/agents` | `{computers: [{name, online, updated_unix, items}]}` |
 //! | `POST /v1/agents/actions` `{request_id, computer, item, action, question?, text?}` | Stop, approve, deny, or message an item: `202 {queued}` |
 //!
@@ -28,7 +28,7 @@ use std::collections::BTreeMap;
 
 use axum::Router;
 use axum::body::Bytes;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -536,7 +536,10 @@ pub(crate) struct Item {
     pub line: Option<String>,
 }
 
-const KINDS: [&str; 2] = ["chat", "agent"];
+/// `landing`: a landing queue entry the integrator reports (#11250).
+const KINDS: [&str; 3] = ["chat", "agent", LANDING];
+/// The kind of a landing queue entry's item.
+pub(crate) const LANDING: &str = "landing";
 const STATUSES: [&str; 5] = ["working", "asking", "done", "failed", "stopped"];
 const ACTIONS: [&str; 4] = ["stop", "approve", "deny", "message"];
 
@@ -699,22 +702,49 @@ pub(crate) async fn report(
     computer: &str,
     items: Vec<Item>,
 ) -> Result<Vec<Command>, Error> {
-    let digest = format!(
-        "{:x}",
-        Sha256::digest(serde_json::to_vec(&items).unwrap_or_default())
-    );
+    report_lane(store, owner, computer, items, false).await
+}
+
+/// [`report`] for one lane of the computer's list: with `landing`, the
+/// landing queue's entries (#11250), which replace only its landing items
+/// and take no commands; otherwise Coder's own items, which keep the
+/// landing items another process on the same computer reported.
+pub(crate) async fn report_lane(
+    store: &Store,
+    owner: &str,
+    computer: &str,
+    items: Vec<Item>,
+    landing: bool,
+) -> Result<Vec<Command>, Error> {
     let computer = computer.to_owned();
     update_agents(store, owner, move |agents| {
         let now = now_unix();
         let mut changed = false;
         let board = agents.boards.entry(computer.clone()).or_default();
+        let kept = board
+            .items
+            .iter()
+            .filter(|item| (item.kind == LANDING) != landing)
+            .cloned();
+        let items: Vec<Item> = if landing {
+            kept.chain(items.iter().cloned()).collect()
+        } else {
+            items.iter().cloned().chain(kept).collect()
+        };
+        let digest = format!(
+            "{:x}",
+            Sha256::digest(serde_json::to_vec(&items).unwrap_or_default())
+        );
         if board.digest != digest || now.saturating_sub(board.updated_unix) >= REWRITE_EVERY {
             *board = Board {
-                items: items.clone(),
+                items,
                 updated_unix: now,
-                digest: digest.clone(),
+                digest,
             };
             changed = true;
+        }
+        if landing {
+            return (changed, Vec::new());
         }
         let mut handed = Vec::new();
         agents.commands.retain(|waiting| {
@@ -741,12 +771,30 @@ struct Report {
     items: Vec<Value>,
 }
 
+#[derive(Deserialize)]
+struct Lane {
+    #[serde(default)]
+    kind: Option<String>,
+}
+
 async fn activity(
     State(app): State<App>,
     headers: HeaderMap,
     Path(name): Path<String>,
+    Query(lane): Query<Lane>,
     body: Bytes,
 ) -> Response {
+    let landing = match lane.kind.as_deref() {
+        None => false,
+        Some(LANDING) => true,
+        Some(_) => {
+            return refused(
+                StatusCode::BAD_REQUEST,
+                "invalid",
+                "The only list kind is landing.",
+            );
+        }
+    };
     let owner = match coder_sync::owner(&app, &headers).await {
         Ok(owner) => owner,
         Err(response) => return response,
@@ -763,6 +811,8 @@ async fn activity(
                     serde_json::from_value::<Item>(value)
                         .ok()
                         .and_then(checked_item)
+                        // A lane reports only its own kind.
+                        .filter(|item| (item.kind == LANDING) == landing)
                 })
                 .collect::<Option<Vec<_>>>()
         })
@@ -778,7 +828,7 @@ async fn activity(
     if let Err(error) = coder_sync::check_in(store, &owner, &computer).await {
         return stored(&error);
     }
-    match report(store, &owner, &computer, items).await {
+    match report_lane(store, &owner, &computer, items, landing).await {
         Ok(commands) => answer(StatusCode::OK, json!({"commands": commands})),
         Err(error) => stored(&error),
     }
@@ -894,6 +944,25 @@ pub(crate) async fn queue_action(
     .await
 }
 
+/// Whether `item` on `computer` is a landing queue entry (#11250).
+pub(crate) async fn landing_item(
+    store: &Store,
+    owner: &str,
+    computer: &str,
+    item: &str,
+) -> Result<bool, Error> {
+    Ok(read_agents(store, owner)
+        .await?
+        .boards
+        .get(computer)
+        .is_some_and(|board| {
+            board
+                .items
+                .iter()
+                .any(|seen| seen.id == item && seen.kind == LANDING)
+        }))
+}
+
 async fn action(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Response {
     let account = match coder_sync::account(&app, &headers).await {
         Ok(account) => account,
@@ -956,6 +1025,20 @@ async fn action(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Resp
         };
     }
     let computer = line(&sent.computer, 64);
+    match landing_item(&app.config.chat_store, &owner, &computer, &sent.item).await {
+        Ok(true) => {
+            return refused(
+                StatusCode::CONFLICT,
+                "landing",
+                &format!(
+                    "A landing queue entry can't be stopped or messaged from here. To take it out of the queue, run `openagents land withdraw {}` on the computer that sent it.",
+                    sent.item
+                ),
+            );
+        }
+        Ok(false) => {}
+        Err(error) => return stored(&error),
+    }
     let command = Command {
         id: sent.request_id,
         item: sent.item,

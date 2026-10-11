@@ -35,7 +35,7 @@ pub struct Question {
 pub struct Item {
     /// Stable while it runs: the chat's session id, or the agent's id.
     pub id: String,
-    /// `chat` or `agent`.
+    /// `chat`, `agent`, or `landing` (a landing queue entry, #11250).
     pub kind: String,
     pub title: String,
     pub engine: Option<String>,
@@ -122,6 +122,37 @@ pub async fn report(
             .flatten()
             .filter_map(|command| serde_json::from_value(command.clone()).ok())
             .collect()),
+        (answer, _) => Err(answer),
+    }
+}
+
+/// The kind of a landing queue entry's item (#11250).
+pub const LANDING: &str = "landing";
+
+/// Report the landing queue's entries (`items`, each of kind [`LANDING`])
+/// on `computer`'s list: they replace only its landing items, keep the
+/// work Coder reports there, and take no actions.
+pub async fn report_landing(
+    http: &reqwest::Client,
+    saved: &Saved,
+    computer: &str,
+    items: &[Item],
+) -> Result<(), Answer> {
+    let items = &items[..items.len().min(MAX_ITEMS)];
+    let body = json!({"items": items});
+    match call(
+        http,
+        saved,
+        reqwest::Method::POST,
+        &format!(
+            "/v1/computers/{}/activity?kind={LANDING}",
+            segment(computer)
+        ),
+        Some(&body),
+    )
+    .await
+    {
+        (Answer::Done, _) => Ok(()),
         (answer, _) => Err(answer),
     }
 }

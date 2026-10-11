@@ -56,6 +56,7 @@ mod key;
 #[cfg(unix)]
 mod labor;
 mod land;
+mod land_fleet;
 mod lease;
 mod lease_place;
 mod mac;

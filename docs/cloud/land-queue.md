@@ -152,6 +152,19 @@ ID  STATE  LANE  SLOT  ELAPSED  FROM  ISSUE  AGE  TRIES  RESULT
 how long the current try has run (or the last one took). `land show <id>`
 gives each try's lane, slot and duration.
 
+The queue also shows on openagents.com (Settings > Agents) and on the
+phone's Agents screen (#11250): while `land work` runs and the integrator
+computer is signed in (`OPENAGENTS_APP_TOKEN`, else `coder login`), it
+reports every open entry, and those that ended in the last six hours, as
+rows of kind `landing` on that computer's list
+(`crates/openagents-cli/src/land_fleet.rs`). A row's title is `#N` and the
+summary; its line is `queued`, `landing: checks` (or `quick checks` in the
+fast lane), `landed <commit>`, `bounced: <reason>` or `withdrawn`. The rows
+sit beside the issue runs `chat work` reports from the same computer
+(`POST /v1/computers/{name}/activity?kind=landing` replaces only the
+landing rows). They take no Stop or Message: the website answers with the
+`openagents land withdraw ID` to run instead.
+
 ## Deploying a new integrator
 
 The worker never loses an entry on a restart: one it was landing is still
