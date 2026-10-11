@@ -394,6 +394,27 @@ html:has(> body.oa-body) {
 }
 
 /* "Projects" and "Chats" fold from their headings (shell.js). */
+.oa-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: calc(var(--spacing) * 7);
+  padding-inline-end: calc(var(--spacing) * 1);
+}
+.oa-section-action {
+  width: calc(var(--spacing) * 6);
+  height: calc(var(--spacing) * 6);
+  opacity: 0;
+}
+.oa-section-head:hover .oa-section-action,
+.oa-section-action:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .oa-section-action {
+    opacity: 1;
+  }
+}
 .oa-section-toggle {
   display: inline-flex;
   align-items: center;

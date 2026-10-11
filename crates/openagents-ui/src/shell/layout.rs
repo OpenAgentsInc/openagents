@@ -366,6 +366,7 @@ pub struct ChatList {
     notice: Option<Markup>,
     empty: Option<String>,
     after: Option<Markup>,
+    projects_action: Option<(String, String)>,
 }
 
 impl Default for ChatList {
@@ -389,7 +390,17 @@ impl ChatList {
             notice: None,
             empty: None,
             after: None,
+            projects_action: None,
         }
+    }
+
+    /// An icon button at the right of the "Projects" heading, shown on
+    /// hover or keyboard focus (always on touch screens), such as
+    /// "Manage projects".
+    #[must_use]
+    pub fn projects_action(mut self, label: impl Into<String>, href: impl Into<String>) -> Self {
+        self.projects_action = Some((label.into(), href.into()));
+        self
     }
 
     /// Pinned rows, shown under a "Pinned" heading above the chats.
@@ -519,13 +530,13 @@ impl Render for ChatList {
                         }
                         @if !self.projects.is_empty() {
                             div class="oa-chat-list-group oa-chat-projects" data-oa-section="projects" {
-                                (section_toggle("Projects"))
+                                (section_toggle("Projects", self.projects_action.as_ref()))
                                 @for group in &self.projects { (group) }
                             }
                         }
                         @if !self.items.is_empty() {
                             div class="oa-chat-list-group" data-oa-section="chats" {
-                                (section_toggle(&self.title))
+                                (section_toggle(&self.title, None))
                                 ul class="oa-nav-list" role="list" {
                                     @for item in &self.items { (item) }
                                 }
@@ -555,13 +566,19 @@ impl Render for ChatList {
 /// section (`data-collapsed` on its `[data-oa-section]` group) and
 /// remembers it in this browser; without the script the chevron is hidden
 /// and the heading reads as plain text.
-fn section_toggle(label: &str) -> Markup {
+fn section_toggle(label: &str, action: Option<&(String, String)>) -> Markup {
     html! {
-        h2 class="oa-sidebar-section-title" {
+        h2 class="oa-sidebar-section-title oa-section-head" {
             button type="button" class="oa-section-toggle" aria-expanded="true" data-oa-section-toggle {
                 (label)
                 span class="oa-section-chevron" aria-hidden="true" {
                     (Icon::ChevronDown.size(IconSize::Xs))
+                }
+            }
+            @if let Some((action_label, href)) = action {
+                a class="oa-row-menu-trigger oa-section-action" href=(href)
+                    aria-label=(action_label) title=(action_label) {
+                    (Icon::SettingsSlider.size(IconSize::Sm))
                 }
             }
         }

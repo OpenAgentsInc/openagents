@@ -183,18 +183,25 @@ pub(super) fn build(list: ChatList, rows: &[Conversation], csrf: &str, view: Vie
         });
     }
     let archived = rows.iter().any(|chat| chat.archived_unix.is_some());
-    // Signed in: where to connect a repository or manage projects.
-    let projects = view.projects.map(|sidebar| {
-        if sidebar.status.projects.is_empty() {
-            "Connect a GitHub repository"
-        } else {
-            "Manage projects"
-        }
+    // Signed in: "Manage projects" is a button on the Projects heading;
+    // with no projects yet, a link to connect a repository.
+    let projects = view.projects.and_then(|sidebar| {
+        sidebar
+            .status
+            .projects
+            .is_empty()
+            .then_some("Connect a GitHub repository")
     });
+    if view
+        .projects
+        .is_some_and(|sidebar| !sidebar.status.projects.is_empty())
+    {
+        list = list.projects_action("Manage projects", crate::projects::PAGE);
+    }
     // Signed in with no terminal chats yet: where to connect one (#11089).
     // It is the empty list's way in too.
     let terminal = view.projects.is_some() && !rows.iter().any(|chat| chat.terminal.is_some());
-    if archived || projects.is_some() {
+    if archived || terminal || projects.is_some() {
         list = list.after(html! {
             @if archived {
                 p.oa-chat-list-more { a.oa-chat-list-link href=(ARCHIVED) { "Archived chats" } }

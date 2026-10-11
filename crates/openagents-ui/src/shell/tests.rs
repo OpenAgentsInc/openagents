@@ -839,3 +839,20 @@ fn the_corner_control_renders_in_the_sidebar_footer_row() {
     assert!(footer < html.find("acct").unwrap());
     assert!(html.find("acct").unwrap() < corner && corner < toggle);
 }
+
+#[test]
+fn manage_projects_is_a_button_on_the_projects_heading() {
+    let html = ChatList::new()
+        .project(ChatGroup::new("prj_1", "storefront", "/?project=prj_1"))
+        .projects_action("Manage projects", "/projects")
+        .item(NavItem::new("A chat", "/chat/1"))
+        .render()
+        .into_string();
+    let heading = html.find("oa-section-head").unwrap();
+    let button = html.find(r#"aria-label="Manage projects""#).unwrap();
+    let group = html.find(r#"data-oa-project="prj_1""#).unwrap();
+    // The button sits in the Projects heading, before its first group, and
+    // the Chats heading carries no button.
+    assert!(heading < button && button < group);
+    assert_eq!(html.matches("oa-section-action").count(), 1);
+}
