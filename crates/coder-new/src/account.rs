@@ -29,6 +29,20 @@ pub fn origin() -> String {
 
 /// The signed-in account's name, when this folder holds a live token.
 #[must_use]
+/// Clears a sign-in key from this process's environment, so a test that
+/// expects no sign-in isn't signed in by the machine running it.
+#[cfg(test)]
+pub(crate) fn without_env_sign_in() {
+    for name in [
+        openagents_login::TOKEN_ENV,
+        openagents_login::TOKEN_ENV_OLDER,
+    ] {
+        // Tests run in threads; every test that reads the environment
+        // here wants it clear, so the write races with nothing that cares.
+        unsafe { std::env::remove_var(name) };
+    }
+}
+
 pub fn signed_in(dir: &Path) -> Option<String> {
     Saved::load(dir)
         .filter(|saved| !saved.expired(now()))
@@ -349,6 +363,7 @@ mod tests {
 
     #[test]
     fn logout_without_a_sign_in_says_so_and_slash_logout_clears_the_name() {
+        super::without_env_sign_in();
         let dir = tempfile::tempdir().unwrap();
         let mut out = Vec::new();
         logout_command(dir.path(), &mut out).unwrap();

@@ -1024,6 +1024,7 @@ mod tests {
 
     #[test]
     fn sync_needs_a_sign_in_and_starts_off() {
+        crate::account::without_env_sign_in();
         let dir = tempfile::tempdir().unwrap();
         let mut app = App {
             account_dir: Some(dir.path().to_path_buf()),
@@ -1395,6 +1396,7 @@ mod tests {
 
     #[test]
     fn sync_now_respects_the_off_switch_and_a_sign_in() {
+        crate::account::without_env_sign_in();
         let dir = tempfile::tempdir().unwrap();
         saved_chat(dir.path(), "first", "Hello");
         assert_eq!(sync_now(dir.path()).unwrap(), OFF);

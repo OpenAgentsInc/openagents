@@ -305,6 +305,7 @@ mod tests {
 
     #[test]
     fn sources_are_chosen_once_and_signed_in_is_needed() {
+        crate::account::without_env_sign_in();
         let temp = tempfile::tempdir().unwrap();
         let dir = temp.path().join("state");
         let document = json!({"schema_version": "ATIF-v1.8", "session_id": "chat-1",
