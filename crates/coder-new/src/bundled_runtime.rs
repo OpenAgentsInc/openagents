@@ -142,9 +142,11 @@ impl AcpAgent {
             return Err("The built-in Codex bridge requires the codex agent ID and does not accept ACP arguments or modes.".into());
         }
         if self.transport == AgentTransport::ClaudeCli
-            && (self.id != claude_print::ID || !self.arguments.is_empty() || self.mode.is_some())
+            && (!matches!(self.id.as_str(), "claude" | "claude-code")
+                || !self.arguments.is_empty()
+                || self.mode.is_some())
         {
-            return Err("The built-in Claude Code bridge requires the claude agent ID and does not accept ACP arguments or modes.".into());
+            return Err("The built-in Claude Code bridge requires the claude or claude-code agent ID and does not accept ACP arguments or modes.".into());
         }
         if self.transport == AgentTransport::CodexCli
             && cfg!(windows)
@@ -1577,7 +1579,7 @@ impl Observer for MicrocoderEvents<'_> {
                     for command in &action.commands {
                         self.emit.emit(RuntimeEvent::Tool {
                             name: "Run".into(),
-                            input: json!(redact_text(command, self.redaction_keys)),
+                            input: json!({"command":redact_text(command, self.redaction_keys)}),
                             output: Value::Null,
                             running: true,
                         });
@@ -1589,7 +1591,7 @@ impl Observer for MicrocoderEvents<'_> {
             }
             Event::Ran { result, .. } => self.emit.emit(RuntimeEvent::Tool {
                 name: "Run".into(),
-                input: json!(result.command),
+                input: json!({"command":redact_text(&result.command, self.redaction_keys)}),
                 output: json!(result),
                 running: false,
             }),
@@ -1654,6 +1656,92 @@ pub(crate) fn still_running(group_clear: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::delegation_events::Sink;
+
+    #[tokio::test]
+    async fn microcoder_streaming_completion_keeps_one_successful_command() {
+        let _gate_lock = crate::approval::test_lock().lock().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let mut app = crate::App::default();
+        app.set_mode(crate::Mode::Live);
+        app.live.busy = true;
+        let id = app.request_id;
+        let mut callback = |event| {
+            if let RuntimeEvent::Tool {
+                name,
+                input,
+                output,
+                running,
+            } = event
+            {
+                app.apply_update(crate::live::Update::Tool {
+                    id,
+                    name,
+                    input,
+                    output,
+                    running,
+                });
+            }
+        };
+        let sink = RefCell::new(&mut callback);
+        let command = "printf streaming-ok";
+        sink.emit(RuntimeEvent::Tool {
+            name: "Run".into(),
+            input: json!({"command":command}),
+            output: Value::Null,
+            running: true,
+        });
+        let result = run_command(
+            command,
+            root.path(),
+            &[],
+            &Arc::new(AtomicBool::new(false)),
+            &mut |event| sink.emit(event),
+        )
+        .await
+        .unwrap();
+        let mut observer = MicrocoderEvents {
+            emit: &sink,
+            reply: String::new(),
+            model: None,
+            tokens: 0,
+            redaction_keys: &[],
+        };
+        observer.event(
+            0.0,
+            &Event::Ran {
+                step: 1,
+                result: CommandResult {
+                    command: command.into(),
+                    exit: Some(0),
+                    timed_out: false,
+                    seconds: 0.0,
+                    output: result["output"].as_str().unwrap().into(),
+                },
+            },
+        );
+        drop(observer);
+        drop(sink);
+        app.apply_update(crate::live::Update::Finished {
+            id,
+            result: Ok(openrouter::Streamed {
+                text: "The test passed.".into(),
+                ..Default::default()
+            }),
+        });
+        app.cancel_request();
+        let tools = app
+            .live
+            .entries
+            .iter()
+            .filter(|entry| matches!(entry, crate::live::Entry::Tool { .. }))
+            .collect::<Vec<_>>();
+        assert_eq!(tools.len(), 1);
+        assert!(
+            matches!(tools[0], crate::live::Entry::Tool { running: false, output, .. } if output["output"] == "streaming-ok" && output.get("error").is_none())
+        );
+        assert!(app.live.entries.iter().any(|entry| matches!(entry, crate::live::Entry::Assistant { text, .. } if text == "The test passed.")));
+    }
 
     #[tokio::test]
     #[cfg(unix)]

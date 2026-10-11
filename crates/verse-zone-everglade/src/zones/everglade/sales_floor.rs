@@ -1,7 +1,7 @@
 //! Private Agora boards from an explicitly configured canonical sales owner.
 use super::{
     boards,
-    layout::{self, Board, agora},
+    layout::{Board, agora},
 };
 use crate::mesh::Mesh;
 use glam::Vec3;

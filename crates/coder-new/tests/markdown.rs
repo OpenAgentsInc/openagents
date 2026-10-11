@@ -67,7 +67,8 @@ fn system_notices_use_dim_text_and_errors_keep_their_color() {
         for text in [
             "Exported ATIF",
             "chat.atif.json",
-            "Path copied",
+            "Path",
+            "copied",
             "clipboard.",
         ] {
             let (x, y) = position(&buffer, text);
@@ -212,9 +213,14 @@ fn user_and_demo_messages_render_markdown_without_changing_the_source_or_compose
     assert!(cell(&buffer, "delta").modifier.contains(Modifier::BOLD));
     assert_eq!(cell(&buffer, "config.toml").fg, theme::MD_CODE);
     let (arrow_x, arrow_y) = position(&buffer, "❯ Please");
-    assert_eq!(buffer[(arrow_x, arrow_y)].bg, theme::BG_LIGHT);
+    assert_eq!(buffer[(arrow_x, arrow_y)].bg, theme::USER_MESSAGE_BG);
+    assert_eq!(
+        theme::USER_MESSAGE_BG,
+        ratatui::style::Color::Rgb(48, 48, 48)
+    );
+    assert_eq!(buffer[(79, arrow_y)].bg, theme::USER_MESSAGE_BG);
     assert_eq!(arrow_y, 0);
-    assert_ne!(buffer[(arrow_x, arrow_y + 1)].bg, theme::BG_LIGHT);
+    assert_ne!(buffer[(arrow_x, arrow_y + 1)].bg, theme::USER_MESSAGE_BG);
     assert!(rows(&buffer).join("\n").contains("❯ **Unsent draft**"));
     assert_eq!(cursor.0, 3 + app.draft.text.len() as u16);
 
@@ -338,7 +344,7 @@ fn transcript_tables_wrap_each_cell_without_breaking_the_grid_or_inline_styles()
         assert!(text.contains("The conversation continues"));
         let (columns, table_rows) = table_columns(&buffer);
         assert_eq!(columns.len(), 3);
-        assert!(columns[2] < width - 2);
+        assert!(columns[2] < width);
         for (column, expected) in [
             (0, "Howyouinvokeit"),
             (

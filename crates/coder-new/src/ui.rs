@@ -576,7 +576,7 @@ fn prompt(text: &str, width: u16) -> Vec<Line<'static>> {
         if used < band {
             row.spans.push(Span::raw(" ".repeat(band - used)));
         }
-        row.style = row.style.bg(t::BG_LIGHT);
+        row.style = row.style.bg(t::USER_MESSAGE_BG);
     }
     rows
 }

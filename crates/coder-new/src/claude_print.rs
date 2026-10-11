@@ -109,6 +109,9 @@ pub(super) async fn run(
     cancel: &Arc<AtomicBool>,
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Value, String> {
+    if !crate::approval::tools_allowed() {
+        return Err("Claude Code cannot run when tools are disabled.".into());
+    }
     let mut command = std::process::Command::new(program);
     command
         .args([
@@ -116,10 +119,26 @@ pub(super) async fn run(
             "--output-format",
             "stream-json",
             "--verbose",
-            "--permission-mode",
-            "bypassPermissions",
+            "--no-session-persistence",
         ])
         .current_dir(cwd);
+    if crate::approval::gated() {
+        command.args([
+            "--safe-mode",
+            "--restricted",
+            "--strict-mcp-config",
+            "--tools",
+            "Read,Glob,Grep",
+            "--allowedTools",
+            "Read,Glob,Grep",
+            "--permission-mode",
+            "dontAsk",
+            "--permission-prompts",
+            "none",
+        ]);
+    } else {
+        command.args(["--permission-mode", "bypassPermissions"]);
+    }
     let (mark, value) = Agent::ClaudeCode.engine_mark();
     command.env(mark, value);
     let admitted = std::env::var("OA_CODER_CLOUD_CREDENTIAL_NAMES").unwrap_or_default();
@@ -364,6 +383,7 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn the_unmodified_binary_runs_in_print_mode_with_the_task_on_stdin() {
+        let _lock = crate::approval::test_lock().lock().unwrap();
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         let program = dir.path().join("claude");
@@ -378,10 +398,20 @@ mod tests {
         .unwrap();
         std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
         let mut texts = vec![];
-        let answer = run(
-            &program,
+        let agent = AcpAgent {
+            id: "claude-code".into(),
+            name: "Claude Code".into(),
+            program,
+            transport: AgentTransport::ClaudeCli,
+            arguments: vec![],
+            mode: None,
+            enabled: true,
+        };
+        let answer = super::acp(
+            &agent,
             "fix the fixture",
             dir.path(),
+            None,
             &Arc::new(AtomicBool::new(false)),
             &mut |event| {
                 if let RuntimeEvent::Text(text) = event {
@@ -396,5 +426,24 @@ mod tests {
         assert_eq!(texts, ["working"]);
         let args = std::fs::read_to_string(args).unwrap();
         assert!(args.starts_with("-p --output-format stream-json"), "{args}");
+        assert!(args.contains("--no-session-persistence"), "{args}");
+        crate::approval::install(Some(crate::approval::Gate {
+            desk: crate::approval::Desk::new(),
+            cancel: Arc::new(AtomicBool::new(false)),
+        }));
+        let readonly = run(
+            &agent.program,
+            "read the fixture",
+            dir.path(),
+            &Arc::new(AtomicBool::new(false)),
+            &mut |_| {},
+        )
+        .await;
+        crate::approval::install(None);
+        assert_eq!(readonly.unwrap()["reply"], "read the fixture");
+        let args = std::fs::read_to_string(dir.path().join("args")).unwrap();
+        assert!(args.contains("--tools Read,Glob,Grep"));
+        assert!(args.contains("--permission-mode dontAsk"));
+        assert!(!args.contains("bypassPermissions"));
     }
 }

@@ -82,7 +82,7 @@ pub fn discover(variable: &dyn Fn(&str) -> Option<OsString>) -> Vec<AcpAgent> {
     add(
         "claude-code",
         "Claude Code",
-        adapter(&["claude-agent-acp", "claude-code-acp"], Some("claude")),
+        resolve(Path::new("claude"), variable),
         Vec::new(),
     );
     add(
@@ -149,6 +149,10 @@ pub fn discover(variable: &dyn Fn(&str) -> Option<OsString>) -> Vec<AcpAgent> {
         adapter(&["hermes-acp"], None),
         Vec::new(),
     );
+    drop(add);
+    if let Some(agent) = agents.iter_mut().find(|agent| agent.id == "claude-code") {
+        agent.transport = AgentTransport::ClaudeCli;
+    }
     let explicit_codex = variable("CODER_ONE_CODEX_BIN").filter(|value| !value.is_empty());
     let codex = explicit_codex.as_ref().map_or_else(
         || codex_binary(variable),
@@ -398,27 +402,39 @@ mod tests {
     }
 
     #[test]
+    fn claude_runs_without_an_acp_adapter() {
+        let fixture = Fixture::new();
+        let native = fixture.file("bin", "claude", true);
+        let agents = discover(&|name| fixture.variable(name));
+        assert_eq!(agents.len(), 1);
+        assert_eq!(agents[0].id, "claude-code");
+        assert_eq!(agents[0].transport, AgentTransport::ClaudeCli);
+        assert_eq!(agents[0].program, std::fs::canonicalize(native).unwrap());
+        assert!(agents[0].validate().is_ok());
+    }
+
+    #[test]
     fn native_codex_uses_the_builtin_bridge_without_an_acp_adapter() {
         let fixture = Fixture::new();
         fixture.file("bin", "claude", true);
         let codex = fixture.file("bin", "codex", true);
         let agents = discover(&|name| fixture.variable(name));
-        assert_eq!(agents.len(), 1);
-        assert_eq!(agents[0].id, "codex");
-        assert_eq!(agents[0].program, std::fs::canonicalize(codex).unwrap());
-        assert_eq!(agents[0].transport, AgentTransport::CodexCli);
-        assert!(agents[0].validate().is_ok());
+        assert_eq!(agents.len(), 2);
+        assert_eq!(agents[1].id, "codex");
+        assert_eq!(agents[1].program, std::fs::canonicalize(codex).unwrap());
+        assert_eq!(agents[1].transport, AgentTransport::CodexCli);
+        assert!(agents[1].validate().is_ok());
         fixture.file("bin", "claude-agent-acp", false);
         fixture.file("bin", "codex-acp", false);
         assert_eq!(
-            discover(&|name| fixture.variable(name))[0].transport,
+            discover(&|name| fixture.variable(name))[1].transport,
             AgentTransport::CodexCli
         );
         let adapter = fixture.file("bin", "codex-acp", true);
         let agents = discover(&|name| fixture.variable(name));
-        assert_eq!(agents.len(), 1);
-        assert_eq!(agents[0].transport, AgentTransport::Acp);
-        assert_eq!(agents[0].program, std::fs::canonicalize(adapter).unwrap());
+        assert_eq!(agents.len(), 2);
+        assert_eq!(agents[1].transport, AgentTransport::Acp);
+        assert_eq!(agents[1].program, std::fs::canonicalize(adapter).unwrap());
     }
 
     #[test]
@@ -464,18 +480,18 @@ mod tests {
     fn adapters_require_their_underlying_cli_and_aliases_do_not_duplicate_agents() {
         let fixture = Fixture::new();
         fixture.file("bin", "claude-agent-acp", true);
-        let alias = fixture.file("bin", "claude-code-acp", true);
+        fixture.file("bin", "claude-code-acp", true);
         fixture.file("bin", "codex-acp", true);
         fixture.file("bin", "amp-acp", true);
         assert!(discover(&|name| fixture.variable(name)).is_empty());
-        fixture.file("bin", "claude", true);
+        let native = fixture.file("bin", "claude", true);
         let agents = discover(&|name| fixture.variable(name));
         assert_eq!(agents.len(), 1);
         assert_eq!(agents[0].id, "claude-code");
+        assert_eq!(agents[0].transport, AgentTransport::ClaudeCli);
+        assert_eq!(agents[0].program, std::fs::canonicalize(native).unwrap());
         std::fs::remove_file(&agents[0].program).unwrap();
-        let agents = discover(&|name| fixture.variable(name));
-        assert_eq!(agents.len(), 1);
-        assert_eq!(agents[0].program, std::fs::canonicalize(alias).unwrap());
+        assert!(discover(&|name| fixture.variable(name)).is_empty());
     }
 
     #[test]

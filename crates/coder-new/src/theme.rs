@@ -10,6 +10,7 @@ const fn rgb(value: u32) -> Color {
 }
 
 pub const BG_BASE: Color = rgb(coder_ui::coder_noir::TERMINAL_BACKGROUND);
+pub const USER_MESSAGE_BG: Color = rgb(0x303030);
 pub const BG_LIGHT: Color = rgb(coder_ui::coder_noir::SURFACE_RAISED);
 pub const BG_DARK: Color = rgb(coder_ui::coder_noir::SURFACE_SUBTLE);
 pub const TEXT_PRIMARY: Color = rgb(coder_ui::coder_noir::ANSI[15]);

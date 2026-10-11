@@ -805,3 +805,49 @@ fn local_login_turns_show_auto_above_the_input_rail() {
     );
     assert!(!screen.contains("gpt-6.1-sol"));
 }
+
+#[test]
+fn transcript_uses_the_full_terminal_width_without_side_margins() {
+    for width in [24, 40, 80] {
+        let mut app = App::default();
+        app.set_mode(Mode::Live);
+        app.live.entries.push(Entry::Assistant {
+            text: "x".repeat(usize::from(width)),
+            model: None,
+            elapsed_ms: None,
+        });
+        let canvas = render(&mut app, width, 24);
+        assert_eq!(
+            canvas.lines().next().unwrap(),
+            "x".repeat(usize::from(width))
+        );
+        app.live.entries = vec![Entry::User("x".repeat(usize::from(width - 3)))];
+        let mut terminal = Terminal::new(TestBackend::new(width, 24)).unwrap();
+        terminal.draw(|frame| ui::render(frame, &mut app)).unwrap();
+        let buffer = terminal.backend().buffer();
+        assert_eq!(buffer[(0, 0)].bg, coder_new::theme::BG_LIGHT);
+        assert_eq!(buffer[(width - 1, 0)].bg, coder_new::theme::BG_LIGHT);
+    }
+}
+
+#[test]
+fn working_spinner_is_left_aligned_and_context_reaches_the_bottom_row() {
+    let mut app = App::default();
+    app.set_mode(Mode::Live);
+    app.live.busy = true;
+    for width in [24, 80] {
+        let mut terminal = Terminal::new(TestBackend::new(width, 24)).unwrap();
+        terminal.draw(|frame| ui::render(frame, &mut app)).unwrap();
+        let buffer = terminal.backend().buffer();
+        assert_eq!(
+            buffer[(0, 0)].symbol(),
+            coder_new::tools::spinner(app.animation_frame)
+        );
+        assert_eq!(buffer[(2, 0)].symbol(), "W");
+        let bottom: String = (0..width).map(|x| buffer[(x, 23)].symbol()).collect();
+        assert!(
+            bottom.contains(" / "),
+            "context missing from bottom row: {bottom:?}"
+        );
+    }
+}
