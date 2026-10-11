@@ -99,6 +99,24 @@ pub(crate) fn expand_home(cwd: &str) -> Result<String, &'static str> {
     }
 }
 
+/// A chat cwd on this host: [`expand_home`], or a projectless chat's scratch
+/// folder under `scratch_root`, created on first use — createChat only names
+/// it, possibly on another device.
+pub(crate) fn resolve_chat_cwd(cwd: &str, scratch_root: &Path) -> Result<String, String> {
+    if !zeron_proto::projectless::is_scratch_cwd(cwd) {
+        return expand_home(cwd).map_err(str::to_string);
+    }
+    let name = cwd.trim().rsplit('/').next().unwrap_or_default();
+    let folder = scratch_root.join(name);
+    std::fs::create_dir_all(&folder).map_err(|error| {
+        format!(
+            "could not create the chat's folder {}: {error}",
+            folder.display()
+        )
+    })?;
+    Ok(folder.to_string_lossy().into_owned())
+}
+
 /// Resolve the host user's home for a session that explicitly uses `~`.
 /// An absent home must not silently turn a projectless session into `/`.
 pub(crate) fn session_home_dir() -> Result<PathBuf, &'static str> {
@@ -157,6 +175,13 @@ pub struct Repos {
 impl Repos {
     pub(crate) fn data_dir(&self) -> &Path {
         &self.inner.data_dir
+    }
+
+    /// Where projectless chats' folders live on this host: the engine data
+    /// dir's `scratch` (`~/.zeron/scratch` for the default data dir), as
+    /// t3code keeps its under `~/.t3/scratch`.
+    pub(crate) fn scratch_root(&self) -> PathBuf {
+        self.inner.data_dir.join("scratch")
     }
 
     pub fn workspace_search(&self) -> &WorkspaceSearch {

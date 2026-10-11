@@ -290,8 +290,11 @@ impl WorkspaceFiles {
                     // The chat's cwd is the browsing boundary, even when it
                     // happens to be a subdirectory of a Git checkout.
                     let cwd = PathBuf::from(
-                        crate::repos::expand_home(chat.cwd.as_deref().unwrap_or("~"))
-                            .map_err(|error| WorkspaceFilesError::NotFound(error.to_string()))?,
+                        crate::repos::resolve_chat_cwd(
+                            chat.cwd.as_deref().unwrap_or("~"),
+                            &self.inner.repos.scratch_root(),
+                        )
+                        .map_err(|error| WorkspaceFilesError::NotFound(error.to_string()))?,
                     );
                     if !cwd.is_absolute() {
                         return Err(WorkspaceFilesError::BadParams(
@@ -1474,7 +1477,10 @@ fn search_content_blocking(
 /// File-name search also takes an empty query, listing the workspace's files
 /// by recency from the index (the palette's default Files list). "Show
 /// ignored" walks the disk with a substring match, so it still needs text.
-fn validate_name_search_query(query: &str, include_ignored: bool) -> Result<(), WorkspaceFilesError> {
+fn validate_name_search_query(
+    query: &str,
+    include_ignored: bool,
+) -> Result<(), WorkspaceFilesError> {
     if query.trim().is_empty() && !include_ignored {
         return Ok(());
     }

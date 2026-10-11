@@ -9,11 +9,16 @@
 //! of each one is capped at [`CACHE_BUDGET_BYTES`]. Indexes hold paths only:
 //! content search greps the indexed files without a bigram prefilter. The UI
 //! warms the focused chat's index once, so its first search finds it built.
+//!
+//! The host's home folder is the exception: fff would read every file under
+//! it, cloud-only ones included, so home gets a names-only walk instead
+//! ([`crate::home_index`]) and no content search.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Condvar, Mutex, Weak};
 use std::time::{Duration, Instant};
 
 use fff_search::file_picker::FilePicker;
@@ -22,6 +27,8 @@ use fff_search::{
     GrepMode, GrepSearchOptions, MixedItemRef, MixedSearchConfig, PaginationArgs, QueryParser,
     SharedFilePicker, SharedFrecency,
 };
+
+use crate::home_index::HomeIndex;
 
 /// An index nobody searched or warmed for this long is dropped.
 pub const IDLE_EVICT: Duration = Duration::from_secs(15 * 60);
@@ -40,6 +47,9 @@ pub const NAME_SCAN_WAIT: Duration = Duration::from_millis(2000);
 /// Interactive content searches return partial results past this budget.
 pub const CONTENT_TIME_BUDGET: Duration = Duration::from_secs(2);
 const REAPER_INTERVAL: Duration = Duration::from_secs(60);
+/// A home index older than this is rebuilt in the background on next use
+/// (it has no watcher); searches keep answering from the old one meanwhile.
+const HOME_REFRESH: Duration = Duration::from_secs(60);
 /// Ceiling for logging a finished scan; a scan still running then is not logged.
 const SCAN_LOG_WAIT: Duration = Duration::from_secs(10 * 60);
 
@@ -119,6 +129,10 @@ pub struct WorkspaceSearch {
 
 struct Inner {
     entries: Mutex<HashMap<PathBuf, Entry>>,
+    /// The host's home, canonical; never indexed by fff.
+    home: Option<PathBuf>,
+    home_index: Mutex<HomeEntry>,
+    home_built: Condvar,
     clock: Clock,
     /// Whether indexes run a file watcher; off only for eviction tests, which
     /// need many indexes but no updates (each watcher is an inotify instance).
@@ -134,6 +148,16 @@ struct Entry {
     warmed: bool,
 }
 
+/// The home folder's names-only index, with [`Entry`]'s lifecycle.
+#[derive(Default)]
+struct HomeEntry {
+    index: Option<Arc<HomeIndex>>,
+    /// A walk is running; `cancel` stops it when the index is dropped.
+    building: Option<Arc<AtomicBool>>,
+    last_used: Option<Instant>,
+    warmed: bool,
+}
+
 impl Default for WorkspaceSearch {
     fn default() -> Self {
         Self::new()
@@ -142,13 +166,19 @@ impl Default for WorkspaceSearch {
 
 impl WorkspaceSearch {
     pub fn new() -> Self {
-        Self::with_clock(Arc::new(Instant::now), true)
+        let home = crate::repos::session_home_dir()
+            .ok()
+            .and_then(|home| std::fs::canonicalize(home).ok());
+        Self::with_clock(Arc::new(Instant::now), true, home)
     }
 
-    fn with_clock(clock: Clock, watch: bool) -> Self {
+    fn with_clock(clock: Clock, watch: bool, home: Option<PathBuf>) -> Self {
         Self {
             inner: Arc::new(Inner {
                 entries: Mutex::new(HashMap::new()),
+                home,
+                home_index: Mutex::new(HomeEntry::default()),
+                home_built: Condvar::new(),
                 clock,
                 watch,
                 reaper_started: std::sync::Once::new(),
@@ -158,6 +188,12 @@ impl WorkspaceSearch {
 
     /// Start (or keep alive) the index for a chat's `root`.
     pub fn warm(&self, root: &Path) -> Result<IndexState, WorkspaceSearchError> {
+        if self.is_home(root) {
+            return Ok(match self.home_index(root, true, Duration::ZERO) {
+                Some(_) => IndexState::Ready,
+                None => IndexState::Building,
+            });
+        }
         let picker = self.acquire(root, true)?;
         Ok(if picker.wait_for_scan(Duration::ZERO) {
             IndexState::Ready
@@ -189,6 +225,16 @@ impl WorkspaceSearch {
         kinds: NameKinds,
         wait: Duration,
     ) -> Result<NameSearch, WorkspaceSearchError> {
+        if self.is_home(root) {
+            let index = self.home_index(root, false, wait);
+            return Ok(NameSearch {
+                matches: index
+                    .as_ref()
+                    .map(|index| index.search(query, limit, kinds))
+                    .unwrap_or_default(),
+                indexing: index.is_none(),
+            });
+        }
         let query = normalize_name_query(query);
         let query = query.as_ref();
         let picker = self.acquire(root, false)?;
@@ -273,6 +319,10 @@ impl WorkspaceSearch {
         limit: usize,
         per_file: usize,
     ) -> Result<ContentSearch, WorkspaceSearchError> {
+        if self.is_home(root) {
+            // Home's index holds names only (see the module docs).
+            return Ok(ContentSearch::default());
+        }
         let picker = self.acquire(root, false)?;
         let indexing = !picker.wait_for_scan(SCAN_WAIT);
         if limit == 0 || per_file == 0 || query.trim().is_empty() {
@@ -349,11 +399,15 @@ impl WorkspaceSearch {
         for (root, entry) in entries {
             release(&root, entry, "explicit");
         }
+        self.release_home(|_| true);
     }
 
     /// Drop `root`'s index now unless a chat warmed it, for a caller done
     /// with an index it may have started. `true` if dropped.
     pub fn release_unless_warmed(&self, root: &Path) -> bool {
+        if self.is_home(root) {
+            return self.release_home(|home| !home.warmed);
+        }
         let removed = {
             let mut entries = lock(&self.inner.entries);
             let warmed = entries.get(root).is_some_and(|entry| entry.warmed);
@@ -368,7 +422,8 @@ impl WorkspaceSearch {
 
     /// Number of live indexes.
     pub fn live(&self) -> usize {
-        lock(&self.inner.entries).len()
+        let home = lock(&self.inner.home_index).index.is_some();
+        lock(&self.inner.entries).len() + usize::from(home)
     }
 
     /// Drop every index idle past [`IDLE_EVICT`] (the reaper runs this every
@@ -390,6 +445,67 @@ impl WorkspaceSearch {
         for (root, entry) in expired {
             release(&root, entry, "idle");
         }
+        self.release_home(|home| {
+            home.last_used
+                .is_some_and(|used| now.saturating_duration_since(used) >= IDLE_EVICT)
+        });
+    }
+
+    fn is_home(&self, root: &Path) -> bool {
+        self.inner.home.as_deref() == Some(root)
+    }
+
+    /// Home's index, walking it in the background when missing or stale;
+    /// waits up to `wait` for a first walk. `warm`: a chat is asking.
+    fn home_index(&self, root: &Path, warm: bool, wait: Duration) -> Option<Arc<HomeIndex>> {
+        self.start_reaper();
+        let now = (self.inner.clock)();
+        let mut home = lock(&self.inner.home_index);
+        home.last_used = Some(now);
+        home.warmed |= warm;
+        let stale = home
+            .index
+            .as_ref()
+            .is_none_or(|index| index.built.elapsed() >= HOME_REFRESH);
+        if stale && home.building.is_none() {
+            let cancel = Arc::new(AtomicBool::new(false));
+            home.building = Some(cancel.clone());
+            let inner = Arc::downgrade(&self.inner);
+            let root = root.to_path_buf();
+            let spawned = std::thread::Builder::new()
+                .name("workspace-search-home".into())
+                .spawn(move || build_home(inner, root, cancel));
+            if let Err(error) = spawned {
+                home.building = None;
+                tracing::warn!(%error, "home search index did not start");
+            }
+        }
+        if home.index.is_none() && home.building.is_some() && !wait.is_zero() {
+            home = self
+                .inner
+                .home_built
+                .wait_timeout_while(home, wait, |home| {
+                    home.index.is_none() && home.building.is_some()
+                })
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .0;
+        }
+        home.index.clone()
+    }
+
+    /// Drop home's index (and stop its walk) when `drop` says so.
+    fn release_home(&self, drop: impl FnOnce(&HomeEntry) -> bool) -> bool {
+        let mut home = lock(&self.inner.home_index);
+        if (home.index.is_none() && home.building.is_none()) || !drop(&home) {
+            return false;
+        }
+        if let Some(cancel) = home.building.take() {
+            cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        *home = HomeEntry::default();
+        self.inner.home_built.notify_all();
+        tracing::info!("workspace search home index evicted");
+        true
     }
 
     /// `warm`: a chat is asking (see [`Entry::warmed`]).
@@ -441,6 +557,32 @@ impl WorkspaceSearch {
     }
 }
 
+fn build_home(inner: Weak<Inner>, root: PathBuf, cancel: Arc<AtomicBool>) {
+    let started = Instant::now();
+    let index = HomeIndex::build(&root, &cancel);
+    let Some(inner) = inner.upgrade() else {
+        return;
+    };
+    let mut home = lock(&inner.home_index);
+    // Released (or replaced) while walking: drop this result.
+    if !home
+        .building
+        .as_ref()
+        .is_some_and(|building| Arc::ptr_eq(building, &cancel))
+    {
+        return;
+    }
+    tracing::info!(
+        root = %root.display(),
+        entries = index.len(),
+        scan_ms = started.elapsed().as_millis() as u64,
+        "workspace search home index scanned"
+    );
+    home.index = Some(Arc::new(index));
+    home.building = None;
+    inner.home_built.notify_all();
+}
+
 fn reap(inner: Weak<Inner>) {
     loop {
         std::thread::sleep(REAPER_INTERVAL);
@@ -477,9 +619,8 @@ fn create_picker(root: &Path, watch: bool) -> Result<SharedFilePicker, Workspace
             watch,
             follow_symlinks: false,
             enable_fs_root_scanning: false,
-            // Projectless chats live in the home folder; fff skips its dotfiles
-            // and machine-state folders.
-            enable_home_dir_scanning: true,
+            // Home gets `HomeIndex` instead (see the module docs).
+            enable_home_dir_scanning: false,
             ..Default::default()
         },
     )
@@ -596,7 +737,7 @@ mod tests {
         let clock = Arc::new(ManualClock(Mutex::new(Instant::now())));
         let reader = clock.clone();
         (
-            WorkspaceSearch::with_clock(Arc::new(move || *lock(&reader.0)), false),
+            WorkspaceSearch::with_clock(Arc::new(move || *lock(&reader.0)), false, None),
             clock,
         )
     }
@@ -823,6 +964,32 @@ mod tests {
         assert_eq!(other.preview, "indented needle");
         assert_eq!(other.ranges, vec![(9, 15)]);
         assert_eq!(other.column, 11);
+    }
+
+    #[test]
+    fn home_is_walked_for_names_and_never_indexed_by_fff() {
+        let (_dir, home) = folder(&[("dev/plan.md", b"needle"), ("OneDrive/plan.md", b"needle")]);
+        let search = WorkspaceSearch::with_clock(Arc::new(Instant::now), false, Some(home.clone()));
+        let found = search
+            .search_names_within(&home, "plan", 20, NameKinds::Files, NAME_SCAN_WAIT)
+            .unwrap();
+        assert!(!found.indexing);
+        let paths: Vec<_> = found.matches.iter().map(|m| m.path.as_str()).collect();
+        assert_eq!(paths, ["dev/plan.md"]);
+        assert!(
+            lock(&search.inner.entries).is_empty(),
+            "no fff picker for home"
+        );
+        assert_eq!(search.live(), 1);
+        assert!(
+            search
+                .search_content(&home, "needle", 50, 3)
+                .unwrap()
+                .matches
+                .is_empty()
+        );
+        assert!(search.release_unless_warmed(&home));
+        assert_eq!(search.live(), 0);
     }
 
     #[test]

@@ -381,7 +381,13 @@ impl FilesSurface {
                     let device = state
                         .device_name(&chat.device_id)
                         .unwrap_or(&chat.device_id);
-                    format!("Files in {} · {device}", chat.cwd.as_deref().unwrap_or("~"))
+                    // A projectless chat's folder is an implementation detail.
+                    match chat.cwd.as_deref() {
+                        Some(cwd) if !zeron_proto::projectless::is_projectless_cwd(Some(cwd)) => {
+                            format!("Files in {cwd} · {device}")
+                        }
+                        _ => format!("Files · {device}"),
+                    }
                 })
         };
         let phase = self.tree.node("").map(|root| root.load.clone());

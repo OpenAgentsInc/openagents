@@ -2187,7 +2187,7 @@ fn promote_local_device_group<T>(
 
 /// Project-mode group of a chat as (key, label). Projects sharing a
 /// repository identity fold into one group named for their representative
-/// space; project-less sessions group per device and read as `~`.
+/// space; project-less sessions group per device as "No project".
 fn sidebar_project_group(state: &AppState, chat: &zeron_proto::Chat) -> (String, String) {
     match state.space_for_chat(chat) {
         Some(space) => (
@@ -2196,7 +2196,7 @@ fn sidebar_project_group(state: &AppState, chat: &zeron_proto::Chat) -> (String,
         ),
         None => match chat.space_id.clone() {
             Some(space_id) => (space_id, "?".to_string()),
-            None => (format!("home:{}", chat.device_id), "~".to_string()),
+            None => (format!("home:{}", chat.device_id), "No project".to_string()),
         },
     }
 }
@@ -4980,23 +4980,25 @@ impl Shell {
         chat: zeron_proto::Chat,
         state: &AppState,
     ) -> ActiveChatRow {
-        // Line 1 is "project @ device" (t3code's project row);
-        // project-less sessions read as their home-dir cwd `~`.
+        // Line 1 is "project @ device" (t3code's project row); project-less
+        // sessions name only their device — no project, no folder.
         let space = state.space_for_chat(&chat);
         let project = match (space, chat.space_id.as_deref()) {
-            (Some(space), _) => space.display_name().to_string(),
-            (None, None) => "~".to_string(),
-            (None, Some(_)) => "?".to_string(),
+            (Some(space), _) => Some(space.display_name().to_string()),
+            (None, None) => None,
+            (None, Some(_)) => Some("?".to_string()),
         };
         let device = state
             .device_name(&chat.device_id)
             .unwrap_or("Unknown device")
             .to_string();
-        let mut folder = project;
         // Unknown device → no fragment, same as the archived list.
-        if state.device_name(&chat.device_id).is_some() {
-            folder = format!("{folder} @ {device}");
-        }
+        let folder = match (project, state.device_name(&chat.device_id)) {
+            (Some(project), Some(_)) => format!("{project} @ {device}"),
+            (Some(project), None) => project,
+            (None, Some(_)) => device.clone(),
+            (None, None) => String::new(),
+        };
         // The branch shows whenever the engine has stamped one —
         // main-checkout sessions included, not just worktrees.
         let branch = crate::change_requests::conversation_branch(&chat, &state.spaces)

@@ -11328,7 +11328,6 @@ impl Shell {
                                 div()
                                     .id("persistent-composer")
                                     .relative()
-                                    .left(px(-session_reserve / 2.0))
                                     .w(px(composer_width))
                                     .opacity(composer_opacity)
                                     .mx_auto()
@@ -11343,6 +11342,9 @@ impl Shell {
                                 self.reduced_motion,
                                 frame_time,
                             )
+                            // Centered on the transcript, which keeps the
+                            // session card's room free on its right.
+                            .shift_x(-session_reserve / 2.0)
                             .reserve_terminal(terminal_geometry.clone()),
                         )
                     })
