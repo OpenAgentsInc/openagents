@@ -561,6 +561,10 @@ fn context_text(app: &App) -> String {
             crate::long_session::clock(until)
         ));
     }
+    let now = atif::now_ms() / 1000;
+    if let Some(plan) = crate::claude_plan::status_text(now, &crate::long_session::clock) {
+        parts.push(plan);
+    }
     // The signed-in account's name is never shown under the input.
     if let Some(update) = &app.update_line {
         parts.push(update.clone());

@@ -40,6 +40,10 @@ static BOOK: Mutex<Book> = Mutex::new(Book {
     active: 0,
     held_until: None,
 });
+/// The plan's windows as Claude Code last reported them in this process,
+/// for the status line (#11233), and whether the last event warned.
+static WINDOWS: Mutex<(Vec<microcoder_loop::usage::Window>, bool)> =
+    Mutex::new((Vec::new(), false));
 /// The person's number; 0 until read from disk.
 static LIMIT: AtomicUsize = AtomicUsize::new(0);
 /// Claude Code reported this computer's login is an API key or a cloud
@@ -153,6 +157,15 @@ pub fn observe_credential(kind: &str) {
 /// Reads a `rate_limit_event`'s `rate_limit_info`: `allowed_warning` holds
 /// new automated starts until its reset; `allowed` lets them go again.
 pub fn observe_rate_limit(info: &serde_json::Value, now: u64) {
+    if let Some(window) = microcoder_loop::usage::rate_limit_window(info, now) {
+        let mut seen = WINDOWS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        seen.0.retain(|kept| kept.window != window.window);
+        seen.0.push(window);
+        seen.0.sort_by_key(|kept| kept.window);
+        seen.1 = info["status"] == "allowed_warning";
+    }
     let mut book = BOOK
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -243,6 +256,48 @@ pub async fn admit(
     }
 }
 
+/// The status line's reading of the plan, from Claude Code's own reports:
+/// "Claude plan: 5h 62% · week 31% · resets 14:20", with a quiet "near the
+/// limit" after a warning. `None` before any report, or once every window
+/// reported has reset. `clock` writes a Unix-milliseconds time.
+#[must_use]
+pub fn status_text(now: u64, clock: &dyn Fn(u64) -> String) -> Option<String> {
+    use microcoder_loop::usage::WindowName;
+    let seen = WINDOWS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let current: Vec<_> = seen
+        .0
+        .iter()
+        .filter(|window| window.resets_at.is_none_or(|at| at > now))
+        .collect();
+    if current.is_empty() {
+        return None;
+    }
+    let mut parts: Vec<String> = current
+        .iter()
+        .map(|window| {
+            let name = match window.window {
+                WindowName::FiveHour => "5h",
+                WindowName::SevenDay => "week",
+                WindowName::SevenDayTopModel => "top model week",
+                WindowName::Primary | WindowName::Secondary => "window",
+            };
+            format!("{name} {:.0}%", window.used_fraction * 100.0)
+        })
+        .collect();
+    let fullest = current
+        .iter()
+        .max_by(|a, b| a.used_fraction.total_cmp(&b.used_fraction));
+    if let Some(at) = fullest.and_then(|window| window.resets_at) {
+        parts.push(format!("resets {}", clock(at * 1000)));
+    }
+    if seen.1 {
+        parts.push("near the limit".into());
+    }
+    Some(format!("Claude plan: {}", parts.join(" · ")))
+}
+
 /// The `/agents` panel's line about the plan.
 #[must_use]
 pub fn panel_line() -> String {
@@ -261,6 +316,9 @@ pub(crate) fn reset_for_test(limit: usize) {
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     *book = Book::default();
+    *WINDOWS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = (Vec::new(), false);
 }
 
 #[cfg(test)]
@@ -360,6 +418,34 @@ mod tests {
         assert!(try_take(now()).is_none());
         drop((held, second));
         assert_eq!(read_limit(None), DEFAULT_SLOTS);
+    }
+
+    #[test]
+    fn the_status_line_reads_claude_codes_own_reports() {
+        let _serial = SERIAL
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        reset_for_test(DEFAULT_SLOTS);
+        let clock = |ms: u64| format!("t{}", ms / 1000);
+        let now = 1_000;
+        assert_eq!(status_text(now, &clock), None);
+        observe_rate_limit(
+            &serde_json::json!({"status": "allowed", "rateLimitType": "five_hour", "utilization": 0.62, "resetsAt": now + 60}),
+            now,
+        );
+        observe_rate_limit(
+            &serde_json::json!({"status": "allowed_warning", "rateLimitType": "seven_day", "utilization": 0.31, "resetsAt": now + 600}),
+            now,
+        );
+        assert_eq!(
+            status_text(now, &clock).as_deref(),
+            Some("Claude plan: 5h 62% · week 31% · resets t1060 · near the limit")
+        );
+        assert_eq!(
+            status_text(now + 61, &clock).as_deref(),
+            Some("Claude plan: week 31% · resets t1600 · near the limit")
+        );
+        reset_for_test(DEFAULT_SLOTS);
     }
 
     #[test]

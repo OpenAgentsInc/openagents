@@ -66,6 +66,9 @@ pub enum WindowName {
     Primary,
     /// Codex's secondary window.
     Secondary,
+    /// Claude's separate seven-day window for its top model (Max plans),
+    /// `seven_day_opus` in Claude Code's `rate_limit_event`.
+    SevenDayTopModel,
 }
 
 impl WindowName {
@@ -76,6 +79,7 @@ impl WindowName {
             WindowName::SevenDay => "seven_day",
             WindowName::Primary => "primary",
             WindowName::Secondary => "secondary",
+            WindowName::SevenDayTopModel => "seven_day_top_model",
         }
     }
 }
@@ -386,6 +390,32 @@ impl Book {
         }
     }
 
+    /// Merges one reported window into `provider`'s reading.
+    fn report(&mut self, provider: Provider, window: Window, now: u64) {
+        let mut entry = self.entry(provider).cloned().unwrap_or(Entry {
+            provider,
+            attempted_at: now,
+            next_probe_at: now,
+            reading: None,
+            failure: None,
+        });
+        let reading = entry.reading.get_or_insert_with(|| Reading {
+            provider,
+            observed_at: now,
+            windows: Vec::new(),
+            limit_reached: false,
+            plan: None,
+            account: None,
+        });
+        reading.observed_at = now;
+        reading.windows.retain(|kept| kept.window != window.window);
+        reading.windows.push(window);
+        reading.windows.sort_by_key(|kept| kept.window);
+        self.entries.retain(|kept| kept.provider != provider);
+        self.entries.push(entry);
+        self.entries.sort_by_key(|entry| entry.provider);
+    }
+
     fn apply(&mut self, provider: Provider, now: u64, outcome: Outcome, account: Option<String>) {
         // A reading kept across a failure must be the same login's.
         let kept = self
@@ -569,6 +599,59 @@ fn write(
         .map_err(|_| format!("cannot write {}", path.display()))?;
     book.forget_other_logins(dir, identify);
     Ok(book)
+}
+
+/// The window a Claude Code `rate_limit_event`'s `rate_limit_info` names,
+/// as a typed reading (#11233): Claude Code itself reports where the plan
+/// stands, so nothing reads the login. `utilization` is a fraction from 0
+/// to 1 there. `None` for a window this reader does not name, or an event
+/// without a usable utilization.
+#[must_use]
+pub fn rate_limit_window(info: &serde_json::Value, now: u64) -> Option<Window> {
+    let (window, length) = match info["rateLimitType"].as_str()? {
+        "five_hour" => (WindowName::FiveHour, 5 * 3600),
+        "seven_day" => (WindowName::SevenDay, 7 * 86_400),
+        "seven_day_opus" => (WindowName::SevenDayTopModel, 7 * 86_400),
+        _ => return None,
+    };
+    let used = info["utilization"]
+        .as_f64()
+        .filter(|used| used.is_finite() && (0.0..=1.005).contains(used))?;
+    Some(Window {
+        window,
+        used_fraction: used.min(1.0),
+        resets_at: info["resetsAt"].as_u64().map(|at| bounded(at, now)),
+        length_seconds: Some(length),
+    })
+}
+
+/// Records a window the provider's own binary reported into `provider`'s
+/// reading in `dir`'s book, beside the windows it already holds; it never
+/// moves the probe schedule. The reading keeps its login fingerprint.
+///
+/// # Errors
+/// When the book cannot be read or written.
+pub fn record_reported(
+    dir: &Path,
+    provider: Provider,
+    window: Window,
+    now: u64,
+) -> Result<(), String> {
+    let path = dir.join(FILE);
+    let mut file = crate::capacity::open_private(dir, &path)?;
+    file.lock()
+        .map_err(|_| format!("cannot lock {}", path.display()))?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)
+        .map_err(|_| format!("cannot read {}", path.display()))?;
+    let mut book = Book::parse(&bytes).unwrap_or_default();
+    book.report(provider, window, now);
+    let bytes = serde_json::to_vec_pretty(&book).map_err(|e| e.to_string())?;
+    file.set_len(0)
+        .and_then(|()| file.rewind())
+        .and_then(|()| file.write_all(&bytes))
+        .and_then(|()| file.sync_all())
+        .map_err(|_| format!("cannot write {}", path.display()))
 }
 
 /// A percent the provider reported, as a fraction from 0 to 1. A value
@@ -793,6 +876,41 @@ mod tests {
             retry_after: None,
             body: body.as_bytes().to_vec(),
         })
+    }
+
+    /// #11233: each `rateLimitType` Claude Code reports becomes its typed
+    /// window, and recording one keeps the others.
+    #[test]
+    fn claude_codes_own_rate_limit_events_are_typed_windows() {
+        let event = |kind: &str, used: f64| serde_json::json!({"status": "allowed", "rateLimitType": kind, "utilization": used, "resetsAt": NOW + 600});
+        for (kind, name) in [
+            ("five_hour", WindowName::FiveHour),
+            ("seven_day", WindowName::SevenDay),
+            ("seven_day_opus", WindowName::SevenDayTopModel),
+        ] {
+            let window = rate_limit_window(&event(kind, 0.62), NOW).unwrap();
+            assert_eq!(window.window, name);
+            assert!((window.used_fraction - 0.62).abs() < 1e-9);
+            assert_eq!(window.resets_at, Some(NOW + 600));
+        }
+        assert!(rate_limit_window(&event("overage", 0.5), NOW).is_none());
+        assert!(rate_limit_window(&event("five_hour", 3.0), NOW).is_none());
+        assert!(
+            rate_limit_window(&serde_json::json!({"rateLimitType": "five_hour"}), NOW).is_none()
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let five = rate_limit_window(&event("five_hour", 0.62), NOW).unwrap();
+        let week = rate_limit_window(&event("seven_day", 0.31), NOW).unwrap();
+        record_reported(dir.path(), Provider::Claude, five, NOW).unwrap();
+        record_reported(dir.path(), Provider::Claude, week, NOW + 1).unwrap();
+        let newer = rate_limit_window(&event("five_hour", 0.7), NOW).unwrap();
+        record_reported(dir.path(), Provider::Claude, newer, NOW + 2).unwrap();
+        let book = Book::load_with(dir.path(), |_| None);
+        let reading = book.reading(Provider::Claude, NOW + 2).unwrap();
+        assert_eq!(reading.windows.len(), 2);
+        assert!((reading.fullest().unwrap().used_fraction - 0.7).abs() < 1e-9);
+        assert_eq!(book.entry(Provider::Claude).unwrap().next_probe_at, NOW);
     }
 
     #[test]

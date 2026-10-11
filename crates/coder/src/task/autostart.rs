@@ -2350,6 +2350,7 @@ fn window_label(name: usage::WindowName) -> &'static str {
         usage::WindowName::SevenDay => "7 days",
         usage::WindowName::Primary => "Primary",
         usage::WindowName::Secondary => "Secondary",
+        usage::WindowName::SevenDayTopModel => "7 days, top model",
     }
 }
 

@@ -213,10 +213,21 @@ fn line(text: &str, kept: &mut String, emit: &mut dyn FnMut(RuntimeEvent)) {
     match value["type"].as_str() {
         Some("system" | "result" | "rate_limit_event") => {
             match value["type"].as_str() {
-                Some("rate_limit_event") => crate::claude_plan::observe_rate_limit(
-                    &value["rate_limit_info"],
-                    coder_delegate::limit::now(),
-                ),
+                Some("rate_limit_event") => {
+                    let now = coder_delegate::limit::now();
+                    let info = &value["rate_limit_info"];
+                    crate::claude_plan::observe_rate_limit(info, now);
+                    // Claude Code's own report of where the plan stands is
+                    // the usage reading (#11233); nothing reads the login.
+                    if let Some(window) = microcoder_loop::usage::rate_limit_window(info, now) {
+                        let _ = microcoder_loop::usage::record_reported(
+                            &coder::task::local::default_store(),
+                            microcoder_loop::capacity::Provider::Claude,
+                            window,
+                            now,
+                        );
+                    }
+                }
                 Some("system") if value["subtype"] == "init" => {
                     crate::claude_plan::observe_credential(credential_type(
                         value["apiKeySource"].as_str(),
