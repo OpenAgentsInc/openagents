@@ -101,7 +101,12 @@ in the entry's slot:
    (`coder::task::issue_run::Gate`), the tests of each touched package in a
    leased build slot with sccache on GCS, the diff checks, and
    `cargo fmt --check` when the repository's policy asks. Fast lane: the
-   diff checks only. Red checks bounce the entry. Checks the worker could
+   diff checks only. Red checks bounce the entry, except a test that also
+   fails on the target the change was rebased onto: the gate runs it there
+   by name and reports it in the record (`already failing on main: ...`)
+   instead of bouncing ([#11300](https://github.com/OpenAgentsInc/openagents/issues/11300)).
+   The first check and every re-check after a rebase compare with the
+   target they ran on. Checks the worker could
    not run (no cargo, a boundary that would not start) put it back in line
    instead, at most three times.
 5. Lands with `coder::task::landing::land` under the push lock: a plain

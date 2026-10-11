@@ -640,7 +640,18 @@ pub async fn run_with_base(
     if persistent.is_empty() {
         return (problems, record);
     }
-    let worktree = base.and_then(|base| BaseWorktree::create(&setup.workdir, base).ok());
+    let worktree = match base.map(|base| BaseWorktree::create(&setup.workdir, base)) {
+        Some(Ok(tree)) => Some(tree),
+        Some(Err(why)) => {
+            // Said in the record, so a bounce for a test `main` may also
+            // fail shows why the comparison could not run (#11300).
+            record
+                .notes
+                .push(format!("could not check out main to compare: {why}"));
+            None
+        }
+        None => None,
+    };
     for (package, test, retry) in persistent {
         let mut already_failing = false;
         if let Some(tree) = &worktree {
@@ -663,6 +674,14 @@ pub async fn run_with_base(
             // establishes that the test was already failing.
             already_failing =
                 !failures.is_empty() && ran.failed_tests.contains(&(package.clone(), test.clone()));
+            if !failures.is_empty() && !already_failing {
+                // A build or infrastructure failure on main (a full disk
+                // once) proves nothing either way; say so in the record.
+                record.notes.push(format!(
+                    "could not tell whether {test} fails on main: {}",
+                    crate::judge::clip(failures.join("; ").trim(), 300)
+                ));
+            }
         }
         if already_failing {
             record
@@ -865,7 +884,21 @@ esac
         for kind in ["infra", "missing"] {
             let (problems, record, _) = scenario(kind).await;
             assert!(!problems.is_empty());
-            assert!(record.notes.is_empty());
+            // Still a bounce; the record only says main could not judge.
+            assert!(
+                record
+                    .notes
+                    .iter()
+                    .all(|note| note.starts_with("could not tell whether")),
+                "{:?}",
+                record.notes
+            );
+            assert!(
+                !record
+                    .notes
+                    .iter()
+                    .any(|n| n.starts_with("already failing"))
+            );
         }
     }
 

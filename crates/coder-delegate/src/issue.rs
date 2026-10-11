@@ -1251,7 +1251,26 @@ pub async fn gate_in_also(
     slot: Option<&Path>,
     also: &[String],
 ) -> (Vec<String>, Option<Confinement>) {
-    let base = command(workdir, "git", &["rev-parse", "origin/main"]).ok();
+    gate_in_against(workdir, jev, recorder, seal, slot, also, None).await
+}
+
+/// [`gate_in_also`] against an explicit base: the commit whose own failing
+/// tests are reported, not held against the change. `None` takes
+/// `origin/main`. The landing queue passes the target it rebased the change
+/// onto, for its first check and for every re-check after a rebase (#11300).
+pub async fn gate_in_against(
+    workdir: &Path,
+    jev: Option<&jev::Client>,
+    recorder: &Recorder,
+    seal: Option<&crate::seal::Seal>,
+    slot: Option<&Path>,
+    also: &[String],
+    base: Option<&str>,
+) -> (Vec<String>, Option<Confinement>) {
+    let base = match base {
+        Some(base) => Some(base.to_owned()),
+        None => command(workdir, "git", &["rev-parse", "origin/main"]).ok(),
+    };
     gate_with_base(workdir, jev, recorder, seal, base.as_deref(), slot, also).await
 }
 

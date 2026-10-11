@@ -455,3 +455,122 @@ fn a_queue_url_is_a_bucket_or_a_folder() {
     assert_eq!(open("file:///tmp/q").unwrap().location(), "/tmp/q");
     assert!(open("gs://").is_err());
 }
+
+/// Checks whose "tests" are the lines of `failing` in the staged tree:
+/// each one fails, unless the base the queue names fails it too, as the
+/// gate's comparison against `main` does (#11300). The first check also
+/// lands a commit on `main` from `other`, so the landing must rebase and
+/// check again.
+struct AgainstBase {
+    other: PathBuf,
+    bases: std::sync::Mutex<Vec<String>>,
+}
+
+impl Checks for AgainstBase {
+    fn check(&self, worktree: &Path, policy: &Policy) -> Checked {
+        self.check_against(worktree, policy, &[], "HEAD")
+    }
+
+    fn check_against(
+        &self,
+        worktree: &Path,
+        _policy: &Policy,
+        _also: &[String],
+        base: &str,
+    ) -> Checked {
+        let mut bases = self.bases.lock().unwrap();
+        bases.push(run(worktree, &["rev-parse", base]));
+        if bases.len() == 1 {
+            run(&self.other, &["fetch", "-q", "origin"]);
+            run(&self.other, &["checkout", "-q", "--detach", "origin/main"]);
+            // A workspace-wide build file, so the landing must check again.
+            write(&self.other, "rust-toolchain.toml", "[toolchain]\n");
+            run(&self.other, &["add", "-A"]);
+            run(&self.other, &["commit", "-qm", "main moves on"]);
+            run(
+                &self.other,
+                &["push", "-q", "origin", "HEAD:refs/heads/main"],
+            );
+        }
+        let staged = std::fs::read_to_string(worktree.join("failing")).unwrap_or_default();
+        let on_base = Command::new("git")
+            .arg("-C")
+            .arg(worktree)
+            .args(["show", &format!("{base}:failing")])
+            .output()
+            .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())
+            .unwrap_or_default();
+        Checked {
+            problems: staged
+                .lines()
+                .filter(|test| !on_base.lines().any(|known| known == *test))
+                .map(|test| format!("{test} fails"))
+                .collect(),
+            ran: vec![format!("checked against {base}")],
+        }
+    }
+}
+
+#[test]
+fn a_test_main_already_fails_bounces_neither_the_first_check_nor_the_recheck() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+    let remote = origin(root);
+    // `main` is already red: its `failing` names a sign-in test.
+    let seed = clone(root, &remote, "red-main");
+    write(&seed, "failing", "auth::tests::sign_in\n");
+    run(&seed, &["add", "-A"]);
+    run(&seed, &["commit", "-qm", "main is red"]);
+    run(&seed, &["push", "-q", "origin", "HEAD:refs/heads/main"]);
+    let store = Dir(root.join("queue"));
+    let queue = Queue { store: &store };
+    let mac = clone(root, &remote, "mac");
+    let fine = submit(&queue, &mac, "mac", 100, "notes/web.md", "a web change\n");
+    let worse = submit(
+        &queue,
+        &mac,
+        "mac",
+        200,
+        "failing",
+        "auth::tests::sign_in\nweb::tests::new_break\n",
+    );
+    let top = clone(root, &remote, "env");
+    let checks = AgainstBase {
+        other: clone(root, &remote, "other"),
+        bases: std::sync::Mutex::new(Vec::new()),
+    };
+    let mut seen = Seen::default();
+    let mut worker = Integrator {
+        checks: &checks,
+        ..integrator(&store, &top, root, &mut seen)
+    };
+
+    // The first check and the re-check after `main` moved both compare
+    // with the target they ran on, so the old failure bounces nothing.
+    let (entry, outcome) = worker.step().unwrap().unwrap();
+    assert_eq!(entry.id, fine.id);
+    assert!(matches!(outcome, Outcome::Landed(_)), "{outcome:?}");
+    let bases = checks.bases.lock().unwrap().clone();
+    assert_eq!(bases.len(), 2, "one check, then one re-check: {bases:?}");
+    assert_ne!(
+        bases[0], bases[1],
+        "the re-check compares with the newer main"
+    );
+    let record = &queue.records(&fine.id).unwrap()[0];
+    assert!(
+        record.landing.iter().any(|line| line.contains("re-run")),
+        "{:?}",
+        record.landing
+    );
+
+    // A test the change breaks is still a bounce.
+    let (entry, outcome) = worker.step().unwrap().unwrap();
+    assert_eq!(entry.id, worse.id);
+    match outcome {
+        Outcome::Bounced(why) => {
+            assert!(why.contains("web::tests::new_break fails"), "{why}");
+            assert!(!why.contains("sign_in"), "{why}");
+        }
+        other => panic!("{other:?}"),
+    }
+}

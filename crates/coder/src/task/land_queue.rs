@@ -1102,7 +1102,12 @@ impl landing::Hooks for Hooks<'_, '_> {
         if let Err(why) = git(&w, &["reset", "-q", "--soft", &base]) {
             return vec![format!("Git could not stage the change: {why}")];
         }
-        let checked = self.checks.check_also(&w, &self.policy, &self.also);
+        // `base` is the target the change now sits on, for the first check
+        // and for every re-check after a rebase: a test that fails there
+        // too is reported, not a bounce (#11300).
+        let checked = self
+            .checks
+            .check_against(&w, &self.policy, &self.also, &base);
         let restored = git(&w, &["reset", "-q", "--soft", &held]);
         let _ = git(&w, &["reset", "-q"]);
         self.record.checks.extend(checked.ran.iter().cloned());

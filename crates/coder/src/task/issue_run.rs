@@ -932,6 +932,20 @@ pub trait Checks: Send + Sync {
         let _ = also;
         self.check(worktree, policy)
     }
+    /// [`Checks::check_also`] against `base`: a test that also fails on
+    /// `base` is reported, not counted against the change. The landing
+    /// queue passes the target it rebased onto, on the first check and on
+    /// every re-check after a rebase (#11300).
+    fn check_against(
+        &self,
+        worktree: &Path,
+        policy: &Policy,
+        also: &[String],
+        base: &str,
+    ) -> Checked {
+        let _ = base;
+        self.check_also(worktree, policy, also)
+    }
 }
 
 /// The issue flow's gate ([`coder_delegate::issue::gate`]): the touched
@@ -1001,6 +1015,28 @@ impl Checks for Gate {
     }
 
     fn check_also(&self, worktree: &Path, policy: &Policy, also: &[String]) -> Checked {
+        self.run(worktree, policy, also, None)
+    }
+
+    fn check_against(
+        &self,
+        worktree: &Path,
+        policy: &Policy,
+        also: &[String],
+        base: &str,
+    ) -> Checked {
+        self.run(worktree, policy, also, Some(base))
+    }
+}
+
+impl Gate {
+    fn run(
+        &self,
+        worktree: &Path,
+        policy: &Policy,
+        also: &[String],
+        base: Option<&str>,
+    ) -> Checked {
         let runtime = match tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -1032,13 +1068,14 @@ impl Checks for Gate {
         let target = slot.as_ref().map(|lease| lease.path.as_path());
         runtime.block_on(async {
             let recorder = coder_delegate::record::Recorder::default();
-            let (mut problems, tested) = coder_delegate::issue::gate_in_also(
+            let (mut problems, tested) = coder_delegate::issue::gate_in_against(
                 worktree,
                 self.jev.as_ref(),
                 &recorder,
                 None,
                 target,
                 also,
+                base,
             )
             .await;
             let mut ran = Vec::new();
@@ -1048,6 +1085,9 @@ impl Checks for Gate {
                 .unwrap_or_default();
             if let Some(tested) = &tested {
                 ran.push(tested.describe());
+                // Flaky tests and tests the base already fails are
+                // reported here, not held against the change.
+                ran.extend(tested.notes.iter().cloned());
             }
             ran.push(
                 "The diff checks ran: style, figures with no source, broken links, code that \
