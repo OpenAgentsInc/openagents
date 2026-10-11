@@ -312,7 +312,8 @@ async fn run_router(name: &str, mode: router::Mode) {
                 &admitted,
                 // The set's default phone context asks no `deck` question.
                 decks,
-            ),
+            )
+            .for_surface(context.surface()),
         )
         .await;
         let ms = started.elapsed().as_millis();

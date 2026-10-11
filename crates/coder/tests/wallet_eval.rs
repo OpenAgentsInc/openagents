@@ -284,7 +284,8 @@ async fn live_jev() {
                 &tools,
                 &admitted,
                 decks,
-            ),
+            )
+            .for_surface(context.surface()),
         )
         .await
         .expect("Jev answered");

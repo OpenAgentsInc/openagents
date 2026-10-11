@@ -560,6 +560,70 @@ gate (under 1 s, and at least Jev's golden score). Clef 27B would not fit
 in the 4080's 16 GB beside the trunk's caches. Jev stays the router's
 first door, with the Pylon as fallback and shadow.
 
+**Router tokens, stage A (#11247, 2026-10-11).** Three changes, measured
+with the web chat goldens on Jev and the routes-v5 eval:
+
+1. **Calibration per question.** The split router merged its requests and
+   kept only the main response's model, so a side question a fallback door
+   answered (Clef beside Jev, or the reverse) was read on the wrong map.
+   `router::merge` now keeps each side question's serving identity
+   (`served_by`), and `router::calibration::apply_served` maps `route` by
+   the main request's model and `answer` by its own.
+2. **Only the questions a rule reads.** `cli_group` (55 options, 11.8k
+   tokens) is asked after the main request, and only when its `route`
+   argmax is `cli`, or `wallet` on a terminal (rule 3a's wallet descent),
+   within what is left of `first::LATE` (`router::judge::needed_after`).
+   A turn does not ask what no rule reads on its surface
+   (`router::judge::unread_on`): `fanout`, `read_only`, and `summarize`
+   only shape a terminal's multi-run plan, and on the website `engine`,
+   `capability`, and `tool` only shape offers and cards the website never
+   shows. `answer` stays beside the main request: a rule reads it on most
+   routes, so waiting for the route would cost most turns a round trip.
+3. **Compact option texts: tried, not shipped.** Cutting the `route`
+   rubrics to about 60 tokens an option, and then to about 100, cost Jev
+   accuracy on the routes-v5 held-out and calibration rows (678, asked the
+   same hour; 39–41 rows in each run were lost to a TypeSafe 402):
+
+   | Wording | Route accuracy | Canned precision / coverage | Dispatch precision | Gym recall | Refusal recall | Route map |
+   | --- | --- | --- | --- | --- | --- | --- |
+   | Shipped (unchanged) | 91.5 % | 98.9 % / 66.9 % | 98.0 % | 88.9 % | 91.3 % | passes |
+   | ~100 tokens an option | 89.7 % | 97.0 % / 60.8 % | 94.0 % | 66.7 % | 82.6 % | fails |
+   | ~60 tokens an option | 77.9 % | 96.5 % / 62.2 % | 85.5 % | 55.6 % | 87.0 % | fails |
+
+   The long `not_for` lists and examples carry boundaries Jev uses, so the
+   wording stays; the token target moves to stage B (a route-specific
+   answer shortlist and hierarchical route classification, keeping
+   `none`, risk, and the no-match options).
+
+| Turn | Main request | Beside it (`answer`) | Clef tokens |
+| --- | --- | --- | --- |
+| Before (every surface) | 37.3 KB, 9,535 | 12.7 KB, 3,289, and `cli_group` 11,830 | 24.7k |
+| Website | 27.8 KB, ~7.1k (est.) | 12.9 KB, 3,722 (measured) | ~10.8k |
+| Phone or desktop | 33.3 KB, ~8.5k (est.) | 12.7 KB, ~3.3k | ~11.8k |
+| Terminal | 37.3 KB, 9,535 | 12.7 KB, 3,289 | 12.8k |
+
+A `cli` turn adds the `cli_group` request after the main one. The
+estimates use the split's measured 3.9 bytes per token; the Clef server
+counted the website's `answer` request (3,722 tokens), and its main request
+could not be counted then (the 4080 was full with a second Clef server
+benchmarking, and the request ran out of memory).
+`router::judge::tests::a_typical_turn_fits_the_router_budget` holds each
+surface to its measured size.
+
+Web chat goldens, router mode, Jev (`calibration-v2`), 123 cases:
+
+| Run | Pass | Right (bar) | Critical wrong | Judge p50 / p90 |
+| --- | --- | --- | --- | --- |
+| `main` `4a29a77d7b`, run 1 | 102 | 85 % | 6 | 0.51 / 0.62 s |
+| `main` `4a29a77d7b`, run 2 | 100 | 82 % | 7 | 0.50 / 0.59 s |
+| Stage A, run 1 | 101 | 83 % | 6 | 0.47 / 0.77 s |
+| Stage A, run 2 | 101 | 82 % | 7 | 0.40 / 0.48 s |
+
+The same critical cases fail before and after (`github.connect_repo#2/#3`,
+`coder.login#3`, `coder.sync#1`, `pricing.cost#1/#3`, and in one run of
+each `privacy.training#3`): a route or answer probability under its bar, the same
+on `main`. Jev holds. Clef on the 4080 was not re-measured here.
+
 **After M2:** make the fused GEMM as fast as cuBLAS on large chunks
 (it reaches about 130 TF before dequantization against cuBLAS's 145–170),
 then make it the default for bitwise chunk invariance at f16 speed.
