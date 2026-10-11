@@ -217,11 +217,20 @@ async fn stats(State(app): State<App>, headers: HeaderMap) -> Response {
         read::<Stats>(&app, "/stats"),
         read::<Snapshot>(&app, "/flow/snapshot")
     );
+    stats_page(&headers, stats.as_ref(), snapshot.as_ref())
+}
+
+/// The page for `headers` from what the pay host answered.
+pub(crate) fn stats_page(
+    headers: &HeaderMap,
+    stats: Option<&Stats>,
+    snapshot: Option<&Snapshot>,
+) -> Response {
     let mut response = UiPage::new("Stats")
         .path("/stats")
         .scriptless()
-        .content(body(stats.as_ref(), snapshot.as_ref()))
-        .respond(&headers);
+        .content(body(stats, snapshot))
+        .respond(headers);
     response
         .headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));

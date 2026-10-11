@@ -1,4 +1,5 @@
-//! Shell: Composer, AppShell with Sidebar, ThemeToggle, Document.
+//! Shell: Composer, AppShell with Sidebar, Document, and the molecules
+//! the shell is built from: rows, chips, breadcrumb, menus, and toggles.
 
 use maud::{Markup, PreEscaped, Render, html};
 
@@ -91,20 +92,11 @@ pub(super) fn composer(pane: Pane) -> Markup {
             }))
             (ComposerPanel::new("Repository").body(html! { p { "Choose a repository for this task." } }))
         })))
-        (specimen("TaskRow", "Runs inside a chat", stack(html! {
-            (TaskRow::new("Claude Code in acme/app", TaskStatus::Working).detail("Environment v3").href("/ui"))
-            (TaskRow::new("Fix the flaky login test", TaskStatus::Done).href("/ui"))
-            (TaskRow::new("Upgrade the database driver", TaskStatus::Failed))
-        })))
         (specimen("Message", "Thread messages", stack(html! {
             (Message::user("Add a light theme to the web app"))
             (Message::assistant(html! { p { "Coder Light is on. The toggle follows your system setting." } }).author("OpenAgents"))
             (Message::status("Working…"))
         })))
-        (specimen("SuggestionChips SuggestionChip", "Suggestions to ask, and a link", SuggestionChips::new("Suggestions")
-            .chip(SuggestionChip::send("What is OpenAgents?", "/ui", [("q".to_owned(), "What is OpenAgents?".to_owned())]))
-            .chip(SuggestionChip::send("What are plugins?", "/ui", [("q".to_owned(), "What are plugins?".to_owned())]))
-            .chip(SuggestionChip::link("Connect a computer", "/docs/connect-a-computer"))))
         (specimen("ComposerDropdown ModelPickerTrigger", "Triggers alone", row(html! {
             (ComposerDropdown::new("Environment", "Cloud").icon(Icon::Globe).show_label(true))
             (ModelPickerTrigger::new("Max").effort("Medium"))
@@ -259,5 +251,100 @@ pub(super) fn document(_pane: Pane) -> Markup {
             (CodeBlock::new(document.render().into_string()).language("html").wrap(true))
             (CodeBlock::new(system.render().into_string()).language("html").wrap(true))
         })))
+    }
+}
+
+pub(super) fn legal_footer(_pane: Pane) -> Markup {
+    html! {
+        (specimen("LegalLinks", "Under a page", LegalLinks::new()
+            .link("Terms", "/terms")
+            .link("Privacy", "/privacy")
+            .note("© OpenAgents")))
+        (specimen("LegalLinks", "Links only", LegalLinks::new().link("Terms", "/terms").link("Privacy", "/privacy")))
+    }
+}
+
+pub(super) fn suggestion_chips(pane: Pane) -> Markup {
+    let ask = |text: &str| SuggestionChip::send(text, "/ui", [("q".to_owned(), text.to_owned())]);
+    html! {
+        (specimen("SuggestionChips SuggestionChip", "Suggestions to ask, and a link", SuggestionChips::new("Suggestions")
+            .id(pane.id("suggestions"))
+            .chip(ask("What is OpenAgents?"))
+            .chip(ask("What are plugins?"))
+            .chip(SuggestionChip::link("Connect a computer", "/docs/connect-a-computer"))))
+        (specimen("SuggestionChips", "Without the script", SuggestionChips::new("Follow-ups")
+            .enhanced(false)
+            .chips([ask("Show me the diff"), ask("Run the tests again")])))
+    }
+}
+
+pub(super) fn chat_row(pane: Pane) -> Markup {
+    let menu = |id: &str, label: &str| {
+        RowMenu::new(pane.id(id), label)
+            .action(RowAction::post("Pin", "/ui").icon(Icon::Pin))
+            .action(RowAction::get("Rename", "/ui").icon(Icon::Pencil))
+            .action(
+                RowAction::post("Archive", "/ui")
+                    .icon(Icon::Archive)
+                    .confirm("Archive this chat?"),
+            )
+    };
+    html! {
+        (specimen("NavItem RowMenu RowAction", "Chat rows in each state", html! {
+            ul class="oa-nav-list" role="list" {
+                (NavItem::new("Catalog review", "/ui#chat-row").current(true).menu(menu("row-current", "Catalog review")))
+                (NavItem::new("Fix the login redirect", "/ui#chat-row")
+                    .detail("acme/storefront · fix-login")
+                    .trailing(ChatStatus::Working)
+                    .menu(menu("row-working", "Fix the login redirect")))
+                (NavItem::new("Upgrade the database driver", "/ui#chat-row")
+                    .detail("acme/api · deps-bump")
+                    .trailing(ChatStatus::PausedUntil("3:40 PM".into())))
+                (NavItem::new("Icon sweep", "/ui#chat-row").trailing(ChatStatus::Failed))
+            }
+        }))
+        (specimen("RowRename", "Renaming a chat", html! {
+            ul class="oa-nav-list" role="list" {
+                (RowRename::new(pane.id("row-rename"), "/ui", "Catalog review", "/ui#chat-row"))
+            }
+        }))
+    }
+}
+
+pub(super) fn task_row(_pane: Pane) -> Markup {
+    html! {
+        (specimen("TaskRow", "Runs inside a chat", stack(html! {
+            (TaskRow::new("Claude Code in acme/app", TaskStatus::Working).detail("Environment v3").href("/ui"))
+            (TaskRow::new("Fix the flaky login test", TaskStatus::Done).href("/ui"))
+            (TaskRow::new("Upgrade the database driver", TaskStatus::Failed))
+            (TaskRow::new("Review the migration plan", TaskStatus::WaitingForYou).href("/ui"))
+            (TaskRow::new("Refactor the billing module", TaskStatus::Paused).detail("Continues at 3:40 PM"))
+        })))
+    }
+}
+
+pub(super) fn breadcrumb(pane: Pane) -> Markup {
+    html! {
+        (specimen("Breadcrumb", "Current page only", Breadcrumb::new("New chat").id(pane.id("crumb-one"))))
+        (specimen("Breadcrumb", "With parents, long title truncates", Breadcrumb::new("A long chat title that truncates at the edge")
+            .crumb("Docs", "/docs")
+            .crumb("Coder", "/docs#coder")
+            .id(pane.id("crumb-many"))))
+    }
+}
+
+pub(super) fn account_menu(pane: Pane) -> Markup {
+    html! {
+        (specimen("AccountMenu", "Signed in", AccountMenu::new("Ada Lovelace")
+            .id(pane.id("account-plain"))
+            .item(MenuItem::link("Settings", "/ui#account-menu").icon(Icon::Settings))
+            .item(MenuItem::separator())
+            .item(MenuItem::button("Sign out").icon(Icon::ExitLogout))))
+        (specimen("AccountMenu", "An admin, more entries", AccountMenu::new("Grace Hopper")
+            .id(pane.id("account-admin"))
+            .item(MenuItem::link("Settings", "/ui#account-menu").icon(Icon::Settings))
+            .item(MenuItem::link("Analytics", "/ui#account-menu").icon(Icon::BarChart))
+            .item(MenuItem::separator())
+            .item(MenuItem::link("Docs", "/docs"))))
     }
 }

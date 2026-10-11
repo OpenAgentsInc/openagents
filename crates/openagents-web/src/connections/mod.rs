@@ -644,6 +644,11 @@ async fn callback(headers: HeaderMap, Query(query): Query<CallbackQuery>) -> Res
     if let Some(error) = &query.error {
         next.push_str(&format!("&error={}", encode(error)));
     }
+    connecting_page(&headers, &next)
+}
+
+/// The "Connecting Google" step that continues to `next`, for `headers`.
+pub(crate) fn connecting_page(headers: &HeaderMap, next: &str) -> Response {
     let content = openagents_ui::content::PageColumn::new(html! {
         (MarkdownRoot::new(html! {
             h1 { "Connecting Google" }
@@ -655,7 +660,7 @@ async fn callback(headers: HeaderMap, Query(query): Query<CallbackQuery>) -> Res
             .scriptless()
             .head(html! { meta http-equiv="refresh" content=(format!("0;url={next}")); })
             .content(content)
-            .respond(&headers),
+            .respond(headers),
     )
 }
 

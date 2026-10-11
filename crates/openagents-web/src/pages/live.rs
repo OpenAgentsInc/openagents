@@ -37,12 +37,31 @@ const LIVE_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'
 script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; \
 frame-ancestors 'none'";
 
-fn body() -> Markup {
+/// What the page shows before the feed's script fills it in.
+pub(crate) struct Moment<'a> {
+    pub status: &'a str,
+    pub received: &'a str,
+    pub paid: &'a str,
+    pub calls: &'a str,
+    pub recent: &'a [&'a str],
+}
+
+/// The page as it first arrives, before the feed connects.
+pub(crate) const WAITING: Moment<'static> = Moment {
+    status: "Connecting to the live feed.",
+    received: "\u{2014}",
+    paid: "\u{2014}",
+    calls: "\u{2014}",
+    recent: &[],
+};
+
+/// The page's markup showing `moment`.
+pub(crate) fn body(moment: &Moment<'_>) -> Markup {
     let totals = Facts::new()
         .id("flow-totals")
-        .fact_with_id("Received", "\u{2014}", "flow-received")
-        .fact_with_id("Paid out", "\u{2014}", "flow-paid")
-        .fact_with_id("Calls", "\u{2014}", "flow-calls");
+        .fact_with_id("Received", moment.received, "flow-received")
+        .fact_with_id("Paid out", moment.paid, "flow-paid")
+        .fact_with_id("Calls", moment.calls, "flow-calls");
     PageColumn::new(html! {
         section aria-labelledby="live-title" {
             (MarkdownRoot::new(html! {
@@ -56,7 +75,7 @@ happen, on the route map. Nothing here is simulated."
                 canvas id="flow-map" role="img" aria-label="The route map with live traffic" {}
             }
             p.oa-page-meta id="flow-status" aria-live="polite" {
-                "Connecting to the live feed."
+                (moment.status)
             }
             (totals)
             (MarkdownRoot::new(html! {
@@ -66,7 +85,10 @@ dots are payments coming back, shares going on to a plugin's author, and payouts
 author's wallet; a warning-colored dot with a ring is a bonus. Payers show only as a daily alias."
                 }
                 h2 { "Recent events" }
-                ol.oa-event-list id="flow-recent" { li { "None yet." } }
+                ol.oa-event-list id="flow-recent" {
+                    @for event in moment.recent { li { (event) } }
+                    @if moment.recent.is_empty() { li { "None yet." } }
+                }
                 noscript {
                     p.oa-page-meta {
                         "Turn on JavaScript to see the live map, or read the numbers on "
@@ -85,11 +107,16 @@ author's wallet; a warning-colored dot with a ring is a bonus. Payers show only 
 }
 
 async fn live(headers: HeaderMap) -> Response {
+    live_page(&headers, &WAITING)
+}
+
+/// The page showing `moment`, for `headers`.
+pub(crate) fn live_page(headers: &HeaderMap, moment: &Moment<'_>) -> Response {
     let mut response = UiPage::new("Live")
         .path("/live")
         .scriptless()
-        .content(body())
-        .respond(&headers);
+        .content(body(moment))
+        .respond(headers);
     response.headers_mut().insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(LIVE_POLICY),

@@ -9,12 +9,12 @@ mod cloud;
 pub(crate) mod connect;
 pub(crate) mod content;
 pub(crate) mod download;
-mod efficiency;
+pub(crate) mod efficiency;
 mod everglade;
 pub(crate) mod home;
-mod live;
+pub(crate) mod live;
 mod profile;
-mod stats;
+pub(crate) mod stats;
 
 use axum::Router;
 

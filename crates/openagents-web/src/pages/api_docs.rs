@@ -341,6 +341,11 @@ pub(crate) async fn source(app: &App, text: &str) -> String {
 
 /// `/docs/api`: every guide, in reading order.
 async fn index(headers: HeaderMap) -> Response {
+    index_page(&headers)
+}
+
+/// The API docs index for `headers`.
+pub(crate) fn index_page(headers: &HeaderMap) -> Response {
     let mut body = String::from(
         "<h1>API</h1><p class=\"oa-page-lead\">One API for many models: Open Responses and \
 Chat Completions at <code>https://api.openagents.com/v1</code>. Beta.</p>\
@@ -363,7 +368,7 @@ described in OpenAPI at <code>https://api.openagents.com/v1/openapi.json</code>.
         .path("/docs/api")
         .scriptless()
         .content(prose(PreEscaped(body)))
-        .respond(&headers)
+        .respond(headers)
 }
 
 /// The `llms.txt` index: every guide's Markdown address and title.
@@ -415,10 +420,16 @@ async fn guide(State(app): State<App>, Path(slug): Path<String>, headers: Header
     if raw {
         return text(source, "text/markdown; charset=utf-8");
     }
+    guide_page(&headers, index, &source)
+}
+
+/// The guide at `index` in [`API_DOCS`], drawn from `source`, for `headers`.
+pub(crate) fn guide_page(headers: &HeaderMap, index: usize, source: &str) -> Response {
+    let (name, stored) = API_DOCS[index];
     let previous = index.checked_sub(1).map(|i| API_DOCS[i]);
     let next = API_DOCS.get(index + 1).copied();
     let content = PageColumn::new(html! {
-        (MarkdownRoot::new(PreEscaped(markdown::render_document(&source))))
+        (MarkdownRoot::new(PreEscaped(markdown::render_document(source))))
         nav.oa-page-actions aria-label="More API docs" {
             (action_link("API docs", "/docs/api"))
             @if let Some((name, text)) = previous {
@@ -447,7 +458,7 @@ async fn guide(State(app): State<App>, Path(slug): Path<String>, headers: Header
         .description(crate::agent_ready::summary(stored))
         .scriptless()
         .content(content)
-        .respond(&headers)
+        .respond(headers)
 }
 
 #[cfg(test)]

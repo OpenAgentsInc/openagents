@@ -854,7 +854,13 @@ pub(crate) async fn not_found() -> Response {
 
 /// The site's ordinary not-found page.
 pub(crate) fn not_found_page() -> Response {
-    layout::problem(
+    not_found_for(&axum::http::HeaderMap::new())
+}
+
+/// [`not_found_page`] in the theme `headers` choose.
+pub(crate) fn not_found_for(headers: &axum::http::HeaderMap) -> Response {
+    ui_page::problem(
+        headers,
         StatusCode::NOT_FOUND,
         "Not found",
         "Nothing on this site has that address.",

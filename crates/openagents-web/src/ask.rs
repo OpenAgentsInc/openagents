@@ -109,7 +109,13 @@ pub(crate) fn routes() -> Router<crate::App> {
 }
 
 async fn retired() -> Response {
-    let mut response = crate::chat_html::protect(crate::layout::problem(
+    retired_page(&HeaderMap::new())
+}
+
+/// What the retired `/ask` answers, for `headers`.
+pub(crate) fn retired_page(headers: &HeaderMap) -> Response {
+    let mut response = crate::chat_html::protect(crate::ui_page::problem(
+        headers,
         StatusCode::GONE,
         "This page has moved",
         "Start a chat from the homepage.",
