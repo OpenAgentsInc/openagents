@@ -497,7 +497,10 @@ impl Backend for Boat {
     }
     async fn restart(&self, r: &Record) -> Result<()> {
         let id = self.resource(r)?;
-        let info = self
+        // A stop still in progress (the turn's cleanup asked for it a moment
+        // ago) is waited out, so the computer is resumed rather than waited
+        // on while it goes down (#11314).
+        let mut info = self
             .client
             .get(&GetParams {
                 sandbox_id: id.into(),
@@ -505,6 +508,19 @@ impl Backend for Boat {
             })
             .await
             .map_err(|e| e.to_string())?;
+        let mut waited = 0;
+        while info.sandbox.state == "stopping" && waited < 120 {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            waited += 1;
+            info = self
+                .client
+                .get(&GetParams {
+                    sandbox_id: id.into(),
+                    ..Default::default()
+                })
+                .await
+                .map_err(|e| e.to_string())?;
+        }
         if matches!(info.sandbox.state.as_str(), "archived" | "stopped") {
             self.client
                 .resume(&ResumeParams {
