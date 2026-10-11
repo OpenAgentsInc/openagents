@@ -540,9 +540,6 @@ fn execute(a: &Args) -> Result<View, String> {
         );
     }
     let policy = crate::x402::load_policy()?;
-    let spent = crate::x402::open_ledger()
-        .spent_since(openagents_x402::unix_now().saturating_sub(openagents_x402::policy::DAY_SECS))
-        .map_err(|e| e.to_string())?;
     buy_reviewed(
         &mut store,
         id,
@@ -553,7 +550,6 @@ fn execute(a: &Args) -> Result<View, String> {
         &wallet,
         &transport,
         policy.as_ref(),
-        spent,
         &crate::x402::open_ledger(),
         a.number::<u64>("wait", 60)?.clamp(1, 300),
         now(),
@@ -707,13 +703,12 @@ fn buy(
     wallet: &dyn LightningWallet,
     transport: &dyn Transport,
     policy: Option<&Policy>,
-    spent: u64,
     ledger: &Ledger,
     wait: u64,
     at: u64,
 ) -> Result<View, String> {
     buy_reviewed(
-        store, id, current, payer, packet, None, wallet, transport, policy, spent, ledger, wait, at,
+        store, id, current, payer, packet, None, wallet, transport, policy, ledger, wait, at,
     )
 }
 fn buy_reviewed(
@@ -726,7 +721,6 @@ fn buy_reviewed(
     wallet: &dyn LightningWallet,
     transport: &dyn Transport,
     policy: Option<&Policy>,
-    spent: u64,
     ledger: &Ledger,
     wait: u64,
     at: u64,
@@ -743,12 +737,14 @@ fn buy_reviewed(
         None,
     )
     .map_err(|e| e.to_string())?;
+    // Refuse the ceiling and allowlist early; the daily cap is checked when
+    // the hold is taken just before dispatch.
     Policy::admit(
         policy,
         limits,
         &offer.payment.accepts[0].pay_to,
         offer.quote.price_msat,
-        spent,
+        0,
     )
     .map_err(|e| e.to_string())?;
     if wallet.node_id() != payer.node {
@@ -775,19 +771,56 @@ fn buy_reviewed(
     } else if shared.is_some() {
         return Err("Shared custody requires an originally reviewed canonical intent; review a new purchase.".into());
     }
-    let (offer, body) = store.begin_plugin_reviewed(id, current, payer, packet, commercial, at)?;
-    let payment = if let (Some(client), Some(reference)) = (&shared, &offer.shared) {
-        let binding: pay_ledger::shared::Binding = serde_json::from_value(
-            client
-                .call(pay_ledger::shared::Operation::Binding {})
-                .map_err(|_| "Current shared spending authority is unavailable.")?,
+    // Check the daily cap and hold this payment against it in one locked
+    // step, last before dispatch, so concurrent purchases cannot overspend.
+    let hold = ledger
+        .reserve(
+            policy,
+            limits,
+            &offer.payment.accepts[0].pay_to,
+            offer.quote.price_msat,
+            at / 1000,
         )
-        .map_err(|_| "Invalid shared binding.")?;
-        let intent = commercial_spend::wallet::plugin_intent(id, &offer, binding)
-            .map_err(|_| "Original shared intent changed.")?;
-        if intent.digest() != reference.digest || intent.id != reference.intent {
-            return store.plugin_unknown(id);
+        .map_err(|e| e.to_string())?;
+    let (offer, body) = match store
+        .begin_plugin_reviewed(id, current, payer, packet, commercial, at)
+    {
+        Ok(begun) => begun,
+        Err(error) => {
+            ledger.release(&hold).map_err(|e| {
+                format!("{error}; nothing was paid, but the amount set aside against the daily cap could not be freed: {e}")
+            })?;
+            return Err(error.to_string());
         }
+    };
+    let payment = if let (Some(client), Some(reference)) = (&shared, &offer.shared) {
+        let intent = (|| -> Result<_, String> {
+            let binding: pay_ledger::shared::Binding = serde_json::from_value(
+                client
+                    .call(pay_ledger::shared::Operation::Binding {})
+                    .map_err(|_| "Current shared spending authority is unavailable.")?,
+            )
+            .map_err(|_| "Invalid shared binding.")?;
+            let intent = commercial_spend::wallet::plugin_intent(id, &offer, binding)
+                .map_err(|_| "Original shared intent changed.")?;
+            Ok(
+                (intent.digest() == reference.digest && intent.id == reference.intent)
+                    .then_some(intent),
+            )
+        })();
+        // Nothing was dispatched on these paths, so the hold goes.
+        let intent = match intent {
+            Ok(Some(intent)) => intent,
+            Ok(None) => {
+                let view = store.plugin_unknown(id);
+                ledger.release(&hold).map_err(|e| e.to_string())?;
+                return view;
+            }
+            Err(error) => {
+                ledger.release(&hold).map_err(|e| e.to_string())?;
+                return Err(error);
+            }
+        };
         client
             .call(pay_ledger::shared::Operation::DispatchPlugin {
                 intent,
@@ -810,7 +843,13 @@ fn buy_reviewed(
     };
     let proof = match payment {
         Ok(proof) => proof,
-        Err(_) => return store.plugin_unknown(id),
+        Err(_) => {
+            // Recovery records a charge it finds on its own, so the hold
+            // goes now rather than counting the same payment twice.
+            let view = store.plugin_unknown(id);
+            ledger.release(&hold).map_err(|e| e.to_string())?;
+            return view;
+        }
     };
     if proof.bolt11 != offer.invoice()
         || store
@@ -828,8 +867,9 @@ fn buy_reviewed(
     {
         return store.plugin_unknown(id);
     }
-    if ledger
-        .record_once(&Entry {
+    if let Err(error) = ledger.settle(
+        &hold,
+        &Entry {
             paid_at: at / 1000,
             binding: "http:1".into(),
             network: payer.network.clone(),
@@ -840,10 +880,12 @@ fn buy_reviewed(
             fee_msat: proof.fee_msat,
             payment_hash: proof.payment_hash.clone(),
             phase: "paid".into(),
-        })
-        .is_err()
-    {
-        return store.plugin_unknown(id);
+        },
+    ) {
+        store.plugin_unknown(id)?;
+        return Err(format!(
+            "The payment went out but the buyer ledger could not record it ({error}); do not pay again."
+        ));
     }
     let mut payload = serde_json::Map::new();
     payload.insert("preimage".into(), json!(proof.preimage));
@@ -877,7 +919,11 @@ fn buy_reviewed(
         && let Some(s) = settlement
         && let Ok(view) = store.plugin_failed_delivery(id, s, reply.status)
     {
-        let _ = ledger.set_phase(&proof.payment_hash, "delivery_failed");
+        if let Err(error) = ledger.set_phase(&proof.payment_hash, "delivery_failed") {
+            return Err(format!(
+                "Delivery failed and the buyer ledger could not note it ({error}); do not pay again."
+            ));
+        }
         return Ok(view);
     }
     // A 402, execution failure, or lost acknowledgement never pays a replacement invoice.

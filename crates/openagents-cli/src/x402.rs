@@ -22,7 +22,7 @@ use openagents_x402::mcp::{
     with_payment,
 };
 use openagents_x402::policy::{
-    Ceiling, DAY_SECS, Entry, Flags, LEDGER_FILE, Ledger, Limits, POLICY_FILE, Policy,
+    Ceiling, Entry, Flags, LEDGER_FILE, Ledger, Limits, POLICY_FILE, Policy, Reservation,
 };
 use openagents_x402::server::{Executor, Receiver, Resource};
 use openagents_x402::{
@@ -797,28 +797,44 @@ pub(crate) fn payer_limits(
 }
 
 /// Refuse `amount_msat` to `provider` if the ceiling, the allowlist, or the
-/// daily cap says so. Nothing is paid on an error.
+/// daily cap says so, and otherwise hold it against the cap in the same
+/// locked step, so concurrent calls cannot both spend the last of it.
+/// Nothing is paid on an error. Pass the hold to `record_payment` once paid,
+/// or to `release` when nothing was.
 pub(crate) fn admit(
     policy: Option<&Policy>,
     limits: Limits,
     provider: &str,
     amount_msat: u64,
-) -> Result<(), String> {
-    let spent = open_ledger()
-        .spent_since(openagents_x402::unix_now().saturating_sub(DAY_SECS))
-        .map_err(|error| error.to_string())?;
-    Policy::admit(policy, limits, provider, amount_msat, spent)
+) -> Result<Reservation, String> {
+    open_ledger()
+        .reserve(
+            policy,
+            limits,
+            provider,
+            amount_msat,
+            openagents_x402::unix_now(),
+        )
         .map_err(|error| format!("{error}; nothing was paid"))
 }
 
-/// Write one payment to the ledger. A ledger error never undoes a payment,
-/// so it is reported on stderr and the call continues.
+/// Drop the hold `admit` took when nothing was paid.
+pub(crate) fn release(reservation: &Reservation) {
+    if let Err(error) = open_ledger().release(reservation) {
+        eprintln!("x402: ledger: {error}");
+    }
+}
+
+/// Write one payment to the ledger in place of its hold. A ledger error
+/// never undoes a payment, so it is reported on stderr and the call
+/// continues; the hold still counts against the daily cap.
 pub(crate) fn record_payment(
     spend: &Spend,
     network: &str,
     provider: &str,
     proof: &openagents_wallet::Proof,
     phase: &str,
+    reservation: &Reservation,
 ) {
     let entry = Entry {
         paid_at: openagents_x402::unix_now(),
@@ -832,7 +848,7 @@ pub(crate) fn record_payment(
         payment_hash: proof.payment_hash.clone(),
         phase: phase.to_owned(),
     };
-    if let Err(error) = open_ledger().append(&entry) {
+    if let Err(error) = open_ledger().settle(reservation, &entry) {
         eprintln!("x402: ledger: {error}");
     }
 }
@@ -942,7 +958,7 @@ pub(crate) fn buy(
         spend.payer,
         Some(invoice.amount_msat()),
     )?;
-    admit(
+    let hold = admit(
         policy.as_ref(),
         limits,
         &terms.pay_to,
@@ -962,8 +978,9 @@ pub(crate) fn buy(
         limits.max_fee_msat,
         spend.wait,
         &spend.resource,
-    )?;
-    record_payment(&spend, &terms.network, &terms.pay_to, &proof, "paid");
+    )
+    .inspect_err(|_| release(&hold))?;
+    record_payment(&spend, &terms.network, &terms.pay_to, &proof, "paid", &hold);
 
     let mut payload = Map::new();
     payload.insert("preimage".into(), Value::String(proof.preimage.clone()));
@@ -1578,6 +1595,11 @@ fn ledger(output: &Output, words: &[String]) -> u8 {
     let entries: Vec<Entry> = match ledger.entries() {
         Ok(entries) => entries
             .into_iter()
+            // Holds on the daily cap for payments in flight are not payments.
+            .filter(|e| {
+                !e.payment_hash
+                    .starts_with(openagents_x402::policy::HOLD_PREFIX)
+            })
             .filter(|e| e.paid_at >= since)
             .filter(|e| args.option("binding").is_none_or(|b| b == e.binding))
             .filter(|e| args.option("provider").is_none_or(|p| p == e.provider))
