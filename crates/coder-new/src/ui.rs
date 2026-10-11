@@ -738,19 +738,24 @@ fn run_lines(
             t::GRAY,
         ),
     ])];
-    if running {
-        lines.push(Line::from(span(format!("{RESULT_INDENT}Running"), t::GRAY)));
-    }
     if let Some(fields) = output.as_object() {
         let status = fields
             .iter()
             .filter(|(key, _)| {
                 !matches!(
                     key.as_str(),
-                    "command" | "output" | "stdout" | "stderr" | "error"
+                    "command" | "output" | "stdout" | "stderr" | "error" | "activity"
                 )
             })
             .map(|(key, value)| {
+                if matches!(key.as_str(), "elapsed_seconds" | "silent_seconds") {
+                    let label = if key == "elapsed_seconds" {
+                        "elapsed"
+                    } else {
+                        "silent"
+                    };
+                    return format!("{label}: {value}s");
+                }
                 format!(
                     "{key}: {}",
                     value
@@ -1068,7 +1073,7 @@ impl CachedEntry {
         if rows.len() > RUN_OUTPUT_HEIGHT {
             self.lines.push(Line::from(span(
                 format!(
-                    "     {}–{} of {} · scroll here",
+                    "     {}–{} of {}",
                     offset + 1,
                     (offset + RUN_OUTPUT_HEIGHT).min(rows.len()),
                     rows.len()
@@ -1657,6 +1662,32 @@ mod streaming_tests {
 
 #[cfg(test)]
 mod run_viewport_tests {
+    #[test]
+    fn run_status_uses_short_times_without_duplicate_labels() {
+        let lines = super::run_lines(
+            &serde_json::json!({"command": "sleep 8"}),
+            &serde_json::json!({"elapsed_seconds": 8, "silent_seconds": 4, "activity": "Waiting"}),
+            true,
+            100,
+            0,
+        );
+        let text = lines
+            .iter()
+            .map(|line| line.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(text.contains("elapsed: 8s · silent: 4s"), "{text}");
+        for removed in [
+            "Running",
+            "activity",
+            "Waiting",
+            "elapsed_seconds",
+            "silent_seconds",
+        ] {
+            assert!(!text.contains(removed), "{text}");
+        }
+    }
+
     use super::*;
 
     fn output(chat: &mut crate::live::Chat, count: usize, running: bool) {
