@@ -15,6 +15,8 @@ use std::{
 
 use serde_json::{Value, json};
 
+use crate::issue_run::decide::Check;
+
 use super::{
     Options, Run, Transcript,
     agent::Work,
@@ -489,6 +491,76 @@ pub fn required_checks(briefing: &Briefing) -> Vec<String> {
         .filter(|check| check.id.starts_with("check:") || check.required)
         .map(|check| check.id.clone())
         .collect()
+}
+
+/// A compile check (`check:<package>`) for every Rust package the change
+/// in `worktree` touched since `base` that `checks` doesn't already
+/// compile: a change that reaches crates outside the briefing is held to
+/// building them too.
+pub async fn changed_package_checks(worktree: &Path, base: &str, checks: &[Check]) -> Vec<Check> {
+    let mut paths: Vec<String> = Vec::new();
+    for args in [
+        vec!["diff", "--name-only", base],
+        vec!["ls-files", "--others", "--exclude-standard"],
+    ] {
+        if let Ok(text) = output("git", &args, worktree).await {
+            paths.extend(text.lines().map(str::to_owned));
+        }
+    }
+    let mut found: Vec<Check> = Vec::new();
+    for path in paths {
+        let mut dir = worktree.join(&path);
+        while dir.pop() && dir.starts_with(worktree) {
+            let Ok(toml) = std::fs::read_to_string(dir.join("Cargo.toml")) else {
+                continue;
+            };
+            let Some(name) = package_name(&toml) else {
+                break;
+            };
+            let id = format!("check:{name}");
+            if !checks.iter().chain(&found).any(|check| check.id == id) {
+                found.push(Check {
+                    id,
+                    argv: [
+                        "cargo",
+                        "check",
+                        "-p",
+                        &name,
+                        "--tests",
+                        "--message-format",
+                        "short",
+                    ]
+                    .iter()
+                    .map(|word| (*word).to_owned())
+                    .collect(),
+                    filter: false,
+                    what: format!("compile {name}, which the change touched"),
+                    required: false,
+                });
+            }
+            break;
+        }
+    }
+    found
+}
+
+/// The `[package]` name in a Cargo.toml, when it has one.
+pub(crate) fn package_name(toml: &str) -> Option<String> {
+    let mut in_package = false;
+    for line in toml.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_package = line == "[package]";
+        } else if in_package && let Some(rest) = line.strip_prefix("name") {
+            let value = rest
+                .trim_start()
+                .strip_prefix('=')?
+                .trim()
+                .trim_matches('"');
+            return (!value.is_empty()).then(|| value.to_owned());
+        }
+    }
+    None
 }
 
 /// The summary card's numbers. It also writes `change.patch`, the exact

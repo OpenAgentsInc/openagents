@@ -445,7 +445,14 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
         if transcript.cancelled() {
             break Outcome::stopped(Status::Cancelled, "The run was stopped.");
         }
-        end.checks = issue_run::agent::final_checks(&base, &briefing, transcript).await;
+        // Every crate the change touched must build, not only the briefed ones.
+        let mut checked = briefing.clone();
+        let touched =
+            setup::changed_package_checks(&base.worktree, &base.base, &checked.checks).await;
+        let mut required = required.clone();
+        required.extend(touched.iter().map(|check| check.id.clone()));
+        checked.checks.extend(touched);
+        end.checks = issue_run::agent::final_checks(&base, &checked, transcript).await;
         let judged = verdict::judge(transcript.cancelled(), None, &required, &end.checks);
         if judged.status == Status::Passed || judged.status == Status::Unchecked {
             break judged;

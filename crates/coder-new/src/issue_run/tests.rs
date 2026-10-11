@@ -666,3 +666,15 @@ fn a_new_run_cleans_only_finished_and_captured_worktrees() {
     assert!(active.join("worktree/editing.txt").exists());
     assert!(tampered.join("worktree/work.txt").exists());
 }
+
+#[test]
+fn a_package_name_is_read_from_its_cargo_toml() {
+    use crate::issue_run::setup::package_name;
+    assert_eq!(
+        package_name(
+            "[package]\nname = \"verse-net\"\nversion = \"1.0.0\"\n[dependencies]\nname = \"x\"\n"
+        ),
+        Some("verse-net".into())
+    );
+    assert_eq!(package_name("[workspace]\nmembers = []\n"), None);
+}

@@ -472,14 +472,13 @@ impl App {
                 if !self.issue_run_costed
                     && let live::Entry::Tool {
                         name,
-                        output,
+                        input,
                         running: false,
                         ..
                     } = &entry
                     && name == issue_run::SUMMARY
-                    && let Some(usd) = output
+                    && let Some(usd) = input
                         .pointer("/cost/total_usd")
-                        .or_else(|| output.pointer("/total_usd"))
                         .and_then(serde_json::Value::as_f64)
                 {
                     self.live.cost_usd += usd;
@@ -2631,8 +2630,8 @@ mod select_all_tests {
         });
         let summary = live::Entry::Tool {
             name: issue_run::SUMMARY.into(),
-            input: serde_json::json!({}),
-            output: serde_json::json!({"cost": {"total_usd": 0.49}}),
+            input: serde_json::json!({"cost": {"total_usd": 0.49}}),
+            output: serde_json::json!({"diff": ""}),
             running: false,
         };
         app.apply_issue_run(issue_run::Event::Set {
