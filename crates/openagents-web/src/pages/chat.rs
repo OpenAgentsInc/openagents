@@ -1521,7 +1521,8 @@ fn spawn_answer(
 /// How to read the chat's project's repository for this turn
 /// ([`crate::repo_snapshot`]): its `owner/name` and branch, with the
 /// signed-in person's GitHub token, fetched for this turn only. `None`
-/// outside a project, or for a private repository with no connection.
+/// outside a project; a private repository with no connection reads as
+/// unreadable ([`crate::repo_snapshot::RepoRead::read`]).
 async fn repo_read(
     app: &App,
     headers: &HeaderMap,
@@ -1533,9 +1534,6 @@ async fn repo_read(
         Some(service) => service.github_token(headers).await.ok(),
         None => None,
     };
-    if project.private && token.is_none() {
-        return None;
-    }
     let base = app.config.github.as_ref().map_or_else(
         || "https://api.github.com".to_string(),
         |github| github.endpoints.api_url.trim_end_matches('/').to_string(),
@@ -1683,11 +1681,15 @@ async fn answer(
     // person's GitHub connection, so a question about it is answered from
     // it. A slow or failed read costs the turn its repository, never its
     // answer.
+    // A repository that can't be read is still carried, saying so, so
+    // the answer says it couldn't look instead of guessing (#11320).
     let repository = match (&door, repo) {
-        (Some(_), Some(repo)) => tokio::time::timeout(Duration::from_secs(8), repo.read())
-            .await
-            .ok()
-            .flatten(),
+        (Some(_), Some(repo)) => {
+            match tokio::time::timeout(Duration::from_secs(8), repo.read()).await {
+                Ok(read) => read,
+                Err(_) => repo.unreadable("GitHub did not answer in time"),
+            }
+        }
         _ => None,
     };
     let mut job = match door {

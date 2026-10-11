@@ -9,9 +9,15 @@
 //! [`openagents_chat::router::MAX_REPOSITORY_SNAPSHOT_BYTES`] that the turn
 //! carries as `context.repository`, so the chat worker answers "Summarize
 //! this repo" from the repository itself instead of sending the person to
-//! install Coder. The token is used for these reads only and never kept;
-//! a read that fails leaves its part out, and when nothing could be read
-//! the turn carries no repository.
+//! install Coder. The token is used for these reads only and never kept.
+//!
+//! The text says what the reads found, never only what they returned
+//! (#11320): an empty repository (no commits, no files) is said to be
+//! empty, a repository without a README is said to have none, a part that
+//! couldn't be read is named as not read, and a repository that couldn't
+//! be read at all ([`RepoRead::unreadable`]) is still carried, saying so,
+//! so the answer says it couldn't look instead of describing the
+//! repository from its name.
 
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -75,11 +81,15 @@ const KEY_FILE_NAMES: [&str; 16] = [
 ];
 
 impl RepoRead {
-    /// The repository as one bounded text, or `None` when GitHub answered
-    /// none of the reads.
+    /// The repository as one bounded text: what was read, or, when GitHub
+    /// answered none of the reads, that it couldn't be read. `None` only
+    /// for a name that isn't `owner/name`.
     pub(crate) async fn read(&self) -> Option<RepositorySnapshot> {
         if !oa_auth::repos::full_name(&self.repository) {
             return None;
+        }
+        if self.private && self.token.is_none() {
+            return self.unreadable("the person's GitHub connection was not available");
         }
         let (owner, name) = self.repository.split_once('/')?;
         let branch = self.branch.as_str();
@@ -99,7 +109,15 @@ impl RepoRead {
         let readme = self.raw(&readme_path, branch);
         let (about, languages, commits, tree, readme) =
             tokio::join!(about, languages, commits, tree, readme);
-        let tree = tree.and_then(|tree| serde_json::from_value::<Tree>(tree).ok());
+        // GitHub answers 409 for the commits and the tree of a repository
+        // with no commits yet.
+        let empty = commits.status() == Some(409) || tree.status() == Some(409);
+        let no_readme = matches!(readme.status(), Some(404 | 204));
+        let (about, languages, commits, readme) =
+            (about.ok(), languages.ok(), commits.ok(), readme.ok());
+        let tree = tree
+            .ok()
+            .and_then(|tree| serde_json::from_value::<Tree>(tree).ok());
         let keys: Vec<String> = tree
             .as_ref()
             .map(|tree| key_files(&tree.tree))
@@ -110,7 +128,7 @@ impl RepoRead {
             let segments: Vec<String> = segments.into_iter().map(str::to_string).collect();
             async move {
                 let refs: Vec<&str> = segments.iter().map(String::as_str).collect();
-                self.raw(&refs, branch).await
+                self.raw(&refs, branch).await.ok()
             }
         });
         let key_texts = futures_util::future::join_all(key_reads).await;
@@ -123,17 +141,68 @@ impl RepoRead {
             commits,
             tree,
             readme,
+            empty,
+            no_readme,
             key_files: keys
                 .into_iter()
                 .zip(key_texts)
                 .filter_map(|(path, text)| Some((path, text?)))
                 .collect(),
         };
-        let snapshot = parts.text()?;
+        let snapshot = match parts.text() {
+            Some(text) => text,
+            // A public repository GitHub wouldn't show with the person's
+            // token (expired or revoked): read it again without one.
+            None if !self.private && self.token.is_some() => {
+                let anonymous = RepoRead {
+                    token: None,
+                    ..self.clone()
+                };
+                return Box::pin(anonymous.read()).await;
+            }
+            None => {
+                return self.unreadable("GitHub refused or did not answer every read");
+            }
+        };
+        eprintln!(
+            "openagents-web: chat read repository {} (empty {}, tree {}, readme {})",
+            self.repository,
+            parts.empty,
+            parts.tree.is_some(),
+            parts.readme.is_some()
+        );
         Some(RepositorySnapshot {
             name: self.repository.clone(),
             branch: self.branch.clone(),
             snapshot,
+        })
+    }
+
+    /// The turn's repository when it couldn't be read, saying so and why
+    /// (`reason`, a fixed phrase, never GitHub's words), so the answer says
+    /// it couldn't look rather than guess from the repository's name.
+    pub(crate) fn unreadable(&self, reason: &str) -> Option<RepositorySnapshot> {
+        if !oa_auth::repos::full_name(&self.repository) {
+            return None;
+        }
+        eprintln!(
+            "openagents-web: chat couldn't read repository {}: {reason}",
+            self.repository
+        );
+        Some(RepositorySnapshot {
+            name: self.repository.clone(),
+            branch: self.branch.clone(),
+            snapshot: format!(
+                "Repository: {} ({}), branch {}\n\
+                 NOT READ: OpenAgents could not read this repository for this message ({reason}). \
+                 Nothing about its files, README, or commits is known. Say plainly that the \
+                 repository couldn't be read just now and that reconnecting GitHub on the \
+                 Projects page or asking again may help; do not describe the repository from \
+                 its name.\n",
+                self.repository,
+                if self.private { "private" } else { "public" },
+                self.branch
+            ),
         })
     }
 
@@ -149,8 +218,10 @@ impl RepoRead {
         Some(url)
     }
 
-    async fn get(&self, url: reqwest::Url, raw: bool) -> Option<Vec<u8>> {
-        let client = client()?;
+    async fn get(&self, url: reqwest::Url, raw: bool) -> Fetched {
+        let Some(client) = client() else {
+            return Fetched::Failed;
+        };
         let mut request = client
             .get(url)
             .header(
@@ -165,29 +236,90 @@ impl RepoRead {
         if let Some(token) = &self.token {
             request = request.bearer_auth(token);
         }
-        let mut response = request.send().await.ok()?;
-        if !response.status().is_success() {
-            return None;
+        let Ok(mut response) = request.send().await else {
+            return Fetched::Failed;
+        };
+        let status = response.status();
+        if !status.is_success() {
+            return Fetched::Status(status.as_u16());
         }
         let mut bytes = Vec::new();
-        while let Some(chunk) = response.chunk().await.ok()? {
-            if bytes.len().saturating_add(chunk.len()) > MAX_RESPONSE_BYTES {
-                return None;
+        loop {
+            match response.chunk().await {
+                Ok(Some(chunk)) => {
+                    if bytes.len().saturating_add(chunk.len()) > MAX_RESPONSE_BYTES {
+                        return Fetched::Failed;
+                    }
+                    bytes.extend_from_slice(&chunk);
+                }
+                Ok(None) => return Fetched::Body(bytes),
+                Err(_) => return Fetched::Failed,
             }
-            bytes.extend_from_slice(&chunk);
         }
-        Some(bytes)
     }
 
-    async fn json(&self, path: &[&str], query: &[(&str, &str)]) -> Option<Value> {
-        let bytes = self.get(self.url(path, query)?, false).await?;
-        serde_json::from_slice(&bytes).ok()
+    async fn json(&self, path: &[&str], query: &[(&str, &str)]) -> Got<Value> {
+        let Some(url) = self.url(path, query) else {
+            return Got::Failed;
+        };
+        match self.get(url, false).await {
+            Fetched::Body(bytes) => serde_json::from_slice(&bytes).map_or(Got::Failed, Got::Read),
+            Fetched::Status(status) => Got::Status(status),
+            Fetched::Failed => Got::Failed,
+        }
     }
 
-    async fn raw(&self, path: &[&str], branch: &str) -> Option<String> {
-        let bytes = self.get(self.url(path, &[("ref", branch)])?, true).await?;
-        let text = String::from_utf8_lossy(&bytes).into_owned();
-        (!text.trim().is_empty()).then_some(text)
+    async fn raw(&self, path: &[&str], branch: &str) -> Got<String> {
+        let Some(url) = self.url(path, &[("ref", branch)]) else {
+            return Got::Failed;
+        };
+        match self.get(url, true).await {
+            Fetched::Body(bytes) => {
+                let text = String::from_utf8_lossy(&bytes).into_owned();
+                if text.trim().is_empty() {
+                    Got::Status(204)
+                } else {
+                    Got::Read(text)
+                }
+            }
+            Fetched::Status(status) => Got::Status(status),
+            Fetched::Failed => Got::Failed,
+        }
+    }
+}
+
+/// What one GitHub request returned.
+enum Fetched {
+    Body(Vec<u8>),
+    /// GitHub answered with this unsuccessful status.
+    Status(u16),
+    /// No answer, or one too large or cut off.
+    Failed,
+}
+
+/// One part of the repository as read: its value, GitHub's unsuccessful
+/// status (404 for a missing README, 409 for an empty repository), or
+/// no answer.
+#[derive(Debug)]
+enum Got<T> {
+    Read(T),
+    Status(u16),
+    Failed,
+}
+
+impl<T> Got<T> {
+    fn ok(self) -> Option<T> {
+        match self {
+            Got::Read(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    fn status(&self) -> Option<u16> {
+        match self {
+            Got::Status(status) => Some(*status),
+            _ => None,
+        }
     }
 }
 
@@ -245,6 +377,10 @@ struct Parts {
     commits: Option<Value>,
     tree: Option<Tree>,
     readme: Option<String>,
+    /// GitHub says the repository has no commits (and so no files).
+    empty: bool,
+    /// GitHub says the branch has no README.
+    no_readme: bool,
     key_files: Vec<(String, String)>,
 }
 
@@ -257,6 +393,7 @@ impl Parts {
             && self.commits.is_none()
             && self.tree.is_none()
             && self.readme.is_none()
+            && !self.empty
         {
             return None;
         }
@@ -319,6 +456,13 @@ impl Parts {
                 out.push_str(&format!("- {date} {sha} {}\n", cut(message, 120)));
             }
         }
+        if self.empty {
+            out.push_str(
+                "\nEMPTY: GitHub says this repository has no commits yet, so it has no files, \
+                 no README, and no code. Say plainly that it is empty; do not describe what it \
+                 might contain from its name.\n",
+            );
+        }
         if let Some(tree) = &self.tree {
             out.push_str(&tree_text(tree));
         }
@@ -327,6 +471,25 @@ impl Parts {
                 "\nREADME:\n{}\n",
                 cut(readme.trim(), README_BYTES)
             ));
+        } else if self.no_readme && !self.empty {
+            out.push_str("\nREADME: none (the branch has no README file).\n");
+        }
+        if !self.empty {
+            let unread: Vec<&str> = [
+                (self.tree.is_none(), "the file tree"),
+                (self.readme.is_none() && !self.no_readme, "the README"),
+                (self.commits.is_none(), "the recent commits"),
+            ]
+            .into_iter()
+            .filter_map(|(missing, part)| missing.then_some(part))
+            .collect();
+            if !unread.is_empty() {
+                out.push_str(&format!(
+                    "\nNOT READ: {} could not be read just now; say so if asked about it rather \
+                     than guess.\n",
+                    unread.join(", ")
+                ));
+            }
         }
         for (path, text) in &self.key_files {
             out.push_str(&format!(
@@ -431,6 +594,8 @@ mod tests {
                 truncated: false,
             }),
             readme: Some("# Finances\n\n".to_string() + &"x".repeat(20_000)),
+            empty: false,
+            no_readme: false,
             key_files: vec![(
                 "pyproject.toml".into(),
                 "[project]\nname = \"finances\"".into(),
@@ -469,8 +634,9 @@ mod tests {
     }
 
     /// End to end against the production chat worker: a public
-    /// repository read as a project chat reads it, then "Summarize this
-    /// repo." asked with it on the website's surface. The answer must come
+    /// repository read as a project chat reads it (empty, missing, or
+    /// unreadable ones say so), then "Summarize this repo." asked with it
+    /// on the website's surface. The answer must come
     /// from the repository, never the install text:
     /// `OPENAGENTS_LIVE_REPO=owner/name OPENAGENTS_LIVE_BRANCH=main cargo test
     /// -p openagents-web --lib repo_snapshot -- --ignored --nocapture`.
@@ -491,7 +657,14 @@ mod tests {
             branch,
             private: false,
         };
-        let snapshot = read.read().await.expect("GitHub answered");
+        // OPENAGENTS_LIVE_NO_REPO=1 sends the turn with no repository, as
+        // a turn whose read failed was sent before #11320.
+        let snapshot = if std::env::var_os("OPENAGENTS_LIVE_NO_REPO").is_some() {
+            None
+        } else {
+            Some(read.read().await.expect("a valid repository name"))
+        };
+        let sent = snapshot.as_ref().map(|s| s.snapshot.clone());
         let door = crate::ask::Worker::default()
             .door(secp256k1::SecretKey::new(&mut secp256k1::rand::rng()))
             .unwrap();
@@ -502,7 +675,7 @@ mod tests {
             vec![Turn::user(message)],
             Context {
                 surface: Surface::Web,
-                repository: Some(snapshot),
+                repository: snapshot,
                 ..Context::default()
             },
             reply.clone(),
@@ -520,6 +693,218 @@ mod tests {
         );
         assert!(!reply.text.contains("coder login"));
         assert!(!reply.text.contains("install.sh"));
+        // The answer comes from what was read (#11320): a repository with
+        // files is described by naming at least one of its real files; an
+        // empty one is said to be empty; an unread one, unread.
+        let text = reply.text.to_lowercase();
+        let Some(sent) = sent else { return };
+        if sent.contains("\nNOT READ: OpenAgents could not read") {
+            assert!(
+                ["could not", "couldn't", "can't", "cannot", "unable"]
+                    .iter()
+                    .any(|word| text.contains(word)),
+                "{text}"
+            );
+        } else if sent.contains("\nEMPTY:") {
+            assert!(text.contains("empty"), "{text}");
+        } else {
+            let files: Vec<&str> = sent
+                .split("shallowest first):\n")
+                .nth(1)
+                .unwrap_or_default()
+                .lines()
+                .take_while(|line| !line.is_empty())
+                .filter(|line| !line.ends_with('/'))
+                .collect();
+            assert!(
+                files.iter().any(|path| {
+                    let name = path.rsplit('/').next().unwrap_or(path).to_lowercase();
+                    text.contains(&name)
+                }),
+                "the answer names none of {files:?}: {text}"
+            );
+        }
+    }
+
+    /// How the fixture GitHub answers: a repository with files, one with
+    /// no commits yet, or one that refuses every read.
+    #[derive(Clone, Copy)]
+    enum Fixture {
+        Files,
+        Empty,
+        Refused,
+        /// Refuses a token (expired), answers without one as `Files`.
+        RefusesTokens,
+    }
+
+    /// A stand-in for GitHub's API serving `fixture` for `fixture/finances`,
+    /// as GitHub answers those reads; its base URL.
+    async fn github(fixture: Fixture) -> String {
+        use axum::http::StatusCode;
+        use axum::response::IntoResponse;
+        let answer = move |uri: axum::http::Uri, headers: axum::http::HeaderMap| async move {
+            let token = headers.contains_key("authorization");
+            let fixture = match fixture {
+                Fixture::RefusesTokens if !token => Fixture::Files,
+                fixture => fixture,
+            };
+            let path = uri.path().trim_start_matches("/repos/fixture/finances");
+            let json = |value: Value| axum::Json(value).into_response();
+            let status = |code: u16, message: &str| {
+                (
+                    StatusCode::from_u16(code).unwrap(),
+                    axum::Json(json!({"message": message})),
+                )
+                    .into_response()
+            };
+            match (fixture, path) {
+                (Fixture::Refused, _) => status(401, "Bad credentials"),
+                (Fixture::RefusesTokens, _) if token => status(401, "Bad credentials"),
+                (_, "") => json(json!({
+                    "description": null,
+                    "pushed_at": "2026-10-11T12:00:00Z",
+                    "size": if matches!(fixture, Fixture::Empty) { 0 } else { 42 }
+                })),
+                (Fixture::Empty, "/languages") => json(json!({})),
+                (Fixture::Empty, "/commits" | "/git/trees/main") => {
+                    status(409, "Git Repository is empty.")
+                }
+                (Fixture::Empty, _) => status(404, "This repository is empty."),
+                (Fixture::Files, "/languages") => json(json!({"Python": 900, "Shell": 100})),
+                (Fixture::Files, "/commits") => json(json!([
+                    {"sha": "3f9a2c1aaaaaaa", "commit": {"message": "Add 2026 budget categories", "author": {"date": "2026-10-08T10:00:00Z"}}}
+                ])),
+                (Fixture::Files, "/git/trees/main") => json(json!({"tree": [
+                    {"path": "README.md", "type": "blob"},
+                    {"path": "finances", "type": "tree"},
+                    {"path": "finances/importer.py", "type": "blob"},
+                    {"path": "finances/ledger.py", "type": "blob"},
+                    {"path": "pyproject.toml", "type": "blob"},
+                    {"path": "scripts/monthly.sh", "type": "blob"}
+                ], "truncated": false})),
+                (Fixture::Files, "/readme") => {
+                    "# finances\n\nImports bank CSV exports into a SQLite ledger.".into_response()
+                }
+                (Fixture::Files, "/contents/pyproject.toml") => {
+                    "[project]\nname = \"finances\"".into_response()
+                }
+                _ => status(404, "Not Found"),
+            }
+        };
+        let router = axum::Router::new().fallback(answer);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+        format!("http://{address}")
+    }
+
+    fn fixture_read(base: String, token: Option<&str>, private: bool) -> RepoRead {
+        RepoRead {
+            base,
+            token: token.map(str::to_string),
+            repository: "fixture/finances".into(),
+            branch: "main".into(),
+            private,
+        }
+    }
+
+    /// A repository with files: the snapshot carries its real paths,
+    /// README, manifest, and commits, and says nothing is missing (#11320).
+    #[tokio::test]
+    async fn a_fixture_repository_is_read_from_its_files() {
+        let read = fixture_read(github(Fixture::Files).await, Some("t"), true);
+        let snapshot = read.read().await.unwrap().snapshot;
+        for real in [
+            "Repository: fixture/finances (private), branch main",
+            "Languages: Python 90%, Shell 10%",
+            "- 2026-10-08 3f9a2c1 Add 2026 budget categories",
+            "finances/importer.py",
+            "finances/ledger.py",
+            "scripts/monthly.sh",
+            "README:\n# finances\n\nImports bank CSV exports into a SQLite ledger.",
+            "pyproject.toml:\n[project]",
+        ] {
+            assert!(snapshot.contains(real), "{real:?} missing from {snapshot}");
+        }
+        assert!(!snapshot.contains("EMPTY"), "{snapshot}");
+        assert!(!snapshot.contains("NOT READ"), "{snapshot}");
+    }
+
+    /// AtlantisPleb/finances as it was (#11320): a repository with no
+    /// commits. GitHub answers its metadata only, so the snapshot used to
+    /// be a name and a date, and the answer described a finance app from
+    /// the name. It now says the repository is empty.
+    #[tokio::test]
+    async fn an_empty_repository_is_said_to_be_empty() {
+        let read = fixture_read(github(Fixture::Empty).await, Some("t"), false);
+        let snapshot = read.read().await.unwrap().snapshot;
+        assert!(snapshot.contains("EMPTY: GitHub says this repository has no commits yet"));
+        assert!(snapshot.contains("do not describe what it might contain from its name"));
+        assert!(!snapshot.contains("NOT READ"), "{snapshot}");
+        assert!(!snapshot.contains("README:"), "{snapshot}");
+    }
+
+    /// A repository GitHub won't show this connection: carried anyway,
+    /// saying it couldn't be read, instead of the turn carrying nothing
+    /// and the model answering from nothing.
+    #[tokio::test]
+    async fn a_refused_repository_is_said_to_be_unread() {
+        let read = fixture_read(github(Fixture::Refused).await, Some("t"), true);
+        let snapshot = read.read().await.unwrap();
+        assert_eq!(snapshot.name, "fixture/finances");
+        assert!(
+            snapshot
+                .snapshot
+                .contains("NOT READ: OpenAgents could not read this repository"),
+            "{}",
+            snapshot.snapshot
+        );
+        assert!(snapshot.snapshot.len() <= MAX_REPOSITORY_SNAPSHOT_BYTES);
+    }
+
+    /// A public repository whose reads the person's token can't make (an
+    /// expired connection) is read without the token.
+    #[tokio::test]
+    async fn a_public_repository_is_read_without_a_refused_token() {
+        let read = fixture_read(github(Fixture::RefusesTokens).await, Some("t"), false);
+        let snapshot = read.read().await.unwrap().snapshot;
+        assert!(snapshot.contains("finances/ledger.py"), "{snapshot}");
+        assert!(!snapshot.contains("NOT READ"), "{snapshot}");
+    }
+
+    /// A private repository with no GitHub connection is never asked for
+    /// and reads as unread.
+    #[tokio::test]
+    async fn a_private_repository_without_a_connection_is_unread() {
+        let read = fixture_read("http://127.0.0.1:9".into(), None, true);
+        let snapshot = read.read().await.unwrap().snapshot;
+        assert!(
+            snapshot.contains("GitHub connection was not available"),
+            "{snapshot}"
+        );
+    }
+
+    /// One part GitHub didn't answer is named as not read.
+    #[test]
+    fn a_part_not_read_is_named() {
+        let parts = Parts {
+            repository: "o/r".into(),
+            branch: "main".into(),
+            about: Some(json!({"description": "x"})),
+            ..Parts::default()
+        };
+        let text = parts.text().unwrap();
+        assert!(
+            text.contains(
+                "NOT READ: the file tree, the README, the recent commits could not be read"
+            ),
+            "{text}"
+        );
+        let parts = Parts {
+            no_readme: true,
+            ..parts
+        };
+        assert!(parts.text().unwrap().contains("README: none"));
     }
 
     #[test]
