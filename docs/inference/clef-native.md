@@ -1011,10 +1011,148 @@ What the attempt shows:
   idle for the whole run (about 10 minutes), not just at its start. The
   watcher's trigger should hold for the run.
 
+### Experimental fused TensorOps attention (2026-10-10)
+
+`PSIONIC_CLEF_METAL_ATTENTION=fused-tensorops` selects a separate experimental
+kernel at model load. The default, `staged`, keeps the existing score, softmax,
+and value-product path. Unknown setting values fail loading. The fused source
+is compiled only when selected, so it does not change default shader startup.
+
+The fused dispatch streams 32-key tiles for 16 queries per threadgroup, using
+TensorOps for QK and PV, stable online softmax, and f32 output accumulation.
+It declares 19,456 bytes of threadgroup scratch and omits the full trunk score
+and probability allocations: 192 MiB avoided for a 2,048-token chunk in a 16k
+request. This is an allocation calculation, not a measured speed improvement.
+Host checks cover grouped heads, absolute positions, tensor strides, integer
+overflow, and all input/output buffer lengths.
+
+Online softmax rounds unnormalized tile probabilities to f16; the staged path
+rounds normalized probabilities. Their outputs need tolerance-based validation.
+Offline Metal compilation and CPU shape checks do not establish GPU correctness,
+chunk equivalence, answer accuracy, or latency. The hardware conformance tests
+are explicitly ignored by default. The implementation round used no quiet lease
+or GPU run. Subsequent synthetic GPU checks are recorded below; keep the path
+experimental until a paired full-model comparison also passes.
+
+Validation in this round: offline Metal 4 compilation passed, all seven host-plan
+tests passed, and the Clef serving filter reported 20 passes. Five serving tests
+returned early with model settings unset; the other 15 exercised CPU behavior.
+All five ignored hardware tests compiled, including large score changes across
+key tiles, but none ran. This provides no GPU parity or performance result.
+
+### Evidence normalization shares the attention batch (2026-10-10)
+
+The first use of an evidence layer now encodes `LN_m(M)` in its attention
+consumer's command buffer. `attend_memory`, `attend_memory_projected`, and
+`head_attend_block` each submit and wait once, including on a cold view, instead
+of waiting separately for normalization. This applies to both trunk attention
+settings and keeps the existing kernels, arguments, and dispatch barriers.
+
+The request owns the normalized view only after the combined batch completes
+successfully. An encoding or completion error leaves that cache
+entry empty and its byte count unchanged. A warm view reuses the completed
+buffer, and a new prefill starts a fresh cache. CPU tests cover these ownership
+and cache transitions. Subsequent synthetic GPU checks are recorded below;
+full-model output parity and latency remain unmeasured.
+
+Validation: the release-profile Clef filter in `psionic-serve` reported 28 passes.
+Eight new cache tests and 15 existing CPU checks exercised their assertions;
+five model-dependent tests returned early with all `PSIONIC_CLEF_*` settings
+cleared. The build used a build lease and two Cargo jobs. No quiet lease,
+GPU run, or desktop-app or system-service control was used.
+
+### Experimental projection tiles for the checkpoint's weights (2026-10-10)
+
+`PSIONIC_CLEF_METAL_GEMM=weight-shapes` selects shape-specific f16 projection
+kernels at model load. The default is `fixed-64`; invalid setting values fail
+loading. This setting is independent of the attention setting. Its shader
+library and four pipelines are created only when selected.
+
+A header-only inventory of Clef-Flash Q4_K_M (recorded SHA-256
+`fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c`)
+found six weight shapes across 248 trunk projections. Dimensions below are
+`W[output, input]`; tiles are token rows by output columns.
+
+| Weight shape | Projections per chunk | Operations | Experimental tile |
+| --- | ---: | --- | --- |
+| 12,288 × 4,096 | 64 | Feed-forward gate and up | 64 × 128 |
+| 4,096 × 12,288 | 32 | Feed-forward down | 64 × 128 |
+| 8,192 × 4,096 | 32 | Hybrid QKV and attention query/gate | 64 × 128 |
+| 4,096 × 4,096 | 56 | Hybrid gate and mixer output | 64 × 128 |
+| 1,024 × 4,096 | 16 | Attention key and value | 64 × 64 |
+| 32 × 4,096 | 48 | DeltaNet alpha and beta | 64 × 32 |
+
+Feed-forward weights account for 69.84% of theoretical trunk projection
+arithmetic. The wider tile halves the number of threadgroups for the four
+large shapes and lets each group reuse input rows across twice as many output
+columns. The narrow tile removes the 32 unused logical columns in alpha/beta
+tiles. Neither calculation establishes a speedup: edge handling may already
+skip some unused work, and wider tiles can increase register pressure.
+
+Both variants keep 64 token rows, four SIMD groups, dynamic full-width reduction,
+f32 accumulation, and the existing dispatch barriers. Selection depends on the
+exact weight dimensions, including the input width, rather than the chunk
+length. The 1,024-column weights, unknown shapes, and f32 head products keep
+their existing kernels. The planner checks signed TensorOps extents, buffer
+sizes, and element offsets before binding buffers; device setup checks thread
+width, threadgroup capacity, and static memory use.
+
+Offline Metal 4 compilation passed. At implementation time, numerical agreement,
+chunk equivalence, answer accuracy, and end-to-end speed were unmeasured.
+The ignored hardware checks cover all six real weight shapes, residual
+accumulation, nonaligned chunks, partial token tiles, and output guards against
+the original kernel and sampled f64 products. Subsequent synthetic GPU checks
+are recorded below; keep the mode experimental until paired full-model
+comparisons also pass. The implementation round
+used no quiet lease, GPU execution, or desktop-app or system-service control.
+
+Validation: the backend Clef filter passed 13 CPU tests, including six new
+projection-planner tests; seven hardware tests compiled but remained ignored.
+The serving filter reported 28 passes: 23 CPU checks and five model-dependent
+early returns with `PSIONIC_CLEF_*` settings cleared. Both checks used release
+builds under build leases with two Cargo jobs. The new Rust modules pass pinned
+formatting, and the patch passes whitespace checks.
+
+### Synthetic GPU validation (2026-10-11)
+
+For [PR #11271](https://github.com/OpenAgentsInc/openagents/pull/11271), all seven
+ignored backend hardware tests passed on the M5 Max, one test at a time under
+a GPU lease. The five attention checks cover dense and staged references,
+partial tiles, absolute positions, grouped heads, causal masks, large score
+changes, repeatability, nonaligned chunks, output guards, and buffer rejection.
+The two projection checks cover all six checkpoint weight shapes, residual
+accumulation, element offsets, tails, nonaligned chunks, baseline comparisons,
+and sampled f64 products. Agreement means the bounds in the tests passed;
+it does not establish full-model chunk equivalence or answer accuracy.
+
+All three new serving GPU tests also passed under a GPU lease. They exercise
+the evidence-attention consumers with synthetic 64-wide memory, 17 tokens,
+three queries, two heads, and two evidence layers. Outputs meet the independent
+f64 reference bound of `2e-5 + 2e-5 * abs(expected)` and match bit for bit when
+normalization completes in a separate command buffer. Raw, cold, warm,
+reset-request, and cache byte-count checks also pass.
+
+Fresh release-profile CPU checks passed 13 backend tests and reported 28 serving
+passes: 23 CPU checks and five model-dependent early returns with inherited
+`PSIONIC_CLEF_*` settings cleared. The ten hardware tests remain ignored in
+ordinary test runs and ran explicitly, one at a time, for this validation.
+Builds used build leases and two Cargo jobs. New and modified test modules pass
+pinned formatting, and the patch passes whitespace checks.
+
+No model was loaded, no latency benchmark ran, and no quiet lease was requested.
+Desktop apps and system services were not controlled. Projection test data stays
+below 120 MB per case and evidence fixtures below 1 MiB; these bounds exclude
+driver and shader allocations. Completed test commands drain their temporary
+Metal objects before the next case. Experimental modes remain opt-in.
+
 ### Next
 
-- The M3 gate on a quiet Mac, against Ollama and MLX, with a per-phase
-  profile to show where 1k goes.
+- Compare full-model accuracy, chunk equivalence, and end-to-end latency with
+  both experimental modes at 1k, 4k, and 16k tokens, including short final chunks.
+- Check full-model cold and warm evidence outputs and profile the submission
+  counts after the combined batch.
+- Run a paired Mac comparison against Ollama and MLX with per-phase profiling,
+  reporting desktop contention separately.
 
 ## File-relevance calibration (X1, 2026-10-10)
 
