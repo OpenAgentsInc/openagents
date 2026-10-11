@@ -895,6 +895,14 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
                 lines.push(Line::default());
                 return lines;
             }
+            if name == crate::plan::TOOL
+                && let Some(plan) = crate::plan::text(output)
+            {
+                lines.push(Line::from(span("Plan", t::TEXT_PRIMARY)));
+                lines.extend(message_body(&plan, width));
+                lines.push(Line::default());
+                return lines;
+            }
             if name == "Run" {
                 lines.extend(run_lines(input, output, *running, width, phase));
                 lines.push(Line::default());

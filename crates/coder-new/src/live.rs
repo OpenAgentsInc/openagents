@@ -187,69 +187,83 @@ impl Chat {
         // A compacted chat (#11179): the model reads from the newest
         // summary on; earlier entries stay on screen only.
         let start = crate::long_session::context_start(&self.entries);
-        self.entries
-            .iter()
-            .enumerate()
-            .skip(start)
-            .filter_map(|(index, entry)| {
-                if let Entry::Tool { name, .. } = entry
-                    && crate::long_session::hidden_from_model(name)
-                {
-                    return None;
-                }
-                if let Entry::Tool {
-                    name,
-                    output,
-                    running: false,
-                    ..
-                } = entry
-                {
-                    if name == crate::long_session::COMPACT_TOOL {
-                        return crate::long_session::summary_message(output);
-                    }
-                    if crate::brainstorm::is_tool(name) {
-                        if newest_brainstorm != Some(index) {
+        let current_plan = self.entries.iter().rev().find_map(|entry| match entry {
+            Entry::Tool {
+                name,
+                output,
+                running: false,
+                ..
+            } if name == crate::plan::TOOL => crate::plan::message(output),
+            _ => None,
+        });
+        current_plan
+            .into_iter()
+            .chain(
+                self.entries
+                    .iter()
+                    .enumerate()
+                    .skip(start)
+                    .filter_map(|(index, entry)| {
+                        if let Entry::Tool { name, .. } = entry
+                            && (crate::long_session::hidden_from_model(name)
+                                || name == crate::plan::TOOL)
+                        {
                             return None;
                         }
-                        return crate::brainstorm::context(output).map(|content| Message {
-                            role: "assistant".into(),
-                            content,
-                        });
-                    }
-                }
-                Some(match entry {
-                    Entry::User(text) => Message::user(text.clone()),
-                    Entry::Assistant { text, .. } => Message {
-                        role: "assistant".into(),
-                        content: text.clone(),
-                    },
-                    Entry::Tool {
-                        name,
-                        output,
-                        running,
-                        ..
-                    } => Message {
-                        role: "assistant".into(),
-                        content: format!(
-                            "Tool observation from {name} ({}): {output}",
-                            if *running { "running" } else { "finished" }
-                        ),
-                    },
-                    Entry::Delegation {
-                        name,
-                        task,
-                        running,
-                        output,
-                        ..
-                    } => Message {
-                        role: "assistant".into(),
-                        content: format!(
-                            "Delegation to {name}: {task} ({}): {output}",
-                            if *running { "running" } else { "finished" }
-                        ),
-                    },
-                })
-            })
+                        if let Entry::Tool {
+                            name,
+                            output,
+                            running: false,
+                            ..
+                        } = entry
+                        {
+                            if name == crate::long_session::COMPACT_TOOL {
+                                return crate::long_session::summary_message(output);
+                            }
+                            if crate::brainstorm::is_tool(name) {
+                                if newest_brainstorm != Some(index) {
+                                    return None;
+                                }
+                                return crate::brainstorm::context(output).map(|content| Message {
+                                    role: "assistant".into(),
+                                    content,
+                                });
+                            }
+                        }
+                        Some(match entry {
+                            Entry::User(text) => Message::user(text.clone()),
+                            Entry::Assistant { text, .. } => Message {
+                                role: "assistant".into(),
+                                content: text.clone(),
+                            },
+                            Entry::Tool {
+                                name,
+                                output,
+                                running,
+                                ..
+                            } => Message {
+                                role: "assistant".into(),
+                                content: format!(
+                                    "Tool observation from {name} ({}): {output}",
+                                    if *running { "running" } else { "finished" }
+                                ),
+                            },
+                            Entry::Delegation {
+                                name,
+                                task,
+                                running,
+                                output,
+                                ..
+                            } => Message {
+                                role: "assistant".into(),
+                                content: format!(
+                                    "Delegation to {name}: {task} ({}): {output}",
+                                    if *running { "running" } else { "finished" }
+                                ),
+                            },
+                        })
+                    }),
+            )
             .collect()
     }
 }

@@ -234,6 +234,9 @@ impl ExecutionSettings {
         if self.connections.is_some() {
             definitions.extend(crate::connection_tools::definitions());
         }
+        if self.shell {
+            definitions.push(crate::plan::definition());
+        }
         definitions
     }
 
@@ -362,6 +365,7 @@ impl ExecutionSettings {
             emit(event);
         };
         let result = match name {
+            crate::plan::TOOL if self.shell => crate::plan::execute(arguments),
             name if crate::memory::Memory::is_tool(name) && self.memory.is_some() => self
                 .memory
                 .as_ref()

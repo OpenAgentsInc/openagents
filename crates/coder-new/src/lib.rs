@@ -43,6 +43,7 @@ pub mod model_catalog;
 pub mod models;
 pub mod ops_tool;
 mod own_runs;
+mod plan;
 #[cfg(unix)]
 pub mod plugin_catalog;
 pub mod plugin_definition;

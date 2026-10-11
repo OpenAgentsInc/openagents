@@ -315,15 +315,25 @@ impl Provider {
                 crate::attachments::TEXT_ONLY_NOTE
             }}));
         }
-        history.extend(messages.iter().map(|message| {
-            match (message.role == "user" && vision)
-                .then(|| crate::attachments::expand(&message.content))
-                .flatten()
-            {
-                Some(parts) => json!({"role":"user","content":parts}),
-                None => json!({"role":message.role,"content":message.content}),
-            }
-        }));
+        let mut current_plan = messages
+            .iter()
+            .rev()
+            .find(|m| m.role == "system" && m.content.starts_with(crate::plan::PREFIX))
+            .map(|m| json!({"role":"system","content":m.content}));
+        history.extend(
+            messages
+                .iter()
+                .filter(|m| !(m.role == "system" && m.content.starts_with(crate::plan::PREFIX)))
+                .map(|message| {
+                    match (message.role == "user" && vision)
+                        .then(|| crate::attachments::expand(&message.content))
+                        .flatten()
+                    {
+                        Some(parts) => json!({"role":"user","content":parts}),
+                        None => json!({"role":message.role,"content":message.content}),
+                    }
+                }),
+        );
         let started = Instant::now();
         let mut joined = String::new();
         let mut aggregate = Streamed::default();
@@ -340,6 +350,10 @@ impl Provider {
         loop {
             if cancel.load(Ordering::Relaxed) {
                 return Err("The reply was canceled.".into());
+            }
+            let mut model_history = history.clone();
+            if let Some(plan) = &current_plan {
+                model_history.insert(1, plan.clone());
             }
             let mut first = true;
             let mut partial = String::new();
@@ -363,13 +377,13 @@ impl Provider {
             let result = tokio::select! {
                 result = async {
                     if definitions.is_empty() {
-                        request.messages = history.iter().filter_map(|message| Some(Message {
+                        request.messages = model_history.iter().filter_map(|message| Some(Message {
                             role: message["role"].as_str()?.into(),
                             content: message["content"].as_str().or_else(|| message["content"][0]["text"].as_str())?.into(),
                         })).collect();
                         self.chat.stream_with_model(&request, &mut sink, model_callback).await.map(|reply| openrouter::ToolStreamed {reply, calls: vec![]})
                     } else {
-                        self.chat.stream_tools_for_repair(&request, &history, &definitions, &mut sink, model_callback).await
+                        self.chat.stream_tools_for_repair(&request, &model_history, &definitions, &mut sink, model_callback).await
                     }
                 } => result,
                 () = canceled(cancel) => return Err("The OpenRouter request was canceled; whether it was billed is unknown.".into()),
@@ -517,6 +531,7 @@ impl Provider {
                     .unwrap_or_else(|| json!({}));
                 execution.redact(&mut arguments);
                 redact_value(&mut arguments, self.key.expose());
+                if call.name == crate::plan::TOOL { arguments = json!({}); }
                 json!({"id":call.id,"type":"function","function":{"name":call.name,"arguments":arguments.to_string()}})
             }).collect();
             let mut assistant =
@@ -662,7 +677,13 @@ impl Provider {
                 if cancel.load(Ordering::Relaxed) {
                     return Err("The reply was canceled after its plugin call; completed effects were not replayed.".into());
                 }
-                let content = if crate::brainstorm::is_tool(&safe_name) {
+                let content = if safe_name == crate::plan::TOOL
+                    && crate::plan::text(&output).is_some()
+                {
+                    current_plan = crate::plan::message(&output)
+                        .map(|m| json!({"role":"system","content":m.content}));
+                    "Plan updated.".to_owned()
+                } else if crate::brainstorm::is_tool(&safe_name) {
                     crate::brainstorm::context(&output).unwrap_or_else(|| json!({"error":"The Brainstorm observation could not fit the bounded model context."}).to_string())
                 } else {
                     output.to_string()
@@ -1519,6 +1540,56 @@ mod tests {
         assert_eq!(tail[2], json!({"role":"user","content":"third"}));
         assert!(slots.iter().all(|slot| slot.lock().unwrap().is_none()));
         assert!(inbox.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn plans_replace_each_other_without_entering_tool_history() {
+        let plan_reply = |id: &str, step: &str| {
+            format!(
+                "data: {}\n\ndata: [DONE]\n\n",
+                json!({"choices":[{"delta":{"tool_calls":[{"index":0,"id":id,"function":{"name":"update_plan","arguments":json!({"plan":[{"step":step,"status":"pending"}]}).to_string()}}]},"finish_reason":"tool_calls"}]})
+            )
+        };
+        let done = format!(
+            "data: {}\n\ndata: [DONE]\n\n",
+            json!({"choices":[{"delta":{"content":"Done."},"finish_reason":"stop"}]})
+        );
+        let (base, server) = sequence(vec![
+            plan_reply("p1", "older plan"),
+            plan_reply("p2", "newest plan"),
+            done,
+        ]);
+        let mut execution = jev_settings("http://127.0.0.1:1".into(), None);
+        execution.shell = true;
+        let provider = Provider::with_base(ApiKey::new(FIXTURE_TOKEN), &base).unwrap();
+        runtime()
+            .block_on(provider.chat_with_plugins(
+                "fixture/model",
+                &crate::models::GenerationOptions::default(),
+                vec![Message::user("work")],
+                &execution,
+                &mut |_| {},
+                &mut |_| {},
+                &mut |_| {},
+                &Arc::new(AtomicBool::new(false)),
+            ))
+            .unwrap();
+        let requests = server.join().unwrap();
+        assert!(
+            requests[1]["messages"][1]["content"]
+                .as_str()
+                .unwrap()
+                .contains("older plan")
+        );
+        let final_messages = requests[2]["messages"].to_string();
+        assert!(final_messages.contains("newest plan"));
+        assert!(!final_messages.contains("older plan"));
+        assert_eq!(requests[2]["messages"][0]["role"], "system");
+        for message in requests[2]["messages"].as_array().unwrap() {
+            if message["role"] == "tool" {
+                assert_eq!(message["content"], "Plan updated.");
+            }
+        }
     }
 
     #[test]
