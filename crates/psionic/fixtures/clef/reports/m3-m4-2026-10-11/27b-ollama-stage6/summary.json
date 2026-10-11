@@ -1,0 +1,97 @@
+{
+  "status": "complete",
+  "error_type": null,
+  "finished_at": "2026-10-11T11:41:12.307734+00:00",
+  "groups": [
+    {
+      "variant": "27b-q4-fused-head",
+      "workload": "task-scratch/mac-quiet-2026-10-10/requests/len1k.json",
+      "count": 5,
+      "expected_count": 5,
+      "median_seconds": 2.4898515000000003,
+      "input_tokens": [
+        1076,
+        1078,
+        1079,
+        1080
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "27b-q4-fused-head",
+      "workload": "task-scratch/mac-quiet-2026-10-10/requests/len4k.json",
+      "count": 5,
+      "expected_count": 5,
+      "median_seconds": 9.193308875,
+      "input_tokens": [
+        3913,
+        3917,
+        3918
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "27b-q4-fused-head",
+      "workload": "task-scratch/mac-quiet-2026-10-10/requests/len16k.json",
+      "count": 5,
+      "expected_count": 5,
+      "median_seconds": 43.43730099999999,
+      "input_tokens": [
+        15510,
+        15511
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "ollama-27b",
+      "workload": "task-scratch/mac-quiet-2026-10-10/requests/len1k.json",
+      "count": 5,
+      "expected_count": 5,
+      "median_seconds": 3.1119297919999553,
+      "input_tokens": [
+        1076,
+        1078,
+        1079,
+        1080
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "ollama-27b",
+      "workload": "task-scratch/mac-quiet-2026-10-10/requests/len4k.json",
+      "count": 5,
+      "expected_count": 5,
+      "median_seconds": 10.519903959000033,
+      "input_tokens": [
+        3913,
+        3917,
+        3918
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "ollama-27b",
+      "workload": "task-scratch/mac-quiet-2026-10-10/requests/len16k.json",
+      "count": 5,
+      "expected_count": 5,
+      "median_seconds": 43.24281708299998,
+      "input_tokens": [
+        15510,
+        15511
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    }
+  ],
+  "measurement_mode": "shared",
+  "monitor_error": null,
+  "diagnostic_only": false,
+  "gpu_interference_detection": "not enforced in shared mode; total GPU activity sampled",
+  "idle_machine_acceptance": "not applicable: shared machine",
+  "note": "Medians exclude warmups and rejected samples. No quality verdict or tail-latency claim."
+}

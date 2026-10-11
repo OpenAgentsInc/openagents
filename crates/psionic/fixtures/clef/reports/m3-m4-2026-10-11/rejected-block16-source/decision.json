@@ -1,0 +1,11 @@
+{
+  "decision": "Reject block16 product changes; preserve complete experiment patch and evidence",
+  "reason": "Both full-model logit gates fail unchanged 1e-3 limit",
+  "standalone_max_delta": 0.00108385086,
+  "combined_max_delta": 0.00135493279,
+  "patch_sha256": "b4343f6437147c24f26328c078bf288d688dba8f367291e4c6b2524976a0d36d",
+  "base_commit": "715a379690b69cc5b6f3a1c6dd020413e3fdec50",
+  "patch_includes": "Five block16 backend files plus the field-head batch-accounting addition and block16 test-only update; only field-head accounting remains in product source",
+  "head_evidence": "Stage6 archived binaries used sequential Delta for all head/image/latency comparisons; reverting the unselected block mode does not change that arithmetic",
+  "requires_final_source_checks": true
+}

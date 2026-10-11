@@ -1,0 +1,57 @@
+{
+  "mode": "bench",
+  "status": "failed",
+  "preflight": {
+    "available_memory_bytes": 107914084352,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 2650989,
+      "inactive": 3836221,
+      "speculative": 99343
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "max_owned_group_bytes": 2147483648,
+  "minimum_available_bytes": 12884901888,
+  "minimum_start_bytes": 15032385536,
+  "deadline_seconds": 60,
+  "conditions": "shared machine; Q4_K tile/native-uint4 projection candidates; no model or product latency claim",
+  "source_sha256": {
+    "baseline.metal": "2fe0e11a47ce6c691b537935521df6dcf32197fe05cc122728779ffe2aa0688a",
+    "candidates.metal": "ebcb6ba3f76dc81ab7c8bab59d46dfe476d0d0a46df3c07e7b7205fd24fc51b2",
+    "probe.swift": "219dbc7a6a3d992c447000061c248a4cba742806da4f474a0e7da15d1fe3fee7",
+    "build.py": "4ce33cd8b44915879d613ae8226d632b206c987f7dd1929ad8b78f2ebba91e94",
+    "stage.py": "bb3451adc8e6e7cc5649d43575840c6373e38bc6e103e249fd77996a101ac9fb",
+    "guard.py": "6f443693fd05077ee89cb73063aeb4238c15780cc00971b29f76ec583057a2b2",
+    "sources.json": "c6d0f523e0df35f3b66bbc9c315df6d213d443f308f3e7b325be3afac75ade66"
+  },
+  "command": [
+    "<SCRATCH>/clef-m3-m4/q4-tensor-prototype/probe",
+    "<SCRATCH>/clef-m3-m4/q4-tensor-prototype",
+    "bench"
+  ],
+  "binary_sha256": "f26dc7935466aa5906c6fa6a4184d3a7522f31b40617bfb7b8d015153cf35423",
+  "exit": 2,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 86602,
+    "max_rss_bytes": 2147483648,
+    "peak_rss_bytes": 858669056,
+    "peak_physical_footprint_bytes": 983811392,
+    "peak_accounted_bytes": 983811392,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 13,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 106892247040,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 7.024418542
+}

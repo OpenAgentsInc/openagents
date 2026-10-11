@@ -1,0 +1,30 @@
+diff --git a/crates/psionic/crates/psionic-backend-metal/src/clef_prefill.rs b/crates/psionic/crates/psionic-backend-metal/src/clef_prefill.rs
+index 53c5dc5ea8..ac8ae1e114 100644
+--- a/crates/psionic/crates/psionic-backend-metal/src/clef_prefill.rs
++++ b/crates/psionic/crates/psionic-backend-metal/src/clef_prefill.rs
+@@ -24,6 +24,8 @@ const SOURCE: &str = concat!(
+     include_str!("kernels/clef_prefill.metal"),
+     "\n",
+     include_str!("kernels/clef_dequant_q6_k.metal"),
++    "\n",
++    include_str!("kernels/clef_head_blocks.metal"),
+ );
+ const FUSED_SOURCE: &str = include_str!("kernels/clef_fused_attention.metal");
+ const FUSED_KERNEL: &str = "clef_flash_attention256_tensorops";
+@@ -224,6 +226,8 @@ unsafe impl Sync for ClefMetal {}
+ 
+ const KERNELS: &[&str] = &[
+     "clef_copy_f32",
++    "clef_add_f32",
++    "clef_field_self_attention",
+     "clef_dequant_q8_0",
+     "clef_dequant_q4_k",
+     "clef_dequant_q6_k",
+@@ -1337,6 +1341,7 @@ impl ClefMetalBatch<'_> {
+ }
+ 
+ mod delta;
++pub mod head_blocks;
+ 
+ #[cfg(test)]
+ mod delta_tests;

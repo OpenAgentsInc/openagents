@@ -1,0 +1,5 @@
+   Compiling psionic-backend-metal v0.2.0 (workspace/openagents/crates/psionic/crates/psionic-backend-metal)
+    Finished `release` profile [optimized + debuginfo] target(s) in 30.36s
+warning: the following packages contain code that will be rejected by a future version of Rust: block v0.1.6
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running unittests src/lib.rs (user-home/work/openagents-target-agent1/release/deps/psionic_backend_metal-a2dbd8deab19d6f5)

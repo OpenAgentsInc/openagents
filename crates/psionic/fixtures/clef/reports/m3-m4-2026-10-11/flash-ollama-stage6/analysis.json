@@ -1,0 +1,553 @@
+{
+  "source_records_sha256": "43d487d348f8eda06fc74ad0c410b7d16b50be3988c10dedbb9f2589367b2431",
+  "status": "complete",
+  "conditions": "shared machine; no task-owned build or second model workload; no quiet lease",
+  "measured_requests": 90,
+  "warmups": 18,
+  "all_actual_token_counts_pair_exactly": true,
+  "all_request_bytes_pair_exactly": true,
+  "native_prefix_and_answer_cache": "disabled; every native response reports zero cached_input_tokens and no cached timing",
+  "ollama_cache_reporting": "cached_input_tokens is absent; unique state nonces prevent repeated full-request answers, but internal prefix reuse is not directly observed",
+  "per_round": [
+    {
+      "round": 0,
+      "variant": "metal-fused-head",
+      "workload": "len16k",
+      "count": 5,
+      "median_seconds": 11.705844040999978,
+      "median_reported_phase_ms": {
+        "encode_ms": 5.3,
+        "queue_ms": 0.0,
+        "prefill_ms": 11651.0,
+        "head_ms": 46.3
+      }
+    },
+    {
+      "round": 0,
+      "variant": "metal-fused-head",
+      "workload": "len1k",
+      "count": 5,
+      "median_seconds": 0.7902492919999986,
+      "median_reported_phase_ms": {
+        "encode_ms": 0.6,
+        "queue_ms": 0.0,
+        "prefill_ms": 772.3,
+        "head_ms": 17.0
+      }
+    },
+    {
+      "round": 0,
+      "variant": "metal-fused-head",
+      "workload": "len4k",
+      "count": 5,
+      "median_seconds": 2.7043388749999906,
+      "median_reported_phase_ms": {
+        "encode_ms": 1.8,
+        "queue_ms": 0.0,
+        "prefill_ms": 2662.5,
+        "head_ms": 28.9
+      }
+    },
+    {
+      "round": 0,
+      "variant": "metal-staged-head",
+      "workload": "len16k",
+      "count": 5,
+      "median_seconds": 11.108896458000004,
+      "median_reported_phase_ms": {
+        "encode_ms": 5.7,
+        "queue_ms": 0.0,
+        "prefill_ms": 11057.0,
+        "head_ms": 46.3
+      }
+    },
+    {
+      "round": 0,
+      "variant": "metal-staged-head",
+      "workload": "len1k",
+      "count": 5,
+      "median_seconds": 0.7511794580000029,
+      "median_reported_phase_ms": {
+        "encode_ms": 0.5,
+        "queue_ms": 0.0,
+        "prefill_ms": 729.7,
+        "head_ms": 19.9
+      }
+    },
+    {
+      "round": 0,
+      "variant": "metal-staged-head",
+      "workload": "len4k",
+      "count": 5,
+      "median_seconds": 2.500200124999999,
+      "median_reported_phase_ms": {
+        "encode_ms": 1.6,
+        "queue_ms": 0.0,
+        "prefill_ms": 2469.3,
+        "head_ms": 28.2
+      }
+    },
+    {
+      "round": 0,
+      "variant": "ollama",
+      "workload": "len16k",
+      "count": 5,
+      "median_seconds": 13.187411583000028,
+      "median_reported_phase_ms": {}
+    },
+    {
+      "round": 0,
+      "variant": "ollama",
+      "workload": "len1k",
+      "count": 5,
+      "median_seconds": 0.8604285000000118,
+      "median_reported_phase_ms": {}
+    },
+    {
+      "round": 0,
+      "variant": "ollama",
+      "workload": "len4k",
+      "count": 5,
+      "median_seconds": 2.941698416999998,
+      "median_reported_phase_ms": {}
+    },
+    {
+      "round": 1,
+      "variant": "metal-fused-head",
+      "workload": "len16k",
+      "count": 5,
+      "median_seconds": 11.046936917000039,
+      "median_reported_phase_ms": {
+        "encode_ms": 5.0,
+        "queue_ms": 0.0,
+        "prefill_ms": 11000.5,
+        "head_ms": 37.8
+      }
+    },
+    {
+      "round": 1,
+      "variant": "metal-fused-head",
+      "workload": "len1k",
+      "count": 5,
+      "median_seconds": 0.7290390000000002,
+      "median_reported_phase_ms": {
+        "encode_ms": 0.5,
+        "queue_ms": 0.0,
+        "prefill_ms": 711.3,
+        "head_ms": 15.9
+      }
+    },
+    {
+      "round": 1,
+      "variant": "metal-fused-head",
+      "workload": "len4k",
+      "count": 5,
+      "median_seconds": 2.487548791999984,
+      "median_reported_phase_ms": {
+        "encode_ms": 1.6,
+        "queue_ms": 0.0,
+        "prefill_ms": 2457.7,
+        "head_ms": 24.0
+      }
+    },
+    {
+      "round": 1,
+      "variant": "metal-staged-head",
+      "workload": "len16k",
+      "count": 5,
+      "median_seconds": 11.83416833299998,
+      "median_reported_phase_ms": {
+        "encode_ms": 5.3,
+        "queue_ms": 0.0,
+        "prefill_ms": 11783.2,
+        "head_ms": 44.8
+      }
+    },
+    {
+      "round": 1,
+      "variant": "metal-staged-head",
+      "workload": "len1k",
+      "count": 5,
+      "median_seconds": 0.7459115830000655,
+      "median_reported_phase_ms": {
+        "encode_ms": 0.6,
+        "queue_ms": 0.0,
+        "prefill_ms": 723.6,
+        "head_ms": 20.5
+      }
+    },
+    {
+      "round": 1,
+      "variant": "metal-staged-head",
+      "workload": "len4k",
+      "count": 5,
+      "median_seconds": 2.5579944170000317,
+      "median_reported_phase_ms": {
+        "encode_ms": 1.6,
+        "queue_ms": 0.0,
+        "prefill_ms": 2525.6,
+        "head_ms": 29.8
+      }
+    },
+    {
+      "round": 1,
+      "variant": "ollama",
+      "workload": "len16k",
+      "count": 5,
+      "median_seconds": 11.916128125,
+      "median_reported_phase_ms": {}
+    },
+    {
+      "round": 1,
+      "variant": "ollama",
+      "workload": "len1k",
+      "count": 5,
+      "median_seconds": 0.8293822499999806,
+      "median_reported_phase_ms": {}
+    },
+    {
+      "round": 1,
+      "variant": "ollama",
+      "workload": "len4k",
+      "count": 5,
+      "median_seconds": 2.8833812500000136,
+      "median_reported_phase_ms": {}
+    }
+  ],
+  "paired_samples": [
+    {
+      "round": 0,
+      "workload": "len16k",
+      "sample": 1,
+      "input_tokens": 15511,
+      "seconds": {
+        "metal-staged-head": 11.124886624999995,
+        "metal-fused-head": 11.621716083000024,
+        "ollama": 13.657839375000009
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len16k",
+      "sample": 2,
+      "input_tokens": 15511,
+      "seconds": {
+        "metal-staged-head": 11.098874791999997,
+        "metal-fused-head": 11.750845959000003,
+        "ollama": 13.544594082999993
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len16k",
+      "sample": 3,
+      "input_tokens": 15513,
+      "seconds": {
+        "metal-staged-head": 11.108896458000004,
+        "metal-fused-head": 11.705844040999978,
+        "ollama": 13.187411583000028
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len16k",
+      "sample": 4,
+      "input_tokens": 15512,
+      "seconds": {
+        "metal-staged-head": 11.141690083,
+        "metal-fused-head": 11.726226666999992,
+        "ollama": 12.822467041999971
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len16k",
+      "sample": 5,
+      "input_tokens": 15511,
+      "seconds": {
+        "metal-staged-head": 10.981098958999993,
+        "metal-fused-head": 11.566987458,
+        "ollama": 11.978932292000025
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len1k",
+      "sample": 1,
+      "input_tokens": 1078,
+      "seconds": {
+        "metal-staged-head": 0.5355936670000006,
+        "metal-fused-head": 0.7118034590000093,
+        "ollama": 1.006242125
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len1k",
+      "sample": 2,
+      "input_tokens": 1081,
+      "seconds": {
+        "metal-staged-head": 0.7630554170000003,
+        "metal-fused-head": 0.893720916999996,
+        "ollama": 0.8840453329999889
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len1k",
+      "sample": 3,
+      "input_tokens": 1081,
+      "seconds": {
+        "metal-staged-head": 0.7951824159999994,
+        "metal-fused-head": 0.8313478750000058,
+        "ollama": 0.8604285000000118
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len1k",
+      "sample": 4,
+      "input_tokens": 1081,
+      "seconds": {
+        "metal-staged-head": 0.7511794580000029,
+        "metal-fused-head": 0.7902492919999986,
+        "ollama": 0.8389549580000164
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len1k",
+      "sample": 5,
+      "input_tokens": 1082,
+      "seconds": {
+        "metal-staged-head": 0.7024072080000003,
+        "metal-fused-head": 0.7575752499999879,
+        "ollama": 0.8369795840000052
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len4k",
+      "sample": 1,
+      "input_tokens": 3918,
+      "seconds": {
+        "metal-staged-head": 2.567411749999998,
+        "metal-fused-head": 2.7043388749999906,
+        "ollama": 2.994262417000016
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len4k",
+      "sample": 2,
+      "input_tokens": 3918,
+      "seconds": {
+        "metal-staged-head": 2.463093624999999,
+        "metal-fused-head": 2.710477374999982,
+        "ollama": 2.939985708000023
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len4k",
+      "sample": 3,
+      "input_tokens": 3913,
+      "seconds": {
+        "metal-staged-head": 2.500200124999999,
+        "metal-fused-head": 2.723224916000021,
+        "ollama": 2.9868978330000004
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len4k",
+      "sample": 4,
+      "input_tokens": 3917,
+      "seconds": {
+        "metal-staged-head": 2.569124540999997,
+        "metal-fused-head": 2.623000458000007,
+        "ollama": 2.9398499999999785
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len4k",
+      "sample": 5,
+      "input_tokens": 3915,
+      "seconds": {
+        "metal-staged-head": 2.445204417000003,
+        "metal-fused-head": 2.642816042000021,
+        "ollama": 2.941698416999998
+      }
+    },
+    {
+      "round": 1,
+      "workload": "len16k",
+      "sample": 1,
+      "input_tokens": 15511,
+      "seconds": {
+        "ollama": 11.949544000000003,
+        "metal-fused-head": 11.046936917000039,
+        "metal-staged-head": 11.83416833299998
+      }
+    },
+    {
+      "round": 1,
+      "workload": "len16k",
+      "sample": 2,
+      "input_tokens": 15513,
+      "seconds": {
+        "ollama": 11.916128125,
+        "metal-fused-head": 10.996418167000002,
+        "metal-staged-head": 11.89565195900002
+      }
+    },
+    {
+      "round": 1,
+      "workload": "len16k",
+      "sample": 3,
+      "input_tokens": 15511,
+      "seconds": {
+        "ollama": 11.87846487500002,
+        "metal-fused-head": 11.087897624999982,
+        "metal-staged-head": 11.874930291000055
+      }
+    },
+    {
+      "round": 1,
+      "workload": "len16k",
+      "sample": 4,
+      "input_tokens": 15514,
+      "seconds": {
+        "ollama": 11.944165749999968,
+        "metal-fused-head": 11.013224332999982,
+        "metal-staged-head": 11.757639625000024
+      }
+    },
+    {
+      "round": 1,
+      "workload": "len16k",
+      "sample": 5,
+      "input_tokens": 15508,
+      "seconds": {
+        "ollama": 11.894711458000018,
+        "metal-fused-head": 11.088075624999988,
+        "metal-staged-head": 11.78512462499998
+      }
+    },
+    {
+      "round": 1,
+      "workload": "len1k",
+      "sample": 1,
+      "input_tokens": 1079,
+      "seconds": {
+        "ollama": 0.842185708000045,
+        "metal-fused-head": 0.5211192499999697,
+        "metal-staged-head": 0.5669941250000647
+      }
+    },
+    {
+      "round": 1,
+      "workload": "len1k",
+      "sample": 2,
+      "input_tokens": 1083,
+      "seconds": {
+        "ollama": 0.8582619579999573,
+        "metal-fused-head": 0.7290390000000002,
+        "metal-staged-head": 0.8055091250000714
+      }
+    },
+    {
+      "round": 1,
+      "workload": "len1k",
+      "sample": 3,
+      "input_tokens": 1083,
+      "seconds": {
+        "ollama": 0.8293822499999806,
+        "metal-fused-head": 0.7376340419999678,
+        "metal-staged-head": 0.8024092079999718
+      }
+    },
+    {
+      "round": 1,
+      "workload": "len1k",
+      "sample": 4,
+      "input_tokens": 1080,
+      "seconds": {
+        "ollama": 0.8075061250000317,
+        "metal-fused-head": 0.7415203750000501,
+        "metal-staged-head": 0.7459115830000655
+      }
+    },
+    {
+      "round": 1,
+      "workload": "len1k",
+      "sample": 5,
+      "input_tokens": 1079,
+      "seconds": {
+        "ollama": 0.8023114169999985,
+        "metal-fused-head": 0.7285229169999639,
+        "metal-staged-head": 0.7125639579999188
+      }
+    },
+    {
+      "round": 1,
+      "workload": "len4k",
+      "sample": 1,
+      "input_tokens": 3919,
+      "seconds": {
+        "ollama": 2.8876251249999996,
+        "metal-fused-head": 2.479350334000003,
+        "metal-staged-head": 2.583621999999991
+      }
+    },
+    {
+      "round": 1,
+      "workload": "len4k",
+      "sample": 2,
+      "input_tokens": 3919,
+      "seconds": {
+        "ollama": 2.866113583000015,
+        "metal-fused-head": 2.5119078329999525,
+        "metal-staged-head": 2.5454906249999567
+      }
+    },
+    {
+      "round": 1,
+      "workload": "len4k",
+      "sample": 3,
+      "input_tokens": 3918,
+      "seconds": {
+        "ollama": 2.8833812500000136,
+        "metal-fused-head": 2.480425790999959,
+        "metal-staged-head": 2.596882124999979
+      }
+    },
+    {
+      "round": 1,
+      "workload": "len4k",
+      "sample": 4,
+      "input_tokens": 3917,
+      "seconds": {
+        "ollama": 2.884972624999989,
+        "metal-fused-head": 2.487548791999984,
+        "metal-staged-head": 2.5515894999999773
+      }
+    },
+    {
+      "round": 1,
+      "workload": "len4k",
+      "sample": 5,
+      "input_tokens": 3919,
+      "seconds": {
+        "ollama": 2.847587540999996,
+        "metal-fused-head": 2.5282198750000475,
+        "metal-staged-head": 2.5579944170000317
+      }
+    }
+  ],
+  "owned_servers_stopped": 6,
+  "peak_accounted_bytes": 23091128160,
+  "lowest_available_memory_bytes": 74919804928,
+  "qualification": "Phase timings are ordinary serving timers, not profiling-mode GPU timings. Summaries do not establish idle-machine acceptance or a causal head speedup."
+}

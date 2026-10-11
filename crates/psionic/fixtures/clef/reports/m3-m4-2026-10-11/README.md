@@ -3,8 +3,8 @@
 This package records correctness checks on a shared Mac M5 and capacity checks
 on an RTX 4080. The official Clef 27B BF16 reference completed all 40 text
 requests (104 answers) and six image requests (14 answers). Native 27B passed
-the image checks, but the latest Stage 5 build failed the strict text gate:
-93 of 104 top answers agreed, with a maximum probability difference of 0.217196.
+the image checks, but the latest Stage 6 build failed the strict text gate:
+93 of 104 top answers agreed, with a maximum probability difference of 0.217407.
 An independent BF16-backbone/CPU-f32-head diagnostic confirms the large native
 gap. Both earlier Flash HTTP modes passed
 against the existing CPU reference. Standalone direct-solve DeltaNet passed its
@@ -14,6 +14,123 @@ Full-model prefix reuse and continuous batching pass the HTTP comparisons
 for Flash and 27B. A shared-machine latency comparison favors fused
 attention and shape-selected GEMM, but misses the absolute M3 targets. These
 files do not establish completion of M3 or M4.
+
+## Stage 6 fused field head
+
+The opt-in `PSIONIC_CLEF_METAL_HEAD=fused-fields` path encodes the four field
+layers in one GPU submission. The source reduces head waits from 23 to 8;
+this is a count of synchronization sites, not a profiler measurement. It adds
+294,912 bytes of model vectors and at most 2,883,584 bytes of request scratch
+for the current heads. Batch reservations include that scratch. The default
+head, CPU path, and CUDA path retain staged execution.
+
+The [complete validation bundle](stage6-field-head/README.md) compares all
+40 text requests and 104 questions on each model. Both heads use identical
+request bytes, artifacts, trunk settings, and pooled rows. Every raw-logit and
+HTTP top answer agrees; maximum absolute logit differences are `9.536743e-7`
+for Flash and `5.960464e-7` for 27B. The selected GPU tests pass: 21 backend
+checks and seven serving checks. Native token IDs are not exported; their
+identity is inferred from the same bytes and encoder rather than proved by
+token counts. Compilation overlaps these correctness runs, so their HTTP
+times are not latency acceptance measurements.
+
+The fresh 27B image run also passes all 14 top answers, token counts, and ten
+refusal checks. The [offline BF16 text comparison](stage6-field-head/bf16-text-comparison/results.json)
+still fails for both heads: 93 of 104 top answers match, with maximum
+probability difference about `0.217407`. Same-Q4 head parity does not replace
+that independent quality gate.
+
+The initial CPU test run failed because its scratch-refusal fixture assumed
+32-token DeltaNet blocks. The [test-only correction](stage6-cpu-retry/test-only.patch)
+and [retry](stage6-cpu-retry/checks.json) pass all 73 selected serving tests;
+nine GPU tests remain explicitly ignored there and are checked separately as
+described above. Model-dependent early returns are not full-model evidence.
+The guard records successful cleanup with no memory refusal.
+
+The shorter block recurrence itself is rejected. Its full-model comparisons
+reach `1.083851e-3` alone and `1.354933e-3` with the other optimizations,
+exceeding the unchanged `1e-3` bound. The
+[experiment patch and decision](rejected-block16-source/decision.json) are
+retained, and the product source restores the preceding experimental block32
+path. All head, image, and latency comparisons use sequential DeltaNet.
+The immutable Stage 6 binary contains the rejected block16 experiment, so
+its complete source manifest is preserved instead of relabeled as the later
+product source.
+
+The [final head-only source checks](stage7-head-only/checks.json) pass 24 backend
+tests and 73 serving tests after that removal. The CPU invocations explicitly
+ignore 20 backend and nine serving hardware tests; their relevant Stage 6 GPU
+checks are recorded above. Formatting and the 2,241-file source-hash check pass.
+The [source manifest](stage7-head-only/source-manifest.json) identifies the five
+files that differ from the Stage 6 server snapshot and corrects inherited
+metadata that had described a test-only retry. This source retains the fused
+head and restores block32; it does not relabel the earlier server binary.
+The build uses two jobs, completes in 1,099.91 seconds, stays below its sampled
+24 GiB cap, and stops its owned process group successfully.
+
+### Flash against Ollama
+
+The [completed comparison](flash-ollama-stage6/summary.json) runs three variants
+serially in two rounds, reversing their order in the second round. Each group
+has ten measured requests and two warmups. Every paired request has identical
+bytes and an identical reported token count; counts range from 1,078–1,083,
+3,913–3,919, and 15,508–15,514 for the three prompt sizes.
+
+| Variant | About 1k | About 4k | About 16k |
+| --- | ---: | ---: | ---: |
+| Staged head, fused attention, weight-shape GEMM | 0.748546 s | 2.554792 s | 11.449665 s |
+| Fused field head, same trunk | 0.739577 s | 2.575610 s | 11.327532 s |
+| Ollama 0.40.2 `clef-flash` | 0.840570 s | 2.913738 s | 11.964238 s |
+
+Both native modes beat Ollama's medians in each round at every prompt size.
+Neither meets M3's absolute targets. The small differences between the native
+modes change direction with request size and round; no consistent end-to-end
+head speedup is established. The head therefore remains opt-in. The
+[per-round results and paired samples](flash-ollama-stage6/analysis.json) retain
+ordinary serving phase timers, including zero queue time for native requests.
+Profiling is off throughout.
+
+There are 90 measured requests and 18 warmups. Native prefix and answer caches
+are disabled. Ollama does not report `cached_input_tokens`; unique state nonces
+prevent repeated complete requests, but internal prefix reuse is not directly
+observed. No task-owned build, probe, or second model runs concurrently. Other
+applications remain running, so these are shared-machine results. All six
+owned servers stop successfully. The largest sampled process-group accounting
+is 23,091,128,160 bytes, and recorded available memory stays above
+74,919,804,928 bytes. Configurations, host samples, logs, and lease receipts
+are retained beside the result.
+
+### 27B against Ollama
+
+The [completed 27B comparison](27b-ollama-stage6/summary.json) uses the same
+Stage 6 server with fused attention, weight-shape GEMM, sequential DeltaNet,
+fused fields, 2,048-token chunks, and resident f16 FFN weights. It executes one
+round, native first, with five measured requests and one warmup per size and
+variant. Request bytes and actual token counts pair exactly: 1,076–1,080,
+3,913–3,918, and 15,510–15,511 tokens.
+
+| Variant | About 1k | About 4k | About 16k |
+| --- | ---: | ---: | ---: |
+| Native 27B Q4 with resident f16 FFN | 2.489852 s | 9.193309 s | 43.437301 s |
+| Ollama 0.40.2 `clef` | 3.111930 s | 10.519904 s | 43.242817 s |
+| Ollama median divided by native median | 1.250× | 1.144× | 0.996× |
+
+**The M4 speed gate fails at every size.** These results also do not resolve the
+separate BF16 text-quality failure. One fixed-order round on a shared machine
+does not establish idle-machine performance or explain differences from earlier
+runs. Native reports zero queue time and disabled prefix and answer caches.
+Ollama omits cache-use telemetry; unique state nonces prevent repeated complete
+requests, but do not prove that internal prefix reuse is absent.
+
+The [resource plan](27b-ollama-stage6/resource-plan.json) estimates the extra
+resident FFN allocation before the run. The guard uses a 76 GiB process-group
+cap and a 12 GiB available-memory floor. Peak sampled accounting is
+69,623,676,928 bytes, and available memory stays above 45,587,169,280 bytes.
+Both owned servers stop successfully; no task-owned build, probe, or competing
+model runs during the comparison. Desktop applications and system services
+remain untouched. The [analysis](27b-ollama-stage6/analysis.json) retains every
+paired sample, and the configuration, logs, host samples, and lease receipts
+are included. Large local sampling timelines are identified by hash.
 
 ## Stage 5 normalization, synchronization, and 27B projections
 
@@ -222,6 +339,15 @@ Three additional probes retain negative or inconclusive results:
   does not establish GPU frequency or the cause of the slowdown. Only owned
   samples and aggregate facts are published; the unfinished system trace
   remains outside Git. No retry or resource-bound increase follows.
+
+The later [Q4 tensor probe](q4-tensor-probe-v1/README.md) also rejects its
+compressed-weight candidates. Exact tile decoding preserves all 88,080,384
+weighted outputs bit for bit but is about 11× slower than fixed64. Its
+expanded-f16 K256 control is already 7–8× slower, so decoding alone does not
+explain the loss. Native uint4 plus affine corrections is about 6× slower and
+fails four small numerical cases, reaching `0.0103413` against the fixed
+`0.001` screen. The successful guards, both numerical failures, and the initial
+shader syntax failure are retained. No candidate enters product code.
 
 ## Stage 5 27B HTTP batching
 

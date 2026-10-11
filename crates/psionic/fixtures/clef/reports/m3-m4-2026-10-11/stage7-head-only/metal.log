@@ -1,0 +1,110 @@
+warning: associated function `direct` is never used
+    --> crates/psionic-runtime/src/local_multi_device.rs:1244:8
+     |
+1243 | impl LocalDirectStageHandoffReceipt {
+     | ----------------------------------- associated function in this implementation
+1244 |     fn direct(handoff_id: impl Into<String>, tensor_count: usize) -> Self {
+     |        ^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `psionic-runtime` (lib) generated 1 warning
+warning: variable does not need to be mutable
+  --> crates/psionic-compiler/src/tassadar_alm_geometric.rs:68:9
+   |
+68 |     let mut push_point = |points: &mut BTreeMap<u16, Vec<TassadarAlmGeometricPoint>>,
+   |         ----^^^^^^^^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> crates/psionic-compiler/src/tassadar_symbolic_alm_bridge.rs:174:9
+    |
+174 |     let mut resolve = |operand: &TassadarSymbolicOperand,
+    |         ----^^^^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: `psionic-compiler` (lib) generated 2 warnings (run `cargo fix --lib -p psionic-compiler` to apply 2 suggestions)
+   Compiling psionic-backend-metal v0.2.0 (repo/crates/psionic/crates/psionic-backend-metal)
+warning: function `argmax_dense_rows` is never used
+    --> crates/psionic-backend-metal/src/lib.rs:5983:4
+     |
+5983 | fn argmax_dense_rows(
+     |    ^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `write_bytes` and `read_bytes` are never used
+    --> crates/psionic-backend-metal/src/lib.rs:7796:23
+     |
+7795 |     impl PlatformBuffer {
+     |     ------------------- methods in this implementation
+7796 |         pub(super) fn write_bytes(
+     |                       ^^^^^^^^^^^
+...
+7844 |         pub(super) fn read_bytes(&self, byte_len: usize) -> Result<Vec<u8>, RuntimeError> {
+     |                       ^^^^^^^^^^
+
+warning: function `byte_range` is never used
+     --> crates/psionic-backend-metal/src/lib.rs:10862:8
+      |
+10862 |     fn byte_range(byte_len: usize) -> Result<NSRange, RuntimeError> {
+      |        ^^^^^^^^^^
+
+warning: `psionic-backend-metal` (lib test) generated 3 warnings
+    Finished `release` profile [optimized + debuginfo] target(s) in 17.70s
+warning: the following packages contain code that will be rejected by a future version of Rust: block v0.1.6
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running unittests src/lib.rs (cargo-target/release/deps/psionic_backend_metal-a2dbd8deab19d6f5)
+
+running 44 tests
+test clef_attention::tests::empty_request_accesses_no_buffers_or_threadgroups ... ok
+test clef_attention::tests::fused_path_can_avoid_192_mib_of_staged_scratch_at_16k ... ok
+test clef_attention::tests::grouped_heads_have_separate_query_and_cache_strides ... ok
+test clef_attention::tests::invalid_head_shapes_are_rejected_even_for_empty_requests ... ok
+test clef_attention::tests::partial_query_tiles_and_absolute_cache_positions_are_kept ... ok
+test clef_attention::tests::rejects_position_overflow_and_signed_tensor_extent_overflow ... ok
+test clef_attention::tests::selection_defaults_to_staged_and_requires_an_exact_name ... ok
+test clef_delta::tests::additional_scratch_is_bounded_before_allocation ... ok
+test clef_delta::tests::block_algebra_matches_dense_recurrence_and_final_state ... ok
+test clef_delta::tests::direct_solve_matches_dense_recurrence_with_correlated_keys_and_long_carry ... ok
+test clef_delta::tests::empty_request_accesses_nothing_and_tails_allocate_whole_blocks ... ok
+test clef_delta::tests::head_orders_are_distinct_and_each_matches_its_oracle ... ok
+test clef_delta::tests::plan_checks_heads_extents_and_value_rows_even_when_empty ... ok
+test clef_delta::tests::selection_is_explicit_and_defaults_to_sequential ... ok
+test clef_delta::tests::zero_beta_keeps_only_decayed_initial_state ... ok
+test clef_gemm::tests::clef_27b_offsets_and_token_tails_keep_exact_buffer_bounds ... ok
+test clef_gemm::tests::default_and_exact_setting_names ... ok
+test clef_gemm::tests::every_real_weight_shape_selects_the_expected_tile_in_both_modes ... ok
+test clef_gemm::tests::offsets_are_element_based_and_sizes_do_not_include_tile_padding ... ok
+test clef_gemm::tests::rejects_invalid_extents_and_overflow_before_buffer_binding ... ok
+test clef_gemm::tests::unknown_weights_use_the_original_kernel_including_output_edges ... ok
+test clef_gemm::tests::zero_tokens_need_no_buffer_access_or_dispatch ... ok
+test clef_prefill::buffer_tests::buffer_views_keep_ownership_and_bound_host_and_kernel_writes ... ignored, requires explicit Metal hardware validation
+test clef_prefill::buffer_tests::byte_uploads_and_snapshots_preserve_short_and_unaligned_ranges ... ignored, requires explicit Metal hardware validation
+test clef_prefill::buffer_tests::completed_batches_release_buffers_before_the_outer_pool_drains ... ignored, requires explicit Metal hardware validation
+test clef_prefill::buffer_tests::device_copies_use_view_offsets_and_reject_overlap_before_dispatch ... ignored, requires explicit Metal hardware validation
+test clef_prefill::delta_tests::block_delta_carries_state_across_non_aligned_chunks_and_zero_decay ... ignored, requires explicit Metal hardware validation
+test clef_prefill::delta_tests::block_delta_direct_solve_handles_correlated_keys_without_resets ... ignored, requires explicit Metal hardware validation
+test clef_prefill::delta_tests::block_delta_matches_dense_oracle_and_sequential_with_tails_and_head_orders ... ignored, requires explicit Metal hardware validation
+test clef_prefill::delta_tests::block_delta_rejects_short_buffers_before_encoding_and_empty_is_a_noop ... ignored, requires explicit Metal hardware validation
+test clef_prefill::delta_tests::delta_prep_matches_additive_epsilon_reference_for_flash_and_27b_heads ... ignored, requires explicit Metal hardware validation
+test clef_prefill::gemm_tests::selected_gemm_tiles_match_baseline_and_dense_samples_for_clef_27b_weights ... ignored, requires explicit Metal hardware validation
+test clef_prefill::gemm_tests::selected_gemm_tiles_match_baseline_and_dense_samples_for_real_clef_weights ... ignored, requires explicit Metal hardware validation
+test clef_prefill::gemm_tests::selected_narrow_gemm_handles_single_rows_and_token_tile_boundaries ... ignored, requires explicit Metal hardware validation
+test clef_prefill::head_blocks::tests::field_attention_matches_f64_and_preserves_sources_and_guards ... ignored, requires explicit Metal hardware validation
+test clef_prefill::head_blocks::tests::field_helpers_refuse_bad_extents_and_unsafe_aliases_before_dispatch ... ignored, requires explicit Metal hardware validation
+test clef_prefill::head_blocks::tests::field_plan_bounds_geometry_and_counts_every_allocation ... ok
+test clef_prefill::quantized_tests::clef_packed_projection_formats_match_cpu_decode_and_products ... ignored, requires a Metal device; synthetic buffers under 128 KiB
+test clef_prefill::quantized_tests::clef_packed_weight_lengths_reject_partial_blocks_and_overflow ... ok
+test clef_prefill::tests::attention_rejects_undersized_buffers_before_dispatch ... ignored, requires explicit Metal hardware validation
+test clef_prefill::tests::fused_attention_masks_finite_future_values_and_handles_uniform_probabilities ... ignored, requires explicit Metal hardware validation
+test clef_prefill::tests::fused_attention_matches_dense_and_staged_at_tails_and_absolute_positions ... ignored, requires explicit Metal hardware validation
+test clef_prefill::tests::fused_attention_repeats_exactly_and_matches_non_aligned_chunks ... ignored, requires explicit Metal hardware validation
+test clef_prefill::tests::fused_attention_rescales_across_large_tile_maximum_changes ... ignored, requires explicit Metal hardware validation
+
+test result: ok. 24 passed; 0 failed; 20 ignored; 0 measured; 48 filtered out; finished in 0.04s
+

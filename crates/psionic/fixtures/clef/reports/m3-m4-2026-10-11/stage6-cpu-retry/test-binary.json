@@ -1,0 +1,7 @@
+{
+  "source_manifest_sha256": "a015844a6f6ffeabddcabf79d160bf2d29563420e75c78ce0ffdc7226353e46c",
+  "source_manifest_matches": true,
+  "test_binary_sha256": "34df2682935b667f41c4523884de9dd9d2d404825991a28de3e22643d73ae058",
+  "test_binary_bytes": 60565024,
+  "production_diff_from_stage6": "none; test-only.patch is the sole Rust source difference"
+}

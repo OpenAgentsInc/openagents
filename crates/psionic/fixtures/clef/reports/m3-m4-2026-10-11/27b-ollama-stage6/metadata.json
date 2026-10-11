@@ -1,0 +1,107 @@
+{
+  "schema": "clef.mac-quiet-bench.v1",
+  "created_at": "2026-10-11T11:29:13.654108+00:00",
+  "config": {
+    "model_path": "task-scratch/clef-m3-m4/artifacts/Clef-Q4_K_M.gguf",
+    "measurement_mode": "shared",
+    "max_start_load": 150,
+    "max_run_load": 180,
+    "rounds": 1,
+    "runs": 5,
+    "request_timeout": 300,
+    "variants": [
+      {
+        "name": "27b-q4-fused-head",
+        "binary": "task-scratch/clef-m3-m4/stage6/psionic-openai-server",
+        "chunk": 2048,
+        "env": {
+          "RAYON_NUM_THREADS": "2",
+          "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0",
+          "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+          "PSIONIC_CLEF_METAL_GEMM": "weight-shapes",
+          "PSIONIC_CLEF_METAL_FFN_WEIGHTS": "resident-f16",
+          "PSIONIC_CLEF_METAL_HEAD": "fused-fields",
+          "PSIONIC_CLEF_METAL_DELTA": "sequential"
+        },
+        "engine": "psionic",
+        "model": "clef"
+      },
+      {
+        "name": "ollama-27b",
+        "engine": "ollama",
+        "binary": "/Applications/Ollama.app/Contents/Resources/ollama",
+        "models_dir": "model-cache",
+        "model": "clef",
+        "max_rss_gib": 52,
+        "startup_timeout": 600,
+        "chunk": 2048
+      }
+    ],
+    "requests": [
+      "task-scratch/mac-quiet-2026-10-10/requests/len1k.json",
+      "task-scratch/mac-quiet-2026-10-10/requests/len4k.json",
+      "task-scratch/mac-quiet-2026-10-10/requests/len16k.json"
+    ],
+    "output_dir": "task-scratch/clef-m3-m4/27b-ollama-stage6-resident",
+    "max_rss_gib": 76,
+    "minimum_available_memory_gib": 12,
+    "startup_timeout": 600,
+    "request_model": "clef",
+    "clef_head": "task-scratch/clef-m3-m4/artifacts/clef-bf16/joint_head.safetensors",
+    "settle_seconds": 600,
+    "max_wait_seconds": 1800,
+    "max_start_gpu_percent": 10
+  },
+  "config_sha256": "5685c573d54dd3a7dea85cddce5d11a1a65b4e777d3ddfc2446019acbf44420a",
+  "python": "3.9.6",
+  "platform": "darwin",
+  "load_metric": "one-minute system load average",
+  "measurement_mode": "shared",
+  "quiet_lease": null,
+  "lease_id": "1791718153586-39814-0",
+  "lease_resources": [
+    "gpu",
+    "memory"
+  ],
+  "self_test": false,
+  "removed_inherited_env_names": [],
+  "variants": [
+    {
+      "name": "27b-q4-fused-head",
+      "binary_sha256": "77c74a2cf4c737ae0b92278e7f8384a213dc53f1567963fb6b8c6d0dc7157991",
+      "binary_commit": null,
+      "env": {
+        "RAYON_NUM_THREADS": "2",
+        "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0",
+        "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+        "PSIONIC_CLEF_METAL_GEMM": "weight-shapes",
+        "PSIONIC_CLEF_METAL_FFN_WEIGHTS": "resident-f16",
+        "PSIONIC_CLEF_METAL_HEAD": "fused-fields",
+        "PSIONIC_CLEF_METAL_DELTA": "sequential"
+      },
+      "profile_mode": "disabled"
+    },
+    {
+      "name": "ollama-27b",
+      "binary_sha256": "09fffd3a94d72e3db1ad66bda77c5ae5f4f725ac5043e27664b58a0f13361719",
+      "binary_commit": null,
+      "env": {},
+      "profile_mode": "disabled"
+    }
+  ],
+  "workloads": [
+    {
+      "path": "task-scratch/mac-quiet-2026-10-10/requests/len1k.json",
+      "sha256": "0f98f1ce7b7e54063e93ab8dbdf714f4bfb3a7a5822f0012ddd37f7bd7137eab"
+    },
+    {
+      "path": "task-scratch/mac-quiet-2026-10-10/requests/len4k.json",
+      "sha256": "5cadcbb4d5204128c73dbb8087ec0b6f27c81fffbd8e16416324396ce4c26dff"
+    },
+    {
+      "path": "task-scratch/mac-quiet-2026-10-10/requests/len16k.json",
+      "sha256": "7e2d3fc74517af655466c1951fba8fbed6aef652e6cb5953b3ac4b7f614e2daa"
+    }
+  ],
+  "checkout_commit": "715a379690b69cc5b6f3a1c6dd020413e3fdec50"
+}

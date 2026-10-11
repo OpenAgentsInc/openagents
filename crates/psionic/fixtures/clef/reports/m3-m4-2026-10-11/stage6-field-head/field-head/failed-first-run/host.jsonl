@@ -1,0 +1,4 @@
+{"agx_utilization": {"Device Utilization %": 39, "Renderer Utilization %": 2, "Tiler Utilization %": 2}, "at": "2026-10-11T10:48:31.194575+00:00", "load_1_5_15": [15.4521484375, 15.61572265625, 15.88330078125], "phase": "run"}
+{"agx_utilization": {"Device Utilization %": 28, "Renderer Utilization %": 2, "Tiler Utilization %": 2}, "at": "2026-10-11T10:48:36.232168+00:00", "load_1_5_15": [15.17529296875, 15.5556640625, 15.8603515625], "phase": "run"}
+{"agx_utilization": {"Device Utilization %": 21, "Renderer Utilization %": 2, "Tiler Utilization %": 2}, "at": "2026-10-11T10:48:41.265512+00:00", "load_1_5_15": [14.8408203125, 15.47998046875, 15.83154296875], "phase": "run"}
+{"agx_utilization": {"Device Utilization %": 20, "Renderer Utilization %": 2, "Tiler Utilization %": 2}, "at": "2026-10-11T10:48:46.303297+00:00", "load_1_5_15": [14.93359375, 15.48828125, 15.83251953125], "phase": "run"}

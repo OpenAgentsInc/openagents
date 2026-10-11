@@ -1,0 +1,84 @@
+{
+  "mode": "offline evidence validation only; no process launches, model execution, or GPU use",
+  "head_runs": [
+    {
+      "model": "flash",
+      "requests": 40,
+      "questions": 104,
+      "raw_logit_values_per_mode": 371,
+      "max_abs_logit_delta": 9.5367431640625e-07,
+      "complete_http_responses_per_mode": 40,
+      "pooled_bytes_per_mode": 4743168,
+      "pooled_files_bitwise_equal": true,
+      "owned_groups_stopped": true,
+      "native_token_ids_observed": false
+    },
+    {
+      "model": "clef-27b",
+      "requests": 40,
+      "questions": 104,
+      "raw_logit_values_per_mode": 371,
+      "max_abs_logit_delta": 5.960464477539062e-07,
+      "complete_http_responses_per_mode": 40,
+      "pooled_bytes_per_mode": 5928960,
+      "pooled_files_bitwise_equal": true,
+      "owned_groups_stopped": true,
+      "native_token_ids_observed": false
+    }
+  ],
+  "stage6_server_sha256": "77c74a2cf4c737ae0b92278e7f8384a213dc53f1567963fb6b8c6d0dc7157991",
+  "stage6_cpu_suite": {
+    "passed": 72,
+    "failed": 1,
+    "ignored": 9,
+    "status": "failed; retry excluded"
+  },
+  "stage6_small_gpu": {
+    "backend_passed": 21,
+    "serve_passed": 7
+  },
+  "block16_weighted": {
+    "standalone_max_abs_logit_delta": 0.00108385086,
+    "combined_max_abs_logit_delta": 0.00135493279,
+    "strict_limit": 0.001,
+    "both_failed": true
+  },
+  "limitations": [
+    "Head agreement is against the same Q4 GGUF and head, not the independent 27B BF16 acceptance gate.",
+    "Native token IDs are inferred from identical input/encoder, not exported. Exact counts and pooled-row bytes were checked.",
+    "Head correctness runs overlapped CPU compilation; timing fields are not latency evidence.",
+    "Per-question pooled-row hashes replace raw f16 tensors in this compact publication.",
+    "Guard limits are sampled accounting, not hard allocation limits.",
+    "The Stage6 CPU retry is not included."
+  ],
+  "bf16_text_comparison": [
+    {
+      "mode": "staged",
+      "requests": 40,
+      "questions": 104,
+      "top_agreements": 93,
+      "maximum_probability_difference": 0.2174068876822337,
+      "original_M1_numeric_gate": false,
+      "passed": false
+    },
+    {
+      "mode": "fused-fields",
+      "requests": 40,
+      "questions": 104,
+      "top_agreements": 93,
+      "maximum_probability_difference": 0.21740690247160716,
+      "original_M1_numeric_gate": false,
+      "passed": false
+    }
+  ],
+  "bf16_text_comparison_tokens_match_all_cases": true,
+  "images": {
+    "cases": 6,
+    "questions": 14,
+    "top_agreements": 14,
+    "http_refusals_passed": 10,
+    "maximum_probability_difference": 0.0017794304477648515,
+    "passed": true,
+    "native_token_ids_observed": false
+  }
+}

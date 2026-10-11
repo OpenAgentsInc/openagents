@@ -1,0 +1,19 @@
+psionic openai server listening on http://127.0.0.1:53189 decision_models=task-scratch/mac-quiet-2026-10-10/Clef-Flash-Q4_K_M.gguf backend=metal execution_mode=native route=/v1/systemone
+clef decision: 1082 tokens, 3 questions, waited 0 ms, ran 442 ms
+clef decision: 1078 tokens, 3 questions, waited 0 ms, ran 535 ms
+clef decision: 1081 tokens, 3 questions, waited 0 ms, ran 762 ms
+clef decision: 1081 tokens, 3 questions, waited 0 ms, ran 794 ms
+clef decision: 1081 tokens, 3 questions, waited 0 ms, ran 750 ms
+clef decision: 1082 tokens, 3 questions, waited 0 ms, ran 701 ms
+clef decision: 3915 tokens, 3 questions, waited 0 ms, ran 2537 ms
+clef decision: 3918 tokens, 3 questions, waited 0 ms, ran 2567 ms
+clef decision: 3918 tokens, 3 questions, waited 0 ms, ran 2462 ms
+clef decision: 3913 tokens, 3 questions, waited 0 ms, ran 2499 ms
+clef decision: 3917 tokens, 3 questions, waited 0 ms, ran 2567 ms
+clef decision: 3915 tokens, 3 questions, waited 0 ms, ran 2444 ms
+clef decision: 15510 tokens, 3 questions, waited 0 ms, ran 11232 ms
+clef decision: 15511 tokens, 3 questions, waited 0 ms, ran 11124 ms
+clef decision: 15511 tokens, 3 questions, waited 0 ms, ran 11098 ms
+clef decision: 15513 tokens, 3 questions, waited 0 ms, ran 11108 ms
+clef decision: 15512 tokens, 3 questions, waited 0 ms, ran 11141 ms
+clef decision: 15511 tokens, 3 questions, waited 0 ms, ran 10980 ms

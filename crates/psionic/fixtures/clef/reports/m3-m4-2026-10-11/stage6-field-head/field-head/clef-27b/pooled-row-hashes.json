@@ -1,0 +1,957 @@
+{
+  "raw_tensors_included": false,
+  "reason": "Compact bundle retains complete metadata/logits and byte hashes; raw pooled tensors remain in source run.",
+  "files": {
+    "staged": {
+      "source": "27b-head-stage6-combined/staged/rows.f16",
+      "sha256": "41f5eaf5ef1e393ea8765f3b5d01167ec34d339940d7ab0d4189a2272ab3b4e8",
+      "bytes": 5928960,
+      "included": false
+    },
+    "fused-fields": {
+      "source": "27b-head-stage6-combined/fused-fields/rows.f16",
+      "sha256": "41f5eaf5ef1e393ea8765f3b5d01167ec34d339940d7ab0d4189a2272ab3b4e8",
+      "bytes": 5928960,
+      "included": false
+    }
+  },
+  "whole_files_equal": true,
+  "questions": [
+    {
+      "id": "text-000",
+      "request_sha256": "sha256:06576cb3adffe07ad4f20d3e030925f855b632f52abf5ea4ce1392d50b1750e7",
+      "question": "import",
+      "offset": 0,
+      "bytes": 40960,
+      "staged_sha256": "50d097ce5d5860ab4f396efddd849ae3cde8ff7552e4098e198580bc84fb08b6",
+      "fused_fields_sha256": "50d097ce5d5860ab4f396efddd849ae3cde8ff7552e4098e198580bc84fb08b6"
+    },
+    {
+      "id": "text-000",
+      "request_sha256": "sha256:06576cb3adffe07ad4f20d3e030925f855b632f52abf5ea4ce1392d50b1750e7",
+      "question": "id with space1",
+      "offset": 40960,
+      "bytes": 92160,
+      "staged_sha256": "d4627b83ae82b946f49e6ad060de246f8e3669d57986732a87d183d0674ba40a",
+      "fused_fields_sha256": "d4627b83ae82b946f49e6ad060de246f8e3669d57986732a87d183d0674ba40a"
+    },
+    {
+      "id": "text-000",
+      "request_sha256": "sha256:06576cb3adffe07ad4f20d3e030925f855b632f52abf5ea4ce1392d50b1750e7",
+      "question": "login_2",
+      "offset": 133120,
+      "bytes": 40960,
+      "staged_sha256": "dac90efb5c22d306c3e1c6e432d64b9bf6626ad109505929dbf509ec364665de",
+      "fused_fields_sha256": "dac90efb5c22d306c3e1c6e432d64b9bf6626ad109505929dbf509ec364665de"
+    },
+    {
+      "id": "text-000",
+      "request_sha256": "sha256:06576cb3adffe07ad4f20d3e030925f855b632f52abf5ea4ce1392d50b1750e7",
+      "question": "dashboard_3",
+      "offset": 174080,
+      "bytes": 40960,
+      "staged_sha256": "b09e37c381693099f24ab1ec29cbd9d0e22dee82f03123170682111ae8306c10",
+      "fused_fields_sha256": "b09e37c381693099f24ab1ec29cbd9d0e22dee82f03123170682111ae8306c10"
+    },
+    {
+      "id": "text-001",
+      "request_sha256": "sha256:e908dcd142c5537ef4c6ea6e804db584021853432d24bb7b6f1f4551f3dd1a7a",
+      "question": "latency",
+      "offset": 215040,
+      "bytes": 40960,
+      "staged_sha256": "8fd183fd94387e113240ce5af5e204f802820dce9136bb5590c056f94544d946",
+      "fused_fields_sha256": "8fd183fd94387e113240ce5af5e204f802820dce9136bb5590c056f94544d946"
+    },
+    {
+      "id": "text-001",
+      "request_sha256": "sha256:e908dcd142c5537ef4c6ea6e804db584021853432d24bb7b6f1f4551f3dd1a7a",
+      "question": "cart",
+      "offset": 256000,
+      "bytes": 102400,
+      "staged_sha256": "ec40c37856e8a69701a88cd968f2a5599d026bea48407fd617337e73abbe7596",
+      "fused_fields_sha256": "ec40c37856e8a69701a88cd968f2a5599d026bea48407fd617337e73abbe7596"
+    },
+    {
+      "id": "text-001",
+      "request_sha256": "sha256:e908dcd142c5537ef4c6ea6e804db584021853432d24bb7b6f1f4551f3dd1a7a",
+      "question": "limit_2",
+      "offset": 358400,
+      "bytes": 40960,
+      "staged_sha256": "1e9cde835006a548c7266ecbca1099e54422bd9a774d7fa15d5ef9fab07e87b6",
+      "fused_fields_sha256": "1e9cde835006a548c7266ecbca1099e54422bd9a774d7fa15d5ef9fab07e87b6"
+    },
+    {
+      "id": "text-002",
+      "request_sha256": "sha256:2b32a8a8114923ba22ff853aa1e958e1a6b33160f4776dc269df892967c92169",
+      "question": "user_0",
+      "offset": 399360,
+      "bytes": 102400,
+      "staged_sha256": "f76ee8f25be8e03ab6df3a9f3f47774b74cd2b14cd495e96ab1289786c631f50",
+      "fused_fields_sha256": "f76ee8f25be8e03ab6df3a9f3f47774b74cd2b14cd495e96ab1289786c631f50"
+    },
+    {
+      "id": "text-003",
+      "request_sha256": "sha256:bd8c95e5b4f120ce6e1e1f324198c3ea3816a60d32bac4aa8345490ab533be1b",
+      "question": "export_0",
+      "offset": 501760,
+      "bytes": 40960,
+      "staged_sha256": "eacc16cf914a704db23cd6872a78d97f8528a78df14793ed8c4a978d436b6367",
+      "fused_fields_sha256": "eacc16cf914a704db23cd6872a78d97f8528a78df14793ed8c4a978d436b6367"
+    },
+    {
+      "id": "text-004",
+      "request_sha256": "sha256:72c9542e39fbf174588ff2eb9298d7dd423ec17f87572485d1622f1ea04f819f",
+      "question": "timeout_0",
+      "offset": 542720,
+      "bytes": 92160,
+      "staged_sha256": "3af0876dc85aea188aa14beffafa795732b2cfe489ab2cd137f2813ac9804a94",
+      "fused_fields_sha256": "3af0876dc85aea188aa14beffafa795732b2cfe489ab2cd137f2813ac9804a94"
+    },
+    {
+      "id": "text-005",
+      "request_sha256": "sha256:cadfa1c4e79dae52d010191cd94d89bee0c1a5ebe59105133606b36841e7c16a",
+      "question": "bug_0",
+      "offset": 634880,
+      "bytes": 92160,
+      "staged_sha256": "19c8ca0e70545b3727b102e7f5331c230d1dbf968451f503c3e649695d9aed8b",
+      "fused_fields_sha256": "19c8ca0e70545b3727b102e7f5331c230d1dbf968451f503c3e649695d9aed8b"
+    },
+    {
+      "id": "text-005",
+      "request_sha256": "sha256:cadfa1c4e79dae52d010191cd94d89bee0c1a5ebe59105133606b36841e7c16a",
+      "question": "refund",
+      "offset": 727040,
+      "bytes": 40960,
+      "staged_sha256": "b7b2bd17b8889e15adb2fdc6821e0bed04d30d2e484624cc5849c4d10e770442",
+      "fused_fields_sha256": "b7b2bd17b8889e15adb2fdc6821e0bed04d30d2e484624cc5849c4d10e770442"
+    },
+    {
+      "id": "text-006",
+      "request_sha256": "sha256:1511f7ddf497298712fb9b9e76b24149ce2a9daa4fe5ecb7810ced696f87f329",
+      "question": "\u00dcn\u00efcode_id0",
+      "offset": 768000,
+      "bytes": 40960,
+      "staged_sha256": "3a3449f717a7398aa9615d5d0f88a641f84d7f47e445870ec7f7398a281972a1",
+      "fused_fields_sha256": "3a3449f717a7398aa9615d5d0f88a641f84d7f47e445870ec7f7398a281972a1"
+    },
+    {
+      "id": "text-007",
+      "request_sha256": "sha256:69d3a152e1aecf1dd978a083fd38b88b70abbdeaaeb79094c5f55a8f99597540",
+      "question": "billing_0",
+      "offset": 808960,
+      "bytes": 40960,
+      "staged_sha256": "7d91825f6bbf86f07c030514e87737444a136613048651a7ee06ef00c346a532",
+      "fused_fields_sha256": "7d91825f6bbf86f07c030514e87737444a136613048651a7ee06ef00c346a532"
+    },
+    {
+      "id": "text-007",
+      "request_sha256": "sha256:69d3a152e1aecf1dd978a083fd38b88b70abbdeaaeb79094c5f55a8f99597540",
+      "question": "dashboard",
+      "offset": 849920,
+      "bytes": 92160,
+      "staged_sha256": "3590d360a1284ee6b046af07637ec624eb42eaada4531ab89ab01f294a752ff8",
+      "fused_fields_sha256": "3590d360a1284ee6b046af07637ec624eb42eaada4531ab89ab01f294a752ff8"
+    },
+    {
+      "id": "text-007",
+      "request_sha256": "sha256:69d3a152e1aecf1dd978a083fd38b88b70abbdeaaeb79094c5f55a8f99597540",
+      "question": "timeout",
+      "offset": 942080,
+      "bytes": 40960,
+      "staged_sha256": "fd9bd6144f418db5d9bdc01365bb7ed7c2d322774d9b06592321d49c076b02e1",
+      "fused_fields_sha256": "fd9bd6144f418db5d9bdc01365bb7ed7c2d322774d9b06592321d49c076b02e1"
+    },
+    {
+      "id": "text-008",
+      "request_sha256": "sha256:0e0dc421f6f7335d9ea1de8b57d1b335729c7bf3232285050c6b81ee67f326b8",
+      "question": "release_0",
+      "offset": 983040,
+      "bytes": 40960,
+      "staged_sha256": "41b049c7acfef9d5c9cf8040e095be0344c9438b4913b28ee740200e830e1066",
+      "fused_fields_sha256": "41b049c7acfef9d5c9cf8040e095be0344c9438b4913b28ee740200e830e1066"
+    },
+    {
+      "id": "text-008",
+      "request_sha256": "sha256:0e0dc421f6f7335d9ea1de8b57d1b335729c7bf3232285050c6b81ee67f326b8",
+      "question": "rollback_1",
+      "offset": 1024000,
+      "bytes": 102400,
+      "staged_sha256": "8d1d865c18a180a962edfb6902ae58ef555418bb60c5517d17c1f5830962256c",
+      "fused_fields_sha256": "8d1d865c18a180a962edfb6902ae58ef555418bb60c5517d17c1f5830962256c"
+    },
+    {
+      "id": "text-008",
+      "request_sha256": "sha256:0e0dc421f6f7335d9ea1de8b57d1b335729c7bf3232285050c6b81ee67f326b8",
+      "question": "refund",
+      "offset": 1126400,
+      "bytes": 40960,
+      "staged_sha256": "818127cc6bc7d2b5e88ff32642a456e12d2637332e3bb38ce22121a5a5011100",
+      "fused_fields_sha256": "818127cc6bc7d2b5e88ff32642a456e12d2637332e3bb38ce22121a5a5011100"
+    },
+    {
+      "id": "text-009",
+      "request_sha256": "sha256:0e935fd232034f418fcb5ee6291a6ec582ce36151d1014588d472e9bb4e325bb",
+      "question": "import_0",
+      "offset": 1167360,
+      "bytes": 40960,
+      "staged_sha256": "460836df02d03d38e306a643311e5880b50e3bd56aba072938e12670a2044f1d",
+      "fused_fields_sha256": "460836df02d03d38e306a643311e5880b50e3bd56aba072938e12670a2044f1d"
+    },
+    {
+      "id": "text-009",
+      "request_sha256": "sha256:0e935fd232034f418fcb5ee6291a6ec582ce36151d1014588d472e9bb4e325bb",
+      "question": "rate",
+      "offset": 1208320,
+      "bytes": 81920,
+      "staged_sha256": "7a9a147d0e7070774b2bd7e112e8579f6f4c481aecd040756df9c8ccfb074b53",
+      "fused_fields_sha256": "7a9a147d0e7070774b2bd7e112e8579f6f4c481aecd040756df9c8ccfb074b53"
+    },
+    {
+      "id": "text-009",
+      "request_sha256": "sha256:0e935fd232034f418fcb5ee6291a6ec582ce36151d1014588d472e9bb4e325bb",
+      "question": "key",
+      "offset": 1290240,
+      "bytes": 51200,
+      "staged_sha256": "021c67e4ae2f20a63128a7bda25a083e3f259a8f1992862761640f89526a0265",
+      "fused_fields_sha256": "021c67e4ae2f20a63128a7bda25a083e3f259a8f1992862761640f89526a0265"
+    },
+    {
+      "id": "text-009",
+      "request_sha256": "sha256:0e935fd232034f418fcb5ee6291a6ec582ce36151d1014588d472e9bb4e325bb",
+      "question": "password_3",
+      "offset": 1341440,
+      "bytes": 102400,
+      "staged_sha256": "052c1860509f72606cdcc8189f78cc9ecc31bc3ce19e3c559e63ed7871dbd663",
+      "fused_fields_sha256": "052c1860509f72606cdcc8189f78cc9ecc31bc3ce19e3c559e63ed7871dbd663"
+    },
+    {
+      "id": "text-009",
+      "request_sha256": "sha256:0e935fd232034f418fcb5ee6291a6ec582ce36151d1014588d472e9bb4e325bb",
+      "question": "minor_4",
+      "offset": 1443840,
+      "bytes": 40960,
+      "staged_sha256": "94084615e5f4595f23f5e8029c29390097a148ced81fbe371f7d211b978061e0",
+      "fused_fields_sha256": "94084615e5f4595f23f5e8029c29390097a148ced81fbe371f7d211b978061e0"
+    },
+    {
+      "id": "text-010",
+      "request_sha256": "sha256:7ef458e99e4d4eca3f1bf2f2498ccbb79d98a211c53bb1b5083ba209c75c5853",
+      "question": "\u65e5\u672c0",
+      "offset": 1484800,
+      "bytes": 102400,
+      "staged_sha256": "d49ae28cb921cd39c6b47c82787b13f4383c8625376d498d8c02562f6167faaa",
+      "fused_fields_sha256": "d49ae28cb921cd39c6b47c82787b13f4383c8625376d498d8c02562f6167faaa"
+    },
+    {
+      "id": "text-011",
+      "request_sha256": "sha256:ced1eb8e62c417d2c92044a26a669b7e1a248b81ede166ff7afc1571d1c144a1",
+      "question": "region",
+      "offset": 1587200,
+      "bytes": 81920,
+      "staged_sha256": "44333a4a3c0eb18818f25dad20ebbc0440975ca71f9839bbd96a5f71fe09766b",
+      "fused_fields_sha256": "44333a4a3c0eb18818f25dad20ebbc0440975ca71f9839bbd96a5f71fe09766b"
+    },
+    {
+      "id": "text-011",
+      "request_sha256": "sha256:ced1eb8e62c417d2c92044a26a669b7e1a248b81ede166ff7afc1571d1c144a1",
+      "question": "user",
+      "offset": 1669120,
+      "bytes": 92160,
+      "staged_sha256": "7fb073f7db9db48c8c88e513c3800d6f115455a944d46b6e3504b30f25d7ff26",
+      "fused_fields_sha256": "7fb073f7db9db48c8c88e513c3800d6f115455a944d46b6e3504b30f25d7ff26"
+    },
+    {
+      "id": "text-011",
+      "request_sha256": "sha256:ced1eb8e62c417d2c92044a26a669b7e1a248b81ede166ff7afc1571d1c144a1",
+      "question": "reset",
+      "offset": 1761280,
+      "bytes": 40960,
+      "staged_sha256": "fd1fe59e3e1808e467f4e61e7c14a059b96a4a2fc34af3827cd3ddded14fa4b0",
+      "fused_fields_sha256": "fd1fe59e3e1808e467f4e61e7c14a059b96a4a2fc34af3827cd3ddded14fa4b0"
+    },
+    {
+      "id": "text-011",
+      "request_sha256": "sha256:ced1eb8e62c417d2c92044a26a669b7e1a248b81ede166ff7afc1571d1c144a1",
+      "question": "id with space3",
+      "offset": 1802240,
+      "bytes": 40960,
+      "staged_sha256": "b89b86594f86ce810afeedcfbd985288152b619f4082cfd0d12040db6e71f2ec",
+      "fused_fields_sha256": "b89b86594f86ce810afeedcfbd985288152b619f4082cfd0d12040db6e71f2ec"
+    },
+    {
+      "id": "text-011",
+      "request_sha256": "sha256:ced1eb8e62c417d2c92044a26a669b7e1a248b81ede166ff7afc1571d1c144a1",
+      "question": "refund",
+      "offset": 1843200,
+      "bytes": 51200,
+      "staged_sha256": "6cf2725765e6d8ad7bfd9d61a330e97220d62f8929c6ee55c56fafd8d07c7bde",
+      "fused_fields_sha256": "6cf2725765e6d8ad7bfd9d61a330e97220d62f8929c6ee55c56fafd8d07c7bde"
+    },
+    {
+      "id": "text-012",
+      "request_sha256": "sha256:1878cb7384937277fc36f775d417cf18f923e769c89c22f695a0342ea578ba0b",
+      "question": "key_0",
+      "offset": 1894400,
+      "bytes": 40960,
+      "staged_sha256": "ccbdd936345a3d70dea390223469043d041de3a1e3c5db409a7a7a818ed59be7",
+      "fused_fields_sha256": "ccbdd936345a3d70dea390223469043d041de3a1e3c5db409a7a7a818ed59be7"
+    },
+    {
+      "id": "text-012",
+      "request_sha256": "sha256:1878cb7384937277fc36f775d417cf18f923e769c89c22f695a0342ea578ba0b",
+      "question": "webhook",
+      "offset": 1935360,
+      "bytes": 40960,
+      "staged_sha256": "f8c1f9d93bd9dea3558a767dbef5de18d74a6b3429f3829ca42695929c393b04",
+      "fused_fields_sha256": "f8c1f9d93bd9dea3558a767dbef5de18d74a6b3429f3829ca42695929c393b04"
+    },
+    {
+      "id": "text-012",
+      "request_sha256": "sha256:1878cb7384937277fc36f775d417cf18f923e769c89c22f695a0342ea578ba0b",
+      "question": "merge_2",
+      "offset": 1976320,
+      "bytes": 40960,
+      "staged_sha256": "079e75b6f5655351b4e932311b4d0fee281ebc773ffbb2a0818af12cbe26f72d",
+      "fused_fields_sha256": "079e75b6f5655351b4e932311b4d0fee281ebc773ffbb2a0818af12cbe26f72d"
+    },
+    {
+      "id": "text-012",
+      "request_sha256": "sha256:1878cb7384937277fc36f775d417cf18f923e769c89c22f695a0342ea578ba0b",
+      "question": "payment_3",
+      "offset": 2017280,
+      "bytes": 40960,
+      "staged_sha256": "daf66035d6b993075b2355e5701b264b93882187de02668eb923bd3a42679986",
+      "fused_fields_sha256": "daf66035d6b993075b2355e5701b264b93882187de02668eb923bd3a42679986"
+    },
+    {
+      "id": "text-012",
+      "request_sha256": "sha256:1878cb7384937277fc36f775d417cf18f923e769c89c22f695a0342ea578ba0b",
+      "question": "limit_4",
+      "offset": 2058240,
+      "bytes": 40960,
+      "staged_sha256": "4f8f7cd42934aee0c6ed951c5d944c89088e512bc9c179557f74f9f04d14887b",
+      "fused_fields_sha256": "4f8f7cd42934aee0c6ed951c5d944c89088e512bc9c179557f74f9f04d14887b"
+    },
+    {
+      "id": "text-013",
+      "request_sha256": "sha256:2bec6d9fd419b649b88fd87fb4d33de66d75cf5e3b0571cc06091b5f3288e9b3",
+      "question": "branch",
+      "offset": 2099200,
+      "bytes": 40960,
+      "staged_sha256": "eca27b716bfd6d2803f243c9a58f424fb6cea11e730e048455f17075d8d9913f",
+      "fused_fields_sha256": "eca27b716bfd6d2803f243c9a58f424fb6cea11e730e048455f17075d8d9913f"
+    },
+    {
+      "id": "text-013",
+      "request_sha256": "sha256:2bec6d9fd419b649b88fd87fb4d33de66d75cf5e3b0571cc06091b5f3288e9b3",
+      "question": "build",
+      "offset": 2140160,
+      "bytes": 92160,
+      "staged_sha256": "b6c7136ec49235dfd71a1e0b644ff211b92b34d033887131c6aac3b7f6f8fc7e",
+      "fused_fields_sha256": "b6c7136ec49235dfd71a1e0b644ff211b92b34d033887131c6aac3b7f6f8fc7e"
+    },
+    {
+      "id": "text-013",
+      "request_sha256": "sha256:2bec6d9fd419b649b88fd87fb4d33de66d75cf5e3b0571cc06091b5f3288e9b3",
+      "question": "bug_2",
+      "offset": 2232320,
+      "bytes": 61440,
+      "staged_sha256": "c0d57c2d73d61a235a9cf41962cce01fd415df9907be6d269169b0409e1fe6b8",
+      "fused_fields_sha256": "c0d57c2d73d61a235a9cf41962cce01fd415df9907be6d269169b0409e1fe6b8"
+    },
+    {
+      "id": "text-014",
+      "request_sha256": "sha256:29d322e061787904a3af97128821cf641e60e29966b08740ad344be9a0129818",
+      "question": "x0",
+      "offset": 2293760,
+      "bytes": 71680,
+      "staged_sha256": "ec7892c839cb33298b776a220c9bc0a3508d2f87d879d5ddf621d9a8eb76b73d",
+      "fused_fields_sha256": "ec7892c839cb33298b776a220c9bc0a3508d2f87d879d5ddf621d9a8eb76b73d"
+    },
+    {
+      "id": "text-015",
+      "request_sha256": "sha256:42daa2659264b98c47d6b13fd3da86b13119c56b8923ba27c73395f97fcc5b8d",
+      "question": "team_0",
+      "offset": 2365440,
+      "bytes": 61440,
+      "staged_sha256": "c5fc0caecd9e8c0629ef6bd37ce618e7e9f11fb48274d445bed6593bcc70fb06",
+      "fused_fields_sha256": "c5fc0caecd9e8c0629ef6bd37ce618e7e9f11fb48274d445bed6593bcc70fb06"
+    },
+    {
+      "id": "text-016",
+      "request_sha256": "sha256:0e36c948edbc341f48b68a258caf979469acca3f5f11fc32dd26b603c9133777",
+      "question": "release",
+      "offset": 2426880,
+      "bytes": 40960,
+      "staged_sha256": "ea6cfd6a0c592dc30292b3c297c9c98e1dbaf37fcf141ce66401d8449fda71ce",
+      "fused_fields_sha256": "ea6cfd6a0c592dc30292b3c297c9c98e1dbaf37fcf141ce66401d8449fda71ce"
+    },
+    {
+      "id": "text-017",
+      "request_sha256": "sha256:afd3a47f0205f43743ad9bddea2c0f3306410726f79637ff07b969a39b1a3c85",
+      "question": "upgrade_0",
+      "offset": 2467840,
+      "bytes": 40960,
+      "staged_sha256": "991981ae347506d471bf153c8c1ac5c75600f14b1fc033134f483c6574d7df87",
+      "fused_fields_sha256": "991981ae347506d471bf153c8c1ac5c75600f14b1fc033134f483c6574d7df87"
+    },
+    {
+      "id": "text-017",
+      "request_sha256": "sha256:afd3a47f0205f43743ad9bddea2c0f3306410726f79637ff07b969a39b1a3c85",
+      "question": "branch_1",
+      "offset": 2508800,
+      "bytes": 102400,
+      "staged_sha256": "7d972ee1749deaee9ebc40771096df4da0953675b3d27d76edad4a0f64a0a527",
+      "fused_fields_sha256": "7d972ee1749deaee9ebc40771096df4da0953675b3d27d76edad4a0f64a0a527"
+    },
+    {
+      "id": "text-017",
+      "request_sha256": "sha256:afd3a47f0205f43743ad9bddea2c0f3306410726f79637ff07b969a39b1a3c85",
+      "question": "critical_2",
+      "offset": 2611200,
+      "bytes": 51200,
+      "staged_sha256": "674f4cb6d9c7a0474892115cea797c5c1f3cb8ec83fbaa290c584fde25afbe66",
+      "fused_fields_sha256": "674f4cb6d9c7a0474892115cea797c5c1f3cb8ec83fbaa290c584fde25afbe66"
+    },
+    {
+      "id": "text-018",
+      "request_sha256": "sha256:97615199bd4590d34fc57dac0e68d5fe62b67423b46c79cba92038a730bafd05",
+      "question": "cart",
+      "offset": 2662400,
+      "bytes": 51200,
+      "staged_sha256": "de976d509085606abf84522bb446bf31942de2be61cffd3f7307157d944c0142",
+      "fused_fields_sha256": "de976d509085606abf84522bb446bf31942de2be61cffd3f7307157d944c0142"
+    },
+    {
+      "id": "text-018",
+      "request_sha256": "sha256:97615199bd4590d34fc57dac0e68d5fe62b67423b46c79cba92038a730bafd05",
+      "question": "invoice_1",
+      "offset": 2713600,
+      "bytes": 40960,
+      "staged_sha256": "ca5bc1dae4b891f0170c41e5b2412b1351afaa00b37d99e354c790b26852d2e1",
+      "fused_fields_sha256": "ca5bc1dae4b891f0170c41e5b2412b1351afaa00b37d99e354c790b26852d2e1"
+    },
+    {
+      "id": "text-018",
+      "request_sha256": "sha256:97615199bd4590d34fc57dac0e68d5fe62b67423b46c79cba92038a730bafd05",
+      "question": "invoice",
+      "offset": 2754560,
+      "bytes": 40960,
+      "staged_sha256": "ffccc6b8831069545a26b639a2e060fb709ab5b09f0a62b8682a16d8881b8f0d",
+      "fused_fields_sha256": "ffccc6b8831069545a26b639a2e060fb709ab5b09f0a62b8682a16d8881b8f0d"
+    },
+    {
+      "id": "text-018",
+      "request_sha256": "sha256:97615199bd4590d34fc57dac0e68d5fe62b67423b46c79cba92038a730bafd05",
+      "question": "\u00dcn\u00efcode_id3",
+      "offset": 2795520,
+      "bytes": 92160,
+      "staged_sha256": "7424cc7bb65cdd818640b839d99d3f65c253fa4384ed24ef06a50643849e9374",
+      "fused_fields_sha256": "7424cc7bb65cdd818640b839d99d3f65c253fa4384ed24ef06a50643849e9374"
+    },
+    {
+      "id": "text-019",
+      "request_sha256": "sha256:441561bb2e0573376e60ebff0ef6e916264d7999f2f016e25db3cf84150d7fdb",
+      "question": "payment_0",
+      "offset": 2887680,
+      "bytes": 81920,
+      "staged_sha256": "75bb23846839a1090884cc034aa0242b1d8ab2493d040a432e1d5517c2e8128d",
+      "fused_fields_sha256": "75bb23846839a1090884cc034aa0242b1d8ab2493d040a432e1d5517c2e8128d"
+    },
+    {
+      "id": "text-019",
+      "request_sha256": "sha256:441561bb2e0573376e60ebff0ef6e916264d7999f2f016e25db3cf84150d7fdb",
+      "question": "bug",
+      "offset": 2969600,
+      "bytes": 61440,
+      "staged_sha256": "e2cc22b4749bf091c0d904f2a522f707d6499c4d3bf203539fabff00ea7c2e4e",
+      "fused_fields_sha256": "e2cc22b4749bf091c0d904f2a522f707d6499c4d3bf203539fabff00ea7c2e4e"
+    },
+    {
+      "id": "text-019",
+      "request_sha256": "sha256:441561bb2e0573376e60ebff0ef6e916264d7999f2f016e25db3cf84150d7fdb",
+      "question": "rate",
+      "offset": 3031040,
+      "bytes": 40960,
+      "staged_sha256": "ede9be6a3cdddcc3be2a7549f671ba66ad053dea83ab547cda23630593500893",
+      "fused_fields_sha256": "ede9be6a3cdddcc3be2a7549f671ba66ad053dea83ab547cda23630593500893"
+    },
+    {
+      "id": "text-019",
+      "request_sha256": "sha256:441561bb2e0573376e60ebff0ef6e916264d7999f2f016e25db3cf84150d7fdb",
+      "question": "key",
+      "offset": 3072000,
+      "bytes": 40960,
+      "staged_sha256": "09f0112fb8642f48b846871135fc041b84d39b8c7238971962825142b75631ad",
+      "fused_fields_sha256": "09f0112fb8642f48b846871135fc041b84d39b8c7238971962825142b75631ad"
+    },
+    {
+      "id": "text-019",
+      "request_sha256": "sha256:441561bb2e0573376e60ebff0ef6e916264d7999f2f016e25db3cf84150d7fdb",
+      "question": "token_4",
+      "offset": 3112960,
+      "bytes": 71680,
+      "staged_sha256": "d259c25cbaa8e1182d6590a8b8a6268c3bca0dd8997cde40f67c29a8e91591bf",
+      "fused_fields_sha256": "d259c25cbaa8e1182d6590a8b8a6268c3bca0dd8997cde40f67c29a8e91591bf"
+    },
+    {
+      "id": "text-020",
+      "request_sha256": "sha256:5bed3ce6accadd262e84c3a7bf6da40e1363351a6c095ad53e41d84f91ed7c53",
+      "question": "invoice",
+      "offset": 3184640,
+      "bytes": 92160,
+      "staged_sha256": "b38d40daf4e5412344b898779e75e191ca2f8701240fac76cb542959dd127f4b",
+      "fused_fields_sha256": "b38d40daf4e5412344b898779e75e191ca2f8701240fac76cb542959dd127f4b"
+    },
+    {
+      "id": "text-020",
+      "request_sha256": "sha256:5bed3ce6accadd262e84c3a7bf6da40e1363351a6c095ad53e41d84f91ed7c53",
+      "question": "\u00dcn\u00efcode_id1",
+      "offset": 3276800,
+      "bytes": 40960,
+      "staged_sha256": "8059951d115384c62c3242a0815c33434d94c1d32ed995cd25d6c0c0d5dea7e7",
+      "fused_fields_sha256": "8059951d115384c62c3242a0815c33434d94c1d32ed995cd25d6c0c0d5dea7e7"
+    },
+    {
+      "id": "text-020",
+      "request_sha256": "sha256:5bed3ce6accadd262e84c3a7bf6da40e1363351a6c095ad53e41d84f91ed7c53",
+      "question": "login",
+      "offset": 3317760,
+      "bytes": 81920,
+      "staged_sha256": "444c3d112667797af5b77d15dd8c6fc8beca4ed4b8a36e007f8b1328df5b9b7e",
+      "fused_fields_sha256": "444c3d112667797af5b77d15dd8c6fc8beca4ed4b8a36e007f8b1328df5b9b7e"
+    },
+    {
+      "id": "text-021",
+      "request_sha256": "sha256:902d5b83c3ab5d0ed978acd217bd0e769baef0d8b22fa1b8d28bc472b7a9922d",
+      "question": "build_0",
+      "offset": 3399680,
+      "bytes": 40960,
+      "staged_sha256": "0d45ef726156a04fdd812cc616546c7371fba815195668048556ef6a250e163f",
+      "fused_fields_sha256": "0d45ef726156a04fdd812cc616546c7371fba815195668048556ef6a250e163f"
+    },
+    {
+      "id": "text-021",
+      "request_sha256": "sha256:902d5b83c3ab5d0ed978acd217bd0e769baef0d8b22fa1b8d28bc472b7a9922d",
+      "question": "test_1",
+      "offset": 3440640,
+      "bytes": 40960,
+      "staged_sha256": "990974968cf614ccab14049c9592e3665ff5618cc1c1c351e8f6972272ecac98",
+      "fused_fields_sha256": "990974968cf614ccab14049c9592e3665ff5618cc1c1c351e8f6972272ecac98"
+    },
+    {
+      "id": "text-021",
+      "request_sha256": "sha256:902d5b83c3ab5d0ed978acd217bd0e769baef0d8b22fa1b8d28bc472b7a9922d",
+      "question": "branch",
+      "offset": 3481600,
+      "bytes": 92160,
+      "staged_sha256": "bf2922812742715a45b25a35f93a8f4d75eaf19038022d72f19746401aa2f006",
+      "fused_fields_sha256": "bf2922812742715a45b25a35f93a8f4d75eaf19038022d72f19746401aa2f006"
+    },
+    {
+      "id": "text-022",
+      "request_sha256": "sha256:932e4d38c3e067df8e0fbe4377494f8ba74b861a15af820551f83ce790d796dd",
+      "question": "build",
+      "offset": 3573760,
+      "bytes": 40960,
+      "staged_sha256": "21b7e5ccddfcb8b27a4ef679ba12af0c82704cc00efcc9408ddbc0d6711c5373",
+      "fused_fields_sha256": "21b7e5ccddfcb8b27a4ef679ba12af0c82704cc00efcc9408ddbc0d6711c5373"
+    },
+    {
+      "id": "text-023",
+      "request_sha256": "sha256:c9409e1f51c5d7ac6cf16fcfa94741ec1f4aaf25ad77ca227e75d5fa12bc6cab",
+      "question": "plan",
+      "offset": 3614720,
+      "bytes": 40960,
+      "staged_sha256": "edf891c05fed4340125e7f224aafe1ae5a8847cdcaca29488f6327fcb7ee3289",
+      "fused_fields_sha256": "edf891c05fed4340125e7f224aafe1ae5a8847cdcaca29488f6327fcb7ee3289"
+    },
+    {
+      "id": "text-024",
+      "request_sha256": "sha256:b3f4554aedce280405c5e8c1f5a05f744619545caa65af8848d0b911f1c306b6",
+      "question": "billing_0",
+      "offset": 3655680,
+      "bytes": 40960,
+      "staged_sha256": "6e89952c3ce663a869697a7beb673b2ea17d85c05ebcd13e11f2c886285e109d",
+      "fused_fields_sha256": "6e89952c3ce663a869697a7beb673b2ea17d85c05ebcd13e11f2c886285e109d"
+    },
+    {
+      "id": "text-024",
+      "request_sha256": "sha256:b3f4554aedce280405c5e8c1f5a05f744619545caa65af8848d0b911f1c306b6",
+      "question": "fraud_1",
+      "offset": 3696640,
+      "bytes": 40960,
+      "staged_sha256": "659fc7786753789d1d2df1016b0b676b9f5785f60d44150599996a1a4ee2766a",
+      "fused_fields_sha256": "659fc7786753789d1d2df1016b0b676b9f5785f60d44150599996a1a4ee2766a"
+    },
+    {
+      "id": "text-024",
+      "request_sha256": "sha256:b3f4554aedce280405c5e8c1f5a05f744619545caa65af8848d0b911f1c306b6",
+      "question": "test_2",
+      "offset": 3737600,
+      "bytes": 40960,
+      "staged_sha256": "ca2c2dd4c9bf4c5b112fa918444466748bcd65b2251af59b3686d54896b8b674",
+      "fused_fields_sha256": "ca2c2dd4c9bf4c5b112fa918444466748bcd65b2251af59b3686d54896b8b674"
+    },
+    {
+      "id": "text-025",
+      "request_sha256": "sha256:2fbfa67977a5cda7b98951483b52044b9fa369dcf518a9b96d5626ac4e172244",
+      "question": "feature",
+      "offset": 3778560,
+      "bytes": 40960,
+      "staged_sha256": "22b95a81e1889bef362e2a3a67efb510ab0153ef4378fc63b57f84983038856c",
+      "fused_fields_sha256": "22b95a81e1889bef362e2a3a67efb510ab0153ef4378fc63b57f84983038856c"
+    },
+    {
+      "id": "text-025",
+      "request_sha256": "sha256:2fbfa67977a5cda7b98951483b52044b9fa369dcf518a9b96d5626ac4e172244",
+      "question": "upgrade_1",
+      "offset": 3819520,
+      "bytes": 51200,
+      "staged_sha256": "e31d8a3d73fb45bf7d725932dccdc793c522f9dafbb36bbdf8a8eacd910eea74",
+      "fused_fields_sha256": "e31d8a3d73fb45bf7d725932dccdc793c522f9dafbb36bbdf8a8eacd910eea74"
+    },
+    {
+      "id": "text-025",
+      "request_sha256": "sha256:2fbfa67977a5cda7b98951483b52044b9fa369dcf518a9b96d5626ac4e172244",
+      "question": "feature_2",
+      "offset": 3870720,
+      "bytes": 40960,
+      "staged_sha256": "b87aaafe2d5d8267699b78500100bd419ce73ccd4507fc363684efed739fbd9f",
+      "fused_fields_sha256": "b87aaafe2d5d8267699b78500100bd419ce73ccd4507fc363684efed739fbd9f"
+    },
+    {
+      "id": "text-026",
+      "request_sha256": "sha256:5772619949c7cb855af7feb9936631316d682496831e587a7007515aa7794a2f",
+      "question": "merge",
+      "offset": 3911680,
+      "bytes": 40960,
+      "staged_sha256": "6a3b9d696aa3e68de4d2c91aa8adb3df0a32d6bd96970ed649be06944694cb05",
+      "fused_fields_sha256": "6a3b9d696aa3e68de4d2c91aa8adb3df0a32d6bd96970ed649be06944694cb05"
+    },
+    {
+      "id": "text-027",
+      "request_sha256": "sha256:623ba318e98d99fb70edcbd5f604d8a41bfeef4ed1e73fe71157e07c3405daa0",
+      "question": "import_0",
+      "offset": 3952640,
+      "bytes": 71680,
+      "staged_sha256": "3e4d17773e3b5b5ae43110e2d271adeb7704dae8e7aaf2bced49102d80d70884",
+      "fused_fields_sha256": "3e4d17773e3b5b5ae43110e2d271adeb7704dae8e7aaf2bced49102d80d70884"
+    },
+    {
+      "id": "text-027",
+      "request_sha256": "sha256:623ba318e98d99fb70edcbd5f604d8a41bfeef4ed1e73fe71157e07c3405daa0",
+      "question": "id with space1",
+      "offset": 4024320,
+      "bytes": 40960,
+      "staged_sha256": "aad5cb52df0c4b319035004eff7e6b055d826ba3d402d1723c93f0880cc4c0a7",
+      "fused_fields_sha256": "aad5cb52df0c4b319035004eff7e6b055d826ba3d402d1723c93f0880cc4c0a7"
+    },
+    {
+      "id": "text-027",
+      "request_sha256": "sha256:623ba318e98d99fb70edcbd5f604d8a41bfeef4ed1e73fe71157e07c3405daa0",
+      "question": "crash_2",
+      "offset": 4065280,
+      "bytes": 40960,
+      "staged_sha256": "c69a89a5f46ed989f1b59864c21b046de055583cf1a81facaae9720e48a22e8c",
+      "fused_fields_sha256": "c69a89a5f46ed989f1b59864c21b046de055583cf1a81facaae9720e48a22e8c"
+    },
+    {
+      "id": "text-027",
+      "request_sha256": "sha256:623ba318e98d99fb70edcbd5f604d8a41bfeef4ed1e73fe71157e07c3405daa0",
+      "question": "plan_3",
+      "offset": 4106240,
+      "bytes": 71680,
+      "staged_sha256": "baffa30dbe301cc6b1e8a948ed620b05d79b86dcd1fd139cff5b255a2da40d2e",
+      "fused_fields_sha256": "baffa30dbe301cc6b1e8a948ed620b05d79b86dcd1fd139cff5b255a2da40d2e"
+    },
+    {
+      "id": "text-027",
+      "request_sha256": "sha256:623ba318e98d99fb70edcbd5f604d8a41bfeef4ed1e73fe71157e07c3405daa0",
+      "question": "timeout",
+      "offset": 4177920,
+      "bytes": 40960,
+      "staged_sha256": "ada7d3b6397adb6f3e6c7943f0215f17ae7bac6f9a638a5784a71876e9e4d728",
+      "fused_fields_sha256": "ada7d3b6397adb6f3e6c7943f0215f17ae7bac6f9a638a5784a71876e9e4d728"
+    },
+    {
+      "id": "text-028",
+      "request_sha256": "sha256:6fb42b72ac9c7fdde2c2cc1cce6ed97cc8fd9d79d48b1f5d2fcaf5ad811b5d43",
+      "question": "reset_0",
+      "offset": 4218880,
+      "bytes": 40960,
+      "staged_sha256": "6be8bf79533f80ddce5a093c62a22531cd2fd98f9eb21eb2517819f4f79f8fcf",
+      "fused_fields_sha256": "6be8bf79533f80ddce5a093c62a22531cd2fd98f9eb21eb2517819f4f79f8fcf"
+    },
+    {
+      "id": "text-028",
+      "request_sha256": "sha256:6fb42b72ac9c7fdde2c2cc1cce6ed97cc8fd9d79d48b1f5d2fcaf5ad811b5d43",
+      "question": "test_1",
+      "offset": 4259840,
+      "bytes": 61440,
+      "staged_sha256": "7a90381337e49a05b0ba4ce2d3f6925c66bbf0cce098f2a0d2cf286954501481",
+      "fused_fields_sha256": "7a90381337e49a05b0ba4ce2d3f6925c66bbf0cce098f2a0d2cf286954501481"
+    },
+    {
+      "id": "text-029",
+      "request_sha256": "sha256:d97a363d10a51e9bfd42dbb8f7f5ae01f3a873ee9ea2589c3a0faa54cf6efdad",
+      "question": "rate",
+      "offset": 4321280,
+      "bytes": 40960,
+      "staged_sha256": "a2b617fdc031132b38fc72537e716ef9e88a9dfdcee1970aec7be75a829a22be",
+      "fused_fields_sha256": "a2b617fdc031132b38fc72537e716ef9e88a9dfdcee1970aec7be75a829a22be"
+    },
+    {
+      "id": "text-029",
+      "request_sha256": "sha256:d97a363d10a51e9bfd42dbb8f7f5ae01f3a873ee9ea2589c3a0faa54cf6efdad",
+      "question": "\u65e5\u672c1",
+      "offset": 4362240,
+      "bytes": 40960,
+      "staged_sha256": "f8248c8adee772d097b723845e629f5df8dfdd22355cf9d8f0aa0ad6f0d0c41e",
+      "fused_fields_sha256": "f8248c8adee772d097b723845e629f5df8dfdd22355cf9d8f0aa0ad6f0d0c41e"
+    },
+    {
+      "id": "text-029",
+      "request_sha256": "sha256:d97a363d10a51e9bfd42dbb8f7f5ae01f3a873ee9ea2589c3a0faa54cf6efdad",
+      "question": "rollback_2",
+      "offset": 4403200,
+      "bytes": 40960,
+      "staged_sha256": "67d8ec9d65d125ab437a9a6c303e6025069f25ccbd8d19d4cadb079f07e0c6db",
+      "fused_fields_sha256": "67d8ec9d65d125ab437a9a6c303e6025069f25ccbd8d19d4cadb079f07e0c6db"
+    },
+    {
+      "id": "text-030",
+      "request_sha256": "sha256:d85895488dede2d09a325a7ce3027c2b0d392742ea84b0930c2fc3d8f118a816",
+      "question": "export",
+      "offset": 4444160,
+      "bytes": 81920,
+      "staged_sha256": "71bc2aa11d4665b6b5559a5b6bcad56b042a8866be97308e2d6fd67c9327d38f",
+      "fused_fields_sha256": "71bc2aa11d4665b6b5559a5b6bcad56b042a8866be97308e2d6fd67c9327d38f"
+    },
+    {
+      "id": "text-030",
+      "request_sha256": "sha256:d85895488dede2d09a325a7ce3027c2b0d392742ea84b0930c2fc3d8f118a816",
+      "question": "ticket_1",
+      "offset": 4526080,
+      "bytes": 40960,
+      "staged_sha256": "5c54fd1f47b679802bf595330aa5d7e36331056292442f9b15c5fed7b68db1cf",
+      "fused_fields_sha256": "5c54fd1f47b679802bf595330aa5d7e36331056292442f9b15c5fed7b68db1cf"
+    },
+    {
+      "id": "text-031",
+      "request_sha256": "sha256:d7a4b390e5c7b107e5f088374ef7badb884cbedcefd4000d6626b166cf175a42",
+      "question": "key",
+      "offset": 4567040,
+      "bytes": 40960,
+      "staged_sha256": "6cda1254f910c1cacfc3961427e2402a9b99ff3168ad8ebb89d669f02cb9495a",
+      "fused_fields_sha256": "6cda1254f910c1cacfc3961427e2402a9b99ff3168ad8ebb89d669f02cb9495a"
+    },
+    {
+      "id": "text-032",
+      "request_sha256": "sha256:2bb580a334921daa7e0e456c2144069e2a07f7b7edabd49a9b04fdd1e1741264",
+      "question": "card_0",
+      "offset": 4608000,
+      "bytes": 61440,
+      "staged_sha256": "89411e8d280948d0ae142fb4f8ef4c9eeedb0374c61b078fc8fef8d49d1a61fb",
+      "fused_fields_sha256": "89411e8d280948d0ae142fb4f8ef4c9eeedb0374c61b078fc8fef8d49d1a61fb"
+    },
+    {
+      "id": "text-032",
+      "request_sha256": "sha256:2bb580a334921daa7e0e456c2144069e2a07f7b7edabd49a9b04fdd1e1741264",
+      "question": "merge_1",
+      "offset": 4669440,
+      "bytes": 40960,
+      "staged_sha256": "584ca80d85d0b3e8207a07393695bb12752863b39fb44af6acb6e2f2146fedc7",
+      "fused_fields_sha256": "584ca80d85d0b3e8207a07393695bb12752863b39fb44af6acb6e2f2146fedc7"
+    },
+    {
+      "id": "text-033",
+      "request_sha256": "sha256:e76866256d3d9fe67220fa381f6c160caad1d083d4e472e7fe4ea5a25d1b52d6",
+      "question": "webhook_0",
+      "offset": 4710400,
+      "bytes": 92160,
+      "staged_sha256": "5fee30dcd3529888b32415d53cfaad8778012aaae5394a50c4605efa05fb3e28",
+      "fused_fields_sha256": "5fee30dcd3529888b32415d53cfaad8778012aaae5394a50c4605efa05fb3e28"
+    },
+    {
+      "id": "text-033",
+      "request_sha256": "sha256:e76866256d3d9fe67220fa381f6c160caad1d083d4e472e7fe4ea5a25d1b52d6",
+      "question": "checkout_1",
+      "offset": 4802560,
+      "bytes": 61440,
+      "staged_sha256": "b70306c1a2631cfa0323063895cd63fab4fc750872776f8001f54d9cc1a7ce65",
+      "fused_fields_sha256": "b70306c1a2631cfa0323063895cd63fab4fc750872776f8001f54d9cc1a7ce65"
+    },
+    {
+      "id": "text-033",
+      "request_sha256": "sha256:e76866256d3d9fe67220fa381f6c160caad1d083d4e472e7fe4ea5a25d1b52d6",
+      "question": "password_2",
+      "offset": 4864000,
+      "bytes": 40960,
+      "staged_sha256": "01b7642aac080c3d7a8c3da63d0674665f8cb24cdd591ac8f98077e2b94cfa92",
+      "fused_fields_sha256": "01b7642aac080c3d7a8c3da63d0674665f8cb24cdd591ac8f98077e2b94cfa92"
+    },
+    {
+      "id": "text-034",
+      "request_sha256": "sha256:350f9d1f8c1ff03bec2cbd64c7ef5e8d5ef4158a8081c55fa8734a5ff12aa847",
+      "question": "admin",
+      "offset": 4904960,
+      "bytes": 40960,
+      "staged_sha256": "f188f2b08a85a72b1247ee0e1551e0e93c020d7e5dbea25520318227f4c5f5f9",
+      "fused_fields_sha256": "f188f2b08a85a72b1247ee0e1551e0e93c020d7e5dbea25520318227f4c5f5f9"
+    },
+    {
+      "id": "text-034",
+      "request_sha256": "sha256:350f9d1f8c1ff03bec2cbd64c7ef5e8d5ef4158a8081c55fa8734a5ff12aa847",
+      "question": "user",
+      "offset": 4945920,
+      "bytes": 40960,
+      "staged_sha256": "02fc6baf9456f15b4f982b25ecaf78a29c7339069109564d67bbec68d8a9c8d1",
+      "fused_fields_sha256": "02fc6baf9456f15b4f982b25ecaf78a29c7339069109564d67bbec68d8a9c8d1"
+    },
+    {
+      "id": "text-034",
+      "request_sha256": "sha256:350f9d1f8c1ff03bec2cbd64c7ef5e8d5ef4158a8081c55fa8734a5ff12aa847",
+      "question": "dashboard_2",
+      "offset": 4986880,
+      "bytes": 40960,
+      "staged_sha256": "1b8ef70e41994ed319afcf6030b2493a06a598af5838cdc78c1013974ee2990d",
+      "fused_fields_sha256": "1b8ef70e41994ed319afcf6030b2493a06a598af5838cdc78c1013974ee2990d"
+    },
+    {
+      "id": "text-035",
+      "request_sha256": "sha256:7ded0472ac6a92bb27865a53019b147d21661a27b688516e3c0214fe706eb63a",
+      "question": "card",
+      "offset": 5027840,
+      "bytes": 71680,
+      "staged_sha256": "0b896fe6f717fe2d4636f7c9cf82497d7588593a32faee693eca5c3cbabf1eed",
+      "fused_fields_sha256": "0b896fe6f717fe2d4636f7c9cf82497d7588593a32faee693eca5c3cbabf1eed"
+    },
+    {
+      "id": "text-035",
+      "request_sha256": "sha256:7ded0472ac6a92bb27865a53019b147d21661a27b688516e3c0214fe706eb63a",
+      "question": "feature_1",
+      "offset": 5099520,
+      "bytes": 40960,
+      "staged_sha256": "daff6968fc0f702f5296bd11402920fa49897bb1aeeee487f79b40522d8ea178",
+      "fused_fields_sha256": "daff6968fc0f702f5296bd11402920fa49897bb1aeeee487f79b40522d8ea178"
+    },
+    {
+      "id": "text-036",
+      "request_sha256": "sha256:f2757a7969752b3e9c1b021e1df6599de3c1f7d31f1d3238ce035afb5b2bc6b5",
+      "question": "id with space0",
+      "offset": 5140480,
+      "bytes": 40960,
+      "staged_sha256": "a3b6fc06511183ccf8bb1d89bf77384156df60d3b1ef21a7ccdb32ea541342c7",
+      "fused_fields_sha256": "a3b6fc06511183ccf8bb1d89bf77384156df60d3b1ef21a7ccdb32ea541342c7"
+    },
+    {
+      "id": "text-036",
+      "request_sha256": "sha256:f2757a7969752b3e9c1b021e1df6599de3c1f7d31f1d3238ce035afb5b2bc6b5",
+      "question": "urgent_1",
+      "offset": 5181440,
+      "bytes": 133120,
+      "staged_sha256": "94c82f83d13c82f2842f81aa55d460cc5c104bc9f1b52b53711f060b41398c3a",
+      "fused_fields_sha256": "94c82f83d13c82f2842f81aa55d460cc5c104bc9f1b52b53711f060b41398c3a"
+    },
+    {
+      "id": "text-037",
+      "request_sha256": "sha256:d5bf2de4188379a50ff88ac704eeb46c9135e288e1766ce43d1bbb9a6729eb72",
+      "question": "token_0",
+      "offset": 5314560,
+      "bytes": 40960,
+      "staged_sha256": "a8ca3ac4f672d1320b42332c4e73aa781d95226a0ced93b0d80e89c52c077212",
+      "fused_fields_sha256": "a8ca3ac4f672d1320b42332c4e73aa781d95226a0ced93b0d80e89c52c077212"
+    },
+    {
+      "id": "text-037",
+      "request_sha256": "sha256:d5bf2de4188379a50ff88ac704eeb46c9135e288e1766ce43d1bbb9a6729eb72",
+      "question": "crash_1",
+      "offset": 5355520,
+      "bytes": 51200,
+      "staged_sha256": "4123d4a79384e822bd997d55250c79528b4c4a77950a5d0596f86f7e74ad6faf",
+      "fused_fields_sha256": "4123d4a79384e822bd997d55250c79528b4c4a77950a5d0596f86f7e74ad6faf"
+    },
+    {
+      "id": "text-037",
+      "request_sha256": "sha256:d5bf2de4188379a50ff88ac704eeb46c9135e288e1766ce43d1bbb9a6729eb72",
+      "question": "rate_2",
+      "offset": 5406720,
+      "bytes": 51200,
+      "staged_sha256": "087d7b52adf1e5c9a57cf3d994bbf6c000eb4dee37787eab28433891e438de5b",
+      "fused_fields_sha256": "087d7b52adf1e5c9a57cf3d994bbf6c000eb4dee37787eab28433891e438de5b"
+    },
+    {
+      "id": "text-037",
+      "request_sha256": "sha256:d5bf2de4188379a50ff88ac704eeb46c9135e288e1766ce43d1bbb9a6729eb72",
+      "question": "seat",
+      "offset": 5457920,
+      "bytes": 102400,
+      "staged_sha256": "f22d96b2881d6d898964ab31473f69bf437a99a52fa0e93ec3090a6c7e19dfbd",
+      "fused_fields_sha256": "f22d96b2881d6d898964ab31473f69bf437a99a52fa0e93ec3090a6c7e19dfbd"
+    },
+    {
+      "id": "text-037",
+      "request_sha256": "sha256:d5bf2de4188379a50ff88ac704eeb46c9135e288e1766ce43d1bbb9a6729eb72",
+      "question": "team",
+      "offset": 5560320,
+      "bytes": 40960,
+      "staged_sha256": "90604f2e67f9dc787bd1b20f3b58d2eaeb4826547e069a9068513f7257662085",
+      "fused_fields_sha256": "90604f2e67f9dc787bd1b20f3b58d2eaeb4826547e069a9068513f7257662085"
+    },
+    {
+      "id": "text-038",
+      "request_sha256": "sha256:7a25eb1673611edfa06756745f62a8d31b5d851493c44c0fa9197fed64365427",
+      "question": "critical",
+      "offset": 5601280,
+      "bytes": 71680,
+      "staged_sha256": "855c9ee91b2c7090dd5a10f564185fc4626712d426370470ee9337702821c584",
+      "fused_fields_sha256": "855c9ee91b2c7090dd5a10f564185fc4626712d426370470ee9337702821c584"
+    },
+    {
+      "id": "text-039",
+      "request_sha256": "sha256:2343fcb1e155707f49aea5db7490d873653a656b40ee596e7010cb8613f91d59",
+      "question": "payment_0",
+      "offset": 5672960,
+      "bytes": 40960,
+      "staged_sha256": "292cd1bbfc3d47b04caa572dde5846e16f1d0f44a7e0a3fb8507e6d01c1add0e",
+      "fused_fields_sha256": "292cd1bbfc3d47b04caa572dde5846e16f1d0f44a7e0a3fb8507e6d01c1add0e"
+    },
+    {
+      "id": "text-039",
+      "request_sha256": "sha256:2343fcb1e155707f49aea5db7490d873653a656b40ee596e7010cb8613f91d59",
+      "question": "export_1",
+      "offset": 5713920,
+      "bytes": 61440,
+      "staged_sha256": "7e6b62bbb65397ea84a814e179f5b74b1e0069446c59f2e99c8872e0957ebd35",
+      "fused_fields_sha256": "7e6b62bbb65397ea84a814e179f5b74b1e0069446c59f2e99c8872e0957ebd35"
+    },
+    {
+      "id": "text-039",
+      "request_sha256": "sha256:2343fcb1e155707f49aea5db7490d873653a656b40ee596e7010cb8613f91d59",
+      "question": "checkout",
+      "offset": 5775360,
+      "bytes": 40960,
+      "staged_sha256": "2aeb7360d6d489e22069bf5aff9b43fc913b38c149415816fbdc7e084025dde0",
+      "fused_fields_sha256": "2aeb7360d6d489e22069bf5aff9b43fc913b38c149415816fbdc7e084025dde0"
+    },
+    {
+      "id": "text-039",
+      "request_sha256": "sha256:2343fcb1e155707f49aea5db7490d873653a656b40ee596e7010cb8613f91d59",
+      "question": "\u65e5\u672c3",
+      "offset": 5816320,
+      "bytes": 71680,
+      "staged_sha256": "c4582c12940c1a3782e3fc49557a0caa0683474f6f2e856cce225433b30a0c9b",
+      "fused_fields_sha256": "c4582c12940c1a3782e3fc49557a0caa0683474f6f2e856cce225433b30a0c9b"
+    },
+    {
+      "id": "text-039",
+      "request_sha256": "sha256:2343fcb1e155707f49aea5db7490d873653a656b40ee596e7010cb8613f91d59",
+      "question": "import_4",
+      "offset": 5888000,
+      "bytes": 40960,
+      "staged_sha256": "06f4e54c867cd7e704e98844fce77b0e991aa21bd5b9bd58a5389b60f8155522",
+      "fused_fields_sha256": "06f4e54c867cd7e704e98844fce77b0e991aa21bd5b9bd58a5389b60f8155522"
+    }
+  ]
+}

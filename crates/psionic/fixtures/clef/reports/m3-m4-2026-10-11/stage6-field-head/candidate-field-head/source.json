@@ -1,0 +1,25 @@
+{
+  "base_commit": "bbd08e05be6cf3cd03dc418147ca4b5060b0905b",
+  "sources": {
+    "crates/psionic/crates/psionic-backend-metal/src/clef_prefill.rs": "b81f3e0ca85d7eae56eeb00a39883086428739fefaf03352f42bd7d10d4fd86c",
+    "crates/psionic/crates/psionic-backend-metal/src/clef_prefill/head_blocks.rs": "b0727c09e43d8a3a3e5c39cd97b0a9077d25d3153936f56238a52c768ab7ce6d",
+    "crates/psionic/crates/psionic-backend-metal/src/clef_prefill/head_blocks/tests.rs": "1e088e983498fda8558d178886a28ec54581dd1863cccaad3465c12659b97cd2",
+    "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_prefill.metal": "623fba25dbe8a230d92f88e840c2c363961f926c3b908089ce8ba3688a3f2865",
+    "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_dequant_q6_k.metal": "8a1899062340b3605f5faf822e4a371b99bdb66623bee870d5c8b9e071191a65",
+    "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_head_blocks.metal": "6089639d9b1ceb31ea79e3da3cb548b0b892ad92b30508b1eb1a9d88c0aa32b7"
+  },
+  "candidate_patch_sha256": "0a259621ddd06c064e7b925a017cb1ee523e83a0f82616dd0ed6ef2ed931d23b",
+  "static_check": {
+    "command": [
+      "xcrun",
+      "-sdk",
+      "macosx",
+      "metal",
+      "-std=metal4.0",
+      "-c",
+      "combined-head.metal"
+    ],
+    "exit": 0,
+    "air_sha256": "19151b22b099d484eee894d123b990719df8facbc7b4485bdc6fa91e2c677df2"
+  }
+}

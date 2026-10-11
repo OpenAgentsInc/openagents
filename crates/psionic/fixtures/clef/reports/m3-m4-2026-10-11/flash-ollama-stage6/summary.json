@@ -1,0 +1,160 @@
+{
+  "status": "complete",
+  "error_type": null,
+  "finished_at": "2026-10-11T11:27:45.979983+00:00",
+  "groups": [
+    {
+      "variant": "metal-staged-head",
+      "workload": "task-scratch/mac-quiet-2026-10-10/requests/len1k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 0.7485455205000342,
+      "input_tokens": [
+        1078,
+        1079,
+        1080,
+        1081,
+        1082,
+        1083
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "metal-staged-head",
+      "workload": "task-scratch/mac-quiet-2026-10-10/requests/len4k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 2.5547919585000045,
+      "input_tokens": [
+        3913,
+        3915,
+        3917,
+        3918,
+        3919
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "metal-staged-head",
+      "workload": "task-scratch/mac-quiet-2026-10-10/requests/len16k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 11.449664854000012,
+      "input_tokens": [
+        15508,
+        15511,
+        15512,
+        15513,
+        15514
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "metal-fused-head",
+      "workload": "task-scratch/mac-quiet-2026-10-10/requests/len1k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 0.739577208500009,
+      "input_tokens": [
+        1078,
+        1079,
+        1080,
+        1081,
+        1082,
+        1083
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "metal-fused-head",
+      "workload": "task-scratch/mac-quiet-2026-10-10/requests/len4k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 2.5756101665000273,
+      "input_tokens": [
+        3913,
+        3915,
+        3917,
+        3918,
+        3919
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "metal-fused-head",
+      "workload": "task-scratch/mac-quiet-2026-10-10/requests/len16k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 11.327531541499994,
+      "input_tokens": [
+        15508,
+        15511,
+        15512,
+        15513,
+        15514
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "ollama",
+      "workload": "task-scratch/mac-quiet-2026-10-10/requests/len1k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 0.8405703330000307,
+      "input_tokens": [
+        1078,
+        1079,
+        1080,
+        1081,
+        1082,
+        1083
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "ollama",
+      "workload": "task-scratch/mac-quiet-2026-10-10/requests/len4k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 2.913737562499989,
+      "input_tokens": [
+        3913,
+        3915,
+        3917,
+        3918,
+        3919
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "ollama",
+      "workload": "task-scratch/mac-quiet-2026-10-10/requests/len16k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 11.964238146000014,
+      "input_tokens": [
+        15508,
+        15511,
+        15512,
+        15513,
+        15514
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    }
+  ],
+  "measurement_mode": "shared",
+  "monitor_error": null,
+  "diagnostic_only": false,
+  "gpu_interference_detection": "not enforced in shared mode; total GPU activity sampled",
+  "idle_machine_acceptance": "not applicable: shared machine",
+  "note": "Medians exclude warmups and rejected samples. No quality verdict or tail-latency claim."
+}

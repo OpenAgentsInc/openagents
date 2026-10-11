@@ -1,0 +1,28 @@
+{
+  "binary": "run-artifacts/stage6/psionic-openai-server",
+  "gguf": "run-artifacts/artifacts/Clef-Q4_K_M.gguf",
+  "head": "run-artifacts/artifacts/clef-bf16/joint_head.safetensors",
+  "vision_manifest": "user-home/.ollama/models/manifests/registry.ollama.ai/library/clef/latest",
+  "vision_blobs": "user-home/.ollama/models/blobs",
+  "output": "run-artifacts/native27b-stage6-fused-images",
+  "chunk": 512,
+  "max_rss_gib": 52,
+  "minimum_start_available_gib": 64,
+  "minimum_available_gib": 12,
+  "startup_timeout": 600,
+  "deadline_seconds": 1800,
+  "request_timeout": 300,
+  "env": {
+    "PSIONIC_CLEF_METAL_FFN_WEIGHTS": "q4k-on-demand",
+    "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+    "PSIONIC_CLEF_METAL_GEMM": "weight-shapes",
+    "PSIONIC_CLEF_METAL_HEAD": "fused-fields",
+    "PSIONIC_CLEF_METAL_DELTA": "sequential"
+  },
+  "checks": [
+    {
+      "suite": "images",
+      "reference": "run-artifacts/reference27b/images-mps-bf16.json"
+    }
+  ]
+}

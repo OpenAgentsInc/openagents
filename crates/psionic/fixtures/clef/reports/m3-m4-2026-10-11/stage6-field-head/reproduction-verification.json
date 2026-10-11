@@ -1,0 +1,10 @@
+{
+  "kind": "offline_published_reproduction_check",
+  "model_execution": false,
+  "network_calls": false,
+  "script": "bf16-text-comparison/compare_saved.py",
+  "original_result_sha256": "2889ad00529a5ec6e62227987042dfb4fbf90c172398904f1fb2a13d938e2406",
+  "sanitized_replay_result_sha256": "e31b58dc8f08a939bfdfd2e05792dd462433062fc8131f652015b84440812730",
+  "all_case_responses_margins_deltas_tops_and_gates_identical": true,
+  "note": "Original and sanitized reference hashes differ because the checkpoint path was scrubbed. Exact probabilities and verdicts are unchanged."
+}

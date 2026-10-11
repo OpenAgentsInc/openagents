@@ -1,0 +1,24 @@
+--- crates/psionic/crates/psionic-serve/src/qwen35/clef_metal/batching.rs
++++ crates/psionic/crates/psionic-serve/src/qwen35/clef_metal/batching.rs
+@@ -593,7 +593,7 @@
+ 
+     #[test]
+     fn delta_workspace_is_counted_once_per_session_or_cohort_scratch() {
+-        for tokens in [1, 31, 32, 33, 1024, 2048] {
++        for tokens in [1, 15, 16, 17, 31, 32, 33, 1024, 2048] {
+             let sequential = scratch_bytes(dims(), tokens, ClefMetalDelta::Sequential, 0).unwrap();
+             let block = scratch_bytes(dims(), tokens, ClefMetalDelta::BlockTensorOps, 0).unwrap();
+             let workspace = ClefDeltaPlan::workspace_bytes(tokens, 32).unwrap() as u64;
+@@ -603,8 +603,10 @@
+ 
+     #[test]
+     fn oversized_delta_scratch_is_refused_and_sequential_needs_none() {
+-        assert!(scratch_bytes(dims(), 7274, ClefMetalDelta::BlockTensorOps, 0).is_err());
+-        assert!(scratch_bytes(dims(), 7274, ClefMetalDelta::Sequential, 0).is_ok());
++        // The 16-token layout fits the former 7,274-token refusal fixture.
++        assert!(scratch_bytes(dims(), 7274, ClefMetalDelta::BlockTensorOps, 0).is_ok());
++        assert!(scratch_bytes(dims(), 8192, ClefMetalDelta::BlockTensorOps, 0).is_err());
++        assert!(scratch_bytes(dims(), 8192, ClefMetalDelta::Sequential, 0).is_ok());
+         let mut attention_only = dims();
+         attention_only.key_heads = 0;
+         attention_only.value_heads = 0;

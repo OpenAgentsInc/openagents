@@ -1,0 +1,29 @@
+{
+  "harness_sha256": "88edbf80e81efb8619813cf2fbcac67fdbcba6563ef3b2873d1d07bb23214221",
+  "checks": [
+    {
+      "config": "flash-head-config.json",
+      "requests": 40,
+      "questions": 104,
+      "effective_requests": 1,
+      "refused_counts": [
+        0,
+        2,
+        4
+      ]
+    },
+    {
+      "config": "27b-head-config.json",
+      "requests": 40,
+      "questions": 104,
+      "effective_requests": 1,
+      "refused_counts": [
+        0,
+        2,
+        4
+      ]
+    }
+  ],
+  "model_runs": false,
+  "reason": "Fix harness-only startup configuration; one request slot disables batching"
+}

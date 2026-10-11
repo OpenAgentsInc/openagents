@@ -1,0 +1,55 @@
+<SCRATCH>/clef-m3-m4/q4-tensor-prototype/combined.metal:164:20: error: use of undeclared identifier 'full'; did you mean 'all'?
+    #pragma unroll full
+                   ^~~~
+                   all
+/private/var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.EfSndC/Metal.xctoolchain/usr/metal/32023/lib/clang/32023.883/include/metal/metal_relational:734:17: note: 'all' declared here
+METAL_FUNC bool all(bool x)
+                ^
+<SCRATCH>/clef-m3-m4/q4-tensor-prototype/combined.metal:164:20: error: invalid argument of type 'bool (bool)'; expected an integer type
+    #pragma unroll full
+                   ^
+<SCRATCH>/clef-m3-m4/q4-tensor-prototype/combined.metal:179:13: error: expecting input declarations with either all scalar types or all vector types with the same number of elements
+kernel void q4_tile_f16(device const half *x [[buffer(0)]], device const uchar *q4 [[buffer(1)]],
+            ^
+<SCRATCH>/clef-m3-m4/q4-tensor-prototype/combined.metal:181:66: note: declaration with attribute 'threadgroup_position_in_grid' of type 'uint2' (vector of 2 'unsigned int' values) here
+                        constant uint3 &nmk [[buffer(4)]], uint2 group [[threadgroup_position_in_grid]],
+                                                           ~~~~~~^~~~~
+<SCRATCH>/clef-m3-m4/q4-tensor-prototype/combined.metal:182:30: note: declaration with attribute 'thread_position_in_threadgroup' of type 'uint' (aka 'unsigned int') here
+                        uint tid [[thread_position_in_threadgroup]]) {
+                        ~~~~~^~~
+<SCRATCH>/clef-m3-m4/q4-tensor-prototype/combined.metal:185:13: error: expecting input declarations with either all scalar types or all vector types with the same number of elements
+kernel void expanded_tile_f16(device const half *x [[buffer(0)]], device const uchar *q4 [[buffer(1)]],
+            ^
+<SCRATCH>/clef-m3-m4/q4-tensor-prototype/combined.metal:187:72: note: declaration with attribute 'threadgroup_position_in_grid' of type 'uint2' (vector of 2 'unsigned int' values) here
+                              constant uint3 &nmk [[buffer(4)]], uint2 group [[threadgroup_position_in_grid]],
+                                                                 ~~~~~~^~~~~
+<SCRATCH>/clef-m3-m4/q4-tensor-prototype/combined.metal:188:36: note: declaration with attribute 'thread_position_in_threadgroup' of type 'uint' (aka 'unsigned int') here
+                              uint tid [[thread_position_in_threadgroup]]) {
+                              ~~~~~^~~
+<SCRATCH>/clef-m3-m4/q4-tensor-prototype/combined.metal:220:20: error: use of undeclared identifier 'full'; did you mean 'all'?
+    #pragma unroll full
+                   ^~~~
+                   all
+/private/var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.EfSndC/Metal.xctoolchain/usr/metal/32023/lib/clang/32023.883/include/metal/metal_relational:734:17: note: 'all' declared here
+METAL_FUNC bool all(bool x)
+                ^
+<SCRATCH>/clef-m3-m4/q4-tensor-prototype/combined.metal:220:20: error: invalid argument of type 'bool (bool)'; expected an integer type
+    #pragma unroll full
+                   ^
+<SCRATCH>/clef-m3-m4/q4-tensor-prototype/combined.metal:224:24: error: use of undeclared identifier 'full'; did you mean 'all'?
+        #pragma unroll full
+                       ^~~~
+                       all
+/private/var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.6.109.0.EfSndC/Metal.xctoolchain/usr/metal/32023/lib/clang/32023.883/include/metal/metal_relational:734:17: note: 'all' declared here
+METAL_FUNC bool all(bool x)
+                ^
+<SCRATCH>/clef-m3-m4/q4-tensor-prototype/combined.metal:224:24: error: invalid argument of type 'bool (bool)'; expected an integer type
+        #pragma unroll full
+                       ^
+8 errors generated.
+Traceback (most recent call last):
+  File "<SCRATCH>/clef-m3-m4/q4-tensor-prototype/build.py", line 9, in <module>
+    subprocess.run(command,check=True)
+  File "/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/subprocess.py", line 528, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['xcrun', '-sdk', 'macosx', 'metal', '-std=metal4.0', '-c', '<SCRATCH>/clef-m3-m4/q4-tensor-prototype/combined.metal', '-o', '<SCRATCH>/clef-m3-m4/q4-tensor-prototype/kernels.air']' returned non-zero exit status 1.

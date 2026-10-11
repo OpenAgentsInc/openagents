@@ -3,6 +3,7 @@
 use super::*;
 
 mod ffn_weights;
+mod head_blocks;
 
 #[test]
 fn prefill_span_validation_accepts_boundaries_and_overlapping_spans() {
@@ -235,6 +236,7 @@ impl Fixture {
             scratch: None,
             head_io: None,
             head_attention: None,
+            head_fields: None,
             weight_bytes: 0,
             weight_workspace_bytes: 0,
         };

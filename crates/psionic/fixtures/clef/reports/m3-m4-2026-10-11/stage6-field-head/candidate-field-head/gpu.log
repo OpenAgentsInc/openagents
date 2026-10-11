@@ -1,0 +1,7 @@
+
+running 2 tests
+test clef_prefill::head_blocks::tests::field_attention_matches_f64_and_preserves_sources_and_guards ... ok
+test clef_prefill::head_blocks::tests::field_helpers_refuse_bad_extents_and_unsafe_aliases_before_dispatch ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 92 filtered out; finished in 0.40s
+

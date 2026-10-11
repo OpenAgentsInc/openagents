@@ -1,0 +1,26 @@
+{
+  "base_commit": "3e281a272f51d68230c6343415d3c06426b68463",
+  "sources": {
+    "crates/psionic/crates/psionic-backend-metal/src/clef_delta.rs": "212b6e7661cb25b081e94a6eccba47ba60a1036580b88e64890e831fb85f8cd7",
+    "crates/psionic/crates/psionic-backend-metal/src/clef_delta/tests.rs": "b9d38b57ad7c6e9df38e52248c82620477db7ca5cddb406f6f2b62748a967d06",
+    "crates/psionic/crates/psionic-backend-metal/src/clef_prefill/delta.rs": "956563c88798017fbfb3e1426d208529e2841f69292e1451d35af0916ba1b3dd",
+    "crates/psionic/crates/psionic-backend-metal/src/clef_prefill/delta_tests.rs": "b6ee26100d95ea8b8f1a253b846f8d177ca0d1453d6f3f61f4d04266cb45ed51",
+    "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_delta_block.metal": "6f6268e1fc24f372844f97de326a9eecb03e50d946265e801b460b2bf07cb2b6"
+  },
+  "candidate_patch_sha256": "faec8aacc006fe11e17e325de396be7d200f76b0c487e6fd8b72bec85dc6aeee",
+  "static_check": {
+    "command": [
+      "xcrun",
+      "-sdk",
+      "macosx",
+      "metal",
+      "-D",
+      "CLEF_DELTA_BLOCK=16",
+      "-std=metal4.0",
+      "-c",
+      "kernels/clef_delta_block.metal"
+    ],
+    "exit": 0,
+    "air_sha256": "c108e3208d2c7d1261aeecdab651cf36618b0538e934f22873abe1960707fe37"
+  }
+}

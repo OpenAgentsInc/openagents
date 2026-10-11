@@ -1,0 +1,14 @@
+{
+  "reason": "Lower the unrun 84GiB provisional process cap to76GiB based on the actual matrix inventory; require88GiB available at startup and preserve12GiB runtime floor.",
+  "q4_ffn_tensors": 192,
+  "elements_per_tensor": 89128960,
+  "resident_f16_bytes": 34225520640,
+  "packed_q4_bytes": 9625927680,
+  "net_weight_increase_bytes": 24599592960,
+  "prior_stage6_image_peak_bytes": 45375291392,
+  "estimated_peak_before_long_prompt_scratch_bytes": 69974884352,
+  "max_process_gib": 76,
+  "startup_required_available_gib": 88,
+  "minimum_available_gib": 12,
+  "note": "Estimate only. Existing guard rejects overshoot or host-memory pressure and stops only the owned group. No app/service changes; no quiet lease. Image-based reference peak is conservative for text-only model loading."
+}

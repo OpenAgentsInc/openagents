@@ -1,0 +1,66 @@
+{
+  "status": "complete",
+  "preflight": {
+    "available_memory_bytes": 82379866112,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 3028366,
+      "inactive": 1863264,
+      "speculative": 136438
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "cpu_only": true,
+  "max_rss_bytes": 4294967296,
+  "minimum_available_memory_bytes": 12884901888,
+  "startup_available_memory_bytes": 17179869184,
+  "deadline_seconds": 1800,
+  "command": [
+    "cargo",
+    "test",
+    "--release",
+    "--manifest-path",
+    "crates/psionic/Cargo.toml",
+    "-p",
+    "psionic-backend-metal",
+    "--lib",
+    "clef",
+    "--message-format=json",
+    "--",
+    "--test-threads=1"
+  ],
+  "environment": {
+    "CARGO_TARGET_DIR": "user-home/work/openagents-target-agent1",
+    "CARGO_BUILD_JOBS": "2"
+  },
+  "exit": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 55625,
+    "max_rss_bytes": 4294967296,
+    "peak_rss_bytes": 1120960512,
+    "peak_physical_footprint_bytes": 1006700920,
+    "peak_accounted_bytes": 1120960512,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 56,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 80111058944,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 31.355136292,
+  "source_unchanged": true,
+  "test_binary": {
+    "path": "run-artifacts/block16-candidate/psionic-backend-metal-tests",
+    "sha256": "c27ab72eeca5c9273c7592cb420978287a98e6782867638c8b42ab336d574e44",
+    "bytes": 2353704,
+    "source_executable": "user-home/work/openagents-target-agent1/release/deps/psionic_backend_metal-a2dbd8deab19d6f5"
+  }
+}

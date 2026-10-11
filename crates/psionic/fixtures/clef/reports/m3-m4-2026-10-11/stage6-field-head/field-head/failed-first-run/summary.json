@@ -1,0 +1,90 @@
+{
+  "status": "failed",
+  "passed": false,
+  "conditions": "shared machine; correctness with row export, not serving latency",
+  "config": {
+    "measurement_mode": "shared",
+    "max_start_load": 150,
+    "max_run_load": 180,
+    "rounds": 1,
+    "runs": 1,
+    "request_timeout": 300,
+    "deadline_seconds": 1800,
+    "expected_requests": 40,
+    "expected_questions": 104,
+    "requests": [
+      "workspace/openagents/crates/psionic/fixtures/clef/e2e/requests.jsonl"
+    ],
+    "minimum_available_memory_gib": 12,
+    "model_path": "session-artifacts/mac-quiet-2026-10-10/Clef-Flash-Q4_K_M.gguf",
+    "output_dir": "run-artifacts/flash-head-stage6-combined",
+    "max_rss_gib": 36,
+    "startup_timeout": 180,
+    "variants": [
+      {
+        "name": "baseline",
+        "binary": "run-artifacts/stage6/psionic-openai-server",
+        "model": "clef-flash",
+        "chunk": 2048,
+        "env": {
+          "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+          "PSIONIC_CLEF_METAL_GEMM": "weight-shapes"
+        },
+        "engine": "psionic"
+      }
+    ],
+    "settle_seconds": 600,
+    "max_wait_seconds": 1800,
+    "max_start_gpu_percent": 10
+  },
+  "effective_variants": [
+    {
+      "name": "staged",
+      "binary": "run-artifacts/stage6/psionic-openai-server",
+      "model": "clef-flash",
+      "chunk": 2048,
+      "env": {
+        "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+        "PSIONIC_CLEF_METAL_GEMM": "weight-shapes",
+        "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0",
+        "PSIONIC_CLEF_BATCH_REQUESTS": "0",
+        "RAYON_NUM_THREADS": "2",
+        "OMP_NUM_THREADS": "2",
+        "VECLIB_MAXIMUM_THREADS": "2",
+        "PSIONIC_CLEF_METAL_HEAD": "staged"
+      },
+      "engine": "psionic"
+    },
+    {
+      "name": "fused-fields",
+      "binary": "run-artifacts/stage6/psionic-openai-server",
+      "model": "clef-flash",
+      "chunk": 2048,
+      "env": {
+        "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+        "PSIONIC_CLEF_METAL_GEMM": "weight-shapes",
+        "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0",
+        "PSIONIC_CLEF_BATCH_REQUESTS": "0",
+        "RAYON_NUM_THREADS": "2",
+        "OMP_NUM_THREADS": "2",
+        "VECLIB_MAXIMUM_THREADS": "2",
+        "PSIONIC_CLEF_METAL_HEAD": "fused-fields"
+      },
+      "engine": "psionic"
+    }
+  ],
+  "started_at": "2026-10-11T10:48:28.567544+00:00",
+  "completed_modes": [],
+  "artifacts": {
+    "model_path": {
+      "path": "session-artifacts/mac-quiet-2026-10-10/Clef-Flash-Q4_K_M.gguf",
+      "sha256": "fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c"
+    }
+  },
+  "binary_sha256": "77c74a2cf4c737ae0b92278e7f8384a213dc53f1567963fb6b8c6d0dc7157991",
+  "suite_sha256": "3958f5f3b9d09d7fac61a39e40c69e812ef09c39f06baae2ab0286e171ab19bc",
+  "harness_sha256": "2bfc8599ddc54cd289b4f3ab2840df95fe31ee69ee461d6529d6e2a3ec4f13fd",
+  "error_type": "RuntimeError",
+  "error": "staged exited before readiness; see server log",
+  "finished_at": "2026-10-11T10:48:49.238494+00:00"
+}

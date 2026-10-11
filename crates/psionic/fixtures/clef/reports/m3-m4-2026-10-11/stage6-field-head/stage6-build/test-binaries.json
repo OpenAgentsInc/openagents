@@ -1,0 +1,14 @@
+[
+  {
+    "path": "psionic-serve-tests",
+    "sha256": "746950810194cbb9228ab6c49776beb5bbb45415b831e5c94efb821ad2dde566",
+    "bytes": 60565024,
+    "source": "user-home/work/openagents-target-agent1/release/deps/psionic_serve-acadeb851218b939"
+  },
+  {
+    "path": "psionic-metal-tests",
+    "sha256": "e4c06d3229daebd11b05791cab1d598d2818ff61142a02e4bebe9e592ad9fa99",
+    "bytes": 2371752,
+    "source": "run-artifacts/field-stack-candidate/psionic-backend-metal-tests"
+  }
+]

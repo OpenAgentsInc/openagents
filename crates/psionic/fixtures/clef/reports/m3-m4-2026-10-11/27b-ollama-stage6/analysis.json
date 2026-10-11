@@ -1,0 +1,232 @@
+{
+  "source_records_sha256": "ef42f7c1983a99d74b2bbfff7ec448299de58a6eba8db7e968bc6f5658702939",
+  "status": "complete",
+  "conditions": "shared machine; no task-owned build or second model workload; no quiet lease",
+  "measured_requests": 30,
+  "warmups": 6,
+  "all_actual_token_counts_pair_exactly": true,
+  "all_request_bytes_pair_exactly": true,
+  "native_prefix_and_answer_cache": "disabled; every native response reports zero cached_input_tokens and no cached timing",
+  "ollama_cache_reporting": "cached_input_tokens is absent; unique state nonces prevent repeated full-request answers, but internal prefix reuse is not directly observed",
+  "per_round": [
+    {
+      "round": 0,
+      "variant": "27b-q4-fused-head",
+      "workload": "len16k",
+      "count": 5,
+      "median_seconds": 43.43730099999999,
+      "median_reported_phase_ms": {
+        "encode_ms": 5.7,
+        "queue_ms": 0.0,
+        "prefill_ms": 43374.7,
+        "head_ms": 55.5
+      }
+    },
+    {
+      "round": 0,
+      "variant": "27b-q4-fused-head",
+      "workload": "len1k",
+      "count": 5,
+      "median_seconds": 2.4898515000000003,
+      "median_reported_phase_ms": {
+        "encode_ms": 0.6,
+        "queue_ms": 0.0,
+        "prefill_ms": 2457.5,
+        "head_ms": 29.2
+      }
+    },
+    {
+      "round": 0,
+      "variant": "27b-q4-fused-head",
+      "workload": "len4k",
+      "count": 5,
+      "median_seconds": 9.193308875,
+      "median_reported_phase_ms": {
+        "encode_ms": 1.8,
+        "queue_ms": 0.0,
+        "prefill_ms": 9156.0,
+        "head_ms": 34.0
+      }
+    },
+    {
+      "round": 0,
+      "variant": "ollama-27b",
+      "workload": "len16k",
+      "count": 5,
+      "median_seconds": 43.24281708299998,
+      "median_reported_phase_ms": {}
+    },
+    {
+      "round": 0,
+      "variant": "ollama-27b",
+      "workload": "len1k",
+      "count": 5,
+      "median_seconds": 3.1119297919999553,
+      "median_reported_phase_ms": {}
+    },
+    {
+      "round": 0,
+      "variant": "ollama-27b",
+      "workload": "len4k",
+      "count": 5,
+      "median_seconds": 10.519903959000033,
+      "median_reported_phase_ms": {}
+    }
+  ],
+  "paired_samples": [
+    {
+      "round": 0,
+      "workload": "len16k",
+      "sample": 1,
+      "input_tokens": 15510,
+      "seconds": {
+        "27b-q4-fused-head": 41.340039375,
+        "ollama-27b": 43.35851762499999
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len16k",
+      "sample": 2,
+      "input_tokens": 15511,
+      "seconds": {
+        "27b-q4-fused-head": 41.80495045800001,
+        "ollama-27b": 42.8386747080001
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len16k",
+      "sample": 3,
+      "input_tokens": 15511,
+      "seconds": {
+        "27b-q4-fused-head": 43.58257108400002,
+        "ollama-27b": 44.40331758299999
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len16k",
+      "sample": 4,
+      "input_tokens": 15510,
+      "seconds": {
+        "27b-q4-fused-head": 43.572263792,
+        "ollama-27b": 42.534148458000004
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len16k",
+      "sample": 5,
+      "input_tokens": 15511,
+      "seconds": {
+        "27b-q4-fused-head": 43.43730099999999,
+        "ollama-27b": 43.24281708299998
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len1k",
+      "sample": 1,
+      "input_tokens": 1079,
+      "seconds": {
+        "27b-q4-fused-head": 2.6721940839999974,
+        "ollama-27b": 3.171539791999976
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len1k",
+      "sample": 2,
+      "input_tokens": 1078,
+      "seconds": {
+        "27b-q4-fused-head": 2.4694572920000013,
+        "ollama-27b": 3.091254417000016
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len1k",
+      "sample": 3,
+      "input_tokens": 1079,
+      "seconds": {
+        "27b-q4-fused-head": 2.4898515000000003,
+        "ollama-27b": 3.1119297919999553
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len1k",
+      "sample": 4,
+      "input_tokens": 1076,
+      "seconds": {
+        "27b-q4-fused-head": 2.4900596250000007,
+        "ollama-27b": 3.0732463749999965
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len1k",
+      "sample": 5,
+      "input_tokens": 1080,
+      "seconds": {
+        "27b-q4-fused-head": 2.459370749999998,
+        "ollama-27b": 3.112039917000004
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len4k",
+      "sample": 1,
+      "input_tokens": 3917,
+      "seconds": {
+        "27b-q4-fused-head": 9.52038262500001,
+        "ollama-27b": 10.76825608300004
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len4k",
+      "sample": 2,
+      "input_tokens": 3917,
+      "seconds": {
+        "27b-q4-fused-head": 9.193308875,
+        "ollama-27b": 10.677376125000023
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len4k",
+      "sample": 3,
+      "input_tokens": 3918,
+      "seconds": {
+        "27b-q4-fused-head": 9.170213833999995,
+        "ollama-27b": 10.519903959000033
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len4k",
+      "sample": 4,
+      "input_tokens": 3913,
+      "seconds": {
+        "27b-q4-fused-head": 9.137346915999998,
+        "ollama-27b": 10.464899708000019
+      }
+    },
+    {
+      "round": 0,
+      "workload": "len4k",
+      "sample": 5,
+      "input_tokens": 3913,
+      "seconds": {
+        "27b-q4-fused-head": 9.234640499999998,
+        "ollama-27b": 10.494137666999961
+      }
+    }
+  ],
+  "owned_servers_stopped": 2,
+  "peak_accounted_bytes": 69623676928,
+  "lowest_available_memory_bytes": 45587169280,
+  "qualification": "Phase timings are ordinary serving timers, not profiling-mode GPU timings. Summaries do not establish idle-machine acceptance or a causal head speedup."
+}

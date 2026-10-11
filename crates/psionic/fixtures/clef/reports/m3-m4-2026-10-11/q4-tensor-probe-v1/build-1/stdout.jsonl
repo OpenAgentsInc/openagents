@@ -1,0 +1,1 @@
+{"command": ["xcrun", "-sdk", "macosx", "metal", "-std=metal4.0", "-c", "<SCRATCH>/clef-m3-m4/q4-tensor-prototype/combined.metal", "-o", "<SCRATCH>/clef-m3-m4/q4-tensor-prototype/kernels.air"]}

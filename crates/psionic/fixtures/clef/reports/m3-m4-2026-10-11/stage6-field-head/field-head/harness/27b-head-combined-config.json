@@ -1,0 +1,33 @@
+{
+  "measurement_mode": "shared",
+  "max_start_load": 150,
+  "max_run_load": 180,
+  "rounds": 1,
+  "runs": 1,
+  "request_timeout": 300,
+  "deadline_seconds": 1800,
+  "expected_requests": 40,
+  "expected_questions": 104,
+  "requests": [
+    "workspace/openagents/crates/psionic/fixtures/clef/e2e/requests.jsonl"
+  ],
+  "minimum_available_memory_gib": 12,
+  "model_path": "run-artifacts/artifacts/Clef-Q4_K_M.gguf",
+  "clef_head": "run-artifacts/artifacts/clef-bf16/joint_head.safetensors",
+  "output_dir": "run-artifacts/27b-head-stage6-combined",
+  "max_rss_gib": 52,
+  "startup_timeout": 600,
+  "variants": [
+    {
+      "name": "baseline",
+      "binary": "run-artifacts/stage6/psionic-openai-server",
+      "model": "clef",
+      "chunk": 512,
+      "env": {
+        "PSIONIC_CLEF_METAL_FFN_WEIGHTS": "q4k-on-demand",
+        "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+        "PSIONIC_CLEF_METAL_GEMM": "weight-shapes"
+      }
+    }
+  ]
+}

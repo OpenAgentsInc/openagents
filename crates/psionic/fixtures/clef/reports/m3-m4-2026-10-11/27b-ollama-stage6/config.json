@@ -1,0 +1,45 @@
+{
+  "model_path": "task-scratch/clef-m3-m4/artifacts/Clef-Q4_K_M.gguf",
+  "measurement_mode": "shared",
+  "max_start_load": 150,
+  "max_run_load": 180,
+  "rounds": 1,
+  "runs": 5,
+  "request_timeout": 300,
+  "variants": [
+    {
+      "name": "27b-q4-fused-head",
+      "binary": "task-scratch/clef-m3-m4/stage6/psionic-openai-server",
+      "chunk": 2048,
+      "env": {
+        "RAYON_NUM_THREADS": "2",
+        "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0",
+        "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+        "PSIONIC_CLEF_METAL_GEMM": "weight-shapes",
+        "PSIONIC_CLEF_METAL_FFN_WEIGHTS": "resident-f16",
+        "PSIONIC_CLEF_METAL_HEAD": "fused-fields",
+        "PSIONIC_CLEF_METAL_DELTA": "sequential"
+      }
+    },
+    {
+      "name": "ollama-27b",
+      "engine": "ollama",
+      "binary": "/opt/homebrew/bin/ollama",
+      "models_dir": "model-cache",
+      "model": "clef",
+      "max_rss_gib": 52,
+      "startup_timeout": 600
+    }
+  ],
+  "requests": [
+    "task-scratch/mac-quiet-2026-10-10/requests/len1k.json",
+    "task-scratch/mac-quiet-2026-10-10/requests/len4k.json",
+    "task-scratch/mac-quiet-2026-10-10/requests/len16k.json"
+  ],
+  "output_dir": "task-scratch/clef-m3-m4/27b-ollama-stage6-resident",
+  "max_rss_gib": 76,
+  "minimum_available_memory_gib": 12,
+  "startup_timeout": 600,
+  "request_model": "clef",
+  "clef_head": "task-scratch/clef-m3-m4/artifacts/clef-bf16/joint_head.safetensors"
+}

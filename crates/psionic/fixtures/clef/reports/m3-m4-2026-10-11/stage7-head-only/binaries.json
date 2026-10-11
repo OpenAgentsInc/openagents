@@ -1,0 +1,18 @@
+[
+  {
+    "name": "metal",
+    "sha256": "d16e732899695e93b0d12236c5e031ec421e15821fce6f601dc20642cfcc74f5",
+    "bytes": 2371112,
+    "source_manifest_sha256": "a9e6034d81ddb96c1d8c8b1dc4289fc1c4288f9bf96d1fb531598f7b38d642e8",
+    "compiled_path": "cargo-target/release/deps/psionic_backend_metal-a2dbd8deab19d6f5",
+    "retained_copy": "task-scratch/clef-m3-m4/stage7-head-only/psionic-metal-tests"
+  },
+  {
+    "name": "serve",
+    "sha256": "3aafd743d9239f56ea2ab13b692640a7aa0524742420326f0d10d240f1529e8a",
+    "bytes": 60565024,
+    "source_manifest_sha256": "a9e6034d81ddb96c1d8c8b1dc4289fc1c4288f9bf96d1fb531598f7b38d642e8",
+    "compiled_path": "cargo-target/release/deps/psionic_serve-acadeb851218b939",
+    "retained_copy": "task-scratch/clef-m3-m4/stage7-head-only/psionic-serve-tests"
+  }
+]

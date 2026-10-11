@@ -248,6 +248,19 @@ impl DeviceTrunk {
         }
     }
 
+    fn head_field_layers(
+        &self,
+        weights: &ClefHeadWeights,
+        fields: &[f32],
+        rows: usize,
+    ) -> Result<Option<Vec<f32>>, String> {
+        match self {
+            Self::Cuda(_) => Ok(None),
+            #[cfg(target_os = "macos")]
+            Self::Metal(trunk) => trunk.head_field_layers(weights, fields, rows),
+        }
+    }
+
     /// Independent head products in one round trip; `None` when a matrix
     /// is not resident.
     pub fn head_linear_batch(
@@ -646,7 +659,10 @@ impl ClefDecisionLane {
                 let loaded: Result<DeviceTrunk, String> = if metal {
                     #[cfg(target_os = "macos")]
                     {
-                        crate::ClefMetalTrunk::load(&backbone, &params).map(DeviceTrunk::Metal)
+                        crate::ClefMetalTrunk::load(&backbone, &params).and_then(|trunk| {
+                            trunk.prepare_field_head(&head)?;
+                            Ok(DeviceTrunk::Metal(trunk))
+                        })
                     }
                     #[cfg(not(target_os = "macos"))]
                     {
@@ -1399,6 +1415,22 @@ impl<'a> DeviceMemory<'a> {
 }
 
 impl MemoryAttention for DeviceMemory<'_> {
+    fn field_layers(
+        &mut self,
+        weights: &ClefHeadWeights,
+        fields: &[f32],
+        rows: usize,
+    ) -> Result<Option<Vec<f32>>, String> {
+        let began = Instant::now();
+        let result = self.trunk.head_field_layers(weights, fields, rows)?;
+        if result.is_some() {
+            // The fused block includes normalization, both attentions, and FFN.
+            self.attend.0 += 2 * weights.layers.len();
+            self.attend.1 += began.elapsed().as_secs_f64();
+        }
+        Ok(result)
+    }
+
     fn linear_batch(
         &mut self,
         jobs: &[(&head::Matrix, &[f32], usize, Option<&[f32]>)],

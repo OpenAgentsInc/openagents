@@ -1,0 +1,17 @@
+
+running 1 test
+test clef::tests::metal_block_delta_matches_sequential_weighted_logits ... Metal weighted parity settings: delta_mode=true attention=staged gemm=fixed-64 ffn_weights=resident-f16
+Metal mode raw-logit parity: delta_mode=true compared=34 max_abs_delta=1.08385086e-3
+
+thread 'clef::tests::metal_block_delta_matches_sequential_weighted_logits' (8178252) panicked at crates/psionic-serve/src/clef/tests.rs:973:5:
+tokens=2032 chunk=257 question=0 option=1: 0.52402294 vs 0.5229391 (delta 1.08385086e-3)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    clef::tests::metal_block_delta_matches_sequential_weighted_logits
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 504 filtered out; finished in 26.85s
+

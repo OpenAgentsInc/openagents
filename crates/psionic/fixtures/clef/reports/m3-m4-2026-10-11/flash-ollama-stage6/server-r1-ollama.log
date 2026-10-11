@@ -1,0 +1,97 @@
+Couldn't find 'task-scratch/clef-ollama-state-t5b9r0wq/.ollama/id_ed25519'. Generating new private key.
+Your new public key is: 
+
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFOEYTNMA51xx1RN/WekYUX8E4qsvzX8X3UF4F3tdeGe
+
+time=2026-10-11T06:22:43.581-05:00 level=INFO source=routes.go:2373 msg="server config" env="map[HTTPS_PROXY: HTTP_PROXY: LLAMA_ARG_FIT: LLAMA_ARG_FIT_TARGET: NO_PROXY: OLLAMA_CONTEXT_LENGTH:32768 OLLAMA_CREATE_REMOTE:false OLLAMA_DEBUG:INFO OLLAMA_DEBUG_LOG_REQUESTS:false OLLAMA_EDITOR: OLLAMA_FLASH_ATTENTION:false OLLAMA_GO_TEMPLATE:true OLLAMA_GPU_OVERHEAD:0 OLLAMA_HOST:http://127.0.0.1:54776 OLLAMA_IGPU_ENABLE: OLLAMA_KEEP_ALIVE:10m0s OLLAMA_KV_CACHE_TYPE: OLLAMA_LLM_LIBRARY: OLLAMA_LOAD_TIMEOUT:5m0s OLLAMA_MAX_LOADED_MODELS:1 OLLAMA_MAX_QUEUE:512 OLLAMA_MAX_TRANSFER_STREAMS:4 OLLAMA_MODELS:model-cache OLLAMA_NOHISTORY:false OLLAMA_NOPRUNE:true OLLAMA_NO_CLOUD:true OLLAMA_NUM_PARALLEL:1 OLLAMA_ORIGINS:[http://localhost https://localhost http://localhost:* https://localhost:* http://127.0.0.1 https://127.0.0.1 http://127.0.0.1:* https://127.0.0.1:* http://0.0.0.0 https://0.0.0.0 http://0.0.0.0:* https://0.0.0.0:* app://* file://* tauri://* vscode-webview://* vscode-file://*] OLLAMA_REMOTES:[ollama.com] OLLAMA_SCHED_SPREAD:false http_proxy: https_proxy: no_proxy:]"
+time=2026-10-11T06:22:43.581-05:00 level=INFO source=routes.go:2375 msg="Ollama cloud disabled: true"
+time=2026-10-11T06:22:43.591-05:00 level=INFO source=routes.go:2435 msg="Listening on 127.0.0.1:54776 (version 0.40.2)"
+time=2026-10-11T06:22:43.591-05:00 level=INFO source=model_recommendations.go:177 msg="model recommendations cache sleep scheduled" wait=4h7m33.926999131s consecutive_failures=0
+time=2026-10-11T06:22:43.591-05:00 level=INFO source=runner.go:60 msg="discovering available GPUs..."
+time=2026-10-11T06:22:43.735-05:00 level=INFO source=types.go:32 msg="inference compute" id=0 filter_id=0 library=Metal compute=0.0 name=MTL0 description="Apple M5 Max" libdirs="" driver=0.0 pci_id="" type=iGPU total="107.5 GiB" available="107.5 GiB"
+time=2026-10-11T06:22:43.735-05:00 level=INFO source=routes.go:2485 msg="vram-based default context" total_vram="107.5 GiB" default_num_ctx=262144
+[GIN] 2026/10/11 - 06:22:43 | 200 |      95.291µs |       127.0.0.1 | GET      "/api/version"
+time=2026-10-11T06:22:43.788-05:00 level=INFO source=sched.go:623 msg="system memory" total="128.0 GiB" free="109.2 GiB" free_swap="0 B"
+time=2026-10-11T06:22:43.788-05:00 level=INFO source=sched.go:630 msg="gpu memory" id=0 library=Metal available="107.0 GiB" free="107.5 GiB" minimum="512.0 MiB" overhead="0 B"
+time=2026-10-11T06:22:43.790-05:00 level=INFO source=client.go:529 msg="starting mlx runner subprocess" model=clef-flash:latest port=54780
+time=2026-10-11T06:22:43.792-05:00 level=INFO source=images.go:418 msg="template selection" model=registry.ollama.ai/library/clef-flash:latest selected=renderer renderer=clef parser="" go_template=null chat_template=null harmony=null renderer_parser="[decision vision]"
+time=2026-10-11T06:22:43.792-05:00 level=INFO source=sched.go:747 msg="loaded runners" count=1
+time=2026-10-11T06:22:43.832-05:00 level=INFO source=server.go:46 msg="MLX engine initialized" "MLX version"=0.32.3-53-ga59cc23 device=gpu
+time=2026-10-11T06:22:43.857-05:00 level=INFO source=model.go:137 msg="Model architecture" arch=ClefForDecision
+time=2026-10-11T06:22:44.267-05:00 level=INFO source=runner.go:285 msg="Loaded tensors from manifest" count=1082
+time=2026-10-11T06:22:44.907-05:00 level=INFO source=grammar.go:79 msg="Structured output initialized" library=xgrammar version=v0.2.7 vocab_size=248320 path=/Applications/Ollama.app/Contents/Resources/mlx_metal_v4/libollama_xgrammar.dylib
+time=2026-10-11T06:22:45.034-05:00 level=INFO source=runner.go:331 msg="Starting HTTP server" host=127.0.0.1 port=54780
+time=2026-10-11T06:22:45.094-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=GET path=/v1/status took=90.667µs status="200 OK"
+time=2026-10-11T06:22:45.095-05:00 level=INFO source=client.go:112 msg="mlx runner is ready" port=54780
+time=2026-10-11T06:22:45.096-05:00 level=INFO source=prefix_cache.go:151 msg="cache miss" total=1076 matched=0 cached=0 left=1076
+time=2026-10-11T06:22:45.526-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=POST path=/v1/score took=431.249042ms status="200 OK"
+[GIN] 2026/10/11 - 06:22:45 | 200 |  1.746052041s |       127.0.0.1 | POST     "/v1/systemone"
+time=2026-10-11T06:22:45.534-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=GET path=/v1/status took=53.416µs status="200 OK"
+time=2026-10-11T06:22:45.536-05:00 level=INFO source=prefix_cache.go:151 msg="cache miss" total=1079 matched=37 cached=0 left=1079
+time=2026-10-11T06:22:46.369-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=POST path=/v1/score took=834.704042ms status="200 OK"
+[GIN] 2026/10/11 - 06:22:46 | 200 |  841.248333ms |       127.0.0.1 | POST     "/v1/systemone"
+time=2026-10-11T06:22:46.375-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=GET path=/v1/status took=43.583µs status="200 OK"
+time=2026-10-11T06:22:46.377-05:00 level=INFO source=prefix_cache.go:151 msg="cache hit" total=1083 matched=37 cached=37 left=1046
+time=2026-10-11T06:22:47.227-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=POST path=/v1/score took=851.375042ms status="200 OK"
+[GIN] 2026/10/11 - 06:22:47 | 200 |  857.395792ms |       127.0.0.1 | POST     "/v1/systemone"
+time=2026-10-11T06:22:47.234-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=GET path=/v1/status took=61.209µs status="200 OK"
+time=2026-10-11T06:22:47.236-05:00 level=INFO source=prefix_cache.go:151 msg="cache hit" total=1083 matched=38 cached=37 left=1046
+time=2026-10-11T06:22:48.057-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=POST path=/v1/score took=822.734041ms status="200 OK"
+[GIN] 2026/10/11 - 06:22:48 | 200 |  828.584667ms |       127.0.0.1 | POST     "/v1/systemone"
+time=2026-10-11T06:22:48.065-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=GET path=/v1/status took=43.25µs status="200 OK"
+time=2026-10-11T06:22:48.067-05:00 level=INFO source=prefix_cache.go:151 msg="cache hit" total=1080 matched=38 cached=38 left=1042
+time=2026-10-11T06:22:48.865-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=POST path=/v1/score took=800.108125ms status="200 OK"
+[GIN] 2026/10/11 - 06:22:48 | 200 |  806.742791ms |       127.0.0.1 | POST     "/v1/systemone"
+time=2026-10-11T06:22:48.872-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=GET path=/v1/status took=57.708µs status="200 OK"
+time=2026-10-11T06:22:48.874-05:00 level=INFO source=prefix_cache.go:151 msg="cache hit" total=1079 matched=38 cached=38 left=1041
+time=2026-10-11T06:22:49.668-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=POST path=/v1/score took=795.591166ms status="200 OK"
+[GIN] 2026/10/11 - 06:22:49 | 200 |   801.55875ms |       127.0.0.1 | POST     "/v1/systemone"
+time=2026-10-11T06:22:49.675-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=GET path=/v1/status took=37.709µs status="200 OK"
+time=2026-10-11T06:22:49.678-05:00 level=INFO source=prefix_cache.go:151 msg="cache hit" total=3916 matched=37 cached=37 left=3879
+time=2026-10-11T06:22:52.605-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=POST path=/v1/score took=2.929769917s status="200 OK"
+[GIN] 2026/10/11 - 06:22:52 | 200 |  2.935813667s |       127.0.0.1 | POST     "/v1/systemone"
+time=2026-10-11T06:22:52.612-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=GET path=/v1/status took=47.917µs status="200 OK"
+time=2026-10-11T06:22:52.616-05:00 level=INFO source=prefix_cache.go:151 msg="cache hit" total=3919 matched=39 cached=38 left=3881
+time=2026-10-11T06:22:55.493-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=POST path=/v1/score took=2.880175959s status="200 OK"
+[GIN] 2026/10/11 - 06:22:55 | 200 |  2.886843125s |       127.0.0.1 | POST     "/v1/systemone"
+time=2026-10-11T06:22:55.499-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=GET path=/v1/status took=41.666µs status="200 OK"
+time=2026-10-11T06:22:55.502-05:00 level=INFO source=prefix_cache.go:151 msg="cache hit" total=3919 matched=39 cached=39 left=3880
+time=2026-10-11T06:22:58.359-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=POST path=/v1/score took=2.859927292s status="200 OK"
+[GIN] 2026/10/11 - 06:22:58 | 200 |  2.865434833s |       127.0.0.1 | POST     "/v1/systemone"
+time=2026-10-11T06:22:58.367-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=GET path=/v1/status took=46.916µs status="200 OK"
+time=2026-10-11T06:22:58.370-05:00 level=INFO source=prefix_cache.go:151 msg="cache hit" total=3918 matched=39 cached=38 left=3880
+time=2026-10-11T06:23:01.243-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=POST path=/v1/score took=2.875823334s status="200 OK"
+[GIN] 2026/10/11 - 06:23:01 | 200 |  2.882612166s |       127.0.0.1 | POST     "/v1/systemone"
+time=2026-10-11T06:23:01.250-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=GET path=/v1/status took=68.584µs status="200 OK"
+time=2026-10-11T06:23:01.254-05:00 level=INFO source=prefix_cache.go:151 msg="cache hit" total=3917 matched=39 cached=39 left=3878
+time=2026-10-11T06:23:04.128-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=POST path=/v1/score took=2.877678084s status="200 OK"
+[GIN] 2026/10/11 - 06:23:04 | 200 |  2.884043166s |       127.0.0.1 | POST     "/v1/systemone"
+time=2026-10-11T06:23:04.136-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=GET path=/v1/status took=67.5µs status="200 OK"
+time=2026-10-11T06:23:04.139-05:00 level=INFO source=prefix_cache.go:151 msg="cache hit" total=3919 matched=38 cached=38 left=3881
+time=2026-10-11T06:23:06.976-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=POST path=/v1/score took=2.839788875s status="200 OK"
+[GIN] 2026/10/11 - 06:23:06 | 200 |  2.846744875s |       127.0.0.1 | POST     "/v1/systemone"
+time=2026-10-11T06:23:06.985-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=GET path=/v1/status took=102.417µs status="200 OK"
+time=2026-10-11T06:23:06.996-05:00 level=INFO source=prefix_cache.go:151 msg="cache hit" total=15514 matched=39 cached=38 left=15476
+time=2026-10-11T06:23:19.018-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=POST path=/v1/score took=12.032500167s status="200 OK"
+[GIN] 2026/10/11 - 06:23:19 | 200 |    12.040635s |       127.0.0.1 | POST     "/v1/systemone"
+time=2026-10-11T06:23:19.026-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=GET path=/v1/status took=57.875µs status="200 OK"
+time=2026-10-11T06:23:19.037-05:00 level=INFO source=prefix_cache.go:151 msg="cache hit" total=15511 matched=38 cached=38 left=15473
+time=2026-10-11T06:23:30.968-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=POST path=/v1/score took=11.9418225s status="200 OK"
+[GIN] 2026/10/11 - 06:23:30 | 200 | 11.948774708s |       127.0.0.1 | POST     "/v1/systemone"
+time=2026-10-11T06:23:30.977-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=GET path=/v1/status took=53.917µs status="200 OK"
+time=2026-10-11T06:23:30.989-05:00 level=INFO source=prefix_cache.go:151 msg="cache hit" total=15513 matched=38 cached=38 left=15475
+time=2026-10-11T06:23:42.885-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=POST path=/v1/score took=11.907694333s status="200 OK"
+[GIN] 2026/10/11 - 06:23:42 | 200 |    11.915345s |       127.0.0.1 | POST     "/v1/systemone"
+time=2026-10-11T06:23:42.893-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=GET path=/v1/status took=51.292µs status="200 OK"
+time=2026-10-11T06:23:42.903-05:00 level=INFO source=prefix_cache.go:151 msg="cache hit" total=15511 matched=37 cached=37 left=15474
+time=2026-10-11T06:23:54.764-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=POST path=/v1/score took=11.870815667s status="200 OK"
+[GIN] 2026/10/11 - 06:23:54 | 200 | 11.877672125s |       127.0.0.1 | POST     "/v1/systemone"
+time=2026-10-11T06:23:54.773-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=GET path=/v1/status took=36.125µs status="200 OK"
+time=2026-10-11T06:23:54.782-05:00 level=INFO source=prefix_cache.go:151 msg="cache hit" total=15514 matched=39 cached=38 left=15476
+time=2026-10-11T06:24:06.709-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=POST path=/v1/score took=11.935873666s status="200 OK"
+[GIN] 2026/10/11 - 06:24:06 | 200 | 11.943379958s |       127.0.0.1 | POST     "/v1/systemone"
+time=2026-10-11T06:24:06.716-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=GET path=/v1/status took=39.625µs status="200 OK"
+time=2026-10-11T06:24:06.725-05:00 level=INFO source=prefix_cache.go:151 msg="cache hit" total=15508 matched=38 cached=38 left=15470
+time=2026-10-11T06:24:18.605-05:00 level=INFO source=server.go:252 msg=ServeHTTP method=POST path=/v1/score took=11.887723s status="200 OK"
+[GIN] 2026/10/11 - 06:24:18 | 200 |  11.89389525s |       127.0.0.1 | POST     "/v1/systemone"
+time=2026-10-11T06:24:18.606-05:00 level=INFO source=client.go:151 msg="stopping mlx runner subprocess" pid=20577

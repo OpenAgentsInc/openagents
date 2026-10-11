@@ -1,0 +1,14 @@
+[
+  {
+    "path": "rss-r0-27b-q4-fused-head.jsonl",
+    "bytes": 517541,
+    "sha256": "e6004ba82058367c9b78216fbbc71f6468d3d27d3485fd558a24610b55e4293c",
+    "reason": "Local owned-process sampling timeline; aggregate bounds and cleanup remain in records."
+  },
+  {
+    "path": "rss-r0-ollama-27b.jsonl",
+    "bytes": 554968,
+    "sha256": "7ddb8185fe8d4838ff1d8008b4cf31e375fe1da4efcdb000063e8338088ea6cd",
+    "reason": "Local owned-process sampling timeline; aggregate bounds and cleanup remain in records."
+  }
+]

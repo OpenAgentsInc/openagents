@@ -187,6 +187,11 @@ impl ClefMetalTrunk {
         sizes.push(allocation(&[rows, length, 4])?);
         sizes.extend([allocation(&[rows, d.width, 4])?; 4]);
         sizes.push(allocation(&[d.width, 4])?);
+        if let Some(fields) = &state.head_fields {
+            // Each active request owns its field workspace until the final wait.
+            // There is at least one span per question; the public limit is 64.
+            sizes.push(fields.workspace_bytes(spans.clamp(1, 64))? as u64);
+        }
         // Head linears execute serially. Six times the largest input/output
         // geometry covers the batched option projections and FFN temporaries.
         let matrix_width = state

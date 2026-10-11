@@ -1,0 +1,18 @@
+{
+  "harness_sha256": "2bfc8599ddc54cd289b4f3ab2840df95fe31ee69ee461d6529d6e2a3ec4f13fd",
+  "self_test": "passed",
+  "config_preparation": {
+    "flash": {
+      "requests": 40,
+      "questions": 104
+    },
+    "27b": {
+      "requests": 40,
+      "questions": 104
+    }
+  },
+  "model_runs": 0,
+  "native_token_ids_observed": false,
+  "exact_request_bytes_between_modes": true,
+  "pooled_row_byte_identity_required": true
+}

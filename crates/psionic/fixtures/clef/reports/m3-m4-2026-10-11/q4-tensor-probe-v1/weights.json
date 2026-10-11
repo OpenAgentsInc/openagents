@@ -1,0 +1,107 @@
+{
+  "schema": "clef.q4-tensor-probe.weights.v1",
+  "source_manifest_sha256": "67f4754c3ed4beb03d2ea283f933e38a98054a6748e24b4857bd90cb4142e275",
+  "full_model_read": false,
+  "numpy_version": "2.5.4",
+  "tensors": [
+    {
+      "name": "gate",
+      "m": 12288,
+      "k": 4096,
+      "files": {
+        "q4": {
+          "file": "gate.q4",
+          "bytes": 28311552,
+          "sha256": "ed85cba6cb0fb593e35f062c149ecd2ae97cc10ba741c7a9c9731225ec0dc7af"
+        },
+        "uint4": {
+          "file": "gate.uint4",
+          "bytes": 25165824,
+          "sha256": "d3b748568307ec881e4bb1c87f89f7af02331440d89a28d77360a6cc5b0dd3e4"
+        },
+        "scales.f32": {
+          "file": "gate.scales.f32",
+          "bytes": 6291456,
+          "sha256": "d514ab2fa2f6fd3cfc11013d9f3362750c66a84af7896a8f48b838f261dc1066"
+        },
+        "offsets.f32": {
+          "file": "gate.offsets.f32",
+          "bytes": 6291456,
+          "sha256": "11d16002925f8aba1d50fa5d08cc98d32de7cbce81d25d21421834755bcd9ee0"
+        },
+        "f16": {
+          "file": "gate.f16",
+          "bytes": 100663296,
+          "sha256": "a2bd893ff0f03262e671775cbadaa946f9b3b501fc2042f146621f36ab2b85ad"
+        }
+      },
+      "nibble_identity": true
+    },
+    {
+      "name": "up",
+      "m": 12288,
+      "k": 4096,
+      "files": {
+        "q4": {
+          "file": "up.q4",
+          "bytes": 28311552,
+          "sha256": "599c399c7b509e90a151091ebd15b4f5656161ca48908f6d0306dfec5b4a4c3d"
+        },
+        "uint4": {
+          "file": "up.uint4",
+          "bytes": 25165824,
+          "sha256": "49afb35137df2b46fb1c6a82875bdb9b1c177700754aa96b58b3130c53276c52"
+        },
+        "scales.f32": {
+          "file": "up.scales.f32",
+          "bytes": 6291456,
+          "sha256": "7b30f9cc4c51854fc3b5deb9ccd6235f7e01ce3c42deaa770a34924556c09aa9"
+        },
+        "offsets.f32": {
+          "file": "up.offsets.f32",
+          "bytes": 6291456,
+          "sha256": "7eed98e1791cb57e0f85dfe8c8db04c3c55ed107b63bd20410ac9ae1ad751c8c"
+        },
+        "f16": {
+          "file": "up.f16",
+          "bytes": 100663296,
+          "sha256": "98abd36faeaade163ed8957d6e4b75c132f26f3270e1742a80903be58fe3c3f4"
+        }
+      },
+      "nibble_identity": true
+    },
+    {
+      "name": "down",
+      "m": 4096,
+      "k": 12288,
+      "files": {
+        "q4": {
+          "file": "down.q4",
+          "bytes": 28311552,
+          "sha256": "98c3172ca85650456ef86f0260edd1b10e4fc7ca02427f8870a8e7e245cd2a78"
+        },
+        "uint4": {
+          "file": "down.uint4",
+          "bytes": 25165824,
+          "sha256": "0504b77815ee3c0b09f54a8f6b7194d4aba63df55e26fa9a4382cf9899db43a2"
+        },
+        "scales.f32": {
+          "file": "down.scales.f32",
+          "bytes": 6291456,
+          "sha256": "56305ea9ecb66c3e5a6048a2ce704aac5d07f04c9dbab78fc9bcab8398f0c9d6"
+        },
+        "offsets.f32": {
+          "file": "down.offsets.f32",
+          "bytes": 6291456,
+          "sha256": "38dfce19cb38f9afdba862254475eb51e5faa2f6daa83cb773f4f8f30d5b032e"
+        },
+        "f16": {
+          "file": "down.f16",
+          "bytes": 100663296,
+          "sha256": "b990dd7b7a792d40763dbd3931d50895fcaae0d4e1a9aa700e2e39b8784cde16"
+        }
+      },
+      "nibble_identity": true
+    }
+  ]
+}

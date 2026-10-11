@@ -1,0 +1,26 @@
+{
+  "binary_sha256": "77c74a2cf4c737ae0b92278e7f8384a213dc53f1567963fb6b8c6d0dc7157991",
+  "harness_sha256": "88edbf80e81efb8619813cf2fbcac67fdbcba6563ef3b2873d1d07bb23214221",
+  "conditions": "offline comparison of existing correctness outputs; no model runs",
+  "reference_sha256": "c621255ce47c874d95e1e94c08b8c9b4541fe3febac4f2ea1ea518f0c6d173af",
+  "modes": [
+    {
+      "mode": "staged",
+      "requests": 40,
+      "questions": 104,
+      "top_agreements": 104,
+      "max_abs_probability_delta": 0.00098995222733822,
+      "passed": true,
+      "failures": []
+    },
+    {
+      "mode": "fused-fields",
+      "requests": 40,
+      "questions": 104,
+      "top_agreements": 104,
+      "max_abs_probability_delta": 0.00098995222733822,
+      "passed": true,
+      "failures": []
+    }
+  ]
+}

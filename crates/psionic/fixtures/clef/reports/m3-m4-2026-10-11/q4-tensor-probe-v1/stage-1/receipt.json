@@ -1,0 +1,63 @@
+{
+  "mode": "stage",
+  "status": "complete",
+  "preflight": {
+    "available_memory_bytes": 108298125312,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 2718262,
+      "inactive": 3813620,
+      "speculative": 78111
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "max_owned_group_bytes": 2147483648,
+  "minimum_available_bytes": 12884901888,
+  "minimum_start_bytes": 15032385536,
+  "deadline_seconds": 60,
+  "conditions": "shared machine; Q4_K tile/native-uint4 projection candidates; no model or product latency claim",
+  "source_sha256": {
+    "baseline.metal": "2fe0e11a47ce6c691b537935521df6dcf32197fe05cc122728779ffe2aa0688a",
+    "candidates.metal": "31097bef6c9a863497a3c7defdc870c424802958d8a790d8af4dd0644fede039",
+    "probe.swift": "219dbc7a6a3d992c447000061c248a4cba742806da4f474a0e7da15d1fe3fee7",
+    "build.py": "4ce33cd8b44915879d613ae8226d632b206c987f7dd1929ad8b78f2ebba91e94",
+    "stage.py": "bb3451adc8e6e7cc5649d43575840c6373e38bc6e103e249fd77996a101ac9fb",
+    "guard.py": "6f443693fd05077ee89cb73063aeb4238c15780cc00971b29f76ec583057a2b2",
+    "sources.json": "c6d0f523e0df35f3b66bbc9c315df6d213d443f308f3e7b325be3afac75ade66"
+  },
+  "command": [
+    "<HOME>/.openagents/scratch/codex-01a128ee-daef-7590-baae-4e932a581a2c/clef-image-reference/bin/python",
+    "<SCRATCH>/clef-m3-m4/q4-tensor-prototype/stage.py",
+    "--gguf",
+    "<SCRATCH>/mac-quiet-2026-10-10/model.gguf",
+    "--half-directory",
+    "<SCRATCH>/clef-m3-m4/gemm-layout-probe",
+    "--manifest",
+    "<SCRATCH>/clef-m3-m4/gemm-layout-probe/weights.json",
+    "--output",
+    "<SCRATCH>/clef-m3-m4/q4-tensor-prototype/artifacts"
+  ],
+  "exit": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 82118,
+    "max_rss_bytes": 2147483648,
+    "peak_rss_bytes": 303874048,
+    "peak_physical_footprint_bytes": 290718344,
+    "peak_accounted_bytes": 303874048,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 2,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 108007424000,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 0.828262416
+}

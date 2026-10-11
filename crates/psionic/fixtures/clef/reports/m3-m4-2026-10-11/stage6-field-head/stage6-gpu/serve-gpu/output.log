@@ -1,0 +1,12 @@
+
+running 7 tests
+test qwen35::clef_metal::tests::evidence_batch_block_matches_separate_normalization ... ok
+test qwen35::clef_metal::tests::evidence_batch_memory_matches_separate_normalization ... ok
+test qwen35::clef_metal::tests::evidence_batch_projected_matches_separate_normalization ... ok
+test qwen35::clef_metal::tests::ffn_weights::q4_ffn_reuses_one_conversion_slot_without_changing_outputs ... ok
+test qwen35::clef_metal::tests::grouped_ffn_preserves_independent_request_rows ... ok
+test qwen35::clef_metal::tests::head_blocks::fused_fields_preserve_same_input_logits_tops_and_request_memory ... ok
+test qwen35::clef_metal::tests::prefix_snapshot_restores_state_and_memory_without_suffix_bytes ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 498 filtered out; finished in 0.11s
+

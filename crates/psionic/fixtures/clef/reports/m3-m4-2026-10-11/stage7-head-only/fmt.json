@@ -1,0 +1,23 @@
+{
+  "command": [
+    "rustfmt",
+    "--edition",
+    "2024",
+    "--config",
+    "skip_children=true",
+    "--check",
+    "crates/psionic/crates/psionic-backend-metal/src/clef_prefill.rs",
+    "crates/psionic/crates/psionic-serve/src/clef/head.rs",
+    "crates/psionic/crates/psionic-serve/src/clef/mod.rs",
+    "crates/psionic/crates/psionic-serve/src/qwen35/clef_metal.rs",
+    "crates/psionic/crates/psionic-serve/src/qwen35/clef_metal/batching.rs",
+    "crates/psionic/crates/psionic-serve/src/qwen35/clef_metal/tests.rs",
+    "crates/psionic/crates/psionic-backend-metal/src/clef_prefill/head_blocks.rs",
+    "crates/psionic/crates/psionic-backend-metal/src/clef_prefill/head_blocks/tests.rs",
+    "crates/psionic/crates/psionic-serve/src/qwen35/clef_metal/head_blocks.rs",
+    "crates/psionic/crates/psionic-serve/src/qwen35/clef_metal/tests/head_blocks.rs"
+  ],
+  "exit": 0,
+  "stdout": "",
+  "stderr": ""
+}

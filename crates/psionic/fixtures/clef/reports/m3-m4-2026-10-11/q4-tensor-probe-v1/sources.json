@@ -1,0 +1,30 @@
+{
+  "status": "Prepared, not compiled or executed. No weights staged.",
+  "sdk": "26.5",
+  "primary_links": [
+    "https://developer.apple.com/videos/play/wwdc2026/330/",
+    "https://developer.apple.com/documentation/metalperformanceshaders/mpsndarrayquantizedmatrixmultiplication",
+    "https://developer.apple.com/documentation/metal/mtlcomputecommandencoder"
+  ],
+  "headers": {
+    "System/Library/Frameworks/MetalPerformancePrimitives.framework/Versions/A/Headers/MPPTensorOpsMatMul2d.h": {
+      "sha256": "9c8fa78dd5e9b7a1ad8a2d0e6cd007a816ac750041da15b1015b38c7459d8a6b"
+    },
+    "System/Library/Frameworks/MetalPerformancePrimitives.framework/Versions/A/Headers/__impl/MPPTensorOpsMatMul2dImpl.h": {
+      "sha256": "527511bd1a45f0f4361c684b1019d6cc06e1c9703e6f1908384320133bfaa43a"
+    },
+    "System/Library/Frameworks/Metal.framework/Headers/MTLTensor.h": {
+      "sha256": "6185bb1bb245abd2c3ce5a9a43cbc5e298f1b2ce2c179c100e85b441050c863a"
+    },
+    "System/Library/Frameworks/Metal.framework/Headers/MTLComputeCommandEncoder.h": {
+      "sha256": "610bcf8f3e6cb6a7067622f4395d8aa292c56226afde457ac6cb902937872b7b"
+    }
+  },
+  "claims": {
+    "int4_support": "Installed MPPTensorOpsMatMul2d.h lines52\u201361 lists half/bfloat by int4/uint4 with float destination. MTLTensor.h exposes Int4/UInt4 from macOS26.4.",
+    "integer_execution": "Implementation selects distinct externally defined half/uint4 entry points. Public headers do not reveal ISA or promise faster integer hardware rather than conversion. Speed is unmeasured.",
+    "bf16": "Supported, but same16-bit storage and lower mantissa precision than the current half data; no documented speed advantage over half in the inspected sources.",
+    "cooperative_inputs": "Installed implementation requires one SIMD group, static K, and non-transposed cooperative inputs. This prototype uses four-SIMD ops with a threadgroup half tile instead.",
+    "new_planes": "WWDC26 describes new macOS27 block-scaled tensor planes; the installed26.5 tensor descriptor has no auxiliaryPlanes field. No dependency on an SDK upgrade is introduced."
+  }
+}

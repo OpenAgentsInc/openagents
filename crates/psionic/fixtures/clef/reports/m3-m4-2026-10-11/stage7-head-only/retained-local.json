@@ -1,0 +1,6 @@
+{
+  "path": "task-scratch/clef-m3-m4/stage7-head-only/build-memory.jsonl",
+  "bytes": 2453644,
+  "sha256": "661546693da7ea2b0bdb3c1cb6232d15f3ae6b66beab8d335ace561cc52fd337",
+  "reason": "Large local sampling timeline; guard.json retains peak, host floor, and cleanup."
+}

@@ -1,0 +1,3 @@
+{"command": ["xcrun", "-sdk", "macosx", "metal", "-std=metal4.0", "-c", "<SCRATCH>/clef-m3-m4/q4-tensor-prototype/combined.metal", "-o", "<SCRATCH>/clef-m3-m4/q4-tensor-prototype/kernels.air"]}
+{"command": ["xcrun", "swiftc", "-O", "-num-threads", "2", "<SCRATCH>/clef-m3-m4/q4-tensor-prototype/probe.swift", "-o", "<SCRATCH>/clef-m3-m4/q4-tensor-prototype/probe"]}
+{"compiled": true, "gpu_executed": false, "binary_sha256": "f26dc7935466aa5906c6fa6a4184d3a7522f31b40617bfb7b8d015153cf35423"}

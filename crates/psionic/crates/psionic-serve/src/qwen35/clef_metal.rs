@@ -39,6 +39,7 @@ use super::{
 };
 
 pub(crate) mod batching;
+mod head_blocks;
 mod prefix;
 use crate::clef::prefix::{PrefixCache, chunk_len, reusable_boundary};
 use prefix::Snapshot;
@@ -249,6 +250,7 @@ struct DeviceState {
     head_matrices: std::collections::HashMap<usize, (ClefMetalBuffer, usize, usize)>,
     head_io: Option<(usize, ClefMetalBuffer, usize, ClefMetalBuffer)>,
     head_attention: Option<HeadAttention>,
+    head_fields: Option<head_blocks::FieldStack>,
     weight_bytes: u64,
     weight_workspace_bytes: usize,
 }
@@ -558,6 +560,7 @@ impl ClefMetalTrunk {
             head_matrices,
             head_io: None,
             head_attention: None,
+            head_fields: None,
             weight_bytes,
             weight_workspace_bytes,
             metal,
