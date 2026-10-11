@@ -1432,7 +1432,14 @@ fn composer_view(
             frame.buffer_mut(),
             offset,
             None,
-            Some((&text, Style::default().fg(t::GRAY))),
+            Some((
+                &text,
+                Style::default().fg(if contribution.text == crate::models::AUTO {
+                    t::ACCENT_SKILL
+                } else {
+                    t::GRAY
+                }),
+            )),
         );
     }
     if inner.width < 4 || inner.height == 0 {
@@ -1489,6 +1496,28 @@ fn composer_view(
 mod export_notice_tests {
     use super::*;
     use ratatui::{Terminal, backend::TestBackend};
+
+    #[test]
+    fn auto_label_uses_blue() {
+        let mut app = App::default();
+        app.mode = Mode::Live;
+        let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
+        terminal.draw(|frame| render(frame, &mut app)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let mut found = false;
+        for y in 0..20 {
+            for x in 0..57 {
+                let text: String = (x..x + 4).map(|x| buffer[(x, y)].symbol()).collect();
+                if text == crate::models::AUTO {
+                    found = true;
+                    for x in x..x + 4 {
+                        assert_eq!(buffer[(x, y)].fg, t::ACCENT_SKILL);
+                    }
+                }
+            }
+        }
+        assert!(found);
+    }
 
     #[test]
     fn composer_has_square_corners_and_side_walls() {
