@@ -908,41 +908,56 @@ impl App {
         }
     }
 
-    /// Tab: `auto` (OpenAgents picks) or `flash` (DeepSeek V4.1 Flash on
-    /// the person's OpenRouter key, offered only when that key is saved).
-    fn toggle_flash(&mut self) {
-        if self.plugins.model == models::FLASH {
-            self.plugins.switch_model(models::AUTO, false);
-            self.notice = None;
-        } else if !self.plugins.key_configured {
-            self.notice = Some("flash needs an OpenRouter API key. Add one with F2.".into());
-        } else if self.plugins.switch_model(models::FLASH, true) {
-            self.notice = None;
+    /// Shift+Tab, the one mode switch: `auto` (OpenAgents picks) →
+    /// `flash` (DeepSeek V4.1 Flash on the person's OpenRouter key) →
+    /// `microclaude` (this computer's Claude login) → `solver` (an issue to
+    /// a pull request) → back to `auto`. A mode this computer can't use is
+    /// skipped; when only `auto` is available, it says what the others need.
+    fn cycle_mode(&mut self) {
+        if self.mode == Mode::Demo {
+            return;
         }
-        if let Some(error) = self.plugins.storage_error.clone() {
-            self.notice = Some(error);
-        }
-    }
-
-    /// Shift+Tab: `microclaude` (turns on this computer's Claude account
-    /// login) and back to `auto`. Offered only where [`microclaude`] found
-    /// that login in this process.
-    fn toggle_microclaude(&mut self) {
-        match self.mode {
-            Mode::Microclaude => {
-                self.set_mode(Mode::Solver);
-                self.notice = None;
+        let flash = self.plugins.key_configured;
+        let claude = crate::microclaude::available();
+        let on_flash = self.mode == Mode::Live && self.plugins.model == models::FLASH;
+        // The modes after the current one, in order, ending at auto.
+        let next = match self.mode {
+            Mode::Live if !on_flash && flash => "flash",
+            Mode::Live if claude => "microclaude",
+            Mode::Microclaude => "solver",
+            _ => "auto",
+        };
+        match next {
+            "flash" => {
+                if self.plugins.switch_model(models::FLASH, true) {
+                    self.notice = None;
+                }
             }
-            Mode::Solver => self.set_mode(Mode::Live),
-            Mode::Live => {
-                if !crate::microclaude::available() {
-                    self.notice = Some(microclaude::NEEDS_LOGIN.into());
-                    return;
+            "microclaude" => {
+                if on_flash {
+                    self.plugins.switch_model(models::AUTO, false);
                 }
                 self.set_mode(Mode::Microclaude);
                 self.notice = None;
             }
-            Mode::Demo => {}
+            "solver" => {
+                self.set_mode(Mode::Solver);
+                self.notice = None;
+            }
+            _ => {
+                if self.mode != Mode::Live {
+                    self.set_mode(Mode::Live);
+                }
+                if self.plugins.model == models::FLASH {
+                    self.plugins.switch_model(models::AUTO, false);
+                }
+                self.notice = (!flash && !claude && self.mode == Mode::Live).then(|| {
+                    "flash needs an OpenRouter API key (F2); microclaude and solver need Claude Code signed in on this computer.".into()
+                });
+            }
+        }
+        if let Some(error) = self.plugins.storage_error.clone() {
+            self.notice = Some(error);
         }
     }
 
@@ -2165,10 +2180,9 @@ impl App {
                 }
                 match key.code {
                     KeyCode::F(2) => self.open_plugins(),
-                    KeyCode::Tab if self.mode == Mode::Live => self.toggle_flash(),
                     // Shift+Tab steps between Live and microclaude on a
                     // computer that has a Claude account login.
-                    KeyCode::BackTab => self.toggle_microclaude(),
+                    KeyCode::BackTab => self.cycle_mode(),
                     KeyCode::Up | KeyCode::Down => self.composer_arrow(key.code == KeyCode::Up),
                     KeyCode::Esc => {
                         if self.footer_focused {

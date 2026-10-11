@@ -79,11 +79,9 @@ fn conversation_and_tiny_terminals_render() {
             .all(|line| line.trim().is_empty())
     );
     assert_eq!(composer_rules(&rendered).len(), 2);
-    // Tab switches to flash only with an OpenRouter key; without one it says so.
+    // Tab changes nothing in the conversation; Shift+Tab is the mode switch.
     key(&mut live, KeyCode::Tab);
-    let after = screen(&mut live, 110, 36);
-    assert!(after.contains("flash needs an OpenRouter API key"));
-    assert!(after.contains(" auto "));
+    assert_eq!(screen(&mut live, 110, 36), rendered);
 }
 
 #[test]

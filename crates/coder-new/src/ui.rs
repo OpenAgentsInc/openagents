@@ -1654,9 +1654,9 @@ mod export_notice_tests {
     }
 
     #[test]
-    fn tab_switches_between_auto_and_flash_only_with_an_openrouter_key() {
+    fn shift_tab_cycles_auto_and_flash_and_tab_changes_nothing() {
         use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-        let tab = || Event::Key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        let press = |code| Event::Key(KeyEvent::new(code, KeyModifiers::NONE));
         let rail = |app: &mut App| {
             let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
             terminal.draw(|frame| render(frame, app)).unwrap();
@@ -1669,23 +1669,21 @@ mod export_notice_tests {
         let mut app = App::default();
         app.mode = Mode::Live;
         app.plugins.model = crate::models::AUTO.into();
-        app.handle(tab());
-        assert_eq!(app.plugins.model, crate::models::AUTO);
-        assert!(
-            app.notice
-                .as_deref()
-                .is_some_and(|notice| notice.contains("OpenRouter API key"))
-        );
-
         app.plugins.key_configured = true;
-        app.handle(tab());
+        // Tab no longer switches modes.
+        app.handle(press(KeyCode::Tab));
+        assert_eq!(app.plugins.model, crate::models::AUTO);
+        app.handle(press(KeyCode::BackTab));
         assert_eq!(app.plugins.model, crate::models::FLASH);
-        assert!(app.plugins.enabled);
         let shown = rail(&mut app);
         assert!(shown.contains("flash") && !shown.contains("deepseek"));
-        app.handle(tab());
-        assert_eq!(app.plugins.model, crate::models::AUTO);
-        assert!(rail(&mut app).contains("auto"));
+        // Without a Claude login here, the next mode is auto again.
+        if !crate::microclaude::available() {
+            app.handle(press(KeyCode::BackTab));
+            assert_eq!(app.plugins.model, crate::models::AUTO);
+            assert!(app.mode == Mode::Live);
+            assert!(rail(&mut app).contains("auto"));
+        }
     }
 
     #[test]
