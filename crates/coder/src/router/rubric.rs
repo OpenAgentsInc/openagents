@@ -72,7 +72,8 @@ pub fn route(route: RouteId) -> Value {
              we are open source, what Coder or Jev is, what OpenAgents is, how to connect \
              their codebase or repository so we can work on it, and how we work with GitHub or \
              connected computers in general, including asking us to connect, sign in to, or \
-             link GitHub, or asking whether we can do a kind of work for them; and asking to \
+             link GitHub, or asking whether we can do a kind of work for them (not handing us \
+             the work itself, such as pushing a README to a repository); and asking to \
              see how we route or handle messages or how we are put together: our route map \
              (also just \"the map\"), our routes, what serves each, our plugins and engines, \
              or where we are weak, thin, or missing something, including asking to open or \
@@ -219,7 +220,9 @@ pub fn route(route: RouteId) -> Value {
         RouteId::WorkDispatch => option(
             "The user hands us a task on their own code, repository, files, or machine: \
              change, fix, build, test, deploy, refactor, review a pull request, look through \
-             their repository, find something in their code, or pick up a GitHub issue; or \
+             their repository, find something in their code, pick up a GitHub issue, or \
+             write, add, commit, or push a file such as a README in their project folder or \
+             in a named OWNER/REPO repository; or \
              asks us to delegate to Coder, hand the conversation to Coder, or run or start \
              Coder now, including a trial or test delegation that names no task; or, when the \
              conversation has the line in parentheses saying Coder's run in this chat ended, \
@@ -253,6 +256,8 @@ pub fn route(route: RouteId) -> Value {
                 "run cargo clippy and fix the warnings",
                 "find where we set the jwt expiry in my codebase",
                 "work on issue #12",
+                "push a README to AtlantisPleb/finances",
+                "Write a README.md file in my project folder. Then commit it.",
                 "migrate my sqlite db to postgres",
                 "write unit tests for the parser in my repo",
                 "run my project's test suite and fix what fails",
