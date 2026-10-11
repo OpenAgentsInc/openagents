@@ -836,7 +836,8 @@ fn run_step<C: Channel>(step: &Step, cwd: &Path, log: &mut Log<'_, C>) -> Result
         .stdin(Stdio::null())
         .stderr(Stdio::piped())
         .env("PATH", tool_path(std::env::var("PATH").ok().as_deref()))
-        .env_remove("OPENAGENTS_APP_TOKEN");
+        .env_remove("OPENAGENTS_APP_TOKEN")
+        .env_remove(openagents_login::TOKEN_ENV);
     for (name, value) in &step.env {
         command.env(name, value);
     }

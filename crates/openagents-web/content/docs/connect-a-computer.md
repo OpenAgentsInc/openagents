@@ -21,6 +21,26 @@ reply you send from the site reaches Coder while it's open on that
 computer. [Settings](https://openagents.com/settings) lists your
 signed-in computers, each with **Remove**.
 
+## Let an agent sign in as you
+
+An agent, a script, or a sandbox can sign in without a code to approve. Make
+a key at [Settings, Sign-in keys for agents](https://openagents.com/settings/sign-in-keys),
+copy it (it's shown once), and give it to the agent in one line:
+
+```sh
+OPENAGENTS_TOKEN=oa_sk_... coder
+```
+
+To save it on a computer instead, run this and paste the key when asked:
+
+```sh
+coder login --key
+```
+
+Anyone with the key can act as you, so keep it secret. Revoke it in the same
+Settings page, or from a terminal with `openagents keys revoke NAME`
+(`openagents keys list` shows your keys).
+
 ## Connect your phone
 
 Get [OpenAgents for iPhone](/docs/iphone) on TestFlight at

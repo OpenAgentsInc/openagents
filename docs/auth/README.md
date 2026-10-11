@@ -198,6 +198,11 @@ their own GitHub app:
 - **Phone**: the app opens the same `/auth/app` URL in the system browser
   session and receives the code through its registered universal link.
 
+- **Sign-in key** (agents, scripts, sandboxes; no code to approve): the
+  person makes a key in Settings, Sign-in keys for agents, and the agent
+  uses it. Built (#11305); see [Sign-in keys for agents](#sign-in-keys-for-agents-built)
+  below.
+
 App sessions are separate sessions on the same account, listed in Settings
 and revocable one by one.
 
@@ -241,6 +246,75 @@ on `127.0.0.1:4301`, signed in there, then:
 
 ```sh
 OPENAGENTS_ORIGIN=http://127.0.0.1:4301 cargo run -p coder-new -- login --state "$TMPDIR/coder-login"
+```
+
+### Sign-in keys for agents (built)
+
+A sign-in key lets an agent act as you without the device code. Make one at
+[openagents.com/settings/sign-in-keys](https://openagents.com/settings/sign-in-keys)
+(Settings, API, Sign-in keys for agents): name it, pick when it expires
+(never, in 30 days, or in 90 days), and copy it; it is shown once. The list
+there shows each key's name, when it was made and last used, when it
+expires, and Revoke.
+
+Give it to an agent in one line, with nothing saved:
+
+```sh
+OPENAGENTS_TOKEN=oa_sk_... coder
+```
+
+Or save it on a computer (paste the key when asked, or pipe it in; never put
+it on the command line, where shell history keeps it):
+
+```sh
+coder login --key
+openagents login --key < key.txt
+```
+
+Manage keys from any signed-in terminal (`--json` for scripts):
+
+```sh
+openagents keys list
+openagents keys create --name "build agent" --expires 30d
+openagents keys show "build agent"
+openagents keys rotate "build agent"
+openagents keys revoke "build agent"
+openagents keys list --kind api        # API keys for model calls, same commands
+```
+
+Code: `tenancy::sessions::keys` (the record), `oa_auth::sign_in_keys` (the
+account-service routes, served by the gateway and `oa_auth::local`),
+`openagents-web` (`sign_in_keys.rs`, `cloud/session/device.rs`),
+`openagents-login` (`TOKEN_ENV`, `sign_in_with_key`, `read_key`),
+`coder-new` (`coder login --key`), and `openagents-cli` (`keys.rs`).
+
+| Where | Route | What |
+| --- | --- | --- |
+| Website | `GET /settings/sign-in-keys`, `POST` (make), `POST /settings/sign-in-keys/revoke` | Settings |
+| Website | `GET /v1/keys[?kind=api]` | `{kind, account: {id, label}, keys: [{id, name, created_at, last_used_at, expires_at, current}]}`; never a secret |
+| Website | `POST /v1/keys` `{name, expires_in_days?, kind?}` | `{kind, key, token}`; the token is in this answer only |
+| Website | `DELETE /v1/keys/{id}[?kind=api]` | Revokes one |
+| Account service | `GET`/`POST /v1/account/sign-in-keys`, `DELETE /v1/account/sign-in-keys/{id}` | The same, over the session store |
+
+- A key is `oa_sk_` and 64 hex characters: a user session on the account,
+  so every route that takes an app's `Bearer sess_…` takes it, through the
+  same check, as that account only. Only its SHA-256 is stored; its last use
+  is written at most hourly.
+- `/v1/keys` takes any signed-in credential (a `sess_` sign-in or a key);
+  an `oak_` API key can't manage sign-in keys, and a key can't approve
+  another sign-in on `/device`.
+- `OPENAGENTS_TOKEN` (or the older `OPENAGENTS_APP_TOKEN`) with
+  `OPENAGENTS_ORIGIN` signs in every app that reads its sign-in through
+  `openagents-login` (Coder and its sync, `openagents mac serve`, `chat
+  work`) with no saved file. `coder logout` forgets a saved key without
+  revoking it; revoke it in Settings or with `openagents keys revoke`.
+- The `oa_sk_` prefix is on the redaction lists, so a key pasted into a chat,
+  a log, or a skill is caught.
+
+Try it against staging:
+
+```sh
+OPENAGENTS_ORIGIN=https://<staging host> OPENAGENTS_TOKEN=oa_sk_... openagents keys list
 ```
 
 ## Security

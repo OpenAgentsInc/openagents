@@ -128,6 +128,7 @@ pub fn scrub(text: &str) -> String {
                         "sk-",
                         "oak_",
                         "sess_",
+                        "oa_sk_",
                         "nsec1",
                         "ghp_",
                         "github_pat_",
@@ -1002,5 +1003,16 @@ fn more(choices: &crate::correct::Choices) -> String {
     match choices.total {
         1 => String::new(),
         total => format!(" (again for the next of {total} equally close names)"),
+    }
+}
+
+#[cfg(test)]
+mod sign_in_key_tests {
+    #[test]
+    fn a_sign_in_key_is_scrubbed() {
+        let key = format!("oa_sk_{}", "0a".repeat(32));
+        let scrubbed = super::scrub(&format!("run OPENAGENTS_TOKEN= {key} now"));
+        assert!(!scrubbed.contains(&key), "{scrubbed}");
+        assert!(scrubbed.contains("[redacted]"));
     }
 }

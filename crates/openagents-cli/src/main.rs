@@ -53,6 +53,7 @@ mod issue;
 mod jev_judge;
 mod kb;
 mod key;
+mod keys;
 #[cfg(unix)]
 mod labor;
 mod land;
@@ -229,6 +230,12 @@ Labor (NIP-MKT, NIP-LAB):
 Models (the OpenAgents API):
   inference    Run a model through the OpenAgents API: one answer, or a stream.
                Also `inference models` and `inference rates`.
+
+Your account:
+  login        Sign in with a sign-in key from Settings (login --key), read
+               from standard input, never the command line.
+  keys         Your sign-in keys (an agent acting as you) and API keys: list,
+               create, show, revoke, rotate.
 
 Keys, relays, and money:
   key          Show or create Nostr identities.
@@ -412,6 +419,8 @@ fn main() -> ExitCode {
         #[cfg(unix)]
         "labor" => labor::run(&output, &rest),
         "key" => key::run(&output, &rest),
+        "keys" => keys::run(&output, &rest),
+        "login" => keys::login(&output, &rest),
         "inference" => inference::run(&output, &rest),
         // `wallet serve` is the x402 node's resident under its old name,
         // which services installed before 2026-10-02 still start.

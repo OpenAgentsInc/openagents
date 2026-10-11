@@ -64,7 +64,7 @@ fn rules() -> &'static [Rule] {
             rule(
                 "openagents-key",
                 true,
-                r"\b(oak_[A-Za-z0-9]+\.[A-Za-z0-9_\-]{8,}|oa_agent_[A-Za-z0-9_\-]{12,})",
+                r"\b(oak_[A-Za-z0-9]+\.[A-Za-z0-9_\-]{8,}|oa_agent_[A-Za-z0-9_\-]{12,}|oa_sk_[0-9A-Fa-f]{16,})",
                 "[redacted:openagents-key]",
             ),
             rule(
@@ -552,6 +552,15 @@ impl Screen {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_sign_in_key_is_redacted() {
+        let key = format!("oa_sk_{}", "0a".repeat(32));
+        let text = format!("export OPENAGENTS_TOKEN={key}");
+        let redacted = redact(&text);
+        assert!(!redacted.contains(&key[6..]), "{redacted}");
+        assert!(redacted.contains("[redacted:openagents-key]"), "{redacted}");
+    }
 
     #[test]
     fn what_still_reads_as_a_credential_is_scrubbed_whole() {

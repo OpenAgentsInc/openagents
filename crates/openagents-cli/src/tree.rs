@@ -309,6 +309,12 @@ pub fn help() -> Vec<GroupHelp<'static>> {
             Some(crate::inference::USAGE),
             crate::inference::EFFECTS,
         ),
+        group(
+            "login",
+            Some(crate::keys::LOGIN_USAGE),
+            crate::keys::LOGIN_EFFECTS,
+        ),
+        group("keys", Some(crate::keys::USAGE), crate::keys::EFFECTS),
         group("key", Some(crate::key::USAGE), crate::key::EFFECTS),
         group("wallet", Some(crate::wallet::USAGE), crate::wallet::EFFECTS),
         group("x402", Some(x402_usage()), x402_effects()),

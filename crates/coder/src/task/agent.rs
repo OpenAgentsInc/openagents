@@ -1241,6 +1241,7 @@ pub fn screen(text: &str) -> String {
         "nsec1",
         "oak_",
         "sess_",
+        "oa_sk_",
         "glpat-",
         "npm_",
     ];

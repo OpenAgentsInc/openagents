@@ -11,8 +11,9 @@
 //!
 //! Every call goes to the website under the account's own sign-in: Coder's
 //! (`coder login`, kept in `~/.openagents/coder-new`), another folder's
-//! (`--account-dir`), or `OPENAGENTS_APP_TOKEN` with `OPENAGENTS_ORIGIN` in
-//! an environment. The token is never printed.
+//! (`--account-dir`), or `OPENAGENTS_TOKEN` (a sign-in key from Settings;
+//! `OPENAGENTS_APP_TOKEN` also works) with `OPENAGENTS_ORIGIN` in an
+//! environment. The token is never printed.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -44,8 +45,8 @@ pub(crate) const USAGE: &str = "usage: openagents mac COMMAND
   serve [--computer NAME] [--root DIR] [--repo OWNER/NAME[=PATH]]... [--min-free-gb N] [--once]
               Run on the Mac: take your account's jobs and run each in its own
               worktree and build folder. Signing and App Store keys stay here.
-Signs in as Coder does (coder login), or with --account-dir DIR, or with
-OPENAGENTS_APP_TOKEN and OPENAGENTS_ORIGIN. The repository defaults to
+Signs in as Coder does (coder login), or with --account-dir DIR, or with a
+sign-in key in OPENAGENTS_TOKEN (and OPENAGENTS_ORIGIN). The repository defaults to
 OpenAgentsInc/openagents. See docs/cloud/linked-mac.md.";
 
 /// What each command does, for the chat router's command tree.
@@ -172,22 +173,14 @@ fn default_root() -> PathBuf {
         .join("mac-jobs")
 }
 
-/// The account's sign-in: `OPENAGENTS_APP_TOKEN` and `OPENAGENTS_ORIGIN`,
-/// else the folder named, else Coder's.
+/// The account's sign-in: `OPENAGENTS_TOKEN` (or the older
+/// `OPENAGENTS_APP_TOKEN`) with `OPENAGENTS_ORIGIN`, else the folder
+/// named, else Coder's (`openagents_login::Saved::from_env`).
 pub(crate) fn saved(dir: Option<&str>) -> Result<Saved, String> {
     if dir.is_none()
-        && let Ok(token) = std::env::var("OPENAGENTS_APP_TOKEN")
-        && !token.trim().is_empty()
+        && let Some(saved) = Saved::from_env(|name| std::env::var(name).ok())
     {
-        let origin = openagents_login::origin_from(|name| std::env::var(name).ok());
-        return serde_json::from_value(json!({
-            "origin": origin,
-            "account": "",
-            "label": "this account",
-            "expires_at": u64::MAX,
-            "token": token.trim(),
-        }))
-        .map_err(|_| "OPENAGENTS_APP_TOKEN couldn't be read.".to_owned());
+        return Ok(saved);
     }
     let dir = dir.map_or_else(
         || {
@@ -199,9 +192,9 @@ pub(crate) fn saved(dir: Option<&str>) -> Result<Saved, String> {
         },
         PathBuf::from,
     );
-    let saved = Saved::load(&dir).ok_or_else(|| {
+    let saved = Saved::load_file(&dir).ok_or_else(|| {
         format!(
-            "Not signed in here ({}). Sign in with: coder login",
+            "Not signed in here ({}). Sign in with: coder login, or set OPENAGENTS_TOKEN to a sign-in key",
             dir.display()
         )
     })?;

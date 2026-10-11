@@ -47,7 +47,7 @@ const FIELDS: [&str; 9] = [
     "attention",
     "updated_at",
 ];
-const CREDENTIAL_PREFIXES: [&str; 16] = [
+const CREDENTIAL_PREFIXES: [&str; 17] = [
     "sk-",
     "sk_",
     "pk_",
@@ -56,6 +56,7 @@ const CREDENTIAL_PREFIXES: [&str; 16] = [
     "ncryptsec",
     "oak_",
     "sess_",
+    "oa_sk_",
     "ghp_",
     "gho_",
     "ghs_",
@@ -791,6 +792,7 @@ mod tests {
                 "Open [redacted] and [redacted]",
             ),
             ("Key nsec1qqqqqqqq", "Key [redacted]"),
+            ("Agent key oa_sk_0a0b here", "Agent key [redacted] here"),
             (
                 "Id 0123456789abcdef0123456789abcdef here",
                 "Id [redacted] here",

@@ -27203,6 +27203,232 @@
       ]
     },
     {
+      "name": "login",
+      "summary": "Sign in with a sign-in key from Settings (login --key), read from standard input, never the command line.",
+      "leaf": {
+        "path": [
+          "login"
+        ],
+        "usage": [
+          "openagents login --key [--account-dir DIR]"
+        ],
+        "forms": [
+          {
+            "tokens": [
+              {
+                "kind": "option",
+                "name": "key"
+              },
+              {
+                "kind": "option",
+                "name": "account-dir",
+                "value": "DIR",
+                "open": true,
+                "optional": true
+              }
+            ]
+          }
+        ],
+        "summary": "Sign in with a sign-in key from Settings (login --key), read from standard input, never the command line.",
+        "effect": "local_write",
+        "runs_on": "connected_computer"
+      }
+    },
+    {
+      "name": "keys",
+      "summary": "Your sign-in keys (an agent acting as you) and API keys: list, create, show, revoke, rotate.",
+      "children": [
+        {
+          "name": "list",
+          "leaf": {
+            "path": [
+              "keys",
+              "list"
+            ],
+            "usage": [
+              "list"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "list"
+                  }
+                ]
+              }
+            ],
+            "summary": "Your keys: name, id, made, last used, and expiry. Never a secret.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "create",
+          "leaf": {
+            "path": [
+              "keys",
+              "create"
+            ],
+            "usage": [
+              "create --name NAME [--expires never|30d|90d]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "create"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "name",
+                    "value": "NAME",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "expires",
+                    "value": "never|30d|90d",
+                    "choices": [
+                      "never",
+                      "30d",
+                      "90d"
+                    ],
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Make a key and print it once, with the line to use it.",
+            "effect": "secret",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "show",
+          "leaf": {
+            "path": [
+              "keys",
+              "show"
+            ],
+            "usage": [
+              "show KEY"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "show"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "KEY"
+                  }
+                ]
+              }
+            ],
+            "summary": "One key, by id, the start of its id, or its name.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "revoke",
+          "leaf": {
+            "path": [
+              "keys",
+              "revoke"
+            ],
+            "usage": [
+              "revoke KEY"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "revoke"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "KEY"
+                  }
+                ]
+              }
+            ],
+            "summary": "Revoke a key, by id, the start of its id, or its name.",
+            "effect": "grants",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "rotate",
+          "leaf": {
+            "path": [
+              "keys",
+              "rotate"
+            ],
+            "usage": [
+              "rotate KEY"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "rotate"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "KEY"
+                  }
+                ]
+              }
+            ],
+            "summary": "Make a new key with the same name and expiry, print it, then revoke the old one.",
+            "effect": "secret",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "name",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "expires",
+          "value": "never|30d|90d",
+          "choices": [
+            "never",
+            "30d",
+            "90d"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "kind",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "account-dir",
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
       "name": "key",
       "summary": "Show or create Nostr identities.",
       "children": [

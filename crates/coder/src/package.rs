@@ -675,6 +675,7 @@ fn leaks_host(value: &str) -> bool {
     let lower = value.to_ascii_lowercase();
     lower.contains("nsec1")
         || lower.contains("oak_")
+        || lower.contains("oa_sk_")
         || lower.contains("api_key")
         || lower.contains("begin openssh")
         || lower.contains("begin private key")
