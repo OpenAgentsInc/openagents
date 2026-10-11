@@ -377,10 +377,17 @@ printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":11,"output_token
                         .draw(|frame| crate::ui::render(frame, &mut app))
                         .unwrap();
                     let buffer = terminal.backend().buffer();
-                    let rail: String = (0..80).map(|x| buffer[(x, 22)].symbol()).collect();
+                    let rows: Vec<String> = (0..24)
+                        .map(|y| (0..80).map(|x| buffer[(x, y)].symbol()).collect())
+                        .collect();
+                    let composer = rows
+                        .iter()
+                        .rposition(|row| row.contains('┘'))
+                        .expect("composer");
                     assert!(
-                        rail.contains("Codex"),
-                        "Missing subagent below the composer: {rail}"
+                        rows[composer + 1..].iter().any(|row| row.contains("Codex")),
+                        "Missing subagent below the composer:\n{}",
+                        rows.join("\n")
                     );
                 }
             },
