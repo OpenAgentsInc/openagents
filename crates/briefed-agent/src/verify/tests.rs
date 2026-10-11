@@ -274,6 +274,34 @@ async fn an_unchanged_candidate_is_cached() {
 }
 
 #[tokio::test]
+async fn a_cached_answer_is_logged_too() {
+    let fx = fixture();
+    fx.add_test();
+    fx.mode(PASS, 0);
+    let log = fx.calls.with_file_name("verify.jsonl");
+    let mut verify = fx.verify();
+    verify.log = Some(log.clone());
+    verify.run("one", false).await;
+    verify.run("one", false).await;
+    let lines: Vec<Value> = std::fs::read_to_string(&log)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(lines.len(), 2);
+    assert!(lines[0].get("cached").is_none());
+    assert_eq!(lines[1]["cached"], true);
+    for line in &lines {
+        assert_eq!(line["filter"], "one");
+        assert_eq!(line["fast"], false);
+        assert_eq!(line["final"], false);
+        assert_eq!(line["status"], "pass");
+        assert!(line["secs"].is_u64());
+    }
+    assert_eq!(fx.calls(), 1);
+}
+
+#[tokio::test]
 async fn new_bytes_in_an_untracked_file_run_again() {
     let fx = fixture();
     fx.add_test();
