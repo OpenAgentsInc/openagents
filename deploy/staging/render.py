@@ -52,6 +52,12 @@ INVITE_ONLY = json.dumps(
 # invite); its key is the Secret Manager secret
 # openagents-web-1-staging-agent-smoke-key, read only by the smoke suite.
 AGENT_ACCOUNTS = "acct_dc7a799879686fc5"
+# Who may save a Claude subscription token (#11235, cloud/byo.rs
+# TokenAllow): the owner, and on staging only the same smoke test account,
+# so the Settings, Claude connect flow (#11255) and Claude Code runs on the
+# owner's token can be tested end to end. Production keeps the default
+# (the owner only) until Anthropic approves it in writing.
+CLAUDE_TOKEN_ACCOUNTS = f"chris@openagents.com,{AGENT_ACCOUNTS}"
 
 
 def secret(name, var):
@@ -90,6 +96,7 @@ def main():
             # The smoke suite's operator test account (#11155): staging only.
             plain("OPENAGENTS_WEB_API_OPERATOR_SIGNUP", "1"),
             plain("OPENAGENTS_WEB_AGENT_ACCOUNTS", AGENT_ACCOUNTS),
+            plain("OPENAGENTS_WEB_CLAUDE_TOKEN_ACCOUNTS", CLAUDE_TOKEN_ACCOUNTS),
             # Environments: oa-boat machines, and the setup agent's model
             # through the gateway sidecar on the house key in /stack.
             plain("STACK_STATE", "/stack"),

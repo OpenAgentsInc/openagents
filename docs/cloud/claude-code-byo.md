@@ -279,6 +279,10 @@ allowlist until Anthropic approves it in writing
   `sk-ant-oat` value is refused before it is checked or kept, whichever
   provider was picked. A token it saved earlier keeps running and shows a
   notice to switch to signing in inside the environment.
+  Staging (`deploy/staging/render.py`) lists the owner and the smoke
+  suite's operator-made test account, which holds only the owner's own
+  token, so the connect flow and runs can be tested end to end there;
+  production keeps the default.
 - **Max and Team API credits.** Settings, Claude tells Max and Team
   subscribers that their plan's monthly API credits, claimed into a Claude
   Console organization, come with an ordinary API key from that
