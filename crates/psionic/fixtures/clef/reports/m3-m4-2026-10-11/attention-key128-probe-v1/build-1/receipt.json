@@ -1,0 +1,59 @@
+{
+  "mode": "build",
+  "status": "complete",
+  "preflight": {
+    "available_memory_bytes": 89673203712,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 3050400,
+      "inactive": 1715343,
+      "speculative": 707475
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "max_owned_group_bytes": 4294967296,
+  "minimum_available_bytes": 12884901888,
+  "minimum_start_bytes": 17179869184,
+  "deadline_seconds": 180,
+  "conditions": "shared machine; fixed128-key attention; no model execution",
+  "source_sha256": {
+    "baseline.metal": "fb967e1097e771addd548a66ff1140d582f9e5f24d8465374d988880424ad094",
+    "candidate.metal": "2910b4a5aa0b23a6f6f6089fffa3fb01fbed7564c6a879ac63e037095b962e68",
+    "probe.swift": "7219b10bddc919a9b2bd9e215e1e44a6c5a45ea7c831f0973c77aa6192926d01",
+    "build.py": "0982f8e02b47e17cc2e8918b94b2de5a2b824d3f73ec29b372401ec8d85bda51",
+    "guard.py": "e66ecffc271f08a0c0fcfe2d859f65354bd00562a6dda42cdd5d97bf9999b2a0",
+    "manifest.json": "e602a01658ad9774bcca8832fc7b748190141af8707235c3140dcc32122dd01c",
+    "summarize.py": "81a9e514bd3d04b0005198d5c0d17aecb9661f8c1906bdd039b5a964fa60f371"
+  },
+  "guard_dependency_sha256": {
+    "mac_quiet_bench.py": "ce5f832d0eeb2ec5c954755c07d00fafcc2bb1c59d6aa6c1d993a2f84bcce9fb",
+    "mac_memory.py": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd"
+  },
+  "command": [
+    "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+    "$PROBE_ROOT/build.py"
+  ],
+  "exit": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 85004,
+    "max_rss_bytes": 4294967296,
+    "peak_rss_bytes": 70123520,
+    "peak_physical_footprint_bytes": 29279024,
+    "peak_accounted_bytes": 70123520,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 9,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 88659214336,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 4.970970791999999
+}

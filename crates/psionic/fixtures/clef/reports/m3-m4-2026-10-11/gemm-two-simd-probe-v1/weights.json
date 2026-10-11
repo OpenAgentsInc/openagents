@@ -1,0 +1,66 @@
+{
+  "kind": "bounded_actual_flash_ffn_weights",
+  "artifact": "Clef-Flash-Q4_K_M.gguf",
+  "gguf_sha256_from_prior_verified_artifact": "fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c",
+  "decoder": {
+    "repository": "ggml-org/llama.cpp",
+    "revision": "5d246a792ddf839e87fb777681dd2a9ac7f7eb5e",
+    "path": "gguf-py/gguf/quants.py",
+    "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/5d246a792ddf839e87fb777681dd2a9ac7f7eb5e/gguf-py/gguf/quants.py",
+    "sha256": "2c927a1b3d9f0920dcf4007fb686e1b0999333e9f65ce43dcc689900c0beae8b",
+    "purpose": "Use the original Q4_K NumPy decoder; only detach its inherited registration wrapper."
+  },
+  "layer": 0,
+  "tensors": [
+    {
+      "name": "blk.0.ffn_gate.weight",
+      "shape": [
+        4096,
+        12288
+      ],
+      "type": 12,
+      "offset": 1618053184,
+      "data_start": 10979424,
+      "packed_bytes": 28311552,
+      "packed_sha256": "ed85cba6cb0fb593e35f062c149ecd2ae97cc10ba741c7a9c9731225ec0dc7af",
+      "half_file": "gate.f16",
+      "half_bytes": 100663296,
+      "half_sha256": "a2bd893ff0f03262e671775cbadaa946f9b3b501fc2042f146621f36ab2b85ad",
+      "note": "Independent pinned Q4_K decoder followed by half conversion; not a full native decoder comparison."
+    },
+    {
+      "name": "blk.0.ffn_up.weight",
+      "shape": [
+        4096,
+        12288
+      ],
+      "type": 12,
+      "offset": 1646364736,
+      "data_start": 10979424,
+      "packed_bytes": 28311552,
+      "packed_sha256": "599c399c7b509e90a151091ebd15b4f5656161ca48908f6d0306dfec5b4a4c3d",
+      "half_file": "up.f16",
+      "half_bytes": 100663296,
+      "half_sha256": "98abd36faeaade163ed8957d6e4b75c132f26f3270e1742a80903be58fe3c3f4",
+      "note": "Independent pinned Q4_K decoder followed by half conversion; not a full native decoder comparison."
+    },
+    {
+      "name": "blk.0.ffn_down.weight",
+      "shape": [
+        12288,
+        4096
+      ],
+      "type": 12,
+      "offset": 1589741632,
+      "data_start": 10979424,
+      "packed_bytes": 28311552,
+      "packed_sha256": "98c3172ca85650456ef86f0260edd1b10e4fc7ca02427f8870a8e7e245cd2a78",
+      "half_file": "down.f16",
+      "half_bytes": 100663296,
+      "half_sha256": "b990dd7b7a792d40763dbd3931d50895fcaae0d4e1a9aa700e2e39b8784cde16",
+      "note": "Independent pinned Q4_K decoder followed by half conversion; not a full native decoder comparison."
+    }
+  ],
+  "full_model_loaded": false,
+  "gpu_executed": false
+}

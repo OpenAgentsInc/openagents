@@ -1,0 +1,87 @@
+{
+  "schema": "clef.attention-key128.source-plan.v1",
+  "production_source": "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_fused_attention.metal",
+  "production_sha256": "fb967e1097e771addd548a66ff1140d582f9e5f24d8465374d988880424ad094",
+  "candidate_changes": [
+    "kernel name",
+    "kKeys32 to128",
+    "matching explanatory comments"
+  ],
+  "precision": "half Q/K/V and tile probabilities; float scores/running accumulation/output, unchanged",
+  "query_tile": 16,
+  "threads": 128,
+  "key_tiles": [
+    32,
+    128
+  ],
+  "declared_threadgroup_bytes": [
+    19456,
+    28672
+  ],
+  "maximum_explicit_bytes": 1073741824,
+  "maximum_driver_bytes": 1610612736,
+  "maximum_owned_bytes": 2147483648,
+  "minimum_start_bytes": 15032385536,
+  "minimum_available_bytes": 12884901888,
+  "deadline_seconds": 60,
+  "gpu_run_authorized": false,
+  "large_shapes": [
+    {
+      "n": 1024,
+      "first": 0,
+      "heads": 16,
+      "kv_heads": 4,
+      "head_dim": 256
+    },
+    {
+      "n": 2048,
+      "first": 2048,
+      "heads": 16,
+      "kv_heads": 4,
+      "head_dim": 256
+    },
+    {
+      "n": 2048,
+      "first": 14336,
+      "heads": 16,
+      "kv_heads": 4,
+      "head_dim": 256
+    },
+    {
+      "n": 1024,
+      "first": 0,
+      "heads": 24,
+      "kv_heads": 4,
+      "head_dim": 256
+    },
+    {
+      "n": 2048,
+      "first": 2048,
+      "heads": 24,
+      "kv_heads": 4,
+      "head_dim": 256
+    },
+    {
+      "n": 2048,
+      "first": 14336,
+      "heads": 24,
+      "kv_heads": 4,
+      "head_dim": 256
+    }
+  ],
+  "timing_rounds": 5,
+  "timing_order": "five fixed pairs, AB then BA alternating; correctness checks outside timing",
+  "expected_check_commands": 68,
+  "expected_bench_commands": 128,
+  "expected_timing_rows": 60,
+  "largest_explicit_case_bytes": 244451584,
+  "absolute_gate": 0.001,
+  "chunk_gate": {
+    "absolute": 2e-05,
+    "relative": 5e-05
+  },
+  "precision_caveat": "128-key boundary changes online-softmax maxima, rescaling and half-probability rounding; full model validation still required",
+  "timed_output_gate": "bitwise exact against its own immutable, previously fully finite-checked output; failure diagnostics scan only on mismatch",
+  "flash_layout_receipt": "flash-layout.json",
+  "flash_layout_sha256": "68f8b6537b48ec86c78acd3b627e5001e10a1381bb65ccca6ad952cdd2d4c93e"
+}

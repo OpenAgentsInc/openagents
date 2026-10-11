@@ -1,0 +1,16 @@
+{
+  "source_sha256": {
+    "baseline.metal": "fb967e1097e771addd548a66ff1140d582f9e5f24d8465374d988880424ad094",
+    "candidate.metal": "2910b4a5aa0b23a6f6f6089fffa3fb01fbed7564c6a879ac63e037095b962e68",
+    "probe.swift": "7219b10bddc919a9b2bd9e215e1e44a6c5a45ea7c831f0973c77aa6192926d01",
+    "build.py": "0982f8e02b47e17cc2e8918b94b2de5a2b824d3f73ec29b372401ec8d85bda51",
+    "guard.py": "e66ecffc271f08a0c0fcfe2d859f65354bd00562a6dda42cdd5d97bf9999b2a0",
+    "manifest.json": "e602a01658ad9774bcca8832fc7b748190141af8707235c3140dcc32122dd01c",
+    "summarize.py": "81a9e514bd3d04b0005198d5c0d17aecb9661f8c1906bdd039b5a964fa60f371"
+  },
+  "artifacts": {
+    "probe": "d416eefb201b0ffb4fe1f6adcc1bf26bc4bb9fa6719dabbd6c89564a166e0317",
+    "kernels.metallib": "7e59578e44c4efee01a5ba2989d55aa5c1c931392f8876b06ac5f73728029548"
+  },
+  "gpu_executed": false
+}

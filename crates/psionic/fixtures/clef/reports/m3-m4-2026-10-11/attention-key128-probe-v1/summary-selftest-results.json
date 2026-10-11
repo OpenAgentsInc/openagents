@@ -1,0 +1,37 @@
+{
+  "synthetic_only": true,
+  "passed": true,
+  "checks": [
+    {
+      "fixture": "complete",
+      "expected_exit": 0,
+      "actual_exit": 0
+    },
+    {
+      "fixture": "duplicate",
+      "expected_exit": 1,
+      "actual_exit": 1
+    },
+    {
+      "fixture": "receipt-failed",
+      "expected_exit": 1,
+      "actual_exit": 1
+    },
+    {
+      "fixture": "nan-timing",
+      "expected_exit": 1,
+      "actual_exit": 1
+    },
+    {
+      "fixture": "oracle-failed",
+      "expected_exit": 1,
+      "actual_exit": 1
+    },
+    {
+      "fixture": "missing-final",
+      "expected_exit": 1,
+      "actual_exit": 1
+    }
+  ],
+  "summarizer_sha256": "81a9e514bd3d04b0005198d5c0d17aecb9661f8c1906bdd039b5a964fa60f371"
+}

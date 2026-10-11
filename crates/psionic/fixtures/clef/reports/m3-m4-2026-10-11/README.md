@@ -115,8 +115,33 @@ paired full-FFN candidate/baseline medians are `1.223 / 1.001 / 1.075` at
 establish no material gain and no hardware cause. The patch remains unapplied.
 Its 9.61-second run stays within the 2 GiB cap and cleans up all owned children.
 
+The [two-SIMD-group matrix probe](gemm-two-simd-probe-v1/README.md) preserves
+all 19 initial numerical checks and 149 completed timed output checks bitwise.
+It reaches the unchanged 60-second wall deadline before finishing the plan;
+only 0.853 seconds are recorded inside timed GPU commands. CPU comparison work
+is a substantial harness cost, so this is not evidence of a stalled GPU.
+Completed 512-token paired full-FFN and projection-sum ratios are 1.068 and
+1.383, respectively. The incomplete experiment establishes no gain and remains
+unapplied. The guard stops its owned child group without a memory or cleanup
+failure; no larger limit or retry follows.
+
 All probes use shared GPU/build and bounded memory leases as appropriate.
 None uses a quiet lease or changes desktop applications or system services.
+
+## Attention with larger key tiles
+
+The [128-key attention probe](attention-key128-probe-v1/README.md) passes all
+204 checks across 578.6 million values. Maximum output difference from the
+32-key kernel is `0.000120`, below the unchanged `0.001` limit; all timed repeats
+are bitwise stable. All 30 paired timings favor the candidate, with median
+kernel speedups of 1.60–1.91× across the Flash and 27B layouts at 1k, 4k, and
+16k histories. Each measurement covers one final chunk, not a whole prompt.
+
+The candidate increases threadgroup scratch from 19,456 to 28,672 bytes, below
+the device's 32,768-byte limit. Its 4.32-second run peaks at 371 MB of process
+accounting and completes cleanup. Shared-machine load is very high throughout;
+all samples are retained. Full-model raw-logit, answer, and latency checks remain
+necessary before this result can support integration or either milestone.
 
 ## Stage 6 fused field head
 

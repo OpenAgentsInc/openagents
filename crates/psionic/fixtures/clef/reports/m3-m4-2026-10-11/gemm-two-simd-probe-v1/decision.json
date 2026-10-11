@@ -1,0 +1,104 @@
+{
+  "decision": "do not integrate; bounded run incomplete and completed 512-token timing shows no material gain",
+  "overall_acceptance_passed": false,
+  "initial_checks_passed": 19,
+  "initial_bit_differences": 0,
+  "timed_checks_completed": 149,
+  "timed_bit_differences": 0,
+  "expected_timing_rows": 240,
+  "run_complete": false,
+  "stop_reason": "synthetic probe exceeded its bounded deadline",
+  "retry_performed": false,
+  "cap_or_deadline_increased": false,
+  "runtime_seconds": 60.221401291,
+  "reported_timing_gpu_seconds": 0.8525596250474337,
+  "reported_timing_submission_wait_seconds": 1.0118262916585081,
+  "complete_512_only_diagnostic": {
+    "gate": {
+      "paired_ratios": [
+        0.9011142100689576,
+        1.2886397214030296,
+        0.9857984811824139,
+        0.7971320230790195,
+        1.20551395127189,
+        1.217916255960207,
+        2.336139579158328,
+        1.0662316129070593,
+        4.4002350308068054,
+        2.6735158175881466
+      ],
+      "median_paired_two_over_four": 1.2117151036160485,
+      "baseline_median_gpu_ms": 1.857937499153195,
+      "two_group_median_gpu_ms": 4.510937502345769
+    },
+    "up": {
+      "paired_ratios": [
+        3.191491474267284,
+        1.1731244095833315,
+        2.9239033928685623,
+        0.21014788934284093,
+        0.24324467330556204,
+        0.39309729374629926,
+        1.1859678226311496,
+        1.17698401824038,
+        1.7221738843142806,
+        3.9143534620520755
+      ],
+      "median_paired_two_over_four": 1.1814759204357648,
+      "baseline_median_gpu_ms": 2.731687498453539,
+      "two_group_median_gpu_ms": 3.0041666686884128
+    },
+    "down_accumulate": {
+      "paired_ratios": [
+        1.060631520023893,
+        0.7242800670838198,
+        1.0950409340568603,
+        0.9847603419798722,
+        2.1623639872969997,
+        4.193834075027535,
+        1.0349676047154184,
+        2.9170101196508784,
+        1.052689360965038,
+        0.5502946911816592
+      ],
+      "median_paired_two_over_four": 1.0566604404944655,
+      "baseline_median_gpu_ms": 3.245874999265652,
+      "two_group_median_gpu_ms": 4.324229168560123
+    },
+    "projection_sum": {
+      "paired_ratios": [
+        1.4354612525799784,
+        0.9044429813325198,
+        1.4098398444453955,
+        0.5947891963822657,
+        1.006600305185467,
+        1.271719749645883,
+        1.3554495185347095,
+        1.439396956488327,
+        1.682136500470214,
+        1.987844956090356
+      ],
+      "median_paired_two_over_four": 1.3826446814900524,
+      "baseline_median_gpu_ms": 8.252645831817063,
+      "two_group_median_gpu_ms": 10.33052083585062
+    },
+    "full_ffn_accumulate": {
+      "paired_ratios": [
+        0.37083571930554,
+        1.1037689201152694,
+        1.0319431595447441,
+        2.9634791341402793,
+        3.702885119484747,
+        3.1255844816931058,
+        0.9544074384969821,
+        1.543883518436242,
+        0.9049402877841692,
+        0.3852465536577867
+      ],
+      "median_paired_two_over_four": 1.0678560398300068,
+      "baseline_median_gpu_ms": 8.132874998409534,
+      "two_group_median_gpu_ms": 10.420208334835479
+    }
+  },
+  "interpretation": "Partial timings are diagnostic only. Generic per-element CPU comparisons are a plausible harness cost; no per-phase CPU profile or hardware cause was established."
+}

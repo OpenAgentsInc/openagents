@@ -1,0 +1,19 @@
+{
+  "status": "source checks and six synthetic summary checks passed",
+  "python_ast": true,
+  "candidate_only_declared_replacements": true,
+  "timed_repeat_memcmp_after_full_finite_scan": true,
+  "files": {
+    "build.py": "0982f8e02b47e17cc2e8918b94b2de5a2b824d3f73ec29b372401ec8d85bda51",
+    "probe.swift": "7219b10bddc919a9b2bd9e215e1e44a6c5a45ea7c831f0973c77aa6192926d01",
+    "summarize.py": "836f66ba90bd098ce22520f06eba2b14ed15a823957142f0b70d51c305cabdf9",
+    "README.md": "14a93c1b517faee5fc9d3035e94adeeab7f321193889b3b63419314281fd67a1",
+    "candidate.metal": "2910b4a5aa0b23a6f6f6089fffa3fb01fbed7564c6a879ac63e037095b962e68",
+    "manifest.json": "e602a01658ad9774bcca8832fc7b748190141af8707235c3140dcc32122dd01c",
+    "guard.py": "e66ecffc271f08a0c0fcfe2d859f65354bd00562a6dda42cdd5d97bf9999b2a0",
+    "baseline.metal": "fb967e1097e771addd548a66ff1140d582f9e5f24d8465374d988880424ad094",
+    "flash-layout.json": "68f8b6537b48ec86c78acd3b627e5001e10a1381bb65ccca6ad952cdd2d4c93e"
+  },
+  "compiled": false,
+  "gpu_executed": false
+}

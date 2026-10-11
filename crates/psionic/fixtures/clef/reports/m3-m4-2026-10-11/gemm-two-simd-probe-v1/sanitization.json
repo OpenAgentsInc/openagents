@@ -1,0 +1,222 @@
+{
+  "rules": [
+    "Replace private scratch, checkout, and home prefixes with artifact labels.",
+    "Replace only the published guard checkout constant with CLEF_REPO.",
+    "Preserve original hash fields, every numerical/timing row, and the failed deadline receipt.",
+    "Exclude binaries, AIR/metallib files, weight payloads, and memory timelines."
+  ],
+  "files": [
+    {
+      "original_relative_path": "candidate.metal",
+      "published_relative_path": "candidate.metal",
+      "original_sha256": "24114d6b601bdbe5978c68cdcf4ce11f094b250642a268d1b10338aa1ec9fefc",
+      "published_sha256": "24114d6b601bdbe5978c68cdcf4ce11f094b250642a268d1b10338aa1ec9fefc",
+      "original_bytes": 3314,
+      "published_bytes": 3314
+    },
+    {
+      "original_relative_path": "baseline.metal",
+      "published_relative_path": "baseline.metal",
+      "original_sha256": "9505a34d21d4d6bd11a532a62549d00c8cafbad90ab92f2bd07cccb4eae30725",
+      "published_sha256": "9505a34d21d4d6bd11a532a62549d00c8cafbad90ab92f2bd07cccb4eae30725",
+      "original_bytes": 6660,
+      "published_bytes": 6660
+    },
+    {
+      "original_relative_path": "production-shapes.metal",
+      "published_relative_path": "production-shapes.metal",
+      "original_sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+      "published_sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+      "original_bytes": 4117,
+      "published_bytes": 4117
+    },
+    {
+      "original_relative_path": "production-fixed-extract.metal",
+      "published_relative_path": "production-fixed-extract.metal",
+      "original_sha256": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+      "published_sha256": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+      "original_bytes": 2111,
+      "published_bytes": 2111
+    },
+    {
+      "original_relative_path": "production-silu-extract.metal",
+      "published_relative_path": "production-silu-extract.metal",
+      "original_sha256": "fe7844912a63f4219dc05a5a50a5b269ad48a0e3aa5f60cef221ae9223880e61",
+      "published_sha256": "fe7844912a63f4219dc05a5a50a5b269ad48a0e3aa5f60cef221ae9223880e61",
+      "original_bytes": 430,
+      "published_bytes": 430
+    },
+    {
+      "original_relative_path": "production-planner.rs",
+      "published_relative_path": "production-planner.rs",
+      "original_sha256": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac",
+      "published_sha256": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac",
+      "original_bytes": 11864,
+      "published_bytes": 11864
+    },
+    {
+      "original_relative_path": "probe.swift",
+      "published_relative_path": "probe.swift",
+      "original_sha256": "9d84a6423682a935c778d9c6d03cb77a5c325278b4fd3f71ccae002a515d1a2b",
+      "published_sha256": "9d84a6423682a935c778d9c6d03cb77a5c325278b4fd3f71ccae002a515d1a2b",
+      "original_bytes": 24071,
+      "published_bytes": 24071
+    },
+    {
+      "original_relative_path": "guard.py",
+      "published_relative_path": "guard.py",
+      "original_sha256": "f6793407e1fd809726c546d9e08f5ea0bb9c83425ac6e9a8a492ae45d3cd7584",
+      "published_sha256": "ab32369eccc4e5accebdbc4686292da3226efd7a975ca05c07e9220fd9aac1c2",
+      "original_bytes": 5475,
+      "published_bytes": 5422
+    },
+    {
+      "original_relative_path": "build.py",
+      "published_relative_path": "build.py",
+      "original_sha256": "2c0881e8f16eaa19c772b4c48bfb6bc1745f1b5b229bcb15a73545b031940897",
+      "published_sha256": "2c0881e8f16eaa19c772b4c48bfb6bc1745f1b5b229bcb15a73545b031940897",
+      "original_bytes": 1479,
+      "published_bytes": 1479
+    },
+    {
+      "original_relative_path": "summarize.py",
+      "published_relative_path": "summarize.py",
+      "original_sha256": "5731980559d9b851ef1fac37566d7abc2f25dbd7c8569fa13299976514efca38",
+      "published_sha256": "5731980559d9b851ef1fac37566d7abc2f25dbd7c8569fa13299976514efca38",
+      "original_bytes": 5842,
+      "published_bytes": 5842
+    },
+    {
+      "original_relative_path": "weights.json",
+      "published_relative_path": "weights.json",
+      "original_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+      "published_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+      "original_bytes": 2473,
+      "published_bytes": 2473
+    },
+    {
+      "original_relative_path": "manifest.json",
+      "published_relative_path": "manifest.json",
+      "original_sha256": "6402e4fae037ea72e4e5d7b3f81e369352ae9e33b47bcfbe6524f0f84e166181",
+      "published_sha256": "6402e4fae037ea72e4e5d7b3f81e369352ae9e33b47bcfbe6524f0f84e166181",
+      "original_bytes": 2418,
+      "published_bytes": 2418
+    },
+    {
+      "original_relative_path": "source-preparation.json",
+      "published_relative_path": "source-preparation.json",
+      "original_sha256": "58c3944814d5a6bb2eb33d68dd0343be1b5358e2efaa85e69c0d71d73448e732",
+      "published_sha256": "58c3944814d5a6bb2eb33d68dd0343be1b5358e2efaa85e69c0d71d73448e732",
+      "original_bytes": 1581,
+      "published_bytes": 1581
+    },
+    {
+      "original_relative_path": "build-artifacts.json",
+      "published_relative_path": "build-artifacts.json",
+      "original_sha256": "48e266a86aaa99435e8e7da7b6f1f67ff28517d8b3690bf81313a6827dcc3b15",
+      "published_sha256": "48e266a86aaa99435e8e7da7b6f1f67ff28517d8b3690bf81313a6827dcc3b15",
+      "original_bytes": 1355,
+      "published_bytes": 1355
+    },
+    {
+      "original_relative_path": "build-lease-1.json",
+      "published_relative_path": "build-lease-1.json",
+      "original_sha256": "41b6a609ac46c805bac0ecc9708748f25bec7b94ef7ded13712c2146ad0c2a5c",
+      "published_sha256": "41b6a609ac46c805bac0ecc9708748f25bec7b94ef7ded13712c2146ad0c2a5c",
+      "original_bytes": 488,
+      "published_bytes": 488
+    },
+    {
+      "original_relative_path": "build-memory-lease-1.json",
+      "published_relative_path": "build-memory-lease-1.json",
+      "original_sha256": "f5125492fba9236ec0da6abb187a09df98750ba186886a1c674cc453e674153c",
+      "published_sha256": "f5125492fba9236ec0da6abb187a09df98750ba186886a1c674cc453e674153c",
+      "original_bytes": 486,
+      "published_bytes": 486
+    },
+    {
+      "original_relative_path": "run-gpu-lease-1.json",
+      "published_relative_path": "run-gpu-lease-1.json",
+      "original_sha256": "84bbf55aca21bf2474b1ccc0c0581fa75cd4f5c96d34c8494e3df7ae1068d26c",
+      "published_sha256": "84bbf55aca21bf2474b1ccc0c0581fa75cd4f5c96d34c8494e3df7ae1068d26c",
+      "original_bytes": 487,
+      "published_bytes": 487
+    },
+    {
+      "original_relative_path": "run-memory-lease-1.json",
+      "published_relative_path": "run-memory-lease-1.json",
+      "original_sha256": "cfac62e90a89f01c775aba7ef84c0f3a1d4e6aeb8c770394bb033c9553a658d2",
+      "published_sha256": "cfac62e90a89f01c775aba7ef84c0f3a1d4e6aeb8c770394bb033c9553a658d2",
+      "original_bytes": 487,
+      "published_bytes": 487
+    },
+    {
+      "original_relative_path": "build-1/receipt.json",
+      "published_relative_path": "build-1/receipt.json",
+      "original_sha256": "8457693a322f16cdf376c18344d4c9a7ff9a618110e999c04e69df6955eaacbf",
+      "published_sha256": "2ea01696be6af911092ac872a0426b880b2157b06f72a66766b42c587647a612",
+      "original_bytes": 3004,
+      "published_bytes": 2920
+    },
+    {
+      "original_relative_path": "build-1/stdout.jsonl",
+      "published_relative_path": "build-1/stdout.jsonl",
+      "original_sha256": "ea5edfa054fa4042e5b102d8681b4e00a9053c1ee74a761903f72d561e65cfe9",
+      "published_sha256": "1bf3fb36c48533db71b57f9c6482a745d546f2a44dfb6b8c0951b2533ec739d3",
+      "original_bytes": 2799,
+      "published_bytes": 2043
+    },
+    {
+      "original_relative_path": "build-1/stderr.log",
+      "published_relative_path": "build-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published_bytes": 0
+    },
+    {
+      "original_relative_path": "run-1/receipt.json",
+      "published_relative_path": "run-1/receipt.json",
+      "original_sha256": "44fe79159c4f16bbacf787ee50cb1946327d06fb2863573e7992d8f71fcde8c8",
+      "published_sha256": "fc75e58f299d76fc6335aaa22d028b89c580722e06fea3c26b066afdd2322f14",
+      "original_bytes": 4695,
+      "published_bytes": 4443
+    },
+    {
+      "original_relative_path": "run-1/stdout.jsonl",
+      "published_relative_path": "run-1/stdout.jsonl",
+      "original_sha256": "43e2eaf4f77d32c7d3f5d18111e51302bced90485db3c81dbbc0a9b2bdacd8d8",
+      "published_sha256": "43e2eaf4f77d32c7d3f5d18111e51302bced90485db3c81dbbc0a9b2bdacd8d8",
+      "original_bytes": 89433,
+      "published_bytes": 89433
+    },
+    {
+      "original_relative_path": "run-1/stderr.log",
+      "published_relative_path": "run-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published_bytes": 0
+    },
+    {
+      "original_relative_path": "run-1/summary.json",
+      "published_relative_path": "run-1/summary.json",
+      "original_sha256": "fc5ae74bc10477773bcfed2a26cd2bee5002ac0520903aeb7db899723f461713",
+      "published_sha256": "fc5ae74bc10477773bcfed2a26cd2bee5002ac0520903aeb7db899723f461713",
+      "original_bytes": 455,
+      "published_bytes": 455
+    },
+    {
+      "original_relative_path": "README.md",
+      "published_relative_path": "PREPARED_PLAN.md",
+      "original_sha256": "44e87698ebf62472bd80cf1309141e4b6628858e1eba01876a760f45656f2fc4",
+      "published_sha256": "44e87698ebf62472bd80cf1309141e4b6628858e1eba01876a760f45656f2fc4",
+      "original_bytes": 4757,
+      "published_bytes": 4757
+    }
+  ],
+  "generated_files": {
+    "README.md": "621b7474ef6ede9181cdf8c7f4be06c54957489f903060229adb87791de9ea7d",
+    "decision.json": "c5686eaf24074943788bdcdc4d1de21285e3b31b73e3c0f776096f21a7f14ed0"
+  }
+}
