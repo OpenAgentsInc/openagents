@@ -49,7 +49,7 @@ pub type DiffHunk = Vec<DiffLine>;
 /// Layout constants.
 const INDENT: &str = "  ";
 /// The cells grok-build's indent takes before the line numbers.
-pub(crate) const INDENT_CELLS: usize = INDENT.len();
+pub const INDENT_CELLS: usize = INDENT.len();
 /// The cells between the line number and the marker, and between the
 /// marker and the text.
 const MARK_GAP: &str = " ";
@@ -120,6 +120,18 @@ fn hunk_starts(header: &str) -> (usize, usize) {
     }
     (old, new)
 }
+
+/// The cell where [`lines`]' code starts, `lead` cells in: after the
+/// indent, the line-number column and the `+`/`-` mark. What sits left
+/// of it is decoration a copy leaves out.
+#[must_use]
+pub fn content_column(patch: &str, lead: usize) -> usize {
+    let gutter = hunks(patch).iter().map(gutter_width).max().unwrap_or(1);
+    lead + INDENT.len() + gutter + MARK_CELLS
+}
+
+/// The text [`lines`] draws for a hunk separator row.
+pub const SEPARATOR: &str = HUNK_SEPARATOR;
 
 /// The drawn rows of `patch` for the file at `path`, `lead` cells in, each
 /// at most `width` cells, in `palette` at `level`.

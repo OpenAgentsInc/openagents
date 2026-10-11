@@ -24,6 +24,7 @@ use code_highlight::grok::{self, ColorLevel, HlLine, OpenCodeHighlighter, Token}
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use ratatui::style::{Modifier, Style};
 
+use crate::selection::RowCopy;
 use crate::{Colors, Intensity, Ladder, wrap_rows};
 
 /// The marks on one run of text. Marks nest, so a run inside `**_a_**`
@@ -258,29 +259,82 @@ pub fn code_blocks(source: &str) -> Vec<String> {
 /// Renders physical rows, preserving inline marks and hanging list indentation.
 /// Code wraps by row; tables wrap within each cell before their borders are drawn.
 pub fn wrapped(source: &str, width: usize) -> Vec<Rendered> {
+    wrapped_rows(source, width)
+        .into_iter()
+        .map(|(row, _)| row)
+        .collect()
+}
+
+/// [`wrapped`]'s rows, each with what a copy takes from it: hanging
+/// indents and quote and table borders are decoration, a soft-wrapped
+/// row joins the one above with the spaces its break consumed, and a
+/// table's rules are left out.
+pub fn wrapped_rows(source: &str, width: usize) -> Vec<(Rendered, RowCopy)> {
+    use unicode_width::UnicodeWidthStr;
     let width = width.max(1);
     let mut rows = Vec::new();
     let mut lines = Vec::new();
     blocks_lines(&parse(source), "", 0, Some(width), &mut lines);
     for rendered in lines {
         let hang = rendered.hang.min(width.saturating_sub(1));
-        for (index, range) in wrap_rows(&rendered.marked.text, width.saturating_sub(hang))
+        let text = &rendered.marked.text;
+        let borders: Vec<Range<usize>> = rendered
+            .marked
+            .runs
+            .iter()
+            .filter(|(_, marks)| *marks == BORDER)
+            .flat_map(|(range, _)| {
+                text[range.clone()]
+                    .char_indices()
+                    .filter(|(_, ch)| !ch.is_whitespace())
+                    .map(|(at, ch)| range.start + at..range.start + at + ch.len_utf8())
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        let table = text.trim_end().ends_with('│') && borders.len() > 1;
+        let rule = text.contains('─')
+            && text
+                .char_indices()
+                .all(|(at, ch)| ch.is_whitespace() || borders.iter().any(|b| b.start == at));
+        let mut previous_end: Option<usize> = None;
+        for (index, range) in wrap_rows(text, width.saturating_sub(hang))
             .into_iter()
             .enumerate()
         {
             let mut marked = Marked::default();
+            let lead = if index > 0 { hang } else { 0 };
             if index > 0 {
                 marked.push(&" ".repeat(hang), &Marks::default());
             }
-            for (text, marks) in rendered.marked.runs_in(range) {
+            for (text, marks) in rendered.marked.runs_in(range.clone()) {
                 marked.push(&text, &marks);
             }
-            rows.push(Rendered {
-                marked,
-                intensity: rendered.intensity,
-                hang: 0,
-                code: rendered.code,
-            });
+            let cell = |at: usize| (lead + text[range.start..at].width()) as u16;
+            let skip = borders
+                .iter()
+                .enumerate()
+                .filter(|(_, border)| border.start >= range.start && border.end <= range.end)
+                .map(|(number, border)| {
+                    let inner = table && number > 0 && number + 1 < borders.len();
+                    (cell(border.start)..cell(border.end), inner.then_some('\t'))
+                })
+                .collect();
+            let copy = RowCopy {
+                lead: lead as u16,
+                skip,
+                joiner: previous_end.map(|end| text[end..range.start].to_owned()),
+                omit: rule,
+            };
+            previous_end = Some(range.end);
+            rows.push((
+                Rendered {
+                    marked,
+                    intensity: rendered.intensity,
+                    hang: 0,
+                    code: rendered.code,
+                },
+                copy,
+            ));
         }
     }
     rows

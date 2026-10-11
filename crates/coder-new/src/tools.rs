@@ -2,6 +2,7 @@
 
 use code_highlight::grok::{ColorLevel, Palette};
 use coder_terminal::components::diff;
+use coder_terminal::selection::RowCopy;
 use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},
@@ -202,6 +203,77 @@ pub fn file_tool_lines(
     width: u16,
     phase: u8,
 ) -> Vec<Line<'static>> {
+    file_tool_layout(name, input, output, running, width, phase).0
+}
+
+/// [`file_tool_lines`] with, row for row, what a copy takes from each: a
+/// diff row copies its code alone, without the line number or the
+/// `+`/`-` column, and its wrapped rows join back into one line.
+pub(crate) fn file_tool_rows(
+    name: &str,
+    input: &serde_json::Value,
+    output: &serde_json::Value,
+    running: bool,
+    width: u16,
+    phase: u8,
+) -> (Vec<Line<'static>>, Vec<RowCopy>) {
+    let (lines, diff_rows) = file_tool_layout(name, input, output, running, width, phase);
+    let mut copy: Vec<RowCopy> = lines.iter().map(plain_copy).collect();
+    if let Some((rows, content)) = diff_rows {
+        let gutter = DIFF_LEAD + diff::INDENT_CELLS..content;
+        for index in rows.clone() {
+            let text = line_text(&lines[index]);
+            let row = &mut copy[index];
+            if text.trim() == diff::SEPARATOR {
+                row.omit = true;
+                continue;
+            }
+            *row = RowCopy::lead(content as u16);
+            let continued = index > rows.start
+                && text
+                    .get(gutter.clone())
+                    .is_some_and(|cells| cells.trim().is_empty());
+            if continued {
+                row.joiner = Some(" ".into());
+            }
+        }
+    }
+    (lines, copy)
+}
+
+/// A drawn row's text, its spans joined.
+pub(crate) fn line_text(line: &Line<'_>) -> String {
+    line.spans
+        .iter()
+        .map(|span| span.content.as_ref())
+        .collect()
+}
+
+/// What a copy takes from a row drawn without a known layout: the text
+/// after its leading marks (`●`, `⎿`, `│` and the spaces around them),
+/// the spans that carry no letter or digit.
+pub(crate) fn plain_copy(line: &Line<'_>) -> RowCopy {
+    let mut lead = 0usize;
+    for span in &line.spans {
+        if span.content.chars().any(char::is_alphanumeric) {
+            break;
+        }
+        lead += span.content.width();
+    }
+    RowCopy::lead(lead.min(usize::from(u16::MAX)) as u16)
+}
+
+/// The rows of a file tool, and for an edit, which of them are its diff
+/// and the cell its code starts at.
+fn file_tool_layout(
+    name: &str,
+    input: &serde_json::Value,
+    output: &serde_json::Value,
+    running: bool,
+    width: u16,
+    phase: u8,
+) -> (Vec<Line<'static>>, Option<(std::ops::Range<usize>, usize)>) {
+    let mut diff_rows = None;
     let text = |key: &str| {
         output
             .get(key)
@@ -244,11 +316,11 @@ pub fn file_tool_lines(
     };
     if running {
         lines.push(detail("Running".into(), accent));
-        return lines;
+        return (lines, None);
     }
     if failed {
         lines.push(detail(text("error"), t::TOOL_FAILED));
-        return lines;
+        return (lines, None);
     }
     match name {
         "Edit" | "Write" => {
@@ -260,6 +332,7 @@ pub fn file_tool_lines(
                 let removed = number("removed").unwrap_or(0) as usize;
                 let verb = if name == "Write" { "Wrote" } else { "Updated" };
                 lines.push(edit_summary(verb, &path, added, removed, width));
+                let first = lines.len();
                 lines.extend(t::noir_lines(diff::lines(
                     &diff,
                     &path,
@@ -268,6 +341,7 @@ pub fn file_tool_lines(
                     Palette::Night,
                     ColorLevel::TrueColor,
                 )));
+                diff_rows = Some((first..lines.len(), diff::content_column(&diff, DIFF_LEAD)));
                 // The diff stops at its line limit; say what it left out.
                 let shown = diff::hunks(&diff)
                     .iter()
@@ -335,7 +409,7 @@ pub fn file_tool_lines(
             }
         }
     }
-    lines
+    (lines, diff_rows)
 }
 
 pub fn plugin_lines(call: &PluginCall, phase: u8) -> Vec<Line<'static>> {

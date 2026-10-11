@@ -6,7 +6,11 @@ mod models;
 mod plugins;
 mod resume;
 
-use coder_terminal::{Colors, Ladder, components::turn::markdown_body};
+use coder_terminal::selection::{self, RowCopy};
+use coder_terminal::{
+    Colors, Ladder,
+    components::turn::{markdown_body, markdown_rows},
+};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -593,6 +597,12 @@ fn context_text(app: &App) -> String {
     if let Some(plan) = crate::claude_plan::status_text(now, &crate::long_session::clock) {
         parts.push(plan);
     }
+    if app
+        .copied_until
+        .is_some_and(|until| std::time::Instant::now() < until)
+    {
+        parts.push("Copied".to_owned());
+    }
     // The signed-in account's name is never shown under the input.
     if let Some(update) = &app.update_line {
         parts.push(update.clone());
@@ -604,6 +614,12 @@ fn message_body(text: &str, width: u16) -> Vec<Line<'static>> {
     t::noir_lines(markdown_body(text, width, Ladder::new(Colors::True)))
 }
 
+/// [`message_body`] with what a copy takes from each row.
+fn message_rows(text: &str, width: u16) -> (Vec<Line<'static>>, Vec<RowCopy>) {
+    let (lines, copy) = markdown_rows(text, width, Ladder::new(Colors::True));
+    (t::noir_lines(lines), copy)
+}
+
 /// The columns the transcript keeps clear at its right edge. Its rows are
 /// laid out `GUTTER` narrower than the screen; only the person's band
 /// reaches the edge.
@@ -613,9 +629,17 @@ const GUTTER: u16 = 2;
 /// rows hanging under the text, on a band that runs through the gutter to
 /// the screen's edge.
 fn prompt(text: &str, width: u16) -> Vec<Line<'static>> {
-    let mut rows = message_body(text, width.saturating_sub(2));
+    prompt_rows(text, width).0
+}
+
+/// [`prompt`] with what a copy takes from each row: the text, not the
+/// `❯` or the band's padding.
+fn prompt_rows(text: &str, width: u16) -> (Vec<Line<'static>>, Vec<RowCopy>) {
+    let (mut rows, copy) = message_rows(text, width.saturating_sub(2));
+    let mut copy: Vec<RowCopy> = copy.into_iter().map(|row| row.shifted(2)).collect();
     if rows.is_empty() {
         rows.push(Line::default());
+        copy.push(RowCopy::lead(2));
     }
     for (index, row) in rows.iter_mut().enumerate() {
         row.spans.insert(
@@ -629,13 +653,19 @@ fn prompt(text: &str, width: u16) -> Vec<Line<'static>> {
         }
         row.style = row.style.bg(t::USER_MESSAGE_BG);
     }
-    rows
+    (rows, copy)
 }
 
 /// An assistant reply as Claude Code shows it: `●` in column 0, then the
 /// text, every further row indented two columns to hang under it.
 fn bulleted(text: &str, width: u16) -> Vec<Line<'static>> {
-    let mut rows = message_body(text, width.saturating_sub(2));
+    bulleted_rows(text, width).0
+}
+
+/// [`bulleted`] with what a copy takes from each row: the text, not the
+/// `●` or the hanging indent.
+fn bulleted_rows(text: &str, width: u16) -> (Vec<Line<'static>>, Vec<RowCopy>) {
+    let (mut rows, copy) = message_rows(text, width.saturating_sub(2));
     let mut first = true;
     for row in &mut rows {
         let blank = row.spans.iter().all(|span| span.content.trim().is_empty());
@@ -647,7 +677,7 @@ fn bulleted(text: &str, width: u16) -> Vec<Line<'static>> {
         };
         row.spans.insert(0, lead);
     }
-    rows
+    (rows, copy.into_iter().map(|row| row.shifted(2)).collect())
 }
 
 fn wrap_display(lines: Vec<Line<'static>>, width: u16) -> Vec<Line<'static>> {
@@ -774,6 +804,19 @@ fn run_lines(
     width: u16,
     phase: u8,
 ) -> Vec<Line<'static>> {
+    run_rows(input, output, running, width, phase).0
+}
+
+/// [`run_lines`] with what a copy takes from each row: the command's
+/// output without the `⎿` or the indent, wrapped rows joined back.
+fn run_rows(
+    input: &serde_json::Value,
+    output: &serde_json::Value,
+    running: bool,
+    width: u16,
+    phase: u8,
+) -> (Vec<Line<'static>>, Vec<RowCopy>) {
+    let result_lead = RESULT_INDENT.len() as u16;
     let command = input
         .get("command")
         .and_then(|v| v.as_str())
@@ -796,6 +839,7 @@ fn run_lines(
             t::GRAY,
         ),
     ])];
+    let mut copy = vec![RowCopy::lead(2)];
     if let Some(fields) = output.as_object() {
         let status = fields
             .iter()
@@ -832,6 +876,7 @@ fn run_lines(
                 ),
                 t::GRAY,
             )));
+            copy.push(RowCopy::lead(result_lead));
         }
     }
     for key in ["output", "stdout", "stderr", "error"] {
@@ -841,29 +886,32 @@ fn run_lines(
             .filter(|s| !s.is_empty())
         {
             let inner = usize::from(width.saturating_sub(6)).max(1);
-            let rows = text.lines().flat_map(|row| {
+            for row in text.lines() {
                 let ranges = coder_terminal::wrap_rows(row, inner);
                 if ranges.is_empty() {
-                    vec![Line::from(span(RESULT_INDENT, t::GRAY_BRIGHT))]
-                } else {
-                    ranges
-                        .into_iter()
-                        .map(|range| {
-                            Line::from(span(
-                                format!("{RESULT_INDENT}{}", &row[range]),
-                                t::GRAY_BRIGHT,
-                            ))
-                        })
-                        .collect()
+                    lines.push(Line::from(span(RESULT_INDENT, t::GRAY_BRIGHT)));
+                    copy.push(RowCopy::lead(result_lead));
+                    continue;
                 }
-            });
-            // Keep every output row for plain-text exports. The screen
-            // shows a five-row window over these rows.
-            lines.extend(rows);
+                let mut previous_end: Option<usize> = None;
+                for range in ranges {
+                    copy.push(RowCopy {
+                        joiner: previous_end.map(|end| row[end..range.start].to_owned()),
+                        ..RowCopy::lead(result_lead)
+                    });
+                    previous_end = Some(range.end);
+                    // Keep every output row for plain-text exports. The
+                    // screen shows a five-row window over these rows.
+                    lines.push(Line::from(span(
+                        format!("{RESULT_INDENT}{}", &row[range]),
+                        t::GRAY_BRIGHT,
+                    )));
+                }
+            }
         }
     }
     mark_result(&mut lines);
-    lines
+    (lines, copy)
 }
 
 /// The indent result rows sit at, under a tool's name (Claude Code's
@@ -892,15 +940,38 @@ fn mark_result(lines: &mut [Line<'static>]) {
 }
 
 fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'static>> {
+    entry_rows(entry, width, phase).0
+}
+
+/// Rows a copy has no layout for take [`crate::tools::plain_copy`].
+fn fill_copy(lines: &[Line<'static>], copy: &mut Vec<RowCopy>) {
+    let known = copy.len();
+    copy.extend(lines.iter().skip(known).map(crate::tools::plain_copy));
+}
+
+/// An entry's rows and, row for row, what a copy takes from each.
+fn entry_rows(
+    entry: &crate::live::Entry,
+    width: u16,
+    phase: u8,
+) -> (Vec<Line<'static>>, Vec<RowCopy>) {
     let mut lines = Vec::new();
+    let mut copy = Vec::new();
+    let exact = |lines: &mut Vec<Line<'static>>,
+                 copy: &mut Vec<RowCopy>,
+                 (rows, rows_copy): (Vec<Line<'static>>, Vec<RowCopy>)| {
+        fill_copy(lines, copy);
+        lines.extend(rows);
+        copy.extend(rows_copy);
+    };
     match entry {
         crate::live::Entry::User(text) => {
-            lines.extend(prompt(text, width));
+            exact(&mut lines, &mut copy, prompt_rows(text, width));
         }
         // The reply's model and time stay in the entry (exports read them);
         // the transcript shows neither.
         crate::live::Entry::Assistant { text, .. } => {
-            reply_lines(&mut lines, text, width);
+            exact(&mut lines, &mut copy, bulleted_rows(&shown(text), width));
         }
         crate::live::Entry::Tool {
             name,
@@ -914,39 +985,51 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
             {
                 lines.extend(rows);
                 lines.push(Line::default());
-                return lines;
+                fill_copy(&lines, &mut copy);
+                return (lines, copy);
             }
             if name == crate::issue_run::DECISION {
                 lines.extend(crate::issue_run::cards::decision_lines(
                     input, output, *running, width, phase,
                 ));
                 lines.push(Line::default());
-                return lines;
+                fill_copy(&lines, &mut copy);
+                return (lines, copy);
             }
             if name == crate::issue_run::SUMMARY {
                 lines.extend(crate::issue_run::cards::summary_lines(input, output, width));
                 lines.push(Line::default());
-                return lines;
+                fill_copy(&lines, &mut copy);
+                return (lines, copy);
             }
             if name == crate::plan::TOOL
                 && let Some(plan) = crate::plan::text(output)
             {
                 lines.push(Line::from(span("Plan", t::TEXT_PRIMARY)));
-                lines.extend(message_body(&plan, width));
+                exact(&mut lines, &mut copy, message_rows(&plan, width));
                 lines.push(Line::default());
-                return lines;
+                fill_copy(&lines, &mut copy);
+                return (lines, copy);
             }
             if name == "Run" {
-                lines.extend(run_lines(input, output, *running, width, phase));
+                exact(
+                    &mut lines,
+                    &mut copy,
+                    run_rows(input, output, *running, width, phase),
+                );
                 lines.push(Line::default());
-                return lines;
+                fill_copy(&lines, &mut copy);
+                return (lines, copy);
             }
             if crate::file_tools::is_tool(name) {
-                lines.extend(crate::tools::file_tool_lines(
-                    name, input, output, *running, width, phase,
-                ));
+                exact(
+                    &mut lines,
+                    &mut copy,
+                    crate::tools::file_tool_rows(name, input, output, *running, width, phase),
+                );
                 lines.push(Line::default());
-                return lines;
+                fill_copy(&lines, &mut copy);
+                return (lines, copy);
             }
             let (glyph, color) =
                 crate::tools::outcome_header(*running, crate::tools::output_failed(output), phase);
@@ -1037,7 +1120,8 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
         }
     }
     lines.push(Line::default());
-    lines
+    fill_copy(&lines, &mut copy);
+    (lines, copy)
 }
 
 #[derive(Default)]
@@ -1047,13 +1131,36 @@ pub struct TranscriptCache {
     partial: Option<CachedEntry>,
     pub builds: usize,
     run_regions: Vec<(usize, Rect)>,
+    /// The rows drawn under the entries (notices).
+    tail: Vec<Line<'static>>,
+    /// Where the transcript was last drawn and the row shown at its top.
+    view: Option<(Rect, usize)>,
+    /// Selected transcript text, drawn highlighted (see
+    /// `coder_terminal::selection`).
+    pub(crate) selection: Option<selection::Selection>,
+    /// A mouse drag selecting text: where it started and where the
+    /// pointer is now.
+    pub(crate) drag: Option<Drag>,
+}
+
+/// A drag across the transcript: the cell it started on and the pointer's
+/// last screen cell. The selection's moving end follows the pointer on
+/// every draw, so it stays under it while the view scrolls.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Drag {
+    pub anchor: selection::Point,
+    pub mouse: (u16, u16),
 }
 
 struct CachedEntry {
     width: u16,
     entry: crate::live::Entry,
     lines: Vec<Line<'static>>,
+    /// What a copy takes from each of `lines`.
+    copy: Vec<RowCopy>,
     run_output: Option<(usize, Vec<Line<'static>>, usize, bool)>,
+    /// What a copy takes from each of a Run's output rows.
+    run_copy: Vec<RowCopy>,
 }
 
 /// Columns at a Run box's left edge where the wheel scrolls the box.
@@ -1087,6 +1194,11 @@ impl CachedEntry {
             return;
         }
         let rows = self.lines[start..end].to_vec();
+        self.run_copy = self
+            .copy
+            .get(start..end)
+            .map(<[_]>::to_vec)
+            .unwrap_or_default();
         let max = rows.len().saturating_sub(RUN_OUTPUT_HEIGHT);
         let (offset, following) = previous.unwrap_or((max, true));
         let offset = if following { max } else { offset.min(max) };
@@ -1099,6 +1211,7 @@ impl CachedEntry {
             return;
         };
         self.lines.truncate(*start);
+        self.copy.truncate(*start);
         let height = rows.len().min(RUN_OUTPUT_HEIGHT);
         let max = rows.len().saturating_sub(RUN_OUTPUT_HEIGHT);
         let thumb = if max == 0 {
@@ -1131,6 +1244,13 @@ impl CachedEntry {
                 .push(Span::raw(" ".repeat(width.saturating_sub(line.width()))));
             line.style = line.style.bg(t::BG_LIGHT);
             self.lines.push(line);
+            self.copy.push(
+                self.run_copy
+                    .get(offset + index)
+                    .cloned()
+                    .unwrap_or_default()
+                    .shifted(2),
+            );
         }
         if rows.len() > RUN_OUTPUT_HEIGHT {
             self.lines.push(Line::from(span(
@@ -1142,8 +1262,13 @@ impl CachedEntry {
                 ),
                 t::GRAY_DIM,
             )));
+            self.copy.push(RowCopy {
+                omit: true,
+                ..RowCopy::default()
+            });
         }
         self.lines.push(Line::default());
+        self.copy.push(RowCopy::default());
     }
 }
 
@@ -1199,6 +1324,11 @@ impl TranscriptCache {
     fn refresh(&mut self, chat: &crate::live::Chat, width: u16, phase: u8) {
         let resized = self.width != width;
         self.width = width;
+        if resized {
+            // Rows rewrap at a new width; a selection would land on other text.
+            self.selection = None;
+            self.drag = None;
+        }
         self.entries.truncate(chat.entries.len());
         for (index, entry) in chat.entries.iter().enumerate() {
             if self
@@ -1211,11 +1341,14 @@ impl TranscriptCache {
                     .get(index)
                     .and_then(|c| c.run_output.as_ref())
                     .map(|r| (r.2, r.3));
+                let (lines, copy) = entry_rows(entry, width, phase);
                 let mut cached = CachedEntry {
                     width,
                     entry: entry.clone(),
-                    lines: entry_lines(entry, width, phase),
+                    lines,
+                    copy,
                     run_output: None,
+                    run_copy: Vec::new(),
                 };
                 cached.bound_run(width, phase, previous_offset);
                 if index < self.entries.len() {
@@ -1231,7 +1364,7 @@ impl TranscriptCache {
             ) {
                 let cached = &mut self.entries[index];
                 let offset = cached.run_output.as_ref().map(|r| (r.2, r.3));
-                cached.lines = entry_lines(entry, width, phase);
+                (cached.lines, cached.copy) = entry_rows(entry, width, phase);
                 cached.bound_run(width, phase, offset);
             }
         }
@@ -1251,11 +1384,14 @@ impl TranscriptCache {
                 .as_ref()
                 .is_none_or(|cached| resized || cached.entry != entry)
             {
+                let (lines, copy) = entry_rows(&entry, width, phase);
                 self.partial = Some(CachedEntry {
                     width,
-                    lines: entry_lines(&entry, width, phase),
+                    lines,
+                    copy,
                     entry,
                     run_output: None,
+                    run_copy: Vec::new(),
                 });
                 self.builds += 1;
             }
@@ -1268,6 +1404,137 @@ impl TranscriptCache {
 
     pub(crate) fn count(&self) -> usize {
         self.blocks().map(|cached| cached.lines.len()).sum()
+    }
+
+    /// A transcript row's drawn text and what a copy takes from it.
+    fn row(&self, mut index: usize) -> Option<(String, &RowCopy)> {
+        static PLAIN: RowCopy = RowCopy {
+            lead: 0,
+            skip: Vec::new(),
+            joiner: None,
+            omit: false,
+        };
+        for cached in self.blocks() {
+            if index < cached.lines.len() {
+                return Some((
+                    crate::tools::line_text(&cached.lines[index]),
+                    cached.copy.get(index).unwrap_or(&PLAIN),
+                ));
+            }
+            index -= cached.lines.len();
+        }
+        self.tail
+            .get(index)
+            .map(|line| (crate::tools::line_text(line), &PLAIN))
+    }
+
+    fn rows_total(&self) -> usize {
+        self.count() + self.tail.len()
+    }
+
+    /// The transcript cell under a screen cell, as last drawn. `clamp`
+    /// takes a pointer outside the transcript (a drag past its edge) to
+    /// the nearest cell; otherwise such a pointer has none.
+    pub(crate) fn point_at(&self, column: u16, row: u16, clamp: bool) -> Option<selection::Point> {
+        let (area, first) = self.view?;
+        let total = self.rows_total();
+        if area.width == 0 || area.height == 0 || total == 0 {
+            return None;
+        }
+        if !clamp && !area.contains((column, row).into()) {
+            return None;
+        }
+        let column = column.clamp(area.x, area.right() - 1);
+        let row = row.clamp(area.y, area.bottom() - 1);
+        let index = first + usize::from(row - area.y);
+        if !clamp && index >= total {
+            return None;
+        }
+        Some(selection::Point {
+            row: index.min(total - 1),
+            col: column - area.x,
+        })
+    }
+
+    /// The selected text as a copy takes it.
+    pub(crate) fn selected_text(&self) -> Option<String> {
+        let selection = self.selection?;
+        let text = selection::copy_text(&selection, |index| self.row(index));
+        (!text.is_empty()).then_some(text)
+    }
+
+    /// Select the word under `at` (a double-click).
+    pub(crate) fn select_word(&mut self, at: selection::Point) {
+        let span = self
+            .row(at.row)
+            .and_then(|(text, copy)| selection::word_at(&text, copy, at.col));
+        self.selection = span.map(|(start, end)| selection::Selection {
+            anchor: selection::Point {
+                row: at.row,
+                col: start,
+            },
+            head: selection::Point {
+                row: at.row,
+                col: end,
+            },
+        });
+    }
+
+    /// Select the whole line through `at`, its soft wraps included (a
+    /// triple-click).
+    pub(crate) fn select_line(&mut self, at: selection::Point) {
+        let (first, last) = selection::line_rows(at.row, self.rows_total(), |index| {
+            self.row(index)
+                .is_some_and(|(_, copy)| copy.joiner.is_some())
+        });
+        self.selection = Some(selection::Selection {
+            anchor: selection::Point { row: first, col: 0 },
+            head: selection::Point {
+                row: last,
+                col: u16::MAX - 1,
+            },
+        });
+    }
+
+    /// How far a drag held past the transcript's edge scrolls now.
+    pub(crate) fn drag_scroll(&self) -> i16 {
+        match (self.drag, self.view) {
+            (Some(drag), Some((area, _))) => selection::edge_scroll(drag.mouse.1, area),
+            _ => 0,
+        }
+    }
+
+    /// The selection's moving end follows the drag's pointer.
+    pub(crate) fn follow_drag(&mut self) {
+        let Some(drag) = self.drag else {
+            return;
+        };
+        if let Some(head) = self.point_at(drag.mouse.0, drag.mouse.1, true)
+            && (head != drag.anchor || self.selection.is_some())
+        {
+            self.selection = Some(selection::Selection {
+                anchor: drag.anchor,
+                head,
+            });
+        }
+    }
+
+    /// Light the selection over the rows drawn in `area` from `first`.
+    fn paint_selection(&self, buf: &mut ratatui::buffer::Buffer, area: Rect, first: usize) {
+        let Some(selected) = self.selection else {
+            return;
+        };
+        let rows: Vec<(String, RowCopy)> = (first..first + usize::from(area.height))
+            .map_while(|index| self.row(index).map(|(text, copy)| (text, copy.clone())))
+            .collect();
+        selection::paint(
+            buf,
+            area,
+            first,
+            &rows,
+            &selected,
+            Style::default().fg(t::BG_BASE).bg(t::TEXT_PRIMARY),
+        );
     }
 
     fn visible(
@@ -1376,6 +1643,10 @@ fn live_conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     cache.locate_runs(area, usize::from(position));
     let visible = cache.visible(&tail, usize::from(position), usize::from(area.height));
     frame.render_widget(Paragraph::new(visible), area);
+    cache.tail = tail;
+    cache.view = Some((area, usize::from(position)));
+    cache.follow_drag();
+    cache.paint_selection(frame.buffer_mut(), area, usize::from(position));
     if app.scroll < max_scroll {
         frame.render_widget(
             Paragraph::new("↓")

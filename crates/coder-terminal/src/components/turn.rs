@@ -194,38 +194,55 @@ fn reply(text: &str, width: u16, ladder: Ladder) -> Vec<Line<'static>> {
 /// The caller owns gutters and spacing between messages. Code backgrounds
 /// fill the supplied width; other rows have no trailing padding.
 pub fn markdown_body(text: &str, width: u16, ladder: Ladder) -> Vec<Line<'static>> {
+    markdown_rows(text, width, ladder).0
+}
+
+/// [`markdown_body`]'s rows and, row for row, what a copy takes from
+/// each ([`crate::selection::RowCopy`]).
+pub fn markdown_rows(
+    text: &str,
+    width: u16,
+    ladder: Ladder,
+) -> (Vec<Line<'static>>, Vec<crate::selection::RowCopy>) {
     let room = usize::from(width).max(1);
     let colors = transcript(ladder);
-    markdown::wrapped(text, room)
+    markdown::wrapped_rows(text, room)
         .into_iter()
-        .map(|rendered| {
-            if rendered.marked.text.is_empty() && !rendered.code {
-                return Line::default();
-            }
-            let mut spans = Vec::new();
-            let mut used = 0;
-            for (run, marks) in rendered.marked.runs_in(0..rendered.marked.text.len()) {
-                used += cells(&run);
-                let mut style = if rendered.code && marks.syntax.is_none() {
-                    // A fence in no language grok-build knows: body text.
-                    fg(colors.md_text, ladder)
-                } else {
-                    reply_style(&marks, ladder, &colors)
-                };
-                if rendered.code && ladder.colors() != Colors::None {
-                    style = style.bg(colors.md_code_bg);
-                }
-                spans.push(Span::styled(run, style));
-            }
-            if rendered.code && ladder.colors() != Colors::None {
-                spans.push(Span::styled(
-                    " ".repeat(room.saturating_sub(used)),
-                    Style::new().bg(colors.md_code_bg),
-                ));
-            }
-            Line::from(spans)
-        })
-        .collect()
+        .map(|(rendered, copy)| (render_row(&rendered, room, ladder, &colors), copy))
+        .unzip()
+}
+
+fn render_row(
+    rendered: &markdown::Rendered,
+    room: usize,
+    ladder: Ladder,
+    colors: &code_highlight::grok::TranscriptColors,
+) -> Line<'static> {
+    if rendered.marked.text.is_empty() && !rendered.code {
+        return Line::default();
+    }
+    let mut spans = Vec::new();
+    let mut used = 0;
+    for (run, marks) in rendered.marked.runs_in(0..rendered.marked.text.len()) {
+        used += cells(&run);
+        let mut style = if rendered.code && marks.syntax.is_none() {
+            // A fence in no language grok-build knows: body text.
+            fg(colors.md_text, ladder)
+        } else {
+            reply_style(&marks, ladder, colors)
+        };
+        if rendered.code && ladder.colors() != Colors::None {
+            style = style.bg(colors.md_code_bg);
+        }
+        spans.push(Span::styled(run, style));
+    }
+    if rendered.code && ladder.colors() != Colors::None {
+        spans.push(Span::styled(
+            " ".repeat(room.saturating_sub(used)),
+            Style::new().bg(colors.md_code_bg),
+        ));
+    }
+    Line::from(spans)
 }
 
 /// grok-build's transcript colors at the ladder's color level.

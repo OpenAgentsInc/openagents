@@ -719,9 +719,12 @@ Inside Coder, type / to see every command:
   /export [path]           Save this chat to a file.
   /plugins                 Turn plugins on and add keys (also Ctrl+P, or Cmd+P on macOS).
   Esc stops a reply. Ctrl+C quits.
-  Cmd+A selects everything in the input (Cmd+C copies, Cmd+X cuts); it needs a
-  terminal with the kitty keyboard protocol. Elsewhere, Ctrl+Shift+A. Ctrl+A and
-  Ctrl+E move to the start and end of the line.
+  Cmd+A selects everything in the input (Cmd+C copies, Cmd+X cuts) where the
+  terminal passes Cmd keys on. Rex, Ghostty, iTerm2 and Terminal keep Cmd+A for
+  their own Select All: use Ctrl+Shift+A there. Ctrl+A and Ctrl+E move to the
+  start and end of the line.
+  Drag over the conversation to copy text; double-click copies a word,
+  triple-click a line.
 
 Coder keeps itself up to date: once a day it checks for a newer version,
 downloads and verifies it, and installs it when you quit. To only be told,

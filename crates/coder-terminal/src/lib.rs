@@ -48,6 +48,7 @@ pub mod markdown;
 pub mod native;
 pub mod progress;
 mod scrollback;
+pub mod selection;
 mod spinner;
 mod wrap;
 

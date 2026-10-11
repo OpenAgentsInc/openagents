@@ -195,6 +195,11 @@ pub struct App {
     pub composer_selected: bool,
     /// Input text waiting for the terminal clipboard (Cmd+C, Cmd+X).
     pending_copy: Option<String>,
+    /// Counts presses on the transcript for double- and triple-click.
+    clicks: coder_terminal::selection::Clicks,
+    /// A transcript selection went to the clipboard: the row under the
+    /// input says so until then.
+    pub(crate) copied_until: Option<std::time::Instant>,
     export_notice_expiry: Option<(std::time::Instant, String)>,
     active_delegation: Option<String>,
     main_draft: Draft,
@@ -1114,6 +1119,102 @@ impl App {
         }
     }
 
+    /// Selecting transcript text with the mouse, as grok-build does it:
+    /// drag to select (the view scrolls while the pointer is held past
+    /// the top or bottom), double-click a word, triple-click a line. The
+    /// selection is copied when the button comes up, and again on Cmd+C
+    /// or Ctrl+Shift+C; Esc puts it down and still does what Esc does.
+    /// The wheel and Run boxes keep scrolling as before. Returns whether
+    /// the event was used up here.
+    fn transcript_select(&mut self, event: &Event) -> bool {
+        use crossterm::event::MouseButton;
+        let composer_selected = self.composer_selected;
+        let chat = self
+            .selected_agent
+            .and_then(|index| self.delegations.get_mut(index))
+            .map_or(&mut self.live, |agent| &mut agent.chat);
+        let cache = &mut chat.cache;
+        let copied = match event {
+            Event::Mouse(mouse) => match mouse.kind {
+                MouseEventKind::Down(MouseButton::Left) => {
+                    cache.drag = None;
+                    let Some(at) = cache.point_at(mouse.column, mouse.row, false) else {
+                        // A click outside the transcript puts the selection down.
+                        cache.selection = None;
+                        return false;
+                    };
+                    match self.clicks.press(std::time::Instant::now(), at) {
+                        2 => cache.select_word(at),
+                        3 => cache.select_line(at),
+                        _ => {
+                            cache.selection = None;
+                            cache.drag = Some(ui::Drag {
+                                anchor: at,
+                                mouse: (mouse.column, mouse.row),
+                            });
+                            return true;
+                        }
+                    }
+                    cache.selected_text()
+                }
+                MouseEventKind::Drag(MouseButton::Left) => {
+                    let Some(drag) = &mut cache.drag else {
+                        return false;
+                    };
+                    drag.mouse = (mouse.column, mouse.row);
+                    cache.follow_drag();
+                    return true;
+                }
+                MouseEventKind::Up(MouseButton::Left) => {
+                    if cache.drag.take().is_none() {
+                        return false;
+                    }
+                    cache.selected_text()
+                }
+                _ => return false,
+            },
+            Event::Key(key) if key.kind != KeyEventKind::Release => {
+                if cache.selection.is_none() {
+                    return false;
+                }
+                let letter_c =
+                    matches!(key.code, KeyCode::Char(ch) if ch.eq_ignore_ascii_case(&'c'));
+                let chord = key.modifiers == KeyModifiers::SUPER
+                    || key.modifiers == KeyModifiers::CONTROL | KeyModifiers::SHIFT;
+                if letter_c && chord && !composer_selected {
+                    cache.selected_text()
+                } else if key.code == KeyCode::Esc {
+                    // Esc puts the selection down and still stops a reply.
+                    cache.selection = None;
+                    return false;
+                } else {
+                    return false;
+                }
+            }
+            _ => return false,
+        };
+        if let Some(text) = copied {
+            self.pending_copy = Some(text);
+            self.copied_until = Some(std::time::Instant::now() + std::time::Duration::from_secs(2));
+        }
+        true
+    }
+
+    /// Keep scrolling while a selecting drag is held past the transcript's
+    /// top or bottom edge; called on each tick.
+    fn drag_scroll(&mut self) {
+        let chat = self
+            .selected_agent
+            .and_then(|index| self.delegations.get(index))
+            .map_or(&self.live, |agent| &agent.chat);
+        let rows = chat.cache.drag_scroll();
+        if rows < 0 {
+            self.scroll_back(rows.unsigned_abs());
+        } else if rows > 0 {
+            self.scroll = self.scroll.saturating_add(rows as u16);
+        }
+    }
+
     /// Select-all in the input and what follows it. Cmd+A needs a terminal
     /// that reports Cmd keys (the kitty keyboard protocol); Ctrl+Shift+A is
     /// the same where the terminal tells it from Ctrl+A. Ctrl+A stays line
@@ -1781,6 +1882,7 @@ impl App {
     }
 
     pub fn tick(&mut self) {
+        self.drag_scroll();
         self.poll_prompt_history();
         self.expire_export_notice(std::time::Instant::now());
         self.poll_login();
@@ -1867,6 +1969,15 @@ impl App {
                     _ => {}
                 }
             }
+            return true;
+        }
+        if matches!(self.mode, Mode::Live | Mode::Microclaude | Mode::Solver)
+            && self.screen == Screen::Conversation
+            && self.model_picker.is_none()
+            && self.resume_picker.is_none()
+            && self.agents_panel.is_none()
+            && self.transcript_select(&event)
+        {
             return true;
         }
         if self.mode == Mode::Live
