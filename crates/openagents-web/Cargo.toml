@@ -20,6 +20,8 @@ coder-access = { path = "../coder-access", default-features = false }
 coder-cloud = { path = "../coder-cloud" }
 coder-environment = { path = "../coder-environment" }
 coder-environment-operator = { path = "../coder-environment-operator" }
+# The Environments machine backend probe (#11256).
+boat = { path = "../boat" }
 coder-host = { path = "../coder-host", default-features = false }
 coder-demo-ui = { path = "../coder-demo-ui" }
 coder-ui = { path = "../coder-ui" }

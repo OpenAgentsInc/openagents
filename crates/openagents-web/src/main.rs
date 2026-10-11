@@ -86,6 +86,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--environments" => {
                 let studio =
                     coder_environment_operator::studio::Config::load(std::path::Path::new(&value))?;
+                // Watch the machine backend for the life of the server: an
+                // outage shows "temporarily unavailable" and recovers with
+                // no redeploy (#11256).
+                config.environments.configure();
+                tokio::spawn(openagents_web::probe_environments(
+                    config.environments.clone(),
+                    std::time::Duration::from_secs(30),
+                    openagents_web::boat_backend_answers,
+                ));
                 // A studio that can't open (Boat or the model unreachable)
                 // leaves the rest of the site up, without Environments
                 // until a retry opens it.

@@ -65,7 +65,10 @@ pub(crate) fn mark_shown() {
 }
 
 pub(crate) fn routes(app: &App) -> Router<App> {
-    SHOWN.store(app.config.environments.is_some(), Ordering::Relaxed);
+    SHOWN.store(
+        app.config.environments.is_some() || app.config.environments.configured(),
+        Ordering::Relaxed,
+    );
     Router::new()
         .route("/environments", get(index).post(create))
         .route("/environments/new", get(new))
@@ -150,7 +153,11 @@ fn head() -> maud::Markup {
     }
 }
 
+/// The studio, while its machine backend answers its health probe.
 fn studio(app: &App) -> Option<&Arc<Studio>> {
+    if !app.config.environments.backend_up() {
+        return None;
+    }
     app.config.environments.studio()
 }
 
@@ -181,7 +188,19 @@ async fn github(app: &App, studio: &Studio, headers: &HeaderMap) -> GitHub {
     }
 }
 
-fn unavailable(headers: &HeaderMap) -> Response {
+fn unavailable(app: &App, headers: &HeaderMap) -> Response {
+    if app.config.environments.configured() {
+        // Configured, but the machines can't be reached right now: the
+        // studio retries and the probe watches, so this clears by itself
+        // (#11256).
+        return protect(crate::ui_page::problem(
+            headers,
+            StatusCode::SERVICE_UNAVAILABLE,
+            "Environments",
+            "Environments are temporarily unavailable. They come back on their own; try again in a minute.",
+            ("/", "Home"),
+        ));
+    }
     protect(crate::ui_page::problem(
         headers,
         StatusCode::NOT_FOUND,
@@ -233,7 +252,7 @@ fn valid_id(id: &str) -> bool {
 
 async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
     let Some(studio) = studio(&app) else {
-        return unavailable(&headers);
+        return unavailable(&app, &headers);
     };
     let Some(scope) = mine(&app, &headers).await else {
         return missing(&headers);
@@ -258,7 +277,7 @@ struct NewQuery {
 
 async fn new(State(app): State<App>, headers: HeaderMap, Query(q): Query<NewQuery>) -> Response {
     let Some(studio) = studio(&app) else {
-        return unavailable(&headers);
+        return unavailable(&app, &headers);
     };
     let chosen = if q.repo.trim().is_empty() {
         q.pick.trim()
@@ -415,7 +434,7 @@ async fn create(
     Form(form): Form<CreateForm>,
 ) -> Response {
     let Some(studio) = studio(&app) else {
-        return unavailable(&headers);
+        return unavailable(&app, &headers);
     };
     if !same_site(&headers) {
         return refused();
@@ -501,7 +520,7 @@ async fn page(
 
 async fn show(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {
     let Some(studio) = studio(&app) else {
-        return unavailable(&headers);
+        return unavailable(&app, &headers);
     };
     if !valid_id(&id) {
         return missing(&headers);
@@ -572,7 +591,7 @@ async fn message(
     Form(form): Form<MessageForm>,
 ) -> Response {
     let Some(studio) = studio(&app) else {
-        return unavailable(&headers);
+        return unavailable(&app, &headers);
     };
     if !same_site(&headers) {
         return refused();
@@ -593,7 +612,7 @@ async fn message(
 
 async fn retry(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {
     let Some(studio) = studio(&app) else {
-        return unavailable(&headers);
+        return unavailable(&app, &headers);
     };
     if !same_site(&headers) {
         return refused();
@@ -619,7 +638,7 @@ async fn save(
     Form(form): Form<SaveForm>,
 ) -> Response {
     let Some(studio) = studio(&app) else {
-        return unavailable(&headers);
+        return unavailable(&app, &headers);
     };
     if !same_site(&headers) {
         return refused();
@@ -645,7 +664,7 @@ async fn claude(
     Form(form): Form<ClaudeForm>,
 ) -> Response {
     let Some(studio) = studio(&app) else {
-        return unavailable(&headers);
+        return unavailable(&app, &headers);
     };
     if !same_site(&headers) {
         return refused();
@@ -666,7 +685,7 @@ async fn run(
     Path((id, run)): Path<(String, String)>,
 ) -> Response {
     let Some(studio) = studio(&app) else {
-        return unavailable(&headers);
+        return unavailable(&app, &headers);
     };
     let Some(scope) = owner_of(&app, studio, &headers, &id).await else {
         return missing(&headers);
@@ -752,7 +771,7 @@ async fn stop(
     Path((id, run)): Path<(String, String)>,
 ) -> Response {
     let Some(studio) = studio(&app) else {
-        return unavailable(&headers);
+        return unavailable(&app, &headers);
     };
     if !same_site(&headers) {
         return refused();
