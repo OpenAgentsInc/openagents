@@ -472,6 +472,54 @@ fn running_notices_a_question_and_answers_it() {
     );
 }
 
+/// A landing queue entry (#11250) shows with the computer's other rows,
+/// its stage as its line, and no Stop or Message.
+#[test]
+fn a_landing_queue_entry_shows_its_stage_without_controls() {
+    let mut f = fixture();
+    let rows = json!({"computers": [{"name": "oa-dev-env-1", "online": true, "updated_unix": 1,
+        "items": [
+            {"id": "t1", "kind": "agent", "title": "#11228 Fleet rows", "status": "working",
+             "started_unix": 1, "cost_usd": 1.7, "line": "fix turn 1"},
+            {"id": "20261011T080000Z-oa-dev-env-1-ab12", "kind": "landing",
+             "title": "#11250 Fleet rows for cloud runs", "status": "working",
+             "started_unix": 1, "line": "landing: checks"}]}]});
+    f.site.answer("GET /v1/agents", 200, rows);
+    signed(&mut f);
+    until(|| f.link.lock().agents_read);
+    f.link.act(Action::Show {
+        screen: Screen::Running,
+        id: None,
+    });
+    until(|| {
+        f.link
+            .lock()
+            .agents
+            .first()
+            .is_some_and(|c| c.items.len() == 2)
+    });
+    let packet = f.link.packet();
+    let mut words = vec![];
+    texts(packet.view.as_ref().unwrap(), &mut words);
+    for shown in [
+        "#11250 Fleet rows for cloud runs",
+        "landing: checks",
+        "fix turn 1",
+    ] {
+        assert!(words.iter().any(|w| w == shown), "{shown}: {words:?}");
+    }
+    assert_eq!(
+        words.iter().filter(|w| *w == "Stop").count(),
+        1,
+        "{words:?}"
+    );
+    assert_eq!(
+        words.iter().filter(|w| *w == "Message").count(),
+        1,
+        "{words:?}"
+    );
+}
+
 #[test]
 fn a_message_to_an_agent_goes_through_its_composer() {
     let mut f = fixture();

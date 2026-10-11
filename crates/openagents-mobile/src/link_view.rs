@@ -572,7 +572,8 @@ fn item_card(computer: &Agents, item: &Item, now: u64) -> Node<Intent> {
             act("deny", Some(question.id.clone())),
         ));
     }
-    if item.running() {
+    // A landing queue entry (#11250) takes no Stop or Message here.
+    if item.running() && item.kind != "landing" {
         controls.push(button(
             &format!("{key}-stop"),
             "Stop",
