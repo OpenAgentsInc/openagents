@@ -629,9 +629,8 @@ impl App {
                 running: false,
             },
         );
-        self.live.notice = Some(format!(
-            "Compacted {count} earlier messages into a summary. They stay above; the model now reads the summary instead."
-        ));
+        // The "Compacted" row above says what happened; the red notice line
+        // is for failures only.
         self.long_session.checked = self.live.entries.len();
         self.history.dirty = true;
         self.scroll_main_to_end();
