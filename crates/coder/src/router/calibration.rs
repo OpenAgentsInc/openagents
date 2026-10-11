@@ -46,6 +46,16 @@ pub const FIXTURE: &str = include_str!("../../fixtures/chat-router/calibration-v
 pub const CLEF_FIXTURE: &str =
     include_str!("../../fixtures/chat-router/calibration-clef-flash-v1.json");
 
+/// The map fitted on Clef-Flash's answers to the staged turn
+/// (`CODER_ROUTER_STAGED=on`, #11297): the coarse `route_hint`, then
+/// `route` and `answer` over its shortlist. A staged `route` reading
+/// stands on another scale than the flat one: Clef reads every route
+/// against the whole catalog but at full rubric only for the shortlist.
+/// [`Calibration::clef_from_env`] picks it when turns are staged, so a
+/// Clef door's staged answers are never read on [`CLEF_FIXTURE`].
+pub const CLEF_STAGED_FIXTURE: &str =
+    include_str!("../../fixtures/chat-router/calibration-clef-flash-staged-v1.json");
+
 /// Whether a response's `model` names a Clef model (`clef-flash`,
 /// `clef-flash@sha256:…`, `clef`), whose readings take [`CLEF_FIXTURE`].
 #[must_use]
@@ -213,6 +223,16 @@ impl Calibration {
         Self::parse(CLEF_FIXTURE)
     }
 
+    /// The committed Clef record for staged turns
+    /// ([`CLEF_STAGED_FIXTURE`]).
+    ///
+    /// # Errors
+    ///
+    /// When the fixture does not parse, which the tests rule out.
+    pub fn builtin_clef_staged() -> Result<Self, String> {
+        Self::parse(CLEF_STAGED_FIXTURE)
+    }
+
     /// The map from [`VAR`]: `Some` when it is `on` or unset, `None` when
     /// it is `off`.
     ///
@@ -235,14 +255,21 @@ impl Calibration {
         Self::from_setting_with(value, bank, Self::builtin)
     }
 
-    /// The Clef record ([`CLEF_FIXTURE`]) under the same [`VAR`] setting.
+    /// The Clef record under the same [`VAR`] setting: [`CLEF_FIXTURE`],
+    /// or [`CLEF_STAGED_FIXTURE`] when turns are staged
+    /// ([`super::judge::staged_on`]).
     ///
     /// # Errors
     ///
     /// As [`Calibration::from_env`].
     pub fn clef_from_env(bank: &str) -> Result<Option<Self>, String> {
         let value = std::env::var(VAR).ok();
-        Self::from_setting_with(value.as_deref(), bank, Self::builtin_clef)
+        let builtin = if super::judge::staged_on() {
+            Self::builtin_clef_staged
+        } else {
+            Self::builtin_clef
+        };
+        Self::from_setting_with(value.as_deref(), bank, builtin)
     }
 
     fn from_setting_with(
@@ -353,10 +380,17 @@ mod tests {
             .collect()
     }
 
-    /// The Clef record parses, names this build's question set, and both
-    /// of its maps passed their held-out gate.
+    /// The Clef records (flat and staged) parse, name this build's
+    /// question set, and both of each one's maps passed their held-out
+    /// gate.
     #[test]
     fn the_committed_clef_record_is_this_builds() {
+        let staged = Calibration::builtin_clef_staged().expect("the staged Clef fixture parses");
+        assert_eq!(staged.schema, SCHEMA);
+        staged
+            .check(&set_id(), &Bank::builtin().id())
+            .expect("fitted for this question set");
+        assert!(staged.route.serves() && staged.answer.serves());
         let record = Calibration::builtin_clef().expect("the Clef fixture parses");
         assert_eq!(record.schema, SCHEMA);
         record

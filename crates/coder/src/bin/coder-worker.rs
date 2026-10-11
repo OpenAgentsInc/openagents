@@ -870,6 +870,21 @@ async fn serve(options: &Options) -> Result<(), String> {
         ),
         None => eprintln!("calibration off: raw probabilities"),
     }
+    // Staged turns (#11297): on by default when the judge asks a Clef door
+    // first, and Clef's staged map reads them.
+    eprintln!(
+        "router  turns {}{}",
+        if router::judge::staged_on() {
+            "staged (route_hint, then route and answer over its shortlist)"
+        } else {
+            "flat (one main request, answer beside it)"
+        },
+        routing
+            .clef_calibration
+            .as_ref()
+            .map(|map| format!("; Clef answers on {}", map.id()))
+            .unwrap_or_default()
+    );
     match routing.news.as_deref() {
         Some(Door::Fallback(news)) => eprintln!(
             "gym news {} first, then {} with its reasoning off",

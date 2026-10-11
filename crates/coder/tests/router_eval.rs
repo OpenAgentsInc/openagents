@@ -9,7 +9,12 @@
 //!   cargo test -p coder --test router_eval -- --ignored --nocapture --test-threads 1
 //! ```
 //!
-//! `ROUTER_EVAL_SPLIT` is `held_out` (the default), `tune`, or `all`.
+//! `ROUTER_EVAL_SPLIT` is `held_out` (the default), `tune`, `all`, or
+//! `published` (the published eval's rows, held_out and the calibration
+//! partition, without publishing). `ROUTER_EVAL_MAPS=on` reads each
+//! question on its answering model's calibration map before the policy
+//! decides, as the worker does (a Clef server's answers on Clef's map for
+//! the shape asked, `CODER_ROUTER_STAGED`); the published eval refuses it.
 //! `ROUTER_EVAL_ROWS` is `all` (the default), `v1` (the rows of
 //! `routes-v1.json`, for comparing with the v1 measurements), `gym` (the
 //! rows `routes-v2.json` added), `capability` (the rows `routes-v3.json`
@@ -248,7 +253,24 @@ async fn run_router(name: &str, mode: router::Mode) {
         plugin: false,
     };
     let set = Set::fixture();
-    let (rows, split_label) = if publishing() {
+    // `ROUTER_EVAL_MAPS=on` reads each question on the map of the model
+    // that answered it before the policy decides, as the worker does
+    // (#11297): Jev's `calibration-v2`, and Clef's map for the shape this
+    // run asks (`Calibration::clef_from_env`). Off by default: the
+    // published eval scores and fits raw readings.
+    let maps = std::env::var("ROUTER_EVAL_MAPS").as_deref() == Ok("on");
+    assert!(
+        !(maps && publishing()),
+        "the published eval fits its maps on raw readings; leave ROUTER_EVAL_MAPS unset"
+    );
+    let jev_map = maps.then(|| router::calibration::Calibration::builtin().expect("Jev's map"));
+    let clef_map = maps.then(|| {
+        router::calibration::Calibration::clef_from_env(&bank.id())
+            .expect("Clef's map")
+            .expect("Clef's map serves")
+    });
+    let published = std::env::var("ROUTER_EVAL_SPLIT").as_deref() == Ok("published");
+    let (rows, split_label) = if publishing() || published {
         // The held-out rows the record is on, and the calibration
         // partition the maps are fitted on.
         let rows: Vec<&Row> = set
@@ -322,7 +344,15 @@ async fn run_router(name: &str, mode: router::Mode) {
         readings.push(match asked {
             Ok(response) => {
                 staging.count(row, &response);
-                let routing = router::reading(&response, bank, &facts, &admitted);
+                let mut routing = router::reading(&response, bank, &facts, &admitted);
+                if maps {
+                    router::calibration::apply_served(
+                        &response,
+                        &mut routing,
+                        jev_map.as_ref(),
+                        clef_map.as_ref(),
+                    );
+                }
                 // A multi-turn row has messages before its latest (#10138).
                 let situation = router::Situation {
                     earlier: row.messages.len() > 1,

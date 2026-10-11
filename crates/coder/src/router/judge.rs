@@ -44,15 +44,18 @@
 //! each side question's serving identity ([`SERVED_BY`]), so a side a
 //! fallback door answered is calibrated on its own model's map.
 //!
-//! **Staged routing (#11247, stage B, opt-in).** With [`STAGED_VAR`] on,
+//! **Staged routing (#11247 stage B, #11297).** When [`staged_on`] (by
+//! default for a Clef-first judge, `OPENAGENTS_DECISIONS=pylon`),
 //! [`Split::configured`] asks a turn in two stages ([`Split::staged`]): the
-//! main request asks the coarse [`ROUTE_HINT`] in place of `route` and no
-//! `answer` goes beside it; then one request asks `route` over every route,
+//! main request asks the coarse [`ROUTE_HINT`] in place of `route`, no
+//! `answer` goes beside it, and the dispatch and Gym questions
+//! ([`DEFERRED`]) leave it; then one request asks `route` over every route,
 //! the hint's [`shortlist`] at full rubric and the rest by description,
-//! and `answer` over the shortlist's entries ([`Staged::questions`]). On
-//! routes-v5 it holds Jev's accuracy for about 15 % fewer tokens and a
-//! second round trip; on the CoderOS-4080 Clef a website turn takes
-//! 0.9–1.5 s where the flat split takes 1.6 s.
+//! `answer` over the shortlist's entries, and each deferred question a
+//! rule may read ([`deferred_needed`], [`Staged::questions`]). On routes-v5
+//! it holds Jev's accuracy for about 15 % fewer tokens and a second round
+//! trip; on the CoderOS-4080 Clef it is more accurate than the flat split
+//! and sends about 14 % fewer tokens.
 
 use indexmap::IndexMap;
 use jev::{Answer, Choice, ChoiceAnswer, Entry as Criterion, Noul, NoulCriteria, Questions};
@@ -478,17 +481,37 @@ pub fn needed_after(id: &str, main: &jev::SystemOneResponse, terminal: bool) -> 
 /// rule reads it.
 pub const ROUTE_HINT: &str = "route_hint";
 
-/// The variable that turns staged routing on ([`Split::staged`]): `on`,
-/// or unset or anything else for the flat split. Off by default: on Jev,
-/// the default judge, a staged turn sends about 15 % fewer tokens but
-/// takes a second round trip (#11247); a judge whose cost is its tokens,
-/// a Clef door on one GPU, is where it pays.
+/// The variable that sets staged routing ([`Split::staged`]): `on` or
+/// `off`. Unset (or anything else), turns are staged when the judge asks a
+/// Clef door first (`OPENAGENTS_DECISIONS=pylon`, [`staged_by_default`])
+/// and flat otherwise (#11297). On Jev, the Jev-first worker's judge, a
+/// staged turn sends about 15 % fewer tokens but takes a second round trip
+/// (#11247). On Clef it is better on every count: on routes-v5's held-out
+/// rows route accuracy 77 % against 69 %, Gym recall 81 % against 43 %,
+/// refusal recall 70 % against 40 %, and 10.6k tokens a turn against 12.3k.
 pub const STAGED_VAR: &str = "CODER_ROUTER_STAGED";
 
-/// Whether turns are asked in stages: [`STAGED_VAR`] is `on`.
+/// Whether turns are asked in stages, from this process's [`STAGED_VAR`]
+/// and `OPENAGENTS_DECISIONS` ([`staged_by_default`]).
 #[must_use]
 pub fn staged_on() -> bool {
-    std::env::var(STAGED_VAR).is_ok_and(|value| value.trim() == "on")
+    staged_by_default(
+        std::env::var(STAGED_VAR).ok().as_deref(),
+        std::env::var(jev_hosted::DECISIONS_VAR).ok().as_deref(),
+    )
+}
+
+/// Whether turns are staged for a [`STAGED_VAR`] value `staged` and an
+/// `OPENAGENTS_DECISIONS` value `decisions`: `on` or `off` decides, and
+/// otherwise a judge that asks the Pylons first (`pylon`, a Clef door) is
+/// staged and every other judge is flat.
+#[must_use]
+pub fn staged_by_default(staged: Option<&str>, decisions: Option<&str>) -> bool {
+    match staged.map(str::trim) {
+        Some("on") => true,
+        Some("off") => false,
+        _ => decisions.is_some_and(|value| value.trim() == "pylon"),
+    }
 }
 
 /// The [`ROUTE_HINT`] question: the same instructions as `route`, each
@@ -574,10 +597,61 @@ pub struct Staged {
     pub answer: Option<Choice>,
     /// The routes each `answer` option answers, by option id.
     pub answer_routes: IndexMap<String, Vec<RouteId>>,
+    /// The dispatch and Gym questions ([`DEFERRED`]) the turn asks, taken
+    /// out of the main request: the second request asks each only when a
+    /// rule may read it ([`deferred_needed`], #11297).
+    pub deferred: Vec<(String, jev::Question)>,
+}
+
+/// The questions a staged turn moves out of its main request and asks in
+/// the second request only when a rule may read them (#11297): the
+/// dispatch plan's (`capability`, `engine`, `fanout`, `read_only`,
+/// `summarize`) and the Gym's `tool`.
+pub const DEFERRED: [&str; 6] = [
+    "capability",
+    "engine",
+    "fanout",
+    "read_only",
+    "summarize",
+    "tool",
+];
+
+/// Whether a staged turn's second request asks the deferred question `id`
+/// ([`DEFERRED`]) for the shortlist `routes`, read off typed readings
+/// only, never the message (#11297). Every reader is in
+/// [`super::policy`]:
+///
+/// - The dispatch questions shape a dispatch offer, which a rule serves
+///   for the `work.dispatch` route (rule 6, or rule 2's pair with
+///   `work.dispatch` second), for `capability.missing` with a named
+///   capability (rule 10), or for another route when `lane` reads
+///   `computer` (rule 11); and `capability` also decides the
+///   missing-capability line (rule 10). So they are asked when the
+///   shortlist holds `work.dispatch` or `capability.missing`, or when the
+///   main request's `lane` argmax is `computer`.
+/// - `tool` names the Gym card's tool, read only on a Gym route, so it is
+///   asked when the shortlist holds one.
+///
+/// An empty shortlist (the hint gave no probabilities) asks them all.
+#[must_use]
+pub fn deferred_needed(id: &str, routes: &[RouteId], computer: bool) -> bool {
+    if routes.is_empty() {
+        return true;
+    }
+    match id {
+        "tool" => routes.iter().any(|route| route.is_gym()),
+        _ => {
+            computer
+                || routes.iter().any(|route| {
+                    matches!(route, RouteId::WorkDispatch | RouteId::CapabilityMissing)
+                })
+        }
+    }
 }
 
 impl Staged {
-    /// The questions the second request asks for the shortlist `routes`:
+    /// The questions the second request asks for the shortlist `routes`,
+    /// with `computer` the main request's `lane` argmax being `computer`:
     ///
     /// - `route` over every route, in the catalog's order: a shortlisted
     ///   one (and `none`) with its whole rubric, any other by its one-line
@@ -589,9 +663,12 @@ impl Staged {
     /// - `answer` over the entries that answer a shortlisted route, and
     ///   `none`; left out when no entry does.
     ///
-    /// An empty shortlist asks both whole.
+    /// - each [`DEFERRED`] question the turn asks, when a rule may read it
+    ///   ([`deferred_needed`]).
+    ///
+    /// An empty shortlist asks every question whole.
     #[must_use]
-    pub fn questions(&self, routes: &[RouteId]) -> Questions {
+    pub fn questions(&self, routes: &[RouteId], computer: bool) -> Questions {
         let kept = |word: &str| {
             routes.is_empty() || word == "none" || routes.contains(&RouteId::parse(word))
         };
@@ -616,6 +693,11 @@ impl Staged {
             });
             if answer.criteria.len() > 1 {
                 questions = questions.with("answer", answer);
+            }
+        }
+        for (id, question) in &self.deferred {
+            if deferred_needed(id, routes, computer) {
+                questions = questions.with(id.clone(), question.clone());
             }
         }
         questions
@@ -730,10 +812,18 @@ impl Split {
                 ))
             })
             .collect();
+        let deferred: Vec<(String, jev::Question)> = self
+            .main
+            .questions
+            .iter()
+            .filter(|(id, _)| DEFERRED.contains(id))
+            .map(|(id, question)| (id.to_string(), question.clone()))
+            .collect();
         self.main.questions = self
             .main
             .questions
             .iter()
+            .filter(|(id, _)| !DEFERRED.contains(id))
             .map(|(id, question)| {
                 if id == "route" {
                     (ROUTE_HINT.to_string(), jev::Question::from(route_hint()))
@@ -746,6 +836,7 @@ impl Split {
             route,
             answer,
             answer_routes,
+            deferred,
         });
         self
     }
@@ -951,7 +1042,9 @@ pub async fn ask(judge: &jev::Client, split: Split) -> jev::Result<jev::SystemOn
                 let routes = choice(response, ROUTE_HINT)
                     .map(shortlist)
                     .unwrap_or_default();
-                request.questions = staged.questions(&routes);
+                let computer = choice(response, "lane")
+                    .is_some_and(|lane| lane.choice == Lane::Computer.word());
+                request.questions = staged.questions(&routes, computer);
                 let left = crate::first::LATE.saturating_sub(started.elapsed());
                 if left.is_zero() {
                     return (
@@ -1688,7 +1781,7 @@ mod tests {
             .staged
             .as_ref()
             .expect("a staged turn")
-            .questions(routes);
+            .questions(routes, false);
         request
     }
 
@@ -1879,7 +1972,7 @@ mod tests {
         assert!(flat.main.questions.get(ROUTE_HINT).is_some());
         assert!(flat.sides.iter().all(|(id, _)| *id != "answer"));
         let staged = flat.staged.as_ref().expect("staged");
-        let asked = staged.questions(&TYPICAL_SHORTLIST);
+        let asked = staged.questions(&TYPICAL_SHORTLIST, false);
         asked.validate().expect("a valid set");
         let Some(jev::Question::Choice(route)) = asked.get("route") else {
             panic!("route is asked");
@@ -1918,7 +2011,7 @@ mod tests {
         let whole = staged.answer.as_ref().unwrap().criteria.len();
         assert!(answer.criteria.len() < whole);
         // An empty shortlist asks both whole.
-        let all = staged.questions(&[]);
+        let all = staged.questions(&[], false);
         let Some(jev::Question::Choice(route)) = all.get("route") else {
             panic!("route is asked");
         };
@@ -1932,8 +2025,101 @@ mod tests {
             .filter(|route| !staged.answer_routes.values().any(|r| r.contains(route)))
             .collect();
         if !unanswered.is_empty() {
-            assert!(staged.questions(&unanswered).get("answer").is_none());
+            assert!(staged.questions(&unanswered, false).get("answer").is_none());
         }
+    }
+
+    /// Staging follows its variable, and unset, the judge's first door: a
+    /// Clef door (the Pylons first) is staged, Jev is flat.
+    #[test]
+    fn turns_are_staged_by_default_only_for_a_clef_first_judge() {
+        assert!(staged_by_default(Some("on"), None));
+        assert!(staged_by_default(Some(" on "), Some("legacy")));
+        assert!(!staged_by_default(Some("off"), Some("pylon")));
+        assert!(staged_by_default(None, Some("pylon")));
+        assert!(staged_by_default(Some(""), Some("pylon")));
+        assert!(!staged_by_default(None, None));
+        assert!(!staged_by_default(None, Some("legacy")));
+        assert!(!staged_by_default(Some("yes"), None));
+    }
+
+    /// A staged turn asks the dispatch and Gym questions in its second
+    /// request, and only when a rule may read them (#11297): the dispatch
+    /// plan's for a shortlist with `work.dispatch` or `capability.missing`
+    /// or a `computer` lane, `tool` for a shortlist with a Gym route, and
+    /// every one when the hint gave no shortlist.
+    #[test]
+    fn dispatch_and_gym_questions_are_asked_only_when_read() {
+        let dispatch = ["capability", "engine", "fanout", "read_only", "summarize"];
+        for surface in [
+            crate::router::Surface::Phone,
+            crate::router::Surface::Terminal,
+            crate::router::Surface::Web,
+        ] {
+            let flat = typical_flat_turn(surface);
+            let asked = typical_turn(surface);
+            for id in DEFERRED {
+                assert!(asked.main.questions.get(id).is_none(), "{surface:?} {id}");
+            }
+            let staged = asked.staged.as_ref().unwrap();
+            // What the flat main request asked on this surface moves; the
+            // surface's unread questions stay unasked.
+            let moved: Vec<&str> = staged.deferred.iter().map(|(id, _)| id.as_str()).collect();
+            let flat_deferred: Vec<&str> = flat
+                .main
+                .questions
+                .iter()
+                .map(|(id, _)| id)
+                .filter(|id| DEFERRED.contains(id))
+                .collect();
+            assert_eq!(moved, flat_deferred, "{surface:?}");
+            let has = |questions: &Questions, id: &str| questions.get(id).is_some();
+            // Answer routes, a chat lane: none of them.
+            let chat = staged.questions(&TYPICAL_SHORTLIST, false);
+            for id in DEFERRED {
+                assert!(!has(&chat, id), "{surface:?} {id}");
+            }
+            // A dispatch on the shortlist, or a computer lane: the plan's.
+            let work = [RouteId::WorkDispatch, RouteId::Cli, RouteId::StandingRule];
+            let missing = [RouteId::CapabilityMissing, RouteId::General, RouteId::Meta];
+            for (questions, why) in [
+                (staged.questions(&work, false), "work.dispatch"),
+                (staged.questions(&missing, false), "capability.missing"),
+                (staged.questions(&TYPICAL_SHORTLIST, true), "computer lane"),
+            ] {
+                for id in dispatch {
+                    assert_eq!(
+                        has(&questions, id),
+                        moved.contains(&id),
+                        "{surface:?} {why} {id}"
+                    );
+                }
+                assert!(!has(&questions, "tool"), "{surface:?} {why}");
+            }
+            // A Gym route: `tool`, and no dispatch question.
+            let gym = [RouteId::EvalRun, RouteId::EvalCheck, RouteId::GymNews];
+            let asked_gym = staged.questions(&gym, false);
+            assert_eq!(
+                has(&asked_gym, "tool"),
+                moved.contains(&"tool"),
+                "{surface:?}"
+            );
+            for id in dispatch {
+                assert!(!has(&asked_gym, id), "{surface:?} {id}");
+            }
+            // No shortlist: everything.
+            let all = staged.questions(&[], false);
+            for id in &moved {
+                assert!(has(&all, id), "{surface:?} {id}");
+            }
+            all.validate().expect("a valid set");
+        }
+        // The rule reads its own arguments only.
+        assert!(deferred_needed("engine", &[], false));
+        assert!(!deferred_needed("engine", &[RouteId::Meta], false));
+        assert!(deferred_needed("engine", &[RouteId::Meta], true));
+        assert!(!deferred_needed("tool", &[RouteId::Meta], true));
+        assert!(deferred_needed("tool", &[RouteId::EvalRun], false));
     }
 
     /// Every staged second request fits a Clef door, whatever the
@@ -1947,12 +2133,18 @@ mod tests {
         by_entries.sort_by_key(|route| {
             std::cmp::Reverse(bank.answers.iter().filter(|e| e.answers(*route)).count())
         });
-        let largest = routed(&asked, &by_entries[..SHORTLIST_MAX]);
+        // The worst case asks every deferred question too (a computer lane).
+        let mut largest = asked.main.clone();
+        largest.questions = asked
+            .staged
+            .as_ref()
+            .unwrap()
+            .questions(&by_entries[..SHORTLIST_MAX], true);
         let size = bytes(&largest);
         eprintln!("largest second request: {size} bytes");
         let staged = asked.staged.as_ref().unwrap();
         for route in RouteId::ALL {
-            let one = staged.questions(&[route]);
+            let one = staged.questions(&[route], false);
             let part = |id: &str| {
                 one.get(id)
                     .map_or(0, |question| serde_json::to_vec(question).unwrap().len())
