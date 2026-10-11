@@ -20,7 +20,7 @@ run unchanged. Hosted Boat is now opt-in only (`BOAT_HOSTED=1`).
 | Code | [`crates/oa-boat`](../../crates/oa-boat) (Rust, axum); image from [`deploy/oa-boat`](../../deploy/oa-boat) |
 | Runtime account | `oa-boat@openagentsgemini` with `compute.instanceAdmin.v1` and `compute.storageAdmin`; reads only its two secrets |
 | Auth | `Authorization: Bearer` our token, Secret Manager `oa-boat-api-key`. Cloud Run's own invoker check is off (`--no-invoker-iam-check`); every path but `/health` needs the token |
-| Reaching VMs | Direct VPC egress through subnet `oa-boat-run` (10.42.28.0/26, network `default`); firewall `oa-boat-ssh-from-service` admits tcp:22 from it to tag `oa-boat-sandbox`. SSH as `user` with Secret Manager `oa-boat-ssh-key`, put on each VM in its metadata |
+| Reaching VMs | Direct VPC egress through subnet `oa-boat-run` (`10.42.28.0/26`, network `default`); firewall `oa-boat-ssh-from-service` admits tcp:22 from it to tag `oa-boat-sandbox`. SSH as `user` with Secret Manager `oa-boat-ssh-key`, put on each VM in its metadata |
 | Sandboxes | GCE instances `oa-boat-<suffix>` for sandbox `bx_<suffix>`, label `openagents-managed=oa-boat`, no service account, no external address (Cloud NAT for egress), Shielded VM, boot from the newest `oa-coder-host` image or a template |
 | Templates | GCE images labelled `openagents-managed=oa-boat-template` (Boat's "named snapshots") |
 | Scale | min = max = 1 instance (state that is not in GCE labels lives in memory), CPU always on, 2 vCPU / 2 GiB |
