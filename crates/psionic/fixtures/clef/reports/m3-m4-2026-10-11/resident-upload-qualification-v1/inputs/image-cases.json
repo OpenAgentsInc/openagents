@@ -1,0 +1,190 @@
+[
+  {
+    "id": "solid_red",
+    "images": [
+      "red.png"
+    ],
+    "state": "Answer using the attached image.",
+    "questions": {
+      "color": {
+        "type": "choice",
+        "instructions": "Which color covers almost the entire image?",
+        "criteria": {
+          "blue": "Blue",
+          "green": "Green",
+          "red": "Red"
+        }
+      },
+      "red": {
+        "type": "noul",
+        "instructions": "The image is almost entirely red."
+      },
+      "red_amount": {
+        "type": "score",
+        "instructions": "How much of the image is red?",
+        "criteria": [
+          "None or almost none",
+          "About half",
+          "All or almost all"
+        ]
+      }
+    },
+    "expected": {
+      "color": "red",
+      "red": "true",
+      "red_amount": "2"
+    }
+  },
+  {
+    "id": "solid_blue",
+    "images": [
+      "blue.jpg"
+    ],
+    "state": "Answer using the attached image.",
+    "questions": {
+      "color": {
+        "type": "choice",
+        "instructions": "Which color covers almost the entire image?",
+        "criteria": {
+          "blue": "Blue",
+          "green": "Green",
+          "red": "Red"
+        }
+      },
+      "red": {
+        "type": "noul",
+        "instructions": "The image is almost entirely red."
+      },
+      "red_amount": {
+        "type": "score",
+        "instructions": "How much of the image is red?",
+        "criteria": [
+          "None or almost none",
+          "About half",
+          "All or almost all"
+        ]
+      }
+    },
+    "expected": {
+      "color": "blue",
+      "red": "false",
+      "red_amount": "0"
+    }
+  },
+  {
+    "id": "red_left",
+    "images": [
+      "red-left.png"
+    ],
+    "state": "Answer using the attached image.",
+    "questions": {
+      "left": {
+        "type": "choice",
+        "instructions": "What is the color of the left half of the image?",
+        "criteria": {
+          "blue": "Blue",
+          "green": "Green",
+          "red": "Red"
+        }
+      },
+      "red_left": {
+        "type": "noul",
+        "instructions": "The red half is on the left side of the image."
+      }
+    },
+    "expected": {
+      "left": "red",
+      "red_left": "true"
+    }
+  },
+  {
+    "id": "blue_left",
+    "images": [
+      "blue-left.webp"
+    ],
+    "state": "Answer using the attached image.",
+    "questions": {
+      "left": {
+        "type": "choice",
+        "instructions": "What is the color of the left half of the image?",
+        "criteria": {
+          "blue": "Blue",
+          "green": "Green",
+          "red": "Red"
+        }
+      },
+      "red_left": {
+        "type": "noul",
+        "instructions": "The red half is on the left side of the image."
+      }
+    },
+    "expected": {
+      "left": "blue",
+      "red_left": "false"
+    }
+  },
+  {
+    "id": "red_then_blue",
+    "images": [
+      "red.png",
+      "blue.jpg"
+    ],
+    "state": "Answer using the two attached images in their supplied order.",
+    "questions": {
+      "first": {
+        "type": "choice",
+        "instructions": "Which color covers the first image?",
+        "criteria": {
+          "blue": "Blue",
+          "green": "Green",
+          "red": "Red"
+        }
+      },
+      "second": {
+        "type": "choice",
+        "instructions": "Which color covers the second image?",
+        "criteria": {
+          "blue": "Blue",
+          "green": "Green",
+          "red": "Red"
+        }
+      }
+    },
+    "expected": {
+      "first": "red",
+      "second": "blue"
+    }
+  },
+  {
+    "id": "blue_then_red",
+    "images": [
+      "blue.jpg",
+      "red.png"
+    ],
+    "state": "Answer using the two attached images in their supplied order.",
+    "questions": {
+      "first": {
+        "type": "choice",
+        "instructions": "Which color covers the first image?",
+        "criteria": {
+          "blue": "Blue",
+          "green": "Green",
+          "red": "Red"
+        }
+      },
+      "second": {
+        "type": "choice",
+        "instructions": "Which color covers the second image?",
+        "criteria": {
+          "blue": "Blue",
+          "green": "Green",
+          "red": "Red"
+        }
+      }
+    },
+    "expected": {
+      "first": "blue",
+      "second": "red"
+    }
+  }
+]

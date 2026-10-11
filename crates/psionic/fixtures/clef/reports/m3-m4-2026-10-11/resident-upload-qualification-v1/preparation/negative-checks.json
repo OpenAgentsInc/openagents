@@ -1,0 +1,33 @@
+{
+  "status": "complete",
+  "model_loaded": false,
+  "GPU_used": false,
+  "positive_fixtures": 2,
+  "rejected": [
+    "one_ulp",
+    "negative_zero",
+    "pooled_byte",
+    "token",
+    "metadata",
+    "top",
+    "cache",
+    "cache_string",
+    "cache_ollama",
+    "nonfinite",
+    "missing_option",
+    "width",
+    "export_missing",
+    "export_duplicate",
+    "export_truncated",
+    "export_trailing",
+    "export_wrong_question",
+    "export_wrong_options",
+    "export_offset"
+  ],
+  "sources": {
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/negative_checks.py": "22607140e0b21895e7ade5fcb4dc57748a0d11b4ac0bacd5cdabb7eae64256a5",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/text.py": "88cc57dbb0450c48a6cc7235e164e51965832310bb2098c58b6f98ae690cbb84",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/proof.py": "f222ba66ab418e2512a66f263e277a1c6209d3bb2fd7fbbf39379d05e350ae05",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/acceptance_helpers.py": "f02ee0533428c1160be64768c1c7659474325497105f097cb0f7d428b034c8d2"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "server": {
+    "name": "psionic-openai-server",
+    "source": "@@CLEF_TARGET@@/release/psionic-openai-server",
+    "sha256": "f4def388b4b6622fef9023c2616639c215829d7a519359eb64d1dbca9fdfa31f",
+    "bytes": 22003352,
+    "source_manifest_unchanged": true
+  },
+  "backend-build": {
+    "name": "psionic-metal-tests",
+    "source": "@@CLEF_TARGET@@/release/deps/psionic_backend_metal-a2dbd8deab19d6f5",
+    "sha256": "5606e487c058db9680210ec857d5ea871cdb360fb8b2a493b028f6adac0dfcdc",
+    "bytes": 2371624,
+    "source_manifest_unchanged": true
+  }
+}

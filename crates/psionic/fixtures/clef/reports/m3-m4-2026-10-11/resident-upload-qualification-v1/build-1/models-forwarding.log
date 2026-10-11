@@ -1,0 +1,6 @@
+
+running 1 test
+test tests::gguf_blob_artifact_pages_tensor_bytes_and_reports_buffered_fallback ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 387 filtered out; finished in 0.00s
+

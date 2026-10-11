@@ -1,0 +1,33 @@
+{
+  "status": "complete",
+  "passed": true,
+  "attempt": "images-2",
+  "original_attempt_preserved": true,
+  "bounds": {
+    "max_rss_gib": 52,
+    "minimum_start_available_gib": 64,
+    "minimum_available_gib": 12,
+    "startup_timeout": 600,
+    "request_timeout": 300,
+    "deadline_seconds": 1800
+  },
+  "original_harness_sha256": "b0448dfd6314cfa0e1b53570d865f66d0a060923bdebf48e47637651d2c1600b",
+  "candidate_sha256": "c2539ca0fe9b38ac31691872b59f44e0a14afcc4de401433b5651da83cfac549",
+  "text_sha256": "f977f1aafdb8492e746246a7b3faf54841ecf39d3966921d69b26cc532a73e0e",
+  "executed_runner": {
+    "module_file": "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/native_image_parity.py",
+    "run_sourcefile": "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/native_image_parity.py",
+    "sha256": "c441b6b1aafa678549b3b4713c75e77de0460989b128e4f0f5be59478909a170",
+    "unique_module_name": "_clef_positional_frozen_image_runner_v1"
+  },
+  "repair_source_sha256": "41ff28452d1039ba114ec196b94497a6497464c504dbe7aeb94ef7f5dd0016e7",
+  "runner_exit": 0,
+  "cases": 6,
+  "questions": 14,
+  "refusals": 10,
+  "sources_rechecked": true,
+  "result_sha256": "cd59da36f6659d902ca5124d1d8f4577eb6098b524d7690c845f212d767d3279",
+  "run_sha256": "fe3c1be84c33ee3c22b53b7cd6483a6fbf8c8400c0e0a108b09dcd5d57915d6f",
+  "acceptance": "Unchanged image top/token/expected-content plus refusal gate; probabilities diagnostic.",
+  "post_cleanup_sources_rechecked": true
+}

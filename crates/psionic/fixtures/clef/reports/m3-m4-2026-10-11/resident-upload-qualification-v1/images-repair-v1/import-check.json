@@ -1,0 +1,23 @@
+{
+  "status": "complete",
+  "model_loaded": false,
+  "runner_called": false,
+  "GPU_used": false,
+  "ordinary_import_resolves_to": "@@CLEF_WORKTREE@@/crates/psionic/fixtures/clef/tools/native_image_parity.py",
+  "actual_explicit_import": {
+    "module_file": "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/native_image_parity.py",
+    "run_sourcefile": "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/native_image_parity.py",
+    "sha256": "c441b6b1aafa678549b3b4713c75e77de0460989b128e4f0f5be59478909a170",
+    "unique_module_name": "_clef_positional_frozen_image_runner_v1"
+  },
+  "rejected": [
+    "shared-path",
+    "wrong-digest",
+    "missing-path"
+  ],
+  "source_sha256": {
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/images-repair-v1/check_import.py": "c68a2a27fe18991b92b3f35c146a0a2a89a6c8c6b11046d8d7a4d351543b2b55",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/images-repair-v1/runner.py": "a675b26f25c974c59e598cdaf0e530750ed77778e110ec86b317d4f62235581d",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/native_image_parity.py": "c441b6b1aafa678549b3b4713c75e77de0460989b128e4f0f5be59478909a170"
+  }
+}

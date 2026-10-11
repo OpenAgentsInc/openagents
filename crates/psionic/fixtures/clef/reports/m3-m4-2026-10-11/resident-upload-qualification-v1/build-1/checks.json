@@ -1,0 +1,134 @@
+[
+  {
+    "name": "psionic-catalog-build",
+    "command": [
+      "cargo",
+      "+1.97.1",
+      "test",
+      "--release",
+      "--manifest-path",
+      "crates/psionic/Cargo.toml",
+      "-p",
+      "psionic-catalog",
+      "--lib",
+      "--no-run",
+      "--message-format=json-render-diagnostics",
+      "-j",
+      "2"
+    ],
+    "exit": 0,
+    "seconds": 38.153620833
+  },
+  {
+    "name": "psionic-models-build",
+    "command": [
+      "cargo",
+      "+1.97.1",
+      "test",
+      "--release",
+      "--manifest-path",
+      "crates/psionic/Cargo.toml",
+      "-p",
+      "psionic-models",
+      "--lib",
+      "--no-run",
+      "--message-format=json-render-diagnostics",
+      "-j",
+      "2"
+    ],
+    "exit": 0,
+    "seconds": 122.968344375
+  },
+  {
+    "name": "psionic-serve-build",
+    "command": [
+      "cargo",
+      "+1.97.1",
+      "test",
+      "--release",
+      "--manifest-path",
+      "crates/psionic/Cargo.toml",
+      "-p",
+      "psionic-serve",
+      "--lib",
+      "--no-run",
+      "--message-format=json-render-diagnostics",
+      "-j",
+      "2"
+    ],
+    "exit": 0,
+    "seconds": 921.8618639169999
+  },
+  {
+    "name": "catalog-positional",
+    "command": [
+      "@@CLEF_TARGET@@/release/deps/psionic_catalog-4af9a3bdca76b8de",
+      "positional_reads_",
+      "--test-threads=1"
+    ],
+    "exit": 0,
+    "seconds": 0.34677416700014874,
+    "passed": 4,
+    "ignored": 0,
+    "GPU_tests_executed": false
+  },
+  {
+    "name": "models-forwarding",
+    "command": [
+      "@@CLEF_TARGET@@/release/deps/psionic_models-f9174c18aef1a360",
+      "gguf_blob_artifact_pages_tensor_bytes_and_reports_buffered_fallback",
+      "--test-threads=1"
+    ],
+    "exit": 0,
+    "seconds": 0.6320413340001778,
+    "passed": 1,
+    "ignored": 0,
+    "GPU_tests_executed": false
+  },
+  {
+    "name": "serve-clef-cpu",
+    "command": [
+      "@@CLEF_TARGET@@/release/deps/psionic_serve-acadeb851218b939",
+      "clef::",
+      "--test-threads=1"
+    ],
+    "exit": 0,
+    "seconds": 0.6736298749999605,
+    "passed": 48,
+    "ignored": 2,
+    "GPU_tests_executed": false
+  },
+  {
+    "name": "serve-metal-cpu",
+    "command": [
+      "@@CLEF_TARGET@@/release/deps/psionic_serve-acadeb851218b939",
+      "qwen35::clef_metal::",
+      "--test-threads=1"
+    ],
+    "exit": 0,
+    "seconds": 0.008643083000151819,
+    "passed": 18,
+    "ignored": 8,
+    "GPU_tests_executed": false
+  },
+  {
+    "name": "server",
+    "command": [
+      "cargo",
+      "+1.97.1",
+      "build",
+      "--release",
+      "--manifest-path",
+      "crates/psionic/Cargo.toml",
+      "-p",
+      "psionic-serve",
+      "--bin",
+      "psionic-openai-server",
+      "--message-format=json-render-diagnostics",
+      "-j",
+      "2"
+    ],
+    "exit": 0,
+    "seconds": 76.90702933300008
+  }
+]

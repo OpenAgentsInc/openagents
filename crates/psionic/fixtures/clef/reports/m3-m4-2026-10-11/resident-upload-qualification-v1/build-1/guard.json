@@ -1,0 +1,60 @@
+{
+  "status": "complete",
+  "cap_bytes": 25769803776,
+  "minimum_start_bytes": 38654705664,
+  "minimum_available_bytes": 12884901888,
+  "deadline_seconds": 1800,
+  "minimum_start_disk_bytes": 33285996544,
+  "minimum_disk_bytes": 26843545600,
+  "declared_build_disk_gib": 2,
+  "explicit_disk_lease_gib": 4,
+  "output_limit_bytes": 2147483648,
+  "cargo_jobs": 2,
+  "rust_toolchain": "1.97.1",
+  "target": "@@CLEF_TARGET@@",
+  "source_manifest_sha256": "f8ae6fac32c940abba50c95398f5cdb4ddd4b2f7db75f62ad71bdfa126125cad",
+  "sources_rechecked": true,
+  "harness_manifest_sha256": "b0448dfd6314cfa0e1b53570d865f66d0a060923bdebf48e47637651d2c1600b",
+  "preflight": {
+    "available_memory_bytes": 96869269504,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 3456577,
+      "inactive": 1929795,
+      "speculative": 526059
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "disk_preflight": {
+    "free_bytes": 40947138560,
+    "output_bytes": 1734788
+  },
+  "pid": 56162,
+  "exit": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 56162,
+    "max_rss_bytes": 25769803776,
+    "peak_rss_bytes": 25471221760,
+    "peak_physical_footprint_bytes": 24689154224,
+    "peak_accounted_bytes": 25471221760,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 2189,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 80759816192,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "disk_after_cleanup": {
+    "free_bytes": 45334204416,
+    "output_bytes": 88442597
+  },
+  "seconds": 1163.834703208
+}

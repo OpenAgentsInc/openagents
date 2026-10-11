@@ -1,0 +1,12 @@
+{
+  "status": "refused_before_execution",
+  "reason": "disk broker reported22 GB free;27 GB required for25 GB floor plus2 GB lease",
+  "at": "2026-10-11T17:17:43.076664+00:00",
+  "current_free_bytes": 22314508288,
+  "runner_started": false,
+  "model_started": false,
+  "owned_outer_lease_pid": 83445,
+  "verified_command": "openagents lease gpu --receipt @@CLEF_SCRATCH@@/resident-upload-qualification-v1/images2-gpu-lease.json -- openagents lease memory --amount 52 --receipt @@CLEF_SCRATCH@@/resident-upload-qualification-v1/images2-memory-lease.json -- openagents lease disk --amount 2 --receipt @@CLEF_SCRATCH@@/resident-upload-qualification-v1/images2-disk-lease.json -- python3 @@CLEF_SCRATCH@@/resident-upload-qualification-v1/images-repair-v1/runner.py",
+  "signal_to_owned_outer_lease": "SIGTERM",
+  "bounds_changed": false
+}

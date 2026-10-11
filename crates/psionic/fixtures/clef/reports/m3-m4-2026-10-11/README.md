@@ -23,8 +23,11 @@ On 2026-10-11, the owner clarified that M4 tests runtime execution against the
 same pinned Q4 model. Quantized-model quality moves to
 [#11306](https://github.com/OpenAgentsInc/openagents/issues/11306), judged on
 routes-v5 and the chat goldens. Historical BF16 failures remain below as
-artifact diagnostics. The M4 speed target remains 1.5× Ollama; current ratios
-of 1.250× / 1.144× / 0.996× do not meet it.
+artifact diagnostics. The M4 speed target remains 1.5× Ollama. Earlier ratios
+of 1.250× / 1.144× / 0.996× are descriptive: later validation found reused
+template tokens in 14 of 18 Ollama replies, failing the uncached comparison
+gate. Paired stock/reset builds pass their scalar tests; real-model cache-reset
+qualification and fresh uncached timing remain separate requirements.
 
 The sub-1e-6 result on all 104 questions compares staged and fused scoring
 heads with identical trunk execution. It is not independent full-runtime
@@ -319,6 +322,25 @@ footprint by 17.25 GB, supporting a file-backed residency explanation. An
 opt-in positional-read upload could avoid those mapped-page reads while keeping
 all existing decoding and inference arithmetic. This is a capacity hypothesis;
 the 52 GiB process guard and all correctness checks remain unchanged.
+
+The [positional-upload qualification](resident-upload-qualification-v1/README.md)
+now passes that capacity check. At chunk size 512, the 27B resident-f16 runtime
+matches the earlier on-demand baseline bit for bit across 42 requests,
+110 question vectors, 389 scalar logits, and every saved pooled f16 byte.
+Peak accounted memory is 48.12 GiB for text and 49.30 GiB for the corrected
+image run, under the unchanged 52 GiB limit. All 14 image answers and ten
+refusal cases pass. The build also passes 71 targeted CPU tests and one GPU
+fixture covering exact uploads and GEMM outputs for Q4_K, Q6_K, and Q8_0.
+
+The first image wrapper selected an older helper through Python's import path;
+its answer checks passed, but its planned source/disk checks did not execute.
+That failed attempt remains recorded. An explicit file import repairs the
+wrapper, and the corrected run passes all checks and cleanup. A disk refusal
+before that run also remains recorded. Removing only the task-generated,
+rejected Q6 checkpoint recovered space; its recipe, hashes, and failed accuracy
+results remain available. This result establishes capacity and unchanged
+arithmetic for the tested requests. It neither proves a latency improvement
+nor resolves the independent 103/104 runtime comparison.
 
 All probes use shared GPU/build and bounded memory leases as appropriate.
 None uses a quiet lease or changes desktop applications or system services.

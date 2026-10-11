@@ -1,0 +1,19 @@
+{
+  "status": "complete",
+  "source_manifest_sha256": "f8ae6fac32c940abba50c95398f5cdb4ddd4b2f7db75f62ad71bdfa126125cad",
+  "source_manifest_unchanged": true,
+  "artifacts": {
+    "server": {
+      "path": "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/build-1/psionic-openai-server",
+      "sha256": "0e7eb7cf567e2cef8dfb24d3e0639d2c9f0575d07944054d28498cfe61699141",
+      "bytes": 22006184,
+      "source": "@@CLEF_TARGET@@/release/psionic-openai-server"
+    },
+    "psionic-serve": {
+      "path": "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/build-1/psionic-serve-tests",
+      "sha256": "d77f7061bcbe4f269f48f3f873d34214b03555df0f1d22ba91bfdd5d0c9b399b",
+      "bytes": 60568208,
+      "source": "@@CLEF_TARGET@@/release/deps/psionic_serve-acadeb851218b939"
+    }
+  }
+}

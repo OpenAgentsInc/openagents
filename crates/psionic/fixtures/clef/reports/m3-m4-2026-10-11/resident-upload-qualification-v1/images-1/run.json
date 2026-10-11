@@ -1,0 +1,129 @@
+{
+  "config": {
+    "binary": "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/build-1/psionic-openai-server",
+    "gguf": "@@CLEF_SCRATCH@@/artifacts/Clef-Q4_K_M.gguf",
+    "head": "@@CLEF_SCRATCH@@/artifacts/clef-bf16/joint_head.safetensors",
+    "vision_manifest": "@@CLEF_HOME@@/.ollama/models/manifests/registry.ollama.ai/library/clef/latest",
+    "vision_blobs": "@@CLEF_HOME@@/.ollama/models/blobs",
+    "output": "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/images-1",
+    "chunk": 512,
+    "max_rss_gib": 52,
+    "minimum_start_available_gib": 64,
+    "minimum_available_gib": 12,
+    "startup_timeout": 600,
+    "deadline_seconds": 1800,
+    "request_timeout": 300,
+    "env": {
+      "PSIONIC_CLEF_METAL_FFN_WEIGHTS": "resident-f16",
+      "PSIONIC_CLEF_METAL_WEIGHT_UPLOAD": "positional",
+      "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+      "PSIONIC_CLEF_METAL_GEMM": "weight-shapes",
+      "PSIONIC_CLEF_METAL_HEAD": "fused-fields",
+      "PSIONIC_CLEF_METAL_DELTA": "sequential",
+      "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0",
+      "PSIONIC_CLEF_BATCH_REQUESTS": "1",
+      "RAYON_NUM_THREADS": "2",
+      "OMP_NUM_THREADS": "2",
+      "VECLIB_MAXIMUM_THREADS": "2"
+    },
+    "checks": [
+      {
+        "suite": "images",
+        "reference": "@@CLEF_SCRATCH@@/reference27b/images-mps-bf16.json",
+        "cases": "@@CLEF_WORKTREE@@/crates/psionic/fixtures/clef/images/cases.json"
+      }
+    ]
+  },
+  "status": "complete",
+  "artifacts": {
+    "binary": {
+      "path": "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/build-1/psionic-openai-server",
+      "sha256": "0e7eb7cf567e2cef8dfb24d3e0639d2c9f0575d07944054d28498cfe61699141",
+      "bytes": 22006184
+    },
+    "gguf": {
+      "path": "@@CLEF_SCRATCH@@/artifacts/Clef-Q4_K_M.gguf",
+      "sha256": "9997675e4c9e9016273372b5fdedbdda7ad14285bc722949e4b9daca62bf3822",
+      "bytes": 19232219200
+    },
+    "head": {
+      "path": "@@CLEF_SCRATCH@@/artifacts/clef-bf16/joint_head.safetensors",
+      "sha256": "a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+      "bytes": 256125024
+    },
+    "vision_manifest": {
+      "path": "@@CLEF_HOME@@/.ollama/models/manifests/registry.ollama.ai/library/clef/latest",
+      "sha256": "6ba6665c02c62493b331a705508d12ded428888c5c82d4d90e46ad0babdb4dc0",
+      "bytes": 271805
+    }
+  },
+  "checks": [
+    {
+      "suite": "images",
+      "output": "0-images.json",
+      "exit_code": 0
+    }
+  ],
+  "head_source": "external official BF16 safetensors, converted by the native head loader",
+  "preflight": {
+    "available_memory_bytes": 98308800512,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 3057042,
+      "inactive": 2792290,
+      "speculative": 150961
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "command": [
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/build-1/psionic-openai-server",
+    "--decision-model",
+    "@@CLEF_SCRATCH@@/artifacts/Clef-Q4_K_M.gguf",
+    "--clef-head",
+    "@@CLEF_SCRATCH@@/artifacts/clef-bf16/joint_head.safetensors",
+    "--decision-device",
+    "metal",
+    "--decision-vision-manifest",
+    "@@CLEF_HOME@@/.ollama/models/manifests/registry.ollama.ai/library/clef/latest",
+    "--decision-vision-blobs",
+    "@@CLEF_HOME@@/.ollama/models/blobs",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "0",
+    "--decision-chunk",
+    "512"
+  ],
+  "endpoint": "http://127.0.0.1:57521",
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 44771,
+    "max_rss_bytes": 55834574848,
+    "peak_rss_bytes": 52477247488,
+    "peak_physical_footprint_bytes": 52569367736,
+    "peak_accounted_bytes": 52569367736,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 128,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 48498671616,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [
+      {
+        "owned_pid": 44771,
+        "signal": 0,
+        "error_type": "PermissionError",
+        "errno": 1,
+        "leader_exit_code": -15,
+        "verified_group_members": 0
+      }
+    ],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "elapsed_seconds": 68.823779
+}

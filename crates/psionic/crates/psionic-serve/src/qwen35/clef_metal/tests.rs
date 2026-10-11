@@ -4,6 +4,43 @@ use super::*;
 
 mod ffn_weights;
 mod head_blocks;
+mod weight_upload;
+
+#[test]
+fn positional_weight_upload_is_explicit_and_resident_only() {
+    assert_eq!(WeightUploadMode::default(), WeightUploadMode::MappedCopy);
+    assert_eq!(
+        "mapped-copy".parse::<WeightUploadMode>().unwrap(),
+        WeightUploadMode::MappedCopy
+    );
+    assert_eq!(
+        "positional".parse::<WeightUploadMode>().unwrap(),
+        WeightUploadMode::Positional
+    );
+    for value in ["", "auto", "pread", "POSITIONAL", " positional"] {
+        assert!(value.parse::<WeightUploadMode>().is_err());
+    }
+    assert!(
+        WeightUploadMode::MappedCopy
+            .validate(FfnWeightMode::ResidentF16)
+            .is_ok()
+    );
+    assert!(
+        WeightUploadMode::MappedCopy
+            .validate(FfnWeightMode::Q4KOnDemand)
+            .is_ok()
+    );
+    assert!(
+        WeightUploadMode::Positional
+            .validate(FfnWeightMode::ResidentF16)
+            .is_ok()
+    );
+    assert!(
+        WeightUploadMode::Positional
+            .validate(FfnWeightMode::Q4KOnDemand)
+            .is_err()
+    );
+}
 
 #[test]
 fn prefill_span_validation_accepts_boundaries_and_overlapping_spans() {

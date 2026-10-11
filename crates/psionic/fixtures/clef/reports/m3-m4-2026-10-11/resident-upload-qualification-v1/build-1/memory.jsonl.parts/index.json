@@ -1,0 +1,27 @@
+{
+  "path": "build-1/memory.jsonl",
+  "original_bytes": 2579315,
+  "original_sha256": "eb969b5a6b12631a692fdbe3edb6446bf705c32b0ec26378dd005acf4f71379c",
+  "published_bytes": 2579315,
+  "published_sha256": "eb969b5a6b12631a692fdbe3edb6446bf705c32b0ec26378dd005acf4f71379c",
+  "path_reconstruction_verified": true,
+  "parts": [
+    {
+      "path": "build-1/memory.jsonl.parts/0000.txt",
+      "bytes": 900000,
+      "sha256": "375db9f5882f48ee129def9497c94532df85ad105ce95361858839e8dea8d224"
+    },
+    {
+      "path": "build-1/memory.jsonl.parts/0001.txt",
+      "bytes": 900000,
+      "sha256": "018f37b928cea1a97574638be648ba4f105ae961b5d6d993363ab225535a6249"
+    },
+    {
+      "path": "build-1/memory.jsonl.parts/0002.txt",
+      "bytes": 779315,
+      "sha256": "76bc05cf2b57221ccccbf91a10f19be2cd6ad2ce928745d9e7ec8bfe451e7da2"
+    }
+  ],
+  "reconstruction": "Concatenate listed UTF-8 part bytes in order, without separators; then reverse the documented path tokens.",
+  "sanitized_and_original_reconstruction_verified": true
+}

@@ -1,0 +1,9 @@
+
+running 4 tests
+test tests::positional_reads_do_not_share_a_seek_cursor ... ok
+test tests::positional_reads_keep_original_file_after_path_replacement ... ok
+test tests::positional_reads_match_slices_and_check_view_bounds ... ok
+test tests::positional_reads_reject_truncated_open_file ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 32 filtered out; finished in 0.00s
+

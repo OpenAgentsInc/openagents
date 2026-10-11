@@ -1,0 +1,59 @@
+{
+  "status": "complete",
+  "cap_bytes": 4294967296,
+  "minimum_start_bytes": 17179869184,
+  "minimum_available_bytes": 12884901888,
+  "deadline_seconds": 180,
+  "fixture_binary": {
+    "path": "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/build-1/psionic-serve-tests",
+    "sha256": "d77f7061bcbe4f269f48f3f873d34214b03555df0f1d22ba91bfdd5d0c9b399b",
+    "bytes": 60568208,
+    "source": "@@CLEF_TARGET@@/release/deps/psionic_serve-acadeb851218b939"
+  },
+  "candidate_receipt_sha256": "c2539ca0fe9b38ac31691872b59f44e0a14afcc4de401433b5651da83cfac549",
+  "sources_rechecked": true,
+  "command": [
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/build-1/psionic-serve-tests",
+    "qwen35::clef_metal::tests::weight_upload::positional_weight_upload_preserves_resident_bytes_and_gemm_outputs",
+    "--exact",
+    "--ignored",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "preflight": {
+    "available_memory_bytes": 100036165632,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 3840009,
+      "inactive": 1723403,
+      "speculative": 542311
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "exit": 0,
+  "tests_passed": 1,
+  "tests_failed": 0,
+  "tests_ignored": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 25811,
+    "max_rss_bytes": 4294967296,
+    "peak_rss_bytes": 32768,
+    "peak_physical_footprint_bytes": 81992,
+    "peak_accounted_bytes": 81992,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 2,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 100007755776,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 1.2253264169999998
+}

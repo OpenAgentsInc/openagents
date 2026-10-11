@@ -1,0 +1,21 @@
+{
+  "schema": "openagents.lease.receipt.v1",
+  "id": "1791738256084-32011-0",
+  "resource": "disk",
+  "amount": 2,
+  "holder": {
+    "session": "@@CLEF_LEASE_SESSION@@",
+    "agent": "codex",
+    "pid": 32011,
+    "command": "python3"
+  },
+  "priority": "normal",
+  "nested": false,
+  "requested_at_ms": 1791738256084,
+  "acquired_at_ms": 1791738256084,
+  "released_at_ms": 1791738378829,
+  "wait_ms": 0,
+  "held_ms": 122745,
+  "held_whole_run": true,
+  "exit": 0
+}

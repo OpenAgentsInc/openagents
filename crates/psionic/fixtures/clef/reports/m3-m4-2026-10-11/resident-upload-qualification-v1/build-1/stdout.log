@@ -1,0 +1,16 @@
+Starting psionic-catalog-build
+{"name": "psionic-catalog-build", "command": ["cargo", "+1.97.1", "test", "--release", "--manifest-path", "crates/psionic/Cargo.toml", "-p", "psionic-catalog", "--lib", "--no-run", "--message-format=json-render-diagnostics", "-j", "2"], "exit": 0, "seconds": 38.153620833}
+Starting psionic-models-build
+{"name": "psionic-models-build", "command": ["cargo", "+1.97.1", "test", "--release", "--manifest-path", "crates/psionic/Cargo.toml", "-p", "psionic-models", "--lib", "--no-run", "--message-format=json-render-diagnostics", "-j", "2"], "exit": 0, "seconds": 122.968344375}
+Starting psionic-serve-build
+{"name": "psionic-serve-build", "command": ["cargo", "+1.97.1", "test", "--release", "--manifest-path", "crates/psionic/Cargo.toml", "-p", "psionic-serve", "--lib", "--no-run", "--message-format=json-render-diagnostics", "-j", "2"], "exit": 0, "seconds": 921.8618639169999}
+Starting catalog-positional
+{"name": "catalog-positional", "command": ["@@CLEF_TARGET@@/release/deps/psionic_catalog-4af9a3bdca76b8de", "positional_reads_", "--test-threads=1"], "exit": 0, "seconds": 0.34677416700014874}
+Starting models-forwarding
+{"name": "models-forwarding", "command": ["@@CLEF_TARGET@@/release/deps/psionic_models-f9174c18aef1a360", "gguf_blob_artifact_pages_tensor_bytes_and_reports_buffered_fallback", "--test-threads=1"], "exit": 0, "seconds": 0.6320413340001778}
+Starting serve-clef-cpu
+{"name": "serve-clef-cpu", "command": ["@@CLEF_TARGET@@/release/deps/psionic_serve-acadeb851218b939", "clef::", "--test-threads=1"], "exit": 0, "seconds": 0.6736298749999605}
+Starting serve-metal-cpu
+{"name": "serve-metal-cpu", "command": ["@@CLEF_TARGET@@/release/deps/psionic_serve-acadeb851218b939", "qwen35::clef_metal::", "--test-threads=1"], "exit": 0, "seconds": 0.008643083000151819}
+Starting server
+{"name": "server", "command": ["cargo", "+1.97.1", "build", "--release", "--manifest-path", "crates/psionic/Cargo.toml", "-p", "psionic-serve", "--bin", "psionic-openai-server", "--message-format=json-render-diagnostics", "-j", "2"], "exit": 0, "seconds": 76.90702933300008}

@@ -95,6 +95,38 @@ impl std::str::FromStr for FfnWeightMode {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum WeightUploadMode {
+    #[default]
+    MappedCopy,
+    Positional,
+}
+
+impl std::str::FromStr for WeightUploadMode {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, String> {
+        match value {
+            "mapped-copy" => Ok(Self::MappedCopy),
+            "positional" => Ok(Self::Positional),
+            _ => Err(String::from(
+                "clef metal weight upload must be mapped-copy or positional",
+            )),
+        }
+    }
+}
+
+impl WeightUploadMode {
+    fn validate(self, placement: FfnWeightMode) -> Result<(), String> {
+        if self == Self::Positional && placement != FfnWeightMode::ResidentF16 {
+            return Err(String::from(
+                "positional Metal weight upload requires resident-f16 FFN weights",
+            ));
+        }
+        Ok(())
+    }
+}
+
 const MAX_FFN_CONVERSION_BYTES: usize = 256 * 1024 * 1024;
 
 fn ffn_conversion_bytes(rows: usize, columns: usize) -> Result<usize, String> {
@@ -287,8 +319,9 @@ fn upload_matrix(
     metal: &ClefMetal,
     matrix: &HostMatrix,
     name: &str,
+    upload: WeightUploadMode,
 ) -> Result<DeviceWeight, String> {
-    upload_matrix_with_placement(metal, matrix, name, FfnWeightMode::ResidentF16)
+    upload_matrix_with_placement(metal, matrix, name, FfnWeightMode::ResidentF16, upload)
 }
 
 fn upload_matrix_with_placement(
@@ -296,7 +329,9 @@ fn upload_matrix_with_placement(
     matrix: &HostMatrix,
     name: &str,
     mode: FfnWeightMode,
+    upload: WeightUploadMode,
 ) -> Result<DeviceWeight, String> {
+    upload.validate(mode)?;
     let (format, rows, columns, bytes): (ClefMetalWeightFormat, usize, usize, Vec<u8>) =
         match &matrix.kind {
             HostMatrixKind::Dense(dense) => (
@@ -316,15 +351,37 @@ fn upload_matrix_with_placement(
                         ));
                     }
                 };
-                let elements = quantized.rows * quantized.columns;
+                let elements = quantized
+                    .rows
+                    .checked_mul(quantized.columns)
+                    .ok_or_else(|| format!("clef metal prefill: `{name}` shape overflows"))?;
                 let len = format
                     .byte_len(elements)
-                    .filter(|len| *len == quantized.rows * quantized.row_byte_len)
+                    .filter(|len| Some(*len) == quantized.rows.checked_mul(quantized.row_byte_len))
                     .ok_or_else(|| {
                         format!("clef metal prefill: `{name}` has an unexpected {format:?} size")
                     })?;
-                let bytes = quantized.storage.read_range(0, len).map_err(err)?;
-                (format, quantized.rows, quantized.columns, bytes.to_vec())
+                let bytes = match upload {
+                    WeightUploadMode::MappedCopy => {
+                        quantized.storage.read_range(0, len).map_err(err)?.to_vec()
+                    }
+                    WeightUploadMode::Positional => {
+                        if quantized.storage.blob_metadata().read_path
+                            != psionic_catalog::BlobReadPath::MemoryMapped
+                        {
+                            return Err(String::from(
+                                "positional Metal weight upload requires a memory-mapped source",
+                            ));
+                        }
+                        let mut bytes = vec![0; len];
+                        quantized
+                            .storage
+                            .read_range_into(0, &mut bytes)
+                            .map_err(err)?;
+                        bytes
+                    }
+                };
+                (format, quantized.rows, quantized.columns, bytes)
             }
         };
     let compressed = mode == FfnWeightMode::Q4KOnDemand && format == ClefMetalWeightFormat::Q4K;
@@ -392,6 +449,16 @@ impl ClefMetalTrunk {
                 ));
             }
         };
+        let weight_upload = match std::env::var("PSIONIC_CLEF_METAL_WEIGHT_UPLOAD") {
+            Ok(value) => value.parse::<WeightUploadMode>()?,
+            Err(std::env::VarError::NotPresent) => WeightUploadMode::default(),
+            Err(std::env::VarError::NotUnicode(_)) => {
+                return Err(String::from(
+                    "PSIONIC_CLEF_METAL_WEIGHT_UPLOAD must be valid text",
+                ));
+            }
+        };
+        weight_upload.validate(ffn_weights)?;
         let device_name = metal.device_name().to_string();
         let model = &cpu.model;
         let config = &model.descriptor.config;
@@ -423,28 +490,33 @@ impl ClefMetalTrunk {
                 &layer.ffn_gate_up.parts[0],
                 &name("ffn_gate"),
                 ffn_weights,
+                weight_upload,
             )?;
             let up = upload_matrix_with_placement(
                 &metal,
                 &layer.ffn_gate_up.parts[1],
                 &name("ffn_up"),
                 ffn_weights,
+                weight_upload,
             )?;
             let down = upload_matrix_with_placement(
                 &metal,
                 &layer.ffn_down,
                 &name("ffn_down"),
                 ffn_weights,
+                weight_upload,
             )?;
             dims.ffn = gate.rows;
             let mixer = match &layer.kind {
                 CpuQwen35LayerKind::Hybrid(hybrid) => {
                     let parts = &hybrid.qkv_gate_alpha_beta.parts;
-                    let qkv = upload_matrix(&metal, &parts[0], &name("attn_qkv"))?;
-                    let z = upload_matrix(&metal, &parts[1], &name("attn_gate"))?;
-                    let alpha = upload_matrix(&metal, &parts[2], &name("ssm_alpha"))?;
-                    let beta = upload_matrix(&metal, &parts[3], &name("ssm_beta"))?;
-                    let out = upload_matrix(&metal, &hybrid.ssm_out, &name("ssm_out"))?;
+                    let qkv = upload_matrix(&metal, &parts[0], &name("attn_qkv"), weight_upload)?;
+                    let z = upload_matrix(&metal, &parts[1], &name("attn_gate"), weight_upload)?;
+                    let alpha =
+                        upload_matrix(&metal, &parts[2], &name("ssm_alpha"), weight_upload)?;
+                    let beta = upload_matrix(&metal, &parts[3], &name("ssm_beta"), weight_upload)?;
+                    let out =
+                        upload_matrix(&metal, &hybrid.ssm_out, &name("ssm_out"), weight_upload)?;
                     dims.conv_channels = qkv.rows;
                     dims.conv_kernel = hybrid.conv_kernel;
                     dims.key_heads = hybrid.group_count;
@@ -473,10 +545,16 @@ impl ClefMetalTrunk {
                 }
                 CpuQwen35LayerKind::FullAttention(attention) => {
                     let parts = &attention.qkv.parts;
-                    let query_gate = upload_matrix(&metal, &parts[0], &name("attn_q"))?;
-                    let key = upload_matrix(&metal, &parts[1], &name("attn_k"))?;
-                    let value = upload_matrix(&metal, &parts[2], &name("attn_v"))?;
-                    let out = upload_matrix(&metal, &attention.output, &name("attn_output"))?;
+                    let query_gate =
+                        upload_matrix(&metal, &parts[0], &name("attn_q"), weight_upload)?;
+                    let key = upload_matrix(&metal, &parts[1], &name("attn_k"), weight_upload)?;
+                    let value = upload_matrix(&metal, &parts[2], &name("attn_v"), weight_upload)?;
+                    let out = upload_matrix(
+                        &metal,
+                        &attention.output,
+                        &name("attn_output"),
+                        weight_upload,
+                    )?;
                     dims.kv_heads = attention.kv_width / dims.head_dim.max(1);
                     if query_gate.rows != dims.heads * dims.head_dim * 2 || dims.head_dim != 256 {
                         return Err(format!(
@@ -662,6 +740,7 @@ impl ClefMetalTrunk {
                     source,
                     &format!("blk.{index}.{name}"),
                     mode,
+                    WeightUploadMode::MappedCopy,
                 )?;
             }
         }

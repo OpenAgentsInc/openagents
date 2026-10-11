@@ -1,0 +1,25 @@
+{
+  "at_utc": "2026-10-11T17:18:50.939740+00:00",
+  "status": "complete",
+  "action": "remove one task-generated rejected checkpoint; preserve all source artifacts, regeneration scripts, numerical arrays, logs, and receipts",
+  "path": "@@CLEF_SCRATCH@@/q4-down-q6-regeneration/generate-1/Clef-Q4-fixed-down-Q6.gguf",
+  "bytes": 19967533120,
+  "inode": 2662831279,
+  "mtime_ns": 1791720722915200320,
+  "artifact_sha256_from_generation": "a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+  "full_payload_rehashed_before_removal": false,
+  "generation_receipt_sha256": "fdb7c3caa6af34617627ff0abccde8a48bc008eec7969695d8e93d752447bb31",
+  "quality_receipt_sha256": "05e09844f3ea6cbb3b08d96a94211eda14aa522b5f4b6e67b365e6535e5d43f0",
+  "matching_top_answers": 97,
+  "questions": 104,
+  "pending_frozen_workflows_checked": [
+    "resident-upload-qualification-v1",
+    "ollama-zero-cache-plan/qualification-v1",
+    "mps-sustained-ffn-v1"
+  ],
+  "pending_dependency_matches": 0,
+  "open_file_users": 0,
+  "free_bytes_before": 18692870144,
+  "removed": true,
+  "free_bytes_after": 38660874240
+}

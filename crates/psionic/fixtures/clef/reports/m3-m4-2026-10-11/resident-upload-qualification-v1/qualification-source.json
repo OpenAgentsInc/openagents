@@ -1,0 +1,24 @@
+{
+  "status": "frozen_unrun",
+  "files": {
+    "@@CLEF_WORKTREE@@/crates/psionic/fixtures/clef/tools/e2e.py": "a54793ddf44e9898c3ae13276c82e01b9c5a34734eae3689979fc186cafa15e5",
+    "@@CLEF_WORKTREE@@/crates/psionic/fixtures/clef/tools/image_parity.py": "780b1ff00bf9c99dd3cf5be27a603657abdfce7dc803ed1c3073f72917ad989a",
+    "@@CLEF_WORKTREE@@/crates/psionic/fixtures/clef/tools/mac_memory.py": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd",
+    "@@CLEF_WORKTREE@@/crates/psionic/fixtures/clef/tools/mac_quiet_bench.py": "7018be065710be9ffe5dfc2d289770015ca617e2fdd3da253a98e07ba1bc997b",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/PLAN.md": "dc4f0e2a397014c7d5ad6f083e2291c29a48aee32bbeea113f5038cf77cab5ec",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/acceptance_helpers.py": "f02ee0533428c1160be64768c1c7659474325497105f097cb0f7d428b034c8d2",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/build_checks.py": "966c0f791dba4446078f83d7576848c262deb4adb49a6ce15f8ba0ba766789a8",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/freeze.py": "4e53603655ec82280bce0072513834e10cb9892899e6830a133b728588c537b2",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/gpu_fixture.py": "057318b00cb56af0fc14d4fa61d6b9324d0e79fdfd45daf8538636a314c5a34a",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/guard_build.py": "bd0e89dc9ea4cb69f4bc51c2a26ff9a6d1fb3faccc1c91700b40d25e57644979",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/images-config.json": "d78c0fd7157babecd424369238e5fc3efac58337d389cd3ff50cb0fc4a226f01",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/images.py": "892e727d94c7f053ed3c61c2140bf932284977bfaaae72188e0c81e23ca00779",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/inputs.json": "456fde517b813d6c969fd7b482797448a8da7f7e2379dea3e25ed9ab5d0d5fee",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/native_image_parity.py": "c441b6b1aafa678549b3b4713c75e77de0460989b128e4f0f5be59478909a170",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/negative-checks.json": "95560206b4770493a86c882f64cebd701ed74e0119020a445663ada2a7be934f",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/negative_checks.py": "22607140e0b21895e7ade5fcb4dc57748a0d11b4ac0bacd5cdabb7eae64256a5",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/proof.py": "f222ba66ab418e2512a66f263e277a1c6209d3bb2fd7fbbf39379d05e350ae05",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/source-manifest.json": "f8ae6fac32c940abba50c95398f5cdb4ddd4b2f7db75f62ad71bdfa126125cad",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/text.py": "88cc57dbb0450c48a6cc7235e164e51965832310bb2098c58b6f98ae690cbb84"
+  }
+}

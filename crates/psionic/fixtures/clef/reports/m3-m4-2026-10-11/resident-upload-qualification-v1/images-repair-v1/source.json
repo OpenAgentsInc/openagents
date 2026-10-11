@@ -1,0 +1,27 @@
+{
+  "status": "source_frozen_unrun",
+  "original_harness_sha256": "b0448dfd6314cfa0e1b53570d865f66d0a060923bdebf48e47637651d2c1600b",
+  "original_attempt": "images-1",
+  "new_attempt": "images-2",
+  "repair": "Explicit path import of original frozen local helper; no operator/bound/source changes to that helper.",
+  "actual_shared_runner_sha256": "1d5b1d43fbb7d0ae709fc238d264e048dcbb3ba6b314c0b9127e696a5ce530d2",
+  "files": {
+    "@@CLEF_WORKTREE@@/crates/psionic/fixtures/clef/tools/native_image_parity.py": "1d5b1d43fbb7d0ae709fc238d264e048dcbb3ba6b314c0b9127e696a5ce530d2",
+    "@@CLEF_SCRATCH@@/attention-qk128-key32-integration/27b-image-check/coverage.json": "56515fd2b44cff30efce461a19614c111e2d7339a6f5b3f9d3d9e0788196b71a",
+    "@@CLEF_SCRATCH@@/attention-qk128-key32-integration/native_image_parity.py": "1d5b1d43fbb7d0ae709fc238d264e048dcbb3ba6b314c0b9127e696a5ce530d2",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/candidate.json": "c2539ca0fe9b38ac31691872b59f44e0a14afcc4de401433b5651da83cfac549",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/gpu-fixture-1/guard.json": "d0f53f30c95fa3deab930ae9799ad3d32228c07973f6a59b56ab4f692889dbbb",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/images-1/0-images.json": "1d26d5bfc8b343a3dea4969bf32bad5824ff641e9445a6908a190889f7fb19ed",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/images-1/run.json": "4859898a62a65c745e2d88b487158b6b2b55bd7757928cd40c58becff2139deb",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/images-1/summary.json": "2bfa305f3ea9f7c5d122597af71ec20d423d8fc8537324a642ff9fe74d23b7f6",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/images-repair-v1/PLAN.md": "0a4a9dd08b607a93cea8fc03e9f4a2a85f409044b2485d2fae072771e307f665",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/images-repair-v1/actual-shared-runner.py": "1d5b1d43fbb7d0ae709fc238d264e048dcbb3ba6b314c0b9127e696a5ce530d2",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/images-repair-v1/check_import.py": "c68a2a27fe18991b92b3f35c146a0a2a89a6c8c6b11046d8d7a4d351543b2b55",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/images-repair-v1/historical-shared-coverage.json": "56515fd2b44cff30efce461a19614c111e2d7339a6f5b3f9d3d9e0788196b71a",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/images-repair-v1/import-check.json": "13bf0f2edbdbbc0b2b880cabc5df63f04fec73c3791654790ef5c192b8ab9f1b",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/images-repair-v1/runner.py": "a675b26f25c974c59e598cdaf0e530750ed77778e110ec86b317d4f62235581d",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/native_image_parity.py": "c441b6b1aafa678549b3b4713c75e77de0460989b128e4f0f5be59478909a170",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/qualification-source.json": "b0448dfd6314cfa0e1b53570d865f66d0a060923bdebf48e47637651d2c1600b",
+    "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/text-1/summary.json": "f977f1aafdb8492e746246a7b3faf54841ecf39d3966921d69b26cc532a73e0e"
+  }
+}

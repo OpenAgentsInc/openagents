@@ -1,0 +1,16 @@
+{
+  "status": "complete",
+  "source_manifest_unchanged": true,
+  "binary": "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/build-1/psionic-openai-server",
+  "binary_sha256": "0e7eb7cf567e2cef8dfb24d3e0639d2c9f0575d07944054d28498cfe61699141",
+  "build_guard": "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/build-1/guard.json",
+  "build_guard_sha256": "240d31938b4080f8d3d68d9a86684e370f6b078364de2704afa8de0d41c98132",
+  "source_manifest": "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/source-manifest.json",
+  "source_manifest_sha256": "f8ae6fac32c940abba50c95398f5cdb4ddd4b2f7db75f62ad71bdfa126125cad",
+  "fixture_binary": {
+    "path": "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/build-1/psionic-serve-tests",
+    "sha256": "d77f7061bcbe4f269f48f3f873d34214b03555df0f1d22ba91bfdd5d0c9b399b",
+    "bytes": 60568208,
+    "source": "@@CLEF_TARGET@@/release/deps/psionic_serve-acadeb851218b939"
+  }
+}

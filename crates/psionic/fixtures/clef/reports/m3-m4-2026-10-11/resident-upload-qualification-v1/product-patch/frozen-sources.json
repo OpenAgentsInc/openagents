@@ -1,0 +1,40 @@
+{
+  "status": "source_frozen_unbuilt",
+  "worktree_label": "$WORKTREE",
+  "sources": {
+    "crates/psionic/crates/psionic-catalog/src/lib.rs": {
+      "sha256": "0ae2d9eeb343457c0cac19207f52e1a524af47fbbdebf24612f7fd8054c87eb7",
+      "bytes": 34872
+    },
+    "crates/psionic/crates/psionic-models/src/lib.rs": {
+      "sha256": "3b311c50fe1af4c1f5ea515e0aede0fa2612a6bbe8fadaa1b5169ed13f5be2de",
+      "bytes": 578231
+    },
+    "crates/psionic/crates/psionic-serve/src/qwen35/clef_metal.rs": {
+      "sha256": "7764469b7bd91d721ee0a0fa9b794fdb8a894c98900fbd8aa8d9dc14e793b35d",
+      "bytes": 71758
+    },
+    "crates/psionic/crates/psionic-serve/src/qwen35/clef_metal/tests.rs": {
+      "sha256": "605b557ce5207d9088f0e9649cd6f1297952cdadaa92175dd419572e2009d2c3",
+      "bytes": 24424
+    },
+    "crates/psionic/crates/psionic-serve/src/qwen35/clef_metal/tests/weight_upload.rs": {
+      "sha256": "6611f79c84746dde527e048bf11e6e89d61744e2d6e0f3ac450ff21e26c75962",
+      "bytes": 4889
+    }
+  },
+  "patch_sha256": "b158086add0e03b351f12fa167ec38fa328d1b0a7a4d9e49b54186f084e69730",
+  "default_mode": "mapped-copy",
+  "opt_in": "PSIONIC_CLEF_METAL_WEIGHT_UPLOAD=positional",
+  "requires_ffn": "resident-f16",
+  "catalog_filter": "positional_reads_",
+  "models_test": "gguf_blob_artifact_pages_tensor_bytes_and_reports_buffered_fallback",
+  "serve_cpu_test": "positional_weight_upload_is_explicit_and_resident_only",
+  "ignored_gpu_test": "positional_weight_upload_preserves_resident_bytes_and_gemm_outputs",
+  "validation_so_far": [
+    "rustfmt 1.97.1 on changed files; pre-existing models module/use order preserved",
+    "git diff --check"
+  ],
+  "model_or_gpu_executed": false,
+  "cargo_executed": false
+}

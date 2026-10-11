@@ -1,0 +1,9 @@
+{
+  "scope": "Existing checked-in image fixtures; payloads are not duplicated here.",
+  "files": {
+    "@@CLEF_WORKTREE@@/crates/psionic/fixtures/clef/images/blue-left.webp": "09441ae60a6d192863e2a39a627af869412057d0a048e8ad6464bbf01ad5ecb3",
+    "@@CLEF_WORKTREE@@/crates/psionic/fixtures/clef/images/blue.jpg": "ec5e02077c65e0947ec30311fc03603d8e9db75d3be526b2ed85fb103b274922",
+    "@@CLEF_WORKTREE@@/crates/psionic/fixtures/clef/images/red-left.png": "bf75ae7146ae4012813e4c0d0081fb4db215051ae973bf817592e472bd2f9211",
+    "@@CLEF_WORKTREE@@/crates/psionic/fixtures/clef/images/red.png": "ca77668b678f2cca3d279a60f3e277f1f87873c9d1184b7469815c1a6f7062e1"
+  }
+}

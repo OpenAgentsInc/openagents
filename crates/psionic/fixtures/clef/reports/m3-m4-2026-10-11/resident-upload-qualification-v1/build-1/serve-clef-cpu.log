@@ -1,0 +1,55 @@
+
+running 50 tests
+test clef::batch::tests::batch_response_reports_session_chunk_instead_of_configured_chunk ... ok
+test clef::batch::tests::batching_is_off_by_default_and_does_not_apply_batch_limits_to_serial_work ... ok
+test clef::batch::tests::dropping_ticket_cancels_without_releasing_running_state ... ok
+test clef::batch::tests::enabling_batching_fits_real_flash_and_27b_cohort_budgets ... ok
+test clef::calibration::tests::bad_maps_are_refused ... ok
+test clef::calibration::tests::export_writes_rows_and_index ... ok
+test clef::calibration::tests::platt_and_temperature_maps_apply_and_digest ... ok
+test clef::chunk_schedule::tests::admission_is_bounded_and_returns_refused_state ... ok
+test clef::chunk_schedule::tests::cancellation_keeps_inflight_memory_reserved_until_completion ... ok
+test clef::chunk_schedule::tests::cohorts_preserve_prefix_boundaries_without_skipping_tokens ... ok
+test clef::chunk_schedule::tests::cohorts_preserve_request_state_and_admit_new_short_work ... ok
+test clef::chunk_schedule::tests::dropped_chunk_releases_only_its_own_request ... ok
+test clef::json::tests::dumps_sorts_keys_and_escapes_like_python ... ok
+test clef::json::tests::floats_follow_python_repr ... ok
+test clef::json::tests::integers_stay_exact ... ok
+test clef::json::tests::refuses_what_python_would_not_round_trip ... ok
+test clef::json::tests::repeated_keys_keep_first_position_and_last_value ... ok
+test clef::json::tests::truthiness_matches_python ... ok
+test clef::media::resize::tests::clef_image_positions_match_qwen35_reference_without_model_weights ... ok
+test clef::media::resize::tests::clef_images_match_torchvision_processor_fixtures ... ok
+test clef::media::resize::tests::clef_resize_preserves_reference_rounding_and_server_bounds ... ok
+test clef::media::tests::clef_image_projection_rejects_missing_duplicate_or_invalid_rows ... ok
+test clef::media::tests::clef_images_decode_png_jpeg_webp_and_reject_wrong_content_types ... ok
+test clef::media::tests::clef_images_have_distinct_ranges_and_three_axis_positions ... ok
+test clef::media::tests::clef_images_refuse_unvalidated_high_bit_depth ... ok
+test clef::media::tests::clef_images_resize_small_inputs_and_refuse_invalid_base64 ... ok
+test clef::prefix::tests::byte_cap_includes_token_key_and_does_not_evict_for_oversized_candidates ... ok
+test clef::prefix::tests::exact_prefix_reuses_across_schemas_and_rejects_token_or_chunk_changes ... ok
+test clef::prefix::tests::invalid_boundaries_and_prefix_spans_disable_reuse ... ok
+test clef::prefix::tests::prefix_split_keeps_cold_and_warm_suffix_chunks_identical ... ok
+test clef::prefix::tests::replacement_releases_old_state_and_new_model_has_no_entry ... ok
+test clef::tests::answers_follow_the_reference_shape ... ok
+test clef::tests::auto_device_preserves_memory_refusals ... ok
+test clef::tests::chunked_prefill_matches_token_at_a_time ... ok
+test clef::tests::cuda_chunks_and_cpu_agree ... ok
+test clef::tests::dump_head_parity_inputs ... ok
+test clef::tests::dump_layer_rows ... ok
+test clef::tests::encoder_matches_reference_corpus ... ok
+test clef::tests::metal_block_delta_matches_sequential_weighted_logits ... ignored, requires explicit Metal hardware and model validation
+test clef::tests::metal_q4_ffn_matches_resident_weighted_logits ... ignored, requires explicit Metal hardware and model validation
+test clef::tests::over_budget_is_refused_unless_state_tail_is_asked ... ok
+test clef::tests::prompt_pieces_and_spans_follow_the_reference ... ok
+test clef::tests::refusals_separate_bad_questions_from_door_limits ... ok
+test clef::tests::request_reservation_bounds_preprocessing_and_releases_on_every_exit ... ok
+test clef::tests::tiny_head_matches_torch_reference ... ok
+test clef::tests::tiny_head_refuses_unknown_and_drifting_heads ... ok
+test clef::worker::tests::dropping_idle_worker_joins_and_releases_model ... ok
+test clef::worker::tests::http_disconnect_cancels_blocking_work ... ok
+test clef::worker::tests::serial_waiter_is_visible_before_lock_and_until_serial_work_finishes ... ok
+test clef::worker::tests::shutdown_finishes_current_work_then_drops_queued_work_and_unlocks ... ok
+
+test result: ok. 48 passed; 0 failed; 2 ignored; 0 measured; 457 filtered out; finished in 0.12s
+

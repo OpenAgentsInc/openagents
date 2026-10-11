@@ -1,0 +1,665 @@
+diff --git a/crates/psionic/crates/psionic-catalog/src/lib.rs b/crates/psionic/crates/psionic-catalog/src/lib.rs
+index ded17f5b92..0ebc8f3c58 100644
+--- a/crates/psionic/crates/psionic-catalog/src/lib.rs
++++ b/crates/psionic/crates/psionic-catalog/src/lib.rs
+@@ -218,14 +218,20 @@ pub enum BlobError {
+ 
+ #[derive(Debug)]
+ enum BlobBacking {
+-    MemoryMapped(memmap2::Mmap),
++    MemoryMapped {
++        bytes: memmap2::Mmap,
++        #[cfg(unix)]
++        file: fs::File,
++        #[cfg(unix)]
++        modified: Option<std::time::SystemTime>,
++    },
+     Buffered(Vec<u8>),
+ }
+ 
+ impl BlobBacking {
+     fn bytes(&self) -> &[u8] {
+         match self {
+-            Self::MemoryMapped(bytes) => bytes,
++            Self::MemoryMapped { bytes, .. } => bytes,
+             Self::Buffered(bytes) => bytes.as_slice(),
+         }
+     }
+@@ -359,6 +365,56 @@ impl LocalBlob {
+             })
+     }
+ 
++    /// Copies a range without accessing mapped pages. Mapped blobs use the
++    /// original open file; buffered blobs copy their existing snapshot.
++    /// The underlying file must remain unchanged while the blob is in use.
++    #[cfg(unix)]
++    pub fn read_range_into(&self, offset: usize, destination: &mut [u8]) -> Result<(), BlobError> {
++        use std::os::unix::fs::FileExt as _;
++
++        let byte_length = self.metadata.byte_length as usize;
++        let end = offset
++            .checked_add(destination.len())
++            .filter(|&end| end <= byte_length);
++        let Some(end) = end else {
++            return Err(BlobError::RangeOutOfBounds {
++                path: self.metadata.path.display().to_string(),
++                offset,
++                len: destination.len(),
++                byte_length,
++                end: offset.saturating_add(destination.len()),
++            });
++        };
++        let read_error = |error: std::io::Error| BlobError::Read {
++            path: self.metadata.path.display().to_string(),
++            message: error.to_string(),
++        };
++        match self.backing.as_ref() {
++            BlobBacking::MemoryMapped { file, modified, .. } => {
++                let check_file = || {
++                    let current = file.metadata().map_err(read_error)?;
++                    if current.len() != self.metadata.byte_length
++                        || current.modified().ok() != *modified
++                    {
++                        return Err(BlobError::Read {
++                            path: self.metadata.path.display().to_string(),
++                            message: String::from("blob file changed after opening"),
++                        });
++                    }
++                    Ok(())
++                };
++                check_file()?;
++                file.read_exact_at(destination, offset as u64)
++                    .map_err(read_error)?;
++                check_file()
++            }
++            BlobBacking::Buffered(bytes) => {
++                destination.copy_from_slice(&bytes[offset..end]);
++                Ok(())
++            }
++        }
++    }
++
+     /// Returns a paged range view inside the blob.
+     pub fn paged_range(&self, offset: usize, len: usize) -> Result<PagedBlobRange, BlobError> {
+         self.read_range(offset, len)?;
+@@ -477,6 +533,35 @@ impl PagedBlobRange {
+         self.blob.read_range(self.offset + offset, len)
+     }
+ 
++    /// Copies a range through the backing blob's positional read path.
++    #[cfg(unix)]
++    pub fn read_range_into(&self, offset: usize, destination: &mut [u8]) -> Result<(), BlobError> {
++        if offset
++            .checked_add(destination.len())
++            .is_none_or(|end| end > self.len)
++        {
++            return Err(BlobError::RangeOutOfBounds {
++                path: self.blob.metadata.path.display().to_string(),
++                offset,
++                len: destination.len(),
++                byte_length: self.len,
++                end: offset.saturating_add(destination.len()),
++            });
++        }
++        // The range was validated against the blob when this view was created.
++        let absolute =
++            self.offset
++                .checked_add(offset)
++                .ok_or_else(|| BlobError::RangeOutOfBounds {
++                    path: self.blob.metadata.path.display().to_string(),
++                    offset,
++                    len: destination.len(),
++                    byte_length: self.len,
++                    end: usize::MAX,
++                })?;
++        self.blob.read_range_into(absolute, destination)
++    }
++
+     /// Prefaults a validated range so host-side row walkers do not discover the
+     /// bytes one page fault at a time.
+     pub fn prefetch_range(&self, offset: usize, len: usize) -> Result<(), BlobError> {
+@@ -556,7 +641,23 @@ fn open_blob_backing(
+ 
+             match unsafe { memmap2::MmapOptions::new().map(file) } {
+                 Ok(bytes) => Ok((
+-                    BlobBacking::MemoryMapped(bytes),
++                    BlobBacking::MemoryMapped {
++                        bytes,
++                        #[cfg(unix)]
++                        file: file.try_clone().map_err(|error| BlobError::Read {
++                            path: path.display().to_string(),
++                            message: error.to_string(),
++                        })?,
++                        #[cfg(unix)]
++                        modified: file
++                            .metadata()
++                            .map_err(|error| BlobError::Read {
++                                path: path.display().to_string(),
++                                message: error.to_string(),
++                            })?
++                            .modified()
++                            .ok(),
++                    },
+                     BlobReadPath::MemoryMapped,
+                     None,
+                 )),
+@@ -759,4 +860,127 @@ mod tests {
+         .expect_err("missing file should fail");
+         assert!(matches!(error, BlobError::MissingFile { .. }));
+     }
++
++    #[cfg(unix)]
++    #[test]
++    fn positional_reads_match_slices_and_check_view_bounds()
++    -> Result<(), Box<dyn std::error::Error>> {
++        let temp = tempdir()?;
++        let path = temp.path().join("ranges.gguf");
++        let input: Vec<u8> = (0..12345).map(|index| (index % 251) as u8).collect();
++        write_blob(&path, &input)?;
++        for preference in [
++            BlobReadPreference::RequireMemoryMap,
++            BlobReadPreference::PreferBuffered,
++        ] {
++            let blob = LocalBlob::open_path(
++                &path,
++                LocalBlobKind::GgufFile,
++                LocalBlobOpenOptions::default().with_read_preference(preference),
++            )?;
++            let view = blob.paged_range(13, 9001)?;
++            for (offset, len) in [(0, 1), (1, 31), (4090, 35), (8192, 809), (9001, 0)] {
++                let mut actual = vec![0; len];
++                view.read_range_into(offset, &mut actual)?;
++                assert_eq!(actual, view.read_range(offset, len)?);
++            }
++            let mut untouched = [77; 4];
++            for offset in [8998, 9001, usize::MAX] {
++                assert!(matches!(
++                    view.read_range_into(offset, &mut untouched),
++                    Err(BlobError::RangeOutOfBounds { .. })
++                ));
++                assert_eq!(untouched, [77; 4]);
++            }
++            assert!(view.read_range_into(9002, &mut []).is_err());
++            assert!(blob.read_range_into(usize::MAX, &mut untouched).is_err());
++            assert_eq!(untouched, [77; 4]);
++        }
++        Ok(())
++    }
++
++    #[cfg(unix)]
++    #[test]
++    fn positional_reads_keep_original_file_after_path_replacement()
++    -> Result<(), Box<dyn std::error::Error>> {
++        let temp = tempdir()?;
++        let path = temp.path().join("original.gguf");
++        let replacement = temp.path().join("replacement.gguf");
++        write_blob(&path, b"original bytes")?;
++        write_blob(&replacement, b"different data")?;
++        let blob = LocalBlob::open_path(
++            &path,
++            LocalBlobKind::GgufFile,
++            LocalBlobOpenOptions::default()
++                .with_read_preference(BlobReadPreference::RequireMemoryMap),
++        )?;
++        let view = blob.paged_range(2, 8)?;
++        let cloned = view.clone();
++        drop(view);
++        drop(blob);
++        fs::rename(&replacement, &path)?;
++        assert_eq!(fs::read(&path)?, b"different data");
++        let mut actual = [0; 8];
++        cloned.read_range_into(0, &mut actual)?;
++        assert_eq!(&actual, b"iginal b");
++        assert_eq!(cloned.bytes()?, actual);
++        Ok(())
++    }
++
++    #[cfg(unix)]
++    #[test]
++    fn positional_reads_reject_truncated_open_file() -> Result<(), Box<dyn std::error::Error>> {
++        let temp = tempdir()?;
++        let path = temp.path().join("truncated.gguf");
++        write_blob(&path, b"original bytes")?;
++        let blob = LocalBlob::open_path(
++            &path,
++            LocalBlobKind::GgufFile,
++            LocalBlobOpenOptions::default()
++                .with_read_preference(BlobReadPreference::RequireMemoryMap),
++        )?;
++        fs::OpenOptions::new().write(true).open(&path)?.set_len(3)?;
++        // Do not access the mapping after truncation: only the file read is safe.
++        let mut untouched = [77; 8];
++        assert!(matches!(
++            blob.read_range_into(0, &mut untouched),
++            Err(BlobError::Read { .. })
++        ));
++        assert_eq!(untouched, [77; 8]);
++        Ok(())
++    }
++
++    #[cfg(unix)]
++    #[test]
++    fn positional_reads_do_not_share_a_seek_cursor() -> Result<(), Box<dyn std::error::Error>> {
++        let temp = tempdir()?;
++        let path = temp.path().join("concurrent.gguf");
++        let input: Vec<u8> = (0..16384).map(|index| (index % 251) as u8).collect();
++        write_blob(&path, &input)?;
++        let blob = LocalBlob::open_path(
++            &path,
++            LocalBlobKind::GgufFile,
++            LocalBlobOpenOptions::default()
++                .with_read_preference(BlobReadPreference::RequireMemoryMap),
++        )?;
++        std::thread::scope(|scope| {
++            let mut readers = Vec::new();
++            for offset in [3, 1024, 9001] {
++                let blob = &blob;
++                let expected = &input[offset..offset + 1024];
++                readers.push(scope.spawn(move || {
++                    for _ in 0..16 {
++                        let mut actual = [0; 1024];
++                        blob.read_range_into(offset, &mut actual)
++                            .expect("positional read");
++                        assert_eq!(actual, expected);
++                    }
++                }));
++            }
++            for reader in readers {
++                reader.join().expect("reader completed");
++            }
++        });
++        Ok(())
++    }
+ }
+diff --git a/crates/psionic/crates/psionic-models/src/lib.rs b/crates/psionic/crates/psionic-models/src/lib.rs
+index 63e1488925..abea9b347b 100644
+--- a/crates/psionic/crates/psionic-models/src/lib.rs
++++ b/crates/psionic/crates/psionic-models/src/lib.rs
+@@ -2701,6 +2701,18 @@ impl PagedTensorStorage {
+             .map_err(ModelLoadError::from)
+     }
+ 
++    /// Copies tensor bytes without accessing the backing blob's mapped pages.
++    #[cfg(unix)]
++    pub fn read_range_into(
++        &self,
++        offset: usize,
++        destination: &mut [u8],
++    ) -> Result<(), ModelLoadError> {
++        self.bytes
++            .read_range_into(offset, destination)
++            .map_err(ModelLoadError::from)
++    }
++
+     /// Prefaults a validated byte range in the underlying blob.
+     pub fn prefetch_range(&self, offset: usize, len: usize) -> Result<(), ModelLoadError> {
+         self.bytes
+@@ -12352,6 +12364,15 @@ mod tests {
+         assert_eq!(paged.page(1)?, &dense_bytes[8..]);
+         assert_eq!(paged.read_range(4, 8)?, &dense_bytes[4..12]);
+         assert_eq!(paged.read_range(4, 8)?, &dense_bytes[4..12]);
++        #[cfg(unix)]
++        {
++            let mut copied = [0; 8];
++            paged.read_range_into(4, &mut copied)?;
++            assert_eq!(&copied, &dense_bytes[4..12]);
++            assert!(paged.read_range_into(9, &mut copied).is_err());
++            assert!(paged.read_range_into(usize::MAX, &mut copied).is_err());
++            assert_eq!(&copied, &dense_bytes[4..12]);
++        }
+ 
+         let loaded = paged.load()?;
+         assert_eq!(loaded.values()?.as_ref(), &[1.0, 2.0, 3.0, 4.0]);
+diff --git a/crates/psionic/crates/psionic-serve/src/qwen35/clef_metal.rs b/crates/psionic/crates/psionic-serve/src/qwen35/clef_metal.rs
+index 2024c270a2..e8488301d3 100644
+--- a/crates/psionic/crates/psionic-serve/src/qwen35/clef_metal.rs
++++ b/crates/psionic/crates/psionic-serve/src/qwen35/clef_metal.rs
+@@ -95,6 +95,38 @@ impl std::str::FromStr for FfnWeightMode {
+     }
+ }
+ 
++#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
++enum WeightUploadMode {
++    #[default]
++    MappedCopy,
++    Positional,
++}
++
++impl std::str::FromStr for WeightUploadMode {
++    type Err = String;
++
++    fn from_str(value: &str) -> Result<Self, String> {
++        match value {
++            "mapped-copy" => Ok(Self::MappedCopy),
++            "positional" => Ok(Self::Positional),
++            _ => Err(String::from(
++                "clef metal weight upload must be mapped-copy or positional",
++            )),
++        }
++    }
++}
++
++impl WeightUploadMode {
++    fn validate(self, placement: FfnWeightMode) -> Result<(), String> {
++        if self == Self::Positional && placement != FfnWeightMode::ResidentF16 {
++            return Err(String::from(
++                "positional Metal weight upload requires resident-f16 FFN weights",
++            ));
++        }
++        Ok(())
++    }
++}
++
+ const MAX_FFN_CONVERSION_BYTES: usize = 256 * 1024 * 1024;
+ 
+ fn ffn_conversion_bytes(rows: usize, columns: usize) -> Result<usize, String> {
+@@ -287,8 +319,9 @@ fn upload_matrix(
+     metal: &ClefMetal,
+     matrix: &HostMatrix,
+     name: &str,
++    upload: WeightUploadMode,
+ ) -> Result<DeviceWeight, String> {
+-    upload_matrix_with_placement(metal, matrix, name, FfnWeightMode::ResidentF16)
++    upload_matrix_with_placement(metal, matrix, name, FfnWeightMode::ResidentF16, upload)
+ }
+ 
+ fn upload_matrix_with_placement(
+@@ -296,7 +329,9 @@ fn upload_matrix_with_placement(
+     matrix: &HostMatrix,
+     name: &str,
+     mode: FfnWeightMode,
++    upload: WeightUploadMode,
+ ) -> Result<DeviceWeight, String> {
++    upload.validate(mode)?;
+     let (format, rows, columns, bytes): (ClefMetalWeightFormat, usize, usize, Vec<u8>) =
+         match &matrix.kind {
+             HostMatrixKind::Dense(dense) => (
+@@ -316,15 +351,37 @@ fn upload_matrix_with_placement(
+                         ));
+                     }
+                 };
+-                let elements = quantized.rows * quantized.columns;
++                let elements = quantized
++                    .rows
++                    .checked_mul(quantized.columns)
++                    .ok_or_else(|| format!("clef metal prefill: `{name}` shape overflows"))?;
+                 let len = format
+                     .byte_len(elements)
+-                    .filter(|len| *len == quantized.rows * quantized.row_byte_len)
++                    .filter(|len| Some(*len) == quantized.rows.checked_mul(quantized.row_byte_len))
+                     .ok_or_else(|| {
+                         format!("clef metal prefill: `{name}` has an unexpected {format:?} size")
+                     })?;
+-                let bytes = quantized.storage.read_range(0, len).map_err(err)?;
+-                (format, quantized.rows, quantized.columns, bytes.to_vec())
++                let bytes = match upload {
++                    WeightUploadMode::MappedCopy => {
++                        quantized.storage.read_range(0, len).map_err(err)?.to_vec()
++                    }
++                    WeightUploadMode::Positional => {
++                        if quantized.storage.blob_metadata().read_path
++                            != psionic_catalog::BlobReadPath::MemoryMapped
++                        {
++                            return Err(String::from(
++                                "positional Metal weight upload requires a memory-mapped source",
++                            ));
++                        }
++                        let mut bytes = vec![0; len];
++                        quantized
++                            .storage
++                            .read_range_into(0, &mut bytes)
++                            .map_err(err)?;
++                        bytes
++                    }
++                };
++                (format, quantized.rows, quantized.columns, bytes)
+             }
+         };
+     let compressed = mode == FfnWeightMode::Q4KOnDemand && format == ClefMetalWeightFormat::Q4K;
+@@ -392,6 +449,16 @@ impl ClefMetalTrunk {
+                 ));
+             }
+         };
++        let weight_upload = match std::env::var("PSIONIC_CLEF_METAL_WEIGHT_UPLOAD") {
++            Ok(value) => value.parse::<WeightUploadMode>()?,
++            Err(std::env::VarError::NotPresent) => WeightUploadMode::default(),
++            Err(std::env::VarError::NotUnicode(_)) => {
++                return Err(String::from(
++                    "PSIONIC_CLEF_METAL_WEIGHT_UPLOAD must be valid text",
++                ));
++            }
++        };
++        weight_upload.validate(ffn_weights)?;
+         let device_name = metal.device_name().to_string();
+         let model = &cpu.model;
+         let config = &model.descriptor.config;
+@@ -423,28 +490,33 @@ impl ClefMetalTrunk {
+                 &layer.ffn_gate_up.parts[0],
+                 &name("ffn_gate"),
+                 ffn_weights,
++                weight_upload,
+             )?;
+             let up = upload_matrix_with_placement(
+                 &metal,
+                 &layer.ffn_gate_up.parts[1],
+                 &name("ffn_up"),
+                 ffn_weights,
++                weight_upload,
+             )?;
+             let down = upload_matrix_with_placement(
+                 &metal,
+                 &layer.ffn_down,
+                 &name("ffn_down"),
+                 ffn_weights,
++                weight_upload,
+             )?;
+             dims.ffn = gate.rows;
+             let mixer = match &layer.kind {
+                 CpuQwen35LayerKind::Hybrid(hybrid) => {
+                     let parts = &hybrid.qkv_gate_alpha_beta.parts;
+-                    let qkv = upload_matrix(&metal, &parts[0], &name("attn_qkv"))?;
+-                    let z = upload_matrix(&metal, &parts[1], &name("attn_gate"))?;
+-                    let alpha = upload_matrix(&metal, &parts[2], &name("ssm_alpha"))?;
+-                    let beta = upload_matrix(&metal, &parts[3], &name("ssm_beta"))?;
+-                    let out = upload_matrix(&metal, &hybrid.ssm_out, &name("ssm_out"))?;
++                    let qkv = upload_matrix(&metal, &parts[0], &name("attn_qkv"), weight_upload)?;
++                    let z = upload_matrix(&metal, &parts[1], &name("attn_gate"), weight_upload)?;
++                    let alpha =
++                        upload_matrix(&metal, &parts[2], &name("ssm_alpha"), weight_upload)?;
++                    let beta = upload_matrix(&metal, &parts[3], &name("ssm_beta"), weight_upload)?;
++                    let out =
++                        upload_matrix(&metal, &hybrid.ssm_out, &name("ssm_out"), weight_upload)?;
+                     dims.conv_channels = qkv.rows;
+                     dims.conv_kernel = hybrid.conv_kernel;
+                     dims.key_heads = hybrid.group_count;
+@@ -473,10 +545,16 @@ impl ClefMetalTrunk {
+                 }
+                 CpuQwen35LayerKind::FullAttention(attention) => {
+                     let parts = &attention.qkv.parts;
+-                    let query_gate = upload_matrix(&metal, &parts[0], &name("attn_q"))?;
+-                    let key = upload_matrix(&metal, &parts[1], &name("attn_k"))?;
+-                    let value = upload_matrix(&metal, &parts[2], &name("attn_v"))?;
+-                    let out = upload_matrix(&metal, &attention.output, &name("attn_output"))?;
++                    let query_gate =
++                        upload_matrix(&metal, &parts[0], &name("attn_q"), weight_upload)?;
++                    let key = upload_matrix(&metal, &parts[1], &name("attn_k"), weight_upload)?;
++                    let value = upload_matrix(&metal, &parts[2], &name("attn_v"), weight_upload)?;
++                    let out = upload_matrix(
++                        &metal,
++                        &attention.output,
++                        &name("attn_output"),
++                        weight_upload,
++                    )?;
+                     dims.kv_heads = attention.kv_width / dims.head_dim.max(1);
+                     if query_gate.rows != dims.heads * dims.head_dim * 2 || dims.head_dim != 256 {
+                         return Err(format!(
+@@ -662,6 +740,7 @@ impl ClefMetalTrunk {
+                     source,
+                     &format!("blk.{index}.{name}"),
+                     mode,
++                    WeightUploadMode::MappedCopy,
+                 )?;
+             }
+         }
+diff --git a/crates/psionic/crates/psionic-serve/src/qwen35/clef_metal/tests.rs b/crates/psionic/crates/psionic-serve/src/qwen35/clef_metal/tests.rs
+index 23459f4df9..60c27ccafa 100644
+--- a/crates/psionic/crates/psionic-serve/src/qwen35/clef_metal/tests.rs
++++ b/crates/psionic/crates/psionic-serve/src/qwen35/clef_metal/tests.rs
+@@ -4,6 +4,43 @@ use super::*;
+ 
+ mod ffn_weights;
+ mod head_blocks;
++mod weight_upload;
++
++#[test]
++fn positional_weight_upload_is_explicit_and_resident_only() {
++    assert_eq!(WeightUploadMode::default(), WeightUploadMode::MappedCopy);
++    assert_eq!(
++        "mapped-copy".parse::<WeightUploadMode>().unwrap(),
++        WeightUploadMode::MappedCopy
++    );
++    assert_eq!(
++        "positional".parse::<WeightUploadMode>().unwrap(),
++        WeightUploadMode::Positional
++    );
++    for value in ["", "auto", "pread", "POSITIONAL", " positional"] {
++        assert!(value.parse::<WeightUploadMode>().is_err());
++    }
++    assert!(
++        WeightUploadMode::MappedCopy
++            .validate(FfnWeightMode::ResidentF16)
++            .is_ok()
++    );
++    assert!(
++        WeightUploadMode::MappedCopy
++            .validate(FfnWeightMode::Q4KOnDemand)
++            .is_ok()
++    );
++    assert!(
++        WeightUploadMode::Positional
++            .validate(FfnWeightMode::ResidentF16)
++            .is_ok()
++    );
++    assert!(
++        WeightUploadMode::Positional
++            .validate(FfnWeightMode::Q4KOnDemand)
++            .is_err()
++    );
++}
+ 
+ #[test]
+ fn prefill_span_validation_accepts_boundaries_and_overlapping_spans() {
+diff --git a/crates/psionic/crates/psionic-serve/src/qwen35/clef_metal/tests/weight_upload.rs b/crates/psionic/crates/psionic-serve/src/qwen35/clef_metal/tests/weight_upload.rs
+new file mode 100644
+index 0000000000..86cf75739e
+--- /dev/null
++++ b/crates/psionic/crates/psionic-serve/src/qwen35/clef_metal/tests/weight_upload.rs
+@@ -0,0 +1,108 @@
++use super::*;
++
++fn fixture(path: &std::path::Path, kind: u32, block: usize) -> Vec<u8> {
++    let mut payload = vec![0; 3 * 256 / if kind == 8 { 32 } else { 256 } * block];
++    for (index, bytes) in payload.chunks_mut(block).enumerate() {
++        for (offset, byte) in bytes.iter_mut().enumerate() {
++            *byte = (index * 17 + offset * 29 + 11) as u8;
++        }
++        let scale = if kind == 14 { 208 } else { 0 };
++        bytes[scale..scale + 2].copy_from_slice(&0x1400u16.to_le_bytes());
++        if kind == 12 {
++            bytes[2..4].copy_from_slice(&0x1000u16.to_le_bytes());
++        }
++    }
++    let mut bytes = b"GGUF".to_vec();
++    bytes.extend(3u32.to_le_bytes());
++    bytes.extend(1u64.to_le_bytes()); // One tensor, no metadata.
++    bytes.extend(0u64.to_le_bytes());
++    bytes.extend(7u64.to_le_bytes());
++    bytes.extend(b"weights");
++    bytes.extend(2u32.to_le_bytes());
++    bytes.extend(256u64.to_le_bytes());
++    bytes.extend(3u64.to_le_bytes());
++    bytes.extend(kind.to_le_bytes());
++    bytes.extend(0u64.to_le_bytes());
++    bytes.resize(bytes.len().div_ceil(32) * 32, 0);
++    bytes.extend(&payload);
++    std::fs::write(path, bytes).unwrap();
++    payload
++}
++
++#[test]
++#[ignore = "requires explicit Metal hardware validation"]
++fn positional_weight_upload_preserves_resident_bytes_and_gemm_outputs() {
++    objc::rc::autoreleasepool(|| {
++        let temp = tempfile::tempdir().unwrap();
++        let metal = ClefMetal::new().unwrap();
++        for (kind, block) in [(8, 34), (12, 144), (14, 210)] {
++            let path = temp.path().join(format!("weights-{kind}.gguf"));
++            let payload = fixture(&path, kind, block);
++            let artifact = psionic_models::GgufBlobArtifact::open_path(
++                &path,
++                psionic_catalog::LocalBlobOpenOptions::default()
++                    .with_read_preference(psionic_catalog::BlobReadPreference::RequireMemoryMap),
++            )
++            .unwrap();
++            let host = HostMatrix::load(&artifact, "weights").unwrap();
++            drop(artifact);
++            let HostMatrixKind::Quantized(source) = &host.kind else {
++                panic!("quantized fixture")
++            };
++            let mut copied = vec![0; payload.len()];
++            source.storage.read_range_into(0, &mut copied).unwrap();
++            assert_eq!(copied, payload);
++            let mapped =
++                upload_matrix(&metal, &host, "weights", WeightUploadMode::MappedCopy).unwrap();
++            let positional =
++                upload_matrix(&metal, &host, "weights", WeightUploadMode::Positional).unwrap();
++            assert_eq!(
++                mapped.buffer.read_bytes(0, 3 * 256 * 2).unwrap(),
++                positional.buffer.read_bytes(0, 3 * 256 * 2).unwrap()
++            );
++            for n in [1, 17] {
++                let input: Vec<f32> = (0..n * 256)
++                    .map(|i| ((i * 7) % 31) as f32 / 32.0 - 0.5)
++                    .collect();
++                let input = metal.buffer_f32(&input);
++                let half = metal.buffer(n * 256 * 2);
++                let batch = metal.batch();
++                batch
++                    .dequantize_to_f16(ClefMetalWeightFormat::F32, &input, &half, n * 256)
++                    .unwrap();
++                batch.commit_wait().unwrap();
++                for accumulate in [false, true] {
++                    let seed = vec![0.375; n * 3];
++                    let a = metal.buffer_f32(&seed);
++                    let b = metal.buffer_f32(&seed);
++                    let batch = metal.batch();
++                    batch
++                        .gemm(&half, 0, &mapped.buffer, &a, 0, n, 3, 256, accumulate)
++                        .unwrap();
++                    batch
++                        .gemm(&half, 0, &positional.buffer, &b, 0, n, 3, 256, accumulate)
++                        .unwrap();
++                    batch.commit_wait().unwrap();
++                    let a = a.read_f32(0, n * 3).unwrap();
++                    let b = b.read_f32(0, n * 3).unwrap();
++                    assert!(a.iter().chain(&b).all(|v| v.is_finite()));
++                    assert_eq!(
++                        a.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
++                        b.iter().map(|v| v.to_bits()).collect::<Vec<_>>()
++                    );
++                }
++            }
++            assert_eq!(source.storage.bytes().unwrap(), payload);
++            let buffered = psionic_models::GgufBlobArtifact::open_path(
++                &path,
++                psionic_catalog::LocalBlobOpenOptions::default()
++                    .with_read_preference(psionic_catalog::BlobReadPreference::PreferBuffered),
++            )
++            .unwrap();
++            let buffered = HostMatrix::load(&buffered, "weights").unwrap();
++            assert!(
++                upload_matrix(&metal, &buffered, "weights", WeightUploadMode::Positional).is_err()
++            );
++        }
++    });
++}

@@ -1,0 +1,224 @@
+{
+  "status": "complete",
+  "build": {
+    "seconds": 1163.834703208,
+    "cpu_passed": 71,
+    "memory": {
+      "rss_log": "memory.jsonl",
+      "process_group": 56162,
+      "max_rss_bytes": 25769803776,
+      "peak_rss_bytes": 25471221760,
+      "peak_physical_footprint_bytes": 24689154224,
+      "peak_accounted_bytes": 25471221760,
+      "sampling_error": null,
+      "sampler_timeout_seconds": 5,
+      "rss_samples": 2189,
+      "sample_interval_seconds": 0.5,
+      "minimum_available_memory_bytes": 12884901888,
+      "lowest_available_memory_bytes": 80759816192,
+      "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+      "memory_rejection": null,
+      "cleanup_error": null,
+      "cleanup_diagnostics": null,
+      "cleanup_observations": [],
+      "owned_group_stopped": true,
+      "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+    },
+    "disk_after_cleanup": {
+      "free_bytes": 45334204416,
+      "output_bytes": 88442597
+    }
+  },
+  "gpu_fixture": {
+    "tests_passed": 1,
+    "seconds": 1.2253264169999998,
+    "memory": {
+      "rss_log": "memory.jsonl",
+      "process_group": 25811,
+      "max_rss_bytes": 4294967296,
+      "peak_rss_bytes": 32768,
+      "peak_physical_footprint_bytes": 81992,
+      "peak_accounted_bytes": 81992,
+      "sampling_error": null,
+      "sampler_timeout_seconds": 5,
+      "rss_samples": 2,
+      "sample_interval_seconds": 0.5,
+      "minimum_available_memory_bytes": 12884901888,
+      "lowest_available_memory_bytes": 100007755776,
+      "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+      "memory_rejection": null,
+      "cleanup_error": null,
+      "cleanup_diagnostics": null,
+      "cleanup_observations": [],
+      "owned_group_stopped": true,
+      "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+    },
+    "peak_limit": "The two half-second samples bracket a 0.30-second test; the sampled peak is not a credible actual peak."
+  },
+  "text": {
+    "passed": true,
+    "requests": 42,
+    "question_vectors": 110,
+    "scalar_logits": 389,
+    "every_scalar_bit_equal": true,
+    "every_pooled_byte_equal": true,
+    "memory": {
+      "at": "2026-10-11T17:06:18.435891+00:00",
+      "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+      "cleanup_diagnostics": null,
+      "cleanup_error": null,
+      "cleanup_observations": [
+        {
+          "errno": 1,
+          "error_type": "PermissionError",
+          "leader_exit_code": -15,
+          "owned_pid": 32020,
+          "signal": 0,
+          "verified_group_members": 0
+        }
+      ],
+      "kind": "shutdown",
+      "lowest_available_memory_bytes": 47816114176,
+      "max_rss_bytes": 55834574848,
+      "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit",
+      "memory_rejection": null,
+      "minimum_available_memory_bytes": 12884901888,
+      "owned_group_stopped": true,
+      "peak_accounted_bytes": 51672556584,
+      "peak_physical_footprint_bytes": 51672556584,
+      "peak_rss_bytes": 51624591360,
+      "process_group": 32020,
+      "round": 0,
+      "rss_log": "rss-r0-positional.jsonl",
+      "rss_samples": 226,
+      "sample_interval_seconds": 0.5,
+      "sampler_timeout_seconds": 5,
+      "sampling_error": null,
+      "variant": "positional"
+    }
+  },
+  "images": {
+    "status": "complete",
+    "passed": true,
+    "attempt": "images-2",
+    "original_attempt_preserved": true,
+    "bounds": {
+      "max_rss_gib": 52,
+      "minimum_start_available_gib": 64,
+      "minimum_available_gib": 12,
+      "startup_timeout": 600,
+      "request_timeout": 300,
+      "deadline_seconds": 1800
+    },
+    "original_harness_sha256": "b0448dfd6314cfa0e1b53570d865f66d0a060923bdebf48e47637651d2c1600b",
+    "candidate_sha256": "c2539ca0fe9b38ac31691872b59f44e0a14afcc4de401433b5651da83cfac549",
+    "text_sha256": "f977f1aafdb8492e746246a7b3faf54841ecf39d3966921d69b26cc532a73e0e",
+    "executed_runner": {
+      "module_file": "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/native_image_parity.py",
+      "run_sourcefile": "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/native_image_parity.py",
+      "sha256": "c441b6b1aafa678549b3b4713c75e77de0460989b128e4f0f5be59478909a170",
+      "unique_module_name": "_clef_positional_frozen_image_runner_v1"
+    },
+    "repair_source_sha256": "41ff28452d1039ba114ec196b94497a6497464c504dbe7aeb94ef7f5dd0016e7",
+    "runner_exit": 0,
+    "cases": 6,
+    "questions": 14,
+    "refusals": 10,
+    "sources_rechecked": true,
+    "result_sha256": "cd59da36f6659d902ca5124d1d8f4577eb6098b524d7690c845f212d767d3279",
+    "run_sha256": "fe3c1be84c33ee3c22b53b7cd6483a6fbf8c8400c0e0a108b09dcd5d57915d6f",
+    "acceptance": "Unchanged image top/token/expected-content plus refusal gate; probabilities diagnostic.",
+    "post_cleanup_sources_rechecked": true
+  },
+  "first_image_attempt": {
+    "status": "failed",
+    "passed": false,
+    "text_receipt_sha256": "f977f1aafdb8492e746246a7b3faf54841ecf39d3966921d69b26cc532a73e0e",
+    "error_type": "KeyError",
+    "error": "'sources_rechecked'"
+  },
+  "pre_execution_disk_refusal": {
+    "status": "refused_before_execution",
+    "reason": "disk broker reported22 GB free;27 GB required for25 GB floor plus2 GB lease",
+    "at": "2026-10-11T17:17:43.076664+00:00",
+    "current_free_bytes": 22314508288,
+    "runner_started": false,
+    "model_started": false,
+    "owned_outer_lease_pid": 83445,
+    "verified_command": "openagents lease gpu --receipt @@CLEF_SCRATCH@@/resident-upload-qualification-v1/images2-gpu-lease.json -- openagents lease memory --amount 52 --receipt @@CLEF_SCRATCH@@/resident-upload-qualification-v1/images2-memory-lease.json -- openagents lease disk --amount 2 --receipt @@CLEF_SCRATCH@@/resident-upload-qualification-v1/images2-disk-lease.json -- python3 @@CLEF_SCRATCH@@/resident-upload-qualification-v1/images-repair-v1/runner.py",
+    "signal_to_owned_outer_lease": "SIGTERM",
+    "bounds_changed": false
+  },
+  "scratch_cleanup_addendum": {
+    "at_utc": "2026-10-11T17:18:50.939740+00:00",
+    "status": "complete",
+    "action": "remove one task-generated rejected checkpoint; preserve all source artifacts, regeneration scripts, numerical arrays, logs, and receipts",
+    "path": "@@CLEF_SCRATCH@@/q4-down-q6-regeneration/generate-1/Clef-Q4-fixed-down-Q6.gguf",
+    "bytes": 19967533120,
+    "inode": 2662831279,
+    "mtime_ns": 1791720722915200320,
+    "artifact_sha256_from_generation": "a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+    "full_payload_rehashed_before_removal": false,
+    "generation_receipt_sha256": "fdb7c3caa6af34617627ff0abccde8a48bc008eec7969695d8e93d752447bb31",
+    "quality_receipt_sha256": "05e09844f3ea6cbb3b08d96a94211eda14aa522b5f4b6e67b365e6535e5d43f0",
+    "matching_top_answers": 97,
+    "questions": 104,
+    "pending_frozen_workflows_checked": [
+      "resident-upload-qualification-v1",
+      "ollama-zero-cache-plan/qualification-v1",
+      "mps-sustained-ffn-v1"
+    ],
+    "pending_dependency_matches": 0,
+    "open_file_users": 0,
+    "free_bytes_before": 18692870144,
+    "removed": true,
+    "free_bytes_after": 38660874240
+  },
+  "image_memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 95477,
+    "max_rss_bytes": 55834574848,
+    "peak_rss_bytes": 52932345856,
+    "peak_physical_footprint_bytes": 52572529848,
+    "peak_accounted_bytes": 52932345856,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 146,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 50526470144,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [
+      {
+        "owned_pid": 95477,
+        "signal": 0,
+        "error_type": "PermissionError",
+        "errno": 1,
+        "leader_exit_code": -15,
+        "verified_group_members": 0
+      }
+    ],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "candidate": {
+    "status": "complete",
+    "source_manifest_unchanged": true,
+    "binary": "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/build-1/psionic-openai-server",
+    "binary_sha256": "0e7eb7cf567e2cef8dfb24d3e0639d2c9f0575d07944054d28498cfe61699141",
+    "build_guard": "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/build-1/guard.json",
+    "build_guard_sha256": "240d31938b4080f8d3d68d9a86684e370f6b078364de2704afa8de0d41c98132",
+    "source_manifest": "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/source-manifest.json",
+    "source_manifest_sha256": "f8ae6fac32c940abba50c95398f5cdb4ddd4b2f7db75f62ad71bdfa126125cad",
+    "fixture_binary": {
+      "path": "@@CLEF_SCRATCH@@/resident-upload-qualification-v1/build-1/psionic-serve-tests",
+      "sha256": "d77f7061bcbe4f269f48f3f873d34214b03555df0f1d22ba91bfdd5d0c9b399b",
+      "bytes": 60568208,
+      "source": "@@CLEF_TARGET@@/release/deps/psionic_serve-acadeb851218b939"
+    }
+  },
+  "unchanged_acceptance": "The independent Torch same-Q4 103/104 top-answer result remains unresolved. This is exact placement/upload equivalence against the native baseline."
+}
