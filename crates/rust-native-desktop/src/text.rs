@@ -6,8 +6,9 @@
 //! rasterizes each line with the face and variations
 //! [`FontSpec`](rust_native::layout::shape::FontSpec) names, so the adapter
 //! paints exactly the outlines it measured, in the faces
-//! [`faces`](rust_native::layout::shape::faces) names (Paper Mono unless
-//! the app installed its own). A character those faces lack is
+//! [`faces`](rust_native::layout::shape::faces) names: the system faces
+//! the app installed (the desktop's prose face and its code face), or the
+//! bundled Paper Mono when it installed none. A character those faces lack is
 //! painted from one of this computer's fonts ([`crate::fallback`]), centered
 //! in the width the shaper measured for it.
 
@@ -471,8 +472,9 @@ impl Fonts {
                         }
                     });
                 if cluster.glyphs.iter().any(|glyph| glyph.id == 0) {
-                    // Paper Mono lacks this character: the shaper measured
-                    // it at an estimate, so center a fallback glyph there.
+                    // The drawing face lacks this character: the shaper
+                    // measured it at an estimate, so center a fallback
+                    // glyph there.
                     let start = line.start + cluster.source.start as usize;
                     let ch = paragraph.text[start..].chars().next().unwrap_or('?');
                     let width = fallback_em(ch) as f32 * size;
@@ -540,8 +542,8 @@ impl Fonts {
                     for col in 0..glyph.width {
                         let coverage = glyph.coverage[row * glyph.width + col];
                         if coverage > 0 {
-                            // Paper Mono has no italic, so italic text
-                            // is drawn upright.
+                            // The faces are drawn without an italic
+                            // face or slant, so italic text is upright.
                             frame.blend(
                                 left + col as i64,
                                 top + row as i64,

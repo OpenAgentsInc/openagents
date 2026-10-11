@@ -1,11 +1,17 @@
-//! Faces for the characters Paper Mono lacks.
+//! Faces for the characters the drawing faces lack.
 //!
-//! Paper Mono is the one bundled face, and it has no CJK, emoji, Greek,
-//! Cyrillic, or some symbols, such as the check mark and the bitcoin sign.
-//! A platform text engine draws those from its own fallback faces; this
-//! adapter has none, so [`face_for`] finds the first of this computer's fonts
-//! that has the character. Nothing here is bundled: a missing file is
-//! skipped, and a character no file has draws as Paper Mono's missing glyph.
+//! Text draws in the faces [`rust_native::layout::shape::faces`] names: the
+//! system faces an app installed with
+//! [`install_faces`](rust_native::layout::shape::install_faces) (the
+//! desktop's: the platform's UI face for prose and its monospace face for
+//! code, `openagents-desktop/src/typeface.rs`), or the bundled Paper Mono when it
+//! installed none. Any of them can lack a character: Paper Mono has no CJK,
+//! emoji, Greek, Cyrillic, or some symbols, such as the check mark and the
+//! bitcoin sign, and a system UI face has no CJK or emoji. A platform text
+//! engine draws those from its own fallback faces; this adapter has none, so
+//! [`face_for`] finds the first of this computer's fonts that has the
+//! character. Nothing here is bundled: a missing file is skipped, and a
+//! character no file has draws as the drawing face's missing glyph.
 //! The shaper measures such a character at an estimate
 //! ([`rust_native::layout::shape::fallback_em`]), and the painter centers the
 //! fallback glyph in that width, so layout never depends on which fonts a
@@ -39,7 +45,7 @@ const FILES: &[(&str, u32)] = &[
 ];
 
 /// Each file's bytes, read once per process when a character first needs
-/// it. The bytes live as long as the process, as the bundled face does.
+/// it. The bytes live as long as the process, as the drawing faces do.
 static LOADED: [OnceLock<Option<&'static [u8]>>; FILES.len()] =
     [const { OnceLock::new() }; FILES.len()];
 
