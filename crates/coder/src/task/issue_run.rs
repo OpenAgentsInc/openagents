@@ -252,7 +252,11 @@ pub fn load(store: &Path, task: &str) -> Option<Flow> {
         .filter(|flow| flow.schema == FLOW_SCHEMA && flow.task == task)
 }
 
-pub(crate) fn save(store: &Path, flow: &Flow) -> Result<(), String> {
+/// Write `flow` as its followers read it ([`load`]).
+///
+/// # Errors
+/// When the flow file can't be written.
+pub fn save(store: &Path, flow: &Flow) -> Result<(), String> {
     let bytes = serde_json::to_vec_pretty(flow).map_err(|e| e.to_string())?;
     super::autostart::write_private(&flow_path(store, &flow.task), &bytes)
 }
