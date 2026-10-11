@@ -378,6 +378,8 @@ struct App {
     particles: Vec<Particle>,
     view: Option<(View, Mat4)>,
     frames: u32,
+    /// How often he has spotted you this run, for browser checks.
+    spotted: u32,
 }
 
 fn yaw_of(dir: V2) -> f32 {
@@ -444,6 +446,7 @@ impl App {
         self.camera.yaw = self.yaw;
         self.man_yaw = 0.0;
         self.particles.clear();
+        self.spotted = 0;
         self.hurt = 0.0;
         self.daylight = 0.0;
         self.carry = 0.0;
@@ -753,7 +756,10 @@ impl App {
                     self.hud.toast(copy::PULLED_OUT, now);
                 }
             }
-            Event::Spotted => self.hud.toast(copy::SPOTTED, now),
+            Event::Spotted => {
+                self.spotted += 1;
+                self.hud.toast(copy::SPOTTED, now);
+            }
             Event::Lost => self.hud.toast(copy::LOST, now),
             Event::Key(count) => {
                 self.sound.play(Effect::Key);
@@ -1354,6 +1360,7 @@ impl App {
             ("data-shift-lock", self.camera.shift_lock.to_string()),
             ("data-hidden", game.player.hidden.is_some().to_string()),
             ("data-clouds", game.clouds.len().to_string()),
+            ("data-spotted", self.spotted.to_string()),
             (
                 "data-prompt",
                 game.prompt()
@@ -1544,6 +1551,7 @@ pub fn start() {
         particles: Vec::new(),
         view: None,
         frames: 0,
+        spotted: 0,
     };
     app.new_run();
     if app.options.skip {

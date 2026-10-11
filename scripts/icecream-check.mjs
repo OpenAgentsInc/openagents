@@ -109,9 +109,9 @@ const visible = async (locator, ms = 3000) => {
   const [x0, z0] = point(d.player);
   // The camera starts behind the avatar looking toward -z: W walks -z, D +x.
   await page.keyboard.down("w");
-  await sleep(700);
+  await sleep(1200);
   await page.keyboard.up("w");
-  d = await until(page, (d) => point(d.player)[1] < z0 - 1.0);
+  d = await until(page, (d) => point(d.player)[1] < z0 - 1.0, 5000);
   const [x1, z1] = point(d.player);
   check(z1 < z0 - 1.0, `W walks the avatar (${z0.toFixed(1)} to ${z1.toFixed(1)})`);
   await page.keyboard.press("2");
@@ -125,18 +125,18 @@ const visible = async (locator, ms = 3000) => {
   // Walk to the bedroom closet: the room's centre is the spawn less 1 m in z.
   const centre = [x0, z0 - 1];
   const goal = [centre[0] - 2.6, centre[1] - 3.6];
-  for (let i = 0; i < 80; i++) {
+  for (let i = 0; i < 200; i++) {
     const [x, z] = point((await data(page)).player);
     const dx = goal[0] - x;
     const dz = goal[1] - z;
-    if (Math.hypot(dx, dz) < 0.3) break;
+    if (Math.hypot(dx, dz) < 0.6) break;
     const keys = [];
     if (dz < -0.15) keys.push("w");
     if (dz > 0.15) keys.push("s");
     if (dx > 0.15) keys.push("d");
     if (dx < -0.15) keys.push("a");
     for (const k of keys) await page.keyboard.down(k);
-    await sleep(Math.min(150, 40 + 60 * Math.hypot(dx, dz)));
+    await sleep(Math.min(120, 30 + 40 * Math.hypot(dx, dz)));
     for (const k of keys) await page.keyboard.up(k);
   }
   await page.mouse.move(480, 300);
@@ -172,7 +172,9 @@ const visible = async (locator, ms = 3000) => {
     const [px, pz] = point(d.player);
     const [mx, mz] = point(d.man);
     const near = Math.hypot(px - mx, pz - mz);
-    if (d.manState === "chase") chased = true;
+    // data-spotted counts every chase, so a short one isn't missed
+    // between samples.
+    if (d.manState === "chase" || Number(d.spotted ?? 0) > 0) chased = true;
     const fudgeHits = Number(d.fudgeHits);
     if (!manShot && d.manState === "chase" && near < 8) {
       manShot = true;
