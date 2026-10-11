@@ -61,6 +61,37 @@ pub struct Verify {
     pub log: Option<PathBuf>,
     /// The last call's key and verdict.
     pub cache: std::sync::Mutex<Option<(String, Value)>>,
+    /// How the run's `verify` calls went, for the run summary.
+    pub tally: Arc<std::sync::Mutex<Tally>>,
+}
+
+/// How a run's `verify` calls went (#11257).
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Tally {
+    /// Calls that ran, cached answers included.
+    pub calls: u64,
+    /// Calls whose status was not `pass` or `compiles`.
+    pub failures: u64,
+    /// Whether any call returned `pass`.
+    pub passed: bool,
+    /// The last call's status.
+    pub last: Option<String>,
+}
+
+impl Tally {
+    pub fn record(&mut self, status: &str) {
+        self.calls += 1;
+        if !matches!(status, "pass" | "compiles") {
+            self.failures += 1;
+        }
+        self.passed |= status == "pass";
+        self.last = Some(status.to_owned());
+    }
+
+    pub fn to_json(&self) -> Value {
+        json!({"calls": self.calls, "failures": self.failures,
+               "passed": self.passed, "last": self.last})
+    }
 }
 
 /// How one checker command ended.
@@ -170,6 +201,7 @@ impl Verify {
             cochange,
             log: block["log"].as_str().map(PathBuf::from),
             cache: std::sync::Mutex::new(None),
+            tally: Arc::default(),
         })
     }
 
@@ -338,8 +370,16 @@ impl Verify {
     }
 
     /// `verify`: the cached result for an unchanged candidate, otherwise a
-    /// fresh run.
+    /// fresh run. Either way the call counts in the tally.
     pub async fn run(&self, filter: &str, fast: bool) -> Value {
+        let verdict = self.answer(filter, fast).await;
+        if let Ok(mut tally) = self.tally.lock() {
+            tally.record(verdict["status"].as_str().unwrap_or("error"));
+        }
+        verdict
+    }
+
+    async fn answer(&self, filter: &str, fast: bool) -> Value {
         let candidate = self.candidate().await;
         let changed = self.changed().await;
         let key = candidate.as_ref().map(|(tree, _)| {

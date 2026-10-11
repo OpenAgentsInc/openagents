@@ -20,7 +20,8 @@
 //! Usage: `briefed-agent CONFIG.json`. The config names the worktree, the
 //! system prompt and first message files, the model, the effort, the time
 //! limit, and where to write the event log (one JSON line per message) and
-//! the summary.
+//! the summary (which includes how the `verify` calls went: calls,
+//! failures, whether one passed, and the last status).
 
 mod tools;
 mod verify;
@@ -197,7 +198,10 @@ async fn run() -> Result<(), String> {
     }
     let custom = strings(&config["custom"]);
     let finished = Arc::new(AtomicBool::new(false));
-    if let Some(server) = tools::server(&worktree, &config, &custom, finished.clone()) {
+    let tally: Shared<verify::Tally> = Arc::default();
+    if let Some(server) =
+        tools::server(&worktree, &config, &custom, finished.clone(), tally.clone())
+    {
         allowed.extend(server.allowed_tool_names());
         allowed.push("mcp__oa".to_owned());
         options = options.sdk_mcp_server(server);
@@ -296,6 +300,7 @@ async fn run() -> Result<(), String> {
         "misses": ledger.misses,
         "denied": ledger.denied,
         "check_runs": ledger.check_runs,
+        "verify": lock(&tally).to_json(),
         "finished": finished.load(Ordering::SeqCst),
     });
     std::fs::write(

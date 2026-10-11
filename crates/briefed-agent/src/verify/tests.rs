@@ -97,6 +97,7 @@ impl Fixture {
             cochange: BTreeMap::new(),
             log: None,
             cache: std::sync::Mutex::new(None),
+            tally: Arc::default(),
         }
     }
 
@@ -337,4 +338,42 @@ fn added_tests_reads_the_test_functions_a_diff_adds() {
     let diff =
         "+#[test]\n+fn a() {}\n+    #[tokio::test]\n+    async fn b() {}\n #[test]\n fn old() {}\n";
     assert_eq!(added_tests(diff), vec!["a".to_owned(), "b".to_owned()]);
+}
+
+#[test]
+fn the_tally_counts_calls_failures_and_the_last_status() {
+    let mut tally = Tally::default();
+    assert_eq!(
+        tally.to_json(),
+        json!({"calls": 0, "failures": 0, "passed": false, "last": null})
+    );
+    for status in [
+        "compile_error",
+        "compiles",
+        "test_failure",
+        "pass",
+        "fmt_failed",
+    ] {
+        tally.record(status);
+    }
+    assert_eq!(
+        tally.to_json(),
+        json!({"calls": 5, "failures": 3, "passed": true, "last": "fmt_failed"})
+    );
+}
+
+#[tokio::test]
+async fn cached_verify_answers_count_in_the_tally() {
+    let fx = fixture();
+    fx.add_test();
+    fx.mode(PASS, 0);
+    let verify = fx.verify();
+    verify.run("", false).await;
+    let cached = verify.run("", false).await;
+    assert_eq!(cached["cached"], json!(true), "{cached}");
+    let tally = verify.tally.lock().unwrap().clone();
+    assert_eq!(tally.calls, 2);
+    assert_eq!(tally.failures, 0);
+    assert!(tally.passed);
+    assert_eq!(tally.last.as_deref(), Some("pass"));
 }

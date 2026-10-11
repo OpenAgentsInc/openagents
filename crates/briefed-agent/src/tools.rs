@@ -17,14 +17,14 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use claude_agent_sdk::{SdkMcpServer, ToolResult};
 use serde_json::{Value, json};
 use tokio::process::Command;
 
-use crate::verify::Verify;
+use crate::verify::{Tally, Verify};
 
 /// Is this line a Rust item header?
 fn item(line: &str) -> bool {
@@ -319,9 +319,13 @@ pub fn server(
     config: &Value,
     names: &[String],
     finished: Arc<AtomicBool>,
+    tally: Arc<Mutex<Tally>>,
 ) -> Option<SdkMcpServer> {
     let has = |name: &str| names.iter().any(|n| n == name);
-    let verify = Verify::from_config(root, config).map(Arc::new);
+    let verify = Verify::from_config(root, config).map(|mut verify| {
+        verify.tally = tally;
+        Arc::new(verify)
+    });
     let mut server = SdkMcpServer::new("oa", "1.0.0").timeout_ms(1_800_000);
     let mut any = false;
     if has("verify")
