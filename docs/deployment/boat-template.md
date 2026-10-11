@@ -7,6 +7,16 @@ snapshot that already holds the repository, the toolchains and a compiled
 `main`. This page is how that snapshot is built, scheduled, checked and
 repaired.
 
+> **Since 2026-10-10 (#11256) the template builds on our own backend**,
+> [`oa-boat`](../cloud/oa-boat.md), not hosted boat.dev: the job's
+> `BOAT_API_KEY` is Secret Manager `oa-boat-api-key` and `BOAT_API_BASE` is
+> `https://oa-boat-157437760789.us-central1.run.app/api/v1`. The build
+> sandbox is a GCE `n2d-standard-8` from the newest `oa-coder-host` image,
+> and `oa-coder-main-<date>` is a GCE image of its boot disk (label
+> `openagents-managed=oa-boat-template`). The Boat-specific notes below
+> (lazy restore, `.boxignore`, named-snapshot slots) describe the hosted
+> history; on GCE a disk made from an image needs no restore wait.
+
 ## What builds it
 
 | Part | Where |
@@ -15,7 +25,7 @@ repaired.
 | Host setup | `scripts/cloud/coder-host-setup.sh --warm`, fetched from `origin/main` on every build. The GCE image `oa-coder-host` (#10224) runs the same script |
 | Image | `us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/boat-template:<commit>`, built by `deploy/boat-template/cloudbuild.yaml` from a GitHub commit (no local upload) |
 | Job | Cloud Run job `oa-boat-template` (us-central1, 1 vCPU, 512 MiB, task timeout 6 h, no retries), runtime account `oa-mvp-automation`, args `build` |
-| Key | Secret Manager `boat-api-key` (project `openagentsgemini`), mounted as `BOAT_API_KEY`. Created from `~/work/.secrets/boat.env`; never printed |
+| Key | Secret Manager `oa-boat-api-key` (project `openagentsgemini`), mounted as `BOAT_API_KEY`, with `BOAT_API_BASE` set to our service; never printed. (Was `boat-api-key`, hosted Boat, until #11256) |
 | Schedule | Cloud Scheduler `oa-boat-template-daily`, `0 8 * * *` UTC, POSTs `jobs/oa-boat-template:run` with the automation account's OAuth token |
 
 `boat-template build`:

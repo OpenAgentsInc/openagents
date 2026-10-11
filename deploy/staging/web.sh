@@ -33,7 +33,8 @@ fi
 printf '{"schema":"openagents.cloud.web-config.v1","public_origin":"%s","account_service":"http://127.0.0.1:8791","csrf_secret":"%s/csrf.key"%s}' "$PUBLIC_ORIGIN" "$p" "$invite" > "$p/cloud.json"
 # Agent work (#11162, docs/deployment/agent-work.md): Environments and
 # Claude Code runs, for site admins and OPENAGENTS_WEB_AGENT_ACCOUNTS. The
-# machines are Boat's (BOAT_API_KEY); the setup agent's model goes through
+# machines are our own Boat-compatible service on GCE, oa-boat (#11256;
+# BOAT_API_KEY, BOAT_API_BASE); the setup agent's model goes through
 # the gateway sidecar on the house service key the gateway keeps in
 # $STACK_STATE/service.key (mounted read-only); records live in
 # $WEB_STATE/environments. Without the key or the service key, the site

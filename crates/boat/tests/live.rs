@@ -185,12 +185,15 @@ async fn paid_lifecycle() -> Result<(), Box<dyn std::error::Error>> {
     if std::env::var("OA_BOAT_LIVE").as_deref() != Ok("I_ACCEPT_BOAT_COST") {
         return Err("Set OA_BOAT_LIVE=I_ACCEPT_BOAT_COST to run the paid check.".into());
     }
+    // This check exercises hosted Boat's scoped keys: it needs BOAT_HOSTED=1.
     let client = Client::builder(ApiKey::new(std::env::var("BOAT_API_KEY")?)?)
+        .base_url(boat::HOSTED_BASE_URL)
         .timeout(Duration::from_secs(20))
         .build()?;
     // Metadata reads require account authority; the exercised key remains scoped.
     let metadata = match std::env::var("OA_BOAT_LIVE_METADATA_KEY") {
         Ok(key) => Client::builder(ApiKey::new(key)?)
+            .base_url(boat::HOSTED_BASE_URL)
             .timeout(Duration::from_secs(20))
             .build()?,
         Err(_) => client.clone(),

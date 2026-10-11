@@ -96,11 +96,13 @@ def main():
         # First-party analytics (#11153, docs/deployment/analytics.md).
         plain("OPENAGENTS_WEB_ANALYTICS_BUCKET", "openagentsgemini-web-analytics-prod"),
         secret("openagents-web-analytics-key", "OPENAGENTS_WEB_ANALYTICS_KEY"),
-        # Agent work (#11162, docs/deployment/agent-work.md): Boat machines,
+        # Agent work (#11162, docs/deployment/agent-work.md): oa-boat machines (#11256),
         # and the setup agent's model through the gateway on the house key.
         plain("STACK_STATE", "/stack"),
         plain("ENVIRONMENTS_MODEL", "google/gemini-3.8-flash"),
-        secret("boat-api-key", "BOAT_API_KEY"),
+        # Our own Boat-compatible service on GCE (#11256), not boat.dev.
+        secret("oa-boat-api-key", "BOAT_API_KEY"),
+        plain("BOAT_API_BASE", "https://oa-boat-157437760789.us-central1.run.app/api/v1"),
         # Gemini on Vertex for the chat's images and PDFs (#11221).
         secret("openagents-vertex-sa-key", "VERTEX_SA_JSON"),
     ])

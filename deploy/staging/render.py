@@ -86,11 +86,13 @@ def main():
             # The smoke suite's operator test account (#11155): staging only.
             plain("OPENAGENTS_WEB_API_OPERATOR_SIGNUP", "1"),
             plain("OPENAGENTS_WEB_AGENT_ACCOUNTS", AGENT_ACCOUNTS),
-            # Environments: Boat machines, and the setup agent's model
+            # Environments: oa-boat machines, and the setup agent's model
             # through the gateway sidecar on the house key in /stack.
             plain("STACK_STATE", "/stack"),
             plain("ENVIRONMENTS_MODEL", "google/gemini-3.8-flash"),
-            secret("boat-api-key", "BOAT_API_KEY"),
+            # Our own Boat-compatible service on GCE (#11256), not boat.dev.
+            secret("oa-boat-api-key", "BOAT_API_KEY"),
+            plain("BOAT_API_BASE", "https://oa-boat-157437760789.us-central1.run.app/api/v1"),
             # Gemini on Vertex for the chat's images and PDFs (#11221).
             secret("openagents-gateway-staging-vertex-sa", "VERTEX_SA_JSON"),
             secret("openagents-web-1-staging-github-oauth", "GITHUB_OAUTH_JSON"),
