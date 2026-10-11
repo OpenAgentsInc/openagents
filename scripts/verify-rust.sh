@@ -25,7 +25,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-ALL_SLUGS="preflight gate-tooling artifacts delegation backup fmt clippy clippy-features tests tests-features nested dependents deps postgres metal-clippy metal-tests soak"
+ALL_SLUGS="preflight gate-tooling psionic-fixtures artifacts delegation backup fmt clippy clippy-features tests tests-features nested dependents deps postgres metal-clippy metal-tests soak"
 CARGO_SCOPED="fmt clippy clippy-features tests tests-features"
 features='kev/serve,lev/serve,gym/tui,jev/blocking,oak/mcp-http'
 
@@ -67,6 +67,7 @@ list_phases() {
   cat <<'EOF'
 preflight        Environment preflight: descriptors, tools, toolchains, disk
 gate-tooling     Gate tooling tests (verify-changed, gate-record)
+psionic-fixtures Psionic fixture existence (ratcheted allowlist)
 artifacts        Artifact acquisition tests
 delegation       Delegation evidence checks
 backup           Backup collection tests
@@ -114,7 +115,7 @@ done
 # Keep ordinary issue work targeted. Explicit phases may add relevant coverage,
 # but a bare invocation must not launch the release matrix.
 if (( ! release )); then
-  [[ -n $WANTED ]] || WANTED="preflight fmt clippy tests nested dependents"
+  [[ -n $WANTED ]] || WANTED="preflight psionic-fixtures fmt clippy tests nested dependents"
   if (( ! CRATES_SET )) && [[ -z $CHANGED ]]; then
     CHANGED="origin/main"
   fi
@@ -387,6 +388,8 @@ fi
 run_phase gate-tooling "Gate tooling tests" \
   bash -c 'python3 -B -m unittest discover -s scripts/tests -p "test_gate_*.py" \
     && python3 -B -m unittest discover -s scripts -p "test_verification_phase.py"'
+run_phase psionic-fixtures "Psionic fixture existence" \
+  python3 scripts/dev/check-psionic-fixtures.py
 run_phase artifacts "Artifact acquisition tests" \
   python3 scripts/test_fetch_kev_artifacts.py
 run_phase delegation "Delegation evidence checks" \

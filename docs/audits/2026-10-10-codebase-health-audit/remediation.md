@@ -24,6 +24,6 @@ names its finding IDs; read the commit for tests and scope notes.
 
 ## Open and blocked
 
-- **X-LINT-01 / X-DEP-01:** the dependency gate needs owner policy calls (7 git sources, license exceptions). The `paste` waiver (RUSTSEC-2024-0436) in `deny.toml` expires 2026-10-20. Tracked in the workspace `NEEDS_OWNER.md`.
+- **X-LINT-01 / X-DEP-01:** the dependency gate needs owner policy calls (7 git sources, license exceptions). The `paste` waiver (RUSTSEC-2024-0436) in `deny.toml` expires 2026-10-20. Tracked as openagents #11277 and in the workspace `NEEDS_OWNER.md`.
 - **X-SEC-01 follow-up:** `NOSTR_RELAY_TRUSTED_HOPS=1` assumes Cloud Run appends the client address last; watch relay rate-limit refusals after the next deploy.
 - **Pre-existing:** `eval-runner` unit tests do not compile on `main` (`.expose()` on an `Option` in `src/config.rs`).
