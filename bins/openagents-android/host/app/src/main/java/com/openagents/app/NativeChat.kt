@@ -520,6 +520,9 @@ class Composer(private val context: Context, private val send: (String, String) 
         root.gravity = Gravity.BOTTOM
         root.setPadding(context.dp(12), context.dp(8), context.dp(12), context.dp(8))
         capsule.gravity = Gravity.BOTTOM
+        // Baseline alignment would hold the send arrow (a text view) level
+        // with the field's first line; it sits on the last line instead.
+        capsule.isBaselineAligned = false
         capsule.minimumHeight = context.dp(50)
         capsule.background = context.rounded(Palette.RAISED, 25f, Palette.BORDER)
         capsule.setPadding(context.dp(6), context.dp(8), context.dp(8), context.dp(8))
@@ -568,9 +571,11 @@ class Composer(private val context: Context, private val send: (String, String) 
                 if (attachable && enabled && !busy) (root.getTag(R.id.native_key) as? String)?.let { stop(it) }
             }
         }
-        capsule.addView(attach, LinearLayout.LayoutParams(context.dp(34), context.dp(34)))
-        capsule.addView(field, LinearLayout.LayoutParams(0, -2, 1f))
-        capsule.addView(control, LinearLayout.LayoutParams(context.dp(34), context.dp(34)).apply { marginStart = context.dp(4) })
+        capsule.addView(attach, LinearLayout.LayoutParams(context.dp(34), context.dp(34)).apply { gravity = Gravity.BOTTOM })
+        capsule.addView(field, LinearLayout.LayoutParams(0, -2, 1f).apply { gravity = Gravity.BOTTOM })
+        capsule.addView(control, LinearLayout.LayoutParams(context.dp(34), context.dp(34)).apply {
+            marginStart = context.dp(4); gravity = Gravity.BOTTOM
+        })
         root.addView(capsule, LinearLayout.LayoutParams(-1, -2))
     }
 

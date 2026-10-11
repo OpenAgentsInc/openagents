@@ -800,8 +800,11 @@ class MainActivity : ComponentActivity() {
                 ("Playtest" to "account-playtest" to { open(AccountRoute.PLAYTEST) }).takeIf { Preview.on },
                 "Report a problem" to "account-report" to { report() },
             )), LinearLayout.LayoutParams(-1, -2).apply { if (Preview.on) topMargin = dp(24) })
-            addView(group(listOf(AccountRoute.COMPUTERS, AccountRoute.TAILNET).filter { Preview.shows(it) }
-                .map { it.title to "account-${it.name.lowercase()}" to { open(it) } }))
+            // Computers sits apart from Report a problem, as the groups below do.
+            val computers = listOf(AccountRoute.COMPUTERS, AccountRoute.TAILNET).filter { Preview.shows(it) }
+            if (computers.isNotEmpty()) addView(group(computers
+                .map { it.title to "account-${it.name.lowercase()}" to { open(it) } }),
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(24) })
             // System follows the phone; Rust saves the choice.
             addView(group(listOf("Appearance" to "account-appearance" to { chooseTheme() })),
                 LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(24) })

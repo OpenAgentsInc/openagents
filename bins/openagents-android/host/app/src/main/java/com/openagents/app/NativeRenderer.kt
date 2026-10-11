@@ -268,7 +268,16 @@ class NativeRenderer(
         view.setTag(R.id.native_key, key)
         if (!kind.startsWith("button") && kind != "composer") view.setPadding(space(style.textOrNull("padding_start")), space(style.textOrNull("padding_top")),
             space(style.textOrNull("padding_end")), space(style.textOrNull("padding_bottom")))
-        style.objectOrNull("background")?.let { view.setBackgroundColor(color(it)) }
+        // A card's background draws with its corner radius.
+        val radius = style.optInt("radius", 0)
+        style.objectOrNull("background")?.let {
+            if (radius > 0) {
+                view.background = context.rounded(color(it), radius.toFloat())
+            } else {
+                view.setBackgroundColor(color(it))
+            }
+            Unit
+        }
             ?: if (!kind.startsWith("button") && kind != "transcript") view.setBackgroundColor(Color.TRANSPARENT) else Unit
         (mounted.text ?: view as? TextView)?.let { text ->
             text.setTextColor(style.objectOrNull("foreground")?.let { color(it) }
