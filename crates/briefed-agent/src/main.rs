@@ -117,7 +117,27 @@ fn inside(root: &Path, input: &Value) -> Option<Option<String>> {
     };
     let resolved = resolve(root, path);
     let relative = resolved.strip_prefix(root).ok()?;
+    if !really_inside(root, &resolved) {
+        return None;
+    }
     Some(Some(relative.to_string_lossy().into_owned()))
+}
+
+/// Whether the longest existing ancestor of `path` (the path itself when it
+/// exists) still lies inside `root` once symlinks are followed. A link that
+/// exists but leads nowhere is not inside.
+fn really_inside(root: &Path, path: &Path) -> bool {
+    let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    let mut existing = path;
+    while existing.symlink_metadata().is_err() {
+        match existing.parent() {
+            Some(parent) => existing = parent,
+            None => return false,
+        }
+    }
+    existing
+        .canonicalize()
+        .is_ok_and(|real| real.starts_with(&root))
 }
 
 #[derive(Default)]
@@ -396,5 +416,43 @@ fn observe(root: &Path, briefed: &BTreeSet<String>, ledger: &Shared<Ledger>, mes
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod path_tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlinked_directory_pointing_outside_is_denied() {
+        let worktree = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("secret"), "s").unwrap();
+        let root = worktree.path().canonicalize().unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.join("link")).unwrap();
+        let path = root.join("link/secret");
+        let input = json!({"file_path": path.to_string_lossy()});
+        assert_eq!(inside(&root, &input), None);
+        let new = json!({"file_path": "link/new/file.rs"});
+        assert_eq!(inside(&root, &new), None);
+
+        let ledger: Shared<Ledger> = Arc::default();
+        let allowed = vec!["Read".to_owned()];
+        let result = decide(&root, &allowed, &ledger, "Read", &input);
+        assert!(!matches!(result, PermissionResult::Allow { .. }));
+        assert_eq!(lock(&ledger).denied.len(), 1);
+    }
+
+    #[test]
+    fn a_new_file_inside_is_allowed() {
+        let worktree = tempfile::tempdir().unwrap();
+        let root = worktree.path().canonicalize().unwrap();
+        std::fs::create_dir(root.join("src")).unwrap();
+        let input = json!({"file_path": "src/new/deeper/file.rs"});
+        assert_eq!(
+            inside(&root, &input),
+            Some(Some("src/new/deeper/file.rs".to_owned()))
+        );
     }
 }
