@@ -100,7 +100,7 @@ impl CoderEvent {
 }
 
 /// What the run is doing now, from a step the engine's adapter recorded:
-/// "Starting Grok Build…", "Grok Build connected · grok-4.7",
+/// "Starting Grok Build…", "Grok Build connected",
 /// "Thinking…".
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Status {
@@ -1701,7 +1701,7 @@ pub fn provider_name(provider: &Value) -> String {
 
 /// The status an adapter's effect step says, if it says one: an engine's
 /// session opening ("Starting Grok Build…") and opened ("Grok Build
-/// connected · grok-4.7"), and a prompt or model request going out
+/// connected"), and a prompt or model request going out
 /// ("Thinking…"). Commands and decisions say nothing here: their own rows
 /// show them.
 fn status(extra: &Value) -> Option<String> {
@@ -1726,12 +1726,8 @@ fn status(extra: &Value) -> Option<String> {
     if result.get("error").is_some_and(|error| !error.is_null()) {
         return None;
     }
-    Some(
-        match result["model"].as_str().filter(|model| !model.is_empty()) {
-            Some(model) => format!("{engine} connected · {model}"),
-            None => format!("{engine} connected"),
-        },
-    )
+    // The engine's name only: no surface names the vendor's model.
+    Some(format!("{engine} connected"))
 }
 
 /// At most `max` bytes of `text`, cut at a character boundary, and whether
@@ -3025,11 +3021,7 @@ mod tests {
         ];
         assert_eq!(
             statuses(&steps),
-            [
-                "Starting Grok Build…",
-                "Grok Build connected · grok-4.7",
-                "Thinking…"
-            ]
+            ["Starting Grok Build…", "Grok Build connected", "Thinking…"]
         );
         let failed = json!({"step_id": 7, "source": "system",
             "extensions": {"effect_result": {"kind": "grok_session", "result": {"error": "no login"}}}});

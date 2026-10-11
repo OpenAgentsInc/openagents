@@ -451,11 +451,7 @@ fn running(state: &State) -> Node<Intent> {
         any = true;
         children.push(text(
             &format!("link-computer-{index}"),
-            &format!(
-                "{} · {}",
-                computer.name,
-                if computer.online { "Online" } else { "Offline" }
-            ),
+            &board_title(computer),
             TextRole::Status,
             quiet(),
             true,
@@ -529,8 +525,8 @@ fn item_card(computer: &Agents, item: &Item, now: u64) -> Node<Intent> {
     if let Some(cost) = item.cost_usd.filter(|c| *c > 0.0) {
         facts.push(format!("${cost:.2}"));
     }
-    if let Some(engine) = &item.engine {
-        facts.push(engine.clone());
+    if let Some(engine) = item.engine.as_deref().and_then(engine_name) {
+        facts.push(engine);
     }
     let color = match item.status.as_str() {
         "asking" | "failed" => warn(),
@@ -541,7 +537,12 @@ fn item_card(computer: &Agents, item: &Item, now: u64) -> Node<Intent> {
         text(&format!("{key}-title"), &title, TextRole::Body, ink(), true),
         status(&format!("{key}-facts"), &facts.join(" · "), color),
     ];
-    if let Some(line) = item.line.as_ref().filter(|l| !l.trim().is_empty()) {
+    // A line that only repeats the status ("stopped") is left out.
+    if let Some(line) = item
+        .line
+        .as_ref()
+        .filter(|l| !l.trim().is_empty() && !l.trim().eq_ignore_ascii_case(word))
+    {
         lines.push(status(&format!("{key}-line"), line, quiet()));
     }
     let act = |action: &str, question: Option<String>| Intent::Act {
@@ -605,6 +606,14 @@ fn item_card(computer: &Agents, item: &Item, now: u64) -> Node<Intent> {
             },
         ));
     }
+    for (index, (label, url)) in github_refs(item).into_iter().enumerate() {
+        controls.push(button(
+            &format!("{key}-ref-{index}"),
+            &label,
+            Some(Glyph::Forward),
+            Intent::OpenLink { url },
+        ));
+    }
     if !controls.is_empty() {
         lines.push(Node {
             key: format!("{key}-controls"),
@@ -619,6 +628,125 @@ fn item_card(computer: &Agents, item: &Item, now: u64) -> Node<Intent> {
         });
     }
     card(&key, lines)
+}
+
+/// A board's heading: a computer with whether it is online, or a list
+/// that isn't one computer (OpenAgents Cloud's runs, paused Environments
+/// runs) by its name alone.
+fn board_title(computer: &Agents) -> String {
+    if matches!(computer.name.as_str(), "OpenAgents Cloud" | "Environments") {
+        return computer.name.clone();
+    }
+    format!(
+        "{} · {}",
+        computer.name,
+        if computer.online { "Online" } else { "Offline" }
+    )
+}
+
+/// The engine as a row names it: an engine's own name ("Claude Code"),
+/// never a model's (Coder names no vendor model on the
+/// phone). A word that looks like a model name (`claude-opus-5-5`,
+/// `openai/gpt-6`) is left out.
+fn engine_name(engine: &str) -> Option<String> {
+    let engine = engine.trim();
+    if engine.is_empty()
+        || engine
+            .chars()
+            .any(|c| c.is_ascii_digit() || matches!(c, '/' | ':'))
+    {
+        return None;
+    }
+    let named = match engine.to_ascii_lowercase().as_str() {
+        "claude" | "claude code" => "Claude Code",
+        "codex" => "Codex",
+        "grok" | "grok build" => "Grok Build",
+        "opencode" => "OpenCode",
+        "devin" => "Devin",
+        "bare" | "coder" => "Coder",
+        "briefed agent" | "briefed" => "Coder",
+        _ => "",
+    };
+    if !named.is_empty() {
+        return Some(named.to_owned());
+    }
+    let mut chars = engine.chars();
+    chars
+        .next()
+        .map(|first| first.to_uppercase().chain(chars).collect())
+}
+
+/// The repository a row's links point into.
+const DEFAULT_REPOSITORY: &str = "OpenAgentsInc/openagents";
+
+/// Whether `url` is a GitHub page a row may open.
+pub(crate) fn github_link(url: &str) -> bool {
+    url.starts_with("https://github.com/")
+        && url.len() <= 200
+        && !url
+            .chars()
+            .any(|c| c.is_whitespace() || c.is_control() || matches!(c, '"' | '<' | '>' | '\\'))
+}
+
+fn repository_ok(repository: &str) -> bool {
+    repository.split('/').count() == 2
+        && repository.split('/').all(|part| {
+            !part.is_empty()
+                && part
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
+        })
+}
+
+/// The GitHub pages a fleet row names (#11228, #11250), as the website's
+/// Agents page links them: the issue its title starts with
+/// (`#11250 in OpenAgentsInc/openagents`), the commit its line names
+/// (`landed 248c7ce8d6`), and a pull request's address. Each is a button
+/// with its label.
+pub(crate) fn github_refs(item: &Item) -> Vec<(String, String)> {
+    let mut words = item.title.split_whitespace();
+    let mut repository = DEFAULT_REPOSITORY.to_owned();
+    let title: Vec<&str> = item.title.split_whitespace().collect();
+    if let Some(at) = title.iter().position(|w| *w == "in")
+        && let Some(named) = title.get(at + 1)
+        && repository_ok(named)
+    {
+        repository = (*named).to_owned();
+    }
+    let mut refs = vec![];
+    if let Some(number) = words
+        .next()
+        .and_then(|w| w.strip_prefix('#'))
+        .map(|w| w.trim_end_matches([':', ',', '.']))
+        .filter(|n| !n.is_empty() && n.len() <= 9 && n.bytes().all(|b| b.is_ascii_digit()))
+    {
+        refs.push((
+            format!("Issue #{number}"),
+            format!("https://github.com/{repository}/issues/{number}"),
+        ));
+    }
+    let line = item.line.as_deref().unwrap_or_default();
+    let mut previous = "";
+    for word in line.split_whitespace() {
+        let core = word.trim_end_matches(['.', ',', ':', ';', ')']);
+        let lower = previous.to_ascii_lowercase();
+        if matches!(lower.as_str(), "landed" | "committed")
+            && (7..=40).contains(&core.len())
+            && core.bytes().all(|b| b.is_ascii_hexdigit())
+        {
+            let short: String = core.chars().take(7).collect();
+            refs.push((
+                format!("Commit {short}"),
+                format!("https://github.com/{repository}/commit/{core}"),
+            ));
+        } else if github_link(core) && core.contains("/pull/") {
+            refs.push(("Pull request".to_owned(), core.to_owned()));
+        }
+        previous = core;
+    }
+    refs.dedup_by(|a, b| a.1 == b.1);
+    refs.truncate(3);
+    refs
 }
 
 /// The memory notes on the account (#11182): those that apply everywhere,

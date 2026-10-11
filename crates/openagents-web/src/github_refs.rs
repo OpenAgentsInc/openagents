@@ -4,7 +4,8 @@
 //! may name a commit (`landed 248c7ce8d6`, `committed 18d6ee1d2b`) or a
 //! pull request's address. [`linked`] draws that text with the issue, the
 //! commit and the address as links to GitHub and everything else as plain
-//! text. The phone shows the same rows as plain text.
+//! text. The phone shows the same links as buttons
+//! (`openagents-mobile` `link_view::github_refs`).
 
 use maud::{Markup, html};
 

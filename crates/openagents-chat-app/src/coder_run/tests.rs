@@ -112,7 +112,7 @@ fn every_event_type_the_scripted_provider_emits_draws_a_row() {
         "Run printf 'import unittest\\n' > test_slugs.py",
         "Coder asks",
         "Should the test cover empty input too?",
-        "Coder continued on Claude Code · claude-opus-5-5 (turn 2)",
+        "Coder continued on Claude Code (turn 2)",
         "Yes, cover it.",
         "Coder finished",
         "I added test_slugs.py.",
@@ -555,7 +555,7 @@ fn a_later_turns_message_comes_before_its_card() {
     let text = text_of(&run.rows());
     let message = text.find("Yes, cover it.").unwrap();
     let card = text
-        .find("Coder continued on Claude Code · claude-opus-5-5 (turn 2)")
+        .find("Coder continued on Claude Code (turn 2)")
         .unwrap();
     assert!(message < card, "{text}");
 }

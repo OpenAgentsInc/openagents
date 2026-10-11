@@ -520,6 +520,80 @@ fn a_landing_queue_entry_shows_its_stage_without_controls() {
     );
 }
 
+/// #11228, #11250: a fleet row's issue, commit, and pull request open on
+/// GitHub; its engine is an engine's name, never a model's; and a list
+/// that isn't a computer has no Online or Offline.
+#[test]
+fn a_fleet_row_links_its_issue_commit_and_pull_request() {
+    let mut f = fixture();
+    let rows = json!({"computers": [
+        {"name": "OpenAgents Cloud", "online": false, "updated_unix": 2, "items": [
+            {"id": "w1", "kind": "agent", "title": "#11250 in OctoOrg/hello", "status": "done",
+             "engine": "claude", "started_unix": 1, "finished_unix": 61, "cost_usd": 1.25,
+             "line": "landed 248c7ce8d6 pull request https://github.com/OctoOrg/hello/pull/9"},
+            {"id": "w2", "kind": "agent", "title": "Tidy", "status": "working",
+             "engine": "claude-opus-5-5", "started_unix": 1}]},
+        {"name": "oa-dev-env-1", "online": true, "updated_unix": 1, "items": [
+            {"id": "t1", "kind": "agent", "title": "#7 Fix it", "status": "working",
+             "engine": "Briefed agent", "started_unix": 1}]}]});
+    f.site.answer("GET /v1/agents", 200, rows);
+    signed(&mut f);
+    until(|| f.link.lock().agents_read);
+    f.link.act(Action::Show {
+        screen: Screen::Running,
+        id: None,
+    });
+    until(|| f.link.lock().agents.len() == 2);
+    let packet = f.link.packet();
+    let mut words = vec![];
+    texts(packet.view.as_ref().unwrap(), &mut words);
+    for shown in [
+        "OpenAgents Cloud",
+        "oa-dev-env-1 · Online",
+        "Issue #11250",
+        "Commit 248c7ce",
+        "Pull request",
+        "Issue #7",
+    ] {
+        assert!(words.iter().any(|w| w == shown), "{shown}: {words:?}");
+    }
+    assert!(
+        words
+            .iter()
+            .any(|w| w.contains("$1.25") && w.contains("Claude Code")),
+        "{words:?}"
+    );
+    assert!(
+        !words
+            .iter()
+            .any(|w| w.contains("opus") || w.contains("Offline")),
+        "{words:?}"
+    );
+    assert!(words.iter().any(|w| w.ends_with("· Coder")), "{words:?}");
+    let refs = crate::link_view::github_refs(&f.link.lock().agents[0].items[0]);
+    assert_eq!(
+        refs.iter().map(|(_, url)| url.as_str()).collect::<Vec<_>>(),
+        [
+            "https://github.com/OctoOrg/hello/issues/11250",
+            "https://github.com/OctoOrg/hello/commit/248c7ce8d6",
+            "https://github.com/OctoOrg/hello/pull/9",
+        ]
+    );
+    // A tap opens the page; anything but a GitHub page is refused.
+    assert_eq!(
+        f.link.tap(Intent::OpenLink {
+            url: refs[0].1.clone()
+        }),
+        Some(refs[0].1.clone())
+    );
+    assert_eq!(
+        f.link.tap(Intent::OpenLink {
+            url: "https://evil.example/x".into()
+        }),
+        None
+    );
+}
+
 #[test]
 fn a_message_to_an_agent_goes_through_its_composer() {
     let mut f = fixture();

@@ -865,6 +865,11 @@ pub enum Intent {
     RemovePhoto {
         index: usize,
     },
+    /// Open a GitHub page an agent row names (its issue, commit, or pull
+    /// request, #11228) in the browser.
+    OpenLink {
+        url: String,
+    },
 }
 
 /// The surface's state, shared with its background reads.
@@ -1153,6 +1158,11 @@ impl Link {
             Intent::OpenPage => {
                 if let SignIn::Waiting { page, .. } = &self.lock().sign_in {
                     return Some(page.clone());
+                }
+            }
+            Intent::OpenLink { url } => {
+                if crate::link_view::github_link(&url) {
+                    return Some(url);
                 }
             }
             Intent::SignOut => self.sign_out(),

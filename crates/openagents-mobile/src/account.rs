@@ -36,6 +36,22 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "57",
+        title: "Agents on your account",
+        what_to_test: "Everything from build 56 applies. Sign in under Settings, then open Running from the menu: each agent on your computers and in OpenAgents Cloud shows its stage, time, and cost so far, with Issue, Commit, and Pull request buttons that open GitHub. A run paused on its Claude plan shows Continue on your key and Continue with OpenAgents. The account's chats list updates by itself.",
+        items: &[
+            Item {
+                title: "Links on agent rows",
+                detail: "Issue, Commit, and Pull request open the run's pages on GitHub.",
+            },
+            Item {
+                title: "Engine names",
+                detail: "Rows and steps name the engine, such as Claude Code, never a model.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "56",
         title: "Enter the Grid",
         what_to_test: "Everything from build 55 applies. Ask \"What is the Verse?\": the answer ends with an Enter the Grid card in the conversation, and a tap on it opens the Grid. On a new chat, tap Ask OpenAgents: the field stays above the keyboard.",

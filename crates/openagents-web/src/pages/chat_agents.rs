@@ -970,12 +970,21 @@ pub(crate) async fn paused_items(
         return Vec::new();
     }
     let saved = viewer.and_then(|viewer| crate::cloud::byo::saved_class_for(app, viewer));
+    let now_unix = now();
     paused
         .into_iter()
         .take(phone_api::MAX_ITEMS)
         .map(|(chat, task, run)| {
             let offered = studio.claude_choices(&task.environment, &task.id, saved);
-            paused_item(&chat, &task, run.paused_until, run.cost_usd, &offered)
+            let mut item = paused_item(&chat, &task, run.paused_until, run.cost_usd, &offered);
+            // Where the Claude plan stands, as the run last reported it
+            // (#11292), after why it waits.
+            if let Some(plan) = coder_engine_status::PlanUsage::from_events(&run.events)
+                .and_then(|plan| plan.text(now_unix, &|ms| clock(ms / 1000)))
+            {
+                item.line = item.line.map(|line| format!("{line} {plan}"));
+            }
+            item
         })
         .collect()
 }

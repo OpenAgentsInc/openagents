@@ -390,15 +390,14 @@ pub(super) fn worked(
         let meta = turn.meta.as_ref();
         if meta.is_some_and(|meta| meta.answer.is_some()) {
             steps.push("Found a ready answer".into());
-        } else if let Some(model) = &turn.model {
-            steps.push(format!("Wrote the answer with {model}"));
         } else {
+            // No model's name: the phone names no vendor model.
             steps.push("Wrote the answer".into());
         }
         // The first model provider missed the turn and another model
         // answered it (#11132).
-        if let Some(switched) = meta.and_then(|meta| meta.switched.as_ref()) {
-            steps.push(switched.line());
+        if meta.is_some_and(|meta| meta.switched.is_some()) {
+            steps.push("Another model answered it".into());
         }
         if meta.is_some_and(|meta| !meta.offers.is_empty()) {
             steps.push("Suggested a next step".into());

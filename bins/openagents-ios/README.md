@@ -268,8 +268,15 @@ chats…** lists them by computer. A chat opens read and reply: a reply to a
 terminal chat waits until Coder on that computer takes it. The phone asks
 once where its own chats live (**Sync all my chats** or **Keep chats on
 this phone**); with sync on, each phone chat uploads, screened for keys.
-**Running** shows what Coder runs on each computer (status, time, cost) with
-**Approve**, **Deny**, **Stop**, and **Message**. A change to finished,
+**Running** shows what Coder runs on each computer, in OpenAgents Cloud,
+and on cloud environments (status, stage, time, cost so far, and the
+engine's name, never a model's) with **Approve**, **Deny**, **Stop**, and
+**Message**; a landing queue entry has no Stop or Message, a run paused on
+its Claude plan offers **Continue on your key** and **Continue with
+OpenAgents** and says where the plan stands, and **Issue**, **Commit**, and
+**Pull request** open the row's GitHub pages. `AccountGateUITests` signs in
+with a code (written to the shots folder for approval) and captures these
+screens, against staging with `TEST_RUNNER_OPENAGENTS_UITEST_ORIGIN`. A change to finished,
 failed, or asking shows as a local notification, with **Approve** and
 **Deny** on a question; the app also reads in the background
 (`BGAppRefreshTask`, `com.openagents.app.link-refresh`) about every 15

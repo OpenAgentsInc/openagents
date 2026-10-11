@@ -1333,9 +1333,8 @@ impl Rows {
                     started.line()
                 } else {
                     format!(
-                        "Coder continued on {} · {} (turn {})",
+                        "Coder continued on {} (turn {})",
                         coder_events::provider_name(&serde_json::json!(started.provider)),
-                        started.model,
                         started.turn
                     )
                 };
