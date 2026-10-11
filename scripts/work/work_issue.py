@@ -373,8 +373,9 @@ def run_bare(run: Run, issue: dict, root: Path, out: Path, model: str, timeout: 
     prompt = (f"Complete this issue.\n\n#{issue['number']} {issue['title']}\n\n{issue.get('body') or ''}"
               f"\n\n{NO_LANDING}")
     argv = [shutil.which("claude") or "claude", "-p", prompt, "--output-format", "stream-json", "--verbose",
-            "--model", model, "--dangerously-skip-permissions", "--no-session-persistence",
-            "--strict-mcp-config"]
+            "--dangerously-skip-permissions", "--no-session-persistence", "--strict-mcp-config"]
+    if model:
+        argv += ["--model", model]
     run.say("agent", "Claude Code is working", engine="bare")
     t0 = time.time()
     result, timed_out = None, False
@@ -444,6 +445,13 @@ def land(run: Run, root: Path, repo: str, issue: dict, how: str, run_id: str, en
     return {"how": "pr", "branch": branch, "url": url}
 
 
+def default_model() -> str | None:
+    """The bench's model on Anthropic's own sign-ins; on a cloud provider's
+    credential, the provider's default (its model names differ)."""
+    cloud = ("CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY")
+    return None if any(os.environ.get(k) for k in cloud) else "claude-opus-5-5"
+
+
 # --------------------------------------------------------------------- main
 
 def attempt(run: Run, engine: str, issue: dict, checkout: Path, base: str, out: Path, args, b: dict | None) -> dict:
@@ -468,7 +476,7 @@ def main() -> int:
     ap.add_argument("--checkout")
     ap.add_argument("--out")
     ap.add_argument("--run-id")
-    ap.add_argument("--model", default=os.environ.get("OA_WORK_MODEL", "claude-opus-5-5"))
+    ap.add_argument("--model", default=os.environ.get("OA_WORK_MODEL") or default_model())
     ap.add_argument("--timeout", type=int, default=1500)
     ap.add_argument("--keep", action="store_true", help="keep the worktrees")
     args = ap.parse_args()

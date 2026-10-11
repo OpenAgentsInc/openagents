@@ -3814,7 +3814,7 @@
               "work"
             ],
             "usage": [
-              "work --issues NUMBERS|LABEL [--parallel N] [--land main|pr] [--on boat|gce]"
+              "work --issues NUMBERS|LABEL [--parallel N] [--land queue|main|pr|none] [--on boat|gce] [--engine briefed|bare]"
             ],
             "forms": [
               {
@@ -3839,10 +3839,12 @@
                   {
                     "kind": "option",
                     "name": "land",
-                    "value": "main|pr",
+                    "value": "queue|main|pr|none",
                     "choices": [
+                      "queue",
                       "main",
-                      "pr"
+                      "pr",
+                      "none"
                     ],
                     "optional": true
                   },
@@ -3855,11 +3857,21 @@
                       "gce"
                     ],
                     "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "engine",
+                    "value": "briefed|bare",
+                    "choices": [
+                      "briefed",
+                      "bare"
+                    ],
+                    "optional": true
                   }
                 ]
               }
             ],
-            "summary": "Hand several issues to Coder, one issue flow each, each in its own thread: NUMBERS such as 10050,10051, or a LABEL's open issues. --parallel (1 to 4, default 1) runs that many at once, each in its own worktree. Issues claimed in the last hours (the repository's claim window) and closed issues are skipped. --land overrides the repository's policy. --on boat runs each issue on a Boat sandbox of its own instead of this computer (--parallel up to 16; starts are queued under Boat's start limits): started from the newest oa-coder-main-<date> template (--template NAME picks one; with none, a seed is set up once and forked), the same issue flow runs and lands there, its events stream here, and the sandbox's machine time and cost go in a comment on the issue. The sandbox stops when its run ends and is deleted once the issue landed. --engine-logins api-keys (default: Codex on this computer's ChatGPT login, sent as a copy that can't refresh; with --engine-fallback, else an OpenAI key from OA_CODER_OPENAI_API_KEY or Secret Manager coder-openai-api-key; and Grok Build's XAI_API_KEY) or boat (subscriptions connected on Boat's dashboard). Needs BOAT_API_KEY or Secret Manager oa-boat-api-key (our own sandbox service, docs/cloud/oa-boat.md), and a GitHub token (OA_BOAT_GH_TOKEN, Secret Manager coder-pool-git-token, or `gh auth token`); docs/cloud/boat-chat-work.md. With --engine-logins api-keys, cloud runs require a ChatGPT access token with at least 2 h left. If it is short, open Codex on the Mac once to refresh it, then rerun. --engine-fallback allows an OpenAI API key or Grok Build instead, and allows switching engines during the run. Without it, runs use only Codex on the ChatGPT login and refuse if it is unavailable. --on gce runs each issue on the GCE pool this computer granted with `openagents cloud up` (--parallel up to 32, two runs per host; the pool grows within the grant's --max-hosts): the same issue flow runs and lands on a pool host, its events stream here, and its wall time and estimated cost go in a comment on the issue. Hosts delete themselves when idle. A lost host resumes on another pool host from its pushed progress or stranded branch, or from scratch. When spot capacity is unavailable, new hosts fall back to on demand. Preemptions go in the run record. Without a live grant it refuses; it never runs elsewhere. Engine logins use the ChatGPT copy first, or with --engine-fallback, Codex's OpenAI key or Grok Build's XAI_API_KEY, as for boat; docs/cloud/gce-pool.md.",
+            "summary": "Work several issues: NUMBERS such as 10050,10051, or a LABEL's open issues. By default the briefed agent works each one (--engine briefed): a briefing of the files the issue needs, the agent with its check tool, the checks replayed on the actual diff, Claude Code instead when the briefing is weak, the checks keep failing, or a capability is missing (it says which), then the landing queue (--land queue, or main) or a pull request (--land pr; none commits only). Here it uses this computer's Claude Code login; with --on it goes to openagents.com's work hosts under your sign-in (coder login) and your own Claude sign-in from Settings > Claude. Each issue ends with its engine, time, cost (unknown when not reported), checks, and pull request or landing entry. --engine bare keeps the Coder issue flow below. With --engine bare: hand several issues to Coder, one issue flow each, each in its own thread. --parallel (1 to 4, default 1) runs that many at once, each in its own worktree. Issues claimed in the last hours (the repository's claim window) and closed issues are skipped. --land overrides the repository's policy. --on boat runs each issue on a Boat sandbox of its own instead of this computer (--parallel up to 16; starts are queued under Boat's start limits): started from the newest oa-coder-main-<date> template (--template NAME picks one; with none, a seed is set up once and forked), the same issue flow runs and lands there, its events stream here, and the sandbox's machine time and cost go in a comment on the issue. The sandbox stops when its run ends and is deleted once the issue landed. --engine-logins api-keys (default: Codex on this computer's ChatGPT login, sent as a copy that can't refresh; with --engine-fallback, else an OpenAI key from OA_CODER_OPENAI_API_KEY or Secret Manager coder-openai-api-key; and Grok Build's XAI_API_KEY) or boat (subscriptions connected on Boat's dashboard). Needs BOAT_API_KEY or Secret Manager oa-boat-api-key (our own sandbox service, docs/cloud/oa-boat.md), and a GitHub token (OA_BOAT_GH_TOKEN, Secret Manager coder-pool-git-token, or `gh auth token`); docs/cloud/boat-chat-work.md. With --engine-logins api-keys, cloud runs require a ChatGPT access token with at least 2 h left. If it is short, open Codex on the Mac once to refresh it, then rerun. --engine-fallback allows an OpenAI API key or Grok Build instead, and allows switching engines during the run. Without it, runs use only Codex on the ChatGPT login and refuse if it is unavailable. --on gce runs each issue on the GCE pool this computer granted with `openagents cloud up` (--parallel up to 32, two runs per host; the pool grows within the grant's --max-hosts): the same issue flow runs and lands on a pool host, its events stream here, and its wall time and estimated cost go in a comment on the issue. Hosts delete themselves when idle. A lost host resumes on another pool host from its pushed progress or stranded branch, or from scratch. When spot capacity is unavailable, new hosts fall back to on demand. Preemptions go in the run record. Without a live grant it refuses; it never runs elsewhere. Engine logins use the ChatGPT copy first, or with --engine-fallback, Codex's OpenAI key or Grok Build's XAI_API_KEY, as for boat; docs/cloud/gce-pool.md.",
             "effect": "publishes",
             "runs_on": "connected_computer"
           }
@@ -3921,10 +3933,12 @@
         {
           "kind": "option",
           "name": "land",
-          "value": "main|pr",
+          "value": "queue|main|pr|none",
           "choices": [
+            "queue",
             "main",
-            "pr"
+            "pr",
+            "none"
           ],
           "optional": true,
           "repeated": true
@@ -3936,6 +3950,17 @@
           "choices": [
             "boat",
             "gce"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "engine",
+          "value": "briefed|bare",
+          "choices": [
+            "briefed",
+            "bare"
           ],
           "optional": true,
           "repeated": true

@@ -133,6 +133,14 @@ def work(site: Site, job: dict, stop: threading.Event) -> None:
     env.update(credential)
     if "ANTHROPIC_API_KEY" in credential:
         env["OA_WORK_KEEP_API_KEY"] = "1"
+    # A Vertex credential's service account goes in a file of the run's
+    # own, as Claude Code reads it (coder-cloud's launch script does the same).
+    account = env.pop("OA_CLAUDE_VERTEX_SERVICE_ACCOUNT", None)
+    if account:
+        path = run_dir / "vertex.json"
+        path.touch(mode=0o600)
+        path.write_text(account)
+        env["GOOGLE_APPLICATION_CREDENTIALS"] = str(path)
     env.update({
         "HOME": str(home), "CARGO_HOME": str(HOME / ".cargo"), "RUSTUP_HOME": str(HOME / ".rustup"),
         "CLOUDSDK_CONFIG": str(HOME / ".config" / "gcloud"),
@@ -148,6 +156,7 @@ def work(site: Site, job: dict, stop: threading.Event) -> None:
     if job["repo"].lower() == "openagentsinc/openagents":
         argv += ["--checkout", str(ROOT)]
     log(f"run {run_id}: {job['repo']}#{job['issue']} ({job.get('engine')}, land {job.get('land')})")
+    vertex = run_dir / "vertex.json"
     proc = subprocess.Popen(argv, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=open(run_dir / "stderr.txt", "w"),
                             stdin=subprocess.DEVNULL, text=True, start_new_session=True)
     del credential, env
@@ -201,6 +210,7 @@ def work(site: Site, job: dict, stop: threading.Event) -> None:
         if stop.is_set() and proc.poll() is None:
             os.killpg(proc.pid, signal.SIGTERM)
     proc.wait()
+    vertex.unlink(missing_ok=True)
     done.set()
     thread.join(timeout=10)
     if result is not None:
