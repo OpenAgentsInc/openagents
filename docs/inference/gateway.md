@@ -843,6 +843,11 @@ P1 public API as built (#11065), deployed in both gateway sidecars:
   requests, and never per tenant, which every personal workspace made by
   sign-up shares (#11186). A request is free only when every planned attempt is a
   listed model; one that fails before its first token gives its count back.
+- Free allowance: `inference.public.free_allowance` (`usd_micros_per_day`,
+  `models`): a signed-in account's `sess_` session gets that much model
+  cost a UTC day on the listed router models before its balance, reserved
+  at the worst case and settled at the reported usage (#11264,
+  [providers.md](providers.md#free-daily-allowance-11264)).
 - Paying: one `tenancy::money` hold per distinct model the plan may try,
   priced at that model's rate card row plus margin (capacity `inference`,
   policy `observed-usage-v1`, a price version per model and rates), over

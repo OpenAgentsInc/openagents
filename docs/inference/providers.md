@@ -21,6 +21,33 @@ with OpenAI's `text-embedding-3-small` keeps an OpenAI embedder for reading
 until it is rebuilt with a Vertex model; pick the embedder from the index's
 own model (`crates/coder/src/codebase.rs` `embedder_for`).
 
+## Free daily allowance (#11264)
+
+Owner direction, 2026-10-10: a signed-in account gets a free daily
+allowance of model cost on our gateway, funded from the Google credit, so
+Coder's `auto` turn is answered by `openagents/auto` (Vertex first) instead
+of a `402 insufficient_balance` and a fallback.
+
+- **Setting:** `inference.public.free_allowance` (`usd_micros_per_day`,
+  `models`) in the gateway config; `deploy/staging/gateway.sh` (staging and
+  production) sets it from `GATEWAY_FREE_ALLOWANCE_MICROS`, default
+  `1000000` (about $1 of model cost a day).
+- **Scope:** `openagents/auto` and `openagents/fast` only, and only for a
+  signed-in account's `sess_` session (Coder after `coder login`). An `oak_`
+  key gets no allowance.
+- **Use:** one allowance per account per UTC day, in the key book
+  (`inference-keys.json`, `allowance`). Each request reserves its worst
+  case and settles at the reported usage at the rate card; it is metered as
+  a free attempt and shows as `free_allowance` in the workspace usage
+  summary. An account with its own balance spends the allowance first.
+  The existing rate limits still apply.
+- **Used up:** with no balance left either, the request gets `402
+  insufficient_balance` with "Today's free allowance is used up. Add credit
+  or use your own key." Coder then takes `auto`'s next door as before.
+
+Code: `crates/gateway/src/inference_public.rs` (`admit`, `Kind::Allowance`),
+tests in `crates/gateway/tests/inference_public.rs`.
+
 Google credentials: `inference::upstream::google::TokenSource` reads
 `VERTEX_ACCESS_TOKEN`, `VERTEX_TOKEN_FILE`, `GOOGLE_APPLICATION_CREDENTIALS`,
 or the GCE metadata server when `GCE_METADATA_HOST` / `K_SERVICE` is set.

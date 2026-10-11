@@ -274,6 +274,8 @@ struct Admitted {
     scopes: Option<keys::Scopes>,
     scope: String,
     service: bool,
+    /// The signed-in account a `sess_` session belongs to; `None` for a key.
+    account: Option<String>,
 }
 
 /// The caller, or the refusal. A service tenant's key is metered and not
@@ -306,6 +308,7 @@ pub(crate) fn admit(state: &Arc<ServeState>, headers: &HeaderMap) -> Result<Call
         scopes,
         scope,
         service,
+        account,
     } = if token.starts_with("sess_") {
         admit_session(state, config, headers, token)?
     } else {
@@ -319,6 +322,7 @@ pub(crate) fn admit(state: &Arc<ServeState>, headers: &HeaderMap) -> Result<Call
                 key_id: key_id.clone(),
                 scopes,
                 scope: scope.clone(),
+                account,
             },
         )))
     });
@@ -416,6 +420,7 @@ fn admit_key(
         scopes: authenticated.scopes,
         scope,
         service,
+        account: None,
     })
 }
 
@@ -470,6 +475,7 @@ fn admit_session(
         scopes: None,
         scope,
         service: false,
+        account: Some(account),
     })
 }
 
