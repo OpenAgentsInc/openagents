@@ -10,6 +10,8 @@ pub const DEFAULT_MODEL: &str = "openrouter/free";
 /// What the default model is called wherever Coder shows it: OpenAgents
 /// picks the model, so no vendor's name is advertised.
 pub const AUTO: &str = "auto";
+/// What the rail and mode list call the auto model: Coder picks the model.
+pub const AUTO_LABEL: &str = "coder auto";
 /// The OpenAgents inference gateway's own router, the first door of an
 /// `auto` turn when the person is signed in (docs/inference/providers.md).
 pub const GATEWAY_AUTO: &str = "openagents/auto";
@@ -46,11 +48,11 @@ pub fn label(model: &str) -> String {
     // `openagents/auto` has no colon; a slug's settings start at the first one.
     let base = model.split(':').next().unwrap_or(model);
     if !pinned(base) {
-        return AUTO.into();
+        return AUTO_LABEL.into();
     }
     let name = base.rsplit('/').next().unwrap_or(base);
     if name.is_empty() {
-        AUTO.into()
+        AUTO_LABEL.into()
     } else {
         name.into()
     }
@@ -466,8 +468,8 @@ mod pinned_tests {
                 max_tokens: None,
             }
             .slug(default);
-            assert_eq!(label(default), "auto");
-            assert_eq!(label(&slug), "auto", "{slug}");
+            assert_eq!(label(default), "coder auto");
+            assert_eq!(label(&slug), "coder auto", "{slug}");
         }
         assert_eq!(label("openai/gpt-6-luna:none"), "gpt-6-luna");
         assert_eq!(label("openai/gpt-6-luna:low:max-tokens=4096"), "gpt-6-luna");

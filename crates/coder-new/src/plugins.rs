@@ -149,7 +149,7 @@ impl<'a> From<&'a crate::plugin_definition::PluginDefinition> for PickerDefiniti
 
 impl Plugins {
     /// The rail names the model only when the person chose one in /models
-    /// (`auto` otherwise), and never with settings such as `:none`.
+    /// (`coder auto` otherwise), and never with settings such as `:none`.
     pub fn composer_rails(&self) -> Vec<ResolvedRail> {
         let model = crate::models::label(&self.model);
         resolve_composer_rails(DEFINITIONS, |definition, binding| {
@@ -696,7 +696,7 @@ mod rail_tests {
             plugins.composer_rails(),
             vec![ResolvedRail {
                 slot: RailSlot::ComposerTopRight,
-                text: "auto".to_owned(),
+                text: "coder auto".to_owned(),
             }]
         );
         assert!(plugins.set_model(&openrouter_catalog()[1], GenerationOptions::default()));
@@ -712,7 +712,7 @@ mod rail_tests {
         assert_eq!(plugins.composer_rails()[0].text, "gpt-6-luna");
         // Back to the default with a stale effort saved: still `auto`.
         plugins.model = DEFAULT_MODEL.into();
-        assert_eq!(plugins.composer_rails()[0].text, "auto");
+        assert_eq!(plugins.composer_rails()[0].text, "coder auto");
         assert!(plugins.toggle_enabled());
         assert!(plugins.composer_rails().is_empty());
     }
@@ -725,11 +725,11 @@ mod rail_tests {
         plugins.set_live(true);
         assert!(plugins.composer_rails().is_empty());
         plugins.toggle_enabled();
-        assert_eq!(plugins.composer_rails()[0].text, "auto");
+        assert_eq!(plugins.composer_rails()[0].text, "coder auto");
         plugins.set_live(false);
         assert_eq!(plugins.composer_rails()[0].text, "claude-fable-5.1");
         plugins.set_live(true);
-        assert_eq!(plugins.composer_rails()[0].text, "auto");
+        assert_eq!(plugins.composer_rails()[0].text, "coder auto");
     }
 
     #[test]

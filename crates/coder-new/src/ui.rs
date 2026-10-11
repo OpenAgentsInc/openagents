@@ -547,8 +547,8 @@ fn repository_rail(app: &App) -> String {
     text
 }
 
-/// The mode the input's rail names: `flash` (Tab), `microclaude`
-/// (Shift+Tab), else `auto` unless the person picked a model of their own.
+/// The mode the input's rail names: `flash`, `microclaude` or `solver`
+/// (Shift+Tab), else `coder auto` unless the person picked a model of their own.
 fn rail_mode(app: &App) -> Option<&'static str> {
     if app.mode == Mode::Microclaude {
         return Some(crate::microclaude::LABEL);
@@ -563,7 +563,7 @@ fn rail_mode(app: &App) -> Option<&'static str> {
     if keyed && app.plugins.model == crate::models::FLASH {
         Some(crate::models::FLASH_LABEL)
     } else if !keyed || !crate::models::pinned(&app.plugins.model) {
-        Some(crate::models::AUTO)
+        Some(crate::models::AUTO_LABEL)
     } else {
         None
     }
@@ -1816,7 +1816,7 @@ fn composer_view(
             Some((
                 &text,
                 Style::default().fg(match contribution.text.as_str() {
-                    crate::models::AUTO => t::ACCENT_SKILL,
+                    crate::models::AUTO_LABEL => t::ACCENT_SKILL,
                     crate::models::FLASH_LABEL => t::ACCENT_MODEL,
                     crate::microclaude::LABEL | crate::solver::LABEL => t::ACCENT_DELEGATE,
                     _ => t::GRAY,
@@ -1928,12 +1928,14 @@ mod export_notice_tests {
         terminal.draw(|frame| render(frame, &mut app)).unwrap();
         let buffer = terminal.backend().buffer();
         let mut found = false;
+        let label = crate::models::AUTO_LABEL;
+        let n = label.chars().count() as u16;
         for y in 0..20 {
-            for x in 0..57 {
-                let text: String = (x..x + 4).map(|x| buffer[(x, y)].symbol()).collect();
-                if text == crate::models::AUTO {
+            for x in 0..60 - n {
+                let text: String = (x..x + n).map(|x| buffer[(x, y)].symbol()).collect();
+                if text == label {
                     found = true;
-                    for x in x..x + 4 {
+                    for x in x..x + n {
                         assert_eq!(buffer[(x, y)].fg, t::ACCENT_SKILL);
                     }
                 }
