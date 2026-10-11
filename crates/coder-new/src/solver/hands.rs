@@ -39,7 +39,32 @@ must change, each with one line on what changes there; drop candidates that don'
 `## Shape of the change` (the functions, types and behavior to add or alter, concretely), \
 `## Tests` (which tests to add or change, or none for a docs-only change), `## Checks` (only the \
 checks that exercise the files that change: a docs or link change needs no compile check). Be \
-specific and short. You cannot edit files.";
+specific and short. You cannot edit files. End with exactly one line: `SIZE: small` when the \
+change is a few lines in one or two files and the fix is clear, or `SIZE: large` otherwise.";
+
+/// How big the Briefer judged the change, from its `SIZE:` line.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Size {
+    Small,
+    Large,
+}
+
+impl Size {
+    /// The last `SIZE:` line of a Briefer reply; `Large` when there is none.
+    #[must_use]
+    pub fn parse(reply: &str) -> Self {
+        match reply
+            .lines()
+            .rev()
+            .find_map(|line| line.trim().strip_prefix("SIZE:"))
+            .map(|word| word.trim().trim_matches('`').to_ascii_lowercase())
+            .as_deref()
+        {
+            Some("small") => Self::Small,
+            _ => Self::Large,
+        }
+    }
+}
 
 /// The Tester's system prompt.
 const TESTER: &str = "You are the Tester of a four-hand coding run. The Coder has changed the \
@@ -254,6 +279,7 @@ pub async fn code(
     base: &Base,
     briefing: &Briefing,
     notes: Option<&str>,
+    model: &str,
     round: usize,
     folder: &Path,
     transcript: &mut Transcript,
@@ -272,7 +298,7 @@ pub async fn code(
     let session = Session {
         title: "Coder".into(),
         detail: "Changes the working copy from the briefing and the analysis".into(),
-        model: options.inner.model.clone(),
+        model: model.to_owned(),
         timeout: options.inner.timeout,
         tools: CODE_TOOLS.iter().map(|t| (*t).to_owned()).collect(),
         checks: compile_checks(briefing),

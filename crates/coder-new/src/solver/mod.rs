@@ -227,7 +227,9 @@ Options:
   --github OWNER/R      The GitHub repository of the issue (default: OpenAgentsInc/openagents).
   --rounds R            How many times the Tester may hand work back (default 2).
   --no-pr               Stop after the checks; open no pull request.
-  --coder-model NAME    The Coder's model (default claude-opus-5-5).
+  --coder-model NAME    The Coder's model on every round. Without it, a change the
+                        Briefer judges small starts on sonnet and a large one, or
+                        any hand-back, uses claude-opus-5-5.
   --briefer-model NAME  The Intaker's and Briefer's model (default haiku).
   --tester-model NAME   The Tester's model (default sonnet).
   --files K             Files in the briefing (default 6).
@@ -269,6 +271,10 @@ pub struct Options {
     pub json: bool,
     pub briefer_model: String,
     pub tester_model: String,
+    /// The Coder's model for a change the Briefer judged small, when no
+    /// `--coder-model` was given; `None` when the Coder's model is fixed.
+    /// A hand-back always goes to the full Coder model.
+    pub small_coder: Option<String>,
 }
 
 impl Options {
@@ -282,6 +288,7 @@ impl Options {
         let mut open_pr = true;
         let mut briefer_model = "haiku".to_owned();
         let mut tester_model = "sonnet".to_owned();
+        let mut small_coder = Some("sonnet".to_owned());
         // Claude only: the briefing's ranking is deterministic and the Haiku
         // Briefer judges it; no decision-model door is asked.
         let mut inner_args: Vec<String> = vec![
@@ -307,6 +314,7 @@ impl Options {
                 "--no-pr" => open_pr = false,
                 "--json" => json = true,
                 "--coder-model" => {
+                    small_coder = None;
                     inner_args.push("--model".into());
                     inner_args.push(value("--coder-model")?);
                 }
@@ -327,7 +335,19 @@ impl Options {
             json,
             briefer_model,
             tester_model,
+            small_coder,
         })
+    }
+}
+
+/// The Coder's model for `round`: the small model for a change the Briefer
+/// judged small on the first try, the full model otherwise and after any
+/// hand-back.
+#[must_use]
+pub fn coder_model(options: &Options, size: hands::Size, round: usize) -> String {
+    match &options.small_coder {
+        Some(small) if size == hands::Size::Small && round == 0 => small.clone(),
+        _ => options.inner.model.clone(),
     }
 }
 
@@ -491,6 +511,7 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
         transcript,
     )
     .await;
+    let size = hands::Size::parse(briefer.work.reply.as_deref().unwrap_or_default());
     end.turns.push(briefer);
     // A browser-build crate's wasm32 half compiles only for that target.
     let wasm = setup::briefed_wasm_checks(&base.worktree, &briefing);
@@ -505,11 +526,13 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
             break Outcome::stopped(Status::Cancelled, "The run was stopped.");
         }
         end.rounds = round;
+        let model = coder_model(options, size, round);
         let coder = hands::code(
             options,
             &base,
             &briefing,
             notes.as_deref(),
+            &model,
             round,
             folder,
             transcript,

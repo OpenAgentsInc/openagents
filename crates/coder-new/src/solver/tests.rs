@@ -331,3 +331,17 @@ fn the_harness_runs_required_and_wasm_checks() {
     assert!(!harness_runs(&check("test:a", false)));
     assert!(!harness_runs(&check("fmt:a", false)));
 }
+
+#[test]
+fn a_small_change_starts_on_the_small_coder_and_a_hand_back_uses_the_full_one() {
+    use super::{coder_model, hands::Size};
+    assert_eq!(Size::parse("## Files\n...\nSIZE: small"), Size::Small);
+    assert_eq!(Size::parse("SIZE: `Large`"), Size::Large);
+    assert_eq!(Size::parse("no size line"), Size::Large);
+    let options = Options::parse(&args(&["11338"])).unwrap();
+    assert_eq!(coder_model(&options, Size::Small, 0), "sonnet");
+    assert_eq!(coder_model(&options, Size::Small, 1), options.inner.model);
+    assert_eq!(coder_model(&options, Size::Large, 0), options.inner.model);
+    let fixed = Options::parse(&args(&["11338", "--coder-model", "claude-opus-5-5"])).unwrap();
+    assert_eq!(coder_model(&fixed, Size::Small, 0), "claude-opus-5-5");
+}
