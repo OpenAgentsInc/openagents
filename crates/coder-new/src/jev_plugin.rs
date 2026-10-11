@@ -558,6 +558,7 @@ mod tests {
             shell: false,
             brainstorm: None,
             disclosure_desk: None,
+            harness: None,
             memory: None,
         };
         let client = settings.jev_client().unwrap().unwrap();
@@ -833,6 +834,7 @@ mod tests {
                 shell: false,
                 brainstorm: None,
                 disclosure_desk: None,
+                harness: None,
                 memory: None,
             };
             let result = if chat_tool {

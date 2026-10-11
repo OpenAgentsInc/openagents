@@ -260,13 +260,42 @@ impl Provider {
                 .find(|message| message.role == "user")
                 .map_or("", |message| message.content.as_str()),
         );
-        let execution = &scoped;
-        let definitions = execution.defs();
         let model = if model.trim().is_empty() {
             crate::models::DEFAULT_MODEL
         } else {
             model.trim()
         };
+        let mut scoped = scoped;
+        // A chat's first tool turn decides its harness (#11289); later
+        // turns keep it.
+        if scoped.harness.is_none() && !scoped.defs().is_empty() {
+            let client = if cfg!(test) {
+                None
+            } else {
+                scoped.jev_client().ok().flatten()
+            };
+            let opening = messages
+                .iter()
+                .find(|message| message.role == "user")
+                .map_or("", |message| message.content.as_str());
+            let run = tokio::time::timeout(
+                Duration::from_secs(5),
+                crate::harness::for_conversation(
+                    client.as_ref(),
+                    model,
+                    opening,
+                    crate::long_session::context_tokens_from_env(),
+                ),
+            )
+            .await
+            .unwrap_or_else(|_| {
+                crate::harness::Run::choose(None, crate::harness::DecidedBy::Fallback, 0)
+            });
+            event_callback(RuntimeEvent::Harness(Box::new(run.clone())));
+            scoped.harness = Some(run);
+        }
+        let execution = &scoped;
+        let definitions = execution.defs();
         let mut request = ChatRequest::new(model, vec![]);
         if let Some(effort) = &options.reasoning {
             request = request.effort(effort);
@@ -341,7 +370,16 @@ impl Provider {
         let mut have_usage = false;
         let mut failures = 0u32;
         // Identical consecutive calls across this turn (#11285).
-        let mut stuck = crate::stuck::Tracker::default();
+        let mut stuck =
+            execution
+                .harness
+                .as_ref()
+                .map_or_else(crate::stuck::Tracker::default, |run| {
+                    crate::stuck::Tracker::with_thresholds(
+                        run.config.stuck.remind,
+                        run.config.stuck.stop,
+                    )
+                });
         let provider = GenerationProvider {
             client: self.chat.clone(),
             model: model.into(),
@@ -1345,6 +1383,12 @@ mod tests {
             shell: false,
             brainstorm: None,
             disclosure_desk: None,
+            // A decided harness, so these tests see no harness event.
+            harness: Some(crate::harness::Run::choose(
+                None,
+                crate::harness::DecidedBy::Fallback,
+                999,
+            )),
             memory: None,
         }
     }
@@ -2210,6 +2254,77 @@ mod tests {
         );
         // The turn ended without asking the model a ninth time.
         assert_eq!(requests.len(), 8);
+    }
+
+    #[test]
+    fn the_harness_is_decided_once_and_shapes_the_offered_tools() {
+        let temp = tempfile::tempdir().unwrap();
+        let tools_offered = |harness: Option<crate::harness::Run>| {
+            let (base, server) = sequence(vec![final_reply("Done.")]);
+            let provider = Provider::with_base(ApiKey::new(FIXTURE_TOKEN), &base).unwrap();
+            let mut execution = jev_settings(jev_plugin_endpoint(), None);
+            execution.shell = true;
+            execution.cwd = temp.path().to_owned();
+            execution.harness = harness;
+            let mut decided = vec![];
+            runtime()
+                .block_on(provider.chat_with_plugins(
+                    "fixture/model",
+                    &crate::models::GenerationOptions::default(),
+                    vec![Message::user("Fix the build.")],
+                    &execution,
+                    &mut |_| {},
+                    &mut |_| {},
+                    &mut |event| {
+                        if let RuntimeEvent::Harness(run) = event {
+                            decided.push(*run);
+                        }
+                    },
+                    &Arc::new(AtomicBool::new(false)),
+                ))
+                .unwrap();
+            let request = &server.join().unwrap()[0];
+            let names: Vec<String> = request["tools"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|tool| tool["function"]["name"].as_str().unwrap().to_owned())
+                .collect();
+            (names, decided, request["messages"].to_string())
+        };
+        // No harness yet: one is decided (without Jev, the general default)
+        // and reported once.
+        let (names, decided, _) = tools_offered(None);
+        assert_eq!(decided.len(), 1);
+        assert_eq!(decided[0].decided_by, crate::harness::DecidedBy::Fallback);
+        // One chat in ten may try a sibling, so read what was chosen.
+        for tool in ["Edit", "Run", crate::plan::TOOL] {
+            assert_eq!(
+                names.iter().any(|name| name == tool),
+                decided[0].config.offers(tool),
+                "{tool}"
+            );
+        }
+        // A chat's harness is kept, not decided again: here no plan, shell only.
+        let run = crate::harness::Run {
+            config: crate::harness::Config {
+                plan: crate::harness::Switch::Off,
+                tools: crate::harness::Tools::Shell,
+                ..crate::harness::Config::default()
+            },
+            cell: None,
+            decided_by: crate::harness::DecidedBy::Fallback,
+            sibling: Some(crate::harness::Part::Tools),
+        };
+        let (names, decided, messages) = tools_offered(Some(run));
+        assert!(decided.is_empty());
+        assert!(names.iter().any(|name| name == "Run"));
+        assert!(
+            !names
+                .iter()
+                .any(|name| name == "Edit" || name == crate::plan::TOOL)
+        );
+        assert!(messages.contains("Work through Run"));
     }
 
     #[test]

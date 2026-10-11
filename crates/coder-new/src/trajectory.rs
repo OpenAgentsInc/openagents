@@ -171,6 +171,12 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
     if let Some(notice) = &chat.notice {
         result["extra"]["notice"] = json!(notice);
     }
+    // The harness the chat ran under (#11289): its configuration, its
+    // (model, task, budget) cell, how that was decided, and the part a
+    // sibling run changed.
+    if let Some(run) = &chat.harness {
+        result["extra"]["harness"] = serde_json::to_value(run).unwrap_or_default();
+    }
     // Context management (#11286): the peak the model read, whether old
     // outputs were stubbed, and how many summaries were written.
     if chat.peak_context_tokens > 0 {
@@ -777,6 +783,25 @@ mod tests {
         let quiet = super::document(&Chat::default(), "test", "auto", Path::new("/w"));
         assert!(quiet["extra"].get("identical_call_streaks").is_none());
     }
+    #[test]
+    fn the_harness_is_recorded_in_the_export() {
+        let chat = Chat {
+            harness: Some(crate::harness::Run::choose(
+                None,
+                crate::harness::DecidedBy::Fallback,
+                999,
+            )),
+            ..Chat::default()
+        };
+        let document = document(&chat, "h", "auto", Path::new("/w"));
+        let harness = &document["extra"]["harness"];
+        assert_eq!(harness["config"]["context"], "t4");
+        assert_eq!(harness["config"]["plan"], "on");
+        assert_eq!(harness["config"]["stuck"]["stop"], 8);
+        assert_eq!(harness["decided_by"], "fallback");
+        assert!(harness["sibling"].is_null());
+    }
+
     #[test]
     fn foreign_or_malformed_trajectory_is_rejected() {
         assert!(from_document(&json!({"schema_version":"ATIF-v9","steps":[]})).is_err());

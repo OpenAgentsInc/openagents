@@ -52,6 +52,10 @@ pub struct ExecutionSettings {
     /// The openagents.com sign-in that reaches the account's Connections
     /// (#11238): with it, the Google Drive tools are offered.
     pub connections: Option<openagents_login::Saved>,
+    /// The harness this chat runs under (#11289): which tools are offered,
+    /// whether Edit and Write are checked, the context policy and stuck
+    /// thresholds. `None` until the chat's first tool turn decides it.
+    pub harness: Option<crate::harness::Run>,
 }
 
 #[derive(Clone)]
@@ -237,6 +241,13 @@ impl ExecutionSettings {
         if self.shell {
             definitions.push(crate::plan::definition());
         }
+        if let Some(run) = &self.harness {
+            definitions.retain(|tool| {
+                tool["function"]["name"]
+                    .as_str()
+                    .is_none_or(|name| run.config.offers(name))
+            });
+        }
         definitions
     }
 
@@ -252,6 +263,9 @@ impl ExecutionSettings {
         }
         if self.shell {
             guidance.push_str(crate::file_tools::INSTRUCTIONS);
+            if let Some(extra) = self.harness.as_ref().and_then(|run| run.config.guidance()) {
+                guidance.push_str(extra);
+            }
             guidance.push_str(crate::web_tools::INSTRUCTIONS);
             guidance.push_str(crate::media::instructions());
             guidance.push_str("The Run tool runs shell commands with full filesystem and network access by default. Follow the user's instructions and any explicit host approval policy; a rejected command stays rejected. Prefer foreground builds/tests so output streams live. Begin long commands with a descriptive shell comment. When waiting for background jobs, stream their logs and print periodic status rather than silently sleeping; in this repository use python3 scripts/wait-job-logs.py LOGDIR build tests --timeout 100.\n");
@@ -381,7 +395,14 @@ impl ExecutionSettings {
                     .await
             }
             name if crate::file_tools::is_tool(name) && self.shell => {
-                crate::file_tools::execute(name, arguments, &self.cwd)
+                crate::file_tools::execute_with_checks(
+                    name,
+                    arguments,
+                    &self.cwd,
+                    self.harness.as_ref().is_none_or(|run| {
+                        run.config.diagnostics == crate::harness::Diagnostics::Fast
+                    }),
+                )
             }
             name if crate::connection_tools::is_tool(name) && self.connections.is_some() => {
                 let account = self
@@ -868,6 +889,7 @@ mod tests {
             shell: false,
             brainstorm: None,
             disclosure_desk: None,
+            harness: None,
             memory: None,
         }
     }

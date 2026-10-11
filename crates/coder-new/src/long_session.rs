@@ -59,7 +59,9 @@ pub const SUMMARY_ONLY_PERCENT: u64 = 80;
 
 /// How a chat keeps within its context window: summary only (the study's
 /// T3), or stubs first and the summary only when still needed (T4).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum ContextPolicy {
     T3,
@@ -117,7 +119,7 @@ impl State {
     }
 }
 
-fn context_tokens_from_env() -> u64 {
+pub(crate) fn context_tokens_from_env() -> u64 {
     std::env::var("OPENAGENTS_CODER_CONTEXT_TOKENS")
         .ok()
         .and_then(|value| value.trim().parse::<u64>().ok())
@@ -749,11 +751,17 @@ impl App {
         let mut now = used(&self.live);
         self.live.peak_context_tokens = self.live.peak_context_tokens.max(now);
         // Stage one: stub old bulky outputs; stage two: summarize.
-        let summarize_at = match self.long_session.policy {
+        // The chat's harness decides the policy once it is known (#11289).
+        let policy = self
+            .live
+            .harness
+            .as_ref()
+            .map_or(self.long_session.policy, |run| run.config.context);
+        let summarize_at = match policy {
             ContextPolicy::T3 => SUMMARY_ONLY_PERCENT,
             ContextPolicy::T4 => COMPACT_PERCENT,
         };
-        if self.long_session.policy == ContextPolicy::T4
+        if policy == ContextPolicy::T4
             && !self.live.elide_old_outputs
             && now.saturating_mul(100) >= limit.saturating_mul(ELIDE_PERCENT)
         {

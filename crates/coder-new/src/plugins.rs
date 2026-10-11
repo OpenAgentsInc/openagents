@@ -474,6 +474,7 @@ impl Plugins {
             shell: true,
             brainstorm: self.bundled.brainstorm.native(),
             disclosure_desk: crate::approval::desk(),
+            harness: None,
             memory,
         }
     }

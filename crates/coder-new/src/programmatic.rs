@@ -1414,6 +1414,7 @@ fn delegate(
                 match event {
                     RuntimeEvent::Tokens(tokens) => app.live.tokens = tokens,
                     RuntimeEvent::Usage(usage) => app.live.round(*usage),
+                    RuntimeEvent::Harness(run) => app.live.harness = Some(*run),
                     RuntimeEvent::Text(text) => app.live.partial.push_str(&text),
                     RuntimeEvent::Model(model) => app.live.partial_model = Some(model),
                     RuntimeEvent::Tool {
@@ -1487,6 +1488,7 @@ fn runtime_value(event: &RuntimeEvent) -> Value {
             "prompt_tokens":usage.prompt_tokens,"completion_tokens":usage.completion_tokens,
             "reasoning_tokens":usage.reasoning_tokens,"cost_usd":usage.cost,
             "duration_ms":usage.milliseconds,"first_token_ms":usage.first_token_ms}),
+        RuntimeEvent::Harness(run) => json!({"event":"harness","harness":run}),
         RuntimeEvent::Text(text) => json!({"event":"delta","text":text}),
         RuntimeEvent::Model(model) => json!({"event":"model","model":model}),
         RuntimeEvent::Progress { step, complete } => {

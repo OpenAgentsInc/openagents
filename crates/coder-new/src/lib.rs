@@ -30,6 +30,7 @@ pub mod fleet;
 mod fleet_app;
 mod git_guard;
 pub mod github_tool;
+pub mod harness;
 pub mod identity;
 pub mod issue_run;
 pub mod jev_plugin;
@@ -335,6 +336,7 @@ impl App {
         match event {
             bundled_runtime::RuntimeEvent::Tokens(tokens) => child.chat.tokens = tokens,
             bundled_runtime::RuntimeEvent::Usage(usage) => child.chat.round(*usage),
+            bundled_runtime::RuntimeEvent::Harness(run) => child.chat.harness = Some(*run),
             bundled_runtime::RuntimeEvent::Text(text) => child.chat.partial.push_str(&text),
             bundled_runtime::RuntimeEvent::Model(model) => {
                 child.chat.partial_model = live::model_slug(&model)
@@ -777,6 +779,9 @@ impl App {
                 self.live.turn_counted.0 = self.live.turn_counted.0.saturating_add(tokens);
                 self.live.turn_counted.1 += cost;
                 self.live.round(usage);
+            }
+            live::Update::Harness { run, .. } if self.live.busy => {
+                self.live.harness = Some(run);
             }
             live::Update::Delta { text, .. } if self.live.busy => {
                 self.live.partial.push_str(&text);
@@ -1325,6 +1330,8 @@ impl App {
             .as_deref()
             .and_then(connection_tools::signed_in);
         execution.fleet = Some(self.fleet_host());
+        // The chat keeps the harness its first tool turn chose (#11289).
+        execution.harness = self.live.harness.clone();
         if key.is_some()
             && (execution.brainstorm.is_some() || execution.cli)
             && execution.disclosure_desk.is_none()

@@ -14,11 +14,11 @@ pub const REMIND_AT: usize = 5;
 pub const STOP_AT: usize = 8;
 
 /// What the model reads once a streak reaches [`REMIND_AT`].
-pub const REMINDER: &str = "You have made the same tool call with the same arguments 5 times in a row. Repeating it will not change the result. Step back, reread the recent tool results, and try a different approach.";
+pub const REMINDER: &str = "You have made the same tool call with the same arguments several times in a row. Repeating it will not change the result. Step back, reread the recent tool results, and try a different approach.";
 
 /// What the person sees when the turn ends at [`STOP_AT`].
 pub const STOP_NOTICE: &str =
-    "Stopped: the same step failed 8 times in a row. Try a different instruction or more detail.";
+    "Stopped: the same step kept failing. Try a different instruction or more detail.";
 
 /// Whether a tool result is a failure: an error, a nonzero exit, or a timeout.
 #[must_use]
@@ -48,15 +48,44 @@ pub enum Verdict {
 }
 
 /// The current streak of identical consecutive calls in one turn.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Tracker {
     last: Option<String>,
     count: usize,
     failing: usize,
     reminded: bool,
+    remind_at: usize,
+    stop_at: usize,
+}
+
+impl Default for Tracker {
+    fn default() -> Self {
+        Self::with_thresholds(REMIND_AT as u8, STOP_AT as u8)
+    }
 }
 
 impl Tracker {
+    /// A tracker with the harness's thresholds (#11289); zero turns a
+    /// threshold off.
+    #[must_use]
+    pub fn with_thresholds(remind: u8, stop: u8) -> Self {
+        let at = |value: u8| {
+            if value == 0 {
+                usize::MAX
+            } else {
+                usize::from(value)
+            }
+        };
+        Self {
+            last: None,
+            count: 0,
+            failing: 0,
+            reminded: false,
+            remind_at: at(remind),
+            stop_at: at(stop),
+        }
+    }
+
     /// Record one finished call and say what to do next.
     pub fn record(&mut self, name: &str, arguments: &Value, output: &Value) -> Verdict {
         let key = identity(name, arguments);
@@ -73,9 +102,9 @@ impl Tracker {
         } else {
             self.failing = 0;
         }
-        if self.failing >= STOP_AT {
+        if self.failing >= self.stop_at {
             Verdict::Stop
-        } else if self.count >= REMIND_AT && !self.reminded {
+        } else if self.count >= self.remind_at && !self.reminded {
             self.reminded = true;
             Verdict::Remind
         } else {

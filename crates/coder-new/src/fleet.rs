@@ -616,6 +616,7 @@ fn record(chat: &mut Chat, event: &RuntimeEvent) {
         RuntimeEvent::Model(model) => chat.partial_model = crate::live::model_slug(model),
         RuntimeEvent::Tokens(tokens) => chat.tokens = *tokens,
         RuntimeEvent::Usage(usage) => chat.round(*usage.clone()),
+        RuntimeEvent::Harness(run) => chat.harness = Some(*run.clone()),
         RuntimeEvent::Tool {
             name,
             input,

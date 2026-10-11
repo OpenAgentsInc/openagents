@@ -196,6 +196,9 @@ pub enum RuntimeEvent {
     /// One model call's usage, as the provider reported it, sent as soon as
     /// the call's stream ends.
     Usage(Box<RoundUsage>),
+    /// The harness a chat's tool turns run under, sent when it is decided
+    /// (#11289).
+    Harness(Box<crate::harness::Run>),
 }
 
 /// What one model call used and how long it took.
@@ -226,7 +229,7 @@ impl RuntimeEvent {
 
     pub(crate) fn redact(&mut self, keys: &[ApiKey]) {
         match self {
-            Self::Tokens(_) | Self::Progress { .. } | Self::Usage(_) => {}
+            Self::Tokens(_) | Self::Progress { .. } | Self::Usage(_) | Self::Harness(_) => {}
             Self::Text(text) | Self::Model(text) => *text = redact_text(text, keys),
             Self::Delegation {
                 id,

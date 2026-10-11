@@ -165,7 +165,22 @@ struct GlobArguments {
 /// missing, binary or too large, an edit does not match exactly once, the
 /// file changed since it was read, or the change was refused.
 pub fn execute(name: &str, arguments: Value, cwd: &Path) -> Result<Value, String> {
-    let workspace = Workspace::new(cwd)?;
+    execute_with_checks(name, arguments, cwd, true)
+}
+
+/// [`execute`], with the fast read-only check after Edit and Write on or
+/// off (the harness's diagnostics, [`crate::harness::Diagnostics`]).
+///
+/// # Errors
+/// As [`execute`].
+pub fn execute_with_checks(
+    name: &str,
+    arguments: Value,
+    cwd: &Path,
+    checks: bool,
+) -> Result<Value, String> {
+    let mut workspace = Workspace::new(cwd)?;
+    workspace.checks = checks;
     match name {
         "Read" => {
             let args: ReadArguments = serde_json::from_value(arguments)
@@ -233,6 +248,7 @@ fn seen(path: &Path, bytes: &[u8]) -> Result<(), String> {
 struct Workspace {
     root: PathBuf,
     cwd: PathBuf,
+    checks: bool,
 }
 
 impl Workspace {
@@ -245,7 +261,11 @@ impl Workspace {
             .find(|folder| folder.join(".git").exists())
             .unwrap_or(&cwd)
             .to_owned();
-        Ok(Self { root, cwd })
+        Ok(Self {
+            root,
+            cwd,
+            checks: true,
+        })
     }
 
     /// `path` resolved on this computer. A path that does not exist yet
@@ -406,7 +426,7 @@ impl Workspace {
         std::fs::write(&path, &updated).map_err(|error| format!("{shown}: {error}"))?;
         remember(&path, updated.as_bytes());
         let diff = unified(&text, &updated);
-        Ok(with_check(
+        Ok(self.checked(
             json!({
                 "path": shown,
                 "replacements": count.min(if args.replace_all { usize::MAX } else { 1 }),
@@ -455,7 +475,7 @@ impl Workspace {
         std::fs::write(&path, &args.content).map_err(|error| format!("{shown}: {error}"))?;
         remember(&path, args.content.as_bytes());
         let diff = unified(previous.as_deref().unwrap_or(""), &args.content);
-        Ok(with_check(
+        Ok(self.checked(
             json!({
                 "path": shown,
                 "created": previous.is_none(),
@@ -589,6 +609,16 @@ impl Workspace {
             result["note"] = json!(format!("Showing the newest {limit} of {total}."));
         }
         Ok(result)
+    }
+}
+
+impl Workspace {
+    fn checked(&self, result: Value, path: &Path, content: &str) -> Value {
+        if self.checks {
+            with_check(result, path, content)
+        } else {
+            result
+        }
     }
 }
 
@@ -824,6 +854,27 @@ mod tests {
         assert_eq!(std::fs::read_to_string(root.join("a.json")).unwrap(), "[");
         let text = run("Write", json!({"path":"a.txt","content":"{"}), &root).unwrap();
         assert!(text.get("check").is_none());
+    }
+
+    #[test]
+    fn diagnostics_off_skips_the_check() {
+        let temp = tempfile::tempdir().unwrap();
+        let written = execute_with_checks(
+            "Write",
+            json!({"path":"broken.json","content":"{"}),
+            temp.path(),
+            false,
+        )
+        .unwrap();
+        assert!(written.get("check").is_none());
+        let written = execute_with_checks(
+            "Write",
+            json!({"path":"other.json","content":"{"}),
+            temp.path(),
+            true,
+        )
+        .unwrap();
+        assert!(written.get("check").is_some());
     }
 
     #[test]

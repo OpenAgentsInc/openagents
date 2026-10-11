@@ -51,6 +51,8 @@ pub struct Chat {
     pub elide_old_outputs: bool,
     /// The largest estimated context the model read, for the export.
     pub peak_context_tokens: u64,
+    /// The harness this chat's tool turns run under (#11289), once decided.
+    pub harness: Option<crate::harness::Run>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -378,6 +380,10 @@ pub enum Update {
         id: u64,
         usage: crate::bundled_runtime::RoundUsage,
     },
+    Harness {
+        id: u64,
+        run: crate::harness::Run,
+    },
     Model {
         id: u64,
         model: String,
@@ -398,6 +404,7 @@ impl Update {
             | Self::Delegation { id, .. }
             | Self::Delta { id, .. }
             | Self::Usage { id, .. }
+            | Self::Harness { id, .. }
             | Self::Model { id, .. }
             | Self::Finished { id, .. } => *id,
         }
@@ -554,6 +561,9 @@ fn run_with_provider(
             },
             RuntimeEvent::Usage(usage) => {
                 let _ = sender.send(Update::Usage { id, usage: *usage });
+            },
+            RuntimeEvent::Harness(run) => {
+                let _ = sender.send(Update::Harness { id, run: *run });
             },
             _ => {},
         };
@@ -762,6 +772,7 @@ async fn local_turn(
         RuntimeEvent::Delegation { .. }
         | RuntimeEvent::Tokens(_)
         | RuntimeEvent::Usage(_)
+        | RuntimeEvent::Harness(_)
         | RuntimeEvent::Progress { .. } => event_callback(event),
     };
     let result = async {
