@@ -2660,6 +2660,8 @@ impl Job {
         } else {
             request
         };
+        // Only the questions a rule reads on this surface (#11247).
+        let request = request.for_surface(turn.context.surface());
         let (mode, shadow, context) = (turn.mode, turn.shadow, turn.context.clone());
         let draft = turn.draft.is_some();
         // Whether the latest message has earlier ones to refer to: a
@@ -2687,9 +2689,15 @@ impl Job {
                     }
                     let answered_by = (door, response.model.clone());
                     let mut reading = router::reading(&response, bank, &facts, &admitted);
-                    if let Some(map) = routing.calibration_for(&response) {
-                        map.apply(&mut reading);
-                    }
+                    // Each question on the map of the model that answered
+                    // it (#11247): a side a fallback door answered is not
+                    // read on the main response's map.
+                    router::calibration::apply_served(
+                        &response,
+                        &mut reading,
+                        routing.calibration.as_ref(),
+                        routing.clef_calibration.as_ref(),
+                    );
                     let personalize = routing.seams.personalize.available();
                     let decide = |mode| {
                         router::decide(

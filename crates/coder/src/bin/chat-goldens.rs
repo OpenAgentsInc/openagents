@@ -410,6 +410,8 @@ impl Routed {
         } else {
             request
         };
+        // Only the questions a rule reads on the website (#11247).
+        let request = request.for_surface(context.surface());
         let response = match router::ask(&self.judge, request).await {
             Ok(r) => r,
             Err(e) => {
@@ -421,16 +423,14 @@ impl Routed {
             }
         };
         let mut routing = router::reading(&response, self.bank, &self.facts, &self.admitted);
-        // As the worker reads it: the map for the model that answered
-        // (Jev's, or Clef's when a Clef door answered).
-        let map = if router::calibration::response_from_clef(&response) {
-            self.clef_calibration.as_ref()
-        } else {
-            self.calibration.as_ref()
-        };
-        if let Some(map) = map {
-            map.apply(&mut routing);
-        }
+        // As the worker reads it: each question on the map of the model
+        // that answered it (Jev's, or Clef's when a Clef door answered).
+        router::calibration::apply_served(
+            &response,
+            &mut routing,
+            self.calibration.as_ref(),
+            self.clef_calibration.as_ref(),
+        );
         let tier = router::decide(&routing, self.bank, &self.facts, &situation);
         let mut why = format!("route {} {:.2}", routing.route.word(), routing.route_p);
         if let Some((second, p)) = routing.runner_up {

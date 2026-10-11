@@ -66,6 +66,44 @@ pub fn response_from_clef(response: &jev::SystemOneResponse) -> bool {
             .unwrap_or(false)
 }
 
+/// Whether question `id`'s answer in `response` came from a Clef model.
+/// A merged response ([`super::judge::merge`]) names each side question's
+/// own serving identity under [`super::judge::SERVED_BY`]; any other
+/// question was answered by the main request, whose identity the
+/// response carries ([`response_from_clef`]).
+#[must_use]
+pub fn question_from_clef(response: &jev::SystemOneResponse, id: &str) -> bool {
+    response
+        .field(super::judge::SERVED_BY)
+        .and_then(|served| served.get(id).and_then(|entry| entry["clef"].as_bool()))
+        .unwrap_or_else(|| response_from_clef(response))
+}
+
+/// Applies to `routing` each question's map by the model that answered
+/// that question (#11247): `route` by the main request's model, `answer`
+/// by its own request's, so a prepared answer a fallback Clef door chose
+/// beside Jev's route is read on Clef's map, and the reverse.
+pub fn apply_served(
+    response: &jev::SystemOneResponse,
+    routing: &mut Routing,
+    jev: Option<&Calibration>,
+    clef: Option<&Calibration>,
+) {
+    let map = |id: &str| {
+        if question_from_clef(response, id) {
+            clef
+        } else {
+            jev
+        }
+    };
+    if let Some(map) = map("route") {
+        map.apply_route(routing);
+    }
+    if let Some(map) = map("answer") {
+        map.apply_answer(routing);
+    }
+}
+
 /// The probability at or above which a reading counts as sure, for the
 /// operating-point table.
 pub const SURE: f64 = 0.9;
@@ -270,9 +308,19 @@ impl Calibration {
     /// passed, so `answer` is mapped and marked
     /// ([`Routing::answer_calibrated`]) for the calibrated threshold.
     pub fn apply(&self, routing: &mut Routing) {
+        self.apply_route(routing);
+        self.apply_answer(routing);
+    }
+
+    /// The `route` half of [`Calibration::apply`].
+    pub fn apply_route(&self, routing: &mut Routing) {
         if self.route.serves() && routing.route != RouteId::Unknown {
             routing.route_p = self.route.map.apply(routing.route_p).clamp(0.0, 1.0);
         }
+    }
+
+    /// The `answer` half of [`Calibration::apply`].
+    pub fn apply_answer(&self, routing: &mut Routing) {
         if self.answer.serves()
             && let Some((_, p)) = &mut routing.answer
         {
@@ -318,6 +366,86 @@ mod tests {
         assert!(answered_by_clef("clef-flash@sha256:fd3e"));
         assert!(answered_by_clef("Clef"));
         assert!(!answered_by_clef("jev-1.13.0"));
+    }
+
+    fn served(body: serde_json::Value) -> jev::SystemOneResponse {
+        jev::SystemOneResponse::decode(jev::RawResponse {
+            status: 200,
+            headers: Default::default(),
+            bytes: body.to_string().into_bytes(),
+        })
+        .expect("a readable response")
+    }
+
+    /// A side question answered by another model than the main request
+    /// keeps its own serving identity through the merge, and so its own
+    /// calibration map (#11247): Jev's route beside a Clef door's prepared
+    /// answer reads the route on Jev's map and the answer on Clef's, and
+    /// the reverse.
+    #[test]
+    fn each_merged_question_is_calibrated_by_the_model_that_answered_it() {
+        let route = serde_json::json!({ "type": "choice", "choice": "meta",
+            "confidence": 0.62, "probabilities": { "meta": 0.62, "general": 0.38 } });
+        let answer = serde_json::json!({ "type": "choice", "choice": "meta.pricing",
+            "confidence": 0.55, "probabilities": { "meta.pricing": 0.55, "none": 0.45 } });
+        let jev_body = |answers| serde_json::json!({ "model": "jev-1.13.0", "answers": answers });
+        let clef_body =
+            |answers| serde_json::json!({ "model": "clef-flash@sha256:fd3e", "answers": answers });
+        let jev_map = Calibration::builtin().expect("Jev's map");
+        let clef_map = Calibration::builtin_clef().expect("Clef's map");
+        assert!(jev_map.answer.serves() && clef_map.answer.serves() && clef_map.route.serves());
+        let bank = Bank::builtin();
+        let facts = crate::router::worker_facts(
+            crate::generate::Lane::Gemini.model(),
+            Some(crate::generate::DEFAULT_DOOR_URL),
+            &crate::router::Seams::default(),
+        );
+        let admitted = crate::router::Admitted::builtin();
+        let read = |main, side| {
+            let merged = crate::router::merge(served(main), vec![served(side)]);
+            let mut routing = crate::router::reading(&merged, bank, &facts, &admitted);
+            apply_served(&merged, &mut routing, Some(&jev_map), Some(&clef_map));
+            (merged, routing)
+        };
+        let mapped = |question: &Question, raw: f64| question.map.apply(raw).clamp(0.0, 1.0);
+
+        // Jev's main request, a Clef door's answer side.
+        let (merged, routing) = read(
+            jev_body(serde_json::json!({ "route": route })),
+            clef_body(serde_json::json!({ "answer": answer })),
+        );
+        assert_eq!(merged.model, "jev-1.13.0");
+        assert!(!question_from_clef(&merged, "route"));
+        assert!(question_from_clef(&merged, "answer"));
+        let expected_route = if jev_map.route.serves() {
+            mapped(&jev_map.route, 0.62)
+        } else {
+            0.62
+        };
+        assert!((routing.route_p - expected_route).abs() < 1e-12);
+        let (_, p) = routing.answer.as_ref().expect("an answer");
+        let on_clef = mapped(&clef_map.answer, 0.55);
+        let on_jev = mapped(&jev_map.answer, 0.55);
+        assert!((on_clef - on_jev).abs() > 1e-3, "the maps differ here");
+        assert!((p - on_clef).abs() < 1e-12, "{p} vs Clef's {on_clef}");
+        assert!(routing.answer_calibrated);
+
+        // The reverse: Clef's main request, Jev's answer side.
+        let (merged, routing) = read(
+            clef_body(serde_json::json!({ "route": route })),
+            jev_body(serde_json::json!({ "answer": answer })),
+        );
+        assert!(question_from_clef(&merged, "route"));
+        assert!(!question_from_clef(&merged, "answer"));
+        assert!((routing.route_p - mapped(&clef_map.route, 0.62)).abs() < 1e-12);
+        let (_, p) = routing.answer.as_ref().expect("an answer");
+        assert!((p - on_jev).abs() < 1e-12, "{p} vs Jev's {on_jev}");
+
+        // One unsplit response reads every question on its own model.
+        let whole = served(clef_body(
+            serde_json::json!({ "route": route, "answer": answer }),
+        ));
+        assert!(question_from_clef(&whole, "answer") && question_from_clef(&whole, "route"));
     }
 
     /// The committed record parses, names this build's question set, and
