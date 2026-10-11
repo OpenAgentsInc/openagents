@@ -1,0 +1,2770 @@
+llama_model_loader: loaded meta data with 52 key-value pairs and 1011 tensors from @@CLEF_SCRATCH@@/artifacts/Clef-Q4_K_M.gguf (version GGUF V3 (latest))
+llama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.
+llama_model_loader: - kv   0:                       general.architecture str              = clef
+llama_model_loader: - kv   1:                               general.type str              = model
+llama_model_loader: - kv   2:                     general.sampling.top_k i32              = 20
+llama_model_loader: - kv   3:                     general.sampling.top_p f32              = 0.950000
+llama_model_loader: - kv   4:                      general.sampling.temp f32              = 1.000000
+llama_model_loader: - kv   5:                               general.name str              = Clef
+llama_model_loader: - kv   6:                         general.size_label str              = 27B
+llama_model_loader: - kv   7:                            general.license str              = apache-2.0
+llama_model_loader: - kv   8:                   general.base_model.count u32              = 1
+llama_model_loader: - kv   9:                  general.base_model.0.name str              = Qwen3.8 27B
+llama_model_loader: - kv  10:          general.base_model.0.organization str              = Qwen
+llama_model_loader: - kv  11:              general.base_model.0.repo_url str              = https://huggingface.co/Qwen/Qwen3.8-27B
+llama_model_loader: - kv  12:                               general.tags arr[str,12]      = ["clef", "cloudflare", "systemone", "...
+llama_model_loader: - kv  13:                           clef.block_count u32              = 64
+llama_model_loader: - kv  14:                        clef.context_length u32              = 262144
+llama_model_loader: - kv  15:                      clef.embedding_length u32              = 5120
+llama_model_loader: - kv  16:                   clef.feed_forward_length u32              = 17408
+llama_model_loader: - kv  17:                  clef.attention.head_count u32              = 24
+llama_model_loader: - kv  18:               clef.attention.head_count_kv u32              = 4
+llama_model_loader: - kv  19:               clef.rope.dimension_sections arr[i32,4]       = [11, 11, 10, 0]
+llama_model_loader: - kv  20:                        clef.rope.freq_base f32              = 10000000.000000
+llama_model_loader: - kv  21:      clef.attention.layer_norm_rms_epsilon f32              = 0.000001
+llama_model_loader: - kv  22:                  clef.attention.key_length u32              = 256
+llama_model_loader: - kv  23:                clef.attention.value_length u32              = 256
+llama_model_loader: - kv  24:                       clef.ssm.conv_kernel u32              = 4
+llama_model_loader: - kv  25:                        clef.ssm.state_size u32              = 128
+llama_model_loader: - kv  26:                       clef.ssm.group_count u32              = 16
+llama_model_loader: - kv  27:                    clef.ssm.time_step_rank u32              = 48
+llama_model_loader: - kv  28:                        clef.ssm.inner_size u32              = 6144
+llama_model_loader: - kv  29:            clef.attention.recurrent_layers arr[bool,64]     = [true, true, true, false, true, true,...
+llama_model_loader: - kv  30:               clef.full_attention_interval u32              = 4
+llama_model_loader: - kv  31:                  clef.rope.dimension_count u32              = 64
+llama_model_loader: - kv  32:                         clef.decision.type str              = clef
+llama_model_loader: - kv  33:          clef.decision.routing_block_count u32              = 2
+llama_model_loader: - kv  34:                  clef.decision.block_count u32              = 4
+llama_model_loader: - kv  35:                   clef.decision.head_count u32              = 16
+llama_model_loader: - kv  36:          clef.attention.layer_norm_epsilon f32              = 0.000010
+llama_model_loader: - kv  37:                       tokenizer.ggml.model str              = gpt2
+llama_model_loader: - kv  38:                         tokenizer.ggml.pre str              = qwen35
+llama_model_loader: - kv  39:                      tokenizer.ggml.tokens arr[str,248320]  = ["!", "\"", "#", "$", "%", "&", "'", ...
+llama_model_loader: - kv  40:                  tokenizer.ggml.token_type arr[i32,248320]  = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
+llama_model_loader: - kv  41:                      tokenizer.ggml.merges arr[str,247587]  = ["Ġ Ġ", "ĠĠ ĠĠ", "i n", "Ġ t",...
+llama_model_loader: - kv  42:                tokenizer.ggml.eos_token_id u32              = 248046
+llama_model_loader: - kv  43:            tokenizer.ggml.padding_token_id u32              = 248044
+llama_model_loader: - kv  44:                tokenizer.ggml.bos_token_id u32              = 248044
+llama_model_loader: - kv  45:               tokenizer.ggml.add_bos_token bool             = false
+llama_model_loader: - kv  46:               tokenizer.ggml.add_eos_token bool             = false
+llama_model_loader: - kv  47:                    tokenizer.chat_template str              = {%- set image_count = namespace(value...
+llama_model_loader: - kv  48:          tokenizer.chat_template.systemone str              = {{ "<|im_start|>system\nRead the comp...
+llama_model_loader: - kv  49:                   tokenizer.chat_templates arr[str,1]       = ["systemone"]
+llama_model_loader: - kv  50:               general.quantization_version u32              = 2
+llama_model_loader: - kv  51:                          general.file_type u32              = 15
+llama_model_loader: - type  f32:  453 tensors
+llama_model_loader: - type q8_0:  363 tensors
+llama_model_loader: - type q4_K:  193 tensors
+llama_model_loader: - type q6_K:    1 tensors
+llama_model_loader: - type bf16:    1 tensors
+print_info: file format = GGUF V3 (latest)
+print_info: file type   = Q4_K - Medium
+print_info: file size   = 17.90 GiB (5.69 BPW) 
+init_tokenizer: initializing tokenizer for type 2
+load: 0 unused tokens
+load: control token: 248076 '<|audio_pad|>' is not marked as EOG
+load: control token: 248075 '<tts_text_bos_single>' is not marked as EOG
+load: control token: 248074 '<tts_text_eod>' is not marked as EOG
+load: control token: 248073 '<tts_text_bos>' is not marked as EOG
+load: control token: 248072 '<tts_pad>' is not marked as EOG
+load: control token: 248062 '<|fim_suffix|>' is not marked as EOG
+load: control token: 248061 '<|fim_middle|>' is not marked as EOG
+load: control token: 248060 '<|fim_prefix|>' is not marked as EOG
+load: control token: 248056 '<|image_pad|>' is not marked as EOG
+load: control token: 248055 '<|vision_pad|>' is not marked as EOG
+load: control token: 248054 '<|vision_end|>' is not marked as EOG
+load: control token: 248052 '<|quad_end|>' is not marked as EOG
+load: control token: 248050 '<|box_end|>' is not marked as EOG
+load: control token: 248049 '<|box_start|>' is not marked as EOG
+load: control token: 248048 '<|object_ref_end|>' is not marked as EOG
+load: control token: 248047 '<|object_ref_start|>' is not marked as EOG
+load: control token: 248045 '<|im_start|>' is not marked as EOG
+load: control token: 248071 '<|audio_end|>' is not marked as EOG
+load: control token: 248051 '<|quad_start|>' is not marked as EOG
+load: control token: 248070 '<|audio_start|>' is not marked as EOG
+load: control token: 248053 '<|vision_start|>' is not marked as EOG
+load: control token: 248057 '<|video_pad|>' is not marked as EOG
+load: printing all EOG tokens:
+load:   - 248044 ('<|endoftext|>')
+load:   - 248046 ('<|im_end|>')
+load:   - 248063 ('<|fim_pad|>')
+load:   - 248064 ('<|repo_name|>')
+load:   - 248065 ('<|file_sep|>')
+load: special tokens cache size = 33
+load: token to piece cache size = 1.7581 MB
+print_info: arch                  = clef
+print_info: vocab_only            = 0
+print_info: no_alloc              = 0
+print_info: n_ctx_train           = 262144
+print_info: n_embd_inp            = 5120
+print_info: n_embd                = 5120
+print_info: n_embd_out            = 1
+print_info: n_layer               = 64
+print_info: n_layer_all           = 64
+print_info: n_head                = 24
+print_info: n_head_kv             = 4
+print_info: n_rot                 = 64
+print_info: n_swa                 = 0
+print_info: is_swa_any            = 0
+print_info: non_causal_type       = 0
+print_info: n_embd_head_k         = 256
+print_info: n_embd_head_v         = 256
+print_info: n_gqa                 = 6
+print_info: n_embd_k_gqa          = 1024
+print_info: n_embd_v_gqa          = 1024
+print_info: f_norm_eps            = 1.0e-05
+print_info: f_norm_rms_eps        = 1.0e-06
+print_info: f_clamp_kqv           = 0.0e+00
+print_info: f_max_alibi_bias      = 0.0e+00
+print_info: f_logit_scale         = 0.0e+00
+print_info: f_attn_scale          = 0.0e+00
+print_info: f_attn_value_scale    = 0.0000
+print_info: n_ff                  = 17408
+print_info: n_expert              = 0
+print_info: n_expert_used         = 0
+print_info: n_expert_groups       = 0
+print_info: n_group_used          = 0
+print_info: causal attn           = 1
+print_info: pooling type          = -1
+print_info: rope type             = 40
+print_info: rope scaling          = linear
+print_info: freq_base_train       = 10000000.0
+print_info: freq_scale_train      = 1
+print_info: n_ctx_orig_yarn       = 262144
+print_info: rope_yarn_log_mul     = 0.0000
+print_info: rope_finetuned        = unknown
+print_info: mrope sections        = [11, 11, 10, 0]
+print_info: model type            = 27B
+print_info: model params          = 27.02 B
+print_info: general.name          = Clef
+print_info: vocab type            = BPE
+print_info: n_vocab               = 248320
+print_info: n_merges              = 247587
+print_info: BOS token             = 248044 '<|endoftext|>'
+print_info: EOS token             = 248046 '<|im_end|>'
+print_info: EOT token             = 248046 '<|im_end|>'
+print_info: PAD token             = 248044 '<|endoftext|>'
+print_info: LF token              = 198 'Ċ'
+print_info: FIM PRE token         = 248060 '<|fim_prefix|>'
+print_info: FIM SUF token         = 248062 '<|fim_suffix|>'
+print_info: FIM MID token         = 248061 '<|fim_middle|>'
+print_info: FIM PAD token         = 248063 '<|fim_pad|>'
+print_info: FIM REP token         = 248064 '<|repo_name|>'
+print_info: FIM SEP token         = 248065 '<|file_sep|>'
+print_info: EOG token             = 248044 '<|endoftext|>'
+print_info: EOG token             = 248046 '<|im_end|>'
+print_info: EOG token             = 248063 '<|fim_pad|>'
+print_info: EOG token             = 248064 '<|repo_name|>'
+print_info: EOG token             = 248065 '<|file_sep|>'
+print_info: max token length      = 256
+load_tensors: loading model tensors, this can take a while... (load_mode = mmap)
+load_tensors: layer   0 assigned to device CPU, is_swa = 0
+load_tensors: layer   1 assigned to device CPU, is_swa = 0
+load_tensors: layer   2 assigned to device CPU, is_swa = 0
+load_tensors: layer   3 assigned to device CPU, is_swa = 0
+load_tensors: layer   4 assigned to device CPU, is_swa = 0
+load_tensors: layer   5 assigned to device CPU, is_swa = 0
+load_tensors: layer   6 assigned to device CPU, is_swa = 0
+load_tensors: layer   7 assigned to device CPU, is_swa = 0
+load_tensors: layer   8 assigned to device CPU, is_swa = 0
+load_tensors: layer   9 assigned to device CPU, is_swa = 0
+load_tensors: layer  10 assigned to device CPU, is_swa = 0
+load_tensors: layer  11 assigned to device CPU, is_swa = 0
+load_tensors: layer  12 assigned to device CPU, is_swa = 0
+load_tensors: layer  13 assigned to device CPU, is_swa = 0
+load_tensors: layer  14 assigned to device CPU, is_swa = 0
+load_tensors: layer  15 assigned to device CPU, is_swa = 0
+load_tensors: layer  16 assigned to device CPU, is_swa = 0
+load_tensors: layer  17 assigned to device CPU, is_swa = 0
+load_tensors: layer  18 assigned to device CPU, is_swa = 0
+load_tensors: layer  19 assigned to device CPU, is_swa = 0
+load_tensors: layer  20 assigned to device CPU, is_swa = 0
+load_tensors: layer  21 assigned to device CPU, is_swa = 0
+load_tensors: layer  22 assigned to device CPU, is_swa = 0
+load_tensors: layer  23 assigned to device CPU, is_swa = 0
+load_tensors: layer  24 assigned to device CPU, is_swa = 0
+load_tensors: layer  25 assigned to device CPU, is_swa = 0
+load_tensors: layer  26 assigned to device CPU, is_swa = 0
+load_tensors: layer  27 assigned to device CPU, is_swa = 0
+load_tensors: layer  28 assigned to device CPU, is_swa = 0
+load_tensors: layer  29 assigned to device CPU, is_swa = 0
+load_tensors: layer  30 assigned to device CPU, is_swa = 0
+load_tensors: layer  31 assigned to device CPU, is_swa = 0
+load_tensors: layer  32 assigned to device CPU, is_swa = 0
+load_tensors: layer  33 assigned to device CPU, is_swa = 0
+load_tensors: layer  34 assigned to device CPU, is_swa = 0
+load_tensors: layer  35 assigned to device CPU, is_swa = 0
+load_tensors: layer  36 assigned to device CPU, is_swa = 0
+load_tensors: layer  37 assigned to device CPU, is_swa = 0
+load_tensors: layer  38 assigned to device CPU, is_swa = 0
+load_tensors: layer  39 assigned to device CPU, is_swa = 0
+load_tensors: layer  40 assigned to device CPU, is_swa = 0
+load_tensors: layer  41 assigned to device CPU, is_swa = 0
+load_tensors: layer  42 assigned to device CPU, is_swa = 0
+load_tensors: layer  43 assigned to device CPU, is_swa = 0
+load_tensors: layer  44 assigned to device CPU, is_swa = 0
+load_tensors: layer  45 assigned to device CPU, is_swa = 0
+load_tensors: layer  46 assigned to device CPU, is_swa = 0
+load_tensors: layer  47 assigned to device CPU, is_swa = 0
+load_tensors: layer  48 assigned to device CPU, is_swa = 0
+load_tensors: layer  49 assigned to device CPU, is_swa = 0
+load_tensors: layer  50 assigned to device CPU, is_swa = 0
+load_tensors: layer  51 assigned to device CPU, is_swa = 0
+load_tensors: layer  52 assigned to device CPU, is_swa = 0
+load_tensors: layer  53 assigned to device CPU, is_swa = 0
+load_tensors: layer  54 assigned to device CPU, is_swa = 0
+load_tensors: layer  55 assigned to device CPU, is_swa = 0
+load_tensors: layer  56 assigned to device CPU, is_swa = 0
+load_tensors: layer  57 assigned to device CPU, is_swa = 0
+load_tensors: layer  58 assigned to device CPU, is_swa = 0
+load_tensors: layer  59 assigned to device CPU, is_swa = 0
+load_tensors: layer  60 assigned to device CPU, is_swa = 0
+load_tensors: layer  61 assigned to device CPU, is_swa = 0
+load_tensors: layer  62 assigned to device CPU, is_swa = 0
+load_tensors: layer  63 assigned to device CPU, is_swa = 0
+load_tensors: layer  64 assigned to device CPU, is_swa = 0
+create_tensor: loading tensor token_embd.weight
+create_tensor: loading tensor output_norm.weight
+create_tensor: loading tensor output.weight
+create_tensor: loading tensor cls.output.weight
+create_tensor: loading tensor cls.output.bias
+create_tensor: loading tensor blk.0.attn_norm.weight
+create_tensor: loading tensor blk.0.post_attention_norm.weight
+create_tensor: loading tensor blk.0.attn_qkv.weight
+create_tensor: loading tensor blk.0.attn_gate.weight
+create_tensor: loading tensor blk.0.ssm_conv1d.weight
+create_tensor: loading tensor blk.0.ssm_dt.bias
+create_tensor: loading tensor blk.0.ssm_a
+create_tensor: loading tensor blk.0.ssm_beta.weight
+create_tensor: loading tensor blk.0.ssm_alpha.weight
+create_tensor: loading tensor blk.0.ssm_norm.weight
+create_tensor: loading tensor blk.0.ssm_out.weight
+create_tensor: loading tensor blk.0.ffn_gate.weight
+create_tensor: loading tensor blk.0.ffn_down.weight
+create_tensor: loading tensor blk.0.ffn_up.weight
+create_tensor: loading tensor blk.1.attn_norm.weight
+create_tensor: loading tensor blk.1.post_attention_norm.weight
+create_tensor: loading tensor blk.1.attn_qkv.weight
+create_tensor: loading tensor blk.1.attn_gate.weight
+create_tensor: loading tensor blk.1.ssm_conv1d.weight
+create_tensor: loading tensor blk.1.ssm_dt.bias
+create_tensor: loading tensor blk.1.ssm_a
+create_tensor: loading tensor blk.1.ssm_beta.weight
+create_tensor: loading tensor blk.1.ssm_alpha.weight
+create_tensor: loading tensor blk.1.ssm_norm.weight
+create_tensor: loading tensor blk.1.ssm_out.weight
+create_tensor: loading tensor blk.1.ffn_gate.weight
+create_tensor: loading tensor blk.1.ffn_down.weight
+create_tensor: loading tensor blk.1.ffn_up.weight
+create_tensor: loading tensor blk.2.attn_norm.weight
+create_tensor: loading tensor blk.2.post_attention_norm.weight
+create_tensor: loading tensor blk.2.attn_qkv.weight
+create_tensor: loading tensor blk.2.attn_gate.weight
+create_tensor: loading tensor blk.2.ssm_conv1d.weight
+create_tensor: loading tensor blk.2.ssm_dt.bias
+create_tensor: loading tensor blk.2.ssm_a
+create_tensor: loading tensor blk.2.ssm_beta.weight
+create_tensor: loading tensor blk.2.ssm_alpha.weight
+create_tensor: loading tensor blk.2.ssm_norm.weight
+create_tensor: loading tensor blk.2.ssm_out.weight
+create_tensor: loading tensor blk.2.ffn_gate.weight
+create_tensor: loading tensor blk.2.ffn_down.weight
+create_tensor: loading tensor blk.2.ffn_up.weight
+create_tensor: loading tensor blk.3.attn_norm.weight
+create_tensor: loading tensor blk.3.post_attention_norm.weight
+create_tensor: loading tensor blk.3.attn_qkv.weight
+create_tensor: loading tensor blk.3.attn_q.weight
+create_tensor: loading tensor blk.3.attn_k.weight
+create_tensor: loading tensor blk.3.attn_v.weight
+create_tensor: loading tensor blk.3.attn_q.bias
+create_tensor: loading tensor blk.3.attn_k.bias
+create_tensor: loading tensor blk.3.attn_v.bias
+create_tensor: loading tensor blk.3.attn_output.weight
+create_tensor: loading tensor blk.3.attn_q_norm.weight
+create_tensor: loading tensor blk.3.attn_k_norm.weight
+create_tensor: loading tensor blk.3.ffn_gate.weight
+create_tensor: loading tensor blk.3.ffn_down.weight
+create_tensor: loading tensor blk.3.ffn_up.weight
+create_tensor: loading tensor blk.4.attn_norm.weight
+create_tensor: loading tensor blk.4.post_attention_norm.weight
+create_tensor: loading tensor blk.4.attn_qkv.weight
+create_tensor: loading tensor blk.4.attn_gate.weight
+create_tensor: loading tensor blk.4.ssm_conv1d.weight
+create_tensor: loading tensor blk.4.ssm_dt.bias
+create_tensor: loading tensor blk.4.ssm_a
+create_tensor: loading tensor blk.4.ssm_beta.weight
+create_tensor: loading tensor blk.4.ssm_alpha.weight
+create_tensor: loading tensor blk.4.ssm_norm.weight
+create_tensor: loading tensor blk.4.ssm_out.weight
+create_tensor: loading tensor blk.4.ffn_gate.weight
+create_tensor: loading tensor blk.4.ffn_down.weight
+create_tensor: loading tensor blk.4.ffn_up.weight
+create_tensor: loading tensor blk.5.attn_norm.weight
+create_tensor: loading tensor blk.5.post_attention_norm.weight
+create_tensor: loading tensor blk.5.attn_qkv.weight
+create_tensor: loading tensor blk.5.attn_gate.weight
+create_tensor: loading tensor blk.5.ssm_conv1d.weight
+create_tensor: loading tensor blk.5.ssm_dt.bias
+create_tensor: loading tensor blk.5.ssm_a
+create_tensor: loading tensor blk.5.ssm_beta.weight
+create_tensor: loading tensor blk.5.ssm_alpha.weight
+create_tensor: loading tensor blk.5.ssm_norm.weight
+create_tensor: loading tensor blk.5.ssm_out.weight
+create_tensor: loading tensor blk.5.ffn_gate.weight
+create_tensor: loading tensor blk.5.ffn_down.weight
+create_tensor: loading tensor blk.5.ffn_up.weight
+create_tensor: loading tensor blk.6.attn_norm.weight
+create_tensor: loading tensor blk.6.post_attention_norm.weight
+create_tensor: loading tensor blk.6.attn_qkv.weight
+create_tensor: loading tensor blk.6.attn_gate.weight
+create_tensor: loading tensor blk.6.ssm_conv1d.weight
+create_tensor: loading tensor blk.6.ssm_dt.bias
+create_tensor: loading tensor blk.6.ssm_a
+create_tensor: loading tensor blk.6.ssm_beta.weight
+create_tensor: loading tensor blk.6.ssm_alpha.weight
+create_tensor: loading tensor blk.6.ssm_norm.weight
+create_tensor: loading tensor blk.6.ssm_out.weight
+create_tensor: loading tensor blk.6.ffn_gate.weight
+create_tensor: loading tensor blk.6.ffn_down.weight
+create_tensor: loading tensor blk.6.ffn_up.weight
+create_tensor: loading tensor blk.7.attn_norm.weight
+create_tensor: loading tensor blk.7.post_attention_norm.weight
+create_tensor: loading tensor blk.7.attn_qkv.weight
+create_tensor: loading tensor blk.7.attn_q.weight
+create_tensor: loading tensor blk.7.attn_k.weight
+create_tensor: loading tensor blk.7.attn_v.weight
+create_tensor: loading tensor blk.7.attn_q.bias
+create_tensor: loading tensor blk.7.attn_k.bias
+create_tensor: loading tensor blk.7.attn_v.bias
+create_tensor: loading tensor blk.7.attn_output.weight
+create_tensor: loading tensor blk.7.attn_q_norm.weight
+create_tensor: loading tensor blk.7.attn_k_norm.weight
+create_tensor: loading tensor blk.7.ffn_gate.weight
+create_tensor: loading tensor blk.7.ffn_down.weight
+create_tensor: loading tensor blk.7.ffn_up.weight
+create_tensor: loading tensor blk.8.attn_norm.weight
+create_tensor: loading tensor blk.8.post_attention_norm.weight
+create_tensor: loading tensor blk.8.attn_qkv.weight
+create_tensor: loading tensor blk.8.attn_gate.weight
+create_tensor: loading tensor blk.8.ssm_conv1d.weight
+create_tensor: loading tensor blk.8.ssm_dt.bias
+create_tensor: loading tensor blk.8.ssm_a
+create_tensor: loading tensor blk.8.ssm_beta.weight
+create_tensor: loading tensor blk.8.ssm_alpha.weight
+create_tensor: loading tensor blk.8.ssm_norm.weight
+create_tensor: loading tensor blk.8.ssm_out.weight
+create_tensor: loading tensor blk.8.ffn_gate.weight
+create_tensor: loading tensor blk.8.ffn_down.weight
+create_tensor: loading tensor blk.8.ffn_up.weight
+create_tensor: loading tensor blk.9.attn_norm.weight
+create_tensor: loading tensor blk.9.post_attention_norm.weight
+create_tensor: loading tensor blk.9.attn_qkv.weight
+create_tensor: loading tensor blk.9.attn_gate.weight
+create_tensor: loading tensor blk.9.ssm_conv1d.weight
+create_tensor: loading tensor blk.9.ssm_dt.bias
+create_tensor: loading tensor blk.9.ssm_a
+create_tensor: loading tensor blk.9.ssm_beta.weight
+create_tensor: loading tensor blk.9.ssm_alpha.weight
+create_tensor: loading tensor blk.9.ssm_norm.weight
+create_tensor: loading tensor blk.9.ssm_out.weight
+create_tensor: loading tensor blk.9.ffn_gate.weight
+create_tensor: loading tensor blk.9.ffn_down.weight
+create_tensor: loading tensor blk.9.ffn_up.weight
+create_tensor: loading tensor blk.10.attn_norm.weight
+create_tensor: loading tensor blk.10.post_attention_norm.weight
+create_tensor: loading tensor blk.10.attn_qkv.weight
+create_tensor: loading tensor blk.10.attn_gate.weight
+create_tensor: loading tensor blk.10.ssm_conv1d.weight
+create_tensor: loading tensor blk.10.ssm_dt.bias
+create_tensor: loading tensor blk.10.ssm_a
+create_tensor: loading tensor blk.10.ssm_beta.weight
+create_tensor: loading tensor blk.10.ssm_alpha.weight
+create_tensor: loading tensor blk.10.ssm_norm.weight
+create_tensor: loading tensor blk.10.ssm_out.weight
+create_tensor: loading tensor blk.10.ffn_gate.weight
+create_tensor: loading tensor blk.10.ffn_down.weight
+create_tensor: loading tensor blk.10.ffn_up.weight
+create_tensor: loading tensor blk.11.attn_norm.weight
+create_tensor: loading tensor blk.11.post_attention_norm.weight
+create_tensor: loading tensor blk.11.attn_qkv.weight
+create_tensor: loading tensor blk.11.attn_q.weight
+create_tensor: loading tensor blk.11.attn_k.weight
+create_tensor: loading tensor blk.11.attn_v.weight
+create_tensor: loading tensor blk.11.attn_q.bias
+create_tensor: loading tensor blk.11.attn_k.bias
+create_tensor: loading tensor blk.11.attn_v.bias
+create_tensor: loading tensor blk.11.attn_output.weight
+create_tensor: loading tensor blk.11.attn_q_norm.weight
+create_tensor: loading tensor blk.11.attn_k_norm.weight
+create_tensor: loading tensor blk.11.ffn_gate.weight
+create_tensor: loading tensor blk.11.ffn_down.weight
+create_tensor: loading tensor blk.11.ffn_up.weight
+create_tensor: loading tensor blk.12.attn_norm.weight
+create_tensor: loading tensor blk.12.post_attention_norm.weight
+create_tensor: loading tensor blk.12.attn_qkv.weight
+create_tensor: loading tensor blk.12.attn_gate.weight
+create_tensor: loading tensor blk.12.ssm_conv1d.weight
+create_tensor: loading tensor blk.12.ssm_dt.bias
+create_tensor: loading tensor blk.12.ssm_a
+create_tensor: loading tensor blk.12.ssm_beta.weight
+create_tensor: loading tensor blk.12.ssm_alpha.weight
+create_tensor: loading tensor blk.12.ssm_norm.weight
+create_tensor: loading tensor blk.12.ssm_out.weight
+create_tensor: loading tensor blk.12.ffn_gate.weight
+create_tensor: loading tensor blk.12.ffn_down.weight
+create_tensor: loading tensor blk.12.ffn_up.weight
+create_tensor: loading tensor blk.13.attn_norm.weight
+create_tensor: loading tensor blk.13.post_attention_norm.weight
+create_tensor: loading tensor blk.13.attn_qkv.weight
+create_tensor: loading tensor blk.13.attn_gate.weight
+create_tensor: loading tensor blk.13.ssm_conv1d.weight
+create_tensor: loading tensor blk.13.ssm_dt.bias
+create_tensor: loading tensor blk.13.ssm_a
+create_tensor: loading tensor blk.13.ssm_beta.weight
+create_tensor: loading tensor blk.13.ssm_alpha.weight
+create_tensor: loading tensor blk.13.ssm_norm.weight
+create_tensor: loading tensor blk.13.ssm_out.weight
+create_tensor: loading tensor blk.13.ffn_gate.weight
+create_tensor: loading tensor blk.13.ffn_down.weight
+create_tensor: loading tensor blk.13.ffn_up.weight
+create_tensor: loading tensor blk.14.attn_norm.weight
+create_tensor: loading tensor blk.14.post_attention_norm.weight
+create_tensor: loading tensor blk.14.attn_qkv.weight
+create_tensor: loading tensor blk.14.attn_gate.weight
+create_tensor: loading tensor blk.14.ssm_conv1d.weight
+create_tensor: loading tensor blk.14.ssm_dt.bias
+create_tensor: loading tensor blk.14.ssm_a
+create_tensor: loading tensor blk.14.ssm_beta.weight
+create_tensor: loading tensor blk.14.ssm_alpha.weight
+create_tensor: loading tensor blk.14.ssm_norm.weight
+create_tensor: loading tensor blk.14.ssm_out.weight
+create_tensor: loading tensor blk.14.ffn_gate.weight
+create_tensor: loading tensor blk.14.ffn_down.weight
+create_tensor: loading tensor blk.14.ffn_up.weight
+create_tensor: loading tensor blk.15.attn_norm.weight
+create_tensor: loading tensor blk.15.post_attention_norm.weight
+create_tensor: loading tensor blk.15.attn_qkv.weight
+create_tensor: loading tensor blk.15.attn_q.weight
+create_tensor: loading tensor blk.15.attn_k.weight
+create_tensor: loading tensor blk.15.attn_v.weight
+create_tensor: loading tensor blk.15.attn_q.bias
+create_tensor: loading tensor blk.15.attn_k.bias
+create_tensor: loading tensor blk.15.attn_v.bias
+create_tensor: loading tensor blk.15.attn_output.weight
+create_tensor: loading tensor blk.15.attn_q_norm.weight
+create_tensor: loading tensor blk.15.attn_k_norm.weight
+create_tensor: loading tensor blk.15.ffn_gate.weight
+create_tensor: loading tensor blk.15.ffn_down.weight
+create_tensor: loading tensor blk.15.ffn_up.weight
+create_tensor: loading tensor blk.16.attn_norm.weight
+create_tensor: loading tensor blk.16.post_attention_norm.weight
+create_tensor: loading tensor blk.16.attn_qkv.weight
+create_tensor: loading tensor blk.16.attn_gate.weight
+create_tensor: loading tensor blk.16.ssm_conv1d.weight
+create_tensor: loading tensor blk.16.ssm_dt.bias
+create_tensor: loading tensor blk.16.ssm_a
+create_tensor: loading tensor blk.16.ssm_beta.weight
+create_tensor: loading tensor blk.16.ssm_alpha.weight
+create_tensor: loading tensor blk.16.ssm_norm.weight
+create_tensor: loading tensor blk.16.ssm_out.weight
+create_tensor: loading tensor blk.16.ffn_gate.weight
+create_tensor: loading tensor blk.16.ffn_down.weight
+create_tensor: loading tensor blk.16.ffn_up.weight
+create_tensor: loading tensor blk.17.attn_norm.weight
+create_tensor: loading tensor blk.17.post_attention_norm.weight
+create_tensor: loading tensor blk.17.attn_qkv.weight
+create_tensor: loading tensor blk.17.attn_gate.weight
+create_tensor: loading tensor blk.17.ssm_conv1d.weight
+create_tensor: loading tensor blk.17.ssm_dt.bias
+create_tensor: loading tensor blk.17.ssm_a
+create_tensor: loading tensor blk.17.ssm_beta.weight
+create_tensor: loading tensor blk.17.ssm_alpha.weight
+create_tensor: loading tensor blk.17.ssm_norm.weight
+create_tensor: loading tensor blk.17.ssm_out.weight
+create_tensor: loading tensor blk.17.ffn_gate.weight
+create_tensor: loading tensor blk.17.ffn_down.weight
+create_tensor: loading tensor blk.17.ffn_up.weight
+create_tensor: loading tensor blk.18.attn_norm.weight
+create_tensor: loading tensor blk.18.post_attention_norm.weight
+create_tensor: loading tensor blk.18.attn_qkv.weight
+create_tensor: loading tensor blk.18.attn_gate.weight
+create_tensor: loading tensor blk.18.ssm_conv1d.weight
+create_tensor: loading tensor blk.18.ssm_dt.bias
+create_tensor: loading tensor blk.18.ssm_a
+create_tensor: loading tensor blk.18.ssm_beta.weight
+create_tensor: loading tensor blk.18.ssm_alpha.weight
+create_tensor: loading tensor blk.18.ssm_norm.weight
+create_tensor: loading tensor blk.18.ssm_out.weight
+create_tensor: loading tensor blk.18.ffn_gate.weight
+create_tensor: loading tensor blk.18.ffn_down.weight
+create_tensor: loading tensor blk.18.ffn_up.weight
+create_tensor: loading tensor blk.19.attn_norm.weight
+create_tensor: loading tensor blk.19.post_attention_norm.weight
+create_tensor: loading tensor blk.19.attn_qkv.weight
+create_tensor: loading tensor blk.19.attn_q.weight
+create_tensor: loading tensor blk.19.attn_k.weight
+create_tensor: loading tensor blk.19.attn_v.weight
+create_tensor: loading tensor blk.19.attn_q.bias
+create_tensor: loading tensor blk.19.attn_k.bias
+create_tensor: loading tensor blk.19.attn_v.bias
+create_tensor: loading tensor blk.19.attn_output.weight
+create_tensor: loading tensor blk.19.attn_q_norm.weight
+create_tensor: loading tensor blk.19.attn_k_norm.weight
+create_tensor: loading tensor blk.19.ffn_gate.weight
+create_tensor: loading tensor blk.19.ffn_down.weight
+create_tensor: loading tensor blk.19.ffn_up.weight
+create_tensor: loading tensor blk.20.attn_norm.weight
+create_tensor: loading tensor blk.20.post_attention_norm.weight
+create_tensor: loading tensor blk.20.attn_qkv.weight
+create_tensor: loading tensor blk.20.attn_gate.weight
+create_tensor: loading tensor blk.20.ssm_conv1d.weight
+create_tensor: loading tensor blk.20.ssm_dt.bias
+create_tensor: loading tensor blk.20.ssm_a
+create_tensor: loading tensor blk.20.ssm_beta.weight
+create_tensor: loading tensor blk.20.ssm_alpha.weight
+create_tensor: loading tensor blk.20.ssm_norm.weight
+create_tensor: loading tensor blk.20.ssm_out.weight
+create_tensor: loading tensor blk.20.ffn_gate.weight
+create_tensor: loading tensor blk.20.ffn_down.weight
+create_tensor: loading tensor blk.20.ffn_up.weight
+create_tensor: loading tensor blk.21.attn_norm.weight
+create_tensor: loading tensor blk.21.post_attention_norm.weight
+create_tensor: loading tensor blk.21.attn_qkv.weight
+create_tensor: loading tensor blk.21.attn_gate.weight
+create_tensor: loading tensor blk.21.ssm_conv1d.weight
+create_tensor: loading tensor blk.21.ssm_dt.bias
+create_tensor: loading tensor blk.21.ssm_a
+create_tensor: loading tensor blk.21.ssm_beta.weight
+create_tensor: loading tensor blk.21.ssm_alpha.weight
+create_tensor: loading tensor blk.21.ssm_norm.weight
+create_tensor: loading tensor blk.21.ssm_out.weight
+create_tensor: loading tensor blk.21.ffn_gate.weight
+create_tensor: loading tensor blk.21.ffn_down.weight
+create_tensor: loading tensor blk.21.ffn_up.weight
+create_tensor: loading tensor blk.22.attn_norm.weight
+create_tensor: loading tensor blk.22.post_attention_norm.weight
+create_tensor: loading tensor blk.22.attn_qkv.weight
+create_tensor: loading tensor blk.22.attn_gate.weight
+create_tensor: loading tensor blk.22.ssm_conv1d.weight
+create_tensor: loading tensor blk.22.ssm_dt.bias
+create_tensor: loading tensor blk.22.ssm_a
+create_tensor: loading tensor blk.22.ssm_beta.weight
+create_tensor: loading tensor blk.22.ssm_alpha.weight
+create_tensor: loading tensor blk.22.ssm_norm.weight
+create_tensor: loading tensor blk.22.ssm_out.weight
+create_tensor: loading tensor blk.22.ffn_gate.weight
+create_tensor: loading tensor blk.22.ffn_down.weight
+create_tensor: loading tensor blk.22.ffn_up.weight
+create_tensor: loading tensor blk.23.attn_norm.weight
+create_tensor: loading tensor blk.23.post_attention_norm.weight
+create_tensor: loading tensor blk.23.attn_qkv.weight
+create_tensor: loading tensor blk.23.attn_q.weight
+create_tensor: loading tensor blk.23.attn_k.weight
+create_tensor: loading tensor blk.23.attn_v.weight
+create_tensor: loading tensor blk.23.attn_q.bias
+create_tensor: loading tensor blk.23.attn_k.bias
+create_tensor: loading tensor blk.23.attn_v.bias
+create_tensor: loading tensor blk.23.attn_output.weight
+create_tensor: loading tensor blk.23.attn_q_norm.weight
+create_tensor: loading tensor blk.23.attn_k_norm.weight
+create_tensor: loading tensor blk.23.ffn_gate.weight
+create_tensor: loading tensor blk.23.ffn_down.weight
+create_tensor: loading tensor blk.23.ffn_up.weight
+create_tensor: loading tensor blk.24.attn_norm.weight
+create_tensor: loading tensor blk.24.post_attention_norm.weight
+create_tensor: loading tensor blk.24.attn_qkv.weight
+create_tensor: loading tensor blk.24.attn_gate.weight
+create_tensor: loading tensor blk.24.ssm_conv1d.weight
+create_tensor: loading tensor blk.24.ssm_dt.bias
+create_tensor: loading tensor blk.24.ssm_a
+create_tensor: loading tensor blk.24.ssm_beta.weight
+create_tensor: loading tensor blk.24.ssm_alpha.weight
+create_tensor: loading tensor blk.24.ssm_norm.weight
+create_tensor: loading tensor blk.24.ssm_out.weight
+create_tensor: loading tensor blk.24.ffn_gate.weight
+create_tensor: loading tensor blk.24.ffn_down.weight
+create_tensor: loading tensor blk.24.ffn_up.weight
+create_tensor: loading tensor blk.25.attn_norm.weight
+create_tensor: loading tensor blk.25.post_attention_norm.weight
+create_tensor: loading tensor blk.25.attn_qkv.weight
+create_tensor: loading tensor blk.25.attn_gate.weight
+create_tensor: loading tensor blk.25.ssm_conv1d.weight
+create_tensor: loading tensor blk.25.ssm_dt.bias
+create_tensor: loading tensor blk.25.ssm_a
+create_tensor: loading tensor blk.25.ssm_beta.weight
+create_tensor: loading tensor blk.25.ssm_alpha.weight
+create_tensor: loading tensor blk.25.ssm_norm.weight
+create_tensor: loading tensor blk.25.ssm_out.weight
+create_tensor: loading tensor blk.25.ffn_gate.weight
+create_tensor: loading tensor blk.25.ffn_down.weight
+create_tensor: loading tensor blk.25.ffn_up.weight
+create_tensor: loading tensor blk.26.attn_norm.weight
+create_tensor: loading tensor blk.26.post_attention_norm.weight
+create_tensor: loading tensor blk.26.attn_qkv.weight
+create_tensor: loading tensor blk.26.attn_gate.weight
+create_tensor: loading tensor blk.26.ssm_conv1d.weight
+create_tensor: loading tensor blk.26.ssm_dt.bias
+create_tensor: loading tensor blk.26.ssm_a
+create_tensor: loading tensor blk.26.ssm_beta.weight
+create_tensor: loading tensor blk.26.ssm_alpha.weight
+create_tensor: loading tensor blk.26.ssm_norm.weight
+create_tensor: loading tensor blk.26.ssm_out.weight
+create_tensor: loading tensor blk.26.ffn_gate.weight
+create_tensor: loading tensor blk.26.ffn_down.weight
+create_tensor: loading tensor blk.26.ffn_up.weight
+create_tensor: loading tensor blk.27.attn_norm.weight
+create_tensor: loading tensor blk.27.post_attention_norm.weight
+create_tensor: loading tensor blk.27.attn_qkv.weight
+create_tensor: loading tensor blk.27.attn_q.weight
+create_tensor: loading tensor blk.27.attn_k.weight
+create_tensor: loading tensor blk.27.attn_v.weight
+create_tensor: loading tensor blk.27.attn_q.bias
+create_tensor: loading tensor blk.27.attn_k.bias
+create_tensor: loading tensor blk.27.attn_v.bias
+create_tensor: loading tensor blk.27.attn_output.weight
+create_tensor: loading tensor blk.27.attn_q_norm.weight
+create_tensor: loading tensor blk.27.attn_k_norm.weight
+create_tensor: loading tensor blk.27.ffn_gate.weight
+create_tensor: loading tensor blk.27.ffn_down.weight
+create_tensor: loading tensor blk.27.ffn_up.weight
+create_tensor: loading tensor blk.28.attn_norm.weight
+create_tensor: loading tensor blk.28.post_attention_norm.weight
+create_tensor: loading tensor blk.28.attn_qkv.weight
+create_tensor: loading tensor blk.28.attn_gate.weight
+create_tensor: loading tensor blk.28.ssm_conv1d.weight
+create_tensor: loading tensor blk.28.ssm_dt.bias
+create_tensor: loading tensor blk.28.ssm_a
+create_tensor: loading tensor blk.28.ssm_beta.weight
+create_tensor: loading tensor blk.28.ssm_alpha.weight
+create_tensor: loading tensor blk.28.ssm_norm.weight
+create_tensor: loading tensor blk.28.ssm_out.weight
+create_tensor: loading tensor blk.28.ffn_gate.weight
+create_tensor: loading tensor blk.28.ffn_down.weight
+create_tensor: loading tensor blk.28.ffn_up.weight
+create_tensor: loading tensor blk.29.attn_norm.weight
+create_tensor: loading tensor blk.29.post_attention_norm.weight
+create_tensor: loading tensor blk.29.attn_qkv.weight
+create_tensor: loading tensor blk.29.attn_gate.weight
+create_tensor: loading tensor blk.29.ssm_conv1d.weight
+create_tensor: loading tensor blk.29.ssm_dt.bias
+create_tensor: loading tensor blk.29.ssm_a
+create_tensor: loading tensor blk.29.ssm_beta.weight
+create_tensor: loading tensor blk.29.ssm_alpha.weight
+create_tensor: loading tensor blk.29.ssm_norm.weight
+create_tensor: loading tensor blk.29.ssm_out.weight
+create_tensor: loading tensor blk.29.ffn_gate.weight
+create_tensor: loading tensor blk.29.ffn_down.weight
+create_tensor: loading tensor blk.29.ffn_up.weight
+create_tensor: loading tensor blk.30.attn_norm.weight
+create_tensor: loading tensor blk.30.post_attention_norm.weight
+create_tensor: loading tensor blk.30.attn_qkv.weight
+create_tensor: loading tensor blk.30.attn_gate.weight
+create_tensor: loading tensor blk.30.ssm_conv1d.weight
+create_tensor: loading tensor blk.30.ssm_dt.bias
+create_tensor: loading tensor blk.30.ssm_a
+create_tensor: loading tensor blk.30.ssm_beta.weight
+create_tensor: loading tensor blk.30.ssm_alpha.weight
+create_tensor: loading tensor blk.30.ssm_norm.weight
+create_tensor: loading tensor blk.30.ssm_out.weight
+create_tensor: loading tensor blk.30.ffn_gate.weight
+create_tensor: loading tensor blk.30.ffn_down.weight
+create_tensor: loading tensor blk.30.ffn_up.weight
+create_tensor: loading tensor blk.31.attn_norm.weight
+create_tensor: loading tensor blk.31.post_attention_norm.weight
+create_tensor: loading tensor blk.31.attn_qkv.weight
+create_tensor: loading tensor blk.31.attn_q.weight
+create_tensor: loading tensor blk.31.attn_k.weight
+create_tensor: loading tensor blk.31.attn_v.weight
+create_tensor: loading tensor blk.31.attn_q.bias
+create_tensor: loading tensor blk.31.attn_k.bias
+create_tensor: loading tensor blk.31.attn_v.bias
+create_tensor: loading tensor blk.31.attn_output.weight
+create_tensor: loading tensor blk.31.attn_q_norm.weight
+create_tensor: loading tensor blk.31.attn_k_norm.weight
+create_tensor: loading tensor blk.31.ffn_gate.weight
+create_tensor: loading tensor blk.31.ffn_down.weight
+create_tensor: loading tensor blk.31.ffn_up.weight
+create_tensor: loading tensor blk.32.attn_norm.weight
+create_tensor: loading tensor blk.32.post_attention_norm.weight
+create_tensor: loading tensor blk.32.attn_qkv.weight
+create_tensor: loading tensor blk.32.attn_gate.weight
+create_tensor: loading tensor blk.32.ssm_conv1d.weight
+create_tensor: loading tensor blk.32.ssm_dt.bias
+create_tensor: loading tensor blk.32.ssm_a
+create_tensor: loading tensor blk.32.ssm_beta.weight
+create_tensor: loading tensor blk.32.ssm_alpha.weight
+create_tensor: loading tensor blk.32.ssm_norm.weight
+create_tensor: loading tensor blk.32.ssm_out.weight
+create_tensor: loading tensor blk.32.ffn_gate.weight
+create_tensor: loading tensor blk.32.ffn_down.weight
+create_tensor: loading tensor blk.32.ffn_up.weight
+create_tensor: loading tensor blk.33.attn_norm.weight
+create_tensor: loading tensor blk.33.post_attention_norm.weight
+create_tensor: loading tensor blk.33.attn_qkv.weight
+create_tensor: loading tensor blk.33.attn_gate.weight
+create_tensor: loading tensor blk.33.ssm_conv1d.weight
+create_tensor: loading tensor blk.33.ssm_dt.bias
+create_tensor: loading tensor blk.33.ssm_a
+create_tensor: loading tensor blk.33.ssm_beta.weight
+create_tensor: loading tensor blk.33.ssm_alpha.weight
+create_tensor: loading tensor blk.33.ssm_norm.weight
+create_tensor: loading tensor blk.33.ssm_out.weight
+create_tensor: loading tensor blk.33.ffn_gate.weight
+create_tensor: loading tensor blk.33.ffn_down.weight
+create_tensor: loading tensor blk.33.ffn_up.weight
+create_tensor: loading tensor blk.34.attn_norm.weight
+create_tensor: loading tensor blk.34.post_attention_norm.weight
+create_tensor: loading tensor blk.34.attn_qkv.weight
+create_tensor: loading tensor blk.34.attn_gate.weight
+create_tensor: loading tensor blk.34.ssm_conv1d.weight
+create_tensor: loading tensor blk.34.ssm_dt.bias
+create_tensor: loading tensor blk.34.ssm_a
+create_tensor: loading tensor blk.34.ssm_beta.weight
+create_tensor: loading tensor blk.34.ssm_alpha.weight
+create_tensor: loading tensor blk.34.ssm_norm.weight
+create_tensor: loading tensor blk.34.ssm_out.weight
+create_tensor: loading tensor blk.34.ffn_gate.weight
+create_tensor: loading tensor blk.34.ffn_down.weight
+create_tensor: loading tensor blk.34.ffn_up.weight
+create_tensor: loading tensor blk.35.attn_norm.weight
+create_tensor: loading tensor blk.35.post_attention_norm.weight
+create_tensor: loading tensor blk.35.attn_qkv.weight
+create_tensor: loading tensor blk.35.attn_q.weight
+create_tensor: loading tensor blk.35.attn_k.weight
+create_tensor: loading tensor blk.35.attn_v.weight
+create_tensor: loading tensor blk.35.attn_q.bias
+create_tensor: loading tensor blk.35.attn_k.bias
+create_tensor: loading tensor blk.35.attn_v.bias
+create_tensor: loading tensor blk.35.attn_output.weight
+create_tensor: loading tensor blk.35.attn_q_norm.weight
+create_tensor: loading tensor blk.35.attn_k_norm.weight
+create_tensor: loading tensor blk.35.ffn_gate.weight
+create_tensor: loading tensor blk.35.ffn_down.weight
+create_tensor: loading tensor blk.35.ffn_up.weight
+create_tensor: loading tensor blk.36.attn_norm.weight
+create_tensor: loading tensor blk.36.post_attention_norm.weight
+create_tensor: loading tensor blk.36.attn_qkv.weight
+create_tensor: loading tensor blk.36.attn_gate.weight
+create_tensor: loading tensor blk.36.ssm_conv1d.weight
+create_tensor: loading tensor blk.36.ssm_dt.bias
+create_tensor: loading tensor blk.36.ssm_a
+create_tensor: loading tensor blk.36.ssm_beta.weight
+create_tensor: loading tensor blk.36.ssm_alpha.weight
+create_tensor: loading tensor blk.36.ssm_norm.weight
+create_tensor: loading tensor blk.36.ssm_out.weight
+create_tensor: loading tensor blk.36.ffn_gate.weight
+create_tensor: loading tensor blk.36.ffn_down.weight
+create_tensor: loading tensor blk.36.ffn_up.weight
+create_tensor: loading tensor blk.37.attn_norm.weight
+create_tensor: loading tensor blk.37.post_attention_norm.weight
+create_tensor: loading tensor blk.37.attn_qkv.weight
+create_tensor: loading tensor blk.37.attn_gate.weight
+create_tensor: loading tensor blk.37.ssm_conv1d.weight
+create_tensor: loading tensor blk.37.ssm_dt.bias
+create_tensor: loading tensor blk.37.ssm_a
+create_tensor: loading tensor blk.37.ssm_beta.weight
+create_tensor: loading tensor blk.37.ssm_alpha.weight
+create_tensor: loading tensor blk.37.ssm_norm.weight
+create_tensor: loading tensor blk.37.ssm_out.weight
+create_tensor: loading tensor blk.37.ffn_gate.weight
+create_tensor: loading tensor blk.37.ffn_down.weight
+create_tensor: loading tensor blk.37.ffn_up.weight
+create_tensor: loading tensor blk.38.attn_norm.weight
+create_tensor: loading tensor blk.38.post_attention_norm.weight
+create_tensor: loading tensor blk.38.attn_qkv.weight
+create_tensor: loading tensor blk.38.attn_gate.weight
+create_tensor: loading tensor blk.38.ssm_conv1d.weight
+create_tensor: loading tensor blk.38.ssm_dt.bias
+create_tensor: loading tensor blk.38.ssm_a
+create_tensor: loading tensor blk.38.ssm_beta.weight
+create_tensor: loading tensor blk.38.ssm_alpha.weight
+create_tensor: loading tensor blk.38.ssm_norm.weight
+create_tensor: loading tensor blk.38.ssm_out.weight
+create_tensor: loading tensor blk.38.ffn_gate.weight
+create_tensor: loading tensor blk.38.ffn_down.weight
+create_tensor: loading tensor blk.38.ffn_up.weight
+create_tensor: loading tensor blk.39.attn_norm.weight
+create_tensor: loading tensor blk.39.post_attention_norm.weight
+create_tensor: loading tensor blk.39.attn_qkv.weight
+create_tensor: loading tensor blk.39.attn_q.weight
+create_tensor: loading tensor blk.39.attn_k.weight
+create_tensor: loading tensor blk.39.attn_v.weight
+create_tensor: loading tensor blk.39.attn_q.bias
+create_tensor: loading tensor blk.39.attn_k.bias
+create_tensor: loading tensor blk.39.attn_v.bias
+create_tensor: loading tensor blk.39.attn_output.weight
+create_tensor: loading tensor blk.39.attn_q_norm.weight
+create_tensor: loading tensor blk.39.attn_k_norm.weight
+create_tensor: loading tensor blk.39.ffn_gate.weight
+create_tensor: loading tensor blk.39.ffn_down.weight
+create_tensor: loading tensor blk.39.ffn_up.weight
+create_tensor: loading tensor blk.40.attn_norm.weight
+create_tensor: loading tensor blk.40.post_attention_norm.weight
+create_tensor: loading tensor blk.40.attn_qkv.weight
+create_tensor: loading tensor blk.40.attn_gate.weight
+create_tensor: loading tensor blk.40.ssm_conv1d.weight
+create_tensor: loading tensor blk.40.ssm_dt.bias
+create_tensor: loading tensor blk.40.ssm_a
+create_tensor: loading tensor blk.40.ssm_beta.weight
+create_tensor: loading tensor blk.40.ssm_alpha.weight
+create_tensor: loading tensor blk.40.ssm_norm.weight
+create_tensor: loading tensor blk.40.ssm_out.weight
+create_tensor: loading tensor blk.40.ffn_gate.weight
+create_tensor: loading tensor blk.40.ffn_down.weight
+create_tensor: loading tensor blk.40.ffn_up.weight
+create_tensor: loading tensor blk.41.attn_norm.weight
+create_tensor: loading tensor blk.41.post_attention_norm.weight
+create_tensor: loading tensor blk.41.attn_qkv.weight
+create_tensor: loading tensor blk.41.attn_gate.weight
+create_tensor: loading tensor blk.41.ssm_conv1d.weight
+create_tensor: loading tensor blk.41.ssm_dt.bias
+create_tensor: loading tensor blk.41.ssm_a
+create_tensor: loading tensor blk.41.ssm_beta.weight
+create_tensor: loading tensor blk.41.ssm_alpha.weight
+create_tensor: loading tensor blk.41.ssm_norm.weight
+create_tensor: loading tensor blk.41.ssm_out.weight
+create_tensor: loading tensor blk.41.ffn_gate.weight
+create_tensor: loading tensor blk.41.ffn_down.weight
+create_tensor: loading tensor blk.41.ffn_up.weight
+create_tensor: loading tensor blk.42.attn_norm.weight
+create_tensor: loading tensor blk.42.post_attention_norm.weight
+create_tensor: loading tensor blk.42.attn_qkv.weight
+create_tensor: loading tensor blk.42.attn_gate.weight
+create_tensor: loading tensor blk.42.ssm_conv1d.weight
+create_tensor: loading tensor blk.42.ssm_dt.bias
+create_tensor: loading tensor blk.42.ssm_a
+create_tensor: loading tensor blk.42.ssm_beta.weight
+create_tensor: loading tensor blk.42.ssm_alpha.weight
+create_tensor: loading tensor blk.42.ssm_norm.weight
+create_tensor: loading tensor blk.42.ssm_out.weight
+create_tensor: loading tensor blk.42.ffn_gate.weight
+create_tensor: loading tensor blk.42.ffn_down.weight
+create_tensor: loading tensor blk.42.ffn_up.weight
+create_tensor: loading tensor blk.43.attn_norm.weight
+create_tensor: loading tensor blk.43.post_attention_norm.weight
+create_tensor: loading tensor blk.43.attn_qkv.weight
+create_tensor: loading tensor blk.43.attn_q.weight
+create_tensor: loading tensor blk.43.attn_k.weight
+create_tensor: loading tensor blk.43.attn_v.weight
+create_tensor: loading tensor blk.43.attn_q.bias
+create_tensor: loading tensor blk.43.attn_k.bias
+create_tensor: loading tensor blk.43.attn_v.bias
+create_tensor: loading tensor blk.43.attn_output.weight
+create_tensor: loading tensor blk.43.attn_q_norm.weight
+create_tensor: loading tensor blk.43.attn_k_norm.weight
+create_tensor: loading tensor blk.43.ffn_gate.weight
+create_tensor: loading tensor blk.43.ffn_down.weight
+create_tensor: loading tensor blk.43.ffn_up.weight
+create_tensor: loading tensor blk.44.attn_norm.weight
+create_tensor: loading tensor blk.44.post_attention_norm.weight
+create_tensor: loading tensor blk.44.attn_qkv.weight
+create_tensor: loading tensor blk.44.attn_gate.weight
+create_tensor: loading tensor blk.44.ssm_conv1d.weight
+create_tensor: loading tensor blk.44.ssm_dt.bias
+create_tensor: loading tensor blk.44.ssm_a
+create_tensor: loading tensor blk.44.ssm_beta.weight
+create_tensor: loading tensor blk.44.ssm_alpha.weight
+create_tensor: loading tensor blk.44.ssm_norm.weight
+create_tensor: loading tensor blk.44.ssm_out.weight
+create_tensor: loading tensor blk.44.ffn_gate.weight
+create_tensor: loading tensor blk.44.ffn_down.weight
+create_tensor: loading tensor blk.44.ffn_up.weight
+create_tensor: loading tensor blk.45.attn_norm.weight
+create_tensor: loading tensor blk.45.post_attention_norm.weight
+create_tensor: loading tensor blk.45.attn_qkv.weight
+create_tensor: loading tensor blk.45.attn_gate.weight
+create_tensor: loading tensor blk.45.ssm_conv1d.weight
+create_tensor: loading tensor blk.45.ssm_dt.bias
+create_tensor: loading tensor blk.45.ssm_a
+create_tensor: loading tensor blk.45.ssm_beta.weight
+create_tensor: loading tensor blk.45.ssm_alpha.weight
+create_tensor: loading tensor blk.45.ssm_norm.weight
+create_tensor: loading tensor blk.45.ssm_out.weight
+create_tensor: loading tensor blk.45.ffn_gate.weight
+create_tensor: loading tensor blk.45.ffn_down.weight
+create_tensor: loading tensor blk.45.ffn_up.weight
+create_tensor: loading tensor blk.46.attn_norm.weight
+create_tensor: loading tensor blk.46.post_attention_norm.weight
+create_tensor: loading tensor blk.46.attn_qkv.weight
+create_tensor: loading tensor blk.46.attn_gate.weight
+create_tensor: loading tensor blk.46.ssm_conv1d.weight
+create_tensor: loading tensor blk.46.ssm_dt.bias
+create_tensor: loading tensor blk.46.ssm_a
+create_tensor: loading tensor blk.46.ssm_beta.weight
+create_tensor: loading tensor blk.46.ssm_alpha.weight
+create_tensor: loading tensor blk.46.ssm_norm.weight
+create_tensor: loading tensor blk.46.ssm_out.weight
+create_tensor: loading tensor blk.46.ffn_gate.weight
+create_tensor: loading tensor blk.46.ffn_down.weight
+create_tensor: loading tensor blk.46.ffn_up.weight
+create_tensor: loading tensor blk.47.attn_norm.weight
+create_tensor: loading tensor blk.47.post_attention_norm.weight
+create_tensor: loading tensor blk.47.attn_qkv.weight
+create_tensor: loading tensor blk.47.attn_q.weight
+create_tensor: loading tensor blk.47.attn_k.weight
+create_tensor: loading tensor blk.47.attn_v.weight
+create_tensor: loading tensor blk.47.attn_q.bias
+create_tensor: loading tensor blk.47.attn_k.bias
+create_tensor: loading tensor blk.47.attn_v.bias
+create_tensor: loading tensor blk.47.attn_output.weight
+create_tensor: loading tensor blk.47.attn_q_norm.weight
+create_tensor: loading tensor blk.47.attn_k_norm.weight
+create_tensor: loading tensor blk.47.ffn_gate.weight
+create_tensor: loading tensor blk.47.ffn_down.weight
+create_tensor: loading tensor blk.47.ffn_up.weight
+create_tensor: loading tensor blk.48.attn_norm.weight
+create_tensor: loading tensor blk.48.post_attention_norm.weight
+create_tensor: loading tensor blk.48.attn_qkv.weight
+create_tensor: loading tensor blk.48.attn_gate.weight
+create_tensor: loading tensor blk.48.ssm_conv1d.weight
+create_tensor: loading tensor blk.48.ssm_dt.bias
+create_tensor: loading tensor blk.48.ssm_a
+create_tensor: loading tensor blk.48.ssm_beta.weight
+create_tensor: loading tensor blk.48.ssm_alpha.weight
+create_tensor: loading tensor blk.48.ssm_norm.weight
+create_tensor: loading tensor blk.48.ssm_out.weight
+create_tensor: loading tensor blk.48.ffn_gate.weight
+create_tensor: loading tensor blk.48.ffn_down.weight
+create_tensor: loading tensor blk.48.ffn_up.weight
+create_tensor: loading tensor blk.49.attn_norm.weight
+create_tensor: loading tensor blk.49.post_attention_norm.weight
+create_tensor: loading tensor blk.49.attn_qkv.weight
+create_tensor: loading tensor blk.49.attn_gate.weight
+create_tensor: loading tensor blk.49.ssm_conv1d.weight
+create_tensor: loading tensor blk.49.ssm_dt.bias
+create_tensor: loading tensor blk.49.ssm_a
+create_tensor: loading tensor blk.49.ssm_beta.weight
+create_tensor: loading tensor blk.49.ssm_alpha.weight
+create_tensor: loading tensor blk.49.ssm_norm.weight
+create_tensor: loading tensor blk.49.ssm_out.weight
+create_tensor: loading tensor blk.49.ffn_gate.weight
+create_tensor: loading tensor blk.49.ffn_down.weight
+create_tensor: loading tensor blk.49.ffn_up.weight
+create_tensor: loading tensor blk.50.attn_norm.weight
+create_tensor: loading tensor blk.50.post_attention_norm.weight
+create_tensor: loading tensor blk.50.attn_qkv.weight
+create_tensor: loading tensor blk.50.attn_gate.weight
+create_tensor: loading tensor blk.50.ssm_conv1d.weight
+create_tensor: loading tensor blk.50.ssm_dt.bias
+create_tensor: loading tensor blk.50.ssm_a
+create_tensor: loading tensor blk.50.ssm_beta.weight
+create_tensor: loading tensor blk.50.ssm_alpha.weight
+create_tensor: loading tensor blk.50.ssm_norm.weight
+create_tensor: loading tensor blk.50.ssm_out.weight
+create_tensor: loading tensor blk.50.ffn_gate.weight
+create_tensor: loading tensor blk.50.ffn_down.weight
+create_tensor: loading tensor blk.50.ffn_up.weight
+create_tensor: loading tensor blk.51.attn_norm.weight
+create_tensor: loading tensor blk.51.post_attention_norm.weight
+create_tensor: loading tensor blk.51.attn_qkv.weight
+create_tensor: loading tensor blk.51.attn_q.weight
+create_tensor: loading tensor blk.51.attn_k.weight
+create_tensor: loading tensor blk.51.attn_v.weight
+create_tensor: loading tensor blk.51.attn_q.bias
+create_tensor: loading tensor blk.51.attn_k.bias
+create_tensor: loading tensor blk.51.attn_v.bias
+create_tensor: loading tensor blk.51.attn_output.weight
+create_tensor: loading tensor blk.51.attn_q_norm.weight
+create_tensor: loading tensor blk.51.attn_k_norm.weight
+create_tensor: loading tensor blk.51.ffn_gate.weight
+create_tensor: loading tensor blk.51.ffn_down.weight
+create_tensor: loading tensor blk.51.ffn_up.weight
+create_tensor: loading tensor blk.52.attn_norm.weight
+create_tensor: loading tensor blk.52.post_attention_norm.weight
+create_tensor: loading tensor blk.52.attn_qkv.weight
+create_tensor: loading tensor blk.52.attn_gate.weight
+create_tensor: loading tensor blk.52.ssm_conv1d.weight
+create_tensor: loading tensor blk.52.ssm_dt.bias
+create_tensor: loading tensor blk.52.ssm_a
+create_tensor: loading tensor blk.52.ssm_beta.weight
+create_tensor: loading tensor blk.52.ssm_alpha.weight
+create_tensor: loading tensor blk.52.ssm_norm.weight
+create_tensor: loading tensor blk.52.ssm_out.weight
+create_tensor: loading tensor blk.52.ffn_gate.weight
+create_tensor: loading tensor blk.52.ffn_down.weight
+create_tensor: loading tensor blk.52.ffn_up.weight
+create_tensor: loading tensor blk.53.attn_norm.weight
+create_tensor: loading tensor blk.53.post_attention_norm.weight
+create_tensor: loading tensor blk.53.attn_qkv.weight
+create_tensor: loading tensor blk.53.attn_gate.weight
+create_tensor: loading tensor blk.53.ssm_conv1d.weight
+create_tensor: loading tensor blk.53.ssm_dt.bias
+create_tensor: loading tensor blk.53.ssm_a
+create_tensor: loading tensor blk.53.ssm_beta.weight
+create_tensor: loading tensor blk.53.ssm_alpha.weight
+create_tensor: loading tensor blk.53.ssm_norm.weight
+create_tensor: loading tensor blk.53.ssm_out.weight
+create_tensor: loading tensor blk.53.ffn_gate.weight
+create_tensor: loading tensor blk.53.ffn_down.weight
+create_tensor: loading tensor blk.53.ffn_up.weight
+create_tensor: loading tensor blk.54.attn_norm.weight
+create_tensor: loading tensor blk.54.post_attention_norm.weight
+create_tensor: loading tensor blk.54.attn_qkv.weight
+create_tensor: loading tensor blk.54.attn_gate.weight
+create_tensor: loading tensor blk.54.ssm_conv1d.weight
+create_tensor: loading tensor blk.54.ssm_dt.bias
+create_tensor: loading tensor blk.54.ssm_a
+create_tensor: loading tensor blk.54.ssm_beta.weight
+create_tensor: loading tensor blk.54.ssm_alpha.weight
+create_tensor: loading tensor blk.54.ssm_norm.weight
+create_tensor: loading tensor blk.54.ssm_out.weight
+create_tensor: loading tensor blk.54.ffn_gate.weight
+create_tensor: loading tensor blk.54.ffn_down.weight
+create_tensor: loading tensor blk.54.ffn_up.weight
+create_tensor: loading tensor blk.55.attn_norm.weight
+create_tensor: loading tensor blk.55.post_attention_norm.weight
+create_tensor: loading tensor blk.55.attn_qkv.weight
+create_tensor: loading tensor blk.55.attn_q.weight
+create_tensor: loading tensor blk.55.attn_k.weight
+create_tensor: loading tensor blk.55.attn_v.weight
+create_tensor: loading tensor blk.55.attn_q.bias
+create_tensor: loading tensor blk.55.attn_k.bias
+create_tensor: loading tensor blk.55.attn_v.bias
+create_tensor: loading tensor blk.55.attn_output.weight
+create_tensor: loading tensor blk.55.attn_q_norm.weight
+create_tensor: loading tensor blk.55.attn_k_norm.weight
+create_tensor: loading tensor blk.55.ffn_gate.weight
+create_tensor: loading tensor blk.55.ffn_down.weight
+create_tensor: loading tensor blk.55.ffn_up.weight
+create_tensor: loading tensor blk.56.attn_norm.weight
+create_tensor: loading tensor blk.56.post_attention_norm.weight
+create_tensor: loading tensor blk.56.attn_qkv.weight
+create_tensor: loading tensor blk.56.attn_gate.weight
+create_tensor: loading tensor blk.56.ssm_conv1d.weight
+create_tensor: loading tensor blk.56.ssm_dt.bias
+create_tensor: loading tensor blk.56.ssm_a
+create_tensor: loading tensor blk.56.ssm_beta.weight
+create_tensor: loading tensor blk.56.ssm_alpha.weight
+create_tensor: loading tensor blk.56.ssm_norm.weight
+create_tensor: loading tensor blk.56.ssm_out.weight
+create_tensor: loading tensor blk.56.ffn_gate.weight
+create_tensor: loading tensor blk.56.ffn_down.weight
+create_tensor: loading tensor blk.56.ffn_up.weight
+create_tensor: loading tensor blk.57.attn_norm.weight
+create_tensor: loading tensor blk.57.post_attention_norm.weight
+create_tensor: loading tensor blk.57.attn_qkv.weight
+create_tensor: loading tensor blk.57.attn_gate.weight
+create_tensor: loading tensor blk.57.ssm_conv1d.weight
+create_tensor: loading tensor blk.57.ssm_dt.bias
+create_tensor: loading tensor blk.57.ssm_a
+create_tensor: loading tensor blk.57.ssm_beta.weight
+create_tensor: loading tensor blk.57.ssm_alpha.weight
+create_tensor: loading tensor blk.57.ssm_norm.weight
+create_tensor: loading tensor blk.57.ssm_out.weight
+create_tensor: loading tensor blk.57.ffn_gate.weight
+create_tensor: loading tensor blk.57.ffn_down.weight
+create_tensor: loading tensor blk.57.ffn_up.weight
+create_tensor: loading tensor blk.58.attn_norm.weight
+create_tensor: loading tensor blk.58.post_attention_norm.weight
+create_tensor: loading tensor blk.58.attn_qkv.weight
+create_tensor: loading tensor blk.58.attn_gate.weight
+create_tensor: loading tensor blk.58.ssm_conv1d.weight
+create_tensor: loading tensor blk.58.ssm_dt.bias
+create_tensor: loading tensor blk.58.ssm_a
+create_tensor: loading tensor blk.58.ssm_beta.weight
+create_tensor: loading tensor blk.58.ssm_alpha.weight
+create_tensor: loading tensor blk.58.ssm_norm.weight
+create_tensor: loading tensor blk.58.ssm_out.weight
+create_tensor: loading tensor blk.58.ffn_gate.weight
+create_tensor: loading tensor blk.58.ffn_down.weight
+create_tensor: loading tensor blk.58.ffn_up.weight
+create_tensor: loading tensor blk.59.attn_norm.weight
+create_tensor: loading tensor blk.59.post_attention_norm.weight
+create_tensor: loading tensor blk.59.attn_qkv.weight
+create_tensor: loading tensor blk.59.attn_q.weight
+create_tensor: loading tensor blk.59.attn_k.weight
+create_tensor: loading tensor blk.59.attn_v.weight
+create_tensor: loading tensor blk.59.attn_q.bias
+create_tensor: loading tensor blk.59.attn_k.bias
+create_tensor: loading tensor blk.59.attn_v.bias
+create_tensor: loading tensor blk.59.attn_output.weight
+create_tensor: loading tensor blk.59.attn_q_norm.weight
+create_tensor: loading tensor blk.59.attn_k_norm.weight
+create_tensor: loading tensor blk.59.ffn_gate.weight
+create_tensor: loading tensor blk.59.ffn_down.weight
+create_tensor: loading tensor blk.59.ffn_up.weight
+create_tensor: loading tensor blk.60.attn_norm.weight
+create_tensor: loading tensor blk.60.post_attention_norm.weight
+create_tensor: loading tensor blk.60.attn_qkv.weight
+create_tensor: loading tensor blk.60.attn_gate.weight
+create_tensor: loading tensor blk.60.ssm_conv1d.weight
+create_tensor: loading tensor blk.60.ssm_dt.bias
+create_tensor: loading tensor blk.60.ssm_a
+create_tensor: loading tensor blk.60.ssm_beta.weight
+create_tensor: loading tensor blk.60.ssm_alpha.weight
+create_tensor: loading tensor blk.60.ssm_norm.weight
+create_tensor: loading tensor blk.60.ssm_out.weight
+create_tensor: loading tensor blk.60.ffn_gate.weight
+create_tensor: loading tensor blk.60.ffn_down.weight
+create_tensor: loading tensor blk.60.ffn_up.weight
+create_tensor: loading tensor blk.61.attn_norm.weight
+create_tensor: loading tensor blk.61.post_attention_norm.weight
+create_tensor: loading tensor blk.61.attn_qkv.weight
+create_tensor: loading tensor blk.61.attn_gate.weight
+create_tensor: loading tensor blk.61.ssm_conv1d.weight
+create_tensor: loading tensor blk.61.ssm_dt.bias
+create_tensor: loading tensor blk.61.ssm_a
+create_tensor: loading tensor blk.61.ssm_beta.weight
+create_tensor: loading tensor blk.61.ssm_alpha.weight
+create_tensor: loading tensor blk.61.ssm_norm.weight
+create_tensor: loading tensor blk.61.ssm_out.weight
+create_tensor: loading tensor blk.61.ffn_gate.weight
+create_tensor: loading tensor blk.61.ffn_down.weight
+create_tensor: loading tensor blk.61.ffn_up.weight
+create_tensor: loading tensor blk.62.attn_norm.weight
+create_tensor: loading tensor blk.62.post_attention_norm.weight
+create_tensor: loading tensor blk.62.attn_qkv.weight
+create_tensor: loading tensor blk.62.attn_gate.weight
+create_tensor: loading tensor blk.62.ssm_conv1d.weight
+create_tensor: loading tensor blk.62.ssm_dt.bias
+create_tensor: loading tensor blk.62.ssm_a
+create_tensor: loading tensor blk.62.ssm_beta.weight
+create_tensor: loading tensor blk.62.ssm_alpha.weight
+create_tensor: loading tensor blk.62.ssm_norm.weight
+create_tensor: loading tensor blk.62.ssm_out.weight
+create_tensor: loading tensor blk.62.ffn_gate.weight
+create_tensor: loading tensor blk.62.ffn_down.weight
+create_tensor: loading tensor blk.62.ffn_up.weight
+create_tensor: loading tensor blk.63.attn_norm.weight
+create_tensor: loading tensor blk.63.post_attention_norm.weight
+create_tensor: loading tensor blk.63.attn_qkv.weight
+create_tensor: loading tensor blk.63.attn_q.weight
+create_tensor: loading tensor blk.63.attn_k.weight
+create_tensor: loading tensor blk.63.attn_v.weight
+create_tensor: loading tensor blk.63.attn_q.bias
+create_tensor: loading tensor blk.63.attn_k.bias
+create_tensor: loading tensor blk.63.attn_v.bias
+create_tensor: loading tensor blk.63.attn_output.weight
+create_tensor: loading tensor blk.63.attn_q_norm.weight
+create_tensor: loading tensor blk.63.attn_k_norm.weight
+create_tensor: loading tensor blk.63.ffn_gate.weight
+create_tensor: loading tensor blk.63.ffn_down.weight
+create_tensor: loading tensor blk.63.ffn_up.weight
+create_tensor: loading tensor dec.blk.0.cross_attn_norm_kv.weight
+create_tensor: loading tensor dec.blk.0.cross_attn_norm_kv.bias
+create_tensor: loading tensor dec.blk.0.cross_attn_norm.weight
+create_tensor: loading tensor dec.blk.0.cross_attn_norm.bias
+create_tensor: loading tensor dec.blk.0.cross_attn_q.weight
+create_tensor: loading tensor dec.blk.0.cross_attn_q.bias
+create_tensor: loading tensor dec.blk.0.cross_attn_k.weight
+create_tensor: loading tensor dec.blk.0.cross_attn_k.bias
+create_tensor: loading tensor dec.blk.0.cross_attn_v.weight
+create_tensor: loading tensor dec.blk.0.cross_attn_v.bias
+create_tensor: loading tensor dec.blk.0.cross_attn_o.weight
+create_tensor: loading tensor dec.blk.0.cross_attn_o.bias
+create_tensor: loading tensor dec.blk.0.ffn_norm.weight
+create_tensor: loading tensor dec.blk.0.ffn_norm.bias
+create_tensor: loading tensor dec.blk.0.ffn_up.weight
+create_tensor: loading tensor dec.blk.0.ffn_up.bias
+create_tensor: loading tensor dec.blk.0.ffn_down.weight
+create_tensor: loading tensor dec.blk.0.ffn_down.bias
+create_tensor: loading tensor dec.blk.1.cross_attn_norm_kv.weight
+create_tensor: loading tensor dec.blk.1.cross_attn_norm_kv.bias
+create_tensor: loading tensor dec.blk.1.cross_attn_norm.weight
+create_tensor: loading tensor dec.blk.1.cross_attn_norm.bias
+create_tensor: loading tensor dec.blk.1.cross_attn_q.weight
+create_tensor: loading tensor dec.blk.1.cross_attn_q.bias
+create_tensor: loading tensor dec.blk.1.cross_attn_k.weight
+create_tensor: loading tensor dec.blk.1.cross_attn_k.bias
+create_tensor: loading tensor dec.blk.1.cross_attn_v.weight
+create_tensor: loading tensor dec.blk.1.cross_attn_v.bias
+create_tensor: loading tensor dec.blk.1.cross_attn_o.weight
+create_tensor: loading tensor dec.blk.1.cross_attn_o.bias
+create_tensor: loading tensor dec.blk.1.ffn_norm.weight
+create_tensor: loading tensor dec.blk.1.ffn_norm.bias
+create_tensor: loading tensor dec.blk.1.ffn_up.weight
+create_tensor: loading tensor dec.blk.1.ffn_up.bias
+create_tensor: loading tensor dec.blk.1.ffn_down.weight
+create_tensor: loading tensor dec.blk.1.ffn_down.bias
+create_tensor: loading tensor dec.blk.2.attn_norm.weight
+create_tensor: loading tensor dec.blk.2.attn_norm.bias
+create_tensor: loading tensor dec.blk.2.attn_q.weight
+create_tensor: loading tensor dec.blk.2.attn_q.bias
+create_tensor: loading tensor dec.blk.2.attn_k.weight
+create_tensor: loading tensor dec.blk.2.attn_k.bias
+create_tensor: loading tensor dec.blk.2.attn_v.weight
+create_tensor: loading tensor dec.blk.2.attn_v.bias
+create_tensor: loading tensor dec.blk.2.attn_o.weight
+create_tensor: loading tensor dec.blk.2.attn_o.bias
+create_tensor: loading tensor dec.blk.2.cross_attn_norm.weight
+create_tensor: loading tensor dec.blk.2.cross_attn_norm.bias
+create_tensor: loading tensor dec.blk.2.cross_attn_q.weight
+create_tensor: loading tensor dec.blk.2.cross_attn_q.bias
+create_tensor: loading tensor dec.blk.2.cross_attn_k.weight
+create_tensor: loading tensor dec.blk.2.cross_attn_k.bias
+create_tensor: loading tensor dec.blk.2.cross_attn_v.weight
+create_tensor: loading tensor dec.blk.2.cross_attn_v.bias
+create_tensor: loading tensor dec.blk.2.cross_attn_o.weight
+create_tensor: loading tensor dec.blk.2.cross_attn_o.bias
+create_tensor: loading tensor dec.blk.2.ffn_norm.weight
+create_tensor: loading tensor dec.blk.2.ffn_norm.bias
+create_tensor: loading tensor dec.blk.2.ffn_up.weight
+create_tensor: loading tensor dec.blk.2.ffn_up.bias
+create_tensor: loading tensor dec.blk.2.ffn_down.weight
+create_tensor: loading tensor dec.blk.2.ffn_down.bias
+create_tensor: loading tensor dec.blk.3.attn_norm.weight
+create_tensor: loading tensor dec.blk.3.attn_norm.bias
+create_tensor: loading tensor dec.blk.3.attn_q.weight
+create_tensor: loading tensor dec.blk.3.attn_q.bias
+create_tensor: loading tensor dec.blk.3.attn_k.weight
+create_tensor: loading tensor dec.blk.3.attn_k.bias
+create_tensor: loading tensor dec.blk.3.attn_v.weight
+create_tensor: loading tensor dec.blk.3.attn_v.bias
+create_tensor: loading tensor dec.blk.3.attn_o.weight
+create_tensor: loading tensor dec.blk.3.attn_o.bias
+create_tensor: loading tensor dec.blk.3.cross_attn_norm.weight
+create_tensor: loading tensor dec.blk.3.cross_attn_norm.bias
+create_tensor: loading tensor dec.blk.3.cross_attn_q.weight
+create_tensor: loading tensor dec.blk.3.cross_attn_q.bias
+create_tensor: loading tensor dec.blk.3.cross_attn_k.weight
+create_tensor: loading tensor dec.blk.3.cross_attn_k.bias
+create_tensor: loading tensor dec.blk.3.cross_attn_v.weight
+create_tensor: loading tensor dec.blk.3.cross_attn_v.bias
+create_tensor: loading tensor dec.blk.3.cross_attn_o.weight
+create_tensor: loading tensor dec.blk.3.cross_attn_o.bias
+create_tensor: loading tensor dec.blk.3.ffn_norm.weight
+create_tensor: loading tensor dec.blk.3.ffn_norm.bias
+create_tensor: loading tensor dec.blk.3.ffn_up.weight
+create_tensor: loading tensor dec.blk.3.ffn_up.bias
+create_tensor: loading tensor dec.blk.3.ffn_down.weight
+create_tensor: loading tensor dec.blk.3.ffn_down.bias
+create_tensor: loading tensor dec.blk.4.attn_norm.weight
+create_tensor: loading tensor dec.blk.4.attn_norm.bias
+create_tensor: loading tensor dec.blk.4.attn_q.weight
+create_tensor: loading tensor dec.blk.4.attn_q.bias
+create_tensor: loading tensor dec.blk.4.attn_k.weight
+create_tensor: loading tensor dec.blk.4.attn_k.bias
+create_tensor: loading tensor dec.blk.4.attn_v.weight
+create_tensor: loading tensor dec.blk.4.attn_v.bias
+create_tensor: loading tensor dec.blk.4.attn_o.weight
+create_tensor: loading tensor dec.blk.4.attn_o.bias
+create_tensor: loading tensor dec.blk.4.cross_attn_norm.weight
+create_tensor: loading tensor dec.blk.4.cross_attn_norm.bias
+create_tensor: loading tensor dec.blk.4.cross_attn_q.weight
+create_tensor: loading tensor dec.blk.4.cross_attn_q.bias
+create_tensor: loading tensor dec.blk.4.cross_attn_k.weight
+create_tensor: loading tensor dec.blk.4.cross_attn_k.bias
+create_tensor: loading tensor dec.blk.4.cross_attn_v.weight
+create_tensor: loading tensor dec.blk.4.cross_attn_v.bias
+create_tensor: loading tensor dec.blk.4.cross_attn_o.weight
+create_tensor: loading tensor dec.blk.4.cross_attn_o.bias
+create_tensor: loading tensor dec.blk.4.ffn_norm.weight
+create_tensor: loading tensor dec.blk.4.ffn_norm.bias
+create_tensor: loading tensor dec.blk.4.ffn_up.weight
+create_tensor: loading tensor dec.blk.4.ffn_up.bias
+create_tensor: loading tensor dec.blk.4.ffn_down.weight
+create_tensor: loading tensor dec.blk.4.ffn_down.bias
+create_tensor: loading tensor dec.blk.5.attn_norm.weight
+create_tensor: loading tensor dec.blk.5.attn_norm.bias
+create_tensor: loading tensor dec.blk.5.attn_q.weight
+create_tensor: loading tensor dec.blk.5.attn_q.bias
+create_tensor: loading tensor dec.blk.5.attn_k.weight
+create_tensor: loading tensor dec.blk.5.attn_k.bias
+create_tensor: loading tensor dec.blk.5.attn_v.weight
+create_tensor: loading tensor dec.blk.5.attn_v.bias
+create_tensor: loading tensor dec.blk.5.attn_o.weight
+create_tensor: loading tensor dec.blk.5.attn_o.bias
+create_tensor: loading tensor dec.blk.5.cross_attn_norm.weight
+create_tensor: loading tensor dec.blk.5.cross_attn_norm.bias
+create_tensor: loading tensor dec.blk.5.cross_attn_q.weight
+create_tensor: loading tensor dec.blk.5.cross_attn_q.bias
+create_tensor: loading tensor dec.blk.5.cross_attn_k.weight
+create_tensor: loading tensor dec.blk.5.cross_attn_k.bias
+create_tensor: loading tensor dec.blk.5.cross_attn_v.weight
+create_tensor: loading tensor dec.blk.5.cross_attn_v.bias
+create_tensor: loading tensor dec.blk.5.cross_attn_o.weight
+create_tensor: loading tensor dec.blk.5.cross_attn_o.bias
+create_tensor: loading tensor dec.blk.5.ffn_norm.weight
+create_tensor: loading tensor dec.blk.5.ffn_norm.bias
+create_tensor: loading tensor dec.blk.5.ffn_up.weight
+create_tensor: loading tensor dec.blk.5.ffn_up.bias
+create_tensor: loading tensor dec.blk.5.ffn_down.weight
+create_tensor: loading tensor dec.blk.5.ffn_down.bias
+create_tensor: loading tensor decision.hidden_norm.weight
+create_tensor: loading tensor decision.hidden_norm.bias
+create_tensor: loading tensor decision.option_summary_norm.weight
+create_tensor: loading tensor decision.option_summary_norm.bias
+create_tensor: loading tensor decision.field_norm.weight
+create_tensor: loading tensor decision.field_norm.bias
+create_tensor: loading tensor decision.option_norm.weight
+create_tensor: loading tensor decision.option_norm.bias
+create_tensor: loading tensor decision.proj_memory.weight
+create_tensor: loading tensor decision.proj_question.weight
+create_tensor: loading tensor decision.proj_option_question.weight
+create_tensor: loading tensor decision.proj_global.weight
+create_tensor: loading tensor decision.proj_option_context.weight
+create_tensor: loading tensor decision.proj_option_lexical.weight
+create_tensor: loading tensor decision.scales
+create_tensor: loading tensor token_types.weight
+create_tensor: loading tensor decision.scorer.weight
+create_tensor: loading tensor decision.scorer.bias
+create_tensor: loading tensor decision.scorer_out.weight
+create_tensor: loading tensor decision.scorer_out.bias
+create_tensor: loading tensor blk.0.attn_qkv.scale
+create_tensor: loading tensor blk.0.attn_gate.scale
+create_tensor: loading tensor blk.0.ffn_gate.scale
+create_tensor: loading tensor blk.0.ffn_down.scale
+create_tensor: loading tensor blk.0.ffn_up.scale
+create_tensor: loading tensor blk.0.ssm_out.scale
+create_tensor: loading tensor blk.0.ssm_alpha.scale
+create_tensor: loading tensor blk.0.ssm_beta.scale
+create_tensor: loading tensor blk.0.attn_qkv.input_scale
+create_tensor: loading tensor blk.0.attn_gate.input_scale
+create_tensor: loading tensor blk.0.ffn_gate.input_scale
+create_tensor: loading tensor blk.0.ffn_down.input_scale
+create_tensor: loading tensor blk.0.ffn_up.input_scale
+create_tensor: loading tensor blk.0.ssm_out.input_scale
+create_tensor: loading tensor blk.0.ssm_alpha.input_scale
+create_tensor: loading tensor blk.0.ssm_beta.input_scale
+create_tensor: loading tensor blk.1.attn_qkv.scale
+create_tensor: loading tensor blk.1.attn_gate.scale
+create_tensor: loading tensor blk.1.ffn_gate.scale
+create_tensor: loading tensor blk.1.ffn_down.scale
+create_tensor: loading tensor blk.1.ffn_up.scale
+create_tensor: loading tensor blk.1.ssm_out.scale
+create_tensor: loading tensor blk.1.ssm_alpha.scale
+create_tensor: loading tensor blk.1.ssm_beta.scale
+create_tensor: loading tensor blk.1.attn_qkv.input_scale
+create_tensor: loading tensor blk.1.attn_gate.input_scale
+create_tensor: loading tensor blk.1.ffn_gate.input_scale
+create_tensor: loading tensor blk.1.ffn_down.input_scale
+create_tensor: loading tensor blk.1.ffn_up.input_scale
+create_tensor: loading tensor blk.1.ssm_out.input_scale
+create_tensor: loading tensor blk.1.ssm_alpha.input_scale
+create_tensor: loading tensor blk.1.ssm_beta.input_scale
+create_tensor: loading tensor blk.2.attn_qkv.scale
+create_tensor: loading tensor blk.2.attn_gate.scale
+create_tensor: loading tensor blk.2.ffn_gate.scale
+create_tensor: loading tensor blk.2.ffn_down.scale
+create_tensor: loading tensor blk.2.ffn_up.scale
+create_tensor: loading tensor blk.2.ssm_out.scale
+create_tensor: loading tensor blk.2.ssm_alpha.scale
+create_tensor: loading tensor blk.2.ssm_beta.scale
+create_tensor: loading tensor blk.2.attn_qkv.input_scale
+create_tensor: loading tensor blk.2.attn_gate.input_scale
+create_tensor: loading tensor blk.2.ffn_gate.input_scale
+create_tensor: loading tensor blk.2.ffn_down.input_scale
+create_tensor: loading tensor blk.2.ffn_up.input_scale
+create_tensor: loading tensor blk.2.ssm_out.input_scale
+create_tensor: loading tensor blk.2.ssm_alpha.input_scale
+create_tensor: loading tensor blk.2.ssm_beta.input_scale
+create_tensor: loading tensor blk.3.attn_q.scale
+create_tensor: loading tensor blk.3.attn_k.scale
+create_tensor: loading tensor blk.3.attn_v.scale
+create_tensor: loading tensor blk.3.attn_output.scale
+create_tensor: loading tensor blk.3.ffn_gate.scale
+create_tensor: loading tensor blk.3.ffn_down.scale
+create_tensor: loading tensor blk.3.ffn_up.scale
+create_tensor: loading tensor blk.3.attn_q.input_scale
+create_tensor: loading tensor blk.3.attn_k.input_scale
+create_tensor: loading tensor blk.3.attn_v.input_scale
+create_tensor: loading tensor blk.3.attn_output.input_scale
+create_tensor: loading tensor blk.3.ffn_gate.input_scale
+create_tensor: loading tensor blk.3.ffn_down.input_scale
+create_tensor: loading tensor blk.3.ffn_up.input_scale
+create_tensor: loading tensor blk.4.attn_qkv.scale
+create_tensor: loading tensor blk.4.attn_gate.scale
+create_tensor: loading tensor blk.4.ffn_gate.scale
+create_tensor: loading tensor blk.4.ffn_down.scale
+create_tensor: loading tensor blk.4.ffn_up.scale
+create_tensor: loading tensor blk.4.ssm_out.scale
+create_tensor: loading tensor blk.4.ssm_alpha.scale
+create_tensor: loading tensor blk.4.ssm_beta.scale
+create_tensor: loading tensor blk.4.attn_qkv.input_scale
+create_tensor: loading tensor blk.4.attn_gate.input_scale
+create_tensor: loading tensor blk.4.ffn_gate.input_scale
+create_tensor: loading tensor blk.4.ffn_down.input_scale
+create_tensor: loading tensor blk.4.ffn_up.input_scale
+create_tensor: loading tensor blk.4.ssm_out.input_scale
+create_tensor: loading tensor blk.4.ssm_alpha.input_scale
+create_tensor: loading tensor blk.4.ssm_beta.input_scale
+create_tensor: loading tensor blk.5.attn_qkv.scale
+create_tensor: loading tensor blk.5.attn_gate.scale
+create_tensor: loading tensor blk.5.ffn_gate.scale
+create_tensor: loading tensor blk.5.ffn_down.scale
+create_tensor: loading tensor blk.5.ffn_up.scale
+create_tensor: loading tensor blk.5.ssm_out.scale
+create_tensor: loading tensor blk.5.ssm_alpha.scale
+create_tensor: loading tensor blk.5.ssm_beta.scale
+create_tensor: loading tensor blk.5.attn_qkv.input_scale
+create_tensor: loading tensor blk.5.attn_gate.input_scale
+create_tensor: loading tensor blk.5.ffn_gate.input_scale
+create_tensor: loading tensor blk.5.ffn_down.input_scale
+create_tensor: loading tensor blk.5.ffn_up.input_scale
+create_tensor: loading tensor blk.5.ssm_out.input_scale
+create_tensor: loading tensor blk.5.ssm_alpha.input_scale
+create_tensor: loading tensor blk.5.ssm_beta.input_scale
+create_tensor: loading tensor blk.6.attn_qkv.scale
+create_tensor: loading tensor blk.6.attn_gate.scale
+create_tensor: loading tensor blk.6.ffn_gate.scale
+create_tensor: loading tensor blk.6.ffn_down.scale
+create_tensor: loading tensor blk.6.ffn_up.scale
+create_tensor: loading tensor blk.6.ssm_out.scale
+create_tensor: loading tensor blk.6.ssm_alpha.scale
+create_tensor: loading tensor blk.6.ssm_beta.scale
+create_tensor: loading tensor blk.6.attn_qkv.input_scale
+create_tensor: loading tensor blk.6.attn_gate.input_scale
+create_tensor: loading tensor blk.6.ffn_gate.input_scale
+create_tensor: loading tensor blk.6.ffn_down.input_scale
+create_tensor: loading tensor blk.6.ffn_up.input_scale
+create_tensor: loading tensor blk.6.ssm_out.input_scale
+create_tensor: loading tensor blk.6.ssm_alpha.input_scale
+create_tensor: loading tensor blk.6.ssm_beta.input_scale
+create_tensor: loading tensor blk.7.attn_q.scale
+create_tensor: loading tensor blk.7.attn_k.scale
+create_tensor: loading tensor blk.7.attn_v.scale
+create_tensor: loading tensor blk.7.attn_output.scale
+create_tensor: loading tensor blk.7.ffn_gate.scale
+create_tensor: loading tensor blk.7.ffn_down.scale
+create_tensor: loading tensor blk.7.ffn_up.scale
+create_tensor: loading tensor blk.7.attn_q.input_scale
+create_tensor: loading tensor blk.7.attn_k.input_scale
+create_tensor: loading tensor blk.7.attn_v.input_scale
+create_tensor: loading tensor blk.7.attn_output.input_scale
+create_tensor: loading tensor blk.7.ffn_gate.input_scale
+create_tensor: loading tensor blk.7.ffn_down.input_scale
+create_tensor: loading tensor blk.7.ffn_up.input_scale
+create_tensor: loading tensor blk.8.attn_qkv.scale
+create_tensor: loading tensor blk.8.attn_gate.scale
+create_tensor: loading tensor blk.8.ffn_gate.scale
+create_tensor: loading tensor blk.8.ffn_down.scale
+create_tensor: loading tensor blk.8.ffn_up.scale
+create_tensor: loading tensor blk.8.ssm_out.scale
+create_tensor: loading tensor blk.8.ssm_alpha.scale
+create_tensor: loading tensor blk.8.ssm_beta.scale
+create_tensor: loading tensor blk.8.attn_qkv.input_scale
+create_tensor: loading tensor blk.8.attn_gate.input_scale
+create_tensor: loading tensor blk.8.ffn_gate.input_scale
+create_tensor: loading tensor blk.8.ffn_down.input_scale
+create_tensor: loading tensor blk.8.ffn_up.input_scale
+create_tensor: loading tensor blk.8.ssm_out.input_scale
+create_tensor: loading tensor blk.8.ssm_alpha.input_scale
+create_tensor: loading tensor blk.8.ssm_beta.input_scale
+create_tensor: loading tensor blk.9.attn_qkv.scale
+create_tensor: loading tensor blk.9.attn_gate.scale
+create_tensor: loading tensor blk.9.ffn_gate.scale
+create_tensor: loading tensor blk.9.ffn_down.scale
+create_tensor: loading tensor blk.9.ffn_up.scale
+create_tensor: loading tensor blk.9.ssm_out.scale
+create_tensor: loading tensor blk.9.ssm_alpha.scale
+create_tensor: loading tensor blk.9.ssm_beta.scale
+create_tensor: loading tensor blk.9.attn_qkv.input_scale
+create_tensor: loading tensor blk.9.attn_gate.input_scale
+create_tensor: loading tensor blk.9.ffn_gate.input_scale
+create_tensor: loading tensor blk.9.ffn_down.input_scale
+create_tensor: loading tensor blk.9.ffn_up.input_scale
+create_tensor: loading tensor blk.9.ssm_out.input_scale
+create_tensor: loading tensor blk.9.ssm_alpha.input_scale
+create_tensor: loading tensor blk.9.ssm_beta.input_scale
+create_tensor: loading tensor blk.10.attn_qkv.scale
+create_tensor: loading tensor blk.10.attn_gate.scale
+create_tensor: loading tensor blk.10.ffn_gate.scale
+create_tensor: loading tensor blk.10.ffn_down.scale
+create_tensor: loading tensor blk.10.ffn_up.scale
+create_tensor: loading tensor blk.10.ssm_out.scale
+create_tensor: loading tensor blk.10.ssm_alpha.scale
+create_tensor: loading tensor blk.10.ssm_beta.scale
+create_tensor: loading tensor blk.10.attn_qkv.input_scale
+create_tensor: loading tensor blk.10.attn_gate.input_scale
+create_tensor: loading tensor blk.10.ffn_gate.input_scale
+create_tensor: loading tensor blk.10.ffn_down.input_scale
+create_tensor: loading tensor blk.10.ffn_up.input_scale
+create_tensor: loading tensor blk.10.ssm_out.input_scale
+create_tensor: loading tensor blk.10.ssm_alpha.input_scale
+create_tensor: loading tensor blk.10.ssm_beta.input_scale
+create_tensor: loading tensor blk.11.attn_q.scale
+create_tensor: loading tensor blk.11.attn_k.scale
+create_tensor: loading tensor blk.11.attn_v.scale
+create_tensor: loading tensor blk.11.attn_output.scale
+create_tensor: loading tensor blk.11.ffn_gate.scale
+create_tensor: loading tensor blk.11.ffn_down.scale
+create_tensor: loading tensor blk.11.ffn_up.scale
+create_tensor: loading tensor blk.11.attn_q.input_scale
+create_tensor: loading tensor blk.11.attn_k.input_scale
+create_tensor: loading tensor blk.11.attn_v.input_scale
+create_tensor: loading tensor blk.11.attn_output.input_scale
+create_tensor: loading tensor blk.11.ffn_gate.input_scale
+create_tensor: loading tensor blk.11.ffn_down.input_scale
+create_tensor: loading tensor blk.11.ffn_up.input_scale
+create_tensor: loading tensor blk.12.attn_qkv.scale
+create_tensor: loading tensor blk.12.attn_gate.scale
+create_tensor: loading tensor blk.12.ffn_gate.scale
+create_tensor: loading tensor blk.12.ffn_down.scale
+create_tensor: loading tensor blk.12.ffn_up.scale
+create_tensor: loading tensor blk.12.ssm_out.scale
+create_tensor: loading tensor blk.12.ssm_alpha.scale
+create_tensor: loading tensor blk.12.ssm_beta.scale
+create_tensor: loading tensor blk.12.attn_qkv.input_scale
+create_tensor: loading tensor blk.12.attn_gate.input_scale
+create_tensor: loading tensor blk.12.ffn_gate.input_scale
+create_tensor: loading tensor blk.12.ffn_down.input_scale
+create_tensor: loading tensor blk.12.ffn_up.input_scale
+create_tensor: loading tensor blk.12.ssm_out.input_scale
+create_tensor: loading tensor blk.12.ssm_alpha.input_scale
+create_tensor: loading tensor blk.12.ssm_beta.input_scale
+create_tensor: loading tensor blk.13.attn_qkv.scale
+create_tensor: loading tensor blk.13.attn_gate.scale
+create_tensor: loading tensor blk.13.ffn_gate.scale
+create_tensor: loading tensor blk.13.ffn_down.scale
+create_tensor: loading tensor blk.13.ffn_up.scale
+create_tensor: loading tensor blk.13.ssm_out.scale
+create_tensor: loading tensor blk.13.ssm_alpha.scale
+create_tensor: loading tensor blk.13.ssm_beta.scale
+create_tensor: loading tensor blk.13.attn_qkv.input_scale
+create_tensor: loading tensor blk.13.attn_gate.input_scale
+create_tensor: loading tensor blk.13.ffn_gate.input_scale
+create_tensor: loading tensor blk.13.ffn_down.input_scale
+create_tensor: loading tensor blk.13.ffn_up.input_scale
+create_tensor: loading tensor blk.13.ssm_out.input_scale
+create_tensor: loading tensor blk.13.ssm_alpha.input_scale
+create_tensor: loading tensor blk.13.ssm_beta.input_scale
+create_tensor: loading tensor blk.14.attn_qkv.scale
+create_tensor: loading tensor blk.14.attn_gate.scale
+create_tensor: loading tensor blk.14.ffn_gate.scale
+create_tensor: loading tensor blk.14.ffn_down.scale
+create_tensor: loading tensor blk.14.ffn_up.scale
+create_tensor: loading tensor blk.14.ssm_out.scale
+create_tensor: loading tensor blk.14.ssm_alpha.scale
+create_tensor: loading tensor blk.14.ssm_beta.scale
+create_tensor: loading tensor blk.14.attn_qkv.input_scale
+create_tensor: loading tensor blk.14.attn_gate.input_scale
+create_tensor: loading tensor blk.14.ffn_gate.input_scale
+create_tensor: loading tensor blk.14.ffn_down.input_scale
+create_tensor: loading tensor blk.14.ffn_up.input_scale
+create_tensor: loading tensor blk.14.ssm_out.input_scale
+create_tensor: loading tensor blk.14.ssm_alpha.input_scale
+create_tensor: loading tensor blk.14.ssm_beta.input_scale
+create_tensor: loading tensor blk.15.attn_q.scale
+create_tensor: loading tensor blk.15.attn_k.scale
+create_tensor: loading tensor blk.15.attn_v.scale
+create_tensor: loading tensor blk.15.attn_output.scale
+create_tensor: loading tensor blk.15.ffn_gate.scale
+create_tensor: loading tensor blk.15.ffn_down.scale
+create_tensor: loading tensor blk.15.ffn_up.scale
+create_tensor: loading tensor blk.15.attn_q.input_scale
+create_tensor: loading tensor blk.15.attn_k.input_scale
+create_tensor: loading tensor blk.15.attn_v.input_scale
+create_tensor: loading tensor blk.15.attn_output.input_scale
+create_tensor: loading tensor blk.15.ffn_gate.input_scale
+create_tensor: loading tensor blk.15.ffn_down.input_scale
+create_tensor: loading tensor blk.15.ffn_up.input_scale
+create_tensor: loading tensor blk.16.attn_qkv.scale
+create_tensor: loading tensor blk.16.attn_gate.scale
+create_tensor: loading tensor blk.16.ffn_gate.scale
+create_tensor: loading tensor blk.16.ffn_down.scale
+create_tensor: loading tensor blk.16.ffn_up.scale
+create_tensor: loading tensor blk.16.ssm_out.scale
+create_tensor: loading tensor blk.16.ssm_alpha.scale
+create_tensor: loading tensor blk.16.ssm_beta.scale
+create_tensor: loading tensor blk.16.attn_qkv.input_scale
+create_tensor: loading tensor blk.16.attn_gate.input_scale
+create_tensor: loading tensor blk.16.ffn_gate.input_scale
+create_tensor: loading tensor blk.16.ffn_down.input_scale
+create_tensor: loading tensor blk.16.ffn_up.input_scale
+create_tensor: loading tensor blk.16.ssm_out.input_scale
+create_tensor: loading tensor blk.16.ssm_alpha.input_scale
+create_tensor: loading tensor blk.16.ssm_beta.input_scale
+create_tensor: loading tensor blk.17.attn_qkv.scale
+create_tensor: loading tensor blk.17.attn_gate.scale
+create_tensor: loading tensor blk.17.ffn_gate.scale
+create_tensor: loading tensor blk.17.ffn_down.scale
+create_tensor: loading tensor blk.17.ffn_up.scale
+create_tensor: loading tensor blk.17.ssm_out.scale
+create_tensor: loading tensor blk.17.ssm_alpha.scale
+create_tensor: loading tensor blk.17.ssm_beta.scale
+create_tensor: loading tensor blk.17.attn_qkv.input_scale
+create_tensor: loading tensor blk.17.attn_gate.input_scale
+create_tensor: loading tensor blk.17.ffn_gate.input_scale
+create_tensor: loading tensor blk.17.ffn_down.input_scale
+create_tensor: loading tensor blk.17.ffn_up.input_scale
+create_tensor: loading tensor blk.17.ssm_out.input_scale
+create_tensor: loading tensor blk.17.ssm_alpha.input_scale
+create_tensor: loading tensor blk.17.ssm_beta.input_scale
+create_tensor: loading tensor blk.18.attn_qkv.scale
+create_tensor: loading tensor blk.18.attn_gate.scale
+create_tensor: loading tensor blk.18.ffn_gate.scale
+create_tensor: loading tensor blk.18.ffn_down.scale
+create_tensor: loading tensor blk.18.ffn_up.scale
+create_tensor: loading tensor blk.18.ssm_out.scale
+create_tensor: loading tensor blk.18.ssm_alpha.scale
+create_tensor: loading tensor blk.18.ssm_beta.scale
+create_tensor: loading tensor blk.18.attn_qkv.input_scale
+create_tensor: loading tensor blk.18.attn_gate.input_scale
+create_tensor: loading tensor blk.18.ffn_gate.input_scale
+create_tensor: loading tensor blk.18.ffn_down.input_scale
+create_tensor: loading tensor blk.18.ffn_up.input_scale
+create_tensor: loading tensor blk.18.ssm_out.input_scale
+create_tensor: loading tensor blk.18.ssm_alpha.input_scale
+create_tensor: loading tensor blk.18.ssm_beta.input_scale
+create_tensor: loading tensor blk.19.attn_q.scale
+create_tensor: loading tensor blk.19.attn_k.scale
+create_tensor: loading tensor blk.19.attn_v.scale
+create_tensor: loading tensor blk.19.attn_output.scale
+create_tensor: loading tensor blk.19.ffn_gate.scale
+create_tensor: loading tensor blk.19.ffn_down.scale
+create_tensor: loading tensor blk.19.ffn_up.scale
+create_tensor: loading tensor blk.19.attn_q.input_scale
+create_tensor: loading tensor blk.19.attn_k.input_scale
+create_tensor: loading tensor blk.19.attn_v.input_scale
+create_tensor: loading tensor blk.19.attn_output.input_scale
+create_tensor: loading tensor blk.19.ffn_gate.input_scale
+create_tensor: loading tensor blk.19.ffn_down.input_scale
+create_tensor: loading tensor blk.19.ffn_up.input_scale
+create_tensor: loading tensor blk.20.attn_qkv.scale
+create_tensor: loading tensor blk.20.attn_gate.scale
+create_tensor: loading tensor blk.20.ffn_gate.scale
+create_tensor: loading tensor blk.20.ffn_down.scale
+create_tensor: loading tensor blk.20.ffn_up.scale
+create_tensor: loading tensor blk.20.ssm_out.scale
+create_tensor: loading tensor blk.20.ssm_alpha.scale
+create_tensor: loading tensor blk.20.ssm_beta.scale
+create_tensor: loading tensor blk.20.attn_qkv.input_scale
+create_tensor: loading tensor blk.20.attn_gate.input_scale
+create_tensor: loading tensor blk.20.ffn_gate.input_scale
+create_tensor: loading tensor blk.20.ffn_down.input_scale
+create_tensor: loading tensor blk.20.ffn_up.input_scale
+create_tensor: loading tensor blk.20.ssm_out.input_scale
+create_tensor: loading tensor blk.20.ssm_alpha.input_scale
+create_tensor: loading tensor blk.20.ssm_beta.input_scale
+create_tensor: loading tensor blk.21.attn_qkv.scale
+create_tensor: loading tensor blk.21.attn_gate.scale
+create_tensor: loading tensor blk.21.ffn_gate.scale
+create_tensor: loading tensor blk.21.ffn_down.scale
+create_tensor: loading tensor blk.21.ffn_up.scale
+create_tensor: loading tensor blk.21.ssm_out.scale
+create_tensor: loading tensor blk.21.ssm_alpha.scale
+create_tensor: loading tensor blk.21.ssm_beta.scale
+create_tensor: loading tensor blk.21.attn_qkv.input_scale
+create_tensor: loading tensor blk.21.attn_gate.input_scale
+create_tensor: loading tensor blk.21.ffn_gate.input_scale
+create_tensor: loading tensor blk.21.ffn_down.input_scale
+create_tensor: loading tensor blk.21.ffn_up.input_scale
+create_tensor: loading tensor blk.21.ssm_out.input_scale
+create_tensor: loading tensor blk.21.ssm_alpha.input_scale
+create_tensor: loading tensor blk.21.ssm_beta.input_scale
+create_tensor: loading tensor blk.22.attn_qkv.scale
+create_tensor: loading tensor blk.22.attn_gate.scale
+create_tensor: loading tensor blk.22.ffn_gate.scale
+create_tensor: loading tensor blk.22.ffn_down.scale
+create_tensor: loading tensor blk.22.ffn_up.scale
+create_tensor: loading tensor blk.22.ssm_out.scale
+create_tensor: loading tensor blk.22.ssm_alpha.scale
+create_tensor: loading tensor blk.22.ssm_beta.scale
+create_tensor: loading tensor blk.22.attn_qkv.input_scale
+create_tensor: loading tensor blk.22.attn_gate.input_scale
+create_tensor: loading tensor blk.22.ffn_gate.input_scale
+create_tensor: loading tensor blk.22.ffn_down.input_scale
+create_tensor: loading tensor blk.22.ffn_up.input_scale
+create_tensor: loading tensor blk.22.ssm_out.input_scale
+create_tensor: loading tensor blk.22.ssm_alpha.input_scale
+create_tensor: loading tensor blk.22.ssm_beta.input_scale
+create_tensor: loading tensor blk.23.attn_q.scale
+create_tensor: loading tensor blk.23.attn_k.scale
+create_tensor: loading tensor blk.23.attn_v.scale
+create_tensor: loading tensor blk.23.attn_output.scale
+create_tensor: loading tensor blk.23.ffn_gate.scale
+create_tensor: loading tensor blk.23.ffn_down.scale
+create_tensor: loading tensor blk.23.ffn_up.scale
+create_tensor: loading tensor blk.23.attn_q.input_scale
+create_tensor: loading tensor blk.23.attn_k.input_scale
+create_tensor: loading tensor blk.23.attn_v.input_scale
+create_tensor: loading tensor blk.23.attn_output.input_scale
+create_tensor: loading tensor blk.23.ffn_gate.input_scale
+create_tensor: loading tensor blk.23.ffn_down.input_scale
+create_tensor: loading tensor blk.23.ffn_up.input_scale
+create_tensor: loading tensor blk.24.attn_qkv.scale
+create_tensor: loading tensor blk.24.attn_gate.scale
+create_tensor: loading tensor blk.24.ffn_gate.scale
+create_tensor: loading tensor blk.24.ffn_down.scale
+create_tensor: loading tensor blk.24.ffn_up.scale
+create_tensor: loading tensor blk.24.ssm_out.scale
+create_tensor: loading tensor blk.24.ssm_alpha.scale
+create_tensor: loading tensor blk.24.ssm_beta.scale
+create_tensor: loading tensor blk.24.attn_qkv.input_scale
+create_tensor: loading tensor blk.24.attn_gate.input_scale
+create_tensor: loading tensor blk.24.ffn_gate.input_scale
+create_tensor: loading tensor blk.24.ffn_down.input_scale
+create_tensor: loading tensor blk.24.ffn_up.input_scale
+create_tensor: loading tensor blk.24.ssm_out.input_scale
+create_tensor: loading tensor blk.24.ssm_alpha.input_scale
+create_tensor: loading tensor blk.24.ssm_beta.input_scale
+create_tensor: loading tensor blk.25.attn_qkv.scale
+create_tensor: loading tensor blk.25.attn_gate.scale
+create_tensor: loading tensor blk.25.ffn_gate.scale
+create_tensor: loading tensor blk.25.ffn_down.scale
+create_tensor: loading tensor blk.25.ffn_up.scale
+create_tensor: loading tensor blk.25.ssm_out.scale
+create_tensor: loading tensor blk.25.ssm_alpha.scale
+create_tensor: loading tensor blk.25.ssm_beta.scale
+create_tensor: loading tensor blk.25.attn_qkv.input_scale
+create_tensor: loading tensor blk.25.attn_gate.input_scale
+create_tensor: loading tensor blk.25.ffn_gate.input_scale
+create_tensor: loading tensor blk.25.ffn_down.input_scale
+create_tensor: loading tensor blk.25.ffn_up.input_scale
+create_tensor: loading tensor blk.25.ssm_out.input_scale
+create_tensor: loading tensor blk.25.ssm_alpha.input_scale
+create_tensor: loading tensor blk.25.ssm_beta.input_scale
+create_tensor: loading tensor blk.26.attn_qkv.scale
+create_tensor: loading tensor blk.26.attn_gate.scale
+create_tensor: loading tensor blk.26.ffn_gate.scale
+create_tensor: loading tensor blk.26.ffn_down.scale
+create_tensor: loading tensor blk.26.ffn_up.scale
+create_tensor: loading tensor blk.26.ssm_out.scale
+create_tensor: loading tensor blk.26.ssm_alpha.scale
+create_tensor: loading tensor blk.26.ssm_beta.scale
+create_tensor: loading tensor blk.26.attn_qkv.input_scale
+create_tensor: loading tensor blk.26.attn_gate.input_scale
+create_tensor: loading tensor blk.26.ffn_gate.input_scale
+create_tensor: loading tensor blk.26.ffn_down.input_scale
+create_tensor: loading tensor blk.26.ffn_up.input_scale
+create_tensor: loading tensor blk.26.ssm_out.input_scale
+create_tensor: loading tensor blk.26.ssm_alpha.input_scale
+create_tensor: loading tensor blk.26.ssm_beta.input_scale
+create_tensor: loading tensor blk.27.attn_q.scale
+create_tensor: loading tensor blk.27.attn_k.scale
+create_tensor: loading tensor blk.27.attn_v.scale
+create_tensor: loading tensor blk.27.attn_output.scale
+create_tensor: loading tensor blk.27.ffn_gate.scale
+create_tensor: loading tensor blk.27.ffn_down.scale
+create_tensor: loading tensor blk.27.ffn_up.scale
+create_tensor: loading tensor blk.27.attn_q.input_scale
+create_tensor: loading tensor blk.27.attn_k.input_scale
+create_tensor: loading tensor blk.27.attn_v.input_scale
+create_tensor: loading tensor blk.27.attn_output.input_scale
+create_tensor: loading tensor blk.27.ffn_gate.input_scale
+create_tensor: loading tensor blk.27.ffn_down.input_scale
+create_tensor: loading tensor blk.27.ffn_up.input_scale
+create_tensor: loading tensor blk.28.attn_qkv.scale
+create_tensor: loading tensor blk.28.attn_gate.scale
+create_tensor: loading tensor blk.28.ffn_gate.scale
+create_tensor: loading tensor blk.28.ffn_down.scale
+create_tensor: loading tensor blk.28.ffn_up.scale
+create_tensor: loading tensor blk.28.ssm_out.scale
+create_tensor: loading tensor blk.28.ssm_alpha.scale
+create_tensor: loading tensor blk.28.ssm_beta.scale
+create_tensor: loading tensor blk.28.attn_qkv.input_scale
+create_tensor: loading tensor blk.28.attn_gate.input_scale
+create_tensor: loading tensor blk.28.ffn_gate.input_scale
+create_tensor: loading tensor blk.28.ffn_down.input_scale
+create_tensor: loading tensor blk.28.ffn_up.input_scale
+create_tensor: loading tensor blk.28.ssm_out.input_scale
+create_tensor: loading tensor blk.28.ssm_alpha.input_scale
+create_tensor: loading tensor blk.28.ssm_beta.input_scale
+create_tensor: loading tensor blk.29.attn_qkv.scale
+create_tensor: loading tensor blk.29.attn_gate.scale
+create_tensor: loading tensor blk.29.ffn_gate.scale
+create_tensor: loading tensor blk.29.ffn_down.scale
+create_tensor: loading tensor blk.29.ffn_up.scale
+create_tensor: loading tensor blk.29.ssm_out.scale
+create_tensor: loading tensor blk.29.ssm_alpha.scale
+create_tensor: loading tensor blk.29.ssm_beta.scale
+create_tensor: loading tensor blk.29.attn_qkv.input_scale
+create_tensor: loading tensor blk.29.attn_gate.input_scale
+create_tensor: loading tensor blk.29.ffn_gate.input_scale
+create_tensor: loading tensor blk.29.ffn_down.input_scale
+create_tensor: loading tensor blk.29.ffn_up.input_scale
+create_tensor: loading tensor blk.29.ssm_out.input_scale
+create_tensor: loading tensor blk.29.ssm_alpha.input_scale
+create_tensor: loading tensor blk.29.ssm_beta.input_scale
+create_tensor: loading tensor blk.30.attn_qkv.scale
+create_tensor: loading tensor blk.30.attn_gate.scale
+create_tensor: loading tensor blk.30.ffn_gate.scale
+create_tensor: loading tensor blk.30.ffn_down.scale
+create_tensor: loading tensor blk.30.ffn_up.scale
+create_tensor: loading tensor blk.30.ssm_out.scale
+create_tensor: loading tensor blk.30.ssm_alpha.scale
+create_tensor: loading tensor blk.30.ssm_beta.scale
+create_tensor: loading tensor blk.30.attn_qkv.input_scale
+create_tensor: loading tensor blk.30.attn_gate.input_scale
+create_tensor: loading tensor blk.30.ffn_gate.input_scale
+create_tensor: loading tensor blk.30.ffn_down.input_scale
+create_tensor: loading tensor blk.30.ffn_up.input_scale
+create_tensor: loading tensor blk.30.ssm_out.input_scale
+create_tensor: loading tensor blk.30.ssm_alpha.input_scale
+create_tensor: loading tensor blk.30.ssm_beta.input_scale
+create_tensor: loading tensor blk.31.attn_q.scale
+create_tensor: loading tensor blk.31.attn_k.scale
+create_tensor: loading tensor blk.31.attn_v.scale
+create_tensor: loading tensor blk.31.attn_output.scale
+create_tensor: loading tensor blk.31.ffn_gate.scale
+create_tensor: loading tensor blk.31.ffn_down.scale
+create_tensor: loading tensor blk.31.ffn_up.scale
+create_tensor: loading tensor blk.31.attn_q.input_scale
+create_tensor: loading tensor blk.31.attn_k.input_scale
+create_tensor: loading tensor blk.31.attn_v.input_scale
+create_tensor: loading tensor blk.31.attn_output.input_scale
+create_tensor: loading tensor blk.31.ffn_gate.input_scale
+create_tensor: loading tensor blk.31.ffn_down.input_scale
+create_tensor: loading tensor blk.31.ffn_up.input_scale
+create_tensor: loading tensor blk.32.attn_qkv.scale
+create_tensor: loading tensor blk.32.attn_gate.scale
+create_tensor: loading tensor blk.32.ffn_gate.scale
+create_tensor: loading tensor blk.32.ffn_down.scale
+create_tensor: loading tensor blk.32.ffn_up.scale
+create_tensor: loading tensor blk.32.ssm_out.scale
+create_tensor: loading tensor blk.32.ssm_alpha.scale
+create_tensor: loading tensor blk.32.ssm_beta.scale
+create_tensor: loading tensor blk.32.attn_qkv.input_scale
+create_tensor: loading tensor blk.32.attn_gate.input_scale
+create_tensor: loading tensor blk.32.ffn_gate.input_scale
+create_tensor: loading tensor blk.32.ffn_down.input_scale
+create_tensor: loading tensor blk.32.ffn_up.input_scale
+create_tensor: loading tensor blk.32.ssm_out.input_scale
+create_tensor: loading tensor blk.32.ssm_alpha.input_scale
+create_tensor: loading tensor blk.32.ssm_beta.input_scale
+create_tensor: loading tensor blk.33.attn_qkv.scale
+create_tensor: loading tensor blk.33.attn_gate.scale
+create_tensor: loading tensor blk.33.ffn_gate.scale
+create_tensor: loading tensor blk.33.ffn_down.scale
+create_tensor: loading tensor blk.33.ffn_up.scale
+create_tensor: loading tensor blk.33.ssm_out.scale
+create_tensor: loading tensor blk.33.ssm_alpha.scale
+create_tensor: loading tensor blk.33.ssm_beta.scale
+create_tensor: loading tensor blk.33.attn_qkv.input_scale
+create_tensor: loading tensor blk.33.attn_gate.input_scale
+create_tensor: loading tensor blk.33.ffn_gate.input_scale
+create_tensor: loading tensor blk.33.ffn_down.input_scale
+create_tensor: loading tensor blk.33.ffn_up.input_scale
+create_tensor: loading tensor blk.33.ssm_out.input_scale
+create_tensor: loading tensor blk.33.ssm_alpha.input_scale
+create_tensor: loading tensor blk.33.ssm_beta.input_scale
+create_tensor: loading tensor blk.34.attn_qkv.scale
+create_tensor: loading tensor blk.34.attn_gate.scale
+create_tensor: loading tensor blk.34.ffn_gate.scale
+create_tensor: loading tensor blk.34.ffn_down.scale
+create_tensor: loading tensor blk.34.ffn_up.scale
+create_tensor: loading tensor blk.34.ssm_out.scale
+create_tensor: loading tensor blk.34.ssm_alpha.scale
+create_tensor: loading tensor blk.34.ssm_beta.scale
+create_tensor: loading tensor blk.34.attn_qkv.input_scale
+create_tensor: loading tensor blk.34.attn_gate.input_scale
+create_tensor: loading tensor blk.34.ffn_gate.input_scale
+create_tensor: loading tensor blk.34.ffn_down.input_scale
+create_tensor: loading tensor blk.34.ffn_up.input_scale
+create_tensor: loading tensor blk.34.ssm_out.input_scale
+create_tensor: loading tensor blk.34.ssm_alpha.input_scale
+create_tensor: loading tensor blk.34.ssm_beta.input_scale
+create_tensor: loading tensor blk.35.attn_q.scale
+create_tensor: loading tensor blk.35.attn_k.scale
+create_tensor: loading tensor blk.35.attn_v.scale
+create_tensor: loading tensor blk.35.attn_output.scale
+create_tensor: loading tensor blk.35.ffn_gate.scale
+create_tensor: loading tensor blk.35.ffn_down.scale
+create_tensor: loading tensor blk.35.ffn_up.scale
+create_tensor: loading tensor blk.35.attn_q.input_scale
+create_tensor: loading tensor blk.35.attn_k.input_scale
+create_tensor: loading tensor blk.35.attn_v.input_scale
+create_tensor: loading tensor blk.35.attn_output.input_scale
+create_tensor: loading tensor blk.35.ffn_gate.input_scale
+create_tensor: loading tensor blk.35.ffn_down.input_scale
+create_tensor: loading tensor blk.35.ffn_up.input_scale
+create_tensor: loading tensor blk.36.attn_qkv.scale
+create_tensor: loading tensor blk.36.attn_gate.scale
+create_tensor: loading tensor blk.36.ffn_gate.scale
+create_tensor: loading tensor blk.36.ffn_down.scale
+create_tensor: loading tensor blk.36.ffn_up.scale
+create_tensor: loading tensor blk.36.ssm_out.scale
+create_tensor: loading tensor blk.36.ssm_alpha.scale
+create_tensor: loading tensor blk.36.ssm_beta.scale
+create_tensor: loading tensor blk.36.attn_qkv.input_scale
+create_tensor: loading tensor blk.36.attn_gate.input_scale
+create_tensor: loading tensor blk.36.ffn_gate.input_scale
+create_tensor: loading tensor blk.36.ffn_down.input_scale
+create_tensor: loading tensor blk.36.ffn_up.input_scale
+create_tensor: loading tensor blk.36.ssm_out.input_scale
+create_tensor: loading tensor blk.36.ssm_alpha.input_scale
+create_tensor: loading tensor blk.36.ssm_beta.input_scale
+create_tensor: loading tensor blk.37.attn_qkv.scale
+create_tensor: loading tensor blk.37.attn_gate.scale
+create_tensor: loading tensor blk.37.ffn_gate.scale
+create_tensor: loading tensor blk.37.ffn_down.scale
+create_tensor: loading tensor blk.37.ffn_up.scale
+create_tensor: loading tensor blk.37.ssm_out.scale
+create_tensor: loading tensor blk.37.ssm_alpha.scale
+create_tensor: loading tensor blk.37.ssm_beta.scale
+create_tensor: loading tensor blk.37.attn_qkv.input_scale
+create_tensor: loading tensor blk.37.attn_gate.input_scale
+create_tensor: loading tensor blk.37.ffn_gate.input_scale
+create_tensor: loading tensor blk.37.ffn_down.input_scale
+create_tensor: loading tensor blk.37.ffn_up.input_scale
+create_tensor: loading tensor blk.37.ssm_out.input_scale
+create_tensor: loading tensor blk.37.ssm_alpha.input_scale
+create_tensor: loading tensor blk.37.ssm_beta.input_scale
+create_tensor: loading tensor blk.38.attn_qkv.scale
+create_tensor: loading tensor blk.38.attn_gate.scale
+create_tensor: loading tensor blk.38.ffn_gate.scale
+create_tensor: loading tensor blk.38.ffn_down.scale
+create_tensor: loading tensor blk.38.ffn_up.scale
+create_tensor: loading tensor blk.38.ssm_out.scale
+create_tensor: loading tensor blk.38.ssm_alpha.scale
+create_tensor: loading tensor blk.38.ssm_beta.scale
+create_tensor: loading tensor blk.38.attn_qkv.input_scale
+create_tensor: loading tensor blk.38.attn_gate.input_scale
+create_tensor: loading tensor blk.38.ffn_gate.input_scale
+create_tensor: loading tensor blk.38.ffn_down.input_scale
+create_tensor: loading tensor blk.38.ffn_up.input_scale
+create_tensor: loading tensor blk.38.ssm_out.input_scale
+create_tensor: loading tensor blk.38.ssm_alpha.input_scale
+create_tensor: loading tensor blk.38.ssm_beta.input_scale
+create_tensor: loading tensor blk.39.attn_q.scale
+create_tensor: loading tensor blk.39.attn_k.scale
+create_tensor: loading tensor blk.39.attn_v.scale
+create_tensor: loading tensor blk.39.attn_output.scale
+create_tensor: loading tensor blk.39.ffn_gate.scale
+create_tensor: loading tensor blk.39.ffn_down.scale
+create_tensor: loading tensor blk.39.ffn_up.scale
+create_tensor: loading tensor blk.39.attn_q.input_scale
+create_tensor: loading tensor blk.39.attn_k.input_scale
+create_tensor: loading tensor blk.39.attn_v.input_scale
+create_tensor: loading tensor blk.39.attn_output.input_scale
+create_tensor: loading tensor blk.39.ffn_gate.input_scale
+create_tensor: loading tensor blk.39.ffn_down.input_scale
+create_tensor: loading tensor blk.39.ffn_up.input_scale
+create_tensor: loading tensor blk.40.attn_qkv.scale
+create_tensor: loading tensor blk.40.attn_gate.scale
+create_tensor: loading tensor blk.40.ffn_gate.scale
+create_tensor: loading tensor blk.40.ffn_down.scale
+create_tensor: loading tensor blk.40.ffn_up.scale
+create_tensor: loading tensor blk.40.ssm_out.scale
+create_tensor: loading tensor blk.40.ssm_alpha.scale
+create_tensor: loading tensor blk.40.ssm_beta.scale
+create_tensor: loading tensor blk.40.attn_qkv.input_scale
+create_tensor: loading tensor blk.40.attn_gate.input_scale
+create_tensor: loading tensor blk.40.ffn_gate.input_scale
+create_tensor: loading tensor blk.40.ffn_down.input_scale
+create_tensor: loading tensor blk.40.ffn_up.input_scale
+create_tensor: loading tensor blk.40.ssm_out.input_scale
+create_tensor: loading tensor blk.40.ssm_alpha.input_scale
+create_tensor: loading tensor blk.40.ssm_beta.input_scale
+create_tensor: loading tensor blk.41.attn_qkv.scale
+create_tensor: loading tensor blk.41.attn_gate.scale
+create_tensor: loading tensor blk.41.ffn_gate.scale
+create_tensor: loading tensor blk.41.ffn_down.scale
+create_tensor: loading tensor blk.41.ffn_up.scale
+create_tensor: loading tensor blk.41.ssm_out.scale
+create_tensor: loading tensor blk.41.ssm_alpha.scale
+create_tensor: loading tensor blk.41.ssm_beta.scale
+create_tensor: loading tensor blk.41.attn_qkv.input_scale
+create_tensor: loading tensor blk.41.attn_gate.input_scale
+create_tensor: loading tensor blk.41.ffn_gate.input_scale
+create_tensor: loading tensor blk.41.ffn_down.input_scale
+create_tensor: loading tensor blk.41.ffn_up.input_scale
+create_tensor: loading tensor blk.41.ssm_out.input_scale
+create_tensor: loading tensor blk.41.ssm_alpha.input_scale
+create_tensor: loading tensor blk.41.ssm_beta.input_scale
+create_tensor: loading tensor blk.42.attn_qkv.scale
+create_tensor: loading tensor blk.42.attn_gate.scale
+create_tensor: loading tensor blk.42.ffn_gate.scale
+create_tensor: loading tensor blk.42.ffn_down.scale
+create_tensor: loading tensor blk.42.ffn_up.scale
+create_tensor: loading tensor blk.42.ssm_out.scale
+create_tensor: loading tensor blk.42.ssm_alpha.scale
+create_tensor: loading tensor blk.42.ssm_beta.scale
+create_tensor: loading tensor blk.42.attn_qkv.input_scale
+create_tensor: loading tensor blk.42.attn_gate.input_scale
+create_tensor: loading tensor blk.42.ffn_gate.input_scale
+create_tensor: loading tensor blk.42.ffn_down.input_scale
+create_tensor: loading tensor blk.42.ffn_up.input_scale
+create_tensor: loading tensor blk.42.ssm_out.input_scale
+create_tensor: loading tensor blk.42.ssm_alpha.input_scale
+create_tensor: loading tensor blk.42.ssm_beta.input_scale
+create_tensor: loading tensor blk.43.attn_q.scale
+create_tensor: loading tensor blk.43.attn_k.scale
+create_tensor: loading tensor blk.43.attn_v.scale
+create_tensor: loading tensor blk.43.attn_output.scale
+create_tensor: loading tensor blk.43.ffn_gate.scale
+create_tensor: loading tensor blk.43.ffn_down.scale
+create_tensor: loading tensor blk.43.ffn_up.scale
+create_tensor: loading tensor blk.43.attn_q.input_scale
+create_tensor: loading tensor blk.43.attn_k.input_scale
+create_tensor: loading tensor blk.43.attn_v.input_scale
+create_tensor: loading tensor blk.43.attn_output.input_scale
+create_tensor: loading tensor blk.43.ffn_gate.input_scale
+create_tensor: loading tensor blk.43.ffn_down.input_scale
+create_tensor: loading tensor blk.43.ffn_up.input_scale
+create_tensor: loading tensor blk.44.attn_qkv.scale
+create_tensor: loading tensor blk.44.attn_gate.scale
+create_tensor: loading tensor blk.44.ffn_gate.scale
+create_tensor: loading tensor blk.44.ffn_down.scale
+create_tensor: loading tensor blk.44.ffn_up.scale
+create_tensor: loading tensor blk.44.ssm_out.scale
+create_tensor: loading tensor blk.44.ssm_alpha.scale
+create_tensor: loading tensor blk.44.ssm_beta.scale
+create_tensor: loading tensor blk.44.attn_qkv.input_scale
+create_tensor: loading tensor blk.44.attn_gate.input_scale
+create_tensor: loading tensor blk.44.ffn_gate.input_scale
+create_tensor: loading tensor blk.44.ffn_down.input_scale
+create_tensor: loading tensor blk.44.ffn_up.input_scale
+create_tensor: loading tensor blk.44.ssm_out.input_scale
+create_tensor: loading tensor blk.44.ssm_alpha.input_scale
+create_tensor: loading tensor blk.44.ssm_beta.input_scale
+create_tensor: loading tensor blk.45.attn_qkv.scale
+create_tensor: loading tensor blk.45.attn_gate.scale
+create_tensor: loading tensor blk.45.ffn_gate.scale
+create_tensor: loading tensor blk.45.ffn_down.scale
+create_tensor: loading tensor blk.45.ffn_up.scale
+create_tensor: loading tensor blk.45.ssm_out.scale
+create_tensor: loading tensor blk.45.ssm_alpha.scale
+create_tensor: loading tensor blk.45.ssm_beta.scale
+create_tensor: loading tensor blk.45.attn_qkv.input_scale
+create_tensor: loading tensor blk.45.attn_gate.input_scale
+create_tensor: loading tensor blk.45.ffn_gate.input_scale
+create_tensor: loading tensor blk.45.ffn_down.input_scale
+create_tensor: loading tensor blk.45.ffn_up.input_scale
+create_tensor: loading tensor blk.45.ssm_out.input_scale
+create_tensor: loading tensor blk.45.ssm_alpha.input_scale
+create_tensor: loading tensor blk.45.ssm_beta.input_scale
+create_tensor: loading tensor blk.46.attn_qkv.scale
+create_tensor: loading tensor blk.46.attn_gate.scale
+create_tensor: loading tensor blk.46.ffn_gate.scale
+create_tensor: loading tensor blk.46.ffn_down.scale
+create_tensor: loading tensor blk.46.ffn_up.scale
+create_tensor: loading tensor blk.46.ssm_out.scale
+create_tensor: loading tensor blk.46.ssm_alpha.scale
+create_tensor: loading tensor blk.46.ssm_beta.scale
+create_tensor: loading tensor blk.46.attn_qkv.input_scale
+create_tensor: loading tensor blk.46.attn_gate.input_scale
+create_tensor: loading tensor blk.46.ffn_gate.input_scale
+create_tensor: loading tensor blk.46.ffn_down.input_scale
+create_tensor: loading tensor blk.46.ffn_up.input_scale
+create_tensor: loading tensor blk.46.ssm_out.input_scale
+create_tensor: loading tensor blk.46.ssm_alpha.input_scale
+create_tensor: loading tensor blk.46.ssm_beta.input_scale
+create_tensor: loading tensor blk.47.attn_q.scale
+create_tensor: loading tensor blk.47.attn_k.scale
+create_tensor: loading tensor blk.47.attn_v.scale
+create_tensor: loading tensor blk.47.attn_output.scale
+create_tensor: loading tensor blk.47.ffn_gate.scale
+create_tensor: loading tensor blk.47.ffn_down.scale
+create_tensor: loading tensor blk.47.ffn_up.scale
+create_tensor: loading tensor blk.47.attn_q.input_scale
+create_tensor: loading tensor blk.47.attn_k.input_scale
+create_tensor: loading tensor blk.47.attn_v.input_scale
+create_tensor: loading tensor blk.47.attn_output.input_scale
+create_tensor: loading tensor blk.47.ffn_gate.input_scale
+create_tensor: loading tensor blk.47.ffn_down.input_scale
+create_tensor: loading tensor blk.47.ffn_up.input_scale
+create_tensor: loading tensor blk.48.attn_qkv.scale
+create_tensor: loading tensor blk.48.attn_gate.scale
+create_tensor: loading tensor blk.48.ffn_gate.scale
+create_tensor: loading tensor blk.48.ffn_down.scale
+create_tensor: loading tensor blk.48.ffn_up.scale
+create_tensor: loading tensor blk.48.ssm_out.scale
+create_tensor: loading tensor blk.48.ssm_alpha.scale
+create_tensor: loading tensor blk.48.ssm_beta.scale
+create_tensor: loading tensor blk.48.attn_qkv.input_scale
+create_tensor: loading tensor blk.48.attn_gate.input_scale
+create_tensor: loading tensor blk.48.ffn_gate.input_scale
+create_tensor: loading tensor blk.48.ffn_down.input_scale
+create_tensor: loading tensor blk.48.ffn_up.input_scale
+create_tensor: loading tensor blk.48.ssm_out.input_scale
+create_tensor: loading tensor blk.48.ssm_alpha.input_scale
+create_tensor: loading tensor blk.48.ssm_beta.input_scale
+create_tensor: loading tensor blk.49.attn_qkv.scale
+create_tensor: loading tensor blk.49.attn_gate.scale
+create_tensor: loading tensor blk.49.ffn_gate.scale
+create_tensor: loading tensor blk.49.ffn_down.scale
+create_tensor: loading tensor blk.49.ffn_up.scale
+create_tensor: loading tensor blk.49.ssm_out.scale
+create_tensor: loading tensor blk.49.ssm_alpha.scale
+create_tensor: loading tensor blk.49.ssm_beta.scale
+create_tensor: loading tensor blk.49.attn_qkv.input_scale
+create_tensor: loading tensor blk.49.attn_gate.input_scale
+create_tensor: loading tensor blk.49.ffn_gate.input_scale
+create_tensor: loading tensor blk.49.ffn_down.input_scale
+create_tensor: loading tensor blk.49.ffn_up.input_scale
+create_tensor: loading tensor blk.49.ssm_out.input_scale
+create_tensor: loading tensor blk.49.ssm_alpha.input_scale
+create_tensor: loading tensor blk.49.ssm_beta.input_scale
+create_tensor: loading tensor blk.50.attn_qkv.scale
+create_tensor: loading tensor blk.50.attn_gate.scale
+create_tensor: loading tensor blk.50.ffn_gate.scale
+create_tensor: loading tensor blk.50.ffn_down.scale
+create_tensor: loading tensor blk.50.ffn_up.scale
+create_tensor: loading tensor blk.50.ssm_out.scale
+create_tensor: loading tensor blk.50.ssm_alpha.scale
+create_tensor: loading tensor blk.50.ssm_beta.scale
+create_tensor: loading tensor blk.50.attn_qkv.input_scale
+create_tensor: loading tensor blk.50.attn_gate.input_scale
+create_tensor: loading tensor blk.50.ffn_gate.input_scale
+create_tensor: loading tensor blk.50.ffn_down.input_scale
+create_tensor: loading tensor blk.50.ffn_up.input_scale
+create_tensor: loading tensor blk.50.ssm_out.input_scale
+create_tensor: loading tensor blk.50.ssm_alpha.input_scale
+create_tensor: loading tensor blk.50.ssm_beta.input_scale
+create_tensor: loading tensor blk.51.attn_q.scale
+create_tensor: loading tensor blk.51.attn_k.scale
+create_tensor: loading tensor blk.51.attn_v.scale
+create_tensor: loading tensor blk.51.attn_output.scale
+create_tensor: loading tensor blk.51.ffn_gate.scale
+create_tensor: loading tensor blk.51.ffn_down.scale
+create_tensor: loading tensor blk.51.ffn_up.scale
+create_tensor: loading tensor blk.51.attn_q.input_scale
+create_tensor: loading tensor blk.51.attn_k.input_scale
+create_tensor: loading tensor blk.51.attn_v.input_scale
+create_tensor: loading tensor blk.51.attn_output.input_scale
+create_tensor: loading tensor blk.51.ffn_gate.input_scale
+create_tensor: loading tensor blk.51.ffn_down.input_scale
+create_tensor: loading tensor blk.51.ffn_up.input_scale
+create_tensor: loading tensor blk.52.attn_qkv.scale
+create_tensor: loading tensor blk.52.attn_gate.scale
+create_tensor: loading tensor blk.52.ffn_gate.scale
+create_tensor: loading tensor blk.52.ffn_down.scale
+create_tensor: loading tensor blk.52.ffn_up.scale
+create_tensor: loading tensor blk.52.ssm_out.scale
+create_tensor: loading tensor blk.52.ssm_alpha.scale
+create_tensor: loading tensor blk.52.ssm_beta.scale
+create_tensor: loading tensor blk.52.attn_qkv.input_scale
+create_tensor: loading tensor blk.52.attn_gate.input_scale
+create_tensor: loading tensor blk.52.ffn_gate.input_scale
+create_tensor: loading tensor blk.52.ffn_down.input_scale
+create_tensor: loading tensor blk.52.ffn_up.input_scale
+create_tensor: loading tensor blk.52.ssm_out.input_scale
+create_tensor: loading tensor blk.52.ssm_alpha.input_scale
+create_tensor: loading tensor blk.52.ssm_beta.input_scale
+create_tensor: loading tensor blk.53.attn_qkv.scale
+create_tensor: loading tensor blk.53.attn_gate.scale
+create_tensor: loading tensor blk.53.ffn_gate.scale
+create_tensor: loading tensor blk.53.ffn_down.scale
+create_tensor: loading tensor blk.53.ffn_up.scale
+create_tensor: loading tensor blk.53.ssm_out.scale
+create_tensor: loading tensor blk.53.ssm_alpha.scale
+create_tensor: loading tensor blk.53.ssm_beta.scale
+create_tensor: loading tensor blk.53.attn_qkv.input_scale
+create_tensor: loading tensor blk.53.attn_gate.input_scale
+create_tensor: loading tensor blk.53.ffn_gate.input_scale
+create_tensor: loading tensor blk.53.ffn_down.input_scale
+create_tensor: loading tensor blk.53.ffn_up.input_scale
+create_tensor: loading tensor blk.53.ssm_out.input_scale
+create_tensor: loading tensor blk.53.ssm_alpha.input_scale
+create_tensor: loading tensor blk.53.ssm_beta.input_scale
+create_tensor: loading tensor blk.54.attn_qkv.scale
+create_tensor: loading tensor blk.54.attn_gate.scale
+create_tensor: loading tensor blk.54.ffn_gate.scale
+create_tensor: loading tensor blk.54.ffn_down.scale
+create_tensor: loading tensor blk.54.ffn_up.scale
+create_tensor: loading tensor blk.54.ssm_out.scale
+create_tensor: loading tensor blk.54.ssm_alpha.scale
+create_tensor: loading tensor blk.54.ssm_beta.scale
+create_tensor: loading tensor blk.54.attn_qkv.input_scale
+create_tensor: loading tensor blk.54.attn_gate.input_scale
+create_tensor: loading tensor blk.54.ffn_gate.input_scale
+create_tensor: loading tensor blk.54.ffn_down.input_scale
+create_tensor: loading tensor blk.54.ffn_up.input_scale
+create_tensor: loading tensor blk.54.ssm_out.input_scale
+create_tensor: loading tensor blk.54.ssm_alpha.input_scale
+create_tensor: loading tensor blk.54.ssm_beta.input_scale
+create_tensor: loading tensor blk.55.attn_q.scale
+create_tensor: loading tensor blk.55.attn_k.scale
+create_tensor: loading tensor blk.55.attn_v.scale
+create_tensor: loading tensor blk.55.attn_output.scale
+create_tensor: loading tensor blk.55.ffn_gate.scale
+create_tensor: loading tensor blk.55.ffn_down.scale
+create_tensor: loading tensor blk.55.ffn_up.scale
+create_tensor: loading tensor blk.55.attn_q.input_scale
+create_tensor: loading tensor blk.55.attn_k.input_scale
+create_tensor: loading tensor blk.55.attn_v.input_scale
+create_tensor: loading tensor blk.55.attn_output.input_scale
+create_tensor: loading tensor blk.55.ffn_gate.input_scale
+create_tensor: loading tensor blk.55.ffn_down.input_scale
+create_tensor: loading tensor blk.55.ffn_up.input_scale
+create_tensor: loading tensor blk.56.attn_qkv.scale
+create_tensor: loading tensor blk.56.attn_gate.scale
+create_tensor: loading tensor blk.56.ffn_gate.scale
+create_tensor: loading tensor blk.56.ffn_down.scale
+create_tensor: loading tensor blk.56.ffn_up.scale
+create_tensor: loading tensor blk.56.ssm_out.scale
+create_tensor: loading tensor blk.56.ssm_alpha.scale
+create_tensor: loading tensor blk.56.ssm_beta.scale
+create_tensor: loading tensor blk.56.attn_qkv.input_scale
+create_tensor: loading tensor blk.56.attn_gate.input_scale
+create_tensor: loading tensor blk.56.ffn_gate.input_scale
+create_tensor: loading tensor blk.56.ffn_down.input_scale
+create_tensor: loading tensor blk.56.ffn_up.input_scale
+create_tensor: loading tensor blk.56.ssm_out.input_scale
+create_tensor: loading tensor blk.56.ssm_alpha.input_scale
+create_tensor: loading tensor blk.56.ssm_beta.input_scale
+create_tensor: loading tensor blk.57.attn_qkv.scale
+create_tensor: loading tensor blk.57.attn_gate.scale
+create_tensor: loading tensor blk.57.ffn_gate.scale
+create_tensor: loading tensor blk.57.ffn_down.scale
+create_tensor: loading tensor blk.57.ffn_up.scale
+create_tensor: loading tensor blk.57.ssm_out.scale
+create_tensor: loading tensor blk.57.ssm_alpha.scale
+create_tensor: loading tensor blk.57.ssm_beta.scale
+create_tensor: loading tensor blk.57.attn_qkv.input_scale
+create_tensor: loading tensor blk.57.attn_gate.input_scale
+create_tensor: loading tensor blk.57.ffn_gate.input_scale
+create_tensor: loading tensor blk.57.ffn_down.input_scale
+create_tensor: loading tensor blk.57.ffn_up.input_scale
+create_tensor: loading tensor blk.57.ssm_out.input_scale
+create_tensor: loading tensor blk.57.ssm_alpha.input_scale
+create_tensor: loading tensor blk.57.ssm_beta.input_scale
+create_tensor: loading tensor blk.58.attn_qkv.scale
+create_tensor: loading tensor blk.58.attn_gate.scale
+create_tensor: loading tensor blk.58.ffn_gate.scale
+create_tensor: loading tensor blk.58.ffn_down.scale
+create_tensor: loading tensor blk.58.ffn_up.scale
+create_tensor: loading tensor blk.58.ssm_out.scale
+create_tensor: loading tensor blk.58.ssm_alpha.scale
+create_tensor: loading tensor blk.58.ssm_beta.scale
+create_tensor: loading tensor blk.58.attn_qkv.input_scale
+create_tensor: loading tensor blk.58.attn_gate.input_scale
+create_tensor: loading tensor blk.58.ffn_gate.input_scale
+create_tensor: loading tensor blk.58.ffn_down.input_scale
+create_tensor: loading tensor blk.58.ffn_up.input_scale
+create_tensor: loading tensor blk.58.ssm_out.input_scale
+create_tensor: loading tensor blk.58.ssm_alpha.input_scale
+create_tensor: loading tensor blk.58.ssm_beta.input_scale
+create_tensor: loading tensor blk.59.attn_q.scale
+create_tensor: loading tensor blk.59.attn_k.scale
+create_tensor: loading tensor blk.59.attn_v.scale
+create_tensor: loading tensor blk.59.attn_output.scale
+create_tensor: loading tensor blk.59.ffn_gate.scale
+create_tensor: loading tensor blk.59.ffn_down.scale
+create_tensor: loading tensor blk.59.ffn_up.scale
+create_tensor: loading tensor blk.59.attn_q.input_scale
+create_tensor: loading tensor blk.59.attn_k.input_scale
+create_tensor: loading tensor blk.59.attn_v.input_scale
+create_tensor: loading tensor blk.59.attn_output.input_scale
+create_tensor: loading tensor blk.59.ffn_gate.input_scale
+create_tensor: loading tensor blk.59.ffn_down.input_scale
+create_tensor: loading tensor blk.59.ffn_up.input_scale
+create_tensor: loading tensor blk.60.attn_qkv.scale
+create_tensor: loading tensor blk.60.attn_gate.scale
+create_tensor: loading tensor blk.60.ffn_gate.scale
+create_tensor: loading tensor blk.60.ffn_down.scale
+create_tensor: loading tensor blk.60.ffn_up.scale
+create_tensor: loading tensor blk.60.ssm_out.scale
+create_tensor: loading tensor blk.60.ssm_alpha.scale
+create_tensor: loading tensor blk.60.ssm_beta.scale
+create_tensor: loading tensor blk.60.attn_qkv.input_scale
+create_tensor: loading tensor blk.60.attn_gate.input_scale
+create_tensor: loading tensor blk.60.ffn_gate.input_scale
+create_tensor: loading tensor blk.60.ffn_down.input_scale
+create_tensor: loading tensor blk.60.ffn_up.input_scale
+create_tensor: loading tensor blk.60.ssm_out.input_scale
+create_tensor: loading tensor blk.60.ssm_alpha.input_scale
+create_tensor: loading tensor blk.60.ssm_beta.input_scale
+create_tensor: loading tensor blk.61.attn_qkv.scale
+create_tensor: loading tensor blk.61.attn_gate.scale
+create_tensor: loading tensor blk.61.ffn_gate.scale
+create_tensor: loading tensor blk.61.ffn_down.scale
+create_tensor: loading tensor blk.61.ffn_up.scale
+create_tensor: loading tensor blk.61.ssm_out.scale
+create_tensor: loading tensor blk.61.ssm_alpha.scale
+create_tensor: loading tensor blk.61.ssm_beta.scale
+create_tensor: loading tensor blk.61.attn_qkv.input_scale
+create_tensor: loading tensor blk.61.attn_gate.input_scale
+create_tensor: loading tensor blk.61.ffn_gate.input_scale
+create_tensor: loading tensor blk.61.ffn_down.input_scale
+create_tensor: loading tensor blk.61.ffn_up.input_scale
+create_tensor: loading tensor blk.61.ssm_out.input_scale
+create_tensor: loading tensor blk.61.ssm_alpha.input_scale
+create_tensor: loading tensor blk.61.ssm_beta.input_scale
+create_tensor: loading tensor blk.62.attn_qkv.scale
+create_tensor: loading tensor blk.62.attn_gate.scale
+create_tensor: loading tensor blk.62.ffn_gate.scale
+create_tensor: loading tensor blk.62.ffn_down.scale
+create_tensor: loading tensor blk.62.ffn_up.scale
+create_tensor: loading tensor blk.62.ssm_out.scale
+create_tensor: loading tensor blk.62.ssm_alpha.scale
+create_tensor: loading tensor blk.62.ssm_beta.scale
+create_tensor: loading tensor blk.62.attn_qkv.input_scale
+create_tensor: loading tensor blk.62.attn_gate.input_scale
+create_tensor: loading tensor blk.62.ffn_gate.input_scale
+create_tensor: loading tensor blk.62.ffn_down.input_scale
+create_tensor: loading tensor blk.62.ffn_up.input_scale
+create_tensor: loading tensor blk.62.ssm_out.input_scale
+create_tensor: loading tensor blk.62.ssm_alpha.input_scale
+create_tensor: loading tensor blk.62.ssm_beta.input_scale
+create_tensor: loading tensor blk.63.attn_q.scale
+create_tensor: loading tensor blk.63.attn_k.scale
+create_tensor: loading tensor blk.63.attn_v.scale
+create_tensor: loading tensor blk.63.attn_output.scale
+create_tensor: loading tensor blk.63.ffn_gate.scale
+create_tensor: loading tensor blk.63.ffn_down.scale
+create_tensor: loading tensor blk.63.ffn_up.scale
+create_tensor: loading tensor blk.63.attn_q.input_scale
+create_tensor: loading tensor blk.63.attn_k.input_scale
+create_tensor: loading tensor blk.63.attn_v.input_scale
+create_tensor: loading tensor blk.63.attn_output.input_scale
+create_tensor: loading tensor blk.63.ffn_gate.input_scale
+create_tensor: loading tensor blk.63.ffn_down.input_scale
+create_tensor: loading tensor blk.63.ffn_up.input_scale
+load_tensors:   CPU_Mapped model buffer size = 18330.78 MiB
+.............................................................................................
+llama_init_from_model: model default pooling_type is [-1], but [0] was specified
+llama_context: constructing llama_context
+llama_context: n_seq_max             = 1
+llama_context: n_ctx                 = 512
+llama_context: n_ctx_seq             = 512
+llama_context: n_batch               = 512
+llama_context: n_ubatch              = 512
+llama_context: causal_attn           = 1
+llama_context: flash_attn            = disabled
+llama_context: kv_unified            = false
+llama_context: freq_base             = 10000000.0
+llama_context: freq_scale            = 1
+llama_context: n_rs_seq              = 0
+llama_context: n_outputs_max         = 512
+llama_context: n_outputs_max_per_seq = 1
+llama_context: n_ctx_seq (512) < n_ctx_train (262144) -- the full capacity of the model will not be utilized
+set_abort_callback: call
+llama_context:        CPU  output buffer size =     0.95 MiB
+llama_context: enumerating backends
+llama_context: backend_ptrs.size() = 1
+sched_reserve: reserving ...
+sched_reserve: max_nodes = 32352
+sched_reserve: worst-case: n_tokens = 512, n_seqs = 1, n_outputs = 1
+resolve_fused_ops: resolving fused DeepSeek V4 HC support:
+graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+llama_graph_n_input_tensors: input tensor '                       leaf_1120' [f32, ne = {     1,     1,     1,     1 }] is used by node 'result_embd_pooled' (ADD)
+llama_graph_n_input_tensors: input tensor '                       leaf_1007' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_2887' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                  inp_mixed_embd' [f32, ne = {  5120,     1,     1,     1 }] is used by node 'node_2' (DUP)
+llama_graph_n_input_tensors: input tensor '                        leaf_959' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_2788' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                        leaf_959' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_2799' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                        leaf_959' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_3120' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                        leaf_958' [f32, ne = {     1,     1,     1,     1 }] is used by node 'node_2784' (MUL_MAT)
+llama_graph_n_input_tensors: input tensor '                        leaf_949' [f32, ne = {     1,     1,     1,     1 }] is used by node 'node_2762' (MUL_MAT)
+llama_graph_n_input_tensors: input tensor '                        leaf_949' [f32, ne = {     1,     1,     1,     1 }] is used by node 'node_2794' (MUL_MAT)
+llama_graph_n_input_tensors: input tensor '                      inp_tokens' [i32, ne = {     1,     1,     1,     1 }] is used by node 'embd' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                        leaf_948' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_2759' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-3' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-7' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-11' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-15' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-19' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-23' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-27' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-31' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-35' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-39' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-43' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-47' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-51' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-55' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-59' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-63' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_145' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_150' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_318' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_323' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_491' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_496' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_664' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_669' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_837' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_842' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1010' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1015' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1183' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1188' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1356' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1361' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1529' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1534' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1702' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1707' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1875' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1880' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2048' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2053' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2221' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2226' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2394' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2399' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2567' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2572' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2740' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2745' (ROPE)
+llama_graph_n_input_tensors: input tensor '                       leaf_1002' [f32, ne = {     1,     1,     1,     1 }] is used by node 'node_2878' (ADD)
+llama_graph_n_input_tensors: input tensor '                inp_mixed_tokens' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_1' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                 inp_mixed_slots' [i64, ne = {     1,     1,     1,     1 }] is used by node ' (view)' (SET_ROWS)
+resolve_fused_ops: fused DeepSeek V4 HC pre enabled
+graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+llama_graph_n_input_tensors: input tensor '                       leaf_1120' [f32, ne = {     1,     1,     1,     1 }] is used by node 'result_embd_pooled' (ADD)
+llama_graph_n_input_tensors: input tensor '                       leaf_1007' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_2887' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                  inp_mixed_embd' [f32, ne = {  5120,     1,     1,     1 }] is used by node 'node_2' (DUP)
+llama_graph_n_input_tensors: input tensor '                        leaf_959' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_2788' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                        leaf_959' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_2799' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                        leaf_959' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_3120' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                        leaf_958' [f32, ne = {     1,     1,     1,     1 }] is used by node 'node_2784' (MUL_MAT)
+llama_graph_n_input_tensors: input tensor '                        leaf_949' [f32, ne = {     1,     1,     1,     1 }] is used by node 'node_2762' (MUL_MAT)
+llama_graph_n_input_tensors: input tensor '                        leaf_949' [f32, ne = {     1,     1,     1,     1 }] is used by node 'node_2794' (MUL_MAT)
+llama_graph_n_input_tensors: input tensor '                      inp_tokens' [i32, ne = {     1,     1,     1,     1 }] is used by node 'embd' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                        leaf_948' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_2759' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-3' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-7' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-11' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-15' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-19' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-23' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-27' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-31' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-35' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-39' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-43' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-47' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-51' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-55' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-59' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-63' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_145' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_150' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_318' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_323' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_491' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_496' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_664' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_669' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_837' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_842' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1010' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1015' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1183' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1188' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1356' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1361' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1529' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1534' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1702' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1707' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1875' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1880' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2048' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2053' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2221' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2226' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2394' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2399' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2567' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2572' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2740' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2745' (ROPE)
+llama_graph_n_input_tensors: input tensor '                       leaf_1002' [f32, ne = {     1,     1,     1,     1 }] is used by node 'node_2878' (ADD)
+llama_graph_n_input_tensors: input tensor '                inp_mixed_tokens' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_1' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                 inp_mixed_slots' [i64, ne = {     1,     1,     1,     1 }] is used by node ' (view)' (SET_ROWS)
+resolve_fused_ops: fused DeepSeek V4 HC comb enabled
+graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+llama_graph_n_input_tensors: input tensor '                       leaf_1120' [f32, ne = {     1,     1,     1,     1 }] is used by node 'result_embd_pooled' (ADD)
+llama_graph_n_input_tensors: input tensor '                       leaf_1007' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_2887' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                  inp_mixed_embd' [f32, ne = {  5120,     1,     1,     1 }] is used by node 'node_2' (DUP)
+llama_graph_n_input_tensors: input tensor '                        leaf_959' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_2788' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                        leaf_959' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_2799' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                        leaf_959' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_3120' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                        leaf_958' [f32, ne = {     1,     1,     1,     1 }] is used by node 'node_2784' (MUL_MAT)
+llama_graph_n_input_tensors: input tensor '                        leaf_949' [f32, ne = {     1,     1,     1,     1 }] is used by node 'node_2762' (MUL_MAT)
+llama_graph_n_input_tensors: input tensor '                        leaf_949' [f32, ne = {     1,     1,     1,     1 }] is used by node 'node_2794' (MUL_MAT)
+llama_graph_n_input_tensors: input tensor '                      inp_tokens' [i32, ne = {     1,     1,     1,     1 }] is used by node 'embd' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                        leaf_948' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_2759' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-3' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-7' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-11' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-15' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-19' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-23' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-27' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-31' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-35' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-39' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-43' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-47' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-51' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-55' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-59' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-63' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_145' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_150' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_318' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_323' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_491' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_496' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_664' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_669' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_837' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_842' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1010' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1015' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1183' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1188' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1356' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1361' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1529' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1534' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1702' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1707' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1875' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1880' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2048' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2053' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2221' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2226' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2394' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2399' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2567' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2572' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2740' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2745' (ROPE)
+llama_graph_n_input_tensors: input tensor '                       leaf_1002' [f32, ne = {     1,     1,     1,     1 }] is used by node 'node_2878' (ADD)
+llama_graph_n_input_tensors: input tensor '                inp_mixed_tokens' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_1' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                 inp_mixed_slots' [i64, ne = {     1,     1,     1,     1 }] is used by node ' (view)' (SET_ROWS)
+resolve_fused_ops: fused DeepSeek V4 HC post enabled
+graph_reserve: reserving a graph for ubatch with n_tokens =  512, n_seqs =  1, n_outputs =  512
+llama_graph_n_input_tensors: input tensor '                       leaf_1120' [f32, ne = {     1,     1,     1,     1 }] is used by node 'result_embd_pooled' (ADD)
+llama_graph_n_input_tensors: input tensor '                       leaf_1007' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_2887' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                  inp_mixed_embd' [f32, ne = {  5120,   512,     1,     1 }] is used by node 'node_2' (DUP)
+llama_graph_n_input_tensors: input tensor '                        leaf_959' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_2788' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                        leaf_959' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_2799' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                        leaf_959' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_3120' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                        leaf_958' [f32, ne = {   512,     1,     1,     1 }] is used by node 'node_2784' (MUL_MAT)
+llama_graph_n_input_tensors: input tensor '                        leaf_949' [f32, ne = {   512,     1,     1,     1 }] is used by node 'node_2762' (MUL_MAT)
+llama_graph_n_input_tensors: input tensor '                        leaf_949' [f32, ne = {   512,     1,     1,     1 }] is used by node 'node_2794' (MUL_MAT)
+llama_graph_n_input_tensors: input tensor '                      inp_tokens' [i32, ne = {   512,     1,     1,     1 }] is used by node 'embd' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                        leaf_948' [i32, ne = {   512,     1,     1,     1 }] is used by node 'node_2759' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-3' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-7' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-11' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-15' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-19' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-23' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-27' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-31' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-35' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-39' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-43' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-47' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-51' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-55' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-59' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-63' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_145' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_150' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_318' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_323' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_491' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_496' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_664' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_669' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_837' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_842' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_1010' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_1015' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_1183' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_1188' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_1356' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_1361' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_1529' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_1534' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_1702' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_1707' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_1875' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_1880' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_2048' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_2053' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_2221' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_2226' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_2394' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_2399' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_2567' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_2572' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_2740' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_2745' (ROPE)
+llama_graph_n_input_tensors: input tensor '                       leaf_1002' [f32, ne = {     1,     1,     1,     1 }] is used by node 'node_2878' (ADD)
+llama_graph_n_input_tensors: input tensor '                inp_mixed_tokens' [i32, ne = {   512,     1,     1,     1 }] is used by node 'node_1' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                 inp_mixed_slots' [i64, ne = {   512,     1,     1,     1 }] is used by node ' (view)' (SET_ROWS)
+graph_reserve: reserving a graph for ubatch with n_tokens =    1, n_seqs =  1, n_outputs =    1
+llama_graph_n_input_tensors: input tensor '                       leaf_1120' [f32, ne = {     1,     1,     1,     1 }] is used by node 'result_embd_pooled' (ADD)
+llama_graph_n_input_tensors: input tensor '                       leaf_1007' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_2887' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                  inp_mixed_embd' [f32, ne = {  5120,     1,     1,     1 }] is used by node 'node_2' (DUP)
+llama_graph_n_input_tensors: input tensor '                        leaf_959' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_2788' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                        leaf_959' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_2799' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                        leaf_959' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_3120' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                        leaf_958' [f32, ne = {     1,     1,     1,     1 }] is used by node 'node_2784' (MUL_MAT)
+llama_graph_n_input_tensors: input tensor '                        leaf_949' [f32, ne = {     1,     1,     1,     1 }] is used by node 'node_2762' (MUL_MAT)
+llama_graph_n_input_tensors: input tensor '                        leaf_949' [f32, ne = {     1,     1,     1,     1 }] is used by node 'node_2794' (MUL_MAT)
+llama_graph_n_input_tensors: input tensor '                      inp_tokens' [i32, ne = {     1,     1,     1,     1 }] is used by node 'embd' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                        leaf_948' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_2759' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-3' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-7' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-11' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-15' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-19' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-23' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-27' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-31' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-35' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-39' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-43' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-47' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-51' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-55' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-59' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {     1,     1,     1,     1 }] is used by node 'kq_soft_max-63' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_145' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_150' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_318' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_323' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_491' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_496' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_664' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_669' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_837' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_842' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1010' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1015' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1183' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1188' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1356' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1361' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1529' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1534' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1702' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1707' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1875' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_1880' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2048' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2053' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2221' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2226' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2394' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2399' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2567' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2572' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2740' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {     4,     1,     1,     1 }] is used by node 'node_2745' (ROPE)
+llama_graph_n_input_tensors: input tensor '                       leaf_1002' [f32, ne = {     1,     1,     1,     1 }] is used by node 'node_2878' (ADD)
+llama_graph_n_input_tensors: input tensor '                inp_mixed_tokens' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_1' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                 inp_mixed_slots' [i64, ne = {     1,     1,     1,     1 }] is used by node ' (view)' (SET_ROWS)
+graph_reserve: reserving a graph for ubatch with n_tokens =  512, n_seqs =  1, n_outputs =  512
+llama_graph_n_input_tensors: input tensor '                       leaf_1120' [f32, ne = {     1,     1,     1,     1 }] is used by node 'result_embd_pooled' (ADD)
+llama_graph_n_input_tensors: input tensor '                       leaf_1007' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_2887' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                  inp_mixed_embd' [f32, ne = {  5120,   512,     1,     1 }] is used by node 'node_2' (DUP)
+llama_graph_n_input_tensors: input tensor '                        leaf_959' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_2788' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                        leaf_959' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_2799' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                        leaf_959' [i32, ne = {     1,     1,     1,     1 }] is used by node 'node_3120' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                        leaf_958' [f32, ne = {   512,     1,     1,     1 }] is used by node 'node_2784' (MUL_MAT)
+llama_graph_n_input_tensors: input tensor '                        leaf_949' [f32, ne = {   512,     1,     1,     1 }] is used by node 'node_2762' (MUL_MAT)
+llama_graph_n_input_tensors: input tensor '                        leaf_949' [f32, ne = {   512,     1,     1,     1 }] is used by node 'node_2794' (MUL_MAT)
+llama_graph_n_input_tensors: input tensor '                      inp_tokens' [i32, ne = {   512,     1,     1,     1 }] is used by node 'embd' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                        leaf_948' [i32, ne = {   512,     1,     1,     1 }] is used by node 'node_2759' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-3' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-7' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-11' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-15' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-19' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-23' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-27' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-31' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-35' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-39' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-43' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-47' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-51' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-55' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-59' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                    self_kq_mask' [f32, ne = {   512,   512,     1,     1 }] is used by node 'kq_soft_max-63' (SOFT_MAX)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_145' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_150' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_318' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_323' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_491' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_496' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_664' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_669' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_837' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_842' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_1010' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_1015' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_1183' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_1188' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_1356' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_1361' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_1529' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_1534' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_1702' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_1707' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_1875' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_1880' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_2048' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_2053' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_2221' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_2226' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_2394' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_2399' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_2567' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_2572' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_2740' (ROPE)
+llama_graph_n_input_tensors: input tensor '                         inp_pos' [i32, ne = {  2048,     1,     1,     1 }] is used by node 'node_2745' (ROPE)
+llama_graph_n_input_tensors: input tensor '                       leaf_1002' [f32, ne = {     1,     1,     1,     1 }] is used by node 'node_2878' (ADD)
+llama_graph_n_input_tensors: input tensor '                inp_mixed_tokens' [i32, ne = {   512,     1,     1,     1 }] is used by node 'node_1' (GET_ROWS)
+llama_graph_n_input_tensors: input tensor '                 inp_mixed_slots' [i64, ne = {   512,     1,     1,     1 }] is used by node ' (view)' (SET_ROWS)
+sched_reserve:        CPU compute buffer size =   302.65 MiB
+sched_reserve: graph: nodes = 3147, splits = 1, input objects = 4, input tensors = 13
+sched_reserve: reserve took 4.77 ms, sched copies = 1
+captured l_out-0 7352320 bytes
+captured l_out-1 7352320 bytes
+captured l_out-2 7352320 bytes
+captured l_out-3 7352320 bytes
+captured l_out-4 7352320 bytes
+captured l_out-5 7352320 bytes
+captured l_out-6 7352320 bytes
+captured l_out-7 7352320 bytes
+captured l_out-8 7352320 bytes
+captured l_out-9 7352320 bytes
+captured l_out-10 7352320 bytes
+captured l_out-11 7352320 bytes
+captured l_out-12 7352320 bytes
+captured l_out-13 7352320 bytes
+captured l_out-14 7352320 bytes
+captured l_out-15 7352320 bytes
+captured l_out-16 7352320 bytes
+captured l_out-17 7352320 bytes
+captured l_out-18 7352320 bytes
+captured l_out-19 7352320 bytes
+captured l_out-20 7352320 bytes
+captured l_out-21 7352320 bytes
+captured l_out-22 7352320 bytes
+captured l_out-23 7352320 bytes
+captured l_out-24 7352320 bytes
+captured l_out-25 7352320 bytes
+captured l_out-26 7352320 bytes
+captured l_out-27 7352320 bytes
+captured l_out-28 7352320 bytes
+captured l_out-29 7352320 bytes
+captured l_out-30 7352320 bytes
+captured l_out-31 7352320 bytes
+captured l_out-32 7352320 bytes
+captured l_out-33 7352320 bytes
+captured l_out-34 7352320 bytes
+captured l_out-35 7352320 bytes
+captured l_out-36 7352320 bytes
+captured l_out-37 7352320 bytes
+captured l_out-38 7352320 bytes
+captured l_out-39 7352320 bytes
+captured l_out-40 7352320 bytes
+captured l_out-41 7352320 bytes
+captured l_out-42 7352320 bytes
+captured l_out-43 7352320 bytes
+captured l_out-44 7352320 bytes
+captured l_out-45 7352320 bytes
+captured l_out-46 7352320 bytes
+captured l_out-47 7352320 bytes
+captured l_out-48 7352320 bytes
+captured l_out-49 7352320 bytes
+captured l_out-50 7352320 bytes
+captured l_out-51 7352320 bytes
+captured l_out-52 7352320 bytes
+captured l_out-53 7352320 bytes
+captured l_out-54 7352320 bytes
+captured l_out-55 7352320 bytes
+captured l_out-56 7352320 bytes
+captured l_out-57 7352320 bytes
+captured l_out-58 7352320 bytes
+captured l_out-59 7352320 bytes
+captured l_out-60 7352320 bytes
+captured l_out-61 7352320 bytes
+captured l_out-62 7352320 bytes
+captured l_out-63 7352320 bytes
+captured result_norm 7352320 bytes
+~llama_context:        CPU compute buffer size is 302.6466 MiB, matches expectation of 302.6466 MiB

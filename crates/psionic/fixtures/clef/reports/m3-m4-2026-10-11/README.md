@@ -127,6 +127,17 @@ choice alone does not resolve the discrepancy. All three questions and full
 layer comparisons are retained; the 193.69-second CPU run peaks at 5.02 GB
 under its unchanged 12 GiB cap and completes cleanup.
 
+The [third-runtime diagnostic](text029-llama-runtime-v1/README.md) runs the same
+359 IDs through a pinned, CPU-only llama.cpp build and replays its captured rows
+through the unchanged external head. All 64 layers are captured, but numerical
+agreement fails: disputed P(true) is `0.81854942`, versus `0.49303069` in the
+independent reference and `0.50209127` in the native observer replay. Matching
+the native top answer does not establish correctness. Q8_K activation rounding,
+different operators, and a newer upstream version remain confounded. All three
+questions, layer distances, source identities, and bounded stage receipts are
+retained; every owned group and lease is released. The original 103/104 gate
+remains unresolved.
+
 The [activation-weighted Q4 preparation](activation-weighted-q4-preparation-v1/README.md)
 preserves the frozen corpus, recipes, and checks. The two-record pilot passed;
 the full collector was deliberately stopped after 70 of 96 records and
@@ -300,6 +311,14 @@ GEMMs used in production. It finds no source evidence of a hidden conservative
 math setting. It also records the limits of the old intrusive profile and
 calculates the memory and conversion traffic of a possible layer-major 27B
 prefill. Those calculations are design estimates, not measured improvements.
+
+The [resident-upload storage review](resident-upload-storage-review-v1/README.md)
+identifies 17.32 GB of packed trunk weights kept in a file mapping after
+conversion to 48.70 GB of resident half weights. Historical RSS exceeds physical
+footprint by 17.25 GB, supporting a file-backed residency explanation. An
+opt-in positional-read upload could avoid those mapped-page reads while keeping
+all existing decoding and inference arithmetic. This is a capacity hypothesis;
+the 52 GiB process guard and all correctness checks remain unchanged.
 
 All probes use shared GPU/build and bounded memory leases as appropriate.
 None uses a quiet lease or changes desktop applications or system services.

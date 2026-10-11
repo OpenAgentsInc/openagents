@@ -1,0 +1,12 @@
+{
+  "worktree_files": {
+    "crates/psionic/crates/psionic-catalog/src/lib.rs": "31c9ab1411c2e5cc9deeea804c94a4b410f550b521b965e11c59dd6a1c9e29a0",
+    "crates/psionic/crates/psionic-models/src/lib.rs": "2c02393eda1fecfea32d5b7ef8c7e1520184df4c83e6aa0c80d0ac6b446e7c8f",
+    "crates/psionic/crates/psionic-serve/src/qwen35.rs": "39e73926790b158472cd36bcd01aafe9d5331e25505f202dab11c30fcdcc3ccd",
+    "crates/psionic/crates/psionic-serve/src/qwen35/clef_metal.rs": "e0a974181bd63ef9b8a6ef9c2eb83aaa7a419d1ab5653f7f61929252a985ada1",
+    "crates/psionic/crates/psionic-serve/src/qwen35/clef_metal/batching.rs": "9b2d236a886b946726a348fb5e45bc7299630cb66643d902f48a2fecbc2976e2",
+    "crates/psionic/crates/psionic-serve/src/clef/mod.rs": "be5ffd7e4e39bd34a0a960a282e83124b712dad2616e447cbbd659e2dd8bf8e3",
+    "crates/psionic/crates/psionic-serve/src/clef/head.rs": "00d3230235d69889dc6d5c2ec09a240f048ba8a0fc0fe7e2cf898f90c8ee1d10"
+  },
+  "worktree_label": "$WORKTREE"
+}

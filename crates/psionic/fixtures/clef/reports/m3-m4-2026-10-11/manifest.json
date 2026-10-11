@@ -1239,6 +1239,339 @@
       "published_sha256": "814f7b697e5cf8a36286ae29fdd081905562262e424cfcf475e93b3f1b02339c",
       "published_bytes": 6068,
       "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/README.md",
+      "original_sha256": "ddc00aa23677b43b467c9dd8b98c145e81e71a30e84e390036dfe692f9684339",
+      "original_bytes": 3595,
+      "published": "text029-llama-runtime-v1/README.md",
+      "published_sha256": "ddc00aa23677b43b467c9dd8b98c145e81e71a30e84e390036dfe692f9684339",
+      "published_bytes": 3595,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/build/guard.json",
+      "original_sha256": "599e55b2b1f9a966359d9aec3485b2816d99382e5841aa1b97517463e47d8ace",
+      "original_bytes": 9016,
+      "published": "text029-llama-runtime-v1/build/guard.json",
+      "published_sha256": "599e55b2b1f9a966359d9aec3485b2816d99382e5841aa1b97517463e47d8ace",
+      "published_bytes": 9016,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/build/receipt.json",
+      "original_sha256": "ab9eb87f6b94daf7ddc83f5758af8f5b5e1cb2366897756188d0a1137c7b1235",
+      "original_bytes": 4615,
+      "published": "text029-llama-runtime-v1/build/receipt.json",
+      "published_sha256": "ab9eb87f6b94daf7ddc83f5758af8f5b5e1cb2366897756188d0a1137c7b1235",
+      "published_bytes": 4615,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/build/stdout.log",
+      "original_sha256": "a15ef38434b479fd83edd07c77d7c43e72a175ede46b5c45872a4b2a46821b77",
+      "original_bytes": 8811,
+      "published": "text029-llama-runtime-v1/build/stdout.log",
+      "published_sha256": "a15ef38434b479fd83edd07c77d7c43e72a175ede46b5c45872a4b2a46821b77",
+      "published_bytes": 8811,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/capture/guard.json",
+      "original_sha256": "dfe1f4037ab027b7b8ec0bf219cdcf3917f24b95e9e8278232c6ead9c32489a2",
+      "original_bytes": 9677,
+      "published": "text029-llama-runtime-v1/capture/guard.json",
+      "published_sha256": "dfe1f4037ab027b7b8ec0bf219cdcf3917f24b95e9e8278232c6ead9c32489a2",
+      "published_bytes": 9677,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/capture/receipt.json",
+      "original_sha256": "e62343879fdc82646aebdde807425bda2efeb6d244b6eb627a616d6a82579d1a",
+      "original_bytes": 18070,
+      "published": "text029-llama-runtime-v1/capture/receipt.json",
+      "published_sha256": "e62343879fdc82646aebdde807425bda2efeb6d244b6eb627a616d6a82579d1a",
+      "published_bytes": 18070,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/capture/stdout.log",
+      "original_sha256": "f5fa93e32bbf82b845d18f23612ffc0152394db0b7e55ab182ccb73a685d7372",
+      "original_bytes": 189326,
+      "published": "text029-llama-runtime-v1/capture/stdout.log",
+      "published_sha256": "f5fa93e32bbf82b845d18f23612ffc0152394db0b7e55ab182ccb73a685d7372",
+      "published_bytes": 189326,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/leases/build-disk.json",
+      "original_sha256": "4f0395071f1ab442fe23c1c1c16a84cc2194a109f0f4b2fcbb52f3253d2b9c5b",
+      "original_bytes": 484,
+      "published": "text029-llama-runtime-v1/leases/build-disk.json",
+      "published_sha256": "4f0395071f1ab442fe23c1c1c16a84cc2194a109f0f4b2fcbb52f3253d2b9c5b",
+      "published_bytes": 484,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/leases/build-lease.json",
+      "original_sha256": "d22982c645ddd76444033c0328c8d46d278daa060c9a9c37dd6d2472ff860851",
+      "original_bytes": 632,
+      "published": "text029-llama-runtime-v1/leases/build-lease.json",
+      "published_sha256": "d22982c645ddd76444033c0328c8d46d278daa060c9a9c37dd6d2472ff860851",
+      "published_bytes": 632,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/leases/build-memory.json",
+      "original_sha256": "fb2acd189a896dab72504a56be8121492fe16c3415f6f563590f7f0999444ee0",
+      "original_bytes": 490,
+      "published": "text029-llama-runtime-v1/leases/build-memory.json",
+      "published_sha256": "fb2acd189a896dab72504a56be8121492fe16c3415f6f563590f7f0999444ee0",
+      "published_bytes": 490,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/leases/capture-disk.json",
+      "original_sha256": "74d482b86cbbb26cd98d822b04c6c06726276951deec4c14d9b9175b438440ae",
+      "original_bytes": 485,
+      "published": "text029-llama-runtime-v1/leases/capture-disk.json",
+      "published_sha256": "74d482b86cbbb26cd98d822b04c6c06726276951deec4c14d9b9175b438440ae",
+      "published_bytes": 485,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/leases/capture-memory.json",
+      "original_sha256": "2eef08c9733a38f05c67bcf2f6d63e512813cc395e7be12fe722a4d3a6c099ba",
+      "original_bytes": 492,
+      "published": "text029-llama-runtime-v1/leases/capture-memory.json",
+      "published_sha256": "2eef08c9733a38f05c67bcf2f6d63e512813cc395e7be12fe722a4d3a6c099ba",
+      "published_bytes": 492,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/leases/replay-disk.json",
+      "original_sha256": "d901b73bbd7902a6b5100556d8cbfd5b733f41f0cb8000ae54eaa887bc4a0586",
+      "original_bytes": 484,
+      "published": "text029-llama-runtime-v1/leases/replay-disk.json",
+      "published_sha256": "d901b73bbd7902a6b5100556d8cbfd5b733f41f0cb8000ae54eaa887bc4a0586",
+      "published_bytes": 484,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/leases/replay-memory.json",
+      "original_sha256": "0d52bdc3e1b3337d76f62b29d309c4868e8331b5edcada9b23e0c7303d78f8f7",
+      "original_bytes": 490,
+      "published": "text029-llama-runtime-v1/leases/replay-memory.json",
+      "published_sha256": "0d52bdc3e1b3337d76f62b29d309c4868e8331b5edcada9b23e0c7303d78f8f7",
+      "published_bytes": 490,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/manifest.json",
+      "original_sha256": "fc2719c7487fe062e74cac56aa18a27502d910b5efe11c688c33422105c6cc8d",
+      "original_bytes": 11273,
+      "published": "text029-llama-runtime-v1/manifest.json",
+      "published_sha256": "fc2719c7487fe062e74cac56aa18a27502d910b5efe11c688c33422105c6cc8d",
+      "published_bytes": 11273,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/replay/guard.json",
+      "original_sha256": "0f8cdf9822108865d767956f0577e50df75324f5d4b5b2a6c5a89ffbff5c9b49",
+      "original_bytes": 64925,
+      "published": "text029-llama-runtime-v1/replay/guard.json",
+      "published_sha256": "0f8cdf9822108865d767956f0577e50df75324f5d4b5b2a6c5a89ffbff5c9b49",
+      "published_bytes": 64925,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/replay/receipt.json",
+      "original_sha256": "f01d20b47c64cd340defdf1a81e9832306e176c5780103addcfe71f7a9b44903",
+      "original_bytes": 198094,
+      "published": "text029-llama-runtime-v1/replay/receipt.json",
+      "published_sha256": "f01d20b47c64cd340defdf1a81e9832306e176c5780103addcfe71f7a9b44903",
+      "published_bytes": 198094,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/replay/stdout.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "text029-llama-runtime-v1/replay/stdout.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/source/CMakeLists.txt",
+      "original_sha256": "5d9562b9c9480630c2069969d32cf362cc5c62c0bd2a0e87ec7d950cd194c750",
+      "original_bytes": 524,
+      "published": "text029-llama-runtime-v1/source/CMakeLists.txt",
+      "published_sha256": "5d9562b9c9480630c2069969d32cf362cc5c62c0bd2a0e87ec7d950cd194c750",
+      "published_bytes": 524,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/source/build.py",
+      "original_sha256": "67566a827aa8f062f1d38420879b505e5bf7934b9528de1b9923af19cfa6ff2c",
+      "original_bytes": 3395,
+      "published": "text029-llama-runtime-v1/source/build.py",
+      "published_sha256": "67566a827aa8f062f1d38420879b505e5bf7934b9528de1b9923af19cfa6ff2c",
+      "published_bytes": 3395,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/source/capture.py",
+      "original_sha256": "af4c059e7b0175a82474069ec207f22b91951b8df223deb92597e0f7410d9429",
+      "original_bytes": 3420,
+      "published": "text029-llama-runtime-v1/source/capture.py",
+      "published_sha256": "af4c059e7b0175a82474069ec207f22b91951b8df223deb92597e0f7410d9429",
+      "published_bytes": 3420,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/source/common.py",
+      "original_sha256": "23462149e1575da1c1c6209c6148022cdfdc727a5ec43a8acba5948ad2cf23ee",
+      "original_bytes": 4947,
+      "published": "text029-llama-runtime-v1/source/common.py",
+      "published_sha256": "23462149e1575da1c1c6209c6148022cdfdc727a5ec43a8acba5948ad2cf23ee",
+      "published_bytes": 4947,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/source/dependencies/mac_memory.py",
+      "original_sha256": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd",
+      "original_bytes": 5508,
+      "published": "text029-llama-runtime-v1/source/dependencies/mac_memory.py",
+      "published_sha256": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd",
+      "published_bytes": 5508,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/source/dependencies/mac_quiet_bench.py",
+      "original_sha256": "7018be065710be9ffe5dfc2d289770015ca617e2fdd3da253a98e07ba1bc997b",
+      "original_bytes": 72242,
+      "published": "text029-llama-runtime-v1/source/dependencies/mac_quiet_bench.py",
+      "published_sha256": "7018be065710be9ffe5dfc2d289770015ca617e2fdd3da253a98e07ba1bc997b",
+      "published_bytes": 72242,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/source/dependencies/mps_reference.py",
+      "original_sha256": "d6dd92eb2e0ed4df10b3f9dc56f84ef7bf61c10689b3a2da6b2ae1db0e79835b",
+      "original_bytes": 25394,
+      "published": "text029-llama-runtime-v1/source/dependencies/mps_reference.py",
+      "published_sha256": "d6dd92eb2e0ed4df10b3f9dc56f84ef7bf61c10689b3a2da6b2ae1db0e79835b",
+      "published_bytes": 25394,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/source/dependencies/precision_hash.py",
+      "original_sha256": "595256f7b60826373a80588c0bc1ac1f4554d6dfc6ae117ae9f20f66363aca2f",
+      "original_bytes": 2751,
+      "published": "text029-llama-runtime-v1/source/dependencies/precision_hash.py",
+      "published_sha256": "595256f7b60826373a80588c0bc1ac1f4554d6dfc6ae117ae9f20f66363aca2f",
+      "published_bytes": 2751,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/source/driver.cpp",
+      "original_sha256": "ff2e9b9114c2be02b24950629e9ab05e3638e2284a183416555ce3cab2ec737f",
+      "original_bytes": 9746,
+      "published": "text029-llama-runtime-v1/source/driver.cpp",
+      "published_sha256": "ff2e9b9114c2be02b24950629e9ab05e3638e2284a183416555ce3cab2ec737f",
+      "published_bytes": 9746,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/source/guard.py",
+      "original_sha256": "b51a74c7ae2779b1bb4263de6e545fd7ef8172a4119c0169dcedb3dfe5c8fbd0",
+      "original_bytes": 9693,
+      "published": "text029-llama-runtime-v1/source/guard.py",
+      "published_sha256": "b51a74c7ae2779b1bb4263de6e545fd7ef8172a4119c0169dcedb3dfe5c8fbd0",
+      "published_bytes": 9693,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/source/package.py",
+      "original_sha256": "acc4998578c20d74fccfd60c0c7036e419cb9b0193a5024f07190d87f28522b2",
+      "original_bytes": 9189,
+      "published": "text029-llama-runtime-v1/source/package.py",
+      "published_sha256": "acc4998578c20d74fccfd60c0c7036e419cb9b0193a5024f07190d87f28522b2",
+      "published_bytes": 9189,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/source/plan.md",
+      "original_sha256": "a57d3597eb1d91c34d75772ee182c212f245387bc769f4e84fedc4e5798cb5a6",
+      "original_bytes": 7930,
+      "published": "text029-llama-runtime-v1/source/plan.md",
+      "published_sha256": "a57d3597eb1d91c34d75772ee182c212f245387bc769f4e84fedc4e5798cb5a6",
+      "published_bytes": 7930,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/source/replay.py",
+      "original_sha256": "b7dc1a6dcbbee71946b35c3270d63192e032ab36afd9c085e0febc680fe494bf",
+      "original_bytes": 10567,
+      "published": "text029-llama-runtime-v1/source/replay.py",
+      "published_sha256": "b7dc1a6dcbbee71946b35c3270d63192e032ab36afd9c085e0febc680fe494bf",
+      "published_bytes": 10567,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/source-check.json",
+      "original_sha256": "9910c726b1553389593610d90f220e8c34d5a058ef4bc39a2f7d21b1ed908d75",
+      "original_bytes": 13896,
+      "published": "text029-llama-runtime-v1/source-check.json",
+      "published_sha256": "9910c726b1553389593610d90f220e8c34d5a058ef4bc39a2f7d21b1ed908d75",
+      "published_bytes": 13896,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/llama-runtime-v1/publishable-v2/summary.json",
+      "original_sha256": "320924d20c6960954da87cc11d28f5dcfbbf78ab2923a0b0cd1d766f07d8736d",
+      "original_bytes": 33700,
+      "published": "text029-llama-runtime-v1/summary.json",
+      "published_sha256": "320924d20c6960954da87cc11d28f5dcfbbf78ab2923a0b0cd1d766f07d8736d",
+      "published_bytes": 33700,
+      "path_replacements": []
+    },
+    {
+      "source": "resident-upload-storage-review-v1/README.md",
+      "original_sha256": "73e3a1bff4c167e6c5b807771670da164722ac7fcb494e4a612b402c3ef0df9d",
+      "original_bytes": 8244,
+      "published": "resident-upload-storage-review-v1/README.md",
+      "published_sha256": "73e3a1bff4c167e6c5b807771670da164722ac7fcb494e4a612b402c3ef0df9d",
+      "published_bytes": 8244,
+      "path_replacements": []
+    },
+    {
+      "source": "resident-upload-storage-review-v1/accounting.json",
+      "original_sha256": "91cf43f51bf13540a5bcd7fc4bfe9930e4ba9c3b676b79e9142d8977c7b90d89",
+      "original_bytes": 106853,
+      "published": "resident-upload-storage-review-v1/accounting.json",
+      "published_sha256": "91cf43f51bf13540a5bcd7fc4bfe9930e4ba9c3b676b79e9142d8977c7b90d89",
+      "published_bytes": 106853,
+      "path_replacements": []
+    },
+    {
+      "source": "resident-upload-storage-review-v1/manifest.json",
+      "original_sha256": "e76a7cecf48d89f446006bc98b821ae5c87b99a589e5ee4a443eb5a510b5c0b6",
+      "original_bytes": 379,
+      "published": "resident-upload-storage-review-v1/manifest.json",
+      "published_sha256": "e76a7cecf48d89f446006bc98b821ae5c87b99a589e5ee4a443eb5a510b5c0b6",
+      "published_bytes": 379,
+      "path_replacements": []
+    },
+    {
+      "source": "resident-upload-storage-review-v1/sources.json",
+      "original_sha256": "e2f08c098358ea6240a36cba8d5d298f9082597dd2d4804fc521d3a49b905a40",
+      "original_bytes": 970,
+      "published": "resident-upload-storage-review-v1/sources.json",
+      "published_sha256": "e2f08c098358ea6240a36cba8d5d298f9082597dd2d4804fc521d3a49b905a40",
+      "published_bytes": 970,
+      "path_replacements": []
     }
   ],
   "current_source_snapshot": [
@@ -1346,5 +1679,5 @@
       "file_count": 573
     }
   ],
-  "file_count": 2509
+  "file_count": 2546
 }
