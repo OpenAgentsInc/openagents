@@ -6,6 +6,7 @@ Recorded measurements and task-selection studies, with supporting evidence.
 
 | Document | Topic |
 | --- | --- |
+| [2026-10-11-gemini-vertex-router](2026-10-11-gemini-vertex-router.md) | Gemini 3.8 Flash on Vertex, the judge's last fallback, on routes-v5 and the chat goldens (#11302): it meets the router bar on Jev's map, its own map is not wired, and its 4.8 s p50 is the gap |
 | [2026-10-02-standing-rule-route](2026-10-02-standing-rule-route.md) | Standing instructions become background rules through the `standing.rule` route (`chat-router-v5`, #10157): the standing rows, the published held-out eval, and the rule compiler's labeled set against hosted Jev |
 | [2026-10-01-route-map-route](2026-10-01-route-map-route.md) | "Show me how you route things" opens the desktop's route map through `meta.map.desktop` and its typed `routes.map` offer (#10085): the map rows and the published held-out eval, whose per-route record the map reads |
 | [2026-10-01-coder-followup-route](2026-10-01-coder-followup-route.md) | Follow-ups after a Coder run go through the router (#10094): the follow-up rows, and the published held-out eval |

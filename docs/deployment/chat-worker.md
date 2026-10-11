@@ -208,7 +208,15 @@ phone <--27000 partials, 26900 result------- relay.openagents.com <-- chat worke
   (`typesafe/jev-1.13-20260917`) reads on TypeSafe's scale: through this
   order on 2026-10-11 the flat split scored route 90.4 %, canned 98.5 /
   73.4 %, Gym recall 88.9 %, refusal recall 91.3 % on routes-v5, p50
-  277 ms, so `calibration-v2` serves its answers too (#11298). The judgment the phone
+  277 ms, so `calibration-v2` serves its answers too (#11298). Gemini on
+  Vertex, the last door, also reads on `calibration-v2`. Measured through
+  the gateway's Vertex step on every fifth routes-v5 row, it scored route
+  93.4 %, canned 98.0 / 87.5 %, dispatch 100 % and Gym recall 90.9 % on
+  that map. Its own fitted route map lowered canned precision on the
+  held-out rows, so it is not wired in. It answers in 4.8 s at p50, so a
+  turn that falls to it is judged late
+  ([measurement](../coder/measurements/2026-10-11-gemini-vertex-router.md),
+  #11302). The judgment the phone
   gets names the door that answered and the model it served (`door`,
   `model`), the thread's `openagents.decision-call.v1` record keeps them
   (`service.upstream`), the journal logs `judge answered by door …` when a

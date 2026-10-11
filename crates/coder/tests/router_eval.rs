@@ -14,7 +14,10 @@
 //! partition, without publishing). `ROUTER_EVAL_MAPS=on` reads each
 //! question on its answering model's calibration map before the policy
 //! decides, as the worker does (a Clef server's answers on Clef's map for
-//! the shape asked, `CODER_ROUTER_STAGED`); the published eval refuses it.
+//! the shape asked, `CODER_ROUTER_STAGED`; Gemini's, like Jev's, on Jev's
+//! map, #11302); the published eval refuses it.
+//! `ROUTER_EVAL_EVERY=N` keeps every Nth row of the split (a paid door on
+//! a share of the set: Gemini on Vertex ran every fifth row, #11302).
 //! `ROUTER_EVAL_ROWS` is `all` (the default), `v1` (the rows of
 //! `routes-v1.json`, for comparing with the v1 measurements), `gym` (the
 //! rows `routes-v2.json` added), `capability` (the rows `routes-v3.json`
@@ -288,6 +291,19 @@ async fn run_router(name: &str, mode: router::Mode) {
         (rows, "held_out+calibration".to_string())
     } else {
         rows(&set, &split())
+    };
+    // `ROUTER_EVAL_EVERY=N` keeps every Nth row of the split, in order, so
+    // each partition shrinks alike: a paid door (Gemini on Vertex, #11302)
+    // can be measured on a fixed share of the set.
+    let (rows, split_label) = match std::env::var("ROUTER_EVAL_EVERY")
+        .ok()
+        .and_then(|n| n.trim().parse::<usize>().ok())
+    {
+        Some(every) if every > 1 => (
+            rows.into_iter().step_by(every).collect::<Vec<_>>(),
+            format!("{split_label} (every {every})"),
+        ),
+        _ => (rows, split_label),
     };
     let started_at = now();
     let mut readings = Vec::new();
