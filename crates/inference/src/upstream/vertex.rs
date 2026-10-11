@@ -332,13 +332,26 @@ fn text_of(content: &MessageContent) -> String {
     }
 }
 
+/// Whether `part` is a function's result.
+fn is_response(part: &Value) -> bool {
+    part.get("functionResponse").is_some()
+}
+
+/// Adds `parts` to the last content when it has the same role, else as a
+/// new content. Function results and the person's words never share a
+/// content: Vertex refuses a `user` content holding both ("Requests ending
+/// with a model turn are not supported."), which a person's message right
+/// after a tool's result would otherwise make (#11316).
 fn push(contents: &mut Vec<Value>, role: &str, parts: Vec<Value>) {
     if parts.is_empty() {
         return;
     }
+    let responses = parts.iter().all(is_response);
     if let Some(last) = contents.last_mut()
         && last["role"] == role
         && let Some(existing) = last["parts"].as_array_mut()
+        && existing.iter().all(is_response) == responses
+        && (responses || !parts.iter().any(is_response))
     {
         existing.extend(parts);
         return;

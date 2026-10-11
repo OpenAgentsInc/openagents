@@ -573,10 +573,13 @@ impl<P: Commands + Images, T: Transport> Agent<P, T> {
         let reply = match self.respond(&request).await {
             Ok(r) => r,
             Err(e) => {
-                return self.fail(
-                    state,
-                    format!("The setup agent couldn't reach its model: {e}"),
+                // The provider's own answer stays in the server log; the
+                // person reads one plain sentence (#11316).
+                eprintln!(
+                    "environment {}: setup model request failed: {e}",
+                    state.environment
                 );
+                return self.fail(state, model_failure(&e));
             }
         };
         state.input.extend(reply.items.clone());
@@ -1303,6 +1306,16 @@ fn plural(n: usize, word: &str) -> String {
 }
 
 /// The first sentence of an owner error, for a person.
+/// What a failed model request says to the person: one plain sentence,
+/// never the provider's own answer.
+pub fn model_failure(error: &TransportError) -> String {
+    if error.transient() {
+        "The setup agent's model didn't answer. Try again in a minute.".into()
+    } else {
+        "The setup agent's model couldn't take the request. Try again.".into()
+    }
+}
+
 pub fn plain_reason(reason: &str) -> String {
     let reason = reason.trim();
     if reason.is_empty() {

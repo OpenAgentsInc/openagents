@@ -482,6 +482,28 @@ async fn vertex_function_call_keeps_its_signature_for_the_next_turn() {
         body["contents"][1]["parts"][0]["thoughtSignature"],
         vertex::SKIP_SIGNATURE
     );
+
+    // The person's words after a tool's result are a content of their
+    // own: Vertex refuses one `user` content holding both (#11316).
+    let continued = request(json!({"input": [
+        {"role": "user", "content": "Weather in Paris?"},
+        {"type": "function_call", "call_id": "c1", "name": "get_weather", "arguments": "{\"city\":\"Paris\"}"},
+        {"type": "function_call_output", "call_id": "c1", "output": "18 C"},
+        {"role": "user", "content": "And say banana."},
+    ], "tools": tools}));
+    let body = vertex::body(
+        &continued,
+        &vertex::default_models()[0].0,
+        vertex::Thinking::Level,
+    )
+    .unwrap();
+    let contents = body["contents"].as_array().unwrap();
+    assert_eq!(contents.len(), 4, "{contents:#?}");
+    assert_eq!(contents[2]["role"], "user");
+    assert_eq!(contents[2]["parts"].as_array().unwrap().len(), 1);
+    assert!(contents[2]["parts"][0]["functionResponse"].is_object());
+    assert_eq!(contents[3]["role"], "user");
+    assert_eq!(contents[3]["parts"][0]["text"], "And say banana.");
 }
 
 #[tokio::test]
