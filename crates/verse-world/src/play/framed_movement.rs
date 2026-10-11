@@ -48,6 +48,7 @@ impl Game {
     }
     /// Committed poses of loose blocking props: the colliders whose motion
     /// a client cannot predict between scene snapshots (#10559).
+    #[cfg(feature = "service-auth")]
     pub(crate) fn dynamic_poses(&self) -> Vec<crate::service::wire::ColliderPose> {
         self.spells
             .props

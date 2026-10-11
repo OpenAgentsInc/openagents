@@ -290,6 +290,7 @@ impl Local {
     /// # Errors
     ///
     /// Returns a message for an invalid pose.
+    #[cfg(feature = "service-auth")]
     pub fn observe_dynamic_poses(
         &mut self,
         poses: &[crate::service::wire::ColliderPose],
@@ -3392,6 +3393,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "service-auth")]
     #[test]
     fn confirmed_loose_prop_poses_replace_a_stale_snapshot_pose() {
         use physics::queries::{ColliderKey, GeometrySnapshot, Pose, ShapeSnapshot, Usage};
