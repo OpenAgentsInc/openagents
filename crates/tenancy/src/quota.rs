@@ -113,6 +113,8 @@ enum Event {
         attempt: u32,
         request_digest: String,
         tenant: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        workspace: Option<String>,
         key: String,
         units: Units,
         reserved_unix: u64,
@@ -153,6 +155,9 @@ pub struct Reservation {
     pub request_digest: String,
     /// The tenant paying.
     pub tenant: String,
+    /// The workspace whose allowance it counts against, if not the
+    /// tenant's as a whole.
+    pub workspace: Option<String>,
     /// The key that reserved, for audit — the id, never the secret.
     pub key: String,
     /// The units held.
@@ -265,6 +270,11 @@ impl std::error::Error for Refusal {}
 pub struct Call<'a> {
     /// The tenant paying.
     pub tenant: &'a str,
+    /// The workspace the key acts in, when the tenant's quota is each
+    /// workspace's own allowance (#11190): every personal workspace made by
+    /// sign-up shares one tenant, so usage counts per workspace there.
+    /// `None` counts against the tenant as a whole.
+    pub workspace: Option<&'a str>,
     /// The credential id reserving, for audit — never the secret.
     pub key: &'a str,
     /// The logical request.
@@ -388,6 +398,7 @@ impl Ledger {
                     attempt,
                     request_digest,
                     tenant,
+                    workspace,
                     key,
                     units,
                     reserved_unix,
@@ -401,6 +412,7 @@ impl Ledger {
                             attempt,
                             request_digest,
                             tenant,
+                            workspace,
                             key,
                             units,
                             state: State::Reserved,
@@ -507,7 +519,10 @@ impl Ledger {
                     attempt: call.attempt,
                 });
             }
-            if held.request_digest != call.request_digest || held.tenant != call.tenant {
+            if held.request_digest != call.request_digest
+                || held.tenant != call.tenant
+                || held.workspace.as_deref() != call.workspace
+            {
                 return Err(Refusal::ContentConflict {
                     request: call.request.to_string(),
                     attempt: call.attempt,
@@ -521,7 +536,7 @@ impl Ledger {
             .get(call.tenant)
             .and_then(|record| record.quota.clone());
         if let Some(quota) = &quota {
-            self.check(call.tenant, quota, call.units)?;
+            self.check(call.tenant, call.workspace, quota, call.units)?;
         }
 
         let day = day_of(now);
@@ -530,6 +545,7 @@ impl Ledger {
             attempt: call.attempt,
             request_digest: call.request_digest.to_string(),
             tenant: call.tenant.to_string(),
+            workspace: call.workspace.map(str::to_owned),
             key: call.key.to_string(),
             units: call.units.clone(),
             reserved_unix: now,
@@ -542,6 +558,7 @@ impl Ledger {
             attempt: call.attempt,
             request_digest: call.request_digest.to_string(),
             tenant: call.tenant.to_string(),
+            workspace: call.workspace.map(str::to_owned),
             key: call.key.to_string(),
             units: call.units.clone(),
             state: State::Reserved,
@@ -557,8 +574,16 @@ impl Ledger {
         Ok(reservation)
     }
 
-    /// Check the tenant's quota against the units a reservation wants.
-    fn check(&self, tenant: &str, quota: &Quota, units: &Units) -> Result<(), Refusal> {
+    /// Check the tenant's quota against the units a reservation wants:
+    /// against the workspace's own usage when one is named, else the
+    /// tenant's whole usage.
+    fn check(
+        &self,
+        tenant: &str,
+        workspace: Option<&str>,
+        quota: &Quota,
+        units: &Units,
+    ) -> Result<(), Refusal> {
         let policy = quota.policy.as_deref().unwrap_or(POLICY_V1);
         if policy != POLICY_V1 {
             return Err(Refusal::UnknownPolicy {
@@ -566,14 +591,11 @@ impl Ledger {
                 policy: policy.to_string(),
             });
         }
-        let usage = self.usage(tenant);
-        let outstanding: u64 = self
-            .reservations
-            .values()
-            .filter(|reservation| {
-                reservation.tenant == tenant && reservation.state == State::Reserved
-            })
-            .count() as u64;
+        let usage = self.usage_where(|reservation| {
+            reservation.tenant == tenant
+                && (workspace.is_none() || reservation.workspace.as_deref() == workspace)
+        });
+        let outstanding = usage.outstanding;
         let bounds = [
             (
                 quota.requests_per_day,
@@ -663,10 +685,22 @@ impl Ledger {
     /// A tenant's position: charged today, held now, orphaned today.
     #[must_use]
     pub fn usage(&self, tenant: &str) -> Usage {
+        self.usage_where(|reservation| reservation.tenant == tenant)
+    }
+
+    /// One workspace's position on a tenant whose quota is per workspace.
+    #[must_use]
+    pub fn workspace_usage(&self, tenant: &str, workspace: &str) -> Usage {
+        self.usage_where(|reservation| {
+            reservation.tenant == tenant && reservation.workspace.as_deref() == Some(workspace)
+        })
+    }
+
+    fn usage_where(&self, counts: impl Fn(&Reservation) -> bool) -> Usage {
         let today = day_of(unix_now());
         let mut usage = Usage::default();
         for reservation in self.reservations.values() {
-            if reservation.tenant != tenant {
+            if !counts(reservation) {
                 continue;
             }
             match reservation.state {
@@ -822,6 +856,7 @@ mod tests {
     ) -> Call<'a> {
         Call {
             tenant,
+            workspace: None,
             key: "key-1",
             request,
             attempt,
@@ -854,6 +889,44 @@ mod tests {
         assert_eq!(usage.questions_today, 3);
         assert_eq!(usage.input_bytes_today, 410);
         assert_eq!(usage.outstanding, 0);
+    }
+
+    /// #11190: personal workspaces made by sign-up share one tenant, so a
+    /// named workspace counts against its own allowance, and one heavy
+    /// workspace never exhausts another's.
+    #[test]
+    fn each_workspace_on_a_shared_tenant_has_its_own_allowance() {
+        let dir = tempfile::tempdir().unwrap();
+        let manifest = manifest(Some(quota(10, 100, 1)));
+        let mut ledger = Ledger::open(dir.path()).unwrap();
+        let units = units(1, 10);
+        let in_workspace = |workspace, request| Call {
+            workspace: Some(workspace),
+            ..call("acme", request, 1, "digest", &units, 300)
+        };
+        ledger
+            .reserve(&manifest, &in_workspace("ws-ada", "ada-1"))
+            .unwrap();
+        // Ada's one concurrent slot is hers: her second waits, Bo's goes.
+        assert!(matches!(
+            ledger.reserve(&manifest, &in_workspace("ws-ada", "ada-2")),
+            Err(Refusal::Exhausted { .. })
+        ));
+        ledger
+            .reserve(&manifest, &in_workspace("ws-bo", "bo-1"))
+            .unwrap();
+        assert_eq!(ledger.workspace_usage("acme", "ws-ada").outstanding, 1);
+        assert_eq!(ledger.workspace_usage("acme", "ws-bo").outstanding, 1);
+        // A call with no workspace counts against the tenant as a whole.
+        assert_eq!(ledger.usage("acme").outstanding, 2);
+        assert!(matches!(
+            ledger.reserve(&manifest, &call("acme", "svc-1", 1, "digest", &units, 300)),
+            Err(Refusal::Exhausted { .. })
+        ));
+        // The workspace survives a reopen of the ledger.
+        drop(ledger);
+        let reopened = Ledger::open(dir.path()).unwrap();
+        assert_eq!(reopened.workspace_usage("acme", "ws-bo").outstanding, 1);
     }
 
     #[test]

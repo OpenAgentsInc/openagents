@@ -1878,6 +1878,37 @@ async fn windowed(
     Ok(())
 }
 
+/// The workspace a caller's door quota counts against (#11190): the one
+/// it was admitted to, else the workspace its key acts in. Every personal
+/// workspace made by sign-up shares one registry tenant, so the tenant's
+/// manifest quota is each workspace's own allowance rather than one pool
+/// that a heavy caller exhausts for everyone. `None` — an anonymous call,
+/// an operator's service tenant with no workspace, or a key that reaches
+/// several — counts against the tenant as a whole.
+fn quota_workspace(state: &ServeState, caller: &Caller) -> Option<String> {
+    if caller.workspace.is_some() {
+        return caller.workspace.clone();
+    }
+    let tenant = caller.tenant.as_deref()?;
+    state.config.accounts.as_ref()?;
+    let accounts = tenancy::Accounts::open(&state.dir).ok()?;
+    let store = accounts.store().ok()?;
+    match store.key_workspace(tenant, &caller.key) {
+        tenancy::accounts::KeyWorkspace::Workspace(workspace) => Some(workspace),
+        _ => None,
+    }
+}
+
+/// The classify concurrency pool a caller draws on: its tenant's, or its
+/// workspace's on a tenant that personal workspaces share (#11190).
+fn classify_pool(state: &ServeState, caller: &Caller) -> Option<String> {
+    let tenant = caller.tenant.clone()?;
+    Some(match quota_workspace(state, caller) {
+        Some(workspace) => format!("{tenant}/{workspace}"),
+        None => tenant,
+    })
+}
+
 /// Step 4 of every route: the durable reservation. From here the
 /// attempt settles or it orphans, and either way the ledger accounts
 /// for it.
@@ -1895,6 +1926,7 @@ async fn reserved(
             registry.manifest(),
             &quota::Call {
                 tenant: caller.tenant.as_deref().unwrap_or("anonymous"),
+                workspace: quota_workspace(state, caller).as_deref(),
                 key: &caller.key,
                 request: naming.request,
                 attempt: naming.attempt,
@@ -2917,6 +2949,7 @@ pub(crate) async fn classify_run(
     let halt = Arc::new(AtomicBool::new(false));
     let deadline = started + Duration::from_millis(state.config.classify_deadline_ms());
     let mut scheduled = tokio::task::JoinSet::new();
+    let pool = classify_pool(state, caller);
     for (index, input) in request.inputs.iter().enumerate() {
         let (body, asked) = forward_body(request, &plan, input, &artifact);
         scheduled.spawn(classify_item(ItemWork {
@@ -2925,7 +2958,7 @@ pub(crate) async fn classify_run(
             body,
             asked,
             state: state.clone(),
-            tenant: caller.tenant.clone(),
+            tenant: pool.clone(),
             door: request.model.clone(),
             endpoint: endpoint.clone(),
             model: artifact.clone(),
@@ -3242,11 +3275,13 @@ async fn classify_queue(
     // An owned permit retains its semaphore. Remove entries with no active
     // reservations so departed tenants do not accumulate process state.
     tenants.retain(|_, pool| Arc::strong_count(pool) > 1);
-    let pool = tenants.entry(caller.tenant.clone()).or_insert_with(|| {
-        Arc::new(Semaphore::new(
-            state.config.max_classify_inputs_per_tenant as usize,
-        ))
-    });
+    let pool = tenants
+        .entry(classify_pool(state, caller))
+        .or_insert_with(|| {
+            Arc::new(Semaphore::new(
+                state.config.max_classify_inputs_per_tenant as usize,
+            ))
+        });
     let tenant = pool
         .clone()
         .try_acquire_many_owned(inputs)
