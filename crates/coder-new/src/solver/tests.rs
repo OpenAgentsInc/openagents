@@ -144,3 +144,11 @@ fn the_analysis_replaces_an_earlier_round_and_costs_add_up() {
     ];
     assert_eq!(total_cost(&turns), Some(0.75));
 }
+
+#[test]
+fn solver_asks_no_decision_model_and_refuses_a_decider() {
+    let options = Options::parse(&["7".to_owned()]).unwrap();
+    assert_eq!(options.inner.decider, crate::issue_run::Decider::Off);
+    let refused = Options::parse(&["7".into(), "--decider".into(), "jev".into()]).unwrap_err();
+    assert!(refused.contains("Unknown option --decider"), "{refused}");
+}

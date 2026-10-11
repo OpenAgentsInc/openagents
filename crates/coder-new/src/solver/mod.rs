@@ -60,7 +60,6 @@ Options:
   --coder-model NAME    The Coder's model (default claude-opus-5-5).
   --briefer-model NAME  The Intaker's and Briefer's model (default haiku).
   --tester-model NAME   The Tester's model (default sonnet).
-  --decider WHO         auto, jev, clef, or off for the briefing's questions (default auto).
   --files K             Files in the briefing (default 6).
   --timeout SECS        How long each hand may work (default 1800).
   --plain               Print the run as text instead of opening the terminal screen.
@@ -113,8 +112,14 @@ impl Options {
         let mut open_pr = true;
         let mut briefer_model = "haiku".to_owned();
         let mut tester_model = "sonnet".to_owned();
-        let mut inner_args: Vec<String> =
-            vec!["--state".into(), default_state().display().to_string()];
+        // Claude only: the briefing's ranking is deterministic and the Haiku
+        // Briefer judges it; no decision-model door is asked.
+        let mut inner_args: Vec<String> = vec![
+            "--state".into(),
+            default_state().display().to_string(),
+            "--decider".into(),
+            "off".into(),
+        ];
         let mut args = args.iter();
         while let Some(arg) = args.next() {
             let mut value = |name: &str| {
@@ -137,7 +142,7 @@ impl Options {
                 }
                 "--briefer-model" => briefer_model = value("--briefer-model")?,
                 "--tester-model" => tester_model = value("--tester-model")?,
-                "--model" | "--open-pr" | "--fix" => {
+                "--model" | "--open-pr" | "--fix" | "--decider" => {
                     return Err(format!("Unknown option {arg}. Run coder solver --help."));
                 }
                 other => inner_args.push(other.to_owned()),

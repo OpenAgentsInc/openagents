@@ -31,12 +31,15 @@ plan or write code.";
 
 /// The Briefer's system prompt.
 const BRIEFER: &str = "You are the Briefer of a four-hand coding run. A deterministic \
-briefing already lists the files most likely to change and the checks that prove the change. \
-Read those files (and grep or glob only when a listed file points at another) and write the \
-analysis the Coder works from, in Markdown under these headings: `## Files to change` (each \
-path with one line on what changes there), `## Shape of the change` (the functions, types and \
-behavior to add or alter, concretely), `## Tests` (which tests to add or change), `## Checks` \
-(which of the briefing's checks prove it). Be specific and short. You cannot edit files.";
+briefing lists candidate files ranked by history and search, and candidate checks; no model has \
+judged them, so you do. Read the issue and the candidates, open the files that look relevant, and \
+grep or glob to find a file the issue names that the list missed. Then write the analysis the \
+Coder works from, in Markdown under these headings: `## Files to change` (only the files that \
+must change, each with one line on what changes there; drop candidates that don't matter), \
+`## Shape of the change` (the functions, types and behavior to add or alter, concretely), \
+`## Tests` (which tests to add or change, or none for a docs-only change), `## Checks` (only the \
+checks that exercise the files that change: a docs or link change needs no compile check). Be \
+specific and short. You cannot edit files.";
 
 /// The Tester's system prompt.
 const TESTER: &str = "You are the Tester of a four-hand coding run. The Coder has changed the \
