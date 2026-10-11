@@ -548,7 +548,7 @@ fn mode_name(app: &App) -> &'static str {
 
 fn active_model(app: &App) -> String {
     if app.mode == crate::Mode::Microclaude {
-        crate::microclaude::LABEL.into()
+        crate::microclaude::MODEL.into()
     } else if app.plugins.enabled
         && app.plugins.key_configured
         && models::pinned(&app.plugins.model)

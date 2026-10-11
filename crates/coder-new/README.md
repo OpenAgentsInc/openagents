@@ -221,10 +221,10 @@ runs enabled plugin tools and configured ACP delegations.
 
 Tab switches the input between `auto` (OpenAgents picks the model) and `flash`
 (DeepSeek V4.1 Flash on your own OpenRouter key), offered only once that key is
-saved. Shift+Tab switches between live and `microclaude`, which runs turns on
-the Claude Code login this computer already holds; it is offered only where
-that login is a Claude account, and it answers "microclaude coming soon" until
-it runs turns of its own.
+saved. Shift+Tab switches between live and `microclaude`, which runs turns
+through the Claude Agent SDK on the Claude Code login this computer already
+holds, on Haiku 5.5, with the basic file tools (Read, Write, Edit, Glob, and
+Grep) and no shell. It is offered only where that login is a Claude account.
 
 The composer is a plain `❯` input with a blinking block cursor between
 edge-to-edge horizontal rules. In demo mode, the four rows below it show `claude-code`,

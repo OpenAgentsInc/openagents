@@ -326,6 +326,12 @@ pub enum Work {
         messages: Vec<Message>,
         execution: ExecutionSettings,
     },
+    /// A microclaude turn: one Claude Agent SDK session on Haiku 5.5
+    /// ([`crate::microclaude`]) with the basic file tools, here.
+    Microclaude {
+        messages: Vec<Message>,
+        cwd: std::path::PathBuf,
+    },
     /// A summary of the older part of the chat (#11179), written by the
     /// chat's model without tools; nothing streams into the transcript.
     Summarize {
@@ -610,6 +616,9 @@ fn run_with_provider(
                 Work::Microcoder { messages, execution } => {
                     local_turn(id, messages, execution, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await
                 }
+                Work::Microclaude { messages, cwd } => {
+                    microclaude_turn(id, messages, cwd, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await
+                }
                 Work::Chat { model, options, messages, execution }
                     if !crate::models::pinned(&model) && gateway_first(&execution) =>
                 {
@@ -802,6 +811,28 @@ async fn local_turn(
     Update::Finished { id, result }
 }
 
+/// One microclaude turn: the Claude Agent SDK session
+/// ([`crate::microclaude`]) on Haiku 5.5, drawn as it works. Its text, model,
+/// and tool calls reach the chat through the same callbacks a live turn uses.
+async fn microclaude_turn(
+    id: u64,
+    messages: Vec<Message>,
+    cwd: std::path::PathBuf,
+    cancel: &Arc<AtomicBool>,
+    text_callback: &mut (dyn FnMut(&str) + Send),
+    model_callback: &mut (dyn FnMut(&str) + Send),
+    event_callback: &mut (dyn FnMut(RuntimeEvent) + Send),
+) -> Update {
+    let prompt = crate::microclaude::task(&messages);
+    let mut events = |event: RuntimeEvent| match event {
+        RuntimeEvent::Text(text) => text_callback(&text),
+        RuntimeEvent::Model(model) => model_callback(&model),
+        event => event_callback(event),
+    };
+    let result = crate::microclaude::run(&prompt, &cwd, cancel, &mut events).await;
+    Update::Finished { id, result }
+}
+
 fn run_brainstorm(
     id: u64,
     job: crate::brainstorm::Job,
@@ -835,7 +866,7 @@ fn run_brainstorm(
 }
 
 /// Project the same live messages, including bounded observations, into the local route.
-fn local_conversation(messages: &[Message], limit: usize) -> String {
+pub(crate) fn local_conversation(messages: &[Message], limit: usize) -> String {
     let mut context = Vec::new();
     let mut bytes = 0;
     for message in messages.iter().rev() {

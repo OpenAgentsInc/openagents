@@ -190,23 +190,33 @@ fn composer_registration_follows_enablement_and_preserves_input_geometry() {
     assert!(text[top + 4].starts_with('└'));
 }
 
-/// microclaude names itself on the same rule, and its answer reads as a
-/// reply rather than an error.
+/// microclaude names itself on the same rule, and its working shows like a
+/// live reply's until it answers.
 #[test]
-fn microclaude_names_the_mode_and_answers_in_one_sentence() {
+fn microclaude_names_the_mode_and_shows_its_working() {
     let mut app = app();
     app.set_mode(Mode::Microclaude);
     app.draft.text = "hello".into();
     app.draft.cursor = 5;
     app.submit_live();
+    app.apply_update(Update::Delta {
+        id: app.request_id,
+        text: "The fixture replied.".into(),
+    });
     let (buffer, _) = render(&mut app, 110, 36);
     let text = rows(&buffer);
     let top = top_rule(&text).unwrap();
-    assert_eq!(label(&text[top]), microclaude::LABEL);
+    // The mode's name stays on the rail; while the turn runs, the working
+    // spinner rides its left end.
+    assert!(
+        label(&text[top]).contains(microclaude::LABEL),
+        "{}",
+        label(&text[top])
+    );
     assert!(text.iter().any(|line| line.contains("hello")));
     let answer = text
         .iter()
-        .position(|line| line.contains(microclaude::ANSWER))
+        .position(|line| line.contains("The fixture replied."))
         .unwrap();
     assert_eq!(transcript(&buffer)[answer].trim().chars().next(), Some('●'));
 }

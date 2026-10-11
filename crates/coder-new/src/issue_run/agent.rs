@@ -268,7 +268,7 @@ pub fn coder_call(name: &str, input: &Value, root: &Path, checks: &[Check]) -> (
 }
 
 /// The text of a `tool_result` block.
-fn result_text(block: &Value) -> String {
+pub(crate) fn result_text(block: &Value) -> String {
     match &block["content"] {
         Value::String(text) => text.clone(),
         Value::Array(parts) => parts

@@ -163,7 +163,7 @@ impl App {
         {
             self.notice = None;
         }
-        if self.mode != Mode::Live
+        if !matches!(self.mode, Mode::Live | Mode::Microclaude)
             || (self.live.busy && !immediate)
             || self.checking_key
             || self.checking_jev

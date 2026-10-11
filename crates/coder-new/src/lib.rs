@@ -484,12 +484,6 @@ impl App {
             return;
         }
         self.cancel_request();
-        if mode == Mode::Microclaude {
-            // Nothing ran, so no stopped-reply notice: leave no tool that
-            // looks like it is still running.
-            self.live.notice = None;
-            self.live.stop_tools("microclaude does not run work yet.");
-        }
         if !self.persist_session(true) {
             return;
         }
@@ -649,8 +643,8 @@ impl App {
     }
 
     pub fn apply_update(&mut self, update: live::Update) {
-        // Only Live runs a turn; another mode's updates are ignored.
-        if update.id() != self.request_id || self.mode != Mode::Live {
+        // Only a mode that runs turns accepts their updates.
+        if update.id() != self.request_id || !matches!(self.mode, Mode::Live | Mode::Microclaude) {
             return;
         }
         self.live.stamp();
@@ -1287,32 +1281,55 @@ impl App {
         }
     }
 
-    /// The microclaude placeholder: the person's message, then what the
-    /// mode answers until it runs turns of its own. No engine starts and
-    /// no session is written.
+    /// A microclaude turn: the person's message, then one Claude Agent SDK
+    /// session on Haiku 5.5 with the basic file tools
+    /// ([`crate::microclaude`]). The mode keeps one conversation with the
+    /// person; only the engine behind each turn differs from live.
     fn submit_microclaude(&mut self) {
         if self.draft.text.trim().is_empty() && self.composer.images.is_empty() {
             return;
         }
+        if self.live.busy || self.checking_key || self.checking_jev {
+            self.queue_prompt();
+            return;
+        }
         self.record_prompt();
-        let text = self.draft.text.clone();
-        self.draft = Draft::default();
+        self.cancel_request();
+        let cwd = self.cwd.clone().unwrap_or_else(|| {
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+        });
+        let mut text = std::mem::take(&mut self.draft.text);
+        if !self.composer.images.is_empty() {
+            // The mode reads text only. The files stay beside the checkout
+            // and the prompt names them, as a text-only live model gets.
+            if !text.trim().is_empty() {
+                text.push('\n');
+            }
+            text.push_str(crate::microclaude::TEXT_ONLY);
+        }
+        self.draft.cursor = 0;
         self.composer = Default::default();
         self.screen = Screen::Conversation;
+        self.live.finish_partial();
         self.live.entries.push(live::Entry::User(text));
-        self.live.entries.push(live::Entry::Assistant {
-            elapsed_ms: None,
-            text: microclaude::ANSWER.into(),
-            model: None,
-        });
+        let messages = self.live.messages();
         self.live.notice = None;
+        self.live.partial.clear();
+        self.live.partial_model = None;
+        self.live.busy = true;
+        self.live.pinned_missed = false;
+        self.live.reply_started_at = Some(std::time::Instant::now());
         self.history.dirty = true;
-        self.scroll_main_to_end();
+        self.scroll = u16::MAX;
+        self.request = Some(live::Request {
+            id: self.request_id,
+            key: model_access::ApiKey::new(""),
+            kind: live::Work::Microclaude { messages, cwd },
+        });
     }
 
     pub fn submit_live(&mut self) {
-        // microclaude answers from the host until it runs turns of its own,
-        // so nothing is queued behind an engine that never started.
+        // microclaude runs turns of its own, on the Claude Agent SDK.
         if self.mode == Mode::Microclaude {
             self.submit_microclaude();
             return;
@@ -2579,31 +2596,30 @@ mod microclaude_tests {
     }
 
     #[test]
-    fn the_mode_answers_one_sentence_and_starts_no_engine() {
+    fn the_mode_starts_a_haiku_5_5_session_on_the_file_tools() {
         let mut app = typed(Mode::Microclaude, "hello");
         app.submit_live();
-        assert_eq!(
-            app.live.entries,
-            vec![
-                live::Entry::User("hello".into()),
-                live::Entry::Assistant {
-                    elapsed_ms: None,
-                    text: microclaude::ANSWER.into(),
-                    model: None,
-                },
-            ]
-        );
-        // The draft is sent, nothing is busy, and no request left.
+        assert_eq!(app.live.entries, vec![live::Entry::User("hello".into())]);
+        // The turn is running a request on the mode's model, and nothing
+        // was answered from the host.
+        assert!(app.live.busy);
         assert!(app.draft.text.is_empty());
-        assert!(!app.live.busy);
-        assert!(app.request.is_none());
         assert!(app.notice.is_none());
+        let request = app.request.take().expect("a microclaude turn was queued");
+        assert!(request.key.expose().is_empty());
+        match request.kind {
+            live::Work::Microclaude { messages, .. } => {
+                assert_eq!(messages.len(), 1);
+                assert_eq!(messages[0].content, "hello");
+            }
+            _ => panic!("a microclaude turn"),
+        }
     }
 
-    /// The path a person takes: type, press Enter. Microclaude answers with
-    /// its message rather than starting an engine or appending a demo line.
+    /// The path a person takes: type, press Enter. The turn leaves the mode
+    /// busy on its own engine, and its reply lands as the stream reports it.
     #[test]
-    fn enter_answers_and_leaving_the_mode_carries_no_stopped_reply_notice() {
+    fn enter_starts_a_turn_and_its_reply_lands() {
         let mut app = App::default();
         app.set_mode(Mode::Live);
         app.set_mode(Mode::Microclaude);
@@ -2619,18 +2635,58 @@ mod microclaude_tests {
         )));
         assert!(matches!(
             app.live.entries.as_slice(),
-            [live::Entry::User(text), live::Entry::Assistant { text: answer, .. }]
-                if text == "hello" && answer == microclaude::ANSWER
+            [live::Entry::User(text)] if text == "hello"
         ));
         assert!(app.messages.is_empty(), "no demo message is appended");
+        assert!(app.live.busy);
+        app.apply_update(live::Update::Finished {
+            id: app.request_id,
+            result: Ok(openrouter::Streamed {
+                text: "hi".into(),
+                model: microclaude::MODEL.into(),
+                ..openrouter::Streamed::default()
+            }),
+        });
+        assert!(!app.live.busy);
+        assert!(matches!(
+            app.live.entries.as_slice(),
+            [live::Entry::User(_), live::Entry::Assistant { text, .. }] if text == "hi"
+        ));
+        // Leaving the mode after the turn leaves no stopped-reply notice.
         app.set_mode(Mode::Live);
         assert_eq!(app.mode, Mode::Live);
         assert!(app.live.notice.is_none(), "{:?}", app.live.notice);
-        // An update that arrives after leaving never reaches the chat.
-        app.apply_update(live::Update::Delta {
-            id: app.request_id,
-            text: "late".into(),
-        });
-        assert!(app.live.partial.is_empty());
+    }
+
+    /// A picture is left out with one note, and the turn is still asked.
+    #[test]
+    fn a_picture_is_left_out_and_the_turn_still_runs() {
+        let mut app = typed(Mode::Microclaude, "look");
+        app.attach_image("embedded".into(), Some("image-id".into()));
+        app.submit_live();
+        let request = app.request.take().expect("a microclaude turn was queued");
+        match request.kind {
+            live::Work::Microclaude { messages, .. } => {
+                assert!(messages[0].content.contains("look"));
+                assert!(messages[0].content.contains(microclaude::TEXT_ONLY));
+            }
+            _ => panic!("a microclaude turn"),
+        }
+    }
+
+    /// A turn in progress queues the next message rather than dropping it.
+    #[test]
+    fn a_message_while_busy_is_queued() {
+        let mut app = typed(Mode::Microclaude, "first");
+        app.submit_live();
+        let first = app.request.take().unwrap().id;
+        app.draft.text = "second".into();
+        app.draft.cursor = 6;
+        app.submit_live();
+        assert_eq!(app.queued_prompts.len(), 1);
+        assert_eq!(app.queued_prompts[0].text, "second");
+        // The queued message did not start a second turn.
+        assert!(app.request.is_none());
+        assert_eq!(app.request_id, first);
     }
 }
