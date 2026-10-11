@@ -111,7 +111,7 @@ pub async fn prepare(
             "-R",
             &options.github,
             "--json",
-            "title,body,state,closedAt,url",
+            "title,body,state,stateReason,closedAt,url",
         ],
         &repo,
     )
@@ -130,12 +130,45 @@ pub async fn prepare(
     };
     let title = issue["title"].as_str().unwrap_or_default().to_owned();
     let body = issue["body"].as_str().unwrap_or_default().to_owned();
-    let closed = issue["state"].as_str() == Some("CLOSED");
+    let mut closed = issue["state"].as_str() == Some("CLOSED");
     card["detail"] = json!(format!("#{number} {title}"));
+    // An issue closed as not planned was never fixed, so there is nothing
+    // to replay: it is reopened and worked from the newest main, like an
+    // open one. Only an issue closed as done replays its real fix.
+    let reopened =
+        closed && options.fix.is_none() && issue["stateReason"].as_str() == Some("NOT_PLANNED");
+    if reopened {
+        if let Err(why) = output(
+            "gh",
+            &[
+                "issue",
+                "reopen",
+                &number,
+                "-R",
+                &options.github,
+                "-c",
+                "Reopened to work on it again.",
+            ],
+            &repo,
+        )
+        .await
+        {
+            return fail(
+                transcript,
+                &mut card,
+                format!(
+                    "Issue #{number} was closed as not planned and couldn't be reopened: {why}"
+                ),
+            );
+        }
+        closed = false;
+    }
     let mut rows = vec![row(
         "state",
         if closed {
             "closed: replay it from the fix's parent and compare with the real fix"
+        } else if reopened {
+            "was closed as not planned: reopened, start from the newest main"
         } else {
             "open: start from the newest main"
         },
