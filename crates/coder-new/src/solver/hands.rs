@@ -265,7 +265,7 @@ pub async fn code(
         prompt.push_str(notes);
     }
     prompt.push_str(
-        "\n\nYou only code: change the files, and reply with what you changed. You have no shell; the Tester runs the checks after you.",
+        "\n\nYou code: change the files, and reply with what you changed. You have no shell, but `run_check` compiles the changed crates (`check:` entries only); run it after your edits and fix what fails before you finish. The Tester runs the full checks and tests after you.",
     );
     let session = Session {
         title: "Coder".into(),
@@ -273,7 +273,7 @@ pub async fn code(
         model: options.inner.model.clone(),
         timeout: options.inner.timeout,
         tools: CODE_TOOLS.iter().map(|t| (*t).to_owned()).collect(),
-        checks: Vec::new(),
+        checks: compile_checks(briefing),
         server: None,
         system: briefing.system.clone(),
         prompt,
@@ -289,6 +289,18 @@ pub async fn code(
         transcript,
     )
     .await
+}
+
+/// The briefing's compile checks (`check:`, e.g. `cargo check -p`), the
+/// only checks the Coder may run: it compiles as it works, and leaves the
+/// tests to the Tester.
+pub fn compile_checks(briefing: &Briefing) -> Vec<crate::issue_run::decide::Check> {
+    briefing
+        .checks
+        .iter()
+        .filter(|check| check.id.starts_with("check:"))
+        .cloned()
+        .collect()
 }
 
 /// The Tester: read-only file tools and `run_check`.

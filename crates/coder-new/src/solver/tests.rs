@@ -152,3 +152,28 @@ fn solver_asks_no_decision_model_and_refuses_a_decider() {
     let refused = Options::parse(&["7".into(), "--decider".into(), "jev".into()]).unwrap_err();
     assert!(refused.contains("Unknown option --decider"), "{refused}");
 }
+
+#[test]
+fn the_coder_may_compile_but_leaves_tests_to_the_tester() {
+    use crate::issue_run::decide::{Briefing, Check};
+    let check = |id: &str| Check {
+        id: id.into(),
+        argv: vec!["cargo".into()],
+        filter: false,
+        what: String::new(),
+        required: false,
+    };
+    let briefing = Briefing {
+        checks: vec![
+            check("check:x402"),
+            check("test:x402"),
+            check("tests:scripts"),
+        ],
+        ..Default::default()
+    };
+    let ids: Vec<String> = super::hands::compile_checks(&briefing)
+        .into_iter()
+        .map(|c| c.id)
+        .collect();
+    assert_eq!(ids, ["check:x402"]);
+}
