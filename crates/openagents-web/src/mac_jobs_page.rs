@@ -240,7 +240,7 @@ async fn list_page(State(app): State<App>, headers: HeaderMap) -> Response {
 }
 
 /// The question card: what the job will do, then Approve and Deny.
-fn question_markup(app: &App, owner: &str, job: &Job) -> Markup {
+fn question_markup(csrf: &str, job: &Job) -> Markup {
     let Some(question) = job
         .question
         .as_ref()
@@ -257,7 +257,7 @@ fn question_markup(app: &App, owner: &str, job: &Job) -> Markup {
             }
             p { "This answers this one job only. Your Mac records where you answered." }
             form method="post" action=(action) {
-                input type="hidden" name="csrf" value=(crate::pages::chat::csrf(app, owner));
+                input type="hidden" name="csrf" value=(csrf);
                 input type="hidden" name="question" value=(question.id);
                 (Button::new("Approve").kind(ButtonType::Submit).name("decision").value("approve"))
                 " "
@@ -284,12 +284,28 @@ async fn job_page(State(app): State<App>, headers: HeaderMap, Path(id): Path<Str
     };
     let live = live(&app, &viewer.account_id).await;
     let now = now_unix();
+    let csrf = crate::pages::chat::csrf(&app, &owner);
+    let body = job_body(&job, &csrf, now);
+    page(
+        &headers,
+        service,
+        &viewer,
+        "Mac job",
+        &path,
+        !job.state.finished(),
+        live,
+        body,
+    )
+}
+
+/// One job's page body.
+pub(crate) fn job_body(job: &Job, csrf: &str, now: u64) -> Markup {
     let shown = job.lines.len().saturating_sub(SHOWN_LINES);
     let stop = format!("{PAGE}/{}/stop", job.id);
-    let body = html! {
+    html! {
         div class="oa-settings" {
             p { a href=(PAGE) { "All Mac jobs" } }
-            (question_markup(&app, &owner, &job))
+            (question_markup(csrf, job))
             section class="oa-settings-group" aria-labelledby="mac-job" {
                 h2 #mac-job { (job.spec.title()) }
                 div class="oa-settings-row" {
@@ -312,7 +328,7 @@ async fn job_page(State(app): State<App>, headers: HeaderMap, Path(id): Path<Str
                     @if !job.state.finished() && !job.cancel {
                         div class="oa-settings-control" {
                             form method="post" action=(stop) {
-                                input type="hidden" name="csrf" value=(crate::pages::chat::csrf(&app, &owner));
+                                input type="hidden" name="csrf" value=(csrf);
                                 (Button::new("Stop")
                                     .kind(ButtonType::Submit)
                                     .variant(ButtonVariant::Soft)
@@ -349,17 +365,7 @@ async fn job_page(State(app): State<App>, headers: HeaderMap, Path(id): Path<Str
                 }
             }
         }
-    };
-    page(
-        &headers,
-        service,
-        &viewer,
-        "Mac job",
-        &path,
-        !job.state.finished(),
-        live,
-        body,
-    )
+    }
 }
 
 /// Whether `supplied` is this owner's form token, compared in constant time.

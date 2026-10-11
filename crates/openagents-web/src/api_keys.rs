@@ -68,23 +68,22 @@ fn problem(status: StatusCode, text: &str) -> Response {
     ))
 }
 
+pub(crate) const UNREACHABLE: &str = "Your keys can't be reached right now. Try again in a minute.";
+
 fn unreachable_service() -> Response {
-    problem(
-        StatusCode::BAD_GATEWAY,
-        "Your keys can't be reached right now. Try again in a minute.",
-    )
+    problem(StatusCode::BAD_GATEWAY, UNREACHABLE)
 }
 
 /// One key row: what the person named it, when it was made, and whether
 /// it still works.
-struct Row {
-    id: String,
-    name: String,
-    created: String,
-    active: bool,
+pub(crate) struct Row {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) created: String,
+    pub(crate) active: bool,
     /// What the key may do, in words; empty for a key made before scopes,
     /// which may do everything its workspace may.
-    can: String,
+    pub(crate) can: String,
 }
 
 /// What a key may do, as the form offers it (#11160, docs/api/design.md
@@ -201,7 +200,7 @@ pub(crate) async fn keys(State(app): State<App>, headers: HeaderMap) -> Response
 }
 
 /// The page: how to use a key, the keys, the form that makes one.
-fn keys_content(rows: &[Row], make: (&str, &str), revoke: (&str, &str)) -> Markup {
+pub(crate) fn keys_content(rows: &[Row], make: (&str, &str), revoke: (&str, &str)) -> Markup {
     let name = Field::new("api-key-name", "Name")
         .description("So you can tell your keys apart, such as \"laptop\" or \"my app\".");
     let limit = Field::new("api-key-limit", "Monthly spending limit, in dollars").description(
@@ -277,7 +276,7 @@ fn keys_content(rows: &[Row], make: (&str, &str), revoke: (&str, &str)) -> Marku
 
 /// Your own provider keys: requests that ask to pay with them
 /// (`"openagents": {"pay": "mine"}`) use only these, and cost nothing here.
-fn own_content(saved: &[bool], ticket: (&str, &str)) -> Markup {
+pub(crate) fn own_content(saved: &[bool], ticket: (&str, &str)) -> Markup {
     html! {
         section class="oa-settings-group" aria-labelledby="api-keys-own" {
             h2 #api-keys-own { "Your own provider keys" }
@@ -426,7 +425,7 @@ pub(crate) async fn own_remove(
 }
 
 /// The new key, shown once.
-fn made_content(token: &str, name: &str) -> Markup {
+pub(crate) fn made_content(token: &str, name: &str) -> Markup {
     html! {
         p { (action_link("API keys", KEYS)) }
         (MarkdownRoot::new(html! {

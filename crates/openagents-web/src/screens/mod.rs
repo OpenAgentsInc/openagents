@@ -14,6 +14,7 @@
 //! - `/ui/screens/{screen}/{state}?theme=light|dark` is one state as a
 //!   whole page, which the frames load.
 
+mod account;
 mod auth;
 
 use axum::Router;
@@ -80,6 +81,7 @@ pub(crate) const fn state(id: &'static str, label: &'static str, render: Render)
 pub(crate) fn screens() -> Vec<Screen> {
     let mut all = Vec::new();
     all.extend(auth::screens());
+    all.extend(account::screens());
     all
 }
 

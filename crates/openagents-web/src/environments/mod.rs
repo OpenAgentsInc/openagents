@@ -285,12 +285,19 @@ async fn index(State(app): State<App>, headers: HeaderMap) -> Response {
         return missing(&headers);
     };
     let rows = scope.rows(studio);
+    index_page(&headers, &rows)
+}
+
+pub(crate) fn index_page(
+    headers: &HeaderMap,
+    rows: &[coder_environment_operator::studio::Summary],
+) -> Response {
     protect(
         UiPage::new("Environments")
             .path("/environments")
             .section("/environments")
-            .content(view::index(&rows))
-            .respond(&headers),
+            .content(view::index(rows))
+            .respond(headers),
     )
 }
 
@@ -340,7 +347,12 @@ async fn new(State(app): State<App>, headers: HeaderMap, Query(q): Query<NewQuer
 
 /// The repository step, answered at once: `list` loads the person's
 /// repositories after the page shows ([`repositories`]).
-fn pick_page(list: bool, headers: &HeaderMap, repo: &str, error: Option<&str>) -> Response {
+pub(crate) fn pick_page(
+    list: bool,
+    headers: &HeaderMap,
+    repo: &str,
+    error: Option<&str>,
+) -> Response {
     let content = view::pick(&view::Pick { list, repo, error });
     protect(
         UiPage::new("New environment")
@@ -426,7 +438,7 @@ async fn repositories(
     protect(response)
 }
 
-fn branch_page(
+pub(crate) fn branch_page(
     headers: &HeaderMap,
     repo: &str,
     branches: &[String],
@@ -532,9 +544,21 @@ async fn page(
         return missing(headers);
     };
     let rows = scope.rows(studio);
-    let stream = format!("/environments/{id}/events?after={}", v.records.len());
     let ready = claude_offer(app, studio, headers, id).await;
-    let body = view::transcript(&v, ready, notice);
+    detail_page(headers, id, &v, &rows, ready, notice)
+}
+
+/// An environment's page.
+pub(crate) fn detail_page(
+    headers: &HeaderMap,
+    id: &str,
+    v: &coder_environment_operator::studio::View,
+    rows: &[coder_environment_operator::studio::Summary],
+    ready: view::Claude,
+    notice: Option<&str>,
+) -> Response {
+    let stream = format!("/environments/{id}/events?after={}", v.records.len());
+    let body = view::transcript(v, ready, notice);
     protect(
         UiPage::new(v.summary.repository.clone())
             .path(format!("/environments/{id}"))
@@ -542,11 +566,11 @@ async fn page(
             .app()
             .head(head())
             .breadcrumb(view::breadcrumb(&v.summary.repository))
-            .sidebar_section(view::sidebar(&rows, Some(id)))
+            .sidebar_section(view::sidebar(rows, Some(id)))
             .content(html! {
                 div class="oa-thread-view" { (view::thread(&stream, body)) }
             })
-            .composer(view::dock(id, None, false, &view::DockFor::of(&v)))
+            .composer(view::dock(id, None, false, &view::DockFor::of(v)))
             .respond(headers),
     )
 }
@@ -745,11 +769,29 @@ async fn run_page(
     let (Some(v), Some(r)) = (studio.view(&id), studio.claude_run(&id, &run)) else {
         return missing(&headers);
     };
-    let stream = format!("/environments/{id}/runs/{run}/events");
     let rows = scope.rows(studio);
     let saved = crate::cloud::byo::saved_class(&app, &headers).await;
     let offered = studio.claude_choices(&id, &run, saved);
     let waiting = studio.claude_waiting(&id, &run);
+    run_view_page(
+        &headers, &id, &run, &v, &r, &rows, &offered, &waiting, notice,
+    )
+}
+
+/// A Claude Code run's page.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn run_view_page(
+    headers: &HeaderMap,
+    id: &str,
+    run: &str,
+    v: &coder_environment_operator::studio::View,
+    r: &coder_environment_operator::studio::claude::Run,
+    rows: &[coder_environment_operator::studio::Summary],
+    offered: &[coder_cloud::claude_task::PauseChoice],
+    waiting: &[String],
+    notice: Option<&str>,
+) -> Response {
+    let stream = format!("/environments/{id}/runs/{run}/events");
     protect(
         UiPage::new("Claude Code")
             .path(format!("/environments/{id}/runs/{run}"))
@@ -761,15 +803,15 @@ async fn run_page(
                     .crumb("Environments", "/environments")
                     .crumb(v.summary.repository.clone(), format!("/environments/{id}")),
             )
-            .sidebar_section(view::sidebar(&rows, Some(&id)))
+            .sidebar_section(view::sidebar(rows, Some(id)))
             .content(html! {
                 div class="oa-thread-view" {
-                    (view::thread(&stream, view::run_transcript_with(&r, &offered)))
+                    (view::thread(&stream, view::run_transcript_with(r, offered)))
                     @if let Some(notice) = notice { p role="status" { (notice) } }
                 }
             })
-            .composer(view::run_dock(&r, &waiting))
-            .respond(&headers),
+            .composer(view::run_dock(r, waiting))
+            .respond(headers),
     )
 }
 
@@ -1016,21 +1058,31 @@ fn sign_in_answer(
             let repository = studio
                 .view(id)
                 .map_or_else(|| "Environment".to_owned(), |v| v.summary.repository);
-            protect(
-                UiPage::new("Sign in to Claude")
-                    .path(format!("/environments/{id}/sign-in"))
-                    .section("/environments")
-                    .head(head())
-                    .breadcrumb(
-                        openagents_ui::shell::Breadcrumb::new("Sign in to Claude")
-                            .crumb("Environments", "/environments")
-                            .crumb(repository, format!("/environments/{id}")),
-                    )
-                    .content(html! { div.oa-page-column { h1 { "Sign in to Claude" } (panel) } })
-                    .respond(headers),
-            )
+            sign_in_page_for(headers, id, repository, panel)
         }
     }
+}
+
+/// The Sign in to Claude page around `panel`.
+pub(crate) fn sign_in_page_for(
+    headers: &HeaderMap,
+    id: &str,
+    repository: String,
+    panel: maud::Markup,
+) -> Response {
+    protect(
+        UiPage::new("Sign in to Claude")
+            .path(format!("/environments/{id}/sign-in"))
+            .section("/environments")
+            .head(head())
+            .breadcrumb(
+                openagents_ui::shell::Breadcrumb::new("Sign in to Claude")
+                    .crumb("Environments", "/environments")
+                    .crumb(repository, format!("/environments/{id}")),
+            )
+            .content(html! { div.oa-page-column { h1 { "Sign in to Claude" } (panel) } })
+            .respond(headers),
+    )
 }
 
 /// Start (or start again) the sign-in on the environment's computer.

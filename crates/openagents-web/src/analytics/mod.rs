@@ -26,7 +26,7 @@
 //! ([`store`]); the dashboard is `/admin/analytics` ([`dashboard`]).
 
 mod classify;
-mod dashboard;
+pub(crate) mod dashboard;
 pub mod store;
 #[cfg(test)]
 mod tests;

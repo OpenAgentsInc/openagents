@@ -177,13 +177,28 @@ pub(crate) fn render_one(item: &Summary) -> String {
     body
 }
 
+pub(crate) fn list_page(headers: &HeaderMap, list: &[Summary]) -> Response {
+    UiPage::new("Plugin purchases")
+        .path("/app/purchases")
+        .scriptless()
+        .content(prose(PreEscaped(render_list(list))))
+        .respond(headers)
+}
+
+pub(crate) fn one_page(headers: &HeaderMap, item: &Summary) -> Response {
+    UiPage::new("Plugin purchase")
+        .path(format!(
+            "/app/purchases/{}",
+            crate::layout::segment(&item.id)
+        ))
+        .scriptless()
+        .content(prose(PreEscaped(render_one(item))))
+        .respond(headers)
+}
+
 async fn purchases(State(app): State<App>, headers: HeaderMap) -> Response {
     match load(&app) {
-        Ok(list) => UiPage::new("Plugin purchases")
-            .path("/app/purchases")
-            .scriptless()
-            .content(prose(PreEscaped(render_list(&list))))
-            .respond(&headers),
+        Ok(list) => list_page(&headers, &list),
         Err(response) => response,
     }
 }
@@ -191,14 +206,7 @@ async fn purchases(State(app): State<App>, headers: HeaderMap) -> Response {
 async fn purchase(Path(id): Path<String>, State(app): State<App>, headers: HeaderMap) -> Response {
     match load(&app) {
         Ok(list) => match list.iter().find(|item| item.id == id) {
-            Some(item) => UiPage::new("Plugin purchase")
-                .path(format!(
-                    "/app/purchases/{}",
-                    crate::layout::segment(&item.id)
-                ))
-                .scriptless()
-                .content(prose(PreEscaped(render_one(item))))
-                .respond(&headers),
+            Some(item) => one_page(&headers, item),
             None => problem(
                 StatusCode::NOT_FOUND,
                 "Purchase not found",

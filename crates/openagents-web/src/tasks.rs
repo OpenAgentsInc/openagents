@@ -150,6 +150,11 @@ async fn task(
                 .into_response();
         }
     };
+    task_page(&headers, &view)
+}
+
+/// One task's page.
+pub(crate) fn task_page(headers: &HeaderMap, view: &task::view::View) -> Response {
     let task = &view.task;
     let mut body = format!(
         "<p class=\"oa-page-meta\"><a href=\"/app\">All tasks</a> / {}</p><h1>{}</h1>\
@@ -201,7 +206,12 @@ async fn task(
         ));
     }
     body.push_str("</ol>");
-    if let Some(next) = view.evidence.next.filter(|_| view.evidence.more_available) {
+    if let Some(next) = view
+        .evidence
+        .next
+        .as_ref()
+        .filter(|_| view.evidence.more_available)
+    {
         let bytes = serde_json::to_vec(&next).unwrap_or_default();
         body.push_str(&format!(
             "<p><a href=\"/app/tasks/{}?cursor={}\">Next 50 steps</a></p>",
@@ -251,5 +261,5 @@ async fn task(
         ))
         .scriptless()
         .content(prose(PreEscaped(body)))
-        .respond(&headers)
+        .respond(headers)
 }

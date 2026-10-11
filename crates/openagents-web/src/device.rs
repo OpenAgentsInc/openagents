@@ -511,16 +511,16 @@ pub(crate) async fn computers_section(
 }
 
 /// One signed-in computer in Settings.
-struct Row<'a> {
-    session: &'a crate::cloud::session::device::AppSession,
+pub(crate) struct Row<'a> {
+    pub(crate) session: &'a crate::cloud::session::device::AppSession,
     /// The Remove ticket.
-    csrf: String,
+    pub(crate) csrf: String,
     /// The choice forms' ticket.
-    sync: String,
-    choice: Option<crate::chat_store::SyncChoice>,
+    pub(crate) sync: String,
+    pub(crate) choice: Option<crate::chat_store::SyncChoice>,
 }
 
-fn computers_markup(rows: &[Row<'_>]) -> Markup {
+pub(crate) fn computers_markup(rows: &[Row<'_>]) -> Markup {
     html! {
         div class="oa-settings" {
             section class="oa-settings-group" aria-labelledby="settings-computers" {
