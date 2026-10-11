@@ -16,7 +16,7 @@
 //! | `GET`/`PUT /v1/computers/{name}/sync` `{choice}` | The computer's (or phone's) sync choice, as `/coder/sync` |
 //! | `POST /v1/computers/{name}/activity` `{items: [Item]}` | Coder's running work on the computer; answers `{commands: [Command]}`, each handed out once. With `?kind=landing` (#11250), the landing queue's entries on the integrator computer (kind `landing`): they replace only that computer's landing items, keep its other items, and take no commands |
 //! | `GET /v1/agents` | `{computers: [{name, online, updated_unix, items}]}` |
-//! | `POST /v1/agents/actions` `{request_id, computer, item, action, question?, text?}` | Stop, approve, deny, or message an item: `202 {queued}` |
+//! | `POST /v1/agents/actions` `{request_id, computer, item, action, question?, text?}` | Stop, approve, deny, or message an item, or take a paused item's choice (`your_key`, `openagents`, only when its `choices` list it): `202 {queued}` |
 //!
 //! A phone chat is a synced chat ([`crate::chat_store::Terminal`]) whose
 //! session starts with [`PHONE_PREFIX`], uploaded through
@@ -534,6 +534,25 @@ pub(crate) struct Item {
     pub question: Option<Question>,
     #[serde(default)]
     pub line: Option<String>,
+    /// While a usage limit pauses it: what the person may do now, from
+    /// [`CHOICES`] only (#11295).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub choices: Vec<String>,
+}
+
+/// The pause choices an item may offer, in the order they show:
+/// Continue on your key, then Continue with OpenAgents (#11295).
+pub(crate) const YOUR_KEY: &str = "your_key";
+pub(crate) const OPENAGENTS: &str = "openagents";
+pub(crate) const CHOICES: [&str; 2] = [YOUR_KEY, OPENAGENTS];
+
+/// Only the known choices, once each, in their order.
+pub(crate) fn clean_choices(choices: &[String]) -> Vec<String> {
+    CHOICES
+        .iter()
+        .filter(|choice| choices.iter().any(|c| c == *choice))
+        .map(|choice| (*choice).to_owned())
+        .collect()
 }
 
 /// `landing`: a landing queue entry the integrator reports (#11250).
@@ -541,7 +560,7 @@ const KINDS: [&str; 3] = ["chat", "agent", LANDING];
 /// The kind of a landing queue entry's item.
 pub(crate) const LANDING: &str = "landing";
 const STATUSES: [&str; 5] = ["working", "asking", "done", "failed", "stopped"];
-const ACTIONS: [&str; 4] = ["stop", "approve", "deny", "message"];
+const ACTIONS: [&str; 6] = ["stop", "approve", "deny", "message", YOUR_KEY, OPENAGENTS];
 
 /// Bounded, single-line, and screened: a text that looks like it holds a
 /// credential is replaced.
@@ -571,6 +590,7 @@ fn checked_item(mut item: Item) -> Option<Item> {
     item.engine = item.engine.map(|e| line(&e, 64)).filter(|e| !e.is_empty());
     item.session = item.session.filter(|s| coder_sync::valid_session(s));
     item.line = item.line.map(|l| clean(&l, 200)).filter(|l| !l.is_empty());
+    item.choices = clean_choices(&item.choices);
     item.question = item.question.and_then(|mut q| {
         q.id = line(&q.id, 64);
         let text: String = q.text.chars().take(2000).collect();
@@ -850,6 +870,16 @@ async fn agents(State(app): State<App>, headers: HeaderMap) -> Response {
     };
     let mut jobs = crate::mac_jobs_actor::board_items(&app, &account).await;
     jobs.extend(crate::work_runs::board_items(store, &owner).await);
+    // Paused environment runs, with the choices this person has (#11295).
+    if app.config.environments.get().is_some() {
+        let viewer = app_viewer(&app, &headers).await;
+        jobs.extend(
+            crate::pages::chat::paused_items(&app, &owner, viewer.as_ref())
+                .await
+                .into_iter()
+                .map(|item| (PAUSED_BOARD.to_owned(), item)),
+        );
+    }
     let boards = with_mac_jobs(agents.boards, jobs);
     let mut boards: Vec<(String, Board)> = boards.into_iter().collect();
     boards.sort_by_key(|(_, board)| std::cmp::Reverse(board.updated_unix));
@@ -858,13 +888,26 @@ async fn agents(State(app): State<App>, headers: HeaderMap) -> Response {
         json!({"computers": boards
             .into_iter()
             .map(|(name, board)| json!({
-                "online": online(&computers, &name),
+                "online": name == PAUSED_BOARD || online(&computers, &name),
                 "name": name,
                 "updated_unix": board.updated_unix,
                 "items": board.items,
             }))
             .collect::<Vec<_>>()}),
     )
+}
+
+/// The board the phone shows paused environment runs on (#11295), beside
+/// the account's computers.
+pub(crate) const PAUSED_BOARD: &str = "Environments";
+
+/// The phone's own signed-in view, from its bearer token.
+async fn app_viewer(app: &App, headers: &HeaderMap) -> Option<crate::cloud::session::Viewer> {
+    let token = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))?;
+    app.config.cloud.as_deref()?.app_viewer(token).await.ok()
 }
 
 /// The boards with each Mac job (#11223) as an item on its Mac's board,
@@ -905,6 +948,8 @@ pub(crate) enum Acted {
     Queued,
     Unknown,
     Offline,
+    /// A pause choice the item doesn't offer now.
+    NotOffered,
 }
 
 /// Queue an action for an item Coder on `computer` reported; the same
@@ -924,12 +969,17 @@ pub(crate) async fn queue_action(
         {
             return (false, Acted::Queued);
         }
-        let known = agents
+        let Some(item) = agents
             .boards
             .get(&computer)
-            .is_some_and(|board| board.items.iter().any(|item| item.id == command.item));
-        if !known {
+            .and_then(|board| board.items.iter().find(|item| item.id == command.item))
+        else {
             return (false, Acted::Unknown);
+        };
+        if CHOICES.contains(&command.action.as_str())
+            && !item.choices.iter().any(|choice| *choice == command.action)
+        {
+            return (false, Acted::NotOffered);
         }
         if !is_online {
             return (false, Acted::Offline);
@@ -984,7 +1034,7 @@ async fn action(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Resp
         return refused(
             StatusCode::BAD_REQUEST,
             "invalid",
-            "Send {request_id, computer, item, action} with action stop, approve, deny, or message.",
+            "Send {request_id, computer, item, action} with action stop, approve, deny, message, your_key, or openagents.",
         );
     };
     if sent
@@ -997,6 +1047,39 @@ async fn action(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Resp
             "secret",
             "This looks like it holds a password or key, so it wasn't sent.",
         );
+    }
+    // A paused environment run's choice (#11295): the person's own key is
+    // released into the run only, never to the phone.
+    if sent.computer == PAUSED_BOARD {
+        if !CHOICES.contains(&sent.action.as_str()) {
+            return refused(
+                StatusCode::CONFLICT,
+                "not_offered",
+                "A paused agent takes Continue on your key or Continue with OpenAgents.",
+            );
+        }
+        let Some(viewer) = app_viewer(&app, &headers).await else {
+            return refused(
+                StatusCode::UNAUTHORIZED,
+                "signed_out",
+                "Sign in again to choose.",
+            );
+        };
+        return match crate::pages::chat::choose_paused(
+            &app,
+            &viewer,
+            &owner,
+            &sent.item,
+            &sent.action,
+        )
+        .await
+        {
+            Ok(said) => answer(
+                StatusCode::ACCEPTED,
+                json!({"queued": true, "message": said}),
+            ),
+            Err(said) => refused(StatusCode::CONFLICT, "not_offered", &said),
+        };
     }
     // A Mac job's item (#11223): Approve, Deny, and Stop reach the job
     // itself; the Mac takes the answer at its next report.
@@ -1057,6 +1140,11 @@ async fn action(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Resp
             StatusCode::CONFLICT,
             "offline",
             &format!("Coder on {computer} isn't online now."),
+        ),
+        Ok(Acted::NotOffered) => refused(
+            StatusCode::CONFLICT,
+            "not_offered",
+            "That choice isn't open now.",
         ),
         Err(error) => stored(&error),
     }

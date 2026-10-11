@@ -303,6 +303,7 @@ fn coder_background_agents_for_this_chat_join_the_list() {
         session: Some(session.into()),
         question: None,
         line: None,
+        choices: Vec::new(),
     };
     let mut agents = Agents::default();
     agents.boards.insert(
@@ -543,4 +544,36 @@ fn a_hand_off_takes_the_paused_agents_place_as_openagents() {
     let rows = run_rows(&chat, |_| None, true, 10);
     assert_eq!(rows.len(), 1, "one row per agent");
     assert_eq!(rows[0].engine, "OpenAgents");
+}
+
+/// #11295: a paused run on the phone's board says when it continues and
+/// offers exactly the buttons the web offers; a reported item's choices
+/// become the panel's buttons.
+#[test]
+fn paused_runs_carry_their_choices_to_the_phone_and_back() {
+    use coder_cloud::claude::OwnCredential;
+    let paused = task("run-1", TaskState::Paused, None);
+    let item = paused_item(
+        "chat-1",
+        &paused,
+        Some(1_790_164_200),
+        Some(0.5),
+        &[
+            PauseChoice::KeepWaiting,
+            PauseChoice::ContinueOnYourKey(OwnCredential::Vertex),
+            PauseChoice::ContinueWithOpenAgents,
+        ],
+    );
+    assert_eq!(item.id, "chat-1/run-1");
+    assert_eq!(item.status, "working");
+    assert_eq!(item.choices, ["your_key", "openagents"]);
+    assert!(item.line.as_deref().unwrap().starts_with("Paused until "));
+    let none = paused_item("chat-1", &paused, None, None, &[PauseChoice::KeepWaiting]);
+    assert!(none.choices.is_empty());
+    assert_eq!(
+        item_choices(&["openagents".into(), "nope".into()]),
+        vec![PauseChoice::ContinueWithOpenAgents]
+    );
+    assert_eq!(item_action("key"), Some("your_key"));
+    assert_eq!(item_action("wait"), None);
 }

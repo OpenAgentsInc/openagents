@@ -1199,6 +1199,7 @@ pub(crate) fn item(job: &Job) -> Item {
                 text: q.text.clone(),
             }),
         line: job.last_line().map(|text| line(&text, 200)),
+        choices: Vec::new(),
     }
 }
 

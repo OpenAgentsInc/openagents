@@ -519,6 +519,23 @@ pub(crate) async fn run_key(
     computers.run_key(&owner, now())
 }
 
+/// [`saved_class`] for an app's own signed-in view (the phone, #11295).
+pub(crate) fn saved_class_for(app: &App, viewer: &Viewer) -> Option<OwnCredential> {
+    let computers = app.config.cloud_byo.as_deref()?;
+    let owner = Owner::from_viewer(viewer).ok()?;
+    computers.status(&owner, now()).ok()??.material.claude()
+}
+
+/// [`run_key`] for an app's own signed-in view (the phone, #11295). The
+/// key goes only into the run, never back to the app.
+pub(crate) fn run_key_for(
+    app: &App,
+    viewer: &Viewer,
+) -> Option<coder_environment_operator::studio::claude::Key> {
+    let computers = app.config.cloud_byo.as_deref()?;
+    computers.run_key(&Owner::from_viewer(viewer).ok()?, now())
+}
+
 impl Computers {
     /// The owner's current credential as one environment run's key.
     pub(crate) fn run_key(

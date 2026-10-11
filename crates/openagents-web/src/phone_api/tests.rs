@@ -20,6 +20,7 @@ fn item(id: &str, status: &str) -> Item {
         session: Some("s1".into()),
         question: None,
         line: None,
+        choices: Vec::new(),
     }
 }
 
@@ -255,4 +256,58 @@ async fn threads_list_web_terminal_and_phone_chats_with_their_lines() {
             .0
             .is_empty()
     );
+}
+
+/// #11295: an item offers only the two pause choices, once each and in
+/// order, and a choice it doesn't offer is refused.
+#[tokio::test]
+async fn pause_choices_are_cleaned_and_only_offered_ones_queue() {
+    let mut paused = item("agent-1", "failed");
+    paused.kind = "agent".into();
+    paused.choices = vec![
+        "openagents".into(),
+        "delete_everything".into(),
+        "your_key".into(),
+        "openagents".into(),
+    ];
+    let paused = checked_item(paused).unwrap();
+    assert_eq!(paused.choices, ["your_key", "openagents"]);
+    let mut only = item("agent-2", "failed");
+    only.kind = "agent".into();
+    only.choices = vec!["openagents".into()];
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::local(dir.path().to_path_buf());
+    report(
+        &store,
+        &owner(),
+        "Studio",
+        vec![paused, checked_item(only).unwrap(), item("s1", "working")],
+    )
+    .await
+    .unwrap();
+    coder_sync::check_in(&store, &owner(), "Studio")
+        .await
+        .unwrap()
+        .unwrap();
+    let choose = |id: &str, item: &str, action: &str| Command {
+        action: action.into(),
+        ..command(id, item)
+    };
+    for (id, item, action, acted) in [
+        ("cmd-0001", "agent-1", "your_key", Acted::Queued),
+        ("cmd-0002", "agent-2", "your_key", Acted::NotOffered),
+        ("cmd-0003", "agent-2", "openagents", Acted::Queued),
+        ("cmd-0004", "s1", "openagents", Acted::NotOffered),
+    ] {
+        assert_eq!(
+            queue_action(&store, &owner(), "Studio", choose(id, item, action))
+                .await
+                .unwrap(),
+            acted,
+            "{id}"
+        );
+    }
+    // Reported to the phone, the list carries the choices.
+    let json = serde_json::to_value(item("x", "working")).unwrap();
+    assert!(json.get("choices").is_none(), "no choices, no field");
 }

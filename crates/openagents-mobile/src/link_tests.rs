@@ -555,6 +555,74 @@ fn a_message_to_an_agent_goes_through_its_composer() {
     until(|| f.link.lock().screen == Screen::Running);
 }
 
+/// #11295: a run a usage limit paused shows its two choices and nothing
+/// else to tap, and a choice posts like Stop does.
+#[test]
+fn a_paused_run_offers_its_choices_and_posts_one() {
+    let mut f = fixture();
+    f.site.answer(
+        "GET /v1/agents",
+        200,
+        json!({"computers": [{"name": "Environments", "online": true, "updated_unix": 1,
+        "items": [
+            {"id": "c1/r1", "kind": "agent", "title": "Fix the docs", "status": "working",
+             "started_unix": 1, "line": "Paused until 14:00 UTC on the Claude plan limit.",
+             "choices": ["your_key", "openagents"]},
+            {"id": "c1/r2", "kind": "agent", "title": "Tidy tests", "status": "working",
+             "started_unix": 1, "choices": ["openagents"]}
+        ]}]}),
+    );
+    f.site.answer(
+        "POST /v1/agents/actions",
+        202,
+        json!({"queued": true, "message": "OpenAgents is continuing it."}),
+    );
+    signed(&mut f);
+    until(|| f.link.lock().agents_read);
+    f.link.act(Action::Show {
+        screen: Screen::Running,
+        id: None,
+    });
+    let packet = f.link.packet();
+    let mut words = vec![];
+    texts(packet.view.as_ref().unwrap(), &mut words);
+    assert_eq!(
+        words
+            .iter()
+            .filter(|w| *w == "Continue on your key")
+            .count(),
+        1,
+        "{words:?}"
+    );
+    assert_eq!(
+        words
+            .iter()
+            .filter(|w| *w == "Continue with OpenAgents")
+            .count(),
+        2,
+        "{words:?}"
+    );
+    assert!(
+        !words.iter().any(|w| w == "Stop" || w == "Message"),
+        "{words:?}"
+    );
+    f.link.tap(Intent::Act {
+        computer: "Environments".into(),
+        item: "c1/r2".into(),
+        action: "openagents".into(),
+        question: None,
+    });
+    until(|| !f.site.calls("POST /v1/agents/actions").is_empty());
+    let body = f.site.calls("POST /v1/agents/actions")[0]
+        .body
+        .clone()
+        .unwrap();
+    assert_eq!(body["action"], "openagents");
+    assert_eq!(body["item"], "c1/r2");
+    assert_eq!(body["computer"], "Environments");
+    until(|| f.link.lock().notice.as_deref() == Some("OpenAgents is continuing it."));
+}
+
 #[test]
 fn an_ended_session_signs_out() {
     let mut f = fixture();

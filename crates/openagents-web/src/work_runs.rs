@@ -1188,6 +1188,7 @@ pub(crate) fn item(run: &WorkRun) -> Item {
         session: None,
         question: None,
         line: Some(line(&stage(run), 200)),
+        choices: Vec::new(),
     }
 }
 
