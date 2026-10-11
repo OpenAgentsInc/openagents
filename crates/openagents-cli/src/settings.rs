@@ -49,6 +49,8 @@ Keys:
                                   or loop (Microcoder's step loop) (default session).
   coder.codex                     session (one codex exec session briefed by Jev)
                                   or loop (Microcoder's step loop) (default loop).
+  coder.build_leases              Concurrent builds, at least 1 (default cores / 4,
+                                  at least 1 and at most 4). OPENAGENTS_BUILD_LEASES wins.
   coder.placement                 Where long jobs run (openagents lease run --class): CLASS=PLACE
                                   and computer=NAME entries, comma-separated (default
                                   release-gate=auto,bench=auto,soak=local,build=local, no computer).

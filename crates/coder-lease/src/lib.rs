@@ -23,7 +23,7 @@
 //!
 //! Exclusive resources ([`Shape::Exclusive`]) admit one holder. Counted
 //! ones ([`Shape::Counted`]) admit holders while their amounts fit:
-//! `build` slots (default `max(1, cores / 8)`), a `memory` budget (75
+//! `build` slots (default `clamp(cores / 4, 1, 4)`), a `memory` budget (75
 //! percent of physical memory, in GiB), and `disk` budgets above the
 //! free-space floor. A `build` lease also reserves a disk budget above the
 //! floor; when the space isn't there, the broker runs its reclaim hook

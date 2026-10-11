@@ -227,7 +227,7 @@ reads it.
 
 | Resource | Shape | Capacity | Notes |
 | --- | --- | --- | --- |
-| `build` | Counted, slots | `max(1, cores / 8)`: 2 on an 18-core Mac | A lease takes one slot unless `--amount` says more, and reserves a disk budget for each. |
+| `build` | Counted, slots | `clamp(cores / 4, 1, 4)`: 4 on an 18-core Mac | A lease takes one slot unless `--amount` says more, and reserves a disk budget for each. |
 | `memory` | Counted, GiB | 75 percent of physical memory | A lease must declare `--amount`. |
 | `disk` | Counted, GB | The free space above the floor | A lease must declare `--amount`. |
 | `quiet` | Exclusive | One holder | Waits for builds; holds new builds. |
@@ -251,7 +251,7 @@ never be admitted.
 
 | Setting | Variable | Setting key | Default |
 | --- | --- | --- | --- |
-| Build slots | `OPENAGENTS_BUILD_LEASES` | `coder.build_leases` | `max(1, cores / 8)` |
+| Build slots | `OPENAGENTS_BUILD_LEASES` | `coder.build_leases` | `clamp(cores / 4, 1, 4)` |
 | Memory budget, GiB | `OPENAGENTS_MEMORY_LEASE_GIB` | None | 75 percent of physical memory |
 | Disk floor, GB | `OPENAGENTS_SLOT_FREE_GB` | `coder.slot_free_gb` | 10 |
 | Disk budget of a build, GB | `OPENAGENTS_BUILD_DISK_GB` | None | 10 |
@@ -261,7 +261,12 @@ never be admitted.
 
 A variable wins over the setting, and the setting wins over the default.
 Set a key with `openagents settings set coder.build_leases 3`. The disk
-floor is the same one Coder's build slots keep.
+floor is the same one Coder's build slots keep. A saved build count of `1`
+keeps builds at one even on a larger machine. Raise it with
+`openagents settings set coder.build_leases 4`, or use
+`openagents settings unset coder.build_leases` to use the CPU-based default.
+Restart existing Coder sessions after changing the count: their commands
+can inherit the old count through `OPENAGENTS_BUILD_LEASES`.
 
 ## The quiet machine
 

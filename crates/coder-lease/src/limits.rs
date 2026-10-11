@@ -97,7 +97,7 @@ impl Limits {
         let build = match number(BUILD_LEASES_VAR, Some("build_leases"))? {
             Some(0) => return Err("the build lease count must be at least 1".to_owned()),
             Some(count) => count,
-            None => (machine.cores / 8).max(1),
+            None => (machine.cores / 4).clamp(1, 4),
         };
         let memory_gib = match number(MEMORY_GIB_VAR, None)? {
             Some(0) => return Err("the memory budget must be at least 1 GiB".to_owned()),
@@ -231,7 +231,7 @@ mod tests {
     #[test]
     fn defaults_are_fractions_of_the_machine() {
         let limits = Limits::read(&|_| None, None, MAC).unwrap();
-        assert_eq!(limits.build, 2);
+        assert_eq!(limits.build, 4);
         assert_eq!(limits.memory_gib, 96);
         assert_eq!(limits.disk_floor_gb, 10);
         assert_eq!(limits.build_disk_gb, 10);
@@ -242,6 +242,17 @@ mod tests {
             memory_bytes: 8 << 30,
         };
         assert_eq!(Limits::read(&|_| None, None, small).unwrap().build, 1);
+    }
+
+    #[test]
+    fn build_defaults_scale_to_four_slots() {
+        for (cores, expected) in [(1, 1), (4, 1), (8, 2), (12, 3), (18, 4), (28, 4)] {
+            let machine = Machine { cores, ..MAC };
+            assert_eq!(
+                Limits::read(&|_| None, None, machine).unwrap().build,
+                expected
+            );
+        }
     }
 
     #[test]
@@ -265,7 +276,7 @@ mod tests {
             Limits::read(&|_| None, Some(&dir.path().join("absent")), MAC)
                 .unwrap()
                 .build,
-            2
+            4
         );
     }
 

@@ -762,7 +762,7 @@ fn run_lines(
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
         {
-            let inner = usize::from(width.saturating_sub(5)).max(1);
+            let inner = usize::from(width.saturating_sub(6)).max(1);
             let rows = text.lines().flat_map(|row| {
                 let ranges = coder_terminal::wrap_rows(row, inner);
                 if ranges.is_empty() {
@@ -974,15 +974,16 @@ pub struct TranscriptCache {
 }
 
 struct CachedEntry {
+    width: u16,
     entry: crate::live::Entry,
     lines: Vec<Line<'static>>,
-    run_output: Option<(usize, Vec<Line<'static>>, usize)>,
+    run_output: Option<(usize, Vec<Line<'static>>, usize, bool)>,
 }
 
 const RUN_OUTPUT_HEIGHT: usize = 5;
 
 impl CachedEntry {
-    fn bound_run(&mut self, width: u16, phase: u8, previous: Option<usize>) {
+    fn bound_run(&mut self, width: u16, phase: u8, previous: Option<(usize, bool)>) {
         self.run_output = None;
         let crate::live::Entry::Tool {
             name,
@@ -1009,18 +1010,46 @@ impl CachedEntry {
         }
         let rows = self.lines[start..end].to_vec();
         let max = rows.len().saturating_sub(RUN_OUTPUT_HEIGHT);
-        let offset = previous.unwrap_or(max).min(max);
-        self.run_output = Some((start, rows, offset));
+        let (offset, following) = previous.unwrap_or((max, true));
+        let offset = if following { max } else { offset.min(max) };
+        self.run_output = Some((start, rows, offset, following));
         self.show_run();
     }
 
     fn show_run(&mut self) {
-        let Some((start, rows, offset)) = &self.run_output else {
+        let Some((start, rows, offset, _)) = &self.run_output else {
             return;
         };
         self.lines.truncate(*start);
-        self.lines
-            .extend(rows.iter().skip(*offset).take(RUN_OUTPUT_HEIGHT).cloned());
+        let height = rows.len().min(RUN_OUTPUT_HEIGHT);
+        let max = rows.len().saturating_sub(RUN_OUTPUT_HEIGHT);
+        let thumb = if max == 0 {
+            0
+        } else {
+            offset * height.saturating_sub(1) / max
+        };
+        for (index, mut line) in rows
+            .iter()
+            .skip(*offset)
+            .take(RUN_OUTPUT_HEIGHT)
+            .cloned()
+            .enumerate()
+        {
+            let width = usize::from(self.width);
+            line.spans.push(Span::raw(
+                " ".repeat(width.saturating_sub(line.width() + 1)),
+            ));
+            line.spans.push(span(
+                if max == 0 || index == thumb {
+                    "█"
+                } else {
+                    "│"
+                },
+                t::GRAY,
+            ));
+            line.style = line.style.bg(t::BG_DARK);
+            self.lines.push(line);
+        }
         if rows.len() > RUN_OUTPUT_HEIGHT {
             self.lines.push(Line::from(span(
                 format!(
@@ -1046,10 +1075,11 @@ impl TranscriptCache {
             return false;
         };
         let cached = &mut self.entries[*index];
-        let Some((_, rows, offset)) = &mut cached.run_output else {
+        let Some((_, rows, offset, following)) = &mut cached.run_output else {
             return false;
         };
         let max = rows.len().saturating_sub(RUN_OUTPUT_HEIGHT);
+        *following = false;
         *offset = if up {
             offset.saturating_sub(3)
         } else {
@@ -1063,7 +1093,7 @@ impl TranscriptCache {
         self.run_regions.clear();
         let mut top = 0;
         for (index, cached) in self.entries.iter().enumerate() {
-            if let Some((start, rows, _)) = &cached.run_output {
+            if let Some((start, rows, _, _)) = &cached.run_output {
                 let first = top + start;
                 let end = first + rows.len().min(RUN_OUTPUT_HEIGHT);
                 let visible_start = first.max(position);
@@ -1084,24 +1114,22 @@ impl TranscriptCache {
     }
 
     fn refresh(&mut self, chat: &crate::live::Chat, width: u16, phase: u8) {
-        if self.width != width {
-            self.entries.clear();
-            self.partial = None;
-            self.width = width;
-        }
+        let resized = self.width != width;
+        self.width = width;
         self.entries.truncate(chat.entries.len());
         for (index, entry) in chat.entries.iter().enumerate() {
             if self
                 .entries
                 .get(index)
-                .is_none_or(|cached| cached.entry != *entry)
+                .is_none_or(|cached| resized || cached.entry != *entry)
             {
                 let previous_offset = self
                     .entries
                     .get(index)
                     .and_then(|c| c.run_output.as_ref())
-                    .map(|r| r.2);
+                    .map(|r| (r.2, r.3));
                 let mut cached = CachedEntry {
+                    width,
                     entry: entry.clone(),
                     lines: entry_lines(entry, width, phase),
                     run_output: None,
@@ -1119,7 +1147,7 @@ impl TranscriptCache {
                     | crate::live::Entry::Delegation { running: true, .. }
             ) {
                 let cached = &mut self.entries[index];
-                let offset = cached.run_output.as_ref().map(|r| r.2);
+                let offset = cached.run_output.as_ref().map(|r| (r.2, r.3));
                 cached.lines = entry_lines(entry, width, phase);
                 cached.bound_run(width, phase, offset);
             }
@@ -1138,9 +1166,10 @@ impl TranscriptCache {
             if self
                 .partial
                 .as_ref()
-                .is_none_or(|cached| cached.entry != entry)
+                .is_none_or(|cached| resized || cached.entry != entry)
             {
                 self.partial = Some(CachedEntry {
+                    width,
                     lines: entry_lines(&entry, width, phase),
                     entry,
                     run_output: None,
@@ -1573,5 +1602,69 @@ mod streaming_tests {
             }
             assert!(!text.contains("curl") || text.contains("bash"), "{text}");
         }
+    }
+}
+
+#[cfg(test)]
+mod run_viewport_tests {
+    use super::*;
+
+    fn output(chat: &mut crate::live::Chat, count: usize, running: bool) {
+        chat.entries = vec![crate::live::Entry::Tool {
+            name: "Run".into(),
+            input: serde_json::json!({"command": "example"}),
+            output: serde_json::json!({"stdout": (1..=count).map(|n| format!("row {n}\n")).collect::<String>()}),
+            running,
+        }];
+    }
+
+    #[test]
+    fn follows_new_output_until_the_person_scrolls_even_after_resize() {
+        let mut chat = crate::live::Chat::default();
+        let mut cache = TranscriptCache::default();
+        output(&mut chat, 8, true);
+        cache.refresh(&chat, 40, 0);
+        assert_eq!(cache.entries[0].run_output.as_ref().unwrap().2, 3);
+        output(&mut chat, 12, true);
+        cache.refresh(&chat, 40, 1);
+        assert_eq!(cache.entries[0].run_output.as_ref().unwrap().2, 7);
+        cache.locate_runs(Rect::new(0, 0, 42, 20), 0);
+        assert!(!cache.scroll_run(0, 19, true));
+        let area = cache.run_regions[0].1;
+        assert!(cache.scroll_run(39, area.y, true));
+        assert_eq!(cache.entries[0].run_output.as_ref().unwrap().2, 4);
+        output(&mut chat, 16, false);
+        cache.refresh(&chat, 40, 2);
+        assert_eq!(cache.entries[0].run_output.as_ref().unwrap().2, 4);
+        cache.refresh(&chat, 30, 3);
+        assert_eq!(cache.entries[0].run_output.as_ref().unwrap().2, 4);
+        assert!(!cache.entries[0].run_output.as_ref().unwrap().3);
+    }
+
+    #[test]
+    fn five_output_rows_have_a_background_and_right_hand_scrollbar() {
+        let mut chat = crate::live::Chat::default();
+        output(&mut chat, 10, false);
+        let mut cache = TranscriptCache::default();
+        cache.refresh(&chat, 40, 0);
+        let cached = &cache.entries[0];
+        let start = cached.run_output.as_ref().unwrap().0;
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(42, 10)).unwrap();
+        terminal
+            .draw(|frame| frame.render_widget(Paragraph::new(cached.lines.clone()), frame.area()))
+            .unwrap();
+        let buffer = terminal.backend().buffer();
+        for y in start..start + 5 {
+            assert_eq!(buffer[(20, y as u16)].bg, t::BG_DARK);
+            assert_eq!(
+                buffer[(39, y as u16)].symbol(),
+                if y == start + 4 { "█" } else { "│" }
+            );
+        }
+        let exported = transcript_text(&chat.entries, 40).join("\n");
+        assert!(exported.contains("row 1\n"));
+        assert!(exported.contains("row 10"));
+        assert!(!exported.contains('█'));
     }
 }
