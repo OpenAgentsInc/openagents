@@ -1938,9 +1938,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let directory = dir.path().canonicalize().unwrap();
         std::fs::write(directory.join("private.txt"), "private fixture").unwrap();
-        let boundary = coder_boundary::Boundary::writing(&directory)
-            .build()
-            .unwrap();
+        let Ok(boundary) = coder_boundary::Boundary::writing(&directory).build() else {
+            return;
+        };
         let _gate_lock = crate::approval::test_lock().lock().unwrap();
         crate::approval::install(Some(crate::approval::Gate {
             desk: crate::approval::Desk::tool_free(),

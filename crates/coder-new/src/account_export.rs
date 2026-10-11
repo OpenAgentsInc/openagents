@@ -150,6 +150,7 @@ mod tests {
 
     #[test]
     fn signed_out_is_said_before_anything_is_asked() {
+        crate::account::without_env_sign_in();
         let temp = tempfile::tempdir().unwrap();
         assert_eq!(
             run(&args(&["--account"]), temp.path(), temp.path()).unwrap_err(),

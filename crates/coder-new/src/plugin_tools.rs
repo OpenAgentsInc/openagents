@@ -1153,6 +1153,11 @@ mod tests {
 
     #[test]
     fn drive_tools_come_with_an_openagents_sign_in() {
+        // The approval gate is process-wide; another test's tool-free gate
+        // would offer no tools at all.
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let names = |settings: &ExecutionSettings| -> Vec<String> {
             settings
                 .defs()
