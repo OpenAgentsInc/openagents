@@ -60,6 +60,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(continued::routes())
         .merge(approval::routes())
         .merge(computer::routes())
+        .merge(to_coder::routes())
         .layer(DefaultBodyLimit::max(64 * 1024))
 }
 
@@ -2207,6 +2208,8 @@ fn messages(chat: &Conversation, before: Option<usize>, links: bool) -> Markup {
                 (computer::turn(chat, &terminal.computer, index, ask))
             }
         }
+        // Run the last message in Coder on the person's computer (#11318).
+        @if before.is_none() { (to_coder::slot(chat)) }
         // The chat's agents (#11164): they load themselves.
         @if before.is_none() { (agents::slot(chat)) }
         div #chat-status.oa-thread-status role="status" aria-live="polite"
@@ -2686,6 +2689,8 @@ mod continued;
 pub(crate) mod delete_all;
 #[path = "chat_live.rs"]
 mod live;
+#[path = "chat_to_coder.rs"]
+mod to_coder;
 #[path = "chat_work.rs"]
 mod work;
 

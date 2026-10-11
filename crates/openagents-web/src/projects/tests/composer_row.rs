@@ -346,6 +346,101 @@ async fn the_row_offers_only_what_works_and_sending_uses_each_pick() {
     assert!(!page.body.contains("Where it runs"), "{}", page.body);
 }
 
+/// #11318: under the newest answer of a chat that began here, a signed-in
+/// person with Coder online gets Run in Coder on {computer}, whatever the
+/// answer said; it sends their last message there with the chat so far
+/// and opens the Coder chat, after which the offer is gone.
+#[tokio::test]
+async fn the_newest_answer_offers_to_run_the_message_in_coder() {
+    let world = world().await;
+    let mut octo = Browser::default();
+    octo.sign_in(&world, "octo-local").await;
+    let owner = account_owner_of(&world, "octo-local");
+    let said = |role, text: &str| crate::chat_store::Message {
+        role,
+        text: text.into(),
+        request_id: Some(REQUEST.into()),
+    };
+    world
+        .store
+        .create(&crate::chat_store::Conversation {
+            id: REQUEST.into(),
+            owner: owner.clone(),
+            revision: 1,
+            title: "Finances".into(),
+            messages: vec![
+                said(
+                    crate::chat_store::Role::User,
+                    "push a README to AtlantisPleb/finances",
+                ),
+                said(
+                    crate::chat_store::Role::Assistant,
+                    "Coder on your computer can do that.",
+                ),
+            ],
+            pending: None,
+            requests: Vec::new(),
+            selection: None,
+            updated_unix: 1,
+            pinned_unix: None,
+            archived_unix: None,
+            project: None,
+            terminal: None,
+            environment: None,
+            tasks: Vec::new(),
+            opened_unix: None,
+            branch: None,
+        })
+        .await
+        .unwrap();
+    let offer = format!("/chat/{REQUEST}/to-coder");
+    let page = octo.get(&world, &format!("/chat/{REQUEST}")).await;
+    assert!(page.body.contains(&offer), "{}", page.body);
+    // No computer online: nothing to offer.
+    let loaded = octo.get(&world, &offer).await;
+    assert_eq!(loaded.status, StatusCode::OK);
+    assert!(!loaded.body.contains("Run in Coder"), "{}", loaded.body);
+
+    online(&world, &owner, "studio-mac").await;
+    let loaded = octo.get(&world, &offer).await;
+    assert!(
+        loaded.body.contains("Run in Coder on studio-mac"),
+        "{}",
+        loaded.body
+    );
+    crate::copy_guard::assert_plain("/chat/to-coder", &loaded.body);
+    let csrf = hidden(&loaded.body, &format!(r#"action="{offer}""#), "csrf");
+    let sent = octo
+        .post(
+            &world,
+            &offer,
+            &[
+                ("csrf", &csrf),
+                ("request_id", REQUEST),
+                ("computer", "studio-mac"),
+            ],
+        )
+        .await;
+    let session = crate::coder_sync::web_session(REQUEST);
+    let id = crate::coder_sync::chat_id(&owner, &session);
+    assert_eq!(sent.location(), format!("/chat/{id}"), "{}", sent.body);
+    let moved = world
+        .store
+        .load(&owner, &id)
+        .await
+        .unwrap()
+        .unwrap()
+        .conversation;
+    let terminal = moved.terminal.as_ref().unwrap();
+    assert_eq!(terminal.computer, "studio-mac");
+    assert_eq!(
+        terminal.replies[0].text,
+        "push a README to AtlantisPleb/finances"
+    );
+    let loaded = octo.get(&world, &offer).await;
+    assert!(!loaded.body.contains("Run in Coder"), "{}", loaded.body);
+}
+
 /// Serves a signed-in world on `OA_SCREEN_PORT` for headless screenshots
 /// of the row (`cargo test ... serve_for_screenshots -- --ignored`): the
 /// person has a project, Coder on a computer is online, and one chat was

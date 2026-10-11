@@ -2081,3 +2081,48 @@ async fn work_in_a_chat_goes_to_coder_on_an_online_computer() {
     assert_eq!(carried, ["What is in AtlantisPleb/finances?", "A ledger."]);
     assert_eq!(moved.messages.len(), 2);
 }
+
+/// #11318: under the newest answer of an account's chat that began here,
+/// the thread loads the Run in Coder offer; not for a visitor, a Coder
+/// chat, or while an answer is being written.
+#[test]
+fn the_newest_answer_has_the_run_in_coder_slot() {
+    let message = |role, text: &str| Message {
+        role,
+        text: text.into(),
+        request_id: Some(CHAT.into()),
+    };
+    let mut chat = Conversation {
+        id: CHAT.into(),
+        owner: crate::chat_store::account_owner("acct_11318_offer"),
+        revision: 1,
+        title: "Finances".into(),
+        messages: vec![
+            message(Role::User, "push a README to AtlantisPleb/finances"),
+            message(Role::Assistant, "Coder on your computer can do that."),
+        ],
+        pending: None,
+        requests: Vec::new(),
+        selection: None,
+        updated_unix: 1,
+        pinned_unix: None,
+        archived_unix: None,
+        project: None,
+        terminal: None,
+        environment: None,
+        tasks: Vec::new(),
+        opened_unix: None,
+        branch: None,
+    };
+    let slot = format!("/chat/{CHAT}/to-coder");
+    assert!(messages(&chat, None, false).into_string().contains(&slot));
+    chat.pending = Some(Pending {
+        request_id: CHAT.into(),
+        started_unix: 1,
+        job_id: None,
+    });
+    assert!(!messages(&chat, None, false).into_string().contains(&slot));
+    chat.pending = None;
+    chat.owner = OWNER.into();
+    assert!(!messages(&chat, None, false).into_string().contains(&slot));
+}
