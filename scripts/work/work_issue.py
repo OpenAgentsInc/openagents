@@ -117,6 +117,34 @@ def clean_env(extra: dict | None = None) -> dict:
     return env
 
 
+# What an engine may not do: the run lands the change itself, after its
+# own checks. Shims that refuse, and git with no way to push.
+NO_LANDING = "Do not commit, push, open a pull request, or comment on or close the issue: this run checks your change and lands it itself."
+GITHUB_ENV = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")
+
+
+def agent_env(out: Path) -> dict:
+    """The engine's environment: no GitHub credential, `gh` and
+    `openagents` refuse, and `git push` has nowhere to go."""
+    shims = out / "shims"
+    shims.mkdir(parents=True, exist_ok=True)
+    for name in ("gh", "openagents"):
+        shim = shims / name
+        shim.write_text(f"#!/bin/sh\necho '{name}: not available in this run; it lands the change itself.' >&2\nexit 1\n")
+        shim.chmod(0o755)
+    env = clean_env()
+    for key in GITHUB_ENV:
+        env.pop(key, None)
+    env.update({
+        "PATH": f"{shims}:{env.get('PATH', '')}",
+        "GIT_TERMINAL_PROMPT": "0",
+        "GIT_CONFIG_COUNT": "2",
+        "GIT_CONFIG_KEY_0": "remote.origin.pushurl", "GIT_CONFIG_VALUE_0": "no-push://this-run-lands-it",
+        "GIT_CONFIG_KEY_1": "credential.helper", "GIT_CONFIG_VALUE_1": "",
+    })
+    return env
+
+
 def claude_signed_in() -> bool:
     return (bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN")) or keeps_api_key()
             or any(os.environ.get(k) for k in ("CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX",
@@ -157,9 +185,12 @@ def drop_worktree(checkout: Path, dest: Path) -> None:
     shutil.rmtree(dest, ignore_errors=True)
 
 
-def changed_files(root: Path) -> list[str]:
+def changed_files(root: Path, base: str) -> list[str]:
+    """Every file the engine changed since `base`, committed or not."""
     rows = sh(["git", "-C", str(root), "status", "--porcelain", "--untracked-files=all"]).stdout.splitlines()
-    return sorted({row[3:].split(" -> ")[-1].strip('"') for row in rows if len(row) > 3})
+    files = {row[3:].split(" -> ")[-1].strip('"') for row in rows if len(row) > 3}
+    files |= set(sh(["git", "-C", str(root), "diff", "--name-only", base]).stdout.split())
+    return sorted(files)
 
 
 def diff_stat(root: Path, base: str) -> dict:
@@ -199,10 +230,10 @@ def cargo(root: Path, args: list[str], timeout: int) -> subprocess.CompletedProc
               env=clean_env({"OA_WORK_CMD_TIMEOUT": str(timeout)}))
 
 
-def replay_checks(run: Run, root: Path) -> list[dict]:
+def replay_checks(run: Run, root: Path, base: str) -> list[dict]:
     """fmt, then the tests of every package the diff touches."""
     packages = []
-    for path in changed_files(root):
+    for path in changed_files(root, base):
         if path.endswith(".rs") or path.endswith("Cargo.toml"):
             pkg = package_of(root, path)
             if pkg and pkg not in packages:
@@ -305,7 +336,7 @@ def run_briefed(run: Run, b: dict, root: Path, out: Path, model: str, timeout: i
     agent = os.environ.get("OA_BRIEFED_AGENT") or shutil.which("briefed-agent") or "briefed-agent"
     run.say("agent", "the briefed agent is working", engine="briefed")
     t0 = time.time()
-    proc = subprocess.Popen([agent, str(out / "agent.json")], cwd=root, env=clean_env(),
+    proc = subprocess.Popen([agent, str(out / "agent.json")], cwd=root, env=agent_env(out),
                             stdout=subprocess.DEVNULL, stderr=open(out / "agent-stderr.txt", "w"))
     seen = 0
     while proc.poll() is None:
@@ -339,7 +370,8 @@ def relay_verify(run: Run, log: Path, seen: int) -> int:
 def run_bare(run: Run, issue: dict, root: Path, out: Path, model: str, timeout: int) -> dict:
     """Bare Claude Code, told "Complete this issue." (#11211's arm A)."""
     out.mkdir(parents=True, exist_ok=True)
-    prompt = f"Complete this issue.\n\n#{issue['number']} {issue['title']}\n\n{issue.get('body') or ''}"
+    prompt = (f"Complete this issue.\n\n#{issue['number']} {issue['title']}\n\n{issue.get('body') or ''}"
+              f"\n\n{NO_LANDING}")
     argv = [shutil.which("claude") or "claude", "-p", prompt, "--output-format", "stream-json", "--verbose",
             "--model", model, "--dangerously-skip-permissions", "--no-session-persistence",
             "--strict-mcp-config"]
@@ -347,7 +379,7 @@ def run_bare(run: Run, issue: dict, root: Path, out: Path, model: str, timeout: 
     t0 = time.time()
     result, timed_out = None, False
     with open(out / "agent-events.jsonl", "w") as sink:
-        proc = subprocess.Popen(argv, cwd=root, env=clean_env(), stdout=subprocess.PIPE,
+        proc = subprocess.Popen(argv, cwd=root, env=agent_env(out), stdout=subprocess.PIPE,
                                 stdin=subprocess.DEVNULL, stderr=open(out / "agent-stderr.txt", "w"), text=True)
         try:
             for line in proc.stdout:
@@ -370,7 +402,9 @@ def run_bare(run: Run, issue: dict, root: Path, out: Path, model: str, timeout: 
 
 # ------------------------------------------------------------------ landing
 
-def commit(root: Path, issue: dict, engine: str) -> str:
+def commit(root: Path, issue: dict, engine: str, base: str) -> str:
+    # One commit on `base`, whatever the engine committed on its own.
+    sh(["git", "-C", str(root), "reset", "-q", "--soft", base])
     sh(["git", "-C", str(root), "add", "-A"])
     message = (f"{issue['title']} (#{issue['number']})\n\n"
                f"Worked by the {'briefed agent' if engine == 'briefed' else 'bare Claude Code'} "
@@ -388,8 +422,8 @@ def land(run: Run, root: Path, repo: str, issue: dict, how: str, run_id: str, en
         proc = sh([oa, "--json", "land", "submit", "--issue", str(issue["number"]),
                    "--summary", f"{engine} engine, run {run_id}"], cwd=root, check=False, timeout=600)
         try:
-            entry = json.loads(proc.stdout)
-        except json.JSONDecodeError:
+            entry = json.loads(proc.stdout).get("entry")
+        except (json.JSONDecodeError, AttributeError):
             entry = None
         if proc.returncode != 0:
             raise RuntimeError(f"the landing queue refused it: {(proc.stderr or proc.stdout)[-400:]}")
@@ -418,8 +452,8 @@ def attempt(run: Run, engine: str, issue: dict, checkout: Path, base: str, out: 
         agent = run_briefed(run, b, wt, out, args.model, args.timeout)
     else:
         agent = run_bare(run, issue, wt, out, args.model, args.timeout)
-    files = changed_files(wt)
-    checks = replay_checks(run, wt) if files else []
+    files = changed_files(wt, base)
+    checks = replay_checks(run, wt, base) if files else []
     stat = diff_stat(wt, base) if files else {"files": [], "added": 0, "removed": 0}
     ok = bool(files) and all(c["ok"] for c in checks)
     return {"engine": engine, "worktree": str(wt), "agent": agent, "checks": checks, "diff": stat, "ok": ok}
@@ -505,7 +539,7 @@ def main() -> int:
         result["cost_usd"] = None if any(c is None for c in costs) else round(sum(costs), 4)
         if a["ok"]:
             wt = Path(a["worktree"])
-            result["commit"] = commit(wt, issue, engine)
+            result["commit"] = commit(wt, issue, engine, base)
             run.say("commit", f"committed {result['commit'][:10]}")
             result["landed"] = land(run, wt, args.repo, issue, args.land, run_id, engine, a["checks"])
         else:
