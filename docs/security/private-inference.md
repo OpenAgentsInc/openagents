@@ -203,7 +203,7 @@ time and cost, and its own who-sees-what table. Measured on production on
 | Choice | Level | Engine | Verified round | Cost while running | Sealed? |
 | --- | --- | --- | --- | --- | --- |
 | Sealed GPU (`clef-decisions-gpu`, `oa-att-h100-1`) | `tee-cloud` | Psionic Clef on CUDA, H100 in CC mode, TDX | 0.36–0.52 s (Psionic 53–56 ms warm) | about $6.83/h spot in us-east5 (H100 $5.71, vCPU and RAM $0.69, CC surcharge $0.44); stopped, disk only | Yes: CPU and GPU in Google Confidential Space |
-| Sealed CPU (`clef-decisions`, `oa-att-tdx-1`) | `tee-cloud` | Psionic Clef on 8 TDX vCPUs | about 27 s (about 22 s in Clef) | about $0.40/h plus the CVM surcharge, always on | Yes: TDX in Google Confidential Space |
+| Sealed CPU (`clef-decisions`, `oa-att-tdx-1`) | `tee-cloud` | Psionic Clef on 8 TDX vCPUs, the AVX-512 prompt kernel (912f5c1ccd) | 7.9–8.2 s (Clef 7.5–7.9 s; was about 27 s with 22 s in Clef) | about $0.45/h with the TDX surcharge, always on (c3-standard-22: about 3.2 s for $1.22/h) | Yes: TDX in Google Confidential Space |
 | Fast GPU, not sealed (`coderos-4080-att-open`) | `open` | Psionic Clef M2 on CUDA, RTX 4080 | 0.7–1.4 s (Clef about 0.1 s) | no cloud cost; the office machine | **No.** Sealed in transit only |
 
 **The open choice.** The same NIP-44 sealed NIP-DEC `25910`, through the
@@ -250,7 +250,10 @@ and `maxRunDuration` 3600 s caps every run. One wake costs about $2.30.
 before `coder-web-0898967627-20261011002831` (the shift prints it). The
 open Pylon: `systemctl --user stop pylon-att-open` on CoderOS. The
 sealed GPU: `ATT_ZONE=us-east5-a scripts/deploy/att-provider.sh gpu-stop`.
-Each choice fails closed: a choice that can't verify is refused on the page,
+The sealed CPU runs release `28ac5b52…74ee` (image
+`att-provider@sha256:896b90ac…71d0`, built from 14de46331a); roll back by
+`scripts/deploy/att-provider.sh replace 4295efa9…2e6e
+sha256:3bd3098d…825d` (that release is still admitted). Each choice fails closed: a choice that can't verify is refused on the page,
 and never falls back to another.
 
 ### On this device
