@@ -574,6 +574,7 @@ impl App {
     fn store_sync(&mut self) {
         if let (Some(dir), Some(sync)) = (&self.account_dir, &mut self.sync) {
             sync.settings.merge_sent(dir, &sync.forgot);
+            sync.settings.merge_choice(dir);
             if let Err(error) = sync.settings.store(dir) {
                 self.notice = Some(error);
             }
@@ -944,17 +945,25 @@ impl App {
                 );
                 return;
             }
-            "on" => {
-                sync.settings.on = true;
-                sync.settings.chosen = true;
-                self.notice = Some("Saving your chats to your account…".into());
-            }
-            "all" => {
+            "on" | "all" => {
+                // Written at once, so another open Coder's next save keeps it.
+                if let Some(dir) = &self.account_dir
+                    && let Err(error) = sync.settings.store_choice(dir, true)
+                {
+                    self.notice = Some(error);
+                    return;
+                }
                 sync.settings.on = true;
                 sync.settings.chosen = true;
                 self.notice = Some("Saving your chats to your account…".into());
             }
             "off" => {
+                if let Some(dir) = &self.account_dir
+                    && let Err(error) = sync.settings.store_choice(dir, false)
+                {
+                    self.notice = Some(error);
+                    return;
+                }
                 sync.settings.on = false;
                 sync.settings.chosen = true;
                 sync.heartbeat = None;
