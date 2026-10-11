@@ -528,3 +528,34 @@ fn many_saves_at_once_in_one_process_all_succeed() {
             .starts_with("{\"n\":")
     );
 }
+
+#[test]
+fn sends_another_coder_recorded_survive_a_store_but_forgotten_ones_dont() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut other = Settings {
+        on: true,
+        chosen: true,
+        ..Settings::default()
+    };
+    for session in ["theirs", "forgotten", "deleting", "kept"] {
+        other.sent.insert(session.into(), "d".into());
+    }
+    other.store(dir.path()).unwrap();
+
+    let mut mine = Settings {
+        on: true,
+        chosen: true,
+        ..Settings::default()
+    };
+    mine.sent.insert("mine".into(), "m".into());
+    mine.to_delete.insert("deleting".into());
+    mine.kept_here.insert("kept".into());
+    let forgot: std::collections::BTreeSet<String> = ["forgotten".to_owned()].into();
+    mine.merge_sent(dir.path(), &forgot);
+    mine.store(dir.path()).unwrap();
+    let stored = Settings::load(dir.path());
+    assert_eq!(
+        stored.sent.keys().map(String::as_str).collect::<Vec<_>>(),
+        ["mine", "theirs"]
+    );
+}

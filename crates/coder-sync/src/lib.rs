@@ -151,6 +151,26 @@ impl Settings {
         write_private(&dir.join(FILE), &bytes)
     }
 
+    /// Add to [`Self::sent`] what another Coder on this computer recorded
+    /// in `dir` since: several Coders share one `sync.json`, and each
+    /// stores its own copy, so without this the last to store drops the
+    /// others' sends. A chat this Coder `forgot` (removed from the account
+    /// here), is to delete, or is kept here is never added back.
+    pub fn merge_sent(&mut self, dir: &Path, forgot: &BTreeSet<String>) {
+        let Ok(stored) = Self::load_checked(dir) else {
+            return;
+        };
+        for (session, digest) in stored.sent {
+            if !self.sent.contains_key(&session)
+                && !forgot.contains(&session)
+                && !self.to_delete.contains(&session)
+                && !self.kept_here.contains(&session)
+            {
+                self.sent.insert(session, digest);
+            }
+        }
+    }
+
     /// Whether a chat should be sent now.
     #[must_use]
     pub fn sends(&self, session: &str, digest: &str) -> bool {

@@ -90,6 +90,9 @@ pub(crate) struct SyncState {
     /// When this computer last looked for chats the account doesn't have
     /// as they are here ([`unsent`]); `None` until the first look.
     swept: Option<Instant>,
+    /// Chats this Coder removed from its sent list, so another Coder's
+    /// record of them isn't merged back ([`Settings::merge_sent`]).
+    forgot: BTreeSet<String>,
 }
 
 /// What one take brought for one chat.
@@ -363,6 +366,7 @@ impl App {
             schedules: crate::schedule_sync::ScheduleSync::default(),
             own_runs: None,
             swept: None,
+            forgot: BTreeSet::new(),
         });
         sync.settings = settings;
         // Ask the website once where this computer's chats live: a choice
@@ -568,10 +572,11 @@ impl App {
     }
 
     fn store_sync(&mut self) {
-        if let (Some(dir), Some(sync)) = (&self.account_dir, &self.sync)
-            && let Err(error) = sync.settings.store(dir)
-        {
-            self.notice = Some(error);
+        if let (Some(dir), Some(sync)) = (&self.account_dir, &mut self.sync) {
+            sync.settings.merge_sent(dir, &sync.forgot);
+            if let Err(error) = sync.settings.store(dir) {
+                self.notice = Some(error);
+            }
         }
     }
 
@@ -832,6 +837,7 @@ impl App {
             Event::Removed { session } => {
                 sync.settings.to_delete.remove(&session);
                 sync.settings.sent.remove(&session);
+                sync.forgot.insert(session);
             }
             Event::Replies {
                 session,
@@ -869,6 +875,7 @@ impl App {
             Event::Gone { session } => {
                 sync.taking.remove(&session);
                 sync.settings.sent.remove(&session);
+                sync.forgot.insert(session.clone());
                 // Deleted on the website: delete it here too, unless it is
                 // the chat open now, which stays here and isn't sent again.
                 let removed = open.as_deref() != Some(session.as_str())
@@ -958,6 +965,7 @@ impl App {
             }
             "delete" => {
                 let sent: Vec<String> = sync.settings.sent.keys().cloned().collect();
+                sync.forgot.extend(sent.iter().cloned());
                 sync.settings.to_delete.extend(sent);
                 sync.settings.sent.clear();
                 self.notice = Some(if sync.settings.to_delete.is_empty() {
