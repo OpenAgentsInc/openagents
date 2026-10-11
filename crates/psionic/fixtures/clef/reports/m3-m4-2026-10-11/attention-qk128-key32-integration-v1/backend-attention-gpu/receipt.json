@@ -1,0 +1,50 @@
+{
+  "status": "complete",
+  "binary_sha256": "5606e487c058db9680210ec857d5ea871cdb360fb8b2a493b028f6adac0dfcdc",
+  "script_sha256": "6ce443ca866e97ef486388a7f6d44e4a79f4f6efae925e5fe4737490731dfc22",
+  "max_owned_group_bytes": 4294967296,
+  "minimum_start_bytes": 17179869184,
+  "minimum_available_bytes": 12884901888,
+  "deadline_seconds": 180,
+  "conditions": "shared-machine correctness only; four attention GPU tests",
+  "preflight": {
+    "available_memory_bytes": 101924945920,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 3040959,
+      "inactive": 2822706,
+      "speculative": 357340
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "command": [
+    "<INTEGRATION>/psionic-metal-tests",
+    "fused_attention_",
+    "--ignored",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "exit": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 29208,
+    "max_rss_bytes": 4294967296,
+    "peak_rss_bytes": 27131904,
+    "peak_physical_footprint_bytes": 134234832,
+    "peak_accounted_bytes": 134234832,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 3,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 100865802240,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 1.4348766670000002
+}

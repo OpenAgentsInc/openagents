@@ -1,0 +1,14 @@
+{
+  "native_image_parity.py": "1d5b1d43fbb7d0ae709fc238d264e048dcbb3ba6b314c0b9127e696a5ce530d2",
+  "27b-image-config.json": "4aed0e1a7cb9f25bc09b6af7cf25d3b6fd7c5c68f644b59c72c85b44e6df6793",
+  "gpu_checks.py": "6ce443ca866e97ef486388a7f6d44e4a79f4f6efae925e5fe4737490731dfc22",
+  "checks.py": "f93ed64b271b19c6b8b0d1a4a64023198ea8a0eed136a3e59261d4a440c67202",
+  "flash-text-config.json": "a030ca6947e79463aec33a1f0ee0237df997173388be3dba37cf6d9ce43eff41",
+  "compare_attention.py": "f0ce13d58c2fe7e68d7c6b9fede7bdf59b21a8af7e167efc8362f37b28e1759c",
+  "guard.py": "47a01bff23c90cb6bbe1da37a3b0cae043d0435954823beebab57dcb6f72be99",
+  "acceptance_helpers.py": "88edbf80e81efb8619813cf2fbcac67fdbcba6563ef3b2873d1d07bb23214221",
+  "27b-text-config.json": "2ca9de74be9f4b04a3e3b91d175b31eb3a288f46a83780f23d0fb4a841e12962",
+  "baseline-receipts.json": "df1012e8d64b1b7d13c444bef65fbf00be0bd76c4219d2366b1c8fb481a0d443",
+  "check_images.py": "7bdc906bdd162ac0912bd72db3aafd5395c2b1eaf71f509c12524ce5ca735386",
+  "VERIFICATION_PLAN.md": "1f6bf5ec2833775ba16b29171926ee890717688237d2212ac78bb11ad6a55bb9"
+}

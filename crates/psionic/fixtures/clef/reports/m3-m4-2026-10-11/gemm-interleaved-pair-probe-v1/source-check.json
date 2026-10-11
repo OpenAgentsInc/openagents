@@ -1,0 +1,23 @@
+{
+  "passed": true,
+  "mapping_grid_cases": 165,
+  "packing_inverse_checked": true,
+  "production_sources_unchanged": true,
+  "python_ast_passed": true,
+  "counts_checked": true,
+  "memory_accounting": {
+    "n": 2048,
+    "weights_with_redzones": 503318528,
+    "input_with_redzones": 16777728,
+    "one_state_with_redzones": 285214208,
+    "two_owned_expectations": 570425344,
+    "common_activation_with_redzones": 50332160,
+    "capture_combined_payload_bytes": 1375735808,
+    "timing_explicit_bytes": 855642624,
+    "timing_combined_payload_bytes": 1426067968,
+    "largest_weight_read_temporary_bytes": 100663296,
+    "temporary_does_not_overlap_expectations": true
+  },
+  "compiled": false,
+  "gpu_executed": false
+}

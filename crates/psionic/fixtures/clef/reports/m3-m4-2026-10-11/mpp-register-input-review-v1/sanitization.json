@@ -1,0 +1,91 @@
+{
+  "excluded": [
+    "Apple PDF",
+    "full extracted Apple text",
+    "model weights",
+    "binaries"
+  ],
+  "private_absolute_paths_present": false,
+  "files": [
+    {
+      "original_relative_path": "README.md",
+      "published_path": "README.md",
+      "original_sha256": "c6bd88ecbf5a036547ebc186ab980b0b93ad4ebccec5a57dae6502c81142ae46",
+      "published_sha256": "c6bd88ecbf5a036547ebc186ab980b0b93ad4ebccec5a57dae6502c81142ae46",
+      "bytes": 5358,
+      "changes": []
+    },
+    {
+      "original_relative_path": "sources.json",
+      "published_path": "sources.json",
+      "original_sha256": "ada4995dcaeaf373e6076fb57fe0cc8d7669d7ad7d5a59367e50a15a18253f73",
+      "published_sha256": "ada4995dcaeaf373e6076fb57fe0cc8d7669d7ad7d5a59367e50a15a18253f73",
+      "bytes": 1167,
+      "changes": []
+    },
+    {
+      "original_relative_path": "prior-descriptors.json",
+      "published_path": "prior-descriptors.json",
+      "original_sha256": "bed31932c28e8ca3e2b85c606393e6a3fbd174bd20592a7934cda8ce092c16db",
+      "published_sha256": "bed31932c28e8ca3e2b85c606393e6a3fbd174bd20592a7934cda8ce092c16db",
+      "bytes": 15446,
+      "changes": []
+    },
+    {
+      "original_relative_path": "mlx-source.json",
+      "published_path": "mlx-source.json",
+      "original_sha256": "7480c3a5593388bc33900e9eb8666ba567c14dae1e78f937bd21327fc2edb726",
+      "published_sha256": "7480c3a5593388bc33900e9eb8666ba567c14dae1e78f937bd21327fc2edb726",
+      "bytes": 2322,
+      "changes": []
+    },
+    {
+      "original_relative_path": "mlx-gemm_nax.h",
+      "published_path": "mlx-gemm_nax.h",
+      "original_sha256": "8f8d11f3c29e30dbfcaa6799963edd5fb71b81f912c4f3494e294d3002e3d337",
+      "published_sha256": "8f8d11f3c29e30dbfcaa6799963edd5fb71b81f912c4f3494e294d3002e3d337",
+      "bytes": 3580,
+      "changes": []
+    },
+    {
+      "original_relative_path": "mlx-nax.h",
+      "published_path": "mlx-nax.h",
+      "original_sha256": "fb10bcae44095e9fed5c81213d03527dd5fe5ac11be11ec7784bd357c6f317ec",
+      "published_sha256": "fb10bcae44095e9fed5c81213d03527dd5fe5ac11be11ec7784bd357c6f317ec",
+      "bytes": 25621,
+      "changes": []
+    },
+    {
+      "original_relative_path": "mlx-steel_gemm_fused_nax.h",
+      "published_path": "mlx-steel_gemm_fused_nax.h",
+      "original_sha256": "149ffe9006edd26daf8c1379ced976f39d929c2cf7cdb57d075be24fc1779765",
+      "published_sha256": "149ffe9006edd26daf8c1379ced976f39d929c2cf7cdb57d075be24fc1779765",
+      "bytes": 6437,
+      "changes": []
+    },
+    {
+      "original_relative_path": "mlx-steel_gemm_fused_nax.metal",
+      "published_path": "mlx-steel_gemm_fused_nax.metal",
+      "original_sha256": "0543d5488545a9f907c94da13b301552de5798fc4c646826369a9eaa80865c3f",
+      "published_sha256": "0543d5488545a9f907c94da13b301552de5798fc4c646826369a9eaa80865c3f",
+      "bytes": 2164,
+      "changes": []
+    },
+    {
+      "original_relative_path": "mlx-matmul.cpp",
+      "published_path": "mlx-matmul.cpp",
+      "original_sha256": "d516953ee089f185722f59ce6f11e6ab6e0e285d37fbd7a612f89813bf51bf2a",
+      "published_sha256": "d516953ee089f185722f59ce6f11e6ab6e0e285d37fbd7a612f89813bf51bf2a",
+      "bytes": 103485,
+      "changes": []
+    },
+    {
+      "original_relative_path": "mlx-LICENSE",
+      "published_path": "mlx-LICENSE",
+      "original_sha256": "ccfab7ccb2ea306f71531c8ca77bb55507606cd90768b1e32b8b52ab5b48cf01",
+      "published_sha256": "ccfab7ccb2ea306f71531c8ca77bb55507606cd90768b1e32b8b52ab5b48cf01",
+      "bytes": 1066,
+      "changes": []
+    }
+  ]
+}

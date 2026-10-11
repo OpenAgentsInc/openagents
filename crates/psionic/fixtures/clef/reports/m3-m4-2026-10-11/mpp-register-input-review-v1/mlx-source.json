@@ -1,0 +1,48 @@
+{
+  "repository": "https://github.com/ml-explore/mlx",
+  "revision": "06eb7483f03bca49a80e596f4089d02a507a2cf9",
+  "files": [
+    {
+      "path": "mlx/backend/metal/kernels/steel/gemm/gemm_nax.h",
+      "url": "https://raw.githubusercontent.com/ml-explore/mlx/06eb7483f03bca49a80e596f4089d02a507a2cf9/mlx/backend/metal/kernels/steel/gemm/gemm_nax.h",
+      "file": "mlx-gemm_nax.h",
+      "bytes": 3580,
+      "sha256": "8f8d11f3c29e30dbfcaa6799963edd5fb71b81f912c4f3494e294d3002e3d337"
+    },
+    {
+      "path": "mlx/backend/metal/kernels/steel/gemm/nax.h",
+      "url": "https://raw.githubusercontent.com/ml-explore/mlx/06eb7483f03bca49a80e596f4089d02a507a2cf9/mlx/backend/metal/kernels/steel/gemm/nax.h",
+      "file": "mlx-nax.h",
+      "bytes": 25621,
+      "sha256": "fb10bcae44095e9fed5c81213d03527dd5fe5ac11be11ec7784bd357c6f317ec"
+    },
+    {
+      "path": "LICENSE",
+      "url": "https://raw.githubusercontent.com/ml-explore/mlx/06eb7483f03bca49a80e596f4089d02a507a2cf9/LICENSE",
+      "file": "mlx-LICENSE",
+      "bytes": 1066,
+      "sha256": "ccfab7ccb2ea306f71531c8ca77bb55507606cd90768b1e32b8b52ab5b48cf01"
+    },
+    {
+      "path": "mlx/backend/metal/kernels/steel/gemm/kernels/steel_gemm_fused_nax.h",
+      "url": "https://raw.githubusercontent.com/ml-explore/mlx/06eb7483f03bca49a80e596f4089d02a507a2cf9/mlx/backend/metal/kernels/steel/gemm/kernels/steel_gemm_fused_nax.h",
+      "file": "mlx-steel_gemm_fused_nax.h",
+      "bytes": 6437,
+      "sha256": "149ffe9006edd26daf8c1379ced976f39d929c2cf7cdb57d075be24fc1779765"
+    },
+    {
+      "path": "mlx/backend/metal/kernels/steel/gemm/kernels/steel_gemm_fused_nax.metal",
+      "url": "https://raw.githubusercontent.com/ml-explore/mlx/06eb7483f03bca49a80e596f4089d02a507a2cf9/mlx/backend/metal/kernels/steel/gemm/kernels/steel_gemm_fused_nax.metal",
+      "file": "mlx-steel_gemm_fused_nax.metal",
+      "bytes": 2164,
+      "sha256": "0543d5488545a9f907c94da13b301552de5798fc4c646826369a9eaa80865c3f"
+    },
+    {
+      "path": "mlx/backend/metal/matmul.cpp",
+      "url": "https://raw.githubusercontent.com/ml-explore/mlx/06eb7483f03bca49a80e596f4089d02a507a2cf9/mlx/backend/metal/matmul.cpp",
+      "file": "mlx-matmul.cpp",
+      "bytes": 103485,
+      "sha256": "d516953ee089f185722f59ce6f11e6ab6e0e285d37fbd7a612f89813bf51bf2a"
+    }
+  ]
+}

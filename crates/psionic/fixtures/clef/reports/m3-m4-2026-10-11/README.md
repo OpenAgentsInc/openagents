@@ -67,6 +67,17 @@ layer hashes and releases its owned processes and leases under the 12 GiB cap.
 This excludes the accelerated reference as the explanation for this case;
 the full runtime gate remains failed.
 
+The [64-layer comparison](text029-layer-comparison-v1/README.md) places the
+material discrepancy in the backbone. Replaying the official CPU head on all
+native observer rows reproduces the normal native request within `0.000002861`
+raw logits, with all three top answers unchanged. The false-option span's
+relative L2 difference grows from `0.003259` after layer 34 to `0.006103` after
+attention layer 35, then reaches about `0.035` in later layers. All 64 rows are
+retained in [CSV](text029-layer-comparison-v1/layer-errors.csv). This identifies
+where drift grows, but does not yet distinguish f16 rounding from an operator
+defect. The native capture and offline comparison both pass their fixed
+resource bounds and cleanup checks.
+
 The [activation-weighted Q4 preparation](activation-weighted-q4-preparation-v1/README.md)
 preserves the frozen corpus, recipes, and checks. The two-record pilot passed;
 the full collector was deliberately stopped after 70 of 96 records and
@@ -166,6 +177,20 @@ It fails the fixed 10% improvement target at every size and remains unapplied.
 The 21.24-second run peaks at 1,822,771,144 bytes under its 2 GiB cap and releases
 its owned process group and leases. The experiment establishes no hardware cause.
 
+The [interleaved gate/up experiment](gemm-interleaved-pair-probe-v1/README.md)
+also fails its fixed speed gate and remains unapplied. All 23 numerical checks
+and 240 timed comparisons pass, with bitwise-identical outputs. Paired full-FFN
+candidate/baseline ratios are `1.020 / 0.930 / 1.058`; the target is at most
+`0.90` at every size. The single 9.79-second run peaks at 1,853,147,056 bytes,
+below its 2 GiB cap, and completes cleanup. All ordered samples are retained.
+
+The [MPP and MLX source review](mpp-register-input-review-v1/README.md) finds
+no documented half-input speed benefit from MPP's relaxed-precision flag.
+MLX's explicit register-input fragments differ from the rejected direct-device
+SIMD probe, so that loading organization remains a separate unmeasured lead.
+The review records the public source versions, license, and SDK/specification
+identities; it introduces no product change or speed claim.
+
 All probes use shared GPU/build and bounded memory leases as appropriate.
 None uses a quiet lease or changes desktop applications or system services.
 
@@ -199,9 +224,18 @@ value updates. All 216 checks pass, with bitwise-identical outputs and 36,557
 bitwise-identical intermediate scores. Median paired candidate/baseline kernel
 ratios are `0.917 / 0.857 / 0.819` for Flash and `0.909 / 0.904 / 0.887` for 27B
 at 1k/4k/16k histories. The 3.88-second synthetic run uses 25,600 bytes of
-threadgroup storage and peaks at 371 MB under its 2 GiB cap. Full-model
-validation is pending; these short, shared-machine samples do not establish
-a serving speedup or either milestone target.
+threadgroup storage and peaks at 371 MB under its 2 GiB cap. These short,
+shared-machine samples do not establish a serving speedup or either milestone
+target.
+
+The [compiled integration](attention-qk128-key32-integration-v1/README.md)
+passes 25 CPU tests and four focused attention GPU tests. Flash and 27B each
+match all 110 text answers, with exactly equal raw logits and pooled rows,
+including the 3,886-token and 15,480-token requests. All 14 image answers and
+ten HTTP refusals also pass. Every owned server stops within the fixed
+resource bounds. The three-file change preserves the staged default and only
+changes the opt-in fused kernel. Fresh paired latency remains pending; this
+optimization does not resolve the separate independent-Q4 answer discrepancy.
 
 ## Stage 6 fused field head
 

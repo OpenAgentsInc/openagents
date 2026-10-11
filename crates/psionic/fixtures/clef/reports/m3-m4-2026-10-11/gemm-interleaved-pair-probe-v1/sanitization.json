@@ -1,0 +1,316 @@
+{
+  "schema": "clef-scratch-publication.v1",
+  "outcome": "numerical pass; fixed material performance gate failed; rejected",
+  "excluded": [
+    "executables",
+    "metallibs",
+    "AIR",
+    "raw model/weight assets",
+    "memory timelines"
+  ],
+  "rules": [
+    "Only task-owned experiment sources, logs, receipts, and lease metadata are included.",
+    "Replace private checkout and home paths; original numeric results and hash fields stay unchanged.",
+    "Guard and source-check scripts require explicit CLEF_REPO for reproduction.",
+    "Original preparation README renamed; outcome README added."
+  ],
+  "files": [
+    {
+      "original_relative_path": "baseline.metal",
+      "published_path": "baseline.metal",
+      "original_sha256": "9505a34d21d4d6bd11a532a62549d00c8cafbad90ab92f2bd07cccb4eae30725",
+      "published_sha256": "9505a34d21d4d6bd11a532a62549d00c8cafbad90ab92f2bd07cccb4eae30725",
+      "original_bytes": 6660,
+      "published_bytes": 6660,
+      "changes": []
+    },
+    {
+      "original_relative_path": "candidate.metal",
+      "published_path": "candidate.metal",
+      "original_sha256": "ae3ae6f2633c9e6e8c94844b1ec8fe9715d9b6d0bf739332e599ffe8115ccc70",
+      "published_sha256": "ae3ae6f2633c9e6e8c94844b1ec8fe9715d9b6d0bf739332e599ffe8115ccc70",
+      "original_bytes": 3020,
+      "published_bytes": 3020,
+      "changes": []
+    },
+    {
+      "original_relative_path": "production-shapes.metal",
+      "published_path": "production-shapes.metal",
+      "original_sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+      "published_sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+      "original_bytes": 4117,
+      "published_bytes": 4117,
+      "changes": []
+    },
+    {
+      "original_relative_path": "production-fixed-extract.metal",
+      "published_path": "production-fixed-extract.metal",
+      "original_sha256": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+      "published_sha256": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+      "original_bytes": 2111,
+      "published_bytes": 2111,
+      "changes": []
+    },
+    {
+      "original_relative_path": "production-silu-extract.metal",
+      "published_path": "production-silu-extract.metal",
+      "original_sha256": "fe7844912a63f4219dc05a5a50a5b269ad48a0e3aa5f60cef221ae9223880e61",
+      "published_sha256": "fe7844912a63f4219dc05a5a50a5b269ad48a0e3aa5f60cef221ae9223880e61",
+      "original_bytes": 430,
+      "published_bytes": 430,
+      "changes": []
+    },
+    {
+      "original_relative_path": "production-planner.rs",
+      "published_path": "production-planner.rs",
+      "original_sha256": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac",
+      "published_sha256": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac",
+      "original_bytes": 11864,
+      "published_bytes": 11864,
+      "changes": []
+    },
+    {
+      "original_relative_path": "probe.swift",
+      "published_path": "probe.swift",
+      "original_sha256": "05a8ed9c55ffe31bfef2f371032a6735ce9d78a84da6ff5e8fefee5a7f9c9694",
+      "published_sha256": "05a8ed9c55ffe31bfef2f371032a6735ce9d78a84da6ff5e8fefee5a7f9c9694",
+      "original_bytes": 30616,
+      "published_bytes": 30616,
+      "changes": []
+    },
+    {
+      "original_relative_path": "weights.json",
+      "published_path": "weights.json",
+      "original_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+      "published_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+      "original_bytes": 2473,
+      "published_bytes": 2473,
+      "changes": []
+    },
+    {
+      "original_relative_path": "build.py",
+      "published_path": "build.py",
+      "original_sha256": "da71b4184b00af39858af69c72325f389fd14e59ce514a61e7e60ed5d88f598d",
+      "published_sha256": "da71b4184b00af39858af69c72325f389fd14e59ce514a61e7e60ed5d88f598d",
+      "original_bytes": 1694,
+      "published_bytes": 1694,
+      "changes": []
+    },
+    {
+      "original_relative_path": "guard.py",
+      "published_path": "guard.py",
+      "original_sha256": "6bec096342c716507e6b881f787764af9addd20589ce3f3822986b0551747ce7",
+      "published_sha256": "64272f18e5f532f826f84ceabf0d586ffdece6698211d77cc19fd15b2753246a",
+      "original_bytes": 5775,
+      "published_bytes": 5732,
+      "changes": [
+        "replace private checkout default with explicit CLEF_REPO"
+      ]
+    },
+    {
+      "original_relative_path": "manifest.json",
+      "published_path": "manifest.json",
+      "original_sha256": "79865c7ad31c1bdf7c5005a1dfbe4b452b5770ee7035755939dc0d7c97046237",
+      "published_sha256": "79865c7ad31c1bdf7c5005a1dfbe4b452b5770ee7035755939dc0d7c97046237",
+      "original_bytes": 2692,
+      "published_bytes": 2692,
+      "changes": []
+    },
+    {
+      "original_relative_path": "summarize.py",
+      "published_path": "summarize.py",
+      "original_sha256": "2265eb40b42e46930e8f4395a5bf6118fd6d01ab59d5dc6e94ee1bd7904ef93e",
+      "published_sha256": "2265eb40b42e46930e8f4395a5bf6118fd6d01ab59d5dc6e94ee1bd7904ef93e",
+      "original_bytes": 6663,
+      "published_bytes": 6663,
+      "changes": []
+    },
+    {
+      "original_relative_path": "source_check.py",
+      "published_path": "source_check.py",
+      "original_sha256": "33f754f6726cfcc96f047d72a2235a18b5955a179778a2051cf69f0cc02a6cb0",
+      "published_sha256": "80c9b8540cf86c1d30a62049be949e694d613f9afa92a0fcde8246ca8d3435de",
+      "original_bytes": 2832,
+      "published_bytes": 2792,
+      "changes": [
+        "replace private checkout default with explicit CLEF_REPO"
+      ]
+    },
+    {
+      "original_relative_path": "README.md",
+      "published_path": "PREPARED_PLAN.md",
+      "original_sha256": "59aba99c32609f2793c21a54f881116bb6888b6f2e09a10e9fc9713d7714808d",
+      "published_sha256": "59aba99c32609f2793c21a54f881116bb6888b6f2e09a10e9fc9713d7714808d",
+      "original_bytes": 4873,
+      "published_bytes": 4873,
+      "changes": []
+    },
+    {
+      "original_relative_path": "half_ulp_check.py",
+      "published_path": "half_ulp_check.py",
+      "original_sha256": "f5f1d3dcbe7cd4da54c45b9ea2698047ba861bc26575144e0ae4c6f53f015aa4",
+      "published_sha256": "f5f1d3dcbe7cd4da54c45b9ea2698047ba861bc26575144e0ae4c6f53f015aa4",
+      "original_bytes": 2360,
+      "published_bytes": 2360,
+      "changes": []
+    },
+    {
+      "original_relative_path": "half-ulp-fixtures.json",
+      "published_path": "half-ulp-fixtures.json",
+      "original_sha256": "bc0a57a7088795ab57884782326d9a1de7285c6bbfd109c68271309381f046d5",
+      "published_sha256": "bc0a57a7088795ab57884782326d9a1de7285c6bbfd109c68271309381f046d5",
+      "original_bytes": 2039,
+      "published_bytes": 2039,
+      "changes": []
+    },
+    {
+      "original_relative_path": "half-ulp-check.json",
+      "published_path": "half-ulp-check.json",
+      "original_sha256": "d56eba1d73335619e7c88ef4097930e7bbb8a501e6f2407b2c720341bd1e8570",
+      "published_sha256": "d56eba1d73335619e7c88ef4097930e7bbb8a501e6f2407b2c720341bd1e8570",
+      "original_bytes": 224,
+      "published_bytes": 224,
+      "changes": []
+    },
+    {
+      "original_relative_path": "source-check.json",
+      "published_path": "source-check.json",
+      "original_sha256": "05465b20ef98d91fd611de2f169969e6a5c16dea8102dbee7475ff329d71fa96",
+      "published_sha256": "05465b20ef98d91fd611de2f169969e6a5c16dea8102dbee7475ff329d71fa96",
+      "original_bytes": 725,
+      "published_bytes": 725,
+      "changes": []
+    },
+    {
+      "original_relative_path": "source-freeze.json",
+      "published_path": "source-freeze.json",
+      "original_sha256": "9925911b045a083d20f2c569bde3e5b850a254fe953b8fe264ec6b21fb9dd9bf",
+      "published_sha256": "9925911b045a083d20f2c569bde3e5b850a254fe953b8fe264ec6b21fb9dd9bf",
+      "original_bytes": 1661,
+      "published_bytes": 1661,
+      "changes": []
+    },
+    {
+      "original_relative_path": "build-artifacts.json",
+      "published_path": "build-artifacts.json",
+      "original_sha256": "c804335b9bbce39c947fbb5cb898246ec63b9fa7fc5132e9e07ef41e9e360a33",
+      "published_sha256": "c804335b9bbce39c947fbb5cb898246ec63b9fa7fc5132e9e07ef41e9e360a33",
+      "original_bytes": 1722,
+      "published_bytes": 1722,
+      "changes": []
+    },
+    {
+      "original_relative_path": "build-lease-1.json",
+      "published_path": "build-lease-1.json",
+      "original_sha256": "859d361447f13749beffa8df5d2dad5a1d70a63166e466bece2640498b730397",
+      "published_sha256": "5a70e8f5220c0ca5a3786b8cfbc65ff236e3a68de9d230f8e30438b96575465a",
+      "original_bytes": 672,
+      "published_bytes": 610,
+      "changes": [
+        "replace private absolute root with named placeholder"
+      ]
+    },
+    {
+      "original_relative_path": "build-memory-lease-1.json",
+      "published_path": "build-memory-lease-1.json",
+      "original_sha256": "e2f6db811d86a06447b709587cc4d63808ceb4380ebf7f61ee4ecde6f89e2f8a",
+      "published_sha256": "e2f6db811d86a06447b709587cc4d63808ceb4380ebf7f61ee4ecde6f89e2f8a",
+      "original_bytes": 486,
+      "published_bytes": 486,
+      "changes": []
+    },
+    {
+      "original_relative_path": "gpu-lease-1.json",
+      "published_path": "gpu-lease-1.json",
+      "original_sha256": "a1045be468424bab69d12e44e1496bb30bc9b7b399c2cab3704f979f8381c26d",
+      "published_sha256": "a1045be468424bab69d12e44e1496bb30bc9b7b399c2cab3704f979f8381c26d",
+      "original_bytes": 486,
+      "published_bytes": 486,
+      "changes": []
+    },
+    {
+      "original_relative_path": "gpu-memory-lease-1.json",
+      "published_path": "gpu-memory-lease-1.json",
+      "original_sha256": "109e49fc7acb5435b3445336fba9723aef46da6d05237118d1298e0182882ab2",
+      "published_sha256": "109e49fc7acb5435b3445336fba9723aef46da6d05237118d1298e0182882ab2",
+      "original_bytes": 486,
+      "published_bytes": 486,
+      "changes": []
+    },
+    {
+      "original_relative_path": "build-1/stdout.jsonl",
+      "published_path": "build-1/stdout.jsonl",
+      "original_sha256": "ef68483a7c109616f9742f20fe2b0127ec008a4039ed053b96fd50089acd97cf",
+      "published_sha256": "609bf9598f0ed63ba8a3ffdbc4d12dcf30426daed4da9ed3882055bd6676cd3b",
+      "original_bytes": 4171,
+      "published_bytes": 3532,
+      "changes": [
+        "replace private absolute root with named placeholder"
+      ]
+    },
+    {
+      "original_relative_path": "build-1/stderr.log",
+      "published_path": "build-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published_bytes": 0,
+      "changes": []
+    },
+    {
+      "original_relative_path": "build-1/receipt.json",
+      "published_path": "build-1/receipt.json",
+      "original_sha256": "3860beef9d823106d25c20dc6f3633742caac94a7efa05eeabb53c526215461c",
+      "published_sha256": "bc9e6902c575da6b1515b92f80eaba41479399841ef448c2d334d6695095075b",
+      "original_bytes": 3388,
+      "published_bytes": 3317,
+      "changes": [
+        "replace private absolute root with named placeholder"
+      ]
+    },
+    {
+      "original_relative_path": "bench-1/stdout.jsonl",
+      "published_path": "bench-1/stdout.jsonl",
+      "original_sha256": "c97d08a64b28c13fbce5f6597c26a4880731359b011d400baab8d4f2f8c03557",
+      "published_sha256": "c97d08a64b28c13fbce5f6597c26a4880731359b011d400baab8d4f2f8c03557",
+      "original_bytes": 149913,
+      "published_bytes": 149913,
+      "changes": []
+    },
+    {
+      "original_relative_path": "bench-1/stderr.log",
+      "published_path": "bench-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published_bytes": 0,
+      "changes": []
+    },
+    {
+      "original_relative_path": "bench-1/receipt.json",
+      "published_path": "bench-1/receipt.json",
+      "original_sha256": "1a569814c6a1a1a60dc7ea710e1b47bda6aef518c1f1e960c0d50550842fe624",
+      "published_sha256": "c78539bb86e9b26242b974653f462232356b4ca502daac25d160c5c011912125",
+      "original_bytes": 5383,
+      "published_bytes": 5170,
+      "changes": [
+        "replace private absolute root with named placeholder"
+      ]
+    },
+    {
+      "original_relative_path": "bench-1/summary.json",
+      "published_path": "bench-1/summary.json",
+      "original_sha256": "827a0178185852ed2ce50cfc1b82449e339be63de6c90c3beb7ccb29e462f59d",
+      "published_sha256": "827a0178185852ed2ce50cfc1b82449e339be63de6c90c3beb7ccb29e462f59d",
+      "original_bytes": 9299,
+      "published_bytes": 9299,
+      "changes": []
+    }
+  ],
+  "added_files": [
+    {
+      "path": "README.md",
+      "sha256": "5e58d399ec08ab184ff3a634a1dd3d10aba2bb4ae72d9422e8f22c029ef47c6d"
+    }
+  ]
+}

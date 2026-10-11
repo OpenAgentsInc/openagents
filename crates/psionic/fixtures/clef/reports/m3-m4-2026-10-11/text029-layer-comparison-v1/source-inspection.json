@@ -1,0 +1,29 @@
+{
+  "kind": "source inspection only; archived binary remains execution authority",
+  "files": [
+    {
+      "path": "crates/psionic/crates/psionic-serve/src/clef/tests.rs",
+      "stage6_sha256": "8d181952d96b9ccefc03c5d9efc44a7362eaabd1431c294545ceb59cf622ea1d",
+      "current_sha256": "8d181952d96b9ccefc03c5d9efc44a7362eaabd1431c294545ceb59cf622ea1d",
+      "current_matches_stage6": true
+    },
+    {
+      "path": "crates/psionic/crates/psionic-backend-metal/src/clef_attention.rs",
+      "stage6_sha256": "6e2820f770814643dab71732494ad62bac9b2d68ea2f6aa2c5a5339291ba8535",
+      "current_sha256": "6e2820f770814643dab71732494ad62bac9b2d68ea2f6aa2c5a5339291ba8535",
+      "current_matches_stage6": true
+    },
+    {
+      "path": "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_fused_attention.metal",
+      "stage6_sha256": "fb967e1097e771addd548a66ff1140d582f9e5f24d8465374d988880424ad094",
+      "current_sha256": "fb967e1097e771addd548a66ff1140d582f9e5f24d8465374d988880424ad094",
+      "current_matches_stage6": true
+    },
+    {
+      "path": "crates/psionic/crates/psionic-serve/src/qwen35/clef_metal.rs",
+      "stage6_sha256": "e0a974181bd63ef9b8a6ef9c2eb83aaa7a419d1ab5653f7f61929252a985ada1",
+      "current_sha256": "e0a974181bd63ef9b8a6ef9c2eb83aaa7a419d1ab5653f7f61929252a985ada1",
+      "current_matches_stage6": true
+    }
+  ]
+}

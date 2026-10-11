@@ -1,0 +1,6 @@
+
+running 1 test
+test clef::tests::dump_layer_rows ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 504 filtered out; finished in 69.05s
+

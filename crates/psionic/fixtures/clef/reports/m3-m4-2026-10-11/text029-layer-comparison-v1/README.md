@@ -1,0 +1,13 @@
+# Text 029 native layer comparison
+
+The capture uses the archived Stage 6 Metal test executable, with the original 32-key fused attention kernel, weight-shapes GEMM, sequential DeltaNet, Q4 FFN weights on demand, and chunk 512. Its single input is the same 359-token request used by the independent CPU and MPS references. The current candidate shader and current build output are not used.
+
+The observer captures all 64 layer outputs and the final backbone-normalized rows. It changes dispatch by waiting and reading after each layer. Replaying the unchanged official CPU-f32 head on its complete hidden memory reproduces the archived normal-request native answers within 0.0000028611 raw logits and 0.0000002527 probability, with all three tops unchanged. The existing observer consistency screen (raw logits 1e-3 and all tops) passes. The saved independent CPU and MPS heads replay bit for bit.
+
+This excludes head normalization, pooling, and scoring as the material cause in this case and places the discrepancy in the trunk. It does not yet identify an operator defect or distinguish bulk f16 rounding from arithmetic implementation differences.
+
+Drift grows gradually. Whole-array relative L2 is about 0.000091 after layer 0 and 0.000336 after layer 26. The false-option span grows from 0.000550 after layer 26 to 0.000823 after attention layer 27; from 0.003259 after layer 34 to 0.006103 after attention layer 35; and from 0.016932 after layer 42 to 0.020584 after attention layer 43. It reaches about 0.035 in later layers. Final normalized whole-array relative L2 is 0.008081. `layer-errors.csv` contains every layer, without selecting only the large increases. Layer numbers are zero-based.
+
+The native process completed in 69.908 seconds with 43,743,428,608 bytes peak accounted memory, below its 52 GiB cap. Starting available memory was at least 64 GiB, with a 12 GiB floor, 600-second deadline, and 25 GiB disk floor. The offline CPU comparison took 6.296 seconds and peaked at 1,033,699,328 bytes under its 4 GiB/60-second bound. Both owned process groups stopped, all leases were released, all output hashes and source checks passed, and there were no guard errors. These are correctness captures, not latency measurements.
+
+All 65 native array hashes and all 64 comparison rows are included. Raw arrays, model weights, executables, and raw memory samples stay outside Git. File hashes identify original and path-substituted evidence. The earlier CPU reference and partial head replay have separate bundles. The unchanged full-runtime gate still requires 104 of 104 top answers and maximum probability error 0.02; it remains unmet.

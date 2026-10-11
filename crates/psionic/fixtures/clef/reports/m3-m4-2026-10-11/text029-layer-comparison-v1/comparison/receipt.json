@@ -1,0 +1,2715 @@
+{
+  "schema": "clef.text029-layer-comparison.v1",
+  "status": "complete",
+  "gpu_executed": false,
+  "trunk_executed": false,
+  "layers": [
+    {
+      "layer": 0,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.0036602020263671875,
+        "relative_l2": 9.054545971599602e-05,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999999914353943
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.00057220458984375,
+          "relative_l2": 4.938567495120479e-05,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999991783438
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.0023698806762695312,
+          "relative_l2": 9.395778190275312e-05,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999984516998
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.0025129318237304688,
+          "relative_l2": 9.183441672199766e-05,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.999999998798635
+        }
+      }
+    },
+    {
+      "layer": 1,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.006458282470703125,
+        "relative_l2": 7.38527648493139e-05,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999999873663233
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.0002117156982421875,
+          "relative_l2": 4.332310989017048e-05,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999990448103
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.002040863037109375,
+          "relative_l2": 6.467784166640903e-05,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.999999998139108
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.00194549560546875,
+          "relative_l2": 5.4914915053257955e-05,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999982783743
+        }
+      }
+    },
+    {
+      "layer": 2,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.007762908935546875,
+        "relative_l2": 0.00010593357497645924,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999999528025801
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.0011730194091796875,
+          "relative_l2": 0.00010415624841007595,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999952726089
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.0021867752075195312,
+          "relative_l2": 8.128285434190737e-05,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999955863776
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.0013341903686523438,
+          "relative_l2": 6.72702926185997e-05,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999964807214
+        }
+      }
+    },
+    {
+      "layer": 3,
+      "type": "full_attention",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.01482391357421875,
+        "relative_l2": 0.00017830376123151092,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999999834419881
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.0038166046142578125,
+          "relative_l2": 0.0001686235191749897,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.999999994995244
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.007434844970703125,
+          "relative_l2": 0.00017990458007644257,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999956441022
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.006893157958984375,
+          "relative_l2": 0.00016479829094792977,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999968760724
+        }
+      }
+    },
+    {
+      "layer": 4,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.013019561767578125,
+        "relative_l2": 0.00014804445924498414,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999999581678917
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.00319671630859375,
+          "relative_l2": 0.00014184269137098234,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.999999994730841
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.0060100555419921875,
+          "relative_l2": 0.00014098773464005799,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999952791636
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.00719451904296875,
+          "relative_l2": 0.00014730150913677288,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999966909069
+        }
+      }
+    },
+    {
+      "layer": 5,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.013458251953125,
+        "relative_l2": 0.0001362582170423848,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999999444450539
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.003742218017578125,
+          "relative_l2": 0.00014214785080741271,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999940920778
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.004596710205078125,
+          "relative_l2": 0.00011877053731931222,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999946405126
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.007717132568359375,
+          "relative_l2": 0.00013862208184226018,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999960404724
+        }
+      }
+    },
+    {
+      "layer": 6,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.01224517822265625,
+        "relative_l2": 0.00014043951500124002,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999999211045439
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.002742767333984375,
+          "relative_l2": 0.00013454713722763683,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999929372154
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.00470733642578125,
+          "relative_l2": 0.00012013724203768811,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999919241935
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.006717681884765625,
+          "relative_l2": 0.0001319441971757816,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999944740028
+        }
+      }
+    },
+    {
+      "layer": 7,
+      "type": "full_attention",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.0119476318359375,
+        "relative_l2": 0.00015650161616366382,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999999264460269
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.00327301025390625,
+          "relative_l2": 0.00017056702434400389,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999879538253
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.007427215576171875,
+          "relative_l2": 0.000124456898046223,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.999999989573464
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.008640289306640625,
+          "relative_l2": 0.00014210638712708982,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999907307427
+        }
+      }
+    },
+    {
+      "layer": 8,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.01772308349609375,
+        "relative_l2": 0.00014863890262156246,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999999124266293
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.00131988525390625,
+          "relative_l2": 0.0001575956055436536,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999873488398
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.0043487548828125,
+          "relative_l2": 0.00011254942087084555,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999906791662
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.00800323486328125,
+          "relative_l2": 0.0001323288787793412,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999917184113
+        }
+      }
+    },
+    {
+      "layer": 9,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.011981964111328125,
+        "relative_l2": 0.00014568708619979204,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999999369875385
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.002841949462890625,
+          "relative_l2": 0.0001538925529092815,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999892297741
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.005218505859375,
+          "relative_l2": 0.00011719540763696465,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999897677835
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.008243560791015625,
+          "relative_l2": 0.00012868554105631118,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999914431534
+        }
+      }
+    },
+    {
+      "layer": 10,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.012908935546875,
+        "relative_l2": 0.0001466024948762928,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999999443857907
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.002597808837890625,
+          "relative_l2": 0.00014870234735477294,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999891915072
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.004180908203125,
+          "relative_l2": 0.00011855712090114951,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999891652025
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.007892608642578125,
+          "relative_l2": 0.0001278715353635601,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999908458544
+        }
+      }
+    },
+    {
+      "layer": 11,
+      "type": "full_attention",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.01078033447265625,
+        "relative_l2": 0.00015676065071834838,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999999484353876
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.00519561767578125,
+          "relative_l2": 0.0001774988185708381,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999867445699
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.0083160400390625,
+          "relative_l2": 0.00014325634107546363,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.99999998968616
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.008148193359375,
+          "relative_l2": 0.00014225325848388513,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999914838502
+        }
+      }
+    },
+    {
+      "layer": 12,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.01041412353515625,
+        "relative_l2": 0.00015725994714317133,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999999490205593
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.0045166015625,
+          "relative_l2": 0.00017348687035984072,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999842891696
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.00725555419921875,
+          "relative_l2": 0.0001415435478344863,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999899815947
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.009510040283203125,
+          "relative_l2": 0.0001401384191623764,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.999999991748849
+        }
+      }
+    },
+    {
+      "layer": 13,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.01021575927734375,
+        "relative_l2": 0.00015786312290856164,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999999502091763
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.00354766845703125,
+          "relative_l2": 0.0001688705383556091,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999841310103
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.00617218017578125,
+          "relative_l2": 0.00013699276534213904,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999893968301
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.01021575927734375,
+          "relative_l2": 0.00013949449169445988,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999903071143
+        }
+      }
+    },
+    {
+      "layer": 14,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.00989532470703125,
+        "relative_l2": 0.00016176808396412676,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.999999949984146
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.00431060791015625,
+          "relative_l2": 0.0001815965798123492,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999816466019
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.00579833984375,
+          "relative_l2": 0.0001401895038531362,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999878976569
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.00989532470703125,
+          "relative_l2": 0.00013941033388004868,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999894418562
+        }
+      }
+    },
+    {
+      "layer": 15,
+      "type": "full_attention",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.011844635009765625,
+        "relative_l2": 0.000167218329409615,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999999494248072
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.00368499755859375,
+          "relative_l2": 0.00019034158442158983,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999786674387
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.006832122802734375,
+          "relative_l2": 0.00015058674307943216,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999859526026
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.011844635009765625,
+          "relative_l2": 0.00014639183214097706,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999890284205
+        }
+      }
+    },
+    {
+      "layer": 16,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.012058258056640625,
+        "relative_l2": 0.0001720923880541677,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999999455138754
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.0042266845703125,
+          "relative_l2": 0.00020296619284847691,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999757631101
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.006610870361328125,
+          "relative_l2": 0.00015533566324808277,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.999999985015664
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.012058258056640625,
+          "relative_l2": 0.00014897329366268108,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999887545078
+        }
+      }
+    },
+    {
+      "layer": 17,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.012157440185546875,
+        "relative_l2": 0.00018292742053489845,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999999338801305
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.0042877197265625,
+          "relative_l2": 0.00021078809523098434,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999748780586
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.007236480712890625,
+          "relative_l2": 0.00016333296867360086,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999837425403
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.01120758056640625,
+          "relative_l2": 0.00015711526997917274,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999864176082
+        }
+      }
+    },
+    {
+      "layer": 18,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.01284027099609375,
+        "relative_l2": 0.00020347141091952623,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999999075347463
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.0020904541015625,
+          "relative_l2": 0.00022282455169168744,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999703356485
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.00841522216796875,
+          "relative_l2": 0.0001907903118840251,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999784572835
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.01284027099609375,
+          "relative_l2": 0.0001836986557903491,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999777239924
+        }
+      }
+    },
+    {
+      "layer": 19,
+      "type": "full_attention",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.01116943359375,
+        "relative_l2": 0.00024536700215079145,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999998488857046
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.002605438232421875,
+          "relative_l2": 0.0002604773310225811,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999606713056
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.007343292236328125,
+          "relative_l2": 0.00024234562515327844,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999028536153
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.01104736328125,
+          "relative_l2": 0.00023545152294774508,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999367971896
+        }
+      }
+    },
+    {
+      "layer": 20,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.012348175048828125,
+        "relative_l2": 0.00027895041438456163,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999997759882582
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.00444793701171875,
+          "relative_l2": 0.00028494815920220164,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999523899197
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.008869171142578125,
+          "relative_l2": 0.0002806909438360332,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999998470897483
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.009654998779296875,
+          "relative_l2": 0.0002860020911416815,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999998636571493
+        }
+      }
+    },
+    {
+      "layer": 21,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.013790130615234375,
+        "relative_l2": 0.0002765643229569864,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999997575386923
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.00656890869140625,
+          "relative_l2": 0.00027547498472930585,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999547409099
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.01062774658203125,
+          "relative_l2": 0.00028352624629145715,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999998645145858
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.013790130615234375,
+          "relative_l2": 0.00029328098160540637,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999998566471937
+        }
+      }
+    },
+    {
+      "layer": 22,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.01641082763671875,
+        "relative_l2": 0.00027565893480620507,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.999999714725104
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.0055999755859375,
+          "relative_l2": 0.00025977214828200665,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999587640951
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.01641082763671875,
+          "relative_l2": 0.00028516893768628916,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999998661918706
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.012096405029296875,
+          "relative_l2": 0.0003106609024609861,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999998153121598
+        }
+      }
+    },
+    {
+      "layer": 23,
+      "type": "full_attention",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.0157928466796875,
+        "relative_l2": 0.00031442091280945713,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999995460392199
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.00600433349609375,
+          "relative_l2": 0.0002708986095109014,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999549361367
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.0157928466796875,
+          "relative_l2": 0.00034484464011055925,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999996457970419
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.00913238525390625,
+          "relative_l2": 0.00044401750855426955,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999995460392199
+        }
+      }
+    },
+    {
+      "layer": 24,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.0169830322265625,
+        "relative_l2": 0.0003277470020831307,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999995046847814
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.003322601318359375,
+          "relative_l2": 0.0002690871283064795,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999542988969
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.009418487548828125,
+          "relative_l2": 0.00036920265448490443,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999995385320725
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.0169830322265625,
+          "relative_l2": 0.00048037492285433765,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999995046847814
+        }
+      }
+    },
+    {
+      "layer": 25,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.020050048828125,
+        "relative_l2": 0.00032508873180249264,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999993263677557
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.00566864013671875,
+          "relative_l2": 0.000258955119844257,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999591257913
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.00652313232421875,
+          "relative_l2": 0.0003694134168315133,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999995126793481
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.014698028564453125,
+          "relative_l2": 0.000491898835496316,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999993263677557
+        }
+      }
+    },
+    {
+      "layer": 26,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.023101806640625,
+        "relative_l2": 0.00033553071275534114,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999989938818139
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.00226593017578125,
+          "relative_l2": 0.0002485641399129219,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999595243241
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.006000518798828125,
+          "relative_l2": 0.00038926350674538203,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999993784156802
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.023101806640625,
+          "relative_l2": 0.0005497872041308527,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999989938818139
+        }
+      }
+    },
+    {
+      "layer": 27,
+      "type": "full_attention",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.0224761962890625,
+        "relative_l2": 0.00041203616217458383,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999960395521263
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.00240325927734375,
+          "relative_l2": 0.00028986587960180425,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.999999945420739
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.010442256927490234,
+          "relative_l2": 0.0005420575706197662,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999981663130761
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.016375832259655,
+          "relative_l2": 0.0008226633196493119,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999960395521263
+        }
+      }
+    },
+    {
+      "layer": 28,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.0258638858795166,
+        "relative_l2": 0.00045841728080453617,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999927180515312
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.00605010986328125,
+          "relative_l2": 0.00032071686918177297,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999349391495
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.01633453369140625,
+          "relative_l2": 0.0006192770878127869,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999976641290517
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.0258638858795166,
+          "relative_l2": 0.0010159731452384353,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999927180515312
+        }
+      }
+    },
+    {
+      "layer": 29,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.028118401765823364,
+        "relative_l2": 0.0004948252650564337,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999881449103023
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.0057220458984375,
+          "relative_l2": 0.0003402075191631894,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999212920736
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.018978118896484375,
+          "relative_l2": 0.0006621372817973839,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999969586966543
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.028118401765823364,
+          "relative_l2": 0.0012040054478026658,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999881449103023
+        }
+      }
+    },
+    {
+      "layer": 30,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.06592559814453125,
+        "relative_l2": 0.0005316895950787697,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.999984322697797
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.00510406494140625,
+          "relative_l2": 0.00035044215654860553,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999999121137875
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.02068614959716797,
+          "relative_l2": 0.0007559108858115463,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999955665988867
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.06592559814453125,
+          "relative_l2": 0.0014071696164130085,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.999984322697797
+        }
+      }
+    },
+    {
+      "layer": 31,
+      "type": "full_attention",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.05829620361328125,
+        "relative_l2": 0.0006810855414031263,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999775000658249
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.0027801990509033203,
+          "relative_l2": 0.00040177488448820396,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999998916334975
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.05829620361328125,
+          "relative_l2": 0.0014190569685181413,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999829036033989
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.03453543782234192,
+          "relative_l2": 0.0017171185923004928,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999775000658249
+        }
+      }
+    },
+    {
+      "layer": 32,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.11556243896484375,
+        "relative_l2": 0.0007734118692006768,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999712697134849
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.0023776590824127197,
+          "relative_l2": 0.00043469687095044153,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.999999873359646
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.11556243896484375,
+          "relative_l2": 0.001706867540154387,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999746730950314
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.03788256645202637,
+          "relative_l2": 0.0019879283335344495,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999712697134849
+        }
+      }
+    },
+    {
+      "layer": 33,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.1047515869140625,
+        "relative_l2": 0.0008845318228047585,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999568206012349
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.0025482177734375,
+          "relative_l2": 0.0004495447362344316,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999998640980982
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.1047515869140625,
+          "relative_l2": 0.0020113093897051893,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999598841554137
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.049596548080444336,
+          "relative_l2": 0.0024279226734881176,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999568206012349
+        }
+      }
+    },
+    {
+      "layer": 34,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.09889984130859375,
+        "relative_l2": 0.0010402079084848167,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999177912583199
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.003032684326171875,
+          "relative_l2": 0.0004515324303397192,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999998582670258
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.0709228515625,
+          "relative_l2": 0.0022976730975226203,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999535015645054
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.09889984130859375,
+          "relative_l2": 0.003259349904834099,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999177912583199
+        }
+      }
+    },
+    {
+      "layer": 35,
+      "type": "full_attention",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.11678469181060791,
+        "relative_l2": 0.0016430407871396518,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9997299597706695
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.00757598876953125,
+          "relative_l2": 0.0005262369924849259,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999997895655613
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.08597183227539062,
+          "relative_l2": 0.002588942356826321,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.999943021363553
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.11678469181060791,
+          "relative_l2": 0.006102696939345142,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9997299597706695
+        }
+      }
+    },
+    {
+      "layer": 36,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.1569366455078125,
+        "relative_l2": 0.001833894805389427,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9996395099810718
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.016780853271484375,
+          "relative_l2": 0.0005279532865300098,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999997846963509
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.08128678798675537,
+          "relative_l2": 0.002548667997199172,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999406898231268
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.12774085998535156,
+          "relative_l2": 0.007285043706831718,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9996395099810718
+        }
+      }
+    },
+    {
+      "layer": 37,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.19063186645507812,
+        "relative_l2": 0.0019977081246159377,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9995415589718668
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.015666961669921875,
+          "relative_l2": 0.0005136761760176538,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999997795877535
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.09325027465820312,
+          "relative_l2": 0.002490090313723608,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999408726810904
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.19063186645507812,
+          "relative_l2": 0.0083355269025089,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9995415589718668
+        }
+      }
+    },
+    {
+      "layer": 38,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.4531822204589844,
+        "relative_l2": 0.002125708062396731,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9994460031740633
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.01340484619140625,
+          "relative_l2": 0.0004706730618464797,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999998286984383
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.08033287525177002,
+          "relative_l2": 0.0022980318587169164,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.99994201805531
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.4531822204589844,
+          "relative_l2": 0.009252231190035046,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9994460031740633
+        }
+      }
+    },
+    {
+      "layer": 39,
+      "type": "full_attention",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.23383808135986328,
+        "relative_l2": 0.0028954101262321907,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9989201763379747
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.00997161865234375,
+          "relative_l2": 0.0005118552208828002,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999997973688668
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.09220266342163086,
+          "relative_l2": 0.0029581570750058348,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999038188712094
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.23383808135986328,
+          "relative_l2": 0.012047355469595455,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9989201763379747
+        }
+      }
+    },
+    {
+      "layer": 40,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.2869436740875244,
+        "relative_l2": 0.003053308059353976,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9987493807961637
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.009258270263671875,
+          "relative_l2": 0.0005255719197741847,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999997928527681
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.08188557624816895,
+          "relative_l2": 0.0028371359399867913,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999129750332411
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.2869436740875244,
+          "relative_l2": 0.013051987671417044,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9987493807961637
+        }
+      }
+    },
+    {
+      "layer": 41,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.30078625679016113,
+        "relative_l2": 0.0032319244318220297,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9985683081347038
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.0077972412109375,
+          "relative_l2": 0.0005407148889905215,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999997928672827
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.0963444709777832,
+          "relative_l2": 0.0027691451777762622,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999103077540255
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.30078625679016113,
+          "relative_l2": 0.014255046447402372,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9985683081347038
+        }
+      }
+    },
+    {
+      "layer": 42,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.31342577934265137,
+        "relative_l2": 0.0036995504242544187,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9979759334619286
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.00450897216796875,
+          "relative_l2": 0.0005599210214902406,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999997750044934
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.21519851684570312,
+          "relative_l2": 0.0030923600075245363,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.999901325423565
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.31342577934265137,
+          "relative_l2": 0.01693150552107769,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9979759334619286
+        }
+      }
+    },
+    {
+      "layer": 43,
+      "type": "full_attention",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.47412872314453125,
+        "relative_l2": 0.0047634872724987036,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9966876823852083
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.004260748624801636,
+          "relative_l2": 0.0006382782598776519,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.999999725306242
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.22551536560058594,
+          "relative_l2": 0.0033928030772926924,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999023200577611
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.414792537689209,
+          "relative_l2": 0.020583583131311808,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9966876823852083
+        }
+      }
+    },
+    {
+      "layer": 44,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.7665481567382812,
+        "relative_l2": 0.005364780674681466,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9957885738843186
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.0084686279296875,
+          "relative_l2": 0.0007136224958931268,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999996749859165
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.23216819763183594,
+          "relative_l2": 0.0036191805507625177,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9998898814987194
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.7665481567382812,
+          "relative_l2": 0.023398025144996205,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9957885738843186
+        }
+      }
+    },
+    {
+      "layer": 45,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.734619140625,
+        "relative_l2": 0.0061419120218223905,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9943639531019874
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.010799407958984375,
+          "relative_l2": 0.0008299490294082913,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.999999583821132
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.23474884033203125,
+          "relative_l2": 0.003912324886787867,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9998837559401379
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.734619140625,
+          "relative_l2": 0.027207082056330784,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9943639531019874
+        }
+      }
+    },
+    {
+      "layer": 46,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 1.5206298828125,
+        "relative_l2": 0.00705464617975798,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9923453904954664
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.01294708251953125,
+          "relative_l2": 0.0008504842834513338,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999995812082132
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.3525390625,
+          "relative_l2": 0.004459601307776606,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9998526284577883
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 1.5206298828125,
+          "relative_l2": 0.03274515924950297,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9923453904954664
+        }
+      }
+    },
+    {
+      "layer": 47,
+      "type": "full_attention",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.6704716607928276,
+        "relative_l2": 0.007190635722767487,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.992773389842135
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.020923614501953125,
+          "relative_l2": 0.0009072339792406597,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999995004237879
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.311065673828125,
+          "relative_l2": 0.004286120958583532,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.999878573631851
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.6704716607928276,
+          "relative_l2": 0.030304272735022106,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.992773389842135
+        }
+      }
+    },
+    {
+      "layer": 48,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.8166742324829102,
+        "relative_l2": 0.0076102346418776045,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9913291162679762
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.020294189453125,
+          "relative_l2": 0.0009938896433280033,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999994299049325
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.2599010467529297,
+          "relative_l2": 0.004174421431261505,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9998899127024286
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.8166742324829102,
+          "relative_l2": 0.031927970405632645,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9913291162679762
+        }
+      }
+    },
+    {
+      "layer": 49,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 0.947113037109375,
+        "relative_l2": 0.007778758474211605,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9911440135873386
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.03415679931640625,
+          "relative_l2": 0.0010882128764752655,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999993380732146
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.2543506622314453,
+          "relative_l2": 0.003921656055219618,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999056726694455
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.947113037109375,
+          "relative_l2": 0.031663107570081145,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9911440135873386
+        }
+      }
+    },
+    {
+      "layer": 50,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 1.2091598510742188,
+        "relative_l2": 0.008373777356389951,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9890191899429418
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.01915740966796875,
+          "relative_l2": 0.0011427393258098121,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999993222168753
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.26337432861328125,
+          "relative_l2": 0.004076111922577566,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9998624603852311
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 1.2091598510742188,
+          "relative_l2": 0.034890326698399,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9890191899429418
+        }
+      }
+    },
+    {
+      "layer": 51,
+      "type": "full_attention",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 1.1570472717285156,
+        "relative_l2": 0.008421325681282253,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9906620132908219
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.0335845947265625,
+          "relative_l2": 0.0012404657984781786,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999991604150458
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.20049667358398438,
+          "relative_l2": 0.004020963539745467,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9998838800956892
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 1.1570472717285156,
+          "relative_l2": 0.03452068224914388,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9906620132908219
+        }
+      }
+    },
+    {
+      "layer": 52,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 1.003814697265625,
+        "relative_l2": 0.008265628994728153,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9909937230608574
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.026699066162109375,
+          "relative_l2": 0.0012506847558458243,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.999999146324398
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.15097618103027344,
+          "relative_l2": 0.003979955814482022,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9998897365325682
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 1.003814697265625,
+          "relative_l2": 0.033329309243789365,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9909937230608574
+        }
+      }
+    },
+    {
+      "layer": 53,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 1.8267745971679688,
+        "relative_l2": 0.008470919646908276,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9892650835703157
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.04618072509765625,
+          "relative_l2": 0.0012941260821437161,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.999999071638853
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.143951416015625,
+          "relative_l2": 0.003926272428694131,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9998877090274209
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 1.8267745971679688,
+          "relative_l2": 0.0349545781080053,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9892650835703157
+        }
+      }
+    },
+    {
+      "layer": 54,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 1.9000320434570312,
+        "relative_l2": 0.0077382845723298725,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9915610054014863
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.0674896240234375,
+          "relative_l2": 0.0012295198517929585,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999992450093994
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.6647148132324219,
+          "relative_l2": 0.0037258525713939014,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9998864921573482
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 1.5042724609375,
+          "relative_l2": 0.03305181915501696,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9915610054014863
+        }
+      }
+    },
+    {
+      "layer": 55,
+      "type": "full_attention",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 1.643707275390625,
+        "relative_l2": 0.007705005145619773,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9913961894827423
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.06885528564453125,
+          "relative_l2": 0.0012226447621520953,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999992510006426
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.18453216552734375,
+          "relative_l2": 0.0037663505539745705,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999028415932761
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 1.643707275390625,
+          "relative_l2": 0.03260700686826227,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9913961894827423
+        }
+      }
+    },
+    {
+      "layer": 56,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 2.0955047607421875,
+        "relative_l2": 0.007753969164938665,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9911849272879893
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.07820892333984375,
+          "relative_l2": 0.0012218571054219967,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999992583806637
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.25588226318359375,
+          "relative_l2": 0.0036678187466358406,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.999909315569018
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 2.0955047607421875,
+          "relative_l2": 0.0333115646081164,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9911849272879893
+        }
+      }
+    },
+    {
+      "layer": 57,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 2.0724945068359375,
+        "relative_l2": 0.007795233578115214,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9915095170886182
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.08272552490234375,
+          "relative_l2": 0.0012147421482254664,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999992398457601
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.294586181640625,
+          "relative_l2": 0.0035691105434327883,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999162745427493
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 2.0724945068359375,
+          "relative_l2": 0.03332509620432391,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9915095170886182
+        }
+      }
+    },
+    {
+      "layer": 58,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 2.9190444946289062,
+        "relative_l2": 0.00786909737636229,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9913756272248008
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.08331298828125,
+          "relative_l2": 0.0011999136952236722,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999991496912902
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.7520751953125,
+          "relative_l2": 0.003706989247369114,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999017114254781
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 1.49273681640625,
+          "relative_l2": 0.03402623341387244,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9913756272248008
+        }
+      }
+    },
+    {
+      "layer": 59,
+      "type": "full_attention",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 2.1717681884765625,
+        "relative_l2": 0.007651518263803449,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.992946807756801
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.07745361328125,
+          "relative_l2": 0.0012080476696765682,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999991771358188
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.2006988525390625,
+          "relative_l2": 0.003352801021380768,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999141870528149
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 2.1717681884765625,
+          "relative_l2": 0.031308566417119,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.992946807756801
+        }
+      }
+    },
+    {
+      "layer": 60,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 2.0987625122070312,
+        "relative_l2": 0.007682320647547822,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9936751689266732
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.11878204345703125,
+          "relative_l2": 0.0012444102148805587,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999990663430497
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.37615966796875,
+          "relative_l2": 0.00326829373301225,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999431420182426
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 2.0987625122070312,
+          "relative_l2": 0.03090492540561479,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9936751689266732
+        }
+      }
+    },
+    {
+      "layer": 61,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 2.38189697265625,
+        "relative_l2": 0.007639188018685207,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9943728823874828
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.11773681640625,
+          "relative_l2": 0.0012750377811540556,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999990100631383
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.2017713189125061,
+          "relative_l2": 0.003136779471351398,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999494587566353
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 2.38189697265625,
+          "relative_l2": 0.03005234864051502,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9943728823874828
+        }
+      }
+    },
+    {
+      "layer": 62,
+      "type": "delta",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 2.566436767578125,
+        "relative_l2": 0.008340530838053185,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9939707064275016
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.08982086181640625,
+          "relative_l2": 0.001313617237840873,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999989650645779
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.21202850341796875,
+          "relative_l2": 0.0032315064092099904,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999503063963208
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 2.566436767578125,
+          "relative_l2": 0.03186217322525827,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9939707064275016
+        }
+      }
+    },
+    {
+      "layer": 63,
+      "type": "full_attention",
+      "all_rows": {
+        "values": 1838080,
+        "max_abs_error": 8.215770721435547,
+        "relative_l2": 0.003579932340591222,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.99441990061589
+      },
+      "spans": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.1444549560546875,
+          "relative_l2": 0.0015075026233563689,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.999998673823476
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 1.317626953125,
+          "relative_l2": 0.0015796917129803042,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.999987090792449
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 8.215770721435547,
+          "relative_l2": 0.015333369436638353,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.99441990061589
+        }
+      }
+    }
+  ],
+  "head_variants": [
+    {
+      "name": "cpu",
+      "logits": [
+        [
+          -0.9667521715164185,
+          -0.28029894828796387
+        ],
+        [
+          -0.05995303392410278,
+          -0.032073974609375
+        ],
+        [
+          -3.224686861038208,
+          1.4942960739135742
+        ]
+      ],
+      "probabilities": [
+        [
+          0.3348225352885809,
+          0.665177464711419
+        ],
+        [
+          0.4930306865690331,
+          0.5069693134309669
+        ],
+        [
+          0.008845312691517603,
+          0.9911546873084823
+        ]
+      ],
+      "saved_reference_replay_exact": true,
+      "normal_request_comparisons": {
+        "staged": {
+          "questions": [
+            {
+              "max_abs_logit": 0.007898688316345215,
+              "max_abs_probability": 0.0010759128632376047,
+              "same_top": true
+            },
+            {
+              "max_abs_logit": 0.03451347351074219,
+              "max_abs_probability": 0.00906040354141796,
+              "same_top": false
+            },
+            {
+              "max_abs_logit": 0.004629850387573242,
+              "max_abs_probability": 2.4105399698682098e-05,
+              "same_top": true
+            }
+          ],
+          "max_abs_logit": 0.03451347351074219,
+          "max_abs_probability": 0.00906040354141796,
+          "all_tops_match": false
+        },
+        "fused-fields": {
+          "questions": [
+            {
+              "max_abs_logit": 0.007898509502410889,
+              "max_abs_probability": 0.0010758596790449992,
+              "same_top": true
+            },
+            {
+              "max_abs_logit": 0.03451347351074219,
+              "max_abs_probability": 0.009060418442318474,
+              "same_top": false
+            },
+            {
+              "max_abs_logit": 0.004629850387573242,
+              "max_abs_probability": 2.410435740496375e-05,
+              "same_top": true
+            }
+          ],
+          "max_abs_logit": 0.03451347351074219,
+          "max_abs_probability": 0.009060418442318474,
+          "all_tops_match": false
+        }
+      },
+      "pooled_normal_request_comparisons": {
+        "staged": [
+          {
+            "question": "rate",
+            "metrics": {
+              "values": 20480,
+              "max_abs_error": 0.027799606323242188,
+              "relative_l2": 0.0028379028864161005,
+              "zero_reference_norm": false,
+              "minimum_token_cosine": 0.9999927294754812
+            },
+            "f16_rounded_bytes_equal": false
+          },
+          {
+            "question": "\u65e5\u672c1",
+            "metrics": {
+              "values": 20480,
+              "max_abs_error": 0.043152809143066406,
+              "relative_l2": 0.006382408346101141,
+              "zero_reference_norm": false,
+              "minimum_token_cosine": 0.9998681180424143
+            },
+            "f16_rounded_bytes_equal": false
+          },
+          {
+            "question": "rollback_2",
+            "metrics": {
+              "values": 20480,
+              "max_abs_error": 0.01604747772216797,
+              "relative_l2": 0.003996693056600454,
+              "zero_reference_norm": false,
+              "minimum_token_cosine": 0.999989243336544
+            },
+            "f16_rounded_bytes_equal": false
+          }
+        ],
+        "fused-fields": [
+          {
+            "question": "rate",
+            "metrics": {
+              "values": 20480,
+              "max_abs_error": 0.027799606323242188,
+              "relative_l2": 0.0028379028864161005,
+              "zero_reference_norm": false,
+              "minimum_token_cosine": 0.9999927294754812
+            },
+            "f16_rounded_bytes_equal": false
+          },
+          {
+            "question": "\u65e5\u672c1",
+            "metrics": {
+              "values": 20480,
+              "max_abs_error": 0.043152809143066406,
+              "relative_l2": 0.006382408346101141,
+              "zero_reference_norm": false,
+              "minimum_token_cosine": 0.9998681180424143
+            },
+            "f16_rounded_bytes_equal": false
+          },
+          {
+            "question": "rollback_2",
+            "metrics": {
+              "values": 20480,
+              "max_abs_error": 0.01604747772216797,
+              "relative_l2": 0.003996693056600454,
+              "zero_reference_norm": false,
+              "minimum_token_cosine": 0.999989243336544
+            },
+            "f16_rounded_bytes_equal": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "mps",
+      "logits": [
+        [
+          -0.9667593240737915,
+          -0.28033900260925293
+        ],
+        [
+          -0.05994617938995361,
+          -0.03207206726074219
+        ],
+        [
+          -3.2247092723846436,
+          1.4942913055419922
+        ]
+      ],
+      "probabilities": [
+        [
+          0.3348298630909867,
+          0.6651701369090134
+        ],
+        [
+          0.4930319231251634,
+          0.5069680768748365
+        ],
+        [
+          0.008845158015607084,
+          0.9911548419843929
+        ]
+      ],
+      "saved_reference_replay_exact": true,
+      "normal_request_comparisons": {
+        "staged": {
+          "questions": [
+            {
+              "max_abs_logit": 0.007858633995056152,
+              "max_abs_probability": 0.0010685850608319614,
+              "same_top": true
+            },
+            {
+              "max_abs_logit": 0.034515380859375,
+              "max_abs_probability": 0.009059166985287637,
+              "same_top": false
+            },
+            {
+              "max_abs_logit": 0.004607439041137695,
+              "max_abs_probability": 2.3950723788163097e-05,
+              "same_top": true
+            }
+          ],
+          "max_abs_logit": 0.034515380859375,
+          "max_abs_probability": 0.009059166985287637,
+          "all_tops_match": false
+        },
+        "fused-fields": {
+          "questions": [
+            {
+              "max_abs_logit": 0.007858455181121826,
+              "max_abs_probability": 0.001068531876639356,
+              "same_top": true
+            },
+            {
+              "max_abs_logit": 0.034515380859375,
+              "max_abs_probability": 0.00905918188618815,
+              "same_top": false
+            },
+            {
+              "max_abs_logit": 0.004607439041137695,
+              "max_abs_probability": 2.3949681494439545e-05,
+              "same_top": true
+            }
+          ],
+          "max_abs_logit": 0.034515380859375,
+          "max_abs_probability": 0.00905918188618815,
+          "all_tops_match": false
+        }
+      },
+      "pooled_normal_request_comparisons": {
+        "staged": [
+          {
+            "question": "rate",
+            "metrics": {
+              "values": 20480,
+              "max_abs_error": 0.027814865112304688,
+              "relative_l2": 0.002828235450326104,
+              "zero_reference_norm": false,
+              "minimum_token_cosine": 0.9999927831679065
+            },
+            "f16_rounded_bytes_equal": false
+          },
+          {
+            "question": "\u65e5\u672c1",
+            "metrics": {
+              "values": 20480,
+              "max_abs_error": 0.043021440505981445,
+              "relative_l2": 0.006364223085551,
+              "zero_reference_norm": false,
+              "minimum_token_cosine": 0.9998688453103826
+            },
+            "f16_rounded_bytes_equal": false
+          },
+          {
+            "question": "rollback_2",
+            "metrics": {
+              "values": 20480,
+              "max_abs_error": 0.015993118286132812,
+              "relative_l2": 0.003985277136528885,
+              "zero_reference_norm": false,
+              "minimum_token_cosine": 0.9999892618503263
+            },
+            "f16_rounded_bytes_equal": false
+          }
+        ],
+        "fused-fields": [
+          {
+            "question": "rate",
+            "metrics": {
+              "values": 20480,
+              "max_abs_error": 0.027814865112304688,
+              "relative_l2": 0.002828235450326104,
+              "zero_reference_norm": false,
+              "minimum_token_cosine": 0.9999927831679065
+            },
+            "f16_rounded_bytes_equal": false
+          },
+          {
+            "question": "\u65e5\u672c1",
+            "metrics": {
+              "values": 20480,
+              "max_abs_error": 0.043021440505981445,
+              "relative_l2": 0.006364223085551,
+              "zero_reference_norm": false,
+              "minimum_token_cosine": 0.9998688453103826
+            },
+            "f16_rounded_bytes_equal": false
+          },
+          {
+            "question": "rollback_2",
+            "metrics": {
+              "values": 20480,
+              "max_abs_error": 0.015993118286132812,
+              "relative_l2": 0.003985277136528885,
+              "zero_reference_norm": false,
+              "minimum_token_cosine": 0.9999892618503263
+            },
+            "f16_rounded_bytes_equal": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "native_observer",
+      "logits": [
+        [
+          -0.9698235392570496,
+          -0.28819823265075684
+        ],
+        [
+          -0.05822315812110901,
+          -0.06658828258514404
+        ],
+        [
+          -3.2293195724487305,
+          1.4924193620681763
+        ]
+      ],
+      "probabilities": [
+        [
+          0.33589864759257804,
+          0.664101352407422
+        ],
+        [
+          0.5020912689212575,
+          0.49790873107874245
+        ],
+        [
+          0.00882118331909522,
+          0.9911788166809048
+        ]
+      ],
+      "saved_reference_replay_exact": null,
+      "normal_request_comparisons": {
+        "staged": {
+          "questions": [
+            {
+              "max_abs_logit": 5.960464477539062e-07,
+              "max_abs_probability": 1.9944075951849882e-07,
+              "same_top": true
+            },
+            {
+              "max_abs_logit": 8.344650268554688e-07,
+              "max_abs_probability": 1.788108064948446e-07,
+              "same_top": true
+            },
+            {
+              "max_abs_logit": 2.86102294921875e-06,
+              "max_abs_probability": 2.3972723806053864e-08,
+              "same_top": true
+            }
+          ],
+          "max_abs_logit": 2.86102294921875e-06,
+          "max_abs_probability": 1.9944075951849882e-07,
+          "all_tops_match": true
+        },
+        "fused-fields": {
+          "questions": [
+            {
+              "max_abs_logit": 7.748603820800781e-07,
+              "max_abs_probability": 2.5262495212396985e-07,
+              "same_top": true
+            },
+            {
+              "max_abs_logit": 8.344650268554688e-07,
+              "max_abs_probability": 1.6390990598136312e-07,
+              "same_top": true
+            },
+            {
+              "max_abs_logit": 2.86102294921875e-06,
+              "max_abs_probability": 2.5015017501850423e-08,
+              "same_top": true
+            }
+          ],
+          "max_abs_logit": 2.86102294921875e-06,
+          "max_abs_probability": 2.5262495212396985e-07,
+          "all_tops_match": true
+        }
+      },
+      "pooled_normal_request_comparisons": {
+        "staged": [
+          {
+            "question": "rate",
+            "metrics": {
+              "values": 20480,
+              "max_abs_error": 0.0075435638427734375,
+              "relative_l2": 0.00021627503648484315,
+              "zero_reference_norm": false,
+              "minimum_token_cosine": 0.9999999641428774
+            },
+            "f16_rounded_bytes_equal": false
+          },
+          {
+            "question": "\u65e5\u672c1",
+            "metrics": {
+              "values": 20480,
+              "max_abs_error": 0.004009246826171875,
+              "relative_l2": 0.00020733482057477324,
+              "zero_reference_norm": false,
+              "minimum_token_cosine": 0.9999999781567869
+            },
+            "f16_rounded_bytes_equal": false
+          },
+          {
+            "question": "rollback_2",
+            "metrics": {
+              "values": 20480,
+              "max_abs_error": 0.0034894943237304688,
+              "relative_l2": 0.00020664869219710853,
+              "zero_reference_norm": false,
+              "minimum_token_cosine": 0.9999999779637407
+            },
+            "f16_rounded_bytes_equal": false
+          }
+        ],
+        "fused-fields": [
+          {
+            "question": "rate",
+            "metrics": {
+              "values": 20480,
+              "max_abs_error": 0.0075435638427734375,
+              "relative_l2": 0.00021627503648484315,
+              "zero_reference_norm": false,
+              "minimum_token_cosine": 0.9999999641428774
+            },
+            "f16_rounded_bytes_equal": false
+          },
+          {
+            "question": "\u65e5\u672c1",
+            "metrics": {
+              "values": 20480,
+              "max_abs_error": 0.004009246826171875,
+              "relative_l2": 0.00020733482057477324,
+              "zero_reference_norm": false,
+              "minimum_token_cosine": 0.9999999781567869
+            },
+            "f16_rounded_bytes_equal": false
+          },
+          {
+            "question": "rollback_2",
+            "metrics": {
+              "values": 20480,
+              "max_abs_error": 0.0034894943237304688,
+              "relative_l2": 0.00020664869219710853,
+              "zero_reference_norm": false,
+              "minimum_token_cosine": 0.9999999779637407
+            },
+            "f16_rounded_bytes_equal": false
+          }
+        ]
+      }
+    }
+  ],
+  "acceptance_scope": "Diagnostic localization only. The frozen full40/104 gate is unchanged.",
+  "observation_scope": "Native per-layer observer introduces waits. Full-memory official CPU head replay checks its final rows against the prior normal-request native raw logits, with the existing1e-3 raw-logit bound and exact top agreement.",
+  "final_rows": {
+    "native_vs_cpu": {
+      "values": 1838080,
+      "max_abs_error": 1.4227676391601562,
+      "relative_l2": 0.008080931927617588,
+      "zero_reference_norm": false,
+      "minimum_token_cosine": 0.9944504374102681
+    },
+    "native_vs_mps": {
+      "values": 1838080,
+      "max_abs_error": 1.4170560836791992,
+      "relative_l2": 0.008056481292921892,
+      "zero_reference_norm": false,
+      "minimum_token_cosine": 0.9944863556463415
+    },
+    "cpu_vs_mps": {
+      "values": 1838080,
+      "max_abs_error": 0.005711555480957031,
+      "relative_l2": 3.056402614843239e-05,
+      "zero_reference_norm": false,
+      "minimum_token_cosine": 0.999999934260024
+    }
+  },
+  "observer_consistency_screen": {
+    "raw_logit_limit": 0.001,
+    "all_tops_required": true,
+    "passed": true,
+    "modes": {
+      "staged": {
+        "questions": [
+          {
+            "max_abs_logit": 5.960464477539062e-07,
+            "max_abs_probability": 1.9944075951849882e-07,
+            "same_top": true
+          },
+          {
+            "max_abs_logit": 8.344650268554688e-07,
+            "max_abs_probability": 1.788108064948446e-07,
+            "same_top": true
+          },
+          {
+            "max_abs_logit": 2.86102294921875e-06,
+            "max_abs_probability": 2.3972723806053864e-08,
+            "same_top": true
+          }
+        ],
+        "max_abs_logit": 2.86102294921875e-06,
+        "max_abs_probability": 1.9944075951849882e-07,
+        "all_tops_match": true
+      },
+      "fused-fields": {
+        "questions": [
+          {
+            "max_abs_logit": 7.748603820800781e-07,
+            "max_abs_probability": 2.5262495212396985e-07,
+            "same_top": true
+          },
+          {
+            "max_abs_logit": 8.344650268554688e-07,
+            "max_abs_probability": 1.6390990598136312e-07,
+            "same_top": true
+          },
+          {
+            "max_abs_logit": 2.86102294921875e-06,
+            "max_abs_probability": 2.5015017501850423e-08,
+            "same_top": true
+          }
+        ],
+        "max_abs_logit": 2.86102294921875e-06,
+        "max_abs_probability": 2.5262495212396985e-07,
+        "all_tops_match": true
+      }
+    }
+  },
+  "completed": true,
+  "all64layers": true,
+  "unchanged_reference_heads_exact": true
+}

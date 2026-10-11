@@ -1,0 +1,147 @@
+{
+  "schema": "clef.text029-native-comparison-publication.v1",
+  "scope": "Original Stage6 native layer observer and offline all64-layer/complete-head comparison",
+  "excluded": [
+    "raw tensors",
+    "model weights",
+    "executables",
+    "raw memory samples"
+  ],
+  "files": [
+    {
+      "path": "native/guard.json",
+      "original_sha256": "927f31c7adf2db1db67736409fd92bb1c9151be979334d88d9f15236fe7e4a96",
+      "original_bytes": 38369,
+      "published_sha256": "e68675dd6f746ffb7cc0892598032b6bb75920b52134bb39b93863126dfe2955",
+      "published_bytes": 25443,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "native/receipt.json",
+      "original_sha256": "84f3b02cf7390452987d2947b2ac1e5579658326bb87d2d641c45f8d617b402f",
+      "original_bytes": 15894,
+      "published_sha256": "b69c4095d1260609dc43c020acee3aeacd0b602bb537af1c50ee28b5428ba3fe",
+      "published_bytes": 15813,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "native/test.log",
+      "original_sha256": "95624db37abd42f5253ea67f7e4a0d9c9d592db94fce8a4aba443864a5e0a460",
+      "original_bytes": 156,
+      "published_sha256": "95624db37abd42f5253ea67f7e4a0d9c9d592db94fce8a4aba443864a5e0a460",
+      "published_bytes": 156,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "comparison/guard.json",
+      "original_sha256": "47ecd9dfd9ceed55e483097527976b29c0de544875960fe608d9ff72a7538c91",
+      "original_bytes": 71004,
+      "published_sha256": "47350a7921285d33ae291029ae07c705fe06a23bf984317d118a4d893ade5dbb",
+      "published_bytes": 47287,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "comparison/receipt.json",
+      "original_sha256": "145bafacea38a3fecbcfdfb853516198628a0f08351a282cfc7ff24f1184b6e1",
+      "original_bytes": 84908,
+      "published_sha256": "145bafacea38a3fecbcfdfb853516198628a0f08351a282cfc7ff24f1184b6e1",
+      "published_bytes": 84908,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "comparison/stdout.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "stage6/test-binaries.json",
+      "original_sha256": "4b692bbdb5e13251e7ef8e0ac7e509820bd9de0b5fb91147c6f8af0eddf69205",
+      "original_bytes": 578,
+      "published_sha256": "fa8745638eb354fb2ff0b1b2cd80f1ca7758aa5ef39c568515ab0163b72432af",
+      "published_bytes": 459,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "stage6/source-manifest.json",
+      "original_sha256": "10b8e667124408b68cb097c38bcb55a7f99394ebfc8e7795ce5195557a747b0c",
+      "original_bytes": 439108,
+      "published_sha256": "10b8e667124408b68cb097c38bcb55a7f99394ebfc8e7795ce5195557a747b0c",
+      "published_bytes": 439108,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "source/native_layers.py",
+      "original_sha256": "f15b2de521322e1a739f53a9f3d55ca486886ea81872700ba9cd2b6372087660",
+      "original_bytes": 3723,
+      "published_sha256": "f15b2de521322e1a739f53a9f3d55ca486886ea81872700ba9cd2b6372087660",
+      "published_bytes": 3723,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "source/guard_layers.py",
+      "original_sha256": "f02605b07df3618a6150c5aab51a60d4631c2001ba77d866eeb286acbe28292f",
+      "original_bytes": 7550,
+      "published_sha256": "9e991ea2a09a3805e93245e659b34f52bda2651cca9cc8750c7dde417a0e15ba",
+      "published_bytes": 7405,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "source/compare_layers.py",
+      "original_sha256": "8b46fd2b99c9a7c8ecb2c191b3236d83295447b13839e46b081d5f0e3d6540bc",
+      "original_bytes": 9235,
+      "published_sha256": "8b46fd2b99c9a7c8ecb2c191b3236d83295447b13839e46b081d5f0e3d6540bc",
+      "published_bytes": 9235,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "source/guard_compare.py",
+      "original_sha256": "f1c9278b9763880bde0c976727fd84b697333370e0f7ae400c78af288b912cb5",
+      "original_bytes": 6388,
+      "published_sha256": "f9e4bb56d2fbdb9bd50415db7f052f2807bd92764b06bbb3f4bcbebb55c169e7",
+      "published_bytes": 6243,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "source-evidence/tests.rs",
+      "original_sha256": "8d181952d96b9ccefc03c5d9efc44a7362eaabd1431c294545ceb59cf622ea1d",
+      "original_bytes": 37388,
+      "published_sha256": "8d181952d96b9ccefc03c5d9efc44a7362eaabd1431c294545ceb59cf622ea1d",
+      "published_bytes": 37388,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "source-evidence/clef_metal.rs",
+      "original_sha256": "e0a974181bd63ef9b8a6ef9c2eb83aaa7a419d1ab5653f7f61929252a985ada1",
+      "original_bytes": 68819,
+      "published_sha256": "e0a974181bd63ef9b8a6ef9c2eb83aaa7a419d1ab5653f7f61929252a985ada1",
+      "published_bytes": 68819,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "source-inspection.json",
+      "original_sha256": "9a7646ad252872aca7af85b58f023a28d29ababbf8e8fe466fdbc9911520a49d",
+      "original_bytes": 1365,
+      "published_sha256": "9a7646ad252872aca7af85b58f023a28d29ababbf8e8fe466fdbc9911520a49d",
+      "published_bytes": 1365,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "layer-plan.md",
+      "original_sha256": "5d5ebf87802436d3309f390a045b178b6fa5d0b1991073438776cdd0a8cf027e",
+      "original_bytes": 4595,
+      "published_sha256": "5d5ebf87802436d3309f390a045b178b6fa5d0b1991073438776cdd0a8cf027e",
+      "published_bytes": 4595,
+      "reversible_path_substitution": true
+    }
+  ],
+  "derived_files": [
+    {
+      "path": "layer-errors.csv",
+      "sha256": "8e7d33a84fe0a86500ff174683b6d6622b945934797bf5a69040fde9f799816a",
+      "source": "comparison/receipt.json; all64 rows preserved"
+    }
+  ]
+}

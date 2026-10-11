@@ -1,0 +1,22 @@
+{
+  "status": "frozen before first build/GPU",
+  "source_sha256": {
+    "baseline.metal": "9505a34d21d4d6bd11a532a62549d00c8cafbad90ab92f2bd07cccb4eae30725",
+    "candidate.metal": "ae3ae6f2633c9e6e8c94844b1ec8fe9715d9b6d0bf739332e599ffe8115ccc70",
+    "production-shapes.metal": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+    "production-fixed-extract.metal": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+    "production-silu-extract.metal": "fe7844912a63f4219dc05a5a50a5b269ad48a0e3aa5f60cef221ae9223880e61",
+    "production-planner.rs": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac",
+    "probe.swift": "05a8ed9c55ffe31bfef2f371032a6735ce9d78a84da6ff5e8fefee5a7f9c9694",
+    "weights.json": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+    "build.py": "da71b4184b00af39858af69c72325f389fd14e59ce514a61e7e60ed5d88f598d",
+    "guard.py": "6bec096342c716507e6b881f787764af9addd20589ce3f3822986b0551747ce7",
+    "manifest.json": "79865c7ad31c1bdf7c5005a1dfbe4b452b5770ee7035755939dc0d7c97046237",
+    "summarize.py": "2265eb40b42e46930e8f4395a5bf6118fd6d01ab59d5dc6e94ee1bd7904ef93e",
+    "source_check.py": "33f754f6726cfcc96f047d72a2235a18b5955a179778a2051cf69f0cc02a6cb0",
+    "README.md": "59aba99c32609f2793c21a54f881116bb6888b6f2e09a10e9fc9713d7714808d",
+    "half_ulp_check.py": "f5f1d3dcbe7cd4da54c45b9ea2698047ba861bc26575144e0ae4c6f53f015aa4",
+    "half-ulp-fixtures.json": "bc0a57a7088795ab57884782326d9a1de7285c6bbfd109c68271309381f046d5"
+  },
+  "review": "Parent and mac_bench_review source reviews clear; build approved, GPU waits for separate handoff."
+}

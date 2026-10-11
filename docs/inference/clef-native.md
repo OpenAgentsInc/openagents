@@ -1369,10 +1369,19 @@ and scoring; this diagnostic does not change the failed full-suite gate.
 
 An [independent CPU run of the same case](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/text029-cpu-reference-v1/README.md)
 agrees with the accelerated reference on all three answers and still disagrees
-with native execution on one. The revised
+with native execution on one. A
+[64-layer comparison](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/text029-layer-comparison-v1/README.md)
+places the discrepancy in the backbone: the complete native observer memory
+reproduces normal native scoring within `0.000002861` raw logits. Layer drift
+still needs an operator-level explanation. The revised
 [QK128/key32 attention probe](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/attention-qk128-key32-probe-v1/README.md)
 preserves bitwise output agreement in synthetic checks and reduces median
-kernel time by 8–18%. Its full-model validation is pending.
+kernel time by 8–18%. Its
+[compiled integration](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/attention-qk128-key32-integration-v1/README.md)
+passes 25 CPU and four GPU tests, with exactly equal logits and pooled rows
+for 110 Flash and 110 27B text answers, including long histories. All 14 image
+answers and ten refusals pass. Fresh paired latency remains pending, and the
+independent same-Q4 runtime discrepancy remains unresolved.
 
 ### Metal controls and memory
 

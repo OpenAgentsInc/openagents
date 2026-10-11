@@ -7,8 +7,13 @@ use std::str::FromStr;
 
 /// Query rows computed by one fused threadgroup.
 pub const CLEF_FUSED_QUERY_TILE: usize = 16;
-/// Cache rows processed by one fused key tile.
+/// Cache rows processed by each online softmax and value-product update.
 pub const CLEF_FUSED_KEY_TILE: usize = 32;
+/// Cache rows scored by one fused query-key product.
+pub const CLEF_FUSED_SCORE_TILE: usize = 128;
+/// Static storage for scores, half probabilities, and the running output.
+pub const CLEF_FUSED_THREADGROUP_BYTES: usize =
+    CLEF_FUSED_QUERY_TILE * (CLEF_FUSED_SCORE_TILE * 4 + CLEF_FUSED_KEY_TILE * 2 + 256 * 4);
 /// Threads dispatched in one fused threadgroup.
 pub const CLEF_FUSED_THREADS: usize = 128;
 
@@ -180,6 +185,22 @@ mod tests {
     }
 
     #[test]
+    fn score_batch_keeps_the_online_update_width_and_bounds_threadgroup_storage() {
+        let shader = include_str!("kernels/clef_fused_attention.metal");
+        for (name, value) in [
+            ("kQueries", CLEF_FUSED_QUERY_TILE),
+            ("kKeys", CLEF_FUSED_KEY_TILE),
+            ("kScoreKeys", CLEF_FUSED_SCORE_TILE),
+            ("kThreads", CLEF_FUSED_THREADS),
+        ] {
+            assert!(shader.contains(&format!("{name} = {value}")));
+        }
+        assert_eq!(CLEF_FUSED_KEY_TILE, 32);
+        assert_eq!(CLEF_FUSED_SCORE_TILE, 4 * CLEF_FUSED_KEY_TILE);
+        assert_eq!(CLEF_FUSED_THREADGROUP_BYTES, 25_600);
+    }
+
+    #[test]
     fn invalid_head_shapes_are_rejected_even_for_empty_requests() {
         for n in [0, 1] {
             for (heads, kv_heads, dim) in [
@@ -209,7 +230,7 @@ mod tests {
 
     #[test]
     fn partial_query_tiles_and_absolute_cache_positions_are_kept() {
-        for first in [0, 31, 32, 63, 64, 65, 2049] {
+        for first in [0, 31, 32, 63, 64, 65, 127, 128, 129, 2049] {
             for (n, groups) in [
                 (1, 1),
                 (15, 1),
@@ -219,6 +240,9 @@ mod tests {
                 (32, 2),
                 (33, 3),
                 (65, 5),
+                (127, 8),
+                (128, 8),
+                (129, 9),
             ] {
                 let plan = ClefAttentionPlan::new(n, 12, 3, 256, first).unwrap();
                 assert_eq!(plan.keys, first + n);

@@ -1,0 +1,48 @@
+{
+  "status": "complete",
+  "preflight": {
+    "available_memory_bytes": 112439754752,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 4426569,
+      "inactive": 2218325,
+      "speculative": 217884
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "cap_bytes": 25769803776,
+  "minimum_start_bytes": 38654705664,
+  "minimum_available_bytes": 12884901888,
+  "deadline_seconds": 7200,
+  "cargo_jobs": 2,
+  "rust_toolchain": "1.97.1",
+  "target": "<OWNER_HOME>/work/openagents-target-agent1",
+  "source_manifest_sha256": "843d7861b221b650d17f4a4902c2297117765e583a2d6159dce6ae797da70a09",
+  "script_sha256": {
+    "guard.py": "47a01bff23c90cb6bbe1da37a3b0cae043d0435954823beebab57dcb6f72be99",
+    "checks.py": "f93ed64b271b19c6b8b0d1a4a64023198ea8a0eed136a3e59261d4a440c67202"
+  },
+  "exit": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 64948,
+    "max_rss_bytes": 25769803776,
+    "peak_rss_bytes": 25419317248,
+    "peak_physical_footprint_bytes": 24675473512,
+    "peak_accounted_bytes": 25419317248,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 1342,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 87996301312,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 718.8784097500001
+}

@@ -1,0 +1,42 @@
+{
+  "measurement_mode": "shared",
+  "max_start_load": 150,
+  "max_run_load": 180,
+  "rounds": 1,
+  "runs": 1,
+  "request_timeout": 300,
+  "deadline_seconds": 1800,
+  "expected_requests": 40,
+  "expected_questions": 104,
+  "requests": [
+    "<WORKTREE>/crates/psionic/fixtures/clef/e2e/requests.jsonl"
+  ],
+  "minimum_available_memory_gib": 12,
+  "model_path": "<SCRATCH>/artifacts/Clef-Q4_K_M.gguf",
+  "clef_head": "<SCRATCH>/artifacts/clef-bf16/joint_head.safetensors",
+  "output_dir": "<INTEGRATION>/27b-text-check",
+  "max_rss_gib": 52,
+  "startup_timeout": 600,
+  "variants": [
+    {
+      "name": "baseline",
+      "binary": "<INTEGRATION>/psionic-openai-server",
+      "model": "clef",
+      "chunk": 512,
+      "env": {
+        "PSIONIC_CLEF_METAL_FFN_WEIGHTS": "q4k-on-demand",
+        "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+        "PSIONIC_CLEF_METAL_GEMM": "weight-shapes",
+        "PSIONIC_CLEF_METAL_HEAD": "fused-fields",
+        "PSIONIC_CLEF_METAL_DELTA": "sequential"
+      }
+    }
+  ],
+  "model_key": "27b",
+  "baseline_receipts": "<INTEGRATION>/baseline-receipts.json",
+  "candidate_binaries": "<INTEGRATION>/binaries.json",
+  "long_requests": [
+    "<OWNER_HOME>/.openagents/scratch/codex-01a12620-209f-7ec3-9846-7e94fc1b965b/mac-quiet-2026-10-10/requests/len4k.json",
+    "<OWNER_HOME>/.openagents/scratch/codex-01a12620-209f-7ec3-9846-7e94fc1b965b/mac-quiet-2026-10-10/requests/len16k.json"
+  ]
+}

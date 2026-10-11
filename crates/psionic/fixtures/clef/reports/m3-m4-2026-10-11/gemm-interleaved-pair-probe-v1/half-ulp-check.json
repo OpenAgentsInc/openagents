@@ -1,0 +1,10 @@
+{
+  "status": "passed",
+  "finite_bit_patterns": 63488,
+  "distinct_finite_values": 63487,
+  "boundary_cases": 19,
+  "includes_nonfinite_refusals": 3,
+  "criterion_version": 2,
+  "compiled": false,
+  "gpu_executed": false
+}

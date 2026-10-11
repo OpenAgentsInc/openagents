@@ -1,0 +1,8 @@
+{
+  "candidate_entrypoint_rename_only": true,
+  "key32_update_and_PV_expression_unchanged": true,
+  "source_files_unchanged": 2307,
+  "product_shader_sha256": "5e3395195dc8d1e5a0a35a7ddd5bb65b9d874eadcfcebd8f121694b2c1c9cd28",
+  "microprobe_candidate_sha256": "c1e652d1300880b0208b39f12400ef7670675bed4e96444d91b19d0ebbcc5c87",
+  "static_threadgroup_bytes": 25600
+}

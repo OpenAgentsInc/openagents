@@ -1,0 +1,344 @@
+[
+  {
+    "file": "ffn-pair-probe/combined.metal",
+    "sha256": "12e932ccd6b77e0c1d328aa597be71746b00b8f6d9956f7e05b90c12ecaf8ccc",
+    "descriptors": [
+      {
+        "line": 19,
+        "descriptor": "matmul2d_descriptor(\n        64, 64, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      },
+      {
+        "line": 85,
+        "descriptor": "matmul2d_descriptor(\n        TOKEN_ROWS, OUTPUT_COLS, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      },
+      {
+        "line": 149,
+        "descriptor": "matmul2d_descriptor(\n        64, OUTPUT_COLS, static_cast<int>(dynamic_extent), false, true, false,\n        matmul2d_descriptor::mode::multiply)"
+      },
+      {
+        "line": 221,
+        "descriptor": "matmul2d_descriptor(\n        64, COLS, static_cast<int>(dynamic_extent), false, true, false,\n        matmul2d_descriptor::mode::multiply)"
+      }
+    ]
+  },
+  {
+    "file": "ffn-pair-probe/pair.metal",
+    "sha256": "b0730fe3a4ee60d4f36f7a847e242db4df373394daa943a38946e27bc371ae0e",
+    "descriptors": [
+      {
+        "line": 12,
+        "descriptor": "matmul2d_descriptor(\n        64, COLS, static_cast<int>(dynamic_extent), false, true, false,\n        matmul2d_descriptor::mode::multiply)"
+      }
+    ]
+  },
+  {
+    "file": "ffn-pair-probe/baseline.metal",
+    "sha256": "c87dad8c651b77d6595cc5698a7d989229e51b04cecd5c5350b83e4621bfa52b",
+    "descriptors": [
+      {
+        "line": 19,
+        "descriptor": "matmul2d_descriptor(\n        64, 64, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      },
+      {
+        "line": 85,
+        "descriptor": "matmul2d_descriptor(\n        TOKEN_ROWS, OUTPUT_COLS, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      },
+      {
+        "line": 149,
+        "descriptor": "matmul2d_descriptor(\n        64, OUTPUT_COLS, static_cast<int>(dynamic_extent), false, true, false,\n        matmul2d_descriptor::mode::multiply)"
+      }
+    ]
+  },
+  {
+    "file": "gemm-tile-probe/tiles.metal",
+    "sha256": "7ca7dc950cc71b207a6964e98b9d45f88593662aed53d98b8c2648e248d21e53",
+    "descriptors": [
+      {
+        "line": 24,
+        "descriptor": "matmul2d_descriptor(\n        64, 64, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      },
+      {
+        "line": 66,
+        "descriptor": "matmul2d_descriptor(\n        TOKEN_ROWS, OUTPUT_COLS, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      }
+    ]
+  },
+  {
+    "file": "gemm-layout-probe/tiles.metal",
+    "sha256": "5aa57fd8fa2315c2a03e3eefeff7cebb758f49a7ff24f05e8d19c1a2800157e4",
+    "descriptors": [
+      {
+        "line": 15,
+        "descriptor": "matmul2d_descriptor(64,128,STATIC_K,false,!PRETRANSPOSED,false,matmul2d_descriptor::mode::multiply)"
+      }
+    ]
+  },
+  {
+    "file": "gemm-swizzle-probe/production-shapes.metal",
+    "sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+    "descriptors": [
+      {
+        "line": 28,
+        "descriptor": "matmul2d_descriptor(\n        TOKEN_ROWS, OUTPUT_COLS, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      }
+    ]
+  },
+  {
+    "file": "gemm-swizzle-probe/kernels.metal",
+    "sha256": "9f568f67affbd42704836909694b63b6add869d872354c06718ac5c39cfb0f5c",
+    "descriptors": [
+      {
+        "line": 28,
+        "descriptor": "matmul2d_descriptor(\n        TOKEN_ROWS, OUTPUT_COLS, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      },
+      {
+        "line": 82,
+        "descriptor": "matmul2d_descriptor(\n        64, 64, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      }
+    ]
+  },
+  {
+    "file": "gemm-swizzle-probe/production-fixed-extract.metal",
+    "sha256": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+    "descriptors": [
+      {
+        "line": 7,
+        "descriptor": "matmul2d_descriptor(\n        64, 64, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      }
+    ]
+  },
+  {
+    "file": "gemm-split3-probe/production-shapes.metal",
+    "sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+    "descriptors": [
+      {
+        "line": 28,
+        "descriptor": "matmul2d_descriptor(\n        TOKEN_ROWS, OUTPUT_COLS, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      }
+    ]
+  },
+  {
+    "file": "gemm-split3-probe/candidate.metal",
+    "sha256": "f8ce76964d7025476cc44decde63ef1c4e65cc9cdb8f5e1f09690c2cd31bc1cb",
+    "descriptors": [
+      {
+        "line": 30,
+        "descriptor": "matmul2d_descriptor(64, 128, static_cast<int>(dynamic_extent),\n        false, true, false, matmul2d_descriptor::mode::multiply)"
+      }
+    ]
+  },
+  {
+    "file": "gemm-split3-probe/baseline.metal",
+    "sha256": "9505a34d21d4d6bd11a532a62549d00c8cafbad90ab92f2bd07cccb4eae30725",
+    "descriptors": [
+      {
+        "line": 28,
+        "descriptor": "matmul2d_descriptor(\n        TOKEN_ROWS, OUTPUT_COLS, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      },
+      {
+        "line": 82,
+        "descriptor": "matmul2d_descriptor(\n        64, 64, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      }
+    ]
+  },
+  {
+    "file": "gemm-split3-probe/production-fixed-extract.metal",
+    "sha256": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+    "descriptors": [
+      {
+        "line": 7,
+        "descriptor": "matmul2d_descriptor(\n        64, 64, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      }
+    ]
+  },
+  {
+    "file": "gemm-two-simd-probe/production-shapes.metal",
+    "sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+    "descriptors": [
+      {
+        "line": 28,
+        "descriptor": "matmul2d_descriptor(\n        TOKEN_ROWS, OUTPUT_COLS, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      }
+    ]
+  },
+  {
+    "file": "gemm-two-simd-probe/candidate.metal",
+    "sha256": "24114d6b601bdbe5978c68cdcf4ce11f094b250642a268d1b10338aa1ec9fefc",
+    "descriptors": [
+      {
+        "line": 28,
+        "descriptor": "matmul2d_descriptor(\n        TOKEN_ROWS, OUTPUT_COLS, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      }
+    ]
+  },
+  {
+    "file": "gemm-two-simd-probe/baseline.metal",
+    "sha256": "9505a34d21d4d6bd11a532a62549d00c8cafbad90ab92f2bd07cccb4eae30725",
+    "descriptors": [
+      {
+        "line": 28,
+        "descriptor": "matmul2d_descriptor(\n        TOKEN_ROWS, OUTPUT_COLS, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      },
+      {
+        "line": 82,
+        "descriptor": "matmul2d_descriptor(\n        64, 64, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      }
+    ]
+  },
+  {
+    "file": "gemm-two-simd-probe/production-fixed-extract.metal",
+    "sha256": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+    "descriptors": [
+      {
+        "line": 7,
+        "descriptor": "matmul2d_descriptor(\n        64, 64, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      }
+    ]
+  },
+  {
+    "file": "gemm-independent-simd-probe/production-shapes.metal",
+    "sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+    "descriptors": [
+      {
+        "line": 28,
+        "descriptor": "matmul2d_descriptor(\n        TOKEN_ROWS, OUTPUT_COLS, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      }
+    ]
+  },
+  {
+    "file": "gemm-independent-simd-probe/candidate.metal",
+    "sha256": "a99df4aca3b12685bdf5d1080f2b14503234a8e58ef41c57b3f431d6789c9f39",
+    "descriptors": [
+      {
+        "line": 29,
+        "descriptor": "matmul2d_descriptor(\n        32, 32, 128, false, true, false, matmul2d_descriptor::mode::multiply_accumulate)"
+      }
+    ]
+  },
+  {
+    "file": "gemm-independent-simd-probe/baseline.metal",
+    "sha256": "9505a34d21d4d6bd11a532a62549d00c8cafbad90ab92f2bd07cccb4eae30725",
+    "descriptors": [
+      {
+        "line": 28,
+        "descriptor": "matmul2d_descriptor(\n        TOKEN_ROWS, OUTPUT_COLS, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      },
+      {
+        "line": 82,
+        "descriptor": "matmul2d_descriptor(\n        64, 64, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      }
+    ]
+  },
+  {
+    "file": "gemm-independent-simd-probe/production-fixed-extract.metal",
+    "sha256": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+    "descriptors": [
+      {
+        "line": 7,
+        "descriptor": "matmul2d_descriptor(\n        64, 64, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      }
+    ]
+  },
+  {
+    "file": "gemm-interleaved-pair-probe/production-shapes.metal",
+    "sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+    "descriptors": [
+      {
+        "line": 28,
+        "descriptor": "matmul2d_descriptor(\n        TOKEN_ROWS, OUTPUT_COLS, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      }
+    ]
+  },
+  {
+    "file": "gemm-interleaved-pair-probe/candidate.metal",
+    "sha256": "ae3ae6f2633c9e6e8c94844b1ec8fe9715d9b6d0bf739332e599ffe8115ccc70",
+    "descriptors": [
+      {
+        "line": 30,
+        "descriptor": "matmul2d_descriptor(\n        64, 256, static_cast<int>(dynamic_extent), false, true, false,\n        matmul2d_descriptor::mode::multiply)"
+      }
+    ]
+  },
+  {
+    "file": "gemm-interleaved-pair-probe/baseline.metal",
+    "sha256": "9505a34d21d4d6bd11a532a62549d00c8cafbad90ab92f2bd07cccb4eae30725",
+    "descriptors": [
+      {
+        "line": 28,
+        "descriptor": "matmul2d_descriptor(\n        TOKEN_ROWS, OUTPUT_COLS, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      },
+      {
+        "line": 82,
+        "descriptor": "matmul2d_descriptor(\n        64, 64, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      }
+    ]
+  },
+  {
+    "file": "gemm-interleaved-pair-probe/production-fixed-extract.metal",
+    "sha256": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+    "descriptors": [
+      {
+        "line": 7,
+        "descriptor": "matmul2d_descriptor(\n        64, 64, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      }
+    ]
+  },
+  {
+    "file": "q4-tensor-prototype/candidates.metal",
+    "sha256": "ebcb6ba3f76dc81ab7c8bab59d46dfe476d0d0a46df3c07e7b7205fd24fc51b2",
+    "descriptors": [
+      {
+        "line": 39,
+        "descriptor": "matmul2d_descriptor(64,64,256,false,true,false,matmul2d_descriptor::mode::multiply_accumulate)"
+      },
+      {
+        "line": 94,
+        "descriptor": "matmul2d_descriptor(64,64,32,false,true,false,matmul2d_descriptor::mode::multiply)"
+      },
+      {
+        "line": 123,
+        "descriptor": "matmul2d_descriptor(64,64,static_cast<int>(dynamic_extent),false,true,false)"
+      }
+    ]
+  },
+  {
+    "file": "q4-tensor-prototype/combined.metal",
+    "sha256": "a9ee628fdadb1b841c61d0a5a7c66d687b013ad72447989f0723b07b6885e9bd",
+    "descriptors": [
+      {
+        "line": 12,
+        "descriptor": "matmul2d_descriptor(\n        64, 64, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      },
+      {
+        "line": 74,
+        "descriptor": "matmul2d_descriptor(\n        TOKEN_ROWS, OUTPUT_COLS, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      },
+      {
+        "line": 160,
+        "descriptor": "matmul2d_descriptor(64,64,256,false,true,false,matmul2d_descriptor::mode::multiply_accumulate)"
+      },
+      {
+        "line": 215,
+        "descriptor": "matmul2d_descriptor(64,64,32,false,true,false,matmul2d_descriptor::mode::multiply)"
+      },
+      {
+        "line": 244,
+        "descriptor": "matmul2d_descriptor(64,64,static_cast<int>(dynamic_extent),false,true,false)"
+      }
+    ]
+  },
+  {
+    "file": "q4-tensor-prototype/baseline.metal",
+    "sha256": "2fe0e11a47ce6c691b537935521df6dcf32197fe05cc122728779ffe2aa0688a",
+    "descriptors": [
+      {
+        "line": 12,
+        "descriptor": "matmul2d_descriptor(\n        64, 64, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      },
+      {
+        "line": 74,
+        "descriptor": "matmul2d_descriptor(\n        TOKEN_ROWS, OUTPUT_COLS, static_cast<int>(dynamic_extent), false, true, false,\n        ACCUMULATE ? matmul2d_descriptor::mode::multiply_accumulate : matmul2d_descriptor::mode::multiply)"
+      }
+    ]
+  }
+]

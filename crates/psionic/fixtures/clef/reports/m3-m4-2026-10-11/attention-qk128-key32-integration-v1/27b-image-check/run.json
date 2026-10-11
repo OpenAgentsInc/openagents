@@ -1,0 +1,124 @@
+{
+  "config": {
+    "binary": "<INTEGRATION>/psionic-openai-server",
+    "gguf": "<SCRATCH>/artifacts/Clef-Q4_K_M.gguf",
+    "head": "<SCRATCH>/artifacts/clef-bf16/joint_head.safetensors",
+    "vision_manifest": "<OWNER_HOME>/.ollama/models/manifests/registry.ollama.ai/library/clef/latest",
+    "vision_blobs": "<OWNER_HOME>/.ollama/models/blobs",
+    "output": "<INTEGRATION>/27b-image-check",
+    "chunk": 512,
+    "max_rss_gib": 52,
+    "minimum_start_available_gib": 64,
+    "minimum_available_gib": 12,
+    "startup_timeout": 600,
+    "deadline_seconds": 1800,
+    "request_timeout": 300,
+    "env": {
+      "PSIONIC_CLEF_METAL_FFN_WEIGHTS": "q4k-on-demand",
+      "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+      "PSIONIC_CLEF_METAL_GEMM": "weight-shapes",
+      "PSIONIC_CLEF_METAL_HEAD": "fused-fields",
+      "PSIONIC_CLEF_METAL_DELTA": "sequential",
+      "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0",
+      "PSIONIC_CLEF_BATCH_REQUESTS": "1"
+    },
+    "checks": [
+      {
+        "suite": "images",
+        "reference": "<SCRATCH>/reference27b/images-mps-bf16.json"
+      }
+    ]
+  },
+  "status": "complete",
+  "artifacts": {
+    "binary": {
+      "path": "<INTEGRATION>/psionic-openai-server",
+      "sha256": "f4def388b4b6622fef9023c2616639c215829d7a519359eb64d1dbca9fdfa31f",
+      "bytes": 22003352
+    },
+    "gguf": {
+      "path": "<SCRATCH>/artifacts/Clef-Q4_K_M.gguf",
+      "sha256": "9997675e4c9e9016273372b5fdedbdda7ad14285bc722949e4b9daca62bf3822",
+      "bytes": 19232219200
+    },
+    "head": {
+      "path": "<SCRATCH>/artifacts/clef-bf16/joint_head.safetensors",
+      "sha256": "a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+      "bytes": 256125024
+    },
+    "vision_manifest": {
+      "path": "<OWNER_HOME>/.ollama/models/manifests/registry.ollama.ai/library/clef/latest",
+      "sha256": "6ba6665c02c62493b331a705508d12ded428888c5c82d4d90e46ad0babdb4dc0",
+      "bytes": 271805
+    }
+  },
+  "checks": [
+    {
+      "suite": "images",
+      "output": "0-images.json",
+      "exit_code": 0
+    }
+  ],
+  "head_source": "external official BF16 safetensors, converted by the native head loader",
+  "preflight": {
+    "available_memory_bytes": 104884502528,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 2747549,
+      "inactive": 3149894,
+      "speculative": 504199
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "command": [
+    "<INTEGRATION>/psionic-openai-server",
+    "--decision-model",
+    "<SCRATCH>/artifacts/Clef-Q4_K_M.gguf",
+    "--clef-head",
+    "<SCRATCH>/artifacts/clef-bf16/joint_head.safetensors",
+    "--decision-device",
+    "metal",
+    "--decision-vision-manifest",
+    "<OWNER_HOME>/.ollama/models/manifests/registry.ollama.ai/library/clef/latest",
+    "--decision-vision-blobs",
+    "<OWNER_HOME>/.ollama/models/blobs",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "0",
+    "--decision-chunk",
+    "512"
+  ],
+  "endpoint": "http://127.0.0.1:62974",
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 76441,
+    "max_rss_bytes": 55834574848,
+    "peak_rss_bytes": 45371916288,
+    "peak_physical_footprint_bytes": 28145222536,
+    "peak_accounted_bytes": 45371916288,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 131,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 76497256448,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [
+      {
+        "owned_pid": 76441,
+        "signal": 0,
+        "error_type": "PermissionError",
+        "errno": 1,
+        "leader_exit_code": -15,
+        "verified_group_members": 0
+      }
+    ],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "elapsed_seconds": 70.072723584
+}

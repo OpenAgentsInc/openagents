@@ -1,0 +1,434 @@
+diff --git a/crates/psionic/crates/psionic-backend-metal/src/clef_attention.rs b/crates/psionic/crates/psionic-backend-metal/src/clef_attention.rs
+index 92490ee9e9..d58ad4e5fd 100644
+--- a/crates/psionic/crates/psionic-backend-metal/src/clef_attention.rs
++++ b/crates/psionic/crates/psionic-backend-metal/src/clef_attention.rs
+@@ -7,8 +7,13 @@ use std::str::FromStr;
+ 
+ /// Query rows computed by one fused threadgroup.
+ pub const CLEF_FUSED_QUERY_TILE: usize = 16;
+-/// Cache rows processed by one fused key tile.
++/// Cache rows processed by each online softmax and value-product update.
+ pub const CLEF_FUSED_KEY_TILE: usize = 32;
++/// Cache rows scored by one fused query-key product.
++pub const CLEF_FUSED_SCORE_TILE: usize = 128;
++/// Static storage for scores, half probabilities, and the running output.
++pub const CLEF_FUSED_THREADGROUP_BYTES: usize =
++    CLEF_FUSED_QUERY_TILE * (CLEF_FUSED_SCORE_TILE * 4 + CLEF_FUSED_KEY_TILE * 2 + 256 * 4);
+ /// Threads dispatched in one fused threadgroup.
+ pub const CLEF_FUSED_THREADS: usize = 128;
+ 
+@@ -179,6 +184,22 @@ mod tests {
+         }
+     }
+ 
++    #[test]
++    fn score_batch_keeps_the_online_update_width_and_bounds_threadgroup_storage() {
++        let shader = include_str!("kernels/clef_fused_attention.metal");
++        for (name, value) in [
++            ("kQueries", CLEF_FUSED_QUERY_TILE),
++            ("kKeys", CLEF_FUSED_KEY_TILE),
++            ("kScoreKeys", CLEF_FUSED_SCORE_TILE),
++            ("kThreads", CLEF_FUSED_THREADS),
++        ] {
++            assert!(shader.contains(&format!("{name} = {value}")));
++        }
++        assert_eq!(CLEF_FUSED_KEY_TILE, 32);
++        assert_eq!(CLEF_FUSED_SCORE_TILE, 4 * CLEF_FUSED_KEY_TILE);
++        assert_eq!(CLEF_FUSED_THREADGROUP_BYTES, 25_600);
++    }
++
+     #[test]
+     fn invalid_head_shapes_are_rejected_even_for_empty_requests() {
+         for n in [0, 1] {
+@@ -209,7 +230,7 @@ mod tests {
+ 
+     #[test]
+     fn partial_query_tiles_and_absolute_cache_positions_are_kept() {
+-        for first in [0, 31, 32, 63, 64, 65, 2049] {
++        for first in [0, 31, 32, 63, 64, 65, 127, 128, 129, 2049] {
+             for (n, groups) in [
+                 (1, 1),
+                 (15, 1),
+@@ -219,6 +240,9 @@ mod tests {
+                 (32, 2),
+                 (33, 3),
+                 (65, 5),
++                (127, 8),
++                (128, 8),
++                (129, 9),
+             ] {
+                 let plan = ClefAttentionPlan::new(n, 12, 3, 256, first).unwrap();
+                 assert_eq!(plan.keys, first + n);
+diff --git a/crates/psionic/crates/psionic-backend-metal/src/clef_prefill/tests.rs b/crates/psionic/crates/psionic-backend-metal/src/clef_prefill/tests.rs
+index ee8bdc8054..62d9fb4d36 100644
+--- a/crates/psionic/crates/psionic-backend-metal/src/clef_prefill/tests.rs
++++ b/crates/psionic/crates/psionic-backend-metal/src/clef_prefill/tests.rs
+@@ -198,7 +198,7 @@ fn fused_attention_matches_dense_and_staged_at_tails_and_absolute_positions() {
+     let metal = ClefMetal::new_with_attention(ClefMetalAttention::FusedTensorOps)
+         .expect("fused Metal device");
+     for (heads, kv_heads) in [(1, 1), (6, 2)] {
+-        for first in [0, 31, 32, 33, 65] {
++        for first in [0, 31, 32, 33, 65, 127, 128, 129] {
+             for n in [1, 15, 16, 17, 33] {
+                 let inputs = Inputs::patterned(n, heads, kv_heads, first);
+                 let expected = dense_attention(&inputs);
+@@ -265,7 +265,7 @@ fn fused_attention_masks_finite_future_values_and_handles_uniform_probabilities(
+     // f16. The online path sums unnormalized ones before dividing by three.
+     // Both must stay close to the independent oracle; exact equality between
+     // implementations would assert a different numerical contract.
+-    for visible in [3, 65, 97] {
++    for visible in [3, 65, 97, 127, 128, 129] {
+         let mut uniform = Inputs::patterned(1, 6, 2, visible - 1);
+         uniform.query.fill(0.0);
+         uniform.key.fill(0.0);
+@@ -289,65 +289,68 @@ fn fused_attention_masks_finite_future_values_and_handles_uniform_probabilities(
+ fn fused_attention_rescales_across_large_tile_maximum_changes() {
+     let metal = ClefMetal::new_with_attention(ClefMetalAttention::FusedTensorOps)
+         .expect("fused Metal device");
+-    for tile_scores in [
+-        [96.0, 104.0, 112.0],
+-        [112.0, 104.0, 96.0],
+-        [-96.0, 0.0, 96.0],
+-        [96.0, 0.0, -96.0],
+-    ] {
+-        // One nonzero query component makes the score exactly the first key
+-        // component. Scores and values remain exactly representable in f16.
+-        // The first two key tiles are full; queries see 1..17 keys of tile 3.
+-        let mut inputs = Inputs::patterned(17, 6, 2, 64);
+-        inputs.query.fill(0.0);
+-        inputs.key.fill(0.0);
+-        for row in 0..inputs.n {
+-            for head in 0..inputs.heads {
+-                inputs.query[(row * inputs.heads + head) * DIM] = 1.0;
++    for tile_width in [32, 128] {
++        for tile_scores in [
++            [96.0, 104.0, 112.0],
++            [112.0, 104.0, 96.0],
++            [-96.0, 0.0, 96.0],
++            [96.0, 0.0, -96.0],
++        ] {
++            // One nonzero query component makes the score exactly the first key
++            // component. Scores and values remain exactly representable in f16.
++            // Two score bands are full; queries see 1..17 keys of the third.
++            let mut inputs = Inputs::patterned(17, 6, 2, 2 * tile_width);
++            inputs.query.fill(0.0);
++            inputs.key.fill(0.0);
++            for row in 0..inputs.n {
++                for head in 0..inputs.heads {
++                    inputs.query[(row * inputs.heads + head) * DIM] = 1.0;
++                }
+             }
+-        }
+-        for key in 0..inputs.first + inputs.n {
+-            let tile = key / 32;
+-            for head in 0..inputs.kv_heads {
+-                let start = (key * inputs.kv_heads + head) * DIM;
+-                inputs.key[start] = tile_scores[tile] + (key % 32) as f32 / 8.0 + head as f32 / 4.0;
+-                for d in 0..DIM {
+-                    // Different tile values make stale output accumulators
+-                    // visible when a later score maximum rescales the sum.
+-                    inputs.value[start + d] = [-0.75, 0.25, 0.875][tile]
+-                        + (key % 5) as f32 / 16.0
+-                        + (d % 7) as f32 / 128.0
+-                        + head as f32 / 8.0;
++            for key in 0..inputs.first + inputs.n {
++                let tile = key / tile_width;
++                for head in 0..inputs.kv_heads {
++                    let start = (key * inputs.kv_heads + head) * DIM;
++                    inputs.key[start] =
++                        tile_scores[tile] + (key % 32) as f32 / 8.0 + head as f32 / 4.0;
++                    for d in 0..DIM {
++                        // Different tile values make stale output accumulators
++                        // visible when a later score maximum rescales the sum.
++                        inputs.value[start + d] = [-0.75, 0.25, 0.875][tile]
++                            + (key % 5) as f32 / 16.0
++                            + (d % 7) as f32 / 128.0
++                            + head as f32 / 8.0;
++                    }
+                 }
+             }
++            let expected = dense_attention(&inputs);
++            let fused = run_attention(&metal, &inputs, true);
++            let staged = run_attention(&metal, &inputs, false);
++            let context = format!("tile width {tile_width}, score bases {tile_scores:?}");
++            // Acceptance bounds are unmeasured. They allow half-probability
++            // rounding while rejecting unstable softmax or missing rescaling.
++            assert_close(
++                &fused,
++                &expected,
++                7.5e-4,
++                1.5e-3,
++                &format!("fused vs dense {context}"),
++            );
++            assert_close(
++                &staged,
++                &expected,
++                7.5e-4,
++                1.5e-3,
++                &format!("staged vs dense {context}"),
++            );
++            assert_close(
++                &fused,
++                &staged,
++                7.5e-4,
++                1.5e-3,
++                &format!("fused vs staged {context}"),
++            );
+         }
+-        let expected = dense_attention(&inputs);
+-        let fused = run_attention(&metal, &inputs, true);
+-        let staged = run_attention(&metal, &inputs, false);
+-        let context = format!("tile score bases {tile_scores:?}");
+-        // Acceptance bounds are unmeasured. They allow half-probability
+-        // rounding while rejecting unstable softmax or missing rescaling.
+-        assert_close(
+-            &fused,
+-            &expected,
+-            7.5e-4,
+-            1.5e-3,
+-            &format!("fused vs dense {context}"),
+-        );
+-        assert_close(
+-            &staged,
+-            &expected,
+-            7.5e-4,
+-            1.5e-3,
+-            &format!("staged vs dense {context}"),
+-        );
+-        assert_close(
+-            &fused,
+-            &staged,
+-            7.5e-4,
+-            1.5e-3,
+-            &format!("fused vs staged {context}"),
+-        );
+     }
+ }
+ 
+@@ -356,29 +359,37 @@ fn fused_attention_rescales_across_large_tile_maximum_changes() {
+ fn fused_attention_repeats_exactly_and_matches_non_aligned_chunks() {
+     let metal = ClefMetal::new_with_attention(ClefMetalAttention::FusedTensorOps)
+         .expect("fused Metal device");
+-    let inputs = Inputs::patterned(65, 6, 2, 65);
+-    let whole = run_attention(&metal, &inputs, true);
+-    let repeated = run_attention(&metal, &inputs, true);
+-    let bits = |values: &[f32]| {
+-        values
+-            .iter()
+-            .map(|value| value.to_bits())
+-            .collect::<Vec<_>>()
+-    };
+-    assert_eq!(
+-        bits(&whole),
+-        bits(&repeated),
+-        "identical inputs must repeat bit for bit"
+-    );
+-    for chunk in [15, 17, 31, 33] {
+-        let mut combined = Vec::with_capacity(whole.len());
+-        for first in (0..inputs.n).step_by(chunk) {
+-            let part = inputs.chunk(first, chunk.min(inputs.n - first));
+-            combined.extend(run_attention(&metal, &part, true));
++    for absolute_first in [65, 127, 128, 129] {
++        let inputs = Inputs::patterned(65, 6, 2, absolute_first);
++        let whole = run_attention(&metal, &inputs, true);
++        let repeated = run_attention(&metal, &inputs, true);
++        let bits = |values: &[f32]| {
++            values
++                .iter()
++                .map(|value| value.to_bits())
++                .collect::<Vec<_>>()
++        };
++        assert_eq!(
++            bits(&whole),
++            bits(&repeated),
++            "identical inputs must repeat bit for bit"
++        );
++        for chunk in [15, 17, 31, 33] {
++            let mut combined = Vec::with_capacity(whole.len());
++            for first in (0..inputs.n).step_by(chunk) {
++                let part = inputs.chunk(first, chunk.min(inputs.n - first));
++                combined.extend(run_attention(&metal, &part, true));
++            }
++            // Chunk grouping can change the number of masked columns in the last
++            // TensorOps tile. Require a tight bound without claiming bitwise parity.
++            assert_close(
++                &combined,
++                &whole,
++                2e-5,
++                5e-5,
++                &format!("first {absolute_first}, chunk {chunk}"),
++            );
+         }
+-        // Chunk grouping can change the number of masked columns in the last
+-        // TensorOps tile. Require a tight bound without claiming bitwise parity.
+-        assert_close(&combined, &whole, 2e-5, 5e-5, &format!("chunk {chunk}"));
+     }
+ }
+ 
+diff --git a/crates/psionic/crates/psionic-backend-metal/src/kernels/clef_fused_attention.metal b/crates/psionic/crates/psionic-backend-metal/src/kernels/clef_fused_attention.metal
+index 6fdb1b2eaa..291c52c6a3 100644
+--- a/crates/psionic/crates/psionic-backend-metal/src/kernels/clef_fused_attention.metal
++++ b/crates/psionic/crates/psionic-backend-metal/src/kernels/clef_fused_attention.metal
+@@ -15,7 +15,7 @@ struct FlashArgs {
+     uint first;
+ };
+ 
+-// One threadgroup owns 16 queries of one query head and streams 32-key tiles.
++// One threadgroup owns 16 queries of one query head and batches 128 QK scores and keeps 32-key softmax/PV updates.
+ // Dispatch (ceil(n / 16), heads, 1) threadgroups of exactly (128, 1, 1) threads.
+ // Q is [n, heads, 256]; K and V are [first + n, kv_heads, 256]; output is
+ // [n, heads, 256]. Q already contains the attention scale. Inputs must be finite.
+@@ -23,7 +23,7 @@ struct FlashArgs {
+ // kv_heads. Dynamic tensor extents bound tail loads; padded inputs are not needed.
+ //
+ // Both products use MPP matmul2d with f32 accumulation. Scores, probabilities,
+-// and the running output occupy 19,456 bytes of threadgroup memory, independent
++// and the running output occupy 25,600 bytes of threadgroup memory, independent
+ // of the sequence length. No sequence-sized score or probability matrix exists.
+ // Online softmax rounds its unnormalized exponentials to f16 before the PV
+ // product and sums those same values in f32. This differs from the staged path,
+@@ -33,7 +33,7 @@ kernel void clef_flash_attention256_tensorops(
+     device const half *vcache [[buffer(2)]], device float *out [[buffer(3)]],
+     constant FlashArgs &a [[buffer(4)]], uint3 tg [[threadgroup_position_in_grid]],
+     uint3 tid_v [[thread_position_in_threadgroup]], uint3 threads [[threads_per_threadgroup]]) {
+-    constexpr uint kQueries = 16, kKeys = 32, kDim = 256, kThreads = 128;
++    constexpr uint kQueries = 16, kKeys = 32, kScoreKeys = 128, kDim = 256, kThreads = 128;
+     constexpr uint kRowLanes = kThreads / kQueries;
+     constexpr uint kIntMax = 0x7fffffff;
+     const uint tid = tid_v.x;
+@@ -50,7 +50,7 @@ kernel void clef_flash_attention256_tensorops(
+         return;
+     }
+ 
+-    threadgroup float scores[kQueries * kKeys];
++    threadgroup float scores[kQueries * kScoreKeys];
+     threadgroup half probabilities[kQueries * kKeys];
+     threadgroup float running[kQueries * kDim];
+ 
+@@ -70,12 +70,12 @@ kernel void clef_flash_attention256_tensorops(
+         (device half *)(q16 + (ulong(query_base) * a.heads + head) * kDim),
+         dextents<int32_t, 2>(int(kDim), int(query_count)), array<int32_t, 2>{1, query_stride});
+     tensor<threadgroup float, dextents<int32_t, 2>, tensor_inline> score_tile(
+-        scores, dextents<int32_t, 2>(int(kKeys), int(query_count)), array<int32_t, 2>{1, int(kKeys)});
++        scores, dextents<int32_t, 2>(int(kScoreKeys), int(query_count)), array<int32_t, 2>{1, int(kScoreKeys)});
+     tensor<threadgroup float, dextents<int32_t, 2>, tensor_inline> output_tile(
+         running, dextents<int32_t, 2>(int(kDim), int(query_count)));
+ 
+     constexpr auto score_desc = matmul2d_descriptor(
+-        kQueries, kKeys, kDim, false, true, false, matmul2d_descriptor::mode::multiply);
++        kQueries, kScoreKeys, kDim, false, true, false, matmul2d_descriptor::mode::multiply);
+     constexpr auto value_desc = matmul2d_descriptor(
+         kQueries, kDim, kKeys, false, false, false, matmul2d_descriptor::mode::multiply_accumulate);
+     matmul2d<score_desc, execution_simdgroups<4>> score_op;
+@@ -88,58 +88,65 @@ kernel void clef_flash_attention256_tensorops(
+     float row_sum = 0.0f;
+     threadgroup_barrier(mem_flags::mem_threadgroup);
+ 
+-    for (uint key_base = 0; key_base < key_limit; key_base += kKeys) {
+-        const uint key_count = min(kKeys, key_limit - key_base);
+-        const ulong cache_offset = (ulong(key_base) * a.kv_heads + kv_head) * kDim;
++    for (uint score_base = 0; score_base < key_limit; score_base += kScoreKeys) {
++        const uint score_count = min(kScoreKeys, key_limit - score_base);
++        const ulong score_offset = (ulong(score_base) * a.kv_heads + kv_head) * kDim;
+         tensor<device half, dextents<int32_t, 2>, tensor_inline> keys(
+-            (device half *)(kcache + cache_offset), dextents<int32_t, 2>(int(kDim), int(key_count)),
++            (device half *)(kcache + score_offset), dextents<int32_t, 2>(int(kDim), int(score_count)),
+             array<int32_t, 2>{1, cache_stride});
+-        tensor<device half, dextents<int32_t, 2>, tensor_inline> values(
+-            (device half *)(vcache + cache_offset), dextents<int32_t, 2>(int(kDim), int(key_count)),
+-            array<int32_t, 2>{1, cache_stride});
+-        tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline> probability_tile(
+-            probabilities, dextents<int32_t, 2>(int(key_count), int(query_count)),
+-            array<int32_t, 2>{1, int(kKeys)});
+-
+         score_op.run(queries, keys, score_tile);
+         threadgroup_barrier(mem_flags::mem_threadgroup);
+ 
+-        // Eight adjacent lanes own a query row. XOR shuffles stay inside each
+-        // eight-lane group, including all four row groups within a SIMD group.
+-        float row_scores[kKeys / kRowLanes];
+-        float tile_max = -INFINITY;
+-        for (uint c = 0; c < kKeys / kRowLanes; ++c) {
+-            const uint key = lane * (kKeys / kRowLanes) + c;
+-            const bool visible = active && key < key_count && key_base + key <= position;
+-            row_scores[c] = visible ? scores[row * kKeys + key] : -INFINITY;
+-            tile_max = max(tile_max, row_scores[c]);
+-        }
+-        tile_max = max(tile_max, simd_shuffle_xor(tile_max, ushort(1)));
+-        tile_max = max(tile_max, simd_shuffle_xor(tile_max, ushort(2)));
+-        tile_max = max(tile_max, simd_shuffle_xor(tile_max, ushort(4)));
+-        const float new_max = max(row_max, tile_max);
+-        // A wholly masked tile preserves the preceding state. This also avoids
+-        // exp(-infinity - -infinity) for inactive tail rows.
+-        const float alpha = new_max == row_max ? 1.0f : exp(row_max - new_max);
+-        float tile_sum = 0.0f;
+-        for (uint c = 0; c < kKeys / kRowLanes; ++c) {
+-            const uint key = lane * (kKeys / kRowLanes) + c;
+-            const half p = row_scores[c] == -INFINITY ? half(0) : half(exp(row_scores[c] - new_max));
+-            probabilities[row * kKeys + key] = p;
+-            tile_sum += float(p);
+-        }
+-        tile_sum += simd_shuffle_xor(tile_sum, ushort(1));
+-        tile_sum += simd_shuffle_xor(tile_sum, ushort(2));
+-        tile_sum += simd_shuffle_xor(tile_sum, ushort(4));
+-        row_sum = row_sum * alpha + tile_sum;
+-        row_max = new_max;
+-        for (uint d = lane; d < kDim; d += kRowLanes) {
+-            running[row * kDim + d] *= alpha;
+-        }
+-        threadgroup_barrier(mem_flags::mem_threadgroup);
++        // Preserve each original 32-key online update, including f16 rounding,
++        // the eight-lane sum tree, running-state scaling, and PV reduction.
++        for (uint score_part = 0; score_part < score_count; score_part += kKeys) {
++            const uint key_base = score_base + score_part;
++            const uint key_count = min(kKeys, key_limit - key_base);
++            const ulong cache_offset = (ulong(key_base) * a.kv_heads + kv_head) * kDim;
++            tensor<device half, dextents<int32_t, 2>, tensor_inline> values(
++                (device half *)(vcache + cache_offset), dextents<int32_t, 2>(int(kDim), int(key_count)),
++                array<int32_t, 2>{1, cache_stride});
++            tensor<threadgroup half, dextents<int32_t, 2>, tensor_inline> probability_tile(
++                probabilities, dextents<int32_t, 2>(int(key_count), int(query_count)),
++                array<int32_t, 2>{1, int(kKeys)});
+ 
+-        value_op.run(probability_tile, values, output_tile);
+-        threadgroup_barrier(mem_flags::mem_threadgroup);
++            // Eight adjacent lanes own a query row. XOR shuffles stay inside each
++            // eight-lane group, including all four row groups within a SIMD group.
++            float row_scores[kKeys / kRowLanes];
++            float tile_max = -INFINITY;
++            for (uint c = 0; c < kKeys / kRowLanes; ++c) {
++                const uint key = lane * (kKeys / kRowLanes) + c;
++                const bool visible = active && key < key_count && key_base + key <= position;
++                row_scores[c] = visible ? scores[row * kScoreKeys + score_part + key] : -INFINITY;
++                tile_max = max(tile_max, row_scores[c]);
++            }
++            tile_max = max(tile_max, simd_shuffle_xor(tile_max, ushort(1)));
++            tile_max = max(tile_max, simd_shuffle_xor(tile_max, ushort(2)));
++            tile_max = max(tile_max, simd_shuffle_xor(tile_max, ushort(4)));
++            const float new_max = max(row_max, tile_max);
++            // A wholly masked tile preserves the preceding state. This also avoids
++            // exp(-infinity - -infinity) for inactive tail rows.
++            const float alpha = new_max == row_max ? 1.0f : exp(row_max - new_max);
++            float tile_sum = 0.0f;
++            for (uint c = 0; c < kKeys / kRowLanes; ++c) {
++                const uint key = lane * (kKeys / kRowLanes) + c;
++                const half p = row_scores[c] == -INFINITY ? half(0) : half(exp(row_scores[c] - new_max));
++                probabilities[row * kKeys + key] = p;
++                tile_sum += float(p);
++            }
++            tile_sum += simd_shuffle_xor(tile_sum, ushort(1));
++            tile_sum += simd_shuffle_xor(tile_sum, ushort(2));
++            tile_sum += simd_shuffle_xor(tile_sum, ushort(4));
++            row_sum = row_sum * alpha + tile_sum;
++            row_max = new_max;
++            for (uint d = lane; d < kDim; d += kRowLanes) {
++                running[row * kDim + d] *= alpha;
++            }
++            threadgroup_barrier(mem_flags::mem_threadgroup);
++
++            value_op.run(probability_tile, values, output_tile);
++            threadgroup_barrier(mem_flags::mem_threadgroup);
++        }
+     }
+ 
+     if (active) {

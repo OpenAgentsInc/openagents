@@ -1,0 +1,36 @@
+{
+  "method": "source-only; no compilation or GPU execution for this question",
+  "official_spec": {
+    "url": "https://developer.apple.com/metal/Metal-Shading-Language-Specification.pdf",
+    "version": "4.1",
+    "date": "2026-06-04",
+    "section": "7.2.1",
+    "table": "7.4",
+    "printed_page": 354,
+    "sha256": "41538b30d2f1140a5b2a0c84ce0a9f7b67bf0c707e224cfea0bfe5a44aa26cf5"
+  },
+  "installed_headers": [
+    {
+      "sdk_relative_path": "MPPTensorOpsMatMul2d.h",
+      "sha256": "9c8fa78dd5e9b7a1ad8a2d0e6cd007a816ac750041da15b1015b38c7459d8a6b",
+      "lines": [
+        98,
+        359,
+        366
+      ]
+    },
+    {
+      "sdk_relative_path": "__impl/MPPTensorOpsMatMul2dImpl.h",
+      "sha256": "527511bd1a45f0f4361c684b1019d6cc06e1c9703e6f1908384320133bfaa43a",
+      "lines": [
+        43,
+        1158,
+        1176,
+        8709
+      ]
+    }
+  ],
+  "mlx_source_manifest_sha256": "7480c3a5593388bc33900e9eb8666ba567c14dae1e78f937bd21327fc2edb726",
+  "prior_descriptor_manifest_sha256": "bed31932c28e8ca3e2b85c606393e6a3fbd174bd20592a7934cda8ce092c16db",
+  "readme_sha256": "c6bd88ecbf5a036547ebc186ab980b0b93ad4ebccec5a57dae6502c81142ae46"
+}

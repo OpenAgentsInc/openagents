@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "runner_exit": 0,
+  "source_sha256": {
+    "check_images.py": "7bdc906bdd162ac0912bd72db3aafd5395c2b1eaf71f509c12524ce5ca735386",
+    "native_image_parity.py": "1d5b1d43fbb7d0ae709fc238d264e048dcbb3ba6b314c0b9127e696a5ce530d2"
+  },
+  "candidate_binary_sha256": "f4def388b4b6622fef9023c2616639c215829d7a519359eb64d1dbca9fdfa31f"
+}

@@ -1,0 +1,91 @@
+{
+  "status": "source-only; no compile/GPU",
+  "candidate": "one interleaved 64x256 full-K four-SIMD gate/up product; separate unchanged f32 SiLU then half; baseline down",
+  "production_sources": [
+    {
+      "path": "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_prefill.metal",
+      "sha256": "623fba25dbe8a230d92f88e840c2c363961f926c3b908089ce8ba3688a3f2865"
+    },
+    {
+      "path": "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_gemm_shapes.metal",
+      "sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978"
+    },
+    {
+      "path": "crates/psionic/crates/psionic-backend-metal/src/clef_gemm.rs",
+      "sha256": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac"
+    }
+  ],
+  "asset_directory": "../gemm-tile-probe",
+  "weights_manifest_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+  "private_source_copied": false,
+  "limits": {
+    "gpu_owned_group_gib": 2,
+    "gpu_minimum_start_gib": 14,
+    "minimum_available_gib": 12,
+    "gpu_wall_seconds": 60,
+    "build_owned_group_gib": 4,
+    "build_minimum_start_gib": 16,
+    "build_wall_seconds": 180,
+    "explicit_buffer_bytes": 1073741824,
+    "internal_gpu_wall_seconds": 50,
+    "driver_and_owned_expected_limit_bytes": 1610612736
+  },
+  "memory_accounting": {
+    "n": 2048,
+    "weights_with_redzones": 503318528,
+    "input_with_redzones": 16777728,
+    "one_state_with_redzones": 285214208,
+    "two_owned_expectations": 570425344,
+    "common_activation_with_redzones": 50332160,
+    "capture_combined_payload_bytes": 1375735808,
+    "timing_explicit_bytes": 855642624,
+    "timing_combined_payload_bytes": 1426067968,
+    "largest_weight_read_temporary_bytes": 100663296,
+    "temporary_does_not_overlap_expectations": true
+  },
+  "timing": {
+    "tokens": [
+      512,
+      1024,
+      2048
+    ],
+    "rounds": 5,
+    "order": [
+      "baseline",
+      "interleaved",
+      "interleaved",
+      "baseline"
+    ],
+    "scopes": [
+      "gate_up",
+      "activation",
+      "down_accumulate",
+      "full_ffn_accumulate"
+    ],
+    "commands": 240,
+    "dispatches": 420
+  },
+  "expected": {
+    "small_checks": 18,
+    "weighted_checks": 5,
+    "expectation_checks": 3,
+    "timing_rows": 240,
+    "check_commands": 46,
+    "check_dispatches": 161,
+    "bench_commands": 292,
+    "bench_dispatches": 602
+  },
+  "f32_and_f64_absolute_limit": 0.001,
+  "half_gate": {
+    "finite": true,
+    "absolute_at_most": 0.001,
+    "or_ULP_at_most": 1,
+    "criterion_version": 2,
+    "frozen_before_first_build": true
+  },
+  "full_model_gate_unchanged": true,
+  "compile_flags": [
+    "-std=metal4.0"
+  ],
+  "sweep": false
+}

@@ -1,0 +1,14 @@
+{
+  "checks": {
+    "python_AST": "passed",
+    "git_diff_check": "passed",
+    "rustfmt": "passed",
+    "compare_attention_self_test": "passed",
+    "flash_baseline_metadata_audit": "passed",
+    "27b_baseline_metadata_audit": "passed"
+  },
+  "unchanged_serving_files": 157,
+  "model_execution": false,
+  "source_manifest_sha256": "843d7861b221b650d17f4a4902c2297117765e583a2d6159dce6ae797da70a09",
+  "harness_sha256": "f0ce13d58c2fe7e68d7c6b9fede7bdf59b21a8af7e167efc8362f37b28e1759c"
+}

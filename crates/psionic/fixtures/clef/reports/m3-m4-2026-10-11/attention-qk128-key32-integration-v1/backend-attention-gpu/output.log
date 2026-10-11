@@ -1,0 +1,9 @@
+
+running 4 tests
+test clef_prefill::tests::fused_attention_masks_finite_future_values_and_handles_uniform_probabilities ... ok
+test clef_prefill::tests::fused_attention_matches_dense_and_staged_at_tails_and_absolute_positions ... ok
+test clef_prefill::tests::fused_attention_repeats_exactly_and_matches_non_aligned_chunks ... ok
+test clef_prefill::tests::fused_attention_rescales_across_large_tile_maximum_changes ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 89 filtered out; finished in 1.14s
+
