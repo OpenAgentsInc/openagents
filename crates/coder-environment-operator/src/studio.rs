@@ -463,6 +463,9 @@ impl Studio {
                 let _ = studio.work.send(Work::Run(s.id));
             }
         }
+        // End every Claude Code run that was working when the server
+        // stopped: nothing drives it after a restart (#11331).
+        studio.runs.recover();
         spawn_sweeper(Arc::downgrade(&studio));
         Ok(studio)
     }

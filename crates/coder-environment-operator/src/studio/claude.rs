@@ -483,6 +483,123 @@ impl Runs {
             .map_err(|_| "The run couldn't start.")?;
         Ok(id)
     }
+
+    /// End every run the server was driving when it stopped (#11331): a
+    /// run's driver lives in this process and its Claude credential only
+    /// in memory, so after a restart nothing would ever move it again. Each
+    /// one ends with a plain message (a stop that was asked for ends as
+    /// stopped), takes no more turns, and its computer stops on its own
+    /// thread, which records the computer time it used: the run costs only
+    /// that. Its ids. Call once, as the server starts.
+    pub fn recover(&self) -> Vec<String> {
+        let ended = self.end_interrupted();
+        let ids = ended.iter().map(|(_, record)| record.id.clone()).collect();
+        for (lease, record) in ended {
+            if record.resource.is_none() {
+                continue;
+            }
+            let _ = std::thread::Builder::new()
+                .name(format!("recover-{}", record.id))
+                .spawn(move || stop_computer(lease, record));
+        }
+        ids
+    }
+
+    /// The ending half of [`Self::recover`]: each run with no driver left
+    /// mid-turn, ended and saved, with the lease that holds it.
+    fn end_interrupted(&self) -> Vec<(coder_cloud::Lease, Record)> {
+        let mut ended = Vec::new();
+        let Ok(dirs) = std::fs::read_dir(&self.root) else {
+            return ended;
+        };
+        for dir in dirs.flatten() {
+            if !dir.path().is_dir() {
+                continue;
+            }
+            let Some(environment) = dir.file_name().to_str().map(str::to_owned) else {
+                continue;
+            };
+            let store = self.store(&environment);
+            for listed in store.list().unwrap_or_default() {
+                if !interrupted(listed.state) {
+                    continue;
+                }
+                // A driver still holding it keeps it.
+                let Ok(lease) = store.lease(&listed.id) else {
+                    continue;
+                };
+                let Ok(mut record) = lease.read(&listed.id) else {
+                    continue;
+                };
+                if !interrupted(record.state) {
+                    continue;
+                }
+                if record.cancel_requested || lease.cancelled() {
+                    record.cancel_requested = true;
+                    record.state = State::Cancelled;
+                } else {
+                    record.state = State::Failed;
+                    record.error = Some(RESTARTED.into());
+                }
+                record.updated_ms = coder_cloud::now_ms();
+                if lease.save(&record).is_err() {
+                    continue;
+                }
+                close_inbox(&inbox_path(&self.root, &environment, &record.id));
+                ended.push((lease, record));
+            }
+        }
+        ended
+    }
+}
+
+/// What a run the server restarted under says (#11331).
+pub const RESTARTED: &str = "The server restarted while Claude Code was working, so this run stopped. You pay only for the time it used. Send a message to continue in a new run.";
+
+/// Whether a run in `state` needs its driver: started and not yet ended
+/// or paused. A paused run waits without one ([`Runs::choose`]).
+fn interrupted(state: State) -> bool {
+    !state.terminal() && state != State::Paused
+}
+
+/// Stop a recovered run's computer and record the time it used; its own
+/// fresh computer is then deleted, the person's signed-in one kept.
+fn stop_computer(lease: coder_cloud::Lease, mut record: Record) {
+    let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    else {
+        return;
+    };
+    let own_computer = !record.binding["home"].is_string();
+    runtime.block_on(async {
+        let Ok(client) = boat::Client::from_env().await else {
+            return;
+        };
+        let backend = coder_cloud::boat_backend::Boat {
+            client,
+            credentials: Credentials::default(),
+        };
+        match backend.cleanup(&record).await {
+            Ok(usage) => {
+                record.usage = usage;
+                record.cleanup_complete = true;
+                record.cleanup_error = None;
+            }
+            Err(error) => record.cleanup_error = Some(error),
+        }
+        let _ = lease.save(&record);
+        if let Some(id) = disposable(own_computer, &record) {
+            let _ = backend
+                .client
+                .delete_sandbox(&boat::models::DeleteSandboxParams {
+                    sandbox_id: id.clone(),
+                    x_ascii_confirm_delete: id.clone(),
+                    ..Default::default()
+                })
+                .await;
+        }
+    });
 }
 
 /// What Claude Code is asked: the person's words, then where the
@@ -1242,6 +1359,98 @@ mod tests {
         // A stopped run takes no next turn.
         record.cancel_requested = true;
         assert!(!next_turn(&mut record, &["x".into()]));
+    }
+
+    /// #11331: a run working when the server restarted ends with a plain
+    /// message, keeps what it cost, and a message to it starts a new run;
+    /// a paused run, an ended one, and one a driver holds are left alone.
+    #[test]
+    fn a_server_restart_ends_a_run_left_mid_turn() {
+        let dir = tempfile::tempdir().unwrap();
+        let spec = Spec {
+            placement: Placement::Boat,
+            mode: Mode::Coder,
+            agent: coder_cloud::claude::ENGINE.into(),
+            task: task("Fix it", "/home/user/repo"),
+            model: None,
+            reasoning: None,
+            cwd: PathBuf::from("/home/user/repo"),
+            timeout_seconds: RUN_SECONDS,
+            size: "small".into(),
+            template: None,
+            credential_names: vec![],
+        };
+        let store = Store::under(dir.path().join("env-1"));
+        let save = |id: &str, state: State, cancel: bool| {
+            let mut record = Record::new(id, spec.clone()).unwrap();
+            record.state = state;
+            record.cancel_requested = cancel;
+            record.resource = Some(format!("bx_{id}"));
+            record.usage = Some(json!({"cost_usd": 0.25}));
+            store.lease(id).unwrap().save(&record).unwrap();
+        };
+        save("claude-env-1-1", State::Running, false);
+        save("claude-env-1-2", State::Running, true);
+        save("claude-env-1-3", State::Completed, false);
+        save("claude-env-1-4", State::Dispatching, false);
+        paused_run(&Runs::under(dir.path()), "env-1", "claude-env-1-5");
+        // A driver still at work on this one.
+        save("claude-env-1-6", State::Running, false);
+        let held = store.lease("claude-env-1-6").unwrap();
+        let before = Runs::under(dir.path());
+        assert_eq!(
+            before
+                .message("env-1", "claude-env-1-1", "Also add a test.")
+                .unwrap(),
+            Sent::NextTurn
+        );
+
+        // The server restarts.
+        let runs = Runs::under(dir.path());
+        let mut ended: Vec<String> = runs
+            .end_interrupted()
+            .into_iter()
+            .map(|(_, record)| record.id)
+            .collect();
+        ended.sort();
+        assert_eq!(
+            ended,
+            ["claude-env-1-1", "claude-env-1-2", "claude-env-1-4"]
+        );
+        let run = runs.read("env-1", "claude-env-1-1").unwrap();
+        assert_eq!(run.state, RunState::Failed);
+        assert_eq!(run.error.as_deref(), Some(RESTARTED));
+        assert_eq!(run.cost_usd, Some(0.25), "it costs only what it used");
+        assert_eq!(
+            runs.read("env-1", "claude-env-1-2").unwrap().state,
+            RunState::Stopped
+        );
+        assert_eq!(
+            runs.read("env-1", "claude-env-1-3").unwrap().state,
+            RunState::Done
+        );
+        assert_eq!(
+            runs.read("env-1", "claude-env-1-5").unwrap().state,
+            RunState::Paused
+        );
+        assert_eq!(
+            runs.read("env-1", "claude-env-1-6").unwrap().state,
+            RunState::Running
+        );
+        drop(held);
+        // The person continues in a new run.
+        assert!(runs.waiting("env-1", "claude-env-1-1").is_empty());
+        assert_eq!(
+            runs.message("env-1", "claude-env-1-1", "Go on.").unwrap(),
+            Sent::Ended
+        );
+        // Recovering again takes only the run its driver let go of.
+        let again: Vec<String> = runs
+            .end_interrupted()
+            .into_iter()
+            .map(|(_, record)| record.id)
+            .collect();
+        assert_eq!(again, ["claude-env-1-6"]);
     }
 
     #[test]
