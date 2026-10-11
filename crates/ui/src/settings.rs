@@ -975,9 +975,9 @@ pub struct UiSettings {
     pub files_word_wrap: bool,
     /// Include hidden and ignored entries in workspace file trees.
     pub files_show_all: bool,
-    /// The session card (project, device, side chats, actions) beside the
-    /// transcript.
-    pub session_info_open: bool,
+    /// The user hid the session card (project, device, side chats, actions)
+    /// that otherwise shows beside a transcript with room for it.
+    pub session_info_hidden: bool,
     /// Interactive identity overlay; imported themes default to their own accent.
     pub accent: zeron_theme::AccentSelection,
     /// Glass policy, independent from the selected appearance, theme, and accent.
@@ -1085,7 +1085,7 @@ impl Default for UiSettings {
             files_autosave_delay_ms: FILES_AUTOSAVE_DELAY_DEFAULT_MS,
             files_word_wrap: false,
             files_show_all: false,
-            session_info_open: false,
+            session_info_hidden: false,
             accent: zeron_theme::AccentSelection::default(),
             surface: zeron_theme::SurfacePreference::default(),
             new_thread_composer_background: None,
@@ -1728,7 +1728,7 @@ impl UiSettings {
             files_autosave_delay_ms,
             files_word_wrap,
             files_show_all,
-            session_info_open,
+            session_info_hidden,
             accent,
             surface,
             new_thread_composer_background,
@@ -2803,7 +2803,7 @@ mod tests {
             code_font_family: crate::typography::UiFontFamily::Geist,
             code_font_size: 11.0,
             files_show_all: true,
-            session_info_open: true,
+            session_info_hidden: true,
             accent: zeron_theme::AccentSelection::Preset(zeron_theme::AccentPreset::Cyan),
             surface: zeron_theme::SurfacePreference::Frosted,
             new_thread_composer_background: Some(NewThreadComposerBackground {

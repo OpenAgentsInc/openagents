@@ -714,7 +714,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn the_session_card_docks_beside_a_wide_transcript_and_floats_over_a_narrow_one(
+    fn the_session_card_shows_beside_a_wide_transcript_and_opens_over_a_narrow_one(
         cx: &mut gpui::TestAppContext,
     ) {
         let dir = tempfile::tempdir().unwrap();
@@ -727,24 +727,52 @@ mod tests {
                 shell
                     .state
                     .update(cx, |state, _| state.selected_chat = Some("regular".into()));
-                shell.toggle_session_info(cx);
+                // The card eases in and out; settle each change at once.
+                crate::motion::set_reduced_motion(cx, true);
             })
             .unwrap();
         let mut cx = gpui::VisualTestContext::from_window(window.into(), cx);
-        for (width, docked) in [(1600.0, true), (700.0, false)] {
-            cx.simulate_resize(gpui::size(px(width), px(900.0)));
-            cx.run_until_parked();
-            let card = cx
-                .debug_bounds("session-info")
-                .expect("the card shows for a selected chat");
-            assert!(card.right() <= px(width), "{width}: inside the window");
-            let actions = cx.debug_bounds("session-info-side-chat").unwrap();
-            assert!(card.contains(&actions.center()));
-            if docked {
-                // Docked, the transcript keeps the card's room clear.
-                assert!(card.left() > px(width / 2.0));
-            }
-        }
+
+        // With room, it shows on its own, clear of the centered transcript.
+        cx.simulate_resize(gpui::size(px(1600.0), px(900.0)));
+        cx.run_until_parked();
+        let card = cx
+            .debug_bounds("session-info")
+            .expect("a wide column shows the card unasked");
+        assert!(card.right() <= px(1600.0));
+        assert!(card.left() > px(800.0 + 736.0 / 2.0));
+        let actions = cx.debug_bounds("session-info-side-chat").unwrap();
+        assert!(card.contains(&actions.center()));
+
+        // Without room it hides, and opening it floats it over the transcript.
+        cx.simulate_resize(gpui::size(px(900.0), px(900.0)));
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("session-info").is_none());
+        window
+            .update(&mut cx, |shell, _, cx| shell.toggle_session_info(cx))
+            .unwrap();
+        cx.run_until_parked();
+        let card = cx
+            .debug_bounds("session-info")
+            .expect("opening shows the card over a narrow column");
+        assert!(card.right() <= px(900.0));
+
+        // The toggle closes it again.
+        window
+            .update(&mut cx, |shell, _, cx| shell.toggle_session_info(cx))
+            .unwrap();
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("session-info").is_none());
+
+        // Choosing one of its rows dismisses it too.
+        window
+            .update(&mut cx, |shell, _, cx| shell.toggle_session_info(cx))
+            .unwrap();
+        cx.run_until_parked();
+        let fork = cx.debug_bounds("session-info-fork").unwrap();
+        cx.simulate_click(fork.center(), gpui::Modifiers::none());
+        cx.run_until_parked();
+        assert!(cx.debug_bounds("session-info").is_none());
     }
 
     #[gpui::test]
