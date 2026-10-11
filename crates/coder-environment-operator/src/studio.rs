@@ -812,6 +812,29 @@ impl Studio {
     pub fn stop_claude(&self, id: &str, run: &str) -> Result<(), String> {
         self.runs.stop(id, run)
     }
+
+    /// What a paused run offers the person whose saved Claude credential
+    /// is `saved` (#11293).
+    pub fn claude_choices(
+        &self,
+        id: &str,
+        run: &str,
+        saved: Option<coder_cloud::claude::OwnCredential>,
+    ) -> Vec<coder_cloud::claude_task::PauseChoice> {
+        self.runs.choices(id, run, saved)
+    }
+
+    /// Apply the person's choice to a paused run ([`claude::Runs::choose`]).
+    /// `own` is their own saved credential, used only to continue on it.
+    pub fn choose_claude(
+        &self,
+        id: &str,
+        run: &str,
+        choice: coder_cloud::claude_task::PauseChoice,
+        own: Option<claude::Key>,
+    ) -> Result<claude::Chosen, String> {
+        self.runs.choose(id, run, choice, own)
+    }
 }
 
 /// A project identity from a repository name.

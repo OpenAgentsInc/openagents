@@ -2,6 +2,7 @@
 //! repository picker, the setup conversation (the same activity components
 //! as the demo), the Save card, and Claude Code runs.
 
+use coder_cloud::claude_task::PauseChoice;
 use coder_environment_operator::activity::{Entry, Record, Stage};
 use coder_environment_operator::agent::Phase;
 use coder_environment_operator::studio::claude::{self, Run, RunState};
@@ -728,8 +729,79 @@ pub(crate) fn run_word(state: RunState) -> &'static str {
     }
 }
 
+/// The form value naming a pause choice (#11293).
+pub(crate) fn choice_key(choice: PauseChoice) -> &'static str {
+    match choice {
+        PauseChoice::KeepWaiting => "wait",
+        PauseChoice::ContinueOnYourKey(_) => "key",
+        PauseChoice::ContinueWithOpenAgents => "openagents",
+    }
+}
+
+/// The button a pause choice shows; waiting shows no button, since it is
+/// what happens anyway.
+pub(crate) fn choice_label(choice: PauseChoice) -> Option<&'static str> {
+    match choice {
+        PauseChoice::KeepWaiting => None,
+        PauseChoice::ContinueOnYourKey(_) => Some("Continue on your key"),
+        PauseChoice::ContinueWithOpenAgents => Some("Continue with OpenAgents"),
+    }
+}
+
+/// The choice a form's `key` names among those `offered`.
+pub(crate) fn chosen(key: &str, offered: &[PauseChoice]) -> Option<PauseChoice> {
+    offered
+        .iter()
+        .copied()
+        .find(|choice| choice_key(*choice) == key)
+}
+
+/// What a paused run's card says about its choices.
+pub(crate) fn pause_line(until: Option<u64>, offered: &[PauseChoice]) -> String {
+    let when = until.map_or_else(
+        || "when the usage limit resets".to_owned(),
+        |at| format!("at {:02}:{:02} UTC", at / 3600 % 24, at / 60 % 60),
+    );
+    let more = offered.iter().any(|choice| choice_label(*choice).is_some());
+    if more {
+        format!("Paused by a Claude usage limit. It continues on its own {when}, or now:")
+    } else {
+        format!("Paused by a Claude usage limit. It continues on its own {when}.")
+    }
+}
+
+/// The pause choices of a paused run, as buttons posting to `action`.
+pub(crate) fn pause_choices(
+    action: &str,
+    hidden: Markup,
+    offered: &[PauseChoice],
+    htmx_target: Option<&str>,
+) -> Markup {
+    html! {
+        @for choice in offered {
+            @if let Some(label) = choice_label(*choice) {
+                form.oa-pause-choice method="post" action=(action)
+                    hx-post=[htmx_target.map(|_| action)]
+                    hx-target=[htmx_target]
+                    hx-swap=[htmx_target.map(|_| "outerHTML")] {
+                    (hidden)
+                    input type="hidden" name="choice" value=(choice_key(*choice));
+                    (submit(label, matches!(choice, PauseChoice::ContinueOnYourKey(_))))
+                }
+            }
+        }
+    }
+}
+
 /// A Claude Code run as a conversation.
+#[cfg(test)]
 pub(crate) fn run_transcript(run: &Run) -> Markup {
+    run_transcript_with(run, &[])
+}
+
+/// [`run_transcript`], with the pause choices `offered` to the viewer
+/// while a usage limit pauses it.
+pub(crate) fn run_transcript_with(run: &Run, offered: &[PauseChoice]) -> Markup {
     let mut turns: Vec<Markup> = vec![Message::user(&run.prompt).render()];
     if let Some(n) = run.version {
         turns.push(note(format!("Started from environment version {n}")).render());
@@ -755,8 +827,17 @@ pub(crate) fn run_transcript(run: &Run) -> Markup {
         RunState::Starting => {
             turns.push(note("Starting a computer from the environment…").render())
         }
+        RunState::Running if run.openagents => turns.push(note("OpenAgents is working…").render()),
         RunState::Running => turns.push(note("Claude Code is working…").render()),
-        RunState::Paused => turns.push(note(run_word(run.state)).render()),
+        RunState::Paused => {
+            turns.push(note(pause_line(run.paused_until, offered)).render());
+            turns.push(pause_choices(
+                &format!("/environments/{}/runs/{}/choose", run.environment, run.id),
+                html! {},
+                offered,
+                None,
+            ));
+        }
         RunState::Done => {}
         RunState::Failed => turns.push(
             note(

@@ -282,6 +282,7 @@ fn a_claude_code_run_reads_as_a_conversation() {
         created_ms: 1,
         cost_usd: None,
         paused_until: None,
+        openagents: false,
     };
     let html = view::run_transcript(&run).into_string();
     for needle in [
@@ -295,6 +296,49 @@ fn a_claude_code_run_reads_as_a_conversation() {
         assert!(html.contains(needle), "{needle} missing");
     }
     assert!(oa_copy::violations(&text(&html), &[]).is_empty());
+
+    // Paused by a usage limit: the choices it offers, as buttons.
+    use coder_cloud::claude::OwnCredential;
+    use coder_cloud::claude_task::PauseChoice;
+    let paused = Run {
+        state: RunState::Paused,
+        paused_until: Some(50_700),
+        ..run.clone()
+    };
+    let offered = [
+        PauseChoice::KeepWaiting,
+        PauseChoice::ContinueOnYourKey(OwnCredential::AnthropicApiKey),
+        PauseChoice::ContinueWithOpenAgents,
+    ];
+    let html = view::run_transcript_with(&paused, &offered).into_string();
+    for needle in [
+        "It continues on its own at 14:05 UTC, or now:",
+        "/environments/env-1/runs/claude-env-1-1/choose",
+        r#"name="choice" value="key""#,
+        r#"name="choice" value="openagents""#,
+        "Continue on your key",
+        "Continue with OpenAgents",
+        "/environments/env-1/runs/claude-env-1-1/stop",
+    ] {
+        assert!(html.contains(needle), "{needle} missing in {html}");
+    }
+    assert!(oa_copy::violations(&text(&html), &[]).is_empty());
+    let only_wait = view::run_transcript_with(&paused, &[PauseChoice::KeepWaiting]).into_string();
+    assert!(
+        !only_wait.contains("/choose"),
+        "no buttons when only waiting"
+    );
+    assert!(only_wait.contains("It continues on its own at 14:05 UTC."));
+    // A run Coder's own agent took over says so while it works.
+    let handed = Run {
+        openagents: true,
+        ..run
+    };
+    assert!(
+        view::run_transcript(&handed)
+            .into_string()
+            .contains("OpenAgents is working")
+    );
 }
 
 #[test]

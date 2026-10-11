@@ -215,14 +215,22 @@ is the person's own choice in their own Claude settings.
 **Today.** Local Coder already orders providers Codex → Claude → our cloud
 worker on Vertex (`capacity::Provider::Vertex`), which holds the Google
 credential on the worker; the person's own Vertex credential for Claude Code is
-supported in Cloud (`OA_CLAUDE_VERTEX`, BYO-04). A paused Cloud Claude task only
-waits.
+supported in Cloud (`OA_CLAUDE_VERTEX`, BYO-04).
 
 **Change.** A paused task offers **Keep waiting** (default), **Continue on your
 key** (the same Claude Code session on the person's own API key or their own
 Vertex/Bedrock/Foundry credential), or **Continue with OpenAgents** (Coder's own
 agent on our Vertex Gemini door, billed as our normal usage)
-([#11236](https://github.com/OpenAgentsInc/openagents/issues/11236)).
+([#11236](https://github.com/OpenAgentsInc/openagents/issues/11236)). On the web
+this is live for Claude Code runs in saved environments
+([#11293](https://github.com/OpenAgentsInc/openagents/issues/11293)): the run
+page and the chat's Agents panel show the two buttons beside "It continues on
+its own at …". The driver that holds the run's lease applies the choice; a
+saved subscription token is never offered or accepted as "your key"; and the
+OpenAgents hand-off is a new run of Coder's own agent in the same environment
+version whose launch finds no `claude` binary. Not yet: the same row in local
+Coder (`claude -p` runs with `--no-session-persistence`, so there is no
+session to resume yet) and the desktop and phone agent rows.
 
 **Different on purpose.** We never continue a customer's Claude Code session on
 Claude billed to our account, even on our Vertex: Anthropic's terms forbid

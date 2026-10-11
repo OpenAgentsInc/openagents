@@ -282,6 +282,7 @@ fn task_label(kind: TaskKind) -> &'static str {
         TaskKind::Claude => "Claude Code",
         TaskKind::Continue => "Cloud computer",
         TaskKind::Work => "Briefed agent",
+        TaskKind::OpenAgents => "OpenAgents",
     }
 }
 

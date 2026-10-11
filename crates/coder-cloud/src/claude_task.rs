@@ -456,6 +456,41 @@ pub fn handoff_prompt(task: &str) -> String {
     )
 }
 
+/// Where a hand-off run's record names the paused Claude task it
+/// continues (`binding["handed_from"]`). A run that carries it never
+/// starts `claude`: its launch turns Claude Code off for Coder's own agent
+/// ([`crate::runtime::launch_script`]).
+pub const HANDED_FROM: &str = "handed_from";
+/// The agent a hand-off runs: Coder's own loop, on the OpenAgents gateway.
+pub const HANDOFF_AGENT: &str = "microcoder";
+
+/// The job that takes over a paused Claude task the person handed to
+/// OpenAgents ([`Applied::HandOff`]): the same place, size, and working
+/// directory, Coder's own agent with `task`, and no Claude credential.
+#[must_use]
+pub fn handoff_spec(paused: &Record, task: String) -> Spec {
+    Spec {
+        mode: Mode::Coder,
+        agent: HANDOFF_AGENT.into(),
+        task,
+        model: None,
+        reasoning: None,
+        credential_names: Vec::new(),
+        ..paused.spec.clone()
+    }
+}
+
+/// Marks `record` as the hand-off of the paused task `from`.
+pub fn mark_handoff(record: &mut Record, from: &str) {
+    record.binding[HANDED_FROM] = json!(from);
+}
+
+/// Whether `record` is a hand-off run ([`HANDED_FROM`]).
+#[must_use]
+pub fn is_handoff(record: &Record) -> bool {
+    record.binding[HANDED_FROM].is_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -701,5 +736,33 @@ mod tests {
         assert!(super::pause(&handed).is_none());
         // Not paused: no choices.
         assert!(pause_choices(&handed, Some(OwnCredential::Vertex)).is_empty());
+    }
+
+    #[test]
+    fn a_hand_off_runs_coders_own_agent_and_never_starts_claude() {
+        let paused = paused_fixture();
+        let mut handed = paused.clone();
+        let Applied::HandOff { task } =
+            choose(&mut handed, PauseChoice::ContinueWithOpenAgents, None, 10).unwrap()
+        else {
+            panic!("expected a hand-off")
+        };
+        let spec = handoff_spec(&paused, task);
+        assert_eq!(spec.agent, HANDOFF_AGENT);
+        assert_ne!(spec.agent, crate::claude::ENGINE);
+        assert!(spec.credential_names.is_empty());
+        assert_eq!(spec.cwd, paused.spec.cwd);
+        let mut next = Record::new("j2", spec).unwrap();
+        assert!(!applies(&next.spec));
+        mark_handoff(&mut next, &paused.id);
+        assert!(is_handoff(&next));
+        let script = crate::runtime::launch_script(&next, "/home/user/.oa-coder/jobs/j2");
+        // No Claude Code binary is found, and the OpenAgents gateway stays on.
+        assert!(script.contains("export CLAUDE_BIN=/dev/null"), "{script}");
+        assert!(script.contains("unset CODER_CLOUD"));
+        assert!(script.contains("delegate 'microcoder'") || script.contains("delegate microcoder"));
+        // An ordinary run keeps Claude Code where the person set it up.
+        let plain = crate::runtime::launch_script(&paused, "/d");
+        assert!(!plain.contains("CLAUDE_BIN"));
     }
 }

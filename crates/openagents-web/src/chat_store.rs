@@ -443,6 +443,9 @@ pub(crate) enum TaskKind {
     /// An issue handed to the briefed agent (#11258,
     /// `crate::work_runs`): the task's id is the work run's.
     Work,
+    /// Coder's own agent, taking over a Claude Code run a usage limit
+    /// paused when the person chose Continue with OpenAgents (#11293).
+    OpenAgents,
 }
 
 /// A task's last known state, as the run reports it.

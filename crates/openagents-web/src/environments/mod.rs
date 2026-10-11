@@ -27,7 +27,7 @@
 //! pushed first, from the account service's per-account cache.
 
 pub(crate) mod push;
-mod view;
+pub(crate) mod view;
 
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -83,6 +83,7 @@ pub(crate) fn routes(app: &App) -> Router<App> {
         .route("/environments/{id}/runs/{run}", get(run))
         .route("/environments/{id}/runs/{run}/events", get(run_events))
         .route("/environments/{id}/runs/{run}/stop", post(stop))
+        .route("/environments/{id}/runs/{run}/choose", post(choose))
         .route_layer(axum::middleware::from_fn_with_state(
             app.clone(),
             signed_in_only,
@@ -687,6 +688,17 @@ async fn run(
     headers: HeaderMap,
     Path((id, run)): Path<(String, String)>,
 ) -> Response {
+    run_page(&app, &headers, id, run, None).await
+}
+
+async fn run_page(
+    app: &App,
+    headers: &HeaderMap,
+    id: String,
+    run: String,
+    notice: Option<&str>,
+) -> Response {
+    let (app, headers) = (app.clone(), headers.clone());
     let Some(studio) = studio(&app) else {
         return unavailable(&app, &headers);
     };
@@ -701,6 +713,8 @@ async fn run(
     };
     let stream = format!("/environments/{id}/runs/{run}/events");
     let rows = scope.rows(studio);
+    let saved = crate::cloud::byo::saved_class(&app, &headers).await;
+    let offered = studio.claude_choices(&id, &run, saved);
     protect(
         UiPage::new("Claude Code")
             .path(format!("/environments/{id}/runs/{run}"))
@@ -714,7 +728,10 @@ async fn run(
             )
             .sidebar_section(view::sidebar(&rows, Some(&id)))
             .content(html! {
-                div class="oa-thread-view" { (view::thread(&stream, view::run_transcript(&r))) }
+                div class="oa-thread-view" {
+                    (view::thread(&stream, view::run_transcript_with(&r, &offered)))
+                    @if let Some(notice) = notice { p role="status" { (notice) } }
+                }
             })
             .respond(&headers),
     )
@@ -735,17 +752,19 @@ async fn run_events(
     {
         return StatusCode::NOT_FOUND.into_response();
     }
+    let saved = crate::cloud::byo::saved_class(&app, &headers).await;
     let shutdown = app.config.shutdown.clone();
     let stream = futures_util::stream::unfold(
         (studio, id, run, String::new(), 0u16),
-        |(studio, id, run, mut last, ticks)| async move {
+        move |(studio, id, run, mut last, ticks)| async move {
             if ticks >= 600 {
                 return None;
             }
             tokio::time::sleep(Duration::from_secs(2)).await;
             let event = match studio.claude_run(&id, &run) {
                 Some(r) => {
-                    let body = view::run_transcript(&r).into_string();
+                    let offered = studio.claude_choices(&id, &run, saved);
+                    let body = view::run_transcript_with(&r, &offered).into_string();
                     if body != last {
                         last = body.clone();
                         Event::default().event("transcript").data(body)
@@ -784,6 +803,58 @@ async fn stop(
     }
     let _ = studio.stop_claude(&id, &run);
     let mut response = Redirect::to(&format!("/environments/{id}/runs/{run}")).into_response();
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    protect(response)
+}
+
+#[derive(Deserialize)]
+struct ChooseForm {
+    choice: String,
+}
+
+/// A paused run's choice (#11293): keep waiting, continue now on the
+/// person's own key (never a subscription token), or hand the rest to
+/// Coder's own agent, which never starts Claude Code.
+async fn choose(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((id, run)): Path<(String, String)>,
+    Form(form): Form<ChooseForm>,
+) -> Response {
+    let Some(studio) = studio(&app).cloned() else {
+        return unavailable(&app, &headers);
+    };
+    if !same_site(&headers) {
+        return refused();
+    }
+    if owner_of(&app, &studio, &headers, &id).await.is_none() || !valid_id(&run) {
+        return missing(&headers);
+    }
+    let saved = crate::cloud::byo::saved_class(&app, &headers).await;
+    let offered = studio.claude_choices(&id, &run, saved);
+    let Some(choice) = view::chosen(&form.choice, &offered) else {
+        return run_page(&app, &headers, id, run, Some("That choice isn't open now.")).await;
+    };
+    let own = match choice {
+        coder_cloud::claude_task::PauseChoice::ContinueOnYourKey(_) => {
+            crate::cloud::byo::run_key(&app, &headers).await
+        }
+        _ => None,
+    };
+    let chosen = {
+        let (studio, id, run) = (studio.clone(), id.clone(), run.clone());
+        tokio::task::spawn_blocking(move || studio.choose_claude(&id, &run, choice, own))
+            .await
+            .unwrap_or_else(|_| Err("That didn't go through. Try again.".into()))
+    };
+    let to = match chosen {
+        Ok(coder_environment_operator::studio::claude::Chosen::HandedOff { run: next }) => next,
+        Ok(_) => run,
+        Err(error) => return run_page(&app, &headers, id, run, Some(&error)).await,
+    };
+    let mut response = Redirect::to(&format!("/environments/{id}/runs/{to}")).into_response();
     response
         .headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
