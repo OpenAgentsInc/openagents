@@ -630,10 +630,7 @@ async fn gpu_current(shared: &Shared, records: &Records) -> Result<(), String> {
             }
             _ => Ok(()),
         },
-        Some(other) => Err(format!(
-            "The sealed GPU is asleep ({})",
-            other.to_lowercase()
-        )),
+        Some(_) => Err("The sealed GPU is asleep".into()),
     }
 }
 
