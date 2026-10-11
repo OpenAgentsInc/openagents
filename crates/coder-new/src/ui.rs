@@ -1077,7 +1077,7 @@ impl CachedEntry {
                 },
                 t::GRAY,
             ));
-            line.style = line.style.bg(t::BG_DARK);
+            line.style = line.style.bg(t::BG_LIGHT);
             self.lines.push(line);
         }
         if rows.len() > RUN_OUTPUT_HEIGHT {
@@ -1880,7 +1880,8 @@ mod run_viewport_tests {
             .unwrap();
         let buffer = terminal.backend().buffer();
         for y in start..start + 5 {
-            assert_eq!(buffer[(20, y as u16)].bg, t::BG_DARK);
+            assert_eq!(buffer[(20, y as u16)].bg, t::BG_LIGHT);
+            assert_eq!(buffer[(39, y as u16)].bg, t::BG_LIGHT);
             assert_eq!(
                 buffer[(39, y as u16)].symbol(),
                 if y == start + 4 { "█" } else { "│" }
