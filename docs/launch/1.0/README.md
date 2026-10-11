@@ -14,10 +14,11 @@ been posted or deployed. The launch is web and terminal (Coder) only.
 ## What has to be true first
 
 - **Coder 1.0.0 is built from `main` at `35e41fd528` or later** (#11091).
-  `/download` serves 1.0.0-rc.6 (`65f83ab379`), which doesn't have the new
-  Coder lines: `auto` in the input bar, Tab for `flash`, "Coder says it is
-  Coder", per-call usage, the Run box changes, and the Compacted row. If the
-  stable build is older, strike those lines.
+  1.0.0-rc.7 (release commit `1410028479`, from `main` at `b08bc25740`) is
+  on the rc channel and has every new Coder line: `auto` in the input bar,
+  Tab for `flash`, "Coder says it is Coder", per-call usage, the Run box
+  changes, and the Compacted row. `/download` names it once the website
+  deploy at `11b398e223` or later is live.
 - **The free daily allowance goes live with the production gateway
   deploy.** It is on staging today. Strike the line if production doesn't
   have it on launch day.
