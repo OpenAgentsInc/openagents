@@ -46,7 +46,11 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
     }
     // Both composers wrap at the terminal width less the prompt gutter, and
     // Up/Down move through exactly that layout.
-    app.composer_width = frame.area().width.saturating_sub(3).max(1);
+    app.composer_width = frame
+        .area()
+        .width
+        .saturating_sub(if app.mode == Mode::Demo { 3 } else { 2 })
+        .max(1);
     if app.mode == Mode::Demo {
         let mut demo = app.demo_view();
         coder_demo_ui::render(frame, &mut demo);
@@ -118,7 +122,7 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         }
         return;
     }
-    let (draft, cursor) = app.draft.wrapped(terminal_width.saturating_sub(3));
+    let (draft, cursor) = app.draft.wrapped(terminal_width.saturating_sub(2));
     let rail_height = (if app.mode == Mode::Demo {
         DEMOS.len()
     } else {
@@ -1381,9 +1385,9 @@ fn composer_view(
     frame.render_widget(
         Paragraph::new(span(
             if composer.mode == crate::composer_state::InputMode::Bash {
-                " !"
+                "!"
             } else {
-                " ❯"
+                "❯"
             },
             if main_selected {
                 t::TEXT_SECONDARY
@@ -1394,8 +1398,8 @@ fn composer_view(
         inner,
     );
     let text_area = Rect {
-        x: inner.x + 3,
-        width: inner.width - 3,
+        x: inner.x + 2,
+        width: inner.width - 2,
         ..inner
     };
     let scroll = cursor.1.saturating_sub(text_area.height.saturating_sub(1));
@@ -1429,6 +1433,26 @@ fn composer_view(
 mod export_notice_tests {
     use super::*;
     use ratatui::{Terminal, backend::TestBackend};
+
+    #[test]
+    fn composer_prompt_starts_at_the_left_edge() {
+        for (mode, glyph) in [
+            (crate::composer_state::InputMode::Prompt, "❯"),
+            (crate::composer_state::InputMode::Bash, "!"),
+        ] {
+            let mut app = App::default();
+            app.mode = Mode::Live;
+            app.composer.mode = mode;
+            app.draft.text = "hello".into();
+            let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
+            terminal.draw(|frame| render(frame, &mut app)).unwrap();
+            let buffer = terminal.backend().buffer();
+            let row = (0..20).find(|&y| buffer[(0, y)].symbol() == glyph).unwrap();
+            assert_eq!(buffer[(1, row)].symbol(), " ");
+            assert_eq!(buffer[(2, row)].symbol(), "h");
+            assert_eq!(app.composer_width, 58);
+        }
+    }
 
     #[test]
     fn select_all_shows_the_input_as_a_selection() {
