@@ -683,8 +683,8 @@ async fn local_turn(
             ..Streamed::default()
         };
         reply.usage.total_tokens = result["tokens"].as_u64().unwrap_or_default();
-        // The loop's dollars, for the status line (#11179).
-        reply.usage.cost = result["outcome"]["usd"].as_f64();
+        // Local subscriptions and house-key usage are not charges to the user.
+        reply.usage.cost = None;
         if !matches!(result["outcome"]["ending"]["reason"].as_str(), Some("finished" | "tests_held" | "checks_passed" | "asked")) {
             return Err(format!("The coding loop stopped: {}.", result["outcome"]));
         }

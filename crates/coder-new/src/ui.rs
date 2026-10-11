@@ -203,6 +203,20 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
             None
         },
     );
+    let path = repository_rail(app);
+    let composer_area = Rect {
+        x: terminal_x,
+        width: terminal_width,
+        ..composer
+    };
+    let path = truncate(&path, terminal_width.saturating_sub(6));
+    coder_terminal::rail(
+        composer_area,
+        frame.buffer_mut(),
+        composer.height.saturating_sub(1),
+        None,
+        Some((&path, Style::default().fg(t::GRAY))),
+    );
     context_view(frame, context, app);
     agent_rail(frame, rail, app);
     if app.model_picker.is_some() {
@@ -472,53 +486,54 @@ fn header_view(frame: &mut Frame, area: Rect, app: &App) {
     }
 }
 
-fn context_view(frame: &mut Frame, area: Rect, app: &App) {
+fn display_directory(path: &std::path::Path, home: Option<&std::path::Path>) -> String {
+    if let Some(relative) = home.and_then(|home| path.strip_prefix(home).ok()) {
+        if relative.as_os_str().is_empty() {
+            "~".into()
+        } else {
+            format!("~/{}", relative.display())
+        }
+    } else {
+        path.display().to_string()
+    }
+}
+
+fn repository_rail(app: &App) -> String {
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
     let directory = app
         .cwd
-        .as_ref()
-        .and_then(|path| path.file_name())
-        .and_then(|name| name.to_str())
-        .unwrap_or("openagents");
-    let branch = app.branch.as_deref().unwrap_or("main");
-    let mut suffix = format!(" / {branch}");
-    // A usage-limit pause and the session's dollars (#11179).
-    if let Some(status) = crate::long_session::status(app) {
-        suffix.push_str(&format!(" · {status}"));
+        .as_deref()
+        .map(|path| display_directory(path, home.as_deref()))
+        .unwrap_or_else(|| "openagents".into());
+    let mut text = directory;
+    if let Some(branch) = &app.branch {
+        text.push_str(&format!(" ({branch})"));
+    }
+    let cost = crate::long_session::session_cost(app);
+    if cost > 0.0 {
+        text.push_str(&format!(" · {}", agent_fleet::dollars(cost)));
+    }
+    text
+}
+
+fn context_view(frame: &mut Frame, area: Rect, app: &App) {
+    let mut parts = Vec::new();
+    if let Some(until) = crate::long_session::paused_until(app) {
+        parts.push(format!(
+            "Paused until {}",
+            crate::long_session::clock(until)
+        ));
     }
     if let Some(name) = &app.account {
-        suffix.push_str(&format!(" · {name}"));
+        parts.push(name.clone());
     }
-    let suffix_width = suffix.width().min(usize::from(u16::MAX)) as u16;
-    // A newer Coder (#11128) takes the row's end when the whole line fits.
     if let Some(update) = &app.update_line {
-        let update = format!(" · {update}");
-        let update_width = update.width().min(usize::from(u16::MAX)) as u16;
-        let rest = area.width.saturating_sub(update_width);
-        if update_width < area.width && rest > suffix_width + 4 {
-            let spans = vec![
-                span(truncate(directory, rest - suffix_width), t::TEXT_PRIMARY),
-                span(suffix, t::GRAY),
-                span(update, t::ACCENT_MODEL),
-            ];
-            frame.render_widget(Paragraph::new(Line::from(spans)), area);
-            return;
-        }
+        parts.push(update.clone());
     }
-    let spans = if suffix_width < area.width {
-        vec![
-            span(
-                truncate(directory, area.width - suffix_width),
-                t::TEXT_PRIMARY,
-            ),
-            span(suffix, t::GRAY),
-        ]
-    } else {
-        vec![span(
-            truncate(&format!("{directory}{suffix}"), area.width),
-            t::TEXT_PRIMARY,
-        )]
-    };
-    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+    frame.render_widget(
+        Paragraph::new(span(truncate(&parts.join(" · "), area.width), t::GRAY)),
+        area,
+    );
 }
 
 fn message_body(text: &str, width: u16) -> Vec<Line<'static>> {
@@ -1701,5 +1716,42 @@ mod run_viewport_tests {
         assert!(exported.contains("row 1\n"));
         assert!(exported.contains("row 10"));
         assert!(!exported.contains('█'));
+    }
+}
+
+#[cfg(test)]
+mod repository_tests {
+    use super::*;
+    #[test]
+    fn paths_use_home_prefix_only_for_descendants() {
+        use std::path::Path;
+        let home = Some(Path::new("/home/person"));
+        assert_eq!(
+            display_directory(Path::new("/home/person/openagents"), home),
+            "~/openagents"
+        );
+        assert_eq!(display_directory(Path::new("/home/person"), home), "~");
+        assert_eq!(
+            display_directory(Path::new("/home/person-other/repo"), home),
+            "/home/person-other/repo"
+        );
+    }
+    #[test]
+    fn repository_and_user_cost_are_on_bottom_right_rail() {
+        let mut app = App::default();
+        app.mode = Mode::Live;
+        app.cwd = Some("/work/repo".into());
+        app.branch = Some("feature".into());
+        app.live.cost_usd = 0.25;
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 20)).unwrap();
+        terminal.draw(|frame| render(frame, &mut app)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let row = (0..20)
+            .find(|&y| (0..4).any(|x| buffer[(x, y)].symbol() == "❯"))
+            .unwrap();
+        let text: String = (0..80).map(|x| buffer[(x, row + 1)].symbol()).collect();
+        assert!(text.contains("/work/repo (feature) · $0.25"), "{text}");
+        assert!(text.trim_end_matches(['─', '┘']).ends_with(' '), "{text}");
     }
 }

@@ -181,7 +181,11 @@ fn composer_rules(rendered: &str) -> Vec<(usize, &str)> {
     rendered
         .lines()
         .enumerate()
-        .filter(|(_, line)| line.starts_with('─') && line.ends_with('─'))
+        .filter(|(_, line)| {
+            (line.starts_with('─') && line.ends_with('─'))
+                || (line.starts_with('┌') && line.ends_with('┐'))
+                || (line.starts_with('└') && line.ends_with('┘'))
+        })
         .collect()
 }
 
@@ -672,10 +676,8 @@ fn header_and_rail_keep_compact_spacing_above_the_bottom_margin() {
         if target == Screen::Conversation {
             assert!(header.trim().is_empty());
             let bottom = composer_rules(&rendered)[1].0;
-            assert_eq!(
-                rendered.lines().nth(bottom + 1).unwrap().trim(),
-                "openagents / main"
-            );
+            assert!(rendered.lines().nth(bottom).unwrap().contains("openagents"));
+            assert!(rendered.lines().nth(bottom + 1).unwrap().trim().is_empty());
         } else {
             assert!(header.trim_end().ends_with("openagents / main"));
         }
@@ -1039,12 +1041,13 @@ fn repository_context_stays_below_multiline_input_and_truncates_on_resize() {
     for width in [110, 40, 24] {
         let rendered = screen(&mut app, width, 24);
         let bottom = composer_rules(&rendered)[1].0;
-        let context = rendered.lines().nth(bottom + 1).unwrap();
-        assert!(context.starts_with("  "));
-        assert!(context.contains(" / feature/layout"));
-        assert!(!transcript_text(&rendered).contains("my-project"));
-        if width >= 40 {
-            assert_eq!(context.trim(), "my-project / feature/layout");
+        let context = rendered.lines().nth(bottom).unwrap();
+        assert!(rendered.lines().nth(bottom + 1).unwrap().trim().is_empty());
+        if width >= 44 {
+            assert!(
+                context.contains("/workspace/my-project (feature/layout)"),
+                "{context}"
+            );
         } else {
             assert!(context.contains('…'));
         }

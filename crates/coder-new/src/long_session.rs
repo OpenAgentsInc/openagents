@@ -408,6 +408,7 @@ pub(crate) fn session_cost(app: &App) -> f64 {
 }
 
 /// The status line's long-session words: a pause and the dollars spent.
+#[cfg(test)]
 pub(crate) fn status(app: &App) -> Option<String> {
     if app.mode != Mode::Live {
         return None;

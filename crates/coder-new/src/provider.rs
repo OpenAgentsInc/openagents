@@ -489,6 +489,9 @@ impl Provider {
                 aggregate.text = joined;
                 aggregate.milliseconds =
                     u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+                if self.gateway {
+                    aggregate.usage.cost = None;
+                }
                 return Ok(aggregate);
             }
             if streamed.calls.iter().any(|call| seen.contains(&call.id)) {
@@ -840,11 +843,10 @@ impl Provider {
             .usage
             .total_tokens
             .saturating_add(result["tokens"].as_u64().unwrap_or_default());
-        aggregate.usage.cost = aggregate
-            .usage
-            .cost
-            .zip(result["outcome"]["usd"].as_f64())
-            .map(|(left, right)| left + right);
+        // Local fallback usage is covered by subscriptions or house keys.
+        if self.gateway {
+            aggregate.usage.cost = None;
+        }
         aggregate.finish_reason = Some("stop".into());
         aggregate.text = joined;
         aggregate.milliseconds = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
@@ -1661,7 +1663,7 @@ mod tests {
         assert_eq!(reply.text, text);
         assert_eq!(reply.model, "fixture/alternate");
         assert_eq!(reply.usage.total_tokens, 14);
-        assert_eq!(reply.usage.cost, Some(0.005));
+        assert_eq!(reply.usage.cost, Some(0.001));
         assert!(reply.first_text_ms.is_some());
         assert_eq!(reply.finish_reason.as_deref(), Some("stop"));
         let marker = models

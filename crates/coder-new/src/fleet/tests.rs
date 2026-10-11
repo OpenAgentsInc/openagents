@@ -150,8 +150,7 @@ REPLY="saw $seen running"
         assert_eq!(notice.status, agent_fleet::Status::Done, "{notice:?}");
         assert_eq!(notice.report.as_deref(), Some("saw 3 running"));
         assert_eq!(notice.tokens, 1100);
-        let cost = notice.cost_usd.unwrap();
-        assert!((cost - 0.003).abs() < 1e-9, "{cost}");
+        assert_eq!(notice.cost_usd, None);
         let worktree = notice.worktree.clone().unwrap();
         assert!(worktree.starts_with(f.repo.join(".coder/worktrees")));
         assert_eq!(
@@ -358,13 +357,13 @@ fn the_tools_refuse_without_git_under_the_floor_and_for_unknown_engines() {
 }
 
 #[test]
-fn codex_cost_is_estimated_and_reported_costs_win() {
+fn codex_cost_is_hidden_and_api_charges_are_kept() {
     let (tokens, cost) = usage(&json!({
         "transport":"codex-cli","model":"gpt-6-sol:high","tokens":1100,
         "usage":{"input_tokens":1000,"cached_input_tokens":500,"output_tokens":100}
     }));
     assert_eq!(tokens, 1100);
-    assert!((cost.unwrap() - (500.0 * 2.0 + 500.0 * 0.2 + 100.0 * 10.0) / 1e6).abs() < 1e-12);
+    assert_eq!(cost, None);
     assert_eq!(
         usage(&json!({"cost_usd":0.5,"usage":{"input_tokens":1,"output_tokens":2}})),
         (3, Some(0.5))

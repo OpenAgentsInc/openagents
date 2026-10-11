@@ -581,8 +581,7 @@ fn child_env(host: &Host, id: &str) -> Vec<(OsString, OsString)> {
     vars
 }
 
-/// Tokens and dollars an engine's result reports, or a list-price estimate
-/// for Codex, which reports none.
+/// Tokens and user API charges reported by an engine.
 #[must_use]
 pub fn usage(output: &Value) -> (u64, Option<f64>) {
     let tokens = output["tokens"]
@@ -596,51 +595,17 @@ pub fn usage(output: &Value) -> (u64, Option<f64>) {
             )
         })
         .unwrap_or(0);
-    let cost = output["cost_usd"]
-        .as_f64()
-        .or_else(|| output["usage"]["cost"].as_f64())
-        .or_else(|| {
-            if output["transport"] != "codex-cli" {
-                return None;
-            }
-            // Codex names its model only when one is chosen; otherwise it
-            // runs the one its own settings name.
-            let model = output["model"]
-                .as_str()
-                .map(str::to_owned)
-                .or_else(codex_default_model)?;
-            let model = model.split(':').next()?;
-            let input = output["usage"]["input_tokens"].as_u64()?;
-            let cached = output["usage"]["cached_input_tokens"].as_u64().unwrap_or(0);
-            let out = output["usage"]["output_tokens"].as_u64().unwrap_or(0);
-            coder_delegate::delegate::codex_cost(model, input.saturating_sub(cached), cached, out)
-        });
+    let cost = if matches!(
+        output["transport"].as_str(),
+        Some("codex-cli" | "claude-cli")
+    ) {
+        None
+    } else {
+        output["cost_usd"]
+            .as_f64()
+            .or_else(|| output["usage"]["cost"].as_f64())
+    };
     (tokens, cost)
-}
-
-/// The model Codex runs when none is named: `CODER_CODEX_MODEL`, else the
-/// `model` line of `$CODEX_HOME/config.toml` (`~/.codex/config.toml`).
-fn codex_default_model() -> Option<String> {
-    if cfg!(test) {
-        return None;
-    }
-    if let Some(model) = std::env::var("CODER_CODEX_MODEL")
-        .ok()
-        .filter(|model| !model.is_empty())
-    {
-        return Some(model);
-    }
-    let home = std::env::var_os("CODEX_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".codex")))?;
-    let text = std::fs::read_to_string(home.join("config.toml")).ok()?;
-    text.lines()
-        .take_while(|line| !line.trim_start().starts_with('['))
-        .find_map(|line| {
-            let (key, value) = line.split_once('=')?;
-            (key.trim() == "model").then(|| value.trim().trim_matches('"').to_owned())
-        })
-        .filter(|model| !model.is_empty())
 }
 
 /// Adds one engine event to the agent's own transcript.
@@ -706,3 +671,18 @@ fn write_transcript(
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod user_cost_tests {
+    #[test]
+    fn subscriptions_never_report_dollars() {
+        for transport in ["codex-cli", "claude-cli"] {
+            let output = serde_json::json!({"transport":transport,"model":"gpt-6.1-sol","tokens":42,"cost_usd":1.2,"usage":{"cost":1.2}});
+            assert_eq!(super::usage(&output), (42, None));
+        }
+        assert_eq!(
+            super::usage(&serde_json::json!({"tokens":42,"usage":{"cost":0.25}})),
+            (42, Some(0.25))
+        );
+    }
+}

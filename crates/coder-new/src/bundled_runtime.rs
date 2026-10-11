@@ -1349,7 +1349,10 @@ pub async fn microcoder_openrouter(
         model,
         effort,
     };
-    run_microcoder(task, cwd, &generator, jev, redaction_keys, cancel, emit).await
+    let mut result =
+        run_microcoder(task, cwd, &generator, jev, redaction_keys, cancel, emit).await?;
+    result["usage"] = json!({"cost": result["outcome"]["model_usd"]});
+    Ok(result)
 }
 
 async fn run_microcoder<G: Generate>(
