@@ -40,14 +40,19 @@ which ones. Chats group by project in the sidebar.
 Then `coder login` and `/sync on`. Your terminal chats show up in the web
 sidebar, live. While Coder is open, you can reply to them from the website.
 
-**6.** Sync is off until you turn it on. Before a message leaves your
+**6.** Coder's input says `auto`: OpenAgents picks the model for each
+message. Press Tab for `flash`, a fast model on your own key. Every model
+call's tokens, cost, and time are recorded, and `/export` saves them with
+the chat.
+
+**7.** Sync is off until you turn it on. Before a message leaves your
 computer, Coder checks it for keys and passwords and leaves out anything that
 looks like one.
 
-**7.** We ask our model providers not to train on your chats and not to keep
+**8.** We ask our model providers not to train on your chats and not to keep
 them, and we delete usage records after 30 days.
 
-**8.** The code for the website and Coder is open source:
+**9.** The code for the website and Coder is open source:
 github.com/OpenAgentsInc/openagents. Tell us what breaks.
 
 ## Notes for the owner
@@ -58,4 +63,9 @@ github.com/OpenAgentsInc/openagents. Tell us what breaks.
   lines; add the iPhone back once TestFlight review passes.
 - The thread says nothing about the Pro plan, environments, agent payments,
   the wallet, or the inference API.
+- Part 6 needs Coder 1.0.0 built from `main` at `35e41fd528` or later
+  (see the [README](README.md#what-has-to-be-true-first)); cut it if the
+  stable build is older.
+- The free daily allowance is left out of the post until it is live in
+  production; the release notes carry it.
 - Every number and comparison here is checked in [claims.md](claims.md).

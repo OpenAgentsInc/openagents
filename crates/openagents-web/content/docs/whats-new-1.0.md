@@ -38,6 +38,16 @@ irm https://openagents.com/cli/install.ps1 | iex
   computer's chats from your account with `/sync delete`.
 - **Reply from the website:** open a synced chat in the sidebar and type
   your reply while Coder is open on that computer.
+- **Let OpenAgents pick the model:** the input says `auto`. Press Tab to
+  switch to `flash`, a fast model on your own OpenRouter key. Add the key
+  with F2.
+- **Use Coder free each day:** when you're signed in, `auto` is free up to
+  about $1 of model use a day. It starts again at midnight UTC. See
+  [Pricing](/docs/pricing).
+- **See what each model call cost:** Coder records the tokens, cost, and
+  time of every call. Save them with the chat using `/export`.
+- **Scroll a command's output** on the left edge of its box. Scroll
+  anywhere else to move through the chat.
 
 Sync is off until you turn it on. A message that looks like a key or a
 password is never sent.
