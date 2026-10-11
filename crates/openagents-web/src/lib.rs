@@ -72,6 +72,7 @@ pub mod ui_page;
 pub mod upstream;
 mod vault;
 mod wellknown;
+mod work_runs;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -372,6 +373,10 @@ pub struct Config {
     /// admins (`OPENAGENTS_WEB_AGENT_ACCOUNTS`, [`agent_work`]): staging's
     /// smoke test account, which has no GitHub identity to invite.
     pub agent_accounts: Vec<String>,
+    /// The token work hosts prove themselves with when they take and
+    /// report runs (`OPENAGENTS_WORK_HOST_TOKEN`, [`work_runs`]); without
+    /// it no host can take a run.
+    pub work_host_token: Option<String>,
     /// Starts when the server is asked to stop; open event streams end on
     /// it so a rollout can drain ([`shutdown`]).
     pub shutdown: shutdown::Shutdown,
@@ -419,6 +424,7 @@ impl Config {
             plan: None,
             analytics: Arc::new(analytics::Analytics::default()),
             agent_accounts: Vec::new(),
+            work_host_token: None,
             shutdown: shutdown::Shutdown::default(),
             actors: None,
         }
@@ -488,6 +494,7 @@ pub fn router(config: Config) -> Router {
         .merge(own_runs::routes())
         .merge(mac_jobs::routes())
         .merge(mac_jobs_page::routes())
+        .merge(work_runs::routes())
         .merge(traces::routes())
         .merge(account_memory::routes())
         .merge(account_schedules::routes())

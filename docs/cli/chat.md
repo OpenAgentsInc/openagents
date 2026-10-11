@@ -42,7 +42,7 @@ openagents chat export --thread ID
 openagents chat run-coder --thread ID
 openagents chat run-command --thread ID
 openagents chat apply --thread ID
-openagents chat work --issues NUMBERS|LABEL [--parallel N] [--land main|pr] [--on boat]
+openagents chat work --issues NUMBERS|LABEL [--parallel N] [--land queue|main|pr|none] [--on boat|gce] [--engine briefed|bare]
 ```
 
 Every command also takes `--scratch`, `--local`, and `--socket PATH`, and

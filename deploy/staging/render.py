@@ -99,6 +99,8 @@ def main():
             plain("BOAT_API_BASE", "https://oa-boat-157437760789.us-central1.run.app/api/v1"),
             # Gemini on Vertex for the chat's images and PDFs (#11221).
             secret("openagents-gateway-staging-vertex-sa", "VERTEX_SA_JSON"),
+            # Work hosts that take "work on this issue" runs (#11258).
+            secret("openagents-work-host-token", "OPENAGENTS_WORK_HOST_TOKEN"),
             secret("openagents-web-1-staging-github-oauth", "GITHUB_OAUTH_JSON"),
             secret("openagents-web-1-staging-csrf-key", "CSRF_KEY"),
             secret("openagents-web-1-staging-byo-keys", "OPENAGENTS_WEB_CLOUD_BYO_KEYS"),
@@ -137,6 +139,8 @@ def main():
             secret("openagents-gateway-staging-admin-token", "INFERENCE_ADMIN_TOKEN"),
             secret("openagents-gateway-staging-smoke-signup-token", "SMOKE_SIGNUP_TOKEN"),
             secret("openagents-gateway-staging-vertex-sa", "VERTEX_SA_JSON"),
+            # Work hosts that take "work on this issue" runs (#11258).
+            secret("openagents-work-host-token", "OPENAGENTS_WORK_HOST_TOKEN"),
             secret("openagents-gateway-staging-openrouter-key", "OPENROUTER_API_KEY"),
             secret("openagents-gateway-staging-ai-gateway-key", "AI_GATEWAY_API_KEY"),
             secret("openagents-gateway-staging-typesafe-key", "TYPESAFE_API_KEY"),

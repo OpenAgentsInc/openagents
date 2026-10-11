@@ -284,6 +284,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .filter(|account| !account.is_empty())
         .map(str::to_owned)
         .collect();
+    // Work hosts that take "work on this issue" runs (#11258).
+    config.work_host_token = std::env::var("OPENAGENTS_WORK_HOST_TOKEN")
+        .ok()
+        .map(|token| token.trim().to_owned())
+        .filter(|token| token.len() >= 32);
     // Who may save a Claude subscription token (#11235): the owner's
     // account unless named, until Anthropic approves it in writing.
     config.claude_tokens = openagents_web::cloud::byo::TokenAllow::parse(

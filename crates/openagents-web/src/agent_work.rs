@@ -31,6 +31,8 @@ use crate::cloud::session::{SessionError, Viewer};
 pub(crate) fn path(path: &str) -> bool {
     path == "/environments"
         || path.starts_with("/environments/")
+        || path == crate::work_runs::PAGE
+        || path.starts_with("/work/")
         || (path.starts_with("/chat/")
             && (path.ends_with("/claude") || path.ends_with("/continue")))
 }

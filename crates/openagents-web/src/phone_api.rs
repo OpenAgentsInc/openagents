@@ -798,10 +798,9 @@ async fn agents(State(app): State<App>, headers: HeaderMap) -> Response {
         (Ok(agents), Ok(computers)) => (agents, computers),
         (Err(error), _) | (_, Err(error)) => return stored(&error),
     };
-    let boards = with_mac_jobs(
-        agents.boards,
-        crate::mac_jobs_actor::board_items(&app, &account).await,
-    );
+    let mut jobs = crate::mac_jobs_actor::board_items(&app, &account).await;
+    jobs.extend(crate::work_runs::board_items(store, &owner).await);
+    let boards = with_mac_jobs(agents.boards, jobs);
     let mut boards: Vec<(String, Board)> = boards.into_iter().collect();
     boards.sort_by_key(|(_, board)| std::cmp::Reverse(board.updated_unix));
     answer(
@@ -932,6 +931,15 @@ async fn action(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Resp
     }
     // A Mac job's item (#11223): Approve, Deny, and Stop reach the job
     // itself; the Mac takes the answer at its next report.
+    // A work run's item (#11258): Stop reaches the run.
+    if crate::work_runs::is_run(&sent.item) {
+        let store = &app.config.chat_store;
+        return match crate::work_runs::act(store, &owner, &sent.item, &sent.action).await {
+            Ok(Ok(())) => answer(StatusCode::ACCEPTED, json!({"queued": true})),
+            Ok(Err((status, code, message))) => refused(status, code, message),
+            Err(error) => stored(&error),
+        };
+    }
     if crate::mac_jobs::is_job(&sent.item) {
         return match crate::mac_jobs_actor::act(
             &app,

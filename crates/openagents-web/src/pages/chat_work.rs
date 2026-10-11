@@ -281,6 +281,7 @@ fn task_label(kind: TaskKind) -> &'static str {
     match kind {
         TaskKind::Claude => "Claude Code",
         TaskKind::Continue => "Cloud computer",
+        TaskKind::Work => "Briefed agent",
     }
 }
 
@@ -298,7 +299,9 @@ pub(super) fn rows(chat: &Conversation, at: usize, links: bool) -> Markup {
             @let row = TaskRow::new(task_label(task.kind), status(task.state))
                 .detail(task.title.clone())
                 .id(format!("chat-task-{}", task.id));
-            @if links && !gone(task) {
+            @if task.kind == TaskKind::Work {
+                (row.href(format!("{}/{}", crate::work_runs::PAGE, task.id)))
+            } @else if links && !gone(task) {
                 (row.href(format!("/environments/{}/runs/{}", task.environment, task.id)))
             } @else {
                 (row)
@@ -387,14 +390,30 @@ pub(super) fn observe(
 /// Writes the chat's running tasks' new states, when there are any; the
 /// chat as stored after.
 pub(super) async fn sync(app: &App, loaded: Loaded) -> Loaded {
-    let Some(studio) = studio(app) else {
-        return loaded;
-    };
     if !running(&loaded.conversation) {
         return loaded;
     }
+    // The briefed agent's runs (#11258) are read from their own records.
+    let mut worked = std::collections::HashMap::new();
+    for task in loaded
+        .conversation
+        .tasks
+        .iter()
+        .filter(|task| task.kind == TaskKind::Work && !task.state.finished())
+    {
+        if let Ok(Some(run)) =
+            crate::work_runs::load(&app.config.chat_store, &loaded.conversation.owner, &task.id)
+                .await
+        {
+            worked.insert(task.id.clone(), work_seen(&run));
+        }
+    }
+    let studio = studio(app);
     let Some(mut next) = observe(&loaded.conversation, |environment, run| {
-        studio.claude_run(environment, run).map(|run| Seen {
+        if let Some(seen) = worked.get(run) {
+            return Some(seen.clone());
+        }
+        studio?.claude_run(environment, run).map(|run| Seen {
             state: state(run.state),
             version: run.version,
             reply: run.reply.or_else(|| said(&run.events)),
@@ -452,6 +471,114 @@ pub(super) fn watch(app: App, owner: String, id: String) {
             }
         }
     });
+}
+
+/// A work run (#11258) as the chat reads it: its state, and when it ends,
+/// what it did as the chat's next message.
+pub(super) fn work_seen(run: &crate::work_runs::WorkRun) -> Seen {
+    use crate::work_runs::RunState as Work;
+    let state = match run.state {
+        Work::Waiting | Work::Running => TaskState::Working,
+        Work::Done => TaskState::Done,
+        Work::Failed => TaskState::Failed,
+        Work::Cancelled => TaskState::Stopped,
+    };
+    let reply = run.state.finished().then(|| crate::work_runs::said(run));
+    Seen {
+        state,
+        version: None,
+        reply: reply.clone(),
+        error: run.why.clone(),
+        cost_usd: run.outcome.as_ref().and_then(|o| o.cost_usd),
+    }
+}
+
+/// The issues a Claude Code request names (#11258): GitHub issue links and
+/// `OWNER/NAME#N`, and `#N` in `repository`. Read only once the person
+/// chose a Claude Code run, as bounded id fields; at most eight.
+pub(super) fn issues_named(text: &str, repository: Option<&str>) -> Vec<(String, u64)> {
+    let mut found: Vec<(String, u64)> = Vec::new();
+    for word in text.split_whitespace() {
+        let word = word.trim_matches(|c: char| {
+            matches!(
+                c,
+                ',' | '.' | ';' | ':' | '(' | ')' | '<' | '>' | '"' | '\'' | '`'
+            )
+        });
+        let named = crate::work_runs::issue_address(word).or_else(|| {
+            let number = word.strip_prefix('#')?.parse::<u64>().ok()?;
+            Some((repository?.to_owned(), number))
+        });
+        if let Some(issue) = named.filter(|(repo, n)| crate::work_runs::valid_repo(repo) && *n > 0)
+            && !found.contains(&issue)
+        {
+            found.push(issue);
+        }
+        if found.len() >= 8 {
+            break;
+        }
+    }
+    found
+}
+
+/// Hands `issues` to the briefed agent for the signed-in person, each a
+/// task of the chat; `Err` says why it can't.
+pub(super) async fn begin_work(
+    app: &App,
+    headers: &HeaderMap,
+    owner: &str,
+    issues: &[(String, u64)],
+    source: &str,
+) -> Result<Vec<ChatTask>, String> {
+    let requester = crate::work_runs::web_requester(app, headers)
+        .await
+        .ok_or("Working on issues isn't open to this account yet.")?;
+    let mut tasks = Vec::new();
+    for (repo, issue) in issues {
+        let ask = crate::work_runs::Ask {
+            repo: repo.clone(),
+            issue: *issue,
+            land: crate::work_runs::Land::Pr,
+            engine: crate::work_runs::Engine::Briefed,
+            source: source.into(),
+            title: None,
+        };
+        let run =
+            match crate::work_runs::submit(&app.config.chat_store, owner, requester.clone(), ask)
+                .await
+            {
+                Ok(Ok(run)) => run,
+                Ok(Err(crate::work_runs::Refused::Busy)) => {
+                    return Err("Too many runs are waiting. Try again when some finish.".into());
+                }
+                Ok(Err(crate::work_runs::Refused::Invalid(message))) => return Err(message.into()),
+                Err(_) => return Err("The run couldn't be saved. Try again in a minute.".into()),
+            };
+        tasks.push(ChatTask {
+            id: run.id,
+            kind: TaskKind::Work,
+            environment: "work".into(),
+            title: format!("{repo}#{issue}"),
+            state: TaskState::Working,
+            started_unix: now(),
+            after_message: 0,
+            version: None,
+            finished_unix: None,
+            agent: None,
+        });
+    }
+    Ok(tasks)
+}
+
+/// Adds work `tasks` after the chat's messages.
+pub(super) fn record_work(chat: &mut Conversation, tasks: Vec<ChatTask>) {
+    for mut task in tasks {
+        task.after_message = chat.messages.len();
+        chat.tasks.push(task);
+    }
+    let extra = chat.tasks.len().saturating_sub(MAX_TASKS);
+    chat.tasks.drain(..extra);
+    chat.updated_unix = now();
 }
 
 /// A task's title: the prompt's first line, cut.
@@ -711,6 +838,43 @@ async fn run(
             agents,
             Some("Write what Claude Code should do."),
         );
+    }
+    // Issues the request names go to the briefed agent (#11258), one run
+    // each, a fleet of them for several.
+    let named = issues_named(prompt, Some(&offer.repository));
+    if !named.is_empty() {
+        let tasks = match begin_work(
+            &app,
+            &headers,
+            &owner,
+            &named,
+            if agents > 1 { "fleet" } else { "chat" },
+        )
+        .await
+        {
+            Ok(tasks) => tasks,
+            Err(error) => {
+                return run_form(
+                    &app,
+                    &headers,
+                    &chat,
+                    &offer,
+                    prompt,
+                    agents,
+                    Some(error.as_str()),
+                );
+            }
+        };
+        let recorded = sidebar::update(&app, &owner, &id, |chat| {
+            record_work(chat, tasks.clone());
+            true
+        })
+        .await;
+        if let Err(response) = recorded {
+            return response;
+        }
+        watch(app, owner, id.clone());
+        return crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response());
     }
     if agents > 1 {
         return run_agents(app, headers, owner, id, chat, offer, prompt, agents).await;

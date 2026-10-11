@@ -105,6 +105,8 @@ def main():
         plain("BOAT_API_BASE", "https://oa-boat-157437760789.us-central1.run.app/api/v1"),
         # Gemini on Vertex for the chat's images and PDFs (#11221).
         secret("openagents-vertex-sa-key", "VERTEX_SA_JSON"),
+        # Work hosts that take "work on this issue" runs (#11258).
+        secret("openagents-work-host-token", "OPENAGENTS_WORK_HOST_TOKEN"),
     ] + ([] if args.files else [
         # The actor runtime (#11253, docs/deployment/actors.md) in the
         # account database. Mac jobs go through it only while the live

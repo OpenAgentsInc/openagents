@@ -45,6 +45,8 @@ mod placement;
 mod shell;
 #[path = "chat_work.rs"]
 mod work;
+#[path = "chat_work_briefed.rs"]
+mod work_briefed;
 
 pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
   send MESSAGE [--thread ID] [--no-run] [--timeout SECONDS]
@@ -93,9 +95,22 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         build's command tree declares it; one that changes something here
         waits for this; one that moves money or shows a secret never runs
         from the chat.
-  work --issues NUMBERS|LABEL [--parallel N] [--land main|pr] [--on boat|gce]
-        Hand several issues to Coder, one issue flow each, each in its own
-        thread: NUMBERS such as 10050,10051, or a LABEL's open issues.
+  work --issues NUMBERS|LABEL [--parallel N] [--land queue|main|pr|none] [--on boat|gce] [--engine briefed|bare]
+        Work several issues: NUMBERS such as 10050,10051, or a LABEL's open
+        issues. By default the briefed agent works each one (--engine
+        briefed): a briefing of the files the issue needs, the agent with
+        its check tool, the checks replayed on the actual diff, Claude Code
+        instead when the briefing is weak, the checks keep failing, or a
+        capability is missing (it says which), then the landing queue
+        (--land queue, or main) or a pull request (--land pr; none commits
+        only). Here it uses this computer's Claude Code login; with --on it
+        goes to openagents.com's work hosts under your sign-in (coder login)
+        and your own Claude sign-in from Settings > Claude. Each issue ends
+        with its engine, time, cost (unknown when not reported), checks,
+        and pull request or landing entry. --engine bare keeps the Coder
+        issue flow below.
+        With --engine bare: hand several issues to Coder, one issue flow
+        each, each in its own thread.
         --parallel (1 to 4, default 1) runs that many at once, each in its
         own worktree. Issues claimed in the last hours (the repository's
         claim window) and closed issues are skipped. --land overrides the
@@ -179,6 +194,7 @@ const OPTIONS: &[&str] = &[
     "on",
     "engine-logins",
     "template",
+    "engine",
 ];
 const SWITCHES: &[&str] = &[
     "scratch",
