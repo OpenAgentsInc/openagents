@@ -202,6 +202,11 @@ impl ClientBuilder {
                 "Use an HTTPS Boat URL without credentials, query, or fragment.",
             ));
         }
+        if base.host_str().is_some_and(crate::auth::is_hosted_host) && !crate::auth::hosted() {
+            return Err(Error::Configuration(
+                "Hosted Boat (boat.dev) is off; our own service is the default. Set BOAT_HOSTED=1 to use boat.dev.",
+            ));
+        }
         if self.timeout.is_zero() || self.max_json_bytes == 0 {
             return Err(Error::Configuration(
                 "Boat request limits must be greater than zero.",
@@ -249,14 +254,17 @@ impl Client {
         Self::builder(ApiKey::new(api_key)?).build()
     }
 
-    /// `BOAT_API_KEY` (or Secret Manager `boat-api-key`) and, when set,
-    /// `BOAT_API_BASE`.
+    /// `BOAT_API_KEY` (or Secret Manager `oa-boat-api-key`) and, when set,
+    /// `BOAT_API_BASE`. The default base is our own service
+    /// ([`crate::BASE_URL`]); `BOAT_HOSTED=1` makes it boat.dev.
     pub async fn from_env() -> Result<Self> {
         let mut builder = Self::builder(ApiKey::resolve().await?);
         if let Ok(base) = std::env::var(crate::auth::API_BASE_ENV)
             && !base.trim().is_empty()
         {
             builder = builder.base_url(base.trim());
+        } else if crate::auth::hosted() {
+            builder = builder.base_url(crate::HOSTED_BASE_URL);
         }
         builder.build()
     }

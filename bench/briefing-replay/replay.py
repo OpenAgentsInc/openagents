@@ -40,7 +40,7 @@ def save(path, value):
 
 def api(method, path, data=None):
     request = urllib.request.Request(
-        'https://boat.dev/api/v1/' + path,
+        os.environ.get('BOAT_API_BASE', 'https://oa-boat-157437760789.us-central1.run.app/api/v1').rstrip('/') + '/' + path,
         data=None if data is None else json.dumps(data).encode(), method=method,
         headers={'Authorization': 'Bearer ' + os.environ['BOAT_API_KEY'], 'Content-Type': 'application/json'},
     )

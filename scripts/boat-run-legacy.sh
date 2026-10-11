@@ -13,12 +13,13 @@
 # Output prints when the command ends; the exit code is the command's.
 #   scripts/boat-run-legacy.sh NAME --stop    stops the sandbox (free while stopped)
 #
-# Needs BOAT_API_KEY (source ~/work/.secrets/boat.env). Nothing is built on
+# Needs BOAT_API_KEY, our oa-boat token (source ~/work/.secrets/boat.env, or
+# Secret Manager oa-boat-api-key); BOAT_API_BASE overrides our service. Nothing is built on
 # this machine. Owner, 2026-10-02: builds move off the Mac to Boat.
 set -euo pipefail
 name=${1:?usage: boat-run.sh NAME -- COMMAND... | NAME --stop}; shift
 : "${BOAT_API_KEY:?source ~/work/.secrets/boat.env first}"
-api=https://boat.dev/api/v1
+api=${BOAT_API_BASE:-https://oa-boat-157437760789.us-central1.run.app/api/v1}
 state=~/.openagents/boat; mkdir -p "$state"; idfile=$state/$name
 req() { curl -sS -H "Authorization: Bearer $BOAT_API_KEY" -H 'Content-Type: application/json' "$@"; }
 field() { python3 -c "import json,sys;d=json.load(sys.stdin);s=d.get('sandbox',d);print(s.get('$1') or d.get('$1') or '')"; }

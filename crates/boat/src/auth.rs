@@ -8,9 +8,15 @@ use crate::{Error, Result};
 pub const API_KEY_ENV: &str = "BOAT_API_KEY";
 /// The environment variable that overrides [`crate::BASE_URL`].
 pub const API_BASE_ENV: &str = "BOAT_API_BASE";
-/// The Secret Manager secret that holds the key in the cloud.
-pub const SECRET_NAME: &str = "boat-api-key";
-/// The project the automation service account reads `boat-api-key` from.
+/// `BOAT_HOSTED=1` opts in to Boat's hosted API at boat.dev: the default
+/// base becomes [`crate::HOSTED_BASE_URL`] and the key comes from
+/// [`HOSTED_SECRET_NAME`]. Without it a client refuses a boat.dev base.
+pub const HOSTED_ENV: &str = "BOAT_HOSTED";
+/// The Secret Manager secret that holds our own service's token.
+pub const SECRET_NAME: &str = "oa-boat-api-key";
+/// The Secret Manager secret that holds the hosted boat.dev key.
+pub const HOSTED_SECRET_NAME: &str = "boat-api-key";
+/// The project the automation service account reads the secrets from.
 pub const SECRET_PROJECT: &str = "openagentsgemini";
 
 /// A Boat API key. `Debug` and `Display` never print it, and it has no
@@ -72,13 +78,18 @@ impl ApiKey {
         Self::new(text)
     }
 
-    /// `BOAT_API_KEY` when set, otherwise Secret Manager `boat-api-key` in
-    /// [`SECRET_PROJECT`].
+    /// `BOAT_API_KEY` when set, otherwise Secret Manager `oa-boat-api-key`
+    /// (or `boat-api-key` with `BOAT_HOSTED=1`) in [`SECRET_PROJECT`].
     pub async fn resolve() -> Result<Self> {
         match Self::from_env() {
             Ok(key) => Ok(key),
             Err(_) if std::env::var_os(API_KEY_ENV).is_none() => {
-                Self::from_secret_manager(SECRET_PROJECT, SECRET_NAME).await
+                let secret = if hosted() {
+                    HOSTED_SECRET_NAME
+                } else {
+                    SECRET_NAME
+                };
+                Self::from_secret_manager(SECRET_PROJECT, secret).await
             }
             Err(error) => Err(error),
         }
@@ -92,6 +103,19 @@ impl ApiKey {
     pub(crate) fn expose(&self) -> &str {
         &self.0
     }
+}
+
+/// Whether hosted Boat (boat.dev) is opted in: `BOAT_HOSTED=1`.
+pub fn hosted() -> bool {
+    std::env::var(HOSTED_ENV).is_ok_and(|v| matches!(v.trim(), "1" | "true" | "yes"))
+}
+
+/// Whether `host` is Boat's hosted service (boat.dev or the old ascii.dev).
+pub fn is_hosted_host(host: &str) -> bool {
+    let host = host.trim_end_matches('.').to_ascii_lowercase();
+    ["boat.dev", "ascii.dev"]
+        .iter()
+        .any(|h| host == *h || host.ends_with(&format!(".{h}")))
 }
 
 impl fmt::Debug for ApiKey {

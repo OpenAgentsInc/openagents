@@ -1,6 +1,6 @@
 //! The Boat providers the packaged owners run on.
 //!
-//! One Boat client (`BOAT_API_KEY` or Secret Manager `boat-api-key`, and
+//! One Boat client (`BOAT_API_KEY` or Secret Manager `oa-boat-api-key`, and
 //! `BOAT_API_BASE` when set) serves three providers. Setup and builder
 //! machines carry the configured named credentials, read through
 //! [`resolver`] each time they are applied (every create and resume on

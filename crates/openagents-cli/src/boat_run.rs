@@ -34,7 +34,8 @@ pub(crate) const USAGE: &str = "usage: openagents boat COMMAND
                  --all. A running sandbox bills; stopped and archived do not.
 The first run for a NAME creates a sandbox (default large, four-hour
 lifetime, no account credentials) and keeps its id in ~/.openagents/boat/NAME.
-The key is BOAT_API_KEY, or Secret Manager boat-api-key through gcloud.
+The key is BOAT_API_KEY, or Secret Manager oa-boat-api-key through gcloud
+(our own sandbox service, docs/cloud/oa-boat.md).
 With OA_ARTIFACT_BUCKET and OA_ARTIFACT_ISSUE set, the patch, the logs and the
 exit status are published with scripts/cloud/publish-artifacts.py.";
 

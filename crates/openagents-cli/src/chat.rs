@@ -112,7 +112,7 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         can't refresh; with --engine-fallback, else an OpenAI key from OA_CODER_OPENAI_API_KEY or
         Secret Manager coder-openai-api-key; and Grok Build's XAI_API_KEY)
         or boat (subscriptions connected on Boat's dashboard). Needs BOAT_API_KEY or Secret Manager
-        boat-api-key, and a GitHub token (OA_BOAT_GH_TOKEN, Secret Manager
+        oa-boat-api-key (our own sandbox service, docs/cloud/oa-boat.md), and a GitHub token (OA_BOAT_GH_TOKEN, Secret Manager
         coder-pool-git-token, or `gh auth token`); docs/cloud/boat-chat-work.md.
         With --engine-logins api-keys, cloud runs require a ChatGPT access token with at least 2 h left.
         If it is short, open Codex on the Mac once to refresh it, then rerun.
