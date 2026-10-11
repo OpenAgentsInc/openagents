@@ -1588,6 +1588,31 @@ impl App {
             }
             return true;
         }
+        if self.mode == Mode::Live
+            && self.screen == Screen::Conversation
+            && self.model_picker.is_none()
+            && self.resume_picker.is_none()
+            && self.agents_panel.is_none()
+        {
+            if let Event::Mouse(mouse) = &event {
+                if matches!(
+                    mouse.kind,
+                    MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+                ) {
+                    let chat = self
+                        .selected_agent
+                        .and_then(|i| self.delegations.get_mut(i))
+                        .map_or(&mut self.live, |agent| &mut agent.chat);
+                    if chat.cache.scroll_run(
+                        mouse.column,
+                        mouse.row,
+                        mouse.kind == MouseEventKind::ScrollUp,
+                    ) {
+                        return true;
+                    }
+                }
+            }
+        }
         if self.following() {
             return match event {
                 Event::Key(key) => self.follow_key(key),

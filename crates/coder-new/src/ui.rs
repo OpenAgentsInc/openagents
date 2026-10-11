@@ -775,8 +775,8 @@ fn run_lines(
                         .collect()
                 }
             });
-            // The whole retained output (bounded and redacted upstream) stays
-            // in the transcript, where PageUp/PageDown review it (#11117).
+            // Keep every output row for plain-text exports. The screen
+            // shows a five-row window over these rows.
             lines.extend(rows);
         }
     }
@@ -966,14 +966,119 @@ pub struct TranscriptCache {
     entries: Vec<CachedEntry>,
     partial: Option<CachedEntry>,
     pub builds: usize,
+    run_regions: Vec<(usize, Rect)>,
 }
 
 struct CachedEntry {
     entry: crate::live::Entry,
     lines: Vec<Line<'static>>,
+    run_output: Option<(usize, Vec<Line<'static>>, usize)>,
+}
+
+const RUN_OUTPUT_HEIGHT: usize = 5;
+
+impl CachedEntry {
+    fn bound_run(&mut self, width: u16, phase: u8, previous: Option<usize>) {
+        self.run_output = None;
+        let crate::live::Entry::Tool {
+            name,
+            input,
+            output,
+            running,
+        } = &self.entry
+        else {
+            return;
+        };
+        if name != "Run" {
+            return;
+        }
+        let mut metadata = output.clone();
+        if let Some(fields) = metadata.as_object_mut() {
+            for key in ["output", "stdout", "stderr", "error"] {
+                fields.remove(key);
+            }
+        }
+        let start = run_lines(input, &metadata, *running, width, phase).len();
+        let end = self.lines.len().saturating_sub(1);
+        if end <= start {
+            return;
+        }
+        let rows = self.lines[start..end].to_vec();
+        let max = rows.len().saturating_sub(RUN_OUTPUT_HEIGHT);
+        let offset = previous.unwrap_or(max).min(max);
+        self.run_output = Some((start, rows, offset));
+        self.show_run();
+    }
+
+    fn show_run(&mut self) {
+        let Some((start, rows, offset)) = &self.run_output else {
+            return;
+        };
+        self.lines.truncate(*start);
+        self.lines
+            .extend(rows.iter().skip(*offset).take(RUN_OUTPUT_HEIGHT).cloned());
+        if rows.len() > RUN_OUTPUT_HEIGHT {
+            self.lines.push(Line::from(span(
+                format!(
+                    "     {}–{} of {} · scroll here",
+                    offset + 1,
+                    (offset + RUN_OUTPUT_HEIGHT).min(rows.len()),
+                    rows.len()
+                ),
+                t::GRAY_DIM,
+            )));
+        }
+        self.lines.push(Line::default());
+    }
 }
 
 impl TranscriptCache {
+    pub(crate) fn scroll_run(&mut self, column: u16, row: u16, up: bool) -> bool {
+        let Some((index, _)) = self
+            .run_regions
+            .iter()
+            .find(|(_, area)| area.contains((column, row).into()))
+        else {
+            return false;
+        };
+        let cached = &mut self.entries[*index];
+        let Some((_, rows, offset)) = &mut cached.run_output else {
+            return false;
+        };
+        let max = rows.len().saturating_sub(RUN_OUTPUT_HEIGHT);
+        *offset = if up {
+            offset.saturating_sub(3)
+        } else {
+            offset.saturating_add(3).min(max)
+        };
+        cached.show_run();
+        true
+    }
+
+    fn locate_runs(&mut self, area: Rect, position: usize) {
+        self.run_regions.clear();
+        let mut top = 0;
+        for (index, cached) in self.entries.iter().enumerate() {
+            if let Some((start, rows, _)) = &cached.run_output {
+                let first = top + start;
+                let end = first + rows.len().min(RUN_OUTPUT_HEIGHT);
+                let visible_start = first.max(position);
+                let visible_end = end.min(position + usize::from(area.height));
+                if visible_start < visible_end {
+                    self.run_regions.push((
+                        index,
+                        Rect {
+                            y: area.y + (visible_start - position) as u16,
+                            height: (visible_end - visible_start) as u16,
+                            ..area
+                        },
+                    ));
+                }
+            }
+            top += cached.lines.len();
+        }
+    }
+
     fn refresh(&mut self, chat: &crate::live::Chat, width: u16, phase: u8) {
         if self.width != width {
             self.entries.clear();
@@ -987,10 +1092,17 @@ impl TranscriptCache {
                 .get(index)
                 .is_none_or(|cached| cached.entry != *entry)
             {
-                let cached = CachedEntry {
+                let previous_offset = self
+                    .entries
+                    .get(index)
+                    .and_then(|c| c.run_output.as_ref())
+                    .map(|r| r.2);
+                let mut cached = CachedEntry {
                     entry: entry.clone(),
                     lines: entry_lines(entry, width, phase),
+                    run_output: None,
                 };
+                cached.bound_run(width, phase, previous_offset);
                 if index < self.entries.len() {
                     self.entries[index] = cached;
                 } else {
@@ -1002,7 +1114,10 @@ impl TranscriptCache {
                 crate::live::Entry::Tool { running: true, .. }
                     | crate::live::Entry::Delegation { running: true, .. }
             ) {
-                self.entries[index].lines = entry_lines(entry, width, phase);
+                let cached = &mut self.entries[index];
+                let offset = cached.run_output.as_ref().map(|r| r.2);
+                cached.lines = entry_lines(entry, width, phase);
+                cached.bound_run(width, phase, offset);
             }
         }
         if chat.partial.is_empty() {
@@ -1024,6 +1139,7 @@ impl TranscriptCache {
                 self.partial = Some(CachedEntry {
                     lines: entry_lines(&entry, width, phase),
                     entry,
+                    run_output: None,
                 });
                 self.builds += 1;
             }
@@ -1153,6 +1269,7 @@ fn live_conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     if !following {
         app.scroll = position;
     }
+    cache.locate_runs(area, usize::from(position));
     let visible = cache.visible(&tail, usize::from(position), usize::from(area.height));
     frame.render_widget(Paragraph::new(visible), area);
     if app.scroll < max_scroll {

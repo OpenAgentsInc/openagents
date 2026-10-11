@@ -687,13 +687,14 @@ fn run_component_has_one_command_one_status_row_and_multiline_preview() {
     assert_eq!(canvas.matches("echo fixture").count(), 1);
     assert!(rows[1].contains("exit: 0"));
     assert!(rows[1].contains(" · timed_out: false"));
-    assert!(rows[2].contains("first"));
-    assert!(rows[3].contains("second"));
-    // The finished card keeps every retained output line; the transcript
-    // scrolls instead of eliding them (#11117).
-    for (row, text) in ["third", "fourth", "fifth", "sixth"].iter().enumerate() {
-        assert!(rows[4 + row].contains(text), "{canvas}");
+    for (row, text) in ["second", "third", "fourth", "fifth", "sixth"]
+        .iter()
+        .enumerate()
+    {
+        assert!(rows[2 + row].contains(text), "{canvas}");
     }
+    assert!(!canvas.contains("first"));
+    assert!(canvas.contains("2–6 of 6 · scroll here"));
     assert!(!canvas.contains("more lines"));
     assert!(!canvas.contains("value:"));
     for width in [24, 40] {
@@ -702,10 +703,11 @@ fn run_component_has_one_command_one_status_row_and_multiline_preview() {
 }
 
 #[test]
-fn page_up_from_the_followed_tail_scrolls_back_from_the_latest_output() {
+fn run_output_scrolls_inside_five_rows_without_moving_the_conversation() {
+    use crossterm::event::{MouseEvent, MouseEventKind};
     let mut app = App::default();
     app.set_mode(Mode::Live);
-    let output: Vec<String> = (1..=60).map(|line| format!("line {line}")).collect();
+    let output: Vec<String> = (1..=60).map(|line| format!("line {line:02}")).collect();
     app.live.entries.push(Entry::Tool {
         name: "Run".into(),
         input: serde_json::json!({"command":"seq 60"}),
@@ -715,17 +717,38 @@ fn page_up_from_the_followed_tail_scrolls_back_from_the_latest_output() {
     app.scroll = u16::MAX;
     let latest = render(&mut app, 80, 24);
     assert!(latest.contains("line 60"));
-    assert_eq!(app.scroll, u16::MAX, "following keeps the tail");
-    key(&mut app, KeyCode::PageUp);
-    assert!(app.scroll < u16::MAX - 5);
+    assert_eq!(latest.matches("line ").count(), 5);
+    let wheel = |app: &mut App, kind, row| {
+        assert!(app.handle(Event::Mouse(MouseEvent {
+            kind,
+            column: 10,
+            row,
+            modifiers: KeyModifiers::NONE
+        })));
+    };
+    wheel(&mut app, MouseEventKind::ScrollUp, 3);
     let back = render(&mut app, 80, 24);
     assert!(!back.contains("line 60"), "{back}");
-    assert!(back.contains("line 50"), "{back}");
-    assert!(app.handle(Event::Key(KeyEvent::new(
-        KeyCode::End,
-        KeyModifiers::CONTROL
-    ))));
+    assert!(back.contains("line 53"), "{back}");
+    assert_eq!(app.scroll, u16::MAX);
+    assert!(back.contains("Run seq 60"));
+    for _ in 0..30 {
+        wheel(&mut app, MouseEventKind::ScrollUp, 3);
+        render(&mut app, 80, 24);
+    }
+    assert!(render(&mut app, 80, 24).contains("line 01"));
+    for _ in 0..30 {
+        wheel(&mut app, MouseEventKind::ScrollDown, 3);
+        render(&mut app, 80, 24);
+    }
     assert!(render(&mut app, 80, 24).contains("line 60"));
+    assert!(
+        ui::transcript_text(&app.live.entries, 78)
+            .join("\n")
+            .contains("line 01")
+    );
+    wheel(&mut app, MouseEventKind::ScrollUp, 15);
+    assert_ne!(app.scroll, u16::MAX);
 }
 
 #[test]
