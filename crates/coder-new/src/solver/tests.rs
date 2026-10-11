@@ -293,3 +293,41 @@ fn intaker_lists_reach_only_recent_issues() {
     assert_eq!(recent_only(view.clone(), "2026-09-20"), view);
     assert!(intake_task(&[], "OpenAgentsInc/openagents").contains("Pick only recent issues"));
 }
+
+#[test]
+fn a_later_round_sees_its_own_change_and_the_real_errors() {
+    use super::hands::{failing_output, so_far_text};
+    let shown = so_far_text("--- a/docs/zones.md\n+++ b/docs/zones.md\n-old\n+new\n");
+    assert!(shown.contains("not in the base"));
+    assert!(shown.contains("+new"));
+    assert!(so_far_text("").contains("no change"));
+    let outputs = vec![
+        ("check:a".to_owned(), true, "fine".to_owned()),
+        (
+            "check:b".to_owned(),
+            false,
+            "Compiling b\nerror[E0425]: cannot find value `x`\n  --> src/lib.rs:3:5\nerror: could not compile `b`".to_owned(),
+        ),
+    ];
+    let text = failing_output(&outputs);
+    assert!(text.contains("`check:b` failed"));
+    assert!(text.contains("E0425"));
+    assert!(!text.contains("check:a"));
+}
+
+#[test]
+fn the_harness_runs_required_and_wasm_checks() {
+    use crate::issue_run::{agent::harness_runs, decide::Check};
+    let check = |id: &str, required: bool| Check {
+        id: id.into(),
+        argv: Vec::new(),
+        filter: false,
+        what: String::new(),
+        required,
+    };
+    assert!(harness_runs(&check("check:a", false)));
+    assert!(harness_runs(&check("wasm:a", true)));
+    assert!(harness_runs(&check("links:docs", true)));
+    assert!(!harness_runs(&check("test:a", false)));
+    assert!(!harness_runs(&check("fmt:a", false)));
+}

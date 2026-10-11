@@ -204,6 +204,7 @@ pub async fn brief(
         prompt.push_str("\n\n# The Tester's notes from the last round\n\n");
         prompt.push_str(notes);
     }
+    prompt.push_str(&so_far(base, round));
     let session = Session {
         title: "Briefer".into(),
         detail: "Reads the briefed files and writes what the change should look like".into(),
@@ -264,8 +265,9 @@ pub async fn code(
         );
         prompt.push_str(notes);
     }
+    prompt.push_str(&so_far(base, round));
     prompt.push_str(
-        "\n\nYou code: change the files, and reply with what you changed. You have no shell, but `run_check` compiles the changed crates (`check:` entries only); run it after your edits and fix what fails before you finish. The Tester runs the full checks and tests after you.",
+        "\n\nYou code: change the files, and reply with what you changed. You have no shell, but `run_check` compiles the changed crates (`check:` entries, and `wasm:` for a browser build's wasm32 half); run it after your edits and fix what fails before you finish. The Tester runs the full checks and tests after you.",
     );
     let session = Session {
         title: "Coder".into(),
@@ -289,6 +291,64 @@ pub async fn code(
         transcript,
     )
     .await
+}
+
+/// The most diff a later round's prompt carries.
+const SO_FAR_MAX: usize = 24 * 1024;
+
+/// For a later round: the working copy's change so far against the base,
+/// marked as the earlier rounds' own work, so a hand doesn't take its own
+/// edit for code that was already there.
+#[must_use]
+pub fn so_far(base: &Base, round: usize) -> String {
+    if round == 0 {
+        return String::new();
+    }
+    let diff = setup::working_diff(&base.worktree, &base.base);
+    so_far_text(&diff)
+}
+
+/// The "change so far" section for `diff`.
+#[must_use]
+pub fn so_far_text(diff: &str) -> String {
+    if diff.trim().is_empty() {
+        return "\n\n# The change so far\n\nThe earlier rounds left no change in the working copy."
+            .into();
+    }
+    let mut shown: String = diff.chars().take(SO_FAR_MAX).collect();
+    if shown.len() < diff.len() {
+        shown.push_str("\n[diff cut short]");
+    }
+    format!(
+        "\n\n# The change so far\n\nThis is the earlier rounds' own change against the base (it is not in the base; the issue is not already fixed because of it). Build on it or correct it:\n\n```diff\n{shown}\n```"
+    )
+}
+
+/// The most lines of one failing check's output a hand-back carries.
+const ERROR_LINES: usize = 40;
+
+/// The failing checks' errors, bounded, as a section for a hand-back.
+#[must_use]
+pub fn failing_output(outputs: &[(String, bool, String)]) -> String {
+    let mut out = String::new();
+    for (id, _, text) in outputs.iter().filter(|(_, ok, _)| !ok) {
+        let lines: Vec<&str> = text.lines().collect();
+        let errors: Vec<&str> = lines
+            .iter()
+            .copied()
+            .filter(|line| {
+                line.contains("error") || line.contains("FAILED") || line.contains("panicked")
+            })
+            .take(ERROR_LINES)
+            .collect();
+        let shown = if errors.is_empty() {
+            lines[lines.len().saturating_sub(ERROR_LINES)..].join("\n")
+        } else {
+            errors.join("\n")
+        };
+        out.push_str(&format!("\n\n`{id}` failed:\n```\n{shown}\n```"));
+    }
+    out
 }
 
 /// The briefing's compile checks (`check:`, e.g. `cargo check -p`), the

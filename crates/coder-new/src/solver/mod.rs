@@ -533,7 +533,9 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
         let mut required = required.clone();
         required.extend(touched.iter().map(|check| check.id.clone()));
         checked.checks.extend(touched);
-        end.checks = issue_run::agent::final_checks(&base, &checked, transcript).await;
+        let outputs = issue_run::agent::final_check_outputs(&base, &checked, transcript).await;
+        let errors = hands::failing_output(&outputs);
+        end.checks = outputs.into_iter().map(|(id, ok, _)| (id, ok)).collect();
         let judged = verdict::judge(transcript.cancelled(), None, &required, &end.checks);
         if judged.status == Status::Passed || judged.status == Status::Unchecked {
             break judged;
@@ -553,6 +555,12 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
                 failed.join(", ")
             )),
             other => other,
+        };
+        // The next hand sees the errors themselves, not only the check's name.
+        let back = match back {
+            hands::Verdict::Coder(text) => hands::Verdict::Coder(format!("{text}{errors}")),
+            hands::Verdict::Briefer(text) => hands::Verdict::Briefer(format!("{text}{errors}")),
+            hands::Verdict::Pass => hands::Verdict::Pass,
         };
         if round >= options.rounds {
             break Outcome::stopped(

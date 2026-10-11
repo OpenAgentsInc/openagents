@@ -848,12 +848,31 @@ pub async fn final_checks(
     briefing: &Briefing,
     transcript: &mut Transcript,
 ) -> Vec<(String, bool)> {
+    final_check_outputs(base, briefing, transcript)
+        .await
+        .into_iter()
+        .map(|(id, ok, _)| (id, ok))
+        .collect()
+}
+
+/// Whether the harness runs `check` after the agent: compile checks
+/// (`check:`, and `wasm:` for a browser build) and any check the briefing
+/// marks required (a docs link check, a script's tests). A required check
+/// the harness never ran would fail the run with no result.
+#[must_use]
+pub fn harness_runs(check: &Check) -> bool {
+    check.id.starts_with("check:") || check.id.starts_with("wasm:") || check.required
+}
+
+/// [`final_checks`] with each check's output, so a hand-back can carry the
+/// real errors.
+pub async fn final_check_outputs(
+    base: &Base,
+    briefing: &Briefing,
+    transcript: &mut Transcript,
+) -> Vec<(String, bool, String)> {
     let mut verdicts = Vec::new();
-    for check in briefing
-        .checks
-        .iter()
-        .filter(|c| c.id.starts_with("check:"))
-    {
+    for check in briefing.checks.iter().filter(|c| harness_runs(c)) {
         if transcript.cancelled() {
             break;
         }
@@ -875,7 +894,7 @@ pub async fn final_checks(
                 running: false,
             },
         );
-        verdicts.push((check.id.clone(), ok));
+        verdicts.push((check.id.clone(), ok, text));
     }
     verdicts
 }
