@@ -678,3 +678,37 @@ fn a_package_name_is_read_from_its_cargo_toml() {
     );
     assert_eq!(package_name("[workspace]\nmembers = []\n"), None);
 }
+
+#[test]
+fn a_briefed_browser_build_gets_a_wasm_check() {
+    use crate::issue_run::{decide::Briefing, setup::briefed_wasm_checks};
+    let root = std::env::temp_dir().join(format!("coder-wasm-check-{}", std::process::id()));
+    let web = root.join("crates/game-web");
+    let native = root.join("crates/game-rules");
+    std::fs::create_dir_all(web.join("src")).unwrap();
+    std::fs::create_dir_all(native.join("src")).unwrap();
+    std::fs::write(
+        web.join("Cargo.toml"),
+        "[package]\nname = \"game-web\"\n[lib]\ncrate-type = [\"cdylib\", \"rlib\"]\n[target.'cfg(target_arch = \"wasm32\")'.dependencies]\nweb-sys = \"0.3\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        native.join("Cargo.toml"),
+        "[package]\nname = \"game-rules\"\n",
+    )
+    .unwrap();
+    let briefing = Briefing {
+        files: vec![
+            "crates/game-web/src/app.rs".into(),
+            "crates/game-web/src/lib.rs".into(),
+            "crates/game-rules/src/lib.rs".into(),
+        ],
+        ..Briefing::default()
+    };
+    let checks = briefed_wasm_checks(&root, &briefing);
+    let _ = std::fs::remove_dir_all(&root);
+    assert_eq!(checks.len(), 1);
+    assert_eq!(checks[0].id, "wasm:game-web");
+    assert!(checks[0].required);
+    assert!(checks[0].argv.iter().any(|a| a == "wasm32-unknown-unknown"));
+}

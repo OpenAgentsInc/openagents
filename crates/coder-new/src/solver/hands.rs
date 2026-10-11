@@ -298,7 +298,7 @@ pub fn compile_checks(briefing: &Briefing) -> Vec<crate::issue_run::decide::Chec
     briefing
         .checks
         .iter()
-        .filter(|check| check.id.starts_with("check:"))
+        .filter(|check| check.id.starts_with("check:") || check.id.starts_with("wasm:"))
         .cloned()
         .collect()
 }

@@ -509,36 +509,88 @@ pub async fn changed_package_checks(worktree: &Path, base: &str, checks: &[Check
     }
     let mut found: Vec<Check> = Vec::new();
     for path in paths {
-        let mut dir = worktree.join(&path);
-        while dir.pop() && dir.starts_with(worktree) {
-            let Ok(toml) = std::fs::read_to_string(dir.join("Cargo.toml")) else {
-                continue;
-            };
-            let Some(name) = package_name(&toml) else {
-                break;
-            };
-            let id = format!("check:{name}");
-            if !checks.iter().chain(&found).any(|check| check.id == id) {
-                found.push(Check {
-                    id,
-                    argv: [
-                        "cargo",
-                        "check",
-                        "-p",
-                        &name,
-                        "--tests",
-                        "--message-format",
-                        "short",
-                    ]
-                    .iter()
-                    .map(|word| (*word).to_owned())
-                    .collect(),
-                    filter: false,
-                    what: format!("compile {name}, which the change touched"),
-                    required: false,
-                });
+        for check in package_checks(worktree, &path, "the change touched") {
+            if !checks.iter().chain(&found).any(|have| have.id == check.id) {
+                found.push(check);
             }
-            break;
+        }
+    }
+    found
+}
+
+/// The compile checks for the Rust package that holds `path`: `check:<name>`,
+/// and `wasm:<name>` when the package is a browser build (a `cdylib` with
+/// wasm32-only code), whose browser half a native check never compiles.
+fn package_checks(worktree: &Path, path: &str, why: &str) -> Vec<Check> {
+    let mut dir = worktree.join(path);
+    while dir.pop() && dir.starts_with(worktree) {
+        let Ok(toml) = std::fs::read_to_string(dir.join("Cargo.toml")) else {
+            continue;
+        };
+        let Some(name) = package_name(&toml) else {
+            return Vec::new();
+        };
+        let argv = |words: &[&str]| words.iter().map(|word| (*word).to_owned()).collect();
+        let mut out = vec![Check {
+            id: format!("check:{name}"),
+            argv: argv(&[
+                "cargo",
+                "check",
+                "-p",
+                &name,
+                "--tests",
+                "--message-format",
+                "short",
+            ]),
+            filter: false,
+            what: format!("compile {name}, which {why}"),
+            required: false,
+        }];
+        if is_browser_build(&toml) {
+            out.push(Check {
+                id: format!("wasm:{name}"),
+                argv: argv(&[
+                    "cargo",
+                    "check",
+                    "-p",
+                    &name,
+                    "--lib",
+                    "--target",
+                    "wasm32-unknown-unknown",
+                    "--message-format",
+                    "short",
+                ]),
+                filter: false,
+                what: format!("compile {name}'s browser build (wasm32)"),
+                required: true,
+            });
+        }
+        return out;
+    }
+    Vec::new()
+}
+
+/// A package built for the browser: a `cdylib` with wasm32-only code.
+pub(crate) fn is_browser_build(toml: &str) -> bool {
+    toml.contains("cdylib") && toml.contains("target_arch = \"wasm32\"")
+}
+
+/// The `wasm:` checks for the briefed files' browser-build packages, so the
+/// Coder can compile the browser half it changes (a native `check:` skips it).
+#[must_use]
+pub fn briefed_wasm_checks(worktree: &Path, briefing: &Briefing) -> Vec<Check> {
+    let mut found: Vec<Check> = Vec::new();
+    for path in &briefing.files {
+        for check in package_checks(worktree, path, "the briefing names") {
+            if check.id.starts_with("wasm:")
+                && !briefing
+                    .checks
+                    .iter()
+                    .chain(&found)
+                    .any(|have| have.id == check.id)
+            {
+                found.push(check);
+            }
         }
     }
     found

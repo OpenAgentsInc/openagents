@@ -252,3 +252,44 @@ async fn live_intaker_finds_and_names_an_issue() {
     assert!(super::chosen(&reply.text).is_some());
     assert!(tools.iter().any(|t| t == "mcp__intake__gh"));
 }
+
+#[test]
+fn intaker_lists_reach_only_recent_issues() {
+    use super::{civil_date, intake_task, recent_only};
+    let words = |w: &[&str]| w.iter().map(|s| (*s).to_owned()).collect::<Vec<String>>();
+    assert_eq!(civil_date(0), "1970-01-01");
+    assert_eq!(civil_date(20_737), "2026-10-11");
+    assert_eq!(
+        recent_only(words(&["issue", "list", "--state", "closed"]), "2026-09-20"),
+        words(&[
+            "issue",
+            "list",
+            "--state",
+            "closed",
+            "--search",
+            "created:>=2026-09-20"
+        ])
+    );
+    assert_eq!(
+        recent_only(
+            words(&["issue", "list", "--search", "reason:not-planned"]),
+            "2026-09-20"
+        ),
+        words(&[
+            "issue",
+            "list",
+            "--search",
+            "reason:not-planned created:>=2026-09-20"
+        ])
+    );
+    assert_eq!(
+        recent_only(words(&["search", "issues", "bunny"]), "2026-09-20"),
+        words(&["search", "issues", "bunny", "--created=>=2026-09-20"])
+    );
+    // A dated query and a single issue are left alone.
+    let dated = words(&["issue", "list", "--search", "created:>=2026-01-01"]);
+    assert_eq!(recent_only(dated.clone(), "2026-09-20"), dated);
+    let view = words(&["issue", "view", "8205"]);
+    assert_eq!(recent_only(view.clone(), "2026-09-20"), view);
+    assert!(intake_task(&[], "OpenAgentsInc/openagents").contains("Pick only recent issues"));
+}

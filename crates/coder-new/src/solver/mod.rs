@@ -55,7 +55,13 @@ board's Status, so pick from the cards whose Status isn't Done. Search and \
 read issues to answer what they ask, suggest one or two that fit (say why in a line each), and \
 ask when you need to know more. Keep replies short. When the person has chosen, or clearly \
 asked you to pick, end your reply with exactly one line `ISSUE: owner/repo#N` and nothing \
-after it; the run starts from that line. Never write that line before they have chosen.";
+after it; the run starts from that line. Never write that line before they have chosen. \
+Today is {today}. Pick only recent issues: lists and searches return issues created on or \
+after {since} (the last {days} days); older ones describe code that has since moved. Choose \
+an older issue only when the person names its number.";
+
+/// How far back the Intaker's lists and searches reach unless asked otherwise.
+pub const RECENT_DAYS: u64 = 21;
 
 /// The prompt of one Intaker turn: its instructions, then the conversation.
 #[must_use]
@@ -63,7 +69,11 @@ pub fn intake_task(messages: &[openrouter::Message], github: &str) -> String {
     let prefix = format!(
         "{}\n{}\nThe conversation:\n",
         crate::identity::prompt(crate::microclaude::MODEL),
-        INTAKE_CHAT.replace("{repo}", github)
+        INTAKE_CHAT
+            .replace("{repo}", github)
+            .replace("{today}", &days_ago(0))
+            .replace("{since}", &days_ago(RECENT_DAYS))
+            .replace("{days}", &RECENT_DAYS.to_string())
     );
     format!(
         "{prefix}{}",
@@ -79,6 +89,73 @@ pub fn chosen(reply: &str) -> Option<(Option<String>, u64)> {
         .rev()
         .find_map(|line| line.trim().strip_prefix("ISSUE:"))
         .and_then(issue_reference)
+}
+
+/// The UTC date `days` days before today, as `YYYY-MM-DD`.
+#[must_use]
+pub fn days_ago(days: u64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    civil_date(now / 86_400 - days.min(now / 86_400))
+}
+
+/// The `YYYY-MM-DD` date of a day count since 1970-01-01 (Hinnant's algorithm).
+#[must_use]
+pub fn civil_date(days: u64) -> String {
+    let z = days as i64 + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02}")
+}
+
+/// `args` held to issues created on or after `since`: an issue or pull
+/// request list gains a `created:>=` qualifier in its search, a search gains
+/// `--created`, unless the command already names a date or one issue.
+#[must_use]
+pub fn recent_only(mut args: Vec<String>, since: &str) -> Vec<String> {
+    let dated = args.iter().any(|a| {
+        a.contains("created:")
+            || a.contains("updated:")
+            || a.contains("closed:")
+            || a.starts_with("--created")
+            || a.starts_with("--updated")
+            || a.starts_with("--closed")
+    });
+    if dated {
+        return args;
+    }
+    let qualifier = format!("created:>={since}");
+    match args
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        ["issue" | "pr", "list", ..] => {
+            if let Some(at) = args.iter().position(|a| a == "--search" || a == "-S")
+                && let Some(query) = args.get_mut(at + 1)
+            {
+                *query = format!("{query} {qualifier}");
+            } else if let Some(at) = args.iter().position(|a| a.starts_with("--search=")) {
+                args[at] = format!("{} {qualifier}", args[at]);
+            } else {
+                args.push("--search".into());
+                args.push(qualifier);
+            }
+        }
+        ["search", "issues" | "prs", ..] => {
+            args.push(format!("--created=>={since}"));
+        }
+        _ => {}
+    }
+    args
 }
 
 /// Whether `args` is a read-only `gh` issue or pull request command.
@@ -104,7 +181,7 @@ pub fn intake_chat_server(github: &str) -> claude_agent_sdk::SdkMcpServer {
         move |input: Value| {
             let github = github.clone();
             async move {
-                let mut args: Vec<String> = input["args"]
+                let args: Vec<String> = input["args"]
                     .as_array()
                     .into_iter()
                     .flatten()
@@ -115,6 +192,7 @@ pub fn intake_chat_server(github: &str) -> claude_agent_sdk::SdkMcpServer {
                         "Only gh issue/pr list, view, status and search issues/prs are allowed here.",
                     ));
                 }
+                let mut args = recent_only(args, &days_ago(RECENT_DAYS));
                 // Searches and project boards take no repository flag.
                 let unscoped = matches!(args.first().map(String::as_str), Some("search" | "project"));
                 if !unscoped && !args.iter().any(|a| a == "-R" || a == "--repo") {
@@ -414,6 +492,9 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
     )
     .await;
     end.turns.push(briefer);
+    // A browser-build crate's wasm32 half compiles only for that target.
+    let wasm = setup::briefed_wasm_checks(&base.worktree, &briefing);
+    briefing.checks.extend(wasm);
     end.briefing = Some(briefing.clone());
 
     // Coder and Tester, with bounded hand-backs.
