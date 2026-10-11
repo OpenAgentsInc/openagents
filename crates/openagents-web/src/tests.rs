@@ -453,6 +453,9 @@ async fn the_blue_rush_guide_teaches_grow_little_bunny() {
         "Gentle mode",
         "Giant",
         "Eat the very last bite",
+        "Inside the Burrow",
+        "dark doors",
+        "the higher your bunny goes",
     ] {
         assert!(html.contains(words), "{words}");
     }

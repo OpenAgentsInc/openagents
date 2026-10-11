@@ -30,8 +30,9 @@ pub const TUMBLE: u32 = ticks(500);
 pub const SLOW: u32 = ticks(1200);
 /// After a tumble the net can't land.
 pub const GRACE: u32 = ticks(300);
-/// A jump's air time at every size, and a dandelion float's.
-pub const JUMP: u32 = ticks(550);
+/// A tapped jump's air time at every size (held longer, it goes higher
+/// and lasts longer: [`crate::hop`]), and a dandelion float's.
+pub const JUMP: u32 = crate::hop::JUMP;
 pub const FLOAT: u32 = ticks(1500);
 /// How long a duck lasts.
 pub const DUCK: u32 = ticks(600);
@@ -91,22 +92,27 @@ pub enum Input {
     Left,
     /// Lane right, or turn right at the next junction.
     Right,
+    /// The jump key pressed: the bunny jumps, and keeps rising while the
+    /// key is held ([`crate::hop`]).
     Jump,
     Duck,
     /// Turn back.
     Back,
     /// Leave the garden: neither a win nor a loss.
     Leave,
+    /// The jump key let go: the rise stops (after a tap's at least).
+    Release,
 }
 
 impl Input {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 7] = [
         Self::Left,
         Self::Right,
         Self::Jump,
         Self::Duck,
         Self::Back,
         Self::Leave,
+        Self::Release,
     ];
 
     /// A one-letter code, for receipts.
@@ -119,6 +125,7 @@ impl Input {
             Self::Duck => 'D',
             Self::Back => 'B',
             Self::Leave => 'X',
+            Self::Release => 'U',
         }
     }
 
@@ -228,9 +235,15 @@ pub struct Bunny {
     pub grace: u32,
     pub quarters: u32,
     pub tier: u8,
-    /// Ticks left in the air, and the jump's whole length.
+    /// Ticks left in the air, and the jump's whole length (which grows
+    /// while the jump key is held).
     pub air: u32,
     pub air_span: u32,
+    /// Ticks the current jump has risen, whether it is still rising, and
+    /// whether the jump key is still held.
+    pub rise: u32,
+    pub rising: bool,
+    pub holding: bool,
     /// Ticks left ducking.
     pub duck: u32,
     /// Floating dandelion jumps left.
@@ -416,6 +429,9 @@ impl Game {
             tier: 0,
             air: 0,
             air_span: 0,
+            rise: 0,
+            rising: false,
+            holding: false,
             duck: 0,
             floats: 0,
             last_escape: None,
@@ -610,6 +626,10 @@ impl Game {
     }
 
     fn press(&mut self, input: Input) {
+        if input == Input::Release {
+            self.bunny.holding = false;
+            return;
+        }
         let side = match input {
             Input::Left => Some(Side::Left),
             Input::Right => Some(Side::Right),
@@ -648,14 +668,15 @@ impl Game {
                         self.turn_back();
                     }
                 }
-                Input::Leave => {}
+                Input::Leave | Input::Release => {}
             },
         }
     }
 
     fn jump(&mut self) {
         if self.bunny.air == 0 && self.bunny.duck == 0 {
-            let span = if self.bunny.floats > 0 {
+            let floating = self.bunny.floats > 0;
+            let span = if floating {
                 self.bunny.floats -= 1;
                 FLOAT
             } else {
@@ -663,6 +684,9 @@ impl Game {
             };
             self.bunny.air = span;
             self.bunny.air_span = span;
+            self.bunny.rise = 0;
+            self.bunny.rising = !floating;
+            self.bunny.holding = !floating;
             self.events.push(Event::Jumped);
         }
     }
@@ -711,6 +735,8 @@ impl Game {
         self.bunny.mv = Move::Tumble { left: TUMBLE };
         self.bunny.pending = None;
         self.bunny.air = 0;
+        self.bunny.rising = false;
+        self.bunny.holding = false;
         self.bunny.duck = 0;
         self.events.push(Event::Tumbled);
     }
@@ -741,7 +767,27 @@ impl Game {
         b.cooldown = b.cooldown.saturating_sub(1);
         b.slow = b.slow.saturating_sub(1);
         b.grace = b.grace.saturating_sub(1);
-        b.air = b.air.saturating_sub(1);
+        if b.rising && b.air > 0 {
+            // Rising: a tap rises RISE_TAP ticks; held, it keeps rising up
+            // to RISE_MAX, and the jump's length grows to match.
+            b.rise += 1;
+            if b.rise >= crate::hop::RISE_MAX || (!b.holding && b.rise >= crate::hop::RISE_TAP) {
+                b.rising = false;
+            }
+            let rise = if b.rising {
+                (b.rise + 1).max(crate::hop::RISE_TAP)
+            } else {
+                b.rise
+            };
+            b.air_span = crate::hop::span(rise);
+            b.air = b.air_span - b.rise;
+        } else {
+            b.air = b.air.saturating_sub(1);
+        }
+        if b.air == 0 {
+            b.rising = false;
+            b.holding = false;
+        }
         b.duck = b.duck.saturating_sub(1);
         let target = lane_offset(b.lane);
         b.lane_pos += (target - b.lane_pos).clamp(-LANE_RATE, LANE_RATE);
@@ -1530,6 +1576,10 @@ impl Game {
             ml,
             i64::from(b.quarters),
             i64::from(b.air),
+            i64::from(b.air_span),
+            i64::from(b.rise),
+            i64::from(b.rising),
+            i64::from(b.holding),
             i64::from(b.duck),
             i64::from(b.slow),
             i64::from(b.cooldown),
@@ -2145,5 +2195,53 @@ mod tests {
                 assert_eq!(one.state_digest(), two.state_digest(), "tick {tick}");
             }
         }
+    }
+
+    /// A jump held for `held` ticks: the ticks it spends in the air.
+    fn held_jump(held: u32) -> u32 {
+        let mut game = Game::with_seed(level::garden(1), 3, false);
+        game.farmer_on = false;
+        game.step(&[Input::Jump]);
+        let mut air = 1;
+        let mut tick = 1;
+        while game.bunny.air > 0 {
+            let inputs: &[Input] = if tick + 1 == held.max(2) {
+                &[Input::Release]
+            } else {
+                &[]
+            };
+            game.step(inputs);
+            tick += 1;
+            air += 1;
+            assert!(air < 10 * HZ, "lands");
+        }
+        assert!(!game.bunny.rising && !game.bunny.holding);
+        air
+    }
+
+    #[test]
+    fn a_tapped_jump_is_short_and_a_held_one_goes_higher_up_to_a_cap() {
+        use crate::hop::{JUMP, RISE_MAX, RISE_TAP, span};
+        let tap = held_jump(1);
+        assert_eq!(tap, JUMP, "a tap is the jump the gardens are built for");
+        assert_eq!(held_jump(RISE_TAP / 2), JUMP, "a short press is a tap");
+        let half = held_jump(ticks(600));
+        assert_eq!(half, span(ticks(600)));
+        assert!(half > tap);
+        let max = held_jump(ticks(3000));
+        assert_eq!(max, span(RISE_MAX), "the cap");
+        assert!(max > half);
+        assert_eq!(held_jump(ticks(8000)), max);
+    }
+
+    #[test]
+    fn a_tumble_ends_a_held_jump() {
+        let mut game = Game::with_seed(level::garden(1), 3, false);
+        game.farmer_on = false;
+        game.step(&[Input::Jump]);
+        assert!(game.bunny.holding && game.bunny.rising);
+        game.tumble();
+        assert!(!game.bunny.holding && !game.bunny.rising);
+        assert_eq!(game.bunny.air, 0);
     }
 }

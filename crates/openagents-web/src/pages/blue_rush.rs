@@ -67,7 +67,7 @@ const JS: &str = include_str!("../../static/bluerush/bluerush.js");
 /// The coast stills, from `bench/verse/2026-10-08/coast-c1` and `coast-c2`,
 /// downscaled to JPEG, and the guide's screenshots of the real game
 /// (`bunny-*.jpg`, 960 by 600).
-const IMAGES: [(&str, &[u8]); 10] = [
+const IMAGES: [(&str, &[u8]); 12] = [
     (
         "hero-bay.jpg",
         include_bytes!("../../static/bluerush/hero-bay.jpg"),
@@ -107,6 +107,14 @@ const IMAGES: [(&str, &[u8]); 10] = [
     (
         "bunny-cleared.jpg",
         include_bytes!("../../static/bluerush/bunny-cleared.jpg"),
+    ),
+    (
+        "bunny-burrow.jpg",
+        include_bytes!("../../static/bluerush/bunny-burrow.jpg"),
+    ),
+    (
+        "bunny-hop.jpg",
+        include_bytes!("../../static/bluerush/bunny-hop.jpg"),
     ),
 ];
 
@@ -487,10 +495,12 @@ fn key(name: &str) -> Markup {
 }
 
 /// The guide's sections: their anchors and titles, for the contents.
-const SECTIONS: [(&str, &str); 8] = [
+const SECTIONS: [(&str, &str); 10] = [
     ("goal", "The goal"),
     ("meadow", "Start in the meadow"),
+    ("burrow", "Inside the Burrow"),
     ("controls", "Controls"),
+    ("jump", "Jump high"),
     ("run", "Run through a garden"),
     ("grow", "Eat and grow"),
     ("farmer", "Watch for the farmer"),
@@ -524,16 +534,26 @@ fn step(id: &str, number: usize, body: Markup, picture: Option<Markup>) -> Marku
 }
 
 fn render_guide(site: &Site) -> Markup {
-    let control_rows: [(&str, Markup, Markup); 7] = [
+    let control_rows: [(&str, Markup, Markup); 9] = [
+        (
+            "Walk in the meadow",
+            html! { (key("\u{2190}")) " " (key("\u{2191}")) " " (key("\u{2192}")) " " (key("\u{2193}")) " or " (key("W")) " " (key("A")) " " (key("S")) " " (key("D")) },
+            html! { "Drag anywhere" },
+        ),
+        (
+            "Hop in the meadow",
+            html! { (key("Space")) ", held to hop higher" },
+            html! { "Hold the " (key("\u{2191}")) " button" },
+        ),
         (
             "Dodge, and turn at corners",
             html! { (key("\u{2190}")) " " (key("\u{2192}")) " or " (key("A")) " " (key("D")) },
             html! { "Swipe left or right" },
         ),
         (
-            "Jump",
+            "Jump (hold to go higher)",
             html! { (key("\u{2191}")) ", " (key("W")) " or " (key("Space")) },
-            html! { "Swipe up" },
+            html! { "Swipe up, or hold the " (key("\u{2191}")) " button" },
         ),
         (
             "Duck",
@@ -594,15 +614,25 @@ fn render_guide(site: &Site) -> Markup {
                             p { "The only way to lose is to get caught by the farmer's net. Every garden you clear turns your bunny one shade more orange, from snow white all the way to bright orange." }
                         }, Some(shot(site, "bunny-cleared.jpg", "The Garden cleared card, with the time, the score, and buttons for the next garden", "Clear a garden to see your time and score."))))
                         (step("meadow", 2, html! {
-                            p { "Press " strong { "Play" } " to go to Warren Meadow, your bunny's home. Hop around with the arrow keys or " (key("W")) " " (key("A")) " " (key("S")) " " (key("D")) ". On a phone or tablet, drag anywhere on the screen." }
+                            p { "Press " strong { "Play" } " to go to Warren Meadow, your bunny's home. Walk around with the arrow keys or " (key("W")) " " (key("A")) " " (key("S")) " " (key("D")) ", and press " (key("Space")) " to hop. On a phone or tablet, drag anywhere on the screen, and use the " (key("\u{2191}")) " button to hop." }
                             p { "The rabbit holes are to the right of the big mound. Walk into a hole to go into its garden. Start with " strong { "1. Kitchen Bed" } ": it's the easiest." }
                             ul class="br-list" {
-                                li { strong { "The Burrow" } ", the door in the mound: your wins, your bunny's colour, and two switches. " strong { "Gentle mode" } " makes the farmer slower. " strong { "High contrast" } " makes things easier to see." }
+                                li { strong { "The Burrow" } " is inside the big mound. Walk into one of its dark doors to go in." }
                                 li { strong { "The Carrot Board" } ": your best time and score in each garden." }
                                 li { strong { "The arch" } ": the way out of the game." }
                             }
                         }, Some(shot(site, "bunny-hole.jpg", "The white bunny in the meadow next to a rabbit hole with a signpost", "Walk into a rabbit hole. The sign says which garden it is."))))
-                        (step("controls", 3, html! {
+                        (step("burrow", 3, html! {
+                            p { "The big mound in the middle of the meadow has four dark doors, one on each side. Walk straight into any of them and your bunny dives inside." }
+                            p { "Inside the Burrow you can see your wins and your bunny's colour, and:" }
+                            ul class="br-list" {
+                                li { "Take a " strong { "tunnel" } " straight to any garden." }
+                                li { "Turn on " strong { "Gentle mode" } " to make the farmer slower, or " strong { "High contrast" } " to make things easier to see." }
+                                li { "Open " strong { "How to play" } " again." }
+                            }
+                            p { "Press " strong { "Go back outside" } " (or " (key("Esc")) ") to come back out." }
+                        }, Some(shot(site, "bunny-burrow.jpg", "Inside the Burrow: the bunny's wins and colour, tunnels to the five gardens, and Go back outside", "Inside the Burrow."))))
+                        (step("controls", 4, html! {
                             p { "In a garden your bunny runs by itself. You only steer." }
                             div class="br-table-wrap" {
                                 table class="br-keys-table" {
@@ -624,9 +654,14 @@ fn render_guide(site: &Site) -> Markup {
                                     }
                                 }
                             }
-                            p { "The first time you play, a short tutorial shows these controls. Open it again any time with the " (key("?")) " button in the meadow, or " strong { "How to play" } " on the pause card." }
+                            p { "The first time you play, a short tutorial shows these controls. Open it again any time with the " (key("?")) " button in the meadow, or " strong { "How to play" } " on the pause card or inside the Burrow." }
                         }, Some(shot(site, "bunny-tour.jpg", "The game's tutorial card, Run and dodge, step 3 of 6", "The tutorial in the game."))))
-                        (step("run", 4, html! {
+                        (step("jump", 5, html! {
+                            p { "The longer you hold the jump key, the higher your bunny goes. A quick tap is a small hop; hold it and your bunny keeps rising, up to a hop about four times as high. Let go and it hangs for a moment, then drops back down." }
+                            p { "It works in the meadow with " (key("Space")) " and in a garden with " (key("\u{2191}")) ", " (key("W")) " or " (key("Space")) ". On a phone or tablet, hold the " (key("\u{2191}")) " button in the corner. A swipe up is a quick hop." }
+                            p { "In a garden, a long jump stays in the air longer, so it can carry you over things a short one can't. It never takes you over the hedges." }
+                        }, Some(shot(site, "bunny-hop.jpg", "The bunny high in the air over the meadow after holding Space", "Hold Space for a big hop."))))
+                        (step("run", 6, html! {
                             p { "Each row is wide enough for three bunnies. Move left or right to eat the food on each side. When you reach a corner, press left or right to turn. If you don't, your bunny stops and waits, and the farmer gets closer." }
                             p { "Around the edges of the screen:" }
                             ul class="br-list" {
@@ -635,7 +670,7 @@ fn render_guide(site: &Site) -> Markup {
                                 li { strong { "Bottom left" } ": the map. Orange dots are food you haven't eaten yet." }
                             }
                         }, Some(shot(site, "bunny-run.jpg", "A small white bunny running down a garden row toward green seedlings and a carrot, with the food count, score, and map on screen", "Kitchen Bed: 148 bites left, and the map shows where they are."))))
-                        (step("grow", 5, html! {
+                        (step("grow", 7, html! {
                             p { "Everything you can eat is in colour: green seedlings, orange carrots, red radishes, strawberries, and lettuce. Each bite helps you grow, through five sizes:" }
                             ol class="br-sizes" {
                                 li { "Kit" }
@@ -654,17 +689,17 @@ fn render_guide(site: &Site) -> Markup {
                             }
                             p { "Bumping into something makes you tumble: you shrink a little and slow down for a moment." }
                         }, Some(shot(site, "bunny-giant.jpg", "A Giant bunny, five size dots full, running beside the farmer", "A Giant: all five size dots are full."))))
-                        (step("farmer", 6, html! {
+                        (step("farmer", 8, html! {
                             p { "The farmer walks his garden with a big net. When he spots you, a " strong { "!" } " appears over his head and he runs after you. A " strong { "?" } " means he lost you and is looking around." }
                             p { "When he's out of sight, an arrow at the edge of the screen points to him. If his net lands on you, you're caught and the garden is over." }
                             p { "Each garden has a few " strong { "golden carrots" } ". Eat one and the farmer gets scared for a few seconds. Bump into him then and he gets dizzy and goes back to his shed, and you score bonus points." }
                         }, Some(shot(site, "bunny-farmer.jpg", "The farmer with his net at the end of a garden row, with an exclamation mark over his head", "The farmer has seen you. Turn around, or find a golden carrot."))))
-                        (step("win", 7, html! {
+                        (step("win", 9, html! {
                             p { "Eat the very last bite and the garden is cleared. You'll see your time and score, then you can go on to the next garden, play again for a better time, or go back to the meadow." }
                             p { "There are five gardens so far, each a little harder: Kitchen Bed, Herb Corner, Potting Row, Pea Trellis, and Kitchen Garden. Each win makes your bunny one shade more orange, up to 20 shades." }
                             p { "Leaving a garden from the pause card doesn't count as a win or a loss." }
                         }, None))
-                        (step("tips", 8, html! {
+                        (step("tips", 10, html! {
                             ul class="br-list" {
                                 li { "Follow the rows of seedlings. They lead you through the whole garden." }
                                 li { "Look at the map when only a few bites are left." }

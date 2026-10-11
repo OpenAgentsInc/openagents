@@ -26,10 +26,13 @@ pub enum GameInput {
     Use,
     /// Pause; a host also handles it itself.
     Pause,
+    /// Up let go, for a game whose Up is held (a jump that goes higher the
+    /// longer it is held). Hosts send it when the key or touch is released.
+    UpReleased,
 }
 
 impl GameInput {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Left,
         Self::Right,
         Self::Up,
@@ -37,6 +40,7 @@ impl GameInput {
         Self::Back,
         Self::Use,
         Self::Pause,
+        Self::UpReleased,
     ];
 
     /// A one-letter code, for replays.
@@ -50,6 +54,7 @@ impl GameInput {
             Self::Back => 'B',
             Self::Use => 'E',
             Self::Pause => 'P',
+            Self::UpReleased => 'u',
         }
     }
 

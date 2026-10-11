@@ -125,13 +125,34 @@ mod tests {
         };
         let keys = all(false);
         let touch = all(true);
-        for needed in ["arrow keys", "Space", "Esc", "rabbit hole", "farmer"] {
+        for needed in [
+            "arrow keys",
+            "Space",
+            "hold it",
+            "Esc",
+            "rabbit hole",
+            "Burrow",
+            "farmer",
+        ] {
             assert!(keys.contains(needed), "{needed}");
         }
-        for needed in ["Drag", "Swipe", "\u{21b6}", "rabbit hole", "farmer"] {
+        for needed in [
+            "Drag",
+            "Swipe",
+            "hold the jump button",
+            "Hold the hop button",
+            "\u{21b6}",
+            "rabbit hole",
+            "Burrow",
+            "farmer",
+        ] {
             assert!(touch.contains(needed), "{needed}");
         }
         for text in [&keys, &touch] {
+            assert!(
+                text.contains("door in the big mound"),
+                "the way into the Burrow"
+            );
             assert!(text.contains("Eat every last bite"), "the goal");
             assert!(text.contains("golden carrot"));
         }

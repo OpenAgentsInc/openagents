@@ -208,6 +208,10 @@ pub fn input(game: &Game) -> Option<Input> {
         return None;
     }
     let b = &game.bunny;
+    // The bot taps: it lets go of the jump key at once.
+    if b.holding {
+        return Some(Input::Release);
+    }
     let waiting = match b.mv {
         Move::Run => false,
         Move::Wait | Move::Skid { then: None, .. } => true,

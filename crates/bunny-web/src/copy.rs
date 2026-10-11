@@ -2,9 +2,8 @@
 
 pub const TITLE: &str = "Grow Little Bunny";
 pub const GOAL: &str = "Eat everything in the garden. Don't get caught.";
-pub const KEYS: &str =
-    "\u{2190} \u{2192} dodge and turn \u{b7} \u{2191} jump \u{b7} \u{2193} duck \u{b7} X turn back";
-pub const SWIPES: &str = "Swipe left or right to dodge and turn \u{b7} up to jump \u{b7} down to duck \u{b7} \u{21b6} turns back";
+pub const KEYS: &str = "\u{2190} \u{2192} dodge and turn \u{b7} \u{2191} or Space jump, hold to go higher \u{b7} \u{2193} duck \u{b7} X turn back";
+pub const SWIPES: &str = "Swipe left or right to dodge and turn \u{b7} up to jump, or hold the jump button to go higher \u{b7} down to duck \u{b7} \u{21b6} turns back";
 pub const PLAY: &str = "Play";
 pub const PLAY_AGAIN: &str = "Play again";
 pub const RESTART: &str = "Restart";
@@ -23,9 +22,17 @@ pub const NEXT: &str = "Next garden";
 pub const GARDENS: &str = "All gardens";
 pub const TURN_BACK: &str = "Turn back";
 pub const MEADOW: &str = "Back to the meadow";
-pub const MEADOW_KEYS: &str = "Hop around the meadow and walk into a rabbit hole to play.";
-pub const MEADOW_DRAG: &str = "Drag to hop around the meadow, and walk into a rabbit hole to play.";
+pub const MEADOW_KEYS: &str = "Walk around the meadow with the arrow keys, and hold Space to hop high. Walk into a rabbit hole to play.";
+pub const MEADOW_DRAG: &str = "Drag to walk around the meadow, and hold the hop button to hop high. Walk into a rabbit hole to play.";
 pub const BURROW: &str = "The Burrow";
+pub const BURROW_PROMPT: &str = "The Burrow: walk into a door to go in";
+pub const BURROW_INSIDE: &str = "Inside the Burrow";
+pub const BURROW_TUNNELS: &str = "Take a tunnel to a garden, or go back outside.";
+pub const OUTSIDE: &str = "Go back outside";
+/// The touch screen's jump button (in a garden) and hop button (in the
+/// meadow).
+pub const JUMP: &str = "Jump";
+pub const HOP: &str = "Hop";
 pub const BOARD: &str = "Carrot Board";
 pub const ARCH: &str = "Leave the meadow?";
 pub const ARCH_PROMPT: &str = "The way out";
@@ -68,23 +75,23 @@ pub const TOUR: [TourStep; 6] = [
     TourStep {
         title: "Hop to a garden",
         keys: &[
-            "Use the arrow keys or W A S D to hop around the meadow.",
-            "Walk into a rabbit hole to go into its garden.",
+            "Walk around the meadow with the arrow keys or W A S D. Space hops: hold it to hop higher.",
+            "Walk into a rabbit hole to play its garden, or into a door in the big mound to go inside the Burrow.",
         ],
         touch: &[
-            "Drag anywhere on the screen to hop around the meadow.",
-            "Walk into a rabbit hole to go into its garden.",
+            "Drag anywhere on the screen to walk around the meadow. Hold the hop button to hop higher.",
+            "Walk into a rabbit hole to play its garden, or into a door in the big mound to go inside the Burrow.",
         ],
     },
     TourStep {
         title: "Run and dodge",
         keys: &[
             "In a garden you run by yourself. \u{2190} and \u{2192} dodge left and right and turn at corners.",
-            "\u{2191} or Space jumps, \u{2193} ducks, X turns you around, and Esc pauses.",
+            "\u{2191} or Space jumps: hold it to jump higher. \u{2193} ducks, X turns you around, and Esc pauses.",
         ],
         touch: &[
             "In a garden you run by yourself. Swipe left or right to dodge and to turn at corners.",
-            "Swipe up to jump and down to duck. The \u{21b6} button turns you around.",
+            "Swipe up to jump, or hold the jump button to jump higher. Swipe down to duck. The \u{21b6} button turns you around.",
         ],
     },
     TourStep {
@@ -246,6 +253,12 @@ mod tests {
             not_cleared(2, "Herb Corner"),
             score_line(1200),
             HOW_TO_PLAY.to_owned(),
+            BURROW_PROMPT.to_owned(),
+            BURROW_INSIDE.to_owned(),
+            BURROW_TUNNELS.to_owned(),
+            OUTSIDE.to_owned(),
+            JUMP.to_owned(),
+            HOP.to_owned(),
             TOUR_NEXT.to_owned(),
             TOUR_BACK.to_owned(),
             TOUR_SKIP.to_owned(),

@@ -8,7 +8,7 @@
 //! ```text
 //! bunny.run-receipt.v1
 //! game grow-little-bunny
-//! rules 1 <hex SHA-256 of the rules>
+//! rules 2 <hex SHA-256 of the rules>
 //! level <hex SHA-256 of the level file>
 //! seed 42
 //! gentle 0
@@ -28,7 +28,7 @@ use crate::kinds::{EdibleKind, ObstacleKind, PowerKind};
 pub const FORMAT: &str = "bunny.run-receipt.v1";
 pub const GAME: &str = "grow-little-bunny";
 /// Bumped whenever a rule changes how a run plays out.
-pub const RULES_VERSION: u32 = 1;
+pub const RULES_VERSION: u32 = 2;
 
 /// SHA-256 over the rules' version and their tables, so a receipt made
 /// under other rules is refused rather than replayed wrongly.
@@ -42,6 +42,13 @@ pub fn rules_digest() -> [u8; 32] {
         crate::TIER_SPEED,
         crate::TIER_SIGHT,
         crate::LANE_WIDTH
+    ));
+    hash.update(format!(
+        "jump {} {} {} {}\n",
+        crate::hop::RISE_TAP,
+        crate::hop::RISE_MAX,
+        crate::hop::HANG,
+        crate::hop::fall(1000)
     ));
     for kind in EdibleKind::ALL {
         hash.update(format!(
@@ -312,7 +319,7 @@ mod tests {
         }
         assert!(edited.verify(&game.garden).is_err());
         assert!(receipt.verify(&level::garden(2)).is_err(), "another garden");
-        let text = receipt.encode().replace("rules 1 ", "rules 2 ");
+        let text = receipt.encode().replace("rules 2 ", "rules 3 ");
         assert!(Receipt::decode(&text).is_err());
     }
 
@@ -326,5 +333,5 @@ mod tests {
         assert_eq!(digest, GOLDEN_STATE, "rules changed? update GOLDEN_STATE");
     }
 
-    const GOLDEN_STATE: &str = "1f7a4f54d6778f851e40785892910a38ed87b99fb9f5c0c9922ea2abe3af7ce9";
+    const GOLDEN_STATE: &str = "da1b71c23b269fadd8feffa96727cbd4434fb2f97b3914505dd8830681cb2707";
 }

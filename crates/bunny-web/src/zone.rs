@@ -21,6 +21,7 @@ pub fn input(input: GameInput) -> Option<Input> {
         GameInput::Up => Some(Input::Jump),
         GameInput::Down => Some(Input::Duck),
         GameInput::Back => Some(Input::Back),
+        GameInput::UpReleased => Some(Input::Release),
         GameInput::Use | GameInput::Pause => None,
     }
 }
@@ -257,6 +258,7 @@ mod tests {
                     Input::Jump => GameInput::Up,
                     Input::Duck => GameInput::Down,
                     Input::Back | Input::Leave => GameInput::Back,
+                    Input::Release => GameInput::UpReleased,
                 })
                 .into_iter()
                 .collect();

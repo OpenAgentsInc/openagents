@@ -40,6 +40,9 @@ pub enum Action {
     /// Close the tutorial, as seen: `true` from its last step's main
     /// button, `false` from Skip.
     TourEnd(bool),
+    /// The touch screen's jump (or hop) button pressed, and let go.
+    JumpDown,
+    JumpUp,
 }
 
 /// A card's contents.
@@ -51,6 +54,8 @@ pub struct Card {
     pub hint: Option<String>,
     /// A link under the buttons: its words and where it goes.
     pub link: Option<(String, String)>,
+    /// Shown inside the Burrow: the whole screen turns into its room.
+    pub room: bool,
     /// Buttons: label, action, and whether it is the main one.
     pub buttons: Vec<(String, Action, bool)>,
 }
@@ -123,6 +128,8 @@ pub struct Hud {
     pause: HtmlElement,
     turn_back: HtmlElement,
     help: HtmlElement,
+    jump: HtmlElement,
+    room: HtmlElement,
     card: HtmlElement,
     card_title: HtmlElement,
     card_swatch: HtmlElement,
@@ -153,6 +160,32 @@ fn on_click(target: &HtmlElement, actions: &Rc<RefCell<Vec<Action>>>, action: Ac
     let _ = target.add_event_listener_with_callback("pointerdown", stop.as_ref().unchecked_ref());
     closure.forget();
     stop.forget();
+}
+
+/// A button held down: [`Action::JumpDown`] when pressed, [`Action::JumpUp`]
+/// when let go, however it is let go.
+fn on_hold(target: &HtmlElement, actions: &Rc<RefCell<Vec<Action>>>) {
+    let down = {
+        let actions = actions.clone();
+        Closure::<dyn FnMut(web_sys::PointerEvent)>::new(move |event: web_sys::PointerEvent| {
+            event.stop_propagation();
+            event.prevent_default();
+            actions.borrow_mut().push(Action::JumpDown);
+        })
+    };
+    let _ = target.add_event_listener_with_callback("pointerdown", down.as_ref().unchecked_ref());
+    down.forget();
+    for name in ["pointerup", "pointercancel", "pointerleave"] {
+        let actions = actions.clone();
+        let up = Closure::<dyn FnMut(web_sys::PointerEvent)>::new(
+            move |event: web_sys::PointerEvent| {
+                event.stop_propagation();
+                actions.borrow_mut().push(Action::JumpUp);
+            },
+        );
+        let _ = target.add_event_listener_with_callback(name, up.as_ref().unchecked_ref());
+        up.forget();
+    }
 }
 
 impl Hud {
@@ -376,6 +409,40 @@ impl Hud {
             ],
         );
         on_click(&help, &actions, Action::Tour);
+        // Bottom right on touch screens: jump in a garden, hop in the
+        // meadow, higher the longer it is held.
+        let jump = element(document, "button");
+        jump.set_text_content(Some("\u{2191}"));
+        jump.set_attribute("aria-label", copy::JUMP).ok();
+        css(&jump, &BUTTON);
+        css(
+            &jump,
+            &[
+                ("position", "absolute"),
+                ("bottom", "calc(20px + env(safe-area-inset-bottom))"),
+                ("right", "calc(20px + env(safe-area-inset-right))"),
+                ("width", "76px"),
+                ("height", "76px"),
+                ("font-size", "34px"),
+                ("background", "rgba(244, 244, 242, 0.92)"),
+                ("touch-action", "none"),
+            ],
+        );
+        on_hold(&jump, &actions);
+        // Inside the Burrow: the room behind its card.
+        let room = element(document, "div");
+        css(
+            &room,
+            &[
+                ("position", "absolute"),
+                ("inset", "0"),
+                ("pointer-events", "auto"),
+                (
+                    "background",
+                    "radial-gradient(ellipse at 50% 42%, #c9a27a 0%, #8a5f3c 46%, #4a3020 82%, #2c1c12 100%)",
+                ),
+            ],
+        );
         // The farmer's arrow.
         let arrow = element(document, "div");
         css(
@@ -557,7 +624,9 @@ impl Hud {
         let _ = root.append_child(&meadow);
         let _ = root.append_child(&prompt);
         let _ = root.append_child(&help);
+        let _ = root.append_child(&jump);
         let _ = root.append_child(&game);
+        let _ = root.append_child(&room);
         let _ = root.append_child(&card);
         let _ = parent.append_child(&root);
         let hud = Self {
@@ -576,6 +645,8 @@ impl Hud {
             pause,
             turn_back,
             help,
+            jump,
+            room,
             card,
             card_title,
             card_swatch,
@@ -593,6 +664,8 @@ impl Hud {
         };
         show(&hud.turn_back, touch);
         show(&hud.help, false);
+        show(&hud.jump, false);
+        show(&hud.room, false);
         hud
     }
 
@@ -615,6 +688,16 @@ impl Hud {
             {
                 self.prompt.set_text_content(Some(text));
             }
+        }
+    }
+
+    /// Shows the touch screen's jump button, labelled for a garden or for
+    /// the meadow's hop, or hides it.
+    pub fn show_jump(&self, visible: bool, hop: bool) {
+        show(&self.jump, visible && self.touch);
+        let label = if hop { copy::HOP } else { copy::JUMP };
+        if self.jump.get_attribute("aria-label").as_deref() != Some(label) {
+            self.jump.set_attribute("aria-label", label).ok();
         }
     }
 
@@ -756,6 +839,7 @@ impl Hud {
             return;
         }
         show(&self.card, card.is_some());
+        show(&self.room, card.as_ref().is_some_and(|c| c.room));
         if let Some(content) = &card {
             self.card_title.set_text_content(Some(&content.title));
             show(&self.card_swatch, content.swatch.is_some());

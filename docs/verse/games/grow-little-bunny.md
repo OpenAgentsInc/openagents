@@ -1273,6 +1273,28 @@ Deviations, and why:
   studio's homepage (nav, hero and the game's card). On the studio's own
   domain it is `/grow-little-bunny/how-to-play`.
 
+### The Burrow's doors and the held jump
+
+- **The Burrow** (`meadow::door`, drawn by `kit::piece(Piece::Mound)` from
+  the same angles): the mound has four doors, one facing each way, the
+  first facing the start. Walking into any of them dives inside: the
+  screen becomes the Burrow's room, with the wins and colour, a tunnel to
+  each garden, the Gentle and high-contrast switches, How to play, and Go
+  back outside (or Esc), which comes out in front of that door. Before
+  this, the door was drawn a fifth of a turn away from where it worked, so
+  walking into the door shown did nothing.
+- **The held jump** (`bunny_rules::hop`, rules version 2): a jump rises as
+  long as the key is held, from a tap's 270 ms (the 550 ms jump the
+  gardens were built around) up to 1.1 s, hangs briefly, and falls in
+  three quarters of its rise, so a full hold rises about four times as high
+  and stays up about four times as long. `Input::Release` (receipt code
+  `U`, `GameInput::UpReleased`) ends the rise; the bot taps. Drawn heights
+  stay under the hedge tops (`scene::MAX_LIFT`). The meadow's Space hop
+  (`meadow::Hopper`) uses the same curve and only lifts the bunny, so it
+  can't leave the meadow or go through the mound. On touch screens a held
+  jump button (bottom right) does the same; a swipe up is a tap. The web
+  build has no gamepad support yet.
+
 ### What's next
 
 - B7 (phone and browser): the browser build is playable on phones now

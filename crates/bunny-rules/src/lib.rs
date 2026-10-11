@@ -15,6 +15,7 @@
 pub mod bot;
 pub mod game;
 pub mod garden;
+pub mod hop;
 pub mod kinds;
 pub mod level;
 pub mod progress;

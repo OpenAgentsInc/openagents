@@ -22,6 +22,26 @@ const SPEED: f32 = 6.0;
 const TURN: f32 = 2.6;
 const BODY: f32 = 0.45;
 
+/// The Burrow's doors: four, around the mound, the first facing the start
+/// (south) and the rest a quarter turn apart. `kit::piece(Piece::Mound)`
+/// draws them here, and walking into any of them goes inside.
+pub const DOORS: usize = 4;
+pub const DOOR_TURN: f32 = 0.0;
+
+/// Where door `i` is: on the mound's foot, just outside what is solid.
+#[must_use]
+pub fn door(i: usize) -> (f32, f32) {
+    let a = door_angle(i);
+    let r = MOUND + BODY + 0.15;
+    (a.sin() * r, a.cos() * r)
+}
+
+/// The angle (about `y`, 0 facing `+z`) door `i` faces.
+#[must_use]
+pub fn door_angle(i: usize) -> f32 {
+    DOOR_TURN + i as f32 * std::f32::consts::FRAC_PI_2
+}
+
 /// Somewhere the player can go.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Spot {
@@ -48,7 +68,7 @@ pub fn spots(gardens: usize) -> Vec<(Spot, (f32, f32), f32)> {
     let mut spots: Vec<(Spot, (f32, f32), f32)> = (1..=gardens)
         .map(|n| (Spot::Hole(n), hole(n), 1.2))
         .collect();
-    spots.push((Spot::Burrow, (0.0, MOUND + 0.3), 1.3));
+    spots.extend((0..DOORS).map(|i| (Spot::Burrow, door(i), 1.3)));
     spots.push((Spot::Board, (0.0, 26.0), 1.8));
     spots.push((Spot::Arch, (-30.0, 0.0), 2.0));
     spots
@@ -147,8 +167,23 @@ impl Walker {
             .map(|(spot, _)| spot)
     }
 
-    /// Faces back toward the mound after coming out of a hole.
+    /// Faces back toward the mound after coming out of a hole; out of the
+    /// Burrow, stands outside the nearest door facing away from it.
     pub fn out_of(&mut self, spot: Spot, gardens: usize) {
+        if spot == Spot::Burrow {
+            let i = (0..DOORS)
+                .min_by(|a, b| {
+                    let d = |i: usize| (door(i).0 - self.x).powi(2) + (door(i).1 - self.z).powi(2);
+                    d(*a).total_cmp(&d(*b))
+                })
+                .unwrap_or(0);
+            let a = door_angle(i);
+            let r = MOUND + BODY + 3.0;
+            self.x = a.sin() * r;
+            self.z = a.cos() * r;
+            self.yaw = a;
+            return;
+        }
         if let Some((_, (x, z), r)) = spots(gardens).into_iter().find(|(s, _, _)| *s == spot) {
             let (dx, dz) = (-x, START.1 - z);
             let len = (dx * dx + dz * dz).sqrt().max(1e-3);
@@ -156,6 +191,82 @@ impl Walker {
             self.z = z + dz / len * (r + 4.0);
             self.yaw = dx.atan2(dz);
         }
+    }
+}
+
+/// The meadow's free hop on Space or the hop button: the same curve as a
+/// garden jump ([`bunny_rules::hop`]), in milliseconds. A tap hops a
+/// little; holding keeps rising, up to about four times as high. It only
+/// lifts the bunny: walking and what is solid stay as they are, so a hop
+/// can't leave the meadow or go through the mound.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Hopper {
+    /// Milliseconds since take-off, and of rising so far.
+    pub elapsed: f32,
+    pub rise: f32,
+    pub rising: bool,
+    pub holding: bool,
+    /// In the air.
+    pub up: bool,
+}
+
+/// A tap hop's height at the top, in metres.
+pub const HOP_PEAK: f32 = 0.7;
+
+fn ms(ticks: u32) -> f32 {
+    ticks as f32 * 1000.0 / bunny_rules::HZ as f32
+}
+
+impl Hopper {
+    /// The hop key went down: take off, unless already in the air.
+    pub fn press(&mut self) {
+        if !self.up {
+            *self = Self {
+                elapsed: 0.0,
+                rise: 0.0,
+                rising: true,
+                holding: true,
+                up: true,
+            };
+        }
+    }
+
+    /// The hop key came up: stop rising (after a tap's rise at least).
+    pub fn release(&mut self) {
+        self.holding = false;
+    }
+
+    /// Moves on `dt` seconds; lands at the end.
+    pub fn step(&mut self, dt: f32) {
+        if !self.up {
+            return;
+        }
+        self.elapsed += dt * 1000.0;
+        let (tap, max) = (
+            ms(bunny_rules::hop::RISE_TAP),
+            ms(bunny_rules::hop::RISE_MAX),
+        );
+        if self.rising {
+            self.rise = self.elapsed.min(max);
+            if self.rise >= max || (!self.holding && self.rise >= tap) {
+                self.rising = false;
+            }
+        }
+        let span = self.rise + ms(bunny_rules::hop::HANG) + self.rise * 0.75;
+        if !self.rising && self.elapsed >= span {
+            *self = Self::default();
+        }
+    }
+
+    /// The height now, in metres.
+    #[must_use]
+    pub fn height(&self) -> f32 {
+        if !self.up {
+            return 0.0;
+        }
+        let to_ticks = bunny_rules::HZ as f32 / 1000.0;
+        bunny_rules::hop::lift(self.elapsed * to_ticks, self.rise * to_ticks, self.rising)
+            * HOP_PEAK
     }
 }
 
@@ -207,9 +318,7 @@ mod tests {
     #[test]
     fn spots_and_stones_do_not_overlap_anything_solid() {
         for (spot, (x, z), _) in spots(5) {
-            if spot != Spot::Burrow {
-                assert!(!blocked(x, z), "{spot:?}");
-            }
+            assert!(!blocked(x, z), "{spot:?}");
         }
         for i in 0..STONES {
             let (x, z) = stone(i);
@@ -220,5 +329,104 @@ mod tests {
             );
         }
         assert!(!blocked(START.0, START.1));
+    }
+
+    /// Walks toward `(x, z)` until it stops in a spot or gets nowhere.
+    fn walk_toward(w: &mut Walker, to: (f32, f32)) -> Option<Spot> {
+        for _ in 0..2000 {
+            w.yaw = (to.0 - w.x).atan2(to.1 - w.z);
+            w.step(1.0 / 60.0, 1.0, 0.0);
+            if let Some(spot) = w.at(5) {
+                return Some(spot);
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn walking_into_any_door_of_the_mound_enters_the_burrow() {
+        for i in 0..DOORS {
+            let a = door_angle(i);
+            // From a few metres out in front of the door, head for the
+            // mound's middle, as a player aiming at the door does.
+            let mut w = Walker {
+                x: a.sin() * (MOUND + 6.0),
+                z: a.cos() * (MOUND + 6.0),
+                yaw: 0.0,
+                moving: false,
+            };
+            assert_eq!(
+                walk_toward(&mut w, (0.0, 0.0)),
+                Some(Spot::Burrow),
+                "door {i}"
+            );
+            w.out_of(Spot::Burrow, 5);
+            assert_eq!(w.at(5), None, "out of door {i}, clear of it");
+            assert!(!blocked(w.x, w.z));
+        }
+        // Straight ahead from the start is a door.
+        let mut w = Walker::default();
+        let mut found = None;
+        for _ in 0..600 {
+            w.step(1.0 / 60.0, 1.0, 0.0);
+            found = found.or(w.at(5));
+        }
+        assert_eq!(found, Some(Spot::Burrow));
+    }
+
+    #[test]
+    fn the_doors_are_where_the_mound_draws_them() {
+        // The mound's model puts a door every quarter turn from DOOR_TURN.
+        for i in 0..DOORS {
+            let (x, z) = door(i);
+            let a = x.atan2(z);
+            let want = door_angle(i);
+            let diff = (a - want).rem_euclid(std::f32::consts::TAU);
+            assert!(
+                diff < 1e-4 || diff > std::f32::consts::TAU - 1e-4,
+                "door {i}"
+            );
+        }
+    }
+
+    /// The hop's highest point, holding the key for `held` seconds.
+    fn hop_peak(held: f32) -> (f32, f32) {
+        let mut h = Hopper::default();
+        h.press();
+        let mut t = 0.0;
+        let mut top: f32 = 0.0;
+        while h.up {
+            if t >= held {
+                h.release();
+            }
+            h.step(1.0 / 120.0);
+            t += 1.0 / 120.0;
+            top = top.max(h.height());
+            assert!(t < 10.0, "lands");
+        }
+        assert_eq!(h.height(), 0.0, "on the ground");
+        (top, t)
+    }
+
+    #[test]
+    fn a_tap_hops_a_little_and_holding_hops_higher_up_to_a_cap() {
+        let (tap, tap_time) = hop_peak(0.0);
+        let (mid, _) = hop_peak(0.6);
+        let (max, max_time) = hop_peak(1.2);
+        let (longer, _) = hop_peak(5.0);
+        assert!((HOP_PEAK..HOP_PEAK * 1.1).contains(&tap), "{tap}");
+        assert!(mid > tap * 2.0, "{mid}");
+        assert!(max > mid, "{max}");
+        assert!(max > HOP_PEAK * 4.0, "a big hop: {max}");
+        assert!((longer - max).abs() < 0.05, "the cap: {longer} {max}");
+        assert!((0.5..0.62).contains(&tap_time), "{tap_time}");
+        assert!(max_time > tap_time * 3.0);
+        // Pressing again in the air doesn't hop again.
+        let mut h = Hopper::default();
+        h.press();
+        h.step(0.1);
+        let before = h;
+        h.press();
+        assert_eq!(h, before);
     }
 }

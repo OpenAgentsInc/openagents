@@ -41,6 +41,29 @@ const EYE: u32 = 0x151515;
 /// Hedges are taller than the biggest bunny.
 pub const HEDGE_HEIGHT: f32 = 2.4;
 
+/// The highest a jump lifts the bunny's feet: under the hedge tops, so even
+/// a Giant's longest jump stays inside its corridor's walls.
+pub const MAX_LIFT: f32 = HEDGE_HEIGHT - 0.2;
+
+/// How high a garden jump lifts the bunny now, in metres, `alpha` of a tick
+/// after the last: the shape of [`bunny_rules::hop::lift`] for this jump's
+/// rise so far, scaled to a tap peak of `peak`, and never above
+/// [`MAX_LIFT`] (or the tap's own peak, for a size whose tap is higher).
+#[must_use]
+pub fn jump_lift(bunny: &bunny_rules::game::Bunny, alpha: f32, peak: f32) -> f32 {
+    if bunny.air == 0 {
+        return 0.0;
+    }
+    let elapsed = bunny.air_span.saturating_sub(bunny.air) as f32 + alpha.clamp(0.0, 1.0);
+    let rise = if bunny.rising {
+        elapsed
+    } else {
+        bunny.rise as f32
+    };
+    let lift = bunny_rules::hop::lift(elapsed, rise, bunny.rising) * peak;
+    lift.min(MAX_LIFT.max(peak * 1.1))
+}
+
 /// Rules units to metres.
 #[must_use]
 pub fn metres(units: i32) -> f32 {
@@ -637,6 +660,44 @@ pub fn dot() -> Mesh {
 
 #[cfg(test)]
 mod tests {
+    use bunny_rules::{Game, HZ, Input, level};
+
+    /// The highest a garden jump draws, holding the key `held` ticks.
+    fn drawn_peak(tier: u8, held: u32) -> f32 {
+        let mut game = Game::with_seed(level::garden(1), 3, false);
+        game.farmer_on = false;
+        game.bunny.tier = tier;
+        let peak = metres(bunny_rules::TIER_JUMP[usize::from(tier)]) + 0.1;
+        game.step(&[Input::Jump]);
+        let mut top: f32 = 0.0;
+        let mut tick = 1;
+        while game.bunny.air > 0 {
+            top = top.max(jump_lift(&game.bunny, 0.0, peak));
+            let release: &[Input] = if tick == held { &[Input::Release] } else { &[] };
+            game.step(release);
+            tick += 1;
+            assert!(tick < 10 * HZ);
+        }
+        assert_eq!(jump_lift(&game.bunny, 0.0, peak), 0.0, "landed");
+        top
+    }
+
+    #[test]
+    fn a_held_jump_is_drawn_higher_and_never_above_the_hedges() {
+        let tap = drawn_peak(0, 1);
+        let held = drawn_peak(0, HZ / 2);
+        let max = drawn_peak(0, 10 * HZ);
+        assert!(held > tap * 1.8, "{tap} {held}");
+        assert!(max > tap * 3.5, "{tap} {max}");
+        for tier in 0..5 {
+            assert!(
+                drawn_peak(tier, 10 * HZ) <= MAX_LIFT.max(1.3),
+                "tier {tier}"
+            );
+        }
+        assert!(MAX_LIFT < HEDGE_HEIGHT);
+    }
+
     use super::*;
     use bunny_rules::ObstacleKind as CellKind;
 

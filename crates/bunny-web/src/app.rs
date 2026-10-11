@@ -19,7 +19,7 @@ use web_sys::{
 use crate::hud::{Action, Card, Hud, css, element, show};
 use crate::kit::{self, Piece};
 use crate::look::{Options, Tier};
-use crate::meadow::{self, Spot, Walker};
+use crate::meadow::{self, Hopper, Spot, Walker};
 use crate::mesh::{Mesh, STRIDE, rgb};
 use crate::tutorial::{self, Tour};
 use crate::{copy, scene};
@@ -102,6 +102,8 @@ const MAX_STEPS: u32 = 8;
 const MAX_FRAME: f64 = 10.0;
 #[cfg(feature = "autoplay")]
 const MAX_STEPS: u32 = 1000;
+/// How long diving into the Burrow's door takes, in seconds.
+const DIVE: f32 = 0.45;
 const SAVE_KEY: &str = "bunny.progress.v1";
 const WHITE: [f32; 3] = [1.0, 1.0, 1.0];
 /// The camera's near and far planes, in metres.
@@ -368,6 +370,10 @@ struct App {
     panel: Option<Spot>,
     /// The tutorial, while it is open; its card shows over any other.
     tour: Option<Tour>,
+    /// The meadow's hop on Space or the hop button.
+    hopper: Hopper,
+    /// Diving into a door of the Burrow: seconds so far.
+    diving: Option<f32>,
     /// Keys held for walking in the meadow: forward, back, left, right.
     held: [bool; 4],
     /// A drag on a touch screen, as a stick: start and current point.
@@ -544,6 +550,17 @@ impl App {
                 }
             }
             Action::TourBack => self.tour = self.tour.map(Tour::back),
+            Action::JumpDown => match self.phase {
+                Phase::Playing => self.press(Input::Jump),
+                Phase::Meadow if self.panel.is_none() && self.tour.is_none() => {
+                    self.hopper.press();
+                }
+                _ => {}
+            },
+            Action::JumpUp => {
+                self.press(Input::Release);
+                self.hopper.release();
+            }
             Action::TourEnd(finished) => {
                 if self.tour.take().is_some() {
                     mark_tutorial_seen(&self.window);
@@ -575,6 +592,19 @@ impl App {
     /// Walks the meadow for `dt` seconds and enters what the bunny walks
     /// into.
     fn walk(&mut self, dt: f32) {
+        self.hopper.step(dt);
+        if let Some(t) = self.diving {
+            // Into the door, then inside.
+            let t = t + dt;
+            if t >= DIVE {
+                self.diving = None;
+                self.hopper = Hopper::default();
+                self.panel = Some(Spot::Burrow);
+            } else {
+                self.diving = Some(t);
+            }
+            return;
+        }
         if self.panel.is_some() || self.tour.is_some() {
             return;
         }
@@ -594,6 +624,11 @@ impl App {
         }
         match self.walker.at(level::COUNT) {
             Some(Spot::Hole(n)) => self.play(n),
+            Some(Spot::Burrow) => {
+                self.diving = Some(0.0);
+                self.held = [false; 4];
+                self.drag = None;
+            }
             Some(spot) => {
                 self.panel = Some(spot);
                 self.held = [false; 4];
@@ -618,22 +653,32 @@ impl App {
                 } else {
                     copy::LAST_SHADE.to_owned()
                 });
+                lines.push(copy::BURROW_TUNNELS.to_owned());
+                let mut buttons = vec![(copy::OUTSIDE.to_owned(), Action::Close, true)];
+                buttons.extend((1..=level::COUNT).map(|n| {
+                    (
+                        copy::garden_button(n, &level::garden(n).name),
+                        Action::Play(n),
+                        false,
+                    )
+                }));
+                buttons.extend([
+                    (copy::gentle(p.gentle), Action::ToggleGentle, false),
+                    (
+                        copy::contrast(p.high_contrast),
+                        Action::ToggleContrast,
+                        false,
+                    ),
+                    (copy::HOW_TO_PLAY.to_owned(), Action::Tour, false),
+                ]);
                 Card {
-                    title: copy::BURROW.to_owned(),
+                    title: copy::BURROW_INSIDE.to_owned(),
                     swatch: Some(self.fur()),
                     lines,
                     hint: None,
                     link: None,
-                    buttons: vec![
-                        (copy::gentle(p.gentle), Action::ToggleGentle, false),
-                        (
-                            copy::contrast(p.high_contrast),
-                            Action::ToggleContrast,
-                            false,
-                        ),
-                        (copy::HOW_TO_PLAY.to_owned(), Action::Tour, false),
-                        (copy::CLOSE.to_owned(), Action::Close, true),
-                    ],
+                    room: true,
+                    buttons,
                 }
             }
             Spot::Board => {
@@ -652,6 +697,7 @@ impl App {
                     lines,
                     hint: None,
                     link: None,
+                    room: false,
                     buttons: vec![(copy::CLOSE.to_owned(), Action::Close, true)],
                 }
             }
@@ -661,6 +707,7 @@ impl App {
                 lines: Vec::new(),
                 hint: None,
                 link: None,
+                room: false,
                 buttons: vec![(copy::HOME.to_owned(), Action::Home, false), close],
             },
         }
@@ -692,6 +739,7 @@ impl App {
             lines: lines.iter().map(|line| (*line).to_owned()).collect(),
             hint: Some(copy::tour_step_line(tour.step + 1, tutorial::STEPS)),
             link: Some((copy::GUIDE.to_owned(), tutorial::GUIDE.to_owned())),
+            room: false,
             buttons,
         }
     }
@@ -723,6 +771,7 @@ impl App {
                     lines: vec![copy::GOAL.to_owned(), self.meadow_hint().to_owned()],
                     hint: Some(self.hint().to_owned()),
                     link: None,
+                    room: false,
                     buttons: vec![
                         (copy::PLAY.to_owned(), Action::Meadow, true),
                         (copy::HOW_TO_PLAY.to_owned(), Action::Tour, false),
@@ -735,6 +784,7 @@ impl App {
                 lines: vec![self.game.garden.name.clone()],
                 hint: Some(self.hint().to_owned()),
                 link: None,
+                room: false,
                 buttons: vec![
                     (copy::RESUME.to_owned(), Action::Resume, true),
                     (copy::RESTART.to_owned(), Action::Restart, false),
@@ -770,6 +820,7 @@ impl App {
                     lines,
                     hint: None,
                     link: None,
+                    room: false,
                     buttons,
                 })
             }
@@ -835,12 +886,12 @@ impl App {
         self.render(alpha, dtf);
         let playing = matches!(self.phase, Phase::Playing | Phase::Paused);
         self.hud.show_game(playing && !self.options.kit);
-        let prompt = (self.phase == Phase::Meadow && self.panel.is_none())
+        let prompt = (self.phase == Phase::Meadow && self.panel.is_none() && self.diving.is_none())
             .then(|| self.walker.near(level::COUNT, 5.0))
             .flatten()
             .map(|spot| match spot {
                 Spot::Hole(n) => copy::garden_button(n, &level::garden(n).name),
-                Spot::Burrow => copy::BURROW.to_owned(),
+                Spot::Burrow => copy::BURROW_PROMPT.to_owned(),
                 Spot::Board => copy::BOARD.to_owned(),
                 Spot::Arch => copy::ARCH_PROMPT.to_owned(),
             });
@@ -851,6 +902,12 @@ impl App {
             prompt.as_deref(),
         );
         self.hud.show_run_buttons(self.phase == Phase::Playing);
+        let free = self.panel.is_none() && self.tour.is_none() && self.diving.is_none();
+        self.hud.show_jump(
+            !self.options.kit
+                && (self.phase == Phase::Playing || (self.phase == Phase::Meadow && free)),
+            self.phase == Phase::Meadow,
+        );
         self.hud.show_help(
             self.phase == Phase::Meadow
                 && self.panel.is_none()
@@ -1232,7 +1289,11 @@ impl App {
         let jump = b.jump_progress();
         let hop = if b.air > 0 {
             let peak = scene::metres(TIER_JUMP[usize::from(b.tier)]) + 0.1;
-            4.0 * jump * (1.0 - jump) * peak
+            if b.floating() {
+                4.0 * jump * (1.0 - jump) * peak
+            } else {
+                scene::jump_lift(b, alpha, peak)
+            }
         } else if self.phase == Phase::Playing && b.mv == Move::Run {
             self.hop.sin().abs() * 0.35 * size
         } else {
@@ -1299,7 +1360,8 @@ impl App {
     fn meadow_camera(&self, aspect: f32) -> Mat4 {
         let w = &self.walker;
         let forward = Vec3::new(w.yaw.sin(), 0.0, w.yaw.cos());
-        let at = Vec3::new(w.x, 0.0, w.z);
+        // Follow a high hop part of the way up, so it stays in view.
+        let at = Vec3::new(w.x, self.hopper.height() * 0.55, w.z);
         let (back, up) = if aspect < 1.0 { (6.5, 4.2) } else { (5.5, 2.8) };
         let eye = at - forward * back + Vec3::Y * up;
         let look = at + forward * 3.0 + Vec3::Y * 0.6;
@@ -1416,23 +1478,32 @@ impl App {
         }
         // The bunny, at Bunny size.
         let w = &self.walker;
-        let size = scene::metres(TIER_HEIGHT[1]) * DRAWN * 1.4;
-        let hop = if w.moving {
+        let mut size = scene::metres(TIER_HEIGHT[1]) * DRAWN * 1.4;
+        let (mut x, mut z) = (w.x, w.z);
+        let lift = self.hopper.height();
+        let hop = if w.moving && lift == 0.0 {
             self.hop.sin().abs() * 0.3 * size
         } else {
-            0.0
+            lift
         };
+        if let Some(t) = self.diving {
+            // Into the door: on toward the mound's middle, shrinking away.
+            let done = (t / DIVE).clamp(0.0, 1.0);
+            x -= w.x * done * 0.12;
+            z -= w.z * done * 0.12;
+            size *= 1.0 - done * 0.9;
+        }
         gpu.look.set(Look::Ground);
         gpu.draw(
             &m.shadow,
-            &scene::place(Vec3::new(w.x, 0.0, w.z), 0.0, size * 1.3),
+            &scene::place(Vec3::new(x, 0.0, z), 0.0, size * 1.3 / (1.0 + lift * 0.4)),
             WHITE,
             None,
         );
         gpu.look.set(Look::Chroma);
         let fur = rgb(self.fur());
         let outline = Some(([fur[0] * 0.38, fur[1] * 0.36, fur[2] * 0.36], LINE));
-        let body = Mat4::from_translation(Vec3::new(w.x, hop, w.z))
+        let body = Mat4::from_translation(Vec3::new(x, hop, z))
             * Mat4::from_rotation_y(w.yaw)
             * Mat4::from_scale(Vec3::splat(size));
         gpu.draw(&m.bunny[1], &body, WHITE, outline);
@@ -1881,6 +1952,8 @@ pub fn start() {
         walker: Walker::default(),
         panel: None,
         tour: None,
+        hopper: Hopper::default(),
+        diving: None,
         held: [false; 4],
         drag: None,
         queue: Vec::new(),
@@ -1952,10 +2025,21 @@ pub fn start() {
                 return;
             }
             if app.phase == Phase::Meadow && app.panel.is_none() {
+                if key == " " {
+                    event.prevent_default();
+                    if app.diving.is_none() {
+                        app.hopper.press();
+                    }
+                    return;
+                }
                 if let Some(index) = held_index(&key) {
                     event.prevent_default();
                     app.held[index] = true;
                 }
+                return;
+            }
+            if key == "Escape" && app.phase == Phase::Meadow && app.panel.is_some() {
+                app.act(Action::Close);
                 return;
             }
             let pause = matches!(key.as_str(), "Escape" | "p" | "P");
@@ -1971,8 +2055,19 @@ pub fn start() {
     {
         let app = app.clone();
         listen::<KeyboardEvent>(window.as_ref(), "keyup", move |event| {
-            if let Some(index) = held_index(&event.key()) {
-                app.borrow_mut().held[index] = false;
+            let key = event.key();
+            let mut app = app.borrow_mut();
+            // Letting go of the jump key ends the rise: a held jump goes
+            // higher.
+            if input_for(&key) == Some(Input::Jump) {
+                app.press(Input::Release);
+            }
+            if key == " " {
+                app.hopper.release();
+                return;
+            }
+            if let Some(index) = held_index(&key) {
+                app.held[index] = false;
             }
         });
     }
@@ -2008,6 +2103,10 @@ pub fn start() {
             let swipe = verse_game::Swipe::default().read(dx, dy, event.time_stamp() - at);
             if let Some(input) = swipe.and_then(crate::zone::input) {
                 app.press(input);
+                // A swipe is a tap: let go at once.
+                if input == Input::Jump {
+                    app.press(Input::Release);
+                }
             }
         });
     }

@@ -603,8 +603,9 @@ pub fn piece(kind: Piece) -> Mesh {
                 RAMP[1],
                 1.0,
             );
-            for i in 0..4 {
-                let turn = Quat::from_rotation_y(i as f32 * std::f32::consts::FRAC_PI_2 + 0.4);
+            for i in 0..crate::meadow::DOORS {
+                // The Burrow's doors, where `meadow::door` puts them.
+                let turn = Quat::from_rotation_y(crate::meadow::door_angle(i));
                 mesh.add(
                     Shape::Disc { sides: 10 },
                     part(
