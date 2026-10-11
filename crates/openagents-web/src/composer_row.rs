@@ -10,13 +10,19 @@
 //! - **Branch**: a project is picked. That repository's branches, read from
 //!   GitHub as the person ([`crate::composer::branch_names`], kept); the
 //!   default branch is picked first.
-//! - **Where it runs**: more than Chat is possible. **Chat** answers here.
+//! - **Where it runs**: signed in to an account, or more than Chat is
+//!   possible. **Chat** answers here.
 //!   **Claude Code in {repository name} vN** when the picked project's repository
 //!   has a saved environment of the person's, Claude Code can run on this
 //!   server (a key), and the request may do agent work, like
-//!   `/environments` ([`crate::agent_work`], [`crate::pages::chat_work`]). **Coder on {computer}** for a new chat
-//!   when Coder with sync on checked in from that computer lately
-//!   ([`crate::coder_sync`]).
+//!   `/environments` ([`crate::agent_work`], [`crate::pages::chat_work`]). **Coder on {computer}**
+//!   on any chat of the person's (#11319), when Coder with sync on checked
+//!   in from that computer lately ([`crate::coder_sync::online`], the same
+//!   test `/v1/agents` and the computers page use). A later message sent
+//!   to Coder moves the chat there, the messages so far with it. With no
+//!   computer online the panel says how to bring one online instead of
+//!   hiding the control. A chat that is already Coder's has its own reply
+//!   path and no **Where it runs**.
 //!
 //! Claude Code in an environment is offered even before the person has
 //! connected Claude (#11234), when this server keeps their own key
@@ -137,9 +143,11 @@ pub(crate) struct Choices {
     pub connected: bool,
     /// Saved environments Claude Code can run in, newest first.
     pub environments: Vec<Environment>,
-    /// Computers where Coder with sync on checked in lately, newest first
-    /// (offered for a new chat only).
+    /// Computers where Coder with sync on checked in lately, newest first.
     pub computers: Vec<String>,
+    /// A signed-in account (Coder can sync to it): **Where it runs**
+    /// shows even when only Chat is possible now, saying why (#11319).
+    pub account: bool,
     /// Claude Code is offered in [`Self::environments`] but can't run until
     /// the person adds their Claude key (#11234): picking it shows the
     /// connect card ([`connect_card`]).
@@ -172,6 +180,12 @@ pub(crate) struct Picked {
 }
 
 impl Choices {
+    /// A Coder chat's messages go to its own computer: no Where it runs.
+    fn for_coder_chat(&mut self) {
+        self.computers.clear();
+        self.account = false;
+    }
+
     /// Claude Code in `env` can't run until the person connects Claude.
     pub(crate) fn needs_connect(&self, env: &str) -> bool {
         self.claude_connect && !self.claude_signed_in.iter().any(|id| id == env)
@@ -237,13 +251,8 @@ impl Choices {
 
 /// What this request can pick, or `None` when nobody is signed in (or the
 /// account service can't be reached): then there is no row. Coder
-/// computers count only for a new chat (`new_chat`).
-pub(crate) async fn choices(
-    app: &App,
-    headers: &HeaderMap,
-    owner: &str,
-    new_chat: bool,
-) -> Option<Choices> {
+/// computers count on every chat (#11319).
+pub(crate) async fn choices(app: &App, headers: &HeaderMap, owner: &str) -> Option<Choices> {
     let sidebar = crate::projects::sidebar(app).await?;
     let connected = !matches!(sidebar.status.access, Access::None);
     let mut environments = Vec::new();
@@ -279,30 +288,39 @@ pub(crate) async fn choices(
     }
     let claude_subscription =
         claude_connect && crate::settings::subscription::offered(app, headers).await;
-    let mut computers = Vec::new();
-    if new_chat
-        && crate::chat_store::is_account_owner(owner)
-        && let Ok(seen) = app.config.chat_store.computers(owner).await
-    {
-        let mut online: Vec<(String, u64)> = seen
-            .seen
-            .iter()
-            .filter(|(name, _)| crate::coder_sync::online(&seen, name))
-            .map(|(name, at)| (name.clone(), *at))
-            .collect();
-        online.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
-        computers = online.into_iter().map(|(name, _)| name).collect();
-    }
+    let account = crate::chat_store::is_account_owner(owner);
+    let computers = if account {
+        online_computers(app, owner).await
+    } else {
+        Vec::new()
+    };
     Some(Choices {
         projects: sidebar.status.projects.clone(),
         connected,
         environments,
         computers,
+        account,
         claude_connect,
         claude_subscription,
         claude_signed_in,
         claude_keys: app.config.cloud_byo.is_some(),
     })
+}
+
+/// The account's computers where Coder with sync on checked in lately
+/// ([`crate::coder_sync::online`]), newest first.
+pub(crate) async fn online_computers(app: &App, owner: &str) -> Vec<String> {
+    let Ok(seen) = app.config.chat_store.computers(owner).await else {
+        return Vec::new();
+    };
+    let mut online: Vec<(String, u64)> = seen
+        .seen
+        .iter()
+        .filter(|(name, _)| crate::coder_sync::online(&seen, name))
+        .map(|(name, at)| (name.clone(), *at))
+        .collect();
+    online.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    online.into_iter().map(|(name, _)| name).collect()
 }
 
 /// Why a message's picks can't be used now.
@@ -316,10 +334,9 @@ pub(crate) async fn checked(
     headers: &HeaderMap,
     owner: &str,
     wanted: &Wanted,
-    new_chat: bool,
 ) -> Result<Picked, Refused> {
     let asked = Target::parse(&wanted.target);
-    let Some(choices) = choices(app, headers, owner, new_chat).await else {
+    let Some(choices) = choices(app, headers, owner).await else {
         if asked != Target::Chat {
             return Err("Sign in to run this somewhere else. Reload the page.");
         }
@@ -421,7 +438,7 @@ pub(crate) fn row(
                         .autofocus(focus == Some("branch")))
                 }
                 @let targets = choices.targets(picked.project.as_ref());
-                @if targets.len() > 1 {
+                @if targets.len() > 1 || choices.account {
                     // Short on the row (the Project selector names the
                     // repository); the panel says it in full.
                     @let label = match &picked.target {
@@ -509,7 +526,7 @@ pub(crate) async fn home(
     owner: &str,
     project: Option<&str>,
 ) -> Option<Markup> {
-    let choices = choices(app, headers, owner, true).await?;
+    let choices = choices(app, headers, owner).await?;
     let picked = choices.resolve(&Wanted {
         project: project.unwrap_or_default().to_owned(),
         ..Wanted::default()
@@ -551,7 +568,12 @@ pub(crate) async fn for_chat(
     chat: &crate::chat_store::Conversation,
     oob: bool,
 ) -> Markup {
-    let choices = choices(app, headers, &chat.owner, false).await;
+    let mut choices = choices(app, headers, &chat.owner).await;
+    if chat.terminal.is_some()
+        && let Some(choices) = &mut choices
+    {
+        choices.for_coder_chat();
+    }
     let wanted = wanted_for(chat);
     let picked = choices.as_ref().map_or(
         Picked {
@@ -588,7 +610,7 @@ async fn reload(
         return plain(StatusCode::FORBIDDEN, "Sign in to pick a project.");
     };
     let chat = wanted.chat.as_deref().filter(|id| !id.is_empty());
-    let Some(choices) = choices(&app, &headers, &owner, chat.is_none()).await else {
+    let Some(choices) = choices_in(&app, &headers, &owner, chat).await else {
         return plain(StatusCode::FORBIDDEN, "Sign in to pick a project.");
     };
     let picked = choices.resolve(&wanted);
@@ -596,6 +618,25 @@ async fn reload(
         (row(Some(&choices), &picked, chat, wanted.focus.as_deref(), false))
         div #composer-panel hx-swap-oob="innerHTML" {}
     })
+}
+
+/// [`choices`] for the row of `chat` (none on the home page): a Coder
+/// chat's row has no Where it runs.
+async fn choices_in(
+    app: &App,
+    headers: &HeaderMap,
+    owner: &str,
+    chat: Option<&str>,
+) -> Option<Choices> {
+    let mut choices = choices(app, headers, owner).await?;
+    if let Some(id) = chat
+        && crate::chat_store::valid_id(id)
+        && let Ok(Some(loaded)) = app.config.chat_store.load(owner, id).await
+        && loaded.conversation.terminal.is_some()
+    {
+        choices.for_coder_chat();
+    }
+    Some(choices)
 }
 
 /// One choice in a panel: picking it reloads the row.
@@ -624,7 +665,7 @@ async fn choose(
         return plain(StatusCode::FORBIDDEN, "Sign in to pick a project.");
     };
     let chat = wanted.chat.as_deref().filter(|id| !id.is_empty());
-    let Some(choices) = choices(&app, &headers, &owner, chat.is_none()).await else {
+    let Some(choices) = choices_in(&app, &headers, &owner, chat).await else {
         return plain(StatusCode::FORBIDDEN, "Sign in to pick a project.");
     };
     let picked = choices.resolve(&wanted);
@@ -750,6 +791,14 @@ fn target_panel(choices: &Choices, picked: &Picked, with: &With<'_>) -> Markup {
                     }),
                     *target == picked.target,
                 ))
+            }
+            @if choices.account && choices.computers.is_empty() {
+                p class="oa-composer-note" {
+                    "None of your computers is online. Open Coder on your computer, signed in, with "
+                    code { "/sync on" }
+                    ", to run work there. "
+                    a href="/download" { "Get Coder" }
+                }
             }
         },
     )

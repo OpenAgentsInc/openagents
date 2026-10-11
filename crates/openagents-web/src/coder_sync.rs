@@ -49,8 +49,9 @@ use sha2::{Digest, Sha256};
 use crate::App;
 use crate::chat_store::{
     AskAction, AskState, CAPTURE_MEDIA, ComputerAsk, Computers, Conversation, Error, MAX_ASKS,
-    MAX_CAPTURE_BYTES, MAX_COMPUTERS, MAX_OPEN_ASKS, MAX_REPLY_IDS, MAX_WAITING_CHATS,
-    MAX_WEB_REPLIES, Message, Role, Store, SyncChoice, Terminal, WebReply, account_owner, now_unix,
+    MAX_CAPTURE_BYTES, MAX_COMPUTERS, MAX_CONTINUED, MAX_CONTINUED_BYTES, MAX_OPEN_ASKS,
+    MAX_REPLY_IDS, MAX_WAITING_CHATS, MAX_WEB_REPLIES, Message, Role, Store, SyncChoice, Terminal,
+    WebReply, account_owner, now_unix,
 };
 use crate::cloud::protect;
 use crate::cloud::session::SessionError;
@@ -903,11 +904,15 @@ pub(crate) fn web_session(request: &str) -> String {
 }
 
 /// Start a Coder chat from the website (the composer's "Coder on
-/// {computer}"): a Coder chat with no messages yet, whose first message
-/// waits for Coder on `computer` like a reply ([`queue_reply`]). Coder
-/// takes it at its next check-in, opens a new conversation for it, and
-/// answers; its upload fills the chat as usual. The same `request` starts
-/// it once.
+/// {computer}"): a Coder chat whose first message waits for Coder on
+/// `computer` like a reply ([`queue_reply`]). Coder takes it at its next
+/// check-in, opens a new conversation for it, and answers; its upload
+/// fills the chat as usual. The same `request` starts it once.
+///
+/// `earlier` is the website chat so far when a chat moves to Coder after
+/// it began here (#11318, #11319): the new chat shows it at once, and
+/// Coder adds it to its own conversation before answering, like messages
+/// added while a computer was offline ([`carried`]).
 pub(crate) async fn start_from_web(
     store: &Store,
     owner: &str,
@@ -915,6 +920,7 @@ pub(crate) async fn start_from_web(
     request: &str,
     text: &str,
     project: Option<String>,
+    earlier: &[Message],
 ) -> Result<Started, Error> {
     if secret_screen::credential_in(text).is_some() {
         return Ok(Started::Secret);
@@ -932,6 +938,7 @@ pub(crate) async fn start_from_web(
         if store.list_with_deleted(owner).await?.len() >= MAX_CHATS {
             return Ok(Started::Full);
         }
+        let earlier = carried(earlier);
         let chat = Conversation {
             id: id.clone(),
             owner: owner.to_owned(),
@@ -943,7 +950,7 @@ pub(crate) async fn start_from_web(
                 .chars()
                 .take(64)
                 .collect(),
-            messages: Vec::new(),
+            messages: earlier.clone(),
             pending: None,
             requests: Vec::new(),
             selection: None,
@@ -962,7 +969,7 @@ pub(crate) async fn start_from_web(
                 deleted_unix: None,
                 replies: Vec::new(),
                 reply_ids: Vec::new(),
-                continued: Vec::new(),
+                continued: earlier,
                 continued_taken: 0,
                 asks: Vec::new(),
             }),
@@ -983,6 +990,39 @@ pub(crate) async fn start_from_web(
         Queued::Secret => Started::Secret,
         Queued::Missing => Started::Offline,
     })
+}
+
+/// A website chat's messages as a new Coder chat carries them: the
+/// person's and the answers, without notes or empty ones, the newest
+/// [`MAX_CONTINUED`] kept, each cut to [`MAX_CONTINUED_BYTES`]. One that
+/// looks like it holds a credential is left out.
+pub(crate) fn carried(messages: &[Message]) -> Vec<Message> {
+    let mut kept: Vec<Message> = messages
+        .iter()
+        .filter(|m| matches!(m.role, Role::User | Role::Assistant))
+        .filter(|m| !m.text.trim().is_empty())
+        .filter(|m| secret_screen::credential_in(&m.text).is_none())
+        .map(|m| {
+            let mut text = m.text.trim().to_owned();
+            if text.len() > MAX_CONTINUED_BYTES {
+                let mut end = MAX_CONTINUED_BYTES - 4;
+                while !text.is_char_boundary(end) {
+                    end -= 1;
+                }
+                text.truncate(end);
+                text.push_str("\n…");
+            }
+            Message {
+                role: m.role,
+                text,
+                request_id: None,
+            }
+        })
+        .collect();
+    if kept.len() > MAX_CONTINUED {
+        kept.drain(..kept.len() - MAX_CONTINUED);
+    }
+    kept
 }
 
 /// What Coder took from a chat.
