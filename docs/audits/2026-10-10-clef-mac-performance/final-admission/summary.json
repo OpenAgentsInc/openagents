@@ -1,0 +1,84 @@
+{
+  "started_at": "2026-10-11T02:50:46.596087+00:00",
+  "diagnostic_only": true,
+  "config": {
+    "model_path": "$SCRATCH/Clef-Flash-Q4_K_M.gguf",
+    "requests": [
+      "$SCRATCH/requests/len1k.json",
+      "$SCRATCH/requests/len4k.json",
+      "$SCRATCH/requests/len16k.json"
+    ],
+    "output_dir": "$SCRATCH/sweep-desktop",
+    "rounds": 1,
+    "runs": 3,
+    "settle_seconds": 30,
+    "max_start_load": 5,
+    "max_run_load": 8,
+    "variants": [
+      {
+        "name": "chunk1024",
+        "binary": "$SCRATCH/merged-server",
+        "chunk": 1024,
+        "env": {},
+        "commit": "1d16475293b1645796a873fc6877ed6d842fd07c + candidate.patch",
+        "model": "clef-flash"
+      },
+      {
+        "name": "chunk4096",
+        "binary": "$SCRATCH/merged-server",
+        "chunk": 4096,
+        "env": {},
+        "commit": "1d16475293b1645796a873fc6877ed6d842fd07c + candidate.patch",
+        "model": "clef-flash"
+      },
+      {
+        "name": "rayon1",
+        "binary": "$SCRATCH/merged-server",
+        "chunk": 2048,
+        "env": {
+          "RAYON_NUM_THREADS": "1"
+        },
+        "commit": "1d16475293b1645796a873fc6877ed6d842fd07c + candidate.patch",
+        "model": "clef-flash"
+      },
+      {
+        "name": "rayon4",
+        "binary": "$SCRATCH/merged-server",
+        "chunk": 2048,
+        "env": {
+          "RAYON_NUM_THREADS": "4"
+        },
+        "commit": "1d16475293b1645796a873fc6877ed6d842fd07c + candidate.patch",
+        "model": "clef-flash"
+      },
+      {
+        "name": "rayon8",
+        "binary": "$SCRATCH/merged-server",
+        "chunk": 2048,
+        "env": {
+          "RAYON_NUM_THREADS": "8"
+        },
+        "commit": "1d16475293b1645796a873fc6877ed6d842fd07c + candidate.patch",
+        "model": "clef-flash"
+      },
+      {
+        "name": "control2048",
+        "binary": "$SCRATCH/merged-server",
+        "chunk": 2048,
+        "env": {},
+        "commit": "1d16475293b1645796a873fc6877ed6d842fd07c + candidate.patch",
+        "model": "clef-flash"
+      }
+    ],
+    "max_start_gpu_percent": 100,
+    "max_wait_seconds": 300,
+    "request_timeout": 120
+  },
+  "steps": [],
+  "probe_binary_sha256": "6fda80efd15423c6b8f6362d95f994887d073d5e7d31c5331de3f2d58d08210b",
+  "kernel_sha256": "ad1f9ef72244b4c9006955ef428379d24acc8eb7d6aa2dfcd078f9a53da5c370",
+  "status": "rejected",
+  "error": "machine did not become quiet before max_wait_seconds",
+  "error_type": "RuntimeError",
+  "finished_at": "2026-10-11T02:55:47.548216+00:00"
+}

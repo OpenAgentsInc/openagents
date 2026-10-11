@@ -1,0 +1,1 @@
+Self-test passed: paired nonces, reversed rounds, warmup exclusion, CPU/GPU admission, wait deadline, cancellation cleanup.

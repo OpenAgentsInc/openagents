@@ -1,0 +1,21 @@
+{
+  "schema": "openagents.lease.receipt.v1",
+  "id": "1791685095259-66400-0",
+  "resource": "quiet",
+  "amount": 1,
+  "holder": {
+    "session": "codex:01a12620-209f-7ec3-9846-7e94fc1b965b",
+    "agent": "codex",
+    "pid": 66400,
+    "command": "caffeinate"
+  },
+  "priority": "owner",
+  "nested": false,
+  "requested_at_ms": 1791685095259,
+  "acquired_at_ms": 1791686321438,
+  "released_at_ms": 1791686603942,
+  "wait_ms": 1226179,
+  "held_ms": 282504,
+  "held_whole_run": true,
+  "exit": 1
+}

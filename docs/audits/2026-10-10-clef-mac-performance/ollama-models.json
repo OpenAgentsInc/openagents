@@ -1,0 +1,44 @@
+{
+  "models": [
+    {
+      "name": "clef:latest",
+      "model": "clef:latest",
+      "modified_at": "2026-10-09T19:22:12.361695474-05:00",
+      "size": 18107132722,
+      "digest": "039c167bd0ec3719dd055f448dd55ea2365330bc05f2737e042ea0d23659756b",
+      "details": {
+        "parent_model": "",
+        "format": "safetensors",
+        "family": "",
+        "families": null,
+        "parameter_size": "",
+        "quantization_level": "",
+        "runner": "mlx"
+      },
+      "capabilities": [
+        "decision",
+        "vision"
+      ]
+    },
+    {
+      "name": "clef-flash:latest",
+      "model": "clef-flash:latest",
+      "modified_at": "2026-10-09T17:40:11.253881369-05:00",
+      "size": 12387093750,
+      "digest": "0a2a05d6a581223a9397e6fd2ea92486d4b1a54ec1125065be0c2170ff97ba75",
+      "details": {
+        "parent_model": "",
+        "format": "safetensors",
+        "family": "",
+        "families": null,
+        "parameter_size": "",
+        "quantization_level": "mxfp8",
+        "runner": "mlx"
+      },
+      "capabilities": [
+        "decision",
+        "vision"
+      ]
+    }
+  ]
+}

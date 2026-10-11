@@ -1,0 +1,13 @@
+psionic openai server listening on http://127.0.0.1:58879 decision_models=$SCRATCH/Clef-Flash-Q4_K_M.gguf backend=metal execution_mode=native route=/v1/systemone
+clef decision: 1081 tokens, 3 questions, waited 0 ms, ran 623 ms
+clef decision: 1082 tokens, 3 questions, waited 0 ms, ran 1068 ms
+clef decision: 1081 tokens, 3 questions, waited 0 ms, ran 1244 ms
+clef decision: 1083 tokens, 3 questions, waited 0 ms, ran 1198 ms
+clef decision: 3917 tokens, 3 questions, waited 0 ms, ran 3947 ms
+clef decision: 3917 tokens, 3 questions, waited 0 ms, ran 4962 ms
+clef decision: 3916 tokens, 3 questions, waited 0 ms, ran 4012 ms
+clef decision: 3918 tokens, 3 questions, waited 0 ms, ran 4189 ms
+clef decision: 15509 tokens, 3 questions, waited 0 ms, ran 17887 ms
+clef decision: 15514 tokens, 3 questions, waited 0 ms, ran 18716 ms
+clef decision: 15513 tokens, 3 questions, waited 0 ms, ran 19788 ms
+clef decision: 15508 tokens, 3 questions, waited 0 ms, ran 19413 ms

@@ -1,0 +1,154 @@
+{
+  "status": "rejected_host_load",
+  "error_type": "RuntimeError",
+  "finished_at": "2026-10-11T02:43:23.911604+00:00",
+  "groups": [
+    {
+      "variant": "chunk1024",
+      "workload": "$SCRATCH/requests/len1k.json",
+      "count": 3,
+      "expected_count": 3,
+      "median_seconds": 0.6190486660000047,
+      "usable_comparison": false
+    },
+    {
+      "variant": "chunk1024",
+      "workload": "$SCRATCH/requests/len4k.json",
+      "count": 3,
+      "expected_count": 3,
+      "median_seconds": 3.9579177080000036,
+      "usable_comparison": false
+    },
+    {
+      "variant": "chunk1024",
+      "workload": "$SCRATCH/requests/len16k.json",
+      "count": 3,
+      "expected_count": 3,
+      "median_seconds": 17.899150708000008,
+      "usable_comparison": false
+    },
+    {
+      "variant": "chunk4096",
+      "workload": "$SCRATCH/requests/len1k.json",
+      "count": 3,
+      "expected_count": 3,
+      "median_seconds": 1.1981011670000044,
+      "usable_comparison": false
+    },
+    {
+      "variant": "chunk4096",
+      "workload": "$SCRATCH/requests/len4k.json",
+      "count": 3,
+      "expected_count": 3,
+      "median_seconds": 4.1894081670000105,
+      "usable_comparison": false
+    },
+    {
+      "variant": "chunk4096",
+      "workload": "$SCRATCH/requests/len16k.json",
+      "count": 3,
+      "expected_count": 3,
+      "median_seconds": 19.414394625,
+      "usable_comparison": false
+    },
+    {
+      "variant": "rayon1",
+      "workload": "$SCRATCH/requests/len1k.json",
+      "count": 3,
+      "expected_count": 3,
+      "median_seconds": 1.439769833000014,
+      "usable_comparison": false
+    },
+    {
+      "variant": "rayon1",
+      "workload": "$SCRATCH/requests/len4k.json",
+      "count": 0,
+      "expected_count": 3,
+      "median_seconds": null,
+      "usable_comparison": false
+    },
+    {
+      "variant": "rayon1",
+      "workload": "$SCRATCH/requests/len16k.json",
+      "count": 0,
+      "expected_count": 3,
+      "median_seconds": null,
+      "usable_comparison": false
+    },
+    {
+      "variant": "rayon4",
+      "workload": "$SCRATCH/requests/len1k.json",
+      "count": 0,
+      "expected_count": 3,
+      "median_seconds": null,
+      "usable_comparison": false
+    },
+    {
+      "variant": "rayon4",
+      "workload": "$SCRATCH/requests/len4k.json",
+      "count": 0,
+      "expected_count": 3,
+      "median_seconds": null,
+      "usable_comparison": false
+    },
+    {
+      "variant": "rayon4",
+      "workload": "$SCRATCH/requests/len16k.json",
+      "count": 0,
+      "expected_count": 3,
+      "median_seconds": null,
+      "usable_comparison": false
+    },
+    {
+      "variant": "rayon8",
+      "workload": "$SCRATCH/requests/len1k.json",
+      "count": 0,
+      "expected_count": 3,
+      "median_seconds": null,
+      "usable_comparison": false
+    },
+    {
+      "variant": "rayon8",
+      "workload": "$SCRATCH/requests/len4k.json",
+      "count": 0,
+      "expected_count": 3,
+      "median_seconds": null,
+      "usable_comparison": false
+    },
+    {
+      "variant": "rayon8",
+      "workload": "$SCRATCH/requests/len16k.json",
+      "count": 0,
+      "expected_count": 3,
+      "median_seconds": null,
+      "usable_comparison": false
+    },
+    {
+      "variant": "control2048",
+      "workload": "$SCRATCH/requests/len1k.json",
+      "count": 0,
+      "expected_count": 3,
+      "median_seconds": null,
+      "usable_comparison": false
+    },
+    {
+      "variant": "control2048",
+      "workload": "$SCRATCH/requests/len4k.json",
+      "count": 0,
+      "expected_count": 3,
+      "median_seconds": null,
+      "usable_comparison": false
+    },
+    {
+      "variant": "control2048",
+      "workload": "$SCRATCH/requests/len16k.json",
+      "count": 0,
+      "expected_count": 3,
+      "median_seconds": null,
+      "usable_comparison": false
+    }
+  ],
+  "monitor_error": null,
+  "diagnostic_only": true,
+  "note": "Medians exclude warmups and rejected samples. No quality verdict or tail-latency claim."
+}

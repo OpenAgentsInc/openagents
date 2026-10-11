@@ -1,0 +1,89 @@
+{
+  "schema": "clef.mac-quiet-bench.v1",
+  "created_at": "2026-10-11T02:16:46.718832+00:00",
+  "config": {
+    "model_path": "$SCRATCH/Clef-Flash-Q4_K_M.gguf",
+    "requests": [
+      "$SCRATCH/requests/len1k.json",
+      "$SCRATCH/requests/len4k.json",
+      "$SCRATCH/requests/len16k.json"
+    ],
+    "output_dir": "$SCRATCH/comparison-desktop",
+    "rounds": 3,
+    "runs": 5,
+    "settle_seconds": 60,
+    "max_start_load": 5,
+    "max_run_load": 8,
+    "variants": [
+      {
+        "name": "baseline",
+        "binary": "$SCRATCH/baseline-server",
+        "chunk": 2048,
+        "commit": "1d16475293b1645796a873fc6877ed6d842fd07c",
+        "model": "clef-flash"
+      },
+      {
+        "name": "merged",
+        "binary": "$SCRATCH/merged-server",
+        "chunk": 2048,
+        "commit": "1d16475293b1645796a873fc6877ed6d842fd07c + candidate.patch",
+        "model": "clef-flash"
+      },
+      {
+        "name": "ollama0402",
+        "url": "http://127.0.0.1:11434/v1/systemone",
+        "model": "clef-flash"
+      }
+    ],
+    "max_wait_seconds": 300,
+    "request_timeout": 120,
+    "max_start_gpu_percent": 100
+  },
+  "config_sha256": "af7955c7cbec5897cf33f00a822ef2fda43e0817a0e42e0ec920e14385af5d68",
+  "python": "3.9.6",
+  "platform": "darwin",
+  "load_metric": "one-minute system load average",
+  "quiet_lease": "caller responsibility",
+  "self_test": false,
+  "removed_inherited_env_names": [],
+  "variants": [
+    {
+      "name": "baseline",
+      "binary_sha256": "c2b48ef8da37156b5809380f5af20d7b279dd16fa55d0e0a190451721dce4cba",
+      "binary_commit": "1d16475293b1645796a873fc6877ed6d842fd07c",
+      "env": {},
+      "profile_mode": "disabled"
+    },
+    {
+      "name": "merged",
+      "binary_sha256": "3faff07dcd07e35d6b6d0a6c84cca20c08a8981a35b07427a9369901fe78d0aa",
+      "binary_commit": "1d16475293b1645796a873fc6877ed6d842fd07c + candidate.patch",
+      "env": {},
+      "profile_mode": "disabled"
+    },
+    {
+      "name": "ollama0402",
+      "binary_sha256": null,
+      "binary_commit": null,
+      "env": null,
+      "profile_mode": "external: unknown"
+    }
+  ],
+  "workloads": [
+    {
+      "path": "$SCRATCH/requests/len1k.json",
+      "sha256": "0f98f1ce7b7e54063e93ab8dbdf714f4bfb3a7a5822f0012ddd37f7bd7137eab"
+    },
+    {
+      "path": "$SCRATCH/requests/len4k.json",
+      "sha256": "5cadcbb4d5204128c73dbb8087ec0b6f27c81fffbd8e16416324396ce4c26dff"
+    },
+    {
+      "path": "$SCRATCH/requests/len16k.json",
+      "sha256": "7e2d3fc74517af655466c1951fba8fbed6aef652e6cb5953b3ac4b7f614e2daa"
+    }
+  ],
+  "checkout_commit": "1d16475293b1645796a873fc6877ed6d842fd07c",
+  "sanitization_note": "config_sha256 covers the original resolved configuration before local paths were replaced. sanitized_config_sha256 covers the retained config object.",
+  "sanitized_config_sha256": "4a9504c0d35344ec9ada603286f1ecca6ff69b4b6947360b8c20368685d4a7e8"
+}

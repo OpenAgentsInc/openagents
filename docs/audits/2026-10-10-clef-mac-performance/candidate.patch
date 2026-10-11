@@ -1,0 +1,128 @@
+diff --git a/crates/psionic/crates/psionic-serve/src/clef/tests.rs b/crates/psionic/crates/psionic-serve/src/clef/tests.rs
+index b945227374..d1fed501a2 100644
+--- a/crates/psionic/crates/psionic-serve/src/clef/tests.rs
++++ b/crates/psionic/crates/psionic-serve/src/clef/tests.rs
+@@ -632,11 +632,13 @@ fn gpu_device() -> super::ClefDevice {
+     }
+ }
+ 
+-/// CUDA trunk: chunk sizes {whole, 2048, 512, 64} give the same argmax and
+-/// logits within the bounds below, a repeat is bitwise identical, and
++/// GPU trunk: chunk sizes {whole, 2048, 512, 64} give the same argmax and
++/// logits within the bounds below. Metal also requires bitwise chunk and
++/// observer-path equality. A repeat is bitwise identical, and
+ /// with f32 accumulation the CUDA lane matches the CPU lane within the M1
+ /// tolerance (|dp| <= 0.02). Needs `PSIONIC_CLEF_GGUF` and
+-/// `PSIONIC_CLEF_CUDA_CHECK=1` and a CUDA device.
++/// `PSIONIC_CLEF_CUDA_CHECK=1` and a supported GPU. Select Metal with
++/// `PSIONIC_CLEF_TEST_DEVICE=metal`.
+ #[test]
+ fn cuda_chunks_and_cpu_agree() {
+     let (Ok(gguf), Ok(_)) = (
+@@ -681,9 +683,21 @@ fn cuda_chunks_and_cpu_agree() {
+             })
+             .collect::<Vec<_>>()
+     };
++    let bit_patterns = |logits: &[Vec<f32>]| {
++        logits
++            .iter()
++            .map(|question| {
++                question
++                    .iter()
++                    .map(|value| value.to_bits())
++                    .collect::<Vec<_>>()
++            })
++            .collect::<Vec<_>>()
++    };
++    let device = gpu_device();
+     let mut failures = Vec::new();
+     for accumulate_f16 in [true, false] {
+-        let lane = load(gpu_device(), accumulate_f16);
++        let lane = load(device, accumulate_f16);
+         // the longest corpus record that the default budget admits
+         let long = corpus
+             .lines()
+@@ -700,12 +714,39 @@ fn cuda_chunks_and_cpu_agree() {
+             let whole = lane.logits_at_chunk(&record, length, None, None).expect("whole");
+             let again = lane.logits_at_chunk(&record, length, None, None).expect("repeat");
+             assert_eq!(whole, again, "a repeat is bitwise identical");
++            if device == super::ClefDevice::Metal {
++                assert_eq!(
++                    bit_patterns(&whole),
++                    bit_patterns(&again),
++                    "Metal repeat changes bits"
++                );
++            }
+             for chunk in [2048, 512, 64] {
+                 let logits = lane.logits_at_chunk(&record, chunk, None, None).expect("chunk");
+                 let delta = worst(&whole, &logits);
+                 eprintln!(
+                     "accumulate_f16={accumulate_f16} tokens={length} chunk={chunk}: max |dlogit| {delta:.2e}"
+                 );
++                if device == super::ClefDevice::Metal {
++                    assert_eq!(
++                        bit_patterns(&whole),
++                        bit_patterns(&logits),
++                        "Metal chunk bits differ: accumulate_f16={accumulate_f16} tokens={length} chunk={chunk}"
++                    );
++                    // One observer run per record covers the separately submitted
++                    // diagnostic path without repeating every chunk and mode.
++                    if accumulate_f16 && chunk == 2048 {
++                        let mut observe_layer = |_: usize, _: usize, _: &[f32]| {};
++                        let observed = lane
++                            .logits_at_chunk(&record, chunk, None, Some(&mut observe_layer))
++                            .expect("Metal layer observer");
++                        assert_eq!(
++                            bit_patterns(&logits),
++                            bit_patterns(&observed),
++                            "Metal observer changes bits: tokens={length} chunk={chunk}"
++                        );
++                    }
++                }
+                 // f32 accumulation: the M2 bound (1e-3) on short prompts,
+                 // 2e-3 on long ones (f16 KV and per-shape GEMM rounding);
+                 // f16 accumulation: 5e-2 (measured ~2e-2).
+diff --git a/crates/psionic/crates/psionic-serve/src/qwen35/clef_metal.rs b/crates/psionic/crates/psionic-serve/src/qwen35/clef_metal.rs
+index 75fc9bb80d..952cf3fbbe 100644
+--- a/crates/psionic/crates/psionic-serve/src/qwen35/clef_metal.rs
++++ b/crates/psionic/crates/psionic-serve/src/qwen35/clef_metal.rs
+@@ -16,8 +16,8 @@
+ //!   span sums accumulate there, and only the span sums and the last row
+ //!   come back. The head's memory attention reads the device rows.
+ //!
+-//! A chunk's whole layer stack is one command buffer. Every reduction has a
+-//! fixed order, so a token's rows do not depend on the chunk it came in.
++//! A chunk's layers and head inputs share one command buffer in normal operation.
++//! Every reduction has a fixed order, so a token's rows do not depend on the chunk.
+ 
+ use std::sync::Mutex;
+ 
+@@ -449,13 +449,13 @@ impl ClefMetalTrunk {
+                 let next = (next_first < length).then(|| scope.spawn(|| build_inputs(next_first, next_n)));
+                 let device = (|| -> Result<(), String> {
+                     let scratch = state.scratch.as_ref().ok_or("scratch")?;
+-                    if layer_observer.is_none() && !profile {
+-                        // one command buffer for the chunk's layer stack
++                    let batch = if layer_observer.is_none() && !profile {
++                        // Keep the chunk's layers and head inputs in one submission.
+                         let batch = state.metal.batch();
+                         for (layer_index, layer) in state.layers.iter().enumerate() {
+                             encode_layer(&batch, layer, scratch, &request, layer_index, dims, first, n)?;
+                         }
+-                        batch.commit_wait()?;
++                        batch
+                     } else {
+                         for (layer_index, layer) in state.layers.iter().enumerate() {
+                             let layer_began = std::time::Instant::now();
+@@ -472,9 +472,9 @@ impl ClefMetalTrunk {
+                                 observer(layer_index, first, &rows);
+                             }
+                         }
+-                    }
++                        state.metal.batch()
++                    };
+                     // output norm, hidden LayerNorm, memory rows, span sums
+-                    let batch = state.metal.batch();
+                     batch.rms_norm_f32(&scratch.x, &state.output_norm, &scratch.final_rows, n, dims.hidden, dims.eps)?;
+                     batch.layer_norm_f32(
+                         &scratch.final_rows,
