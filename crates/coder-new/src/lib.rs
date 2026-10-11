@@ -538,7 +538,9 @@ impl App {
         self.plugins.set_live(mode == Mode::Live);
         self.mode = mode;
         self.screen = Screen::Conversation;
-        self.scroll = 0;
+        // Switching mode (Shift+Tab) leaves the transcript where the reader
+        // left it: a chat scrolled back stays scrolled back, and one
+        // following the newest output keeps following it.
         self.notice = None;
         self.slash_selected = 0;
         self.slash_hidden = false;
