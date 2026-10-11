@@ -1,0 +1,197 @@
+{
+  "format": "scratch-publication-v1",
+  "immutable_source_run": "gemm-tile-probe/bench-1",
+  "files": [
+    {
+      "source": "gemm-tile-probe/tiles.metal",
+      "published": "tiles.metal",
+      "source_sha256": "7ca7dc950cc71b207a6964e98b9d45f88593662aed53d98b8c2648e248d21e53",
+      "source_bytes": 6595,
+      "published_sha256": "7ca7dc950cc71b207a6964e98b9d45f88593662aed53d98b8c2648e248d21e53",
+      "published_bytes": 6595,
+      "sanitization": {}
+    },
+    {
+      "source": "gemm-tile-probe/probe.swift",
+      "published": "probe.swift",
+      "source_sha256": "22a73fc647c309a38d9a09384e3e9f1bf908be4b923ba5aada0bddf7a4ee1646",
+      "source_bytes": 14226,
+      "published_sha256": "22a73fc647c309a38d9a09384e3e9f1bf908be4b923ba5aada0bddf7a4ee1646",
+      "published_bytes": 14226,
+      "sanitization": {}
+    },
+    {
+      "source": "gemm-tile-probe/stage_weights.py",
+      "published": "stage_weights.py",
+      "source_sha256": "2973ed4526be5c3a31257f3151e747e68d22697742d69d0ca3a5fcfc30a656fd",
+      "source_bytes": 2321,
+      "published_sha256": "a0d8bb72c940681d03c08ce07df1bd5815e97841ac6a58664b43bc7bb2955bff",
+      "published_bytes": 2295,
+      "sanitization": {
+        "portable_decoder_and_artifact_environment": 1
+      }
+    },
+    {
+      "source": "gemm-tile-probe/build.py",
+      "published": "build.py",
+      "source_sha256": "3fa69db28b02c0592cffac301d33b50f1970701fac8a585cf41e4e8af87e7807",
+      "source_bytes": 806,
+      "published_sha256": "77f68f95a61ead4fef0484621249646ab866df996014a8dd752e61cb67a5c381",
+      "published_bytes": 743,
+      "sanitization": {
+        "portable_python_environment": 1
+      }
+    },
+    {
+      "source": "gemm-tile-probe/guard.py",
+      "published": "guard.py",
+      "source_sha256": "54c1d7cefeb5dd85612383b91c81cea6f5a29c98efa265dc4edccbb9fdce8f5a",
+      "source_bytes": 4266,
+      "published_sha256": "cbb8e393ac3693e7e266e21b3f18136537b7d95e6feee61fd57b1fe601f65fc4",
+      "published_bytes": 4229,
+      "sanitization": {
+        "portable_repo_environment": 1
+      }
+    },
+    {
+      "source": "gemm-tile-probe/source.json",
+      "published": "source.json",
+      "source_sha256": "36c92a0ccec3eadc87ab0da24c2d40a7b300009db39c44c8a59f0235e59ecd62",
+      "source_bytes": 843,
+      "published_sha256": "36c92a0ccec3eadc87ab0da24c2d40a7b300009db39c44c8a59f0235e59ecd62",
+      "published_bytes": 843,
+      "sanitization": {}
+    },
+    {
+      "source": "gemm-tile-probe/weights.json",
+      "published": "weights.json",
+      "source_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+      "source_bytes": 2473,
+      "published_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+      "published_bytes": 2473,
+      "sanitization": {}
+    },
+    {
+      "source": "gemm-tile-probe/analysis.json",
+      "published": "analysis.json",
+      "source_sha256": "08ad54ae65c73dbe60792c4965df8c7333983ee505e96815711bea28d9edb761",
+      "source_bytes": 6799,
+      "published_sha256": "08ad54ae65c73dbe60792c4965df8c7333983ee505e96815711bea28d9edb761",
+      "published_bytes": 6799,
+      "sanitization": {}
+    },
+    {
+      "source": "gemm-tile-probe/summary.json",
+      "published": "summary.json",
+      "source_sha256": "a102f4a29b566c0a7cadab154c6382746d4aab28f4663861acde3d6e2a4b9917",
+      "source_bytes": 21936,
+      "published_sha256": "4122d9c2be8f65cf7f5492f5d84b683b56c508c0563487028dc1461921d0507a",
+      "published_bytes": 21768,
+      "sanitization": {
+        "run-artifacts": 2
+      }
+    },
+    {
+      "source": "gemm-tile-probe/build-1/receipt.json",
+      "published": "build-1/receipt.json",
+      "source_sha256": "dcbe30abfdc91fd67dbeb85679e483ec49024a81f483690061824eaf5d261c02",
+      "source_bytes": 2126,
+      "published_sha256": "785069cc88b7b1b445e0da82851d31d4b79cbfe0032fa0570a2c1a72f60749a2",
+      "published_bytes": 2042,
+      "sanitization": {
+        "run-artifacts": 1
+      }
+    },
+    {
+      "source": "gemm-tile-probe/build-1/stdout.jsonl",
+      "published": "build-1/stdout.jsonl",
+      "source_sha256": "144f8d61136c7c33d685322ff64f57288bda3d69bf1081553f1288e58bfcca5e",
+      "source_bytes": 3173,
+      "published_sha256": "2582f92975682360c34a1c5b54d1d5b4004532e3efae95149d68756c02068111",
+      "published_bytes": 2739,
+      "sanitization": {
+        "run-artifacts": 5,
+        "user-home": 1
+      }
+    },
+    {
+      "source": "gemm-tile-probe/build-1/stderr.log",
+      "published": "build-1/stderr.log",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source_bytes": 0,
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "sanitization": {}
+    },
+    {
+      "source": "gemm-tile-probe/bench-1/receipt.json",
+      "published": "bench-1/receipt.json",
+      "source_sha256": "7814d1817c9f681de63e20d2fbe893a50eba8e9290cae987dafa017d1fab9e59",
+      "source_bytes": 2286,
+      "published_sha256": "13680cf1088658425468065d984c0f95c9e5895d8cd27875573e60b8c7e794e2",
+      "published_bytes": 2118,
+      "sanitization": {
+        "run-artifacts": 2
+      }
+    },
+    {
+      "source": "gemm-tile-probe/bench-1/stdout.jsonl",
+      "published": "bench-1/stdout.jsonl",
+      "source_sha256": "bcc94044b5e069f803faf01167e47fbb314494a7a1541e043f50617433cce538",
+      "source_bytes": 69107,
+      "published_sha256": "bcc94044b5e069f803faf01167e47fbb314494a7a1541e043f50617433cce538",
+      "published_bytes": 69107,
+      "sanitization": {}
+    },
+    {
+      "source": "gemm-tile-probe/bench-1/stderr.log",
+      "published": "bench-1/stderr.log",
+      "source_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "source_bytes": 0,
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "sanitization": {}
+    },
+    {
+      "source": "gemm-tile-probe/build-lease-1.json",
+      "published": "build-lease-1.json",
+      "source_sha256": "d0130ef41c7ba93f6542afaa0d4792c799fa458150acc87b3b55de294e823977",
+      "source_bytes": 488,
+      "published_sha256": "d0130ef41c7ba93f6542afaa0d4792c799fa458150acc87b3b55de294e823977",
+      "published_bytes": 488,
+      "sanitization": {}
+    },
+    {
+      "source": "gemm-tile-probe/build-memory-lease-1.json",
+      "published": "build-memory-lease-1.json",
+      "source_sha256": "cff7d268e2571003317f160390cf5c0bb26719f392ffdbcb88922433be6e9185",
+      "source_bytes": 486,
+      "published_sha256": "cff7d268e2571003317f160390cf5c0bb26719f392ffdbcb88922433be6e9185",
+      "published_bytes": 486,
+      "sanitization": {}
+    },
+    {
+      "source": "gemm-tile-probe/bench-gpu-lease-1.json",
+      "published": "bench-gpu-lease-1.json",
+      "source_sha256": "0da535f562e5d2d41334f085c8d3253f98c7ef534870340b9c4636afb4d236f3",
+      "source_bytes": 491,
+      "published_sha256": "0da535f562e5d2d41334f085c8d3253f98c7ef534870340b9c4636afb4d236f3",
+      "published_bytes": 491,
+      "sanitization": {}
+    },
+    {
+      "source": "gemm-tile-probe/bench-memory-lease-1.json",
+      "published": "bench-memory-lease-1.json",
+      "source_sha256": "1388c5d674e3b9240864a23fd88cdb8c46c21ec89e5d5db361d99d4b6a322211",
+      "source_bytes": 486,
+      "published_sha256": "1388c5d674e3b9240864a23fd88cdb8c46c21ec89e5d5db361d99d4b6a322211",
+      "published_bytes": 486,
+      "sanitization": {}
+    },
+    {
+      "generated": "README.md",
+      "published_sha256": "26c8903299b3d0c3ea49ece9b97d6681f0ac72c3dc9cc1ab04db5ae3d912573a",
+      "published_bytes": 3914
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "token_file": "text-014-tokens.txt",
+  "token_file_sha256": "bdbd4028a06657f8d0463d222c73b394a3d3af0e5e1c233b3bded6bb2f1a3fed",
+  "tokens": 321,
+  "hidden_size": 5120,
+  "layers": 64,
+  "expected_bytes_per_output": 6574080,
+  "chunk": 321,
+  "gguf_sha256_from_prior_verification": "9997675e4c9e9016273372b5fdedbdda7ad14285bc722949e4b9daca62bf3822",
+  "source_case_sha256": "774396d28be3b859567860e99d2943e95baab5d58845bf2f5e3626c562181afe"
+}

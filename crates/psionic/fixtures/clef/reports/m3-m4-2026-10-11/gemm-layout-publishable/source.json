@@ -1,0 +1,45 @@
+{
+  "prior_probe": "gemm-tile-probe",
+  "prior_shader_sha256": "7ca7dc950cc71b207a6964e98b9d45f88593662aed53d98b8c2648e248d21e53",
+  "prior_binary_sha256": "23c12873cca724f606e533787a5f172f55a227e78dca1a0a0c5be46c7ac84b70",
+  "experiments": [
+    {
+      "name": "clef_gemm",
+      "tile": [
+        64,
+        128,
+        4
+      ],
+      "K": "dynamic",
+      "right_transpose": true,
+      "weight_layout": "[outputs,K]"
+    },
+    {
+      "name": "static_gemm",
+      "tile": [
+        64,
+        128,
+        4
+      ],
+      "K": [
+        4096,
+        12288
+      ],
+      "right_transpose": true,
+      "weight_layout": "[outputs,K]"
+    },
+    {
+      "name": "nn_gemm",
+      "tile": [
+        64,
+        128,
+        4
+      ],
+      "K": "dynamic",
+      "right_transpose": false,
+      "weight_layout": "[K,outputs]"
+    }
+  ],
+  "same_weight_values": "Every staged half bit checked before GPU use; file SHA checked at load.",
+  "product_edits": false
+}

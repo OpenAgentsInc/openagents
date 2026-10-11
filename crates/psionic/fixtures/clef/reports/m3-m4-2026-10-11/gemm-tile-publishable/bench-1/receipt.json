@@ -1,0 +1,55 @@
+{
+  "mode": "bench",
+  "status": "complete",
+  "preflight": {
+    "available_memory_bytes": 109839761408,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 4654823,
+      "inactive": 1865071,
+      "speculative": 184193
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "max_owned_group_bytes": 2147483648,
+  "minimum_available_bytes": 12884901888,
+  "minimum_start_bytes": 15032385536,
+  "deadline_seconds": 180,
+  "conditions": "shared machine; actual Flash FFN weights with deterministic inputs; shared-machine kernel timing only",
+  "source_sha256": {
+    "tiles.metal": "7ca7dc950cc71b207a6964e98b9d45f88593662aed53d98b8c2648e248d21e53",
+    "probe.swift": "22a73fc647c309a38d9a09384e3e9f1bf908be4b923ba5aada0bddf7a4ee1646",
+    "build.py": "3fa69db28b02c0592cffac301d33b50f1970701fac8a585cf41e4e8af87e7807",
+    "guard.py": "54c1d7cefeb5dd85612383b91c81cea6f5a29c98efa265dc4edccbb9fdce8f5a",
+    "stage_weights.py": "2973ed4526be5c3a31257f3151e747e68d22697742d69d0ca3a5fcfc30a656fd"
+  },
+  "command": [
+    "run-artifacts/gemm-tile-probe/probe",
+    "run-artifacts/gemm-tile-probe",
+    "bench"
+  ],
+  "binary_sha256": "23c12873cca724f606e533787a5f172f55a227e78dca1a0a0c5be46c7ac84b70",
+  "exit": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 69763,
+    "max_rss_bytes": 2147483648,
+    "peak_rss_bytes": 908967936,
+    "peak_physical_footprint_bytes": 1017169216,
+    "peak_accounted_bytes": 1017169216,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 10,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 108829687808,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 5.386388708
+}

@@ -1,0 +1,2887 @@
+{
+  "passed": true,
+  "model_execution": false,
+  "replaced_matrices_expected": 192,
+  "matrix_sources": [
+    {
+      "layer": 0,
+      "operation": "gate",
+      "gguf_name": "blk.0.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.0.mlp.gate_proj.weight",
+      "source_shard": "model-00002-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 0,
+      "operation": "up",
+      "gguf_name": "blk.0.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.0.mlp.up_proj.weight",
+      "source_shard": "model-00002-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 0,
+      "operation": "down",
+      "gguf_name": "blk.0.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.0.mlp.down_proj.weight",
+      "source_shard": "model-00002-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 1,
+      "operation": "gate",
+      "gguf_name": "blk.1.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.1.mlp.gate_proj.weight",
+      "source_shard": "model-00002-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 1,
+      "operation": "up",
+      "gguf_name": "blk.1.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.1.mlp.up_proj.weight",
+      "source_shard": "model-00002-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 1,
+      "operation": "down",
+      "gguf_name": "blk.1.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.1.mlp.down_proj.weight",
+      "source_shard": "model-00002-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 2,
+      "operation": "gate",
+      "gguf_name": "blk.2.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.2.mlp.gate_proj.weight",
+      "source_shard": "model-00002-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 2,
+      "operation": "up",
+      "gguf_name": "blk.2.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.2.mlp.up_proj.weight",
+      "source_shard": "model-00002-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 2,
+      "operation": "down",
+      "gguf_name": "blk.2.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.2.mlp.down_proj.weight",
+      "source_shard": "model-00002-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 3,
+      "operation": "gate",
+      "gguf_name": "blk.3.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.3.mlp.gate_proj.weight",
+      "source_shard": "model-00003-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 3,
+      "operation": "up",
+      "gguf_name": "blk.3.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.3.mlp.up_proj.weight",
+      "source_shard": "model-00003-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 3,
+      "operation": "down",
+      "gguf_name": "blk.3.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.3.mlp.down_proj.weight",
+      "source_shard": "model-00003-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 4,
+      "operation": "gate",
+      "gguf_name": "blk.4.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.4.mlp.gate_proj.weight",
+      "source_shard": "model-00003-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 4,
+      "operation": "up",
+      "gguf_name": "blk.4.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.4.mlp.up_proj.weight",
+      "source_shard": "model-00003-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 4,
+      "operation": "down",
+      "gguf_name": "blk.4.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.4.mlp.down_proj.weight",
+      "source_shard": "model-00003-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 5,
+      "operation": "gate",
+      "gguf_name": "blk.5.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.5.mlp.gate_proj.weight",
+      "source_shard": "model-00003-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 5,
+      "operation": "up",
+      "gguf_name": "blk.5.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.5.mlp.up_proj.weight",
+      "source_shard": "model-00003-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 5,
+      "operation": "down",
+      "gguf_name": "blk.5.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.5.mlp.down_proj.weight",
+      "source_shard": "model-00003-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 6,
+      "operation": "gate",
+      "gguf_name": "blk.6.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.6.mlp.gate_proj.weight",
+      "source_shard": "model-00003-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 6,
+      "operation": "up",
+      "gguf_name": "blk.6.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.6.mlp.up_proj.weight",
+      "source_shard": "model-00003-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 6,
+      "operation": "down",
+      "gguf_name": "blk.6.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.6.mlp.down_proj.weight",
+      "source_shard": "model-00003-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 7,
+      "operation": "gate",
+      "gguf_name": "blk.7.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.7.mlp.gate_proj.weight",
+      "source_shard": "model-00003-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 7,
+      "operation": "up",
+      "gguf_name": "blk.7.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.7.mlp.up_proj.weight",
+      "source_shard": "model-00003-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 7,
+      "operation": "down",
+      "gguf_name": "blk.7.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.7.mlp.down_proj.weight",
+      "source_shard": "model-00003-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 8,
+      "operation": "gate",
+      "gguf_name": "blk.8.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.8.mlp.gate_proj.weight",
+      "source_shard": "model-00003-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 8,
+      "operation": "up",
+      "gguf_name": "blk.8.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.8.mlp.up_proj.weight",
+      "source_shard": "model-00003-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 8,
+      "operation": "down",
+      "gguf_name": "blk.8.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.8.mlp.down_proj.weight",
+      "source_shard": "model-00003-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 9,
+      "operation": "gate",
+      "gguf_name": "blk.9.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.9.mlp.gate_proj.weight",
+      "source_shard": "model-00004-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 9,
+      "operation": "up",
+      "gguf_name": "blk.9.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.9.mlp.up_proj.weight",
+      "source_shard": "model-00004-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 9,
+      "operation": "down",
+      "gguf_name": "blk.9.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.9.mlp.down_proj.weight",
+      "source_shard": "model-00003-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 10,
+      "operation": "gate",
+      "gguf_name": "blk.10.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.10.mlp.gate_proj.weight",
+      "source_shard": "model-00004-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 10,
+      "operation": "up",
+      "gguf_name": "blk.10.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.10.mlp.up_proj.weight",
+      "source_shard": "model-00004-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 10,
+      "operation": "down",
+      "gguf_name": "blk.10.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.10.mlp.down_proj.weight",
+      "source_shard": "model-00004-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 11,
+      "operation": "gate",
+      "gguf_name": "blk.11.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.11.mlp.gate_proj.weight",
+      "source_shard": "model-00004-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 11,
+      "operation": "up",
+      "gguf_name": "blk.11.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.11.mlp.up_proj.weight",
+      "source_shard": "model-00004-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 11,
+      "operation": "down",
+      "gguf_name": "blk.11.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.11.mlp.down_proj.weight",
+      "source_shard": "model-00004-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 12,
+      "operation": "gate",
+      "gguf_name": "blk.12.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.12.mlp.gate_proj.weight",
+      "source_shard": "model-00004-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 12,
+      "operation": "up",
+      "gguf_name": "blk.12.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.12.mlp.up_proj.weight",
+      "source_shard": "model-00004-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 12,
+      "operation": "down",
+      "gguf_name": "blk.12.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.12.mlp.down_proj.weight",
+      "source_shard": "model-00004-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 13,
+      "operation": "gate",
+      "gguf_name": "blk.13.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.13.mlp.gate_proj.weight",
+      "source_shard": "model-00004-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 13,
+      "operation": "up",
+      "gguf_name": "blk.13.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.13.mlp.up_proj.weight",
+      "source_shard": "model-00004-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 13,
+      "operation": "down",
+      "gguf_name": "blk.13.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.13.mlp.down_proj.weight",
+      "source_shard": "model-00004-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 14,
+      "operation": "gate",
+      "gguf_name": "blk.14.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.14.mlp.gate_proj.weight",
+      "source_shard": "model-00004-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 14,
+      "operation": "up",
+      "gguf_name": "blk.14.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.14.mlp.up_proj.weight",
+      "source_shard": "model-00004-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 14,
+      "operation": "down",
+      "gguf_name": "blk.14.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.14.mlp.down_proj.weight",
+      "source_shard": "model-00004-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 15,
+      "operation": "gate",
+      "gguf_name": "blk.15.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.15.mlp.gate_proj.weight",
+      "source_shard": "model-00004-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 15,
+      "operation": "up",
+      "gguf_name": "blk.15.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.15.mlp.up_proj.weight",
+      "source_shard": "model-00004-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 15,
+      "operation": "down",
+      "gguf_name": "blk.15.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.15.mlp.down_proj.weight",
+      "source_shard": "model-00004-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 16,
+      "operation": "gate",
+      "gguf_name": "blk.16.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.16.mlp.gate_proj.weight",
+      "source_shard": "model-00005-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 16,
+      "operation": "up",
+      "gguf_name": "blk.16.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.16.mlp.up_proj.weight",
+      "source_shard": "model-00005-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 16,
+      "operation": "down",
+      "gguf_name": "blk.16.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.16.mlp.down_proj.weight",
+      "source_shard": "model-00005-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 17,
+      "operation": "gate",
+      "gguf_name": "blk.17.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.17.mlp.gate_proj.weight",
+      "source_shard": "model-00005-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 17,
+      "operation": "up",
+      "gguf_name": "blk.17.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.17.mlp.up_proj.weight",
+      "source_shard": "model-00005-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 17,
+      "operation": "down",
+      "gguf_name": "blk.17.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.17.mlp.down_proj.weight",
+      "source_shard": "model-00005-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 18,
+      "operation": "gate",
+      "gguf_name": "blk.18.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.18.mlp.gate_proj.weight",
+      "source_shard": "model-00005-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 18,
+      "operation": "up",
+      "gguf_name": "blk.18.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.18.mlp.up_proj.weight",
+      "source_shard": "model-00005-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 18,
+      "operation": "down",
+      "gguf_name": "blk.18.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.18.mlp.down_proj.weight",
+      "source_shard": "model-00005-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 19,
+      "operation": "gate",
+      "gguf_name": "blk.19.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.19.mlp.gate_proj.weight",
+      "source_shard": "model-00005-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 19,
+      "operation": "up",
+      "gguf_name": "blk.19.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.19.mlp.up_proj.weight",
+      "source_shard": "model-00005-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 19,
+      "operation": "down",
+      "gguf_name": "blk.19.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.19.mlp.down_proj.weight",
+      "source_shard": "model-00005-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 20,
+      "operation": "gate",
+      "gguf_name": "blk.20.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.20.mlp.gate_proj.weight",
+      "source_shard": "model-00005-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 20,
+      "operation": "up",
+      "gguf_name": "blk.20.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.20.mlp.up_proj.weight",
+      "source_shard": "model-00005-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 20,
+      "operation": "down",
+      "gguf_name": "blk.20.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.20.mlp.down_proj.weight",
+      "source_shard": "model-00005-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 21,
+      "operation": "gate",
+      "gguf_name": "blk.21.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.21.mlp.gate_proj.weight",
+      "source_shard": "model-00005-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 21,
+      "operation": "up",
+      "gguf_name": "blk.21.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.21.mlp.up_proj.weight",
+      "source_shard": "model-00005-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 21,
+      "operation": "down",
+      "gguf_name": "blk.21.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.21.mlp.down_proj.weight",
+      "source_shard": "model-00005-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 22,
+      "operation": "gate",
+      "gguf_name": "blk.22.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.22.mlp.gate_proj.weight",
+      "source_shard": "model-00006-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 22,
+      "operation": "up",
+      "gguf_name": "blk.22.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.22.mlp.up_proj.weight",
+      "source_shard": "model-00006-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 22,
+      "operation": "down",
+      "gguf_name": "blk.22.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.22.mlp.down_proj.weight",
+      "source_shard": "model-00005-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 23,
+      "operation": "gate",
+      "gguf_name": "blk.23.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.23.mlp.gate_proj.weight",
+      "source_shard": "model-00006-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 23,
+      "operation": "up",
+      "gguf_name": "blk.23.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.23.mlp.up_proj.weight",
+      "source_shard": "model-00006-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 23,
+      "operation": "down",
+      "gguf_name": "blk.23.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.23.mlp.down_proj.weight",
+      "source_shard": "model-00006-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 24,
+      "operation": "gate",
+      "gguf_name": "blk.24.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.24.mlp.gate_proj.weight",
+      "source_shard": "model-00006-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 24,
+      "operation": "up",
+      "gguf_name": "blk.24.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.24.mlp.up_proj.weight",
+      "source_shard": "model-00006-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 24,
+      "operation": "down",
+      "gguf_name": "blk.24.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.24.mlp.down_proj.weight",
+      "source_shard": "model-00006-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 25,
+      "operation": "gate",
+      "gguf_name": "blk.25.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.25.mlp.gate_proj.weight",
+      "source_shard": "model-00006-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 25,
+      "operation": "up",
+      "gguf_name": "blk.25.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.25.mlp.up_proj.weight",
+      "source_shard": "model-00006-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 25,
+      "operation": "down",
+      "gguf_name": "blk.25.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.25.mlp.down_proj.weight",
+      "source_shard": "model-00006-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 26,
+      "operation": "gate",
+      "gguf_name": "blk.26.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.26.mlp.gate_proj.weight",
+      "source_shard": "model-00006-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 26,
+      "operation": "up",
+      "gguf_name": "blk.26.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.26.mlp.up_proj.weight",
+      "source_shard": "model-00006-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 26,
+      "operation": "down",
+      "gguf_name": "blk.26.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.26.mlp.down_proj.weight",
+      "source_shard": "model-00006-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 27,
+      "operation": "gate",
+      "gguf_name": "blk.27.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.27.mlp.gate_proj.weight",
+      "source_shard": "model-00006-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 27,
+      "operation": "up",
+      "gguf_name": "blk.27.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.27.mlp.up_proj.weight",
+      "source_shard": "model-00006-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 27,
+      "operation": "down",
+      "gguf_name": "blk.27.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.27.mlp.down_proj.weight",
+      "source_shard": "model-00006-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 28,
+      "operation": "gate",
+      "gguf_name": "blk.28.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.28.mlp.gate_proj.weight",
+      "source_shard": "model-00006-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 28,
+      "operation": "up",
+      "gguf_name": "blk.28.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.28.mlp.up_proj.weight",
+      "source_shard": "model-00006-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 28,
+      "operation": "down",
+      "gguf_name": "blk.28.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.28.mlp.down_proj.weight",
+      "source_shard": "model-00006-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 29,
+      "operation": "gate",
+      "gguf_name": "blk.29.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.29.mlp.gate_proj.weight",
+      "source_shard": "model-00007-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 29,
+      "operation": "up",
+      "gguf_name": "blk.29.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.29.mlp.up_proj.weight",
+      "source_shard": "model-00007-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 29,
+      "operation": "down",
+      "gguf_name": "blk.29.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.29.mlp.down_proj.weight",
+      "source_shard": "model-00007-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 30,
+      "operation": "gate",
+      "gguf_name": "blk.30.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.30.mlp.gate_proj.weight",
+      "source_shard": "model-00007-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 30,
+      "operation": "up",
+      "gguf_name": "blk.30.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.30.mlp.up_proj.weight",
+      "source_shard": "model-00007-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 30,
+      "operation": "down",
+      "gguf_name": "blk.30.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.30.mlp.down_proj.weight",
+      "source_shard": "model-00007-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 31,
+      "operation": "gate",
+      "gguf_name": "blk.31.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.31.mlp.gate_proj.weight",
+      "source_shard": "model-00007-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 31,
+      "operation": "up",
+      "gguf_name": "blk.31.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.31.mlp.up_proj.weight",
+      "source_shard": "model-00007-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 31,
+      "operation": "down",
+      "gguf_name": "blk.31.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.31.mlp.down_proj.weight",
+      "source_shard": "model-00007-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 32,
+      "operation": "gate",
+      "gguf_name": "blk.32.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.32.mlp.gate_proj.weight",
+      "source_shard": "model-00007-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 32,
+      "operation": "up",
+      "gguf_name": "blk.32.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.32.mlp.up_proj.weight",
+      "source_shard": "model-00007-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 32,
+      "operation": "down",
+      "gguf_name": "blk.32.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.32.mlp.down_proj.weight",
+      "source_shard": "model-00007-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 33,
+      "operation": "gate",
+      "gguf_name": "blk.33.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.33.mlp.gate_proj.weight",
+      "source_shard": "model-00007-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 33,
+      "operation": "up",
+      "gguf_name": "blk.33.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.33.mlp.up_proj.weight",
+      "source_shard": "model-00007-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 33,
+      "operation": "down",
+      "gguf_name": "blk.33.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.33.mlp.down_proj.weight",
+      "source_shard": "model-00007-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 34,
+      "operation": "gate",
+      "gguf_name": "blk.34.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.34.mlp.gate_proj.weight",
+      "source_shard": "model-00007-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 34,
+      "operation": "up",
+      "gguf_name": "blk.34.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.34.mlp.up_proj.weight",
+      "source_shard": "model-00007-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 34,
+      "operation": "down",
+      "gguf_name": "blk.34.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.34.mlp.down_proj.weight",
+      "source_shard": "model-00007-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 35,
+      "operation": "gate",
+      "gguf_name": "blk.35.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.35.mlp.gate_proj.weight",
+      "source_shard": "model-00007-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 35,
+      "operation": "up",
+      "gguf_name": "blk.35.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.35.mlp.up_proj.weight",
+      "source_shard": "model-00008-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 35,
+      "operation": "down",
+      "gguf_name": "blk.35.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.35.mlp.down_proj.weight",
+      "source_shard": "model-00007-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 36,
+      "operation": "gate",
+      "gguf_name": "blk.36.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.36.mlp.gate_proj.weight",
+      "source_shard": "model-00008-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 36,
+      "operation": "up",
+      "gguf_name": "blk.36.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.36.mlp.up_proj.weight",
+      "source_shard": "model-00008-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 36,
+      "operation": "down",
+      "gguf_name": "blk.36.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.36.mlp.down_proj.weight",
+      "source_shard": "model-00008-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 37,
+      "operation": "gate",
+      "gguf_name": "blk.37.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.37.mlp.gate_proj.weight",
+      "source_shard": "model-00008-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 37,
+      "operation": "up",
+      "gguf_name": "blk.37.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.37.mlp.up_proj.weight",
+      "source_shard": "model-00008-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 37,
+      "operation": "down",
+      "gguf_name": "blk.37.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.37.mlp.down_proj.weight",
+      "source_shard": "model-00008-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 38,
+      "operation": "gate",
+      "gguf_name": "blk.38.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.38.mlp.gate_proj.weight",
+      "source_shard": "model-00008-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 38,
+      "operation": "up",
+      "gguf_name": "blk.38.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.38.mlp.up_proj.weight",
+      "source_shard": "model-00008-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 38,
+      "operation": "down",
+      "gguf_name": "blk.38.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.38.mlp.down_proj.weight",
+      "source_shard": "model-00008-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 39,
+      "operation": "gate",
+      "gguf_name": "blk.39.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.39.mlp.gate_proj.weight",
+      "source_shard": "model-00008-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 39,
+      "operation": "up",
+      "gguf_name": "blk.39.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.39.mlp.up_proj.weight",
+      "source_shard": "model-00008-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 39,
+      "operation": "down",
+      "gguf_name": "blk.39.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.39.mlp.down_proj.weight",
+      "source_shard": "model-00008-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 40,
+      "operation": "gate",
+      "gguf_name": "blk.40.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.40.mlp.gate_proj.weight",
+      "source_shard": "model-00008-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 40,
+      "operation": "up",
+      "gguf_name": "blk.40.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.40.mlp.up_proj.weight",
+      "source_shard": "model-00008-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 40,
+      "operation": "down",
+      "gguf_name": "blk.40.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.40.mlp.down_proj.weight",
+      "source_shard": "model-00008-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 41,
+      "operation": "gate",
+      "gguf_name": "blk.41.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.41.mlp.gate_proj.weight",
+      "source_shard": "model-00008-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 41,
+      "operation": "up",
+      "gguf_name": "blk.41.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.41.mlp.up_proj.weight",
+      "source_shard": "model-00008-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 41,
+      "operation": "down",
+      "gguf_name": "blk.41.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.41.mlp.down_proj.weight",
+      "source_shard": "model-00008-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 42,
+      "operation": "gate",
+      "gguf_name": "blk.42.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.42.mlp.gate_proj.weight",
+      "source_shard": "model-00009-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 42,
+      "operation": "up",
+      "gguf_name": "blk.42.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.42.mlp.up_proj.weight",
+      "source_shard": "model-00009-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 42,
+      "operation": "down",
+      "gguf_name": "blk.42.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.42.mlp.down_proj.weight",
+      "source_shard": "model-00009-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 43,
+      "operation": "gate",
+      "gguf_name": "blk.43.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.43.mlp.gate_proj.weight",
+      "source_shard": "model-00009-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 43,
+      "operation": "up",
+      "gguf_name": "blk.43.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.43.mlp.up_proj.weight",
+      "source_shard": "model-00009-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 43,
+      "operation": "down",
+      "gguf_name": "blk.43.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.43.mlp.down_proj.weight",
+      "source_shard": "model-00009-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 44,
+      "operation": "gate",
+      "gguf_name": "blk.44.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.44.mlp.gate_proj.weight",
+      "source_shard": "model-00009-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 44,
+      "operation": "up",
+      "gguf_name": "blk.44.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.44.mlp.up_proj.weight",
+      "source_shard": "model-00009-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 44,
+      "operation": "down",
+      "gguf_name": "blk.44.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.44.mlp.down_proj.weight",
+      "source_shard": "model-00009-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 45,
+      "operation": "gate",
+      "gguf_name": "blk.45.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.45.mlp.gate_proj.weight",
+      "source_shard": "model-00009-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 45,
+      "operation": "up",
+      "gguf_name": "blk.45.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.45.mlp.up_proj.weight",
+      "source_shard": "model-00009-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 45,
+      "operation": "down",
+      "gguf_name": "blk.45.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.45.mlp.down_proj.weight",
+      "source_shard": "model-00009-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 46,
+      "operation": "gate",
+      "gguf_name": "blk.46.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.46.mlp.gate_proj.weight",
+      "source_shard": "model-00009-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 46,
+      "operation": "up",
+      "gguf_name": "blk.46.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.46.mlp.up_proj.weight",
+      "source_shard": "model-00009-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 46,
+      "operation": "down",
+      "gguf_name": "blk.46.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.46.mlp.down_proj.weight",
+      "source_shard": "model-00009-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 47,
+      "operation": "gate",
+      "gguf_name": "blk.47.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.47.mlp.gate_proj.weight",
+      "source_shard": "model-00009-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 47,
+      "operation": "up",
+      "gguf_name": "blk.47.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.47.mlp.up_proj.weight",
+      "source_shard": "model-00009-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 47,
+      "operation": "down",
+      "gguf_name": "blk.47.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.47.mlp.down_proj.weight",
+      "source_shard": "model-00009-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 48,
+      "operation": "gate",
+      "gguf_name": "blk.48.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.48.mlp.gate_proj.weight",
+      "source_shard": "model-00010-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 48,
+      "operation": "up",
+      "gguf_name": "blk.48.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.48.mlp.up_proj.weight",
+      "source_shard": "model-00010-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 48,
+      "operation": "down",
+      "gguf_name": "blk.48.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.48.mlp.down_proj.weight",
+      "source_shard": "model-00009-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 49,
+      "operation": "gate",
+      "gguf_name": "blk.49.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.49.mlp.gate_proj.weight",
+      "source_shard": "model-00010-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 49,
+      "operation": "up",
+      "gguf_name": "blk.49.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.49.mlp.up_proj.weight",
+      "source_shard": "model-00010-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 49,
+      "operation": "down",
+      "gguf_name": "blk.49.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.49.mlp.down_proj.weight",
+      "source_shard": "model-00010-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 50,
+      "operation": "gate",
+      "gguf_name": "blk.50.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.50.mlp.gate_proj.weight",
+      "source_shard": "model-00010-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 50,
+      "operation": "up",
+      "gguf_name": "blk.50.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.50.mlp.up_proj.weight",
+      "source_shard": "model-00010-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 50,
+      "operation": "down",
+      "gguf_name": "blk.50.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.50.mlp.down_proj.weight",
+      "source_shard": "model-00010-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 51,
+      "operation": "gate",
+      "gguf_name": "blk.51.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.51.mlp.gate_proj.weight",
+      "source_shard": "model-00010-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 51,
+      "operation": "up",
+      "gguf_name": "blk.51.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.51.mlp.up_proj.weight",
+      "source_shard": "model-00010-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 51,
+      "operation": "down",
+      "gguf_name": "blk.51.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.51.mlp.down_proj.weight",
+      "source_shard": "model-00010-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 52,
+      "operation": "gate",
+      "gguf_name": "blk.52.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.52.mlp.gate_proj.weight",
+      "source_shard": "model-00010-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 52,
+      "operation": "up",
+      "gguf_name": "blk.52.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.52.mlp.up_proj.weight",
+      "source_shard": "model-00010-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 52,
+      "operation": "down",
+      "gguf_name": "blk.52.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.52.mlp.down_proj.weight",
+      "source_shard": "model-00010-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 53,
+      "operation": "gate",
+      "gguf_name": "blk.53.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.53.mlp.gate_proj.weight",
+      "source_shard": "model-00010-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 53,
+      "operation": "up",
+      "gguf_name": "blk.53.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.53.mlp.up_proj.weight",
+      "source_shard": "model-00010-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 53,
+      "operation": "down",
+      "gguf_name": "blk.53.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.53.mlp.down_proj.weight",
+      "source_shard": "model-00010-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 54,
+      "operation": "gate",
+      "gguf_name": "blk.54.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.54.mlp.gate_proj.weight",
+      "source_shard": "model-00010-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 54,
+      "operation": "up",
+      "gguf_name": "blk.54.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.54.mlp.up_proj.weight",
+      "source_shard": "model-00010-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 54,
+      "operation": "down",
+      "gguf_name": "blk.54.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.54.mlp.down_proj.weight",
+      "source_shard": "model-00010-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 55,
+      "operation": "gate",
+      "gguf_name": "blk.55.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.55.mlp.gate_proj.weight",
+      "source_shard": "model-00011-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 55,
+      "operation": "up",
+      "gguf_name": "blk.55.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.55.mlp.up_proj.weight",
+      "source_shard": "model-00011-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 55,
+      "operation": "down",
+      "gguf_name": "blk.55.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.55.mlp.down_proj.weight",
+      "source_shard": "model-00011-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 56,
+      "operation": "gate",
+      "gguf_name": "blk.56.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.56.mlp.gate_proj.weight",
+      "source_shard": "model-00011-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 56,
+      "operation": "up",
+      "gguf_name": "blk.56.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.56.mlp.up_proj.weight",
+      "source_shard": "model-00011-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 56,
+      "operation": "down",
+      "gguf_name": "blk.56.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.56.mlp.down_proj.weight",
+      "source_shard": "model-00011-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 57,
+      "operation": "gate",
+      "gguf_name": "blk.57.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.57.mlp.gate_proj.weight",
+      "source_shard": "model-00011-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 57,
+      "operation": "up",
+      "gguf_name": "blk.57.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.57.mlp.up_proj.weight",
+      "source_shard": "model-00011-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 57,
+      "operation": "down",
+      "gguf_name": "blk.57.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.57.mlp.down_proj.weight",
+      "source_shard": "model-00011-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 58,
+      "operation": "gate",
+      "gguf_name": "blk.58.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.58.mlp.gate_proj.weight",
+      "source_shard": "model-00011-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 58,
+      "operation": "up",
+      "gguf_name": "blk.58.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.58.mlp.up_proj.weight",
+      "source_shard": "model-00011-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 58,
+      "operation": "down",
+      "gguf_name": "blk.58.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.58.mlp.down_proj.weight",
+      "source_shard": "model-00011-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 59,
+      "operation": "gate",
+      "gguf_name": "blk.59.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.59.mlp.gate_proj.weight",
+      "source_shard": "model-00011-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 59,
+      "operation": "up",
+      "gguf_name": "blk.59.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.59.mlp.up_proj.weight",
+      "source_shard": "model-00011-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 59,
+      "operation": "down",
+      "gguf_name": "blk.59.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.59.mlp.down_proj.weight",
+      "source_shard": "model-00011-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 60,
+      "operation": "gate",
+      "gguf_name": "blk.60.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.60.mlp.gate_proj.weight",
+      "source_shard": "model-00011-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 60,
+      "operation": "up",
+      "gguf_name": "blk.60.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.60.mlp.up_proj.weight",
+      "source_shard": "model-00011-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 60,
+      "operation": "down",
+      "gguf_name": "blk.60.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.60.mlp.down_proj.weight",
+      "source_shard": "model-00011-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 61,
+      "operation": "gate",
+      "gguf_name": "blk.61.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.61.mlp.gate_proj.weight",
+      "source_shard": "model-00012-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 61,
+      "operation": "up",
+      "gguf_name": "blk.61.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.61.mlp.up_proj.weight",
+      "source_shard": "model-00012-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 61,
+      "operation": "down",
+      "gguf_name": "blk.61.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.61.mlp.down_proj.weight",
+      "source_shard": "model-00011-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 62,
+      "operation": "gate",
+      "gguf_name": "blk.62.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.62.mlp.gate_proj.weight",
+      "source_shard": "model-00012-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 62,
+      "operation": "up",
+      "gguf_name": "blk.62.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.62.mlp.up_proj.weight",
+      "source_shard": "model-00012-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 62,
+      "operation": "down",
+      "gguf_name": "blk.62.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.62.mlp.down_proj.weight",
+      "source_shard": "model-00012-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    },
+    {
+      "layer": 63,
+      "operation": "gate",
+      "gguf_name": "blk.63.ffn_gate.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.63.mlp.gate_proj.weight",
+      "source_shard": "model-00012-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 63,
+      "operation": "up",
+      "gguf_name": "blk.63.ffn_up.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.63.mlp.up_proj.weight",
+      "source_shard": "model-00012-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        17408,
+        5120
+      ]
+    },
+    {
+      "layer": 63,
+      "operation": "down",
+      "gguf_name": "blk.63.ffn_down.weight",
+      "replaced_gguf_type": 12,
+      "source": "original_checkpoint",
+      "source_tensor": "model.language_model.layers.63.mlp.down_proj.weight",
+      "source_shard": "model-00012-of-00012.safetensors",
+      "source_dtype": "BF16",
+      "execution_dtype": "F32",
+      "shape": [
+        5120,
+        17408
+      ]
+    }
+  ]
+}

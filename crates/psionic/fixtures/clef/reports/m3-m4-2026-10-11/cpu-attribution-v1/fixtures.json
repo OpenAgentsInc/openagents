@@ -1,0 +1,222 @@
+{
+  "kind": "streamed_gguf_import_fixtures",
+  "model_execution": false,
+  "gpu_execution": false,
+  "synthetic": {
+    "value_rows": true,
+    "QK_rows_unchanged": true,
+    "output_columns": true,
+    "scalar_heads": true,
+    "grouped_key_association": true,
+    "norm_exact_reconstruction": true,
+    "nonreversible_norm_refused": true
+  },
+  "stored_dense": [
+    {
+      "tensor": "blk.0.attn_norm.weight",
+      "values": 5120,
+      "parameter_exact": true,
+      "reconstruction_exact": true
+    },
+    {
+      "tensor": "blk.0.post_attention_norm.weight",
+      "values": 5120,
+      "parameter_exact": true,
+      "reconstruction_exact": true
+    },
+    {
+      "tensor": "blk.3.attn_norm.weight",
+      "values": 5120,
+      "parameter_exact": true,
+      "reconstruction_exact": true
+    },
+    {
+      "tensor": "blk.3.post_attention_norm.weight",
+      "values": 5120,
+      "parameter_exact": true,
+      "reconstruction_exact": true
+    },
+    {
+      "tensor": "blk.3.attn_q_norm.weight",
+      "values": 256,
+      "parameter_exact": true,
+      "reconstruction_exact": true
+    },
+    {
+      "tensor": "blk.3.attn_k_norm.weight",
+      "values": 256,
+      "parameter_exact": true,
+      "reconstruction_exact": true
+    },
+    {
+      "tensor": "blk.63.attn_norm.weight",
+      "values": 5120,
+      "parameter_exact": true,
+      "reconstruction_exact": true
+    },
+    {
+      "tensor": "blk.63.post_attention_norm.weight",
+      "values": 5120,
+      "parameter_exact": true,
+      "reconstruction_exact": true
+    },
+    {
+      "tensor": "blk.63.attn_q_norm.weight",
+      "values": 256,
+      "parameter_exact": true,
+      "reconstruction_exact": true
+    },
+    {
+      "tensor": "blk.63.attn_k_norm.weight",
+      "values": 256,
+      "parameter_exact": true,
+      "reconstruction_exact": true
+    },
+    {
+      "tensor": "blk.0.ssm_conv1d.weight",
+      "values": 40960,
+      "inverse_permutation_exact": true
+    },
+    {
+      "tensor": "blk.0.ssm_dt.bias",
+      "values": 48,
+      "inverse_permutation_exact": true
+    },
+    {
+      "tensor": "blk.0.ssm_norm.weight",
+      "values": 128,
+      "inverse_permutation_exact": true
+    }
+  ],
+  "sampled_quantized": [
+    {
+      "tensor": "blk.0.ssm_alpha.weight",
+      "hf_row": 0,
+      "gguf_row": 0,
+      "relative_l2_error": 0.005312315875698288
+    },
+    {
+      "tensor": "blk.0.ssm_alpha.weight",
+      "hf_row": 1,
+      "gguf_row": 16,
+      "relative_l2_error": 0.005317289724093591
+    },
+    {
+      "tensor": "blk.0.ssm_alpha.weight",
+      "hf_row": 15,
+      "gguf_row": 5,
+      "relative_l2_error": 0.005317807139502005
+    },
+    {
+      "tensor": "blk.0.ssm_alpha.weight",
+      "hf_row": 16,
+      "gguf_row": 21,
+      "relative_l2_error": 0.005350489444999173
+    },
+    {
+      "tensor": "blk.0.ssm_alpha.weight",
+      "hf_row": 47,
+      "gguf_row": 47,
+      "relative_l2_error": 0.0054210240493571165
+    },
+    {
+      "tensor": "blk.0.ssm_beta.weight",
+      "hf_row": 0,
+      "gguf_row": 0,
+      "relative_l2_error": 0.0055374038869174394
+    },
+    {
+      "tensor": "blk.0.ssm_beta.weight",
+      "hf_row": 1,
+      "gguf_row": 16,
+      "relative_l2_error": 0.005345787786513402
+    },
+    {
+      "tensor": "blk.0.ssm_beta.weight",
+      "hf_row": 15,
+      "gguf_row": 5,
+      "relative_l2_error": 0.005387720029323763
+    },
+    {
+      "tensor": "blk.0.ssm_beta.weight",
+      "hf_row": 16,
+      "gguf_row": 21,
+      "relative_l2_error": 0.005473578894064208
+    },
+    {
+      "tensor": "blk.0.ssm_beta.weight",
+      "hf_row": 47,
+      "gguf_row": 47,
+      "relative_l2_error": 0.005403134392059973
+    },
+    {
+      "tensor": "blk.0.attn_gate.weight",
+      "hf_row": 0,
+      "gguf_row": 0,
+      "relative_l2_error": 0.005576141783830665
+    },
+    {
+      "tensor": "blk.0.attn_gate.weight",
+      "hf_row": 128,
+      "gguf_row": 2048,
+      "relative_l2_error": 0.005533086320748787
+    },
+    {
+      "tensor": "blk.0.attn_gate.weight",
+      "hf_row": 1920,
+      "gguf_row": 640,
+      "relative_l2_error": 0.005430261267034734
+    },
+    {
+      "tensor": "blk.0.attn_gate.weight",
+      "hf_row": 2048,
+      "gguf_row": 2688,
+      "relative_l2_error": 0.005501009398076702
+    },
+    {
+      "tensor": "blk.0.attn_gate.weight",
+      "hf_row": 6016,
+      "gguf_row": 6016,
+      "relative_l2_error": 0.005543716133364462
+    },
+    {
+      "tensor": "blk.0.attn_qkv.weight",
+      "hf_row": 4096,
+      "gguf_row": 4096,
+      "relative_l2_error": 0.005579681008393167
+    },
+    {
+      "tensor": "blk.0.attn_qkv.weight",
+      "hf_row": 4224,
+      "gguf_row": 6144,
+      "relative_l2_error": 0.005553797724115963
+    },
+    {
+      "tensor": "blk.0.attn_qkv.weight",
+      "hf_row": 6016,
+      "gguf_row": 4736,
+      "relative_l2_error": 0.005476650854859487
+    },
+    {
+      "tensor": "blk.0.attn_qkv.weight",
+      "hf_row": 6144,
+      "gguf_row": 6784,
+      "relative_l2_error": 0.005264677108682668
+    },
+    {
+      "tensor": "blk.0.attn_qkv.weight",
+      "hf_row": 10112,
+      "gguf_row": 10112,
+      "relative_l2_error": 0.005626324346851165
+    }
+  ],
+  "gguf_payload_bytes": 420800,
+  "bf16_payload_bytes": 360800,
+  "gguf_metadata": {
+    "general.architecture": "clef",
+    "clef.attention.head_count": 24,
+    "clef.attention.head_count_kv": 4,
+    "clef.decision.head_count": 16
+  },
+  "seconds": 0.01018054099768051
+}

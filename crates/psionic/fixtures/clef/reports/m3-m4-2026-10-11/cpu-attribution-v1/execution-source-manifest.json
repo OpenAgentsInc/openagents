@@ -1,0 +1,50 @@
+{
+  "gguf_import.py": {
+    "bytes": 10181,
+    "sha256": "57a152754b1dd224de24b111d7824fc6ecb3c7f4bb1149c6a5a3d78fdb41bc32"
+  },
+  "stream_reference.py": {
+    "bytes": 13679,
+    "sha256": "b1b61674dc9afc362f29bef3bf228ed4d5e6c7cf0150bf203023d28362462041"
+  },
+  "guard_stream.py": {
+    "bytes": 6127,
+    "sha256": "c44069732a872cb37e94b146442aa1e1d6e738cb422400ffac9837742a8e84d6"
+  },
+  "fixture_check.py": {
+    "bytes": 5655,
+    "sha256": "7045a7adcf2b52264c027149d1c42cd0cfdff98bfc58b9186bb07e4c1f84953c"
+  },
+  "fixture_projection_check.py": {
+    "bytes": 2491,
+    "sha256": "14065c492551388d0ea2ace731e4ff63d04818a366435e15035a81c3e1db253e"
+  },
+  "fixtures.json": {
+    "bytes": 5400,
+    "sha256": "9793ea566e9f1c71897f165c594c4aafb95dee2231caaa5180bbc4db7e57b083"
+  },
+  "projection-fixtures.json": {
+    "bytes": 10395,
+    "sha256": "d43b544969de84d2a54df5bb9414289f967793abb321b282797b200422f9f619"
+  },
+  "bf16_import.py": {
+    "bytes": 5327,
+    "sha256": "2a0b2c5be15555649424ae78e488e71687ebc2da59cd9190a11ab17c81942f90"
+  },
+  "bf16_reference.py": {
+    "bytes": 12263,
+    "sha256": "be3de4e4cd031977ea3bd83eb3f755648b71383648e859d5e0151f8942b272cd"
+  },
+  "guard_bf16_stream.py": {
+    "bytes": 6137,
+    "sha256": "5c8cd380a0d32b070a5516301c6eacd19bb07b398f2af023680adf8e9ef78a85"
+  },
+  "bf16_fixture_check.py": {
+    "bytes": 2504,
+    "sha256": "c339a97e6ed70ff4a59022879fb6b22508011b0eecc4b2afab9e55da2bba3a6e"
+  },
+  "bf16-fixtures.json": {
+    "bytes": 596,
+    "sha256": "0046828e5acc2992de04785f6ec8fe763c8092f4ebda63ebf6ab36ba22705216"
+  }
+}

@@ -1360,7 +1360,7 @@ complete before the native comparison starts; do not overlap their model loads.
 | Flash default Metal versus whole-prompt execution, 155 and 7,274 tokens, 3 chunk sizes and both accumulation modes | Passed: 12 comparisons have zero logit difference. CPU versus Metal has maximum logit difference `2.79e-4` and probability difference `1.35e-5`; repeated requests are bitwise stable. |
 | Flash fused attention and weight-shape GEMM | Passed: the same 12 chunk comparisons have zero logit difference. CPU versus Metal has maximum logit difference `1.31e-3` and probability difference `5.55e-5`. |
 | Flash compressed FFN versus resident f16 weights | Passed: 34 compared logits are identical. This is a storage/correctness result, not a speed claim. |
-| Flash route versus the CPU goldens, 40 requests and 104 answers per variant | Passed: default and fused-attention/weight-shape variants both match all 104 top answers. Maximum probability differences are `0.000784477` and `0.000954969`, respectively. These are correctness runs during compilation, not latency measurements. |
+| Flash route versus the CPU goldens, 40 requests and 104 answers per variant | Passed again on Stage 5: default and fused-attention/weight-shape variants both match all 104 top answers. Maximum probability differences are `0.001047681` and `0.000989952`, respectively. These correctness runs overlap CPU diagnostics and are not latency measurements. |
 | Block DeltaNet | **FAILED in the combined mode:** Stage 5 passes alone at maximum logit difference `8.871e-4`, but reaches `1.405e-3` with fused attention, weight-shape GEMM, and compressed FFN. It remains disabled by default. Both sides of the comparison use the same other optimizations. |
 | Official 27B BF16 image goldens and native comparison | Passed again on Stage 5: all six cases and 14 native top answers match the official reference and expected labels, with exact token counts. Maximum probability difference is `0.001785947`; all ten media refusal checks pass. |
 | Real 27B CUDA and Auto startup refusal on the RTX 4080 | Passed: both refused before weight upload, without CPU fallback; GPU memory before/after was unchanged. This does not claim that CUDA context creation uses no memory. |
@@ -1368,7 +1368,7 @@ complete before the native comparison starts; do not overlap their model loads.
 | 27B native BF16 text comparison | **FAILED on Stage 5:** all 40 cases have matching token counts, but only 93 of 104 top answers match. Maximum probability difference is `0.217196109`; 64 questions exceed `0.02`. Against a separate BF16-backbone/CPU-f32-head reference, 94 of 104 match and maximum difference is `0.216096109`. Earlier native CPU and Metal agreed closely on case 014 while both disagreed with BF16. Quantization is not an established cause. |
 | Two-/four-request Flash HTTP batch acceptance | Passed: 15 successful requests per mode have identical full-precision probabilities to serial references. Actual grouped FFN work, disconnect recovery, and saturation recovery pass. Each overload burst returns three `busy` refusals. The run overlaps compilation; no throughput improvement is claimed. |
 | Prefix raw-logit parity and reuse speed | Passed on Flash and 27B: all 21 question comparisons per model have zero logit difference; repeated-state medians improve by 6.83× and 9.42×, respectively. Changed schemas, state changes, eviction, and restored hits pass. Shared-machine runs overlap CPU compilation and export raw logits. |
-| 27B batching | **PENDING:** Flash batching does not validate the larger architecture. |
+| 27B batching | Passed on Stage 5: two and four slots each compare 15 successful responses with identical serial probabilities, actual grouped FFN work, disconnect recovery, and overload recovery. Each burst returns three `busy` refusals. This functional run overlaps CPU diagnostics and does not establish a throughput target. |
 | Flash paired uncached latency | Shared-machine default medians: `0.819 / 2.665 / 11.098 s`; fused attention plus weight-shape GEMM: `0.708 / 2.438 / 10.552 s`, at approximately 1k/4k/16k tokens. Ten measured requests per group, paired nonces, no concurrent task build or model. The absolute M3 targets are not met. This run precedes the next serial-wait reduction; paired Ollama and sustained-load comparisons remain pending. |
 
 Stage 5 corrects DeltaNet normalization in CPU, Metal prefill, and CUDA
@@ -1395,7 +1395,13 @@ agree within `9.54e-7` in logits on identical native inputs. Substituting
 reference hidden rows restores every top answer; substituting reference lexical
 rows does not. This locates the large gap in those backbone outputs. The native
 Q4 decoder also matches 1,327,104 independently decoded sample values bitwise.
-These checks do not yet distinguish quantization error from a backbone bug.
+An independent CPU-f32 execution of the same GGUF then reproduces case 014's
+native wrong answer within `0.000163851` in probability. Running the original
+checkpoint weights through the same f32 operators restores the BF16 answer
+within `0.008714512`. Replacing only the 192 FFN matrices also restores that
+case within `0.0186441` of BF16. These controls attribute this case's large miss
+to quantized backbone weights; they do not establish the cause of every mismatch
+or validate a replacement quantization. The original accuracy gate remains.
 
 ## File-relevance calibration (X1, 2026-10-10)
 

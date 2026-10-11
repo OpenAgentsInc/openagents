@@ -1,0 +1,17 @@
+psionic openai server listening on http://127.0.0.1:59338 decision_models=task-scratch/clef-m3-m4/artifacts/Clef-Q4_K_M.gguf backend=metal execution_mode=native route=/v1/systemone
+clef decision: 1969 tokens, 1 questions, waited 0 ms, ran 7660 ms
+clef decision: 1972 tokens, 1 questions, waited 47 ms, ran 12217 ms
+clef decision: 2099 tokens, 2 questions, waited 974 ms, ran 12808 ms
+clef decision: 2056 tokens, 1 questions, waited 44 ms, ran 13347 ms
+clef decision: 2183 tokens, 2 questions, waited 912 ms, ran 13240 ms
+clef decision: 2053 tokens, 2 questions, waited 818 ms, ran 8046 ms
+clef decision: 3849 tokens, 2 questions, waited 54 ms, ran 24180 ms
+clef decision: 3764 tokens, 1 questions, waited 912 ms, ran 23356 ms
+clef decision: 3764 tokens, 1 questions, waited 24327 ms, ran 23442 ms
+clef decision: 3849 tokens, 2 questions, waited 24451 ms, ran 24553 ms
+clef decision: 3764 tokens, 1 questions, waited 47934 ms, ran 23168 ms
+clef decision: 3767 tokens, 1 questions, waited 49131 ms, ran 23462 ms
+clef decision: 3849 tokens, 2 questions, waited 71201 ms, ran 24874 ms
+clef decision: 3853 tokens, 2 questions, waited 72721 ms, ran 24506 ms
+clef decision: 3764 tokens, 1 questions, waited 96144 ms, ran 13777 ms
+clef decision: 2061 tokens, 2 questions, waited 0 ms, ran 7778 ms

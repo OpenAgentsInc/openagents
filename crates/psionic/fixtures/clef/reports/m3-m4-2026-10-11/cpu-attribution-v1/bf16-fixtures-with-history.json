@@ -1,0 +1,14 @@
+{
+  "kind": "original_bf16_stream_import_fixtures",
+  "passed": true,
+  "model_execution": false,
+  "gpu_execution": false,
+  "layers_shape_checked": 64,
+  "parameters_shape_checked": 848,
+  "lexical_values_bitwise_checked": 384000,
+  "payload_read_bytes": 768000,
+  "maximum_layer_f32_bytes": 1533092736,
+  "original_checkpoint_index_sha256": "a600c6626eb1eb653a3f078ab3dd1c7a8fab2e71185c7ef3aa923a39aaa637be",
+  "saved_capture_sha256": "3e51ba8c5a4a68147b2747ea1482f772a89cca6d5fc10db3515ec04324c09215",
+  "importer_sha256": "284d742b3ac019a011237d6618163ba66f59690b225a852c2697ad2acc51d3f8"
+}

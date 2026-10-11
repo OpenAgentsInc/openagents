@@ -1,0 +1,55 @@
+{
+  "mode": "bench",
+  "status": "complete",
+  "preflight": {
+    "available_memory_bytes": 97081262080,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 3921364,
+      "inactive": 1669991,
+      "speculative": 334015
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "max_owned_group_bytes": 2147483648,
+  "minimum_available_bytes": 12884901888,
+  "minimum_start_bytes": 15032385536,
+  "deadline_seconds": 180,
+  "conditions": "shared machine; synthetic correctness and kernel timing only",
+  "source_sha256": {
+    "baseline.metal": "c87dad8c651b77d6595cc5698a7d989229e51b04cecd5c5350b83e4621bfa52b",
+    "pair.metal": "b0730fe3a4ee60d4f36f7a847e242db4df373394daa943a38946e27bc371ae0e",
+    "probe.swift": "c01e66fe8b6ca8acb50b67a99b18587ebd64318735af2a14ba8a07471874885e",
+    "build.py": "2c5d477fbae13767a943656b409293689cd8b30d0062ba92cd639b96196c49ff",
+    "guard.py": "a93e63c454604eeb64c265c2fd319ba1eea88204dee838c82bc2084c9b420ed4"
+  },
+  "command": [
+    "run-artifacts/ffn-pair-probe/probe",
+    "run-artifacts/ffn-pair-probe",
+    "bench"
+  ],
+  "binary_sha256": "5f711cf03c6302736fa0c1090fe0de993828364354f8213e7163c15481103793",
+  "exit": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 16564,
+    "max_rss_bytes": 2147483648,
+    "peak_rss_bytes": 338362368,
+    "peak_physical_footprint_bytes": 706560984,
+    "peak_accounted_bytes": 706560984,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 8,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 96360775680,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 3.96040275
+}

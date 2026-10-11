@@ -1,0 +1,8 @@
+{
+  "repository": "ggml-org/llama.cpp",
+  "revision": "5d246a792ddf839e87fb777681dd2a9ac7f7eb5e",
+  "path": "gguf-py/gguf/quants.py",
+  "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/5d246a792ddf839e87fb777681dd2a9ac7f7eb5e/gguf-py/gguf/quants.py",
+  "sha256": "2c927a1b3d9f0920dcf4007fb686e1b0999333e9f65ce43dcc689900c0beae8b",
+  "purpose": "Use the original Q4_K NumPy decoder; only detach its inherited registration wrapper."
+}

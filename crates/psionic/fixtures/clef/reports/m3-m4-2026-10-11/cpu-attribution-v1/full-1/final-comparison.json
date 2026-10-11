@@ -1,0 +1,112 @@
+{
+  "kind": "same_gguf_cpu_f32_final_comparison",
+  "diagnostic_only": true,
+  "status": "complete",
+  "independent_vs_native_metal_rows": {
+    "values": 1643520,
+    "max_abs_error": 0.12186622619628906,
+    "rmse": 0.002697994336434765,
+    "relative_l2_error": 0.0015314438086522304,
+    "minimum_token_cosine": 0.99995658420422,
+    "mean_token_cosine": 0.999998893385145,
+    "maximum_token_relative_l2_error": 0.00946463127515506,
+    "worst_token": 286,
+    "last_token_relative_l2_error": 0.0019405210454343904
+  },
+  "independent_vs_original_bf16_rows": {
+    "values": 1643520,
+    "max_abs_error": 17.761072158813477,
+    "rmse": 0.4147844238871782,
+    "relative_l2_error": 0.23680506219442465,
+    "minimum_token_cosine": 0.816442616754074,
+    "mean_token_cosine": 0.9742760741675098,
+    "maximum_token_relative_l2_error": 0.6043179695235293,
+    "worst_token": 305,
+    "last_token_relative_l2_error": 0.4543005550638302
+  },
+  "independent_vs_native_metal_logits": {
+    "questions": [
+      {
+        "candidate_logits": [
+          0.03363645076751709,
+          -0.5843357443809509,
+          1.1211087703704834,
+          1.1993741989135742,
+          -0.308840811252594
+        ],
+        "reference_logits": [
+          0.03314194083213806,
+          -0.5856657028198242,
+          1.1202863454818726,
+          1.1992161273956299,
+          -0.3099637031555176
+        ],
+        "candidate_probabilities": [
+          0.11870704112089443,
+          0.06398741499586677,
+          0.35217596036099497,
+          0.38084648469817267,
+          0.08428309882407109
+        ],
+        "reference_probabilities": [
+          0.11871816419305353,
+          0.0639399698639604,
+          0.35209348425782233,
+          0.3810103356806786,
+          0.08423804600448516
+        ],
+        "candidate_top": 3,
+        "reference_top": 3,
+        "max_abs_dp": 0.0001638509825059309,
+        "max_abs_dlogit": 0.001329958438873291
+      }
+    ],
+    "max_abs_dp": 0.0001638509825059309,
+    "all_tops_agree": true
+  },
+  "independent_vs_original_bf16_logits": {
+    "questions": [
+      {
+        "candidate_logits": [
+          0.03363645076751709,
+          -0.5843357443809509,
+          1.1211087703704834,
+          1.1993741989135742,
+          -0.308840811252594
+        ],
+        "reference_logits": [
+          -0.24331152439117432,
+          -0.9833959341049194,
+          0.907699465751648,
+          0.4902297258377075,
+          -0.979204535484314
+        ],
+        "candidate_probabilities": [
+          0.11870704112089443,
+          0.06398741499586677,
+          0.35217596036099497,
+          0.38084648469817267,
+          0.08428309882407109
+        ],
+        "reference_probabilities": [
+          0.13888926445567218,
+          0.06626040753019058,
+          0.43908277427472,
+          0.28922883958894835,
+          0.06653871415046889
+        ],
+        "candidate_top": 3,
+        "reference_top": 2,
+        "max_abs_dp": 0.09161764510922432,
+        "max_abs_dlogit": 0.7091444730758667
+      }
+    ],
+    "max_abs_dp": 0.09161764510922432,
+    "all_tops_agree": false
+  },
+  "source_hashes": {
+    "independent_receipt": "4bc4e7bc7732bdbb732889d5376dab1c887782a3434ec86620cbc0a666bc8fe5",
+    "native_dump": "9417dd05d74551f9833b22d69eff1c1ab24af49131bd4d293dc85ef7f88c6bfb",
+    "clean_case": "774396d28be3b859567860e99d2943e95baab5d58845bf2f5e3626c562181afe"
+  }
+}

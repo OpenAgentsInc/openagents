@@ -1,0 +1,53 @@
+{
+  "mode": "build",
+  "status": "complete",
+  "preflight": {
+    "available_memory_bytes": 108839682048,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 1485179,
+      "inactive": 4890950,
+      "speculative": 266918
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "max_owned_group_bytes": 4294967296,
+  "minimum_available_bytes": 12884901888,
+  "minimum_start_bytes": 17179869184,
+  "deadline_seconds": 180,
+  "conditions": "shared machine; same Flash half weights; staticK and persistent transpose; shared-machine timing only",
+  "source_sha256": {
+    "tiles.metal": "5aa57fd8fa2315c2a03e3eefeff7cebb758f49a7ff24f05e8d19c1a2800157e4",
+    "probe.swift": "726605e726e6dd667a4e1184b2819ff93d398002f23e7395b7c57de3c67c7b2d",
+    "build.py": "3fa69db28b02c0592cffac301d33b50f1970701fac8a585cf41e4e8af87e7807",
+    "guard.py": "4a1476e6306ea823c372099646119541cb1956cf6a4553ef9b1ed6541cde239d",
+    "stage_weights.py": "416e63ef393da0d278d8033298b299ffe09a97090dd45af9fbaef3051269856b"
+  },
+  "command": [
+    "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+    "run-artifacts/gemm-layout-probe/build.py"
+  ],
+  "exit": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 87726,
+    "max_rss_bytes": 4294967296,
+    "peak_rss_bytes": 299335680,
+    "peak_physical_footprint_bytes": 181437352,
+    "peak_accounted_bytes": 299335680,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 8,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 108759187456,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 4.142143916999999
+}

@@ -1,0 +1,189 @@
+{
+  "status": "prepared_and_offline_compiled; GPU run queued",
+  "orientation": {
+    "token_M": "MPP left outer dimension",
+    "output_N": "MPP right outer dimension",
+    "K": "dynamic full reduction",
+    "left_transpose": false,
+    "right_transpose": true,
+    "input": "token-major [tokens,K] half",
+    "weight": "output-major [outputs,K] half",
+    "output": "token-major [tokens,outputs] f32"
+  },
+  "one_factor_edges": [
+    [
+      "clef_gemm",
+      "tile_64_128_4",
+      "output columns64 to128"
+    ],
+    [
+      "tile_64_128_4",
+      "tile_128_128_4",
+      "token rows64 to128"
+    ],
+    [
+      "tile_64_128_4",
+      "tile_64_128_8",
+      "SIMD groups4 to8"
+    ],
+    [
+      "tile_128_128_4",
+      "tile_128_128_8",
+      "SIMD groups4 to8"
+    ],
+    [
+      "tile_64_128_8",
+      "tile_128_128_8",
+      "token rows64 to128"
+    ],
+    [
+      "tile_128_64_8",
+      "tile_128_128_8",
+      "output columns64 to128"
+    ],
+    [
+      "tile_128_128_8",
+      "tile_128_256_8",
+      "output columns128 to256"
+    ]
+  ],
+  "opportunities": [
+    "Larger token tiles can reuse each weight row across more tokens inside a threadgroup.",
+    "Larger output tiles can reuse each input row across more outputs.",
+    "More SIMD groups distribute cooperative registers but add participating warps and can affect occupancy.",
+    "Full dynamicK leaves K tiling to MPP; manually tiledK changes reduction order and is deliberately a separate future experiment.",
+    "NT transposition is part of the TensorOps descriptor. Current host code does not launch a separate transpose for each GEMM. Explicit pretranspose would require a different stored layout and must account for its time and memory."
+  ],
+  "bandwidth": {
+    "measured": false,
+    "hardware_counters_collected": false,
+    "rows": [
+      {
+        "tokens": 65,
+        "three_projection_flops": 19629342720,
+        "logical_ffn_minimum_bytes": 319561728,
+        "arithmetic_intensity_flops_per_byte": 61.42582480965931
+      },
+      {
+        "tokens": 1024,
+        "three_projection_flops": 309237645312,
+        "logical_ffn_minimum_bytes": 578813952,
+        "arithmetic_intensity_flops_per_byte": 534.2608695652174
+      },
+      {
+        "tokens": 2048,
+        "three_projection_flops": 618475290624,
+        "logical_ffn_minimum_bytes": 855638016,
+        "arithmetic_intensity_flops_per_byte": 722.8235294117648
+      }
+    ],
+    "interpretation": "These logical minimum bytes assume each weight/input/intermediate is read or written once. They are not device-memory counters and do not establish a bandwidth bottleneck. N65 has much lower arithmetic intensity thanN1024/2048. Shared scheduler/clock/thermal effects are not distinguished.",
+    "tile_traffic_scenarios": [
+      {
+        "tokens": 65,
+        "token_tile": 64,
+        "output_tile": 64,
+        "threadgroups": 384,
+        "logical_tile_bytes_without_cross_group_reuse": 408944640,
+        "useful_flops_per_logical_tile_byte": 16.0
+      },
+      {
+        "tokens": 65,
+        "token_tile": 64,
+        "output_tile": 128,
+        "threadgroups": 192,
+        "logical_tile_bytes_without_cross_group_reuse": 308281344,
+        "useful_flops_per_logical_tile_byte": 21.224489795918366
+      },
+      {
+        "tokens": 65,
+        "token_tile": 128,
+        "output_tile": 128,
+        "threadgroups": 96,
+        "logical_tile_bytes_without_cross_group_reuse": 207618048,
+        "useful_flops_per_logical_tile_byte": 31.515151515151516
+      },
+      {
+        "tokens": 65,
+        "token_tile": 128,
+        "output_tile": 256,
+        "threadgroups": 48,
+        "logical_tile_bytes_without_cross_group_reuse": 157286400,
+        "useful_flops_per_logical_tile_byte": 41.6
+      },
+      {
+        "tokens": 1024,
+        "token_tile": 64,
+        "output_tile": 64,
+        "threadgroups": 3072,
+        "logical_tile_bytes_without_cross_group_reuse": 3271557120,
+        "useful_flops_per_logical_tile_byte": 31.50769230769231
+      },
+      {
+        "tokens": 1024,
+        "token_tile": 64,
+        "output_tile": 128,
+        "threadgroups": 1536,
+        "logical_tile_bytes_without_cross_group_reuse": 2466250752,
+        "useful_flops_per_logical_tile_byte": 41.795918367346935
+      },
+      {
+        "tokens": 1024,
+        "token_tile": 128,
+        "output_tile": 128,
+        "threadgroups": 768,
+        "logical_tile_bytes_without_cross_group_reuse": 1660944384,
+        "useful_flops_per_logical_tile_byte": 62.06060606060606
+      },
+      {
+        "tokens": 1024,
+        "token_tile": 128,
+        "output_tile": 256,
+        "threadgroups": 384,
+        "logical_tile_bytes_without_cross_group_reuse": 1258291200,
+        "useful_flops_per_logical_tile_byte": 81.92
+      },
+      {
+        "tokens": 2048,
+        "token_tile": 64,
+        "output_tile": 64,
+        "threadgroups": 6144,
+        "logical_tile_bytes_without_cross_group_reuse": 6543114240,
+        "useful_flops_per_logical_tile_byte": 31.50769230769231
+      },
+      {
+        "tokens": 2048,
+        "token_tile": 64,
+        "output_tile": 128,
+        "threadgroups": 3072,
+        "logical_tile_bytes_without_cross_group_reuse": 4932501504,
+        "useful_flops_per_logical_tile_byte": 41.795918367346935
+      },
+      {
+        "tokens": 2048,
+        "token_tile": 128,
+        "output_tile": 128,
+        "threadgroups": 1536,
+        "logical_tile_bytes_without_cross_group_reuse": 3321888768,
+        "useful_flops_per_logical_tile_byte": 62.06060606060606
+      },
+      {
+        "tokens": 2048,
+        "token_tile": 128,
+        "output_tile": 256,
+        "threadgroups": 768,
+        "logical_tile_bytes_without_cross_group_reuse": 2516582400,
+        "useful_flops_per_logical_tile_byte": 81.92
+      }
+    ],
+    "tile_traffic_caveat": "These count full nominal tiles and assume no input/weight reuse between threadgroups. Real hardware caches may reduce reads; tail handling may reduce work. No claim that these bytes reach DRAM."
+  },
+  "weight_scope": "One actual Flash layer0 gate/up/down tensor set, decoded independently from its Q4_K artifact to half; deterministic inputs. No model loaded.",
+  "correctness_gate": "Every small GEMM compares all outputs to independent f64 and original64x64. Full weighted FFN requires finite f32 max-scaled difference<=0.00003 in gate/up/down, exact half activation parity, and intact output redzones before timing. These are scratch kernel gates, not full-model accuracy acceptance.",
+  "bounded_data_bytes": 1073741824,
+  "runtime_cap_bytes": 2147483648,
+  "minimum_start_bytes": 15032385536,
+  "remaining_floor_bytes": 12884901888,
+  "deadline_seconds": 180,
+  "conditions": "Shared machine; root-approved small CPU reference pilot may overlap. No quiet lease."
+}

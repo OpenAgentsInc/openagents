@@ -1,0 +1,314 @@
+{
+  "passed": true,
+  "model_execution": false,
+  "rows": [
+    {
+      "gguf_tensor": "blk.3.attn_q.weight",
+      "hf_tensor": "model.language_model.layers.3.self_attn.q_proj.weight",
+      "row": 0,
+      "relative_l2_error": 0.005614940075211773
+    },
+    {
+      "gguf_tensor": "blk.3.attn_q.weight",
+      "hf_tensor": "model.language_model.layers.3.self_attn.q_proj.weight",
+      "row": 127,
+      "relative_l2_error": 0.005445389252267853
+    },
+    {
+      "gguf_tensor": "blk.3.attn_q.weight",
+      "hf_tensor": "model.language_model.layers.3.self_attn.q_proj.weight",
+      "row": 128,
+      "relative_l2_error": 0.005418330606673033
+    },
+    {
+      "gguf_tensor": "blk.3.attn_q.weight",
+      "hf_tensor": "model.language_model.layers.3.self_attn.q_proj.weight",
+      "row": 255,
+      "relative_l2_error": 0.005382200156107642
+    },
+    {
+      "gguf_tensor": "blk.3.attn_q.weight",
+      "hf_tensor": "model.language_model.layers.3.self_attn.q_proj.weight",
+      "row": 256,
+      "relative_l2_error": 0.005426878084725479
+    },
+    {
+      "gguf_tensor": "blk.3.attn_q.weight",
+      "hf_tensor": "model.language_model.layers.3.self_attn.q_proj.weight",
+      "row": 12287,
+      "relative_l2_error": 0.005433980675933474
+    },
+    {
+      "gguf_tensor": "blk.3.attn_k.weight",
+      "hf_tensor": "model.language_model.layers.3.self_attn.k_proj.weight",
+      "row": 0,
+      "relative_l2_error": 0.005931799338928765
+    },
+    {
+      "gguf_tensor": "blk.3.attn_k.weight",
+      "hf_tensor": "model.language_model.layers.3.self_attn.k_proj.weight",
+      "row": 127,
+      "relative_l2_error": 0.005466265379764286
+    },
+    {
+      "gguf_tensor": "blk.3.attn_k.weight",
+      "hf_tensor": "model.language_model.layers.3.self_attn.k_proj.weight",
+      "row": 128,
+      "relative_l2_error": 0.005379398622009343
+    },
+    {
+      "gguf_tensor": "blk.3.attn_k.weight",
+      "hf_tensor": "model.language_model.layers.3.self_attn.k_proj.weight",
+      "row": 255,
+      "relative_l2_error": 0.00544409726127867
+    },
+    {
+      "gguf_tensor": "blk.3.attn_k.weight",
+      "hf_tensor": "model.language_model.layers.3.self_attn.k_proj.weight",
+      "row": 256,
+      "relative_l2_error": 0.0054246932445636995
+    },
+    {
+      "gguf_tensor": "blk.3.attn_k.weight",
+      "hf_tensor": "model.language_model.layers.3.self_attn.k_proj.weight",
+      "row": 1023,
+      "relative_l2_error": 0.006316533190165089
+    },
+    {
+      "gguf_tensor": "blk.3.attn_v.weight",
+      "hf_tensor": "model.language_model.layers.3.self_attn.v_proj.weight",
+      "row": 0,
+      "relative_l2_error": 0.0053460065700233084
+    },
+    {
+      "gguf_tensor": "blk.3.attn_v.weight",
+      "hf_tensor": "model.language_model.layers.3.self_attn.v_proj.weight",
+      "row": 127,
+      "relative_l2_error": 0.005483462988802165
+    },
+    {
+      "gguf_tensor": "blk.3.attn_v.weight",
+      "hf_tensor": "model.language_model.layers.3.self_attn.v_proj.weight",
+      "row": 128,
+      "relative_l2_error": 0.00539366286459835
+    },
+    {
+      "gguf_tensor": "blk.3.attn_v.weight",
+      "hf_tensor": "model.language_model.layers.3.self_attn.v_proj.weight",
+      "row": 255,
+      "relative_l2_error": 0.005361144417346138
+    },
+    {
+      "gguf_tensor": "blk.3.attn_v.weight",
+      "hf_tensor": "model.language_model.layers.3.self_attn.v_proj.weight",
+      "row": 256,
+      "relative_l2_error": 0.005254196673030078
+    },
+    {
+      "gguf_tensor": "blk.3.attn_v.weight",
+      "hf_tensor": "model.language_model.layers.3.self_attn.v_proj.weight",
+      "row": 1023,
+      "relative_l2_error": 0.005620533009646036
+    },
+    {
+      "gguf_tensor": "blk.3.attn_output.weight",
+      "hf_tensor": "model.language_model.layers.3.self_attn.o_proj.weight",
+      "row": 0,
+      "relative_l2_error": 0.0054004278210929456
+    },
+    {
+      "gguf_tensor": "blk.3.attn_output.weight",
+      "hf_tensor": "model.language_model.layers.3.self_attn.o_proj.weight",
+      "row": 127,
+      "relative_l2_error": 0.005396069314458538
+    },
+    {
+      "gguf_tensor": "blk.3.attn_output.weight",
+      "hf_tensor": "model.language_model.layers.3.self_attn.o_proj.weight",
+      "row": 128,
+      "relative_l2_error": 0.005487345279491206
+    },
+    {
+      "gguf_tensor": "blk.3.attn_output.weight",
+      "hf_tensor": "model.language_model.layers.3.self_attn.o_proj.weight",
+      "row": 255,
+      "relative_l2_error": 0.0055156961505256775
+    },
+    {
+      "gguf_tensor": "blk.3.attn_output.weight",
+      "hf_tensor": "model.language_model.layers.3.self_attn.o_proj.weight",
+      "row": 256,
+      "relative_l2_error": 0.005469109999744304
+    },
+    {
+      "gguf_tensor": "blk.3.attn_output.weight",
+      "hf_tensor": "model.language_model.layers.3.self_attn.o_proj.weight",
+      "row": 5119,
+      "relative_l2_error": 0.005397020557688369
+    },
+    {
+      "gguf_tensor": "blk.63.attn_q.weight",
+      "hf_tensor": "model.language_model.layers.63.self_attn.q_proj.weight",
+      "row": 0,
+      "relative_l2_error": 0.005414714311229544
+    },
+    {
+      "gguf_tensor": "blk.63.attn_q.weight",
+      "hf_tensor": "model.language_model.layers.63.self_attn.q_proj.weight",
+      "row": 127,
+      "relative_l2_error": 0.005518712926078982
+    },
+    {
+      "gguf_tensor": "blk.63.attn_q.weight",
+      "hf_tensor": "model.language_model.layers.63.self_attn.q_proj.weight",
+      "row": 128,
+      "relative_l2_error": 0.006696992310443769
+    },
+    {
+      "gguf_tensor": "blk.63.attn_q.weight",
+      "hf_tensor": "model.language_model.layers.63.self_attn.q_proj.weight",
+      "row": 255,
+      "relative_l2_error": 0.005737673238719513
+    },
+    {
+      "gguf_tensor": "blk.63.attn_q.weight",
+      "hf_tensor": "model.language_model.layers.63.self_attn.q_proj.weight",
+      "row": 256,
+      "relative_l2_error": 0.005544376879085771
+    },
+    {
+      "gguf_tensor": "blk.63.attn_q.weight",
+      "hf_tensor": "model.language_model.layers.63.self_attn.q_proj.weight",
+      "row": 12287,
+      "relative_l2_error": 0.005828306089603638
+    },
+    {
+      "gguf_tensor": "blk.63.attn_k.weight",
+      "hf_tensor": "model.language_model.layers.63.self_attn.k_proj.weight",
+      "row": 0,
+      "relative_l2_error": 0.005577961800575095
+    },
+    {
+      "gguf_tensor": "blk.63.attn_k.weight",
+      "hf_tensor": "model.language_model.layers.63.self_attn.k_proj.weight",
+      "row": 127,
+      "relative_l2_error": 0.00724979548679519
+    },
+    {
+      "gguf_tensor": "blk.63.attn_k.weight",
+      "hf_tensor": "model.language_model.layers.63.self_attn.k_proj.weight",
+      "row": 128,
+      "relative_l2_error": 0.007913044407896485
+    },
+    {
+      "gguf_tensor": "blk.63.attn_k.weight",
+      "hf_tensor": "model.language_model.layers.63.self_attn.k_proj.weight",
+      "row": 255,
+      "relative_l2_error": 0.007171178862888518
+    },
+    {
+      "gguf_tensor": "blk.63.attn_k.weight",
+      "hf_tensor": "model.language_model.layers.63.self_attn.k_proj.weight",
+      "row": 256,
+      "relative_l2_error": 0.005450419435403368
+    },
+    {
+      "gguf_tensor": "blk.63.attn_k.weight",
+      "hf_tensor": "model.language_model.layers.63.self_attn.k_proj.weight",
+      "row": 1023,
+      "relative_l2_error": 0.007728411054850356
+    },
+    {
+      "gguf_tensor": "blk.63.attn_v.weight",
+      "hf_tensor": "model.language_model.layers.63.self_attn.v_proj.weight",
+      "row": 0,
+      "relative_l2_error": 0.007785118784443295
+    },
+    {
+      "gguf_tensor": "blk.63.attn_v.weight",
+      "hf_tensor": "model.language_model.layers.63.self_attn.v_proj.weight",
+      "row": 127,
+      "relative_l2_error": 0.006954004603115891
+    },
+    {
+      "gguf_tensor": "blk.63.attn_v.weight",
+      "hf_tensor": "model.language_model.layers.63.self_attn.v_proj.weight",
+      "row": 128,
+      "relative_l2_error": 0.006407413326002314
+    },
+    {
+      "gguf_tensor": "blk.63.attn_v.weight",
+      "hf_tensor": "model.language_model.layers.63.self_attn.v_proj.weight",
+      "row": 255,
+      "relative_l2_error": 0.00642574820237084
+    },
+    {
+      "gguf_tensor": "blk.63.attn_v.weight",
+      "hf_tensor": "model.language_model.layers.63.self_attn.v_proj.weight",
+      "row": 256,
+      "relative_l2_error": 0.006516880256463669
+    },
+    {
+      "gguf_tensor": "blk.63.attn_v.weight",
+      "hf_tensor": "model.language_model.layers.63.self_attn.v_proj.weight",
+      "row": 1023,
+      "relative_l2_error": 0.005260030278000471
+    },
+    {
+      "gguf_tensor": "blk.63.attn_output.weight",
+      "hf_tensor": "model.language_model.layers.63.self_attn.o_proj.weight",
+      "row": 0,
+      "relative_l2_error": 0.00568165152581449
+    },
+    {
+      "gguf_tensor": "blk.63.attn_output.weight",
+      "hf_tensor": "model.language_model.layers.63.self_attn.o_proj.weight",
+      "row": 127,
+      "relative_l2_error": 0.005896676439775201
+    },
+    {
+      "gguf_tensor": "blk.63.attn_output.weight",
+      "hf_tensor": "model.language_model.layers.63.self_attn.o_proj.weight",
+      "row": 128,
+      "relative_l2_error": 0.005884551436038244
+    },
+    {
+      "gguf_tensor": "blk.63.attn_output.weight",
+      "hf_tensor": "model.language_model.layers.63.self_attn.o_proj.weight",
+      "row": 255,
+      "relative_l2_error": 0.0060694902522262645
+    },
+    {
+      "gguf_tensor": "blk.63.attn_output.weight",
+      "hf_tensor": "model.language_model.layers.63.self_attn.o_proj.weight",
+      "row": 256,
+      "relative_l2_error": 0.005812554027400331
+    },
+    {
+      "gguf_tensor": "blk.63.attn_output.weight",
+      "hf_tensor": "model.language_model.layers.63.self_attn.o_proj.weight",
+      "row": 5119,
+      "relative_l2_error": 0.0057843757335448035
+    },
+    {
+      "gguf_tensor": "blk.0.ssm_out.weight",
+      "hf_tensor": "model.language_model.layers.0.linear_attn.out_proj.weight",
+      "row": 0,
+      "relative_l2_error": 0.005591455763067918
+    },
+    {
+      "gguf_tensor": "blk.0.ssm_out.weight",
+      "hf_tensor": "model.language_model.layers.0.linear_attn.out_proj.weight",
+      "row": 128,
+      "relative_l2_error": 0.005452675389248094
+    },
+    {
+      "gguf_tensor": "blk.0.ssm_out.weight",
+      "hf_tensor": "model.language_model.layers.0.linear_attn.out_proj.weight",
+      "row": 5119,
+      "relative_l2_error": 0.005432632198568602
+    }
+  ],
+  "bf16_payload_bytes": 552960,
+  "gguf_payload_bytes": 293760
+}

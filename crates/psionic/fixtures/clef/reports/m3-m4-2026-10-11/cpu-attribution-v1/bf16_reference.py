@@ -1,0 +1,193 @@
+#!/usr/bin/env python3
+"""One-case CPU-f32 reference with original BF16 weights resident one layer at a time."""
+import argparse
+import gc
+import hashlib
+import importlib.util
+import inspect
+import json
+import os
+from pathlib import Path
+import sys
+import textwrap
+import time
+import types
+
+for name in ("OMP_NUM_THREADS","OPENBLAS_NUM_THREADS","MKL_NUM_THREADS","VECLIB_MAXIMUM_THREADS","RAYON_NUM_THREADS"):
+    os.environ[name]="2"
+from gguf_import import BASE, require, sha_bytes
+from bf16_import import StreamingBf16
+
+HERE=Path(__file__).resolve().parent
+ROOT=Path("<OPENAGENTS_WORKTREE>")
+HF=BASE / "artifacts/clef-bf16"
+CLEAN=BASE / "reference27b/cpu-head-stage1/results"
+MODELING_SHA="fd9963c32aa3d50c753a990a2670cfdbea055b6316b40027e0de976019e42551"
+SOURCE_SHA="0e304cf7c6500e8bb59bef7e2afd2c6373f82596dfb3b57d1aa93c175e2dc3a3"
+HEAD_SHA="a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953"
+
+
+def file_sha(path):
+    digest=hashlib.sha256()
+    with path.open("rb") as f:
+        for block in iter(lambda:f.read(1024**2),b""):digest.update(block)
+    return digest.hexdigest()
+
+
+def write(path,value):
+    temporary=path.with_suffix(path.suffix+".partial")
+    temporary.write_text(json.dumps(value,indent=2,allow_nan=False)+"\n")
+    temporary.replace(path)
+
+
+def tensor_sha(torch,tensor):
+    require(tensor.device.type=="cpu","CPU-only tensor required")
+    return sha_bytes(tensor.detach().contiguous().view(torch.uint8).numpy().tobytes())
+
+
+def run(args):
+    resources=set(os.environ.get("OPENAGENTS_LEASES","").split(","))
+    require("memory" in resources and not resources.intersection({"gpu","quiet"}),"requires memory lease, no GPU or quiet")
+    require(os.environ.get("CLEF_STREAMED_BF16_GUARDED")=="1","run through the owned CPU guard")
+    require(not args.output_dir.exists(),"preserve previous output")
+    args.output_dir.mkdir(parents=True)
+    receipt={"kind":"streamed_original_bf16_to_cpu_f32_text014","status":"validating","completed":False,
+             "device":"cpu","dtype":"float32","threads":2,"layers":[],"diagnostic_only":True,
+             "model_allocation":"One decoder layer at a time; selected input/output embedding rows only.",
+             "bf16_repository":"Cloudflare/clef", "bf16_revision":"0b331204bb13fbd2ca93a64df1956f5b55478ce5",
+             "script_sha256":file_sha(Path(__file__)),"importer_sha256":file_sha(HERE / "bf16_import.py")}
+    report=args.output_dir / "receipt.json"
+    write(report,receipt)
+    reader=None
+    try:
+        import torch
+        import transformers
+        from transformers.models.qwen3_5 import modeling_qwen3_5 as modeling
+        torch.set_num_threads(2);torch.set_num_interop_threads(1);torch.set_default_device("cpu")
+        require(str(torch.__version__)=="2.9.1" and transformers.__version__=="5.10.2","runtime version differs")
+        require(file_sha(Path(modeling.__file__))==MODELING_SHA,"official model operators changed")
+        require(modeling.FusedRMSNormGated is None and modeling.causal_conv1d_fn is None
+                and modeling.chunk_gated_delta_rule is None and modeling.fused_recurrent_gated_delta_rule is None,
+                "unexpected optional GPU kernels; use the verified pure PyTorch environment")
+        require(file_sha(HF / "joint_schema_model.py")==SOURCE_SHA and file_sha(HF / "joint_head.safetensors")==HEAD_SHA,
+                "official head artifacts differ")
+        config_raw=json.loads((HF / "config.json").read_text())["text_config"]
+        require(config_raw["num_hidden_layers"]==64 and config_raw["hidden_size"]==5120 and config_raw["intermediate_size"]==17408,
+                "27B architecture differs")
+        config=modeling.Qwen3_5TextConfig.from_dict(config_raw)
+        config._attn_implementation="eager";config.use_cache=False;config.dtype=torch.float32
+        clean=json.loads((CLEAN / "reference.json").read_text())
+        case=json.loads((CLEAN / "text-014.json").read_text())
+        require(clean["completed"] and clean["all_immutable_checks_passed"] and case in clean["cases"],"clean case differs")
+        require(case["immutable_checks"]["all_exact"] and len(case["input_ids"])==321,"text014 token identity differs")
+        ids=case["input_ids"]
+        spec=importlib.util.spec_from_file_location("streamed_official_head",HF / "joint_schema_model.py")
+        official=importlib.util.module_from_spec(spec);sys.modules[spec.name]=official;spec.loader.exec_module(official)
+        processor=transformers.AutoProcessor.from_pretrained(HF,local_files_only=True)
+        encoded=official.encode_record(processor.tokenizer,json.loads(case["request_body"]),processor=processor)
+        from dataclasses import asdict
+        require(json.loads(json.dumps(asdict(encoded)))==case["records"][0],"fresh exact token IDs/spans/options differ")
+        reader=StreamingBf16()
+        receipt.update(plan=reader.plan(len(ids)),torch=str(torch.__version__),
+                       transformers=transformers.__version__,checkpoint_file_state=reader.state,
+                       clean_reference_sha256=file_sha(CLEAN / "reference.json"),
+                       clean_case_sha256=file_sha(CLEAN / "text-014.json"),input_ids=ids,records=case["records"],
+                       forward_adapter=None,original_A_log=True)
+        hidden=torch.from_numpy(reader.rows("model.language_model.embed_tokens.weight",ids)).unsqueeze(0)
+        require(hidden.shape==(1,321,5120),"embedding shape differs")
+        position_ids=torch.arange(len(ids),device="cpu").view(1,-1)
+        positions=position_ids[None,...].expand(3,1,-1)
+        rotary=modeling.Qwen3_5TextRotaryEmbedding(config,device=torch.device("cpu"))
+        with torch.inference_mode():
+            position_embeddings=rotary(hidden,positions)
+            causal_mask=modeling.create_causal_mask(config=config,inputs_embeds=hidden,
+                attention_mask=torch.ones((1,len(ids)),dtype=torch.long),past_key_values=None,position_ids=position_ids)
+        limit=1 if args.first_layer_only else 64
+        receipt.update(status="running",requested_layers=limit)
+        write(report,receipt)
+        from safetensors.torch import save_file,load_file
+        for index in range(limit):
+            reader.check_state()
+            began=time.monotonic()
+            with torch.device("meta"):
+                layer=modeling.Qwen3_5DecoderLayer(config,index)
+            arrays=reader.layer_arrays(index)
+            require(set(arrays)==set(layer.state_dict()),"layer parameter names differ")
+            state={name:torch.from_numpy(value) for name,value in arrays.items()}
+            layer.load_state_dict(state,strict=True,assign=True)
+            del arrays,state
+            layer.eval()
+            require(all(p.device.type=="cpu" and p.dtype==torch.float32 for p in layer.parameters()),"layer left meta/CPU-f32 bounds")
+            load_seconds=time.monotonic()-began
+            before=tensor_sha(torch,hidden)
+            began=time.monotonic()
+            with torch.inference_mode():
+                output=layer(hidden,position_embeddings=position_embeddings,
+                    attention_mask=causal_mask if index%4==3 else None,position_ids=position_ids,
+                    past_key_values=None,use_cache=False)
+            require(tensor_sha(torch,hidden)==before,"decoder layer mutated its input")
+            require(output.shape==hidden.shape and bool(torch.isfinite(output).all()),"invalid layer output")
+            elapsed=time.monotonic()-began
+            hidden=output;del output,layer;gc.collect()
+            reader.check_state()
+            evidence=args.output_dir / f"layer-{index:02d}.safetensors"
+            save_file({"hidden":hidden.contiguous()},str(evidence))
+            row={"layer":index,"load_decode_seconds":load_seconds,"forward_seconds":elapsed,
+                 "hidden_sha256":tensor_sha(torch,hidden),"file":evidence.name,"file_sha256":file_sha(evidence),
+                 "finite":True,"input_unchanged":True,"payload_read_bytes":reader.payload_read_bytes}
+            receipt["layers"].append(row);write(report,receipt)
+            print(json.dumps(row),flush=True)
+        if args.first_layer_only:
+            receipt.update(status="first_layer_complete",completed=False,full_pass_executed=False)
+            return
+        norm=modeling.Qwen3_5RMSNorm(5120,eps=config.rms_norm_eps)
+        norm.weight=torch.nn.Parameter(torch.from_numpy(reader.full("model.language_model.norm.weight")),requires_grad=False)
+        with torch.inference_mode():hidden=norm(hidden)
+        require(bool(torch.isfinite(hidden).all()),"nonfinite final rows")
+        save_file({"hidden":hidden.contiguous()},str(args.output_dir / "final-hidden.safetensors"))
+        (args.output_dir / "hidden.f32").write_bytes(hidden.numpy().astype("<f4").tobytes())
+        tokens=sorted({token for q in encoded.questions for first,end in q.option_spans for token in ids[first:end]})
+        lexical=torch.from_numpy(reader.rows("lm_head.weight",tokens))
+        remap={token:index for index,token in enumerate(tokens)}
+        head_ids=[remap.get(token,0) for token in ids]
+        record=official.EncodedRecord(input_ids=tuple(head_ids),questions=encoded.questions,record_id=encoded.record_id)
+        head=official.JointSchemaHead(**json.loads((HF / "joint_head_config.json").read_text()))
+        head.load_state_dict(load_file(str(HF / "joint_head.safetensors"),device="cpu"),strict=True)
+        head=head.to(device="cpu",dtype=torch.float32).eval()
+        before_hidden,before_lexical=tensor_sha(torch,hidden),tensor_sha(torch,lexical)
+        quantized=load_file(str(HERE / "full-1/results/head-inputs.safetensors"),device="cpu")
+        quantized_receipt=json.loads((HERE / "full-1/results/receipt.json").read_text())
+        require(quantized_receipt["completed"] and quantized_receipt["input_ids"]==ids,"quantized reference identity differs")
+        require(quantized["lexical_token_ids"].tolist()==tokens and quantized["remapped_input_ids"].tolist()==[head_ids],"quantized lexical rows differ")
+        comparisons={}
+        with torch.inference_mode():
+            for label,rows,words in (("bf16_weights_f32",hidden,lexical),
+                                     ("q4_hidden_original_lexical",quantized["hidden"],lexical),
+                                     ("original_hidden_q6_lexical",hidden,quantized["lexical"]),
+                                     ("q4_hidden_q6_lexical",quantized["hidden"],quantized["lexical"])):
+                prior_rows,prior_words=tensor_sha(torch,rows),tensor_sha(torch,words)
+                values=head(rows,torch.tensor([head_ids],dtype=torch.long),torch.ones((1,len(ids)),dtype=torch.long),[record],words)[0]
+                require(tensor_sha(torch,rows)==prior_rows and tensor_sha(torch,words)==prior_words,"cross-swap head inputs changed")
+                comparisons[label]=[value.float().tolist() for value in values]
+        require(tensor_sha(torch,hidden)==before_hidden and tensor_sha(torch,lexical)==before_lexical,"head inputs changed")
+        receipt.update(status="complete",completed=True,full_pass_executed=True,
+                       hidden_sha256=before_hidden,lexical_sha256=before_lexical,
+                       logits=comparisons["bf16_weights_f32"],head_cross_swaps=comparisons,
+                       quantized_reference_sha256=file_sha(HERE / "full-1/results/receipt.json"),
+                       payload_read_bytes=reader.payload_read_bytes)
+        save_file({"hidden":hidden.contiguous(),"lexical":lexical,"input_ids":torch.tensor([ids]),
+                   "lexical_token_ids":torch.tensor(tokens),"remapped_input_ids":torch.tensor([head_ids])},
+                  str(args.output_dir / "head-inputs.safetensors"))
+    except BaseException as error:
+        receipt.update(status="failed",error_type=type(error).__name__,error=str(error))
+        raise
+    finally:
+        if reader is not None:reader.close()
+        write(report,receipt)
+
+
+if __name__=="__main__":
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output-dir",type=Path,required=True)
+    parser.add_argument("--first-layer-only",action="store_true")
+    run(parser.parse_args())

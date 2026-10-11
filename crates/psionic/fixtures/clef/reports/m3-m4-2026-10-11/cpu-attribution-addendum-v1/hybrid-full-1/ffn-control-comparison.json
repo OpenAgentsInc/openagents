@@ -1,0 +1,313 @@
+{
+  "kind": "text014_original_ffn_only_replacement_control",
+  "status": "complete",
+  "diagnostic_only": true,
+  "not_q4_acceptance": true,
+  "changed_weights": "Exactly192 FFN gate/up/down matrices; original BF16 values cast to f32.",
+  "unchanged": "GGUF token/output embeddings, all other quantized/dense backbone weights, same official f32 operators and stored-negative-A adapter.",
+  "hybrid_vs_original_f32_logits": {
+    "questions": [
+      {
+        "candidate_logits": [
+          -0.1970822811126709,
+          -1.0403177738189697,
+          0.958223819732666,
+          0.629335343837738,
+          -0.82848060131073
+        ],
+        "reference_logits": [
+          -0.16840136051177979,
+          -0.9704718589782715,
+          0.9191111326217651,
+          0.5353603363037109,
+          -0.9510324597358704
+        ],
+        "candidate_probabilities": [
+          0.13472955148539964,
+          0.057976279576053856,
+          0.427765670842809,
+          0.30787291116251597,
+          0.07165558693322166
+        ],
+        "reference_probabilities": [
+          0.14505729068408965,
+          0.06504362990863247,
+          0.4303682621133168,
+          0.29321040859564196,
+          0.06632040869831915
+        ],
+        "candidate_top": 2,
+        "reference_top": 2,
+        "max_abs_dp": 0.014662502566874014,
+        "max_abs_dlogit": 0.12255185842514038
+      }
+    ],
+    "max_abs_dp": 0.014662502566874014,
+    "all_tops_agree": true
+  },
+  "hybrid_vs_original_bf16_mps_logits": {
+    "questions": [
+      {
+        "candidate_logits": [
+          -0.1970822811126709,
+          -1.0403177738189697,
+          0.958223819732666,
+          0.629335343837738,
+          -0.82848060131073
+        ],
+        "reference_logits": [
+          -0.24331152439117432,
+          -0.9833959341049194,
+          0.907699465751648,
+          0.4902297258377075,
+          -0.979204535484314
+        ],
+        "candidate_probabilities": [
+          0.13472955148539964,
+          0.057976279576053856,
+          0.427765670842809,
+          0.30787291116251597,
+          0.07165558693322166
+        ],
+        "reference_probabilities": [
+          0.13888926445567218,
+          0.06626040753019058,
+          0.43908277427472,
+          0.28922883958894835,
+          0.06653871415046889
+        ],
+        "candidate_top": 2,
+        "reference_top": 2,
+        "max_abs_dp": 0.018644071573567622,
+        "max_abs_dlogit": 0.15072393417358398
+      }
+    ],
+    "max_abs_dp": 0.018644071573567622,
+    "all_tops_agree": true
+  },
+  "hybrid_vs_quantized_f32_logits": {
+    "questions": [
+      {
+        "candidate_logits": [
+          -0.1970822811126709,
+          -1.0403177738189697,
+          0.958223819732666,
+          0.629335343837738,
+          -0.82848060131073
+        ],
+        "reference_logits": [
+          0.03363645076751709,
+          -0.5843357443809509,
+          1.1211087703704834,
+          1.1993741989135742,
+          -0.308840811252594
+        ],
+        "candidate_probabilities": [
+          0.13472955148539964,
+          0.057976279576053856,
+          0.427765670842809,
+          0.30787291116251597,
+          0.07165558693322166
+        ],
+        "reference_probabilities": [
+          0.11870704112089443,
+          0.06398741499586677,
+          0.35217596036099497,
+          0.38084648469817267,
+          0.08428309882407109
+        ],
+        "candidate_top": 2,
+        "reference_top": 3,
+        "max_abs_dp": 0.07558971048181401,
+        "max_abs_dlogit": 0.5700388550758362
+      }
+    ],
+    "max_abs_dp": 0.07558971048181401,
+    "all_tops_agree": false
+  },
+  "hybrid_vs_original_f32_rows": {
+    "values": 1643520,
+    "max_abs_error": 8.502042770385742,
+    "rmse": 0.09611169198618776,
+    "relative_l2_error": 0.05485911013141695,
+    "minimum_token_cosine": 0.8612752916938409,
+    "mean_token_cosine": 0.9984518376179172,
+    "maximum_token_relative_l2_error": 0.5979925814721598,
+    "worst_token": 286,
+    "last_token_relative_l2_error": 0.08780842680985117
+  },
+  "head_cross_swaps_vs_original_f32": {
+    "original_ffn_q6_lexical": {
+      "questions": [
+        {
+          "candidate_logits": [
+            -0.1970822811126709,
+            -1.0403177738189697,
+            0.958223819732666,
+            0.629335343837738,
+            -0.82848060131073
+          ],
+          "reference_logits": [
+            -0.16840136051177979,
+            -0.9704718589782715,
+            0.9191111326217651,
+            0.5353603363037109,
+            -0.9510324597358704
+          ],
+          "candidate_probabilities": [
+            0.13472955148539964,
+            0.057976279576053856,
+            0.427765670842809,
+            0.30787291116251597,
+            0.07165558693322166
+          ],
+          "reference_probabilities": [
+            0.14505729068408965,
+            0.06504362990863247,
+            0.4303682621133168,
+            0.29321040859564196,
+            0.06632040869831915
+          ],
+          "candidate_top": 2,
+          "reference_top": 2,
+          "max_abs_dp": 0.014662502566874014,
+          "max_abs_dlogit": 0.12255185842514038
+        }
+      ],
+      "max_abs_dp": 0.014662502566874014,
+      "all_tops_agree": true
+    },
+    "original_ffn_original_lexical": {
+      "questions": [
+        {
+          "candidate_logits": [
+            -0.19826823472976685,
+            -1.0379154682159424,
+            0.9581046104431152,
+            0.6309561133384705,
+            -0.8288464546203613
+          ],
+          "reference_logits": [
+            -0.16840136051177979,
+            -0.9704718589782715,
+            0.9191111326217651,
+            0.5353603363037109,
+            -0.9510324597358704
+          ],
+          "candidate_probabilities": [
+            0.13451579453861617,
+            0.058092373499618925,
+            0.42754282929078696,
+            0.308248406254525,
+            0.07160059641645285
+          ],
+          "reference_probabilities": [
+            0.14505729068408965,
+            0.06504362990863247,
+            0.4303682621133168,
+            0.29321040859564196,
+            0.06632040869831915
+          ],
+          "candidate_top": 2,
+          "reference_top": 2,
+          "max_abs_dp": 0.015037997658883029,
+          "max_abs_dlogit": 0.12218600511550903
+        }
+      ],
+      "max_abs_dp": 0.015037997658883029,
+      "all_tops_agree": true
+    },
+    "q4_hidden_q6_lexical": {
+      "questions": [
+        {
+          "candidate_logits": [
+            0.03363645076751709,
+            -0.5843357443809509,
+            1.1211087703704834,
+            1.1993741989135742,
+            -0.308840811252594
+          ],
+          "reference_logits": [
+            -0.16840136051177979,
+            -0.9704718589782715,
+            0.9191111326217651,
+            0.5353603363037109,
+            -0.9510324597358704
+          ],
+          "candidate_probabilities": [
+            0.11870704112089443,
+            0.06398741499586677,
+            0.35217596036099497,
+            0.38084648469817267,
+            0.08428309882407109
+          ],
+          "reference_probabilities": [
+            0.14505729068408965,
+            0.06504362990863247,
+            0.4303682621133168,
+            0.29321040859564196,
+            0.06632040869831915
+          ],
+          "candidate_top": 3,
+          "reference_top": 2,
+          "max_abs_dp": 0.08763607610253071,
+          "max_abs_dlogit": 0.6640138626098633
+        }
+      ],
+      "max_abs_dp": 0.08763607610253071,
+      "all_tops_agree": false
+    },
+    "q4_hidden_original_lexical": {
+      "questions": [
+        {
+          "candidate_logits": [
+            0.032700300216674805,
+            -0.5822715163230896,
+            1.1211271286010742,
+            1.2005667686462402,
+            -0.30874383449554443
+          ],
+          "reference_logits": [
+            -0.16840136051177979,
+            -0.9704718589782715,
+            0.9191111326217651,
+            0.5353603363037109,
+            -0.9510324597358704
+          ],
+          "candidate_probabilities": [
+            0.11853785327404395,
+            0.06408821732439542,
+            0.3520098558789566,
+            0.3811141036391807,
+            0.08424996988342336
+          ],
+          "reference_probabilities": [
+            0.14505729068408965,
+            0.06504362990863247,
+            0.4303682621133168,
+            0.29321040859564196,
+            0.06632040869831915
+          ],
+          "candidate_top": 3,
+          "reference_top": 2,
+          "max_abs_dp": 0.08790369504353873,
+          "max_abs_dlogit": 0.6652064323425293
+        }
+      ],
+      "max_abs_dp": 0.08790369504353873,
+      "all_tops_agree": false
+    }
+  },
+  "same_q4_head_result_exactly_reproduced": true,
+  "sources": {
+    "hybrid": "efeaa23de4b6614df94fa1a4e872f181895d06afb9cb70f15be10f3fd40f2962",
+    "quantized": "4bc4e7bc7732bdbb732889d5376dab1c887782a3434ec86620cbc0a666bc8fe5",
+    "original_f32": "efa4dc826de6cda3f83a6d2026d56f4dc834a81d3fd13ad205521070b0df8053",
+    "original_bf16_mps": "774396d28be3b859567860e99d2943e95baab5d58845bf2f5e3626c562181afe"
+  },
+  "limitations": [
+    "One321-token case; not the full M4 suite.",
+    "Original FFN weights are substantially larger than Q4. This control is not a proposed product artifact or proof that Q6/Q8 will pass.",
+    "All192 FFN matrices changed together; no individual-layer causal attribution."
+  ]
+}

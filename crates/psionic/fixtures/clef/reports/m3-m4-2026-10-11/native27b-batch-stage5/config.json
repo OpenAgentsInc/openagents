@@ -1,0 +1,33 @@
+{
+  "model_path": "task-scratch/clef-m3-m4/artifacts/Clef-Q4_K_M.gguf",
+  "measurement_mode": "shared",
+  "max_start_load": 150,
+  "max_run_load": 180,
+  "rounds": 2,
+  "runs": 5,
+  "request_timeout": 300,
+  "variants": [
+    {
+      "name": "native27b",
+      "binary": "task-scratch/clef-m3-m4/stage5/psionic-openai-server",
+      "chunk": 2048,
+      "env": {
+        "RAYON_NUM_THREADS": "2",
+        "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0",
+        "PSIONIC_CLEF_METAL_FFN_WEIGHTS": "q4k-on-demand"
+      }
+    }
+  ],
+  "requests": [
+    "task-scratch/mac-quiet-2026-10-10/requests/len1k.json"
+  ],
+  "output_dir": "task-scratch/clef-m3-m4/native27b-batch-stage5",
+  "batch_check": {
+    "chunk": 256,
+    "recovery_timeout": 120
+  },
+  "max_rss_gib": 52,
+  "minimum_available_memory_gib": 12,
+  "startup_timeout": 600,
+  "clef_head": "task-scratch/clef-m3-m4/artifacts/clef-bf16/joint_head.safetensors"
+}

@@ -1,0 +1,454 @@
+{
+  "optional_kernels_none": true,
+  "plan": {
+    "layers": [
+      {
+        "layer": 0,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 1,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 2,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 3,
+        "weight_f32_bytes": 1489020928,
+        "dense_gemm_flops": 238980956160
+      },
+      {
+        "layer": 4,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 5,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 6,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 7,
+        "weight_f32_bytes": 1489020928,
+        "dense_gemm_flops": 238980956160
+      },
+      {
+        "layer": 8,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 9,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 10,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 11,
+        "weight_f32_bytes": 1489020928,
+        "dense_gemm_flops": 238980956160
+      },
+      {
+        "layer": 12,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 13,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 14,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 15,
+        "weight_f32_bytes": 1489020928,
+        "dense_gemm_flops": 238980956160
+      },
+      {
+        "layer": 16,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 17,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 18,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 19,
+        "weight_f32_bytes": 1489020928,
+        "dense_gemm_flops": 238980956160
+      },
+      {
+        "layer": 20,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 21,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 22,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 23,
+        "weight_f32_bytes": 1489020928,
+        "dense_gemm_flops": 238980956160
+      },
+      {
+        "layer": 24,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 25,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 26,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 27,
+        "weight_f32_bytes": 1489020928,
+        "dense_gemm_flops": 238980956160
+      },
+      {
+        "layer": 28,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 29,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 30,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 31,
+        "weight_f32_bytes": 1489020928,
+        "dense_gemm_flops": 238980956160
+      },
+      {
+        "layer": 32,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 33,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 34,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 35,
+        "weight_f32_bytes": 1489020928,
+        "dense_gemm_flops": 238980956160
+      },
+      {
+        "layer": 36,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 37,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 38,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 39,
+        "weight_f32_bytes": 1489020928,
+        "dense_gemm_flops": 238980956160
+      },
+      {
+        "layer": 40,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 41,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 42,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 43,
+        "weight_f32_bytes": 1489020928,
+        "dense_gemm_flops": 238980956160
+      },
+      {
+        "layer": 44,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 45,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 46,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 47,
+        "weight_f32_bytes": 1489020928,
+        "dense_gemm_flops": 238980956160
+      },
+      {
+        "layer": 48,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 49,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 50,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 51,
+        "weight_f32_bytes": 1489020928,
+        "dense_gemm_flops": 238980956160
+      },
+      {
+        "layer": 52,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 53,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 54,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 55,
+        "weight_f32_bytes": 1489020928,
+        "dense_gemm_flops": 238980956160
+      },
+      {
+        "layer": 56,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 57,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 58,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 59,
+        "weight_f32_bytes": 1489020928,
+        "dense_gemm_flops": 238980956160
+      },
+      {
+        "layer": 60,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 61,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 62,
+        "weight_f32_bytes": 1533092736,
+        "dense_gemm_flops": 246028369920
+      },
+      {
+        "layer": 63,
+        "weight_f32_bytes": 1489020928,
+        "dense_gemm_flops": 238980956160
+      }
+    ],
+    "maximum_layer_f32_bytes": 1533092736,
+    "total_dense_gemm_flops": 15633057054720,
+    "input_tokens": 321,
+    "hidden_rows_bytes": 6574080,
+    "temporary_decode_blocks": 2048,
+    "largest_quantized_read_bytes": 430080,
+    "maximum_single_tensor_f32_bytes": 536870912,
+    "owned_group_cap_gib": 12,
+    "start_available_gib": 24,
+    "available_floor_gib": 12,
+    "threads": 2,
+    "runtime_estimate": "Unmeasured: several minutes to roughly30minutes including CPU GEMMs, DeltaNet and19GB sequential tensor reads; guard deadline1800s. First-layer timing must precede approval of the full pass.",
+    "numerical_scope": "Exact decoded GGUF values in CPU f32; excludes native Metal fp16 activation/weight rounding."
+  },
+  "layers": [
+    {
+      "index": 0,
+      "parameters": {
+        "linear_attn.dt_bias": [
+          48
+        ],
+        "linear_attn.A_log": [
+          48
+        ],
+        "linear_attn.conv1d.weight": [
+          10240,
+          1,
+          4
+        ],
+        "linear_attn.norm.weight": [
+          128
+        ],
+        "linear_attn.out_proj.weight": [
+          5120,
+          6144
+        ],
+        "linear_attn.in_proj_qkv.weight": [
+          10240,
+          5120
+        ],
+        "linear_attn.in_proj_z.weight": [
+          6144,
+          5120
+        ],
+        "linear_attn.in_proj_b.weight": [
+          48,
+          5120
+        ],
+        "linear_attn.in_proj_a.weight": [
+          48,
+          5120
+        ],
+        "mlp.gate_proj.weight": [
+          17408,
+          5120
+        ],
+        "mlp.up_proj.weight": [
+          17408,
+          5120
+        ],
+        "mlp.down_proj.weight": [
+          5120,
+          17408
+        ],
+        "input_layernorm.weight": [
+          5120
+        ],
+        "post_attention_layernorm.weight": [
+          5120
+        ]
+      },
+      "all_meta": true
+    },
+    {
+      "index": 3,
+      "parameters": {
+        "self_attn.q_proj.weight": [
+          12288,
+          5120
+        ],
+        "self_attn.k_proj.weight": [
+          1024,
+          5120
+        ],
+        "self_attn.v_proj.weight": [
+          1024,
+          5120
+        ],
+        "self_attn.o_proj.weight": [
+          5120,
+          6144
+        ],
+        "self_attn.q_norm.weight": [
+          256
+        ],
+        "self_attn.k_norm.weight": [
+          256
+        ],
+        "mlp.gate_proj.weight": [
+          17408,
+          5120
+        ],
+        "mlp.up_proj.weight": [
+          17408,
+          5120
+        ],
+        "mlp.down_proj.weight": [
+          5120,
+          17408
+        ],
+        "input_layernorm.weight": [
+          5120
+        ],
+        "post_attention_layernorm.weight": [
+          5120
+        ]
+      },
+      "all_meta": true
+    }
+  ],
+  "negative_a_adapter": {
+    "original_forward_sha256": "e870fce55f85f0d08c50eb678858d14274004b0c25158a2e09e6bfee2add3c7d",
+    "adapted_forward_sha256": "de846dd390e2e5ee700764f62ee351e9b6ef85053b7d92205d51c6fe399f55f5",
+    "replaced_expression": "-self.A_log.float().exp()",
+    "replacement": "self.gguf_negative_a.float()",
+    "reason": "GGUF stores negative exp(A_log). Use those exact decoded values without a lossy log/exp round trip.",
+    "other_operator_changes": false
+  }
+}

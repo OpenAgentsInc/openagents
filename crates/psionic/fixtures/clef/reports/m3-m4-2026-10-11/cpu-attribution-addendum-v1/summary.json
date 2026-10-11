@@ -1,0 +1,118 @@
+{
+  "kind": "text014_ffn_precision_and_native_cpu_control",
+  "diagnostic_only": true,
+  "not_q4_acceptance": true,
+  "replacement_matrices": 192,
+  "ffn_original_vs_bf16": {
+    "questions": [
+      {
+        "candidate_logits": [
+          -0.1970822811126709,
+          -1.0403177738189697,
+          0.958223819732666,
+          0.629335343837738,
+          -0.82848060131073
+        ],
+        "reference_logits": [
+          -0.24331152439117432,
+          -0.9833959341049194,
+          0.907699465751648,
+          0.4902297258377075,
+          -0.979204535484314
+        ],
+        "candidate_probabilities": [
+          0.13472955148539964,
+          0.057976279576053856,
+          0.427765670842809,
+          0.30787291116251597,
+          0.07165558693322166
+        ],
+        "reference_probabilities": [
+          0.13888926445567218,
+          0.06626040753019058,
+          0.43908277427472,
+          0.28922883958894835,
+          0.06653871415046889
+        ],
+        "candidate_top": 2,
+        "reference_top": 2,
+        "max_abs_dp": 0.018644071573567622,
+        "max_abs_dlogit": 0.15072393417358398
+      }
+    ],
+    "max_abs_dp": 0.018644071573567622,
+    "all_tops_agree": true
+  },
+  "ffn_original_vs_original_f32": {
+    "questions": [
+      {
+        "candidate_logits": [
+          -0.1970822811126709,
+          -1.0403177738189697,
+          0.958223819732666,
+          0.629335343837738,
+          -0.82848060131073
+        ],
+        "reference_logits": [
+          -0.16840136051177979,
+          -0.9704718589782715,
+          0.9191111326217651,
+          0.5353603363037109,
+          -0.9510324597358704
+        ],
+        "candidate_probabilities": [
+          0.13472955148539964,
+          0.057976279576053856,
+          0.427765670842809,
+          0.30787291116251597,
+          0.07165558693322166
+        ],
+        "reference_probabilities": [
+          0.14505729068408965,
+          0.06504362990863247,
+          0.4303682621133168,
+          0.29321040859564196,
+          0.06632040869831915
+        ],
+        "candidate_top": 2,
+        "reference_top": 2,
+        "max_abs_dp": 0.014662502566874014,
+        "max_abs_dlogit": 0.12255185842514038
+      }
+    ],
+    "max_abs_dp": 0.014662502566874014,
+    "all_tops_agree": true
+  },
+  "native_cpu_final_rows": {
+    "layer": "final_norm",
+    "native_sha256": "9c465f01d6f095890bd586f98e0f6c04ce47134b47c4366fb73132fadeada8dc",
+    "reference_sha256": "87b28ed0460fcf653658d0c9409b7ec48a263d21c9fec91165a41b77a0507dc9",
+    "values": 1643520,
+    "max_abs_error": 0.0015392303466796875,
+    "rmse": 1.8565433984751652e-05,
+    "relative_l2_error": 1.0537949219978068e-05,
+    "minimum_token_cosine": 0.999999997730276,
+    "mean_token_cosine": 0.9999999999467475,
+    "maximum_token_relative_l2_error": 6.798057659210715e-05,
+    "worst_token": 286,
+    "last_token_relative_l2_error": 1.3090837409882504e-05
+  },
+  "bounds": {
+    "cap_gib": 12,
+    "start_available_gib": 24,
+    "available_floor_gib": 12,
+    "threads": 2,
+    "deadline_seconds": 1800
+  },
+  "execution": {
+    "seconds": 49.90002304099835,
+    "peak_accounted_bytes": 3073654784,
+    "lowest_available_memory_bytes": 105861693440,
+    "owned_group_stopped": true
+  },
+  "limitations": [
+    "One321-token case; not the full M4 suite.",
+    "Original FFN weights are substantially larger than Q4. This control is not a proposed product artifact or proof that Q6/Q8 will pass.",
+    "All192 FFN matrices changed together; no individual-layer causal attribution."
+  ]
+}

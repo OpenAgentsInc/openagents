@@ -1,0 +1,80 @@
+{
+  "kind": "owned_streamed_cpu_reference",
+  "status": "complete",
+  "command": [
+    "<PINNED_PYTHON_ENV>/bin/python",
+    "<EXPERIMENT_ROOT>/cpu27b-diagnostic/streamed-gguf/stream_reference.py",
+    "--output-dir",
+    "<EXPERIMENT_ROOT>/cpu27b-diagnostic/streamed-gguf/pilot-1/results",
+    "--first-layer-only"
+  ],
+  "script_sha256": "b1b61674dc9afc362f29bef3bf228ed4d5e6c7cf0150bf203023d28362462041",
+  "guard_sha256": "c44069732a872cb37e94b146442aa1e1d6e738cb422400ffac9837742a8e84d6",
+  "memory_helper_sha256": "ce5f832d0eeb2ec5c954755c07d00fafcc2bb1c59d6aa6c1d993a2f84bcce9fb",
+  "effective_environment": {
+    "RAYON_NUM_THREADS": "2",
+    "OMP_NUM_THREADS": "2",
+    "OPENBLAS_NUM_THREADS": "2",
+    "MKL_NUM_THREADS": "2",
+    "VECLIB_MAXIMUM_THREADS": "2",
+    "CLEF_STREAMED_GGUF_GUARDED": "1",
+    "PYTORCH_ENABLE_MPS_FALLBACK": "0",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "CUDA_VISIBLE_DEVICES": ""
+  },
+  "max_owned_group_gib": 12,
+  "minimum_start_available_gib": 24,
+  "minimum_available_gib": 12,
+  "deadline_seconds": 300,
+  "conditions": "shared machine; CPU diagnostic only",
+  "lease_resources": [
+    "memory"
+  ],
+  "load_average_before": [
+    15.06787109375,
+    14.7373046875,
+    20.10205078125
+  ],
+  "before": {
+    "available_memory_bytes": 82692866048,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 3084671,
+      "inactive": 1841057,
+      "speculative": 121444
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "owned_pid": 54973,
+  "child_exit_code": 0,
+  "result_sha256": "bcc3e3c0aae3b92de276117d124cb946569879680efb42cbe759575de7bdd5ae",
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 54973,
+    "max_rss_bytes": 12884901888,
+    "peak_rss_bytes": 2609823744,
+    "peak_physical_footprint_bytes": 2547927464,
+    "peak_accounted_bytes": 2609823744,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 16,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 79089451008,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "elapsed_seconds": 8.732626458000595,
+  "load_average_after": [
+    15.30224609375,
+    14.791015625,
+    20.08935546875
+  ]
+}

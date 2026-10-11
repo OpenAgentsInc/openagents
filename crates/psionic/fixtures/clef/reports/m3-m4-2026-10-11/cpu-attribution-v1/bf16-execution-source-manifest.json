@@ -1,0 +1,34 @@
+{
+  "bf16_import.py": {
+    "bytes": 5887,
+    "sha256": "284d742b3ac019a011237d6618163ba66f59690b225a852c2697ad2acc51d3f8"
+  },
+  "bf16_reference.py": {
+    "bytes": 12263,
+    "sha256": "be3de4e4cd031977ea3bd83eb3f755648b71383648e859d5e0151f8942b272cd"
+  },
+  "guard_bf16_stream.py": {
+    "bytes": 6137,
+    "sha256": "5c8cd380a0d32b070a5516301c6eacd19bb07b398f2af023680adf8e9ef78a85"
+  },
+  "bf16_fixture_check.py": {
+    "bytes": 2517,
+    "sha256": "63419021379a9c0c66a404d528f8c9ae1f24b331973713eedc3044917d316a9e"
+  },
+  "bf16-fixtures-with-history.json": {
+    "bytes": 596,
+    "sha256": "1f7fcbb7f3905b3ffc184c2f67984644ff18c32d3a4dc06ee3a112e5b2f3e630"
+  },
+  "compare_controls.py": {
+    "bytes": 3085,
+    "sha256": "c96ffe3d00cd3de1c188e5223a43e9838bc5428bb07e12abea5d88780617ec60"
+  },
+  "compare_final.py": {
+    "bytes": 3666,
+    "sha256": "31215f2c12e86fa369409717678169549f15130645e76da8d8de8cee5327296d"
+  },
+  "compare_layers.py": {
+    "bytes": 3540,
+    "sha256": "74793e1d50b33cf098a0c51e01e42ec445b34ddb81c70bf9d9a0cb12c793bf3c"
+  }
+}

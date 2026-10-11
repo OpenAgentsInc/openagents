@@ -1,0 +1,44 @@
+{
+  "conditions": "shared machine; correctness only",
+  "binary_sha256": "e8bb9510ada3d29651e3197ee372d90b3db86ecc46a981b68f14a66a2e58b168",
+  "runs": [
+    {
+      "variant": {
+        "name": "default",
+        "binary": "task-scratch/clef-m3-m4/stage5/psionic-openai-server",
+        "chunk": 2048,
+        "env": {
+          "RAYON_NUM_THREADS": "2",
+          "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0"
+        },
+        "engine": "psionic",
+        "model": "clef-flash"
+      },
+      "requests": 40,
+      "questions": 104,
+      "top_agree": 104,
+      "max_abs_dp": 0.0010476807023421797,
+      "gate": true
+    },
+    {
+      "variant": {
+        "name": "fused-shapes",
+        "binary": "task-scratch/clef-m3-m4/stage5/psionic-openai-server",
+        "chunk": 2048,
+        "env": {
+          "RAYON_NUM_THREADS": "2",
+          "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0",
+          "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+          "PSIONIC_CLEF_METAL_GEMM": "weight-shapes"
+        },
+        "engine": "psionic",
+        "model": "clef-flash"
+      },
+      "requests": 40,
+      "questions": 104,
+      "top_agree": 104,
+      "max_abs_dp": 0.00098995222733822,
+      "gate": true
+    }
+  ]
+}

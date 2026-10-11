@@ -1,0 +1,129 @@
+{
+  "kind": "read_only_static_ffn_investigation",
+  "source_records_sha256": "9c3ae7d791b3f1e6bf7147b94eda394c9e84be569d82f3a91178a6029daaf3de",
+  "source_records": "flash-latency-stage4/records.jsonl",
+  "timings": [
+    {
+      "variant": "default",
+      "workload": "len16k",
+      "samples": 10,
+      "timing_medians_ms": {
+        "encode_ms": 6.3,
+        "queue_ms": 0.0,
+        "prefill_ms": 10959.849999999999,
+        "head_ms": 143.95,
+        "total_ms": 11096.8
+      },
+      "cached_input_tokens": [
+        0
+      ]
+    },
+    {
+      "variant": "default",
+      "workload": "len1k",
+      "samples": 10,
+      "timing_medians_ms": {
+        "encode_ms": 0.8,
+        "queue_ms": 0.0,
+        "prefill_ms": 664.25,
+        "head_ms": 114.3,
+        "total_ms": 817.2
+      },
+      "cached_input_tokens": [
+        0
+      ]
+    },
+    {
+      "variant": "default",
+      "workload": "len4k",
+      "samples": 10,
+      "timing_medians_ms": {
+        "encode_ms": 2.2,
+        "queue_ms": 0.0,
+        "prefill_ms": 2539.15,
+        "head_ms": 121.4,
+        "total_ms": 2663.3999999999996
+      },
+      "cached_input_tokens": [
+        0
+      ]
+    },
+    {
+      "variant": "fused-shapes",
+      "workload": "len16k",
+      "samples": 10,
+      "timing_medians_ms": {
+        "encode_ms": 6.199999999999999,
+        "queue_ms": 0.0,
+        "prefill_ms": 10394.7,
+        "head_ms": 114.75,
+        "total_ms": 10551.45
+      },
+      "cached_input_tokens": [
+        0
+      ]
+    },
+    {
+      "variant": "fused-shapes",
+      "workload": "len1k",
+      "samples": 10,
+      "timing_medians_ms": {
+        "encode_ms": 0.75,
+        "queue_ms": 0.0,
+        "prefill_ms": 610.9,
+        "head_ms": 87.2,
+        "total_ms": 706.85
+      },
+      "cached_input_tokens": [
+        0
+      ]
+    },
+    {
+      "variant": "fused-shapes",
+      "workload": "len4k",
+      "samples": 10,
+      "timing_medians_ms": {
+        "encode_ms": 1.95,
+        "queue_ms": 0.0,
+        "prefill_ms": 2275.15,
+        "head_ms": 120.7,
+        "total_ms": 2437.2
+      },
+      "cached_input_tokens": [
+        0
+      ]
+    }
+  ],
+  "projection_arithmetic": {
+    "scope": "Clef Flash trunk only; excludes attention products and head",
+    "formula": "2 * sum(weight_rows * weight_columns) per token",
+    "total_flops_per_token": 13837008896,
+    "ffn_flops_per_token": 9663676416,
+    "ffn_fraction": 0.6983934525613822
+  },
+  "pair_epilogue": {
+    "logical_bytes_removed_formula": "16 * tokens * ffn_width * layers",
+    "logical_bytes_removed_at_15511_flash_tokens": 97586774016,
+    "measured_dram_savings": false,
+    "measured_speedup": false,
+    "requires_resident_gate_and_up_weights": true
+  },
+  "profile_prior": {
+    "source": "docs/inference/clef-native.md, M3 Round 2",
+    "gemm_seconds": 3.4,
+    "delta_seconds": 0.27,
+    "attention_seconds": 0.3,
+    "device_seconds": 4.4,
+    "conditions": "Older loaded-Mac phase-skip/profile diagnostics; not Stage4 timing and not a causal explanation of GPU throughput"
+  },
+  "delta_failure_interpretation": {
+    "same_combined_settings_on_both_comparators": true,
+    "reported_failed_coordinates": 3,
+    "unique_prompt_chunk_effects": "155-token failure repeats identically with chunk155 and257; other failure is2032 tokens/chunk257",
+    "bound_unchanged": 0.001,
+    "later_stage5_changes_not_yet_evaluated_here": true
+  },
+  "executed_builds": false,
+  "executed_gpu": false,
+  "executed_models": false
+}

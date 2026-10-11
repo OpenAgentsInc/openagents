@@ -1,0 +1,3 @@
+{"command": ["xcrun", "-sdk", "macosx", "metal", "-std=metal4.0", "-c", "run-artifacts/ffn-pair-probe/combined.metal", "-o", "run-artifacts/ffn-pair-probe/combined.air"]}
+{"command": ["xcrun", "swiftc", "-O", "run-artifacts/ffn-pair-probe/probe.swift", "-o", "run-artifacts/ffn-pair-probe/probe"]}
+{"compiled": true, "gpu_executed": false, "binary_sha256": "5f711cf03c6302736fa0c1090fe0de993828364354f8213e7163c15481103793"}

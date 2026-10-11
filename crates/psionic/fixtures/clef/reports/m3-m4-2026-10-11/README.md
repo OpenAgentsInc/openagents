@@ -10,8 +10,8 @@ gap. Both earlier Flash HTTP modes passed
 against the existing CPU reference. Standalone direct-solve DeltaNet passed its
 Flash weighted check, but the combined optimization mode failed. One native
 27B CPU diagnostic agreed closely with Metal while both differed from BF16.
-Full-model prefix reuse passes for Flash and 27B. Flash continuous batching
-passes the HTTP comparison. A shared-machine latency comparison favors fused
+Full-model prefix reuse and continuous batching pass the HTTP comparisons
+for Flash and 27B. A shared-machine latency comparison favors fused
 attention and shape-selected GEMM, but misses the absolute M3 targets. These
 files do not establish completion of M3 or M4.
 
@@ -82,6 +82,13 @@ in 219.44 seconds, peak accounted memory of 60,152,859,888 bytes, a 72 GiB cap,
 and successful owned-process cleanup. Model tensors and saved intermediate
 tensor payloads remain outside Git; the reference records their hashes.
 
+The fresh [Flash HTTP comparison](flash-e2e-stage5/summary.json) also passes:
+default and fused-attention/weight-shape modes each match all 104 top answers
+from 40 requests against the existing CPU Q4_K_M corpus. Maximum probability
+differences are `0.0010476807023421797` and `0.00098995222733822`. Both use the
+same Stage 5 binary with 2,048-token chunks and no prefix cache. This correctness
+run overlaps independent CPU diagnostics and makes no latency claim.
+
 The [same-input head isolation](cpu27b-diagnostic/stage5-head-isolation-clean/run/results/isolation.json)
 then compares cases 014 and 034 on CPU with four combinations of native and
 reference hidden and lexical rows. With identical native inputs, Rust and the
@@ -108,6 +115,85 @@ Stage 5 also repeats the weighted block-DeltaNet check. The
 still fails at `1.40523911e-3` for the 2,032-token case, chunk 257, question 4,
 option 5. Block DeltaNet remains experimental and disabled by default; neither
 this failure nor the strict `1e-3` bound is removed.
+
+## Case 014: attribution to quantized backbone weights
+
+The [controlled comparison](cpu-attribution-v1/README.md) runs the same official
+Transformers CPU-f32 operators twice, loading one decoder layer at a time.
+One pass uses independently decoded GGUF weights; the other uses original BF16
+checkpoint values cast exactly to f32. Both use identical tokens, spans,
+options, and official scoring-head weights.
+
+The independently executed GGUF selects the same wrong answer as native Metal,
+with maximum probability difference `0.000163851`. The original checkpoint
+in f32 retains the BF16 reference answer and differs by only `0.008714512`.
+The quantized and original f32 backbones differ by `0.087636076` and select
+different answers. Lexical-row cross-swaps retain this distinction. This
+controlled case attributes the large miss to the quantized backbone; it does
+not establish the cause of every corpus mismatch.
+
+The [follow-up control](cpu-attribution-addendum-v1/README.md) replaces only the
+192 FFN gate/up/down matrices with original checkpoint values, preserving all
+other GGUF weights and operators. It restores the reference top answer and
+reduces the probability difference to `0.0186441` against BF16. This higher
+precision diagnostic is not Q4 acceptance or a proposed shipping artifact.
+It also does not prove that Q6 or Q8 FFN weights would be sufficient.
+
+Independent GGUF and native CPU final rows agree at relative L2 error
+`1.054e-5`, with all 64 native layer outputs compared and hashed. Both bundles
+retain bounded readers, import-convention checks, model/source identities,
+guard receipts, and layer statistics. Raw intermediate tensors stay outside
+Git. The quantization diagnosis does not change the issue's accuracy gate.
+
+## FFN fusion experiment
+
+The [bounded FFN prototype](ffn-pair-publishable/README.md) compares separate
+gate/up projections and SiLU against up-projection epilogue fusion and a fused
+gate/up pair. All 66 correctness checks pass, including independent f64 oracles,
+exact half-output comparisons, finite values, and output guards. The large
+matrices use Flash's dimensions with deterministic synthetic values.
+
+The fused pair is slower at every tested shape by its median paired GPU-time
+ratio, from 1.4% to 6.8%. Up-only fusion improves the 1,024-row case by about
+3%, but does not show a consistent large gain at 2,048 rows. Those larger
+baseline samples range from about 8.3 to 21.0 ms on the shared machine. These
+data do not establish a thermal or memory-bandwidth cause. The prototype stays
+outside product code. Its [summary](ffn-pair-publishable/summary.json), exact
+samples, portable scripts, source hashes, and guard receipts are retained.
+
+Two subsequent real-weight probes also remain experimental. The
+[tile comparison](gemm-tile-publishable/README.md) passes 70 correctness checks
+across seven tile/SIMD configurations, but larger tiles do not deliver a
+material speedup. The [layout comparison](gemm-layout-publishable/README.md)
+passes 24 checks, with bitwise-identical weighted outputs, but static-K
+specializations and persistent pretransposition do not improve the 1,024- or
+2,048-row workloads. Every timing sample and paired ratio is retained; no
+winning variant is inferred from the noisy ratio of aggregate medians.
+
+## Stage 5 27B HTTP batching
+
+The [27B batch result](native27b-batch-stage5/summary.json) passes with two
+and four concurrent request slots. Each mode compares 15 successful responses
+with the same binary's serial results: every top answer agrees and the maximum
+probability difference is zero. Actual shared FFN work reaches groups of two
+and four. Each 12-request overload burst admits nine requests and returns three
+`busy` refusals. Requests after disconnection and after saturation succeed.
+
+The [records](native27b-batch-stage5/records.jsonl) retain all 57 HTTP outcomes,
+two disconnect attempts, effective settings, and successful cleanup for all
+three owned servers. The run uses Stage 5 server `e8bb9510`, the verified
+19,232,219,200-byte 27B Q4_K_M artifact, the official external BF16 head,
+256-token chunks, and on-demand Q4 FFN. Requests use the accepted `clef-flash`
+API alias; the loaded checkpoint and head hashes establish the 27B model.
+
+This is a functional comparison on the shared machine, overlapping independent
+CPU diagnostics. The observed relative throughput is 1.09× and 1.20×; this
+does not establish the planned throughput target or an idle-machine speedup.
+Peak accounted server memory is 46,229,520,384 bytes under the 52 GiB cap,
+with no memory rejection or cleanup failure. The
+[configuration](native27b-batch-stage5/config.json),
+[GPU receipt](native27b-batch-stage5/gpu-lease.json), and
+[memory receipt](native27b-batch-stage5/memory-lease.json) identify the run.
 
 ## Official 27B reference
 

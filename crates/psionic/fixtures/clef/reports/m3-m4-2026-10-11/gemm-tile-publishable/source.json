@@ -1,0 +1,46 @@
+{
+  "source_files": {
+    "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_prefill.metal": "623fba25dbe8a230d92f88e840c2c363961f926c3b908089ce8ba3688a3f2865",
+    "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_gemm_shapes.metal": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978"
+  },
+  "baseline_changes": "Only builtin uint2 to uint3 plus .xy forwarding for current SDK; original GEMM arithmetic retained.",
+  "variants_token_output_simdgroups": [
+    [
+      64,
+      64,
+      4
+    ],
+    [
+      64,
+      128,
+      4
+    ],
+    [
+      128,
+      128,
+      4
+    ],
+    [
+      64,
+      128,
+      8
+    ],
+    [
+      128,
+      128,
+      8
+    ],
+    [
+      128,
+      64,
+      8
+    ],
+    [
+      128,
+      256,
+      8
+    ]
+  ],
+  "staged_layer": 0,
+  "product_edits": false
+}

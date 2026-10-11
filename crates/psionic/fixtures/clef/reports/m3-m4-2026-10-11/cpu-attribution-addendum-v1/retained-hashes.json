@@ -1,0 +1,94 @@
+{
+  "original_root": "<EXPERIMENT_ROOT>/cpu27b-diagnostic/streamed-gguf",
+  "sanitization": "Only absolute local directory roots were replaced. Numeric evidence and original receipts remain unchanged.",
+  "files": [
+    {
+      "path": "hybrid_import.py",
+      "original_bytes": 2018,
+      "original_sha256": "15a7080a0d82cb43880d3d195bb60fd7d4839536209ce404fb5c4649907579a7",
+      "published_bytes": 2018,
+      "published_sha256": "15a7080a0d82cb43880d3d195bb60fd7d4839536209ce404fb5c4649907579a7",
+      "paths_replaced": false
+    },
+    {
+      "path": "hybrid_reference.py",
+      "original_bytes": 15335,
+      "original_sha256": "737607d198e11256721ba6408e9ecb07d1d2b966526566bd95aa7375539f620d",
+      "published_bytes": 15282,
+      "published_sha256": "0af656460ca2146b79c413261637d24274b7caaff33f0f51a0115de865c19980",
+      "paths_replaced": true
+    },
+    {
+      "path": "guard_hybrid_stream.py",
+      "original_bytes": 6136,
+      "original_sha256": "556026ad3ddc4610bc1a09a1f077689be552ff23058df4063d7b413642f4525e",
+      "published_bytes": 5915,
+      "published_sha256": "5752b6a7f98a8773cde631177d9aa5d9cfc021b0968e669bb819bc0c467d789e",
+      "paths_replaced": true
+    },
+    {
+      "path": "hybrid-header-check.json",
+      "original_bytes": 81430,
+      "original_sha256": "c460830da4538e5a3e8eb4bdb259f0ae0347711705d6f19cc08fbf6cabad0784",
+      "published_bytes": 81430,
+      "published_sha256": "c460830da4538e5a3e8eb4bdb259f0ae0347711705d6f19cc08fbf6cabad0784",
+      "paths_replaced": false
+    },
+    {
+      "path": "compare_hybrid.py",
+      "original_bytes": 2526,
+      "original_sha256": "0f4145439b558e87e99dd5450de4b64ab14a1480c9e2ee02dd18cf2b6e26e476",
+      "published_bytes": 2526,
+      "published_sha256": "0f4145439b558e87e99dd5450de4b64ab14a1480c9e2ee02dd18cf2b6e26e476",
+      "paths_replaced": false
+    },
+    {
+      "path": "compare_layers.py",
+      "original_bytes": 3540,
+      "original_sha256": "74793e1d50b33cf098a0c51e01e42ec445b34ddb81c70bf9d9a0cb12c793bf3c",
+      "published_bytes": 3540,
+      "published_sha256": "74793e1d50b33cf098a0c51e01e42ec445b34ddb81c70bf9d9a0cb12c793bf3c",
+      "paths_replaced": false
+    },
+    {
+      "path": "hybrid-full-memory-lease.json",
+      "original_bytes": 487,
+      "original_sha256": "80ef0b2dd3ea3bbdbbc6f20506258b904a3ad11277d3321726e027b9282cbd65",
+      "published_bytes": 487,
+      "published_sha256": "80ef0b2dd3ea3bbdbbc6f20506258b904a3ad11277d3321726e027b9282cbd65",
+      "paths_replaced": false
+    },
+    {
+      "path": "hybrid-full-1/guard.json",
+      "original_bytes": 2900,
+      "original_sha256": "c3ae9ef83a16e54b50d687fb939985085754756af227c6e7435c2410a54bb05b",
+      "published_bytes": 2652,
+      "published_sha256": "7198b95859ac5cdc5ea463f80bc79d75ee50b9c1e0720cc5ee8635fd616a4613",
+      "paths_replaced": true
+    },
+    {
+      "path": "hybrid-full-1/results/receipt.json",
+      "original_bytes": 134958,
+      "original_sha256": "efeaa23de4b6614df94fa1a4e872f181895d06afb9cb70f15be10f3fd40f2962",
+      "published_bytes": 134958,
+      "published_sha256": "efeaa23de4b6614df94fa1a4e872f181895d06afb9cb70f15be10f3fd40f2962",
+      "paths_replaced": false
+    },
+    {
+      "path": "hybrid-full-1/ffn-control-comparison.json",
+      "original_bytes": 9447,
+      "original_sha256": "7e8d4104db56952efc155a35c3a9e9b94af47b3ab0298c3674f043e6ce67dfa4",
+      "published_bytes": 9447,
+      "published_sha256": "7e8d4104db56952efc155a35c3a9e9b94af47b3ab0298c3674f043e6ce67dfa4",
+      "paths_replaced": false
+    },
+    {
+      "path": "full-1/native-cpu-layer-comparison.json",
+      "original_bytes": 41048,
+      "original_sha256": "da81b2e161a42da1b460475e990cfe1a935173b2723fde2dc9a42eb2207ba681",
+      "published_bytes": 40888,
+      "published_sha256": "dcf1b7a3890778346d6d8c0b777d527b05a4559669d0824e0ba0c746e1f7873e",
+      "paths_replaced": true
+    }
+  ]
+}

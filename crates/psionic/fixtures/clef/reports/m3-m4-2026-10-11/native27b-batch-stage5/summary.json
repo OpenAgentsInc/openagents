@@ -1,0 +1,43 @@
+{
+  "status": "passed",
+  "conditions": "shared machine; no idle-machine claim",
+  "variants": [
+    {
+      "mode": "batch2",
+      "status": "passed",
+      "compared_requests": 15,
+      "max_abs_probability_delta": 0.0,
+      "top_answer_agreement": 1.0,
+      "max_cohort": 2,
+      "busy_refusals": 3,
+      "saturation_requests": 12,
+      "cancellation_recovery": "passed",
+      "saturation_recovery": "passed",
+      "concurrent_wall_seconds": 27.937659124999982,
+      "serial_core_seconds": 30.472795165999983,
+      "relative_throughput": 1.0907426076629103,
+      "median_queue_ms": 479.55,
+      "median_prefill_ms": 12992.8,
+      "median_head_ms": 31.1
+    },
+    {
+      "mode": "batch4",
+      "status": "passed",
+      "compared_requests": 15,
+      "max_abs_probability_delta": 0.0,
+      "top_answer_agreement": 1.0,
+      "max_cohort": 4,
+      "busy_refusals": 3,
+      "saturation_requests": 12,
+      "cancellation_recovery": "passed",
+      "saturation_recovery": "passed",
+      "concurrent_wall_seconds": 25.390854624999974,
+      "serial_core_seconds": 30.472795165999983,
+      "relative_throughput": 1.2001484635336497,
+      "median_queue_ms": 1000.05,
+      "median_prefill_ms": 23372.3,
+      "median_head_ms": 67.65
+    }
+  ],
+  "finished_at": "2026-10-11T10:12:04.315268+00:00"
+}

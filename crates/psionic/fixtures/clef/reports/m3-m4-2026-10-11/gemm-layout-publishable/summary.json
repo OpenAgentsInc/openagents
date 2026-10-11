@@ -1,0 +1,294 @@
+{
+  "scope": "One shared-machine FFN comparison on actual Flash layer0 half weights and deterministic inputs; no model inference.",
+  "correctness": {
+    "checks": 24,
+    "small_f64_checks": 15,
+    "weighted_ffn_checks": 9,
+    "small_values_checked": 51162,
+    "weighted_values_checked": 385474560,
+    "weighted_bitwise_equal": true,
+    "max_small_f64_abs": 0.0001247579129994847,
+    "all_passed": true,
+    "all_finite": true,
+    "output_redzones_unchanged": true
+  },
+  "timings": [
+    {
+      "n": 65,
+      "name": "clef_gemm",
+      "samples": 6,
+      "gpu_ms_median": 1.084479166820529,
+      "gpu_ms_min": 1.0684999979275744,
+      "gpu_ms_max": 1.4998333317635115,
+      "wall_ms_median": 1.662979166212608,
+      "paired_gpu_ratio_median": 1.0,
+      "paired_gpu_ratio_min": 1.0,
+      "paired_gpu_ratio_max": 1.0,
+      "paired_rounds_faster": 0,
+      "paired_gpu_ratios": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "n": 65,
+      "name": "static_gemm",
+      "samples": 6,
+      "gpu_ms_median": 1.0841458333743503,
+      "gpu_ms_min": 1.0740833349700551,
+      "gpu_ms_max": 1.3609166635433212,
+      "wall_ms_median": 2.00941666662402,
+      "paired_gpu_ratio_median": 0.9990740204704431,
+      "paired_gpu_ratio_min": 0.866012892726857,
+      "paired_gpu_ratio_max": 1.1571190688278774,
+      "paired_rounds_faster": 3,
+      "paired_gpu_ratios": [
+        0.866012892726857,
+        1.1571190688278774,
+        1.003165659248074,
+        0.9949823816928123,
+        1.0159881457115756,
+        0.9934867249333047
+      ]
+    },
+    {
+      "n": 65,
+      "name": "nn_gemm",
+      "samples": 6,
+      "gpu_ms_median": 1.0695833334466442,
+      "gpu_ms_min": 1.032749998557847,
+      "gpu_ms_max": 1.3328749992069788,
+      "wall_ms_median": 1.6276458318316145,
+      "paired_gpu_ratio_median": 0.9788468931309777,
+      "paired_gpu_ratio_min": 0.8886820761876106,
+      "paired_gpu_ratio_max": 1.1154922612732245,
+      "paired_rounds_faster": 5,
+      "paired_gpu_ratios": [
+        0.8886820761876106,
+        1.1154922612732245,
+        0.9938617153027595,
+        0.9803891528146736,
+        0.9773046334472817,
+        0.9552549418995646
+      ]
+    },
+    {
+      "n": 1024,
+      "name": "clef_gemm",
+      "samples": 6,
+      "gpu_ms_median": 5.2518749980663415,
+      "gpu_ms_min": 5.144916663994081,
+      "gpu_ms_max": 8.061874999839347,
+      "wall_ms_median": 5.475187499541789,
+      "paired_gpu_ratio_median": 1.0,
+      "paired_gpu_ratio_min": 1.0,
+      "paired_gpu_ratio_max": 1.0,
+      "paired_rounds_faster": 0,
+      "paired_gpu_ratios": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "n": 1024,
+      "name": "static_gemm",
+      "samples": 6,
+      "gpu_ms_median": 5.246500000794185,
+      "gpu_ms_min": 5.159541666216683,
+      "gpu_ms_max": 6.428374999813968,
+      "wall_ms_median": 5.438124999272986,
+      "paired_gpu_ratio_median": 1.002011323649221,
+      "paired_gpu_ratio_min": 0.7973796418255146,
+      "paired_gpu_ratio_max": 1.00995894989155,
+      "paired_rounds_faster": 2,
+      "paired_gpu_ratios": [
+        0.7973796418255146,
+        1.0028426120727965,
+        1.00995894989155,
+        1.0011800352256455,
+        0.990621003537421,
+        1.0074148496061823
+      ]
+    },
+    {
+      "n": 1024,
+      "name": "nn_gemm",
+      "samples": 6,
+      "gpu_ms_median": 5.399458332249196,
+      "gpu_ms_min": 5.3350833331933245,
+      "gpu_ms_max": 5.720500001189066,
+      "wall_ms_median": 5.592541667283513,
+      "paired_gpu_ratio_median": 1.0258647831458845,
+      "paired_gpu_ratio_min": 0.661767062041974,
+      "paired_gpu_ratio_max": 1.1116131078658664,
+      "paired_rounds_faster": 1,
+      "paired_gpu_ratios": [
+        0.661767062041974,
+        1.037132121094,
+        1.1116131078658664,
+        1.0090672390845405,
+        1.0145974451977688,
+        1.0417384236696714
+      ]
+    },
+    {
+      "n": 2048,
+      "name": "clef_gemm",
+      "samples": 6,
+      "gpu_ms_median": 10.794687499583233,
+      "gpu_ms_min": 10.405291668575956,
+      "gpu_ms_max": 12.07658333441941,
+      "wall_ms_median": 11.114083334177849,
+      "paired_gpu_ratio_median": 1.0,
+      "paired_gpu_ratio_min": 1.0,
+      "paired_gpu_ratio_max": 1.0,
+      "paired_rounds_faster": 0,
+      "paired_gpu_ratios": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "n": 2048,
+      "name": "static_gemm",
+      "samples": 6,
+      "gpu_ms_median": 10.819479166457313,
+      "gpu_ms_min": 10.233625002001645,
+      "gpu_ms_max": 12.11887499812292,
+      "wall_ms_median": 11.16629166790517,
+      "paired_gpu_ratio_median": 1.0053763783492822,
+      "paired_gpu_ratio_min": 0.9835019841786132,
+      "paired_gpu_ratio_max": 1.0192133491393196,
+      "paired_rounds_faster": 2,
+      "paired_gpu_ratios": [
+        0.9835019841786132,
+        1.0072508006790193,
+        1.0192133491393196,
+        0.9863161253974793,
+        1.0135542842989056,
+        1.003501956019545
+      ]
+    },
+    {
+      "n": 2048,
+      "name": "nn_gemm",
+      "samples": 6,
+      "gpu_ms_median": 11.06729166531295,
+      "gpu_ms_min": 10.5156249992433,
+      "gpu_ms_max": 12.03029166572378,
+      "wall_ms_median": 11.444395831858856,
+      "paired_gpu_ratio_median": 1.0123610449082325,
+      "paired_gpu_ratio_min": 0.9961668240582835,
+      "paired_gpu_ratio_max": 1.067484616793687,
+      "paired_rounds_faster": 1,
+      "paired_gpu_ratios": [
+        1.0106035788502261,
+        1.0141185109662392,
+        1.0502344060489188,
+        1.0016551256464399,
+        1.067484616793687,
+        0.9961668240582835
+      ]
+    }
+  ],
+  "baseline": "clef_gemm:64x128,4SIMD,dynamicK,NT",
+  "staging": [
+    {
+      "file": "gate_nn.f16",
+      "seconds": 0.42038049999973737,
+      "bytes": 100663296,
+      "every_half_bit_preserved": true
+    },
+    {
+      "file": "up_nn.f16",
+      "seconds": 0.43811245799952303,
+      "bytes": 100663296,
+      "every_half_bit_preserved": true
+    },
+    {
+      "file": "down_nn.f16",
+      "seconds": 0.438898500000505,
+      "bytes": 100663296,
+      "every_half_bit_preserved": true
+    }
+  ],
+  "guard": {
+    "mode": "bench",
+    "status": "complete",
+    "preflight": {
+      "available_memory_bytes": 109389381632,
+      "page_size_bytes": 16384,
+      "pages": {
+        "free": 1487029,
+        "inactive": 4909890,
+        "speculative": 279679
+      },
+      "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+    },
+    "max_owned_group_bytes": 2147483648,
+    "minimum_available_bytes": 12884901888,
+    "minimum_start_bytes": 15032385536,
+    "deadline_seconds": 180,
+    "conditions": "shared machine; same Flash half weights; staticK and persistent transpose; shared-machine timing only",
+    "source_sha256": {
+      "tiles.metal": "5aa57fd8fa2315c2a03e3eefeff7cebb758f49a7ff24f05e8d19c1a2800157e4",
+      "probe.swift": "726605e726e6dd667a4e1184b2819ff93d398002f23e7395b7c57de3c67c7b2d",
+      "build.py": "3fa69db28b02c0592cffac301d33b50f1970701fac8a585cf41e4e8af87e7807",
+      "guard.py": "4a1476e6306ea823c372099646119541cb1956cf6a4553ef9b1ed6541cde239d",
+      "stage_weights.py": "416e63ef393da0d278d8033298b299ffe09a97090dd45af9fbaef3051269856b"
+    },
+    "command": [
+      "run-artifacts/gemm-layout-probe/probe",
+      "run-artifacts/gemm-layout-probe",
+      "bench"
+    ],
+    "binary_sha256": "e5ba359cbce93f46ecb806010f4700aec65cef2866fe691f65de2ebb30f47449",
+    "exit": 0,
+    "memory": {
+      "rss_log": "memory.jsonl",
+      "process_group": 92109,
+      "max_rss_bytes": 2147483648,
+      "peak_rss_bytes": 707084288,
+      "peak_physical_footprint_bytes": 1067042040,
+      "peak_accounted_bytes": 1067042040,
+      "sampling_error": null,
+      "sampler_timeout_seconds": 5,
+      "rss_samples": 5,
+      "sample_interval_seconds": 0.5,
+      "minimum_available_memory_bytes": 12884901888,
+      "lowest_available_memory_bytes": 108032688128,
+      "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+      "memory_rejection": null,
+      "cleanup_error": null,
+      "cleanup_diagnostics": null,
+      "cleanup_observations": [],
+      "owned_group_stopped": true,
+      "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+    },
+    "seconds": 2.282691875
+  },
+  "recommendation": "Keep both candidates scratch-only. StaticK is effectively unchanged and NN regresses1024/2048; no material win found.",
+  "limitations": [
+    "Short shared-machine one-layer test, six alternating-order paired samples; not sustained/model latency.",
+    "Inputs are deterministic rather than captured layer activations.",
+    "No residual, normalization, Q4 conversion, model head, or serving overhead.",
+    "NN keeps both layouts in this probe; a production layout replacement would need loading/dequantization and fallback design.",
+    "No measured clock/thermal/bandwidth attribution."
+  ],
+  "load_average_1min_range": [
+    10.978515625,
+    10.978515625
+  ]
+}

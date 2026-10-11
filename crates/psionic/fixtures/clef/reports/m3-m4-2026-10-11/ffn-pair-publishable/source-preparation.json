@@ -1,0 +1,18 @@
+{
+  "scope": "scratch-only shader prototype; no compilation or GPU execution yet",
+  "sources": [
+    {
+      "label": "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_prefill.metal",
+      "sha256": "623fba25dbe8a230d92f88e840c2c363961f926c3b908089ce8ba3688a3f2865"
+    },
+    {
+      "label": "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_gemm_shapes.metal",
+      "sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978"
+    },
+    {
+      "label": "ffn-epilogue/clef_ffn_up_silu.metal",
+      "sha256": "3635bc02bc21c2528af08bc162c2e8c5ad2aa13ff7b419a31bcc26d66a0267f7"
+    }
+  ],
+  "baseline_extraction": "Production clef_gemm and clef_silu_mul_to_f16, complete shape kernels, unchanged retained up-only epilogue."
+}
