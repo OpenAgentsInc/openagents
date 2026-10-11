@@ -38,10 +38,11 @@ pub(crate) fn output_failed(output: &serde_json::Value) -> bool {
         || output.get("canceled").and_then(serde_json::Value::as_bool) == Some(true)
 }
 
-/// Display bounded parameter rows without letting serialized objects run off screen.
-pub fn parameter_lines(value: &serde_json::Value, width: u16) -> Vec<Line<'static>> {
+/// A value's `key: value` pairs, nested keys joined with a dot, at most two
+/// levels deep, with a lone value named `value`.
+fn fields(value: &serde_json::Value) -> Vec<(String, String)> {
     use serde_json::Value;
-    fn fields(value: &Value, prefix: &str, depth: usize, result: &mut Vec<(String, String)>) {
+    fn walk(value: &Value, prefix: &str, depth: usize, result: &mut Vec<(String, String)>) {
         match value {
             Value::Object(object) if depth < 2 => {
                 for (key, value) in object {
@@ -50,7 +51,7 @@ pub fn parameter_lines(value: &serde_json::Value, width: u16) -> Vec<Line<'stati
                     } else {
                         format!("{prefix}.{key}")
                     };
-                    fields(value, &key, depth + 1, result);
+                    walk(value, &key, depth + 1, result);
                 }
             }
             Value::Null if prefix.is_empty() => {}
@@ -71,7 +72,28 @@ pub fn parameter_lines(value: &serde_json::Value, width: u16) -> Vec<Line<'stati
         }
     }
     let mut values = Vec::new();
-    fields(value, "", 0, &mut values);
+    walk(value, "", 0, &mut values);
+    values
+}
+
+/// A call's parameters on one row, `key: value` joined with ` · `, for the
+/// compact view. Empty when the call has none.
+pub fn compact_params(value: &serde_json::Value, width: u16) -> String {
+    let text = fields(value)
+        .iter()
+        .map(|(key, value)| format!("{key}: {value}"))
+        .collect::<Vec<_>>()
+        .join(" · ");
+    if text.is_empty() {
+        text
+    } else {
+        truncate(&text, width)
+    }
+}
+
+/// Display bounded parameter rows without letting serialized objects run off screen.
+pub fn parameter_lines(value: &serde_json::Value, width: u16) -> Vec<Line<'static>> {
+    let values = fields(value);
     let omitted = values
         .len()
         .saturating_sub(if values.len() > 5 { 4 } else { 5 });

@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use coder_new::{
-    App, Mode,
+    App, Mode, ViewMode,
     bundled_runtime::RuntimeEvent,
     credentials::Imported,
     live::{Entry, Update, Work},
@@ -19,6 +19,14 @@ fn key(app: &mut App, code: KeyCode) {
     assert!(app.handle(Event::Key(KeyEvent::new(code, KeyModifiers::NONE))));
 }
 
+/// Presses Ctrl+O, the compact/verbose switch.
+fn ctrl_o(app: &mut App) {
+    assert!(app.handle(Event::Key(KeyEvent::new(
+        KeyCode::Char('o'),
+        KeyModifiers::CONTROL
+    ))));
+}
+
 fn scroll(app: &mut App, kind: MouseEventKind, row: u16) {
     assert!(app.handle(Event::Mouse(MouseEvent {
         kind,
@@ -31,6 +39,9 @@ fn scroll(app: &mut App, kind: MouseEventKind, row: u16) {
 fn live_app() -> App {
     let mut app = App::default();
     app.set_mode(Mode::Live);
+    // Most of these tests read a tool call's own rows, so they start in the
+    // verbose view; the compact default has its own tests.
+    app.view = ViewMode::Verbose;
     app.plugins.bootstrap_credentials(Imported {
         openrouter_key: Some(ApiKey::new("offline-transcript-fixture")),
         ..Imported::default()
@@ -190,6 +201,66 @@ fn switching_modes_leaves_the_transcript_where_the_reader_left_it() {
     app.set_mode(Mode::Live);
     draw(&mut app, 110, 24);
     assert_eq!(app.scroll, u16::MAX);
+}
+
+#[test]
+fn the_compact_view_keeps_each_tool_call_on_one_row_with_no_gaps() {
+    // Verbose is opt-in: the app starts compact.
+    assert_eq!(App::default().view, ViewMode::Compact);
+    let mut app = live_app();
+    app.view = ViewMode::Compact;
+    app.live.entries.extend([
+        Entry::Tool {
+            name: "Read".into(),
+            input: json!({"path":"src/read.rs"}),
+            output: json!({"total_lines":120,"content":"fn read() {}"}),
+            running: false,
+        },
+        Entry::Tool {
+            name: "Grep".into(),
+            input: json!({"pattern":"fn read"}),
+            output: json!({"count":2,"files":1,"matches":"src/read.rs:4:fn read() {}"}),
+            running: false,
+        },
+    ]);
+    let buffer = draw(&mut app, 100, 24);
+    let text = canvas(&buffer);
+    // Each call is one row: its name and its parameters, and nothing else.
+    assert!(row(&buffer, 0).contains("Read"), "{}", row(&buffer, 0));
+    assert!(row(&buffer, 0).contains("path: src/read.rs"));
+    assert_eq!(row(&buffer, 1).trim(), "● Grep pattern: fn read");
+    // No blank row between them, and no result rows below.
+    assert!(!text.contains("⎿"));
+    assert!(!text.contains("120 lines"));
+    assert!(!text.contains("2 matches"));
+}
+
+#[test]
+fn ctrl_o_switches_between_the_compact_and_verbose_views() {
+    let mut app = live_app();
+    app.view = ViewMode::Compact;
+    app.live.entries.push(Entry::Tool {
+        name: "Read".into(),
+        input: json!({"path":"src/read.rs"}),
+        output: json!({"total_lines":120,"content":"fn read() {}"}),
+        running: false,
+    });
+    // The default is compact: one row, no result row.
+    assert_eq!(app.view, ViewMode::Compact);
+    assert!(!canvas(&draw(&mut app, 100, 24)).contains("120 lines"));
+    ctrl_o(&mut app);
+    assert_eq!(app.view, ViewMode::Verbose);
+    let verbose = canvas(&draw(&mut app, 100, 24));
+    assert!(verbose.contains("120 lines"), "{verbose}");
+    ctrl_o(&mut app);
+    assert_eq!(app.view, ViewMode::Compact);
+    assert!(!canvas(&draw(&mut app, 100, 24)).contains("120 lines"));
+}
+
+/// The one place the key is documented is `/help`, where Esc closes it.
+#[test]
+fn the_help_lists_the_view_key() {
+    assert!(coder_new::slash::help().contains("Ctrl+O  Show or hide each tool call's details"));
 }
 
 #[test]

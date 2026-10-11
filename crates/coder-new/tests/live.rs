@@ -1,5 +1,5 @@
 use coder_new::{
-    App, Mode, Screen,
+    App, Mode, Screen, ViewMode,
     live::{Entry, Request, Update, Work},
     plugins::{Connection, SettingsFocus},
     provider::KeyInfo,
@@ -675,6 +675,7 @@ fn main_transcript_starts_at_the_terminal_top_edge() {
 fn run_component_has_one_command_one_status_row_and_multiline_preview() {
     let mut app = App::default();
     app.set_mode(Mode::Live);
+    app.view = ViewMode::Verbose;
     app.live.entries.push(Entry::Tool {
         name: "Run".into(),
         input: serde_json::json!({"command":"echo fixture"}),
@@ -709,6 +710,7 @@ fn run_output_scrolls_inside_five_rows_without_moving_the_conversation() {
     use crossterm::event::{MouseEvent, MouseEventKind};
     let mut app = App::default();
     app.set_mode(Mode::Live);
+    app.view = ViewMode::Verbose;
     let output: Vec<String> = (1..=60).map(|line| format!("line {line:02}")).collect();
     app.live.entries.push(Entry::Tool {
         name: "Run".into(),
@@ -758,6 +760,7 @@ fn run_output_scrolls_inside_five_rows_without_moving_the_conversation() {
 fn running_and_failed_run_keep_the_command_visible() {
     let mut app = App::default();
     app.set_mode(Mode::Live);
+    app.view = ViewMode::Verbose;
     app.live.entries.push(Entry::Tool {
         name: "Run".into(),
         input: serde_json::json!({"command":"false"}),

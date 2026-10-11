@@ -122,9 +122,24 @@ impl Default for Mode {
     }
 }
 
+/// How much of each tool call the transcript shows. Ctrl+O switches between
+/// them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ViewMode {
+    /// The default: each tool call on one row, parameters and all, with no
+    /// blank row between calls.
+    #[default]
+    Compact,
+    /// The tool call on one row, its parameters and result under it, and a
+    /// blank row after it.
+    Verbose,
+}
+
 #[derive(Default)]
 pub struct App {
     pub mode: Mode,
+    /// How much of each tool call the transcript shows (Ctrl+O).
+    pub view: ViewMode,
     pub screen: Screen,
     pub draft: Draft,
     pub composer: composer_state::ComposerState,
@@ -966,6 +981,20 @@ impl App {
                 self.scroll_main_to_end();
             }
             _ => {}
+        }
+    }
+
+    /// Ctrl+O: switch between the compact and verbose transcripts. The
+    /// transcript cache rebuilds on the next frame, because the view is part
+    /// of what each entry's rows depend on.
+    pub fn toggle_view(&mut self) {
+        self.view = match self.view {
+            ViewMode::Compact => ViewMode::Verbose,
+            ViewMode::Verbose => ViewMode::Compact,
+        };
+        self.live.cache = Default::default();
+        for delegation in &mut self.delegations {
+            delegation.chat.cache = Default::default();
         }
     }
 
@@ -2129,6 +2158,15 @@ impl App {
                 {
                     self.model_picker = None;
                     self.open_plugins();
+                    return true;
+                }
+                // Ctrl+O switches the transcript between compact and verbose
+                // wherever the person is, including over an open panel. The
+                // change is plain on screen, so it needs no notice.
+                if key.modifiers == KeyModifiers::CONTROL
+                    && matches!(key.code, KeyCode::Char('o' | 'O'))
+                {
+                    self.toggle_view();
                     return true;
                 }
                 if self.agents_panel.is_some() {

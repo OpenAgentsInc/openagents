@@ -216,7 +216,10 @@ Type a draft, move with Left/Right or Home/End, and edit with Backspace/Delete.
 Alt+Enter adds a newline. Enter sends a live message or appends a demo message.
 Bracketed paste
 inserts text without sending it. Trackpad scrolling and PageUp/PageDown scroll the conversation;
-Ctrl+C quits. Demo tools and agents remain presentation fixtures; live mode
+Ctrl+C quits. Ctrl+O switches each tool call between one compact row (its name
+and its parameters, the default, with no blank row between calls) and the
+verbose block that adds its parameters and result under the call. Demo tools
+and agents remain presentation fixtures; live mode
 runs enabled plugin tools and configured ACP delegations.
 
 Tab switches the input between `auto` (OpenAgents picks the model) and `flash`

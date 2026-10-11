@@ -1,9 +1,10 @@
-//! The transcript laid out as Claude Code's: the person's `❯` in column 0
-//! on a band as wide as the screen, `●` on replies and tool calls with a
-//! two-column hanging indent, `⎿` on a tool's first result row, and one
-//! blank row between items.
+//! The transcript laid out as Claude Code's in the verbose view: the
+//! person's `❯` in column 0 on a band as wide as the screen, `●` on replies
+//! and tool calls with a two-column hanging indent, `⎿` on a tool's first
+//! result row, and one blank row between items. The default compact view is
+//! covered in `transcript_runtime.rs`.
 
-use coder_new::{App, Mode, live::Entry, theme, ui};
+use coder_new::{App, Mode, ViewMode, live::Entry, theme, ui};
 use ratatui::{Terminal, backend::TestBackend, buffer::Buffer};
 use serde_json::json;
 
@@ -12,6 +13,7 @@ const LONG: &str = "The composer rail named a vendor's model because a saved set
 fn chat() -> App {
     let mut app = App::default();
     app.set_mode(Mode::Live);
+    app.view = ViewMode::Verbose;
     app.live.entries.extend([
         Entry::User("Why does the rail name a vendor's model?".into()),
         Entry::Tool {

@@ -3,7 +3,7 @@
 //! soft-wrapped rows back into their line; the highlight follows the text
 //! as the view scrolls.
 
-use coder_new::{App, Mode, live::Entry, theme, ui};
+use coder_new::{App, Mode, ViewMode, live::Entry, theme, ui};
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
@@ -18,6 +18,8 @@ fn chat() -> App {
     let diff = coder_new::file_tools::unified(old, new);
     let mut app = App::default();
     app.set_mode(Mode::Live);
+    // These tests select the detailed layout: diffs, results, blank rows.
+    app.view = ViewMode::Verbose;
     app.live.entries.extend([
         Entry::User("Why does the rail name a vendor's model?".into()),
         Entry::Tool {

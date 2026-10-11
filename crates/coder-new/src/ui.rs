@@ -23,7 +23,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use crate::{
-    App, Mode, Screen,
+    App, Mode, Screen, ViewMode,
     agents::{DEMOS, DemoMessage, MAIN_PLUGINS, MAIN_TOOLS, elapsed_time},
     plugin_definition::RailSlot,
     theme as t,
@@ -939,8 +939,19 @@ fn mark_result(lines: &mut [Line<'static>]) {
     }
 }
 
-fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'static>> {
-    entry_rows(entry, width, phase).0
+/// Whether a tool's rows are a card of their own rather than a call with
+/// parameters: a compaction summary, a usage-limit pause, a plan, or a
+/// decision or summary card. The compact view leaves these alone; they say
+/// something the person needs, not what a call passed.
+fn is_card(name: &str) -> bool {
+    matches!(
+        name,
+        crate::long_session::COMPACT_TOOL
+            | crate::long_session::LIMIT_TOOL
+            | crate::issue_run::DECISION
+            | crate::issue_run::SUMMARY
+            | crate::plan::TOOL
+    )
 }
 
 /// Rows a copy has no layout for take [`crate::tools::plain_copy`].
@@ -950,10 +961,14 @@ fn fill_copy(lines: &[Line<'static>], copy: &mut Vec<RowCopy>) {
 }
 
 /// An entry's rows and, row for row, what a copy takes from each.
+///
+/// In [`ViewMode::Compact`] a tool call is one row — its name and its
+/// parameters — and no blank row follows it, so calls run together.
 fn entry_rows(
     entry: &crate::live::Entry,
     width: u16,
     phase: u8,
+    view: ViewMode,
 ) -> (Vec<Line<'static>>, Vec<RowCopy>) {
     let mut lines = Vec::new();
     let mut copy = Vec::new();
@@ -964,6 +979,35 @@ fn entry_rows(
         lines.extend(rows);
         copy.extend(rows_copy);
     };
+    if let crate::live::Entry::Tool {
+        name,
+        input,
+        output,
+        running,
+    } = entry
+        && view == ViewMode::Compact
+        && !is_card(name)
+    {
+        let (glyph, color) =
+            crate::tools::outcome_header(*running, crate::tools::output_failed(output), phase);
+        let mut spans = vec![
+            span(format!("{glyph} "), color),
+            Span::styled(
+                name.clone(),
+                Style::default().fg(color).add_modifier(Modifier::BOLD),
+            ),
+        ];
+        // The glyph, its space, the name's space, and the separator.
+        let room = width.saturating_sub(name.width() as u16 + 3);
+        let params = crate::tools::compact_params(input, room);
+        if !params.is_empty() {
+            spans.push(span(" ", t::GRAY_DIM));
+            spans.push(span(params, t::GRAY_BRIGHT));
+        }
+        lines.push(Line::from(spans));
+        fill_copy(&lines, &mut copy);
+        return (lines, copy);
+    }
     match entry {
         crate::live::Entry::User(text) => {
             exact(&mut lines, &mut copy, prompt_rows(text, width));
@@ -1127,6 +1171,8 @@ fn entry_rows(
 #[derive(Default)]
 pub struct TranscriptCache {
     width: u16,
+    /// The view the cached rows were laid out in; a switch rebuilds them.
+    mode: ViewMode,
     entries: Vec<CachedEntry>,
     partial: Option<CachedEntry>,
     pub builds: usize,
@@ -1321,9 +1367,12 @@ impl TranscriptCache {
         }
     }
 
-    fn refresh(&mut self, chat: &crate::live::Chat, width: u16, phase: u8) {
+    fn refresh(&mut self, chat: &crate::live::Chat, width: u16, phase: u8, view: ViewMode) {
         let resized = self.width != width;
+        // A view switch re-lays every entry, like a resize.
+        let changed = resized || self.mode != view;
         self.width = width;
+        self.mode = view;
         if resized {
             // Rows rewrap at a new width; a selection would land on other text.
             self.selection = None;
@@ -1334,14 +1383,14 @@ impl TranscriptCache {
             if self
                 .entries
                 .get(index)
-                .is_none_or(|cached| resized || cached.entry != *entry)
+                .is_none_or(|cached| changed || cached.entry != *entry)
             {
                 let previous_offset = self
                     .entries
                     .get(index)
                     .and_then(|c| c.run_output.as_ref())
                     .map(|r| (r.2, r.3));
-                let (lines, copy) = entry_rows(entry, width, phase);
+                let (lines, copy) = entry_rows(entry, width, phase, view);
                 let mut cached = CachedEntry {
                     width,
                     entry: entry.clone(),
@@ -1364,7 +1413,7 @@ impl TranscriptCache {
             ) {
                 let cached = &mut self.entries[index];
                 let offset = cached.run_output.as_ref().map(|r| (r.2, r.3));
-                (cached.lines, cached.copy) = entry_rows(entry, width, phase);
+                (cached.lines, cached.copy) = entry_rows(entry, width, phase, view);
                 cached.bound_run(width, phase, offset);
             }
         }
@@ -1382,9 +1431,9 @@ impl TranscriptCache {
             if self
                 .partial
                 .as_ref()
-                .is_none_or(|cached| resized || cached.entry != entry)
+                .is_none_or(|cached| changed || cached.entry != entry)
             {
-                let (lines, copy) = entry_rows(&entry, width, phase);
+                let (lines, copy) = entry_rows(&entry, width, phase, view);
                 self.partial = Some(CachedEntry {
                     width,
                     lines,
@@ -1570,12 +1619,18 @@ impl TranscriptCache {
 }
 
 /// The conversation as plain text rows, `width` cells wide, as the screen
-/// draws it (`coder issue-run --plain`).
+/// draws it in the verbose view (`coder issue-run --plain`).
 #[must_use]
 pub fn transcript_text(entries: &[crate::live::Entry], width: u16) -> Vec<String> {
+    transcript_lines(entries, width, ViewMode::Verbose)
+}
+
+/// [`transcript_text`] in a chosen view.
+#[must_use]
+pub fn transcript_lines(entries: &[crate::live::Entry], width: u16, view: ViewMode) -> Vec<String> {
     entries
         .iter()
-        .flat_map(|entry| entry_lines(entry, width, 0))
+        .flat_map(|entry| entry_rows(entry, width, 0, view).0)
         .map(|line| {
             line.spans
                 .iter()
@@ -1592,7 +1647,7 @@ fn live_lines(app: &App, width: u16) -> Vec<Line<'static>> {
         .live
         .entries
         .iter()
-        .flat_map(|entry| entry_lines(entry, width, app.animation_frame))
+        .flat_map(|entry| entry_rows(entry, width, app.animation_frame, app.view).0)
         .collect::<Vec<_>>();
     if !app.live.partial.is_empty() {
         reply_lines(
@@ -1608,12 +1663,14 @@ fn live_conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     let content = area.width.saturating_sub(GUTTER);
     let phase = app.animation_frame;
     let notice = app.notice.clone();
+    // Read before `chat` borrows `app`'s delegations.
+    let view = app.view;
     let chat = app
         .selected_agent
         .and_then(|index| app.delegations.get_mut(index))
         .map_or(&mut app.live, |agent| &mut agent.chat);
     let mut cache = std::mem::take(&mut chat.cache);
-    cache.refresh(chat, content, phase);
+    cache.refresh(chat, content, phase, view);
     let mut tail = Vec::new();
     for (message, color) in [
         (chat.notice.as_ref(), t::DIFF_DELETE_FG),
@@ -2010,6 +2067,8 @@ mod export_notice_tests {
     fn the_terminal_background_keeps_diff_bands() {
         let mut app = App::default();
         app.mode = Mode::Live;
+        // The bands are the verbose view's diff rows.
+        app.view = ViewMode::Verbose;
         app.appearance.use_system_terminal_background = true;
         let diff = crate::file_tools::unified("a\nold line\nb\n", "a\nnew line\nb\n");
         app.live.entries.push(crate::live::Entry::Tool {
@@ -2124,13 +2183,13 @@ mod export_notice_tests {
 
 #[cfg(test)]
 mod streaming_tests {
-    use super::TranscriptCache;
+    use super::{TranscriptCache, ViewMode};
 
     fn shown(partial: &str) -> String {
         let mut chat = crate::live::Chat::default();
         chat.partial = partial.into();
         let mut cache = TranscriptCache::default();
-        cache.refresh(&chat, 60, 0);
+        cache.refresh(&chat, 60, 0, ViewMode::Verbose);
         cache
             .blocks()
             .flat_map(|cached| cached.lines.iter())
@@ -2227,7 +2286,7 @@ mod run_viewport_tests {
                 output,
                 progress: None,
             };
-            let lines = entry_lines(&entry, 60, 0);
+            let lines = entry_rows(&entry, 60, 0, ViewMode::Verbose).0;
             for span in &lines[0].spans[..2] {
                 assert_eq!(span.style.fg, Some(color));
             }
@@ -2262,7 +2321,7 @@ mod run_viewport_tests {
                     output,
                     running,
                 };
-                let lines = entry_lines(&entry, 60, 0);
+                let lines = entry_rows(&entry, 60, 0, ViewMode::Verbose).0;
                 for span in &lines[0].spans[..2] {
                     assert_eq!(span.style.fg, Some(color), "{name}: {running}");
                 }
@@ -2340,10 +2399,10 @@ mod run_viewport_tests {
         let mut chat = crate::live::Chat::default();
         let mut cache = TranscriptCache::default();
         output(&mut chat, 8, true);
-        cache.refresh(&chat, 40, 0);
+        cache.refresh(&chat, 40, 0, ViewMode::Verbose);
         assert_eq!(cache.entries[0].run_output.as_ref().unwrap().2, 3);
         output(&mut chat, 12, true);
-        cache.refresh(&chat, 40, 1);
+        cache.refresh(&chat, 40, 1, ViewMode::Verbose);
         assert_eq!(cache.entries[0].run_output.as_ref().unwrap().2, 7);
         cache.locate_runs(Rect::new(0, 0, 42, 20), 0);
         assert!(!cache.scroll_run(0, 19, true));
@@ -2355,9 +2414,9 @@ mod run_viewport_tests {
         assert!(cache.scroll_run(1, area.y, true));
         assert_eq!(cache.entries[0].run_output.as_ref().unwrap().2, 4);
         output(&mut chat, 16, false);
-        cache.refresh(&chat, 40, 2);
+        cache.refresh(&chat, 40, 2, ViewMode::Verbose);
         assert_eq!(cache.entries[0].run_output.as_ref().unwrap().2, 4);
-        cache.refresh(&chat, 30, 3);
+        cache.refresh(&chat, 30, 3, ViewMode::Verbose);
         assert_eq!(cache.entries[0].run_output.as_ref().unwrap().2, 4);
         assert!(!cache.entries[0].run_output.as_ref().unwrap().3);
     }
@@ -2367,7 +2426,7 @@ mod run_viewport_tests {
         let mut chat = crate::live::Chat::default();
         output(&mut chat, 10, false);
         let mut cache = TranscriptCache::default();
-        cache.refresh(&chat, 40, 0);
+        cache.refresh(&chat, 40, 0, ViewMode::Verbose);
         let cached = &cache.entries[0];
         let start = cached.run_output.as_ref().unwrap().0;
         let mut terminal =
@@ -2398,7 +2457,7 @@ mod run_viewport_tests {
         let mut chat = crate::live::Chat::default();
         output(&mut chat, 10, false);
         let mut cache = TranscriptCache::default();
-        cache.refresh(&chat, 40, 0);
+        cache.refresh(&chat, 40, 0, ViewMode::Verbose);
         let shown = cache.entries[0]
             .lines
             .iter()
