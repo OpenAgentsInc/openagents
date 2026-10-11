@@ -668,6 +668,131 @@ class _ThreadDb:
         return con
 
 
+PACK_CHUNK_ROWS = 4_000_000   # a pack is built in chunks of this many source rows (bounded memory)
+PACK_QUERY_ROWS = 1_000_000   # a query catches a pack up by at most this many rows; more waits for `index`
+PACK_COMPACT = 64             # `index` merges a string's chunks once it has more than this many
+
+
+class Pack:
+    """Postings of one (t, b) table packed per string, for the query path (#11269).
+
+    `SELECT b FROM src WHERE t = ?` reads one table row per posting (about 1.5 us
+    each, and up to 270k rows for one literal's tokens). The pack keeps, for each
+    string t, its blob ids as int32 chunks: `{name}(t, seq, bs)`, clustered by
+    (t, seq), so one string is one range read. Chunks are appended in source rowid
+    order and read in seq order, so a string's ids come back in exactly the order
+    the indexed SQL returns them (rowid order): every caller sees the same
+    sequence, and the ranking is unchanged.
+
+    `packmark` records the last source rowid the pack covers. Writers that do not
+    know the pack (an older filefind on the same cache) only append source rows,
+    so a pack is current exactly when its mark reaches the source's last rowid;
+    `sync` appends the missing rows under the write lock, and a reader that finds
+    the pack behind uses the SQL path.
+    """
+
+    def __init__(self, owner, src, name):
+        self.owner, self.src, self.name = owner, src, name
+        self.current = False
+        owner.db.executescript(
+            f"CREATE TABLE IF NOT EXISTS {name}(t TEXT, seq INTEGER, bs BLOB, PRIMARY KEY (t, seq)) WITHOUT ROWID;"
+            "CREATE TABLE IF NOT EXISTS packmark(name TEXT PRIMARY KEY, upto INTEGER);")
+
+    def _mark(self, db):
+        r = db.execute("SELECT upto FROM packmark WHERE name = ?", (self.name,)).fetchone()
+        return r[0] if r else 0
+
+    def _top(self, db):
+        return db.execute(f"SELECT max(rowid) FROM {self.src}").fetchone()[0] or 0
+
+    def sync(self, limit=None, compact=False):
+        """Bring the pack up to the source's last row. With `limit`, only when at most that
+        many rows are missing. Sets and returns `current`; never raises on a busy database."""
+        import sqlite3
+        from array import array
+        db = self.owner.db
+        try:
+            if self._mark(db) >= self._top(db) and not compact:
+                self.current = True
+                return True
+            if limit is not None and self._top(db) - self._mark(db) > limit:
+                self.current = False
+                return False
+            db.commit()
+            db.execute("BEGIN IMMEDIATE")
+        except sqlite3.OperationalError:  # locked by a writer: this query reads the SQL path
+            self.current = False
+            return False
+        try:
+            mark, top = self._mark(db), self._top(db)
+            while mark < top:
+                hi = min(top, mark + PACK_CHUNK_ROWS)
+                groups = {}
+                for t, b in db.execute(f"SELECT t, b FROM {self.src} WHERE rowid > ? AND rowid <= ? ORDER BY rowid",
+                                       (mark, hi)):
+                    a = groups.get(t)
+                    if a is None:
+                        a = groups[t] = array("i")
+                    a.append(b)
+                db.executemany(f"INSERT INTO {self.name} VALUES (?, ?, ?)",
+                               ((t, hi, a.tobytes()) for t, a in groups.items()))
+                mark = hi
+            if compact:
+                many = [t for (t,) in db.execute(
+                    f"SELECT t FROM {self.name} GROUP BY t HAVING count(*) > ?", (PACK_COMPACT,))]
+                for t in many:
+                    rows = db.execute(f"SELECT seq, bs FROM {self.name} WHERE t = ? ORDER BY seq", (t,)).fetchall()
+                    db.execute(f"DELETE FROM {self.name} WHERE t = ?", (t,))
+                    db.execute(f"INSERT INTO {self.name} VALUES (?, ?, ?)",
+                               (t, rows[-1][0], b"".join(bs for _, bs in rows)))
+            db.execute("INSERT INTO packmark VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET upto = excluded.upto",
+                       (self.name, mark))
+            db.commit()
+        except BaseException:
+            db.rollback()
+            raise
+        self.current = True
+        return True
+
+    def ids(self, t):
+        """t's blob ids, in source rowid order (int32 array)."""
+        rows = self.owner.db.execute(f"SELECT bs FROM {self.name} WHERE t = ? ORDER BY seq", (t,)).fetchall()
+        if not rows:
+            return np.zeros(0, np.int32)
+        return np.frombuffer(rows[0][0] if len(rows) == 1 else b"".join(r[0] for r in rows), np.int32)
+
+
+class TreeBlobs:
+    """A revision's blob ids -> paths, with a membership mask for packed postings."""
+
+    def __init__(self, bid_to_path):
+        self.map = bid_to_path
+        n = (max(bid_to_path) + 1) if bid_to_path else 0
+        self.mask = np.zeros(n, bool)
+        if n:
+            self.mask[np.fromiter(bid_to_path.keys(), np.int64, len(bid_to_path))] = True
+
+    def hits(self, ids):
+        """The ids of the tree, in order (the others map to no path)."""
+        ids = ids[ids < len(self.mask)]
+        return ids[self.mask[ids]].tolist()
+
+
+def tree_blobs(bid_to_path):
+    tb = getattr(bid_to_path, "_tree_blobs", None)
+    if tb is None:
+        tb = TreeBlobs(bid_to_path)
+        try:
+            bid_to_path._tree_blobs = tb
+        except AttributeError:
+            pass
+    return tb
+
+
+class _BidMap(defaultdict):
+    """defaultdict(list) that can carry its TreeBlobs."""
+
+
 class TokenIndex(_ThreadDb):
     """Inverted index, per blob: identifier and kebab tokens, and defined names.
 
@@ -683,11 +808,14 @@ class TokenIndex(_ThreadDb):
             "CREATE TABLE IF NOT EXISTS def(t TEXT, b INTEGER);")
         self.ids = dict(self.db.execute("SELECT sha, id FROM blob"))
         self.db.execute("CREATE INDEX IF NOT EXISTS def_b ON def(b)")
+        self.pack = Pack(self, "tok", "tokpack")
 
     def defined_in(self, bid):
         return [t for (t,) in self.db.execute("SELECT t FROM def WHERE b = ?", (bid,))]
 
     def postings(self, t, cap=400):
+        if self.pack.current:
+            return self.pack.ids(t)[:cap].tolist()
         return [b for (b,) in self.db.execute("SELECT b FROM tok WHERE t = ? LIMIT ?", (t, cap))]
 
     def ensure(self, repo, tree, log=True):
@@ -738,6 +866,13 @@ class TokenIndex(_ThreadDb):
     def lookup(self, table, tokens, bid_to_path):
         """file -> set(token) for tokens present in the tree's blobs."""
         out = defaultdict(set)
+        if table == "tok" and self.pack.current:  # same ids in the same order, read packed
+            tb = tree_blobs(bid_to_path)
+            for t in tokens:
+                for b in tb.hits(self.pack.ids(t)):
+                    for p in bid_to_path[b]:
+                        out[p].add(t)
+            return out
         for t in tokens:
             for (b,) in self.db.execute(f"SELECT b FROM {table} WHERE t = ?", (t,)):
                 for p in bid_to_path.get(b, ()):
@@ -838,6 +973,7 @@ class IfaceIndex(_ThreadDb):
             "CREATE TABLE IF NOT EXISTS s(t TEXT, b INTEGER);"
             "CREATE TABLE IF NOT EXISTS df(t TEXT PRIMARY KEY, n INTEGER);")
         self.ids = dict(self.db.execute("SELECT sha, id FROM blob"))
+        self.pack = Pack(self, "s", "spack")
 
     def ensure(self, repo, tree, log=True):
         items = tree.items() if isinstance(tree, dict) else tree
@@ -897,6 +1033,15 @@ class IfaceIndex(_ThreadDb):
         """string -> blob ids using it; with `current` (blob ids of one tree) only those."""
         out = defaultdict(list)
         strings = list(strings)
+        if current is None and self.pack.current:
+            # `t IN (chunk)` walks the chunk's distinct strings in sorted order, each one's
+            # rows in rowid order; the pack yields the same sequence
+            for i in range(0, len(strings), 500):
+                for t in sorted(set(strings[i:i + 500])):
+                    ids = self.pack.ids(t)
+                    if len(ids):
+                        out[t].extend(ids.tolist())
+            return out
         if current is not None and not getattr(self, "_cur", None) is current:
             self.db.execute("CREATE TEMP TABLE IF NOT EXISTS cur(b INTEGER PRIMARY KEY)")
             self.db.execute("DELETE FROM cur")
@@ -967,9 +1112,27 @@ class Query:
         self.t = timing if timing is not None else {}
         self.paths = sorted(tree)
         self.prow = {p: i for i, p in enumerate(self.paths)}
+        self._by_name = None
         self.dirs = defaultdict(list)
         for p in self.paths:
             self.dirs[p.rsplit("/", 1)[0] if "/" in p else ""].append(p)
+
+    def by_name(self):
+        """file name -> paths with it, in path order (built once per query)."""
+        if self._by_name is None:
+            self._by_name = defaultdict(list)
+            for p in self.paths:
+                self._by_name[p.rsplit("/", 1)[-1]].append(p)
+        return self._by_name
+
+    def under(self, prefix):
+        """The paths starting with prefix, in path order: one contiguous run of the sorted paths."""
+        i = bisect.bisect_left(self.paths, prefix)
+        out = []
+        while i < len(self.paths) and self.paths[i].startswith(prefix):
+            out.append(self.paths[i])
+            i += 1
+        return out
 
     def tick(self, name, t0):
         self.t[name] = self.t.get(name, 0) + time.perf_counter() - t0
@@ -990,13 +1153,15 @@ class Query:
         fl = fields(text)
         crate_dirs = {}
         for p in self.paths:
-            parts = p.split("/")
+            parts = p.split("/", 2)
             if len(parts) > 2 and parts[0] in ("crates", "bins", "apps", "packages"):
                 crate_dirs.setdefault(parts[1], "/".join(parts[:2]))
         sym_seed = Counter()
         for tok in fl["paths"] | fl["names"]:
             tok = tok.lstrip("./")
-            exact = [p for p in self.paths if p == tok or p.endswith("/" + tok)]
+            # a path equal to tok or ending in "/tok" has tok's last component as its name
+            exact = [p for p in self.by_name().get(tok.rsplit("/", 1)[-1], ())
+                     if p == tok or p.endswith("/" + tok)]
             if exact and len(exact) <= 8:
                 for p in exact:
                     F(p)["path_exact"] = 1
@@ -1004,7 +1169,7 @@ class Query:
                     sym_seed[p] += 3
                     reason[p].append(f"issue names `{tok}`")
                 continue
-            under = [p for p in self.paths if p.startswith(tok.rstrip("/") + "/")]
+            under = self.under(tok.rstrip("/") + "/")
             if 0 < len(under) <= 60:
                 for p in under:
                     F(p)["path_dir"] = max(F(p)["path_dir"], 1 / math.log2(2 + len(under)))
@@ -1015,8 +1180,8 @@ class Query:
             for cand in (k, k.replace("_", "-")):
                 if cand in crate_dirs:
                     mentioned_crates.add(crate_dirs[cand])
-        for p in self.paths:
-            if "/".join(p.split("/")[:2]) in mentioned_crates:
+        for p in (self.paths if mentioned_crates else ()):
+            if "/".join(p.split("/", 2)[:2]) in mentioned_crates:
                 F(p)["crate_named"] = 1
         for c in mentioned_crates:
             for root in ("src/lib.rs", "src/main.rs", "Cargo.toml"):
@@ -1025,7 +1190,7 @@ class Query:
                     src["sym"].add(p)
                     reason[p].append(f"crate `{c.split('/')[1]}` named in the issue")
         idents = sorted(fl["idents"] | {k for k in fl["kebabs"] if len(k) >= 6})[:120]
-        bid_to_path = defaultdict(list)
+        bid_to_path = _BidMap(list)
         ids = self.ix.tokens.ids
         for p, s in self.tree.items():
             b = ids.get(s)
@@ -1323,7 +1488,15 @@ class Query:
             fields = sorted(t[2:] for t, n in strings.items()
                             if t.startswith("f:") and n <= 100 and ("_" in t or len(t) >= 9))[:40]
             readers = defaultdict(set)
-            if fields:
+            if fields and self.ix.tokens.pack.current:  # the IN walk below: sorted strings, rowid order
+                tb = tree_blobs(self.bid_to_path)
+                for t_ in sorted(set(fields)):
+                    ids = self.ix.tokens.pack.ids(t_)
+                    if len(ids):
+                        r_ = readers["f:" + t_]
+                        for b_ in tb.hits(ids):
+                            r_.update(self.bid_to_path[b_])
+            elif fields:
                 q_ = ",".join("?" * len(fields))
                 for t_, b_ in self.ix.tokens.db.execute(f"SELECT t, b FROM tok WHERE t IN ({q_})", fields):
                     readers["f:" + t_].update(self.bid_to_path.get(b_, ()))
@@ -1462,7 +1635,7 @@ class Query:
         ref, ref_why = Counter(), {}
         ids = self.ix.tokens.ids
         if not hasattr(self, "bid_to_path"):
-            self.bid_to_path = defaultdict(list)
+            self.bid_to_path = _BidMap(list)
             for p, sha in self.tree.items():
                 b = ids.get(sha)
                 if b is not None:
@@ -1489,7 +1662,7 @@ class Query:
             new.add(q)
         t1 = time.perf_counter()
         if not hasattr(self, "bid_to_path"):
-            self.bid_to_path = defaultdict(list)
+            self.bid_to_path = _BidMap(list)
             for p_, sha in self.tree.items():
                 b_ = self.ix.tokens.ids.get(sha)
                 if b_ is not None:
@@ -1580,9 +1753,14 @@ def relative(feats, keys):
         order = np.argsort(-v, kind="stable")
         r = np.empty(len(v))
         r[order] = np.arange(len(v))
+        # the same float64 values, read as Python floats once instead of per element
+        rel = (v / top).tolist() if top > 0 else None
+        vl, rl = v.tolist(), r.tolist()
+        kr, kk = k + "_rel", k + "_rk"
         for i, p in enumerate(paths):
-            feats[p][k + "_rel"] = float(v[i] / top) if top > 0 else 0.0
-            feats[p][k + "_rk"] = math.log1p(r[i]) if v[i] > 0 else 8.0
+            x = feats[p]
+            x[kr] = rel[i] if rel is not None else 0.0
+            x[kk] = math.log1p(rl[i]) if vl[i] > 0 else 8.0
 
 
 def tidy(reasons, n=4):
@@ -2190,8 +2368,13 @@ def cmd_index(a):
         except Exception as e:
             print(f"blobs not embedded: {str(e)[:120]}", file=sys.stderr)
     print(f"blobs: {len(ix.blob_rows)}", file=sys.stderr)
-    TokenIndex(ix.cache).ensure(a.repo, tree)
-    IfaceIndex(ix.cache).ensure(a.repo, tree)
+    for idx in (TokenIndex(ix.cache), IfaceIndex(ix.cache)):
+        idx.ensure(a.repo, tree)
+        t1 = time.time()
+        if idx.pack.sync(compact=True):  # the query path's packed postings (#11269)
+            print(f"{idx.pack.name}: current ({time.time()-t1:.1f}s)", file=sys.stderr)
+        else:
+            print(f"{idx.pack.name}: database busy; the next index packs it", file=sys.stderr)
     import cards as fc
     model = json.load(open(MODEL_PATH)) if os.path.exists(MODEL_PATH) else None
     if fc.cards_on(model) and not a.no_cards:  # #11249: card, embed and project every new blob, once
@@ -2284,6 +2467,8 @@ def cmd_query(a):
             print(f"new blobs not embedded ({str(e)[:80]})", file=sys.stderr)
     ix.tokens.ensure(a.repo, tree, log=False)
     ix.iface.ensure(a.repo, tree, log=False)
+    for pk in (ix.tokens.pack, ix.iface.pack):  # packed postings (#11269); behind by more: the SQL path
+        pk.sync(limit=PACK_QUERY_ROWS)
     timing["refresh_index"] = time.perf_counter() - t0
     cards = None
     if prof is not None:

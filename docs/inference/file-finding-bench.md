@@ -853,3 +853,101 @@ candidates make stage 2's pool larger, which adds about 200 ms at p95.
 `train --cards`. Set `FILEFIND_CLEF_TEACHER` to the JSONL that
 `file-finding-bench.py teacher` writes. Any promotion still goes through
 `ranker_gate.py`.
+
+## The active finder under 1.5 s at p95, results unchanged (#11269, 2026-10-10)
+
+**Goal.** Bring the active finder's per-query p95 under 1.5 s without
+changing a single ranked file, map entry, stage or reason. The ranker, its
+features, its calibration and the candidate pools are untouched. Nothing is
+pruned.
+
+**Where the time went.** The bench was 50 queries (issues #11213–#11262,
+`scripts/filefind/fixtures/latency-queries.json`, with each issue's text and
+query embedding in hand). Each query ran in its own process at `1d16475293`,
+on one frozen clone of the cache. The tail was one thing: SQLite postings.
+
+- `sym` looks up every identifier and every literal's tokens with
+  `SELECT b FROM tok WHERE t = ?`. That reads one table row per posting, about
+  1.5 µs each warm. A literal's common tokens (`source`, `null`, `base`) cost
+  up to 270k rows, about 0.4–1.0 s warm and 3–6 s cold.
+- Stage 2's reference graph (`postings`) and interface users
+  (`SELECT … FROM s WHERE t IN …`) read the same way.
+
+**What changed** (`scripts/filefind/filefind.py`):
+
+- **Packed postings.** `tokpack` sits in `tokens.sqlite` and `spack` in
+  `iface.sqlite`. Each holds, per string, its blob ids as int32 chunks,
+  clustered by string, so one string is one range read. Chunks are appended in
+  source rowid order, which is the order the indexed SQL returns. Every caller
+  therefore sees the same ids in the same order, and tie-breaks are unchanged.
+- **Building and refreshing.** `filefind.py index`, which the post-merge hook
+  runs, builds and refreshes the packs. It takes 31 s once on this cache and
+  adds about 300 MB. After that each refresh is incremental.
+- **The watermark.** `packmark` records the last source rowid a pack covers.
+  An older filefind on the same cache only appends source rows, so a pack is
+  current exactly when its mark reaches the last rowid.
+  - A query catches the pack up when at most 1M rows are missing.
+  - Otherwise, or when the database is busy, that query reads the old SQL
+    path, with the same results.
+- **Path scans.** Exact-name matches go through a file-name index, and
+  "under this directory" matches through a bisect over the sorted paths. Both
+  keep path order.
+- **`relative()`.** It reads its numpy arrays once as Python floats, giving
+  the same float64 values.
+
+**Identical output.** One finding matters for any "identical" claim: the
+active finder's output depends on `PYTHONHASHSEED`. Tied rank features
+(`*_rk`) and `most_common` cut-offs follow set order, and set order follows
+the per-process string hash. Two runs of the same version on the same cache
+differ unless the seed is fixed. So results are compared per seed:
+
+- Under seeds 0 and 1, all 50 queries came out byte-identical to the previous
+  version, warm and cold. That covers the ranked top 100, the 400-file map,
+  stages and reasons.
+- `scripts/filefind/test_latency.py` runs:
+  - always: synthetic checks that packed postings equal the SQL in content and
+    order (full build, chunked build, an older writer's rows, catch-up,
+    compaction, users over the 500-string chunks), and that the path scans and
+    `relative()` match the old code. Reversing the pack order fails 3 of these
+    tests.
+  - with `FILEFIND_IDENTITY=1`: the bench queries through this version and
+    through `1d16475293` on one cache clone, digest for digest. Passed: 50
+    queries in 114 s.
+- `scripts/filefind/latency_bench.py` reruns the measurements: `run --mode
+  warm|cold`, `stats` and `same`.
+
+### Latency
+
+Times are in ms, counted from "issue text in hand" (`total`), one process per
+query, `nice -n 19` and sequential. The Mac was shared with a Codex session
+(load average 6–23). Cold evicts every cache file from the page cache
+(`msync(MS_INVALIDATE)`) before each query; Git's packs stay warm.
+
+| 50 queries | p50 | p95 | p99 | max |
+|---|---:|---:|---:|---:|
+| #11249's measurement (40 queries, live embedding, load 8–10) | 1,025 | 1,614 | | 2,463 |
+| Before, warm (embedding in hand) | 1,102 | 1,732 | 1,894 | 1,992 |
+| **After, warm** | **524** | **689** | **714** | 729 |
+| Before, warm, a quieter minute (seed 1) | 781 | 1,308 | 1,435 | 1,515 |
+| **After, warm (seed 1)** | **489** | **680** | **813** | 865 |
+| Before, cold | 5,030 | 7,880 | 8,587 | 8,939 |
+| **After, cold** | **790** | **1,186** | **1,284** | 1,370 |
+| Before, live CLI (`query --issue`, real Vertex embedding) | 1,313 | 2,295 | 3,644 | 4,469 |
+| **After, live CLI** | **910** | **1,076** | **1,143** | 1,192 |
+
+Per stage, p95, before → after:
+
+| Stage | Warm | Cold |
+|---|---|---|
+| `sym` | 883 → 121 ms | 6,193 → 390 ms |
+| interface users | 278 → 52 ms | 2,600 → 146 ms |
+| stage 2 | 535 → 167 ms | 3,565 → 296 ms |
+
+What is left warm is mostly fixed cost: loading the indexes (about 120–180 ms),
+`git ls-tree` (about 60 ms), scoring (about 100 ms) and the embedding
+round trip. That round trip is now the longest wait on the live path (p95
+about 380 ms).
+
+The live cache gets its packs on the first `filefind.py index` after this
+lands, which the post-merge hook runs. Until then queries take the SQL path,
+with the same results.
