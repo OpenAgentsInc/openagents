@@ -148,6 +148,7 @@ fn finished(output: &Output, issue: u64, result: &Value) -> Value {
     let secs = result["secs"].as_f64().unwrap_or(0.0);
     let engine = match result["engine"].as_str() {
         Some("briefed") => "briefed agent",
+        Some("briefed:codex") => "briefed agent on Codex",
         Some("bare") => "Claude Code",
         _ => "no engine",
     };
@@ -232,18 +233,25 @@ pub(super) fn work_here(
     numbers: &[u64],
     parallel: u64,
     land: &str,
+    engine: &str,
     fleet: Option<(super::fleet::Shared, Groups)>,
 ) -> Result<u8, Failure> {
     let driver = engine_dir().map_err(failed)?;
+    let engine = engine.to_owned();
     let agent = agent_binary();
     event(
         output,
         json!({"event": "queue", "repository": repository, "issues": numbers,
-            "parallel": parallel, "engine": "briefed"}),
+            "parallel": parallel, "engine": engine}),
     );
     if !output.json() {
         eprintln!(
-            "The briefed agent works {} issue{} of {repository}, {parallel} at a time{}",
+            "The briefed agent{} works {} issue{} of {repository}, {parallel} at a time{}",
+            if engine == "briefed:codex" {
+                " on Codex"
+            } else {
+                ""
+            },
             numbers.len(),
             if numbers.len() == 1 { "" } else { "s" },
             if agent.is_none() {
@@ -268,12 +276,13 @@ pub(super) fn work_here(
     for _ in 0..parallel {
         let (queue, sender) = (std::sync::Arc::clone(&queue), sender.clone());
         let groups = std::sync::Arc::clone(&groups);
-        let (driver, agent, top, repository, land) = (
+        let (driver, agent, top, repository, land, engine) = (
             driver.clone(),
             agent.clone(),
             top.to_path_buf(),
             repository.to_owned(),
             land.to_owned(),
+            engine.clone(),
         );
         workers.push(std::thread::spawn(move || {
             loop {
@@ -296,6 +305,8 @@ pub(super) fn work_here(
                         &issue.to_string(),
                         "--land",
                         &land,
+                        "--engine",
+                        &engine,
                     ])
                     .arg("--checkout")
                     .arg(&top)

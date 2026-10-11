@@ -2,7 +2,7 @@
 """Work one GitHub issue with the briefed agent (#11211, #11258).
 
     work_issue.py --repo OWNER/NAME --issue N [--land queue|pr|none]
-                  [--engine briefed|bare] [--out DIR] [--checkout PATH]
+                  [--engine briefed|briefed:codex|bare] [--out DIR] [--checkout PATH]
 
 The one engine entry point behind `POST /v1/work`, the web's "Work on this
 issue", agent fleet runs, and `openagents chat work` (the default engine):
@@ -12,7 +12,10 @@ issue", agent fleet runs, and `openagents chat work` (the default engine):
    (`scripts/bench/briefed-ab/briefing.py`).
 2. **Briefed agent**: `crates/briefed-agent` with `verify` (#11229): the five
    file tools held to a fresh worktree, a briefing-built system prompt, and
-   `verify`, which compiles, runs the change's tests and formats.
+   `verify`, which compiles, runs the change's tests and formats. `briefed`
+   runs it on Claude; `briefed:codex` runs the same briefing and checks on
+   Codex CLI (#11308), on Codex's own login, with `verify` served to it over
+   MCP by the same binary.
 3. **Judged by the diff**: the driver replays the checks itself on what the
    agent actually changed: `cargo fmt` and `cargo test` for each package the
    diff touches. A run passes only when there is a diff and every replayed
@@ -60,6 +63,7 @@ LOCAL_EXEC = HERE / "local-exec"
 TRAILER = "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 DROP_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")
 # A finder whose best file scores under this is a guess, not a briefing.
+DEFAULT_CODEX_MODEL = os.environ.get("OA_WORK_CODEX_MODEL", "gpt-5.1-codex")
 MIN_CONFIDENCE = float(os.environ.get("OA_WORK_MIN_CONFIDENCE", "0.05"))
 # This many failing `verify` calls with no pass is "repeated verify failures".
 MAX_VERIFY_FAILS = int(os.environ.get("OA_WORK_MAX_VERIFY_FAILS", "4"))
@@ -304,12 +308,22 @@ def verify_fails(log: Path) -> tuple[int, bool]:
 def usage_of(result: dict | None) -> dict:
     result = result or {}
     u = result.get("usage") or {}
+    if "cached_input_tokens" in u:  # Codex names its usage differently; it reports no cost.
+        return {"cost_usd": None, "turns": result.get("num_turns"),
+                "input_tokens": u.get("input_tokens"), "output_tokens": u.get("output_tokens"),
+                "cache_read": u.get("cached_input_tokens"), "is_error": False}
     return {"cost_usd": result.get("total_cost_usd"), "turns": result.get("num_turns"),
             "input_tokens": u.get("input_tokens"), "output_tokens": u.get("output_tokens"),
             "cache_read": u.get("cache_read_input_tokens"), "is_error": result.get("is_error")}
 
 
-def run_briefed(run: Run, b: dict, root: Path, out: Path, model: str, timeout: int) -> dict:
+def backend_of(engine: str) -> str:
+    """`claude` or `codex`: the engine the briefed agent runs on."""
+    return engine.split(":", 1)[1] if ":" in engine else "claude"
+
+
+def run_briefed(run: Run, b: dict, root: Path, out: Path, model: str, timeout: int,
+                backend: str = "claude") -> dict:
     out.mkdir(parents=True, exist_ok=True)
     packages = []
     for c in b["checks"]:
@@ -324,7 +338,7 @@ def run_briefed(run: Run, b: dict, root: Path, out: Path, model: str, timeout: i
         "prompt_path": str(out / "prompt.md"), "events_path": str(out / "agent-events.jsonl"),
         "summary_path": str(out / "summary.json"), "briefed_files": [f["path"] for f in b["files"]],
         "model": model, "timeout_secs": timeout, "tools": ["Read", "Edit", "Write", "Grep", "Glob"],
-        "custom": ["verify"], "inherit_api_key": keeps_api_key(),
+        "custom": ["verify"], "inherit_api_key": keeps_api_key(), "engine": backend,
         "verify": {
             "exec": str(LOCAL_EXEC), "crates": packages, "baseline_errors": [],
             "done_when": [p.removeprefix("Required: ") for p in b["plan"] if p.startswith("Required: ")]
@@ -334,7 +348,11 @@ def run_briefed(run: Run, b: dict, root: Path, out: Path, model: str, timeout: i
     }
     (out / "agent.json").write_text(json.dumps(config, indent=2))
     agent = os.environ.get("OA_BRIEFED_AGENT") or shutil.which("briefed-agent") or "briefed-agent"
-    run.say("agent", "the briefed agent is working", engine="briefed")
+    if backend == "codex":
+        config["model"] = os.environ.get("OA_WORK_CODEX_MODEL") or DEFAULT_CODEX_MODEL
+        config["codex_bin"] = shutil.which("codex") or "codex"
+    run.say("agent", f"the briefed agent is working on {'Codex' if backend == 'codex' else 'Claude'}",
+            engine=f"briefed:{backend}" if backend != "claude" else "briefed")
     t0 = time.time()
     proc = subprocess.Popen([agent, str(out / "agent.json")], cwd=root, env=agent_env(out),
                             stdout=subprocess.DEVNULL, stderr=open(out / "agent-stderr.txt", "w"))
@@ -403,12 +421,16 @@ def run_bare(run: Run, issue: dict, root: Path, out: Path, model: str, timeout: 
 
 # ------------------------------------------------------------------ landing
 
+def engine_words(engine: str) -> str:
+    return {"briefed": "briefed agent", "briefed:codex": "briefed agent on Codex"}.get(engine, "bare Claude Code")
+
+
 def commit(root: Path, issue: dict, engine: str, base: str) -> str:
     # One commit on `base`, whatever the engine committed on its own.
     sh(["git", "-C", str(root), "reset", "-q", "--soft", base])
     sh(["git", "-C", str(root), "add", "-A"])
     message = (f"{issue['title']} (#{issue['number']})\n\n"
-               f"Worked by the {'briefed agent' if engine == 'briefed' else 'bare Claude Code'} "
+               f"Worked by the {engine_words(engine)} "
                f"(openagents work, engine {engine}); fixes #{issue['number']}.\n\n{TRAILER}\n")
     sh(["git", "-C", str(root), "commit", "-q", "-m", message])
     return sh(["git", "-C", str(root), "rev-parse", "HEAD"]).stdout.strip()
@@ -433,7 +455,7 @@ def land(run: Run, root: Path, repo: str, issue: dict, how: str, run_id: str, en
     branch = f"work/issue-{issue['number']}-{run_id[:8]}"
     sh(["git", "-C", str(root), "push", "-q", "origin", f"HEAD:refs/heads/{branch}"], timeout=600)
     lines = [f"Fixes #{issue['number']}.", "",
-             f"Worked by the {'briefed agent' if engine == 'briefed' else 'bare Claude Code'} "
+             f"Worked by the {engine_words(engine)} "
              f"(`openagents work`, run `{run_id}`).", "", "Checks replayed on this diff:", ""]
     lines += [f"- {'pass' if c['ok'] else 'FAIL'}: `{c['name']}`" for c in checks] or ["- none (no Rust package touched)"]
     lines += ["", "🤖 Generated with [Claude Code](https://claude.com/claude-code)"]
@@ -473,8 +495,8 @@ def say_cost(run: Run, attempts: list[dict]) -> None:
 
 def attempt(run: Run, engine: str, issue: dict, checkout: Path, base: str, out: Path, args, b: dict | None) -> dict:
     wt = add_worktree(checkout, out / "worktree", base)
-    if engine == "briefed":
-        agent = run_briefed(run, b, wt, out, args.model, args.timeout)
+    if engine.startswith("briefed"):
+        agent = run_briefed(run, b, wt, out, args.model, args.timeout, backend_of(engine))
     else:
         agent = run_bare(run, issue, wt, out, args.model, args.timeout)
     files = changed_files(wt, base)
@@ -489,7 +511,7 @@ def main() -> int:
     ap.add_argument("--repo", required=True)
     ap.add_argument("--issue", type=int, required=True)
     ap.add_argument("--land", choices=["queue", "pr", "none"], default="pr")
-    ap.add_argument("--engine", choices=["briefed", "bare"], default="briefed")
+    ap.add_argument("--engine", choices=["briefed", "briefed:codex", "bare"], default="briefed")
     ap.add_argument("--checkout")
     ap.add_argument("--out")
     ap.add_argument("--run-id")
@@ -520,7 +542,7 @@ def main() -> int:
         result["base"] = base
         engine, why = args.engine, None
         b = None
-        if engine == "briefed":
+        if engine.startswith("briefed"):
             run.say("briefing", "finding the files this issue needs")
             t0 = time.time()
             b = briefing_for(issue, base, checkout)
@@ -546,7 +568,7 @@ def main() -> int:
         a = attempt(run, engine, issue, checkout, base, out / engine, args, b)
         result["attempts"].append(a)
         say_cost(run, result["attempts"])
-        if engine == "briefed" and not a["ok"]:
+        if engine.startswith("briefed") and not a["ok"]:
             ag = a["agent"]
             if not a["diff"]["files"]:
                 why = "the briefed agent made no change"

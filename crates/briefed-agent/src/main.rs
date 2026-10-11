@@ -41,6 +41,8 @@ use claude_agent_sdk::{
 use futures::StreamExt;
 use serde_json::{Value, json};
 
+mod codex;
+
 /// Credentials the CLI must not inherit, so it uses the Claude Code login.
 const REMOVED_ENV: [&str; 2] = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"];
 /// The file tools whose paths must stay inside the worktree.
@@ -151,13 +153,24 @@ struct Ledger {
 }
 
 async fn run() -> Result<(), String> {
-    let path = std::env::args()
-        .nth(1)
-        .ok_or("usage: briefed-agent CONFIG.json")?;
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let (serve, path) = match args.as_slice() {
+        [flag, path] if flag == "--serve" => (true, path.clone()),
+        [path] => (false, path.clone()),
+        _ => return Err("usage: briefed-agent [--serve] CONFIG.json".to_owned()),
+    };
     let config: Value = serde_json::from_slice(
         &std::fs::read(&path).map_err(|error| format!("reading {path}: {error}"))?,
     )
     .map_err(|error| format!("parsing {path}: {error}"))?;
+    if serve {
+        return codex::serve(&config).await;
+    }
+    match config["engine"].as_str() {
+        None | Some("claude") => {}
+        Some("codex") => return codex::run(&config, &path).await,
+        Some(other) => return Err(format!("config: engine `{other}` is not claude or codex")),
+    }
 
     let worktree = PathBuf::from(text(&config, "worktree")?);
     let worktree = worktree.canonicalize().unwrap_or(worktree);
