@@ -84,9 +84,28 @@ async fn tasks(State(app): State<App>, headers: HeaderMap) -> Response {
                 .into_response();
         }
     };
+    list_page(&headers, &list)
+}
+
+/// How a task is doing, in a few plain words.
+fn words(status: task::Status, execution: task::Execution) -> &'static str {
+    use task::{Execution, Status};
+    match (status, execution) {
+        (Status::Queued, _) => "Waiting to start",
+        (Status::CancelRequested, _) => "Stopping",
+        (Status::Cancelled, _) | (_, Execution::Stopped) => "Stopped",
+        (_, Execution::Failed) => "Failed",
+        (Status::Running, _) | (_, Execution::Running) => "Running",
+        (Status::Finished, _) | (_, Execution::Finished) => "Finished",
+        _ => "Not known",
+    }
+}
+
+/// The task list page over `list`.
+pub(crate) fn list_page(headers: &HeaderMap, list: &[task::Task]) -> Response {
     let mut body = String::from(
-        "<p class=\"oa-page-eyebrow\">LOCAL / READ ONLY</p><h1>Your tasks</h1>\
-<p class=\"oa-page-meta\">Your local task store. Open a task to read its status, evidence, and artifacts. \
+        "<h1>Your tasks</h1>\
+<p class=\"oa-page-meta\">The tasks on this computer. Open one to see how it went and what it made. \
 <a href=\"/app\">Refresh</a></p><ul class=\"oa-item-list\">",
     );
     if list.is_empty() {
@@ -94,12 +113,11 @@ async fn tasks(State(app): State<App>, headers: HeaderMap) -> Response {
     }
     for item in list {
         body.push_str(&format!(
-            "<li><p><a class=\"oa-item-title\" href=\"/app/tasks/{}\">{}</a></p><p class=\"oa-page-meta\">{} \u{b7} {:?} / {:?}</p></li>",
+            "<li><p><a class=\"oa-item-title\" href=\"/app/tasks/{}\">{}</a></p><p class=\"oa-page-meta\">{} \u{b7} {}</p></li>",
             escape(&item.task_id),
             escape(&item.intent.title),
             escape(&item.task_id),
-            item.status,
-            item.execution,
+            words(item.status, item.execution),
         ));
     }
     body.push_str("</ul>");
@@ -107,7 +125,7 @@ async fn tasks(State(app): State<App>, headers: HeaderMap) -> Response {
         .path("/app")
         .scriptless()
         .content(prose(PreEscaped(body)))
-        .respond(&headers)
+        .respond(headers)
 }
 
 async fn task(

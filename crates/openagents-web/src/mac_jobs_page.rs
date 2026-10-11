@@ -211,13 +211,25 @@ async fn list_page(State(app): State<App>, headers: HeaderMap) -> Response {
     let live = live(&app, &viewer.account_id).await;
     let now = now_unix();
     let going = jobs.iter().any(|job| !job.state.finished());
-    let body = html! {
+    let body = list_body(&found, &jobs, now);
+    page(
+        &headers, service, &viewer, "Mac jobs", PAGE, going, live, body,
+    )
+}
+
+/// The Mac jobs list: the Macs that checked in, then every job.
+pub(crate) fn list_body(
+    found: &[(String, mac_jobs::Reported, bool)],
+    jobs: &[Job],
+    now: u64,
+) -> Markup {
+    html! {
         div class="oa-settings" {
             p {
                 "Steps that need a Mac, such as iOS builds, the release gate, and TestFlight "
                 "uploads, run on your own Mac. Signing and App Store keys stay on it."
             }
-            (macs_markup(&found, now))
+            (macs_markup(found, now))
             section class="oa-settings-group" aria-labelledby="mac-jobs-jobs" {
                 h2 #mac-jobs-jobs { "Jobs" }
                 @if jobs.is_empty() {
@@ -230,13 +242,10 @@ async fn list_page(State(app): State<App>, headers: HeaderMap) -> Response {
                         }
                     }
                 }
-                @for job in &jobs { (job_row(job, now)) }
+                @for job in jobs { (job_row(job, now)) }
             }
         }
-    };
-    page(
-        &headers, service, &viewer, "Mac jobs", PAGE, going, live, body,
-    )
+    }
 }
 
 /// The question card: what the job will do, then Approve and Deny.

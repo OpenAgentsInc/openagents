@@ -1913,7 +1913,30 @@ async fn list_page(
         .repo
         .filter(|repo| valid_repo(repo))
         .unwrap_or_else(|| "OpenAgentsInc/openagents".into());
-    let body = html! {
+    let csrf = crate::pages::chat::csrf(&app, &owner);
+    let issue = query.issue.unwrap_or_default();
+    let body = list_body(&runs, saved, &repo, &issue, &csrf, now);
+    page(
+        &headers,
+        service,
+        &viewer,
+        "Work on issues",
+        PAGE,
+        going,
+        body,
+    )
+}
+
+/// The work list page: the form for a new run, then every run.
+pub(crate) fn list_body(
+    runs: &[WorkRun],
+    saved: bool,
+    repo: &str,
+    issue: &str,
+    csrf: &str,
+    now: u64,
+) -> Markup {
+    html! {
         div class="oa-settings" {
             p {
                 "Give an issue to the briefed agent: it reads a briefing of the files the issue "
@@ -1928,13 +1951,13 @@ async fn list_page(
             section class="oa-settings-group" aria-labelledby="work-new" {
                 h2 #work-new { "Work on an issue" }
                 form method="post" action=(PAGE) class="oa-settings-row" {
-                    input type="hidden" name="csrf" value=(crate::pages::chat::csrf(&app, &owner));
+                    input type="hidden" name="csrf" value=(csrf);
                     input type="hidden" name="source" value="web";
                     div class="oa-settings-text" {
                         label class="oa-settings-label" for="work-repo" { "Repository" }
                         input #work-repo type="text" name="repo" value=(repo) required;
                         label class="oa-settings-label" for="work-issue" { "Issue number or link" }
-                        input #work-issue type="text" name="issue" value=(query.issue.unwrap_or_default()) required;
+                        input #work-issue type="text" name="issue" value=(issue) required;
                         label class="oa-settings-label" for="work-land" { "When it passes" }
                         select #work-land name="land" {
                             option value="pr" selected { "Open a pull request" }
@@ -1963,19 +1986,10 @@ async fn list_page(
                         }
                     }
                 }
-                @for run in &runs { (run_row(run, now)) }
+                @for run in runs { (run_row(run, now)) }
             }
         }
-    };
-    page(
-        &headers,
-        service,
-        &viewer,
-        "Work on issues",
-        PAGE,
-        going,
-        body,
-    )
+    }
 }
 
 #[derive(Deserialize)]

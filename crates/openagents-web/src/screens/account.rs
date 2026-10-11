@@ -87,11 +87,41 @@ pub(crate) fn screens() -> Vec<Screen> {
             ],
         },
         Screen {
-            id: "mac-jobs",
-            title: "Mac job",
+            id: "vault",
+            title: "Vault",
             group: Group::Page,
-            routes: &["/settings/mac-jobs/{id}"],
+            routes: &["/settings/vault", "/projects/{id}/vault"],
             states: vec![
+                state("opening", "Opening", vault_opening),
+                state("set-up", "Set up", vault_set_up),
+                state("locked", "Locked", vault_locked),
+                state("open", "Open, no files yet", vault_open),
+                state("project", "A project's vault, open", vault_project),
+            ],
+        },
+        Screen {
+            id: "claude-key",
+            title: "Claude key",
+            group: Group::Page,
+            routes: &["/settings/claude"],
+            states: vec![
+                state("none", "Nothing saved", claude_key_none),
+                state("saved", "A key saved", claude_key_saved),
+                state(
+                    "subscription",
+                    "With a subscription offer",
+                    claude_key_subscription,
+                ),
+            ],
+        },
+        Screen {
+            id: "mac-jobs",
+            title: "Mac jobs",
+            group: Group::Page,
+            routes: &["/settings/mac-jobs", "/settings/mac-jobs/{id}"],
+            states: vec![
+                state("list-empty", "List: no Mac yet", mac_jobs_empty),
+                state("list", "List: a Mac and its jobs", mac_jobs_list),
                 state("queued", "Queued", mac_job_queued),
                 state("asking", "Running, question pending", mac_job_asking),
                 state("done", "Done with files", mac_job_done),
@@ -223,8 +253,10 @@ pub(crate) fn screens() -> Vec<Screen> {
             id: "tasks",
             title: "Task",
             group: Group::Page,
-            routes: &["/app/tasks/{id}"],
+            routes: &["/app", "/app/tasks/{id}"],
             states: vec![
+                state("list-empty", "List: no tasks", task_list_empty),
+                state("list", "List: one task", task_list),
                 state("queued", "Queued", task_queued),
                 state("running", "Running", task_running),
                 state("cancel-requested", "Stop asked", task_cancel_requested),
@@ -667,6 +699,71 @@ fn mac_job_page(headers: &HeaderMap, job: &crate::mac_jobs::Job) -> Response {
         &format!("{}/{}", crate::mac_jobs_page::PAGE, job.id),
         body,
     )
+}
+
+fn mac_jobs_page(
+    headers: &HeaderMap,
+    macs: &[(String, crate::mac_jobs::Reported, bool)],
+    jobs: &[crate::mac_jobs::Job],
+) -> Response {
+    let body = crate::mac_jobs_page::list_body(macs, jobs, NOW);
+    settings_page(headers, "Mac jobs", crate::mac_jobs_page::PAGE, body)
+}
+
+fn mac_jobs_empty(headers: &HeaderMap) -> Response {
+    mac_jobs_page(headers, &[], &[])
+}
+
+fn mac_jobs_list(headers: &HeaderMap) -> Response {
+    let reported: crate::mac_jobs::Reported = serde_json::from_value(json!({
+        "reported_unix": NOW - 30,
+        "capabilities": {
+            "macos": "26.4 (25E246)",
+            "xcode": "26.6 (17F113)",
+            "signing_identities": ["Apple Distribution: Sample Company (SAMPLE1234)"],
+            "simulators": [{"name": "iPhone 17", "runtime": "iOS 26.5", "udid": "sample-udid", "booted": true}],
+            "asc_key": true,
+            "free_disk_gb": 212,
+            "busy": true
+        }
+    }))
+    .unwrap();
+    let jobs = [
+        mac_job("running", json!({})),
+        mac_job(
+            "done",
+            json!({"id": "job-sample-2", "summary": "All 48 UI tests passed.", "finished_unix": NOW - 7_200}),
+        ),
+    ];
+    mac_jobs_page(headers, &[(COMPUTER.to_owned(), reported, true)], &jobs)
+}
+
+fn claude_key(
+    headers: &HeaderMap,
+    saved: Option<(crate::cloud::custody::Material, &str)>,
+    subscribe: bool,
+) -> Response {
+    let body = crate::settings::claude_content(saved, subscribe.then_some(TICKET), TICKET, TICKET);
+    settings_page(headers, "Claude credential", crate::settings::CLAUDE, body)
+}
+
+fn claude_key_none(headers: &HeaderMap) -> Response {
+    claude_key(headers, None, false)
+}
+
+fn claude_key_saved(headers: &HeaderMap) -> Response {
+    claude_key(
+        headers,
+        Some((
+            crate::cloud::custody::Material::AnthropicApiKey,
+            "SHA-256 5a5a5a5a5a5a…",
+        )),
+        false,
+    )
+}
+
+fn claude_key_subscription(headers: &HeaderMap) -> Response {
+    claude_key(headers, None, true)
 }
 
 fn mac_job_queued(headers: &HeaderMap) -> Response {
@@ -1402,11 +1499,8 @@ fn purchase_failed(headers: &HeaderMap) -> Response {
 
 // Tasks.
 
-fn task(
-    headers: &HeaderMap,
-    status: coder::task::Status,
-    execution: coder::task::Execution,
-) -> Response {
+/// A sample task, read back from a throwaway store.
+fn task_view() -> coder::task::view::View {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let root = std::env::temp_dir().join(format!("oa-screens-task-{}-{n}", std::process::id()));
@@ -1427,10 +1521,30 @@ fn task(
         .unwrap()
         .apply(command.to_string().as_bytes())
         .unwrap();
-    let mut view = coder::task::view::read(&store, "sample-task-1", None, 50).unwrap();
+    let view = coder::task::view::read(&store, "sample-task-1", None, 50).unwrap();
+    let _ = std::fs::remove_dir_all(&root);
+    view
+}
+
+fn task_list_empty(headers: &HeaderMap) -> Response {
+    crate::tasks::list_page(headers, &[])
+}
+
+fn task_list(headers: &HeaderMap) -> Response {
+    let mut view = task_view();
+    view.task.status = coder::task::Status::Running;
+    view.task.execution = coder::task::Execution::Running;
+    crate::tasks::list_page(headers, &[view.task])
+}
+
+fn task(
+    headers: &HeaderMap,
+    status: coder::task::Status,
+    execution: coder::task::Execution,
+) -> Response {
+    let mut view = task_view();
     view.task.status = status;
     view.task.execution = execution;
-    let _ = std::fs::remove_dir_all(&root);
     crate::tasks::task_page(headers, &view)
 }
 
@@ -1634,4 +1748,71 @@ mod tests {
             assert!(text.contains(needle), "{needle}: {text}");
         }
     }
+}
+
+// The vault. Its page holds every step hidden until its script shows one;
+// a sample shows the step by hand, with no script.
+
+fn vault(headers: &HeaderMap, project: Option<(&str, &str)>, step: Option<&str>) -> Response {
+    let body =
+        crate::vault::page::content(CSRF, project, Some(("sample", "sample")), NAME).into_string();
+    let body = match step {
+        Some(step) => body
+            .replace(&format!("id=\"{step}\" hidden"), &format!("id=\"{step}\""))
+            .replacen(
+                &format!(
+                    "id=\"{step}\" class=\"oa-vault-step\" aria-labelledby=\"{step}-title\" hidden"
+                ),
+                &format!("id=\"{step}\" class=\"oa-vault-step\" aria-labelledby=\"{step}-title\""),
+                1,
+            )
+            .replacen(
+                &format!("id=\"{step}\" aria-label=\"Your vault\" hidden"),
+                &format!("id=\"{step}\" aria-label=\"Your vault\""),
+                1,
+            )
+            .replacen("Opening your vault…", "", 1),
+        None => body,
+    };
+    let (title, path) = match project {
+        Some((id, name)) => (format!("Vault · {name}"), crate::vault::project_href(id)),
+        None => ("Vault (only you)".to_owned(), crate::vault::PAGE.to_owned()),
+    };
+    crate::cloud::protect(
+        crate::ui_page::UiPage::new(title)
+            .path(path)
+            .section(crate::settings::PAGE)
+            .account(signed_in())
+            .scriptless()
+            .head(html! { link rel="stylesheet" href=(crate::vault::STYLE); })
+            .content(openagents_ui::content::PageColumn::new(maud::PreEscaped(
+                body,
+            )))
+            .respond(headers),
+    )
+}
+
+fn vault_opening(headers: &HeaderMap) -> Response {
+    vault(headers, None, None)
+}
+
+fn vault_set_up(headers: &HeaderMap) -> Response {
+    vault(headers, None, Some("vault-new"))
+}
+
+fn vault_locked(headers: &HeaderMap) -> Response {
+    vault(headers, None, Some("vault-locked"))
+}
+
+fn vault_open(headers: &HeaderMap) -> Response {
+    vault(headers, None, Some("vault-open"))
+}
+
+fn vault_project(headers: &HeaderMap) -> Response {
+    let project = project();
+    vault(
+        headers,
+        Some((&project.id, &project.name)),
+        Some("vault-open"),
+    )
 }

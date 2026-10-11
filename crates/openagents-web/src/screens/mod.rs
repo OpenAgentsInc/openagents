@@ -23,6 +23,7 @@ mod account;
 mod auth;
 mod chat;
 mod site;
+mod traces;
 
 use axum::Router;
 use axum::body::{Body, to_bytes};
@@ -144,7 +145,10 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
     ("/grid", "a canvas world"),
     ("/games/*", "a game"),
     ("/att*", "a canvas app"),
-    ("/studios/blue-rush/static/*", "files"),
+    (
+        "/studios/blue-rush*",
+        "the Blue Rush studio site, in its own design",
+    ),
 ];
 
 pub(crate) const fn state(id: &'static str, label: &'static str, render: Render) -> State {
@@ -157,6 +161,7 @@ pub(crate) fn screens() -> Vec<Screen> {
     all.extend(auth::screens());
     all.extend(chat::screens());
     all.extend(account::screens());
+    all.extend(traces::screens());
     all.extend(site::screens());
     all
 }

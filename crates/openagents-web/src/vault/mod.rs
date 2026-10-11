@@ -22,7 +22,7 @@
 //! `vault/index/{epoch}` (the sealed index) and `vault/objects/{id}`.
 
 mod api;
-mod page;
+pub(crate) mod page;
 
 use axum::Router;
 use axum::extract::DefaultBodyLimit;
@@ -50,7 +50,7 @@ const INDEX: &str = "/vault/api/index";
 const DELETE: &str = "/vault/api/delete";
 const ANSWER: &str = "/vault/api/answer";
 const ASSET: &str = "/vault/assets/{file}";
-const PROJECT_PAGE: &str = "/projects/{id}/vault";
+pub(crate) const PROJECT_PAGE: &str = "/projects/{id}/vault";
 
 /// The largest stored object: a 10 MB file and its tags and header.
 pub(crate) const MAX_OBJECT_BYTES: usize = 11 * 1024 * 1024;

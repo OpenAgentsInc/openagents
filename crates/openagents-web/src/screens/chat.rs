@@ -137,8 +137,10 @@ pub(super) fn screens() -> Vec<Screen> {
             id: "work-run",
             title: "Work run",
             group: Group::Page,
-            routes: &["/work/{id}"],
+            routes: &["/work", "/work/{id}"],
             states: vec![
+                state("list-empty", "List: no runs, no key saved", runs_empty),
+                state("list", "List: runs", runs_list),
                 state("queued", "Queued", run_queued),
                 state("running", "Running", run_running),
                 state("finished", "Finished", run_finished),
@@ -909,6 +911,53 @@ fn run_page(
     outcome: Value,
     why: Option<&str>,
 ) -> Response {
+    let run = work_run(state, lines, outcome, why);
+    let body = crate::work_runs::run_body(&run, now(), CSRF);
+    crate::work_runs::framed(
+        headers,
+        signed_in(),
+        "Work run",
+        "/work/run-sample-1",
+        false,
+        body,
+    )
+}
+
+fn runs_page(headers: &HeaderMap, runs: &[crate::work_runs::WorkRun], saved: bool) -> Response {
+    let body = crate::work_runs::list_body(runs, saved, "sample-org/sample-app", "", CSRF, now());
+    crate::work_runs::framed(
+        headers,
+        signed_in(),
+        "Work on issues",
+        crate::work_runs::PAGE,
+        false,
+        body,
+    )
+}
+
+fn runs_empty(headers: &HeaderMap) -> Response {
+    runs_page(headers, &[], false)
+}
+
+fn runs_list(headers: &HeaderMap) -> Response {
+    let runs = [
+        work_run("running", LINES, Value::Null, None),
+        work_run(
+            "failed",
+            LINES,
+            Value::Null,
+            Some("The tests failed twice."),
+        ),
+    ];
+    runs_page(headers, &runs, true)
+}
+
+fn work_run(
+    state: &str,
+    lines: &[(f64, &str)],
+    outcome: Value,
+    why: Option<&str>,
+) -> crate::work_runs::WorkRun {
     let created = now() - 900;
     let finished = state != "waiting" && state != "running";
     let value = json!({
@@ -932,16 +981,7 @@ fn run_page(
         "cancel": state == "cancelled",
         "finished_unix": if finished { json!(now() - 30) } else { Value::Null },
     });
-    let run: crate::work_runs::WorkRun = serde_json::from_value(value).expect("a sample run");
-    let body = crate::work_runs::run_body(&run, now(), CSRF);
-    crate::work_runs::framed(
-        headers,
-        signed_in(),
-        "Work run",
-        "/work/run-sample-1",
-        false,
-        body,
-    )
+    serde_json::from_value(value).expect("a sample run")
 }
 
 const LINES: &[(f64, &str)] = &[

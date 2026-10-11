@@ -781,7 +781,7 @@ const TOKEN_REFUSED: &str = "Subscription tokens can't be saved here. Sign in to
 /// itself, and your own key with the Max and Team monthly API credits:
 /// what is saved (never the key itself), a remove button, and the form
 /// that adds or replaces it.
-fn claude_content(
+pub(crate) fn claude_content(
     saved: Option<(Material, &str)>,
     subscribe: Option<(&str, &str)>,
     add: (&str, &str),

@@ -1308,7 +1308,7 @@ fn steps_label(count: usize) -> String {
 }
 
 /// The list page's content.
-fn list_content(traces: &[Summary]) -> Markup {
+pub(crate) fn list_content(traces: &[Summary]) -> Markup {
     html! {
         p { (action_link("Settings", crate::settings::PAGE)) }
         (MarkdownRoot::new(html! {
@@ -1636,7 +1636,7 @@ fn tree_node(nodes: &[TreeNode<'_>], index: usize, span: Option<(u64, u64)>) -> 
 
 /// A trace's page for its owner: what it is, Share and Delete, its agents,
 /// the steps.
-fn trace_content(
+pub(crate) fn trace_content(
     trace: &Summary,
     document: &Value,
     agents: &[Agent],
@@ -1692,7 +1692,7 @@ fn trace_content(
 }
 
 /// A shared trace's public page.
-fn public_content(trace: &Summary, document: &Value, agents: &[Agent]) -> Markup {
+pub(crate) fn public_content(trace: &Summary, document: &Value, agents: &[Agent]) -> Markup {
     let base = format!("{PUBLIC}/{}", trace.id);
     html! {
         (MarkdownRoot::new(html! {
@@ -1708,7 +1708,7 @@ fn public_content(trace: &Summary, document: &Value, agents: &[Agent]) -> Markup
 
 /// An agent's page: where it sits in the tree, then its steps. `base` is
 /// its trace's page, signed in or public.
-fn agent_content(
+pub(crate) fn agent_content(
     trace: &Summary,
     root_stats: &Stats,
     agents: &[Agent],
@@ -1853,7 +1853,12 @@ async fn agent_page(
     page(&headers, service, &viewer, &agent.title, &back, body)
 }
 
-fn public_response(headers: &HeaderMap, title: &str, path: &str, body: Markup) -> Response {
+pub(crate) fn public_response(
+    headers: &HeaderMap,
+    title: &str,
+    path: &str,
+    body: Markup,
+) -> Response {
     let mut response = UiPage::new(title.to_owned())
         .path(path)
         .scriptless()
