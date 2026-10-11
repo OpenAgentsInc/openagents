@@ -697,7 +697,11 @@ def batch(args) -> None:
     # Issues run one at a time and both workers share the issue's base
     # commit: the build host has one build checkout, so trials of one issue
     # only rebuild what their patches touch.
-    for issue in issues:
+    # AB_SHARD=i/n runs only every n-th issue of the plan's order (from i),
+    # so one plan can run on n identical machines. The seeded draws are
+    # made for every issue, so each shard's orders match the unsharded run.
+    shard_i, shard_n = (int(x) for x in os.environ.get("AB_SHARD", "0/1").split("/"))
+    for idx, issue in enumerate(issues):
         task = load_json(TASKS / str(issue) / "task.json")
         order = []
         # Balanced order: each rep rotates the arms, so every arm runs
@@ -708,6 +712,8 @@ def batch(args) -> None:
             k = (start + rep) % len(arms)
             rot = arms[k:] + arms[:k]
             order += [(arm, rep) for arm in rot]
+        if idx % shard_n != shard_i:
+            continue
         if plan:
             dump_json(tag_dir / f"order-{issue}.json", order)
             if budget_spent(tag_dir) >= plan["budget_usd"]:
