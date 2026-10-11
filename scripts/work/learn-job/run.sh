@@ -48,7 +48,11 @@ rm -rf "$wt"
 git -C "$repo" worktree prune
 git -C "$repo" worktree add -q --detach "$wt" origin/main || exit 1
 eval "$("$wt/scripts/cloud/dev-env-session.sh")"
-python3 -c 'import numpy' 2> /dev/null || sudo -n apt-get install -y -q python3-numpy > /dev/null
+# embeddings from Vertex only: never the session's OpenRouter fallback
+unset OPENROUTER_API_KEY
+export FILEFIND_EMBEDDINGS=vertex
+# a fresh image has no package lists: install fails without the update
+python3 -c 'import numpy' 2> /dev/null || { sudo -n apt-get update -q > /dev/null; sudo -n apt-get install -y -q python3-numpy > /dev/null; }
 
 if ! ls -d "$cache"/openagents-* > /dev/null 2>&1; then
   log "first run: the finder's index from $B/cache/index.tar"

@@ -19,7 +19,7 @@ work=$HOME/.openagents/work
 mkdir -p "$work/bin" "$work/target"
 export PATH=$HOME/.cargo/bin:$PATH
 
-python3 -c 'import numpy' 2>/dev/null || sudo -n apt-get install -y -q python3-numpy > /dev/null
+python3 -c 'import numpy' 2>/dev/null || { sudo -n apt-get update -q > /dev/null; sudo -n apt-get install -y -q python3-numpy > /dev/null; }
 eval "$("$here/scripts/cloud/dev-env-session.sh")"
 
 target=${CARGO_TARGET_DIR:-$(ls -d "$HOME"/.openagents/targets/*slot-0 2>/dev/null | head -1)}

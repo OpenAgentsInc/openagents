@@ -639,6 +639,8 @@ def cmd_compare(a):
         print(f"{name}: baseline {m['baseline']:.4f} candidate {m['candidate']:.4f} "
               f"diff {m['diff']:+.4f} (SE {m['se']:.4f})")
     print(("PASS" if rec["pass"] else "FAIL: " + "; ".join(rec["why"])) + f" -> {out}")
+    if not rec["pass"]:  # retrain.sh reads the exit: a failed gate must not print the promote hint
+        sys.exit(1)
 
 
 def evaluate(ev, feats, model, a, judged=None):

@@ -318,5 +318,44 @@ class TrainingWeightTests(unittest.TestCase):
         self.assertEqual(got, {"a": (1.0, 1.0), "b": (1.0, 0.5), "c": (0.0, 1.0)})
 
 
+class JobScriptTests(unittest.TestCase):
+    def test_numpy_install_refreshes_the_package_lists_first(self):
+        # oa-learn-1's first boot failed: a fresh oa-coder-host image has no apt
+        # lists, so `apt-get install python3-numpy` cannot find the package.
+        for p in (HERE / "learn-job" / "run.sh", HERE / "host-setup.sh"):
+            line = next(ln for ln in p.read_text().splitlines() if "python3-numpy" in ln)
+            self.assertLess(line.index("apt-get update"), line.index("apt-get install"), p)
+
+
+class CompareExitTests(unittest.TestCase):
+    def test_a_failing_gate_exits_nonzero(self):
+        # retrain.sh printed "to activate a passing candidate: ... promote" after a
+        # FAIL, because compare exited 0 either way.
+        import pickle
+        import types
+        spec = importlib.util.spec_from_file_location("ffb2", HERE.parent / "bench" / "file-finding-bench.py")
+        ffb = importlib.util.module_from_spec(spec)
+        sys.path.insert(0, str(HERE.parent / "filefind"))
+        spec.loader.exec_module(ffb)
+        with tempfile.TemporaryDirectory() as d:
+            for name in ("base.json", "cand.json"):
+                Path(d, name).write_text(json.dumps({"stage2": {}}))
+            Path(d, "features2.pkl").write_bytes(pickle.dumps({}))
+            a = types.SimpleNamespace(work=d, eval=1, baseline=f"{d}/base.json", candidate=f"{d}/cand.json")
+            ffb.load = lambda a: [{"issue": 7}]
+            ffb.split = lambda cases, n: (cases, [])
+            ffb.gate_rows = lambda *x: []
+            for ok in (True, False):
+                ffb.gate = types.SimpleNamespace(overlap=lambda m, i: [], receipt=lambda *x, ok=ok: {
+                    "pass": ok, "why": [] if ok else ["recall@50 gain under 2 SE"], "metrics": {},
+                    "candidate": {"digest": "sha256:" + "ab" * 32}})
+                if ok:
+                    ffb.cmd_compare(a)
+                else:
+                    with self.assertRaises(SystemExit) as e:
+                        ffb.cmd_compare(a)
+                    self.assertEqual(e.exception.code, 1)
+
+
 if __name__ == "__main__":
     unittest.main()
