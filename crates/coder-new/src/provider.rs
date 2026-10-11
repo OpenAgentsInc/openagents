@@ -340,6 +340,8 @@ impl Provider {
         let mut seen = BTreeSet::new();
         let mut have_usage = false;
         let mut failures = 0u32;
+        // Identical consecutive calls across this turn (#11285).
+        let mut stuck = crate::stuck::Tracker::default();
         let provider = GenerationProvider {
             client: self.chat.clone(),
             model: model.into(),
@@ -540,6 +542,7 @@ impl Provider {
             redact_value(&mut assistant, self.key.expose());
             history.push(assistant);
             let mut looks = Vec::new();
+            let mut remind = false;
             for call in streamed.calls {
                 if cancel.load(Ordering::Relaxed) {
                     return Err("The reply was canceled before its next plugin call.".into());
@@ -668,6 +671,7 @@ impl Provider {
                 };
                 execution.redact(&mut output);
                 redact_value(&mut output, self.key.expose());
+                let safe_input_key = safe_input.clone();
                 emit(RuntimeEvent::Tool {
                     name: safe_name.clone(),
                     input: safe_input,
@@ -693,6 +697,20 @@ impl Provider {
                 execution.redact(&mut observation);
                 redact_value(&mut observation, self.key.expose());
                 history.push(observation);
+                match stuck.record(&safe_name, &safe_input_key, &output) {
+                    crate::stuck::Verdict::Continue => {}
+                    crate::stuck::Verdict::Remind => remind = true,
+                    crate::stuck::Verdict::Stop => {
+                        append_text(&mut joined, crate::stuck::STOP_NOTICE, callback);
+                        aggregate.text = joined;
+                        aggregate.milliseconds =
+                            u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+                        if self.gateway {
+                            aggregate.usage.cost = None;
+                        }
+                        return Ok(aggregate);
+                    }
+                }
                 if safe_name == "computer"
                     && let Some(look) = crate::computer_tool::look_message(&output)
                 {
@@ -707,6 +725,9 @@ impl Provider {
             // A screenshot the model asked to see follows every tool
             // message of the batch, as a user message with the image.
             history.append(&mut looks);
+            if remind {
+                history.push(json!({"role":"user","content":crate::stuck::REMINDER}));
+            }
             // Claude query.ts drains user prompts only after the full tool batch.
             if let Some(inbox) = &execution.prompt_inbox {
                 for slot in inbox.lock().unwrap().drain(..) {
@@ -2091,7 +2112,7 @@ mod tests {
     fn tool_turn_continues_past_eight_rounds_and_thirty_two_calls() {
         let mut bodies = vec![];
         for round in 0..10 {
-            let calls: Vec<_> = (0..4).map(|index| json!({"index":index,"id":format!("call-{round}-{index}"),"function":{"name":"jev","arguments":"{\"state\":\"fixture\",\"questions\":{}}"}})).collect();
+            let calls: Vec<_> = (0..4).map(|index| json!({"index":index,"id":format!("call-{round}-{index}"),"function":{"name":"jev","arguments":json!({"state":format!("fixture-{round}-{index}"),"questions":{}}).to_string()}})).collect();
             bodies.push(format!("data: {}\n\ndata: [DONE]\n\n", json!({"choices":[{"delta":{"tool_calls":calls},"finish_reason":"tool_calls"}],"usage":{"total_tokens":1}})));
         }
         bodies.push(final_reply("All forty calls returned."));
@@ -2128,6 +2149,67 @@ mod tests {
                 .count(),
             40
         );
+    }
+
+    fn stuck_run(
+        rounds: usize,
+        final_text: Option<&str>,
+    ) -> (Result<Streamed, String>, Vec<Value>) {
+        let mut bodies: Vec<_> = (0..rounds)
+            .map(|round| raw_tool_reply(&format!("same-{round}"), "[]"))
+            .collect();
+        bodies.extend(final_text.map(final_reply));
+        let (base, server) = sequence(bodies);
+        let provider = Provider::with_base(ApiKey::new(FIXTURE_TOKEN), &base).unwrap();
+        let mut shown = String::new();
+        let result = runtime().block_on(provider.chat_with_plugins(
+            "fixture/model",
+            &crate::models::GenerationOptions::default(),
+            vec![Message::user("Fix it.")],
+            &jev_settings(jev_plugin_endpoint(), None),
+            &mut |delta| shown.push_str(delta),
+            &mut |_| {},
+            &mut |_| {},
+            &Arc::new(AtomicBool::new(false)),
+        ));
+        if let Ok(result) = &result {
+            assert_eq!(result.text, shown);
+        }
+        (result, server.join().unwrap())
+    }
+
+    #[test]
+    fn five_identical_calls_bring_one_reminder_to_change_approach() {
+        let (result, requests) = stuck_run(5, Some("Trying something else."));
+        assert!(result.unwrap().text.ends_with("Trying something else."));
+        let reminded = |request: &Value| {
+            request["messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|message| message["content"] == crate::stuck::REMINDER)
+                .count()
+        };
+        assert_eq!(requests.len(), 6);
+        assert_eq!(reminded(&requests[4]), 0);
+        assert_eq!(reminded(&requests[5]), 1);
+        assert_eq!(
+            requests[5]["messages"].as_array().unwrap().last().unwrap()["role"],
+            "user"
+        );
+    }
+
+    #[test]
+    fn eight_identical_failing_calls_end_the_turn_with_a_plain_notice() {
+        let (result, requests) = stuck_run(8, None);
+        let result = result.unwrap();
+        assert!(
+            result.text.ends_with(crate::stuck::STOP_NOTICE),
+            "{}",
+            result.text
+        );
+        // The turn ended without asking the model a ninth time.
+        assert_eq!(requests.len(), 8);
     }
 
     #[test]

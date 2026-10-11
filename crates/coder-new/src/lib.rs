@@ -62,6 +62,7 @@ pub mod sessions;
 mod shells;
 pub mod slash;
 pub mod snapshot;
+mod stuck;
 mod supervise;
 pub mod theme;
 pub mod tools;

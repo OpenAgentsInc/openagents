@@ -171,6 +171,28 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
     if let Some(notice) = &chat.notice {
         result["extra"]["notice"] = json!(notice);
     }
+    // Identical consecutive tool calls, and whether they reached stuck
+    // detection's reminder or stop (#11285).
+    let streaks = crate::stuck::streaks(chat.entries.iter().enumerate().filter_map(
+        |(index, entry)| match entry {
+            Entry::Tool {
+                name,
+                input,
+                output,
+                running: false,
+            } => Some((index, name.as_str(), input, output)),
+            _ => None,
+        },
+    ));
+    if !streaks.is_empty() {
+        result["final_metrics"]["extra"]["longest_identical_streak"] = json!(
+            streaks
+                .iter()
+                .filter_map(|streak| streak["length"].as_u64())
+                .max()
+        );
+        result["extra"]["identical_call_streaks"] = json!(streaks);
+    }
     result
 }
 
@@ -715,6 +737,33 @@ mod tests {
                 0o600
             );
         }
+    }
+    #[test]
+    fn identical_call_streaks_are_recorded_with_their_thresholds() {
+        let mut chat = Chat::default();
+        chat.entries.push(Entry::User("Fix it".into()));
+        for _ in 0..8 {
+            chat.entries.push(Entry::Tool {
+                name: "Run".into(),
+                input: json!({"command":"cargo test"}),
+                output: json!({"exit":101,"output":"failed"}),
+                running: false,
+            });
+        }
+        let document = document(&chat, "test", "auto", Path::new("/workspace"));
+        assert!(atif::validate(&document).is_empty());
+        let streak = &document["extra"]["identical_call_streaks"][0];
+        assert_eq!(streak["tool"], "Run");
+        assert_eq!(streak["first_step"], 2);
+        assert_eq!(streak["length"], 8);
+        assert_eq!(streak["reminded"], true);
+        assert_eq!(streak["stopped"], true);
+        assert_eq!(
+            document["final_metrics"]["extra"]["longest_identical_streak"],
+            8
+        );
+        let quiet = super::document(&Chat::default(), "test", "auto", Path::new("/w"));
+        assert!(quiet["extra"].get("identical_call_streaks").is_none());
     }
     #[test]
     fn foreign_or_malformed_trajectory_is_rejected() {
