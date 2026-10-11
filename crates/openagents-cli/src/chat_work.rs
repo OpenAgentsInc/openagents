@@ -69,6 +69,20 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
     let target = super::placement::Target::parse(args.option("on")).map_err(Failure::Usage)?;
     let on_boat = target == super::placement::Target::Boat;
     let engine_fallback = args.switch("engine-fallback");
+    // The briefed agent is the default engine (#11258); `--engine bare`
+    // keeps the Coder issue flow.
+    let briefed = match args.option("engine").unwrap_or("briefed") {
+        "briefed" => true,
+        "bare" => false,
+        other => {
+            return Err(Failure::Usage(format!(
+                "--engine is `briefed` or `bare`, not `{other}`"
+            )));
+        }
+    };
+    if briefed {
+        return briefed_work(output, args, &spec, target).await;
+    }
     if target != super::placement::Target::Here
         && !engine_fallback
         && !(on_boat
@@ -301,6 +315,55 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
     } else {
         EXIT_FAILURE
     })
+}
+
+/// `chat work` with the briefed agent ([`super::work_briefed`]).
+async fn briefed_work(
+    output: &Output,
+    args: &Args,
+    spec: &str,
+    target: super::placement::Target,
+) -> Result<u8, Failure> {
+    if args.option("engine-logins").is_some() || args.option("template").is_some() {
+        return Err(Failure::Usage(
+            "--engine-logins and --template go with --engine bare --on boat".into(),
+        ));
+    }
+    let here =
+        std::env::current_dir().map_err(|_| failed("This command has no working directory."))?;
+    let checkout = local::checkout(&here).map_err(failed)?;
+    let repository = issue_run::Gh.repository(&checkout.top).map_err(failed)?;
+    let policy = issue_run::Policy::load(&checkout.top).map_err(failed)?;
+    let land = super::work_briefed::land_word(args.option("land"), policy.land == Land::Main)
+        .map_err(Failure::Usage)?;
+    let parallel: u64 = args.number("parallel", 1).map_err(Failure::Usage)?;
+    if !(1..=MAX_PARALLEL).contains(&parallel) {
+        return Err(Failure::Usage(format!("--parallel is 1 to {MAX_PARALLEL}")));
+    }
+    let project = policy.project;
+    let numbers = tokio::task::spawn_blocking({
+        let (repository, spec) = (repository.clone(), spec.to_owned());
+        move || issue_run::select_in(&issue_run::Gh, &repository, &spec, &project)
+    })
+    .await
+    .map_err(|_| failed("the issues could not be listed"))?
+    .map_err(failed)?;
+    if numbers.is_empty() {
+        return Err(failed(format!(
+            "No open issue in {repository} matches `{spec}`."
+        )));
+    }
+    let output = *output;
+    let top = checkout.top.clone();
+    tokio::task::spawn_blocking(move || {
+        if target == super::placement::Target::Here {
+            super::work_briefed::work_here(&output, &top, &repository, &numbers, parallel, land)
+        } else {
+            super::work_briefed::work_cloud(&output, &repository, &numbers, land)
+        }
+    })
+    .await
+    .map_err(|_| failed("the work stopped"))?
 }
 
 /// Names the issue's thread and binds its task, so the apps show the run.

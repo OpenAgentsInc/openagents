@@ -511,19 +511,33 @@ async fn start_claude(
             "Claude Code can't run there now. Pick where it runs again.",
         );
     };
-    let (environment, task) = match work::begin(
-        app,
-        headers,
-        &env,
-        picked.branch.as_deref(),
-        &[],
-        &text,
-        attached,
-    )
-    .await
-    {
-        Ok(found) => found,
-        Err(message) => return refusal(StatusCode::CONFLICT, &message),
+    // Issues the message names go to the briefed agent (#11258).
+    let named = work::issues_named(&text, Some(&env.repository));
+    let working = if named.is_empty() {
+        None
+    } else {
+        match work::begin_work(app, headers, owner, &named, "chat").await {
+            Ok(tasks) => Some(tasks),
+            Err(message) => return refusal(StatusCode::CONFLICT, &message),
+        }
+    };
+    let (environment, task) = if working.is_some() {
+        (None, None)
+    } else {
+        match work::begin(
+            app,
+            headers,
+            &env,
+            picked.branch.as_deref(),
+            &[],
+            &text,
+            attached,
+        )
+        .await
+        {
+            Ok((environment, task)) => (Some(environment), Some(task)),
+            Err(message) => return refusal(StatusCode::CONFLICT, &message),
+        }
     };
     let mut record = Conversation {
         id: id.to_owned(),
@@ -556,15 +570,24 @@ async fn start_claude(
         opened_unix: None,
         branch: picked.branch.clone(),
     };
-    work::record(&mut record, environment, task.clone());
+    if let (Some(environment), Some(task)) = (environment, task.clone()) {
+        work::record(&mut record, environment, task);
+    }
+    if let Some(tasks) = working {
+        work::record_work(&mut record, tasks);
+    }
     match app.config.chat_store.create(&record).await {
         Ok(_) => {}
         Err(Error::Conflict) => {
-            work::abandon(app, &task);
+            if let Some(task) = &task {
+                work::abandon(app, task);
+            }
             return crate::chat_html::protect(Redirect::to(&format!("/chat/{id}")).into_response());
         }
         Err(e) => {
-            work::abandon(app, &task);
+            if let Some(task) = &task {
+                work::abandon(app, task);
+            }
             return unavailable(e);
         }
     }
@@ -1395,19 +1418,33 @@ async fn follow_claude(
             "Claude Code can't run there now. Pick where it runs again.",
         );
     };
-    let (environment, task) = match work::begin(
-        app,
-        headers,
-        &env,
-        picked.branch.as_deref(),
-        &chat.messages,
-        &text,
-        attached,
-    )
-    .await
-    {
-        Ok(found) => found,
-        Err(message) => return refusal(StatusCode::CONFLICT, &message),
+    // Issues the message names go to the briefed agent (#11258).
+    let named = work::issues_named(&text, Some(&env.repository));
+    let working = if named.is_empty() {
+        None
+    } else {
+        match work::begin_work(app, headers, &chat.owner, &named, "chat").await {
+            Ok(tasks) => Some(tasks),
+            Err(message) => return refusal(StatusCode::CONFLICT, &message),
+        }
+    };
+    let (environment, task) = if working.is_some() {
+        (None, None)
+    } else {
+        match work::begin(
+            app,
+            headers,
+            &env,
+            picked.branch.as_deref(),
+            &chat.messages,
+            &text,
+            attached,
+        )
+        .await
+        {
+            Ok((environment, task)) => (Some(environment), Some(task)),
+            Err(message) => return refusal(StatusCode::CONFLICT, &message),
+        }
     };
     let mut next = chat.clone();
     next.revision += 1;
@@ -1429,11 +1466,18 @@ async fn follow_claude(
         files,
         reply: None,
     });
-    work::record(&mut next, environment, task.clone());
+    if let (Some(environment), Some(task)) = (environment, task.clone()) {
+        work::record(&mut next, environment, task);
+    }
+    if let Some(tasks) = working {
+        work::record_work(&mut next, tasks);
+    }
     let saved = match app.config.chat_store.compare_and_swap(&loaded, &next).await {
         Ok(saved) => saved,
         Err(e) => {
-            work::abandon(app, &task);
+            if let Some(task) = &task {
+                work::abandon(app, task);
+            }
             return unavailable(e);
         }
     };
@@ -2033,6 +2077,8 @@ fn messages(chat: &Conversation, before: Option<usize>, links: bool) -> Markup {
             (crate::chat_files::shown(&chat.id, crate::chat_files::of_message(chat, message)))
             // A reply that proposed a change on GitHub: its confirm card (#11167).
             (crate::github_tools::thread_entry(&chat.id, index + start, crate::suggestions::message_reply(chat, message)))
+            // A reply the router read as work on code, about an issue: "Work on this issue" (#11258).
+            (crate::work_runs::thread_entry(&chat.id, index + start, crate::suggestions::message_reply(chat, message)))
             (work::rows(chat, index + start + 1, links))
         }
         // Replies sent here that Coder hasn't taken yet (#11048).

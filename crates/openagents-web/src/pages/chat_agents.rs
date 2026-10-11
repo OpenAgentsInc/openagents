@@ -404,6 +404,7 @@ pub(super) fn run_rows(
             engine: match task.kind {
                 TaskKind::Claude => ENGINE.to_owned(),
                 TaskKind::Continue => "Cloud computer".to_owned(),
+                TaskKind::Work => "Briefed agent".to_owned(),
             },
             standing: standing(task.state, live.paused_until),
             elapsed_seconds,

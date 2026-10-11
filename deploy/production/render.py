@@ -103,6 +103,8 @@ def main():
         secret("boat-api-key", "BOAT_API_KEY"),
         # Gemini on Vertex for the chat's images and PDFs (#11221).
         secret("openagents-vertex-sa-key", "VERTEX_SA_JSON"),
+        # Work hosts that take "work on this issue" runs (#11258).
+        secret("openagents-work-host-token", "OPENAGENTS_WORK_HOST_TOKEN"),
     ])
     # The gateway's store read-only: the web reads only its house key.
     web["volumeMounts"] = [

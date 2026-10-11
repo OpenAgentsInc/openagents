@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Runs one check command for `openagents work` (scripts/work/work_issue.py)
+# in the current directory, the run's worktree, on this machine: the
+# briefed agent's `verify` and the driver's replayed checks call it.
+#
+# Builds take turns under one lock per target dir, so runs on one host
+# share a warm target without racing (`can't find crate`). sccache, when
+# the image wires it (oa-rustc-wrapper), shares compiled crates across
+# hosts. OA_WORK_CMD_TIMEOUT bounds the command (default 900 s); a timeout
+# exits 124, which `verify` reports as a checker timeout.
+set -u
+limit=${OA_WORK_CMD_TIMEOUT:-900}
+target=${CARGO_TARGET_DIR:-$HOME/.openagents/work/target}
+export CARGO_TARGET_DIR=$target CARGO_TERM_COLOR=never CARGO_INCREMENTAL=0
+export CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
+export PATH=$HOME/.cargo/bin:$PATH
+mkdir -p "$target"
+exec flock "$target.lock" timeout -k 10 "$limit" "$@"

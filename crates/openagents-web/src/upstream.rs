@@ -33,7 +33,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 
 /// The paths this site answers itself, exactly or as a prefix. `/app`, the
 /// local task browser, is never proxied; the host guard keeps it local.
-const OWNED_EXACT: [&str; 67] = [
+const OWNED_EXACT: [&str; 68] = [
     "/",
     crate::analytics::BEACON,
     crate::analytics::SCRIPT,
@@ -85,6 +85,7 @@ const OWNED_EXACT: [&str; 67] = [
     "/v1/traces",
     "/projects",
     "/environments",
+    "/work",
     "/.well-known/apple-app-site-association",
     "/.well-known/assetlinks.json",
     "/.well-known/agent-card.json",
@@ -116,7 +117,7 @@ const OWNED_EXACT: [&str; 67] = [
 /// `/coder/memory`), so a shipped app still calling them is served here
 /// and its `Bearer sess_...` never reaches the upstream. Current apps ask
 /// the `/v1` paths first (#11158).
-const OWNED_PREFIXES: [&str; 21] = [
+const OWNED_PREFIXES: [&str; 22] = [
     "/auth/",
     "/coder/",
     "/device/",
@@ -138,6 +139,7 @@ const OWNED_PREFIXES: [&str; 21] = [
     "/v1/traces/",
     "/projects/",
     "/environments/",
+    "/work/",
 ];
 
 /// The sections removed at the owner's direction (2026-09-29). They answer
@@ -158,6 +160,7 @@ pub fn owned(path: &str) -> bool {
         || crate::phone_api::owns(path)
         || crate::own_runs::owns(path)
         || crate::mac_jobs::owns(path)
+        || crate::work_runs::owns(path)
         || crate::account_schedules::owns(path)
         || crate::vault::owns(path)
         || crate::connections::owns(path)

@@ -440,6 +440,9 @@ pub(crate) enum TaskKind {
     /// A Coder chat continued on a Cloud computer while its own computer
     /// was offline (#11050): the run's answer joins the transcript.
     Continue,
+    /// An issue handed to the briefed agent (#11258,
+    /// `crate::work_runs`): the task's id is the work run's.
+    Work,
 }
 
 /// A task's last known state, as the run reports it.

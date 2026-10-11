@@ -299,7 +299,10 @@ for e in ({"name": "STACK_STATE", "value": "/stack"},
            "valueFrom": {"secretKeyRef": {"name": "boat-api-key", "key": "latest"}}},
           # Gemini on Vertex for the chat's images and PDFs (#11221).
           {"name": "VERTEX_SA_JSON",
-           "valueFrom": {"secretKeyRef": {"name": "openagents-vertex-sa-key", "key": "latest"}}}):
+           "valueFrom": {"secretKeyRef": {"name": "openagents-vertex-sa-key", "key": "latest"}}},
+          # Work hosts that take "work on this issue" runs (#11258).
+          {"name": "OPENAGENTS_WORK_HOST_TOKEN",
+           "valueFrom": {"secretKeyRef": {"name": "openagents-work-host-token", "key": "latest"}}}):
     if e["name"] not in env:
         envs.append(e)
         sys.stderr.write(f"  web env {e['name']} added\n")

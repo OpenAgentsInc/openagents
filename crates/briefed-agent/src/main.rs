@@ -14,8 +14,10 @@
 //!   config's.
 //! - **Misses**: a `Read` of a file the briefing did not list is allowed and
 //!   recorded as a miss, for the context finder (#11210).
-//! - **Login**: the owner's Claude Code login; the CLI does not inherit
-//!   `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`.
+//! - **Login**: the Claude Code login in the environment; the CLI does not
+//!   inherit `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, unless the
+//!   config sets `inherit_api_key` (the person's own API key is the run's
+//!   credential).
 //!
 //! Usage: `briefed-agent CONFIG.json`. The config names the worktree, the
 //! system prompt and first message files, the model, the effort, the time
@@ -202,7 +204,14 @@ async fn run() -> Result<(), String> {
         allowed.push("mcp__oa".to_owned());
         options = options.sdk_mcp_server(server);
     }
-    options.env_remove = REMOVED_ENV.iter().map(|&name| name.to_owned()).collect();
+    // `inherit_api_key`: the run's own credential is an API key (the
+    // person's own, `openagents work`), so the CLI keeps it.
+    let keep_key = config["inherit_api_key"].as_bool().unwrap_or(false);
+    options.env_remove = REMOVED_ENV
+        .iter()
+        .filter(|&&name| !(keep_key && name == "ANTHROPIC_API_KEY"))
+        .map(|&name| name.to_owned())
+        .collect();
 
     let ledger: Shared<Ledger> = Arc::default();
     let handler = {

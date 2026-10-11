@@ -192,6 +192,8 @@ struct Ready {
     /// The repository a form starts with: the chat's project's, or the
     /// person's only project's.
     repository: String,
+    /// The person may hand issues to the briefed agent (#11258).
+    work: bool,
 }
 
 /// The chat, when the signed-in person can use GitHub tools in it;
@@ -252,6 +254,7 @@ async fn ready(app: &App, headers: &HeaderMap, id: &str) -> Result<Ready, Respon
         owner: chat.owner.clone(),
         chat,
         repository,
+        work: crate::agent_work::scope(app, headers).await.is_some(),
     })
 }
 
@@ -396,7 +399,17 @@ async fn confirmed(
                 text.push_str(link);
             }
             note(&app, &owner, &id, text).await;
-            done_page(&headers, &ready, &done)
+            // An issue it opened or touched can go straight to the
+            // briefed agent (#11258).
+            let work = done
+                .link
+                .as_deref()
+                .and_then(crate::work_runs::issue_address)
+                .filter(|_| ready.work)
+                .map(|(repo, issue)| {
+                    crate::work_runs::work_button(&app, &owner, &repo, issue, "github")
+                });
+            done_page(&headers, &ready, &done, work)
         }
         Err(Failure::NeedsAccess { board }) => {
             unclaim(&sealed.id);
@@ -621,13 +634,13 @@ fn tools_page(
     problem: Option<&str>,
 ) -> Response {
     let id = &ready.chat.id;
-    let body = tools_markup(
-        &crate::pages::chat::csrf(app, &ready.owner),
-        id,
-        &ready.repository,
-        form,
-        problem,
-    );
+    let csrf = crate::pages::chat::csrf(app, &ready.owner);
+    let tools = tools_markup(&csrf, id, &ready.repository, form, problem);
+    let body = if ready.work {
+        maud::html! { (tools) (work_markup(&csrf, &ready.repository)) }
+    } else {
+        tools
+    };
     let mut response = page(
         headers,
         ready,
@@ -639,6 +652,26 @@ fn tools_page(
         *response.status_mut() = StatusCode::BAD_REQUEST;
     }
     response
+}
+
+/// "Work on an issue" (#11258): hand an issue to the briefed agent, which
+/// makes the change, runs the checks, and opens a pull request or lands it.
+pub(crate) fn work_markup(csrf: &str, repository: &str) -> Markup {
+    html! {
+        section.oa-github-tool #gh-work {
+            h2 { "Work on an issue" }
+            p { "The briefed agent makes the change, runs the checks, and opens a pull request or lands it, with your own Claude sign-in." }
+            form method="post" action=(crate::work_runs::PAGE) {
+                input type="hidden" name="csrf" value=(csrf);
+                input type="hidden" name="source" value="github";
+                (text_field("work", "repo", "Repository", repository, "owner/name", true))
+                (text_field("work", "issue", "Issue number or link", "", "11167", true))
+                div.oa-page-actions {
+                    (Button::new("Work on this issue").kind(ButtonType::Submit))
+                }
+            }
+        }
+    }
 }
 
 /// The confirm card: the repository, every change, the text to post, and
@@ -791,14 +824,20 @@ pub(crate) fn done_markup(chat: &str, done: &run::Done) -> Markup {
     }
 }
 
-fn done_page(headers: &HeaderMap, ready: &Ready, done: &run::Done) -> Response {
+fn done_page(
+    headers: &HeaderMap,
+    ready: &Ready,
+    done: &run::Done,
+    work: Option<Markup>,
+) -> Response {
     let id = &ready.chat.id;
+    let body = done_markup(id, done);
     page(
         headers,
         ready,
         &format!("/chat/{id}/github"),
         "Done",
-        done_markup(id, done),
+        html! { (body) @if let Some(work) = work { (work) } },
     )
 }
 
