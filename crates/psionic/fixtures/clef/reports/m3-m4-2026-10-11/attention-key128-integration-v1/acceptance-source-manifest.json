@@ -1,0 +1,12 @@
+{
+  "compare_attention.py": "d138c156de0e10e708022f4003bc76cab30ac0998009c8d7c6d125893f9fe951",
+  "acceptance_helpers.py": "88edbf80e81efb8619813cf2fbcac67fdbcba6563ef3b2873d1d07bb23214221",
+  "baseline-receipts.json": "bba8e878a42fa57bdaa0d2674ba09f428f4318b461b56ab672c962cb8708cf7f",
+  "flash-text-config.json": "c04e070204cdd63a008c3bc60b894bbda551def62a50b20aaa320ad3c8a805d6",
+  "27b-text-config.json": "879e54739f5bce49fd2945225cc412aaedaa6e0f97ab12067fedd7bb43930e49",
+  "check_images.py": "7bdc906bdd162ac0912bd72db3aafd5395c2b1eaf71f509c12524ce5ca735386",
+  "native_image_parity.py": "1d5b1d43fbb7d0ae709fc238d264e048dcbb3ba6b314c0b9127e696a5ce530d2",
+  "27b-image-config.json": "8d1f9449e53e4bebbfd0dd8b1966d7e2e47c79c4813a4fc27cb69afe015f01d0",
+  "gpu_checks.py": "6ce443ca866e97ef486388a7f6d44e4a79f4f6efae925e5fe4737490731dfc22",
+  "VERIFICATION_PLAN.md": "7a1bebf5152c6081dc7498d02819f4e95ab9f9e77c9312b8ed3f4d176c0cefc5"
+}

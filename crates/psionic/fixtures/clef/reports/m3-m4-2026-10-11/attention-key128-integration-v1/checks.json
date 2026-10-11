@@ -1,0 +1,53 @@
+[
+  {
+    "name": "server",
+    "command": [
+      "cargo",
+      "+1.97.1",
+      "build",
+      "--release",
+      "--manifest-path",
+      "crates/psionic/Cargo.toml",
+      "-p",
+      "psionic-serve",
+      "--bin",
+      "psionic-openai-server",
+      "--message-format=json-render-diagnostics",
+      "-j",
+      "2"
+    ],
+    "exit": 0,
+    "seconds": 1032.088933667
+  },
+  {
+    "name": "backend-build",
+    "command": [
+      "cargo",
+      "+1.97.1",
+      "test",
+      "--release",
+      "--manifest-path",
+      "crates/psionic/Cargo.toml",
+      "-p",
+      "psionic-backend-metal",
+      "--lib",
+      "--no-run",
+      "--message-format=json-render-diagnostics",
+      "-j",
+      "2"
+    ],
+    "exit": 0,
+    "seconds": 33.19428966600003
+  },
+  {
+    "name": "backend-tests",
+    "command": [
+      "<TARGET>/release/deps/psionic_backend_metal-a2dbd8deab19d6f5",
+      "clef",
+      "--test-threads=1"
+    ],
+    "exit": 0,
+    "seconds": 0.445902500000102,
+    "ignored_GPU_tests_run": false
+  }
+]

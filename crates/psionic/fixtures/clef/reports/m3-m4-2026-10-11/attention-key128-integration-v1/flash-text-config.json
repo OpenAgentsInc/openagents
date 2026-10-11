@@ -1,0 +1,41 @@
+{
+  "measurement_mode": "shared",
+  "max_start_load": 150,
+  "max_run_load": 180,
+  "rounds": 1,
+  "runs": 1,
+  "request_timeout": 300,
+  "deadline_seconds": 1800,
+  "expected_requests": 40,
+  "expected_questions": 104,
+  "requests": [
+    "<WORKTREE>/crates/psionic/fixtures/clef/e2e/requests.jsonl"
+  ],
+  "minimum_available_memory_gib": 12,
+  "model_path": "<FLASH_ARTIFACTS>/model.gguf",
+  "output_dir": "<SCRATCH>/attention-key128-integration/flash-text-check",
+  "max_rss_gib": 36,
+  "startup_timeout": 180,
+  "variants": [
+    {
+      "name": "baseline",
+      "binary": "<SCRATCH>/attention-key128-integration/psionic-openai-server",
+      "model": "clef-flash",
+      "chunk": 2048,
+      "env": {
+        "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+        "PSIONIC_CLEF_METAL_GEMM": "weight-shapes",
+        "PSIONIC_CLEF_METAL_HEAD": "fused-fields",
+        "PSIONIC_CLEF_METAL_DELTA": "sequential",
+        "PSIONIC_CLEF_METAL_FFN_WEIGHTS": "resident-f16"
+      }
+    }
+  ],
+  "model_key": "flash",
+  "baseline_receipts": "<SCRATCH>/attention-key128-integration/baseline-receipts.json",
+  "candidate_binaries": "<SCRATCH>/attention-key128-integration/binaries.json",
+  "long_requests": [
+    "<FLASH_ARTIFACTS>/requests/len4k.json",
+    "<FLASH_ARTIFACTS>/requests/len16k.json"
+  ]
+}

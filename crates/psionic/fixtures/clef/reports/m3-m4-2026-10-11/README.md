@@ -163,7 +163,16 @@ The candidate increases threadgroup scratch from 19,456 to 28,672 bytes, below
 the device's 32,768-byte limit. Its 4.32-second run peaks at 371 MB of process
 accounting and completes cleanup. Shared-machine load is very high throughout;
 all samples are retained. Full-model raw-logit, answer, and latency checks remain
-necessary before this result can support integration or either milestone.
+separate from this microbenchmark.
+
+The [full-model integration attempt](attention-key128-integration-v1/README.md)
+**fails** the unchanged `0.001` raw-logit gate. All 104 Flash top answers match,
+but 35 questions across 24 requests exceed the bound; maximum difference is
+`0.004385114`. The build, 24 backend CPU tests, and four focused attention GPU
+tests pass. Two long requests are captured, but the failure stops their fresh
+baseline comparison and all 27B/image checks. No latency benchmark follows.
+The exact failed patch and outputs are retained, and the three candidate
+product files are restored. This candidate is not integrated.
 
 ## Stage 6 fused field head
 
