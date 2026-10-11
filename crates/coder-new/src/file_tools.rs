@@ -1,10 +1,10 @@
 //! Built-in file tools: `Read`, `Edit`, `Write`, `Grep` and `Glob` (#11168).
 //!
 //! The model reads and changes files through these instead of shell
-//! commands. Every path stays inside the workspace: the checkout that holds
-//! the working directory (the nearest folder with `.git`), or the working
-//! directory itself outside a checkout. Symbolic links are followed before
-//! that check, so a link cannot reach outside.
+//! commands. Any path on this computer works, the same as for Run (a wall
+//! here only sent the model around it through the shell): relative paths
+//! start at the working directory, `~/` is the person's home, and results
+//! show paths inside the checkout relative to it.
 //!
 //! Reads are free. A change (`Edit`, `Write`) goes through the same approval
 //! gate as a shell command that changes something ([`crate::approval`]):
@@ -105,7 +105,7 @@ pub fn definitions() -> Vec<Value> {
 }
 
 /// What the model reads about these tools.
-pub const INSTRUCTIONS: &str = "Use Read, Edit, Write, Grep and Glob for files instead of shell commands such as cat, sed, grep or find. Read a file before you Edit or Write it. Edit takes an exact string that appears once; give more surrounding lines when it is not unique. Paths stay inside the workspace. Reads never ask; under an approval policy, Edit and Write ask like any other change.\n";
+pub const INSTRUCTIONS: &str = "Use Read, Edit, Write, Grep and Glob for files instead of shell commands such as cat, sed, grep or find. Read a file before you Edit or Write it. Edit takes an exact string that appears once; give more surrounding lines when it is not unique. Any path on this computer works, including ~/ and files outside the repository. Reads never ask; under an approval policy, Edit and Write ask like any other change.\n";
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -248,14 +248,18 @@ impl Workspace {
         Ok(Self { root, cwd })
     }
 
-    /// `path` resolved inside the workspace. A path that does not exist yet
+    /// `path` resolved on this computer. A path that does not exist yet
     /// resolves through its nearest existing folder.
     fn resolve(&self, path: &str) -> Result<PathBuf, String> {
         let path = path.trim();
         if path.is_empty() {
             return Err("Name a path.".into());
         }
-        let path = Path::new(path);
+        let home = path
+            .strip_prefix("~/")
+            .zip(std::env::var_os("HOME"))
+            .map(|(rest, home)| PathBuf::from(home).join(rest));
+        let path = home.as_deref().unwrap_or(Path::new(path));
         let joined = if path.is_absolute() {
             path.to_owned()
         } else {
@@ -284,13 +288,6 @@ impl Workspace {
         let mut full = resolved;
         for name in rest.into_iter().rev() {
             full.push(name);
-        }
-        if !full.starts_with(&self.root) {
-            return Err(format!(
-                "{} is outside the workspace ({}).",
-                full.display(),
-                self.root.display()
-            ));
         }
         Ok(full)
     }
@@ -845,32 +842,25 @@ mod tests {
     }
 
     #[test]
-    fn paths_stay_inside_the_workspace() {
+    fn paths_outside_the_repository_work_like_any_other() {
         let (dir, root) = workspace();
         let outside = tempfile::tempdir().unwrap();
-        std::fs::write(outside.path().join("secret.txt"), "no").unwrap();
+        let notes = outside.path().join("notes.md");
+        std::fs::write(&notes, "outside\n").unwrap();
         let sub = root.join("sub");
         std::fs::create_dir(&sub).unwrap();
-        for path in [
-            "../../etc/passwd".to_string(),
-            outside.path().join("secret.txt").display().to_string(),
-            "/etc/hosts".into(),
-            "missing/../../../x".into(),
-        ] {
-            let error = run("Read", json!({"path":path}), &sub).unwrap_err();
-            assert!(
-                error.contains("outside the workspace") || error.contains("`..`"),
-                "{path}: {error}"
-            );
-            assert!(run("Write", json!({"path":path,"content":"x"}), &sub).is_err());
-        }
+        let read = run("Read", json!({"path":notes.display().to_string()}), &sub).unwrap();
+        assert!(read.to_string().contains("outside"), "{read}");
+        run("Edit", json!({"path":notes.display().to_string(),"old_string":"outside","new_string":"edited"}), &sub).unwrap();
+        assert_eq!(std::fs::read_to_string(&notes).unwrap(), "edited\n");
         #[cfg(unix)]
         {
             std::os::unix::fs::symlink(outside.path(), root.join("link")).unwrap();
-            let error = run("Read", json!({"path":"link/secret.txt"}), &root).unwrap_err();
-            assert!(error.contains("outside the workspace"), "{error}");
+            assert!(run("Read", json!({"path":"link/notes.md"}), &root).is_ok());
         }
-        // The checkout root is the workspace, so a subfolder can reach it.
+        // A `..` past a folder that does not exist is still refused.
+        let error = run("Read", json!({"path":"missing/../../../x"}), &sub).unwrap_err();
+        assert!(error.contains("`..`") || error.contains("not"), "{error}");
         std::fs::write(root.join("top.txt"), "top\n").unwrap();
         assert!(run("Read", json!({"path":"../top.txt"}), &sub).is_ok());
         drop(dir);
@@ -949,7 +939,8 @@ mod tests {
             run("Glob", json!({"pattern":"*.log"}), &root).unwrap()["count"],
             0
         );
-        assert!(run("Glob", json!({"pattern":"*","path":"/etc"}), &root).is_err());
+        // Folders outside the repository can be searched too.
+        assert!(run("Glob", json!({"pattern":"*","path":"/etc"}), &root).is_ok());
     }
 
     #[test]
