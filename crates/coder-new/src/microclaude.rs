@@ -111,16 +111,28 @@ fn clip(text: &str, limit: usize) -> String {
     if text.len() <= limit {
         return text.to_owned();
     }
-    let kept = limit.saturating_sub(MARKER.len());
-    let mut head = kept / 2;
-    while !text.is_char_boundary(head) {
-        head -= 1;
+    // Too tight for the marker to fit: the head alone stands in.
+    if limit <= MARKER.len() {
+        let head = head_within(text, limit);
+        return text[..head].to_owned();
     }
+    let kept = limit.saturating_sub(MARKER.len());
+    let head = head_within(text, kept / 2);
     let mut tail = text.len() - (kept - kept / 2);
     while !text.is_char_boundary(tail) {
         tail += 1;
     }
     format!("{}{MARKER}{}", &text[..head], &text[tail..])
+}
+
+/// The largest index no greater than `limit` that is a character boundary
+/// of `text`.
+fn head_within(text: &str, limit: usize) -> usize {
+    let mut head = limit.min(text.len());
+    while !text.is_char_boundary(head) {
+        head -= 1;
+    }
+    head
 }
 
 /// Whether the file tools of one call stay inside `root`: the path each
@@ -137,8 +149,14 @@ fn stays_in(root: &Path, tool: &str, input: &Value) -> bool {
     let pattern_inside = tool != "Glob"
         || input["pattern"]
             .as_str()
-            .is_none_or(|pattern| !Path::new(pattern).is_absolute() && !pattern.contains(".."));
+            .is_none_or(|pattern| !Path::new(pattern).is_absolute() && !names_a_parent(pattern));
     paths_inside && pattern_inside
+}
+
+/// Whether a Glob pattern walks up a directory, `..` written as a whole
+/// path segment (`../x`, `a/../x`) rather than inside a name (`foo..bar`).
+fn names_a_parent(pattern: &str) -> bool {
+    pattern.split(['/', '\\']).any(|segment| segment == "..")
 }
 
 /// Whether `path`, read from `root` when relative, lands under the canonical
@@ -633,6 +651,31 @@ mod tests {
     }
 
     #[test]
+    fn clipping_never_exceeds_the_limit_even_below_the_marker_size() {
+        let text = "é".repeat(100);
+        for limit in 0..=12 {
+            let clipped = clip(&text, limit);
+            assert!(clipped.len() <= limit, "{limit}: {}", clipped.len());
+            // Without a marker the whole result is the head of the text.
+            if !clipped.contains("[...]") {
+                assert!(text.starts_with(&clipped), "{limit}: {clipped:?}");
+            }
+        }
+        assert_eq!(clip("ééé", 3), "é");
+        assert_eq!(clip("ééé", 0), "");
+    }
+
+    #[test]
+    fn only_a_whole_segment_walks_a_glob_up_a_directory() {
+        assert!(names_a_parent("../secret"));
+        assert!(names_a_parent("src/../secret"));
+        assert!(names_a_parent("a\\..\\b"));
+        assert!(!names_a_parent("foo..bar"));
+        assert!(!names_a_parent("src/**/*.rs"));
+        assert!(!names_a_parent("..."));
+    }
+
+    #[test]
     fn the_file_tools_stay_inside_the_checkout() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
@@ -681,6 +724,10 @@ mod tests {
         assert!(!inside_call(
             "Glob",
             serde_json::json!({"pattern": "/etc/*"})
+        ));
+        assert!(inside_call(
+            "Glob",
+            serde_json::json!({"pattern": "src/foo..bar.rs"})
         ));
         assert!(!inside_call(
             "Grep",
