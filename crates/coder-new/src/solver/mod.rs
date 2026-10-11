@@ -48,7 +48,10 @@ const INTAKE_CHAT: &str = "You are the Intaker of solver, a four-hand coding run
 GitHub issue to a pull request. Before the run starts, help the person choose the issue. You \
 can call `gh` with read-only issue and pull request commands (`issue list`, `issue view`, \
 `search issues`, `pr list`, `pr view`, with flags such as `--search`, `--label`, `--state`, \
-`--limit`, `--json`); the repository is {repo} unless the person names another. Search and \
+`--limit`, `--json`); the repository is {repo} unless the person names another. For a project \
+board (a URL like github.com/orgs/OWNER/projects/N), read its cards with `project item-list N \
+--owner OWNER --format json --limit 200`; each card has the issue's number, title and the \
+board's Status, so pick from the cards whose Status isn't Done. Search and \
 read issues to answer what they ask, suggest one or two that fit (say why in a line each), and \
 ask when you need to know more. Keep replies short. When the person has chosen, or clearly \
 asked you to pick, end your reply with exactly one line `ISSUE: owner/repo#N` and nothing \
@@ -84,7 +87,9 @@ pub fn gh_read_only(args: &[String]) -> bool {
     let words: Vec<&str> = args.iter().map(String::as_str).collect();
     matches!(
         words.as_slice(),
-        ["issue" | "pr", "list" | "view" | "status", ..] | ["search", "issues" | "prs", ..]
+        ["issue" | "pr", "list" | "view" | "status", ..]
+            | ["search", "issues" | "prs", ..]
+            | ["project", "list" | "view" | "item-list" | "field-list", ..]
     ) && !words.iter().any(|w| matches!(*w, "--web" | "-w"))
 }
 
@@ -94,7 +99,7 @@ pub fn intake_chat_server(github: &str) -> claude_agent_sdk::SdkMcpServer {
     let github = github.to_owned();
     claude_agent_sdk::SdkMcpServer::new("intake", "1.0.0").tool(
         "gh",
-        "Run a read-only gh command: issue list|view|status, pr list|view|status, search issues|prs. Pass the words after `gh` as `args`.",
+        "Run a read-only gh command: issue list|view|status, pr list|view|status, search issues|prs, project list|view|item-list|field-list. Pass the words after `gh` as `args`.",
         json!({"type": "object", "properties": {"args": {"type": "array", "items": {"type": "string"}}}, "required": ["args"]}),
         move |input: Value| {
             let github = github.clone();
@@ -110,8 +115,9 @@ pub fn intake_chat_server(github: &str) -> claude_agent_sdk::SdkMcpServer {
                         "Only gh issue/pr list, view, status and search issues/prs are allowed here.",
                     ));
                 }
-                let searching = args.first().map(String::as_str) == Some("search");
-                if !searching && !args.iter().any(|a| a == "-R" || a == "--repo") {
+                // Searches and project boards take no repository flag.
+                let unscoped = matches!(args.first().map(String::as_str), Some("search" | "project"));
+                if !unscoped && !args.iter().any(|a| a == "-R" || a == "--repo") {
                     args.push("-R".into());
                     args.push(github);
                 }

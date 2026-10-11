@@ -198,6 +198,17 @@ fn the_intaker_gh_is_read_only() {
     assert!(ok(&["issue", "view", "11279", "--json", "title,body"]));
     assert!(ok(&["search", "issues", "daily cap"]));
     assert!(ok(&["pr", "view", "11337"]));
+    assert!(ok(&[
+        "project",
+        "item-list",
+        "22",
+        "--owner",
+        "OpenAgentsInc",
+        "--format",
+        "json"
+    ]));
+    assert!(!ok(&["project", "item-edit", "--id", "x"]));
+    assert!(!ok(&["project", "item-add", "22"]));
     assert!(!ok(&["issue", "close", "11279"]));
     assert!(!ok(&["issue", "comment", "1", "-b", "x"]));
     assert!(!ok(&["issue", "edit", "1"]));
@@ -212,7 +223,7 @@ fn the_intaker_gh_is_read_only() {
 #[ignore = "needs a Claude Code login and gh"]
 async fn live_intaker_finds_and_names_an_issue() {
     let messages = vec![openrouter::Message::user(
-        "Solve the issue about the buyer's daily spending cap being overspent concurrently. Just pick it.",
+        "Pick an open issue from https://github.com/orgs/OpenAgentsInc/projects/22 that isn't Done. Just pick it.",
     )];
     let prompt = super::intake_task(&messages, super::DEFAULT_GITHUB);
     let mut tools = Vec::new();
@@ -238,5 +249,6 @@ async fn live_intaker_finds_and_names_an_issue() {
     .await
     .unwrap();
     println!("tools: {tools:?}\nreply:\n{}", reply.text);
-    assert_eq!(super::chosen(&reply.text).map(|(_, n)| n), Some(11279));
+    assert!(super::chosen(&reply.text).is_some());
+    assert!(tools.iter().any(|t| t == "mcp__intake__gh"));
 }
