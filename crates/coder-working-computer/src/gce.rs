@@ -407,7 +407,7 @@ pub fn create_instance_args(
         "--shielded-integrity-monitoring".into(),
         format!("--labels={labels}"),
         format!(
-            "--metadata=^;^block-project-ssh-keys=TRUE;enable-oslogin=FALSE;ssh-keys=coder:{}",
+            "--metadata=^;^block-project-ssh-keys=TRUE;enable-oslogin=FALSE;enable-guest-attributes=TRUE;ssh-keys=coder:{}",
             public_key.trim()
         ),
         format!("--max-run-duration={}s", request.max_run_seconds),

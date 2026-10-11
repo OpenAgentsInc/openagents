@@ -274,6 +274,12 @@ path, limits, and refusals are in `docs/coder/runtime/cloud-fallback.md`.
 | The cloud is always the last provider in Microcoder's lineup, so a host with no provider configured still answers a turn through it, and a host with a provider that has capacity never spends the cloud's quota: a signed-in Claude Code or Codex CLI is chosen over Microcoder on the cloud, and an own door key takes the cloud off the lineup. | New on 2026-09-28. | `the_cloud_is_always_the_last_provider_and_needs_no_configuration`, `the_cloud_answers_only_when_nothing_on_the_host_can`, `a_fresh_host_completes_a_turn_through_the_cloud_fallback` in `crates/coder` |
 | The cloud worker's `rate_limited`, `busy`, and `quota_exhausted` are capacity refusals held until the worker's `retry_after_ms` (else one minute, one minute, and the next UTC midnight), so the loop fails over and the no-capacity sentence names the reset; any other refusal is the step's plain error and holds nothing. | New on 2026-09-28. | `the_cloud_worker_codes_are_capacity_refusals_with_their_waits` in `crates/microcoder-loop`; `a_quota_refusal_is_a_typed_capacity_refusal_with_its_wait`, `a_rate_limit_holds_a_minute_and_a_too_large_step_is_only_an_error`, `a_cloud_refusal_mid_turn_is_recorded_and_the_next_provider_finishes` in `crates/coder` |
 
+## Cloud pool SSH
+
+| Invariant | Status | Checked by |
+| --- | --- | --- |
+| Every ssh to a Cloud pool host or GCE working computer (including the credential upload) checks the host key against the keys GCE publishes for that instance in its `hostkeys/` guest attributes, read through our own gcloud and pinned in a per-host `known_hosts` under the 0700 cloud home, with `StrictHostKeyChecking=yes` and no other known_hosts file, over IAP or the internal address alike. A host with no pin, or with an identifier that is not a plain GCE name, is refused, never reached. | New on 2026-10-11 ([#11281](https://github.com/OpenAgentsInc/openagents/issues/11281), CE-02); replaces `StrictHostKeyChecking=no`. | `pool_ssh_checks_the_host_key_against_the_pin_alone`, `host_keys_are_pinned_from_guest_attributes_only_when_well_formed`, `identifiers_that_reach_a_shell_string_must_be_plain_gce_names`, `a_host_that_cannot_be_checked_is_refused_not_reached`, `the_pin_directory_is_private` in `crates/coder-cloud` |
+
 ## Your own Claude credential
 
 The policy is `docs/cloud/claude-code-byo.md`.
