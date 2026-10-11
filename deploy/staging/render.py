@@ -58,6 +58,12 @@ AGENT_ACCOUNTS = "acct_dc7a799879686fc5"
 # owner's token can be tested end to end. Production keeps the default
 # (the owner only) until Anthropic approves it in writing.
 CLAUDE_TOKEN_ACCOUNTS = f"chris@openagents.com,{AGENT_ACCOUNTS}"
+# Staging's stand-in for a GitHub App (#11226, environments/push.rs
+# StandIn): Claude Code runs on these test repositories push and open pull
+# requests with the token in the staging-only secret below, until the
+# staging GitHub App exists. Production has no stand-in.
+PUSH_STANDIN_REPOS = "AtlantisPleb/openagents-b2-git-checkout-fixture-20260611144040"
+PUSH_STANDIN_SECRET = "openagents-web-1-staging-push-standin-token"
 
 
 def secret(name, var):
@@ -97,6 +103,8 @@ def main():
             plain("OPENAGENTS_WEB_API_OPERATOR_SIGNUP", "1"),
             plain("OPENAGENTS_WEB_AGENT_ACCOUNTS", AGENT_ACCOUNTS),
             plain("OPENAGENTS_WEB_CLAUDE_TOKEN_ACCOUNTS", CLAUDE_TOKEN_ACCOUNTS),
+            plain("OPENAGENTS_WEB_STAGING_PUSH_REPOS", PUSH_STANDIN_REPOS),
+            secret(PUSH_STANDIN_SECRET, "OPENAGENTS_WEB_STAGING_PUSH_TOKEN"),
             # Environments: oa-boat machines, and the setup agent's model
             # through the gateway sidecar on the house key in /stack.
             plain("STACK_STATE", "/stack"),

@@ -289,6 +289,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok()
         .map(|token| token.trim().to_owned())
         .filter(|token| token.len() >= 32);
+    // Staging's stand-in for a GitHub App (#11226): a token for named
+    // test repositories, so Claude Code runs there can push and open pull
+    // requests before the App exists. Only staging sets these.
+    config.staging_push = openagents_web::StagingPush::new(
+        &std::env::var("OPENAGENTS_WEB_STAGING_PUSH_TOKEN").unwrap_or_default(),
+        &std::env::var("OPENAGENTS_WEB_STAGING_PUSH_REPOS").unwrap_or_default(),
+    )
+    .map(std::sync::Arc::new);
+    if config.staging_push.is_some() {
+        println!("Claude Code runs may push to the staging test repositories");
+    }
     // Who may save a Claude subscription token (#11235): the owner's
     // account unless named, until Anthropic approves it in writing.
     config.claude_tokens = openagents_web::cloud::byo::TokenAllow::parse(

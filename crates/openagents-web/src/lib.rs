@@ -42,6 +42,8 @@ mod demo;
 mod device;
 mod docs_mcp;
 mod environments;
+/// Staging's stand-in for a GitHub App (#11226).
+pub use environments::push::StandIn as StagingPush;
 mod github_refs;
 mod github_tools;
 mod layout;
@@ -379,6 +381,10 @@ pub struct Config {
     /// report runs (`OPENAGENTS_WORK_HOST_TOKEN`, [`work_runs`]); without
     /// it no host can take a run.
     pub work_host_token: Option<String>,
+    /// Staging's stand-in for a GitHub App, so Claude Code runs can push
+    /// to named test repositories before the App exists (#11226,
+    /// [`environments::push::StandIn`]); never set in production.
+    pub staging_push: Option<Arc<StagingPush>>,
     /// Starts when the server is asked to stop; open event streams end on
     /// it so a rollout can drain ([`shutdown`]).
     pub shutdown: shutdown::Shutdown,
@@ -427,6 +433,7 @@ impl Config {
             analytics: Arc::new(analytics::Analytics::default()),
             agent_accounts: Vec::new(),
             work_host_token: None,
+            staging_push: None,
             shutdown: shutdown::Shutdown::default(),
             actors: None,
         }
