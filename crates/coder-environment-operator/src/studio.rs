@@ -463,6 +463,8 @@ impl Studio {
                 let _ = studio.work.send(Work::Run(s.id));
             }
         }
+        // And every Claude Code run that was mid-turn (#11331).
+        studio.runs.pick_up_after_restart();
         spawn_sweeper(Arc::downgrade(&studio));
         Ok(studio)
     }

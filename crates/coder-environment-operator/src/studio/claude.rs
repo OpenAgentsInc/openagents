@@ -171,6 +171,9 @@ impl RunState {
     }
 }
 
+/// How long taking a run's lease waits for a holder ([`Runs::lease`]).
+const LEASE_WAIT: Duration = Duration::from_secs(2);
+
 /// The run store: one Cloud job store per environment.
 #[derive(Clone, Debug)]
 pub struct Runs {
@@ -184,6 +187,23 @@ impl Runs {
 
     fn store(&self, environment: &str) -> Store {
         Store::under(self.root.join(environment))
+    }
+
+    /// Take run `id`'s lease, waiting up to [`LEASE_WAIT`] for a holder.
+    /// A dropped lock can look held while a child some thread forked still
+    /// shares it, until that child execs (as `coder_environment`'s store
+    /// waits it out); a driver that keeps holding it is still refused.
+    fn lease(&self, environment: &str, id: &str) -> Result<coder_cloud::Lease, String> {
+        coder_cloud::validate_id(id)?;
+        let store = self.store(environment);
+        let deadline = std::time::Instant::now() + LEASE_WAIT;
+        loop {
+            match store.lease(id) {
+                Ok(lease) => return Ok(lease),
+                Err(error) if std::time::Instant::now() >= deadline => return Err(error),
+                Err(_) => std::thread::sleep(Duration::from_millis(10)),
+            }
+        }
     }
 
     /// Runs of `environment`, newest first.
@@ -307,8 +327,7 @@ impl Runs {
                     .map_err(|_| "The run didn't answer. Try again.")??
             }
             None => {
-                let store = self.store(environment);
-                let lease = store.lease(id)?;
+                let lease = self.lease(environment, id)?;
                 let mut record = lease.read(id)?;
                 let saved = key
                     .as_ref()
@@ -345,7 +364,7 @@ impl Runs {
         let store = self.store(environment);
         let n = store.list().map(|l| l.len()).unwrap_or(0) + 1;
         let id = format!("openagents-{environment}-{n}");
-        let lease = store.lease(&id)?;
+        let lease = self.lease(environment, &id)?;
         if lease.exists() {
             return Err("That run already exists.".into());
         }
@@ -465,7 +484,7 @@ impl Runs {
             template: None,
             credential_names: names,
         };
-        let lease = store.lease(&id)?;
+        let lease = self.lease(&env.id, &id)?;
         if lease.exists() {
             return Err("That run already exists.".into());
         }
@@ -1020,6 +1039,178 @@ fn disposable(own_computer: bool, record: &Record) -> Option<String> {
         .flatten()
 }
 
+/// What a run says when the server restarted before it could go on
+/// (#11331).
+pub const RESTARTED: &str = "The server restarted while Claude Code was working, so this run stopped. You pay only for the time it ran. Send a message to continue.";
+
+/// A run the server left mid-turn when it stopped, held under its lease.
+struct Left {
+    lease: coder_cloud::Lease,
+    record: Record,
+    inbox: PathBuf,
+}
+
+impl Runs {
+    /// Pick up every run the server left mid-turn when it stopped
+    /// (#11331): one Claude Code had started is followed again on its
+    /// computer until it ends; one that hadn't, or can't be followed, ends
+    /// with [`RESTARTED`], its computer stopped and its time counted. A
+    /// paused run waits for its reset as before. How many it picked up.
+    pub fn pick_up_after_restart(&self) -> usize {
+        let left = self.left_mid_turn();
+        let count = left.len();
+        for left in left {
+            let root = self.root.clone();
+            let name = format!("claude-again-{}", left.record.id);
+            let _ = std::thread::Builder::new()
+                .name(name)
+                .spawn(move || pick_up_on_boat(left, &root));
+        }
+        count
+    }
+
+    /// The runs no driver holds that stopped mid-turn, each leased.
+    fn left_mid_turn(&self) -> Vec<Left> {
+        let Ok(dirs) = std::fs::read_dir(&self.root) else {
+            return Vec::new();
+        };
+        let mut left = Vec::new();
+        for dir in dirs.flatten() {
+            if !dir.path().is_dir() {
+                continue;
+            }
+            let Some(environment) = dir.file_name().to_str().map(str::to_owned) else {
+                continue;
+            };
+            let store = self.store(&environment);
+            for record in store.list().unwrap_or_default() {
+                if !mid_turn(&record) {
+                    continue;
+                }
+                // A run whose lease is held still has its driver.
+                let Ok(lease) = self.lease(&environment, &record.id) else {
+                    continue;
+                };
+                let Ok(record) = lease.read(&record.id) else {
+                    continue;
+                };
+                if mid_turn(&record) {
+                    let inbox = self.inbox_path(&environment, &record.id);
+                    left.push(Left {
+                        lease,
+                        record,
+                        inbox,
+                    });
+                }
+            }
+        }
+        left
+    }
+}
+
+/// Whether a run was in a turn: not ended, and not paused for a reset.
+fn mid_turn(record: &Record) -> bool {
+    !record.state.terminal() && record.state != State::Paused
+}
+
+/// [`pick_up`] on Boat, then the run's own computer deleted once it ended.
+fn pick_up_on_boat(mut left: Left, root: &Path) {
+    let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    else {
+        return;
+    };
+    // A run on the person's signed-in computer names it; that one is kept.
+    let own_computer = left.record.binding["home"].is_null();
+    runtime.block_on(async {
+        match boat::Client::from_env().await {
+            Ok(client) => {
+                let backend = coder_cloud::boat_backend::Boat {
+                    client: client.clone(),
+                    credentials: Credentials::default(),
+                };
+                pick_up(&backend, &mut left, root, Duration::from_secs(2)).await;
+                if let Some(id) = disposable(own_computer, &left.record) {
+                    let _ = client
+                        .delete_sandbox(&boat::models::DeleteSandboxParams {
+                            sandbox_id: id.clone(),
+                            x_ascii_confirm_delete: id.clone(),
+                            ..Default::default()
+                        })
+                        .await;
+                }
+            }
+            Err(error) => {
+                left.record.state = State::Failed;
+                left.record.error = Some(RESTARTED.into());
+                left.record.cleanup_error = Some(format!("Boat is unavailable: {error}"));
+                left.record.updated_ms = coder_cloud::now_ms();
+                let _ = left.lease.save(&left.record);
+                close_inbox(&left.inbox);
+            }
+        }
+    });
+}
+
+/// Follow a run left mid-turn to its end on `backend`: a turn Claude Code
+/// had started goes on being read until it ends; otherwise the run ends
+/// with [`RESTARTED`], its computer stopped and its time counted. It takes
+/// no more turns: a message from now on starts a follow-up run.
+async fn pick_up<B: Backend>(backend: &B, left: &mut Left, root: &Path, interval: Duration) {
+    let Left {
+        lease,
+        record,
+        inbox,
+    } = left;
+    let started = matches!(record.state, State::Running | State::Dispatching)
+        && (record.remote_task.is_some() || record.state == State::Dispatching);
+    if started {
+        let driven = coder_cloud::drive(
+            backend,
+            lease,
+            record,
+            &AtomicBool::new(false),
+            interval,
+            &mut |_| {},
+        )
+        .await;
+        if driven.is_ok() || record.state.terminal() {
+            // A usage limit pauses it as a running driver would.
+            let book = claude_task::book(root, record);
+            if claude_task::settle(record, &book, now()).is_ok() {
+                let _ = lease.save(record);
+            }
+            if record.state.terminal() {
+                close_inbox(inbox);
+            }
+            return;
+        }
+    }
+    record.state = State::Failed;
+    record.error = Some(RESTARTED.into());
+    record.updated_ms = coder_cloud::now_ms();
+    let _ = lease.save(record);
+    if record.resource.is_some() && !record.cleanup_complete {
+        if record.remote_task.is_some() {
+            let _ = backend.cancel(record).await;
+        }
+        match backend.cleanup(record).await {
+            Ok(usage) => {
+                record.usage = usage;
+                record.cleanup_complete = true;
+                record.cleanup_error = None;
+            }
+            Err(error) => record.cleanup_error = Some(error),
+        }
+    } else {
+        record.cleanup_complete = true;
+    }
+    record.updated_ms = coder_cloud::now_ms();
+    let _ = lease.save(record);
+    close_inbox(inbox);
+}
+
 /// The run's credentials: the Claude credential and the GitHub broker
 /// credential, each under its own name. The runtime credentials hold the
 /// only copies; they redact both from what the run records.
@@ -1362,11 +1553,7 @@ mod tests {
         let book = claude_task::book(&runs.root, &record);
         claude_task::settle(&mut record, &book, 1_790_000_000).unwrap();
         assert_eq!(record.state, State::Paused);
-        runs.store(environment)
-            .lease(id)
-            .unwrap()
-            .save(&record)
-            .unwrap();
+        runs.lease(environment, id).unwrap().save(&record).unwrap();
     }
 
     #[test]
@@ -1456,6 +1643,121 @@ mod tests {
         );
         // A run that isn't paused offers nothing.
         assert!(runs.choices("env-1", "claude-env-1-1", None).is_empty());
+    }
+
+    /// A computer that answers a run left behind by a restart.
+    #[derive(Default)]
+    struct Restarted {
+        polls: std::cell::Cell<u32>,
+        cleanups: std::cell::Cell<u32>,
+    }
+
+    impl Backend for Restarted {
+        async fn provision(&self, _: &mut Record) -> coder_cloud::Result<String> {
+            Err("not again".into())
+        }
+        async fn dispatch(&self, _: &Record) -> coder_cloud::Result<Task> {
+            Err("not again".into())
+        }
+        async fn recover(&self, _: &Record) -> coder_cloud::Result<Option<Task>> {
+            Ok(None)
+        }
+        async fn poll(&self, _: &Record) -> coder_cloud::Result<Observation> {
+            self.polls.set(self.polls.get() + 1);
+            Ok(Observation {
+                events: vec![json!({"event":"delta","text":"Fixed."})],
+                cursor: Some("1".into()),
+                end: Some(Ok(json!({"reply":"Fixed."}))),
+            })
+        }
+        async fn cancel(&self, _: &Record) -> coder_cloud::Result<()> {
+            Ok(())
+        }
+        async fn cleanup(&self, _: &Record) -> coder_cloud::Result<Option<Value>> {
+            self.cleanups.set(self.cleanups.get() + 1);
+            Ok(Some(json!({"cost_usd": 0.02})))
+        }
+    }
+
+    fn left_run(runs: &Runs, id: &str, state: State, started: bool) {
+        let spec = Spec {
+            placement: Placement::Boat,
+            mode: Mode::Coder,
+            agent: coder_cloud::claude::ENGINE.into(),
+            task: task("Fix it", "/home/user/repo"),
+            model: None,
+            reasoning: None,
+            cwd: PathBuf::from("/home/user/repo"),
+            timeout_seconds: RUN_SECONDS,
+            size: "small".into(),
+            template: None,
+            credential_names: vec![],
+        };
+        let mut record = Record::new(id, spec).unwrap();
+        claude_task::admit(&mut record, "env-1");
+        record.state = state;
+        record.resource = Some("bx_1".into());
+        if started {
+            record.remote_task = Some(Task {
+                id: "task".into(),
+                conversation: None,
+            });
+        }
+        // The lease drops here, as the server's did when it stopped.
+        runs.lease("env-1", id).unwrap().save(&record).unwrap();
+    }
+
+    /// #11331: a restart mid-run picks the run up again: a turn Claude
+    /// Code had started is followed to its end; one that hadn't ends
+    /// plainly, its computer stopped and its time counted; a run another
+    /// driver holds is left alone.
+    #[tokio::test]
+    async fn a_run_in_flight_when_the_server_restarts_is_picked_up_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let runs = Runs::under(dir.path());
+        left_run(&runs, "claude-env-1-1", State::Running, true);
+        left_run(&runs, "claude-env-1-2", State::Ready, false);
+        left_run(&runs, "claude-env-1-3", State::Running, true);
+        left_run(&runs, "claude-env-1-4", State::Completed, true);
+        let held = runs.lease("env-1", "claude-env-1-3").unwrap();
+
+        let restarted = Runs::under(dir.path());
+        let mut left = restarted.left_mid_turn();
+        let mut ids: Vec<&str> = left.iter().map(|l| l.record.id.as_str()).collect();
+        ids.sort();
+        assert_eq!(ids, ["claude-env-1-1", "claude-env-1-2"]);
+
+        for left in &mut left {
+            let backend = Restarted::default();
+            pick_up(&backend, left, dir.path(), Duration::from_millis(1)).await;
+            assert_eq!(backend.cleanups.get(), 1, "{}", left.record.id);
+            let started = left.record.id == "claude-env-1-1";
+            assert_eq!(backend.polls.get(), u32::from(started));
+        }
+        drop(left);
+
+        let followed = restarted.read("env-1", "claude-env-1-1").unwrap();
+        assert_eq!(followed.state, RunState::Done);
+        assert_eq!(followed.reply.as_deref(), Some("Fixed."));
+        assert_eq!(followed.cost_usd, Some(0.02));
+
+        let ended = restarted.read("env-1", "claude-env-1-2").unwrap();
+        assert_eq!(ended.state, RunState::Failed);
+        assert_eq!(ended.error.as_deref(), Some(RESTARTED));
+        assert_eq!(ended.cost_usd, Some(0.02), "only the time it ran");
+        assert!(oa_copy::violations(RESTARTED, &[]).is_empty());
+        assert_eq!(
+            restarted.message("env-1", "claude-env-1-2", "Go on.").unwrap(),
+            Sent::Ended
+        );
+        assert!(restarted.waiting("env-1", "claude-env-1-2").is_empty());
+
+        // The run whose driver still holds it is untouched.
+        assert_eq!(
+            restarted.read("env-1", "claude-env-1-3").unwrap().state,
+            RunState::Running
+        );
+        drop(held);
     }
 
     #[test]
