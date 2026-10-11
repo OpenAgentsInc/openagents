@@ -162,9 +162,18 @@ struct Deployment {
 }
 
 async fn deploy() -> Deployment {
+    deploy_with(None, None).await
+}
+
+/// [`deploy`] with the sign-up tenant's door quota and the shared door's
+/// endpoint.
+async fn deploy_with(requests_per_day: Option<u64>, door: Option<&str>) -> Deployment {
     let dir = tempfile::tempdir().unwrap();
-    let registry =
-        Registry::install(dir.path(), common::manifest(&common::artifact('a'), None)).unwrap();
+    let registry = Registry::install(
+        dir.path(),
+        common::manifest(&common::artifact('a'), requests_per_day),
+    )
+    .unwrap();
     drop(registry);
     let secrets = tempfile::tempdir().unwrap();
     let keyring = secrets.path().join("keyring.json");
@@ -232,7 +241,20 @@ async fn deploy() -> Deployment {
         max_questions: 256,
         cors_origins: vec![],
         max_options: 4096,
-        doors: Default::default(),
+        doors: door
+            .map(|endpoint| {
+                (
+                    "shared-kev".to_string(),
+                    config::Door {
+                        endpoint: endpoint.to_string(),
+                        classify: None,
+                        classify_item_concurrency: 1,
+                        batching: None,
+                    },
+                )
+            })
+            .into_iter()
+            .collect(),
         job_retention_ms: 604_800_000,
         job_cursor_ttl_ms: 3_600_000,
         public_origin: None,
@@ -650,4 +672,41 @@ async fn accounts_on_one_tenant_never_see_or_use_each_others_keys_or_state() {
     assert_eq!(status, StatusCode::FORBIDDEN);
     let (status, _, _) = respond(&d, &bo_key, json!({"model": MODEL, "input": "still mine"})).await;
     assert_eq!(status, StatusCode::OK);
+}
+
+/// #11190: the door quota is each workspace's own allowance on the shared
+/// sign-up tenant, so one person using up their day leaves another's whole.
+#[tokio::test]
+async fn a_door_quota_on_the_shared_tenant_is_each_workspaces_own() {
+    let (endpoint, forwards) =
+        common::backend(&common::artifact('a'), StatusCode::OK, common::answer(), 0).await;
+    let d = deploy_with(Some(1), Some(&endpoint)).await;
+    let (_, ada_key, _) = sign_up(&d, "ada").await;
+    let (_, bo_key, _) = sign_up(&d, "bo").await;
+    let call = json!({
+        "model": "shared-kev",
+        "state": "A caller's private text.",
+        "questions": {
+            "q1": {"type": "noul", "instructions": "Is this about routing?", "criteria": "yes/no"},
+        },
+    });
+    let (status, body) = door_call(&d, &ada_key, &call).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, body) = door_call(&d, &ada_key, &call).await;
+    assert_eq!(status, StatusCode::TOO_MANY_REQUESTS, "{body}");
+    assert_eq!(body["error"]["code"], "quota_exhausted", "{body}");
+    let (status, body) = door_call(&d, &bo_key, &call).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(forwards.load(Ordering::SeqCst), 2);
+}
+
+async fn door_call(d: &Deployment, key: &str, call: &Value) -> (StatusCode, Value) {
+    send(
+        d,
+        reqwest::Method::POST,
+        "/v1/systemone",
+        key,
+        Some(call.clone()),
+    )
+    .await
 }
