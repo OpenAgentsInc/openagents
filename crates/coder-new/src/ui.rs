@@ -32,9 +32,13 @@ fn span(text: impl Into<String>, color: Color) -> Span<'static> {
 
 pub fn render(frame: &mut Frame, app: &mut App) {
     render_contents(frame, app);
+    // The terminal's own background shows through where Coder paints its
+    // base; the bands on top (diff rows, your messages, Run output) stay.
     if app.appearance.use_system_terminal_background {
         for cell in &mut frame.buffer_mut().content {
-            cell.bg = Color::Reset;
+            if cell.bg == t::BG_BASE {
+                cell.bg = Color::Reset;
+            }
         }
     }
 }
@@ -1700,6 +1704,28 @@ mod export_notice_tests {
         assert!(shown.contains(crate::microclaude::LABEL));
         // Entering the mode must not read this computer's login: a test
         // environment never starts `claude auth status`.
+    }
+
+    #[test]
+    fn the_terminal_background_keeps_diff_bands() {
+        let mut app = App::default();
+        app.mode = Mode::Live;
+        app.appearance.use_system_terminal_background = true;
+        let diff = crate::file_tools::unified("a\nold line\nb\n", "a\nnew line\nb\n");
+        app.live.entries.push(crate::live::Entry::Tool {
+            name: "Edit".into(),
+            input: serde_json::json!({"path": "src/x.rs"}),
+            output: serde_json::json!({
+                "path": "src/x.rs", "diff": diff.text, "added": diff.added, "removed": diff.removed,
+            }),
+            running: false,
+        });
+        let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
+        terminal.draw(|frame| render(frame, &mut app)).unwrap();
+        let cells = &terminal.backend().buffer().content;
+        assert!(cells.iter().any(|cell| cell.bg == t::DIFF_DELETE_BG));
+        assert!(cells.iter().any(|cell| cell.bg == t::DIFF_INSERT_BG));
+        assert!(cells.iter().all(|cell| cell.bg != t::BG_BASE));
     }
 
     #[test]
