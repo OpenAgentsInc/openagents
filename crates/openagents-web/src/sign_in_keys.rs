@@ -107,11 +107,11 @@ fn problem(status: StatusCode, text: &str) -> Response {
     ))
 }
 
+pub(crate) const UNREACHABLE: &str =
+    "Your sign-in keys can't be reached right now. Try again in a minute.";
+
 fn unreachable_service() -> Response {
-    problem(
-        StatusCode::BAD_GATEWAY,
-        "Your sign-in keys can't be reached right now. Try again in a minute.",
-    )
+    problem(StatusCode::BAD_GATEWAY, UNREACHABLE)
 }
 
 async fn settings_page(State(app): State<App>, headers: HeaderMap) -> Response {
@@ -157,7 +157,7 @@ fn key_hint(key: &SignInKey) -> String {
 }
 
 /// The page: what a key is, the keys, the form that makes one.
-fn keys_content(keys: &[SignInKey], make: (&str, &str), revoke: (&str, &str)) -> Markup {
+pub(crate) fn keys_content(keys: &[SignInKey], make: (&str, &str), revoke: (&str, &str)) -> Markup {
     let name = Field::new("sign-in-key-name", "Name")
         .description("So you can tell your keys apart, such as \"build agent\".");
     let expires = Field::new("sign-in-key-expires", "Expires");
@@ -232,7 +232,7 @@ fn copy_line(text: &str) -> Markup {
 }
 
 /// The new key, shown once, with the line to use it.
-fn made_content(origin: &str, made: &MadeKey) -> Markup {
+pub(crate) fn made_content(origin: &str, made: &MadeKey) -> Markup {
     let save = if origin == "https://openagents.com" {
         "coder login --key".to_owned()
     } else {

@@ -687,7 +687,7 @@ fn note_form(note: Option<&Note>, save: (&str, &str), prefix: &str) -> Markup {
 
 /// The page: what memory is, the notes by where they apply, and a form
 /// for a new note.
-fn memory_content(notes: &[&Note], save: (&str, &str), delete: (&str, &str)) -> Markup {
+pub(crate) fn memory_content(notes: &[&Note], save: (&str, &str), delete: (&str, &str)) -> Markup {
     let everywhere: Vec<&Note> = notes
         .iter()
         .copied()

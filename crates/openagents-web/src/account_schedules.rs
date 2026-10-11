@@ -992,7 +992,7 @@ fn new_form(computers: &[String], chats: &[Chat], save: Ticket<'_>) -> Markup {
 
 /// The page: what scheduled prompts are, the person's prompts, and a form
 /// for a new one (when a computer can run it).
-fn schedules_content(
+pub(crate) fn schedules_content(
     schedules: &[Schedule],
     computers: &[String],
     chats: &[Chat],

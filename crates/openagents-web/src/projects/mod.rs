@@ -243,6 +243,11 @@ async fn render(
         .csrf(headers, viewer, CSRF_SCOPE, "")
         .unwrap_or_default();
     let body = view(&state, &token, q, problem.as_deref(), install);
+    page_for(headers, status, body)
+}
+
+/// The Projects page around `body`.
+pub(crate) fn page_for(headers: &HeaderMap, status: StatusCode, body: Markup) -> Response {
     protect(
         UiPage::new("Projects")
             .path(PAGE)
@@ -310,7 +315,7 @@ fn fragment(body: Markup) -> Response {
 
 /// The rows of one page (filtered by `q`, without repositories already
 /// added), and the button that loads the next page in its place.
-fn repos_page(
+pub(crate) fn repos_page(
     state: &Status,
     listed: Result<Listing, RepoCallError>,
     csrf: &str,
@@ -417,6 +422,19 @@ fn repos_page(
 /// The page body (separate from I/O for tests). `install`: this server
 /// adds repositories through its GitHub App.
 fn view(state: &Status, csrf: &str, q: &str, problem: Option<&str>, install: bool) -> Markup {
+    view_with(state, csrf, q, problem, install, None)
+}
+
+/// The page body with `list`, the repositories list, in place of the one
+/// that loads after the page shows.
+pub(crate) fn view_with(
+    state: &Status,
+    csrf: &str,
+    q: &str,
+    problem: Option<&str>,
+    install: bool,
+    list: Option<Markup>,
+) -> Markup {
     let q = q.trim();
     html! {
         (MarkdownRoot::new(html! {
@@ -484,8 +502,12 @@ fn view(state: &Status, csrf: &str, q: &str, problem: Option<&str>, install: boo
                         form method="get" action=(PAGE) role="search" {
                             (Input::new("q").value(q).placeholder("Filter repositories").aria_label("Filter repositories"))
                         }
-                        div #projects-repos hx-get=(repos_href(1, q)) hx-trigger="load" hx-swap="outerHTML" {
-                            p { (openagents_ui::actions::Busy::new("Loading your repositories")) }
+                        @if let Some(list) = &list {
+                            (list)
+                        } @else {
+                            div #projects-repos hx-get=(repos_href(1, q)) hx-trigger="load" hx-swap="outerHTML" {
+                                p { (openagents_ui::actions::Busy::new("Loading your repositories")) }
+                            }
                         }
                         p {
                             "Missing one? "
@@ -517,8 +539,12 @@ fn view(state: &Status, csrf: &str, q: &str, problem: Option<&str>, install: boo
                     }
                     // The list loads after the page shows (one GitHub call
                     // per page of repositories), most recently pushed first.
-                    div #projects-repos hx-get=(repos_href(1, q)) hx-trigger="load" hx-swap="outerHTML" {
-                        p { (openagents_ui::actions::Busy::new("Loading your repositories")) }
+                    @if let Some(list) = &list {
+                        (list)
+                    } @else {
+                        div #projects-repos hx-get=(repos_href(1, q)) hx-trigger="load" hx-swap="outerHTML" {
+                            p { (openagents_ui::actions::Busy::new("Loading your repositories")) }
+                        }
                     }
                     @if install {
                         p {

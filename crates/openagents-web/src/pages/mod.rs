@@ -13,7 +13,7 @@ mod efficiency;
 mod everglade;
 pub(crate) mod home;
 mod live;
-mod profile;
+pub(crate) mod profile;
 mod stats;
 
 use axum::Router;

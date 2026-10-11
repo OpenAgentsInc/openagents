@@ -14,6 +14,7 @@
 //! - `/ui/screens/{screen}/{state}?theme=light|dark` is one state as a
 //!   whole page, which the frames load.
 
+mod account;
 mod auth;
 mod chat;
 
@@ -82,6 +83,7 @@ pub(crate) fn screens() -> Vec<Screen> {
     let mut all = Vec::new();
     all.extend(auth::screens());
     all.extend(chat::screens());
+    all.extend(account::screens());
     all
 }
 
