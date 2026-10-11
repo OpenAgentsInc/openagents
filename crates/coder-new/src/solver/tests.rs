@@ -177,3 +177,66 @@ fn the_coder_may_compile_but_leaves_tests_to_the_tester() {
         .collect();
     assert_eq!(ids, ["check:x402"]);
 }
+
+#[test]
+fn the_intaker_names_the_issue_on_its_last_issue_line() {
+    use super::chosen;
+    assert_eq!(chosen("Here are two.\nWhich one?"), None);
+    assert_eq!(
+        chosen("Going with this.\nISSUE: OpenAgentsInc/openagents#11279"),
+        Some((Some("OpenAgentsInc/openagents".into()), 11279))
+    );
+    assert_eq!(chosen("ISSUE: #42"), Some((None, 42)));
+    assert_eq!(chosen("ISSUE: not a number"), None);
+}
+
+#[test]
+fn the_intaker_gh_is_read_only() {
+    use super::gh_read_only;
+    let ok = |w: &[&str]| gh_read_only(&w.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>());
+    assert!(ok(&["issue", "list", "--label", "bug", "--state", "open"]));
+    assert!(ok(&["issue", "view", "11279", "--json", "title,body"]));
+    assert!(ok(&["search", "issues", "daily cap"]));
+    assert!(ok(&["pr", "view", "11337"]));
+    assert!(!ok(&["issue", "close", "11279"]));
+    assert!(!ok(&["issue", "comment", "1", "-b", "x"]));
+    assert!(!ok(&["issue", "edit", "1"]));
+    assert!(!ok(&["api", "repos/x/y/issues"]));
+    assert!(!ok(&["issue", "view", "1", "--web"]));
+    assert!(!ok(&[]));
+}
+
+/// One real Intaker turn on this computer's Claude login (run by hand:
+/// `cargo test -p coder-new --lib live_intaker -- --ignored --nocapture`).
+#[tokio::test]
+#[ignore = "needs a Claude Code login and gh"]
+async fn live_intaker_finds_and_names_an_issue() {
+    let messages = vec![openrouter::Message::user(
+        "Solve the issue about the buyer's daily spending cap being overspent concurrently. Just pick it.",
+    )];
+    let prompt = super::intake_task(&messages, super::DEFAULT_GITHUB);
+    let mut tools = Vec::new();
+    let mut emit = |event: crate::bundled_runtime::RuntimeEvent| {
+        if let crate::bundled_runtime::RuntimeEvent::Tool {
+            name,
+            running: false,
+            ..
+        } = event
+        {
+            tools.push(name);
+        }
+    };
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    let reply = crate::microclaude::run_with(
+        &prompt,
+        std::path::Path::new("."),
+        &["Read", "Grep", "Glob"],
+        Some(super::intake_chat_server(super::DEFAULT_GITHUB)),
+        &cancel,
+        &mut emit,
+    )
+    .await
+    .unwrap();
+    println!("tools: {tools:?}\nreply:\n{}", reply.text);
+    assert_eq!(super::chosen(&reply.text).map(|(_, n)| n), Some(11279));
+}

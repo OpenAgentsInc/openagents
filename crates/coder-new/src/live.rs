@@ -332,6 +332,13 @@ pub enum Work {
         messages: Vec<Message>,
         cwd: std::path::PathBuf,
     },
+    /// A turn of solver's conversational Intaker: Haiku with a read-only
+    /// `gh`, helping the person find or pick the issue to solve.
+    SolverIntake {
+        messages: Vec<Message>,
+        cwd: std::path::PathBuf,
+        github: String,
+    },
     /// A summary of the older part of the chat (#11179), written by the
     /// chat's model without tools; nothing streams into the transcript.
     Summarize {
@@ -618,6 +625,20 @@ fn run_with_provider(
                 }
                 Work::Microclaude { messages, cwd } => {
                     microclaude_turn(id, messages, cwd, &cancel, &mut text_callback, &mut model_callback, &mut event_callback).await
+                }
+                Work::SolverIntake { messages, cwd, github } => {
+                    let prompt = crate::solver::intake_task(&messages, &github);
+                    let mut events = |event: RuntimeEvent| match event {
+                        RuntimeEvent::Text(text) => text_callback(&text),
+                        RuntimeEvent::Model(model) => model_callback(&model),
+                        event => event_callback(event),
+                    };
+                    let result = crate::microclaude::run_with(
+                        &prompt, &cwd, &["Read", "Grep", "Glob"],
+                        Some(crate::solver::intake_chat_server(&github)),
+                        &cancel, &mut events,
+                    ).await;
+                    Update::Finished { id, result }
                 }
                 Work::Chat { model, options, messages, execution }
                     if !crate::models::pinned(&model) && gateway_first(&execution) =>

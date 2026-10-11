@@ -126,6 +126,23 @@ pub async fn run(
     cancel: &AtomicBool,
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Streamed, String> {
+    run_with(prompt, cwd, &TOOLS, None, cancel, emit).await
+}
+
+/// Runs one Haiku turn like [`run`], with `tools` from Claude Code's own
+/// set and, beside them, the tools of an in-process `server` (the solver's
+/// conversational Intaker gives it a read-only `gh`).
+///
+/// # Errors
+/// As [`run`].
+pub async fn run_with(
+    prompt: &str,
+    cwd: &Path,
+    tools: &[&str],
+    server: Option<claude_agent_sdk::SdkMcpServer>,
+    cancel: &AtomicBool,
+    emit: &mut dyn FnMut(RuntimeEvent),
+) -> Result<Streamed, String> {
     if !crate::approval::tools_allowed() {
         return Err("This host refuses every tool, so microclaude cannot work here.".into());
     }
@@ -134,15 +151,18 @@ pub async fn run(
         .model(MODEL)
         .permission_mode(PermissionMode::Default)
         .no_session_persistence();
-    options.tools = Some(ToolsConfig::Names(
-        TOOLS.iter().map(|t| (*t).to_owned()).collect(),
-    ));
-    options.allowed_tools = Some(TOOLS.iter().map(|t| (*t).to_owned()).collect());
+    let mut allowed: Vec<String> = tools.iter().map(|t| (*t).to_owned()).collect();
+    options.tools = Some(ToolsConfig::Names(allowed.clone()));
+    if let Some(server) = server {
+        allowed.extend(server.allowed_tool_names());
+        options = options.sdk_mcp_server(server);
+    }
+    options.allowed_tools = Some(allowed.clone());
     options.setting_sources = Some(Vec::new());
     options.strict_mcp_config = true;
     options.env_remove = REMOVED_ENV.iter().map(|name| (*name).to_owned()).collect();
-    let handler = claude_agent_sdk::permission_handler(|request| {
-        let decision = if allows(&request.tool_name) {
+    let handler = claude_agent_sdk::permission_handler(move |request| {
+        let decision = if allowed.iter().any(|name| *name == request.tool_name) {
             PermissionResult::allow(request.input.clone())
         } else {
             PermissionResult::deny("That tool is not available in this mode.")

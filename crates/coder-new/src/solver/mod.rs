@@ -39,9 +39,95 @@ use crate::live::Entry;
 /// The mode's name, in the rail and in the conversation.
 pub const LABEL: &str = "solver";
 
-/// What the solver conversation answers when the message names no issue.
-pub const ASK_ISSUE: &str =
-    "Which issue should I solve? Give its number, or owner/repo#N for another repository.";
+/// The repository solver works in when the person names none.
+pub const DEFAULT_GITHUB: &str = "OpenAgentsInc/openagents";
+
+/// What the conversational Intaker is told before the conversation: help
+/// the person find or pick an issue with `gh`, then name it on its own line.
+const INTAKE_CHAT: &str = "You are the Intaker of solver, a four-hand coding run that takes one \
+GitHub issue to a pull request. Before the run starts, help the person choose the issue. You \
+can call `gh` with read-only issue and pull request commands (`issue list`, `issue view`, \
+`search issues`, `pr list`, `pr view`, with flags such as `--search`, `--label`, `--state`, \
+`--limit`, `--json`); the repository is {repo} unless the person names another. Search and \
+read issues to answer what they ask, suggest one or two that fit (say why in a line each), and \
+ask when you need to know more. Keep replies short. When the person has chosen, or clearly \
+asked you to pick, end your reply with exactly one line `ISSUE: owner/repo#N` and nothing \
+after it; the run starts from that line. Never write that line before they have chosen.";
+
+/// The prompt of one Intaker turn: its instructions, then the conversation.
+#[must_use]
+pub fn intake_task(messages: &[openrouter::Message], github: &str) -> String {
+    let prefix = format!(
+        "{}\n{}\nThe conversation:\n",
+        crate::identity::prompt(crate::microclaude::MODEL),
+        INTAKE_CHAT.replace("{repo}", github)
+    );
+    format!(
+        "{prefix}{}",
+        crate::live::local_conversation(messages, 48 * 1024)
+    )
+}
+
+/// The issue an Intaker reply settles on: its last `ISSUE:` line.
+#[must_use]
+pub fn chosen(reply: &str) -> Option<(Option<String>, u64)> {
+    reply
+        .lines()
+        .rev()
+        .find_map(|line| line.trim().strip_prefix("ISSUE:"))
+        .and_then(issue_reference)
+}
+
+/// Whether `args` is a read-only `gh` issue or pull request command.
+#[must_use]
+pub fn gh_read_only(args: &[String]) -> bool {
+    let words: Vec<&str> = args.iter().map(String::as_str).collect();
+    matches!(
+        words.as_slice(),
+        ["issue" | "pr", "list" | "view" | "status", ..] | ["search", "issues" | "prs", ..]
+    ) && !words.iter().any(|w| matches!(*w, "--web" | "-w"))
+}
+
+/// The conversational Intaker's one tool: `gh`, read-only.
+#[must_use]
+pub fn intake_chat_server(github: &str) -> claude_agent_sdk::SdkMcpServer {
+    let github = github.to_owned();
+    claude_agent_sdk::SdkMcpServer::new("intake", "1.0.0").tool(
+        "gh",
+        "Run a read-only gh command: issue list|view|status, pr list|view|status, search issues|prs. Pass the words after `gh` as `args`.",
+        json!({"type": "object", "properties": {"args": {"type": "array", "items": {"type": "string"}}}, "required": ["args"]}),
+        move |input: Value| {
+            let github = github.clone();
+            async move {
+                let mut args: Vec<String> = input["args"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|v| v.as_str().map(str::to_owned))
+                    .collect();
+                if !gh_read_only(&args) {
+                    return Ok(claude_agent_sdk::ToolResult::error(
+                        "Only gh issue/pr list, view, status and search issues/prs are allowed here.",
+                    ));
+                }
+                let searching = args.first().map(String::as_str) == Some("search");
+                if !searching && !args.iter().any(|a| a == "-R" || a == "--repo") {
+                    args.push("-R".into());
+                    args.push(github);
+                }
+                let words: Vec<&str> = args.iter().map(String::as_str).collect();
+                Ok(
+                    match crate::issue_run::setup::output("gh", &words, std::path::Path::new("."))
+                        .await
+                    {
+                        Ok(text) => claude_agent_sdk::ToolResult::text(text),
+                        Err(why) => claude_agent_sdk::ToolResult::error(why),
+                    },
+                )
+            }
+        },
+    )
+}
 
 pub const USAGE: &str = "Usage: coder solver N [OPTIONS]
 

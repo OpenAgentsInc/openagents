@@ -648,12 +648,31 @@ impl App {
 
     pub fn apply_update(&mut self, update: live::Update) {
         // Only a mode that runs turns accepts their updates.
-        if update.id() != self.request_id || !matches!(self.mode, Mode::Live | Mode::Microclaude) {
+        if update.id() != self.request_id
+            || !matches!(self.mode, Mode::Live | Mode::Microclaude | Mode::Solver)
+        {
             return;
         }
         self.live.stamp();
+        let finished = matches!(update, live::Update::Finished { result: Ok(_), .. });
         self.apply_live_update(update);
         self.live.stamp();
+        // The Intaker named the issue: the solver run starts on it.
+        if finished && self.mode == Mode::Solver && self.issue_run.is_none() {
+            let chosen = self
+                .live
+                .entries
+                .iter()
+                .rev()
+                .find_map(|entry| match entry {
+                    live::Entry::Assistant { text, .. } => Some(solver::chosen(text)),
+                    live::Entry::User(_) => Some(None),
+                    _ => None,
+                });
+            if let Some(Some((repo, issue))) = chosen {
+                self.start_solver(repo, issue);
+            }
+        }
     }
 
     fn apply_live_update(&mut self, update: live::Update) {
@@ -1362,16 +1381,46 @@ impl App {
         self.composer = Default::default();
         self.screen = Screen::Conversation;
         let Some((repo, issue)) = solver::issue_reference(&text) else {
-            self.live.entries.push(live::Entry::User(text));
-            self.live.entries.push(live::Entry::Assistant {
-                elapsed_ms: None,
-                text: solver::ASK_ISSUE.into(),
-                model: None,
-            });
-            self.history.dirty = true;
-            self.scroll_main_to_end();
+            // Not an issue number: the Intaker talks it through, with gh.
+            self.intake_solver(text);
             return;
         };
+        self.start_solver(repo, issue);
+    }
+
+    /// One turn of solver's conversational Intaker on `text`.
+    fn intake_solver(&mut self, text: String) {
+        if self.live.busy || self.issue_run.is_some() {
+            self.notice = Some("A solver run is already working here.".into());
+            return;
+        }
+        self.cancel_request();
+        let cwd = self.cwd.clone().unwrap_or_else(|| {
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+        });
+        self.live.finish_partial();
+        self.live.entries.push(live::Entry::User(text));
+        let messages = self.live.messages();
+        self.live.notice = None;
+        self.live.partial.clear();
+        self.live.partial_model = None;
+        self.live.busy = true;
+        self.live.reply_started_at = Some(std::time::Instant::now());
+        self.history.dirty = true;
+        self.scroll = u16::MAX;
+        self.request = Some(live::Request {
+            id: self.request_id,
+            key: model_access::ApiKey::new(""),
+            kind: live::Work::SolverIntake {
+                messages,
+                cwd,
+                github: solver::DEFAULT_GITHUB.into(),
+            },
+        });
+    }
+
+    /// Starts a solver run on `issue` (in `repo`, or the default one).
+    fn start_solver(&mut self, repo: Option<String>, issue: u64) {
         if self.live.busy || self.issue_run.is_some() {
             self.notice = Some("A solver run is already working here.".into());
             return;
