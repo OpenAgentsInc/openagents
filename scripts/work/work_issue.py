@@ -63,7 +63,6 @@ LOCAL_EXEC = HERE / "local-exec"
 TRAILER = "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 DROP_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")
 # A finder whose best file scores under this is a guess, not a briefing.
-DEFAULT_CODEX_MODEL = os.environ.get("OA_WORK_CODEX_MODEL", "gpt-5.1-codex")
 MIN_CONFIDENCE = float(os.environ.get("OA_WORK_MIN_CONFIDENCE", "0.05"))
 # This many failing `verify` calls with no pass is "repeated verify failures".
 MAX_VERIFY_FAILS = int(os.environ.get("OA_WORK_MAX_VERIFY_FAILS", "4"))
@@ -349,7 +348,7 @@ def run_briefed(run: Run, b: dict, root: Path, out: Path, model: str, timeout: i
     (out / "agent.json").write_text(json.dumps(config, indent=2))
     agent = os.environ.get("OA_BRIEFED_AGENT") or shutil.which("briefed-agent") or "briefed-agent"
     if backend == "codex":
-        config["model"] = os.environ.get("OA_WORK_CODEX_MODEL") or DEFAULT_CODEX_MODEL
+        config["model"] = os.environ.get("OA_WORK_CODEX_MODEL", "")  # empty: Codex's own default
         config["codex_bin"] = shutil.which("codex") or "codex"
     run.say("agent", f"the briefed agent is working on {'Codex' if backend == 'codex' else 'Claude'}",
             engine=f"briefed:{backend}" if backend != "claude" else "briefed")

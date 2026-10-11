@@ -4,10 +4,12 @@
 //! - **System prompt**: the briefing replaces Codex's instructions
 //!   (`model_instructions_file`), as it replaces Claude Code's.
 //! - **Tools**: Codex has no file tools of its own, only its shell and
-//!   `apply_patch`, so the boundary is its `workspace-write` sandbox rooted
-//!   at the worktree. The briefing's check tools (`verify`, `finish`, ...)
+//!   `apply_patch`. The briefing's check tools (`verify`, `finish`, ...)
 //!   reach it as the MCP server `oa`, which is this same binary in
-//!   `--serve CONFIG.json` mode over stdio ([`serve`]).
+//!   `--serve CONFIG.json` mode over stdio ([`serve`]). Codex's sandbox
+//!   refuses MCP calls under `approval_policy = never`, so the run bypasses
+//!   its approvals and sandbox, as `coder-delegate` does; the worktree is
+//!   the working directory, and `verify` only reads the worktree.
 //! - **Login**: Codex's own (`CODEX_HOME`); user config and rules do not
 //!   load, and the session is not kept.
 //! - **Misses**: the paths of every `file_change` the briefing did not list.
@@ -21,16 +23,13 @@ use std::io::{BufRead, Write};
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 use tokio::io::AsyncBufReadExt;
 
 use crate::verify::Tally;
-
-/// The default Codex model.
-pub const DEFAULT_MODEL: &str = "gpt-5.1-codex";
 
 /// What one run of `codex exec --json` observed.
 #[derive(Default, Debug, PartialEq)]
@@ -47,8 +46,9 @@ pub struct Observed {
 }
 
 impl Observed {
-    /// Reads one event line.
-    pub fn see(&mut self, event: &Value, briefed: &BTreeSet<String>) {
+    /// Reads one event line, with `file_change` paths made relative to
+    /// `worktree`.
+    pub fn see_in(&mut self, event: &Value, briefed: &BTreeSet<String>, worktree: &Path) {
         match event["type"].as_str() {
             Some("thread.started") => {
                 self.thread_id = event["thread_id"].as_str().map(str::to_owned);
@@ -86,7 +86,12 @@ impl Observed {
                         self.count("Edit");
                         for change in item["changes"].as_array().into_iter().flatten() {
                             if let Some(path) = change["path"].as_str() {
-                                let path = path.trim_start_matches("./").to_owned();
+                                let path = Path::new(path)
+                                    .strip_prefix(worktree)
+                                    .unwrap_or(Path::new(path))
+                                    .to_string_lossy()
+                                    .trim_start_matches("./")
+                                    .to_owned();
                                 if !briefed.contains(&path) && !self.files_written.contains(&path) {
                                     self.misses
                                         .push(json!({"path": path, "via": "file_change"}));
@@ -117,8 +122,9 @@ impl Observed {
 
 /// The arguments of `codex exec` for `config`: JSON output, the briefing as
 /// the whole instructions, the `oa` MCP server as this binary serving
-/// `config_path`, no user config, no session, sandboxed writes in the
-/// worktree, and the prompt from stdin.
+/// `config_path`, no user config, no session, no approval prompts, and the
+/// prompt from stdin. Without `model`, Codex picks its
+/// login's default model.
 pub fn argv(config: &Value, config_path: &str, self_exe: &str, worktree: &Path) -> Vec<String> {
     let toml = |value: &Value| value.to_string();
     let mut args: Vec<String> = [
@@ -133,10 +139,9 @@ pub fn argv(config: &Value, config_path: &str, self_exe: &str, worktree: &Path) 
     .map(str::to_owned)
     .to_vec();
     args.push(worktree.to_string_lossy().into_owned());
-    args.extend([
-        "-m".to_owned(),
-        config["model"].as_str().unwrap_or(DEFAULT_MODEL).to_owned(),
-    ]);
+    if let Some(model) = config["model"].as_str().filter(|model| !model.is_empty()) {
+        args.extend(["-m".to_owned(), model.to_owned()]);
+    }
     if let Some(effort) = config["effort"].as_str() {
         args.extend([
             "-c".to_owned(),
@@ -165,10 +170,7 @@ pub fn argv(config: &Value, config_path: &str, self_exe: &str, worktree: &Path) 
     args.extend([
         "-c".to_owned(),
         "web_search=\"disabled\"".to_owned(),
-        "-c".to_owned(),
-        "approval_policy=\"never\"".to_owned(),
-        "-s".to_owned(),
-        "workspace-write".to_owned(),
+        "--dangerously-bypass-approvals-and-sandbox".to_owned(),
         "-".to_owned(),
     ]);
     args
@@ -239,7 +241,7 @@ pub async fn run(config: &Value, config_path: &str) -> Result<(), String> {
                 let Ok(event) = serde_json::from_str::<Value>(&line) else {
                     continue;
                 };
-                observed.see(&event, &briefed);
+                observed.see_in(&event, &briefed, &worktree);
                 events.push_str(
                     &json!({"type": "codex", "t_ms": started.elapsed().as_millis(), "event": event})
                         .to_string(),
@@ -349,11 +351,6 @@ pub async fn serve(config: &Value) -> Result<(), String> {
     Ok(())
 }
 
-#[allow(dead_code)]
-fn lock<T>(shared: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    shared.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -380,15 +377,17 @@ mod tests {
         assert!(args.contains(&"model_reasoning_effort=\"high\"".to_owned()));
         assert!(args.contains(&"mcp_servers.oa.command=\"/bin/briefed-agent\"".to_owned()));
         assert!(args.contains(&"mcp_servers.oa.args=[\"--serve\",\"/b/agent.json\"]".to_owned()));
-        assert_eq!(args[args.len() - 3..], ["-s", "workspace-write", "-"]);
-        assert!(!args.iter().any(|a| a.contains("dangerously")));
+        assert_eq!(
+            args[args.len() - 2..],
+            ["--dangerously-bypass-approvals-and-sandbox", "-"]
+        );
     }
 
     #[test]
     fn argv_without_check_tools_has_no_server() {
         let args = argv(&json!({}), "/b/agent.json", "/bin/x", Path::new("/w"));
         assert!(!args.iter().any(|a| a.starts_with("mcp_servers")));
-        assert!(args.contains(&DEFAULT_MODEL.to_owned()));
+        assert!(!args.contains(&"-m".to_owned()));
     }
 
     #[test]
@@ -397,14 +396,18 @@ mod tests {
         let lines = [
             r#"{"type":"thread.started","thread_id":"t1"}"#,
             r#"{"type":"item.completed","item":{"id":"1","type":"command_execution","command":"cargo test","exit_code":0}}"#,
-            r#"{"type":"item.completed","item":{"id":"2","type":"file_change","changes":[{"path":"crates/a/src/lib.rs","kind":"update"},{"path":"crates/a/src/new.rs","kind":"add"}]}}"#,
+            r#"{"type":"item.completed","item":{"id":"2","type":"file_change","changes":[{"path":"/w/crates/a/src/lib.rs","kind":"update"},{"path":"/w/crates/a/src/new.rs","kind":"add"}]}}"#,
             r#"{"type":"item.completed","item":{"id":"3","type":"mcp_tool_call","server":"oa","tool":"verify","status":"completed"}}"#,
             r#"{"type":"item.completed","item":{"id":"4","type":"agent_message","text":"done"}}"#,
             r#"{"type":"turn.completed","usage":{"input_tokens":10,"cached_input_tokens":4,"output_tokens":3}}"#,
             r#"{"type":"turn.failed","error":{"message":"overloaded"}}"#,
         ];
         for line in lines {
-            seen.see(&serde_json::from_str(line).unwrap(), &briefed());
+            seen.see_in(
+                &serde_json::from_str(line).unwrap(),
+                &briefed(),
+                Path::new("/w"),
+            );
         }
         assert_eq!(seen.tool_calls["Bash"], 1);
         assert_eq!(seen.tool_calls["Edit"], 1);
