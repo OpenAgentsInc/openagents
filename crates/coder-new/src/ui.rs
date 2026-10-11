@@ -717,15 +717,22 @@ fn run_lines(
         .or_else(|| output.get("command").and_then(|v| v.as_str()))
         .or_else(|| input.as_str())
         .unwrap_or_default();
-    let glyph = if running {
-        crate::tools::spinner(phase)
-    } else if output.get("error").is_some() {
-        "×"
+    let failed = output.get("error").is_some()
+        || output
+            .get("exit")
+            .and_then(serde_json::Value::as_i64)
+            .is_some_and(|exit| exit != 0)
+        || output.get("timed_out").and_then(serde_json::Value::as_bool) == Some(true)
+        || output.get("canceled").and_then(serde_json::Value::as_bool) == Some(true);
+    let (glyph, color) = if running {
+        (crate::tools::spinner(phase), t::ACCENT_SKILL)
+    } else if failed {
+        ("×", t::DIFF_DELETE_FG)
     } else {
-        "●"
+        ("●", t::ACCENT_SUCCESS)
     };
     let mut lines = vec![Line::from(vec![
-        span(format!("{glyph} "), t::ACCENT_SKILL),
+        span(format!("{glyph} "), color),
         Span::styled(
             "Run",
             Style::default()
@@ -1719,6 +1726,46 @@ mod streaming_tests {
 
 #[cfg(test)]
 mod run_viewport_tests {
+    #[test]
+    fn run_indicators_use_outcome_colors() {
+        for (output, glyph, color) in [
+            (serde_json::json!({"exit": 0}), "● ", t::ACCENT_SUCCESS),
+            (
+                serde_json::json!({"error": "Failed"}),
+                "× ",
+                t::DIFF_DELETE_FG,
+            ),
+            (serde_json::json!({"exit": 1}), "× ", t::DIFF_DELETE_FG),
+            (
+                serde_json::json!({"timed_out": true}),
+                "× ",
+                t::DIFF_DELETE_FG,
+            ),
+            (
+                serde_json::json!({"canceled": true}),
+                "× ",
+                t::DIFF_DELETE_FG,
+            ),
+        ] {
+            let lines = run_lines(
+                &serde_json::json!({"command": "example"}),
+                &output,
+                false,
+                60,
+                0,
+            );
+            assert_eq!(lines[0].spans[0].content, glyph);
+            assert_eq!(lines[0].spans[0].style.fg, Some(color));
+            assert_eq!(lines[0].spans[1].style.fg, Some(t::ACCENT_SKILL));
+            let running = run_lines(&serde_json::json!({}), &output, true, 60, 0);
+            assert_eq!(running[0].spans[0].style.fg, Some(t::ACCENT_SKILL));
+            assert_eq!(
+                running[0].spans[0].content,
+                format!("{} ", crate::tools::spinner(0))
+            );
+        }
+    }
+
     #[test]
     fn run_status_uses_short_times_without_duplicate_labels() {
         let lines = super::run_lines(
