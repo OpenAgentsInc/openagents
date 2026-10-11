@@ -654,6 +654,11 @@ async fn summary(
         None => Value::Null,
     };
 
+    // The reader's own free allowance today (#11264).
+    let free_allowance = match accounts::member_account(&principal) {
+        Ok(account) => crate::inference_public::allowance_view(&state, account).await,
+        Err(_) => Value::Null,
+    };
     accounts::record(&state, &principal, "usage-summary", Some(&workspace), None);
     let response = answered(
         StatusCode::OK,
@@ -684,6 +689,7 @@ async fn summary(
             "by_lane": by_lane,
             "by_transport": by_transport,
             "entitlement": entitlement,
+            "free_allowance": free_allowance,
             "disclosure": disclosure(&scan),
         }),
     );

@@ -231,6 +231,10 @@ handoff from lead to accepted pilot, paid use, and expansion.
   one checked public-repository change, a proposed USD 250 service fee,
   one 30-minute free discovery call, and zero promotional credits. O1 and
   buyer agreement activate it. Broader business credit remains a decision.
+- **Free daily allowance.** A signed-in account gets about $1 of model cost
+  a day on Coder's `auto` (`openagents/auto`, `openagents/fast`), funded
+  from our Google credit, before its own balance
+  ([providers](../inference/providers.md#free-daily-allowance-11264)).
 - **Pay as you go.** Usage is metered per resource (compute, gateway calls,
   plugin calls) and charged against a prepaid balance or a card. The retail
   cloud already defines quotes, holds, metering, and settlement

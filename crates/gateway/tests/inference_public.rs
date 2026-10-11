@@ -147,6 +147,12 @@ struct Deployment {
 /// `book` is written as the key book before the gateway starts, with
 /// `{acme}` replaced by acme's key id.
 async fn deploy(public: bool, book: Option<Value>) -> Deployment {
+    let terms = public.then(|| json!({"free_tier": {"requests_per_day": 2, "models": [FREE]}}));
+    deploy_with(terms, book).await
+}
+
+/// [`deploy`] with `inference.public` set to `terms`.
+async fn deploy_with(terms: Option<Value>, book: Option<Value>) -> Deployment {
     let dir = tempfile::tempdir().unwrap();
     let mut manifest = common::manifest(&common::artifact('a'), None);
     let acme = manifest.tenants["acme"].clone();
@@ -200,8 +206,8 @@ async fn deploy(public: bool, book: Option<Value>) -> Deployment {
             "model_first_token_ms": 2000
         }
     });
-    if public {
-        inference["public"] = json!({"free_tier": {"requests_per_day": 2, "models": [FREE]}});
+    if let Some(terms) = terms {
+        inference["public"] = terms;
     }
     let inference: Inference = serde_json::from_value(inference).unwrap();
     let config = Config {
@@ -675,4 +681,104 @@ async fn without_public_terms_a_session_is_refused_like_a_key() {
         body["error"]["message"],
         "Inference is open to OpenAgents services only for now."
     );
+}
+
+/// A second signed-in account with its own personal workspace on `acme`.
+fn sign_in_another(d: &Deployment, label: &str) -> (String, String) {
+    use tenancy::Accounts;
+    use tenancy::accounts::WorkspaceKind;
+    use tenancy::sessions::Sessions;
+    use tenancy::workspaces::UserId;
+    let dir = d._dir.path();
+    let accounts = Accounts::open(dir).unwrap();
+    let who = accounts.create_account(label, &[]).unwrap();
+    accounts
+        .create_workspace(&who.id, &who.label, WorkspaceKind::Personal, "acme", None)
+        .unwrap();
+    let sessions = Sessions::open(dir).unwrap();
+    let token = sessions
+        .mutate(|book, _, now| book.issue(UserId::from(who.id.as_str()), now))
+        .unwrap()
+        .once;
+    (who.id, token)
+}
+
+/// What the key book says each account used of its free allowance today.
+fn allowance_used(d: &Deployment) -> serde_json::Map<String, Value> {
+    let path = d._dir.path().join(gateway::inference_public::BOOK);
+    let Ok(bytes) = std::fs::read(path) else {
+        return serde_json::Map::new();
+    };
+    let book: Value = serde_json::from_slice(&bytes).unwrap();
+    book["allowance"].as_object().cloned().unwrap_or_default()
+}
+
+fn allowance(per_day: u64) -> Value {
+    json!({
+        "free_tier": {"requests_per_day": 2, "models": [FREE]},
+        "free_allowance": {"usd_micros_per_day": per_day, "models": ["openagents/auto", "openagents/fast"]},
+    })
+}
+
+/// #11264: a new signed-in account with no balance gets `openagents/auto`
+/// answered on its free allowance, metered at the reported usage, under
+/// its own account only; a paid model still needs a balance, and a key
+/// gets no allowance.
+#[tokio::test]
+async fn a_new_account_is_answered_on_its_free_allowance() {
+    let d = deploy_with(Some(allowance(1_000_000)), None).await;
+    let signed = sign_in(&d);
+    let (status, body, _) = call(
+        &d,
+        &signed.user,
+        "/v1/chat/completions",
+        chat("openagents/auto"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["object"], "chat.completion");
+    let used = allowance_used(&d);
+    assert_eq!(used.len(), 1, "{used:?}");
+    let (ada, spent) = used.iter().next().unwrap();
+    let micros = spent["micros"].as_u64().unwrap();
+    // 1,000 input and 100 output tokens at the rate card, not the worst case.
+    assert!(micros > 0 && micros < 10_000, "{micros}");
+    // The model outside the allowance is still paid from the balance.
+    let (status, body, _) = call(&d, &signed.user, "/v1/chat/completions", chat(PAID)).await;
+    assert_eq!(status, StatusCode::PAYMENT_REQUIRED, "{body}");
+    // Another account's turn spends its own allowance, never Ada's.
+    let (bob, token) = sign_in_another(&d, "Bob");
+    let (status, body, _) = call(&d, &token, "/v1/chat/completions", chat("openagents/auto")).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let used = allowance_used(&d);
+    assert_eq!(used.len(), 2, "{used:?}");
+    assert_eq!(used[ada]["micros"].as_u64(), Some(micros));
+    assert!(used[&bob]["micros"].as_u64().unwrap() > 0);
+    // An `oak_` key is not a signed-in account: no allowance.
+    let (status, body, _) =
+        call(&d, &d.poor, "/v1/chat/completions", chat("openagents/auto")).await;
+    assert_ne!(status, StatusCode::OK, "{body}");
+    assert_eq!(allowance_used(&d).len(), 2);
+}
+
+/// #11264: once the day's allowance can't cover a turn and there is no
+/// balance, the refusal says so plainly, and nothing is charged.
+#[tokio::test]
+async fn a_spent_allowance_says_so_plainly() {
+    let d = deploy_with(Some(allowance(1)), None).await;
+    let signed = sign_in(&d);
+    let (status, body, _) = call(
+        &d,
+        &signed.user,
+        "/v1/chat/completions",
+        chat("openagents/auto"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::PAYMENT_REQUIRED, "{body}");
+    assert_eq!(body["error"]["type"], "insufficient_balance");
+    assert_eq!(
+        body["error"]["message"],
+        "Today's free allowance is used up. Add credit or use your own key."
+    );
+    assert!(allowance_used(&d).values().all(|used| used["micros"] == 0));
 }

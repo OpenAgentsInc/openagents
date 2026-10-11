@@ -228,7 +228,10 @@ cat > "$private/gateway.json" << EOF
     "own_coders": {"web": "http://127.0.0.1:8080", "token_file": "$state/own-runs.key"},
     "service_tenants": ["house"],
     "journal": "$state/gateway/attempts",
-    "public": {"free_tier": {"requests_per_day": 20, "models": ["google/gemini-2.5-flash-lite"]}},
+    "public": {
+      "free_tier": {"requests_per_day": 20, "models": ["google/gemini-2.5-flash-lite"]},
+      "free_allowance": {"usd_micros_per_day": ${GATEWAY_FREE_ALLOWANCE_MICROS:-1000000}, "models": ["openagents/auto", "openagents/fast"]}
+    },
     "accounts": [
       {"id": "google-credit", "upstream": "vertex", "granted": 30000000000, "balance": 30000000000, "basis": "prepaid"},
       {"id": "zai-credit", "upstream": "zai", "granted": 100000000, "balance": 100000000, "basis": "prepaid"},
