@@ -666,3 +666,57 @@ async fn environments_open_on_a_retry_after_boat_was_down_at_start() {
     .await;
     assert!(slot.is_some());
 }
+
+/// A machine-backend outage (#11256): while Environments are configured but
+/// the studio hasn't opened, or the backend fails its health probe, the
+/// pages say "temporarily unavailable" (503); the next good probe brings
+/// them back, with no restart.
+#[tokio::test]
+async fn a_backend_outage_reads_temporarily_unavailable_and_clears_itself() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = crate::Config::development(dir.path().join("tasks"));
+    config.environments.configure();
+    let unavailable = |body: &str| {
+        body.contains("Environments are temporarily unavailable. They come back on their own; try again in a minute.")
+    };
+    // Configured, studio not open yet.
+    let (status, body) = send(config.clone(), get("/environments", "127.0.0.1:4300")).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(unavailable(&body), "{body}");
+    crate::copy_guard::assert_plain("/environments", &body);
+
+    // The studio opens; a failed probe hides it, the next good one restores it.
+    let state = tempfile::tempdir().unwrap();
+    assert!(config.environments.set(fake_studio(state.path())));
+    let tries = std::sync::Arc::new(AtomicUsize::new(0));
+    let counted = tries.clone();
+    let slot = config.environments.clone();
+    let probe = tokio::spawn(crate::probe_environments(
+        slot,
+        std::time::Duration::from_millis(5),
+        move || {
+            let n = counted.fetch_add(1, Ordering::SeqCst);
+            async move {
+                if n == 0 {
+                    Err("the machine backend refused: Boat API returned HTTP 502.".to_owned())
+                } else {
+                    std::future::pending::<()>().await;
+                    Ok(())
+                }
+            }
+        },
+    ));
+    while tries.load(Ordering::SeqCst) < 2 {
+        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    }
+    assert!(!config.environments.backend_up());
+    let (status, body) = send(config.clone(), get("/environments", "127.0.0.1:4300")).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+    assert!(unavailable(&body), "{body}");
+    probe.abort();
+    assert!(config.environments.set_backend_up(true));
+    let (status, body) = send(config, get("/environments", "127.0.0.1:4300")).await;
+    assert_ne!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+    assert!(!unavailable(&body));
+}

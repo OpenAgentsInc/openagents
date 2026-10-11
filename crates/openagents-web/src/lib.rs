@@ -93,35 +93,71 @@ const SITE_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'
 /// answers (#11248 follow-up: an instance that started during a Boat outage
 /// used to stay without Environments for its whole life).
 #[derive(Clone, Default)]
-pub struct Environments(Arc<std::sync::OnceLock<Arc<coder_environment_operator::studio::Studio>>>);
+pub struct Environments(Arc<EnvironmentsSlot>);
+
+#[derive(Default)]
+struct EnvironmentsSlot {
+    studio: std::sync::OnceLock<Arc<coder_environment_operator::studio::Studio>>,
+    /// Started with `--environments`, whether or not the backend answered.
+    configured: std::sync::atomic::AtomicBool,
+    /// The machine backend failed its last health probe (#11256).
+    down: std::sync::atomic::AtomicBool,
+}
 
 impl Environments {
+    /// Environments are configured on this server: the left panel offers
+    /// them, and until the studio opens, or while the machine backend is
+    /// away, the pages say they are temporarily unavailable.
+    pub fn configure(&self) {
+        self.0
+            .configured
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        environments::mark_shown();
+    }
+
+    #[must_use]
+    pub fn configured(&self) -> bool {
+        self.0.configured.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Record a health probe of the machine backend; `true` when that
+    /// changed the state.
+    pub fn set_backend_up(&self, up: bool) -> bool {
+        self.0.down.swap(!up, std::sync::atomic::Ordering::Relaxed) == up
+    }
+
+    /// The backend answered its last probe (or none has run).
+    #[must_use]
+    pub fn backend_up(&self) -> bool {
+        !self.0.down.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     /// The studio, once there is one.
     #[must_use]
     pub fn studio(&self) -> Option<&Arc<coder_environment_operator::studio::Studio>> {
-        self.0.get()
+        self.0.studio.get()
     }
 
     /// A handle on the studio, once there is one.
     #[must_use]
     pub fn get(&self) -> Option<Arc<coder_environment_operator::studio::Studio>> {
-        self.0.get().cloned()
+        self.0.studio.get().cloned()
     }
 
     #[must_use]
     pub fn is_some(&self) -> bool {
-        self.0.get().is_some()
+        self.0.studio.get().is_some()
     }
 
     #[must_use]
     pub fn is_none(&self) -> bool {
-        self.0.get().is_none()
+        self.0.studio.get().is_none()
     }
 
     /// Fill the slot and offer Environments in the left panel; `false`
     /// when it was already filled (the first studio stays).
     pub fn set(&self, studio: Arc<coder_environment_operator::studio::Studio>) -> bool {
-        let filled = self.0.set(studio).is_ok();
+        let filled = self.0.studio.set(studio).is_ok();
         if filled {
             environments::mark_shown();
         }
@@ -133,7 +169,7 @@ impl From<Option<Arc<coder_environment_operator::studio::Studio>>> for Environme
     fn from(studio: Option<Arc<coder_environment_operator::studio::Studio>>) -> Self {
         let slot = Self::default();
         if let Some(studio) = studio {
-            slot.0.set(studio).ok();
+            slot.0.studio.set(studio).ok();
         }
         slot
     }
@@ -178,6 +214,46 @@ where
                 }
             }
         }
+    }
+}
+
+/// Probe the Environments machine backend (our Boat-compatible service,
+/// `crates/oa-boat`, #11256) every `every`, forever. `check` answers whether
+/// it is up; a failure makes the Environments pages say they are
+/// temporarily unavailable, and the next success brings them back, with no
+/// redeploy. Each change is logged once.
+pub async fn probe_environments<F, Fut>(slot: Environments, every: std::time::Duration, check: F)
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = Result<(), String>>,
+{
+    loop {
+        let result = check().await;
+        if slot.set_backend_up(result.is_ok()) {
+            match result {
+                Ok(()) => println!("Environments: the machine backend answers again"),
+                Err(e) => eprintln!("Environments are temporarily unavailable: {e}"),
+            }
+        }
+        tokio::time::sleep(every).await;
+    }
+}
+
+/// One probe of the Boat-compatible backend: `GET /limits` with the
+/// configured key and base, bounded by 15 seconds.
+pub async fn boat_backend_answers() -> Result<(), String> {
+    let client = boat::Client::from_env()
+        .await
+        .map_err(|e| format!("the machine backend is not configured: {e}"))?;
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(15),
+        client.limits(&boat::models::LimitsParams::default()),
+    )
+    .await
+    {
+        Ok(Ok(_)) => Ok(()),
+        Ok(Err(e)) => Err(format!("the machine backend refused: {e}")),
+        Err(_) => Err("the machine backend did not answer in 15 s".into()),
     }
 }
 
