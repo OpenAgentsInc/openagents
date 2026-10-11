@@ -467,6 +467,7 @@ fn run_script(issue: u64, land: Option<Land>, build: bool) -> String {
     let land = match land {
         Some(Land::Main) => " --land main",
         Some(Land::PullRequest) => " --land pr",
+        Some(Land::Queue) => " --land queue",
         None => "",
     };
     format!(
@@ -1353,7 +1354,7 @@ async fn run_issue(
     };
     let landed = matches!(
         outcome.as_str(),
-        "landed" | "pull_request" | "skipped" | "closed" | "unchanged"
+        "landed" | "pull_request" | "queued" | "skipped" | "closed" | "unchanged"
     );
     // Usage is read as the run ends, before a delete removes the sandbox.
     let usage = client
@@ -1683,7 +1684,7 @@ pub(super) async fn work(output: &Output, request: Request) -> Result<u8, Failur
     let good = results.iter().all(|r| {
         matches!(
             r["outcome"].as_str(),
-            Some("landed" | "pull_request" | "skipped" | "closed")
+            Some("landed" | "pull_request" | "queued" | "skipped" | "closed")
         )
     });
     Ok(if good { 0 } else { crate::EXIT_FAILURE })
@@ -1734,6 +1735,7 @@ mod tests {
         assert!(script.contains(r#"printf 'export XAI_API_KEY=%q\n' "$XAI_API_KEY""#));
         assert!(script.contains("trap 'rm -f /tmp/oa-engine.env' EXIT"));
         assert!(run_script(1, None, true).ends_with("--parallel 1\n"));
+        assert!(run_script(7, Some(Land::Queue), false).ends_with("--parallel 1 --land queue\n"));
     }
 
     #[test]

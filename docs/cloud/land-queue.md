@@ -44,7 +44,10 @@ When the integrator's environment is stopped, `submit` starts it
 5. A rebase conflict gets the landing's one bounded repair turn (#10418), a
    headless `claude -p` in the worktree (`--repair COMMAND`, or `none`).
    Then the checks run again. A conflict that stays bounces the entry.
-6. Closes or comments the issue. A bounced entry's issue gets the reason and
+6. Closes or comments the issue. The issue flow's `--land queue`
+   (`openagents chat work --issues N --land queue`, or `"land": "queue"` in
+   `.openagents/coder-issues.json`) submits entries with `close: true`, so
+   the integrator closes the issue it worked. A bounced entry's issue gets the reason and
    the branch stays on `origin` for its author to fix and submit again.
 7. Writes a record of the try. Pushes that kept failing put the entry back
    in line, at most three times.

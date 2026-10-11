@@ -42,7 +42,7 @@ openagents chat export --thread ID
 openagents chat run-coder --thread ID
 openagents chat run-command --thread ID
 openagents chat apply --thread ID
-openagents chat work --issues NUMBERS|LABEL [--parallel N] [--land main|pr] [--on boat]
+openagents chat work --issues NUMBERS|LABEL [--parallel N] [--land main|pr|queue] [--on boat]
 ```
 
 Every command also takes `--scratch`, `--local`, and `--socket PATH`, and
@@ -397,11 +397,14 @@ thread titled with the issue. It skips a closed issue and a claimed one
 ([below](#claims)). A label's issues come in the repository's project order
 when it has one (Ready or Todo, not blocked), else oldest first. Each flow's
 events stream with an `issue` field (text mode prefixes `#N`); each issue
-ends with an `issue` line (`outcome`: `landed`, `pull_request`, `failed`,
+ends with an `issue` line (`outcome`: `landed`, `pull_request`, `queued`, `failed`,
 `stopped`, `unchanged`, `skipped`, `closed`, or `not_started`, and
 `message`, `thread`, `task`, `commits`), and the queue with `queue_done`.
-It exits 0 when every issue landed or was skipped. `--land main|pr`
-overrides the policy.
+It exits 0 when every issue landed, was queued, or was skipped. `--land
+main|pr|queue` overrides the policy. `--land queue` pushes each green change
+to `land/<entry id>` on origin and submits it to the landing queue
+(`OPENAGENTS_LAND_QUEUE`, else the shared one; docs/cloud/land-queue.md);
+the integrator lands it and closes the issue, or comments why it bounced.
 
 `--on boat` runs each issue on a Boat sandbox of its own instead of this
 computer (`--parallel` up to 16); `--template NAME` and `--engine-logins

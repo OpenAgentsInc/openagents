@@ -9,8 +9,11 @@
 //! something, and the whole reply.
 //!
 //! ```sh
-//! scripts/ui-format-bench.sh --model google/gemini-3.8-flash --model zai/glm-5.3-flash
+//! scripts/ui-format-bench.sh --model GEMINI_MODEL --model GLM_MODEL
 //! ```
+//!
+//! The Gemini and GLM lanes' model ids are written once, in
+//! `coder::generate::Lane::model`.
 //!
 //! | Flag | Effect |
 //! | --- | --- |

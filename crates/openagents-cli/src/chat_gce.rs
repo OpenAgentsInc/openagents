@@ -75,6 +75,7 @@ fn run_script(credentials: &Credentials, issue: u64, land: Option<Land>, slots: 
     let land = match land {
         Some(Land::Main) => " --land main",
         Some(Land::PullRequest) => " --land pr",
+        Some(Land::Queue) => " --land queue",
         None => "",
     };
     let exports: String = credentials_lines(credentials);
@@ -864,7 +865,7 @@ pub(super) async fn work(output: &Output, request: Request) -> Result<u8, Failur
     let good = results.iter().all(|r| {
         matches!(
             r["outcome"].as_str(),
-            Some("landed" | "pull_request" | "skipped" | "closed")
+            Some("landed" | "pull_request" | "queued" | "skipped" | "closed")
         )
     });
     Ok(if good { 0 } else { crate::EXIT_FAILURE })
@@ -1203,6 +1204,10 @@ printf '%s\n' '{"event":"coder","thread":"thread2","task":{"task":"newtask123"}}
         assert!(script.contains("flock -n 9"));
         assert!(script.contains("$(seq 0 1)"));
         assert!(script.contains("--issues 10225 --parallel 1 --land main"));
+        assert!(
+            run_script(&credentials, 10225, Some(Land::Queue), 2)
+                .contains("--issues 10225 --parallel 1 --land queue")
+        );
         assert!(script.contains("OPENAGENTS_CODER_CONTROLLER"));
         assert!(script.contains("OPENAGENTS_CODER_PLACEMENT=gce"));
         assert!(script.contains("return 75"));

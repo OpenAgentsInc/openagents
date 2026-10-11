@@ -93,13 +93,15 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         build's command tree declares it; one that changes something here
         waits for this; one that moves money or shows a secret never runs
         from the chat.
-  work --issues NUMBERS|LABEL [--parallel N] [--land main|pr] [--on boat|gce]
+  work --issues NUMBERS|LABEL [--parallel N] [--land main|pr|queue] [--on boat|gce]
         Hand several issues to Coder, one issue flow each, each in its own
         thread: NUMBERS such as 10050,10051, or a LABEL's open issues.
         --parallel (1 to 4, default 1) runs that many at once, each in its
         own worktree. Issues claimed in the last hours (the repository's
         claim window) and closed issues are skipped. --land overrides the
-        repository's policy.
+        repository's policy; --land queue hands each green change to the
+        landing queue (openagents land), whose integrator lands it and
+        closes the issue.
         --on boat runs each issue on a Boat sandbox of its own instead of
         this computer (--parallel up to 16; starts are queued under Boat's
         start limits): started from the newest oa-coder-main-<date>
