@@ -1,0 +1,12 @@
+[package]
+name = "icecream-rules"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The Ice Cream Man's rules: the seeded Airbnb, the Ice Cream Man's state machine, tools and ammo, health, hiding, keys, the front-door escape and the run card, as a deterministic fixed-step simulation."
+
+[dependencies]
+
+[lints]
+workspace = true
