@@ -26,6 +26,7 @@
 //! after it ([`repositories`]), a page of 30 at a time, most recently
 //! pushed first, from the account service's per-account cache.
 
+pub(crate) mod push;
 mod view;
 
 use std::convert::Infallible;
@@ -87,6 +88,7 @@ pub(crate) fn routes(app: &App) -> Router<App> {
             signed_in_only,
         ))
         .layer(DefaultBodyLimit::max(64 * 1024))
+        .merge(push::routes())
 }
 
 /// Where one page of the person's repositories loads from.
@@ -673,7 +675,8 @@ async fn claude(
         return missing(&headers);
     }
     let own = crate::cloud::byo::run_key(&app, &headers).await;
-    match studio.run_claude(&id, &form.prompt, own) {
+    let push = push::access(&app, &headers, studio, &id).await;
+    match studio.run_claude_pushing(&id, &form.prompt, own, Vec::new(), push) {
         Ok(run) => protect(Redirect::to(&format!("/environments/{id}/runs/{run}")).into_response()),
         Err(e) => page(&app, studio, &headers, &id, Some(e.as_str())).await,
     }

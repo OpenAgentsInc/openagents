@@ -361,7 +361,8 @@ async fn start(
     }
     let prompt = context(&chat.messages, &computer, next, MAX_PROMPT - 512);
     let own = crate::cloud::byo::run_key(&app, &headers).await;
-    let run = match studio.run_claude(&offer.id, &prompt, own) {
+    let push = crate::environments::push::access(&app, &headers, &studio, &offer.id).await;
+    let run = match studio.run_claude_pushing(&offer.id, &prompt, own, Vec::new(), push) {
         Ok(run) => run,
         Err(error) => {
             return form(

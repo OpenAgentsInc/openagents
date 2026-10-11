@@ -627,7 +627,8 @@ pub(super) async fn begin(
     let own = crate::cloud::byo::run_key(app, headers).await;
     // The files sent with the message go in the computer's working
     // directory, named in the task (#11174).
-    let run = studio.run_claude_with_files(&env.id, &prompt, own, files)?;
+    let push = crate::environments::push::access(app, headers, &studio, &env.id).await;
+    let run = studio.run_claude_pushing(&env.id, &prompt, own, files, push)?;
     let version = studio
         .claude_run(&env.id, &run)
         .and_then(|run| run.version)
@@ -880,7 +881,8 @@ async fn run(
         return run_agents(app, headers, owner, id, chat, offer, prompt, agents).await;
     }
     let own = crate::cloud::byo::run_key(&app, &headers).await;
-    let run = match studio.run_claude(&offer.id, prompt, own) {
+    let push = crate::environments::push::access(&app, &headers, &studio, &offer.id).await;
+    let run = match studio.run_claude_pushing(&offer.id, prompt, own, Vec::new(), push) {
         Ok(run) => run,
         Err(error) => {
             return run_form(
@@ -966,7 +968,8 @@ async fn run_agents(
     for (agent, text) in planned.into_iter().zip(prompts) {
         // Each run gets its own release of the person's key.
         let own = crate::cloud::byo::run_key(&app, &headers).await;
-        let run = match studio.run_claude(&offer.id, &text, own) {
+        let push = crate::environments::push::access(&app, &headers, &studio, &offer.id).await;
+        let run = match studio.run_claude_pushing(&offer.id, &text, own, Vec::new(), push) {
             Ok(run) => run,
             Err(error) => {
                 for task in &tasks {

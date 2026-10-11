@@ -69,12 +69,45 @@ subscription token (#11204) needs a runtime from `594aa7afa8` or later
 
 Limits on staging today:
 
-- Public repositories only: setup machines get no GitHub credential.
+- Setup machines get no GitHub credential, so only public repositories
+  can be set up. Claude Code runs can push ([below](#pushing-from-a-run)).
 - A deploy restarts the controller. Setups that were moving pick up again
   when it starts; a Claude Code run that was in flight stops being followed
   and its row stays Working.
 - During a deploy, the old and the new instance both run for a minute or
   two over the same records.
+
+## Pushing from a run
+
+Since #11226 a Claude Code run can push a branch and open a pull request
+on its environment's repository, as the signed-in person, through their own
+GitHub connection (the GitHub App on `/projects`, [GitHub
+App](../auth/github.md#github-app)); never a server-wide token.
+
+1. When a run starts, the web asks the account service for a credential
+   broker ticket for that one repository (`POST /v1/account/github/broker`,
+   12 hours, room for a usage limit's pause). A repository that isn't one of the person's projects yet is
+   added first. `crates/openagents-web/src/environments/push.rs`.
+2. The run's machine gets only the ticket, as the `OPENAGENTS_GIT_BROKER`
+   credential beside the Claude credential (released for the run, redacted
+   from its records). `crates/coder-environment-operator/src/studio/push.rs`
+   sets Git's helper in the working directory to trade it at
+   `https://<site>/github/git-credential` (forwarded to the account
+   service's broker; no session, the ticket is the authority) for an
+   installation token scoped to that repository, sets `origin`, and
+   installs `open-pull-request`, which opens a pull request with a token
+   it gets the same way and prints only the link.
+3. Claude Code is told to push a new branch and open a pull request, and to
+   push to the base branch only when the person asked. Without the App on
+   the repository, or on the local address, the run gets no access and is
+   told it can't push.
+
+The GitHub token never reaches the machine's environment, a file, the
+saved image, or the run's records; the machine is deleted when the run
+ends. Tests: `cargo test -p coder-environment-operator push` (real Git and
+`curl` against a fake broker and API) and `openagents-web`'s
+`projects::tests::app` (a ticket redeemed through the site, another
+repository and a forged ticket refused).
 
 ## Smoke
 

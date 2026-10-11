@@ -149,6 +149,73 @@ impl CloudSession {
             .ok_or(RepoCallError::Session(SessionError::Unavailable))
     }
 
+    /// A credential-broker ticket (`oa_auth::repos::broker`) that lets one
+    /// machine fetch and push `repository` (one of the person's projects)
+    /// for `seconds`. Only the ticket; never a GitHub token.
+    pub(crate) async fn github_broker_ticket(
+        &self,
+        headers: &HeaderMap,
+        repository: &str,
+        seconds: u64,
+    ) -> Result<String> {
+        if !oa_auth::repos::full_name(repository) {
+            return Err(RepoCallError::Repo(RepoError::Invalid));
+        }
+        let body = self
+            .account_call(
+                headers,
+                Method::POST,
+                "/v1/account/github/broker",
+                Some(json!({"repository": repository, "seconds": seconds})),
+            )
+            .await?;
+        body["ticket"]
+            .as_str()
+            .filter(|ticket| {
+                ticket.starts_with(oa_auth::repos::broker::PREFIX)
+                    && ticket.len() <= 512
+                    && !ticket.contains(char::is_whitespace)
+            })
+            .map(str::to_string)
+            .ok_or(RepoCallError::Session(SessionError::Unavailable))
+    }
+
+    /// Hand a machine's Git credential request (the helper's form: ticket,
+    /// protocol, host, path) to the account service's broker, and its
+    /// answer back: Git's credential lines, or an error line. No session;
+    /// the ticket is the only authority. Nothing here is kept or logged.
+    pub(crate) async fn git_credential(&self, form: &[u8]) -> (u16, String) {
+        if form.len() > 4096 || self.ready().is_err() {
+            return (503, "error=unavailable\n".into());
+        }
+        let sent = self
+            .http
+            .post(format!(
+                "{}{}",
+                self.account_service,
+                oa_auth::repos::broker::PATH
+            ))
+            .header(
+                reqwest::header::CONTENT_TYPE,
+                "application/x-www-form-urlencoded",
+            )
+            .body(form.to_vec())
+            // The broker may mint a token at GitHub first.
+            .timeout(Duration::from_secs(30))
+            .send()
+            .await;
+        let Ok(response) = sent else {
+            return (503, "error=unavailable\n".into());
+        };
+        let status = response.status().as_u16();
+        match response.bytes().await {
+            Ok(bytes) if bytes.len() <= 16 * 1024 => {
+                (status, String::from_utf8_lossy(&bytes).into_owned())
+            }
+            _ => (503, "error=unavailable\n".into()),
+        }
+    }
+
     /// Add `repository` (`owner/name`) as a project.
     pub(crate) async fn add_project(
         &self,

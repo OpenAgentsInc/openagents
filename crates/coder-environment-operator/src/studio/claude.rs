@@ -111,14 +111,6 @@ impl Key {
     pub fn name(&self) -> &str {
         &self.name
     }
-
-    /// Runtime credentials holding a copy of the value, which redact it
-    /// from traces.
-    fn credentials(&self) -> Result<Credentials, String> {
-        Credentials::from_names(std::slice::from_ref(&self.name), |_| {
-            Some(self.value.clone())
-        })
-    }
 }
 
 impl Drop for Key {
@@ -231,6 +223,23 @@ impl Runs {
         key: Option<Key>,
         files: Vec<Attachment>,
     ) -> Result<String, String> {
+        self.start_pushing(env, prompt, workdir, size, key, files, None)
+    }
+
+    /// [`Self::start_with_files`], with GitHub access for the run's
+    /// repository when `push` is given ([`super::push`]); without it the
+    /// run is told it can't push.
+    #[allow(clippy::too_many_arguments)]
+    pub fn start_pushing(
+        &self,
+        env: &Environment,
+        prompt: &str,
+        workdir: &str,
+        size: &str,
+        key: Option<Key>,
+        files: Vec<Attachment>,
+        push: Option<super::push::Push>,
+    ) -> Result<String, String> {
         if files.len() > MAX_FILES {
             return Err("Send up to four files with one message.".into());
         }
@@ -250,12 +259,15 @@ impl Runs {
         let store = self.store(&env.id);
         let n = store.list().map(|l| l.len()).unwrap_or(0) + 1;
         let id = format!("claude-{}-{n}", env.id);
-        let names: Vec<String> = key.iter().map(|k| k.name.clone()).collect();
+        let mut names: Vec<String> = key.iter().map(|k| k.name.clone()).collect();
+        names.extend(push.iter().map(|p| p.name().to_owned()));
+        let mut task = task_with_files(prompt, workdir, &file_names(&files));
+        task.push_str(&super::push::task_note(push.as_ref()));
         let spec = Spec {
             placement: Placement::Boat,
             mode: Mode::Coder,
             agent: coder_cloud::claude::ENGINE.into(),
-            task: task_with_files(prompt, workdir, &file_names(&files)),
+            task,
             model: None,
             reasoning: None,
             cwd: PathBuf::from(workdir),
@@ -276,7 +288,7 @@ impl Runs {
             .name(format!("claude-{n}"))
             .spawn({
                 let state = self.root.clone();
-                move || drive(lease, record, key, files, &state)
+                move || drive(lease, record, key, files, push, &state)
             })
             .map_err(|_| "The run couldn't start.")?;
         Ok(id)
@@ -307,6 +319,9 @@ pub fn task_with_files(prompt: &str, workdir: &str, names: &[String]) -> String 
 struct WithFiles {
     boat: coder_cloud::boat_backend::Boat,
     files: Vec<Attachment>,
+    /// The command that readies the working directory for pushing
+    /// ([`super::push::setup_script`]); it holds no credential.
+    push: Option<String>,
 }
 
 impl WithFiles {
@@ -360,7 +375,11 @@ impl Backend for WithFiles {
     }
     async fn prepare(&self, r: &Record) -> coder_cloud::Result<()> {
         self.boat.prepare(r).await?;
-        self.put(r).await
+        self.put(r).await?;
+        if let Some(script) = &self.push {
+            self.boat.command(r, script.clone()).await?;
+        }
+        Ok(())
     }
     async fn dispatch(&self, r: &Record) -> coder_cloud::Result<Task> {
         self.boat.dispatch(r).await
@@ -393,6 +412,7 @@ fn drive(
     mut record: Record,
     key: Option<Key>,
     files: Vec<Attachment>,
+    push: Option<super::push::Push>,
     state: &Path,
 ) {
     let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
@@ -403,10 +423,18 @@ fn drive(
     };
     // The runtime credentials hold the only copy from here on; the key's
     // own bytes are zeroed now.
-    let credentials = key.as_ref().map(Key::credentials).transpose();
+    let credentials = credentials(key.as_ref(), push.as_ref());
     drop(key);
+    let script = push.as_ref().map(|push| {
+        super::push::setup_script(
+            push,
+            &record.spec.cwd.display().to_string(),
+            super::push::GITHUB_API,
+        )
+    });
+    drop(push);
     let result = runtime.block_on(async {
-        let credentials = credentials?.unwrap_or_default();
+        let credentials = credentials?;
         let client = boat::Client::from_env()
             .await
             .map_err(|e| format!("Boat is unavailable: {e}"))?;
@@ -416,6 +444,7 @@ fn drive(
                 credentials,
             },
             files,
+            push: script,
         };
         loop {
             coder_cloud::drive(
@@ -463,6 +492,22 @@ fn drive(
         record.error = Some(error);
         let _ = lease.save(&record);
     }
+}
+
+/// The run's credentials: the Claude credential and the GitHub broker
+/// credential, each under its own name. The runtime credentials hold the
+/// only copies; they redact both from what the run records.
+fn credentials(key: Option<&Key>, push: Option<&super::push::Push>) -> Result<Credentials, String> {
+    let mut names: Vec<String> = key.iter().map(|k| k.name.clone()).collect();
+    names.extend(push.iter().map(|p| p.name().to_owned()));
+    if names.is_empty() {
+        return Ok(Credentials::default());
+    }
+    Credentials::from_names(&names, |name| match (key, push) {
+        (Some(key), _) if key.name == name => Some(key.value.clone()),
+        (_, Some(push)) if push.name() == name => Some(push.value()),
+        _ => None,
+    })
 }
 
 /// What a run cost: the computer's time ([`Record::usage`]) plus Claude
@@ -585,11 +630,8 @@ mod tests {
         let key = Key::new(coder_cloud::claude::API_KEY, value.clone()).unwrap();
         assert_eq!(key.name(), coder_cloud::claude::API_KEY);
         assert!(!format!("{key:?}").contains(&value));
-        let credentials = key.credentials().unwrap();
-        assert_eq!(
-            credentials.environment()[coder_cloud::claude::API_KEY],
-            value
-        );
+        let held = credentials(Some(&key), None).unwrap();
+        assert_eq!(held.environment()[coder_cloud::claude::API_KEY], value);
         assert!(Key::new("GITHUB_TOKEN", value.clone()).is_err());
         assert!(Key::new(coder_cloud::claude::API_KEY, " ".into()).is_err());
 
@@ -597,12 +639,12 @@ mod tests {
         let token = format!("sk-ant-oat01-{}", "b2".repeat(40));
         let key = Key::new(coder_cloud::claude::OAUTH_TOKEN, token.clone()).unwrap();
         assert!(!format!("{key:?}").contains(&token));
-        let env = key.credentials().unwrap().environment();
+        let env = credentials(Some(&key), None).unwrap().environment();
         assert_eq!(env.len(), 1);
         assert_eq!(env[coder_cloud::claude::OAUTH_TOKEN], token);
         // A token under the API key's name never reaches a run.
         let wrong = Key::new(coder_cloud::claude::API_KEY, token.clone()).unwrap();
-        assert!(wrong.credentials().is_err());
+        assert!(credentials(Some(&wrong), None).is_err());
     }
 
     #[test]

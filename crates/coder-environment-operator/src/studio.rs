@@ -25,6 +25,7 @@
 
 pub mod claude;
 pub mod github;
+pub mod push;
 
 use crate::activity::{CheckLine, Entry, Logs, Record, plain};
 use crate::agent::{Agent, Brief, Phase, State};
@@ -755,10 +756,30 @@ impl Studio {
         own: Option<claude::Key>,
         files: Vec<claude::Attachment>,
     ) -> Result<String, String> {
+        self.run_claude_pushing(id, prompt, own, files, None)
+    }
+
+    /// [`Self::run_claude_with_files`], with GitHub access for the
+    /// environment's repository when `push` is given ([`push::Push`]).
+    pub fn run_claude_pushing(
+        &self,
+        id: &str,
+        prompt: &str,
+        own: Option<claude::Key>,
+        files: Vec<claude::Attachment>,
+        push: Option<push::Push>,
+    ) -> Result<String, String> {
         let env = self.envs().read(id).map_err(|e| e.to_string())?;
         if env.project.workspace != self.config.owner.workspace {
             return Err("That environment isn't yours.".into());
         }
+        // Access for another repository is never handed to this run.
+        let push = push.filter(|push| {
+            env.source
+                .repository
+                .as_deref()
+                .is_some_and(|repo| repo.eq_ignore_ascii_case(push.repository()))
+        });
         let key = match own {
             Some(key) => key,
             // The server's own key may be an API key or a subscription
@@ -772,13 +793,14 @@ impl Studio {
                 .ok_or("Add your Claude key in Settings to run Claude Code here.")?,
         };
         self.runs
-            .start_with_files(
+            .start_pushing(
                 &env,
                 prompt,
                 &self.config.machines.workdir,
                 &self.config.size(),
                 Some(key),
                 files,
+                push,
             )
             .map_err(|e| plain(&e, "Claude Code didn't start. Try again."))
     }
