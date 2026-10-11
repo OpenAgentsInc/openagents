@@ -117,7 +117,7 @@ pub(crate) fn routes() -> Router<App> {
 /// A chat reply's "Work on this issue" card, loaded into the thread.
 const OFFER: &str = "/chat/{id}/work-offer/{index}";
 /// The route the chat's typed router names for work on code.
-const WORK_ROUTE: &str = "work.dispatch";
+pub(crate) const WORK_ROUTE: &str = "work.dispatch";
 
 /// Whether `path` is one of the API routes here.
 pub(crate) fn owns(path: &str) -> bool {

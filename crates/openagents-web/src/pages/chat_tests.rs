@@ -1916,3 +1916,168 @@ async fn the_chat_pages_are_boosted_and_send_once() {
     assert!(script.contains("htmx:confirm"));
     assert!(script.contains("htmx:afterSettle"));
 }
+
+/// A worker whose router reads the message as work on code
+/// (`work.dispatch`) and whose words, held to the website's rules, send
+/// the person to download Coder; it keeps the instructions it was sent.
+struct WorkWorker(Arc<Mutex<Option<(bool, &'static str)>>>);
+
+impl crate::ask::Chat for WorkWorker {
+    fn door(&self, _: secp256k1::SecretKey) -> Result<Box<dyn basic_coder::Door>, String> {
+        Ok(Box::new(WorkDoor(self.0.clone())))
+    }
+}
+
+struct WorkDoor(Arc<Mutex<Option<(bool, &'static str)>>>);
+
+impl basic_coder::Door for WorkDoor {
+    fn ask(
+        &self,
+        _turns: Vec<Turn>,
+        context: Context,
+        reply: Arc<Mutex<Reply>>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        *self.0.lock().unwrap() =
+            Some((context.computer_ready, basic_coder::instructions(&context)));
+        Box::pin(async move {
+            let mut reply = basic_coder::lock(&reply);
+            reply.meta.route = Some("work.dispatch".into());
+            reply.text = "Coder does that; get it at openagents.com/download.".into();
+            reply.done = true;
+        })
+    }
+}
+
+/// #11318: signed in with Coder online, "push a README" left on Chat is
+/// handed to Coder on that computer (the typed router read it as work on
+/// code), with the chat so far, instead of the download pitch; the answer
+/// here is told Coder is theirs. With no computer online the answer stays.
+#[tokio::test]
+async fn work_in_a_chat_goes_to_coder_on_an_online_computer() {
+    let directory = tempfile::tempdir().unwrap();
+    let seen = Arc::new(Mutex::new(None));
+    let mut config = crate::Config::development(directory.path().join("tasks"));
+    config.ask_salt = [11; 32];
+    config.chat = Arc::new(WorkWorker(seen.clone()));
+    let app = App(Arc::new(crate::Inner { config }));
+    let store = &app.config.chat_store;
+    let owner = crate::chat_store::account_owner("acct_11318");
+    let pending = |id: &str, text: &str| Conversation {
+        id: id.into(),
+        owner: owner.clone(),
+        revision: 1,
+        title: "Finances".into(),
+        messages: vec![
+            Message {
+                role: Role::User,
+                text: "What is in AtlantisPleb/finances?".into(),
+                request_id: Some("02345678-1234-4234-8234-123456789abc".into()),
+            },
+            Message {
+                role: Role::Assistant,
+                text: "A ledger.".into(),
+                request_id: Some("02345678-1234-4234-8234-123456789abc".into()),
+            },
+            Message {
+                role: Role::User,
+                text: text.into(),
+                request_id: Some(id.into()),
+            },
+            Message {
+                role: Role::Assistant,
+                text: String::new(),
+                request_id: Some(id.into()),
+            },
+        ],
+        pending: Some(Pending {
+            request_id: id.into(),
+            started_unix: now(),
+            job_id: None,
+        }),
+        requests: vec![Request {
+            id: id.into(),
+            digest: request_digest(text, None),
+            outcome: Outcome::Pending,
+            selection: None,
+            cloud: None,
+            files: Vec::new(),
+            reply: None,
+        }],
+        selection: None,
+        updated_unix: now(),
+        pinned_unix: None,
+        archived_unix: None,
+        project: None,
+        terminal: None,
+        environment: None,
+        tasks: Vec::new(),
+        opened_unix: None,
+        branch: None,
+    };
+
+    // No computer online: the answer stays, as for a visitor.
+    let loaded = store
+        .create(&pending(CHAT, "Push a README to AtlantisPleb/finances"))
+        .await
+        .unwrap();
+    answer(app.clone(), loaded, now(), None).await;
+    let chat = store
+        .load(&owner, CHAT)
+        .await
+        .unwrap()
+        .unwrap()
+        .conversation;
+    assert!(chat.messages[3].text.contains("download"));
+    assert_eq!(
+        *seen.lock().unwrap(),
+        Some((false, basic_coder::INSTRUCTIONS_WEB))
+    );
+
+    // Coder checked in from a computer: the message goes there.
+    store
+        .update_computers(&owner, |computers| {
+            computers.seen.insert(
+                "Christopher’s MacBook Pro (2)".into(),
+                crate::chat_store::now_unix(),
+            );
+            true
+        })
+        .await
+        .unwrap();
+    let loaded = store
+        .create(&pending(NEXT, "Push a README to AtlantisPleb/finances"))
+        .await
+        .unwrap();
+    answer(app.clone(), loaded, now(), None).await;
+    assert_eq!(
+        *seen.lock().unwrap(),
+        Some((true, basic_coder::INSTRUCTIONS_WEB_CODER))
+    );
+    let chat = store
+        .load(&owner, NEXT)
+        .await
+        .unwrap()
+        .unwrap()
+        .conversation;
+    let session = crate::coder_sync::web_session(NEXT);
+    let id = crate::coder_sync::chat_id(&owner, &session);
+    let said = &chat.messages[3].text;
+    assert!(!said.contains("download"), "{said}");
+    assert!(
+        said.contains("Coder on Christopher’s MacBook Pro (2)"),
+        "{said}"
+    );
+    assert!(said.contains(&format!("/chat/{id}")), "{said}");
+    assert!(chat.pending.is_none());
+    assert_eq!(chat.requests[0].outcome, Outcome::Answered);
+    let moved = store.load(&owner, &id).await.unwrap().unwrap().conversation;
+    let terminal = moved.terminal.as_ref().unwrap();
+    assert_eq!(terminal.computer, "Christopher’s MacBook Pro (2)");
+    assert_eq!(
+        terminal.replies[0].text,
+        "Push a README to AtlantisPleb/finances"
+    );
+    let carried: Vec<&str> = terminal.continued.iter().map(|m| m.text.as_str()).collect();
+    assert_eq!(carried, ["What is in AtlantisPleb/finances?", "A ledger."]);
+    assert_eq!(moved.messages.len(), 2);
+}
