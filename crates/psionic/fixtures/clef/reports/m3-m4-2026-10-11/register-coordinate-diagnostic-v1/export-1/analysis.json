@@ -1,0 +1,1646 @@
+{
+  "identity": "register-coordinate-diagnostic-v1",
+  "mapping_repaired": false,
+  "gemm_validated": false,
+  "speed_claim": false,
+  "cases": [
+    {
+      "case": "tail-1",
+      "raw_sha256": "d5ef829a1dd336e08e5de61f93208543b7cf425c261c48d68568a49f78e3a09c",
+      "objects": [
+        {
+          "object": 0,
+          "slots": 512,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            31,
+            15
+          ],
+          "existing_left_or_destination_hypothesis": {
+            "proposed_shape": [
+              16,
+              16
+            ],
+            "outside_shape": 256,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": false,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": false,
+            "first_differences": [
+              {
+                "lane": 0,
+                "slot": 8,
+                "coordinate": [
+                  16,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 9,
+                "coordinate": [
+                  17,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 10,
+                "coordinate": [
+                  18,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 11,
+                "coordinate": [
+                  19,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 12,
+                "coordinate": [
+                  16,
+                  8
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 13,
+                "coordinate": [
+                  17,
+                  8
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 14,
+                "coordinate": [
+                  18,
+                  8
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 15,
+                "coordinate": [
+                  19,
+                  8
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              }
+            ]
+          }
+        },
+        {
+          "object": 1,
+          "slots": 512,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            31,
+            15
+          ],
+          "existing_left_or_destination_hypothesis": {
+            "proposed_shape": [
+              16,
+              16
+            ],
+            "outside_shape": 256,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": false,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": false,
+            "first_differences": [
+              {
+                "lane": 0,
+                "slot": 8,
+                "coordinate": [
+                  16,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 9,
+                "coordinate": [
+                  17,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 10,
+                "coordinate": [
+                  18,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 11,
+                "coordinate": [
+                  19,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 12,
+                "coordinate": [
+                  16,
+                  8
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 13,
+                "coordinate": [
+                  17,
+                  8
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 14,
+                "coordinate": [
+                  18,
+                  8
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 15,
+                "coordinate": [
+                  19,
+                  8
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              }
+            ]
+          }
+        },
+        {
+          "object": 2,
+          "slots": 512,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            31,
+            15
+          ],
+          "existing_left_or_destination_hypothesis": {
+            "proposed_shape": [
+              16,
+              16
+            ],
+            "outside_shape": 256,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": false,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": false,
+            "first_differences": [
+              {
+                "lane": 0,
+                "slot": 8,
+                "coordinate": [
+                  16,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 9,
+                "coordinate": [
+                  17,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 10,
+                "coordinate": [
+                  18,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 11,
+                "coordinate": [
+                  19,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 12,
+                "coordinate": [
+                  16,
+                  8
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 13,
+                "coordinate": [
+                  17,
+                  8
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 14,
+                "coordinate": [
+                  18,
+                  8
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 15,
+                "coordinate": [
+                  19,
+                  8
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              }
+            ]
+          }
+        },
+        {
+          "object": 3,
+          "slots": 512,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            31,
+            15
+          ],
+          "existing_left_or_destination_hypothesis": {
+            "proposed_shape": [
+              16,
+              16
+            ],
+            "outside_shape": 256,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": false,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": false,
+            "first_differences": [
+              {
+                "lane": 0,
+                "slot": 8,
+                "coordinate": [
+                  16,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 9,
+                "coordinate": [
+                  17,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 10,
+                "coordinate": [
+                  18,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 11,
+                "coordinate": [
+                  19,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 12,
+                "coordinate": [
+                  16,
+                  8
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 13,
+                "coordinate": [
+                  17,
+                  8
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 14,
+                "coordinate": [
+                  18,
+                  8
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 15,
+                "coordinate": [
+                  19,
+                  8
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              }
+            ]
+          }
+        },
+        {
+          "object": 4,
+          "slots": 512,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            31,
+            15
+          ],
+          "physical_K_N_hypothesis": {
+            "proposed_shape": [
+              16,
+              32
+            ],
+            "outside_shape": 256,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": false,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": false,
+            "first_differences": [
+              {
+                "lane": 0,
+                "slot": 8,
+                "coordinate": [
+                  16,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 9,
+                "coordinate": [
+                  17,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 10,
+                "coordinate": [
+                  18,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 11,
+                "coordinate": [
+                  19,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 12,
+                "coordinate": [
+                  16,
+                  8
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 13,
+                "coordinate": [
+                  17,
+                  8
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 14,
+                "coordinate": [
+                  18,
+                  8
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 15,
+                "coordinate": [
+                  19,
+                  8
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              }
+            ]
+          },
+          "logical_N_K_hypothesis": {
+            "proposed_shape": [
+              32,
+              16
+            ],
+            "outside_shape": 0,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": true,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": true,
+            "first_differences": []
+          }
+        },
+        {
+          "object": 5,
+          "slots": 512,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            31,
+            15
+          ],
+          "physical_K_N_hypothesis": {
+            "proposed_shape": [
+              16,
+              32
+            ],
+            "outside_shape": 256,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": false,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": false,
+            "first_differences": [
+              {
+                "lane": 0,
+                "slot": 8,
+                "coordinate": [
+                  16,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 9,
+                "coordinate": [
+                  17,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 10,
+                "coordinate": [
+                  18,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 11,
+                "coordinate": [
+                  19,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 12,
+                "coordinate": [
+                  16,
+                  8
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 13,
+                "coordinate": [
+                  17,
+                  8
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 14,
+                "coordinate": [
+                  18,
+                  8
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 15,
+                "coordinate": [
+                  19,
+                  8
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              }
+            ]
+          },
+          "logical_N_K_hypothesis": {
+            "proposed_shape": [
+              32,
+              16
+            ],
+            "outside_shape": 0,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": true,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": true,
+            "first_differences": []
+          }
+        },
+        {
+          "object": 6,
+          "slots": 512,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            31,
+            15
+          ],
+          "existing_left_or_destination_hypothesis": {
+            "proposed_shape": [
+              32,
+              16
+            ],
+            "outside_shape": 0,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": true,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": true,
+            "first_differences": []
+          }
+        },
+        {
+          "object": 7,
+          "slots": 512,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            31,
+            15
+          ],
+          "existing_left_or_destination_hypothesis": {
+            "proposed_shape": [
+              32,
+              16
+            ],
+            "outside_shape": 0,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": true,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": true,
+            "first_differences": []
+          }
+        }
+      ]
+    },
+    {
+      "case": "interior-32",
+      "raw_sha256": "225c1a0c8853330e362f0be96f1bdb7a9d0716d7e5000112a46701a3d1e6ae03",
+      "objects": [
+        {
+          "object": 0,
+          "slots": 512,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            31,
+            15
+          ],
+          "existing_left_or_destination_hypothesis": {
+            "proposed_shape": [
+              16,
+              16
+            ],
+            "outside_shape": 256,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": false,
+            "bits_mismatches_inside_shape": 224,
+            "matches_shape_coverage_and_bits": false,
+            "first_differences": [
+              {
+                "lane": 0,
+                "slot": 1,
+                "coordinate": [
+                  1,
+                  0
+                ],
+                "bits": 8194,
+                "expected_bits": 8193,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 2,
+                "coordinate": [
+                  2,
+                  0
+                ],
+                "bits": 8448,
+                "expected_bits": 8194,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 3,
+                "coordinate": [
+                  3,
+                  0
+                ],
+                "bits": 8450,
+                "expected_bits": 8195,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 4,
+                "coordinate": [
+                  0,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 8448,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 5,
+                "coordinate": [
+                  1,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 8449,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 6,
+                "coordinate": [
+                  2,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 8450,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 7,
+                "coordinate": [
+                  3,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 8451,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 8,
+                "coordinate": [
+                  16,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              }
+            ]
+          }
+        },
+        {
+          "object": 1,
+          "slots": 512,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            31,
+            15
+          ],
+          "existing_left_or_destination_hypothesis": {
+            "proposed_shape": [
+              16,
+              16
+            ],
+            "outside_shape": 256,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": false,
+            "bits_mismatches_inside_shape": 224,
+            "matches_shape_coverage_and_bits": false,
+            "first_differences": [
+              {
+                "lane": 0,
+                "slot": 1,
+                "coordinate": [
+                  1,
+                  0
+                ],
+                "bits": 8210,
+                "expected_bits": 8209,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 2,
+                "coordinate": [
+                  2,
+                  0
+                ],
+                "bits": 8464,
+                "expected_bits": 8210,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 3,
+                "coordinate": [
+                  3,
+                  0
+                ],
+                "bits": 8466,
+                "expected_bits": 8211,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 4,
+                "coordinate": [
+                  0,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 8464,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 5,
+                "coordinate": [
+                  1,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 8465,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 6,
+                "coordinate": [
+                  2,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 8466,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 7,
+                "coordinate": [
+                  3,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 8467,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 8,
+                "coordinate": [
+                  16,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              }
+            ]
+          }
+        },
+        {
+          "object": 2,
+          "slots": 512,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            31,
+            15
+          ],
+          "existing_left_or_destination_hypothesis": {
+            "proposed_shape": [
+              16,
+              16
+            ],
+            "outside_shape": 256,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": false,
+            "bits_mismatches_inside_shape": 224,
+            "matches_shape_coverage_and_bits": false,
+            "first_differences": [
+              {
+                "lane": 0,
+                "slot": 1,
+                "coordinate": [
+                  1,
+                  0
+                ],
+                "bits": 8706,
+                "expected_bits": 8705,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 2,
+                "coordinate": [
+                  2,
+                  0
+                ],
+                "bits": 8960,
+                "expected_bits": 8706,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 3,
+                "coordinate": [
+                  3,
+                  0
+                ],
+                "bits": 8962,
+                "expected_bits": 8707,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 4,
+                "coordinate": [
+                  0,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 8960,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 5,
+                "coordinate": [
+                  1,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 8961,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 6,
+                "coordinate": [
+                  2,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 8962,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 7,
+                "coordinate": [
+                  3,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 8963,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 8,
+                "coordinate": [
+                  16,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              }
+            ]
+          }
+        },
+        {
+          "object": 3,
+          "slots": 512,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            31,
+            15
+          ],
+          "existing_left_or_destination_hypothesis": {
+            "proposed_shape": [
+              16,
+              16
+            ],
+            "outside_shape": 256,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": false,
+            "bits_mismatches_inside_shape": 224,
+            "matches_shape_coverage_and_bits": false,
+            "first_differences": [
+              {
+                "lane": 0,
+                "slot": 1,
+                "coordinate": [
+                  1,
+                  0
+                ],
+                "bits": 8722,
+                "expected_bits": 8721,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 2,
+                "coordinate": [
+                  2,
+                  0
+                ],
+                "bits": 8976,
+                "expected_bits": 8722,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 3,
+                "coordinate": [
+                  3,
+                  0
+                ],
+                "bits": 8978,
+                "expected_bits": 8723,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 4,
+                "coordinate": [
+                  0,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 8976,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 5,
+                "coordinate": [
+                  1,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 8977,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 6,
+                "coordinate": [
+                  2,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 8978,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 7,
+                "coordinate": [
+                  3,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 8979,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 8,
+                "coordinate": [
+                  16,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              }
+            ]
+          }
+        },
+        {
+          "object": 4,
+          "slots": 512,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            31,
+            15
+          ],
+          "physical_K_N_hypothesis": {
+            "proposed_shape": [
+              16,
+              32
+            ],
+            "outside_shape": 256,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": false,
+            "bits_mismatches_inside_shape": 224,
+            "matches_shape_coverage_and_bits": false,
+            "first_differences": [
+              {
+                "lane": 0,
+                "slot": 1,
+                "coordinate": [
+                  1,
+                  0
+                ],
+                "bits": 12290,
+                "expected_bits": 12289,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 2,
+                "coordinate": [
+                  2,
+                  0
+                ],
+                "bits": 12544,
+                "expected_bits": 12290,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 3,
+                "coordinate": [
+                  3,
+                  0
+                ],
+                "bits": 12546,
+                "expected_bits": 12291,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 4,
+                "coordinate": [
+                  0,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 12544,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 5,
+                "coordinate": [
+                  1,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 12545,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 6,
+                "coordinate": [
+                  2,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 12546,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 7,
+                "coordinate": [
+                  3,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 12547,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 8,
+                "coordinate": [
+                  16,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              }
+            ]
+          },
+          "logical_N_K_hypothesis": {
+            "proposed_shape": [
+              32,
+              16
+            ],
+            "outside_shape": 0,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": true,
+            "bits_mismatches_inside_shape": 510,
+            "matches_shape_coverage_and_bits": false,
+            "first_differences": [
+              {
+                "lane": 0,
+                "slot": 1,
+                "coordinate": [
+                  1,
+                  0
+                ],
+                "bits": 12290,
+                "expected_bits": 12320,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 2,
+                "coordinate": [
+                  2,
+                  0
+                ],
+                "bits": 12544,
+                "expected_bits": 12352,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 3,
+                "coordinate": [
+                  3,
+                  0
+                ],
+                "bits": 12546,
+                "expected_bits": 12384,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 4,
+                "coordinate": [
+                  0,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 12296,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 5,
+                "coordinate": [
+                  1,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 12328,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 6,
+                "coordinate": [
+                  2,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 12360,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 7,
+                "coordinate": [
+                  3,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 12392,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 8,
+                "coordinate": [
+                  16,
+                  0
+                ],
+                "bits": 0,
+                "expected_bits": 12800,
+                "reason": "bits differ under proposed mapping"
+              }
+            ]
+          }
+        },
+        {
+          "object": 5,
+          "slots": 512,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            31,
+            15
+          ],
+          "physical_K_N_hypothesis": {
+            "proposed_shape": [
+              16,
+              32
+            ],
+            "outside_shape": 256,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": false,
+            "bits_mismatches_inside_shape": 224,
+            "matches_shape_coverage_and_bits": false,
+            "first_differences": [
+              {
+                "lane": 0,
+                "slot": 1,
+                "coordinate": [
+                  1,
+                  0
+                ],
+                "bits": 12306,
+                "expected_bits": 12305,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 2,
+                "coordinate": [
+                  2,
+                  0
+                ],
+                "bits": 12560,
+                "expected_bits": 12306,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 3,
+                "coordinate": [
+                  3,
+                  0
+                ],
+                "bits": 12562,
+                "expected_bits": 12307,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 4,
+                "coordinate": [
+                  0,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 12560,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 5,
+                "coordinate": [
+                  1,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 12561,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 6,
+                "coordinate": [
+                  2,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 12562,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 7,
+                "coordinate": [
+                  3,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 12563,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 8,
+                "coordinate": [
+                  16,
+                  0
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              }
+            ]
+          },
+          "logical_N_K_hypothesis": {
+            "proposed_shape": [
+              32,
+              16
+            ],
+            "outside_shape": 0,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": true,
+            "bits_mismatches_inside_shape": 510,
+            "matches_shape_coverage_and_bits": false,
+            "first_differences": [
+              {
+                "lane": 0,
+                "slot": 1,
+                "coordinate": [
+                  1,
+                  0
+                ],
+                "bits": 12306,
+                "expected_bits": 12336,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 2,
+                "coordinate": [
+                  2,
+                  0
+                ],
+                "bits": 12560,
+                "expected_bits": 12368,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 3,
+                "coordinate": [
+                  3,
+                  0
+                ],
+                "bits": 12562,
+                "expected_bits": 12400,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 4,
+                "coordinate": [
+                  0,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 12312,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 5,
+                "coordinate": [
+                  1,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 12344,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 6,
+                "coordinate": [
+                  2,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 12376,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 7,
+                "coordinate": [
+                  3,
+                  8
+                ],
+                "bits": 0,
+                "expected_bits": 12408,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 8,
+                "coordinate": [
+                  16,
+                  0
+                ],
+                "bits": 0,
+                "expected_bits": 12816,
+                "reason": "bits differ under proposed mapping"
+              }
+            ]
+          }
+        },
+        {
+          "object": 6,
+          "slots": 512,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            31,
+            15
+          ],
+          "existing_left_or_destination_hypothesis": {
+            "proposed_shape": [
+              32,
+              16
+            ],
+            "outside_shape": 0,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": true,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": true,
+            "first_differences": []
+          }
+        },
+        {
+          "object": 7,
+          "slots": 512,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            31,
+            15
+          ],
+          "existing_left_or_destination_hypothesis": {
+            "proposed_shape": [
+              32,
+              16
+            ],
+            "outside_shape": 0,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": true,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": true,
+            "first_differences": []
+          }
+        }
+      ]
+    }
+  ],
+  "failures": [],
+  "export_complete": true
+}

@@ -98,6 +98,24 @@ from chunked to recurrent has little effect. All six variants and 248 checkpoint
 comparisons are retained. This supports a local precision explanation without
 establishing the cause of the final answer change or revising the runtime gate.
 
+The first [full-case precision control](text029-precision-control-failed-v1/README.md)
+stops before trunk execution because its parameter-byte hash cannot view a
+scalar f32 tensor as bytes. The failed receipt and exact sources are retained;
+the run takes 3.68 seconds and completes cleanup. This is a diagnostic setup
+failure and supplies no new numerical result.
+
+After a scalar-compatible hashing repair, the [full precision control](text029-precision-control-v1/README.md)
+completes both trajectories through all 64 layers. For the disputed question,
+P(true) is `0.49303069` in the saved f32 reference, `0.50564692` with half-rounded
+linear weights and inputs, and `0.49990714` after also modeling the native
+attention rounding. Native gives `0.50209109`. The projection-only control
+matches all three native tops; the combined control has smaller maximum
+probability error but still crosses the decision boundary. Neither replaces the
+original acceptance reference or resolves its 103/104 result. Whole-memory and
+question/option-span comparisons, all logits, and source/input hashes are
+retained. The CPU run completes in 203.78 seconds at 5.24 GB peak accounted
+memory under the unchanged 12 GiB cap, with successful cleanup.
+
 The [activation-weighted Q4 preparation](activation-weighted-q4-preparation-v1/README.md)
 preserves the frozen corpus, recipes, and checks. The two-record pilot passed;
 the full collector was deliberately stopped after 70 of 96 records and
@@ -216,8 +234,26 @@ exact cooperative-coordinate check before any GEMM, real-weight read, or timing.
 This is a layout-interface failure, not evidence about multiplication accuracy
 or speed. Both builds and the failed dispatch complete owned-process cleanup
 within their unchanged bounds. No product change follows.
-The review records the public source versions, license, and SDK/specification
-identities; it introduces no product change or speed claim.
+
+The separate [coordinate export](register-coordinate-diagnostic-v1/README.md)
+uses the unchanged compiled library for exactly two synthetic dispatches. All
+eight objects expose 512 slots with coordinates spanning 32×16, including left
+inputs that the host assumed were 16×16. Collective input loads also disagree
+with the proposed coordinate-to-value mapping; destination seeds match exactly.
+The exports disprove the original assumptions without establishing a replacement
+input mapping. Every slot and hole is retained, and the published files
+reconstruct the original raw exports byte for byte. Input hashes, redzones,
+explicit buffer bounds, and cleanup pass. No GEMM or timing runs.
+
+The [fixed deployment-target diagnostic](register-target26_2-diagnostic-v1/README.md)
+then establishes the cause of that export failure. The original Metal command
+selects macOS minimum `260000`, where this SDK routes cooperative input methods
+through destination-only helpers. Adding only `-mmacosx-version-min=26.2`
+selects `260200` and operand-specific helpers. With unchanged shader bytes, all
+16 object/case combinations now have the expected dimensions, complete unique
+coverage, and exact values. The original mapping was correct. Both fixed runs
+complete cleanup within unchanged bounds. Full matrix qualification and the
+product's runtime-compilation path remain untested by this diagnostic.
 
 All probes use shared GPU/build and bounded memory leases as appropriate.
 None uses a quiet lease or changes desktop applications or system services.
@@ -998,7 +1034,10 @@ tested admission code and later unrelated source changes.
 ## Publication and integrity
 
 [manifest.json](manifest.json) maps every copied file's original SHA-256 and
-byte count to its published path, SHA-256, and byte count. Private path prefixes
+byte count to its published path, SHA-256, and byte count. Version 2 lists
+hash-checked manifest parts in `file_manifests`, followed by any new entries in
+`files`; `file_count` counts both. Splitting the index preserves every existing
+entry and keeps each file below the repository's size limit. Private path prefixes
 become `repo`, `run-artifacts`, `cargo-target`, `reference-python-env`, or
 `user-home`. The checkpoint path becomes the public artifact label. These labels
 describe relocated evidence; they are not executable local paths.

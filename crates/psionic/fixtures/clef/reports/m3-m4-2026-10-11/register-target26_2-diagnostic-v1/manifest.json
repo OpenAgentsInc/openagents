@@ -1,0 +1,111 @@
+{
+  "identity": "register-target26_2-diagnostic-v1",
+  "purpose": "Prove a fixed OS deployment branch and re-export coordinates before any GEMM.",
+  "library": "target26_2.metallib",
+  "kernel": "register_input_roundtrip",
+  "unchanged_inputs": [
+    {
+      "path": "../gemm-register-input-probe/candidate.metal",
+      "sha256": "b5b5d77dc4406cd3023cd69f6838d670bfc774ad1e4196af16c2b536d47e9821",
+      "copy": "candidate.metal"
+    },
+    {
+      "path": "../register-coordinate-diagnostic/exporter.swift",
+      "sha256": "879b0e7652f805d01c6e7ceff2bd33edf0e84abc2995959e6b3482fe9100f749",
+      "copy": "exporter-template.swift"
+    },
+    {
+      "path": "../register-coordinate-diagnostic/frozen-sources.json",
+      "sha256": "8d96c83197de722115894a1efaee036ac19a541ca34d41aaa0f3b7624209bbd3"
+    }
+  ],
+  "cases": [
+    {
+      "name": "tail-1",
+      "dimensions": [
+        1,
+        1,
+        1
+      ],
+      "base": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "interior-32",
+      "dimensions": [
+        32,
+        32,
+        32
+      ],
+      "base": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "inputs": {
+    "x_half_bits": "0x2000 + row * side + k",
+    "weight_half_bits": "0x3000 + row * side + k",
+    "seed_f32_bits": "0x3f000000 + row * side + column",
+    "finite_unique_within_and_across_half_sources": true
+  },
+  "dispatches": 2,
+  "command_buffers": 2,
+  "threads_per_threadgroup": [
+    32,
+    1,
+    1
+  ],
+  "export_format": {
+    "objects": 8,
+    "lanes": 32,
+    "max_slots": 64,
+    "lane_stride_u32": 257,
+    "record_payload_bytes": 263168
+  },
+  "limits": {
+    "build_owned_group_gib": 4,
+    "build_minimum_start_gib": 16,
+    "minimum_available_gib": 12,
+    "build_seconds": 180,
+    "build_threads": 2,
+    "gpu_owned_group_gib": 2,
+    "gpu_minimum_start_gib": 14,
+    "gpu_external_seconds": 30,
+    "internal_seconds_after_startup": 10,
+    "explicit_buffer_limit_bytes": 1048576,
+    "maximum_explicit_buffer_bytes": 273408
+  },
+  "first_failure_source": "../gemm-register-input-probe/run-1",
+  "prior_failure_status": "unqualified; first roundtrip failed before any GEMM",
+  "no_mapping_repair": true,
+  "no_metal_compilation": false,
+  "no_weights_or_models": true,
+  "no_performance_timing": true,
+  "prior_library_sha256": "ca0cc71eda8b8278d98ca0b2ca043104efe1352d35b65925aa232c6b652a3390",
+  "minimum_os": "26.2",
+  "candidate_math_or_layout_changes": [],
+  "host_changes": [
+    "One pinned library SHA256 literal only, saved as host-library-hash.patch."
+  ],
+  "preprocessor_predictions": {
+    "default_branch": 0,
+    "default_minimum_less_than": 260200,
+    "target_branch": 1,
+    "target_minimum": 260200
+  },
+  "build_flags": [
+    "-std=metal4.0",
+    "-mmacosx-version-min=26.2"
+  ],
+  "prior_coordinate_export": "../register-coordinate-diagnostic/export-1",
+  "sdk_header_sha256": {
+    "MPPTensorOpsMatMul2d.h": "9c8fa78dd5e9b7a1ad8a2d0e6cd007a816ac750041da15b1015b38c7459d8a6b",
+    "__impl/MPPTensorOpsAvailability.h": "6bf68d9d460de7cb58ed3d23eea10dc42d9dd171619051accea283b217517a72",
+    "__impl/MPPTensorOpsMatMul2dImpl.h": "527511bd1a45f0f4361c684b1019d6cc06e1c9703e6f1908384320133bfaa43a"
+  }
+}

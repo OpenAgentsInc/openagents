@@ -1,0 +1,88 @@
+{
+  "identity": "register-coordinate-diagnostic-v1",
+  "purpose": "Export public cooperative coordinates before interpreting either physical or logical right-input orientation. No GEMM or speed qualification.",
+  "library": "../gemm-register-input-probe/kernels.metallib",
+  "library_sha256": "ca0cc71eda8b8278d98ca0b2ca043104efe1352d35b65925aa232c6b652a3390",
+  "kernel": "register_input_roundtrip",
+  "unchanged_inputs": [
+    {
+      "path": "../gemm-register-input-probe/kernels.metallib",
+      "sha256": "ca0cc71eda8b8278d98ca0b2ca043104efe1352d35b65925aa232c6b652a3390"
+    },
+    {
+      "path": "../gemm-register-input-probe/candidate.metal",
+      "sha256": "b5b5d77dc4406cd3023cd69f6838d670bfc774ad1e4196af16c2b536d47e9821"
+    },
+    {
+      "path": "../gemm-register-input-probe/build-artifacts.json",
+      "sha256": "90465944fb334c264ff29d8d5b32c880036fa2779f5b56d767a4cc142f78aedb"
+    }
+  ],
+  "cases": [
+    {
+      "name": "tail-1",
+      "dimensions": [
+        1,
+        1,
+        1
+      ],
+      "base": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "interior-32",
+      "dimensions": [
+        32,
+        32,
+        32
+      ],
+      "base": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "inputs": {
+    "x_half_bits": "0x2000 + row * side + k",
+    "weight_half_bits": "0x3000 + row * side + k",
+    "seed_f32_bits": "0x3f000000 + row * side + column",
+    "finite_unique_within_and_across_half_sources": true
+  },
+  "dispatches": 2,
+  "command_buffers": 2,
+  "threads_per_threadgroup": [
+    32,
+    1,
+    1
+  ],
+  "export_format": {
+    "objects": 8,
+    "lanes": 32,
+    "max_slots": 64,
+    "lane_stride_u32": 257,
+    "record_payload_bytes": 263168
+  },
+  "limits": {
+    "build_owned_group_gib": 4,
+    "build_minimum_start_gib": 16,
+    "minimum_available_gib": 12,
+    "build_seconds": 180,
+    "build_threads": 2,
+    "gpu_owned_group_gib": 2,
+    "gpu_minimum_start_gib": 14,
+    "gpu_external_seconds": 30,
+    "internal_seconds_after_startup": 10,
+    "explicit_buffer_limit_bytes": 1048576,
+    "maximum_explicit_buffer_bytes": 273408
+  },
+  "first_failure_source": "../gemm-register-input-probe/run-1",
+  "prior_failure_status": "unqualified; first roundtrip failed before any GEMM",
+  "no_mapping_repair": true,
+  "no_metal_compilation": true,
+  "no_weights_or_models": true,
+  "no_performance_timing": true
+}

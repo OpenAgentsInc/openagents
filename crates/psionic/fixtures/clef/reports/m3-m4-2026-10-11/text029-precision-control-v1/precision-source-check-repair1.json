@@ -1,0 +1,30 @@
+{
+  "status": "repair_source_ready_not_executed",
+  "source_sha256": {
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/text029-isolation/precision_reference.py": "7ef09fe8524fc4de689e6748b07355f324c93e5066305697854c4d7576aad694",
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/text029-isolation/guard_precision.py": "cb5bedb3d942fe38fcd0473cb208921315fe15bead2742d7d8ab986f3d7aedc3",
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/text029-isolation/precision-plan.md": "2cfbeaa530f0b83b3878631c30d157655f6dcc71da30c6d4c8b8d6f21ff0beb1",
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/text029-isolation/layer35_math.py": "bc5438f971303c6936ccd4fe61e08e8e45ff253fae56e98a434d7caaf28d8b57",
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/text029-isolation/layer0_math.py": "432a1e97996b923e4e16119d6733d9a39df604fcfcac02286eda4f62c670ee91",
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/mps_reference.py": "d6dd92eb2e0ed4df10b3f9dc56f84ef7bf61c10689b3a2da6b2ae1db0e79835b",
+    "@@CLEF_WORKTREE@@/crates/psionic/fixtures/clef/tools/mac_quiet_bench.py": "7018be065710be9ffe5dfc2d289770015ca617e2fdd3da253a98e07ba1bc997b",
+    "@@CLEF_WORKTREE@@/crates/psionic/fixtures/clef/tools/mac_memory.py": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd",
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/text029-isolation/precision_hash.py": "595256f7b60826373a80588c0bc1ac1f4554d6dfc6ae117ae9f20f66363aca2f"
+  },
+  "checks": [
+    "AST parse only; tiny Torch self-test prepared but not executed"
+  ],
+  "bounds": {
+    "group_gib": 12,
+    "start_gib": 24,
+    "available_floor_gib": 12,
+    "cpu_threads": 2,
+    "deadline_seconds": 300,
+    "disk_lease_gib": 2,
+    "disk_floor_gib": 25,
+    "maximum_output_bytes": 2147483648
+  },
+  "change": "Only scalar-compatible head parameter byte hashing, tiny hash fixtures, and guard linkage to failed attempt1; numerical operators unchanged.",
+  "attempt1_guard_sha256": "71f1121e0505249a5b9abff6ed3a9119d65fddedf7310ea96a8063f0eda8abfe",
+  "patch_sha256": "46a90e68925e1c2767d78cc0a747dad83220c3901e73d1f42e17f5540523eb85"
+}

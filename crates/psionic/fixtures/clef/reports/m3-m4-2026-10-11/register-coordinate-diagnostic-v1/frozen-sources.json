@@ -1,0 +1,16 @@
+{
+  "source_sha256": {
+    "exporter.swift": "879b0e7652f805d01c6e7ceff2bd33edf0e84abc2995959e6b3482fe9100f749",
+    "common.py": "eda7bac9cab6f0108b9a02168a5d4ca34dc82c8c815815b0b563450e47e7e7bd",
+    "build.py": "de05ab0892f3bb3e0d6c65a11c33b2c68087b87d9eeca357274300f1c40bd7e8",
+    "guard.py": "97e8c43a0edad37e4c7e0e839dcae06ef2e8a621c1e33ca6c19a4896d1537b9e",
+    "analyze.py": "eff2e4568d5d62f5ae8f847dc84f373764e20cf885fa7472fbfd2d7a926a1428",
+    "source_check.py": "c651a1a89064b427ce51bed3cc1d541da4e61774c69ff48eda6da1454edcb3ba",
+    "PLAN.md": "1323da8bd6d02f7c2c075b7aa151d3f2c0799f3cf3f41cac143ec9a8afb3902e",
+    "manifest.json": "a13d6b47a8132355ed9e67c7ae7285a1e7849a1510515597c946ebf63a84c29f"
+  },
+  "guard_dependency_sha256": {
+    "mac_quiet_bench.py": "7018be065710be9ffe5dfc2d289770015ca617e2fdd3da253a98e07ba1bc997b",
+    "mac_memory.py": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd"
+  }
+}

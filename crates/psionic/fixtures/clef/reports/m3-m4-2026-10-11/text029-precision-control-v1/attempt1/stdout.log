@@ -1,0 +1,16 @@
+Traceback (most recent call last):
+  File "@@CLEF_SCRATCH@@/same-q4-runtime-v1/text029-isolation/precision_reference.py", line 315, in <module>
+    main()
+  File "@@CLEF_SCRATCH@@/same-q4-runtime-v1/text029-isolation/precision_reference.py", line 140, in main
+    head_before = ref.layer_hashes(torch, head, "cpu")
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "@@CLEF_SCRATCH@@/same-q4-runtime-v1/mps_reference.py", line 69, in layer_hashes
+    raw=snapshot(torch,value) if device=='mps' else cpu_bytes(torch,value)
+                                                    ^^^^^^^^^^^^^^^^^^^^^^
+  File "@@CLEF_SCRATCH@@/same-q4-runtime-v1/mps_reference.py", line 38, in cpu_bytes
+    return tensor.detach().contiguous().view(torch.uint8).numpy().tobytes()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "@@CLEF_PYTHON_ENV@@/lib/python3.12/site-packages/torch/utils/_device.py", line 103, in __torch_function__
+    return func(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: self.dim() cannot be 0 to view Float as Byte (different element sizes)

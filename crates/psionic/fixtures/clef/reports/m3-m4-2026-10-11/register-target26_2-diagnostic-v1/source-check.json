@@ -1,0 +1,21 @@
+{
+  "status": "source checks passed",
+  "compiler_or_gpu_executed": false,
+  "candidate_source_byte_identical": true,
+  "host_template_byte_identical": true,
+  "commands": 2,
+  "dispatches": 2,
+  "explicit_peak_bytes": 273408,
+  "source_sha256": {
+    "candidate.metal": "b5b5d77dc4406cd3023cd69f6838d670bfc774ad1e4196af16c2b536d47e9821",
+    "exporter-template.swift": "879b0e7652f805d01c6e7ceff2bd33edf0e84abc2995959e6b3482fe9100f749",
+    "deployment_probe.metal": "6579e92edb9c2333498bf6494fbd29154cc0e7c3000bf73760794ca49a0c0767",
+    "common.py": "8c99550cffb182c3a45a51248fbe3a82fa276c882e769234256c662093955d54",
+    "build.py": "62212973736a6f238e18f1640c783f90c3db2c32744ce992b1bd59205cffb8ef",
+    "guard.py": "ed06f5f6b9bac3a3d4db1a5a1e9414ee722045e9ba760585129dd093170e134d",
+    "analyze.py": "e8726cea0013d5b08484a50b4a993c6330645e3af14373490c7e834b591fed93",
+    "source_check.py": "00c1d2bc649ec7d0f83dd57351608102231fcdf588d6eeeecf6129d63aa3243b",
+    "PLAN.md": "554963d2d628e5509eb43fa030d08bc385761ea81b84a8fcab15afd35d5f773c",
+    "manifest.json": "ae898f436f3d91aa505a18c71db55b6f633db102c47d9368a1634fc6c47385d5"
+  }
+}

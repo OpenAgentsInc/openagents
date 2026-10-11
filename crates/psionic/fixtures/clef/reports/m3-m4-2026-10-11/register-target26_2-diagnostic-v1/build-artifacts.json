@@ -1,0 +1,31 @@
+{
+  "source_sha256": {
+    "candidate.metal": "b5b5d77dc4406cd3023cd69f6838d670bfc774ad1e4196af16c2b536d47e9821",
+    "exporter-template.swift": "879b0e7652f805d01c6e7ceff2bd33edf0e84abc2995959e6b3482fe9100f749",
+    "deployment_probe.metal": "6579e92edb9c2333498bf6494fbd29154cc0e7c3000bf73760794ca49a0c0767",
+    "common.py": "8c99550cffb182c3a45a51248fbe3a82fa276c882e769234256c662093955d54",
+    "build.py": "62212973736a6f238e18f1640c783f90c3db2c32744ce992b1bd59205cffb8ef",
+    "guard.py": "ed06f5f6b9bac3a3d4db1a5a1e9414ee722045e9ba760585129dd093170e134d",
+    "analyze.py": "e8726cea0013d5b08484a50b4a993c6330645e3af14373490c7e834b591fed93",
+    "source_check.py": "00c1d2bc649ec7d0f83dd57351608102231fcdf588d6eeeecf6129d63aa3243b",
+    "PLAN.md": "554963d2d628e5509eb43fa030d08bc385761ea81b84a8fcab15afd35d5f773c",
+    "manifest.json": "ae898f436f3d91aa505a18c71db55b6f633db102c47d9368a1634fc6c47385d5"
+  },
+  "frozen_sources_sha256": "52eaa56cd94dc725ec25e769fb1677ba0f18e965e70302c90ef9f4647d92869a",
+  "library_sha256": "eab78a332c74906ef892664845785dc2d555c8239c97d17a6633e5dacdfdb12a",
+  "sdk_header_sha256": {
+    "MPPTensorOpsMatMul2d.h": "9c8fa78dd5e9b7a1ad8a2d0e6cd007a816ac750041da15b1015b38c7459d8a6b",
+    "__impl/MPPTensorOpsAvailability.h": "6bf68d9d460de7cb58ed3d23eea10dc42d9dd171619051accea283b217517a72",
+    "__impl/MPPTensorOpsMatMul2dImpl.h": "527511bd1a45f0f4361c684b1019d6cc06e1c9703e6f1908384320133bfaa43a"
+  },
+  "artifacts": {
+    "target26_2.metallib": "eab78a332c74906ef892664845785dc2d555c8239c97d17a6633e5dacdfdb12a",
+    "exporter-target26_2.swift": "8492d7a9ed13d235d6ac482a3ba69230d5020c50419c4bc206648c2b43b3fb38",
+    "host-library-hash.patch": "97c1d16406a3aa657d02cbf2be6d9a6d67da9e2ef8aaa91a2dbcf072debbfd22",
+    "exporter-target26_2": "c8464382b7a907c3daf8158148a88cdb5f413fb2a9e9d5bc43d205caf10e46a6",
+    "preprocessor-proof.json": "db706a7246e9960842032762faa56fcf7d95056808474892668d2d59a312607c"
+  },
+  "candidate_source_unchanged": true,
+  "host_change": "One pinned library hash literal only",
+  "gemm_executed": false
+}

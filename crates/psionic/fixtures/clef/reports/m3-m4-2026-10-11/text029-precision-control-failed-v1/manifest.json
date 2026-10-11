@@ -1,0 +1,128 @@
+{
+  "schema": "clef.text029-precision-first-failure.v1",
+  "files": [
+    {
+      "path": "guard.json",
+      "original_sha256": "71f1121e0505249a5b9abff6ed3a9119d65fddedf7310ea96a8063f0eda8abfe",
+      "original_bytes": 73358,
+      "published_sha256": "91ed170789393c56d5b656748f2ee7ef82920bb8fe7cb14d91357e3417c739d3",
+      "published_bytes": 48831,
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "stdout.log",
+      "original_sha256": "e57d7f423e82f91eb5fba6acd79aa0870aea49a0065ba78358a84fa89b8f3312",
+      "original_bytes": 1504,
+      "published_sha256": "cbabc3a3f538f0e4ffb9595ff29a4619236ad213bf5bb35177ac897208a13611",
+      "published_bytes": 1092,
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "results/receipt.json",
+      "original_sha256": "bcf105ce03b05da6b1c3c888b35ebdcfd605d965adcbb5beffaa6cb7a159a99d",
+      "original_bytes": 16304,
+      "published_sha256": "bcf105ce03b05da6b1c3c888b35ebdcfd605d965adcbb5beffaa6cb7a159a99d",
+      "published_bytes": 16304,
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "executed-source/guard_precision.py",
+      "original_sha256": "ecc6821868d5811091f75e1a5e77494a288b03cc804b5329d936a06c66d71c8b",
+      "original_bytes": 7037,
+      "published_sha256": "2d7df054b2a7c235df23a06ede7316b43ed7d91293fe85f3066676dafe22bb7e",
+      "published_bytes": 6892,
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "executed-source/layer0_math.py",
+      "original_sha256": "432a1e97996b923e4e16119d6733d9a39df604fcfcac02286eda4f62c670ee91",
+      "original_bytes": 3438,
+      "published_sha256": "432a1e97996b923e4e16119d6733d9a39df604fcfcac02286eda4f62c670ee91",
+      "published_bytes": 3438,
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "executed-source/layer35_math.py",
+      "original_sha256": "bc5438f971303c6936ccd4fe61e08e8e45ff253fae56e98a434d7caaf28d8b57",
+      "original_bytes": 4763,
+      "published_sha256": "bc5438f971303c6936ccd4fe61e08e8e45ff253fae56e98a434d7caaf28d8b57",
+      "published_bytes": 4763,
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "executed-source/mac_memory.py",
+      "original_sha256": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd",
+      "original_bytes": 5508,
+      "published_sha256": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd",
+      "published_bytes": 5508,
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "executed-source/mac_quiet_bench.py",
+      "original_sha256": "7018be065710be9ffe5dfc2d289770015ca617e2fdd3da253a98e07ba1bc997b",
+      "original_bytes": 72242,
+      "published_sha256": "7018be065710be9ffe5dfc2d289770015ca617e2fdd3da253a98e07ba1bc997b",
+      "published_bytes": 72242,
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "executed-source/manifest.json",
+      "original_sha256": "19fff5266c8d993a585210a165751ef7b2079086902e9515d622f020454648e9",
+      "original_bytes": 2591,
+      "published_sha256": "59bd1432178b531fda57a1ffd3fc6f0ce94efe9ae6e922a7c77e7a5882280d31",
+      "published_bytes": 1991,
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "executed-source/mps_reference.py",
+      "original_sha256": "d6dd92eb2e0ed4df10b3f9dc56f84ef7bf61c10689b3a2da6b2ae1db0e79835b",
+      "original_bytes": 25394,
+      "published_sha256": "d6dd92eb2e0ed4df10b3f9dc56f84ef7bf61c10689b3a2da6b2ae1db0e79835b",
+      "published_bytes": 25394,
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "executed-source/precision-plan.md",
+      "original_sha256": "2cfbeaa530f0b83b3878631c30d157655f6dcc71da30c6d4c8b8d6f21ff0beb1",
+      "original_bytes": 6756,
+      "published_sha256": "2cfbeaa530f0b83b3878631c30d157655f6dcc71da30c6d4c8b8d6f21ff0beb1",
+      "published_bytes": 6756,
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "executed-source/precision-source-check.json",
+      "original_sha256": "7553c81f3194fc275fb8ccd7b417760188f504e09888038125fa240e404ebd46",
+      "original_bytes": 2329,
+      "published_sha256": "80d8adf028b78e2d5d6de2ead1240f56172002636010ea5b72908a4a4cd4f6d5",
+      "published_bytes": 1729,
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "executed-source/precision_reference.py",
+      "original_sha256": "a3dcbd258683ef6063026a093943207cf1cad9360cb11b26c84ea37e9afcc79c",
+      "original_bytes": 20339,
+      "published_sha256": "a3dcbd258683ef6063026a093943207cf1cad9360cb11b26c84ea37e9afcc79c",
+      "published_bytes": 20339,
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "README.md",
+      "published_sha256": "5eb1d09d38a0fc5f7ec815f9fc1723fafdbdd630a67a3b6041f7bd2d17aa4e2f",
+      "published_bytes": 1454
+    }
+  ],
+  "scope": "Attempt1 failed in scalar head parameter hashing before any trunk forward. No retry is represented.",
+  "excluded": [
+    "weights",
+    "tensor arrays",
+    "executables",
+    "raw memory samples"
+  ],
+  "path_tokens": {
+    "@@CLEF_WORKTREE@@": "Worktree root",
+    "@@CLEF_SCRATCH@@": "Task scratch root",
+    "@@CLEF_PYTHON_ENV@@": "Pinned Python environment",
+    "@@CLEF_TARGET@@": "Persistent Cargo target",
+    "@@CLEF_HOME@@": "User home"
+  }
+}

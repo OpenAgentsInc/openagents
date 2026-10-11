@@ -1,0 +1,53 @@
+{
+  "files": [
+    {
+      "source": "@@CLEF_SCRATCH@@/same-q4-runtime-v1/text029-isolation/precision_reference.py",
+      "file": "precision_reference.py",
+      "sha256": "a3dcbd258683ef6063026a093943207cf1cad9360cb11b26c84ea37e9afcc79c",
+      "bytes": 20339
+    },
+    {
+      "source": "@@CLEF_SCRATCH@@/same-q4-runtime-v1/text029-isolation/guard_precision.py",
+      "file": "guard_precision.py",
+      "sha256": "ecc6821868d5811091f75e1a5e77494a288b03cc804b5329d936a06c66d71c8b",
+      "bytes": 7037
+    },
+    {
+      "source": "@@CLEF_SCRATCH@@/same-q4-runtime-v1/text029-isolation/precision-plan.md",
+      "file": "precision-plan.md",
+      "sha256": "2cfbeaa530f0b83b3878631c30d157655f6dcc71da30c6d4c8b8d6f21ff0beb1",
+      "bytes": 6756
+    },
+    {
+      "source": "@@CLEF_SCRATCH@@/same-q4-runtime-v1/text029-isolation/layer35_math.py",
+      "file": "layer35_math.py",
+      "sha256": "bc5438f971303c6936ccd4fe61e08e8e45ff253fae56e98a434d7caaf28d8b57",
+      "bytes": 4763
+    },
+    {
+      "source": "@@CLEF_SCRATCH@@/same-q4-runtime-v1/text029-isolation/layer0_math.py",
+      "file": "layer0_math.py",
+      "sha256": "432a1e97996b923e4e16119d6733d9a39df604fcfcac02286eda4f62c670ee91",
+      "bytes": 3438
+    },
+    {
+      "source": "@@CLEF_SCRATCH@@/same-q4-runtime-v1/mps_reference.py",
+      "file": "mps_reference.py",
+      "sha256": "d6dd92eb2e0ed4df10b3f9dc56f84ef7bf61c10689b3a2da6b2ae1db0e79835b",
+      "bytes": 25394
+    },
+    {
+      "source": "@@CLEF_WORKTREE@@/crates/psionic/fixtures/clef/tools/mac_quiet_bench.py",
+      "file": "mac_quiet_bench.py",
+      "sha256": "7018be065710be9ffe5dfc2d289770015ca617e2fdd3da253a98e07ba1bc997b",
+      "bytes": 72242
+    },
+    {
+      "source": "@@CLEF_WORKTREE@@/crates/psionic/fixtures/clef/tools/mac_memory.py",
+      "file": "mac_memory.py",
+      "sha256": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd",
+      "bytes": 5508
+    }
+  ],
+  "all_match_original_frozen_source_check": true
+}

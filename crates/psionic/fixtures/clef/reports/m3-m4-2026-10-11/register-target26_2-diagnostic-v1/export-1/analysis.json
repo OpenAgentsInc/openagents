@@ -1,0 +1,792 @@
+{
+  "identity": "register-target26_2-diagnostic-v1",
+  "mapping_repaired": false,
+  "gemm_validated": false,
+  "speed_claim": false,
+  "cases": [
+    {
+      "case": "tail-1",
+      "raw_sha256": "671ffb1b0842f8d4fc7e2e653dd30093df83ba03493c11f333cf5e62da69c20e",
+      "objects": [
+        {
+          "object": 0,
+          "slots": 256,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            15,
+            15
+          ],
+          "existing_left_or_destination_hypothesis": {
+            "proposed_shape": [
+              16,
+              16
+            ],
+            "outside_shape": 0,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": true,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": true,
+            "first_differences": []
+          }
+        },
+        {
+          "object": 1,
+          "slots": 256,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            15,
+            15
+          ],
+          "existing_left_or_destination_hypothesis": {
+            "proposed_shape": [
+              16,
+              16
+            ],
+            "outside_shape": 0,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": true,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": true,
+            "first_differences": []
+          }
+        },
+        {
+          "object": 2,
+          "slots": 256,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            15,
+            15
+          ],
+          "existing_left_or_destination_hypothesis": {
+            "proposed_shape": [
+              16,
+              16
+            ],
+            "outside_shape": 0,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": true,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": true,
+            "first_differences": []
+          }
+        },
+        {
+          "object": 3,
+          "slots": 256,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            15,
+            15
+          ],
+          "existing_left_or_destination_hypothesis": {
+            "proposed_shape": [
+              16,
+              16
+            ],
+            "outside_shape": 0,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": true,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": true,
+            "first_differences": []
+          }
+        },
+        {
+          "object": 4,
+          "slots": 512,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            15,
+            31
+          ],
+          "physical_K_N_hypothesis": {
+            "proposed_shape": [
+              16,
+              32
+            ],
+            "outside_shape": 0,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": true,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": true,
+            "first_differences": []
+          },
+          "logical_N_K_hypothesis": {
+            "proposed_shape": [
+              32,
+              16
+            ],
+            "outside_shape": 256,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": false,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": false,
+            "first_differences": [
+              {
+                "lane": 0,
+                "slot": 8,
+                "coordinate": [
+                  0,
+                  16
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 9,
+                "coordinate": [
+                  1,
+                  16
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 10,
+                "coordinate": [
+                  2,
+                  16
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 11,
+                "coordinate": [
+                  3,
+                  16
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 12,
+                "coordinate": [
+                  0,
+                  24
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 13,
+                "coordinate": [
+                  1,
+                  24
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 14,
+                "coordinate": [
+                  2,
+                  24
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 15,
+                "coordinate": [
+                  3,
+                  24
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              }
+            ]
+          }
+        },
+        {
+          "object": 5,
+          "slots": 512,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            15,
+            31
+          ],
+          "physical_K_N_hypothesis": {
+            "proposed_shape": [
+              16,
+              32
+            ],
+            "outside_shape": 0,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": true,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": true,
+            "first_differences": []
+          },
+          "logical_N_K_hypothesis": {
+            "proposed_shape": [
+              32,
+              16
+            ],
+            "outside_shape": 256,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": false,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": false,
+            "first_differences": [
+              {
+                "lane": 0,
+                "slot": 8,
+                "coordinate": [
+                  0,
+                  16
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 9,
+                "coordinate": [
+                  1,
+                  16
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 10,
+                "coordinate": [
+                  2,
+                  16
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 11,
+                "coordinate": [
+                  3,
+                  16
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 12,
+                "coordinate": [
+                  0,
+                  24
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 13,
+                "coordinate": [
+                  1,
+                  24
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 14,
+                "coordinate": [
+                  2,
+                  24
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              },
+              {
+                "lane": 0,
+                "slot": 15,
+                "coordinate": [
+                  3,
+                  24
+                ],
+                "bits": 0,
+                "reason": "outside proposed shape"
+              }
+            ]
+          }
+        },
+        {
+          "object": 6,
+          "slots": 512,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            31,
+            15
+          ],
+          "existing_left_or_destination_hypothesis": {
+            "proposed_shape": [
+              32,
+              16
+            ],
+            "outside_shape": 0,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": true,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": true,
+            "first_differences": []
+          }
+        },
+        {
+          "object": 7,
+          "slots": 512,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            31,
+            15
+          ],
+          "existing_left_or_destination_hypothesis": {
+            "proposed_shape": [
+              32,
+              16
+            ],
+            "outside_shape": 0,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": true,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": true,
+            "first_differences": []
+          }
+        }
+      ]
+    },
+    {
+      "case": "interior-32",
+      "raw_sha256": "db7d371f3c818022b050d689abf0735f43efd490c535899d566ad916f2f8264a",
+      "objects": [
+        {
+          "object": 0,
+          "slots": 256,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            15,
+            15
+          ],
+          "existing_left_or_destination_hypothesis": {
+            "proposed_shape": [
+              16,
+              16
+            ],
+            "outside_shape": 0,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": true,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": true,
+            "first_differences": []
+          }
+        },
+        {
+          "object": 1,
+          "slots": 256,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            15,
+            15
+          ],
+          "existing_left_or_destination_hypothesis": {
+            "proposed_shape": [
+              16,
+              16
+            ],
+            "outside_shape": 0,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": true,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": true,
+            "first_differences": []
+          }
+        },
+        {
+          "object": 2,
+          "slots": 256,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            15,
+            15
+          ],
+          "existing_left_or_destination_hypothesis": {
+            "proposed_shape": [
+              16,
+              16
+            ],
+            "outside_shape": 0,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": true,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": true,
+            "first_differences": []
+          }
+        },
+        {
+          "object": 3,
+          "slots": 256,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            15,
+            15
+          ],
+          "existing_left_or_destination_hypothesis": {
+            "proposed_shape": [
+              16,
+              16
+            ],
+            "outside_shape": 0,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": true,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": true,
+            "first_differences": []
+          }
+        },
+        {
+          "object": 4,
+          "slots": 512,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            15,
+            31
+          ],
+          "physical_K_N_hypothesis": {
+            "proposed_shape": [
+              16,
+              32
+            ],
+            "outside_shape": 0,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": true,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": true,
+            "first_differences": []
+          },
+          "logical_N_K_hypothesis": {
+            "proposed_shape": [
+              32,
+              16
+            ],
+            "outside_shape": 256,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": false,
+            "bits_mismatches_inside_shape": 240,
+            "matches_shape_coverage_and_bits": false,
+            "first_differences": [
+              {
+                "lane": 0,
+                "slot": 1,
+                "coordinate": [
+                  1,
+                  0
+                ],
+                "bits": 12289,
+                "expected_bits": 12320,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 2,
+                "coordinate": [
+                  2,
+                  0
+                ],
+                "bits": 12290,
+                "expected_bits": 12352,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 3,
+                "coordinate": [
+                  3,
+                  0
+                ],
+                "bits": 12291,
+                "expected_bits": 12384,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 4,
+                "coordinate": [
+                  0,
+                  8
+                ],
+                "bits": 12544,
+                "expected_bits": 12296,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 5,
+                "coordinate": [
+                  1,
+                  8
+                ],
+                "bits": 12545,
+                "expected_bits": 12328,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 6,
+                "coordinate": [
+                  2,
+                  8
+                ],
+                "bits": 12546,
+                "expected_bits": 12360,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 7,
+                "coordinate": [
+                  3,
+                  8
+                ],
+                "bits": 12547,
+                "expected_bits": 12392,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 8,
+                "coordinate": [
+                  0,
+                  16
+                ],
+                "bits": 12800,
+                "reason": "outside proposed shape"
+              }
+            ]
+          }
+        },
+        {
+          "object": 5,
+          "slots": 512,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            15,
+            31
+          ],
+          "physical_K_N_hypothesis": {
+            "proposed_shape": [
+              16,
+              32
+            ],
+            "outside_shape": 0,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": true,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": true,
+            "first_differences": []
+          },
+          "logical_N_K_hypothesis": {
+            "proposed_shape": [
+              32,
+              16
+            ],
+            "outside_shape": 256,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": false,
+            "bits_mismatches_inside_shape": 240,
+            "matches_shape_coverage_and_bits": false,
+            "first_differences": [
+              {
+                "lane": 0,
+                "slot": 1,
+                "coordinate": [
+                  1,
+                  0
+                ],
+                "bits": 12305,
+                "expected_bits": 12336,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 2,
+                "coordinate": [
+                  2,
+                  0
+                ],
+                "bits": 12306,
+                "expected_bits": 12368,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 3,
+                "coordinate": [
+                  3,
+                  0
+                ],
+                "bits": 12307,
+                "expected_bits": 12400,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 4,
+                "coordinate": [
+                  0,
+                  8
+                ],
+                "bits": 12560,
+                "expected_bits": 12312,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 5,
+                "coordinate": [
+                  1,
+                  8
+                ],
+                "bits": 12561,
+                "expected_bits": 12344,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 6,
+                "coordinate": [
+                  2,
+                  8
+                ],
+                "bits": 12562,
+                "expected_bits": 12376,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 7,
+                "coordinate": [
+                  3,
+                  8
+                ],
+                "bits": 12563,
+                "expected_bits": 12408,
+                "reason": "bits differ under proposed mapping"
+              },
+              {
+                "lane": 0,
+                "slot": 8,
+                "coordinate": [
+                  0,
+                  16
+                ],
+                "bits": 12816,
+                "reason": "outside proposed shape"
+              }
+            ]
+          }
+        },
+        {
+          "object": 6,
+          "slots": 512,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            31,
+            15
+          ],
+          "existing_left_or_destination_hypothesis": {
+            "proposed_shape": [
+              32,
+              16
+            ],
+            "outside_shape": 0,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": true,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": true,
+            "first_differences": []
+          }
+        },
+        {
+          "object": 7,
+          "slots": 512,
+          "minimum_coordinate": [
+            0,
+            0
+          ],
+          "maximum_coordinate": [
+            31,
+            15
+          ],
+          "existing_left_or_destination_hypothesis": {
+            "proposed_shape": [
+              32,
+              16
+            ],
+            "outside_shape": 0,
+            "duplicate_coordinates": 0,
+            "complete_unique_coverage": true,
+            "bits_mismatches_inside_shape": 0,
+            "matches_shape_coverage_and_bits": true,
+            "first_differences": []
+          }
+        }
+      ]
+    }
+  ],
+  "failures": [],
+  "export_complete": true
+}

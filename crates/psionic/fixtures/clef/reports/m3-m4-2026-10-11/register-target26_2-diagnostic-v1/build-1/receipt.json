@@ -1,0 +1,71 @@
+{
+  "identity": "register-target26_2-diagnostic-v1",
+  "mode": "build",
+  "status": "complete",
+  "max_owned_group_bytes": 4294967296,
+  "minimum_available_bytes": 12884901888,
+  "minimum_start_bytes": 17179869184,
+  "deadline_seconds": 180,
+  "frozen_sources_sha256": "52eaa56cd94dc725ec25e769fb1677ba0f18e965e70302c90ef9f4647d92869a",
+  "source_sha256": {
+    "candidate.metal": "b5b5d77dc4406cd3023cd69f6838d670bfc774ad1e4196af16c2b536d47e9821",
+    "exporter-template.swift": "879b0e7652f805d01c6e7ceff2bd33edf0e84abc2995959e6b3482fe9100f749",
+    "deployment_probe.metal": "6579e92edb9c2333498bf6494fbd29154cc0e7c3000bf73760794ca49a0c0767",
+    "common.py": "8c99550cffb182c3a45a51248fbe3a82fa276c882e769234256c662093955d54",
+    "build.py": "62212973736a6f238e18f1640c783f90c3db2c32744ce992b1bd59205cffb8ef",
+    "guard.py": "ed06f5f6b9bac3a3d4db1a5a1e9414ee722045e9ba760585129dd093170e134d",
+    "analyze.py": "e8726cea0013d5b08484a50b4a993c6330645e3af14373490c7e834b591fed93",
+    "source_check.py": "00c1d2bc649ec7d0f83dd57351608102231fcdf588d6eeeecf6129d63aa3243b",
+    "PLAN.md": "554963d2d628e5509eb43fa030d08bc385761ea81b84a8fcab15afd35d5f773c",
+    "manifest.json": "ae898f436f3d91aa505a18c71db55b6f633db102c47d9368a1634fc6c47385d5"
+  },
+  "guard_dependency_sha256": {
+    "mac_quiet_bench.py": "7018be065710be9ffe5dfc2d289770015ca617e2fdd3da253a98e07ba1bc997b",
+    "mac_memory.py": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd"
+  },
+  "library_sha256": null,
+  "sdk_header_sha256": {
+    "MPPTensorOpsMatMul2d.h": "9c8fa78dd5e9b7a1ad8a2d0e6cd007a816ac750041da15b1015b38c7459d8a6b",
+    "__impl/MPPTensorOpsAvailability.h": "6bf68d9d460de7cb58ed3d23eea10dc42d9dd171619051accea283b217517a72",
+    "__impl/MPPTensorOpsMatMul2dImpl.h": "527511bd1a45f0f4361c684b1019d6cc06e1c9703e6f1908384320133bfaa43a"
+  },
+  "no_quiet_lease": true,
+  "gemm_or_model_execution": false,
+  "preflight": {
+    "available_memory_bytes": 102146080768,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 4410264,
+      "inactive": 1382174,
+      "speculative": 442064
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "command": [
+    "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+    "<TASK_SCRATCH>/register-target26_2-diagnostic/build.py"
+  ],
+  "exit": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 13151,
+    "max_rss_bytes": 4294967296,
+    "peak_rss_bytes": 76414976,
+    "peak_physical_footprint_bytes": 43057944,
+    "peak_accounted_bytes": 76414976,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 7,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 101466439680,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 3.423855541
+}

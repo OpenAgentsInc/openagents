@@ -1,0 +1,18 @@
+{
+  "base": [
+    0,
+    0,
+    0
+  ],
+  "case": "interior-32",
+  "dimensions": [
+    32,
+    32,
+    32
+  ],
+  "library_sha256": "eab78a332c74906ef892664845785dc2d555c8239c97d17a6633e5dacdfdb12a",
+  "original_json_sha256": "e2f7664ca33b46065966b86acf4b307c0670ba8685d5eca202d026330dc0dd4f",
+  "original_raw_sha256": "db7d371f3c818022b050d689abf0735f43efd490c535899d566ad916f2f8264a",
+  "raw_byte_order": "little-endian UInt32",
+  "raw_sha256": "db7d371f3c818022b050d689abf0735f43efd490c535899d566ad916f2f8264a"
+}

@@ -1,0 +1,83 @@
+{
+  "status": "complete",
+  "host_os": "26.4",
+  "variant": "one fixed macOS26.2 deployment minimum",
+  "candidate_source_sha256": "b5b5d77dc4406cd3023cd69f6838d670bfc774ad1e4196af16c2b536d47e9821",
+  "cases": [
+    {
+      "label": "default",
+      "command": [
+        "xcrun",
+        "-sdk",
+        "macosx",
+        "metal",
+        "-std=metal4.0",
+        "-E",
+        "-dM",
+        "<TASK_SCRATCH>/register-target26_2-diagnostic/deployment_probe.metal"
+      ],
+      "exit": 0,
+      "macros_sha256": "732f3eea17e5164545e4f299df68218dc5081f997bbb0289590fd5dd6e554a97",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "selected": {
+        "__ENVIRONMENT_OS_VERSION_MIN_REQUIRED__": "260000",
+        "CLEF_COORDINATE_OPERAND_AWARE": "0",
+        "__METAL_VERSION__": "400",
+        "__clang_version__": "\"32023.883 (metalfe-32023.883)\"",
+        "__TENSOR_OPS_SUPPORT_DEPLOYMENT_TARGET_26_2": "((__ENVIRONMENT_OS_VERSION_MIN_REQUIRED__) >= 260200)"
+      },
+      "effective_minimum": 260000,
+      "operand_aware": "0"
+    },
+    {
+      "label": "target26_2",
+      "command": [
+        "xcrun",
+        "-sdk",
+        "macosx",
+        "metal",
+        "-std=metal4.0",
+        "-mmacosx-version-min=26.2",
+        "-E",
+        "-dM",
+        "<TASK_SCRATCH>/register-target26_2-diagnostic/deployment_probe.metal"
+      ],
+      "exit": 0,
+      "macros_sha256": "795a0d8912f9a198241c1ea09afe4946ba77f0b4741a8449cff39aff7376c327",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "selected": {
+        "__ENVIRONMENT_OS_VERSION_MIN_REQUIRED__": "260200",
+        "CLEF_COORDINATE_OPERAND_AWARE": "1",
+        "__METAL_VERSION__": "400",
+        "__clang_version__": "\"32023.883 (metalfe-32023.883)\"",
+        "__TENSOR_OPS_SUPPORT_DEPLOYMENT_TARGET_26_2": "((__ENVIRONMENT_OS_VERSION_MIN_REQUIRED__) >= 260200)"
+      },
+      "effective_minimum": 260200,
+      "operand_aware": "1"
+    }
+  ],
+  "gemm_executed": false,
+  "sdk_header_sha256": {
+    "MPPTensorOpsMatMul2d.h": "9c8fa78dd5e9b7a1ad8a2d0e6cd007a816ac750041da15b1015b38c7459d8a6b",
+    "__impl/MPPTensorOpsAvailability.h": "6bf68d9d460de7cb58ed3d23eea10dc42d9dd171619051accea283b217517a72",
+    "__impl/MPPTensorOpsMatMul2dImpl.h": "527511bd1a45f0f4361c684b1019d6cc06e1c9703e6f1908384320133bfaa43a"
+  },
+  "deployment_environment": {
+    "DEVELOPER_DIR": null,
+    "SDKROOT": "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk",
+    "MACOSX_DEPLOYMENT_TARGET": null,
+    "TOOLCHAINS": null
+  },
+  "sdk_resolution": {
+    "command": [
+      "xcrun",
+      "-sdk",
+      "macosx",
+      "--show-sdk-path"
+    ],
+    "exit": 0,
+    "stdout": "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk\n",
+    "stderr": ""
+  },
+  "predicted_branch_change_confirmed": true
+}

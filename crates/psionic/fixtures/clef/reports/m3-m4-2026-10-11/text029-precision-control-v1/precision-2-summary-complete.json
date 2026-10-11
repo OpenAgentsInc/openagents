@@ -1,0 +1,537 @@
+{
+  "schema": "clef.text029-full-precision-summary.v2",
+  "source_sha256": "b8fd8561e37f0a56af8b489efc11d91a7b2ad849fbc2159cd9bcda8030282d4f",
+  "receipt_sha256": "8cb2bca7f4dbd3320097e1fbe335278fb20d2873121682d17e975cbb7bf5384b",
+  "guard_sha256": "693cdb55962e451739bfe6e6cdee3110a67d98ee457ab66e57b2891e228e92dd",
+  "method": "Existing whole-memory metrics copied verbatim; final question/true-option/false-option metrics from checked saved f32 arrays using Python-f64 math.fsum. No model, Torch, NumPy, GPU or weights loaded.",
+  "bounds": {
+    "group_gib": 12,
+    "start_gib": 24,
+    "available_floor_gib": 12,
+    "gpu_executed": false,
+    "threads": 2,
+    "deadline_seconds": 300,
+    "disk_floor_gib": 25
+  },
+  "seconds": 203.7840046670026,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 56782,
+    "max_rss_bytes": 12884901888,
+    "peak_rss_bytes": 5238472704,
+    "peak_physical_footprint_bytes": 5087728152,
+    "peak_accounted_bytes": 5238472704,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 386,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 94505287680,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "final_normalized_memory": {
+    "B_minus_A": {
+      "whole": {
+        "values": 1838080,
+        "max_abs_error": 0.5965471267700195,
+        "relative_l2": 0.004782068414802542,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9988663870750735
+      },
+      "question": {
+        "values": 10240,
+        "max_abs_error": 0.03934955596923828,
+        "relative_l2": 0.0012889523465225393,
+        "minimum_token_cosine": 0.9999990714950985,
+        "zero_reference_norm": false
+      },
+      "true_option": {
+        "values": 92160,
+        "max_abs_error": 0.039760589599609375,
+        "relative_l2": 0.0012332293679931095,
+        "minimum_token_cosine": 0.9999973076804032,
+        "zero_reference_norm": false
+      },
+      "false_option": {
+        "values": 92160,
+        "max_abs_error": 0.5965471267700195,
+        "relative_l2": 0.01779041151573198,
+        "minimum_token_cosine": 0.9988663870750732,
+        "zero_reference_norm": false
+      }
+    },
+    "C_minus_A": {
+      "whole": {
+        "values": 1838080,
+        "max_abs_error": 0.526343822479248,
+        "relative_l2": 0.0036207031959388626,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9993328252462329
+      },
+      "question": {
+        "values": 10240,
+        "max_abs_error": 0.016082286834716797,
+        "relative_l2": 0.0011709257822866306,
+        "minimum_token_cosine": 0.9999992000511656,
+        "zero_reference_norm": false
+      },
+      "true_option": {
+        "values": 92160,
+        "max_abs_error": 0.10566139221191406,
+        "relative_l2": 0.0021643160754393188,
+        "minimum_token_cosine": 0.9999897435054166,
+        "zero_reference_norm": false
+      },
+      "false_option": {
+        "values": 92160,
+        "max_abs_error": 0.526343822479248,
+        "relative_l2": 0.012497956593877256,
+        "minimum_token_cosine": 0.9993328252462327,
+        "zero_reference_norm": false
+      }
+    },
+    "C_minus_B": {
+      "whole": {
+        "values": 1838080,
+        "max_abs_error": 0.2676506042480469,
+        "relative_l2": 0.002624817126843625,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999108456634682
+      },
+      "question": {
+        "values": 10240,
+        "max_abs_error": 0.028828144073486328,
+        "relative_l2": 0.0013522296062935199,
+        "minimum_token_cosine": 0.9999990790974838,
+        "zero_reference_norm": false
+      },
+      "true_option": {
+        "values": 92160,
+        "max_abs_error": 0.09049224853515625,
+        "relative_l2": 0.0016322502929415862,
+        "minimum_token_cosine": 0.9999957120839923,
+        "zero_reference_norm": false
+      },
+      "false_option": {
+        "values": 92160,
+        "max_abs_error": 0.1965484619140625,
+        "relative_l2": 0.007764477759059009,
+        "minimum_token_cosine": 0.9999108456634677,
+        "zero_reference_norm": false
+      }
+    },
+    "B_minus_native": {
+      "whole": {
+        "values": 1838080,
+        "max_abs_error": 0.8770527839660645,
+        "relative_l2": 0.005340965425098163,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9981174013743311
+      },
+      "question": {
+        "values": 10240,
+        "max_abs_error": 0.014155387878417969,
+        "relative_l2": 0.001185063299771851,
+        "minimum_token_cosine": 0.9999990299090844,
+        "zero_reference_norm": false
+      },
+      "true_option": {
+        "values": 92160,
+        "max_abs_error": 0.07681846618652344,
+        "relative_l2": 0.001962291685136593,
+        "minimum_token_cosine": 0.9999925011124476,
+        "zero_reference_norm": false
+      },
+      "false_option": {
+        "values": 92160,
+        "max_abs_error": 0.8770527839660645,
+        "relative_l2": 0.019880496512611125,
+        "minimum_token_cosine": 0.998117401374331,
+        "zero_reference_norm": false
+      }
+    },
+    "C_minus_native": {
+      "whole": {
+        "values": 1838080,
+        "max_abs_error": 0.9100780487060547,
+        "relative_l2": 0.005502662626469916,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9975178832726009
+      },
+      "question": {
+        "values": 10240,
+        "max_abs_error": 0.024261474609375,
+        "relative_l2": 0.0012694822476325446,
+        "minimum_token_cosine": 0.9999990493406445,
+        "zero_reference_norm": false
+      },
+      "true_option": {
+        "values": 92160,
+        "max_abs_error": 0.04506111145019531,
+        "relative_l2": 0.0011269733463753326,
+        "minimum_token_cosine": 0.9999984974204831,
+        "zero_reference_norm": false
+      },
+      "false_option": {
+        "values": 92160,
+        "max_abs_error": 0.9100780487060547,
+        "relative_l2": 0.021281996026402596,
+        "minimum_token_cosine": 0.9975178832726007,
+        "zero_reference_norm": false
+      }
+    }
+  },
+  "questions": [
+    {
+      "id": "rate",
+      "option_ids": [
+        "true",
+        "false"
+      ],
+      "variants": {
+        "A": {
+          "logits": [
+            -0.9667521715164185,
+            -0.28029894828796387
+          ],
+          "probabilities": [
+            0.3348225352885809,
+            0.665177464711419
+          ],
+          "top": "false"
+        },
+        "B": {
+          "logits": [
+            -0.9676170349121094,
+            -0.284321665763855
+          ],
+          "probabilities": [
+            0.3355262076525219,
+            0.664473792347478
+          ],
+          "top": "false"
+        },
+        "C": {
+          "logits": [
+            -0.9685022830963135,
+            -0.28757578134536743
+          ],
+          "probabilities": [
+            0.33605454838461646,
+            0.6639454516153835
+          ],
+          "top": "false"
+        },
+        "native_staged": {
+          "logits": [
+            -0.9698238372802734,
+            -0.2881976366043091
+          ],
+          "probabilities": [
+            0.3358984481518185,
+            0.6641015518481814
+          ],
+          "top": "false"
+        },
+        "native_fused_fields": {
+          "logits": [
+            -0.9698238968849182,
+            -0.28819745779037476
+          ],
+          "probabilities": [
+            0.3358983949676259,
+            0.664101605032374
+          ],
+          "top": "false"
+        }
+      }
+    },
+    {
+      "id": "日本1",
+      "option_ids": [
+        "true",
+        "false"
+      ],
+      "variants": {
+        "A": {
+          "logits": [
+            -0.05995303392410278,
+            -0.032073974609375
+          ],
+          "probabilities": [
+            0.4930306865690331,
+            0.5069693134309669
+          ],
+          "top": "false"
+        },
+        "B": {
+          "logits": [
+            -0.05830022692680359,
+            -0.08088886737823486
+          ],
+          "probabilities": [
+            0.5056469200047189,
+            0.49435307999528116
+          ],
+          "top": "true"
+        },
+        "C": {
+          "logits": [
+            -0.05742320418357849,
+            -0.057051777839660645
+          ],
+          "probabilities": [
+            0.4999071434150881,
+            0.500092856584912
+          ],
+          "top": "false"
+        },
+        "native_staged": {
+          "logits": [
+            -0.05822303891181946,
+            -0.06658744812011719
+          ],
+          "probabilities": [
+            0.502091090110451,
+            0.49790890988954895
+          ],
+          "top": "true"
+        },
+        "native_fused_fields": {
+          "logits": [
+            -0.05822297930717468,
+            -0.06658744812011719
+          ],
+          "probabilities": [
+            0.5020911050113516,
+            0.4979088949886484
+          ],
+          "top": "true"
+        }
+      }
+    },
+    {
+      "id": "rollback_2",
+      "option_ids": [
+        "true",
+        "false"
+      ],
+      "variants": {
+        "A": {
+          "logits": [
+            -3.224686861038208,
+            1.4942960739135742
+          ],
+          "probabilities": [
+            0.008845312691517603,
+            0.9911546873084823
+          ],
+          "top": "false"
+        },
+        "B": {
+          "logits": [
+            -3.227710008621216,
+            1.4934273958206177
+          ],
+          "probabilities": [
+            0.008826444273370912,
+            0.9911735557266291
+          ],
+          "top": "false"
+        },
+        "C": {
+          "logits": [
+            -3.2284390926361084,
+            1.4928855895996094
+          ],
+          "probabilities": [
+            0.008824806017146818,
+            0.9911751939828531
+          ],
+          "top": "false"
+        },
+        "native_staged": {
+          "logits": [
+            -3.2293167114257812,
+            1.4924194812774658
+          ],
+          "probabilities": [
+            0.00882120729181892,
+            0.991178792708181
+          ],
+          "top": "false"
+        },
+        "native_fused_fields": {
+          "logits": [
+            -3.2293167114257812,
+            1.4924193620681763
+          ],
+          "probabilities": [
+            0.008821208334112722,
+            0.9911787916658873
+          ],
+          "top": "false"
+        }
+      }
+    }
+  ],
+  "layer63_pre_norm": {
+    "B_minus_A": {
+      "whole": {
+        "values": 1838080,
+        "max_abs_error": 5.93896484375,
+        "relative_l2": 0.002311963523887135,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9988820184156652
+      },
+      "question": {
+        "values": 10240,
+        "max_abs_error": 0.11922836303710938,
+        "relative_l2": 0.0013051434247159377,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999990476619908
+      },
+      "true_option": {
+        "values": 92160,
+        "max_abs_error": 0.4123077392578125,
+        "relative_l2": 0.0006954049321946846,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999980955490589
+      },
+      "false_option": {
+        "values": 92160,
+        "max_abs_error": 5.93896484375,
+        "relative_l2": 0.009282859049075746,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9988820184156652
+      }
+    },
+    "C_minus_A": {
+      "whole": {
+        "values": 1838080,
+        "max_abs_error": 5.4940185546875,
+        "relative_l2": 0.001835467504429541,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9993367666217645
+      },
+      "question": {
+        "values": 10240,
+        "max_abs_error": 0.04040718078613281,
+        "relative_l2": 0.0011798011127109995,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999992129907889
+      },
+      "true_option": {
+        "values": 92160,
+        "max_abs_error": 0.955047607421875,
+        "relative_l2": 0.0012626483839899617,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999928957357628
+      },
+      "false_option": {
+        "values": 92160,
+        "max_abs_error": 3.697021484375,
+        "relative_l2": 0.006150593276388294,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9993367666217645
+      }
+    },
+    "C_minus_B": {
+      "whole": {
+        "values": 1838080,
+        "max_abs_error": 6.005126953125,
+        "relative_l2": 0.0015653636359238758,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999138672012163
+      },
+      "question": {
+        "values": 10240,
+        "max_abs_error": 0.08974742889404297,
+        "relative_l2": 0.0013868850860791551,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999990811153202
+      },
+      "true_option": {
+        "values": 92160,
+        "max_abs_error": 0.82586669921875,
+        "relative_l2": 0.0009503407414788273,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999950208014461
+      },
+      "false_option": {
+        "values": 92160,
+        "max_abs_error": 3.00390625,
+        "relative_l2": 0.004516647866066783,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999138672012163
+      }
+    },
+    "B_minus_native": {
+      "whole": {
+        "values": 1838080,
+        "max_abs_error": 7.0831298828125,
+        "relative_l2": 0.0027707750381623436,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9980794331739602
+      },
+      "question": {
+        "values": 10240,
+        "max_abs_error": 0.08460235595703125,
+        "relative_l2": 0.0011963683516024641,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999990203419806
+      },
+      "true_option": {
+        "values": 92160,
+        "max_abs_error": 1.314697265625,
+        "relative_l2": 0.001353402887796103,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999947371581425
+      },
+      "false_option": {
+        "values": 92160,
+        "max_abs_error": 6.783935546875,
+        "relative_l2": 0.011272302724715603,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9980794331739602
+      }
+    },
+    "C_minus_native": {
+      "whole": {
+        "values": 1838080,
+        "max_abs_error": 7.74481201171875,
+        "relative_l2": 0.002688005256336651,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9974929134083341
+      },
+      "question": {
+        "values": 10240,
+        "max_abs_error": 0.15155792236328125,
+        "relative_l2": 0.0013167949183885501,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999989732798237
+      },
+      "true_option": {
+        "values": 92160,
+        "max_abs_error": 1.2840576171875,
+        "relative_l2": 0.0008849546356683735,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.999998581418798
+      },
+      "false_option": {
+        "values": 92160,
+        "max_abs_error": 5.833995819091797,
+        "relative_l2": 0.010827308896718969,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9974929134083341
+      }
+    }
+  },
+  "acceptance": "Original independent-f32 40/104 gate remains unchanged and unmet. These controls are diagnostic only."
+}

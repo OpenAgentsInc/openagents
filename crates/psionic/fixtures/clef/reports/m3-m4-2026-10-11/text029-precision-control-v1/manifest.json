@@ -1,0 +1,236 @@
+{
+  "schema": "clef.text029-precision-control-publication.v1",
+  "scope": "One fixed diagnostic case. Original 40/104 all-top and 0.02 probability acceptance remains unchanged and unmet.",
+  "path_tokens": {
+    "@@CLEF_WORKTREE@@": "Worktree root",
+    "@@CLEF_SCRATCH@@": "Task scratch root",
+    "@@CLEF_PYTHON_ENV@@": "Pinned Python environment",
+    "@@CLEF_TARGET@@": "Persistent Cargo target",
+    "@@CLEF_HOME@@": "User home"
+  },
+  "files": [
+    {
+      "path": "guard.json",
+      "original_bytes": 74357,
+      "original_sha256": "693cdb55962e451739bfe6e6cdee3110a67d98ee457ab66e57b2891e228e92dd",
+      "published_bytes": 49506,
+      "published_sha256": "93edbc741c055261ff4d2c8dee74f62895b941c8163f52a8caffe9af281dcb5a",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "receipt.json",
+      "original_bytes": 667847,
+      "original_sha256": "8cb2bca7f4dbd3320097e1fbe335278fb20d2873121682d17e975cbb7bf5384b",
+      "published_bytes": 667847,
+      "published_sha256": "8cb2bca7f4dbd3320097e1fbe335278fb20d2873121682d17e975cbb7bf5384b",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "stdout.log",
+      "original_bytes": 9103,
+      "original_sha256": "9fe7594f5ef7ce5bbfeec93d7267b721e6453d3eda768c5586e26509133d1d54",
+      "published_bytes": 9103,
+      "published_sha256": "9fe7594f5ef7ce5bbfeec93d7267b721e6453d3eda768c5586e26509133d1d54",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "precision-2-summary.json",
+      "original_bytes": 13351,
+      "original_sha256": "8ea117998d1724603970135fc78b5d0ad96e5a75f28bc704e8b1d349e62dbc95",
+      "published_bytes": 13351,
+      "published_sha256": "8ea117998d1724603970135fc78b5d0ad96e5a75f28bc704e8b1d349e62dbc95",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "precision-2-summary-complete.json",
+      "original_bytes": 15737,
+      "original_sha256": "623d15e3c57222f561b73d490e5e971560c45cbd21f1d670b18fcdd93e3a5227",
+      "published_bytes": 15737,
+      "published_sha256": "623d15e3c57222f561b73d490e5e971560c45cbd21f1d670b18fcdd93e3a5227",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "precision-source-check.json",
+      "original_bytes": 2329,
+      "original_sha256": "7553c81f3194fc275fb8ccd7b417760188f504e09888038125fa240e404ebd46",
+      "published_bytes": 1729,
+      "published_sha256": "80d8adf028b78e2d5d6de2ead1240f56172002636010ea5b72908a4a4cd4f6d5",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "precision-source-check-repair1.json",
+      "original_bytes": 2715,
+      "original_sha256": "9cb844bc0f97d3731b0158678f08e13dfd0f5711ad05debc82ab12c658047a84",
+      "published_bytes": 2034,
+      "published_sha256": "9c76219b8ed247c87cea60dd0cd5cbcf5d8241fab22347bb2318df3aeaacb7da",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "precision-repair1.patch",
+      "original_bytes": 6128,
+      "original_sha256": "46a90e68925e1c2767d78cc0a747dad83220c3901e73d1f42e17f5540523eb85",
+      "published_bytes": 6128,
+      "published_sha256": "46a90e68925e1c2767d78cc0a747dad83220c3901e73d1f42e17f5540523eb85",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "precision-plan.md",
+      "original_bytes": 6756,
+      "original_sha256": "2cfbeaa530f0b83b3878631c30d157655f6dcc71da30c6d4c8b8d6f21ff0beb1",
+      "published_bytes": 6756,
+      "published_sha256": "2cfbeaa530f0b83b3878631c30d157655f6dcc71da30c6d4c8b8d6f21ff0beb1",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/precision_reference.py",
+      "original_bytes": 20465,
+      "original_sha256": "7ef09fe8524fc4de689e6748b07355f324c93e5066305697854c4d7576aad694",
+      "published_bytes": 20465,
+      "published_sha256": "7ef09fe8524fc4de689e6748b07355f324c93e5066305697854c4d7576aad694",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/guard_precision.py",
+      "original_bytes": 7196,
+      "original_sha256": "cb5bedb3d942fe38fcd0473cb208921315fe15bead2742d7d8ab986f3d7aedc3",
+      "published_bytes": 7051,
+      "published_sha256": "bff0cf392f26a887740d35e1b69333fd2a2c36cd034202f55ce22d3c96ab880a",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/precision_hash.py",
+      "original_bytes": 2751,
+      "original_sha256": "595256f7b60826373a80588c0bc1ac1f4554d6dfc6ae117ae9f20f66363aca2f",
+      "published_bytes": 2751,
+      "published_sha256": "595256f7b60826373a80588c0bc1ac1f4554d6dfc6ae117ae9f20f66363aca2f",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/layer0_math.py",
+      "original_bytes": 3438,
+      "original_sha256": "432a1e97996b923e4e16119d6733d9a39df604fcfcac02286eda4f62c670ee91",
+      "published_bytes": 3438,
+      "published_sha256": "432a1e97996b923e4e16119d6733d9a39df604fcfcac02286eda4f62c670ee91",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/layer35_math.py",
+      "original_bytes": 4763,
+      "original_sha256": "bc5438f971303c6936ccd4fe61e08e8e45ff253fae56e98a434d7caaf28d8b57",
+      "published_bytes": 4763,
+      "published_sha256": "bc5438f971303c6936ccd4fe61e08e8e45ff253fae56e98a434d7caaf28d8b57",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/precision_summary.py",
+      "original_bytes": 5799,
+      "original_sha256": "5aa14c47794deffd322abb4cd5b70b927de21a7a7f0eecc579d7857cb9b73bc2",
+      "published_bytes": 5799,
+      "published_sha256": "5aa14c47794deffd322abb4cd5b70b927de21a7a7f0eecc579d7857cb9b73bc2",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/precision_summary_complete.py",
+      "original_bytes": 6033,
+      "original_sha256": "b8fd8561e37f0a56af8b489efc11d91a7b2ad849fbc2159cd9bcda8030282d4f",
+      "published_bytes": 6033,
+      "published_sha256": "b8fd8561e37f0a56af8b489efc11d91a7b2ad849fbc2159cd9bcda8030282d4f",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/package_precision.py",
+      "original_bytes": 9652,
+      "original_sha256": "a6c1d39059d0e8ce5a9d344cb69883a693b130a522fabb3fbbf6e9fa08ae8013",
+      "published_bytes": 9652,
+      "published_sha256": "a6c1d39059d0e8ce5a9d344cb69883a693b130a522fabb3fbbf6e9fa08ae8013",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/dependencies/mps_reference.py",
+      "original_bytes": 25394,
+      "original_sha256": "d6dd92eb2e0ed4df10b3f9dc56f84ef7bf61c10689b3a2da6b2ae1db0e79835b",
+      "published_bytes": 25394,
+      "published_sha256": "d6dd92eb2e0ed4df10b3f9dc56f84ef7bf61c10689b3a2da6b2ae1db0e79835b",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/dependencies/guard_mps.py",
+      "original_bytes": 9135,
+      "original_sha256": "e576e775eea9b0d9b74c08dfd761be4564824a7781a2d43ed15d3595fecc05df",
+      "published_bytes": 8990,
+      "published_sha256": "aac683b115df362fb4ba063f429a60adca80151bbefa986abbd3a8a607e68be9",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/dependencies/gguf_import.py",
+      "original_bytes": 10181,
+      "original_sha256": "57a152754b1dd224de24b111d7824fc6ecb3c7f4bb1149c6a5a3d78fdb41bc32",
+      "published_bytes": 10100,
+      "published_sha256": "e77df8febc47557f8636e594f5b1ed7034ee24a9b49723ef54af4757d4b206ec",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/dependencies/stream_reference.py",
+      "original_bytes": 13679,
+      "original_sha256": "b1b61674dc9afc362f29bef3bf228ed4d5e6c7cf0150bf203023d28362462041",
+      "published_bytes": 13622,
+      "published_sha256": "926c6cf1c5be1e79b652329294f2a74b9b86c5f1ddc7880bb41f9dec0369d5a2",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/dependencies/mac_quiet_bench.py",
+      "original_bytes": 72242,
+      "original_sha256": "7018be065710be9ffe5dfc2d289770015ca617e2fdd3da253a98e07ba1bc997b",
+      "published_bytes": 72242,
+      "published_sha256": "7018be065710be9ffe5dfc2d289770015ca617e2fdd3da253a98e07ba1bc997b",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/dependencies/mac_memory.py",
+      "original_bytes": 5508,
+      "original_sha256": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd",
+      "published_bytes": 5508,
+      "published_sha256": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "attempt1/guard.json",
+      "original_bytes": 73358,
+      "original_sha256": "71f1121e0505249a5b9abff6ed3a9119d65fddedf7310ea96a8063f0eda8abfe",
+      "published_bytes": 48831,
+      "published_sha256": "91ed170789393c56d5b656748f2ee7ef82920bb8fe7cb14d91357e3417c739d3",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "attempt1/receipt.json",
+      "original_bytes": 16304,
+      "original_sha256": "bcf105ce03b05da6b1c3c888b35ebdcfd605d965adcbb5beffaa6cb7a159a99d",
+      "published_bytes": 16304,
+      "published_sha256": "bcf105ce03b05da6b1c3c888b35ebdcfd605d965adcbb5beffaa6cb7a159a99d",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "attempt1/stdout.log",
+      "original_bytes": 1504,
+      "original_sha256": "e57d7f423e82f91eb5fba6acd79aa0870aea49a0065ba78358a84fa89b8f3312",
+      "published_bytes": 1092,
+      "published_sha256": "cbabc3a3f538f0e4ffb9595ff29a4619236ad213bf5bb35177ac897208a13611",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "README.md",
+      "published_bytes": 5729,
+      "published_sha256": "2f47dc085db8a1022388c367095eb47ad2f6b0e3c245bdbfb309df981cc29fbe",
+      "generated_summary": true
+    }
+  ],
+  "excluded": [
+    "model weights",
+    "raw tensors",
+    "executables",
+    "raw process memory samples"
+  ],
+  "attempt1_manifest_sha256": "ac84dfdca027b308217d32e0d1b4ed0103b01b901a67ca71324e5292e3397902",
+  "attempt2_original_result_sha256": "8cb2bca7f4dbd3320097e1fbe335278fb20d2873121682d17e975cbb7bf5384b",
+  "acceptance": "Diagnostic only. Original independent-f32 40/104 all-top and max probability error 0.02 gate remains unchanged and unmet."
+}

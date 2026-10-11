@@ -1,0 +1,100 @@
+--- attempt1/precision_reference.py
++++ repair1/precision_reference.py
+@@ -17,6 +17,7 @@
+ import mps_reference as ref
+ from layer35_math import online_attention, fixtures as attention_fixtures
+ from layer0_math import delta_fixtures
++from precision_hash import parameter_hashes, self_test as hash_self_test
+ 
+ MODES = ("B_projection_half", "C_projection_and_attention_half")
+ 
+@@ -53,6 +54,7 @@
+         torch.set_num_threads(2)
+         torch.set_num_interop_threads(1)
+         torch.set_default_device("cpu")
++        result["parameter_hash_self_test"] = hash_self_test(torch)
+         ref.require(str(torch.__version__) == "2.9.1" and transformers.__version__ == "5.10.2"
+                     and ref.sha(Path(modeling.__file__)) == ref.MODELING_SHA, "official runtime changed")
+         ref.require(modeling.FusedRMSNormGated is None and modeling.causal_conv1d_fn is None
+@@ -137,7 +139,7 @@
+         head = official.JointSchemaHead(**json.loads((ref.HF / "joint_head_config.json").read_text()))
+         head.load_state_dict(load_file(str(ref.HF / "joint_head.safetensors"), device="cpu"), strict=True)
+         head = head.float().eval()
+-        head_before = ref.layer_hashes(torch, head, "cpu")
++        head_before = parameter_hashes(torch, head)
+         # finish_head applies backbone output RMSNorm exactly once to pre-norm layer-63 rows.
+         a_pre = cpu_layer(63)
+         a_final, a_head = ref.finish_head(torch, official, reader, config, case, a_pre, head)
+@@ -295,7 +297,7 @@
+             del normalized, lexical
+         result["final_C_minus_B"] = {"hidden": ref.row_errors(hidden[MODES[1]], hidden[MODES[0]]),
+             "logits": ref.compare_logits(result["heads"][MODES[1]]["logits"], result["heads"][MODES[0]]["logits"])}
+-        ref.require(ref.layer_hashes(torch, head, "cpu") == head_before, "head weights changed")
++        ref.require(parameter_hashes(torch, head) == head_before, "head weights changed")
+         ref.require(len(result["layers"]) == 64 and len(result["heads"]) == 2, "full control coverage incomplete")
+         reader.check_state()
+         result.update(status="complete", completed=True, payload_read_bytes=reader.payload_read_bytes,
+--- attempt1/guard_precision.py
++++ repair1/guard_precision.py
+@@ -39,6 +39,7 @@
+  previous=json.loads((RUN/'mps-full-1/guard.json').read_text());files=[Path(x) for x in previous['sources']]
+  files += [Path(__file__),HERE/'precision_reference.py',RUN/'mps_reference.py',RUN/'mps-full-1/results/receipt.json',RUN/'mps-full-1/results/text-029-final.safetensors',BASE/'27b-head-stage6-combined/staged/rows.f16',BASE/'27b-head-stage6-combined/fused-fields/rows.f16']
+  files += [HERE/'layer35_math.py', HERE/'layer0_math.py', HERE/'precision-plan.md']
++ files += [HERE/'precision_hash.py', HERE/'precision-1/guard.json', HERE/'precision-1/results/receipt.json', HERE/'precision-1/executed-source/manifest.json']
+  for mode in ('cpu','native','comparison','layer0'):
+   guard=HERE/(mode+'-1')/'guard.json';metadata=json.loads(guard.read_text());proof=guard.parent/'results/receipt.json'
+   require(metadata['status']=='complete' and metadata['memory']['owned_group_stopped'] and metadata['result_sha256']==sha(proof),'capture proof or cleanup differs: '+mode)
+--- attempt1/precision_hash.py
++++ repair1/precision_hash.py
+@@ -0,0 +1,51 @@
++"""Hash CPU-f32 parameter bytes without changing scalar shape metadata."""
++import hashlib
++
++
++def parameter_hashes(torch, module):
++    values = {**dict(module.named_parameters()), **dict(module.named_buffers())}
++    result = {}
++    for name, value in values.items():
++        if value.device.type != "cpu" or value.dtype != torch.float32:
++            raise ValueError("expected a CPU-f32 parameter or buffer")
++        # Flatten only the byte-view input; a scalar's recorded shape remains [].
++        raw = value.detach().contiguous().reshape(-1).view(torch.uint8).numpy().tobytes()
++        result[name] = {"shape": list(value.shape), "sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw)}
++    return result
++
++
++def self_test(torch):
++    """Use only tiny local tensors; do not load model files or initialize a GPU."""
++    module = torch.nn.Module()
++    values = {
++        "scalar": torch.tensor(1.5, dtype=torch.float32, device="cpu"),
++        "negative_zero": torch.tensor(-0.0, dtype=torch.float32, device="cpu"),
++        "vector": torch.tensor([1.0, -2.0, 0.125], dtype=torch.float32, device="cpu"),
++        "noncontiguous": torch.arange(12, dtype=torch.float32, device="cpu").reshape(3, 4).transpose(0, 1),
++        "empty": torch.empty(0, dtype=torch.float32, device="cpu"),
++    }
++    before = {name: value.numpy().tobytes() for name, value in values.items()}
++    for name, value in values.items():
++        module.register_parameter(name, torch.nn.Parameter(value, requires_grad=False))
++    module.register_buffer("scalar_buffer", torch.tensor(0.5, dtype=torch.float32, device="cpu"))
++    result = parameter_hashes(torch, module)
++    for name, value in {**values, "scalar_buffer": module.scalar_buffer}.items():
++        expected = value.detach().numpy().tobytes()
++        if result[name] != {"shape": list(value.shape), "sha256": hashlib.sha256(expected).hexdigest(), "bytes": len(expected)}:
++            raise ValueError("parameter byte-hash fixture differs: " + name)
++    if result["scalar"]["shape"] != [] or result["scalar"]["bytes"] != 4:
++        raise ValueError("scalar shape or byte count changed")
++    if any(value.numpy().tobytes() != before[name] for name, value in values.items()):
++        raise ValueError("byte hashing mutated its input")
++    invalid = torch.nn.Module()
++    invalid.register_buffer("wrong_dtype", torch.tensor(1.0, dtype=torch.float64, device="cpu"))
++    try:
++        parameter_hashes(torch, invalid)
++    except ValueError:
++        rejected = True
++    else:
++        rejected = False
++    if not rejected:
++        raise ValueError("unsupported parameter dtype was accepted")
++    return {"passed": True, "fixtures": result, "wrong_dtype_rejected": True,
++            "model_files_loaded": False, "gpu_executed": False}

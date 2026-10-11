@@ -1,0 +1,524 @@
+{
+  "identity": "register-coordinate-diagnostic-publication-v1",
+  "original_source_root_label": "<TASK_SCRATCH>/register-coordinate-diagnostic",
+  "sources": [
+    {
+      "source": "exporter.swift",
+      "original_sha256": "879b0e7652f805d01c6e7ceff2bd33edf0e84abc2995959e6b3482fe9100f749",
+      "original_bytes": 11382,
+      "published": [
+        {
+          "path": "exporter.swift",
+          "sha256": "879b0e7652f805d01c6e7ceff2bd33edf0e84abc2995959e6b3482fe9100f749",
+          "bytes": 11382
+        }
+      ]
+    },
+    {
+      "source": "common.py",
+      "original_sha256": "eda7bac9cab6f0108b9a02168a5d4ca34dc82c8c815815b0b563450e47e7e7bd",
+      "original_bytes": 1493,
+      "published": [
+        {
+          "path": "common.py",
+          "sha256": "2ec8db95c2723a813e518773951ef252bd810dbda387b17f2f9bb6ca15ffb6be",
+          "bytes": 1425
+        }
+      ]
+    },
+    {
+      "source": "build.py",
+      "original_sha256": "de05ab0892f3bb3e0d6c65a11c33b2c68087b87d9eeca357274300f1c40bd7e8",
+      "original_bytes": 1014,
+      "published": [
+        {
+          "path": "build.py",
+          "sha256": "de05ab0892f3bb3e0d6c65a11c33b2c68087b87d9eeca357274300f1c40bd7e8",
+          "bytes": 1014
+        }
+      ]
+    },
+    {
+      "source": "guard.py",
+      "original_sha256": "97e8c43a0edad37e4c7e0e839dcae06ef2e8a621c1e33ca6c19a4896d1537b9e",
+      "original_bytes": 4991,
+      "published": [
+        {
+          "path": "guard.py",
+          "sha256": "97e8c43a0edad37e4c7e0e839dcae06ef2e8a621c1e33ca6c19a4896d1537b9e",
+          "bytes": 4991
+        }
+      ]
+    },
+    {
+      "source": "analyze.py",
+      "original_sha256": "eff2e4568d5d62f5ae8f847dc84f373764e20cf885fa7472fbfd2d7a926a1428",
+      "original_bytes": 6722,
+      "published": [
+        {
+          "path": "analyze.py",
+          "sha256": "eff2e4568d5d62f5ae8f847dc84f373764e20cf885fa7472fbfd2d7a926a1428",
+          "bytes": 6722
+        }
+      ]
+    },
+    {
+      "source": "source_check.py",
+      "original_sha256": "c651a1a89064b427ce51bed3cc1d541da4e61774c69ff48eda6da1454edcb3ba",
+      "original_bytes": 1946,
+      "published": [
+        {
+          "path": "source_check.py",
+          "sha256": "c651a1a89064b427ce51bed3cc1d541da4e61774c69ff48eda6da1454edcb3ba",
+          "bytes": 1946
+        }
+      ]
+    },
+    {
+      "source": "PLAN.md",
+      "original_sha256": "1323da8bd6d02f7c2c075b7aa151d3f2c0799f3cf3f41cac143ec9a8afb3902e",
+      "original_bytes": 4372,
+      "published": [
+        {
+          "path": "PLAN.md",
+          "sha256": "1323da8bd6d02f7c2c075b7aa151d3f2c0799f3cf3f41cac143ec9a8afb3902e",
+          "bytes": 4372
+        }
+      ]
+    },
+    {
+      "source": "manifest.json",
+      "original_sha256": "a13d6b47a8132355ed9e67c7ae7285a1e7849a1510515597c946ebf63a84c29f",
+      "original_bytes": 2387,
+      "published": [
+        {
+          "path": "manifest.json",
+          "sha256": "a13d6b47a8132355ed9e67c7ae7285a1e7849a1510515597c946ebf63a84c29f",
+          "bytes": 2387
+        }
+      ]
+    },
+    {
+      "source": "frozen-sources.json",
+      "original_sha256": "8d96c83197de722115894a1efaee036ac19a541ca34d41aaa0f3b7624209bbd3",
+      "original_bytes": 938,
+      "published": [
+        {
+          "path": "frozen-sources.json",
+          "sha256": "8d96c83197de722115894a1efaee036ac19a541ca34d41aaa0f3b7624209bbd3",
+          "bytes": 938
+        }
+      ]
+    },
+    {
+      "source": "source-check.json",
+      "original_sha256": "56735525a7760bbc3aeb5d6b749af33daa48b7f39db17187908acea9094e6bd2",
+      "original_bytes": 984,
+      "published": [
+        {
+          "path": "source-check.json",
+          "sha256": "56735525a7760bbc3aeb5d6b749af33daa48b7f39db17187908acea9094e6bd2",
+          "bytes": 984
+        }
+      ]
+    },
+    {
+      "source": "build-artifacts.json",
+      "original_sha256": "4dcd4e33ef210bde449888e5c434a958bc71cf8078956975af9a8b831be40f00",
+      "original_bytes": 1029,
+      "published": [
+        {
+          "path": "build-artifacts.json",
+          "sha256": "4dcd4e33ef210bde449888e5c434a958bc71cf8078956975af9a8b831be40f00",
+          "bytes": 1029
+        }
+      ]
+    },
+    {
+      "source": "build-lease-1.json",
+      "original_sha256": "b56de3fc22ad238bc06711001b5f47a7fcd036b5d1490aa89b8084c87a053360",
+      "original_bytes": 488,
+      "published": [
+        {
+          "path": "build-lease-1.json",
+          "sha256": "b56de3fc22ad238bc06711001b5f47a7fcd036b5d1490aa89b8084c87a053360",
+          "bytes": 488
+        }
+      ]
+    },
+    {
+      "source": "build-memory-lease-1.json",
+      "original_sha256": "43dbcf31f228fb56cb300c5a5b22058c5eac120d1fbb8b7b18c491c097ce2bc7",
+      "original_bytes": 486,
+      "published": [
+        {
+          "path": "build-memory-lease-1.json",
+          "sha256": "43dbcf31f228fb56cb300c5a5b22058c5eac120d1fbb8b7b18c491c097ce2bc7",
+          "bytes": 486
+        }
+      ]
+    },
+    {
+      "source": "gpu-lease-1.json",
+      "original_sha256": "81c4cb716843e57a484d93c01733761e3afe1de92caee147ff671e983ee3766d",
+      "original_bytes": 485,
+      "published": [
+        {
+          "path": "gpu-lease-1.json",
+          "sha256": "81c4cb716843e57a484d93c01733761e3afe1de92caee147ff671e983ee3766d",
+          "bytes": 485
+        }
+      ]
+    },
+    {
+      "source": "gpu-memory-lease-1.json",
+      "original_sha256": "ea0532caf2e3d511fad2a27b8e9210307c1288bd9bc88a087fbfc03eec395923",
+      "original_bytes": 485,
+      "published": [
+        {
+          "path": "gpu-memory-lease-1.json",
+          "sha256": "ea0532caf2e3d511fad2a27b8e9210307c1288bd9bc88a087fbfc03eec395923",
+          "bytes": 485
+        }
+      ]
+    },
+    {
+      "source": "build-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": [
+        {
+          "path": "build-1/stderr.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        }
+      ]
+    },
+    {
+      "source": "build-1/memory.jsonl",
+      "original_sha256": "80d46d969a3bd990c4fc98971c6d6d9005d6094a40c35393c66dceaa26613eed",
+      "original_bytes": 4185,
+      "published": [
+        {
+          "path": "build-1/memory.jsonl",
+          "sha256": "80d46d969a3bd990c4fc98971c6d6d9005d6094a40c35393c66dceaa26613eed",
+          "bytes": 4185
+        }
+      ]
+    },
+    {
+      "source": "build-1/stdout.jsonl",
+      "original_sha256": "7bacf41ccd8d032914e2e3b2c346801a6cab30e9d20c47e1c05b3c98d3bd8354",
+      "original_bytes": 1363,
+      "published": [
+        {
+          "path": "build-1/stdout.jsonl",
+          "sha256": "adf98bb9ca648726c8f241b4037840c6e2b3c869b728a79ba74e9c22d274ab3e",
+          "bytes": 1197
+        }
+      ]
+    },
+    {
+      "source": "build-1/receipt.json",
+      "original_sha256": "a768614cf1c2bfb469196233c732cceced3a9b9cea8e4103d8914bc5deb9e956",
+      "original_bytes": 2794,
+      "published": [
+        {
+          "path": "build-1/receipt.json",
+          "sha256": "0c80d75193bac9744ba915fbd0e4ef44663cd09cb00b7e40dbee3446cce8ccac",
+          "bytes": 2711
+        }
+      ]
+    },
+    {
+      "source": "export-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": [
+        {
+          "path": "export-1/stderr.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        }
+      ]
+    },
+    {
+      "source": "export-1/memory.jsonl",
+      "original_sha256": "ba1bf3640874f518c8399297ec89e13bee37805468d466480d6b1c224195343e",
+      "original_bytes": 725,
+      "published": [
+        {
+          "path": "export-1/memory.jsonl",
+          "sha256": "ba1bf3640874f518c8399297ec89e13bee37805468d466480d6b1c224195343e",
+          "bytes": 725
+        }
+      ]
+    },
+    {
+      "source": "export-1/analysis.json",
+      "original_sha256": "96a6e94df1cfb52980937bb57db7f71b3de1c47335757df51843fb72c99df1a8",
+      "original_bytes": 44169,
+      "published": [
+        {
+          "path": "export-1/analysis.json",
+          "sha256": "96a6e94df1cfb52980937bb57db7f71b3de1c47335757df51843fb72c99df1a8",
+          "bytes": 44169
+        }
+      ]
+    },
+    {
+      "source": "export-1/stdout.jsonl",
+      "original_sha256": "ac8194baa792e62a58b587fef6bd9b75d65a7bec31cbcb5127617801dc68b572",
+      "original_bytes": 2295,
+      "published": [
+        {
+          "path": "export-1/stdout.jsonl",
+          "sha256": "ac8194baa792e62a58b587fef6bd9b75d65a7bec31cbcb5127617801dc68b572",
+          "bytes": 2295
+        }
+      ]
+    },
+    {
+      "source": "export-1/receipt.json",
+      "original_sha256": "375aadfc0f543d0687a7985d9f1bf5076b1eeac8c98c9c3a9a8d896c3a0a2c5b",
+      "original_bytes": 4093,
+      "published": [
+        {
+          "path": "export-1/receipt.json",
+          "sha256": "1293f0ce744277683a0bede628d7f00762e276294ebd6811aa773c963b17bd83",
+          "bytes": 3844
+        }
+      ]
+    },
+    {
+      "source": "export-1/tail-1.json",
+      "original_sha256": "4c917b763ee63d084a6c088950b17174ab57e63c1544815ca2d8b835b8d2c68c",
+      "original_bytes": 281037,
+      "published": [
+        {
+          "path": "coordinates/tail-1/object-0.json",
+          "sha256": "77f133ad670e2c71f99da6996c879035176ccb3765368a4f60de067f6772d463",
+          "bytes": 35099
+        },
+        {
+          "path": "coordinates/tail-1/object-1.json",
+          "sha256": "b46f167fbf9a8f254c2c6f79f1621ecedafdeeab044c651503916d0d91861308",
+          "bytes": 35096
+        },
+        {
+          "path": "coordinates/tail-1/object-2.json",
+          "sha256": "13a12d5ce392985cc586ff2f584fd2e9ec9dc4fb0f7b4db049712384f83eb60a",
+          "bytes": 35096
+        },
+        {
+          "path": "coordinates/tail-1/object-3.json",
+          "sha256": "78f4be1c68de08e95f25551d89c477bba0758fbcca066a764b1c4d502d5eadf5",
+          "bytes": 35096
+        },
+        {
+          "path": "coordinates/tail-1/object-4.json",
+          "sha256": "e8914bda195588b6227c6d9e8d9f9e5ee35bf54d09c770ea82bc4e98165ee462",
+          "bytes": 35100
+        },
+        {
+          "path": "coordinates/tail-1/object-5.json",
+          "sha256": "fafbb187ce0b93ee4929953238d1678a520ac92613e3ec2710ec220c6be63170",
+          "bytes": 35096
+        },
+        {
+          "path": "coordinates/tail-1/object-6.json",
+          "sha256": "161c3dacfa12a70cfe2611583065c3d43b74d1a0d4f4cfae6e64ccd4dd7e1330",
+          "bytes": 35105
+        },
+        {
+          "path": "coordinates/tail-1/object-7.json",
+          "sha256": "ac179aa7fdaac0cff1676af06132ee8a2af8dd94cdcb5ba685183beb456ace1f",
+          "bytes": 35096
+        },
+        {
+          "path": "coordinates/tail-1/header.json",
+          "sha256": "b84f0c08bb6f646d1689ad8815309b1043548e2a83d195487d9b05c7e9826485",
+          "bytes": 506
+        }
+      ],
+      "transformation": "Lossless split; original JSON is reconstructed with sorted compact JSON."
+    },
+    {
+      "source": "export-1/tail-1.u32",
+      "original_sha256": "d5ef829a1dd336e08e5de61f93208543b7cf425c261c48d68568a49f78e3a09c",
+      "original_bytes": 263168,
+      "published": [
+        {
+          "path": "coordinates/tail-1/object-0.json",
+          "sha256": "77f133ad670e2c71f99da6996c879035176ccb3765368a4f60de067f6772d463",
+          "bytes": 35099
+        },
+        {
+          "path": "coordinates/tail-1/object-1.json",
+          "sha256": "b46f167fbf9a8f254c2c6f79f1621ecedafdeeab044c651503916d0d91861308",
+          "bytes": 35096
+        },
+        {
+          "path": "coordinates/tail-1/object-2.json",
+          "sha256": "13a12d5ce392985cc586ff2f584fd2e9ec9dc4fb0f7b4db049712384f83eb60a",
+          "bytes": 35096
+        },
+        {
+          "path": "coordinates/tail-1/object-3.json",
+          "sha256": "78f4be1c68de08e95f25551d89c477bba0758fbcca066a764b1c4d502d5eadf5",
+          "bytes": 35096
+        },
+        {
+          "path": "coordinates/tail-1/object-4.json",
+          "sha256": "e8914bda195588b6227c6d9e8d9f9e5ee35bf54d09c770ea82bc4e98165ee462",
+          "bytes": 35100
+        },
+        {
+          "path": "coordinates/tail-1/object-5.json",
+          "sha256": "fafbb187ce0b93ee4929953238d1678a520ac92613e3ec2710ec220c6be63170",
+          "bytes": 35096
+        },
+        {
+          "path": "coordinates/tail-1/object-6.json",
+          "sha256": "161c3dacfa12a70cfe2611583065c3d43b74d1a0d4f4cfae6e64ccd4dd7e1330",
+          "bytes": 35105
+        },
+        {
+          "path": "coordinates/tail-1/object-7.json",
+          "sha256": "ac179aa7fdaac0cff1676af06132ee8a2af8dd94cdcb5ba685183beb456ace1f",
+          "bytes": 35096
+        },
+        {
+          "path": "coordinates/tail-1/header.json",
+          "sha256": "b84f0c08bb6f646d1689ad8815309b1043548e2a83d195487d9b05c7e9826485",
+          "bytes": 506
+        }
+      ],
+      "transformation": "Lossless reconstruction from exported coordinates, capacities, and sentinel holes."
+    },
+    {
+      "source": "export-1/interior-32.json",
+      "original_sha256": "43073e7c09834222f82c91a37894247662257165e95364b1b0e100042ad0f683",
+      "original_bytes": 292805,
+      "published": [
+        {
+          "path": "coordinates/interior-32/object-0.json",
+          "sha256": "73860d87f8720eafb5acba238ac07b83a27ff656907a8b4fb5770dc66d47ba9a",
+          "bytes": 35480
+        },
+        {
+          "path": "coordinates/interior-32/object-1.json",
+          "sha256": "e89db93790efd5d3d162b1779459325838d03660927889a8ab051fc4ffbf0dd3",
+          "bytes": 35480
+        },
+        {
+          "path": "coordinates/interior-32/object-2.json",
+          "sha256": "ccd719c57d09a5805e7c7cc7300dc5ec9506ec129471851e925eccd8443e7867",
+          "bytes": 35480
+        },
+        {
+          "path": "coordinates/interior-32/object-3.json",
+          "sha256": "e2d8cd189642f3099d0577161701f5499295ac2e9da6883f3461ccca56854d17",
+          "bytes": 35480
+        },
+        {
+          "path": "coordinates/interior-32/object-4.json",
+          "sha256": "4cf74198ac4c3c3396c5f774016838626f21248a9f7f8428adcc8bb0a6f5daba",
+          "bytes": 35608
+        },
+        {
+          "path": "coordinates/interior-32/object-5.json",
+          "sha256": "479ee076c3f6bcc490c2e66036b63567874dfbb9e82466b157ca393c96d070ac",
+          "bytes": 35608
+        },
+        {
+          "path": "coordinates/interior-32/object-6.json",
+          "sha256": "e957422ed1c79ddb983eccbf104d9f7540eff32a370ea86d84b2c1939f4b6024",
+          "bytes": 39704
+        },
+        {
+          "path": "coordinates/interior-32/object-7.json",
+          "sha256": "f9bbbb1c8db6c678d11776584597039d90f2f7e9d6281f0f2875a3c3fc160976",
+          "bytes": 39704
+        },
+        {
+          "path": "coordinates/interior-32/header.json",
+          "sha256": "1e10691197ef80d0f8d2f4db3dd20c42ccd31d005f98e68906b734110969f642",
+          "bytes": 514
+        }
+      ],
+      "transformation": "Lossless split; original JSON is reconstructed with sorted compact JSON."
+    },
+    {
+      "source": "export-1/interior-32.u32",
+      "original_sha256": "225c1a0c8853330e362f0be96f1bdb7a9d0716d7e5000112a46701a3d1e6ae03",
+      "original_bytes": 263168,
+      "published": [
+        {
+          "path": "coordinates/interior-32/object-0.json",
+          "sha256": "73860d87f8720eafb5acba238ac07b83a27ff656907a8b4fb5770dc66d47ba9a",
+          "bytes": 35480
+        },
+        {
+          "path": "coordinates/interior-32/object-1.json",
+          "sha256": "e89db93790efd5d3d162b1779459325838d03660927889a8ab051fc4ffbf0dd3",
+          "bytes": 35480
+        },
+        {
+          "path": "coordinates/interior-32/object-2.json",
+          "sha256": "ccd719c57d09a5805e7c7cc7300dc5ec9506ec129471851e925eccd8443e7867",
+          "bytes": 35480
+        },
+        {
+          "path": "coordinates/interior-32/object-3.json",
+          "sha256": "e2d8cd189642f3099d0577161701f5499295ac2e9da6883f3461ccca56854d17",
+          "bytes": 35480
+        },
+        {
+          "path": "coordinates/interior-32/object-4.json",
+          "sha256": "4cf74198ac4c3c3396c5f774016838626f21248a9f7f8428adcc8bb0a6f5daba",
+          "bytes": 35608
+        },
+        {
+          "path": "coordinates/interior-32/object-5.json",
+          "sha256": "479ee076c3f6bcc490c2e66036b63567874dfbb9e82466b157ca393c96d070ac",
+          "bytes": 35608
+        },
+        {
+          "path": "coordinates/interior-32/object-6.json",
+          "sha256": "e957422ed1c79ddb983eccbf104d9f7540eff32a370ea86d84b2c1939f4b6024",
+          "bytes": 39704
+        },
+        {
+          "path": "coordinates/interior-32/object-7.json",
+          "sha256": "f9bbbb1c8db6c678d11776584597039d90f2f7e9d6281f0f2875a3c3fc160976",
+          "bytes": 39704
+        },
+        {
+          "path": "coordinates/interior-32/header.json",
+          "sha256": "1e10691197ef80d0f8d2f4db3dd20c42ccd31d005f98e68906b734110969f642",
+          "bytes": 514
+        }
+      ],
+      "transformation": "Lossless reconstruction from exported coordinates, capacities, and sentinel holes."
+    }
+  ],
+  "rules": [
+    "Replace private absolute paths with documented labels; preserve original SHA-256 values.",
+    "Split each original JSON coordinate export into eight object files and one header without dropping slots or holes.",
+    "Reconstruct both complete original JSON and raw UInt32 files exactly with restore_exports.py; verify original SHA-256.",
+    "Do not include executables, metallibs, or model weights. No outcomes are removed."
+  ],
+  "added_publication_files": [
+    {
+      "path": "README.md",
+      "sha256": "02956c030bee67ef36989f4e16e1b33e84f11008556a99cfe596572df33abcb1",
+      "bytes": 4735
+    },
+    {
+      "path": "restore_exports.py",
+      "sha256": "60c4bb4d14420bfa171a5024d7f874b4a0d166f81dd7130a2f2f2053cbd459be",
+      "bytes": 1288
+    }
+  ]
+}

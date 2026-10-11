@@ -1,0 +1,11 @@
+--- exporter-template.swift
++++ exporter-target26_2.swift
+@@ -24,7 +24,7 @@
+     let file = try FileHandle(forWritingTo: url)
+     try file.synchronize(); try file.close()
+ }
+-let pinnedLibraryHash = "ca0cc71eda8b8278d98ca0b2ca043104efe1352d35b65925aa232c6b652a3390"
++let pinnedLibraryHash = "eab78a332c74906ef892664845785dc2d555c8239c97d17a6633e5dacdfdb12a"
+ let pad = 256, explicitLimit = 1024 * 1024
+ let objects = 8, lanes = 32, slots = 64, stride = 257
+ let recordBytes = 8 * 32 * 257 * 4

@@ -1,0 +1,184 @@
+--- coordinate-v1/common.py
++++ target26_2/common.py
+@@ -1,12 +1,14 @@
+-"""Verify this diagnostic and its unchanged compiled shader before launch."""
++"""Verify frozen sources and unchanged inputs for the fixed deployment diagnostic."""
+ from pathlib import Path
+ import hashlib
+ import json
+ 
+ ROOT = Path(__file__).resolve().parent
++SDK_ROOT = Path('/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk')
++SDK_HEADERS = SDK_ROOT / 'System/Library/Frameworks/MetalPerformancePrimitives.framework/Versions/A/Headers'
+ REPO = Path('<REPO>')
+-SOURCE_NAMES = ['exporter.swift', 'common.py', 'build.py', 'guard.py', 'analyze.py',
+-                'source_check.py', 'PLAN.md', 'manifest.json']
++SOURCE_NAMES = ['candidate.metal', 'exporter-template.swift', 'deployment_probe.metal',
++                'common.py', 'build.py', 'guard.py', 'analyze.py', 'source_check.py', 'PLAN.md', 'manifest.json']
+ DEPENDENCIES = ['mac_quiet_bench.py', 'mac_memory.py']
+ 
+ def sha(path):
+@@ -15,14 +17,18 @@
+ def verify():
+     frozen = json.loads((ROOT / 'frozen-sources.json').read_text())
+     assert set(frozen['source_sha256']) == set(SOURCE_NAMES), 'unexpected source set'
+-    assert set(frozen['guard_dependency_sha256']) == set(DEPENDENCIES), 'unexpected guard dependency set'
++    assert set(frozen['guard_dependency_sha256']) == set(DEPENDENCIES), 'unexpected dependency set'
+     for name, digest in frozen['source_sha256'].items():
+         assert sha(ROOT / name) == digest, f'source changed: {name}'
+     for name, digest in frozen['guard_dependency_sha256'].items():
+         assert sha(REPO / 'crates/psionic/fixtures/clef/tools' / name) == digest, f'guard changed: {name}'
+     manifest = json.loads((ROOT / 'manifest.json').read_text())
++    for name, digest in manifest['sdk_header_sha256'].items():
++        assert sha(SDK_HEADERS / name) == digest, f'SDK header changed: {name}'
+     for entry in manifest['unchanged_inputs']:
+         path = (ROOT / entry['path']).resolve()
+-        assert path.parent == ROOT.parent / 'gemm-register-input-probe', 'unexpected compiled-input directory'
+-        assert sha(path) == entry['sha256'], f'compiled input changed: {path.name}'
++        assert path.parent in [ROOT.parent / 'gemm-register-input-probe', ROOT.parent / 'register-coordinate-diagnostic'], 'unexpected input directory'
++        assert sha(path) == entry['sha256'], f'original input changed: {path}'
++        if entry.get('copy'):
++            assert (ROOT / entry['copy']).read_bytes() == path.read_bytes(), 'source copy differs'
+     return frozen, manifest
+--- coordinate-v1/build.py
++++ target26_2/build.py
+@@ -1,20 +1,86 @@
+ #!/usr/bin/env python3
+-"""Compile only the new Swift host; never compile or alter the Metal library."""
++"""Prove the deployment branch, then build one fixed-target coordinate exporter."""
++import difflib
+ import json
++import os
++import platform
++import re
+ import subprocess
+-from common import ROOT, sha, verify
++from common import ROOT, SDK_ROOT, sha, verify
+ 
+ frozen, manifest = verify()
+-output = ROOT / 'exporter'
+-assert not output.exists(), 'host executable already exists; no automatic rebuild'
+-command = ['xcrun', 'swiftc', '-O', '-num-threads', '2', str(ROOT / 'exporter.swift'), '-o', str(output)]
+-print(json.dumps({'command': command, 'metal_compilation': False}), flush=True)
+-subprocess.run(command, check=True)
+-assert verify() == (frozen, manifest), 'inputs changed during host compilation'
+-result = {'source_sha256': frozen['source_sha256'],
+-          'frozen_sources_sha256': sha(ROOT / 'frozen-sources.json'),
+-          'unchanged_library_sha256': manifest['library_sha256'],
+-          'executable_sha256': sha(output), 'gpu_executed': False}
+-with (ROOT / 'build-artifacts.json').open('x') as out:
+-    json.dump(result, out, indent=2); out.write('\n')
++outputs = ['default.macros', 'default.stderr', 'target26_2.macros', 'target26_2.stderr',
++           'preprocessor-proof.json', 'candidate-target26_2.air', 'target26_2.metallib',
++           'exporter-target26_2.swift', 'host-library-hash.patch', 'exporter-target26_2', 'build-artifacts.json']
++assert not any((ROOT / name).exists() for name in outputs), 'preserve prior attempt; no automatic rebuild'
++version = tuple(int(value) for value in platform.mac_ver()[0].split('.'))
++assert version >= (26, 2), 'fixed deployment target exceeds host OS'
++proof = {'status':'running', 'host_os':platform.mac_ver()[0], 'variant':'one fixed macOS26.2 deployment minimum',
++         'candidate_source_sha256':sha(ROOT / 'candidate.metal'), 'cases':[], 'gemm_executed':False,
++         'sdk_header_sha256':manifest['sdk_header_sha256'],
++         'deployment_environment':{key:os.environ.get(key) for key in ['DEVELOPER_DIR','SDKROOT','MACOSX_DEPLOYMENT_TARGET','TOOLCHAINS']}}
++def save():
++    (ROOT / 'preprocessor-proof.json').write_text(json.dumps(proof, indent=2) + '\n')
++def run(command):
++    print(json.dumps({'command':command}), flush=True)
++    subprocess.run(command, check=True)
++def definitions(text):
++    return dict(re.findall(r'^#define\s+(\S+)\s+(.+)$', text, flags=re.MULTILINE))
++try:
++    save()
++    sdk_command = ['xcrun','-sdk','macosx','--show-sdk-path']
++    print(json.dumps({'command':sdk_command}), flush=True)
++    sdk_result = subprocess.run(sdk_command, capture_output=True, text=True)
++    proof['sdk_resolution'] = {'command':sdk_command, 'exit':sdk_result.returncode, 'stdout':sdk_result.stdout, 'stderr':sdk_result.stderr}; save()
++    assert sdk_result.returncode == 0 and SDK_ROOT.resolve() == type(SDK_ROOT)(sdk_result.stdout.strip()).resolve(), 'selected SDK differs from inspected headers'
++    for label, target in [('default', []), ('target26_2', ['-mmacosx-version-min=26.2'])]:
++        command = ['xcrun','-sdk','macosx','metal','-std=metal4.0'] + target + ['-E','-dM',str(ROOT/'deployment_probe.metal')]
++        print(json.dumps({'command':command}), flush=True)
++        with (ROOT / (label + '.macros')).open('xb') as out, (ROOT / (label + '.stderr')).open('xb') as err:
++            result = subprocess.run(command, stdout=out, stderr=err)
++        defs = definitions((ROOT / (label + '.macros')).read_text())
++        row = {'label':label, 'command':command, 'exit':result.returncode,
++               'macros_sha256':sha(ROOT / (label+'.macros')), 'stderr_sha256':sha(ROOT / (label+'.stderr')),
++               'selected':{key:defs.get(key) for key in ['__ENVIRONMENT_OS_VERSION_MIN_REQUIRED__',
++                    'CLEF_COORDINATE_OPERAND_AWARE','__METAL_VERSION__','__clang_version__',
++                    '__TENSOR_OPS_SUPPORT_DEPLOYMENT_TARGET_26_2']}}
++        proof['cases'].append(row); save()
++        assert result.returncode == 0, 'preprocessor failed; stop without target alternatives'
++        raw = defs.get('__ENVIRONMENT_OS_VERSION_MIN_REQUIRED__', '')
++        match = re.fullmatch(r'\(?([0-9]+)(?:L)?\)?', raw)
++        assert match is not None, 'unexpected deployment macro representation'
++        minimum = int(match.group(1)); aware = defs.get('CLEF_COORDINATE_OPERAND_AWARE')
++        row.update(effective_minimum=minimum, operand_aware=aware); save()
++    default, targeted = proof['cases']
++    assert default['effective_minimum'] < 260200 and default['operand_aware'] == '0', 'original deployment prediction failed'
++    assert targeted['effective_minimum'] == 260200 and targeted['operand_aware'] == '1', 'fixed deployment prediction failed'
++    assert verify() == (frozen, manifest), 'inputs changed during preprocessing'
++    proof.update(status='complete', predicted_branch_change_confirmed=True); save()
++except BaseException as error:
++    proof.update(status='failed', error_type=type(error).__name__, error=str(error)); save(); raise
++
++commands = [
++ ['xcrun','-sdk','macosx','metal','-std=metal4.0','-mmacosx-version-min=26.2','-c',str(ROOT/'candidate.metal'),'-o',str(ROOT/'candidate-target26_2.air')],
++ ['xcrun','-sdk','macosx','metallib',str(ROOT/'candidate-target26_2.air'),'-o',str(ROOT/'target26_2.metallib')]]
++for command in commands:
++    run(command)
++library_hash = sha(ROOT / 'target26_2.metallib')
++source = (ROOT / 'exporter-template.swift').read_text()
++old = manifest['prior_library_sha256']
++assert source.count(old) == 1, 'expected one pinned host library hash'
++generated = source.replace(old, library_hash)
++assert len(source.splitlines()) == len(generated.splitlines())
++changed = [(a,b) for a,b in zip(source.splitlines(), generated.splitlines()) if a != b]
++assert len(changed) == 1 and changed[0] == (f'let pinnedLibraryHash = "{old}"', f'let pinnedLibraryHash = "{library_hash}"'), 'host changed outside library identity'
++with (ROOT/'exporter-target26_2.swift').open('x') as output:
++    output.write(generated)
++with (ROOT/'host-library-hash.patch').open('x') as output:
++    output.writelines(difflib.unified_diff(source.splitlines(True), generated.splitlines(True), fromfile='exporter-template.swift', tofile='exporter-target26_2.swift'))
++run(['xcrun','swiftc','-O','-num-threads','2',str(ROOT/'exporter-target26_2.swift'),'-o',str(ROOT/'exporter-target26_2')])
++assert verify() == (frozen, manifest), 'inputs changed during target build'
++result = {'source_sha256':frozen['source_sha256'], 'frozen_sources_sha256':sha(ROOT/'frozen-sources.json'),
++          'library_sha256':library_hash, 'sdk_header_sha256':manifest['sdk_header_sha256'], 'artifacts':{name:sha(ROOT/name) for name in ['target26_2.metallib','exporter-target26_2.swift','host-library-hash.patch','exporter-target26_2','preprocessor-proof.json']},
++          'candidate_source_unchanged':True, 'host_change':'One pinned library hash literal only', 'gemm_executed':False}
++with (ROOT/'build-artifacts.json').open('x') as output:
++    json.dump(result, output, indent=2); output.write('\n')
+ print(json.dumps(result), flush=True)
+--- coordinate-v1/guard.py
++++ target26_2/guard.py
+@@ -33,7 +33,7 @@
+           'max_owned_group_bytes': cap, 'minimum_available_bytes': floor,
+           'minimum_start_bytes': cap + floor, 'deadline_seconds': deadline,
+           'frozen_sources_sha256': sha(ROOT / 'frozen-sources.json'), **frozen,
+-          'library_sha256': manifest['library_sha256'],
++          'library_sha256': None, 'sdk_header_sha256': manifest['sdk_header_sha256'],
+           'no_quiet_lease': True, 'gemm_or_model_execution': False}
+ def save():
+     (output / 'receipt.json').write_text(json.dumps(record, indent=2) + '\n')
+@@ -50,11 +50,13 @@
+     built = json.loads((ROOT / 'build-artifacts.json').read_text())
+     if (built['source_sha256'] != frozen['source_sha256'] or
+         built['frozen_sources_sha256'] != sha(ROOT / 'frozen-sources.json') or
+-        built['unchanged_library_sha256'] != manifest['library_sha256'] or
+-        built['executable_sha256'] != sha(ROOT / 'exporter')):
++        built['candidate_source_unchanged'] is not True or
++        any(sha(ROOT / name) != digest for name, digest in built['artifacts'].items()) or
++        built['library_sha256'] != sha(ROOT / 'target26_2.metallib')):
+         record.update(status='refused', reason='host build identity differs'); save(); raise SystemExit(1)
+     record['build_artifacts'] = built
+-    command = [str(ROOT / 'exporter'), str((ROOT / manifest['library']).resolve()), str(output)]
++    record['library_sha256'] = built['library_sha256']
++    command = [str(ROOT / 'exporter-target26_2'), str(ROOT / 'target26_2.metallib'), str(output)]
+ record['command'] = command
+ save()
+ environment = dict(os.environ, RAYON_NUM_THREADS='2', OMP_NUM_THREADS='2',
+--- coordinate-v1/analyze.py
++++ target26_2/analyze.py
+@@ -12,7 +12,7 @@
+ args = parser.parse_args()
+ root = args.output.resolve()
+ sha = lambda b: hashlib.sha256(b).hexdigest()
+-result = {'identity': 'register-coordinate-diagnostic-v1', 'mapping_repaired': False,
++result = {'identity': 'register-target26_2-diagnostic-v1', 'mapping_repaired': False,
+           'gemm_validated': False, 'speed_claim': False, 'cases': [], 'failures': []}
+ 
+ def require(condition, reason):
