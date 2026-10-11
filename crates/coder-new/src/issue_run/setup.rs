@@ -252,7 +252,7 @@ pub async fn prepare(
     }
     rows.push(row(
         "worktree",
-        format!("{} (this run's own, sparse, no pushes)", worktree.display()),
+        format!("{} (this run's own, no pushes)", worktree.display()),
     ));
     if swept > 0 {
         rows.push(row(
@@ -302,8 +302,10 @@ async fn find_fix(repo: &Path, issue: u64) -> Option<String> {
     log.lines().next().map(str::to_owned)
 }
 
-/// A fresh sparse worktree of `repo` at `base`, at `path`, which must not
-/// exist yet: a run never reuses or removes another run's working copy.
+/// A fresh worktree of `repo` at `base`, at `path`, which must not exist
+/// yet: a run never reuses or removes another run's working copy. It is a
+/// full checkout: crates embed files from `assets/` at compile time, so a
+/// copy without them fails every check that builds those crates.
 async fn make_worktree(repo: &Path, path: &Path, base: &str) -> Result<(), String> {
     let text = path.to_string_lossy().into_owned();
     if path.exists() {
@@ -318,25 +320,10 @@ async fn make_worktree(repo: &Path, path: &Path, base: &str) -> Result<(), Strin
     }
     output(
         "git",
-        &[
-            "worktree",
-            "add",
-            "-q",
-            "--detach",
-            "--no-checkout",
-            &text,
-            base,
-        ],
+        &["worktree", "add", "-q", "--detach", &text, base],
         repo,
     )
     .await?;
-    output(
-        "git",
-        &["sparse-checkout", "set", "--no-cone", "/*", "!/assets/"],
-        path,
-    )
-    .await?;
-    output("git", &["checkout", "-q", "--detach", base], path).await?;
     Ok(())
 }
 
