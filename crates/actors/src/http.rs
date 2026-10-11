@@ -61,7 +61,12 @@ pub fn with_authenticator(store: PgStore, auth: Arc<dyn Authenticator>) -> PgSto
 }
 /// Mount this router behind the host's TLS, origin/CSRF policy, and request limits.
 /// Cookie-authenticated hosts must enforce CSRF before allowing mutations.
-pub fn router(store: PgStore, auth: Arc<dyn Authenticator>) -> Router {
+/// The router is generic over the host's state so a host merges it into its
+/// own router (`Router<S>`) with no nesting.
+pub fn router<S: Clone + Send + Sync + 'static>(
+    store: PgStore,
+    auth: Arc<dyn Authenticator>,
+) -> Router<S> {
     let store = with_authenticator(store, auth.clone());
     Router::new()
         .route("/v1/actors/contract.json", get(contract))

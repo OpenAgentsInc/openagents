@@ -83,7 +83,7 @@ async fn http_requires_host_auth_rejects_caller_injection_and_revalidates_queued
         auth.clone(),
     );
     store.migrate().await.unwrap();
-    let app = http::router(store.clone(), auth.clone());
+    let app = http::router::<()>(store.clone(), auth.clone());
     let path = format!("/v1/w/{ws}/actors/example.counter/test/actions/add@1");
     let response = app
         .clone()
@@ -259,7 +259,7 @@ async fn streams_are_bounded_and_recheck_access_before_the_first_frame() {
         .call(&example::Add { delta: 1 }, CallOptions::default())
         .await
         .unwrap();
-    let app = http::router(store, auth.clone());
+    let app = http::router::<()>(store, auth.clone());
     let get = || {
         Request::builder()
             .uri(format!("/v1/w/{ws}/actors/example.counter/stream/events"))

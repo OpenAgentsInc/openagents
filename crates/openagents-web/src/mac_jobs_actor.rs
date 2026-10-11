@@ -666,6 +666,58 @@ mod db_tests {
         assert!(other.load(&first.id).await.unwrap().is_none());
     }
 
+    /// The actor routes are mounted in the site's router itself: their own
+    /// path parameters, our authentication (none here: refused, never a 500),
+    /// and the contract.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_site_serves_the_actor_routes_behind_its_auth() {
+        use axum::body::{Body, to_bytes};
+        use axum::http::{Request, header};
+        use tower::ServiceExt;
+        let Some((host, _, workspace)) = setup().await else {
+            return;
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let mut config = crate::Config::development(dir.path().join("tasks"));
+        config.actors = Some(host);
+        let router = crate::router(config);
+        let ask = |method: &str, uri: String, body: &str| {
+            Request::builder()
+                .method(method)
+                .uri(uri)
+                .header(header::HOST, "127.0.0.1:4300")
+                .header(header::CONTENT_TYPE, "application/json")
+                .header(header::COOKIE, "oa_cloud_session=sess_forged")
+                .body(Body::from(body.to_owned()))
+                .unwrap()
+        };
+        let claim = router
+            .clone()
+            .oneshot(ask(
+                "POST",
+                format!("/v1/w/{workspace}/work/mac-jobs/claim"),
+                r#"{"max":1}"#,
+            ))
+            .await
+            .unwrap();
+        let status = claim.status();
+        let body = to_bytes(claim.into_body(), 1 << 20).await.unwrap();
+        assert_eq!(
+            status,
+            StatusCode::NOT_FOUND,
+            "{}",
+            String::from_utf8_lossy(&body)
+        );
+        assert!(String::from_utf8_lossy(&body).contains("\"group\":\"actor\""));
+        let contract = router
+            .oneshot(ask("GET", "/v1/actors/contract.json".into(), ""))
+            .await
+            .unwrap();
+        assert_eq!(contract.status(), StatusCode::OK);
+        let body = to_bytes(contract.into_body(), 1 << 20).await.unwrap();
+        assert!(String::from_utf8_lossy(&body).contains("mac.job"));
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn queued_work_runs_only_while_the_account_still_belongs() {
         let Some((host, account, workspace)) = setup().await else {

@@ -281,10 +281,7 @@ pub fn router(config: Config) -> Router {
     let site_hosts = hosts.clone();
     let mut site = Router::<App>::new();
     if let Some(actors) = &app.config.actors {
-        let routes = actors.router();
-        site = site
-            .route_service("/v1/w/{*rest}", routes.clone())
-            .route_service("/v1/actors/contract.json", routes);
+        site = site.merge(actors.router::<App>());
     }
     let site = site
         .route("/api/v1/{*path}", axum::routing::any(api_proxy))
