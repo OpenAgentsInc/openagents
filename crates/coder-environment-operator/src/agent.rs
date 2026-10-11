@@ -1060,15 +1060,29 @@ impl<P: Commands + Images, T: Transport> Agent<P, T> {
                     plan_digest: checks.plan_digest.clone(),
                     size: brief.size.clone(),
                 };
-                match owners.verify(&request, now_ms()).await {
-                    Ok(j) => {
-                        state.verify_job = Some(j.id.clone());
-                        let _ = self.save(state);
-                        j
-                    }
-                    Err(e) => {
-                        return self
-                            .fail(state, format!("The fresh-machine check didn't start: {e}"));
+                // Starting is idempotent (the job's id comes from the
+                // request). While the owners' own loop holds the new job's
+                // lock (a verifier machine can take a minute or two to come
+                // up), the start answers "busy": wait and ask again, as the
+                // polling below does, instead of failing the setup.
+                let mut busy = 0;
+                loop {
+                    match owners.verify(&request, now_ms()).await {
+                        Ok(j) => {
+                            state.verify_job = Some(j.id.clone());
+                            let _ = self.save(state);
+                            break j;
+                        }
+                        Err(coder_environment_verify::service::VerifyError::Job(
+                            coder_environment_verify::store::StoreError::Busy,
+                        )) if busy < 30 => {
+                            busy += 1;
+                            tokio::time::sleep(self.poll * 5).await;
+                        }
+                        Err(e) => {
+                            return self
+                                .fail(state, format!("The fresh-machine check didn't start: {e}"));
+                        }
                     }
                 }
             }
