@@ -979,6 +979,18 @@ async fn confirm_delete(
         Err(r) => return r,
     };
     let chat = &record.conversation;
+    let sidebar = chat_list(&app, &owner, Some(&chat.id), false, false).await;
+    delete_page(&headers, chat, &csrf(&app, &owner), sidebar)
+}
+
+/// The page that asks before deleting `chat`.
+pub(crate) fn delete_page(
+    headers: &HeaderMap,
+    chat: &Conversation,
+    csrf: &str,
+    sidebar: Markup,
+) -> Response {
+    let id = &chat.id;
     let content = PageColumn::new(html! {
         (MarkdownRoot::new(html! {
             p { "Delete this chat? This can't be undone." }
@@ -987,7 +999,7 @@ async fn confirm_delete(
             }
         }))
         form method="post" action=(format!("/chat/{id}/delete")) {
-            input type="hidden" name="csrf" value=(csrf(&app, &owner));
+            input type="hidden" name="csrf" value=(csrf);
             div.oa-page-actions {
                 (Button::new("Delete")
                     .kind(ButtonType::Submit)
@@ -1001,9 +1013,9 @@ async fn confirm_delete(
     let page = UiPage::new(chat.title.clone())
         .path(format!("/chat/{id}/delete"))
         .breadcrumb(Breadcrumb::new(chat.title.clone()))
-        .sidebar_section(chat_list(&app, &owner, Some(&chat.id), false, false).await)
+        .sidebar_section(sidebar)
         .content(content);
-    crate::chat_html::protect(page.respond(&headers))
+    crate::chat_html::protect(page.respond(headers))
 }
 
 /// Remove the chat from the store for good and go to a new chat. An
@@ -2714,7 +2726,7 @@ pub(crate) mod approval;
 #[path = "chat_computer.rs"]
 mod computer;
 #[path = "chat_continued.rs"]
-mod continued;
+pub(crate) mod continued;
 #[path = "chat_delete_all.rs"]
 pub(crate) mod delete_all;
 #[path = "chat_live.rs"]

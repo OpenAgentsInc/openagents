@@ -103,7 +103,7 @@ pub(crate) fn screens() -> Vec<Screen> {
             id: "projects",
             title: "Projects",
             group: Group::Page,
-            routes: &["/projects"],
+            routes: &["/projects", "/projects/{id}/sources"],
             states: vec![
                 state("no-github", "No GitHub connection", projects_no_github),
                 state(
@@ -118,6 +118,22 @@ pub(crate) fn screens() -> Vec<Screen> {
                 state("disconnected", "Disconnected", projects_disconnected),
                 state("reconnect", "GitHub access ended", projects_reconnect),
                 state("failed", "Repository call failed", projects_failed),
+                state("drive", "Sources: attached and My Drive", sources_drive),
+                state(
+                    "drive-search",
+                    "Sources: search with no files",
+                    sources_search,
+                ),
+                state(
+                    "drive-connect",
+                    "Sources: connect Google first",
+                    sources_connect,
+                ),
+                state(
+                    "drive-reconnect",
+                    "Sources: Google access ended",
+                    sources_reconnect,
+                ),
             ],
         },
         Screen {
@@ -802,6 +818,94 @@ fn projects_sources(headers: &HeaderMap) -> Response {
         "",
         false,
         Some(Ok(listed)),
+    )
+}
+
+fn source(id: &str, name: &str, kind: &str) -> crate::cloud::connections::Source {
+    crate::cloud::connections::Source {
+        project: project().id,
+        integration: "google".into(),
+        id: id.into(),
+        name: name.into(),
+        kind: kind.into(),
+        added_at: NOW - 2 * DAY,
+    }
+}
+
+fn drive_file(id: &str, name: &str, mime_type: &str) -> oa_connections::google::drive::File {
+    oa_connections::google::drive::File {
+        id: id.into(),
+        name: name.into(),
+        mime_type: mime_type.into(),
+        web_view_link: None,
+        modified_time: None,
+        size: None,
+    }
+}
+
+fn sources(
+    headers: &HeaderMap,
+    attached: &[crate::cloud::connections::Source],
+    unready: Option<crate::connections::Unready>,
+    browse: Option<Result<(Vec<oa_connections::google::drive::File>, Option<String>), String>>,
+    q: &str,
+) -> Response {
+    let project = project();
+    let body =
+        crate::connections::sources::view(&project, CSRF, attached, unready, browse, q, None);
+    settings_page(
+        headers,
+        &format!("Sources · {}", project.name),
+        crate::projects::PAGE,
+        body,
+    )
+}
+
+fn sources_drive(headers: &HeaderMap) -> Response {
+    let attached = [source("sample-folder-1", "Sample team notes", "folder")];
+    let files = vec![
+        drive_file(
+            "sample-folder-1",
+            "Sample team notes",
+            "application/vnd.google-apps.folder",
+        ),
+        drive_file(
+            "sample-folder-2",
+            "Sample designs",
+            "application/vnd.google-apps.folder",
+        ),
+        drive_file(
+            "sample-doc-1",
+            "Sample launch plan",
+            "application/vnd.google-apps.document",
+        ),
+        drive_file("sample-pdf-1", "Sample price list.pdf", "application/pdf"),
+    ];
+    sources(headers, &attached, None, Some(Ok((files, None))), "")
+}
+
+fn sources_search(headers: &HeaderMap) -> Response {
+    sources(headers, &[], None, Some(Ok((Vec::new(), None))), "budget")
+}
+
+fn sources_connect(headers: &HeaderMap) -> Response {
+    sources(
+        headers,
+        &[],
+        Some(crate::connections::Unready::NotConnected),
+        None,
+        "",
+    )
+}
+
+fn sources_reconnect(headers: &HeaderMap) -> Response {
+    let attached = [source("sample-doc-1", "Sample launch plan", "document")];
+    sources(
+        headers,
+        &attached,
+        Some(crate::connections::Unready::Reconnect),
+        None,
+        "",
     )
 }
 

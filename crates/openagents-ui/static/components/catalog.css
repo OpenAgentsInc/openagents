@@ -383,3 +383,24 @@
   border-radius: var(--oa-radius-md, 8px);
   background: transparent;
 }
+
+/* The screens gallery says every sample is one. */
+.oa-sample-note {
+  margin-block-start: calc(var(--spacing) * 2);
+  font-size: var(--font-text-sm-size);
+  color: var(--color-text-secondary);
+}
+
+.oa-sample-strip {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  margin: 0;
+  padding: calc(var(--spacing) * 1) calc(var(--spacing) * 3);
+  text-align: center;
+  font-size: var(--font-text-sm-size);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-warning-outline);
+  background: var(--color-background-warning-surface, var(--color-background));
+  border-bottom: 1px solid var(--color-border-subtle);
+}

@@ -660,7 +660,7 @@ pub(crate) enum Stop {
     },
 }
 
-const BAD_LINK: &str = "This sign-in link isn't valid. Start again in the app.";
+pub(crate) const BAD_LINK: &str = "This sign-in link isn't valid. Start again in the app.";
 
 /// Whether `resource` (RFC 8707) is one this server protects.
 fn resource_allowed(origin: &str, resource: &str) -> bool {
@@ -921,6 +921,16 @@ fn consent_page(
         picture: viewer.avatar_url.is_some(),
         admin: viewer.admin,
     };
+    consent_page_as(headers, account, request, body)
+}
+
+/// The consent page for `account`.
+pub(crate) fn consent_page_as(
+    headers: &HeaderMap,
+    account: Account,
+    request: &Authorization,
+    body: &Markup,
+) -> Response {
     let title = format!("Let {} use your account?", request.client.name);
     let mut response = protect(
         UiPage::new(title)

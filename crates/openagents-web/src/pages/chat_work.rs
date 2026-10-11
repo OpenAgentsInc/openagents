@@ -729,6 +729,27 @@ fn run_form(
     agents: u32,
     error: Option<&str>,
 ) -> Response {
+    run_form_page(
+        &csrf(app, &chat.owner),
+        headers,
+        chat,
+        offer,
+        prompt,
+        agents,
+        error,
+    )
+}
+
+/// The "Run Claude Code" page for `chat` in `offer`'s environment.
+pub(crate) fn run_form_page(
+    csrf: &str,
+    headers: &HeaderMap,
+    chat: &Conversation,
+    offer: &Offer,
+    prompt: &str,
+    agents: u32,
+    error: Option<&str>,
+) -> Response {
     let id = &chat.id;
     let field = Field::new("chat-claude-prompt", "What should Claude Code do?").error_opt(error);
     let aria = field.aria();
@@ -767,7 +788,7 @@ fn run_form(
                 ", on a fresh computer. It shows in this chat."
             }
             form method="post" action=(format!("/chat/{id}/claude")) {
-                input type="hidden" name="csrf" value=(csrf(app, &chat.owner));
+                input type="hidden" name="csrf" value=(csrf);
                 input type="hidden" name="environment" value=(offer.id);
                 (field)
                 (count)

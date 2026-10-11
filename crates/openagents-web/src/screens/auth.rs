@@ -6,7 +6,7 @@ use axum::response::Response;
 use maud::html;
 use openagents_ui::content::PageColumn;
 
-use super::{Group, Screen, State, state};
+use super::{Group, Screen, state};
 use crate::account::Account;
 use crate::ui_page::UiPage;
 
@@ -97,17 +97,77 @@ pub(crate) fn screens() -> Vec<Screen> {
             id: "connect",
             title: "Connect a phone or terminal",
             group: Group::Page,
-            routes: &["/connect", "/terminal-connect"],
+            routes: &["/connect", "/settings/terminal"],
             states: vec![
                 state("phone", "Phone without the app", connect_phone),
                 state("terminal", "Connect your terminal", connect_terminal),
             ],
         },
+        Screen {
+            id: "app-consent",
+            title: "Let an app use your account",
+            group: Group::Page,
+            routes: &["/oauth/authorize"],
+            states: vec![
+                state("on-this-computer", "An app on this computer", consent_local),
+                state("on-a-site", "A website", consent_site),
+                state("bad-link", "Sign-in link not valid", consent_bad_link),
+                state("too-slow", "Sign-in took too long", consent_too_slow),
+            ],
+        },
     ]
 }
 
+fn consent(headers: &HeaderMap, name: &str, redirect_uri: &str) -> Response {
+    let request = crate::oauth::Authorization {
+        client_id: "sample-app-id".to_owned(),
+        client: crate::oauth::Client {
+            name: name.to_owned(),
+            redirect_uris: vec![redirect_uri.to_owned()],
+            issued_at: 1_791_547_200,
+        },
+        redirect_uri: redirect_uri.to_owned(),
+        redirect_given: true,
+        challenge: "sample-challenge".to_owned(),
+        state: Some("sample-state".to_owned()),
+    };
+    let body = crate::oauth::consent_form(&request, "sample-request", CSRF);
+    crate::oauth::consent_page_as(headers, signed_in(), &request, &body)
+}
+
+fn consent_local(headers: &HeaderMap) -> Response {
+    consent(headers, "Sample Editor", "http://127.0.0.1:43123/callback")
+}
+
+fn consent_site(headers: &HeaderMap) -> Response {
+    consent(
+        headers,
+        "Sample Notes",
+        "https://notes.example.com/callback",
+    )
+}
+
+/// What `crate::cloud::failure` answers, in the request's theme.
+fn failure(headers: &HeaderMap, title: &str, text: &str) -> Response {
+    crate::ui_page::problem(
+        headers,
+        StatusCode::BAD_REQUEST,
+        title,
+        text,
+        ("/", "Back to chat"),
+    )
+}
+
+fn consent_bad_link(headers: &HeaderMap) -> Response {
+    failure(headers, "Sign-in link not valid", crate::oauth::BAD_LINK)
+}
+
+fn consent_too_slow(headers: &HeaderMap) -> Response {
+    failure(headers, "Sign-in took too long", "Start again in the app.")
+}
+
 fn shell(headers: &HeaderMap, account: Account) -> Response {
-    UiPage::new("Test")
+    UiPage::new("Sample page")
         .path("/ui/screens/app-shell")
         .account(account)
         .content(PageColumn::new(html! {
@@ -298,7 +358,7 @@ fn connect_phone(headers: &HeaderMap) -> Response {
 fn connect_terminal(headers: &HeaderMap) -> Response {
     let body = crate::terminal_connect::page_body(headers, "sample-pair", html! {});
     UiPage::new("Connect your terminal")
-        .path("/terminal-connect")
+        .path(crate::terminal_connect::PAGE)
         .account(signed_in())
         .content(PageColumn::new(body))
         .respond(headers)

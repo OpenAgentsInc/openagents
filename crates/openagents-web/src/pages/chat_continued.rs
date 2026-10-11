@@ -268,6 +268,27 @@ fn form(
     prompt: &str,
     error: Option<&str>,
 ) -> Response {
+    form_page(
+        &csrf(app, &chat.owner),
+        headers,
+        chat,
+        computer,
+        offer,
+        prompt,
+        error,
+    )
+}
+
+/// The "Continue on a Cloud computer" page for `chat`.
+pub(crate) fn form_page(
+    csrf: &str,
+    headers: &HeaderMap,
+    chat: &Conversation,
+    computer: &str,
+    offer: &Offer,
+    prompt: &str,
+    error: Option<&str>,
+) -> Response {
     let id = &chat.id;
     let field = Field::new("chat-continue-prompt", "What next?").error_opt(error);
     let aria = field.aria();
@@ -294,7 +315,7 @@ fn form(
                 " on a fresh computer. It reads the chat so far, and its answer shows in this chat."
             }
             form method="post" action=(format!("/chat/{id}/continue")) {
-                input type="hidden" name="csrf" value=(csrf(app, &chat.owner));
+                input type="hidden" name="csrf" value=(csrf);
                 input type="hidden" name="environment" value=(offer.id);
                 (field)
                 (Button::new("Continue").kind(ButtonType::Submit))

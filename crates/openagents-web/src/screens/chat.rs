@@ -41,7 +41,7 @@ pub(super) fn screens() -> Vec<Screen> {
             id: "chat-thread",
             title: "Chat",
             group: Group::Page,
-            routes: &["/chat/{id}"],
+            routes: &["/chat/{id}", "/chat/{id}/delete"],
             states: vec![
                 state("answer", "Question and answer", thread_answer),
                 state("code-and-links", "Answer with code and links", thread_code),
@@ -51,13 +51,25 @@ pub(super) fn screens() -> Vec<Screen> {
                 state("long", "Long chat with earlier messages", thread_long),
                 state("pinned", "Pinned", thread_pinned),
                 state("archived", "Archived", thread_archived),
+                state("delete", "Asking before deleting", thread_delete),
+                state(
+                    "delete-coder",
+                    "Asking before deleting a Coder chat",
+                    thread_delete_coder,
+                ),
             ],
         },
         Screen {
             id: "chat-work",
             title: "Chat running on a computer",
             group: Group::Page,
-            routes: &["/chat/{id}", "/chat/{id}/approval", "/chat/{id}/files"],
+            routes: &[
+                "/chat/{id}",
+                "/chat/{id}/approval",
+                "/chat/{id}/files",
+                "/chat/{id}/claude",
+                "/chat/{id}/continue",
+            ],
             states: vec![
                 state("running", "Running", work_running),
                 state("approval", "Waiting for approval", work_approval),
@@ -67,13 +79,25 @@ pub(super) fn screens() -> Vec<Screen> {
                 state("stopped", "Stopped", work_stopped),
                 state("coder-offline", "Coder not online", work_offline),
                 state("files", "Files sent", work_files),
+                state("run-claude", "Run Claude Code", work_run_claude),
+                state(
+                    "run-claude-error",
+                    "Run Claude Code, nothing written",
+                    work_run_claude_error,
+                ),
+                state("continue", "Continue on a Cloud computer", work_continue),
             ],
         },
         Screen {
             id: "chat-sidebar",
             title: "Chat list",
             group: Group::Organism,
-            routes: &["every chat page", "/chats/archived", "/chats/delete"],
+            routes: &[
+                "every chat page",
+                "/chat/archived",
+                "/chat/delete-all",
+                "/chat/{id}/project",
+            ],
             states: vec![
                 state("empty", "No chats", sidebar_empty),
                 state("grouped", "Pinned, projects, and days", sidebar_grouped),
@@ -470,6 +494,48 @@ fn thread_archived(headers: &HeaderMap) -> Response {
     let mut chat = files_chat();
     chat.archived_unix = Some(now() - 600);
     thread(headers, &chat, rows())
+}
+
+fn thread_delete(headers: &HeaderMap) -> Response {
+    let chat = answer_chat();
+    chat::delete_page(headers, &chat, CSRF, list(&rows(), Some(&chat.id), ""))
+}
+
+fn thread_delete_coder(headers: &HeaderMap) -> Response {
+    let chat = terminal_chat(Vec::new());
+    chat::delete_page(headers, &chat, CSRF, list(&rows(), Some(&chat.id), ""))
+}
+
+fn offer() -> chat::work::Offer {
+    chat::work::Offer {
+        id: ENVIRONMENT.into(),
+        repository: "sample-org/sample-app".into(),
+        version: Some(3),
+        runnable: true,
+    }
+}
+
+fn work_run_claude(headers: &HeaderMap) -> Response {
+    let chat = task_chat("done");
+    chat::work::run_form_page(CSRF, headers, &chat, &offer(), "", 1, None)
+}
+
+fn work_run_claude_error(headers: &HeaderMap) -> Response {
+    let chat = task_chat("done");
+    chat::work::run_form_page(
+        CSRF,
+        headers,
+        &chat,
+        &offer(),
+        "",
+        2,
+        Some("Write what Claude Code should do."),
+    )
+}
+
+fn work_continue(headers: &HeaderMap) -> Response {
+    let chat = terminal_chat(Vec::new());
+    chat::continued::form_page(CSRF, headers, &chat, COMPUTER, &offer(), "", None)
 }
 
 fn work_running(headers: &HeaderMap) -> Response {

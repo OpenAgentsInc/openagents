@@ -13,6 +13,11 @@
 //!   and Coder Noir side by side, each in its own frame.
 //! - `/ui/screens/{screen}/{state}?theme=light|dark` is one state as a
 //!   whole page, which the frames load.
+//!
+//! Every state is a sample and nothing on it is live: its page carries a
+//! "Sample" strip, its policy allows no form posts and no requests
+//! (`form-action 'none'`, `connect-src 'none'`), and the frames are
+//! sandboxed without forms or popups. Links still open the real pages.
 
 mod account;
 mod auth;
@@ -20,9 +25,10 @@ mod chat;
 mod site;
 
 use axum::Router;
+use axum::body::{Body, to_bytes};
 use axum::extract::{Path, Query};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
-use axum::response::{IntoResponse, Response};
+use axum::response::Response;
 use axum::routing::get;
 use maud::{Markup, html};
 use openagents_ui::shell::{THEME_COOKIE, Theme};
@@ -74,6 +80,72 @@ pub(crate) struct Screen {
     pub(crate) routes: &'static [&'static str],
     pub(crate) states: Vec<State>,
 }
+
+/// Live GET addresses that are not screens, with why: files, data for
+/// programs, redirects, parts a page loads into itself, and the canvas
+/// worlds. A name ending in `*` covers every address under it. Every other
+/// GET address must belong to a screen (see the route test).
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
+    ("/static/*", "files"),
+    ("/.well-known/*", "files for programs"),
+    ("/v1/*", "the API"),
+    ("/api/*", "the API"),
+    ("/oauth/*", "sign-in for programs"),
+    ("/health", "a check for the host"),
+    ("/healthz", "a check for the host"),
+    ("/favicon.ico", "a file"),
+    ("/favicon.svg", "a file"),
+    ("/robots.txt", "a file"),
+    ("/sitemap.xml", "a file"),
+    ("/llms.txt", "a file"),
+    ("/llms-full.txt", "a file"),
+    ("/openapi.json", "a file"),
+    ("/cli/*", "the installers"),
+    ("/ui", "the components catalog"),
+    ("/ui/*", "this gallery"),
+    ("/components*", "the components catalog for apps"),
+    ("/account/avatar", "an image"),
+    ("/auth/github", "goes to GitHub"),
+    ("/auth/github/install", "goes to GitHub"),
+    ("/auth/github/reconnect", "goes to GitHub"),
+    ("/auth/github/repos", "goes to GitHub"),
+    ("/auth/github/repos/finish", "goes back to Projects"),
+    ("/auth/github/setup", "goes back to Projects"),
+    ("/cloud", "goes home"),
+    ("/install", "goes to Download"),
+    ("/desktop", "goes to Download"),
+    ("/docs/install", "goes to a guide"),
+    ("/docs/help", "goes to a guide"),
+    ("/chat", "goes home"),
+    ("/chat/list", "part of the chat list"),
+    ("/chat/assets/*", "files"),
+    ("/chat/{id}/events", "updates for an open chat"),
+    ("/chats/events", "updates for the chat list"),
+    ("/chat/{id}/transcript", "part of a chat page"),
+    ("/chat/{id}/workspace", "part of a chat page"),
+    ("/chat/{id}/rename", "part of the chat list"),
+    ("/chat/{id}/agents", "part of a chat page"),
+    ("/chat/{id}/to-coder", "part of a chat page"),
+    ("/chat/{id}/work-offer/{index}", "part of a chat page"),
+    ("/chat/{id}/messages/{index}/original", "a message as text"),
+    ("/chat/{id}/files/{file}", "a file"),
+    ("/chat/{id}/captures/{ask}", "an image"),
+    ("/composer/*", "part of the composer"),
+    ("/demo/{chat}/thread", "part of a demo page"),
+    ("/coder/*", "data for Coder"),
+    ("/projects/repositories", "part of Projects"),
+    ("/settings/export", "a download"),
+    ("/settings/terminal/live", "part of a settings page"),
+    ("/settings/mac-jobs/{id}/files/{file}", "a file"),
+    ("/vault/*", "data and files for the vault page"),
+    ("/everglade*", "a canvas world"),
+    ("/druid", "a canvas world"),
+    ("/grid", "a canvas world"),
+    ("/games/*", "a game"),
+    ("/att*", "a canvas app"),
+    ("/studios/blue-rush/static/*", "files"),
+];
 
 pub(crate) const fn state(id: &'static str, label: &'static str, render: Render) -> State {
     State { id, label, render }
@@ -130,6 +202,7 @@ async fn index(headers: HeaderMap) -> Response {
                 p class="oa-catalog-intro__lede" {
                     "Every page and every part of a page on this site, in each state a person can meet, with sample data."
                 }
+                (sample_note())
             }
             section class="oa-catalog-group" aria-labelledby="group-atoms" {
                 h2 class="oa-catalog-group__title" id="group-atoms" { "Atoms and molecules" }
@@ -188,6 +261,7 @@ async fn screen(headers: HeaderMap, Path(id): Path<String>) -> Response {
                 p class="oa-catalog-intro__lede" {
                     @for route in screen.routes { code { (route) } " " }
                 }
+                (sample_note())
             }
             @for state in &screen.states {
                 section class="oa-catalog-section" id=(state.id) {
@@ -203,6 +277,7 @@ async fn screen(headers: HeaderMap, Path(id): Path<String>) -> Response {
                                 iframe class="oa-screens-frame"
                                     src=(state_href(screen, state, theme))
                                     title=(format!("{} · {}", state.label, theme.as_str()))
+                                    sandbox="allow-same-origin allow-scripts"
                                     loading="lazy" {}
                             }
                         }
@@ -237,34 +312,82 @@ async fn one(
         .ok()
         .and_then(|q| q.0.theme)
         .and_then(|t| Theme::from_cookie(&t));
-    render(state, &headers, theme)
+    render(state, &headers, theme).await
 }
 
-/// `state` as a page for `headers`, in `theme` when given, framable by
-/// this site.
-pub(crate) fn render(state: &State, headers: &HeaderMap, theme: Option<Theme>) -> Response {
+/// What every gallery page says about its samples.
+fn sample_note() -> Markup {
+    html! {
+        p class="oa-sample-note" {
+            "These are samples. The names, chats, computers, and keys are made up, and the buttons and forms do nothing."
+        }
+    }
+}
+
+/// The strip at the top of every sample page.
+const SAMPLE_STRIP: &str = "<p class=\"oa-sample-strip\" role=\"note\">Sample page. Made-up data; buttons and forms do nothing.</p>";
+
+/// `policy` with no form posts and no requests, framable by this site.
+pub(crate) fn inert_policy(policy: Option<&str>) -> String {
+    let mut directives: Vec<&str> = policy
+        .unwrap_or("default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; script-src 'self'; base-uri 'none'")
+        .split(';')
+        .map(str::trim)
+        .filter(|d| {
+            !d.is_empty()
+                && !d.starts_with("form-action")
+                && !d.starts_with("connect-src")
+                && !d.starts_with("frame-ancestors")
+        })
+        .collect();
+    directives.extend([
+        "connect-src 'none'",
+        "form-action 'none'",
+        "frame-ancestors 'self'",
+    ]);
+    directives.join("; ")
+}
+
+/// `state` as a page for `headers`, in `theme` when given: a sample that
+/// says so, can post nothing, and is framable by this site.
+pub(crate) async fn render(state: &State, headers: &HeaderMap, theme: Option<Theme>) -> Response {
     let mut headers = headers.clone();
+    // The person's own session never reaches a sample.
+    headers.remove(header::COOKIE);
+    headers.remove(header::AUTHORIZATION);
     if let Some(theme) = theme {
-        headers.remove(header::COOKIE);
         let cookie = format!("{THEME_COOKIE}={}", theme.as_str());
         if let Ok(value) = HeaderValue::from_str(&cookie) {
             headers.insert(header::COOKIE, value);
         }
     }
-    let mut response = (state.render)(&headers);
-    let policy = response
-        .headers()
+    let response = (state.render)(&headers);
+    let (mut parts, body) = response.into_parts();
+    let policy = parts
+        .headers
         .get(header::CONTENT_SECURITY_POLICY)
         .and_then(|v| v.to_str().ok())
-        .map(|p| p.replace("frame-ancestors 'none'", "frame-ancestors 'self'"));
-    if let Some(policy) = policy
-        && let Ok(value) = HeaderValue::from_str(&policy)
-    {
-        response
-            .headers_mut()
-            .insert(header::CONTENT_SECURITY_POLICY, value);
+        .map(str::to_owned);
+    if let Ok(value) = HeaderValue::from_str(&inert_policy(policy.as_deref())) {
+        parts.headers.insert(header::CONTENT_SECURITY_POLICY, value);
     }
-    response
+    parts.headers.remove(header::SET_COOKIE);
+    parts.headers.remove("HX-Redirect");
+    parts.headers.remove("HX-Push-Url");
+    parts
+        .headers
+        .insert("X-Robots-Tag", HeaderValue::from_static("noindex"));
+    let bytes = to_bytes(body, usize::MAX).await.unwrap_or_default();
+    let html = String::from_utf8_lossy(&bytes);
+    let marked = match html
+        .find("<body")
+        .and_then(|at| html[at..].find('>').map(|end| at + end + 1))
+    {
+        Some(at) => format!("{}{SAMPLE_STRIP}{}", &html[..at], &html[at..]),
+        None => format!("{SAMPLE_STRIP}{html}"),
+    };
+    parts.headers.remove(header::CONTENT_LENGTH);
+    Response::from_parts(parts, Body::from(marked))
 }
 
 #[cfg(test)]
