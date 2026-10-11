@@ -373,7 +373,8 @@ fn decide(
 }
 
 /// Counts an assistant message's tool calls and the files they read and
-/// write; a read of a file the briefing did not list is a miss.
+/// write; a read or edit of a file the briefing did not list is a miss,
+/// but writing a file that does not exist yet is not.
 fn observe(root: &Path, briefed: &BTreeSet<String>, ledger: &Shared<Ledger>, message: &Value) {
     let Some(blocks) = message["content"].as_array() else {
         return;
@@ -405,8 +406,11 @@ fn observe(root: &Path, briefed: &BTreeSet<String>, ledger: &Shared<Ledger>, mes
             }
             "Edit" | "MultiEdit" | "Write" => {
                 let seen = ledger.files_read.contains(&relative);
+                // A Write that creates a file no finder could have listed.
+                let created = name == "Write" && !root.join(&relative).exists();
                 if !briefed.contains(&relative)
                     && !seen
+                    && !created
                     && ledger.files_written.insert(relative.clone())
                 {
                     ledger.misses.push(json!({"file": relative, "tool": name}));
@@ -454,5 +458,42 @@ mod path_tests {
             inside(&root, &input),
             Some(Some("src/new/deeper/file.rs".to_owned()))
         );
+    }
+}
+
+#[cfg(test)]
+mod observe_tests {
+    use super::*;
+
+    fn write(root: &Path, tool: &str, file: &str) -> Ledger {
+        let ledger: Shared<Ledger> = Arc::default();
+        let message = json!({"content": [{
+            "type": "tool_use",
+            "name": tool,
+            "input": {"file_path": root.join(file).to_string_lossy()},
+        }]});
+        observe(root, &BTreeSet::new(), &ledger, &message);
+        std::mem::take(&mut *lock(&ledger))
+    }
+
+    #[test]
+    fn writing_a_new_file_is_not_a_miss() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        let ledger = write(&root, "Write", "src/new_module.rs");
+        assert!(ledger.files_written.contains("src/new_module.rs"));
+        assert!(ledger.misses.is_empty(), "{:?}", ledger.misses);
+    }
+
+    #[test]
+    fn editing_an_unlisted_existing_file_is_a_miss() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        std::fs::write(root.join("old.rs"), "").unwrap();
+        for tool in ["Edit", "Write"] {
+            let ledger = write(&root, tool, "old.rs");
+            assert!(ledger.files_written.contains("old.rs"));
+            assert_eq!(ledger.misses, vec![json!({"file": "old.rs", "tool": tool})]);
+        }
     }
 }
