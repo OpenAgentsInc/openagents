@@ -48,6 +48,25 @@ top answer, maximum probability difference `0.000163851`, and maximum logit
 difference `0.001329958`.
 Prefix and batching checks compare native execution against native execution.
 
+The [CPU head replay](text029-head-isolation-v1/README.md) narrows the one
+disagreement. Replacing only the false-option pooled context with its native
+export moves `P(true)` from `0.493031923` to `0.500215918`, reproducing the flip
+while keeping the official head and full reference memory fixed. Replacing
+all pooled inputs gives `0.501995367`; rounding reference pools to f16 changes
+the probability by only `0.000012403`. The baseline replay is bitwise exact.
+This places the material discrepancy before head projection and scoring;
+trunk arithmetic, hidden normalization, and pooling still need separation.
+All eight controls and all three questions are retained. This CPU-only
+diagnostic finishes in 4.49 seconds under its 4 GiB cap with successful cleanup.
+
+The [independent CPU run for the same case](text029-cpu-reference-v1/README.md)
+also chooses false, while native execution chooses true. CPU and MPS agree on
+all three top answers; maximum probability difference is `0.000007328`.
+CPU-to-native difference is `0.0090604`. The 75.08-second CPU run saves all 64
+layer hashes and releases its owned processes and leases under the 12 GiB cap.
+This excludes the accelerated reference as the explanation for this case;
+the full runtime gate remains failed.
+
 The [activation-weighted Q4 preparation](activation-weighted-q4-preparation-v1/README.md)
 preserves the frozen corpus, recipes, and checks. The two-record pilot passed;
 the full collector was deliberately stopped after 70 of 96 records and
@@ -173,6 +192,16 @@ tests pass. Two long requests are captured, but the failure stops their fresh
 baseline comparison and all 27B/image checks. No latency benchmark follows.
 The exact failed patch and outputs are retained, and the three candidate
 product files are restored. This candidate is not integrated.
+
+The subsequent [QK128/key32 probe](attention-qk128-key32-probe-v1/README.md)
+batches four score blocks while preserving the original 32-key softmax and
+value updates. All 216 checks pass, with bitwise-identical outputs and 36,557
+bitwise-identical intermediate scores. Median paired candidate/baseline kernel
+ratios are `0.917 / 0.857 / 0.819` for Flash and `0.909 / 0.904 / 0.887` for 27B
+at 1k/4k/16k histories. The 3.88-second synthetic run uses 25,600 bytes of
+threadgroup storage and peaks at 371 MB under its 2 GiB cap. Full-model
+validation is pending; these short, shared-machine samples do not establish
+a serving speedup or either milestone target.
 
 ## Stage 6 fused field head
 

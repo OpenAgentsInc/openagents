@@ -16762,6 +16762,447 @@
       "published_sha256": "9318cbb34113e40ba3806ce9bad0c03a9e9fc8f53792306d2ab5074aca71744d",
       "published_bytes": 453617,
       "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/head-replay-publishable-v1/README.md",
+      "original_sha256": "69a636784a37c47ba8c2e78d0ff2d75cbae635ba65ec84acd7031a3fdf534a29",
+      "original_bytes": 1561,
+      "published": "text029-head-isolation-v1/README.md",
+      "published_sha256": "69a636784a37c47ba8c2e78d0ff2d75cbae635ba65ec84acd7031a3fdf534a29",
+      "published_bytes": 1561,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/head-replay-publishable-v1/guard.json",
+      "original_sha256": "8af6942a26dbe1f506ad1126eebb6487a7f6ce0d61a3b83e75bcb1b66420b806",
+      "original_bytes": 25341,
+      "published": "text029-head-isolation-v1/guard.json",
+      "published_sha256": "8af6942a26dbe1f506ad1126eebb6487a7f6ce0d61a3b83e75bcb1b66420b806",
+      "published_bytes": 25341,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/head-replay-publishable-v1/manifest.json",
+      "original_sha256": "d7f2f938627697b5c944e58c9a26e90edf4dc84c35fbf8ccb4fa22cfa8aa5632",
+      "original_bytes": 2803,
+      "published": "text029-head-isolation-v1/manifest.json",
+      "published_sha256": "d7f2f938627697b5c944e58c9a26e90edf4dc84c35fbf8ccb4fa22cfa8aa5632",
+      "published_bytes": 2803,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/head-replay-publishable-v1/pooled-inspection.json",
+      "original_sha256": "c94e1d64991df871fd9244e572fecf5a80afeb1a024ca6bcfdb956b710531364",
+      "original_bytes": 9933,
+      "published": "text029-head-isolation-v1/pooled-inspection.json",
+      "published_sha256": "c94e1d64991df871fd9244e572fecf5a80afeb1a024ca6bcfdb956b710531364",
+      "published_bytes": 9933,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/head-replay-publishable-v1/receipt.json",
+      "original_sha256": "ded01e6a4a50ba8b011dfaa37a4218dffb6bb9d7dd2e2f6dd6de885cb079f709",
+      "original_bytes": 39421,
+      "published": "text029-head-isolation-v1/receipt.json",
+      "published_sha256": "ded01e6a4a50ba8b011dfaa37a4218dffb6bb9d7dd2e2f6dd6de885cb079f709",
+      "published_bytes": 39421,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/head-replay-publishable-v1/source/guard_head.py",
+      "original_sha256": "b50d46d3ec4658c4621b2c913f75dd95e9ed513a6d3d40577de909748f262048",
+      "original_bytes": 5621,
+      "published": "text029-head-isolation-v1/source/guard_head.py",
+      "published_sha256": "b50d46d3ec4658c4621b2c913f75dd95e9ed513a6d3d40577de909748f262048",
+      "published_bytes": 5621,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/head-replay-publishable-v1/source/head_replay.py",
+      "original_sha256": "2a95592fdbf9d11a7bd4dccb78c277b886f3449ae1e73a44e4cc21a31664e496",
+      "original_bytes": 10219,
+      "published": "text029-head-isolation-v1/source/head_replay.py",
+      "published_sha256": "2a95592fdbf9d11a7bd4dccb78c277b886f3449ae1e73a44e4cc21a31664e496",
+      "published_bytes": 10219,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/head-replay-publishable-v1/source/pooled_inspection.py",
+      "original_sha256": "2447c315d6d2a672b4ff2d0e20f4ab3f697def7b830fd95cb5d7211fe21d6f99",
+      "original_bytes": 3122,
+      "published": "text029-head-isolation-v1/source/pooled_inspection.py",
+      "published_sha256": "2447c315d6d2a672b4ff2d0e20f4ab3f697def7b830fd95cb5d7211fe21d6f99",
+      "published_bytes": 3122,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/head-replay-publishable-v1/stdout.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "text029-head-isolation-v1/stdout.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/PLAN.md",
+      "original_sha256": "f5ad5f2d1a4424c434604785cfd7725fe4f7c4169f90d4f18895dcadae177c04",
+      "original_bytes": 4296,
+      "published": "attention-qk128-key32-probe-v1/PLAN.md",
+      "published_sha256": "f5ad5f2d1a4424c434604785cfd7725fe4f7c4169f90d4f18895dcadae177c04",
+      "published_bytes": 4296,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/README.md",
+      "original_sha256": "d2e65845c2e05c6428b5bd3d0b7819b83ce399386e72bef61cdaf263ad5d38a9",
+      "original_bytes": 4147,
+      "published": "attention-qk128-key32-probe-v1/README.md",
+      "published_sha256": "d2e65845c2e05c6428b5bd3d0b7819b83ce399386e72bef61cdaf263ad5d38a9",
+      "published_bytes": 4147,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/baseline-scores.metal",
+      "original_sha256": "5fd5fa5c8e5f9f92ae310e6cb52f516bf56d9c207319ce26b74f6fa49123b7f7",
+      "original_bytes": 8133,
+      "published": "attention-qk128-key32-probe-v1/baseline-scores.metal",
+      "published_sha256": "5fd5fa5c8e5f9f92ae310e6cb52f516bf56d9c207319ce26b74f6fa49123b7f7",
+      "published_bytes": 8133,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/baseline.metal",
+      "original_sha256": "fb967e1097e771addd548a66ff1140d582f9e5f24d8465374d988880424ad094",
+      "original_bytes": 7643,
+      "published": "attention-qk128-key32-probe-v1/baseline.metal",
+      "published_sha256": "fb967e1097e771addd548a66ff1140d582f9e5f24d8465374d988880424ad094",
+      "published_bytes": 7643,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/bench-1/memory.jsonl",
+      "original_sha256": "9cb0d6bc225021acef13c7e77a6d2e96b33754796741c70af7b00c1ba75efaaf",
+      "original_bytes": 5929,
+      "published": "attention-qk128-key32-probe-v1/bench-1/memory.jsonl",
+      "published_sha256": "9cb0d6bc225021acef13c7e77a6d2e96b33754796741c70af7b00c1ba75efaaf",
+      "published_bytes": 5929,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/bench-1/receipt.json",
+      "original_sha256": "9ccbd4a9cc4c1c9c162ed9807544abb60b3ffb88ff885efdb06bef492a1f90d6",
+      "original_bytes": 4217,
+      "published": "attention-qk128-key32-probe-v1/bench-1/receipt.json",
+      "published_sha256": "9ccbd4a9cc4c1c9c162ed9807544abb60b3ffb88ff885efdb06bef492a1f90d6",
+      "published_bytes": 4217,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/bench-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "attention-qk128-key32-probe-v1/bench-1/stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/bench-1/stdout.jsonl",
+      "original_sha256": "103e3b365519cbaf8507d9628dfcdcf5a39821a0b3f571fcc71146cc6759baf6",
+      "original_bytes": 76840,
+      "published": "attention-qk128-key32-probe-v1/bench-1/stdout.jsonl",
+      "published_sha256": "103e3b365519cbaf8507d9628dfcdcf5a39821a0b3f571fcc71146cc6759baf6",
+      "published_bytes": 76840,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/bench-1/summary.json",
+      "original_sha256": "a4f5c3cd02a3f1c54f26689157517e7419b087841e0568d8838d285f5c07b2a7",
+      "original_bytes": 94042,
+      "published": "attention-qk128-key32-probe-v1/bench-1/summary.json",
+      "published_sha256": "a4f5c3cd02a3f1c54f26689157517e7419b087841e0568d8838d285f5c07b2a7",
+      "published_bytes": 94042,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/bench-gpu-lease.json",
+      "original_sha256": "257b0badd81f94bf2fed35346b4d63b558413c8a7274ff4225f44c6015da0146",
+      "original_bytes": 486,
+      "published": "attention-qk128-key32-probe-v1/bench-gpu-lease.json",
+      "published_sha256": "257b0badd81f94bf2fed35346b4d63b558413c8a7274ff4225f44c6015da0146",
+      "published_bytes": 486,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/bench-memory-lease.json",
+      "original_sha256": "55d3e746ca0105bf9e9949ac39ccd77971f47875e862af2012b57efac948d167",
+      "original_bytes": 486,
+      "published": "attention-qk128-key32-probe-v1/bench-memory-lease.json",
+      "published_sha256": "55d3e746ca0105bf9e9949ac39ccd77971f47875e862af2012b57efac948d167",
+      "published_bytes": 486,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/build-1/memory.jsonl",
+      "original_sha256": "d78b4e1b3a90a3567f73b71acdac2de95b71f0c2f2f25366ec77f04749ab90f5",
+      "original_bytes": 5903,
+      "published": "attention-qk128-key32-probe-v1/build-1/memory.jsonl",
+      "published_sha256": "d78b4e1b3a90a3567f73b71acdac2de95b71f0c2f2f25366ec77f04749ab90f5",
+      "published_bytes": 5903,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/build-1/receipt.json",
+      "original_sha256": "94ea6f2782cdfad08419d95b4228e18676756139fbf4a9dc0cb113dfa48afc20",
+      "original_bytes": 2865,
+      "published": "attention-qk128-key32-probe-v1/build-1/receipt.json",
+      "published_sha256": "94ea6f2782cdfad08419d95b4228e18676756139fbf4a9dc0cb113dfa48afc20",
+      "published_bytes": 2865,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/build-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "attention-qk128-key32-probe-v1/build-1/stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/build-1/stdout.log",
+      "original_sha256": "9ae17fc47405231ddde9e792ed7da02b4592110e7330b8de2a47f5392f20c548",
+      "original_bytes": 2305,
+      "published": "attention-qk128-key32-probe-v1/build-1/stdout.log",
+      "published_sha256": "9ae17fc47405231ddde9e792ed7da02b4592110e7330b8de2a47f5392f20c548",
+      "published_bytes": 2305,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/build-artifacts.json",
+      "original_sha256": "c380b0a7a0bae2b156ae3307a175d606513361e84dd8ead4ae9c39872e5759dc",
+      "original_bytes": 1330,
+      "published": "attention-qk128-key32-probe-v1/build-artifacts.json",
+      "published_sha256": "c380b0a7a0bae2b156ae3307a175d606513361e84dd8ead4ae9c39872e5759dc",
+      "published_bytes": 1330,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/build-lease.json",
+      "original_sha256": "db8ccd3d0ed259206557ed4303768d61cd62150e1dd378b19ee9330823d32122",
+      "original_bytes": 703,
+      "published": "attention-qk128-key32-probe-v1/build-lease.json",
+      "published_sha256": "db8ccd3d0ed259206557ed4303768d61cd62150e1dd378b19ee9330823d32122",
+      "published_bytes": 703,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/build-memory-lease.json",
+      "original_sha256": "d0cd7f103239a5877a029736c70bbdbd4329f1a226271bb0ba806590f962a609",
+      "original_bytes": 486,
+      "published": "attention-qk128-key32-probe-v1/build-memory-lease.json",
+      "published_sha256": "d0cd7f103239a5877a029736c70bbdbd4329f1a226271bb0ba806590f962a609",
+      "published_bytes": 486,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/build.py",
+      "original_sha256": "d9e4d6225e198984ca4d581398b200d28734112f0b07a83ce2d854dcf4f1be40",
+      "original_bytes": 1995,
+      "published": "attention-qk128-key32-probe-v1/build.py",
+      "published_sha256": "d9e4d6225e198984ca4d581398b200d28734112f0b07a83ce2d854dcf4f1be40",
+      "published_bytes": 1995,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/candidate-scores.metal",
+      "original_sha256": "b0cffe28a3103ca27e10467644411570fa11ab134640cd1dac6a744e1b6378cf",
+      "original_bytes": 8895,
+      "published": "attention-qk128-key32-probe-v1/candidate-scores.metal",
+      "published_sha256": "b0cffe28a3103ca27e10467644411570fa11ab134640cd1dac6a744e1b6378cf",
+      "published_bytes": 8895,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/candidate.metal",
+      "original_sha256": "c1e652d1300880b0208b39f12400ef7670675bed4e96444d91b19d0ebbcc5c87",
+      "original_bytes": 8392,
+      "published": "attention-qk128-key32-probe-v1/candidate.metal",
+      "published_sha256": "c1e652d1300880b0208b39f12400ef7670675bed4e96444d91b19d0ebbcc5c87",
+      "published_bytes": 8392,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/flash-layout.json",
+      "original_sha256": "68f8b6537b48ec86c78acd3b627e5001e10a1381bb65ccca6ad952cdd2d4c93e",
+      "original_bytes": 562,
+      "published": "attention-qk128-key32-probe-v1/flash-layout.json",
+      "published_sha256": "68f8b6537b48ec86c78acd3b627e5001e10a1381bb65ccca6ad952cdd2d4c93e",
+      "published_bytes": 562,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/guard.py",
+      "original_sha256": "a1e11d3289603b36f9b6283b9181380dc928fd9dc7ce13a551e89a008df6184c",
+      "original_bytes": 5344,
+      "published": "attention-qk128-key32-probe-v1/guard.py",
+      "published_sha256": "a1e11d3289603b36f9b6283b9181380dc928fd9dc7ce13a551e89a008df6184c",
+      "published_bytes": 5344,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/manifest.json",
+      "original_sha256": "e22202d4fa16440a4652de43b0cda7703441df953e7459511434452fb10a2668",
+      "original_bytes": 2810,
+      "published": "attention-qk128-key32-probe-v1/manifest.json",
+      "published_sha256": "e22202d4fa16440a4652de43b0cda7703441df953e7459511434452fb10a2668",
+      "published_bytes": 2810,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/probe.swift",
+      "original_sha256": "d7f0a02c5024395d2967608a8a61f830ea6dd2d0f1a26e892612f1829a86a2b6",
+      "original_bytes": 23745,
+      "published": "attention-qk128-key32-probe-v1/probe.swift",
+      "published_sha256": "d7f0a02c5024395d2967608a8a61f830ea6dd2d0f1a26e892612f1829a86a2b6",
+      "published_bytes": 23745,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/publication-manifest.json",
+      "original_sha256": "f5c3f5a39e01636d651fe7a468853d7ef961e8603e62601941a353f595615307",
+      "original_bytes": 7888,
+      "published": "attention-qk128-key32-probe-v1/publication-manifest.json",
+      "published_sha256": "f5c3f5a39e01636d651fe7a468853d7ef961e8603e62601941a353f595615307",
+      "published_bytes": 7888,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/score_diagnostics.swift",
+      "original_sha256": "812d08b24b88cacab0382f52173f7f1dd069ee4e8c0351fc5fb06bd447670a01",
+      "original_bytes": 4559,
+      "published": "attention-qk128-key32-probe-v1/score_diagnostics.swift",
+      "published_sha256": "812d08b24b88cacab0382f52173f7f1dd069ee4e8c0351fc5fb06bd447670a01",
+      "published_bytes": 4559,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/source_check.py",
+      "original_sha256": "dc67a278567885f62e6165110540f6eb09cfdafd3381eeee6b784b5a884f9189",
+      "original_bytes": 1665,
+      "published": "attention-qk128-key32-probe-v1/source_check.py",
+      "published_sha256": "dc67a278567885f62e6165110540f6eb09cfdafd3381eeee6b784b5a884f9189",
+      "published_bytes": 1665,
+      "path_replacements": []
+    },
+    {
+      "source": "attention-qk128-key32-probe/publication-v1/summarize.py",
+      "original_sha256": "95c766af0c823c7610ffb50247167234de4d81994f4dba5a6ffc9871e034f925",
+      "original_bytes": 5347,
+      "published": "attention-qk128-key32-probe-v1/summarize.py",
+      "published_sha256": "95c766af0c823c7610ffb50247167234de4d81994f4dba5a6ffc9871e034f925",
+      "published_bytes": 5347,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/cpu-reference-publishable-v1/README.md",
+      "original_sha256": "127d300a6b6a4feba750cacdb859cb3686554a5755ad2c54726d51e3d9d97db3",
+      "original_bytes": 2041,
+      "published": "text029-cpu-reference-v1/README.md",
+      "published_sha256": "127d300a6b6a4feba750cacdb859cb3686554a5755ad2c54726d51e3d9d97db3",
+      "published_bytes": 2041,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/cpu-reference-publishable-v1/guard.json",
+      "original_sha256": "a172d6f7ea5d21d827e661d400a089affcde287808c6c1a65d957d87d25267ca",
+      "original_bytes": 24520,
+      "published": "text029-cpu-reference-v1/guard.json",
+      "published_sha256": "a172d6f7ea5d21d827e661d400a089affcde287808c6c1a65d957d87d25267ca",
+      "published_bytes": 24520,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/cpu-reference-publishable-v1/layer-plan.md",
+      "original_sha256": "5d5ebf87802436d3309f390a045b178b6fa5d0b1991073438776cdd0a8cf027e",
+      "original_bytes": 4595,
+      "published": "text029-cpu-reference-v1/layer-plan.md",
+      "published_sha256": "5d5ebf87802436d3309f390a045b178b6fa5d0b1991073438776cdd0a8cf027e",
+      "published_bytes": 4595,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/cpu-reference-publishable-v1/manifest.json",
+      "original_sha256": "819ac1740f9aa3e021d5ef76c18864f7f676100cd983f8c64185680671e82849",
+      "original_bytes": 3380,
+      "published": "text029-cpu-reference-v1/manifest.json",
+      "published_sha256": "819ac1740f9aa3e021d5ef76c18864f7f676100cd983f8c64185680671e82849",
+      "published_bytes": 3380,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/cpu-reference-publishable-v1/receipt.json",
+      "original_sha256": "2ddca68532fb8d4cb3bf21f7a2b3c3c477ef275e972f207c18dd99945ce3305e",
+      "original_bytes": 53447,
+      "published": "text029-cpu-reference-v1/receipt.json",
+      "published_sha256": "2ddca68532fb8d4cb3bf21f7a2b3c3c477ef275e972f207c18dd99945ce3305e",
+      "published_bytes": 53447,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/cpu-reference-publishable-v1/source/cpu_reference.py",
+      "original_sha256": "995a4a7701cb73cf6cf6a336bb222b0ebf2f8fab0a31978285292e8ff781923a",
+      "original_bytes": 15721,
+      "published": "text029-cpu-reference-v1/source/cpu_reference.py",
+      "published_sha256": "995a4a7701cb73cf6cf6a336bb222b0ebf2f8fab0a31978285292e8ff781923a",
+      "published_bytes": 15721,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/cpu-reference-publishable-v1/source/guard_layers.py",
+      "original_sha256": "9e991ea2a09a3805e93245e659b34f52bda2651cca9cc8750c7dde417a0e15ba",
+      "original_bytes": 7405,
+      "published": "text029-cpu-reference-v1/source/guard_layers.py",
+      "published_sha256": "9e991ea2a09a3805e93245e659b34f52bda2651cca9cc8750c7dde417a0e15ba",
+      "published_bytes": 7405,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/cpu-reference-publishable-v1/source/negative_a_forward.py",
+      "original_sha256": "de846dd390e2e5ee700764f62ee351e9b6ef85053b7d92205d51c6fe399f55f5",
+      "original_bytes": 4990,
+      "published": "text029-cpu-reference-v1/source/negative_a_forward.py",
+      "published_sha256": "de846dd390e2e5ee700764f62ee351e9b6ef85053b7d92205d51c6fe399f55f5",
+      "published_bytes": 4990,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/cpu-reference-publishable-v1/source-check.json",
+      "original_sha256": "683bfd76b98264a1686efbe02d779d80e8960924c0e41556db7be0d68460262c",
+      "original_bytes": 538,
+      "published": "text029-cpu-reference-v1/source-check.json",
+      "published_sha256": "683bfd76b98264a1686efbe02d779d80e8960924c0e41556db7be0d68460262c",
+      "published_bytes": 538,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/cpu-reference-publishable-v1/stdout.log",
+      "original_sha256": "db9eb620f3513e8bae9b242858f246427486ff1533b6594162d3a2304e95d75d",
+      "original_bytes": 24038,
+      "published": "text029-cpu-reference-v1/stdout.log",
+      "published_sha256": "db9eb620f3513e8bae9b242858f246427486ff1533b6594162d3a2304e95d75d",
+      "published_bytes": 24038,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/cpu-reference-publishable-v1/tokens.txt",
+      "original_sha256": "4f7e306fe42940463b4970468afdd600d1f317ad4aae245fb810963cc730fddc",
+      "original_bytes": 1686,
+      "published": "text029-cpu-reference-v1/tokens.txt",
+      "published_sha256": "4f7e306fe42940463b4970468afdd600d1f317ad4aae245fb810963cc730fddc",
+      "published_bytes": 1686,
+      "path_replacements": []
     }
   ],
   "current_source_snapshot": [

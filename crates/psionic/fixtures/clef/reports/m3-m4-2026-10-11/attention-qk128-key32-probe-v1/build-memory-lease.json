@@ -1,0 +1,21 @@
+{
+  "schema": "openagents.lease.receipt.v1",
+  "id": "1791726913828-32710-0",
+  "resource": "memory",
+  "amount": 4,
+  "holder": {
+    "session": "codex:01a128d6-1618-7713-8a7f-4e4b789d6ea3",
+    "agent": "codex",
+    "pid": 32710,
+    "command": "python3"
+  },
+  "priority": "normal",
+  "nested": false,
+  "requested_at_ms": 1791726913828,
+  "acquired_at_ms": 1791726913828,
+  "released_at_ms": 1791726917607,
+  "wait_ms": 0,
+  "held_ms": 3779,
+  "held_whole_run": true,
+  "exit": 0
+}

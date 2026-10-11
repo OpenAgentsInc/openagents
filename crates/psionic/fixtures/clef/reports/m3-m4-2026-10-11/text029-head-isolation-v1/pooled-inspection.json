@@ -1,0 +1,291 @@
+{
+  "tokens": 359,
+  "hidden": 5120,
+  "request_sha256": "sha256:d97a363d10a51e9bfd42dbb8f7f5ae01f3a873ee9ea2589c3a0faa54cf6efdad",
+  "mps_final_sha256": "8326d22f4997b38b2998b13ac5f95e2a9693281666596fc623d9b8d8b4619f09",
+  "method": "NumPy float64 LayerNorm and means of saved final MPS f32 rows; diagnostic only, not bitwise official head replay. Native export rounded f32 pooled rows to f16.",
+  "questions": [
+    {
+      "mode": "staged",
+      "question": "rate",
+      "question_span_tokens": 23,
+      "rows": [
+        {
+          "label": "last",
+          "max_abs": 0.015912623757565747,
+          "relative_l2": 0.0037991645440624334,
+          "cosine": 0.9999927831665689,
+          "native_norm": 71.61251068707475,
+          "reference_norm": 71.61259513114942
+        },
+        {
+          "label": "question",
+          "max_abs": 0.0028453951274234335,
+          "relative_l2": 0.0008608197777625502,
+          "cosine": 0.9999996295199148,
+          "native_norm": 40.29752409082401,
+          "reference_norm": 40.29725221042786
+        },
+        {
+          "label": "option:true",
+          "max_abs": 0.0038421128194503495,
+          "relative_l2": 0.000610583288260103,
+          "cosine": 0.9999998136077265,
+          "native_norm": 40.033099675409254,
+          "reference_norm": 40.03331684393021
+        },
+        {
+          "label": "option:false",
+          "max_abs": 0.027811702640558877,
+          "relative_l2": 0.0016424246685611409,
+          "cosine": 0.9999986982056234,
+          "native_norm": 41.19080671378745,
+          "reference_norm": 41.20349120388402
+        }
+      ],
+      "question_plus_global_anchor": {
+        "max_abs": 0.016342156235884087,
+        "relative_l2": 0.0031988264174153246,
+        "cosine": 0.9999948995336584,
+        "native_norm": 86.41712091850736,
+        "reference_norm": 86.43292247533267
+      },
+      "native_pooled_export_sha256": "a2b617fdc031132b38fc72537e716ef9e88a9dfdcee1970aec7be75a829a22be"
+    },
+    {
+      "mode": "staged",
+      "question": "\u65e5\u672c1",
+      "question_span_tokens": 2,
+      "rows": [
+        {
+          "label": "last",
+          "max_abs": 0.015912623757565747,
+          "relative_l2": 0.0037991645440624334,
+          "cosine": 0.9999927831665689,
+          "native_norm": 71.61251068707475,
+          "reference_norm": 71.61259513114942
+        },
+        {
+          "label": "question",
+          "max_abs": 0.011196425129046617,
+          "relative_l2": 0.0013659175672341955,
+          "cosine": 0.9999990682851068,
+          "native_norm": 59.52118569673056,
+          "reference_norm": 59.51838558161695
+        },
+        {
+          "label": "option:true",
+          "max_abs": 0.008089456016981522,
+          "relative_l2": 0.0015740497979853485,
+          "cosine": 0.9999987636770808,
+          "native_norm": 38.57748309740906,
+          "reference_norm": 38.580255680131735
+        },
+        {
+          "label": "option:false",
+          "max_abs": 0.0430212987308316,
+          "relative_l2": 0.016291906220580816,
+          "cosine": 0.9998688454163943,
+          "native_norm": 38.21280931025724,
+          "reference_norm": 38.15027244345098
+        }
+      ],
+      "question_plus_global_anchor": {
+        "max_abs": 0.019156820111724926,
+        "relative_l2": 0.002716714096740228,
+        "cosine": 0.9999963356741463,
+        "native_norm": 104.69819081486433,
+        "reference_norm": 104.72243132469067
+      },
+      "native_pooled_export_sha256": "f8248c8adee772d097b723845e629f5df8dfdd22355cf9d8f0aa0ad6f0d0c41e"
+    },
+    {
+      "mode": "staged",
+      "question": "rollback_2",
+      "question_span_tokens": 13,
+      "rows": [
+        {
+          "label": "last",
+          "max_abs": 0.015912623757565747,
+          "relative_l2": 0.0037991645440624334,
+          "cosine": 0.9999927831665689,
+          "native_norm": 71.61251068707475,
+          "reference_norm": 71.61259513114942
+        },
+        {
+          "label": "question",
+          "max_abs": 0.014322087652692383,
+          "relative_l2": 0.0035960474010114916,
+          "cosine": 0.9999935362701132,
+          "native_norm": 44.55743247090114,
+          "reference_norm": 44.55485405104453
+        },
+        {
+          "label": "option:true",
+          "max_abs": 0.015993038054356035,
+          "relative_l2": 0.0043202987529290145,
+          "cosine": 0.9999906965475639,
+          "native_norm": 42.08378125746435,
+          "reference_norm": 42.09432477074308
+        },
+        {
+          "label": "option:false",
+          "max_abs": 0.009099471613732035,
+          "relative_l2": 0.004654439399306238,
+          "cosine": 0.999989261856318,
+          "native_norm": 37.93292901344141,
+          "reference_norm": 37.94977513203553
+        }
+      ],
+      "question_plus_global_anchor": {
+        "max_abs": 0.02035643877322535,
+        "relative_l2": 0.003412813094873289,
+        "cosine": 0.9999941916790571,
+        "native_norm": 93.90381927822074,
+        "reference_norm": 93.92081705560683
+      },
+      "native_pooled_export_sha256": "67d8ec9d65d125ab437a9a6c303e6025069f25ccbd8d19d4cadb079f07e0c6db"
+    },
+    {
+      "mode": "fused-fields",
+      "question": "rate",
+      "question_span_tokens": 23,
+      "rows": [
+        {
+          "label": "last",
+          "max_abs": 0.015912623757565747,
+          "relative_l2": 0.0037991645440624334,
+          "cosine": 0.9999927831665689,
+          "native_norm": 71.61251068707475,
+          "reference_norm": 71.61259513114942
+        },
+        {
+          "label": "question",
+          "max_abs": 0.0028453951274234335,
+          "relative_l2": 0.0008608197777625502,
+          "cosine": 0.9999996295199148,
+          "native_norm": 40.29752409082401,
+          "reference_norm": 40.29725221042786
+        },
+        {
+          "label": "option:true",
+          "max_abs": 0.0038421128194503495,
+          "relative_l2": 0.000610583288260103,
+          "cosine": 0.9999998136077265,
+          "native_norm": 40.033099675409254,
+          "reference_norm": 40.03331684393021
+        },
+        {
+          "label": "option:false",
+          "max_abs": 0.027811702640558877,
+          "relative_l2": 0.0016424246685611409,
+          "cosine": 0.9999986982056234,
+          "native_norm": 41.19080671378745,
+          "reference_norm": 41.20349120388402
+        }
+      ],
+      "question_plus_global_anchor": {
+        "max_abs": 0.016342156235884087,
+        "relative_l2": 0.0031988264174153246,
+        "cosine": 0.9999948995336584,
+        "native_norm": 86.41712091850736,
+        "reference_norm": 86.43292247533267
+      },
+      "native_pooled_export_sha256": "a2b617fdc031132b38fc72537e716ef9e88a9dfdcee1970aec7be75a829a22be"
+    },
+    {
+      "mode": "fused-fields",
+      "question": "\u65e5\u672c1",
+      "question_span_tokens": 2,
+      "rows": [
+        {
+          "label": "last",
+          "max_abs": 0.015912623757565747,
+          "relative_l2": 0.0037991645440624334,
+          "cosine": 0.9999927831665689,
+          "native_norm": 71.61251068707475,
+          "reference_norm": 71.61259513114942
+        },
+        {
+          "label": "question",
+          "max_abs": 0.011196425129046617,
+          "relative_l2": 0.0013659175672341955,
+          "cosine": 0.9999990682851068,
+          "native_norm": 59.52118569673056,
+          "reference_norm": 59.51838558161695
+        },
+        {
+          "label": "option:true",
+          "max_abs": 0.008089456016981522,
+          "relative_l2": 0.0015740497979853485,
+          "cosine": 0.9999987636770808,
+          "native_norm": 38.57748309740906,
+          "reference_norm": 38.580255680131735
+        },
+        {
+          "label": "option:false",
+          "max_abs": 0.0430212987308316,
+          "relative_l2": 0.016291906220580816,
+          "cosine": 0.9998688454163943,
+          "native_norm": 38.21280931025724,
+          "reference_norm": 38.15027244345098
+        }
+      ],
+      "question_plus_global_anchor": {
+        "max_abs": 0.019156820111724926,
+        "relative_l2": 0.002716714096740228,
+        "cosine": 0.9999963356741463,
+        "native_norm": 104.69819081486433,
+        "reference_norm": 104.72243132469067
+      },
+      "native_pooled_export_sha256": "f8248c8adee772d097b723845e629f5df8dfdd22355cf9d8f0aa0ad6f0d0c41e"
+    },
+    {
+      "mode": "fused-fields",
+      "question": "rollback_2",
+      "question_span_tokens": 13,
+      "rows": [
+        {
+          "label": "last",
+          "max_abs": 0.015912623757565747,
+          "relative_l2": 0.0037991645440624334,
+          "cosine": 0.9999927831665689,
+          "native_norm": 71.61251068707475,
+          "reference_norm": 71.61259513114942
+        },
+        {
+          "label": "question",
+          "max_abs": 0.014322087652692383,
+          "relative_l2": 0.0035960474010114916,
+          "cosine": 0.9999935362701132,
+          "native_norm": 44.55743247090114,
+          "reference_norm": 44.55485405104453
+        },
+        {
+          "label": "option:true",
+          "max_abs": 0.015993038054356035,
+          "relative_l2": 0.0043202987529290145,
+          "cosine": 0.9999906965475639,
+          "native_norm": 42.08378125746435,
+          "reference_norm": 42.09432477074308
+        },
+        {
+          "label": "option:false",
+          "max_abs": 0.009099471613732035,
+          "relative_l2": 0.004654439399306238,
+          "cosine": 0.999989261856318,
+          "native_norm": 37.93292901344141,
+          "reference_norm": 37.94977513203553
+        }
+      ],
+      "question_plus_global_anchor": {
+        "max_abs": 0.02035643877322535,
+        "relative_l2": 0.003412813094873289,
+        "cosine": 0.9999941916790571,
+        "native_norm": 93.90381927822074,
+        "reference_norm": 93.92081705560683
+      },
+      "native_pooled_export_sha256": "67d8ec9d65d125ab437a9a6c303e6025069f25ccbd8d19d4cadb079f07e0c6db"
+    }
+  ]
+}

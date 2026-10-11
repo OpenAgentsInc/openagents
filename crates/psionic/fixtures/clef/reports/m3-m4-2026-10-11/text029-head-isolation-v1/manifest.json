@@ -1,0 +1,75 @@
+{
+  "schema": "clef.text029-pooled-head-publication.v1",
+  "scope": "CPU-only partial pooled-row cross-swap; not full native-head parity or runtime acceptance",
+  "excluded": [
+    "raw tensors",
+    "model weights",
+    "executables",
+    "raw memory samples"
+  ],
+  "files": [
+    {
+      "path": "guard.json",
+      "original_sha256": "d6509f2dc42d4f7c67a81378c959c28d813e479a8341ef4bb6c7452907c0515c",
+      "original_bytes": 38204,
+      "published_sha256": "8af6942a26dbe1f506ad1126eebb6487a7f6ce0d61a3b83e75bcb1b66420b806",
+      "published_bytes": 25341,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "receipt.json",
+      "original_sha256": "ded01e6a4a50ba8b011dfaa37a4218dffb6bb9d7dd2e2f6dd6de885cb079f709",
+      "original_bytes": 39421,
+      "published_sha256": "ded01e6a4a50ba8b011dfaa37a4218dffb6bb9d7dd2e2f6dd6de885cb079f709",
+      "published_bytes": 39421,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "stdout.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "pooled-inspection.json",
+      "original_sha256": "c94e1d64991df871fd9244e572fecf5a80afeb1a024ca6bcfdb956b710531364",
+      "original_bytes": 9933,
+      "published_sha256": "c94e1d64991df871fd9244e572fecf5a80afeb1a024ca6bcfdb956b710531364",
+      "published_bytes": 9933,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "source/head_replay.py",
+      "original_sha256": "2a95592fdbf9d11a7bd4dccb78c277b886f3449ae1e73a44e4cc21a31664e496",
+      "original_bytes": 10219,
+      "published_sha256": "2a95592fdbf9d11a7bd4dccb78c277b886f3449ae1e73a44e4cc21a31664e496",
+      "published_bytes": 10219,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "source/guard_head.py",
+      "original_sha256": "889c198713b324751366dae3b61d921323988a10014430a8361bd3be45fa4758",
+      "original_bytes": 5766,
+      "published_sha256": "b50d46d3ec4658c4621b2c913f75dd95e9ed513a6d3d40577de909748f262048",
+      "published_bytes": 5621,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "source/pooled_inspection.py",
+      "original_sha256": "2447c315d6d2a672b4ff2d0e20f4ab3f697def7b830fd95cb5d7211fe21d6f99",
+      "original_bytes": 3122,
+      "published_sha256": "2447c315d6d2a672b4ff2d0e20f4ab3f697def7b830fd95cb5d7211fe21d6f99",
+      "published_bytes": 3122,
+      "reversible_path_substitution": true
+    }
+  ],
+  "path_tokens": [
+    "@@CLEF_WORKTREE@@",
+    "@@CLEF_SCRATCH@@",
+    "@@CLEF_PYTHON_ENV@@",
+    "@@CLEF_TARGET@@",
+    "@@CLEF_HOME@@"
+  ]
+}

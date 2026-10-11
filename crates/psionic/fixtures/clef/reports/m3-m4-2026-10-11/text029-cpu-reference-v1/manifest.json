@@ -1,0 +1,84 @@
+{
+  "schema": "clef.text029-cpu-reference-publication.v1",
+  "scope": "Independent same-GGUF CPU-f32 full-trunk reference for one359-token request; not replacement full-suite acceptance",
+  "excluded": [
+    "model weights",
+    "raw layer/final/lexical tensors",
+    "executables",
+    "raw memory samples"
+  ],
+  "files": [
+    {
+      "path": "guard.json",
+      "original_sha256": "2685993ee680de72d9a13997f11d9577aba5e683e91162064435d581f6429450",
+      "original_bytes": 37041,
+      "published_sha256": "a172d6f7ea5d21d827e661d400a089affcde287808c6c1a65d957d87d25267ca",
+      "published_bytes": 24520,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "receipt.json",
+      "original_sha256": "2ddca68532fb8d4cb3bf21f7a2b3c3c477ef275e972f207c18dd99945ce3305e",
+      "original_bytes": 53447,
+      "published_sha256": "2ddca68532fb8d4cb3bf21f7a2b3c3c477ef275e972f207c18dd99945ce3305e",
+      "published_bytes": 53447,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "stdout.log",
+      "original_sha256": "db9eb620f3513e8bae9b242858f246427486ff1533b6594162d3a2304e95d75d",
+      "original_bytes": 24038,
+      "published_sha256": "db9eb620f3513e8bae9b242858f246427486ff1533b6594162d3a2304e95d75d",
+      "published_bytes": 24038,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "source/cpu_reference.py",
+      "original_sha256": "b70e14f3d80a5e41d2256c30b60096bf9ea5223a66a4ba11ab5d1314d90e71bd",
+      "original_bytes": 15778,
+      "published_sha256": "995a4a7701cb73cf6cf6a336bb222b0ebf2f8fab0a31978285292e8ff781923a",
+      "published_bytes": 15721,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "source/guard_layers.py",
+      "original_sha256": "f02605b07df3618a6150c5aab51a60d4631c2001ba77d866eeb286acbe28292f",
+      "original_bytes": 7550,
+      "published_sha256": "9e991ea2a09a3805e93245e659b34f52bda2651cca9cc8750c7dde417a0e15ba",
+      "published_bytes": 7405,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "source/negative_a_forward.py",
+      "original_sha256": "de846dd390e2e5ee700764f62ee351e9b6ef85053b7d92205d51c6fe399f55f5",
+      "original_bytes": 4990,
+      "published_sha256": "de846dd390e2e5ee700764f62ee351e9b6ef85053b7d92205d51c6fe399f55f5",
+      "published_bytes": 4990,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "source-check.json",
+      "original_sha256": "683bfd76b98264a1686efbe02d779d80e8960924c0e41556db7be0d68460262c",
+      "original_bytes": 538,
+      "published_sha256": "683bfd76b98264a1686efbe02d779d80e8960924c0e41556db7be0d68460262c",
+      "published_bytes": 538,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "tokens.txt",
+      "original_sha256": "4f7e306fe42940463b4970468afdd600d1f317ad4aae245fb810963cc730fddc",
+      "original_bytes": 1686,
+      "published_sha256": "4f7e306fe42940463b4970468afdd600d1f317ad4aae245fb810963cc730fddc",
+      "published_bytes": 1686,
+      "reversible_path_substitution": true
+    },
+    {
+      "path": "layer-plan.md",
+      "original_sha256": "5d5ebf87802436d3309f390a045b178b6fa5d0b1991073438776cdd0a8cf027e",
+      "original_bytes": 4595,
+      "published_sha256": "5d5ebf87802436d3309f390a045b178b6fa5d0b1991073438776cdd0a8cf027e",
+      "published_bytes": 4595,
+      "reversible_path_substitution": true
+    }
+  ]
+}

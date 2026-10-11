@@ -1360,6 +1360,20 @@ official Transformers operators, independently decoded Q4 weights, MPS f32
 trunk execution, and a CPU f32 head; a CPU-versus-MPS pilot passes first.
 Runtime correctness and the speed target remain open.
 
+A [CPU head replay](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/text029-head-isolation-v1/README.md)
+reproduces the flipped answer by replacing only the false-option pooled
+context with its native export, while holding the official head and full
+reference memory fixed. Ordinary f16 rounding of reference pools does not
+explain the difference. The remaining investigation is before head projection
+and scoring; this diagnostic does not change the failed full-suite gate.
+
+An [independent CPU run of the same case](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/text029-cpu-reference-v1/README.md)
+agrees with the accelerated reference on all three answers and still disagrees
+with native execution on one. The revised
+[QK128/key32 attention probe](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/attention-qk128-key32-probe-v1/README.md)
+preserves bitwise output agreement in synthetic checks and reduces median
+kernel time by 8–18%. Its full-model validation is pending.
+
 ### Metal controls and memory
 
 These settings are read when the model loads. Invalid enabled settings stop

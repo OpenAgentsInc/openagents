@@ -1,0 +1,15 @@
+{
+  "prior_source_sha256": "b1b61674dc9afc362f29bef3bf228ed4d5e6c7cf0150bf203023d28362462041",
+  "new_source_sha256": "b70e14f3d80a5e41d2256c30b60096bf9ea5223a66a4ba11ab5d1314d90e71bd",
+  "cpu_layer_loop_final_norm_and_head_forward_byte_exact": true,
+  "unchanged_numerical_region_sha256": "5c503e1ebf34f9f632cba353b3a67e042d54bc13c53412b6fa17756f442a448d",
+  "case": "text-029",
+  "tokens": 359,
+  "layers": 64,
+  "runtime_estimate_seconds": [
+    150,
+    180
+  ],
+  "prior014_seconds": 141.10285,
+  "prior014_peak_bytes": 3163324416
+}

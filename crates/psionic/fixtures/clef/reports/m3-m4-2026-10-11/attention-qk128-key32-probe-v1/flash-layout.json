@@ -1,0 +1,18 @@
+{
+  "artifact_name": "Clef-Flash-Q4_K_M.gguf",
+  "artifact_size": 6486448288,
+  "header_metadata_bytes": 10944484,
+  "header_metadata_sha256": "25fc49fc7cc1cd6161040fbee65dc8ca89a2725ca12d46787994381052b85439",
+  "version": 3,
+  "tensors": 587,
+  "selected_metadata": {
+    "general.architecture": "clef",
+    "general.name": "Clef-Flash",
+    "clef.embedding_length": 4096,
+    "clef.attention.head_count": 16,
+    "clef.attention.head_count_kv": 4,
+    "clef.attention.key_length": 256,
+    "clef.decision.head_count": 16
+  },
+  "tensor_payload_read": false
+}
