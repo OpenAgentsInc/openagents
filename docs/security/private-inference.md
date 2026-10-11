@@ -193,6 +193,66 @@ target/debug/oa-att round --publisher 77fabebbeb49a7b9b384422ee6ef5662cf4db7da70
     --workload clef-decisions-gpu --state "..." --question "..."
 ```
 
+### The three ways to answer on /att
+
+The page lets the visitor pick who answers (`GET /att/api/lanes`; state and
+send take `?lane=gpu|cpu|open`). Each choice shows its level, its measured
+time and cost, and its own who-sees-what table. Measured on production on
+2026-10-10, for the demo question, as a verified browser or `oa-att` round:
+
+| Choice | Level | Engine | Verified round | Cost while running | Sealed? |
+| --- | --- | --- | --- | --- | --- |
+| Sealed GPU (`clef-decisions-gpu`, `oa-att-h100-1`) | `tee-cloud` | Psionic Clef on CUDA, H100 in CC mode, TDX | 0.36–0.52 s (Psionic 53–56 ms warm) | about $6.83/h spot in us-east5 (H100 $5.71, vCPU and RAM $0.69, CC surcharge $0.44); stopped, disk only | Yes: CPU and GPU in Google Confidential Space |
+| Sealed CPU (`clef-decisions`, `oa-att-tdx-1`) | `tee-cloud` | Psionic Clef on 8 TDX vCPUs | about 27 s (about 22 s in Clef) | about $0.40/h plus the CVM surcharge, always on | Yes: TDX in Google Confidential Space |
+| Fast GPU, not sealed (`coderos-4080-att-open`) | `open` | Psionic Clef M2 on CUDA, RTX 4080 | 0.7–1.4 s (Clef about 0.1 s) | no cloud cost; the office machine | **No.** Sealed in transit only |
+
+**The open choice.** The same NIP-44 sealed NIP-DEC `25910`, through the
+same gateway and `wss://relay.openagents.com`, to a decision pylon on
+CoderOS-4080 with its own key `81bb2b35…eba4` (`~/work/pylon-att-open`
+there, user unit `pylon-att-open`, started by `pylon-att-open.sh`). It
+serves from the production Clef server on port 18096, beside
+`pylon-decide`, which is untouched, and it takes one job at a time, 3 a minute
+per caller and 12 a minute in all (`pylon serve --allow-any --slots 1
+--rate 3 --total-rate 12`). The relay and gateway still see only
+ciphertext, and the job is sealed to the Pylon's key. But the Pylon is not a
+TEE: its owner (us) can read every job. The client checks only signed
+claims (`oa_att::open`): the beacon is signed by that key, is online, and
+names the weights `clef-flash@sha256:fd3e…638c`; the answer and its
+receipt are signed by that key and name the same weights. Who sees what:
+
+| Party | Sees |
+| --- | --- |
+| Your browser | Your question and the answer |
+| OpenAgents relay and gateway | Size, timing, sealed bytes |
+| The Pylon's owner | Your question and the answer: the machine is not sealed |
+| Anyone else on the relay | Size, timing, sealed bytes |
+
+**Tampering on each choice.** Sealed CPU: change the fingerprint (refused
+at the measurement step) or swap the key (refused at the binding step).
+Sealed GPU: those two, plus "pretend the GPU's protections are off" (the
+token's `cc_mode` read as `DEVTOOLS`; refused at the measurement step).
+Open: change the weights' fingerprint (refused at the beacon check). The
+key swap does not apply to the open choice, because nothing binds that key to
+hardware, and the page says so.
+
+**Waking the sealed GPU.** The page's "Wake the sealed GPU" posts
+`/att/api/wake`. The gateway, running as the web runtime account, which
+holds `compute.instanceAdmin.v1` on that one instance only, calls
+`instances.start` (6 wakes an hour for everyone together). Measured
+start to published `30203`: 219–236 s. The gateway counts the GPU as
+ready only while Compute Engine says the machine runs and its endpoint
+is newer than the machine's `lastStartTimestamp`, because a stopped
+machine's last record stays current for up to an hour but its key is gone.
+The workload stops its own machine after 900 idle seconds (`--idle-stop`),
+and `maxRunDuration` 3600 s caps every run. One wake costs about $2.30.
+
+**Rollback.** Web: `scripts/deploy/web.sh rollback` to the revision
+before `coder-web-0898967627-20261011002831` (the shift prints it). The
+open Pylon: `systemctl --user stop pylon-att-open` on CoderOS. The
+sealed GPU: `ATT_ZONE=us-east5-a scripts/deploy/att-provider.sh gpu-stop`.
+Each choice fails closed: a choice that can't verify is refused on the page,
+and never falls back to another.
+
 ### On this device
 
 The same flow works with no TEE when Psionic runs on the person's own
