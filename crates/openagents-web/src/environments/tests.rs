@@ -215,6 +215,95 @@ fn a_ready_setup_reads_as_a_conversation_with_a_save_card() {
     );
 }
 
+/// #11316: a saved environment whose new setup attempt stopped on a
+/// model error says so in one plain sentence, offers Try again, and keeps
+/// Run Claude Code on its saved version; its composer says it changes the
+/// setup, and points at a working run's page for messages to the run.
+#[test]
+fn a_saved_environment_stays_runnable_when_a_new_setup_stops() {
+    let raw = r#"The setup agent couldn't reach its model: the provider returned HTTP 400: {"error":{"type":"invalid_request","param":"input"}}"#;
+    let mut v = review();
+    v.records.push(record(Entry::Saved { number: 1 }));
+    v.records.push(record(Entry::User {
+        text: "Also say banana.".into(),
+    }));
+    v.records.push(record(Entry::Failed { reason: raw.into() }));
+    v.phase = Phase::Failed { reason: raw.into() };
+    v.candidate = None;
+    v.versions = vec![Version {
+        number: 1,
+        selected: true,
+        image: "oaenv-build-1".into(),
+        created_ms: 1,
+    }];
+    let html = view::transcript(&v, view::Claude::Ready, None).into_string();
+    assert!(html.contains("Try again"), "{html}");
+    assert!(html.contains("couldn't take the request"), "{html}");
+    assert!(
+        !html.contains("HTTP 400") && !html.contains("invalid_request"),
+        "{html}"
+    );
+    assert!(html.contains("Run Claude Code on version 1"), "{html}");
+    assert!(html.contains("action=\"/environments/env-1/claude\""));
+    assert!(oa_copy::violations(&text(&html), &[]).is_empty());
+
+    let mut purpose = view::DockFor::of(&v);
+    assert!(purpose.saved);
+    let dock = view::dock("env-1", None, false, &purpose).into_string();
+    assert!(
+        dock.contains("Change this environment&#39;s setup")
+            || dock.contains("Change this environment's setup"),
+        "{dock}"
+    );
+    assert!(dock.contains("starts a new setup computer"), "{dock}");
+    purpose.working_run = Some("claude-env-1-2".into());
+    let dock = view::dock("env-1", None, false, &purpose).into_string();
+    assert!(
+        dock.contains("/environments/env-1/runs/claude-env-1-2"),
+        "{dock}"
+    );
+    let fresh = view::dock("env-1", None, false, &view::DockFor::default()).into_string();
+    assert!(fresh.contains("Message the setup agent"), "{fresh}");
+}
+
+/// #11314: the run page takes a message: for the next turn while it
+/// works, a follow-up once it has ended.
+#[test]
+fn a_run_page_takes_a_message() {
+    let run = Run {
+        id: "claude-env-1-1".into(),
+        environment: "env-1".into(),
+        prompt: "Fix the failing test".into(),
+        version: Some(1),
+        state: RunState::Running,
+        events: vec![json!({"event":"message","text":"Also add a test."})],
+        reply: None,
+        error: None,
+        created_ms: 1,
+        updated_ms: 1,
+        cost_usd: None,
+        paused_until: None,
+        openagents: false,
+    };
+    let dock = view::run_dock(&run, &["Also add a test.".into()]).into_string();
+    assert!(
+        dock.contains("action=\"/environments/env-1/runs/claude-env-1-1/message\""),
+        "{dock}"
+    );
+    assert!(dock.contains("1 message waits for its next turn"), "{dock}");
+    let ended = view::run_dock(
+        &Run {
+            state: RunState::Done,
+            ..run.clone()
+        },
+        &[],
+    )
+    .into_string();
+    assert!(ended.contains("starts a new run"), "{ended}");
+    let html = view::run_transcript(&run).into_string();
+    assert!(html.contains("Also add a test."), "{html}");
+}
+
 #[test]
 fn a_stopped_setup_offers_a_retry_and_a_saved_one_offers_claude_code() {
     let mut v = review();
@@ -289,6 +378,7 @@ fn a_claude_code_run_reads_as_a_conversation() {
         reply: None,
         error: None,
         created_ms: 1,
+        updated_ms: 1,
         cost_usd: None,
         paused_until: None,
         openagents: false,

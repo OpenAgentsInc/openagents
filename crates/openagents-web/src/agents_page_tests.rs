@@ -49,7 +49,9 @@ async fn an_environment_run_is_listed_and_stop_reaches_its_machine() {
     // Only agents: the open chat is the chat's own business.
     assert_eq!(found[0].agents.len(), 1);
     assert_eq!(found[0].agents[0].id, "task-1");
-    let html = settings_row(&store, &owner()).await.into_string();
+    let html = settings_row(&store, &owner(), Vec::new())
+        .await
+        .into_string();
     assert!(html.contains("1 working"), "{html}");
 
     // Stop, as the page's form queues it, reaches the environment at its

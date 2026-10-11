@@ -26,6 +26,7 @@
 //! after it ([`repositories`]), a page of 30 at a time, most recently
 //! pushed first, from the account service's per-account cache.
 
+pub(crate) mod board;
 pub(crate) mod push;
 pub(crate) mod view;
 
@@ -105,6 +106,7 @@ pub(crate) fn routes(app: &App) -> Router<App> {
         .route("/environments/{id}/runs/{run}", get(run))
         .route("/environments/{id}/runs/{run}/events", get(run_events))
         .route("/environments/{id}/runs/{run}/stop", post(stop))
+        .route("/environments/{id}/runs/{run}/message", post(message_run))
         .route("/environments/{id}/runs/{run}/choose", post(choose))
         .route_layer(axum::middleware::from_fn_with_state(
             app.clone(),
@@ -544,7 +546,7 @@ async fn page(
             .content(html! {
                 div class="oa-thread-view" { (view::thread(&stream, body)) }
             })
-            .composer(view::dock(id, None, false))
+            .composer(view::dock(id, None, false, &view::DockFor::of(&v)))
             .respond(headers),
     )
 }
@@ -633,7 +635,11 @@ async fn message(
     let result = studio.steer(&id, &form.q);
     if htmx(&headers) {
         let status = result.err();
-        return protect(view::dock(&id, status.as_deref(), true).into_response());
+        let purpose = studio
+            .view(&id)
+            .map(|v| view::DockFor::of(&v))
+            .unwrap_or_default();
+        return protect(view::dock(&id, status.as_deref(), true, &purpose).into_response());
     }
     match result {
         Ok(()) => protect(Redirect::to(&format!("/environments/{id}")).into_response()),
@@ -743,6 +749,7 @@ async fn run_page(
     let rows = scope.rows(studio);
     let saved = crate::cloud::byo::saved_class(&app, &headers).await;
     let offered = studio.claude_choices(&id, &run, saved);
+    let waiting = studio.claude_waiting(&id, &run);
     protect(
         UiPage::new("Claude Code")
             .path(format!("/environments/{id}/runs/{run}"))
@@ -761,6 +768,7 @@ async fn run_page(
                     @if let Some(notice) = notice { p role="status" { (notice) } }
                 }
             })
+            .composer(view::run_dock(&r, &waiting))
             .respond(&headers),
     )
 }
@@ -835,6 +843,45 @@ async fn stop(
         .headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     protect(response)
+}
+
+/// A message to a run from its page (#11314): for its next turn while it
+/// works, or a follow-up run once it has ended.
+async fn message_run(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Path((id, run)): Path<(String, String)>,
+    Form(form): Form<MessageForm>,
+) -> Response {
+    let Some(studio) = studio(&app).cloned() else {
+        return unavailable(&app, &headers);
+    };
+    if !same_site(&headers) {
+        return refused();
+    }
+    if owner_of(&app, &studio, &headers, &id).await.is_none()
+        || !valid_id(&run)
+        || studio.claude_run(&id, &run).is_none()
+    {
+        return missing(&headers);
+    }
+    let sent = board::message(
+        &app,
+        &studio,
+        board::Asker::Web(&headers),
+        &id,
+        &run,
+        &form.q,
+    )
+    .await;
+    match sent {
+        Ok(board::Messaged::FollowUp(next)) => {
+            let words = board::Messaged::FollowUp(next.clone()).words();
+            run_page(&app, &headers, id, next, Some(words)).await
+        }
+        Ok(sent) => run_page(&app, &headers, id, run, Some(sent.words())).await,
+        Err(error) => run_page(&app, &headers, id, run, Some(&error)).await,
+    }
 }
 
 #[derive(Deserialize)]

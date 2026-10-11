@@ -143,6 +143,8 @@ pub struct Run {
     pub reply: Option<String>,
     pub error: Option<String>,
     pub created_ms: u64,
+    /// When its record last changed: when it ended, once it has.
+    pub updated_ms: u64,
     /// Dollars spent so far: the computer's time, plus Claude Code's own
     /// cost when it reported one. `None` until either is known.
     pub cost_usd: Option<f64>,
@@ -204,6 +206,51 @@ impl Runs {
     /// Ask a run to stop; the driver cancels it and deletes the machine.
     pub fn stop(&self, environment: &str, id: &str) -> Result<(), String> {
         self.store(environment).cancel(id)
+    }
+
+    /// Send a working run a message (#11314). Claude Code takes no input
+    /// in the middle of a turn, so the message waits for the run's next
+    /// turn: when the current one ends, the run goes on, on the same
+    /// computer and files, with the message ([`Sent::NextTurn`]). A run
+    /// that has ended takes no more turns ([`Sent::Ended`]): the caller
+    /// starts a follow-up run instead.
+    pub fn message(&self, environment: &str, id: &str, text: &str) -> Result<Sent, String> {
+        let text = text.trim();
+        if text.is_empty() || text.chars().count() > MAX_MESSAGE {
+            return Err("Write a message of up to 4,000 characters.".into());
+        }
+        let run = self
+            .read(environment, id)
+            .ok_or("That run isn't there anymore.")?;
+        let path = self.inbox_path(environment, id);
+        let _held = lock(&INBOXES);
+        let mut inbox = read_inbox(&path);
+        if inbox.closed || run.state.finished() {
+            return Ok(Sent::Ended);
+        }
+        if inbox.messages.len() >= MAX_WAITING {
+            return Err(format!(
+                "It already has {MAX_WAITING} messages waiting. Send more when it has read them."
+            ));
+        }
+        inbox.messages.push(text.to_owned());
+        write_inbox(&path, &inbox)?;
+        Ok(Sent::NextTurn)
+    }
+
+    /// The messages waiting for a run's next turn, oldest first.
+    pub fn waiting(&self, environment: &str, id: &str) -> Vec<String> {
+        let _held = lock(&INBOXES);
+        let inbox = read_inbox(&self.inbox_path(environment, id));
+        if inbox.closed {
+            Vec::new()
+        } else {
+            inbox.messages
+        }
+    }
+
+    fn inbox_path(&self, environment: &str, id: &str) -> PathBuf {
+        inbox_path(&self.root, environment, id)
     }
 
     /// What a paused run offers the person whose saved Claude credential is
@@ -577,6 +624,140 @@ impl Backend for WithFiles {
     }
 }
 
+/// The longest message to a run, in characters.
+pub const MAX_MESSAGE: usize = 4000;
+/// The most messages that wait for a run's next turn.
+pub const MAX_WAITING: usize = 8;
+
+/// What became of a message to a run ([`Runs::message`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Sent {
+    /// It waits for the run's next turn, which starts when this one ends.
+    NextTurn,
+    /// The run has ended and takes no more turns.
+    Ended,
+}
+
+/// A run's waiting messages, beside its record (`<id>.inbox`); `closed`
+/// once the run has taken its last turn.
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+struct Inbox {
+    #[serde(default)]
+    messages: Vec<String>,
+    #[serde(default)]
+    closed: bool,
+}
+
+/// Every inbox's reads and writes, one at a time: the page that adds a
+/// message and the driver that takes them run in the same process.
+static INBOXES: Mutex<()> = Mutex::new(());
+
+fn inbox_path(root: &Path, environment: &str, id: &str) -> PathBuf {
+    root.join(environment).join(format!("{id}.inbox"))
+}
+
+fn read_inbox(path: &Path) -> Inbox {
+    std::fs::read(path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default()
+}
+
+fn write_inbox(path: &Path, inbox: &Inbox) -> Result<(), String> {
+    let bytes = serde_json::to_vec(inbox).map_err(|_| "The message couldn't be kept.")?;
+    let partial = path.with_extension("inbox-writing");
+    std::fs::write(&partial, bytes)
+        .and_then(|()| std::fs::rename(&partial, path))
+        .map_err(|_| "The message couldn't be kept. Try again.".into())
+}
+
+/// The messages waiting for the next turn, taken; when there are none,
+/// the inbox closes, so a message sent from now on starts a follow-up
+/// run instead of waiting for a turn that never comes.
+fn take_or_close(path: &Path) -> Vec<String> {
+    let _held = lock(&INBOXES);
+    let mut inbox = read_inbox(path);
+    if inbox.closed {
+        return Vec::new();
+    }
+    let messages = std::mem::take(&mut inbox.messages);
+    inbox.closed = messages.is_empty();
+    if write_inbox(path, &inbox).is_err() && !messages.is_empty() {
+        return Vec::new();
+    }
+    messages
+}
+
+/// Closes the inbox of a run that will take no more turns.
+fn close_inbox(path: &Path) {
+    let _held = lock(&INBOXES);
+    let mut inbox = read_inbox(path);
+    if !inbox.closed && path.exists() {
+        inbox.closed = true;
+        let _ = write_inbox(path, &inbox);
+    }
+}
+
+/// What the run's next turn asks of Claude Code: the person's messages,
+/// then the request the run started with.
+pub fn next_turn_prompt(request: &str, messages: &[String]) -> String {
+    let mut text = String::from(
+        "The person sent new messages while you worked. Read them and continue from where you are: the repository and your changes are as you left them.\n\nNew messages, oldest first:",
+    );
+    for message in messages {
+        text.push_str("\n- ");
+        text.push_str(message.trim());
+    }
+    text.push_str("\n\nThe request you started with:\n");
+    text.push_str(request);
+    text
+}
+
+/// Turn a run whose turn ended into its next turn with `messages`, on the
+/// same computer (the continuation path a usage-limit resume takes). False
+/// when it can't go on: it was stopped, or never had a computer.
+fn next_turn(record: &mut Record, messages: &[String]) -> bool {
+    if record.cancel_requested
+        || record.resource.is_none()
+        || !matches!(record.state, State::Completed | State::Failed)
+    {
+        return false;
+    }
+    let binding = claude_task::BINDING;
+    let original = record
+        .binding
+        .get(binding)
+        .and_then(|b| b["task"].as_str())
+        .map_or_else(|| record.spec.task.clone(), str::to_owned);
+    record.binding[binding]["task"] = serde_json::json!(original);
+    record.binding["turn_start"] = serde_json::json!(record.events.len());
+    record.turns.push(serde_json::json!({
+        "task": record.spec.task,
+        "result": record.result,
+        "state": if record.state == State::Completed { "done" } else { "failed" },
+        "usage": record.usage,
+        "artifacts": record.artifacts,
+    }));
+    for message in messages {
+        record
+            .events
+            .push(serde_json::json!({"event": "message", "text": message}));
+    }
+    record.spec.task = next_turn_prompt(&original, messages);
+    record.state = State::Resuming;
+    record.created_ms = coder_cloud::now_ms();
+    record.remote_task = None;
+    record.cursor = None;
+    record.result = None;
+    record.error = None;
+    record.cleanup_complete = false;
+    record.cleanup_error = None;
+    record.artifacts = None;
+    record.artifact_error = None;
+    record.updated_ms = coder_cloud::now_ms();
+    true
+}
+
 /// How often a paused run looks at its reset and at a stop request.
 const PAUSE_CHECK: Duration = Duration::from_secs(1);
 
@@ -698,6 +879,7 @@ fn drive(
     // person's own key after a pause.
     let broker = credentials(None, push.as_ref());
     let own_computer = home.is_none();
+    let inbox = slot.with_extension("inbox");
     let credentials = credentials(key.as_ref(), push.as_ref());
     drop(key);
     let script = push.as_ref().map(|push| {
@@ -753,7 +935,20 @@ fn drive(
                 Ok(Some(coder_cloud::claude_task::Outcome::SignIn)) => {
                     return lease.save(&record);
                 }
-                Ok(None) | Err(_) => return Ok(()),
+                Ok(None) => {
+                    // Messages sent while it worked: the next turn, on the
+                    // same computer (#11314).
+                    if record.cancel_requested || lease.cancelled() {
+                        return Ok(());
+                    }
+                    let messages = take_or_close(&inbox);
+                    if messages.is_empty() || !next_turn(&mut record, &messages) {
+                        return Ok(());
+                    }
+                    lease.save(&record)?;
+                    continue;
+                }
+                Err(_) => return Ok(()),
             }
             match wait_paused(&lease, &mut record, &slot).await? {
                 Waited::Stop => {
@@ -778,6 +973,9 @@ fn drive(
         record.state = State::Failed;
         record.error = Some(error);
         let _ = lease.save(&record);
+    }
+    if record.state.terminal() {
+        close_inbox(&inbox);
     }
     if let Some(id) = disposable(own_computer, &record) {
         runtime.block_on(async {
@@ -856,11 +1054,13 @@ fn view(environment: &str, r: Record) -> Run {
         State::Failed => RunState::Failed,
         State::Cancelled => RunState::Stopped,
     };
-    let prompt = r
-        .spec
-        .task
+    // The request the run started with, not a later turn's prompt.
+    let task = r.binding[claude_task::BINDING]["task"]
+        .as_str()
+        .unwrap_or(r.spec.task.as_str());
+    let prompt = task
         .rsplit_once("\n\nThe repository is checked out at ")
-        .map_or(r.spec.task.as_str(), |(p, _)| p)
+        .map_or(task, |(p, _)| p)
         .to_owned();
     let reply = r.result.as_ref().and_then(|v| {
         v["reply"]
@@ -880,6 +1080,7 @@ fn view(environment: &str, r: Record) -> Run {
             .error
             .map(|e| crate::activity::plain(&e, "The run failed.")),
         created_ms: r.created_ms,
+        updated_ms: r.updated_ms,
         cost_usd,
         paused_until,
         openagents,
@@ -898,6 +1099,11 @@ pub fn transcript(events: &[Value]) -> Vec<Step> {
                     s.push_str(text);
                 } else if !text.is_empty() {
                     out.push(Step::Said(text.into()));
+                }
+            }
+            Some("message") => {
+                if let Some(text) = e["text"].as_str() {
+                    out.push(Step::Asked(text.into()));
                 }
             }
             Some("entry") => {
@@ -924,7 +1130,12 @@ pub fn transcript(events: &[Value]) -> Vec<Step> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Step {
     Said(String),
-    Tool { title: String, detail: String },
+    Tool {
+        title: String,
+        detail: String,
+    },
+    /// A message the person sent the run, read at its next turn (#11314).
+    Asked(String),
 }
 
 /// The run store directory under the studio state.
@@ -934,6 +1145,82 @@ pub fn root(state: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    /// #11314: a message waits for the run's next turn, which goes on on
+    /// the same computer with it; once the run takes no more turns, a
+    /// message is answered as ended.
+    #[test]
+    fn a_message_waits_for_the_next_turn_then_the_inbox_closes() {
+        let dir = tempfile::tempdir().unwrap();
+        let runs = Runs::under(dir.path());
+        let spec = Spec {
+            placement: Placement::Boat,
+            mode: Mode::Coder,
+            agent: coder_cloud::claude::ENGINE.into(),
+            task: task("Fix it", "/home/user/repo"),
+            model: None,
+            reasoning: None,
+            cwd: PathBuf::from("/home/user/repo"),
+            timeout_seconds: RUN_SECONDS,
+            size: "small".into(),
+            template: None,
+            credential_names: vec![],
+        };
+        let store = Store::under(dir.path().join("env-1"));
+        let lease = store.lease("claude-env-1-1").unwrap();
+        let mut record = Record::new("claude-env-1-1", spec).unwrap();
+        record.state = State::Running;
+        record.resource = Some("bx_1".into());
+        lease.save(&record).unwrap();
+
+        assert!(runs.message("env-1", "claude-env-1-1", "   ").is_err());
+        assert_eq!(
+            runs.message("env-1", "claude-env-1-1", "Also add a test.")
+                .unwrap(),
+            Sent::NextTurn
+        );
+        assert_eq!(
+            runs.waiting("env-1", "claude-env-1-1"),
+            vec!["Also add a test."]
+        );
+
+        // The turn ends: the driver takes the message into the next turn.
+        record.state = State::Completed;
+        let inbox = inbox_path(dir.path(), "env-1", "claude-env-1-1");
+        let messages = take_or_close(&inbox);
+        assert_eq!(messages, vec!["Also add a test."]);
+        assert!(next_turn(&mut record, &messages));
+        assert_eq!(record.state, State::Resuming);
+        assert_eq!(record.resource.as_deref(), Some("bx_1"));
+        assert!(record.spec.task.contains("- Also add a test."));
+        assert!(record.spec.task.contains("Fix it"));
+        lease.save(&record).unwrap();
+        let run = runs.read("env-1", "claude-env-1-1").unwrap();
+        assert_eq!(
+            run.prompt, "Fix it",
+            "the page keeps the request it started with"
+        );
+        assert!(
+            transcript(&run.events).contains(&Step::Asked("Also add a test.".into())),
+            "{:?}",
+            run.events
+        );
+
+        // That turn ends with nothing waiting: the inbox closes, and a
+        // message from then on is for a follow-up run.
+        record.state = State::Completed;
+        lease.save(&record).unwrap();
+        assert!(take_or_close(&inbox).is_empty());
+        assert_eq!(
+            runs.message("env-1", "claude-env-1-1", "One more thing.")
+                .unwrap(),
+            Sent::Ended
+        );
+        assert!(runs.waiting("env-1", "claude-env-1-1").is_empty());
+        // A stopped run takes no next turn.
+        record.cancel_requested = true;
+        assert!(!next_turn(&mut record, &["x".into()]));
+    }
+
     #[test]
     fn a_finished_run_deletes_only_its_own_computer() {
         let spec = Spec {

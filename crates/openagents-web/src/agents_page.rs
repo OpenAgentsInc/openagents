@@ -20,7 +20,10 @@
 //! Since #11250 it also shows the work runs on openagents.com's own
 //! machines (the `OpenAgents Cloud` list, [`crate::work_runs`]; Stop only)
 //! and the landing queue's entries an integrator reports (kind `landing`,
-//! no Stop or Message). Each row's title starts with its issue, its line
+//! no Stop or Message), and, since #11307, the person's Claude Code runs on
+//! their environments (the `Environments` list,
+//! [`crate::environments::board`]: Stop and Message reach the run, a
+//! message waiting for its next turn). Each row's title starts with its issue, its line
 //! says its stage, and the issue, commit and pull request are links to
 //! GitHub ([`crate::github_refs`]).
 
@@ -113,9 +116,44 @@ async fn machines(store: &Store, owner: &str) -> Vec<Machine> {
     found
 }
 
+/// [`machines`], with the person's Claude Code runs on their environments
+/// (#11307) as the `Environments` list.
+async fn machines_with_environments(app: &App, viewer: &Viewer) -> Vec<Machine> {
+    let owner = account_owner(&viewer.account_id);
+    let mut found = machines(&app.config.chat_store, &owner).await;
+    let runs = crate::environments::board::rows(app, &viewer.account_id, Some(viewer)).await;
+    with_environments(&mut found, runs);
+    found
+}
+
+/// Adds the environment runs `runs` as the `Environments` list.
+pub(crate) fn with_environments(found: &mut Vec<Machine>, runs: Vec<Item>) {
+    if runs.is_empty() {
+        return;
+    }
+    found.push(Machine {
+        name: crate::environments::board::BOARD.to_owned(),
+        online: true,
+        updated_unix: runs
+            .iter()
+            .map(|item| item.finished_unix.unwrap_or(now_unix()))
+            .max()
+            .unwrap_or(0),
+        agents: runs,
+    });
+    found.sort_by_key(|machine| std::cmp::Reverse(machine.updated_unix));
+}
+
 /// Whether `item` is a work run's ([`crate::work_runs`]): Stop only.
 fn work_run(machine: &Machine, item: &Item) -> bool {
     machine.name == crate::work_runs::BOARD && crate::work_runs::is_run(&item.id)
+}
+
+/// The page an environment run's row opens (#11307).
+fn environment_path(machine: &Machine, item: &Item) -> Option<String> {
+    (machine.name == crate::environments::board::BOARD)
+        .then(|| crate::environments::board::row_path(&item.id))
+        .flatten()
 }
 
 fn live(item: &Item) -> bool {
@@ -154,6 +192,8 @@ fn notice_words(code: &str) -> Option<&'static str> {
         "long" => "Keep a message to 4,000 characters.",
         "secret" => "This looks like it holds a password or key, so it wasn't sent.",
         "failed" => "That didn't go through. Try again.",
+        "next_turn" => crate::environments::board::Messaged::NextTurn.words(),
+        "follow_up" => crate::environments::board::Messaged::FollowUp(String::new()).words(),
         _ => return None,
     })
 }
@@ -186,7 +226,12 @@ fn agent_row(machine: &Machine, item: &Item, csrf: &str, now: u64) -> Markup {
     html! {
         div class="oa-settings-row" data-status=(item.status) {
             div class="oa-settings-text" {
-                span class="oa-settings-label" { (crate::github_refs::linked(&item.title, repository)) }
+                span class="oa-settings-label" {
+                    @match environment_path(machine, item) {
+                        Some(path) => a href=(path) { (item.title) },
+                        None => (crate::github_refs::linked(&item.title, repository)),
+                    }
+                }
                 span class="oa-settings-hint" {
                     (status_words(&item.status))
                     @if let Some(engine) = &item.engine { " · " (engine) }
@@ -302,7 +347,7 @@ async fn list_page(
         Err(response) => return response,
     };
     let owner = account_owner(&viewer.account_id);
-    let found = machines(&app.config.chat_store, &owner).await;
+    let found = machines_with_environments(&app, &viewer).await;
     let going = found.iter().any(|machine| machine.agents.iter().any(live));
     let csrf = crate::pages::chat::csrf(&app, &owner);
     let body = list_markup(&found, &csrf, now_unix(), notice_words(&query.said));
@@ -334,7 +379,11 @@ pub(crate) fn message_markup(item: &Item, computer: &str, csrf: &str) -> Markup 
                         .aria_label(format!("Message {}", item.title)))
                     (Button::new("Send").kind(ButtonType::Submit))
                 }
-                p { "It reads your message at its next step, on " (computer) "." }
+                @if computer == crate::environments::board::BOARD {
+                    p { "Claude Code can't read messages in the middle of a turn: it reads yours when its current turn ends, then carries on." }
+                } @else {
+                    p { "It reads your message at its next step, on " (computer) "." }
+                }
             }
         }
     }
@@ -350,7 +399,7 @@ async fn message_page(
         Err(response) => return response,
     };
     let owner = account_owner(&viewer.account_id);
-    let found = machines(&app.config.chat_store, &owner).await;
+    let found = machines_with_environments(&app, &viewer).await;
     let Some(item) = found
         .iter()
         .filter(|machine| machine.name == target.computer)
@@ -394,7 +443,14 @@ struct ActForm {
 
 /// Queue `action` for an agent, the way the phone's Stop and Message do;
 /// the code the list then explains.
-async fn act(app: &App, owner: &str, form: &ActForm, action: &str) -> &'static str {
+async fn act(
+    app: &App,
+    headers: &HeaderMap,
+    viewer: &Viewer,
+    form: &ActForm,
+    action: &str,
+) -> &'static str {
+    let owner = &account_owner(&viewer.account_id);
     let computer = line(&form.computer, 64);
     if computer.is_empty() || form.item.is_empty() || form.item.len() > 128 {
         return "gone";
@@ -410,6 +466,11 @@ async fn act(app: &App, owner: &str, form: &ActForm, action: &str) -> &'static s
         if secret_screen::credential_in(text).is_some() {
             return "secret";
         }
+    }
+    // A Claude Code run on one of the person's environments (#11307): Stop
+    // and Message reach the run itself.
+    if computer == crate::environments::board::BOARD {
+        return environment_act(app, headers, viewer, &form.item, action, text).await;
     }
     // A work run on openagents.com's own machines (#11258): Stop reaches
     // the run itself.
@@ -441,6 +502,40 @@ async fn act(app: &App, owner: &str, form: &ActForm, action: &str) -> &'static s
     }
 }
 
+/// Stop or Message on an environment run's row.
+async fn environment_act(
+    app: &App,
+    headers: &HeaderMap,
+    viewer: &Viewer,
+    item: &str,
+    action: &str,
+    text: &str,
+) -> &'static str {
+    use crate::environments::board;
+    let Some(studio) = app.config.environments.get() else {
+        return "gone";
+    };
+    let owner = account_owner(&viewer.account_id);
+    let Some((env, run)) = board::resolve(app, &studio, &viewer.account_id, &owner, item).await
+    else {
+        return "gone";
+    };
+    match action {
+        "stop" => match studio.stop_claude(&env, &run) {
+            Ok(()) => "stopping",
+            Err(_) => "gone",
+        },
+        "message" => {
+            match board::message(app, &studio, board::Asker::Web(headers), &env, &run, text).await {
+                Ok(board::Messaged::NextTurn) => "next_turn",
+                Ok(board::Messaged::FollowUp(_)) => "follow_up",
+                Err(_) => "failed",
+            }
+        }
+        _ => "gone",
+    }
+}
+
 async fn acted(
     app: &App,
     headers: &HeaderMap,
@@ -454,7 +549,7 @@ async fn acted(
     let owner = account_owner(&viewer.account_id);
     let code = match form {
         Ok(Form(form)) if token_fits(app, &owner, &form.csrf) => {
-            act(app, &owner, &form, action).await
+            act(app, headers, &viewer, &form, action).await
         }
         _ => "failed",
     };
@@ -478,8 +573,9 @@ async fn message_route(
 }
 
 /// The Settings row that leads here, once a computer reports an agent.
-pub(crate) async fn settings_row(store: &Store, owner: &str) -> Markup {
-    let found = machines(store, owner).await;
+pub(crate) async fn settings_row(store: &Store, owner: &str, environments: Vec<Item>) -> Markup {
+    let mut found = machines(store, owner).await;
+    with_environments(&mut found, environments);
     if found.is_empty() {
         return html! {};
     }

@@ -511,10 +511,17 @@ async fn build(client: &Client, flags: &Flags) -> Fallible<Value> {
             Ok(summary)
         }
         Err(error) => {
-            log(format!(
-                "failed; stopping {id} and keeping it for inspection"
-            ));
-            teardown(client, &id, false).await;
+            // A failed build's machine is deleted too, unless asked to keep
+            // it: a daily run that failed kept a large machine and its disk
+            // with no owner (#11317).
+            if flags.keep_sandbox {
+                log(format!(
+                    "failed; stopping {id} and keeping it (--keep-sandbox)"
+                ));
+            } else {
+                log(format!("failed; deleting {id}"));
+            }
+            teardown(client, &id, !flags.keep_sandbox).await;
             Err(error)
         }
     }

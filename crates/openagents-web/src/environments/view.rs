@@ -588,7 +588,7 @@ pub(crate) fn transcript(view: &View, claude: Claude, notice: Option<&str>) -> M
                 if current {
                     turns.push(acts(failed_card(id, reason)).render());
                 } else {
-                    turns.push(note(reason).render());
+                    turns.push(note(shown_reason(reason)).render());
                 }
             }
         }
@@ -599,8 +599,12 @@ pub(crate) fn transcript(view: &View, claude: Claude, notice: Option<&str>) -> M
         Phase::Working => turns.push(note("Working…").render()),
         Phase::Building => turns.push(note("Building a clean image…").render()),
         Phase::Verifying => turns.push(note("Checking a fresh computer…").render()),
-        Phase::Saved { .. } => turns.push(acts(claude_card(view, claude)).render()),
         _ => {}
+    }
+    // A saved version stays runnable while a new setup attempt is open or
+    // has stopped (#11316).
+    if view.versions.iter().any(|v| v.selected) {
+        turns.push(acts(claude_card(view, claude)).render());
     }
     if let Some(notice) = notice {
         turns.push(note(notice).render());
@@ -649,10 +653,24 @@ fn save_card(view: &View) -> Markup {
     .render()
 }
 
+/// A stop reason as the person reads it: a provider's raw answer (an
+/// HTTP status or JSON, kept by setups that stopped before #11316) becomes
+/// one plain sentence.
+pub(crate) fn shown_reason(reason: &str) -> String {
+    let raw = reason.contains("{\"") || reason.contains("HTTP ");
+    if !raw {
+        return reason.to_owned();
+    }
+    if reason.starts_with("The setup agent couldn't reach its model") {
+        return "The setup agent's model couldn't take the request. Try again.".into();
+    }
+    "The setup stopped on an error. Try again.".into()
+}
+
 fn failed_card(id: &str, reason: &str) -> Markup {
     ResultCard::new("Setup stopped")
         .badge(ActivityStatus::Failed.badge("Stopped"))
-        .body(MarkdownRoot::new(html! { p { (reason) } }).size(MarkdownSize::Sm))
+        .body(MarkdownRoot::new(html! { p { (shown_reason(reason)) } }).size(MarkdownSize::Sm))
         .footer(html! {
             form action=(format!("/environments/{id}/retry")) method="post" {
                 (submit("Try again", true))
@@ -819,6 +837,7 @@ pub(crate) fn run_transcript_with(run: &Run, offered: &[PauseChoice]) -> Markup 
     for s in steps {
         match s {
             claude::Step::Said(text) => turns.push(says(&text).render()),
+            claude::Step::Asked(text) => turns.push(Message::user(&text).render()),
             claude::Step::Tool { title, detail } => {
                 let mut call = ToolCall::new(Icon::Terminal, title);
                 if !detail.is_empty() {
@@ -894,20 +913,102 @@ pub(crate) fn run_transcript_with(run: &Run, offered: &[PauseChoice]) -> Markup 
     }
 }
 
+/// What the environment page's composer is for, beside it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct DockFor {
+    /// The environment has a saved version: a message changes its setup
+    /// on a new setup computer, so the box says so (#11316).
+    pub saved: bool,
+    /// A Claude Code run of this environment that is working: its page
+    /// takes messages for it, not this box (#11314).
+    pub working_run: Option<String>,
+}
+
+impl DockFor {
+    /// What `view` makes the composer for.
+    pub(crate) fn of(view: &View) -> Self {
+        Self {
+            saved: view.versions.iter().any(|v| v.selected),
+            working_run: view
+                .runs
+                .iter()
+                .find(|run| !run.state.finished())
+                .map(|run| run.id.clone()),
+        }
+    }
+}
+
 /// The docked composer that answers and steers the setup.
-pub(crate) fn dock(id: &str, status: Option<&str>, oob: bool) -> Markup {
+pub(crate) fn dock(id: &str, status: Option<&str>, oob: bool, purpose: &DockFor) -> Markup {
+    let (label, placeholder) = if purpose.saved {
+        (
+            "Change this environment's setup",
+            "Describe a change to the setup. It starts a new setup computer.",
+        )
+    } else {
+        (
+            "Message the setup agent",
+            "Answer, or tell the agent what to change",
+        )
+    };
     let mut composer = Composer::new("env-composer", format!("/environments/{id}/message"))
-        .label("Message the setup agent")
-        .input_label("Message")
-        .placeholder("Answer, or tell the agent what to change")
+        .label(label)
+        .input_label(label)
+        .placeholder(placeholder)
         .max_chars(MAX_MESSAGE)
         .rows(1);
     if let Some(status) = status {
         composer = composer.status(html! { (status) });
+    } else if let Some(run) = &purpose.working_run {
+        composer = composer.status(html! {
+            "This box changes the environment's setup. To message the Claude Code run that is working, use "
+            a href=(format!("/environments/{id}/runs/{run}")) { "its page" } "."
+        });
+    } else if purpose.saved {
+        composer = composer.status(html! {
+            "This box changes the environment's setup; your saved version keeps running Claude Code."
+        });
     }
     html! {
         div #env-dock hx-swap-oob=[oob.then_some("outerHTML")] { (composer) }
     }
+}
+
+/// The run page's composer (#11314): a message for the run's next turn
+/// while it works, or a follow-up run once it has ended. `waiting` are the
+/// messages already waiting.
+pub(crate) fn run_dock(run: &Run, waiting: &[String]) -> Markup {
+    let (placeholder, hint) = if run.state.finished() {
+        (
+            "Ask for more. It starts a new run that picks up from this one.",
+            "This run has ended. A message starts a new run with it.".to_owned(),
+        )
+    } else {
+        (
+            "Message Claude Code",
+            match waiting.len() {
+                0 => "Claude Code reads a message when its current turn ends, then carries on."
+                    .to_owned(),
+                1 => "1 message waits for its next turn. It reads it when its current turn ends."
+                    .to_owned(),
+                n => format!(
+                    "{n} messages wait for its next turn. It reads them when its current turn ends."
+                ),
+            },
+        )
+    };
+    let composer = Composer::new(
+        "run-composer",
+        format!("/environments/{}/runs/{}/message", run.environment, run.id),
+    )
+    .label("Message Claude Code")
+    .input_label("Message Claude Code")
+    .placeholder(placeholder)
+    .max_chars(MAX_MESSAGE)
+    .rows(1)
+    .enhanced(false)
+    .status(html! { (hint) });
+    html! { div #run-dock { (composer) } }
 }
 
 /// The scrolling thread with its live stream.

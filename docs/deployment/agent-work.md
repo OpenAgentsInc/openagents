@@ -118,6 +118,34 @@ ends. Tests: `cargo test -p coder-environment-operator push` (real Git and
 `projects::tests::app` (a ticket redeemed through the site, another
 repository and a forged ticket refused).
 
+## Messages, the agents list, and leftover computers
+
+- **Message a run** (#11314): a run's page (`/environments/{id}/runs/{run}`)
+  has a message box. Claude Code takes no input in the middle of a turn, so
+  a message waits (`<run>.inbox` beside the run's record) and, when the
+  turn ends, the run takes another turn on the same computer and files with
+  it; the page says so. A message to a run that has ended starts a
+  follow-up run carrying the message and what the run reported.
+- **Agents list** (#11307): every Claude Code run on the person's
+  environments, from an environment page or a chat, is a row on
+  `/settings/agents` and the phone's `GET /v1/agents` (the `Environments`
+  list) while it works and for a day after: title, stage, cost so far, a
+  link to its page, Stop and Message (the same message path as the page).
+- **Changing a saved environment** (#11316): the environment page's box
+  says it changes the setup (it starts a new setup computer) and points at
+  a working run's page for messages to the run; the saved version keeps its
+  Run Claude Code form while a new setup is open or has stopped, and a
+  model failure reads as one sentence with Try again.
+- **Leftover computers** (#11317): the hourly sweep (at studio start and
+  every hour, beside the sign-in computers' of #11296) deletes the stopped
+  computers this deployment's own records name and nothing uses again:
+  setup, image-build, and fresh-machine-check computers past their absolute
+  deadline (`environment-computers/*.json`), and ended runs' computers
+  (`environment-claude/`). It never deletes a running computer, a
+  signed-in one, or anything no record of its own names (staging and
+  production share oa-boat). `boat-template build` now deletes a failed
+  build's machine too, unless `--keep-sandbox`.
+
 ## Smoke
 
 `scripts/smoke/staging.sh --only gates,signed-in,environments` checks the

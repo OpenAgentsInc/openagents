@@ -25,6 +25,7 @@
 
 pub mod claude;
 pub mod github;
+pub mod leftovers;
 pub mod push;
 pub mod sign_in;
 
@@ -481,7 +482,7 @@ impl Studio {
                 .view(id)
                 .is_some_and(|view| !view.phase.finished())
         };
-        sign_in::sweep(
+        let mut deleted = sign_in::sweep(
             machines,
             &self.homes,
             &current,
@@ -489,7 +490,27 @@ impl Studio {
             crate::now_ms(),
             self.config.retention_ms(),
         )
-        .await
+        .await;
+        // The computers setups, image builds, fresh-machine checks, and
+        // Claude Code runs left stopped (#11317); never a signed-in one.
+        let keep: BTreeSet<String> = self
+            .homes
+            .all()
+            .into_iter()
+            .flat_map(|(_, home)| std::iter::once(home.sandbox).chain(home.retired))
+            .collect();
+        for id in leftovers::finished(&self.config.state, crate::now_ms(), &keep) {
+            if let Ok(Some(state)) = machines.state(&id).await
+                && state == "stopped"
+                && machines.delete(&id).await.is_ok()
+            {
+                eprintln!(
+                    "environments: deleted the stopped computer {id}, which nothing uses again"
+                );
+                deleted += 1;
+            }
+        }
+        deleted
     }
 
     fn studio_dir(&self, id: &str) -> PathBuf {
@@ -979,12 +1000,27 @@ impl Studio {
         self.sign_ins.send(id, text)
     }
 
+    /// The environment's Claude Code runs, newest first.
+    pub fn claude_runs(&self, id: &str) -> Vec<claude::Run> {
+        self.runs.list(id)
+    }
+
     pub fn claude_run(&self, id: &str, run: &str) -> Option<claude::Run> {
         self.runs.read(id, run)
     }
 
     pub fn stop_claude(&self, id: &str, run: &str) -> Result<(), String> {
         self.runs.stop(id, run)
+    }
+
+    /// Send a run a message for its next turn ([`claude::Runs::message`]).
+    pub fn message_claude(&self, id: &str, run: &str, text: &str) -> Result<claude::Sent, String> {
+        self.runs.message(id, run, text)
+    }
+
+    /// The messages waiting for a run's next turn.
+    pub fn claude_waiting(&self, id: &str, run: &str) -> Vec<String> {
+        self.runs.waiting(id, run)
     }
 
     /// What a paused run offers the person whose saved Claude credential

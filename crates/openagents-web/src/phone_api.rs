@@ -16,7 +16,7 @@
 //! | `GET`/`PUT /v1/computers/{name}/sync` `{choice}` | The computer's (or phone's) sync choice, as `/coder/sync` |
 //! | `POST /v1/computers/{name}/activity` `{items: [Item]}` | Coder's running work on the computer; answers `{commands: [Command]}`, each handed out once. With `?kind=landing` (#11250), the landing queue's entries on the integrator computer (kind `landing`): they replace only that computer's landing items, keep its other items, and take no commands |
 //! | `GET /v1/agents` | `{computers: [{name, online, updated_unix, items}]}` |
-//! | `POST /v1/agents/actions` `{request_id, computer, item, action, question?, text?}` | Stop, approve, deny, or message an item, or take a paused item's choice (`your_key`, `openagents`, only when its `choices` list it): `202 {queued}` |
+//! | `POST /v1/agents/actions` `{request_id, computer, item, action, question?, text?}` | Stop, approve, deny, or message an item, or take a paused item's choice (`your_key`, `openagents`, only when its `choices` list it): `202 {queued}`. On the `Environments` board (a Claude Code run on the person's environments, #11307) Stop and Message reach the run itself: `202 {queued, message}`, the message waiting for the run's next turn |
 //!
 //! A phone chat is a synced chat ([`crate::chat_store::Terminal`]) whose
 //! session starts with [`PHONE_PREFIX`], uploaded through
@@ -870,11 +870,12 @@ async fn agents(State(app): State<App>, headers: HeaderMap) -> Response {
     };
     let mut jobs = crate::mac_jobs_actor::board_items(&app, &account).await;
     jobs.extend(crate::work_runs::board_items(store, &owner).await);
-    // Paused environment runs, with the choices this person has (#11295).
+    // The person's Claude Code runs on their environments (#11307), paused
+    // chat runs with the choices this person has (#11295).
     if app.config.environments.get().is_some() {
         let viewer = app_viewer(&app, &headers).await;
         jobs.extend(
-            crate::pages::chat::paused_items(&app, &owner, viewer.as_ref())
+            crate::environments::board::rows(&app, &account, viewer.as_ref())
                 .await
                 .into_iter()
                 .map(|item| (PAUSED_BOARD.to_owned(), item)),
@@ -897,8 +898,8 @@ async fn agents(State(app): State<App>, headers: HeaderMap) -> Response {
     )
 }
 
-/// The board the phone shows paused environment runs on (#11295), beside
-/// the account's computers.
+/// The board the phone shows the person's environment runs on (#11307;
+/// paused ones with their choices, #11295), beside the account's computers.
 pub(crate) const PAUSED_BOARD: &str = "Environments";
 
 /// The phone's own signed-in view, from its bearer token.
@@ -1052,11 +1053,7 @@ async fn action(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Resp
     // released into the run only, never to the phone.
     if sent.computer == PAUSED_BOARD {
         if !CHOICES.contains(&sent.action.as_str()) {
-            return refused(
-                StatusCode::CONFLICT,
-                "not_offered",
-                "A paused agent takes Continue on your key or Continue with OpenAgents.",
-            );
+            return environment_action(&app, &headers, &account, &owner, &sent).await;
         }
         let Some(viewer) = app_viewer(&app, &headers).await else {
             return refused(
@@ -1147,6 +1144,74 @@ async fn action(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Resp
             "That choice isn't open now.",
         ),
         Err(error) => stored(&error),
+    }
+}
+
+/// Stop or Message on a Claude Code run of the person's environments
+/// (#11307): it reaches the run itself. A message waits for the run's next
+/// turn, or starts a follow-up when the run has just ended.
+async fn environment_action(
+    app: &App,
+    headers: &HeaderMap,
+    account: &str,
+    owner: &str,
+    sent: &Action,
+) -> Response {
+    use crate::environments::board;
+    let Some(studio) = app.config.environments.get() else {
+        return refused(
+            StatusCode::NOT_FOUND,
+            "unknown",
+            "That isn't running anymore.",
+        );
+    };
+    let Some((env, run)) = board::resolve(app, &studio, account, owner, &sent.item).await else {
+        return refused(
+            StatusCode::NOT_FOUND,
+            "unknown",
+            "That isn't running anymore.",
+        );
+    };
+    match sent.action.as_str() {
+        "stop" => match studio.stop_claude(&env, &run) {
+            Ok(()) => answer(StatusCode::ACCEPTED, json!({"queued": true})),
+            Err(_) => refused(
+                StatusCode::NOT_FOUND,
+                "unknown",
+                "That isn't running anymore.",
+            ),
+        },
+        "message" => {
+            let Some(viewer) = app_viewer(app, headers).await else {
+                return refused(
+                    StatusCode::UNAUTHORIZED,
+                    "signed_out",
+                    "Sign in again to send it a message.",
+                );
+            };
+            let text = sent.text.as_deref().unwrap_or_default().trim();
+            match board::message(
+                app,
+                &studio,
+                board::Asker::App(&viewer, headers),
+                &env,
+                &run,
+                text,
+            )
+            .await
+            {
+                Ok(messaged) => answer(
+                    StatusCode::ACCEPTED,
+                    json!({"queued": true, "message": messaged.words()}),
+                ),
+                Err(said) => refused(StatusCode::CONFLICT, "not_sent", &said),
+            }
+        }
+        _ => refused(
+            StatusCode::CONFLICT,
+            "unsupported",
+            "A Claude Code run takes Stop or Message.",
+        ),
     }
 }
 

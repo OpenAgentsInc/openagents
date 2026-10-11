@@ -180,6 +180,7 @@ async fn settings(
     let agents = crate::agents_page::settings_row(
         &app.config.chat_store,
         &crate::chat_store::account_owner(&viewer.account_id),
+        crate::environments::board::rows(&app, &viewer.account_id, Some(&viewer)).await,
     )
     .await;
     let body = html! {
