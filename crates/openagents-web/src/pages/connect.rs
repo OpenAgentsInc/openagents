@@ -101,6 +101,11 @@ fn json(value: &serde_json::Value) -> Response {
 /// `GET /connect`: the page a phone without the OpenAgents app lands on
 /// when its camera opens the desktop app's QR code.
 pub(crate) async fn connect(headers: HeaderMap) -> Response {
+    connect_page(&headers)
+}
+
+/// The page itself, for `headers`.
+pub(crate) fn connect_page(headers: &HeaderMap) -> Response {
     let content = PageColumn::new(html! {
         article.oa-card id="connect" {
             (MarkdownRoot::new(html! {
@@ -135,7 +140,7 @@ pub(crate) async fn connect(headers: HeaderMap) -> Response {
         .scriptless()
         .without_toggle()
         .content(content)
-        .respond(&headers);
+        .respond(headers);
     let headers = response.headers_mut();
     headers.insert(
         header::CONTENT_SECURITY_POLICY,

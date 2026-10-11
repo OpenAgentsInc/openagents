@@ -43,7 +43,7 @@ fn icon(id: &str) -> Icon {
 }
 
 /// The [`learn`] cards as a grid.
-fn learn_cards() -> LinkCards {
+pub(crate) fn learn_cards() -> LinkCards {
     LinkCards::new("Learn about OpenAgents").cards(
         learn()
             .iter()

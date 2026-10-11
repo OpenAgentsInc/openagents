@@ -89,14 +89,25 @@ async fn page(app: &App, headers: &HeaderMap, back: Back, signup: bool) -> Respo
             "This server doesn't sign people in.",
         );
     }
-    let title = if signup { "Sign up" } else { "Log in" };
     let invite_only = app
         .config
         .cloud
         .as_deref()
         .is_some_and(|service| service.invite_only());
+    sign_in_page(headers, signup, invite_only, &return_to)
+}
+
+/// The sign-in page (`/login`, or `/signup` when `signup`): one GitHub
+/// button, a line of context, and nothing else.
+pub(crate) fn sign_in_page(
+    headers: &HeaderMap,
+    signup: bool,
+    invite_only: bool,
+    return_to: &str,
+) -> Response {
+    let title = if signup { "Sign up" } else { "Log in" };
     let path = if signup { "/signup" } else { "/login" };
-    let start = format!("/auth/github?return_to={}", encode(&return_to));
+    let start = format!("/auth/github?return_to={}", encode(return_to));
     let continue_button = ButtonLink::new("Continue with GitHub", &start)
         .size(ControlSize::Lg)
         .block(true)
@@ -111,7 +122,7 @@ async fn page(app: &App, headers: &HeaderMap, back: Back, signup: bool) -> Respo
                 @if invite_only {
                     "Sign-in is invite-only for now."
                 } @else if signup {
-                    "Already have an account? " a href=(login_href(&return_to, false)) { "Log in" }
+                    "Already have an account? " a href=(login_href(return_to, false)) { "Log in" }
                 } @else {
                     "New here? Continuing with GitHub creates your account."
                 }
@@ -389,7 +400,12 @@ async fn finish(
     response
 }
 
-fn try_again(headers: &HeaderMap, status: StatusCode, title: &str, text: &str) -> Response {
+pub(crate) fn try_again(
+    headers: &HeaderMap,
+    status: StatusCode,
+    title: &str,
+    text: &str,
+) -> Response {
     let content = PageColumn::new(html! {
         (MarkdownRoot::new(html! { h1 { (title) } p { (text) } }))
         div.oa-page-actions {
@@ -407,7 +423,7 @@ fn try_again(headers: &HeaderMap, status: StatusCode, title: &str, text: &str) -
     )
 }
 
-fn notice(headers: &HeaderMap, status: StatusCode, title: &str, text: &str) -> Response {
+pub(crate) fn notice(headers: &HeaderMap, status: StatusCode, title: &str, text: &str) -> Response {
     let content = PageColumn::new(html! {
         (MarkdownRoot::new(html! { h1 { (title) } p { (text) } }))
         div.oa-page-actions { (action_link("Home", "/").color(Color::Secondary)) }

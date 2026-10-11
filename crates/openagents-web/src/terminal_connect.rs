@@ -138,7 +138,7 @@ fn command(id: &str, text: &str) -> Markup {
 }
 
 /// Steps 1 and 2's commands, and the live part below them.
-fn page_body(headers: &HeaderMap, pair: &str, live: Markup) -> Markup {
+pub(crate) fn page_body(headers: &HeaderMap, pair: &str, live: Markup) -> Markup {
     let local = local_origin(headers);
     let [first, second] = install_commands(headers);
     html! {

@@ -65,6 +65,7 @@ mod promises;
 mod purchases;
 mod repo_snapshot;
 pub mod sales_remote;
+mod screens;
 mod settings;
 pub mod shutdown;
 mod sign_in_keys;
@@ -485,6 +486,7 @@ pub fn router(config: Config) -> Router {
         .route("/static/flow.js", get(flow_script))
         .route("/static/everglade.js", get(everglade_script))
         .route("/ui", get(ui_catalog))
+        .merge(screens::routes())
         .route("/favicon.svg", get(favicon))
         .route("/favicon.ico", get(favicon))
         .merge(pages::routes())
