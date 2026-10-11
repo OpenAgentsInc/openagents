@@ -285,6 +285,22 @@ and 120 timing records are retained, including substantial round variation
 under shared-machine load. The 7.09-second run stays under its 2 GiB cap and
 completes cleanup. This scheduling candidate is also rejected.
 
+The [fixed pipeline thread limit](gemm-pipeline-max128-v1/README.md) tests a
+compiler input while preserving shader bytes, dispatch size, and every barrier.
+Setting the GEMM pipeline's maximum to 128 changes its reported capacity from
+1,024 to 128 threads. All outputs remain bitwise equal, but full-FFN paired
+ratios are `0.767231`, `0.958682`, and `1.020236` at 512, 1,024, and 2,048 rows.
+This also fails the requirement for at least 10% improvement at every size.
+All 120 samples and six pipeline metadata records are retained. The 7.68-second
+bench stays under its 2 GiB cap and completes cleanup; no product change follows.
+
+The [deployment and remaining-path review](deployment-math-and-next-path-review-v1/README.md)
+separates the proven cooperative-input deployment issue from the direct-device
+GEMMs used in production. It finds no source evidence of a hidden conservative
+math setting. It also records the limits of the old intrusive profile and
+calculates the memory and conversion traffic of a possible layer-major 27B
+prefill. Those calculations are design estimates, not measured improvements.
+
 All probes use shared GPU/build and bounded memory leases as appropriate.
 None uses a quiet lease or changes desktop applications or system services.
 

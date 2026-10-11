@@ -1,0 +1,81 @@
+{
+  "identity": "gemm-pipeline-max128-v1",
+  "mode": "build",
+  "status": "complete",
+  "max_owned_group_bytes": 4294967296,
+  "minimum_available_bytes": 12884901888,
+  "minimum_start_bytes": 17179869184,
+  "deadline_seconds": 180,
+  "conditions": "shared machine; resident Flash FFN pipeline-limit probe; no model execution",
+  "frozen_sources_sha256": "e6a8177cac114fc688944512b9df1cf0ea98a2e6fad46e1815e91345a3aeafed",
+  "source_sha256": {
+    "shapes.metal": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+    "pointwise.metal": "8d67971c519ae0685021c189fa2b536ee81b0dcf98f03c6d3de8e34fabdd80f3",
+    "probe.swift": "04ab0ff176e38af7afe2839e9d332c3eea14c345587f6b6dcf85078394763e34",
+    "weights.json": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+    "production-source.json": "fa3aeb840a1ffbc343fe100cd71e3715eba06725f72c93d5753f1c59238776e5",
+    "common.py": "236aa057750460ead5d465cd7db26ad45e93ab67215c39fea497a354455f9901",
+    "build.py": "b88273f6a0918b8c6629794cd79ffe55c9f0a222398912bc6166616853c6f0a1",
+    "guard.py": "cfc905df17740012a09a200dd514ce35dc1072ddbcdf716c4cc874ab5c9a837f",
+    "summarize.py": "e696cc89bd69dd357f5027396bd099cc6709604ef96c0a780dd2d668d99ef011",
+    "source_check.py": "d72668cbe28d09813f0d2c8b8421e31e62fb6747d9d5e6cd578285ae0cb35ca4",
+    "summary_check.py": "c2fca22368c9f85504211281682c144f1834a0936de3c3a08836e136b3c1bc7c",
+    "PLAN.md": "02521ab003c26601f4f9c33ac9b5e076180770dbb55d3fe08b2531b6589e01e4",
+    "manifest.json": "2e4dfca5e0bb42cab53b716cb9ac5fd4e3c89faa8bb79ce530b15e37f2f65f30",
+    "source-delta.json": "473fba88cbaade5800ada5cf5d66bb5c4158c5241cea4acafc55fdac4d5437fb",
+    "probe-origin.patch": "33c271e47d49842d006439034e79c35e68b135df3551fc7d837778fb3b200ae6"
+  },
+  "guard_dependency_sha256": {
+    "mac_quiet_bench.py": "7018be065710be9ffe5dfc2d289770015ca617e2fdd3da253a98e07ba1bc997b",
+    "mac_memory.py": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd"
+  },
+  "no_quiet_lease": true,
+  "model_execution": false,
+  "load_before": [
+    16.15185546875,
+    17.47021484375,
+    17.484375
+  ],
+  "preflight": {
+    "available_memory_bytes": 86057484288,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 2444691,
+      "inactive": 1950878,
+      "speculative": 856963
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "command": [
+    "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+    "$SCRATCH/gemm-pipeline-max128-probe/build.py"
+  ],
+  "exit": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 76340,
+    "max_rss_bytes": 4294967296,
+    "peak_rss_bytes": 82706432,
+    "peak_physical_footprint_bytes": 35799880,
+    "peak_accounted_bytes": 82706432,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 8,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 85707522048,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 4.1537982499999995,
+  "load_after": [
+    17.5810546875,
+    17.74462890625,
+    17.5810546875
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "identity": "gemm-pipeline-max128-v1",
+  "variant": "GEMM pipeline descriptor maxTotalThreadsPerThreadgroup=128; identical shaders, dispatches and barriers",
+  "shapes": {
+    "gate_up": {
+      "m": 12288,
+      "k": 4096
+    },
+    "down": {
+      "m": 4096,
+      "k": 12288
+    }
+  },
+  "correctness_tokens": [
+    1,
+    17,
+    63,
+    64,
+    65,
+    512,
+    1024,
+    2048
+  ],
+  "timed_tokens": [
+    512,
+    1024,
+    2048
+  ],
+  "scopes": [
+    "normalized_pair",
+    "full_ffn"
+  ],
+  "rounds": 5,
+  "order": [
+    "default",
+    "max128",
+    "max128",
+    "default"
+  ],
+  "command_buffers": 136,
+  "dispatches": 560,
+  "timing_rows": 120,
+  "numerical_gate": "bitwise equality for every output",
+  "speed_gate": {
+    "max_full_ffn_median_paired_ratio_each_size": 0.9,
+    "ratio": "(max128_1+max128_2)/(default0+default3)"
+  },
+  "limits": {
+    "maximum_explicit_buffer_bytes": 587223040,
+    "maximum_owned_cpu_copy_bytes": 352321536,
+    "maximum_combined_payload_bytes": 939544576,
+    "explicit_buffer_limit_bytes": 1073741824,
+    "device_plus_cpu_limit_bytes": 1610612736,
+    "build_memory_gib": 4,
+    "build_start_gib": 16,
+    "host_floor_gib": 12,
+    "build_seconds": 180,
+    "build_threads": 2,
+    "gpu_memory_gib": 2,
+    "gpu_start_gib": 14,
+    "gpu_external_seconds": 60,
+    "gpu_internal_seconds": 50
+  },
+  "no_q4_conversion": true,
+  "no_product_edits": true,
+  "model_execution": false,
+  "no_quiet_lease": true,
+  "unchanged_multiple_of_width_hint": false,
+  "baseline_pipeline": "makeComputePipelineState(function:)",
+  "candidate_pipeline": "makeComputePipelineState(descriptor:options:reflection:), maxTotalThreadsPerThreadgroup=128 only"
+}

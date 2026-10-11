@@ -1,0 +1,107 @@
+{
+  "correctness_passed": true,
+  "speed_qualified": false,
+  "fixed_gate": "full_ffn median of five ABBA max128/default ratios <=0.90 at every size",
+  "commands": 136,
+  "dispatches": 560,
+  "timing_rows": 120,
+  "results": [
+    {
+      "n": 512,
+      "scope": "normalized_pair",
+      "round_ratios": [
+        0.9900221856629037,
+        0.9633029507836176,
+        0.9771664267963134,
+        1.0630697115336962,
+        0.8987310804679185
+      ],
+      "median_paired_ratio": 0.9771664267963134,
+      "default_gpu_median_seconds": 0.0018859375013562385,
+      "max128_gpu_median_seconds": 0.0018823541686288081
+    },
+    {
+      "n": 512,
+      "scope": "full_ffn",
+      "round_ratios": [
+        0.7309297956434503,
+        0.7492902226672641,
+        0.7672311328640262,
+        0.9341507158021382,
+        1.0450597613664097
+      ],
+      "median_paired_ratio": 0.7672311328640262,
+      "default_gpu_median_seconds": 0.0035084166629530955,
+      "max128_gpu_median_seconds": 0.0028195833328936715
+    },
+    {
+      "n": 1024,
+      "scope": "normalized_pair",
+      "round_ratios": [
+        1.007349966210331,
+        0.9707098122419908,
+        0.9807027821407303,
+        0.9427056790866377,
+        1.1490911365235303
+      ],
+      "median_paired_ratio": 0.9807027821407303,
+      "default_gpu_median_seconds": 0.004364937500213273,
+      "max128_gpu_median_seconds": 0.004636687495803926
+    },
+    {
+      "n": 1024,
+      "scope": "full_ffn",
+      "round_ratios": [
+        0.9003639573799409,
+        1.0325751498812368,
+        0.9181113942993567,
+        0.958681895700521,
+        1.1176864317437334
+      ],
+      "median_paired_ratio": 0.958681895700521,
+      "default_gpu_median_seconds": 0.007351562500844011,
+      "max128_gpu_median_seconds": 0.007193520832515787
+    },
+    {
+      "n": 2048,
+      "scope": "normalized_pair",
+      "round_ratios": [
+        0.9972379357593186,
+        1.0631184295870721,
+        1.1196149003606934,
+        0.9755274259381783,
+        1.123614705777567
+      ],
+      "median_paired_ratio": 1.0631184295870721,
+      "default_gpu_median_seconds": 0.008929791663831566,
+      "max128_gpu_median_seconds": 0.009373604167194571
+    },
+    {
+      "n": 2048,
+      "scope": "full_ffn",
+      "round_ratios": [
+        0.9647182319127653,
+        1.0416947189362613,
+        1.0202355675857988,
+        1.002032973539488,
+        1.0251586154659744
+      ],
+      "median_paired_ratio": 1.0202355675857988,
+      "default_gpu_median_seconds": 0.014570062503480585,
+      "max128_gpu_median_seconds": 0.014324125000712229
+    }
+  ],
+  "complete": {
+    "combined_peak_bytes": 940392448,
+    "commands": 136,
+    "dispatches": 560,
+    "explicit_peak_bytes": 587223040,
+    "kind": "complete",
+    "numerical_gate": "all output bits equal",
+    "owned_cpu_bytes_after_cases": 0,
+    "q4_conversion_executed": false,
+    "speed_qualification": "full_ffn paired ratio <=0.90 at every timed size; evaluated offline",
+    "timing_rows": 120
+  },
+  "attribution": "Aggregate GPU command intervals; no inference of register spills or hardware utilization."
+}

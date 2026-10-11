@@ -879,6 +879,366 @@
       "published_sha256": "1682dff02eee1f9950399edb203189db523ed4844175b8461b708f97e6842164",
       "published_bytes": 11989,
       "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/PLAN.md",
+      "original_sha256": "02521ab003c26601f4f9c33ac9b5e076180770dbb55d3fe08b2531b6589e01e4",
+      "original_bytes": 6076,
+      "published": "gemm-pipeline-max128-v1/PLAN.md",
+      "published_sha256": "02521ab003c26601f4f9c33ac9b5e076180770dbb55d3fe08b2531b6589e01e4",
+      "published_bytes": 6076,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/README.md",
+      "original_sha256": "74305fbba3491421269807ea319d95279f591aa75c26eab0955c0ef5e1d76039",
+      "original_bytes": 3742,
+      "published": "gemm-pipeline-max128-v1/README.md",
+      "published_sha256": "74305fbba3491421269807ea319d95279f591aa75c26eab0955c0ef5e1d76039",
+      "published_bytes": 3742,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/build-1/memory.jsonl",
+      "original_sha256": "2fb245334c9778cbf8ecbc61e1adc4da69c743c421492d37e9bc4fc0e65d01d5",
+      "original_bytes": 6750,
+      "published": "gemm-pipeline-max128-v1/build-1/memory.jsonl",
+      "published_sha256": "2fb245334c9778cbf8ecbc61e1adc4da69c743c421492d37e9bc4fc0e65d01d5",
+      "published_bytes": 6750,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/build-1/receipt.json",
+      "original_sha256": "b25e2685a3eacb7e7d625fd0a2cfd46c579546bc96ba3b6f8740ca32ab0b88cc",
+      "original_bytes": 3496,
+      "published": "gemm-pipeline-max128-v1/build-1/receipt.json",
+      "published_sha256": "b25e2685a3eacb7e7d625fd0a2cfd46c579546bc96ba3b6f8740ca32ab0b88cc",
+      "published_bytes": 3496,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/build-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "gemm-pipeline-max128-v1/build-1/stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/build-1/stdout.jsonl",
+      "original_sha256": "3e57bfd50753b9b55a69705c5cb1442e0f377ad76f8889633485cf0eb6bcf125",
+      "original_bytes": 4277,
+      "published": "gemm-pipeline-max128-v1/build-1/stdout.jsonl",
+      "published_sha256": "3e57bfd50753b9b55a69705c5cb1442e0f377ad76f8889633485cf0eb6bcf125",
+      "published_bytes": 4277,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/build-artifacts.json",
+      "original_sha256": "de74471c0670266c6df052296d64d44d2d7d9bd92a25951e6e2410aed0e97eee",
+      "original_bytes": 2070,
+      "published": "gemm-pipeline-max128-v1/build-artifacts.json",
+      "published_sha256": "de74471c0670266c6df052296d64d44d2d7d9bd92a25951e6e2410aed0e97eee",
+      "published_bytes": 2070,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/build-lease-1.json",
+      "original_sha256": "62e76dcd6c9a32ed7a41813a038e5c27bc3ea76d835432c590a1cb5249fbbb93",
+      "original_bytes": 459,
+      "published": "gemm-pipeline-max128-v1/build-lease-1.json",
+      "published_sha256": "62e76dcd6c9a32ed7a41813a038e5c27bc3ea76d835432c590a1cb5249fbbb93",
+      "published_bytes": 459,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/build-memory-lease-1.json",
+      "original_sha256": "c60254d4ed90de214ce90cff20931a70a75e3373dc04b6ad11043107c7af83c0",
+      "original_bytes": 457,
+      "published": "gemm-pipeline-max128-v1/build-memory-lease-1.json",
+      "published_sha256": "c60254d4ed90de214ce90cff20931a70a75e3373dc04b6ad11043107c7af83c0",
+      "published_bytes": 457,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/build.py",
+      "original_sha256": "b88273f6a0918b8c6629794cd79ffe55c9f0a222398912bc6166616853c6f0a1",
+      "original_bytes": 1647,
+      "published": "gemm-pipeline-max128-v1/build.py",
+      "published_sha256": "b88273f6a0918b8c6629794cd79ffe55c9f0a222398912bc6166616853c6f0a1",
+      "published_bytes": 1647,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/common.py",
+      "original_sha256": "45a209cf96fe9f599707717e8517a157e5a14c7752b941c63fc648f81cec84a5",
+      "original_bytes": 1263,
+      "published": "gemm-pipeline-max128-v1/common.py",
+      "published_sha256": "45a209cf96fe9f599707717e8517a157e5a14c7752b941c63fc648f81cec84a5",
+      "published_bytes": 1263,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/frozen-sources.json",
+      "original_sha256": "e6a8177cac114fc688944512b9df1cf0ea98a2e6fad46e1815e91345a3aeafed",
+      "original_bytes": 1581,
+      "published": "gemm-pipeline-max128-v1/frozen-sources.json",
+      "published_sha256": "e6a8177cac114fc688944512b9df1cf0ea98a2e6fad46e1815e91345a3aeafed",
+      "published_bytes": 1581,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/gpu-lease-1.json",
+      "original_sha256": "9b3896e9bc6d243816836be7f536187004546ab017fa3034daeae9e236b7f5c4",
+      "original_bytes": 457,
+      "published": "gemm-pipeline-max128-v1/gpu-lease-1.json",
+      "published_sha256": "9b3896e9bc6d243816836be7f536187004546ab017fa3034daeae9e236b7f5c4",
+      "published_bytes": 457,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/gpu-memory-lease-1.json",
+      "original_sha256": "2d4afccb8029444046eeadddd9070d705c004bab382974820131d674f7a11ba9",
+      "original_bytes": 457,
+      "published": "gemm-pipeline-max128-v1/gpu-memory-lease-1.json",
+      "published_sha256": "2d4afccb8029444046eeadddd9070d705c004bab382974820131d674f7a11ba9",
+      "published_bytes": 457,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/guard.py",
+      "original_sha256": "cfc905df17740012a09a200dd514ce35dc1072ddbcdf716c4cc874ab5c9a837f",
+      "original_bytes": 5103,
+      "published": "gemm-pipeline-max128-v1/guard.py",
+      "published_sha256": "cfc905df17740012a09a200dd514ce35dc1072ddbcdf716c4cc874ab5c9a837f",
+      "published_bytes": 5103,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/manifest.json",
+      "original_sha256": "2e4dfca5e0bb42cab53b716cb9ac5fd4e3c89faa8bb79ce530b15e37f2f65f30",
+      "original_bytes": 1692,
+      "published": "gemm-pipeline-max128-v1/manifest.json",
+      "published_sha256": "2e4dfca5e0bb42cab53b716cb9ac5fd4e3c89faa8bb79ce530b15e37f2f65f30",
+      "published_bytes": 1692,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/pointwise.metal",
+      "original_sha256": "8d67971c519ae0685021c189fa2b536ee81b0dcf98f03c6d3de8e34fabdd80f3",
+      "original_bytes": 1926,
+      "published": "gemm-pipeline-max128-v1/pointwise.metal",
+      "published_sha256": "8d67971c519ae0685021c189fa2b536ee81b0dcf98f03c6d3de8e34fabdd80f3",
+      "published_bytes": 1926,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/probe-origin.patch",
+      "original_sha256": "33c271e47d49842d006439034e79c35e68b135df3551fc7d837778fb3b200ae6",
+      "original_bytes": 8596,
+      "published": "gemm-pipeline-max128-v1/probe-origin.patch",
+      "published_sha256": "33c271e47d49842d006439034e79c35e68b135df3551fc7d837778fb3b200ae6",
+      "published_bytes": 8596,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/probe.swift",
+      "original_sha256": "04ab0ff176e38af7afe2839e9d332c3eea14c345587f6b6dcf85078394763e34",
+      "original_bytes": 17079,
+      "published": "gemm-pipeline-max128-v1/probe.swift",
+      "published_sha256": "04ab0ff176e38af7afe2839e9d332c3eea14c345587f6b6dcf85078394763e34",
+      "published_bytes": 17079,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/production-source.json",
+      "original_sha256": "fa3aeb840a1ffbc343fe100cd71e3715eba06725f72c93d5753f1c59238776e5",
+      "original_bytes": 1324,
+      "published": "gemm-pipeline-max128-v1/production-source.json",
+      "published_sha256": "fa3aeb840a1ffbc343fe100cd71e3715eba06725f72c93d5753f1c59238776e5",
+      "published_bytes": 1324,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/publication-index.json",
+      "original_sha256": "2ebe21292f859da92ddd1eb2d7efd331fbde2723f542219392b3597939729762",
+      "original_bytes": 10473,
+      "published": "gemm-pipeline-max128-v1/publication-index.json",
+      "published_sha256": "2ebe21292f859da92ddd1eb2d7efd331fbde2723f542219392b3597939729762",
+      "published_bytes": 10473,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/run-1/memory.jsonl",
+      "original_sha256": "e60c96e74a3bc2fa3796b3bb4f74a42278838fdd631ab446ce2fba6273a6d604",
+      "original_bytes": 10618,
+      "published": "gemm-pipeline-max128-v1/run-1/memory.jsonl",
+      "published_sha256": "e60c96e74a3bc2fa3796b3bb4f74a42278838fdd631ab446ce2fba6273a6d604",
+      "published_bytes": 10618,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/run-1/receipt.json",
+      "original_sha256": "e8b9122e638380e78cde75e6427ea5b1af6e68d3f49b37294d497cf5a7f2a8a2",
+      "original_bytes": 5661,
+      "published": "gemm-pipeline-max128-v1/run-1/receipt.json",
+      "published_sha256": "e8b9122e638380e78cde75e6427ea5b1af6e68d3f49b37294d497cf5a7f2a8a2",
+      "published_bytes": 5661,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/run-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "gemm-pipeline-max128-v1/run-1/stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/run-1/stdout.jsonl",
+      "original_sha256": "8fada4f2a2bb7db507f8ed2ca40d3f1d12a05622a9a504cbd1afece91d892139",
+      "original_bytes": 33371,
+      "published": "gemm-pipeline-max128-v1/run-1/stdout.jsonl",
+      "published_sha256": "8fada4f2a2bb7db507f8ed2ca40d3f1d12a05622a9a504cbd1afece91d892139",
+      "published_bytes": 33371,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/run-1/summary.json",
+      "original_sha256": "000be9c4709b361065536ef8eed26b98cb015f6f56d2fc1cfafcb9e774473877",
+      "original_bytes": 3121,
+      "published": "gemm-pipeline-max128-v1/run-1/summary.json",
+      "published_sha256": "000be9c4709b361065536ef8eed26b98cb015f6f56d2fc1cfafcb9e774473877",
+      "published_bytes": 3121,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/shapes.metal",
+      "original_sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+      "original_bytes": 4117,
+      "published": "gemm-pipeline-max128-v1/shapes.metal",
+      "published_sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+      "published_bytes": 4117,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/source-check.json",
+      "original_sha256": "23c5793ef73392b0b91afd95698059be1309cb5b017d4827db377a167b7fcc8a",
+      "original_bytes": 1513,
+      "published": "gemm-pipeline-max128-v1/source-check.json",
+      "published_sha256": "23c5793ef73392b0b91afd95698059be1309cb5b017d4827db377a167b7fcc8a",
+      "published_bytes": 1513,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/source-delta.json",
+      "original_sha256": "473fba88cbaade5800ada5cf5d66bb5c4158c5241cea4acafc55fdac4d5437fb",
+      "original_bytes": 3267,
+      "published": "gemm-pipeline-max128-v1/source-delta.json",
+      "published_sha256": "473fba88cbaade5800ada5cf5d66bb5c4158c5241cea4acafc55fdac4d5437fb",
+      "published_bytes": 3267,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/source_check.py",
+      "original_sha256": "d72668cbe28d09813f0d2c8b8421e31e62fb6747d9d5e6cd578285ae0cb35ca4",
+      "original_bytes": 3379,
+      "published": "gemm-pipeline-max128-v1/source_check.py",
+      "published_sha256": "d72668cbe28d09813f0d2c8b8421e31e62fb6747d9d5e6cd578285ae0cb35ca4",
+      "published_bytes": 3379,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/summarize.py",
+      "original_sha256": "e696cc89bd69dd357f5027396bd099cc6709604ef96c0a780dd2d668d99ef011",
+      "original_bytes": 8561,
+      "published": "gemm-pipeline-max128-v1/summarize.py",
+      "published_sha256": "e696cc89bd69dd357f5027396bd099cc6709604ef96c0a780dd2d668d99ef011",
+      "published_bytes": 8561,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/summary-check.json",
+      "original_sha256": "73eaeb3cc23b0750cb4cf3d0225cfa02fe9cf294d73b1ec2448c26169c20e3dd",
+      "original_bytes": 54,
+      "published": "gemm-pipeline-max128-v1/summary-check.json",
+      "published_sha256": "73eaeb3cc23b0750cb4cf3d0225cfa02fe9cf294d73b1ec2448c26169c20e3dd",
+      "published_bytes": 54,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/summary_check.py",
+      "original_sha256": "c2fca22368c9f85504211281682c144f1834a0936de3c3a08836e136b3c1bc7c",
+      "original_bytes": 4571,
+      "published": "gemm-pipeline-max128-v1/summary_check.py",
+      "published_sha256": "c2fca22368c9f85504211281682c144f1834a0936de3c3a08836e136b3c1bc7c",
+      "published_bytes": 4571,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/verdict.json",
+      "original_sha256": "f654cfb4403cb547a903c70ae62717c777320676c92b76f6da8888477ed6d46c",
+      "original_bytes": 4308,
+      "published": "gemm-pipeline-max128-v1/verdict.json",
+      "published_sha256": "f654cfb4403cb547a903c70ae62717c777320676c92b76f6da8888477ed6d46c",
+      "published_bytes": 4308,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/verify_bundle.py",
+      "original_sha256": "553fcc1e81a5218ffda305f37b2c8b0816c20cb2507c5a67efb07dddb8396e58",
+      "original_bytes": 737,
+      "published": "gemm-pipeline-max128-v1/verify_bundle.py",
+      "published_sha256": "553fcc1e81a5218ffda305f37b2c8b0816c20cb2507c5a67efb07dddb8396e58",
+      "published_bytes": 737,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-pipeline-max128-probe/publication-v1/weights.json",
+      "original_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+      "original_bytes": 2473,
+      "published": "gemm-pipeline-max128-v1/weights.json",
+      "published_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+      "published_bytes": 2473,
+      "path_replacements": []
+    },
+    {
+      "source": "deployment-math-and-next-path-review/README.md",
+      "original_sha256": "bc891749f0ac65a2d923486294687ff75ce85aec5a30e4b264600439dbc50787",
+      "original_bytes": 9936,
+      "published": "deployment-math-and-next-path-review-v1/README.md",
+      "published_sha256": "bc891749f0ac65a2d923486294687ff75ce85aec5a30e4b264600439dbc50787",
+      "published_bytes": 9936,
+      "path_replacements": []
+    },
+    {
+      "source": "deployment-math-and-next-path-review/layer-major-cost.json",
+      "original_sha256": "aad41b8a6c0e0639f1ed8a786d73bfc6af25b575333bf957742b4450151e5a9e",
+      "original_bytes": 972,
+      "published": "deployment-math-and-next-path-review-v1/layer-major-cost.json",
+      "published_sha256": "aad41b8a6c0e0639f1ed8a786d73bfc6af25b575333bf957742b4450151e5a9e",
+      "published_bytes": 972,
+      "path_replacements": []
+    },
+    {
+      "source": "deployment-math-and-next-path-review/manifest.json",
+      "original_sha256": "def3185642c5e566a2f43a2cd520e5d6a8f922f286056ea3f7c5a99c43a64c58",
+      "original_bytes": 447,
+      "published": "deployment-math-and-next-path-review-v1/manifest.json",
+      "published_sha256": "def3185642c5e566a2f43a2cd520e5d6a8f922f286056ea3f7c5a99c43a64c58",
+      "published_bytes": 447,
+      "path_replacements": []
+    },
+    {
+      "source": "deployment-math-and-next-path-review/sources.json",
+      "original_sha256": "814f7b697e5cf8a36286ae29fdd081905562262e424cfcf475e93b3f1b02339c",
+      "original_bytes": 6068,
+      "published": "deployment-math-and-next-path-review-v1/sources.json",
+      "published_sha256": "814f7b697e5cf8a36286ae29fdd081905562262e424cfcf475e93b3f1b02339c",
+      "published_bytes": 6068,
+      "path_replacements": []
     }
   ],
   "current_source_snapshot": [
@@ -986,5 +1346,5 @@
       "file_count": 573
     }
   ],
-  "file_count": 2469
+  "file_count": 2509
 }

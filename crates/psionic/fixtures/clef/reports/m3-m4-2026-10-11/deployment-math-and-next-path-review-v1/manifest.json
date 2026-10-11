@@ -1,0 +1,17 @@
+{
+  "files": {
+    "README.md": {
+      "sha256": "bc891749f0ac65a2d923486294687ff75ce85aec5a30e4b264600439dbc50787",
+      "bytes": 9936
+    },
+    "layer-major-cost.json": {
+      "sha256": "aad41b8a6c0e0639f1ed8a786d73bfc6af25b575333bf957742b4450151e5a9e",
+      "bytes": 972
+    },
+    "sources.json": {
+      "sha256": "814f7b697e5cf8a36286ae29fdd081905562262e424cfcf475e93b3f1b02339c",
+      "bytes": 6068
+    }
+  },
+  "source_only": true
+}

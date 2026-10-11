@@ -1,0 +1,99 @@
+--- origin/probe.swift
++++ candidate/probe.swift
+@@ -1,4 +1,4 @@
+-// Scheduling-only experiment. Both variants load identical production kernels.
++// Pipeline-limit experiment. Both variants use identical kernels and barriers.
+ import Foundation
+ import Metal
+ import CryptoKit
+@@ -145,6 +145,7 @@
+ final class Runner {
+     let device: MTLDevice, queue: MTLCommandQueue
+     var pipes = [String: MTLComputePipelineState]()
++    var limitedPipes = [String: MTLComputePipelineState]()
+     init() throws {
+         guard let d = MTLCreateSystemDefaultDevice(), let q = d.makeCommandQueue() else { throw Failure("Metal unavailable") }
+         device = d; queue = q
+@@ -155,21 +156,31 @@
+             let p = try d.makeComputePipelineState(function: f)
+             try require(p.threadExecutionWidth == 32 && p.maxTotalThreadsPerThreadgroup >= threads && p.staticThreadgroupMemoryLength <= d.maxThreadgroupMemoryLength, "pipeline admission failed")
+             pipes[name] = p
+-            metadata.append(["name":name,"threads":threads,"thread_execution_width":p.threadExecutionWidth,"max_total_threads":p.maxTotalThreadsPerThreadgroup,"static_threadgroup_bytes":p.staticThreadgroupMemoryLength])
++            metadata.append(["name":name,"variant":"default","threads":threads,"requested_max_total_threads":0,"thread_execution_width":p.threadExecutionWidth,"max_total_threads":p.maxTotalThreadsPerThreadgroup,"static_threadgroup_bytes":p.staticThreadgroupMemoryLength])
++            if threads == 128 {
++                let descriptor = MTLComputePipelineDescriptor()
++                descriptor.computeFunction = f
++                try require(descriptor.maxTotalThreadsPerThreadgroup == 0 && !descriptor.threadGroupSizeIsMultipleOfThreadExecutionWidth, "unexpected descriptor defaults")
++                descriptor.maxTotalThreadsPerThreadgroup = 128
++                let limited = try d.makeComputePipelineState(descriptor: descriptor, options: [], reflection: nil)
++                try require(limited.threadExecutionWidth == 32 && limited.maxTotalThreadsPerThreadgroup == 128 && limited.staticThreadgroupMemoryLength <= d.maxThreadgroupMemoryLength, "limited pipeline admission failed")
++                limitedPipes[name] = limited
++                metadata.append(["name":name,"variant":"max128","threads":threads,"requested_max_total_threads":descriptor.maxTotalThreadsPerThreadgroup,"thread_group_multiple_hint":descriptor.threadGroupSizeIsMultipleOfThreadExecutionWidth,"thread_execution_width":limited.threadExecutionWidth,"max_total_threads":limited.maxTotalThreadsPerThreadgroup,"static_threadgroup_bytes":limited.staticThreadgroupMemoryLength])
++            }
+         }
+         try emit(["kind":"device","name":d.name,"explicit_limit_bytes":explicitLimit,"combined_limit_bytes":combinedLimit,"current_allocated_bytes":d.currentAllocatedSize,"max_threadgroup_bytes":d.maxThreadgroupMemoryLength,"pipelines":metadata])
+     }
+     func bind(_ e: MTLComputeCommandEncoder, _ buffers: [Buffer]) {
+         for (i,b) in buffers.enumerated() { e.setBuffer(b.metal, offset: pad, index: i) }
+     }
+-    func gemm(_ e: MTLComputeCommandEncoder, input: Buffer, weight: Buffer, output: Buffer, n: Int, m: Int, k: Int, accumulate: Bool, barrier: Bool = true) {
+-        if barrier { e.memoryBarrier(scope: .buffers) }
+-        e.setComputePipelineState(pipes[accumulate ? "clef_gemm_64x128_accumulate" : "clef_gemm_64x128"]!)
++    func gemm(_ e: MTLComputeCommandEncoder, input: Buffer, weight: Buffer, output: Buffer, n: Int, m: Int, k: Int, accumulate: Bool, limited: Bool) {
++        e.memoryBarrier(scope: .buffers)
++        e.setComputePipelineState((limited ? limitedPipes : pipes)[accumulate ? "clef_gemm_64x128_accumulate" : "clef_gemm_64x128"]!)
+         bind(e,[input,weight,output]); var dims = SIMD4<UInt32>(UInt32(n),UInt32(m),UInt32(k),0)
+         e.setBytes(&dims,length:16,index:3)
+         e.dispatchThreadgroups(MTLSize(width:(m+127)/128,height:(n+63)/64,depth:1),threadsPerThreadgroup:MTLSize(width:128,height:1,depth:1)); dispatches += 1
+     }
+-    func run(_ state: State, _ weights: Weights, overlap: Bool, full: Bool) throws -> (Double,Double) {
++    func run(_ state: State, _ weights: Weights, limited: Bool, full: Bool) throws -> (Double,Double) {
+         try deadline()
+         return try autoreleasepool {
+             let began = ProcessInfo.processInfo.systemUptime
+@@ -178,15 +189,15 @@
+             var d = UInt32(hidden), eps: Float = 1e-6
+             e.setBytes(&d,length:4,index:3);e.setBytes(&eps,length:4,index:4)
+             e.dispatchThreadgroups(MTLSize(width:state.n,height:1,depth:1),threadsPerThreadgroup:MTLSize(width:256,height:1,depth:1));dispatches += 1
+-            gemm(e,input:state.act16,weight:weights.gate,output:state.gate,n:state.n,m:wide,k:hidden,accumulate:false)
+-            // The only scheduling difference. Both weights are separate resident f16 buffers.
+-            gemm(e,input:state.act16,weight:weights.up,output:state.up,n:state.n,m:wide,k:hidden,accumulate:false,barrier:!overlap)
++            gemm(e,input:state.act16,weight:weights.gate,output:state.gate,n:state.n,m:wide,k:hidden,accumulate:false,limited:limited)
++            // Every dependency barrier is identical; only pipeline compilation differs.
++            gemm(e,input:state.act16,weight:weights.up,output:state.up,n:state.n,m:wide,k:hidden,accumulate:false,limited:limited)
+             if full {
+                 // This barrier also protects act16 from being overwritten while either GEMM reads it.
+                 e.memoryBarrier(scope:.buffers);e.setComputePipelineState(pipes["clef_silu_mul_to_f16"]!)
+                 bind(e,[state.gate,state.up,state.act16]);var count=UInt64(state.n*wide);e.setBytes(&count,length:8,index:3)
+                 e.dispatchThreadgroups(MTLSize(width:(state.n*wide+255)/256,height:1,depth:1),threadsPerThreadgroup:MTLSize(width:256,height:1,depth:1));dispatches += 1
+-                gemm(e,input:state.act16,weight:weights.down,output:state.x,n:state.n,m:hidden,k:wide,accumulate:true)
++                gemm(e,input:state.act16,weight:weights.down,output:state.x,n:state.n,m:hidden,k:wide,accumulate:true,limited:limited)
+             }
+             e.endEncoding();cb.commit();commands += 1;cb.waitUntilCompleted()
+             try require(cb.status == .completed,"command failed: \(String(describing:cb.error))")
+@@ -202,18 +213,18 @@
+     for n in [1,17,63,64,65,512,1024,2048] {
+         try autoreleasepool {
+             let s=try State(r.device,n);s.reset()
+-            _=try r.run(s,w,overlap:false,full:true);let expected=try Expected(r.device,s)
+-            try emit(["kind":"correctness","n":n,"variant":"serial","outputs_sha256":expected.digests,"all_outputs_finite":true])
+-            s.reset();_=try r.run(s,w,overlap:true,full:true);try expected.compare(s,full:true)
+-            try emit(["kind":"correctness","n":n,"variant":"overlap","all_outputs_bitwise_equal":true,"output_bytes":expected.count])
++            _=try r.run(s,w,limited:false,full:true);let expected=try Expected(r.device,s)
++            try emit(["kind":"correctness","n":n,"variant":"default","outputs_sha256":expected.digests,"all_outputs_finite":true])
++            s.reset();_=try r.run(s,w,limited:true,full:true);try expected.compare(s,full:true)
++            try emit(["kind":"correctness","n":n,"variant":"max128","all_outputs_bitwise_equal":true,"output_bytes":expected.count])
+             if n>=512 {
+                 for round in 0..<5 {
+                     for scope in ["normalized_pair","full_ffn"] {
+-                        for (position,overlap) in [false,true,true,false].enumerated() {
+-                            s.reset();let t=try r.run(s,w,overlap:overlap,full:scope=="full_ffn")
++                        for (position,limited) in [false,true,true,false].enumerated() {
++                            s.reset();let t=try r.run(s,w,limited:limited,full:scope=="full_ffn")
+                             try expected.compare(s,full:scope=="full_ffn")
+                             timingRows += 1
+-                            try emit(["kind":"timing","n":n,"round":round,"scope":scope,"position":position,"variant":overlap ? "overlap":"serial","gpu_seconds":t.0,"host_seconds":t.1,"exact_output_check_passed":true])
++                            try emit(["kind":"timing","n":n,"round":round,"scope":scope,"position":position,"variant":limited ? "max128":"default","gpu_seconds":t.0,"host_seconds":t.1,"exact_output_check_passed":true])
+                         }
+                     }
+                 }

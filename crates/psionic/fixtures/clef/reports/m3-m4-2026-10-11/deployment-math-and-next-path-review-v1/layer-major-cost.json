@@ -1,0 +1,19 @@
+{
+  "kind": "source arithmetic estimate, not a timing measurement",
+  "assumptions": "27B64layers; three equal-size FFN matrices per layer; all three Q4_K;16384tokens; chunk2048; one f32 full-hidden buffer; three per-layer half-weight buffers",
+  "hidden": 5120,
+  "ffn": 17408,
+  "layers": 64,
+  "tokens": 16384,
+  "chunks": 8,
+  "full_prompt_f32_bytes": 335544320,
+  "half_weight_matrix_bytes": 178257920,
+  "three_layer_half_weights_bytes": 534773760,
+  "extra_weight_bytes_over_existing_single_slot": 356515840,
+  "extra_hidden_plus_weight_bytes": 692060160,
+  "packed_q4_matrix_bytes": 50135040,
+  "conversion_read_plus_write_bytes_per_pass": 43851448320,
+  "avoided_conversion_read_plus_write_bytes_seven_passes": 306960138240,
+  "ffn_fma_flops": 560750930165760,
+  "scope_limit": "Excludes input/output norm, mixers, head, scratch/caches and non-Q4 resident matrices. Conversion arithmetic and cache reuse are not modeled. No assumed effective memory bandwidth."
+}

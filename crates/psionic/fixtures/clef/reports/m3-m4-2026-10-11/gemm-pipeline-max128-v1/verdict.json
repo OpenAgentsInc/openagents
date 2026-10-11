@@ -1,0 +1,154 @@
+{
+  "identity": "gemm-pipeline-max128-v1",
+  "correctness_passed": true,
+  "speed_qualified": false,
+  "integration": "rejected; no product change",
+  "summary_exit": 2,
+  "owned_groups_stopped": true,
+  "all_leases_released": true,
+  "source_freeze_sha256": "e6a8177cac114fc688944512b9df1cf0ea98a2e6fad46e1815e91345a3aeafed",
+  "results": [
+    {
+      "n": 512,
+      "scope": "normalized_pair",
+      "round_ratios": [
+        0.9900221856629037,
+        0.9633029507836176,
+        0.9771664267963134,
+        1.0630697115336962,
+        0.8987310804679185
+      ],
+      "median_paired_ratio": 0.9771664267963134,
+      "default_gpu_median_seconds": 0.0018859375013562385,
+      "max128_gpu_median_seconds": 0.0018823541686288081
+    },
+    {
+      "n": 512,
+      "scope": "full_ffn",
+      "round_ratios": [
+        0.7309297956434503,
+        0.7492902226672641,
+        0.7672311328640262,
+        0.9341507158021382,
+        1.0450597613664097
+      ],
+      "median_paired_ratio": 0.7672311328640262,
+      "default_gpu_median_seconds": 0.0035084166629530955,
+      "max128_gpu_median_seconds": 0.0028195833328936715
+    },
+    {
+      "n": 1024,
+      "scope": "normalized_pair",
+      "round_ratios": [
+        1.007349966210331,
+        0.9707098122419908,
+        0.9807027821407303,
+        0.9427056790866377,
+        1.1490911365235303
+      ],
+      "median_paired_ratio": 0.9807027821407303,
+      "default_gpu_median_seconds": 0.004364937500213273,
+      "max128_gpu_median_seconds": 0.004636687495803926
+    },
+    {
+      "n": 1024,
+      "scope": "full_ffn",
+      "round_ratios": [
+        0.9003639573799409,
+        1.0325751498812368,
+        0.9181113942993567,
+        0.958681895700521,
+        1.1176864317437334
+      ],
+      "median_paired_ratio": 0.958681895700521,
+      "default_gpu_median_seconds": 0.007351562500844011,
+      "max128_gpu_median_seconds": 0.007193520832515787
+    },
+    {
+      "n": 2048,
+      "scope": "normalized_pair",
+      "round_ratios": [
+        0.9972379357593186,
+        1.0631184295870721,
+        1.1196149003606934,
+        0.9755274259381783,
+        1.123614705777567
+      ],
+      "median_paired_ratio": 1.0631184295870721,
+      "default_gpu_median_seconds": 0.008929791663831566,
+      "max128_gpu_median_seconds": 0.009373604167194571
+    },
+    {
+      "n": 2048,
+      "scope": "full_ffn",
+      "round_ratios": [
+        0.9647182319127653,
+        1.0416947189362613,
+        1.0202355675857988,
+        1.002032973539488,
+        1.0251586154659744
+      ],
+      "median_paired_ratio": 1.0202355675857988,
+      "default_gpu_median_seconds": 0.014570062503480585,
+      "max128_gpu_median_seconds": 0.014324125000712229
+    }
+  ],
+  "pipelines": [
+    {
+      "max_total_threads": 1024,
+      "name": "clef_rms_norm_to_f16",
+      "requested_max_total_threads": 0,
+      "static_threadgroup_bytes": 128,
+      "thread_execution_width": 32,
+      "threads": 256,
+      "variant": "default"
+    },
+    {
+      "max_total_threads": 1024,
+      "name": "clef_gemm_64x128",
+      "requested_max_total_threads": 0,
+      "static_threadgroup_bytes": 0,
+      "thread_execution_width": 32,
+      "threads": 128,
+      "variant": "default"
+    },
+    {
+      "max_total_threads": 128,
+      "name": "clef_gemm_64x128",
+      "requested_max_total_threads": 128,
+      "static_threadgroup_bytes": 0,
+      "thread_execution_width": 32,
+      "thread_group_multiple_hint": false,
+      "threads": 128,
+      "variant": "max128"
+    },
+    {
+      "max_total_threads": 1024,
+      "name": "clef_gemm_64x128_accumulate",
+      "requested_max_total_threads": 0,
+      "static_threadgroup_bytes": 0,
+      "thread_execution_width": 32,
+      "threads": 128,
+      "variant": "default"
+    },
+    {
+      "max_total_threads": 128,
+      "name": "clef_gemm_64x128_accumulate",
+      "requested_max_total_threads": 128,
+      "static_threadgroup_bytes": 0,
+      "thread_execution_width": 32,
+      "thread_group_multiple_hint": false,
+      "threads": 128,
+      "variant": "max128"
+    },
+    {
+      "max_total_threads": 1024,
+      "name": "clef_silu_mul_to_f16",
+      "requested_max_total_threads": 0,
+      "static_threadgroup_bytes": 0,
+      "thread_execution_width": 32,
+      "threads": 256,
+      "variant": "default"
+    }
+  ]
+}

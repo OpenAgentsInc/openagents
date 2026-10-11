@@ -1,0 +1,200 @@
+{
+  "kind": "source-only follow-up review; no new compilation, GPU dispatch, model execution, or system control",
+  "sdk": "MacOSX26.5",
+  "host_os_recorded_by_root": "macOS26.4 build25E246",
+  "references": [
+    {
+      "root": "installed MacOSX26.5 SDK frameworks",
+      "path": "MetalPerformancePrimitives.framework/Versions/A/Headers/__impl/MPPTensorOpsAvailability.h",
+      "sha256": "6bf68d9d460de7cb58ed3d23eea10dc42d9dd171619051accea283b217517a72",
+      "lines": [
+        10
+      ]
+    },
+    {
+      "root": "installed MacOSX26.5 SDK frameworks",
+      "path": "MetalPerformancePrimitives.framework/Versions/A/Headers/MPPTensorOpsMatMul2d.h",
+      "sha256": "9c8fa78dd5e9b7a1ad8a2d0e6cd007a816ac750041da15b1015b38c7459d8a6b",
+      "lines": [
+        350,
+        359,
+        366,
+        412
+      ]
+    },
+    {
+      "root": "installed MacOSX26.5 SDK frameworks",
+      "path": "MetalPerformancePrimitives.framework/Versions/A/Headers/__impl/MPPTensorOpsMatMul2dImpl.h",
+      "sha256": "527511bd1a45f0f4361c684b1019d6cc06e1c9703e6f1908384320133bfaa43a",
+      "lines": [
+        47,
+        1150,
+        2624,
+        2669,
+        2880,
+        3077,
+        3096,
+        3119,
+        3144,
+        3172,
+        3185,
+        3198,
+        3211,
+        3239,
+        4145,
+        5160
+      ]
+    },
+    {
+      "root": "installed MacOSX26.5 SDK frameworks",
+      "path": "Metal.framework/Headers/MTLLibrary.h",
+      "sha256": "be5d8b86b781cf6a52f527b4d8b05ca037189082c0f45bdf2a23db92fae935d8",
+      "lines": [
+        250,
+        305,
+        311,
+        317,
+        323
+      ]
+    },
+    {
+      "root": "installed MacOSX26.5 SDK frameworks",
+      "path": "Metal.framework/Headers/MTLComputePipeline.h",
+      "sha256": "8f194e26c3df43a8787edc1aa6898f7156f065fb21bf043629d7e5227865c9aa",
+      "lines": [
+        46,
+        52,
+        227,
+        240
+      ]
+    },
+    {
+      "root": "worktree",
+      "path": "crates/psionic/crates/psionic-backend-metal/src/clef_prefill.rs",
+      "sha256": "b81f3e0ca85d7eae56eeb00a39883086428739fefaf03352f42bd7d10d4fd86c",
+      "lines": [
+        279,
+        281,
+        289,
+        295,
+        301,
+        320,
+        327
+      ]
+    },
+    {
+      "root": "worktree",
+      "path": "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_gemm_shapes.metal",
+      "sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+      "lines": [
+        17,
+        22,
+        24,
+        29,
+        35,
+        40
+      ]
+    },
+    {
+      "root": "worktree",
+      "path": "crates/psionic/crates/psionic-serve/src/qwen35/clef_metal.rs",
+      "sha256": "e0a974181bd63ef9b8a6ef9c2eb83aaa7a419d1ab5653f7f61929252a985ada1",
+      "lines": [
+        837,
+        866,
+        918,
+        938,
+        1599,
+        1615,
+        1849
+      ]
+    },
+    {
+      "root": "worktree",
+      "path": "crates/psionic/crates/psionic-serve/src/qwen35/clef_metal/prefix.rs",
+      "sha256": "9d8fc56c61dbb731d00d4f1a0cad77cc14de7ed4bc7bad1aad521a2c382f1622",
+      "lines": [
+        55
+      ]
+    },
+    {
+      "root": "worktree",
+      "path": "crates/psionic/crates/psionic-serve/src/qwen35/clef_metal/batching.rs",
+      "sha256": "9b2d236a886b946726a348fb5e45bc7299630cb66643d902f48a2fecbc2976e2",
+      "lines": [
+        276,
+        290,
+        440
+      ]
+    },
+    {
+      "root": "worktree",
+      "path": "docs/inference/clef-native.md",
+      "sha256": "9d80d01adf226fb27c7087d1812858c2a4b1fee5f554bf95af9b8f81d99a59aa",
+      "lines": [
+        1079,
+        1388,
+        1614,
+        1788
+      ]
+    },
+    {
+      "root": "task scratch",
+      "path": "register-target26_2-diagnostic/preprocessor-proof.json",
+      "sha256": "db706a7246e9960842032762faa56fcf7d95056808474892668d2d59a312607c"
+    },
+    {
+      "root": "task scratch",
+      "path": "register-target26_2-diagnostic/export-1/receipt.json",
+      "sha256": "8856b9d30288a5483fdba333cb56a1f8d11044c024a664eff7d6027ff308cfc0"
+    },
+    {
+      "root": "task scratch",
+      "path": "gemm-register-input-target26_2/run-1/summary.json",
+      "sha256": "2b21ee361fff15f1c895eac225a2aaa58c209cfe6d73d6cc18680715b5636b1e"
+    },
+    {
+      "root": "task scratch",
+      "path": "gemm-pipeline-max128-probe/run-1/summary.json",
+      "sha256": "000be9c4709b361065536ef8eed26b98cb015f6f56d2fc1cfafcb9e774473877"
+    },
+    {
+      "root": "task scratch",
+      "path": "gemm-resident-overlap-probe/run-1/summary.json",
+      "sha256": "569b6d091f013a3032ed5f4ae3e12dfd0a6cb46f8c7a38663078babee303cf71"
+    },
+    {
+      "root": "task scratch",
+      "path": "unprofiled-sustained-plan/check-1/summary.json",
+      "sha256": "7acdd367dfcd093c44fe231a8bd7e241ce8a08d516f2b9f27c2b069e104603b5"
+    },
+    {
+      "root": "task scratch",
+      "path": "attention-qk128-key32-flash-latency/run-1/analysis-v3.json",
+      "sha256": "d02e71c9f54d143869c8a28e228c61b3e63b0c7a1af70f84f2ae5873ba0d511a"
+    },
+    {
+      "root": "task scratch",
+      "path": "mpp-relaxed-precision-review/sources.json",
+      "sha256": "ada4995dcaeaf373e6076fb57fe0cc8d7669d7ad7d5a59367e50a15a18253f73"
+    }
+  ],
+  "official_urls": [
+    "https://developer.apple.com/metal/Metal-Shading-Language-Specification.pdf",
+    "https://developer.apple.com/documentation/metal/mtlcompileoptions/mathmode",
+    "https://developer.apple.com/documentation/metal/mtlcompileoptions/languageversion",
+    "https://developer.apple.com/documentation/metal/mtlcompileoptions/fastmathenabled",
+    "https://developer.apple.com/documentation/metal/mtlcomputepipelinedescriptor/maxtotalthreadsperthreadgroup",
+    "https://developer.apple.com/videos/play/tech-talks/10580/",
+    "https://developer.apple.com/documentation/metal/gpu-counters-and-counter-sample-buffers"
+  ],
+  "metal_spec": {
+    "date": "2026-06-04",
+    "version": "4.1",
+    "sections": [
+      "1.6.3, printed pp15\u201316",
+      "7.2.1, Table7.4, printed p354"
+    ],
+    "sha256": "41538b30d2f1140a5b2a0c84ce0a9f7b67bf0c707e224cfea0bfe5a44aa26cf5"
+  }
+}
