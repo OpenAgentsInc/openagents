@@ -371,7 +371,7 @@ struct Shared {
     open: Mutex<Option<(Instant, Event, Value)>>,
     wakes: Mutex<VecDeque<Instant>>,
     /// The GPU machine's state as Compute Engine last said.
-    vm: Mutex<Option<(Instant, String)>>,
+    vm: Mutex<Option<(Instant, String, Option<u64>)>>,
     visitors: Mutex<HashMap<String, VecDeque<Instant>>>,
     everyone: Mutex<VecDeque<Instant>>,
     rounds: Mutex<HashMap<String, (Instant, Round)>>,
@@ -510,20 +510,22 @@ async fn state(Query(query): Query<LaneQuery>) -> Response {
             ),
         };
     }
+    let found = records(&shared, lane).await;
     if lane == Lane::Gpu
-        && let Some(machine) = machine_state(&shared, lane).await
-        && machine != "RUNNING"
+        && let Ok((records, ..)) = &found
+        && let Err(why) = gpu_current(&shared, records).await
     {
+        let machine = machine_state(&shared, lane).await;
         return json_response(
             StatusCode::SERVICE_UNAVAILABLE,
             &json!({
-                "error": format!("The sealed GPU is asleep ({})", machine.to_lowercase()),
+                "error": why,
                 "machine": machine,
-                "can_wake": true,
+                "can_wake": machine.as_deref() != Some("RUNNING"),
             }),
         );
     }
-    match records(&shared, lane).await {
+    match found {
         Ok((records, check, fetched_ms, cached)) => json_response(
             StatusCode::OK,
             &json!({
@@ -582,14 +584,14 @@ async fn cloud_token() -> Result<String, String> {
 async fn machine_state(shared: &Shared, lane: Lane) -> Option<String> {
     let (vm, zone) = lane.vm()?;
     if let Ok(held) = shared.vm.lock()
-        && let Some((at, status)) = held.as_ref()
+        && let Some((at, status, _)) = held.as_ref()
         && at.elapsed() < Duration::from_secs(10)
     {
         return Some(status.clone());
     }
     let token = cloud_token().await.ok()?;
     let url = format!(
-        "https://compute.googleapis.com/compute/v1/projects/{PROJECT}/zones/{zone}/instances/{vm}?fields=status"
+        "https://compute.googleapis.com/compute/v1/projects/{PROJECT}/zones/{zone}/instances/{vm}?fields=status,lastStartTimestamp"
     );
     let body: Value = reqwest::Client::new()
         .get(url)
@@ -602,10 +604,70 @@ async fn machine_state(shared: &Shared, lane: Lane) -> Option<String> {
         .await
         .ok()?;
     let status = body["status"].as_str()?.to_string();
+    let started = body["lastStartTimestamp"].as_str().and_then(rfc3339_unix);
     if let Ok(mut held) = shared.vm.lock() {
-        *held = Some((Instant::now(), status.clone()));
+        *held = Some((Instant::now(), status.clone(), started));
     }
     Some(status)
+}
+
+/// When the lane's machine last started (Unix seconds), as Compute Engine
+/// last said; read after [`machine_state`].
+fn machine_started(shared: &Shared) -> Option<u64> {
+    shared.vm.lock().ok()?.as_ref()?.2
+}
+
+/// Whether the GPU machine's endpoint is from its current run. After a
+/// stop the last endpoint record stays current for up to an hour, but its
+/// key died with the machine; until the new run publishes, the machine is
+/// still starting.
+async fn gpu_current(shared: &Shared, records: &Records) -> Result<(), String> {
+    match machine_state(shared, Lane::Gpu).await.as_deref() {
+        None => Ok(()),
+        Some("RUNNING") => match machine_started(shared) {
+            Some(started) if records.endpoint.created_at < started => {
+                Err("The sealed GPU is starting: it has not published fresh evidence yet".into())
+            }
+            _ => Ok(()),
+        },
+        Some(other) => Err(format!(
+            "The sealed GPU is asleep ({})",
+            other.to_lowercase()
+        )),
+    }
+}
+
+/// `2026-10-10T16:22:00.123-07:00` as Unix seconds.
+fn rfc3339_unix(text: &str) -> Option<u64> {
+    let (date, rest) = text.split_once('T')?;
+    let mut d = date.split('-').map(|p| p.parse::<i64>().ok());
+    let (y, m, day) = (d.next()??, d.next()??, d.next()??);
+    let (clock, offset) = if let Some(clock) = rest.strip_suffix('Z') {
+        (clock, 0)
+    } else {
+        let at = rest.rfind(['+', '-'])?;
+        let (clock, zone) = rest.split_at(at);
+        let sign = if zone.starts_with('-') { -1 } else { 1 };
+        let (hh, mm) = zone[1..].split_once(':')?;
+        (
+            clock,
+            sign * (hh.parse::<i64>().ok()? * 3600 + mm.parse::<i64>().ok()? * 60),
+        )
+    };
+    let mut c = clock.split(':');
+    let (hh, mm) = (
+        c.next()?.parse::<i64>().ok()?,
+        c.next()?.parse::<i64>().ok()?,
+    );
+    let ss = c.next()?.split('.').next()?.parse::<i64>().ok()?;
+    // Days from the civil date (Howard Hinnant's algorithm).
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    u64::try_from(days * 86_400 + hh * 3600 + mm * 60 + ss - offset).ok()
 }
 
 /// `GET /att/api/lanes`: every lane, its level, measured time and cost,
@@ -619,8 +681,12 @@ async fn lanes() -> Response {
     );
     let machine = machine_state(&shared, Lane::Gpu).await;
     // A stopped machine's last endpoint record stays current for up to an
-    // hour; it is not ready unless Compute Engine says it runs.
-    let gpu_running = machine.as_deref().is_none_or(|m| m == "RUNNING");
+    // hour; it is ready only when Compute Engine says it runs and the
+    // endpoint is from this run.
+    let gpu_running = match &gpu {
+        Ok((records, ..)) => gpu_current(&shared, records).await.is_ok(),
+        Err(_) => false,
+    };
     let mut out = Vec::new();
     for lane in Lane::ALL {
         let mut info = lane.info();
@@ -830,6 +896,11 @@ async fn send(Query(query): Query<LaneQuery>, headers: HeaderMap, body: Bytes) -
                 "The gateway could not verify the sealed machine, so it sends nothing to it.",
             );
         }
+        if lane == Lane::Gpu
+            && let Err(why) = gpu_current(&shared, &records).await
+        {
+            return refuse(StatusCode::SERVICE_UNAVAILABLE, &why);
+        }
         records.endpoint.pubkey.clone()
     };
     let endpoint_key = target;
@@ -1004,6 +1075,20 @@ mod tests {
             assert_eq!(lane.info()["id"], lane.id());
             assert_eq!(lane.info()["sees"].as_array().map(Vec::len), Some(4));
         }
+    }
+
+    #[test]
+    fn compute_timestamps_parse() {
+        assert_eq!(rfc3339_unix("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(
+            rfc3339_unix("2026-10-10T16:22:00.123-07:00"),
+            Some(1_791_674_520)
+        );
+        assert_eq!(
+            rfc3339_unix("2026-10-10T23:22:00+00:00"),
+            Some(1_791_674_520)
+        );
+        assert_eq!(rfc3339_unix("nonsense"), None);
     }
 
     #[test]
