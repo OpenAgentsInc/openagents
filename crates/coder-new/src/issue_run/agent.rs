@@ -600,6 +600,7 @@ pub async fn run_check_against(
     }
     let short: Vec<&str> = before.iter().map(String::as_str).collect();
     if before.len() == names.len() {
+        let text = text.replacen(": FAILED\n", ": passed\n", 1);
         (
             format!(
                 "{text}

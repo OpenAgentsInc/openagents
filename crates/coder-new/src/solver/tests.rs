@@ -416,3 +416,18 @@ fn a_failed_check_keeps_the_names_of_the_failed_tests() {
         vec!["a::two".to_owned()]
     );
 }
+
+#[test]
+fn an_excused_check_reads_as_passed_in_the_coder_widget() {
+    let text = "cargo test -p a: passed\ntest a::two ... FAILED\n\nPASSED anyway: every failed test (a::two) already fails at the base commit abc, before this change.";
+    let output = crate::issue_run::agent::coder_output(
+        "Run",
+        &serde_json::Value::Null,
+        &serde_json::json!({}),
+        text,
+        None,
+        false,
+    );
+    assert_eq!(output["result"], "passed", "{output}");
+    assert!(output.get("error").is_none());
+}

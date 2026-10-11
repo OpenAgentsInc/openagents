@@ -93,6 +93,8 @@ Before merging a solver PR:
 | b45fbc5dc9 | Cost counts every hand (it was the Coder only). Issue comments reach the hands. **A touched crate's `test:` is required.** The Tester's passing checks aren't rebuilt. |
 | 7051cf31d9, 0664f093cf, bf68045351, abce625033, 4af8292800 (earlier) | Touched-crate compile checks, a shared build folder with no doc tests, Claude-only solver, reopening not-planned issues, full-checkout worktrees. |
 | 4d2ea102e8 | Solver plugin (see above). |
+| d1c6e482eb | The harness runs the required checks right after the Coder; a clean run needs no Tester. The Tester (Haiku now) reads the captured failures instead of rerunning everything. A computer fault (full disk, linker, SIGKILL) stops the run instead of handing back. Tracked `main` remote (`main@{upstream}`), not `origin`. Claude children die with the host (`PR_SET_PDEATHSIG`). |
+| 7e906995c1 | A failed `test:` check keeps its `test name ... FAILED` lines, so the baseline worktree reruns those exact tests at the base commit and excuses the ones that already fail there. This is what let #11356 land: eight `coder-new` tests (sign-in, notices, media) fail on `main` and were blamed on every change before. |
 
 **Nested workspaces** (committed with this note): crates outside the root
 workspace (`crates/openagents-mobile` is its own workspace) get `cargo
@@ -144,8 +146,10 @@ not-planned issues itself.
 - **#11349 Phone New chat attachments:** needs `POST /v1/threads`, or
   image input in the chat worker, plus a web deploy. The solver run was
   stopped while writing `pages/chat.rs`; start fresh.
-- **#11356 /sync off undone by another window:** small; a solver
-  candidate (`crates/coder-new/src/account_sync.rs`, `crates/coder-sync`).
+- **#11356 /sync off undone by another window:** done by the solver
+  (PR #11357, merged): Intaker → Briefer → Sonnet/Opus Coder → harness
+  checks, no Tester round; the eight pre-existing `coder-new` failures
+  were excused by the baseline rerun.
 - **#11355 200-chat cap per account:** remove the cap for synced Coder
   chats and add paging. The phone list shows only 120. Server change plus
   a web deploy.
