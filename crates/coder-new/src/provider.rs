@@ -369,6 +369,9 @@ impl Provider {
         let mut seen = BTreeSet::new();
         let mut have_usage = false;
         let mut failures = 0u32;
+        // Retried once with an output cap the balance covers (see
+        // `affordable_tokens`).
+        let mut capped = false;
         // Identical consecutive calls across this turn (#11285).
         let mut stuck =
             execution
@@ -434,6 +437,11 @@ impl Provider {
                     if let openrouter::Error::Schema { usage, .. } = &error {
                         aggregate_usage(&mut aggregate.usage, usage, !have_usage);
                         have_usage = true;
+                    }
+                    if !capped && let Some(tokens) = affordable_tokens(&error) {
+                        capped = true;
+                        request = request.max_tokens(tokens);
+                        continue;
                     }
                     let recovered = recovery(&error, failures).filter(|_| {
                         // The gateway fails over before its first words, and
@@ -1120,6 +1128,33 @@ fn recovery(error: &openrouter::Error, failures: u32) -> Option<Recovery> {
     }
 }
 
+/// The output cap a 402 says the balance can cover. OpenRouter prices a
+/// request at its largest possible reply, so a long chat with no
+/// `max_tokens` is refused even with credit left; its 402 says "You
+/// requested up to N tokens, but can only afford M". Nine tenths of M, when
+/// that still leaves room for a real reply.
+fn affordable_tokens(error: &openrouter::Error) -> Option<u32> {
+    let openrouter::Error::Api {
+        status: 402,
+        message,
+        body,
+        ..
+    } = error
+    else {
+        return None;
+    };
+    let text = format!("{message} {body}");
+    let after = text.split("can only afford").nth(1)?;
+    let digits: String = after
+        .trim_start()
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect();
+    let afford: u32 = digits.parse().ok()?;
+    let cap = afford.saturating_mul(9) / 10;
+    (cap >= 1_024).then_some(cap)
+}
+
 fn recovery_wait(failures: u32) -> Duration {
     Duration::from_millis(250u64.saturating_mul(1u64 << failures.min(7)).min(30_000))
 }
@@ -1233,7 +1268,7 @@ fn status_error(status: u16) -> String {
     match StatusCode::from_u16(status).ok() {
         Some(StatusCode::UNAUTHORIZED) => "OpenRouter rejected the API key (HTTP 401).".into(),
         Some(StatusCode::PAYMENT_REQUIRED) => {
-            "OpenRouter's credit or request budget is exhausted (HTTP 402).".into()
+            "Your OpenRouter balance doesn't cover this request (HTTP 402). Add credit at openrouter.ai/settings/credits, or switch to flash with Shift+Tab.".into()
         }
         Some(StatusCode::TOO_MANY_REQUESTS) => crate::long_session::rate_limited(None),
         Some(StatusCode::FORBIDDEN) => "OpenRouter denied this request (HTTP 403).".into(),
@@ -3113,5 +3148,30 @@ mod tests {
         assert!(drawn.contains("Updated greet.rs (+1 -1)"), "{drawn}");
         assert!(drawn.contains("hello, world"), "{drawn}");
         assert!(drawn.contains("\"hello\""), "{drawn}");
+    }
+}
+
+#[cfg(test)]
+mod affordable_tests {
+    use super::affordable_tokens;
+
+    fn refusal(text: &str) -> openrouter::Error {
+        openrouter::Error::Api {
+            kind: openrouter::ApiErrorKind::of(402),
+            status: 402,
+            message: text.into(),
+            retry_after: None,
+            body: String::new(),
+        }
+    }
+
+    #[test]
+    fn a_402_that_names_what_the_balance_affords_caps_the_reply() {
+        let error = refusal(
+            "This request requires more credits, or fewer max_tokens. You requested up to 65536 tokens, but can only afford 12345.",
+        );
+        assert_eq!(affordable_tokens(&error), Some(11_110));
+        assert_eq!(affordable_tokens(&refusal("can only afford 900")), None);
+        assert_eq!(affordable_tokens(&refusal("Insufficient credits")), None);
     }
 }
