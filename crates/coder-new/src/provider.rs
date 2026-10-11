@@ -462,7 +462,7 @@ impl Provider {
                                     *refused = Some(self.key.expose().to_owned());
                                 }
                             }
-                            return Err(stream_error(error));
+                            return Err(gateway_error(error));
                         }
                         // A model the person chose is never swapped for
                         // another (#11132): the turn fails, says why, and
@@ -1219,6 +1219,15 @@ fn check_error(error: reqwest::Error) -> String {
     } else {
         "The OpenRouter key check could not connect.".into()
     }
+}
+
+/// A failure from the OpenAgents gateway (`auto`), named as ours rather
+/// than OpenRouter's, which it is not.
+fn gateway_error(error: openrouter::Error) -> String {
+    if let openrouter::Error::Api { status: 402, .. } = error {
+        return "Today's free allowance on OpenAgents is used up (HTTP 402). Add credit at openagents.com, or switch to flash with Shift+Tab.".into();
+    }
+    stream_error(error).replace("OpenRouter", "OpenAgents")
 }
 
 fn stream_error(error: openrouter::Error) -> String {
@@ -3173,5 +3182,25 @@ mod affordable_tests {
         assert_eq!(affordable_tokens(&error), Some(11_110));
         assert_eq!(affordable_tokens(&refusal("can only afford 900")), None);
         assert_eq!(affordable_tokens(&refusal("Insufficient credits")), None);
+    }
+}
+
+#[cfg(test)]
+mod gateway_error_tests {
+    #[test]
+    fn gateway_failures_name_openagents_not_openrouter() {
+        let error = |status: u16| openrouter::Error::Api {
+            kind: openrouter::ApiErrorKind::of(status),
+            status,
+            message: String::new(),
+            retry_after: None,
+            body: String::new(),
+        };
+        let bad = super::gateway_error(error(400));
+        assert!(
+            bad.contains("OpenAgents") && bad.contains("400") && !bad.contains("OpenRouter"),
+            "{bad}"
+        );
+        assert!(super::gateway_error(error(402)).contains("free allowance"));
     }
 }
