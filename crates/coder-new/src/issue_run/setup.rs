@@ -498,6 +498,17 @@ pub fn required_checks(briefing: &Briefing) -> Vec<String> {
 /// compile: a change that reaches crates outside the briefing is held to
 /// building them too.
 pub async fn changed_package_checks(worktree: &Path, base: &str, checks: &[Check]) -> Vec<Check> {
+    change_checks(worktree, base)
+        .await
+        .into_iter()
+        .filter(|check| !checks.iter().any(|have| have.id == check.id))
+        .collect()
+}
+
+/// The checks the change in `worktree` since `base` calls for, whatever the
+/// briefing named: a compile check (and a `wasm:` one for a browser build)
+/// per touched Rust package, and `links:docs` over the changed Markdown.
+pub async fn change_checks(worktree: &Path, base: &str) -> Vec<Check> {
     let mut paths: Vec<String> = Vec::new();
     for args in [
         vec!["diff", "--name-only", base],
@@ -507,13 +518,35 @@ pub async fn changed_package_checks(worktree: &Path, base: &str, checks: &[Check
             paths.extend(text.lines().map(str::to_owned));
         }
     }
+    checks_for_paths(worktree, &paths)
+}
+
+/// [`change_checks`] for a list of changed paths.
+#[must_use]
+pub fn checks_for_paths(worktree: &Path, paths: &[String]) -> Vec<Check> {
     let mut found: Vec<Check> = Vec::new();
     for path in paths {
-        for check in package_checks(worktree, &path, "the change touched") {
-            if !checks.iter().chain(&found).any(|have| have.id == check.id) {
+        for check in package_checks(worktree, path, "the change touched") {
+            if !found.iter().any(|have| have.id == check.id) {
                 found.push(check);
             }
         }
+    }
+    let docs: Vec<&String> = paths
+        .iter()
+        .filter(|path| path.ends_with(".md") && worktree.join(path).is_file())
+        .collect();
+    let script = "scripts/coder/check_md_links.py";
+    if !docs.is_empty() && worktree.join(script).is_file() {
+        let mut argv = vec!["python3".to_owned(), script.to_owned()];
+        argv.extend(docs.into_iter().cloned());
+        found.push(Check {
+            id: "links:docs".into(),
+            argv,
+            filter: false,
+            what: "check that the changed Markdown's relative links resolve".into(),
+            required: true,
+        });
     }
     found
 }

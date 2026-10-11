@@ -519,7 +519,12 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
     end.briefing = Some(briefing.clone());
 
     // Coder and Tester, with bounded hand-backs.
-    let required = setup::required_checks(&briefing);
+    let required: Vec<String> = briefing
+        .checks
+        .iter()
+        .filter(|check| check.required && !check.id.starts_with("wasm:"))
+        .map(|check| check.id.clone())
+        .collect();
     let mut round = 0;
     let outcome = loop {
         if transcript.cancelled() {
@@ -549,13 +554,21 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
         if transcript.cancelled() {
             break Outcome::stopped(Status::Cancelled, "The run was stopped.");
         }
-        // Every crate the change touched must build, not only the briefed ones.
+        // The change decides what must pass: every crate it touched builds
+        // (and a browser build's wasm half), its Markdown's links resolve,
+        // plus the briefing's own non-Rust required checks. The briefed
+        // crates' checks still run, but a docs change isn't held to them.
         let mut checked = briefing.clone();
-        let touched =
-            setup::changed_package_checks(&base.worktree, &base.base, &checked.checks).await;
+        let changed = setup::change_checks(&base.worktree, &base.base).await;
         let mut required = required.clone();
-        required.extend(touched.iter().map(|check| check.id.clone()));
-        checked.checks.extend(touched);
+        for check in changed {
+            if !required.contains(&check.id) {
+                required.push(check.id.clone());
+            }
+            if !checked.checks.iter().any(|have| have.id == check.id) {
+                checked.checks.push(check);
+            }
+        }
         let outputs = issue_run::agent::final_check_outputs(&base, &checked, transcript).await;
         let errors = hands::failing_output(&outputs);
         end.checks = outputs.into_iter().map(|(id, ok, _)| (id, ok)).collect();

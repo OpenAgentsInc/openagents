@@ -712,3 +712,34 @@ fn a_briefed_browser_build_gets_a_wasm_check() {
     assert!(checks[0].required);
     assert!(checks[0].argv.iter().any(|a| a == "wasm32-unknown-unknown"));
 }
+
+#[test]
+fn a_docs_change_is_held_to_a_link_check_not_rust_builds() {
+    use crate::issue_run::setup::checks_for_paths;
+    let root = std::env::temp_dir().join(format!("coder-docs-check-{}", std::process::id()));
+    std::fs::create_dir_all(root.join("docs")).unwrap();
+    std::fs::create_dir_all(root.join("scripts/coder")).unwrap();
+    std::fs::create_dir_all(root.join("crates/a/src")).unwrap();
+    std::fs::write(root.join("docs/zones.md"), "[x](zones.md)\n").unwrap();
+    std::fs::write(root.join("scripts/coder/check_md_links.py"), "").unwrap();
+    std::fs::write(
+        root.join("crates/a/Cargo.toml"),
+        "[package]\nname = \"a\"\n",
+    )
+    .unwrap();
+    let docs = checks_for_paths(&root, &["docs/zones.md".to_owned()]);
+    let both = checks_for_paths(
+        &root,
+        &["docs/zones.md".to_owned(), "crates/a/src/lib.rs".to_owned()],
+    );
+    let _ = std::fs::remove_dir_all(&root);
+    assert_eq!(docs.len(), 1);
+    assert_eq!(docs[0].id, "links:docs");
+    assert!(docs[0].required);
+    assert_eq!(
+        docs[0].argv.last().map(String::as_str),
+        Some("docs/zones.md")
+    );
+    let ids: Vec<&str> = both.iter().map(|c| c.id.as_str()).collect();
+    assert_eq!(ids, ["check:a", "links:docs"]);
+}
