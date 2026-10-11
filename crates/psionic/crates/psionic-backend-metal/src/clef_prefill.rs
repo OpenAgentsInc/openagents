@@ -11,6 +11,7 @@
 use std::collections::HashMap;
 use std::ffi::c_void;
 
+use objc::{msg_send, sel, sel_impl};
 use metal::{
     Buffer, CommandBuffer, CommandQueue, CompileOptions, ComputeCommandEncoder, ComputePipelineState, Device,
     MTLResourceOptions, MTLSize,
@@ -232,11 +233,18 @@ impl ClefMetal {
     #[must_use]
     pub fn batch(&self) -> ClefMetalBatch<'_> {
         let command_buffer = self.queue.new_command_buffer().to_owned();
-        let encoder = command_buffer.new_compute_command_encoder().to_owned();
+        // concurrent dispatch with an explicit barrier before every dispatch,
+        // except where a caller marks one independent of the one before
+        // (`concurrent_with_previous`)
+        let encoder = command_buffer
+            .compute_command_encoder_with_dispatch_type(metal::MTLDispatchType::Concurrent)
+            .to_owned();
         ClefMetalBatch {
             metal: self,
             command_buffer,
             encoder,
+            overlap_next: std::cell::Cell::new(false),
+            dispatched: std::cell::Cell::new(false),
         }
     }
 }
@@ -246,6 +254,8 @@ pub struct ClefMetalBatch<'a> {
     metal: &'a ClefMetal,
     command_buffer: CommandBuffer,
     encoder: ComputeCommandEncoder,
+    overlap_next: std::cell::Cell<bool>,
+    dispatched: std::cell::Cell<bool>,
 }
 
 fn size(width: usize, height: usize, depth: usize) -> MTLSize {
@@ -314,12 +324,36 @@ impl ClefMetalBatch<'_> {
             .set_bytes(index, std::mem::size_of::<T>() as u64, (value as *const T).cast::<c_void>());
     }
 
+    /// A buffer-scope barrier before the next dispatch unless it was
+    /// marked independent.
+    fn before_dispatch(&self) {
+        if self.dispatched.get() && !self.overlap_next.get() {
+            // SAFETY: memoryBarrierWithScope: on a live compute encoder;
+            // MTLBarrierScopeBuffers = 1.
+            unsafe {
+                let encoder: &metal::ComputeCommandEncoderRef = &self.encoder;
+                let _: () = msg_send![encoder, memoryBarrierWithScope: 1u64];
+            }
+        }
+        self.overlap_next.set(false);
+        self.dispatched.set(true);
+    }
+
+    /// Lets the next operation's first dispatch run concurrently with the
+    /// dispatch before it (the caller vouches that they share no written
+    /// buffer).
+    pub fn concurrent_with_previous(&self) {
+        self.overlap_next.set(true);
+    }
+
     fn groups(&self, groups: MTLSize, threads: MTLSize) {
+        self.before_dispatch();
         self.encoder.dispatch_thread_groups(groups, threads);
     }
 
     fn threads(&self, count: usize, per_group: usize) {
         let groups = count.div_ceil(per_group).max(1);
+        self.before_dispatch();
         self.encoder
             .dispatch_thread_groups(size(groups, 1, 1), size(per_group, 1, 1));
     }

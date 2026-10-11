@@ -995,7 +995,6 @@ fn encode_layer(
             let conv_state = request.conv[layer_index].as_ref().ok_or("conv state")?;
             let delta_state = request.delta[layer_index].as_ref().ok_or("delta state")?;
             linear(batch, qkv, &s.act16, &s.big_a, n, false)?;
-            linear(batch, z, &s.act16, &s.mid_a, n, false)?;
             linear(batch, alpha, &s.act16, &s.small_a, n, false)?;
             linear(batch, beta, &s.act16, &s.small_b, n, false)?;
             batch.conv1d_seq_silu(&s.big_a, conv_state, conv, &s.conv_out, n, dims.conv_channels, dims.conv_kernel)?;
@@ -1035,6 +1034,10 @@ fn encode_layer(
                 2 * dims.key_heads * dims.state,
             )?;
             }
+            // the gate projection shares nothing with the scan (it reads the
+            // normed input, writes mid_a), so it fills the GPU beside it
+            batch.concurrent_with_previous();
+            linear(batch, z, &s.act16, &s.mid_a, n, false)?;
             batch.gated_norm_to_f16(&s.mid_b, &s.mid_a, ssm_norm, &s.act16, n, dims.value_heads, dims.state, dims.eps)?;
             linear(batch, out, &s.act16, &s.x, n, true)?;
         }

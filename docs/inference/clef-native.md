@@ -843,9 +843,36 @@ Results, under similar load (load average about 30–40):
   - against the CPU lane: still 100 % top-answer agreement, max |Δp|
     0.0008.
 
-**The gate run.** A watcher on the Mac (`gate.sh` in the session
-scratch) waits for a quiet machine: 1- and 5-minute load averages below
-10, and the GPU visualizer closed. It then runs Psionic Metal and Ollama
+**Round 4 (2026-10-10): the 1k fixed cost.**
+
+- **Where 1k goes.** At 1k with the GEMMs skipped
+  (`PSIONIC_CLEF_SKIP=gemm`), a request takes 88 ms:
+  - device 61 ms, of which the delta scan is about 41 ms;
+  - head 14 ms;
+  - host work about 13 ms.
+
+  With GEMMs at a quiet machine's rate (about 0.26 s), 1k lands at about
+  0.35 s.
+- **Tried: a chunked (WY) delta rule on Metal** (`clef_delta_chunk128`).
+  - It was correct: 3e-8 against the CPU reference.
+  - Its chunks of 16 sat at absolute positions, so it kept chunk
+    invariance.
+  - It was slower: 3.6–5.8 ms per layer, against 1.6–1.8 ms for the staged
+    scan. Its 16 × 16 products and the triangular solve ran on scalar
+    threads.
+  - Dropped. A version on `simdgroup_matrix` is the follow-up.
+- **Kept: the gate projection `z` beside the scan.**
+  - The batch encoder is now concurrent, with a buffer-scope barrier
+    before every dispatch except where an op is marked independent.
+  - `z` runs while the scan, which uses few cores, holds the GPU.
+  - Results are bitwise identical.
+  - Timing under load is neutral to slightly positive: small requests
+    0.10 → 0.093 s, 4k 3.0 → 2.95 s, 1k within noise.
+
+**The gate run.** A watcher on the Mac (`gate2.sh` in the session
+scratch) waits for a quiet machine: the 1-minute load average below 5 for
+10 minutes, and the GPU visualizer closed. It aborts and reschedules if the
+load goes above 8 mid-run. It then runs Psionic Metal and Ollama
 0.40 `clef-flash` interleaved, three rounds of median-of-5, and records
 the load for each run.
 
