@@ -30,7 +30,7 @@ use serde_json::{Value, json};
 use crate::issue_run::{
     self, Feed, Transcript,
     agent::Work,
-    decide::Briefing,
+    decide::{Briefing, Check},
     setup::{self, Base},
     verdict::{self, Outcome, Status},
 };
@@ -555,14 +555,7 @@ async fn drive(options: &Options, run: &issue_run::Run, transcript: &mut Transcr
         let mut checked = briefing.clone();
         let changed = setup::change_checks(&base.worktree, &base.base).await;
         let mut required = required.clone();
-        for check in changed {
-            if !required.contains(&check.id) {
-                required.push(check.id.clone());
-            }
-            if !checked.checks.iter().any(|have| have.id == check.id) {
-                checked.checks.push(check);
-            }
-        }
+        merge_change_checks(&mut checked.checks, &mut required, changed);
         let outputs = issue_run::agent::final_check_outputs(&base, &checked, &[], transcript).await;
         let errors = hands::failing_output(&outputs);
         end.checks = outputs
@@ -777,6 +770,23 @@ impl End<'_> {
                 .unwrap_or_default(),
             folder.join("events.jsonl").display()
         ));
+    }
+}
+
+/// Adds the checks the change itself calls for to `checks` and their ids to
+/// `required`. A check the briefing already lists as optional (its
+/// `test:<crate>` for a briefed crate) becomes required: the harness runs only
+/// required checks, so leaving the briefing's copy optional meant a touched
+/// crate's tests never ran and the run failed on "no result" (#11331).
+fn merge_change_checks(checks: &mut Vec<Check>, required: &mut Vec<String>, changed: Vec<Check>) {
+    for check in changed {
+        if !required.contains(&check.id) {
+            required.push(check.id.clone());
+        }
+        match checks.iter_mut().find(|have| have.id == check.id) {
+            Some(have) => have.required |= check.required,
+            None => checks.push(check),
+        }
     }
 }
 

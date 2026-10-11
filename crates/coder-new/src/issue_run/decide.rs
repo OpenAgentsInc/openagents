@@ -145,35 +145,51 @@ async fn finder(base: &Base, folder: &Path, transcript: &mut Transcript) -> Opti
         transcript.finish(index, card, json!({"ok": true}));
         return None;
     }
-    let mut command = tokio::process::Command::new("python3");
-    command
-        .arg(&script)
-        .args(["query", "--repo"])
-        .arg(&base.repo)
-        .args([
-            "--rev",
-            &base.base,
-            "--issue",
-            &base.issue.to_string(),
-            "--k",
-            "40",
-            "--json",
-        ])
-        .current_dir(&base.repo)
-        .stdin(std::process::Stdio::null());
-    if let Some(key) = super::secret("OPENROUTER_API_KEY", "openrouter.env") {
-        command.env("OPENROUTER_API_KEY", key);
+    // Two runs started together both refresh the finder's index at a new
+    // commit, and one can read it half written; a second try reads the
+    // finished index (#11348's first run briefed no files this way).
+    let mut why = String::new();
+    let mut found = None;
+    for _ in 0..2 {
+        let mut command = tokio::process::Command::new("python3");
+        command
+            .arg(&script)
+            .args(["query", "--repo"])
+            .arg(&base.repo)
+            .args([
+                "--rev",
+                &base.base,
+                "--issue",
+                &base.issue.to_string(),
+                "--k",
+                "40",
+                "--json",
+            ])
+            .current_dir(&base.repo)
+            .stdin(std::process::Stdio::null());
+        if let Some(key) = super::secret("OPENROUTER_API_KEY", "openrouter.env") {
+            command.env("OPENROUTER_API_KEY", key);
+        }
+        match command.output().await {
+            Ok(out) if out.status.success() => match serde_json::from_slice::<Value>(&out.stdout) {
+                Ok(value) => {
+                    found = Some(value);
+                    break;
+                }
+                Err(error) => why = format!("unreadable answer: {error}"),
+            },
+            Ok(out) => why = finder_error_line(&out.stderr),
+            Err(error) => why = error.to_string(),
+        }
     }
-    let result = command.output().await;
     let ms = started.elapsed().as_millis() as u64;
-    let found = result
-        .ok()
-        .filter(|out| out.status.success())
-        .and_then(|out| serde_json::from_slice::<Value>(&out.stdout).ok());
     let Some(found) = found else {
         let mut card = card;
         card["ms"] = json!(ms);
-        card["rows"] = json!([{"label": "fallback", "text": "The finder did not answer; the briefing uses its own lite finder"}]);
+        card["rows"] = json!([
+            {"label": "fallback", "text": "The finder did not answer; the briefing uses its own lite finder"},
+            {"label": "why", "text": why},
+        ]);
         transcript.finish(index, card, json!({"ok": true}));
         return None;
     };
@@ -648,6 +664,16 @@ fn choose(
         .collect()
 }
 
+/// The last non-empty line of the finder's stderr, which names its error.
+fn finder_error_line(stderr: &[u8]) -> String {
+    String::from_utf8_lossy(stderr)
+        .lines()
+        .rev()
+        .find(|line| !line.trim().is_empty())
+        .map(|line| line.chars().take(300).collect())
+        .unwrap_or_else(|| "it exited without saying why".to_owned())
+}
+
 /// The briefing, from #11211's generator.
 async fn brief(
     options: &Options,
@@ -814,5 +840,20 @@ mod door_tests {
         assert!(error.starts_with("second:"), "{error}");
         assert_eq!(doors.0.len(), 1);
         assert_eq!(doors.first().map(|d| d.label.as_str()), Some("second"));
+    }
+}
+
+#[cfg(test)]
+mod finder_tests {
+    use super::finder_error_line;
+
+    #[test]
+    fn the_finders_error_is_its_last_stderr_line() {
+        let stderr = b"Traceback (most recent call last):\n  File \"x.py\"\njson.decoder.JSONDecodeError: Expecting value\n\n";
+        assert_eq!(
+            finder_error_line(stderr),
+            "json.decoder.JSONDecodeError: Expecting value"
+        );
+        assert_eq!(finder_error_line(b""), "it exited without saying why");
     }
 }

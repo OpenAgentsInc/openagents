@@ -431,3 +431,30 @@ fn an_excused_check_reads_as_passed_in_the_coder_widget() {
     assert_eq!(output["result"], "passed", "{output}");
     assert!(output.get("error").is_none());
 }
+
+#[test]
+fn a_touched_crates_tests_are_required_even_when_the_briefing_listed_them() {
+    use crate::issue_run::decide::Check;
+    let check = |id: &str, required: bool| Check {
+        id: id.into(),
+        argv: Vec::new(),
+        filter: true,
+        what: String::new(),
+        required,
+    };
+    let mut checks = vec![check("check:a", false), check("test:a", false)];
+    let mut required = vec!["check:a".to_owned()];
+    super::merge_change_checks(
+        &mut checks,
+        &mut required,
+        vec![
+            check("check:a", false),
+            check("test:a", true),
+            check("test:b", true),
+        ],
+    );
+    assert_eq!(required, ["check:a", "test:a", "test:b"]);
+    assert!(checks.iter().find(|c| c.id == "test:a").unwrap().required);
+    assert!(checks.iter().any(|c| c.id == "test:b" && c.required));
+    assert_eq!(checks.len(), 3);
+}
