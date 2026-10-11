@@ -20,7 +20,7 @@
 //! report the credential's kind and never the credential.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
@@ -89,10 +89,95 @@ pub fn task_with(messages: &[Message], solver: bool) -> String {
         crate::identity::prompt(MODEL)
     );
     let allowance = TASK_LIMIT.saturating_sub(prefix.len());
-    format!(
-        "{prefix}{}",
-        crate::live::local_conversation(messages, allowance)
-    )
+    let mut conversation = crate::live::local_conversation(messages, allowance);
+    // A newest message larger than the allowance fits no row at all, so the
+    // model would never see the request. Its head and tail carry it instead.
+    if conversation.is_empty()
+        && let Some(last) = messages.last()
+    {
+        let role = format!("{}: ", last.role);
+        conversation = format!(
+            "{role}{}",
+            clip(&last.content, allowance.saturating_sub(role.len()))
+        );
+    }
+    format!("{prefix}{conversation}")
+}
+
+/// `text` within `limit` bytes: its head and tail with a marker between,
+/// cut on character boundaries.
+fn clip(text: &str, limit: usize) -> String {
+    const MARKER: &str = "\n[...]\n";
+    if text.len() <= limit {
+        return text.to_owned();
+    }
+    let kept = limit.saturating_sub(MARKER.len());
+    let mut head = kept / 2;
+    while !text.is_char_boundary(head) {
+        head -= 1;
+    }
+    let mut tail = text.len() - (kept - kept / 2);
+    while !text.is_char_boundary(tail) {
+        tail += 1;
+    }
+    format!("{}{MARKER}{}", &text[..head], &text[tail..])
+}
+
+/// Whether the file tools of one call stay inside `root`: the path each
+/// names resolves under it, symlinks included, and a Glob pattern names
+/// nothing above it.
+fn stays_in(root: &Path, tool: &str, input: &Value) -> bool {
+    let Ok(root) = root.canonicalize() else {
+        return false;
+    };
+    let paths_inside = ["file_path", "path"]
+        .iter()
+        .filter_map(|key| input[*key].as_str())
+        .all(|path| inside(&root, Path::new(path)));
+    let pattern_inside = tool != "Glob"
+        || input["pattern"]
+            .as_str()
+            .is_none_or(|pattern| !Path::new(pattern).is_absolute() && !pattern.contains(".."));
+    paths_inside && pattern_inside
+}
+
+/// Whether `path`, read from `root` when relative, lands under the canonical
+/// `root`. `..` is folded away first, then the longest part that exists is
+/// resolved through the disk so a symlink cannot lead out of the checkout.
+fn inside(root: &Path, path: &Path) -> bool {
+    let joined = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        root.join(path)
+    };
+    let mut lexical = PathBuf::new();
+    for component in joined.components() {
+        match component {
+            Component::ParentDir => {
+                lexical.pop();
+            }
+            Component::CurDir => {}
+            other => lexical.push(other.as_os_str()),
+        }
+    }
+    let mut existing = lexical.as_path();
+    let mut missing = Vec::new();
+    while existing.symlink_metadata().is_err() {
+        match (existing.parent(), existing.file_name()) {
+            (Some(parent), Some(name)) => {
+                missing.push(name.to_owned());
+                existing = parent;
+            }
+            _ => return false,
+        }
+    }
+    let Ok(mut real) = existing.canonicalize() else {
+        return false;
+    };
+    for name in missing.iter().rev() {
+        real.push(name);
+    }
+    real.starts_with(root)
 }
 
 static AVAILABLE: OnceLock<bool> = OnceLock::new();
@@ -231,11 +316,14 @@ async fn run_inner(
     options.setting_sources = Some(Vec::new());
     options.strict_mcp_config = true;
     options.env_remove = REMOVED_ENV.iter().map(|name| (*name).to_owned()).collect();
+    let root = cwd.to_owned();
     let handler = claude_agent_sdk::permission_handler(move |request| {
-        let decision = if allowed.iter().any(|name| *name == request.tool_name) {
-            PermissionResult::allow(request.input.clone())
-        } else {
+        let decision = if !allowed.iter().any(|name| *name == request.tool_name) {
             PermissionResult::deny("That tool is not available in this mode.")
+        } else if !stays_in(&root, &request.tool_name, &request.input) {
+            PermissionResult::deny("That path is outside this checkout.")
+        } else {
+            PermissionResult::allow(request.input.clone())
         };
         async move { Ok::<_, claude_agent_sdk::Error>(decision) }
     });
@@ -252,7 +340,11 @@ async fn run_inner(
             return Err(STOPPED.into());
         }
         let next = match delegations.as_mut() {
-            None => query.next().await,
+            None => tokio::select! {
+                message = query.next() => message,
+                // Look at `cancel` while the model is quiet, as with a delegation.
+                () = tokio::time::sleep(std::time::Duration::from_millis(250)) => continue,
+            },
             Some(delegations) => tokio::select! {
                 biased;
                 Some(event) = delegations.receiver.recv() => {
@@ -446,6 +538,10 @@ fn finish(result: SdkResultMessage) -> Result<Streamed, String> {
             .or_else(|| (!text.trim().is_empty()).then_some(text))
             .unwrap_or_else(|| "The turn ended on an error.".to_owned()));
     }
+    // An empty success is no reply, the same as a turn that streamed none.
+    if text.trim().is_empty() {
+        return Err("The turn ended without a reply.".into());
+    }
     let prompt_tokens = usage.input_tokens;
     let completion_tokens = usage.output_tokens;
     Ok(Streamed {
@@ -502,7 +598,112 @@ mod tests {
         );
         assert!(prompt.contains("user: fix the test"), "{prompt}");
         assert!(prompt.contains("assistant: on it"), "{prompt}");
-        assert!(prompt.len() <= TASK_LIMIT + 4096, "{}", prompt.len());
+        assert!(prompt.len() <= TASK_LIMIT, "{}", prompt.len());
+    }
+
+    #[test]
+    fn a_newest_message_larger_than_the_limit_still_reaches_the_prompt() {
+        let big = "x".repeat(TASK_LIMIT * 2);
+        let messages = vec![Message::user(format!("start {big} end"))];
+        let prompt = task(&messages);
+        assert!(prompt.len() <= TASK_LIMIT, "{}", prompt.len());
+        assert!(
+            prompt.contains("user: start "),
+            "{}",
+            &prompt[prompt.len() - 200..]
+        );
+        assert!(
+            prompt.ends_with(" end"),
+            "{}",
+            &prompt[prompt.len() - 200..]
+        );
+        assert!(prompt.contains("[...]"));
+    }
+
+    #[test]
+    fn clipping_keeps_the_head_and_tail_on_character_boundaries() {
+        let text = "é".repeat(100);
+        let clipped = clip(&text, 41);
+        assert!(clipped.len() <= 41, "{}", clipped.len());
+        assert!(
+            clipped.starts_with('é') && clipped.ends_with('é'),
+            "{clipped}"
+        );
+        assert_eq!(clip("short", 41), "short");
+    }
+
+    #[test]
+    fn the_file_tools_stay_inside_the_checkout() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join("src/lib.rs"), "fn main() {}").unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.join("link")).unwrap();
+
+        let inside_call = |tool: &str, input: Value| stays_in(root, tool, &input);
+        assert!(inside_call(
+            "Read",
+            serde_json::json!({"file_path": "src/lib.rs"})
+        ));
+        assert!(inside_call(
+            "Write",
+            serde_json::json!({"file_path": "src/new.rs"})
+        ));
+        assert!(inside_call(
+            "Grep",
+            serde_json::json!({"pattern": "x", "path": "src"})
+        ));
+        assert!(inside_call(
+            "Glob",
+            serde_json::json!({"pattern": "**/*.rs"})
+        ));
+        assert!(!inside_call(
+            "Read",
+            serde_json::json!({"file_path": "../secret"})
+        ));
+        assert!(!inside_call(
+            "Read",
+            serde_json::json!({"file_path": "src/../../secret"})
+        ));
+        assert!(!inside_call(
+            "Write",
+            serde_json::json!({"file_path": "/etc/hosts"})
+        ));
+        assert!(!inside_call(
+            "Edit",
+            serde_json::json!({"file_path": "link/rc"})
+        ));
+        assert!(!inside_call(
+            "Glob",
+            serde_json::json!({"pattern": "../**"})
+        ));
+        assert!(!inside_call(
+            "Glob",
+            serde_json::json!({"pattern": "/etc/*"})
+        ));
+        assert!(!inside_call(
+            "Grep",
+            serde_json::json!({"pattern": "x", "path": "/"})
+        ));
+    }
+
+    #[test]
+    fn an_empty_success_is_no_reply() {
+        let empty = SdkResultMessage::Success(
+            serde_json::from_value(serde_json::json!({
+                "duration_ms": 1, "duration_api_ms": 1, "is_error": false, "num_turns": 1,
+                "result": "  ", "total_cost_usd": 0.0,
+                "usage": {"input_tokens": 1, "output_tokens": 0},
+                "modelUsage": {}, "permission_denials": [],
+                "uuid": "u", "session_id": "s"
+            }))
+            .unwrap(),
+        );
+        assert_eq!(
+            finish(empty).unwrap_err(),
+            "The turn ended without a reply."
+        );
     }
 
     #[test]
