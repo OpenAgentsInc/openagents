@@ -43,6 +43,16 @@
 //! does not ask it ([`unread_on`], [`Split::for_surface`]). [`merge`] keeps
 //! each side question's serving identity ([`SERVED_BY`]), so a side a
 //! fallback door answered is calibrated on its own model's map.
+//!
+//! **Staged routing (#11247, stage B, opt-in).** With [`STAGED_VAR`] on,
+//! [`Split::configured`] asks a turn in two stages ([`Split::staged`]): the
+//! main request asks the coarse [`ROUTE_HINT`] in place of `route` and no
+//! `answer` goes beside it; then one request asks `route` over every route,
+//! the hint's [`shortlist`] at full rubric and the rest by description,
+//! and `answer` over the shortlist's entries ([`Staged::questions`]). On
+//! routes-v5 it holds Jev's accuracy for about 15 % fewer tokens and a
+//! second round trip; on the CoderOS-4080 Clef a website turn takes
+//! 0.9–1.5 s where the flat split takes 1.6 s.
 
 use indexmap::IndexMap;
 use jev::{Answer, Choice, ChoiceAnswer, Entry as Criterion, Noul, NoulCriteria, Questions};
@@ -445,7 +455,8 @@ pub fn unread_on(surface: super::Surface) -> &'static [&'static str] {
 }
 
 /// Whether a policy rule will read the deferred question `id` given the
-/// main request's answers, read off the typed `route` argmax only, never
+/// response that answered `route` (the main request's, or a staged turn's
+/// second request's), read off the typed `route` argmax only, never
 /// the message: `cli_group` for the `cli` route (rule 7, and the
 /// website's GitHub commands that come of it), and for the `wallet` route
 /// on a terminal, whose descent a sure `cli_group` reading of another
@@ -456,6 +467,158 @@ pub fn needed_after(id: &str, main: &jev::SystemOneResponse, terminal: bool) -> 
     match id {
         "cli_group" => route == Some(RouteId::Cli) || (terminal && route == Some(RouteId::Wallet)),
         _ => true,
+    }
+}
+
+/// The coarse route question a staged turn asks in its main request in
+/// place of `route` (#11247, stage B): every route by its one-line
+/// [`RouteId::description`] and its rubric's examples ([`route_hint`]),
+/// plus `none`. Its probabilities only pick the
+/// routes the second request asks `route` over ([`shortlist`]); no policy
+/// rule reads it.
+pub const ROUTE_HINT: &str = "route_hint";
+
+/// The variable that turns staged routing on ([`Split::staged`]): `on`,
+/// or unset or anything else for the flat split. Off by default: on Jev,
+/// the default judge, a staged turn sends about 15 % fewer tokens but
+/// takes a second round trip (#11247); a judge whose cost is its tokens,
+/// a Clef door on one GPU, is where it pays.
+pub const STAGED_VAR: &str = "CODER_ROUTER_STAGED";
+
+/// Whether turns are asked in stages: [`STAGED_VAR`] is `on`.
+#[must_use]
+pub fn staged_on() -> bool {
+    std::env::var(STAGED_VAR).is_ok_and(|value| value.trim() == "on")
+}
+
+/// The [`ROUTE_HINT`] question: the same instructions as `route`, each
+/// option its route's one-line [`RouteId::description`] with the
+/// examples of its `route` rubric, without the rubric's long `what` and
+/// `not_for` (about 110 tokens an option, where a rubric runs about 230).
+/// On routes-v5 the examples carry the shortlist: without them the
+/// labeled route was among the three likeliest on 94 % of rows, with them
+/// on 99.4 % (#11247).
+#[must_use]
+pub fn route_hint() -> Choice {
+    let mut routes: IndexMap<String, Option<Criterion>> = RouteId::ALL
+        .into_iter()
+        .map(|route| {
+            let rubric = super::rubric::route(route);
+            let examples: Vec<&str> = rubric["examples"]
+                .as_array()
+                .map(|examples| examples.iter().filter_map(Value::as_str).collect())
+                .unwrap_or_default();
+            (
+                route.word().to_string(),
+                Some(Criterion::from(super::rubric::option(
+                    route.description(),
+                    None,
+                    &examples,
+                ))),
+            )
+        })
+        .collect();
+    routes.insert(
+        "none".to_string(),
+        Some(Criterion::from(RouteId::Unknown.description().to_string())),
+    );
+    Choice::new(super::rubric::route_instructions(), routes)
+}
+
+/// The probability mass of [`ROUTE_HINT`] (`none` counted) at which the
+/// shortlist stops growing.
+pub const SHORTLIST_MASS: f64 = 0.99;
+
+/// The fewest routes a shortlist holds, whatever the mass.
+pub const SHORTLIST_MIN: usize = 3;
+
+/// The most routes a shortlist holds.
+pub const SHORTLIST_MAX: usize = 6;
+
+/// The routes the second request of a staged turn asks `route` over, read
+/// off the typed [`ROUTE_HINT`] probabilities only, never the message:
+/// the most likely routes, most likely first, until they and `none` hold
+/// [`SHORTLIST_MASS`], at least [`SHORTLIST_MIN`] and at most
+/// [`SHORTLIST_MAX`] of them. Empty when the hint gave no probabilities.
+#[must_use]
+pub fn shortlist(hint: &ChoiceAnswer) -> Vec<RouteId> {
+    let mut mass = hint.probabilities.get("none").copied().map_or(0.0, finite);
+    let mut ranked: Vec<(RouteId, f64)> = hint
+        .probabilities
+        .iter()
+        .map(|(word, p)| (RouteId::parse(word), finite(*p)))
+        .filter(|(route, _)| *route != RouteId::Unknown)
+        .collect();
+    ranked.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+    let mut picked = Vec::new();
+    for (route, p) in ranked {
+        if picked.len() >= SHORTLIST_MAX
+            || (picked.len() >= SHORTLIST_MIN && mass >= SHORTLIST_MASS)
+        {
+            break;
+        }
+        picked.push(route);
+        mass += p;
+    }
+    picked
+}
+
+/// What the second request of a staged turn asks ([`Split::staged`]):
+/// the whole `route` and `answer` questions, cut to a shortlist once the
+/// main request's [`ROUTE_HINT`] answers ([`Staged::questions`]).
+#[derive(Clone, Debug)]
+pub struct Staged {
+    /// The full `route` question, every rubric as [`route`] writes it.
+    pub route: Choice,
+    /// The full `answer` question, or `None` when the set asks none.
+    pub answer: Option<Choice>,
+    /// The routes each `answer` option answers, by option id.
+    pub answer_routes: IndexMap<String, Vec<RouteId>>,
+}
+
+impl Staged {
+    /// The questions the second request asks for the shortlist `routes`:
+    ///
+    /// - `route` over every route, in the catalog's order: a shortlisted
+    ///   one (and `none`) with its whole rubric, any other by its one-line
+    ///   [`RouteId::description`]. Every route stays an option, so the
+    ///   probabilities keep the scale the thresholds were set on: on Jev,
+    ///   dropping the other routes lowered a sure route's probability by
+    ///   about 0.04 on average and up to 0.6 (#11247), and Gym recall fell
+    ///   from 86 % to 71 %.
+    /// - `answer` over the entries that answer a shortlisted route, and
+    ///   `none`; left out when no entry does.
+    ///
+    /// An empty shortlist asks both whole.
+    #[must_use]
+    pub fn questions(&self, routes: &[RouteId]) -> Questions {
+        let kept = |word: &str| {
+            routes.is_empty() || word == "none" || routes.contains(&RouteId::parse(word))
+        };
+        let mut route = self.route.clone();
+        for (word, criterion) in &mut route.criteria {
+            if !kept(word) {
+                *criterion = Some(Criterion::from(
+                    RouteId::parse(word).description().to_string(),
+                ));
+            }
+        }
+        let mut questions = Questions::new().with("route", route);
+        if let Some(answer) = &self.answer {
+            let mut answer = answer.clone();
+            answer.criteria.retain(|id, _| {
+                id == "none"
+                    || routes.is_empty()
+                    || self
+                        .answer_routes
+                        .get(id)
+                        .is_some_and(|answers| answers.iter().any(|r| routes.contains(r)))
+            });
+            if answer.criteria.len() > 1 {
+                questions = questions.with("answer", answer);
+            }
+        }
+        questions
     }
 }
 
@@ -494,6 +657,10 @@ pub struct Split {
     /// Whether the turn is a terminal's, whose wallet route reads
     /// `cli_group` ([`needed_after`]).
     pub terminal: bool,
+    /// A staged turn's second request ([`Split::staged`]): `route` and
+    /// `answer` over the routes the main request's [`ROUTE_HINT`] makes
+    /// likely. `None` asks them as the flat split does.
+    pub staged: Option<Staged>,
 }
 
 impl Split {
@@ -522,6 +689,72 @@ impl Split {
             .map(|(id, question)| (id.to_string(), question.clone()))
             .collect();
         self
+    }
+
+    /// The same turn asked in stages (#11247, stage B): the main request
+    /// asks [`ROUTE_HINT`] in place of `route`, and `answer` leaves the
+    /// requests beside it. Once the main request answers, one more request
+    /// asks `route` and `answer` over the hint's [`shortlist`]
+    /// ([`Staged::questions`]), and `cli_group` follows only when that
+    /// `route` reads it ([`needed_after`]). On routes-v5 a turn sends about
+    /// 15 % fewer Jev tokens, for one more round trip; a website turn on
+    /// Clef sends 6.1k–9.4k tokens where the flat split sends 10.7k. A
+    /// split that asks no `route` is returned as it is.
+    #[must_use]
+    pub fn staged(mut self) -> Self {
+        let Some(jev::Question::Choice(route)) = self.main.questions.get("route").cloned() else {
+            return self;
+        };
+        let answer = self
+            .sides
+            .iter()
+            .position(|(id, _)| *id == "answer")
+            .map(|at| self.sides.remove(at).1)
+            .and_then(|request| match request.questions.get("answer") {
+                Some(jev::Question::Choice(answer)) => Some(answer.clone()),
+                _ => None,
+            });
+        let bank = Bank::builtin();
+        let answer_routes = answer
+            .iter()
+            .flat_map(|answer| answer.criteria.keys())
+            .filter_map(|id| {
+                let entry = bank.entry(id)?;
+                Some((
+                    id.clone(),
+                    entry
+                        .routes
+                        .iter()
+                        .map(|word| RouteId::parse(word))
+                        .collect(),
+                ))
+            })
+            .collect();
+        self.main.questions = self
+            .main
+            .questions
+            .iter()
+            .map(|(id, question)| {
+                if id == "route" {
+                    (ROUTE_HINT.to_string(), jev::Question::from(route_hint()))
+                } else {
+                    (id.to_string(), question.clone())
+                }
+            })
+            .collect();
+        self.staged = Some(Staged {
+            route,
+            answer,
+            answer_routes,
+        });
+        self
+    }
+
+    /// The turn as this process is configured to ask it: [`Split::staged`]
+    /// when [`staged_on`], else as it is.
+    #[must_use]
+    pub fn configured(self) -> Self {
+        if staged_on() { self.staged() } else { self }
     }
 
     /// The same requests and the [`REPOSITORY`] question as a side
@@ -673,6 +906,7 @@ pub fn split(
         sides,
         later,
         terminal: false,
+        staged: None,
     }
 }
 
@@ -697,31 +931,65 @@ pub async fn ask(judge: &jev::Client, split: Split) -> jev::Result<jev::SystemOn
         sides,
         later,
         terminal,
+        staged,
     } = split;
     let (ids, requests): (Vec<&'static str>, Vec<jev::SystemOneRequest>) =
         sides.into_iter().unzip();
+    // A staged turn's second request asks over the main request's state.
+    let second = staged.map(|staged| (staged, main.clone()));
     let main_then_later = async {
         let main = judge.system_one(main).await;
         let Ok(response) = &main else {
             return (main, Vec::new());
         };
+        let mut answered = Vec::new();
+        // Stage two (#11247): `route` and `answer` over the hint's
+        // shortlist. The turn's route comes from here, so its failure is
+        // the call's, as the flat main request's is.
+        let routed = match second {
+            Some((staged, mut request)) => {
+                let routes = choice(response, ROUTE_HINT)
+                    .map(shortlist)
+                    .unwrap_or_default();
+                request.questions = staged.questions(&routes);
+                let left = crate::first::LATE.saturating_sub(started.elapsed());
+                if left.is_zero() {
+                    return (
+                        Err(jev::Error::Timeout {
+                            timeout: crate::first::LATE,
+                        }),
+                        Vec::new(),
+                    );
+                }
+                match judge.system_one(request.timeout(left)).await {
+                    Ok(routed) => Some(routed),
+                    Err(error) => return (Err(error), Vec::new()),
+                }
+            }
+            None => None,
+        };
+        let route_from = routed.as_ref().unwrap_or(response);
         let left = crate::first::LATE.saturating_sub(started.elapsed());
         let wanted: Vec<(&'static str, jev::SystemOneRequest)> = later
             .into_iter()
-            .filter(|(id, _)| needed_after(id, response, terminal))
+            .filter(|(id, _)| needed_after(id, route_from, terminal))
             .collect();
+        if let Some(routed) = routed {
+            answered.push(("route", Ok(routed)));
+        }
         if wanted.is_empty() || left.is_zero() {
-            return (main, Vec::new());
+            return (main, answered);
         }
         let (ids, requests): (Vec<&'static str>, Vec<jev::SystemOneRequest>) = wanted
             .into_iter()
             .map(|(id, request)| (id, request.timeout(left)))
             .unzip();
-        let answered = futures_util::future::join_all(
+        let later = futures_util::future::join_all(
             requests.into_iter().map(|later| judge.system_one(later)),
         )
         .await;
-        (main, ids.into_iter().zip(answered).collect())
+        answered.extend(ids.into_iter().zip(later));
+        (main, answered)
     };
     let ((main, later), sides) = futures_util::future::join(
         main_then_later,
@@ -1382,6 +1650,10 @@ mod tests {
     /// built from them, the bank's selectable answers, no command tree
     /// (asked only after the main request, #11247).
     fn typical_turn(surface: crate::router::Surface) -> Split {
+        typical_flat_turn(surface).staged()
+    }
+
+    fn typical_flat_turn(surface: crate::router::Surface) -> Split {
         let root = knowledge::product::repository();
         let corpus =
             knowledge::product::Corpus::load(&knowledge::product::default_dir(), Some(&root))
@@ -1405,6 +1677,21 @@ mod tests {
         .for_surface(surface)
     }
 
+    /// The shortlist a typical turn's hint gives ("What models do you
+    /// use?"): measured on Jev, three routes hold the mass.
+    const TYPICAL_SHORTLIST: [RouteId; 3] = [RouteId::Meta, RouteId::ProductKb, RouteId::General];
+
+    /// A staged turn's second request for `routes`.
+    fn routed(asked: &Split, routes: &[RouteId]) -> jev::SystemOneRequest {
+        let mut request = asked.main.clone();
+        request.questions = asked
+            .staged
+            .as_ref()
+            .expect("a staged turn")
+            .questions(routes);
+        request
+    }
+
     fn bytes(request: &jev::SystemOneRequest) -> usize {
         serde_json::to_vec(&json!({
             "state": request.state.to_value(),
@@ -1414,8 +1701,9 @@ mod tests {
         .len()
     }
 
-    /// A turn's requests (the main request and `answer`, sent at once)
-    /// stay within the measured bound for its surface (#11247).
+    /// A turn's requests stay within the measured bound for its surface
+    /// (#11247): the flat split's main request and `answer`, sent at once,
+    /// and a staged turn's two requests for the typical shortlist.
     #[test]
     fn a_typical_turn_fits_the_router_budget() {
         for surface in [
@@ -1431,11 +1719,59 @@ mod tests {
 
     fn check_typical_turn(asked: &Split, surface: crate::router::Surface) {
         // `ROUTER_TURN_DUMP=<dir>` writes each request's body, to count its
-        // tokens on a judge (#11247).
+        // tokens on a judge (#11247), the flat split's as `flat-…`.
         if let Some(dir) = std::env::var_os("ROUTER_TURN_DUMP") {
             let dir = std::path::PathBuf::from(dir);
             let _ = std::fs::create_dir_all(&dir);
+            let flat = typical_flat_turn(surface);
+            let named = std::iter::once(("main", &flat.main))
+                .chain(flat.sides.iter().map(|(id, request)| (*id, request)))
+                .chain(flat.later.iter().map(|(id, request)| (*id, request)));
+            for (id, request) in named {
+                let body = json!({
+                    "state": request.state.to_value(),
+                    "questions": request.questions.to_value(),
+                });
+                let _ = std::fs::write(
+                    dir.join(format!("flat-{}-{id}.json", surface.word())),
+                    body.to_string(),
+                );
+            }
+        }
+        if let Some(dir) = std::env::var_os("ROUTER_TURN_DUMP") {
+            let dir = std::path::PathBuf::from(dir);
+            let _ = std::fs::create_dir_all(&dir);
+            for (name, routes) in [
+                (
+                    "routed-smalltalk",
+                    [RouteId::Smalltalk, RouteId::End, RouteId::General],
+                ),
+                (
+                    "routed-dispatch",
+                    [RouteId::WorkDispatch, RouteId::Cli, RouteId::StandingRule],
+                ),
+                (
+                    "routed-gym",
+                    [RouteId::EvalRun, RouteId::EvalCheck, RouteId::GymNews],
+                ),
+                (
+                    "routed-wallet",
+                    [RouteId::Wallet, RouteId::Account, RouteId::ProductKb],
+                ),
+            ] {
+                let request = routed(asked, &routes);
+                let body = json!({
+                    "state": request.state.to_value(),
+                    "questions": request.questions.to_value(),
+                });
+                let _ = std::fs::write(
+                    dir.join(format!("{}-{name}.json", surface.word())),
+                    body.to_string(),
+                );
+            }
+            let second = routed(asked, &TYPICAL_SHORTLIST);
             let named = std::iter::once(("main", &asked.main))
+                .chain(std::iter::once(("routed", &second)))
                 .chain(asked.sides.iter().map(|(id, request)| (*id, request)))
                 .chain(asked.later.iter().map(|(id, request)| (*id, request)));
             for (id, request) in named {
@@ -1455,7 +1791,8 @@ mod tests {
         }
         let main = bytes(&asked.main);
         let sides: usize = asked.sides.iter().map(|(_, request)| bytes(request)).sum();
-        eprintln!("main {main} bytes, beside it {sides} bytes");
+        let second = bytes(&routed(asked, &TYPICAL_SHORTLIST));
+        eprintln!("main {main} bytes, beside it {sides} bytes, then routed {second} bytes");
         for (id, request) in &asked.later {
             eprintln!("later {id}: {} bytes", bytes(request));
         }
@@ -1465,10 +1802,169 @@ mod tests {
             _ => APP_TURN_BYTES,
         };
         assert!(
-            main + sides <= budget,
-            "{surface:?}: {} bytes",
-            main + sides
+            main + sides + second <= budget,
+            "{surface:?} staged: {} bytes",
+            main + sides + second
         );
+        // The flat split, the default, stays within the same bound.
+        let flat = typical_flat_turn(surface);
+        let flat_bytes =
+            bytes(&flat.main) + flat.sides.iter().map(|(_, r)| bytes(r)).sum::<usize>();
+        eprintln!("flat: {flat_bytes} bytes");
+        assert!(flat_bytes <= budget, "{surface:?} flat: {flat_bytes} bytes");
+    }
+
+    /// The shortlist is read off the hint's probabilities: the most likely
+    /// routes until they and `none` hold the mass, at least
+    /// [`SHORTLIST_MIN`] and at most [`SHORTLIST_MAX`]; `none` itself is
+    /// never a shortlisted route.
+    #[test]
+    fn the_shortlist_takes_the_likely_routes_by_mass() {
+        let hint = |pairs: &[(&str, f64)]| ChoiceAnswer {
+            choice: pairs[0].0.to_string(),
+            confidence: pairs[0].1,
+            probabilities: pairs.iter().map(|(w, p)| ((*w).to_string(), *p)).collect(),
+        };
+        // A sure hint still shortlists the minimum.
+        let sure = hint(&[
+            ("meta", 0.97),
+            ("product.kb", 0.012),
+            ("general", 0.008),
+            ("wallet", 0.005),
+            ("none", 0.005),
+        ]);
+        assert_eq!(
+            shortlist(&sure),
+            [RouteId::Meta, RouteId::ProductKb, RouteId::General]
+        );
+        // A spread hint grows until the mass, `none` counted.
+        let spread = hint(&[
+            ("wallet", 0.40),
+            ("account", 0.30),
+            ("cli", 0.15),
+            ("meta", 0.06),
+            ("product.kb", 0.03),
+            ("none", 0.04),
+            ("general", 0.02),
+        ]);
+        assert_eq!(
+            shortlist(&spread),
+            [
+                RouteId::Wallet,
+                RouteId::Account,
+                RouteId::Cli,
+                RouteId::Meta,
+                RouteId::ProductKb,
+                RouteId::General
+            ]
+        );
+        // A flat hint stops at the maximum.
+        let flat: Vec<(&str, f64)> = RouteId::ALL
+            .iter()
+            .map(|route| (route.word(), 1.0 / RouteId::ALL.len() as f64))
+            .collect();
+        assert_eq!(shortlist(&hint(&flat)).len(), SHORTLIST_MAX);
+        // No probabilities, no shortlist: the second request asks whole.
+        assert!(shortlist(&hint(&[("none", 1.0)])).is_empty());
+    }
+
+    /// A staged turn asks `route_hint` where the flat main request asks
+    /// `route`, no `answer` beside it, and then `route` over the shortlist
+    /// with each kept route's full rubric and `answer` over the entries
+    /// that answer a shortlisted route.
+    #[test]
+    fn a_staged_turn_asks_route_and_answer_over_the_shortlist() {
+        let flat = typical_turn(crate::router::Surface::Web);
+        assert!(flat.main.questions.get("route").is_none());
+        assert!(flat.main.questions.get(ROUTE_HINT).is_some());
+        assert!(flat.sides.iter().all(|(id, _)| *id != "answer"));
+        let staged = flat.staged.as_ref().expect("staged");
+        let asked = staged.questions(&TYPICAL_SHORTLIST);
+        asked.validate().expect("a valid set");
+        let Some(jev::Question::Choice(route)) = asked.get("route") else {
+            panic!("route is asked");
+        };
+        // Every route stays an option, in the catalog's order; a
+        // shortlisted one (and `none`) keeps its whole rubric, any other
+        // reads as its one-line description.
+        assert_eq!(
+            route.criteria.keys().collect::<Vec<_>>(),
+            staged.route.criteria.keys().collect::<Vec<_>>()
+        );
+        for (word, criterion) in &route.criteria {
+            let asked = serde_json::to_value(criterion).unwrap();
+            let routed = RouteId::parse(word);
+            if word == "none" || TYPICAL_SHORTLIST.contains(&routed) {
+                assert_eq!(
+                    asked,
+                    serde_json::to_value(&staged.route.criteria[word]).unwrap(),
+                    "{word} keeps its whole rubric"
+                );
+            } else {
+                assert_eq!(asked, json!(routed.description()), "{word}");
+            }
+        }
+        let Some(jev::Question::Choice(answer)) = asked.get("answer") else {
+            panic!("answer is asked");
+        };
+        let bank = Bank::builtin();
+        for id in answer.criteria.keys().filter(|id| *id != "none") {
+            let entry = bank.entry(id).expect("a bank entry");
+            assert!(
+                TYPICAL_SHORTLIST.iter().any(|route| entry.answers(*route)),
+                "{id} answers none of the shortlist"
+            );
+        }
+        let whole = staged.answer.as_ref().unwrap().criteria.len();
+        assert!(answer.criteria.len() < whole);
+        // An empty shortlist asks both whole.
+        let all = staged.questions(&[]);
+        let Some(jev::Question::Choice(route)) = all.get("route") else {
+            panic!("route is asked");
+        };
+        assert_eq!(
+            serde_json::to_value(route).unwrap(),
+            serde_json::to_value(&staged.route).unwrap()
+        );
+        // A shortlist no entry answers asks no `answer`.
+        let unanswered: Vec<RouteId> = RouteId::ALL
+            .into_iter()
+            .filter(|route| !staged.answer_routes.values().any(|r| r.contains(route)))
+            .collect();
+        if !unanswered.is_empty() {
+            assert!(staged.questions(&unanswered).get("answer").is_none());
+        }
+    }
+
+    /// Every staged second request fits a Clef door, whatever the
+    /// shortlist: the largest is the [`SHORTLIST_MAX`] routes with the
+    /// most bank entries.
+    #[test]
+    fn every_staged_second_request_fits_a_clef_door() {
+        let asked = typical_turn(crate::router::Surface::Terminal);
+        let bank = Bank::builtin();
+        let mut by_entries: Vec<RouteId> = RouteId::ALL.to_vec();
+        by_entries.sort_by_key(|route| {
+            std::cmp::Reverse(bank.answers.iter().filter(|e| e.answers(*route)).count())
+        });
+        let largest = routed(&asked, &by_entries[..SHORTLIST_MAX]);
+        let size = bytes(&largest);
+        eprintln!("largest second request: {size} bytes");
+        let staged = asked.staged.as_ref().unwrap();
+        for route in RouteId::ALL {
+            let one = staged.questions(&[route]);
+            let part = |id: &str| {
+                one.get(id)
+                    .map_or(0, |question| serde_json::to_vec(question).unwrap().len())
+            };
+            eprintln!(
+                "{}: route {} bytes, answer {} bytes",
+                route.word(),
+                part("route"),
+                part("answer")
+            );
+        }
+        assert!(size < 64 * 1024 && size / 4 < CLEF_TOKENS);
     }
 
     /// Each request fits a Clef door (#11193): under Ollama's 64 KiB body

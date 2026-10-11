@@ -624,6 +624,93 @@ The same critical cases fail before and after (`github.connect_repo#2/#3`,
 each `privacy.training#3`): a route or answer probability under its bar, the same
 on `main`. Jev holds. Clef on the 4080 was not re-measured here.
 
+**Router tokens, stage B (#11247, 2026-10-11): staged routing, opt-in.**
+`CODER_ROUTER_STAGED=on` asks a turn in two requests
+(`router::judge::Split::staged`). The first holds every main question, with
+a coarse `route_hint` in place of `route`: each route by its one-line
+description plus its rubric's examples, about 110 tokens an option. Its
+probabilities pick a shortlist (the likeliest routes until they and `none`
+hold 0.99, three to six of them, `router::judge::shortlist`). The second
+asks `route` with the shortlisted routes at full rubric and every other
+route by its one-line description, and `answer` over the shortlisted
+routes' bank entries. `cli_group` follows only when that `route` reads it.
+It is off by default: on Jev it saves about 15 % of the tokens for a second
+round trip.
+
+What holds Jev's accuracy, measured on routes-v5 held_out + calibration
+(678 rows, Jev at TypeSafe, flat and staged runs in the same hour):
+
+| Shape | Route acc. | Canned prec. / cov. | Dispatch prec. | Gym recall | Refusal recall | Jev tokens a turn | Judge p50 / p95 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Flat split (default), run 1 | 90.1 % | 99.0 / 71.9 % | 99.0 % | 86.1 % | 91.3 % | 13,986 | 236 / 573 ms |
+| Flat split (default), run 2 | 90.6 % | 99.0 / 71.2 % | 98.0 % | 86.1 % | 91.3 % | 14,010 | 257 / 603 ms |
+| Hint by description; shortlist only | 85.8 % | 99.5 / 67.3 % | 95.0 % | 69.4 % | 91.3 % | 8,887 | 368 / 739 ms |
+| Hint with examples; shortlist only | 90.3 % | 99.0 / 69.8 % | 97.9 % | 71.3 % | 91.3 % | 10,964 | 493 / 1,043 ms |
+| **Hint with examples; other routes described (shipped, opt-in)** | **90.1 %** | **99.0 / 72.7 %** | **97.0 %** | **85.2 %** | **91.3 %** | **11,834** | **520 / 1,150 ms** |
+| The same, hint by description | 86.9 % | 99.5 / 70.1 % | 94.2 % | 80.6 % | 91.3 % | 10,183 | 515 / 1,120 ms |
+| The same, second request's rubrics without examples | 85.1 % | 99.0 / 68.0 % | 89.0 % | 61.1 % | 91.3 % | 11,466 | 447 / 1,007 ms |
+
+- **The hint needs the examples.** Asked alone on the same rows, the
+  labeled route was among the shortlist (three or more routes at 0.95 /
+  0.99) on 94.1 / 95.1 % of rows with descriptions only, 97.2 % with the
+  rubrics' `what`, 99.4 / 99.6 % with description and examples (top-1
+  88.9 %), and 99.3 / 99.6 % with the full rubrics (top-1 90.3 %, at 2.2
+  times the bytes). Description plus two or four examples was no better
+  than none (94.7 %, 95.1 %).
+- **A shortlist alone lowers Jev's probabilities.** Asking `route` over
+  three or four routes kept its argmax (route accuracy held) but lowered a
+  sure route's probability: on 155 rows of the routes that dropped, 0.880
+  over all routes, 0.845 over the shortlist, 0.822 with the others as bare
+  names, and 0.876 with the others described. Per route, `eval.run` fell
+  from 0.94 to 0.81 and `wallet` from 0.91 to 0.80, under the Gym and
+  canned floors; so Gym recall fell to 71 %. Keeping every route as an
+  option, the others by description, restores the scale. Jev itself moves
+  by 0.03–0.05 on an identical request, so single rows are noise.
+- **Dispatch.** The shipped shape made 3 wrong dispatch offers in 101 (the
+  flat runs 1 in 97 and 2 in 99): `meta/034`, which flat run 2 also made,
+  `cli/004`, and `eval.author/025`.
+
+Web chat goldens, router mode, Jev (`calibration-v2`), 123 cases, product
+notes on:
+
+| Shape | Pass | Right (bar 90 %) | Critical wrong | Slow | Judge p50 / p90 |
+| --- | --- | --- | --- | --- | --- |
+| Flat split | 106 | 88 % | 3 | 2 | 0.99 / 1.37 s |
+| Staged | 101 | 87 % | 3 (the same) | 6 | 1.18 / 1.64 s |
+
+The same critical cases fail in both (`github.connect_repo#1/#4`,
+`coder.login#3`); the staged run is right on one case fewer and slow on
+four more, from its second round trip.
+
+**Clef on the CoderOS-4080** (the production `pylon-clef`, `a9ab2671be`,
+asked on localhost while it was otherwise idle, a fresh nonce per turn,
+the median of three; a "What models do you use?" turn, whose shortlist,
+`meta`, `product.kb`, and `general`, carries the most bank entries):
+
+| Turn | Flat: tokens (main + `answer`, at once) | Flat | Staged: tokens (first + second) | Staged |
+| --- | --- | --- | --- | --- |
+| Website | 6,958 + 3,745 = 10,703 | 1.63 s | 4,340 + 5,102 = 9,442 | 1.45 s |
+| Phone | 8,463 + 3,709 = 12,172 | 1.86 s | 5,845 + 5,087 = 10,932 | 1.67 s |
+
+Other shortlists, once each, website / phone: `smalltalk` 7,147 tokens,
+1.16 / 1.32 s; `work.dispatch` 6,943, 1.08 / 1.30 s; Gym 6,118, 0.93 / 1.15
+s; `wallet` 7,741, 1.17 / 1.39 s. A staged website turn on Clef sends 6.1k–
+9.4k tokens and takes 0.9–1.5 s, where the flat split sends 10.7k and takes
+1.6 s. The first request alone is 4,340 tokens (0.65 s) on the website, of
+which the hint is about 2.6k, so a turn under 1 s needs a cheaper first
+stage; the Clef map (`calibration-clef-flash-v1`) was fitted on the flat
+shape and was not refitted. Not done here, and in #11247's follow-up: the
+dispatch and Gym questions (`capability`, `engine`, `fanout`, `read_only`,
+`summarize`, `tool`; 5.5 KB on the phone, 9 KB on a terminal) asked in the
+second request only when such a tier may be served, a routes-v5 run and
+map refit on Clef, and the sub-second first stage.
+
+TypeSafe ran out of credits (402) during the last runs, and so did the
+Vercel AI Gateway; Jev through OpenRouter (`typesafe/jev-1.13`) is not on
+the same scale: the flat split there scored route 75.0 %, canned coverage
+11.5 %, and Gym recall 0.9 % (18 of 678 rows failed), so it cannot stand in
+for the bar.
+
 **After M2:** make the fused GEMM as fast as cuBLAS on large chunks
 (it reaches about 130 TF before dequantization against cuBLAS's 145–170),
 then make it the default for bitwise chunk invariance at f16 speed.

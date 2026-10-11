@@ -2667,8 +2667,9 @@ impl Job {
         } else {
             request
         };
-        // Only the questions a rule reads on this surface (#11247).
-        let request = request.for_surface(turn.context.surface());
+        // Only the questions a rule reads on this surface, and `route`
+        // and `answer` over a shortlist the main request picks (#11247).
+        let request = request.for_surface(turn.context.surface()).configured();
         let (mode, shadow, context) = (turn.mode, turn.shadow, turn.context.clone());
         let draft = turn.draft.is_some();
         // Whether the latest message has earlier ones to refer to: a

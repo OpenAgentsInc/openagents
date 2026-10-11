@@ -276,6 +276,7 @@ async fn run_router(name: &str, mode: router::Mode) {
     let starter = starter_records(&tools);
     let mut offers = Offers::default();
     let mut engines = Engines::default();
+    let mut staging = Staging::default();
     // `ROUTER_EVAL_READINGS`: replay a run's readings file instead of
     // asking the judge (refits the maps from a finished run).
     let replay: Option<Vec<Reading>> = std::env::var_os("ROUTER_EVAL_READINGS").map(|path| {
@@ -313,12 +314,14 @@ async fn run_router(name: &str, mode: router::Mode) {
                 // The set's default phone context asks no `deck` question.
                 decks,
             )
-            .for_surface(context.surface()),
+            .for_surface(context.surface())
+            .configured(),
         )
         .await;
         let ms = started.elapsed().as_millis();
         readings.push(match asked {
             Ok(response) => {
+                staging.count(row, &response);
                 let routing = router::reading(&response, bank, &facts, &admitted);
                 // A multi-turn row has messages before its latest (#10138).
                 let situation = router::Situation {
@@ -350,6 +353,7 @@ async fn run_router(name: &str, mode: router::Mode) {
         );
     }
     engines.print(&split_label);
+    staging.print(&split_label);
     write_traces(name, &split_label, &traces);
     write_readings(name, &split_label, &readings);
     print_thresholds(&split_label, &rows, &readings);
@@ -361,6 +365,60 @@ async fn run_router(name: &str, mode: router::Mode) {
                 format!("{}:jev", profile.name())
             });
         record(&set, &rows, &readings, &profile, started_at, ended_at);
+    }
+}
+
+/// What each turn sent and how the staged route shortlist did (#11247):
+/// the judge's input tokens per turn, and on a staged turn whether the
+/// labeled route was among the routes the second request asked over.
+#[derive(Default)]
+struct Staging {
+    tokens: Vec<u64>,
+    staged: usize,
+    in_shortlist: usize,
+    shortlisted: usize,
+}
+
+impl Staging {
+    fn count(&mut self, row: &Row, response: &jev::SystemOneResponse) {
+        if let Some(tokens) = response.usage.input_tokens {
+            self.tokens.push(tokens);
+        }
+        let Some(jev::Answer::Choice(hint)) = response.answers.get(router::judge::ROUTE_HINT)
+        else {
+            return;
+        };
+        let routes = router::judge::shortlist(hint);
+        self.staged += 1;
+        self.shortlisted += routes.len();
+        let labeled = router::RouteId::parse(&row.route);
+        if labeled == router::RouteId::Unknown || routes.contains(&labeled) {
+            self.in_shortlist += 1;
+        }
+    }
+
+    fn print(&self, split: &str) {
+        let mut tokens = self.tokens.clone();
+        tokens.sort_unstable();
+        if !tokens.is_empty() {
+            let mean = tokens.iter().sum::<u64>() as f64 / tokens.len() as f64;
+            let at = |q: f64| tokens[((tokens.len() - 1) as f64 * q).round() as usize];
+            println!(
+                "judge input tokens per turn ({split}): mean {mean:.0}, p50 {}, p90 {}, over {} turns",
+                at(0.5),
+                at(0.9),
+                tokens.len()
+            );
+        }
+        if self.staged > 0 {
+            println!(
+                "staged shortlist ({split}): the labeled route was shortlisted on {} of {} turns ({:.1} %), {:.1} routes on average",
+                self.in_shortlist,
+                self.staged,
+                100.0 * self.in_shortlist as f64 / self.staged as f64,
+                self.shortlisted as f64 / self.staged as f64
+            );
+        }
     }
 }
 

@@ -2090,3 +2090,15 @@ deferred request.
 
 To roll back: `sudo ln -sfn /opt/coder-worker/releases/cba18936e3
 /opt/coder-worker/chat && sudo systemctl restart coder-worker-chat`.
+
+Staged routing (#11247, stage B) is in the worker and off by default:
+`CODER_ROUTER_STAGED=on` in the worker's environment asks each turn in two
+requests, a coarse `route_hint` with the other main questions and then
+`route` and `answer` over the hint's shortlist. On Jev it holds the
+routes-v5 accuracy for about 15 % fewer tokens and a second round trip
+(judge p50 0.52 s against 0.25 s), so the Jev-first worker leaves it off; a
+worker whose decisions go to a Clef door first is where it pays: a website
+turn on the CoderOS-4080 Clef takes 0.9–1.5 s where the flat split takes
+1.6 s (`docs/inference/clef-native.md`, "Router tokens, stage B"). Turning
+it on needs no new build after the release that carries it: set the
+variable in the environment file and restart `coder-worker-chat`.
