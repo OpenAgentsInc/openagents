@@ -403,7 +403,41 @@ fn the_pinned_spec_matches_its_recorded_digest() {
     let bytes = std::fs::read(Path::new(env!("CARGO_MANIFEST_DIR")).join("schema/boat-v1.yaml"))
         .expect("spec");
     assert_eq!(format!("{:x}", Sha256::digest(bytes)), boat::SPEC_SHA256);
-    assert_eq!(boat::BASE_URL, "https://boat.dev/api/v1");
+    assert_eq!(boat::HOSTED_BASE_URL, "https://boat.dev/api/v1");
+    assert!(boat::BASE_URL.starts_with("https://oa-boat-"));
+}
+
+#[test]
+fn hosted_boat_is_refused_unless_opted_in() {
+    // Only this test touches BOAT_HOSTED in this binary.
+    unsafe { std::env::remove_var("BOAT_HOSTED") };
+    let key = || boat::ApiKey::new("k").expect("key");
+    for base in [
+        "https://boat.dev/api/v1",
+        "https://api.boat.dev/v1",
+        "https://ascii.dev/api/box/v1",
+    ] {
+        let e = boat::Client::builder(key())
+            .base_url(base)
+            .build()
+            .unwrap_err();
+        assert!(e.to_string().contains("BOAT_HOSTED"), "{base}: {e}");
+    }
+    assert!(boat::Client::builder(key()).build().is_ok());
+    assert!(
+        boat::Client::builder(key())
+            .base_url("https://notboat.dev/api/v1")
+            .build()
+            .is_ok()
+    );
+    unsafe { std::env::set_var("BOAT_HOSTED", "1") };
+    assert!(
+        boat::Client::builder(key())
+            .base_url(boat::HOSTED_BASE_URL)
+            .build()
+            .is_ok()
+    );
+    unsafe { std::env::remove_var("BOAT_HOSTED") };
 }
 
 #[test]

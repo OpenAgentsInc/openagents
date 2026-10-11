@@ -246,6 +246,8 @@ import json, sys
 
 service, revision = (json.load(open(p)) for p in sys.argv[1:3])
 image, name, launcher_path, stack_image, serve_image = sys.argv[3:8]
+# Our own Boat-compatible service on GCE (crates/oa-boat, #11256).
+OA_BOAT_BASE = "https://oa-boat-157437760789.us-central1.run.app/api/v1"
 
 def keep(entries, drop):
     return {k: v for k, v in (entries or {}).items() if not k.startswith(drop)}
@@ -292,11 +294,19 @@ launcher = open(launcher_path).read()
 if web.get("command") == ["/bin/sh"] and len(args) >= 2 and args[0] == "-c" and args[1] != launcher:
     args[1] = launcher
     sys.stderr.write("  web launcher refreshed from deploy/production/web.sh\n")
+# Environments run on our own Boat-compatible service on GCE (#11256), not
+# hosted boat.dev: the key is our service token and the base is explicit,
+# so even an older image (whose SDK defaulted to boat.dev) reaches it.
+for e in envs:
+    if e["name"] == "BOAT_API_KEY" and e.get("valueFrom", {}).get("secretKeyRef", {}).get("name") == "boat-api-key":
+        e["valueFrom"]["secretKeyRef"]["name"] = "oa-boat-api-key"
+        sys.stderr.write("  web env BOAT_API_KEY -> oa-boat-api-key (our own service)\n")
 env = {e["name"] for e in envs}
 for e in ({"name": "STACK_STATE", "value": "/stack"},
           {"name": "ENVIRONMENTS_MODEL", "value": "google/gemini-3.8-flash"},
           {"name": "BOAT_API_KEY",
-           "valueFrom": {"secretKeyRef": {"name": "boat-api-key", "key": "latest"}}},
+           "valueFrom": {"secretKeyRef": {"name": "oa-boat-api-key", "key": "latest"}}},
+          {"name": "BOAT_API_BASE", "value": OA_BOAT_BASE},
           # Gemini on Vertex for the chat's images and PDFs (#11221).
           {"name": "VERTEX_SA_JSON",
            "valueFrom": {"secretKeyRef": {"name": "openagents-vertex-sa-key", "key": "latest"}}}):

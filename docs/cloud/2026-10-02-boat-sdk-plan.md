@@ -2,6 +2,10 @@
 
 - Date: 2026-10-02
 - Status: in progress. B1 (`crates/boat`), B2 (streaming, following and killing commands), B3 (fixtures and the gated live test), B5 (`crates/boat-template`) and B6 ([`openagents chat work --on boat`](boat-chat-work.md), [#10220](https://github.com/OpenAgentsInc/openagents/issues/10220)) are on `main`.
+- **2026-10-10 update ([#11256](https://github.com/OpenAgentsInc/openagents/issues/11256)):**
+  after hosted Boat returned 502 and took Environments down, the SDK's
+  default base is our own Boat-compatible service on GCE,
+  [`oa-boat`](oa-boat.md). Hosted boat.dev is opt-in only (`BOAT_HOSTED=1`).
 - Parent:
   [Cloud parallel execution audit](2026-10-02-cloud-parallel-execution-audit.md).
   This plan adds Boat as a second placement backend next to the GCE pool that

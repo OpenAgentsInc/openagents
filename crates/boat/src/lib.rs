@@ -26,9 +26,15 @@ pub use follow::{CommandFollower, OutputCursor, Signal, shell_quote};
 pub use helpers::{Cancellation, EventStream, WaitOptions};
 pub use nullable::Nullable;
 
-/// The published Boat API origin and version prefix.
-pub const BASE_URL: &str = "https://boat.dev/api/v1";
-/// The legacy Box base, which Boat still answers. The SDK never targets it.
+/// The default API base: our own Boat-compatible service on Google Cloud
+/// (`crates/oa-boat`, Cloud Run `oa-boat`, #11256). `BOAT_API_BASE`
+/// overrides it.
+pub const BASE_URL: &str = "https://oa-boat-157437760789.us-central1.run.app/api/v1";
+/// Boat's own hosted API (boat.dev). Off unless `BOAT_HOSTED=1`
+/// ([`auth::HOSTED_ENV`]); a client refuses a boat.dev base without it.
+pub const HOSTED_BASE_URL: &str = "https://boat.dev/api/v1";
+/// The legacy hosted Box base, which Boat still answers. The SDK never
+/// targets it.
 pub const LEGACY_BASE_URL: &str = "https://boat.dev/api/box/v1";
 /// The pinned outbound operation inventory.
 pub const OPERATIONS: &str = include_str!("../schema/operations.json");

@@ -14,7 +14,7 @@
 //! in a fresh worktree of `origin/main`; then deletes it (#10251).
 //!
 //! Runbook: `docs/deployment/boat-template.md`. The key comes from
-//! `BOAT_API_KEY`, else Secret Manager `boat-api-key`; it is never printed.
+//! `BOAT_API_KEY`, else Secret Manager `oa-boat-api-key`; it is never printed.
 
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 

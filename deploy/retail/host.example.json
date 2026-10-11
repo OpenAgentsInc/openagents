@@ -13,7 +13,7 @@
     "plan_starts_left": 0
   },
   "listen": "127.0.0.1:9042",
-  "boat_api_base": "https://boat.dev/api/v1",
+  "boat_api_base": "https://oa-boat-157437760789.us-central1.run.app/api/v1",
   "boat_org": null,
   "boat_key_file": "/etc/openagents-retail/boat.key",
   "wallet_home": "/var/lib/openagents-retail-receiver",

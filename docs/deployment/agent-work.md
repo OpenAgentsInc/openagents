@@ -40,12 +40,14 @@ also check their CSRF token.
 
 The web process is only the controller. Machines never run in the web
 container: setup, build, and check machines, and each Claude Code run, are
-Boat machines (`crates/boat`), reached over HTTPS. Cloud Run cannot host
+Boat machines (`crates/boat`), reached over HTTPS. Since #11256 they are
+GCE VMs in our own project behind our Boat-compatible service
+[`oa-boat`](../cloud/oa-boat.md), not hosted boat.dev. Cloud Run cannot host
 them (they need root, long-lived machines, and image capture).
 
 | Need | Staging | Why |
 | --- | --- | --- |
-| Boat API key | Secret Manager `boat-api-key` as `BOAT_API_KEY` (runtime account `oa-vertex-inference` may read it) | Creates, drives, snapshots, and deletes the machines |
+| Machine backend | Secret Manager `oa-boat-api-key` as `BOAT_API_KEY` and `BOAT_API_BASE` = our `oa-boat` service (runtime accounts `oa-vertex-inference` and production's `157437760789-compute` may read it) | Creates, drives, snapshots, and deletes the machines |
 | A model for the setup agent | The gateway sidecar's `google/gemini-3.8-flash` on the house service key (`openagents/code` has no route for the house tenant on staging) (`$STACK_STATE/service.key`, the `stack` volume mounted read-only), via `model_api` in the studio config | No person is there to keep a Codex login fresh, so the Codex login path is for the local address only |
 | A Claude credential for each run | The person's own key, saved in Settings > Claude (sealed with the BYO keyring) | No server-wide Claude key on staging |
 | Durable records | `$WEB_STATE/environments` on the account-store NFS disk (`/state`) | Environments, their conversations, and run records outlive a revision |
@@ -53,8 +55,10 @@ them (they need root, long-lived machines, and image capture).
 
 `deploy/staging/web.sh` writes the studio config and passes
 `--environments` only when `BOAT_API_KEY` and the service key are both
-there; if the studio can't open, the site starts without Environments and
-the log says why. The Boat template is the newest ready
+there; if the studio can't open, the site starts with Environments
+"temporarily unavailable", retries the studio every minute, and probes the
+backend every 30 seconds for as long as it runs: an outage shows the same
+plain message and clears by itself, with no redeploy (#11256). The Boat template is the newest ready
 `oa-coder-runtime-*` snapshot, which carries Claude Code. It is chosen when
 the web process starts, so a new template takes effect after the next
 deploy or restart, and only for environments set up after that (a saved
