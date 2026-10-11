@@ -252,12 +252,17 @@ adapter presents them, not a separate wire contract.
   wider than the line breaks between grapheme clusters. Tabs advance to
   28-point stops. A character the faces lack is measured as a platform
   fallback roughly draws it (1 em for wide characters and emoji, else
-  0.6 em), so such text can wrap differently from the platform. A
-  ground-truth test compares the breaks with CoreText's for the same fonts
-  over about 3,400 paragraphs (`fixtures/coretext-lines.json`, made by
-  `tools/coretext-lines.swift`): it allows at most one line-count difference
-  among paragraphs Paper Mono covers and requires at least 99.7% exact line
-  starts. The C interface adds
+  0.6 em), so such text can wrap differently from the platform. An app may
+  install its own faces (the desktop installs the system's, SF Pro and SF
+  Mono on a Mac); a face's optical size follows the text size and its `trak`
+  tracking is added after every glyph, as CoreText does. Ground-truth tests
+  compare the breaks with CoreText's over about 3,460 paragraphs, with Paper
+  Mono (`fixtures/coretext-lines.json`) and with SF Pro and SF Mono
+  (`fixtures/coretext-lines-system.json`, break positions only, made from
+  the fonts on the Mac that ran `tools/coretext-lines.swift`): every
+  paragraph the faces cover must break exactly where CoreText's does, and
+  the count of differing paragraphs that need fallback faces (CJK, emoji) is
+  pinned so it cannot grow. The C interface adds
   `rust_native_layout_create_shaped`, `rust_native_font_spec`, and
   `rust_native_font_data`.
 - **Frame.** Every row has a key, a content version, an exact height, and a

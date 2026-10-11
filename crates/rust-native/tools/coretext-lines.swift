@@ -1,8 +1,15 @@
-// CoreText's line breaks for the shaping corpus, with the bundled fonts.
+// CoreText's line breaks for the shaping corpus, with the bundled fonts or
+// the system faces the desktop draws with.
 //
 //   swift crates/rust-native/tools/coretext-lines.swift CORPUS.json \
 //       crates/paper-mono/fonts crates/rust-native/fixtures/coretext-lines.json
+//   swift crates/rust-native/tools/coretext-lines.swift CORPUS.json \
+//       /System/Library/Fonts/SFNS.ttf,/System/Library/Fonts/SFNSMono.ttf \
+//       crates/rust-native/fixtures/coretext-lines-system.json
 //
+// The second argument is Paper Mono's fonts directory, or a comma-separated
+// list of font files read from this computer (face 0, face 1, ...); only
+// the breaks are written, never the fonts.
 // CORPUS.json comes from the rust-native test `shape::tests::write_corpus`.
 // Each case is a paragraph, its runs as [face, size, wght, opsz, calt,
 // start16, end16], and a wrap width (0 breaks only at hard breaks). Lines
@@ -19,10 +26,15 @@ guard arguments.count == 4 else {
     exit(64)
 }
 let corpusData = try Data(contentsOf: URL(fileURLWithPath: arguments[1]))
-let fontsDir = URL(fileURLWithPath: arguments[2])
-let faceFiles = ["PaperMono-Variable.ttf"]
+var isDirectory: ObjCBool = false
+let faceFiles: [URL]
+if FileManager.default.fileExists(atPath: arguments[2], isDirectory: &isDirectory), isDirectory.boolValue {
+    faceFiles = [URL(fileURLWithPath: arguments[2]).appendingPathComponent("PaperMono-Variable.ttf")]
+} else {
+    faceFiles = arguments[2].split(separator: ",").map { URL(fileURLWithPath: String($0)) }
+}
 let faces: [CTFontDescriptor] = try faceFiles.map { name in
-    let data = try Data(contentsOf: fontsDir.appendingPathComponent(name))
+    let data = try Data(contentsOf: name)
     guard let descriptors = CTFontManagerCreateFontDescriptorsFromData(data as CFData) as? [CTFontDescriptor],
           let first = descriptors.first else { fatalError("unreadable face \(name)") }
     return first

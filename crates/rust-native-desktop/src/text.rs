@@ -193,7 +193,7 @@ impl Fonts {
                 width += cluster
                     .glyphs
                     .iter()
-                    .map(|glyph| glyph.advance)
+                    .map(|glyph| glyph.advance + spec.tracking)
                     .sum::<f32>();
             });
         }
@@ -491,7 +491,8 @@ impl Fonts {
                 }
                 for glyph in cluster.glyphs {
                     placed.push((None, glyph.id, pen + glyph.x, glyph.y, color));
-                    pen += glyph.advance;
+                    // The face's size-specific tracking, as measured.
+                    pen += glyph.advance + spec.tracking * scale;
                 }
             });
             for (fallback, id, gx, gy, color) in placed {
