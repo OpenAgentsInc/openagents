@@ -46,7 +46,7 @@ const MENU_PROJECTS: usize = 6;
 /// What the list shows: the open chat (rows then load with HTMX), the
 /// search text, and the chat just archived (its Undo notice).
 #[derive(Clone, Copy, Default)]
-pub(super) struct View<'a> {
+pub(crate) struct View<'a> {
     pub current: Option<&'a str>,
     pub hx: bool,
     pub q: &'a str,
@@ -98,7 +98,7 @@ fn project_of<'a>(chat: &Conversation, view: View<'a>) -> Option<&'a oa_auth::re
 }
 
 /// The list from loaded rows (newest first, as the store sorts them).
-pub(super) fn build(list: ChatList, rows: &[Conversation], csrf: &str, view: View<'_>) -> ChatList {
+pub(crate) fn build(list: ChatList, rows: &[Conversation], csrf: &str, view: View<'_>) -> ChatList {
     let q = view.q.trim();
     let shown: Vec<&Conversation> = rows
         .iter()
@@ -559,12 +559,23 @@ async fn rename_field(
         Err(error) => return unavailable(error),
     };
     let current = current(&search.current).unwrap_or_default();
+    let field = rename_row(&chat, current, &csrf(&app, &owner));
+    if hx(&headers) {
+        return crate::chat_html::protect(field.render().into_response());
+    }
+    let list = chat_list(&app, &owner, None, false, false).await;
+    rename_page(&headers, &chat, field, list)
+}
+
+/// The inline field that renames `chat`'s row, back on `current`'s page.
+pub(crate) fn rename_row(chat: &Conversation, current: &str, token: &str) -> RowRename {
+    let id = &chat.id;
     let back = if current.is_empty() {
         "/".to_owned()
     } else {
         format!("/chat/{current}")
     };
-    let field = RowRename::new(
+    RowRename::new(
         format!("chat-row-{id}"),
         format!("/chat/{id}/rename"),
         chat.title.clone(),
@@ -572,22 +583,28 @@ async fn rename_field(
     )
     .max_chars(TITLE_CHARS)
     .cancel_hx(format!("{LIST}?current={current}"))
-    .field("csrf", csrf(&app, &owner))
+    .field("csrf", token)
     .field("current", current)
     .target(SIDEBAR)
-    .swap("outerHTML");
-    if hx(&headers) {
-        return crate::chat_html::protect(field.render().into_response());
-    }
+    .swap("outerHTML")
+}
+
+/// The Rename chat page, without JavaScript: the field, beside the list.
+pub(crate) fn rename_page(
+    headers: &HeaderMap,
+    chat: &Conversation,
+    field: RowRename,
+    list: Markup,
+) -> Response {
     let page = UiPage::new("Rename chat")
-        .path(format!("/chat/{id}/rename"))
+        .path(format!("/chat/{}/rename", chat.id))
         .head(crate::chat_html::head())
-        .sidebar_section(chat_list(&app, &owner, None, false, false).await)
+        .sidebar_section(list)
         .content(crate::ui_page::prose(html! {
             h1 { "Rename chat" }
             ul.oa-nav-list role="list" { (field) }
         }));
-    crate::chat_html::protect(page.respond(&headers))
+    crate::chat_html::protect(page.respond(headers))
 }
 
 /// The list for HTMX (a search, or Cancel on a rename); without JavaScript
@@ -680,6 +697,21 @@ async fn archived(State(app): State<App>, headers: HeaderMap) -> Response {
         .as_deref()
         .map(|owner| csrf(&app, owner))
         .unwrap_or_default();
+    let list = match &owner {
+        Some(owner) => Some(chat_list(&app, owner, None, false, false).await),
+        None => None,
+    };
+    archived_page(&headers, &rows, &token, delete_all, list)
+}
+
+/// The Archived chats page: `rows`, newest first, each with Restore.
+pub(crate) fn archived_page(
+    headers: &HeaderMap,
+    rows: &[Conversation],
+    token: &str,
+    delete_all: bool,
+    list: Option<Markup>,
+) -> Response {
     let mut page = UiPage::new("Archived chats")
         .path(ARCHIVED)
         .head(crate::chat_html::head())
@@ -689,7 +721,7 @@ async fn archived(State(app): State<App>, headers: HeaderMap) -> Response {
                 p { "No archived chats." }
             } @else {
                 ul.oa-chat-archive-list role="list" {
-                    @for chat in &rows {
+                    @for chat in rows {
                         li.oa-chat-archive-row {
                             a href=(format!("/chat/{}", chat.id)) { (chat.title) }
                             form method="post" action=(format!("/chat/{}/archive", chat.id)) {
@@ -712,10 +744,10 @@ async fn archived(State(app): State<App>, headers: HeaderMap) -> Response {
                 p { (crate::ui_page::action_link("Delete all chats", super::delete_all::PATH)) }
             }
         }));
-    if let Some(owner) = &owner {
-        page = page.sidebar_section(chat_list(&app, owner, None, false, false).await);
+    if let Some(list) = list {
+        page = page.sidebar_section(list);
     }
-    crate::chat_html::protect(page.respond(&headers))
+    crate::chat_html::protect(page.respond(headers))
 }
 
 /// Moves a chat into one of the viewer's projects, or out of its project
@@ -772,7 +804,20 @@ async fn move_page(State(app): State<App>, headers: HeaderMap, Path(id): Path<St
         .as_deref()
         .map(|s| s.status.projects.as_slice())
         .unwrap_or_default();
-    let token = csrf(&app, &owner);
+    let list = chat_list(&app, &owner, Some(id.as_str()), false, false).await;
+    move_page_for(&headers, &chat, projects, &csrf(&app, &owner), list)
+}
+
+/// The Move to project page for `chat`: one button per project, and No
+/// project.
+pub(crate) fn move_page_for(
+    headers: &HeaderMap,
+    chat: &Conversation,
+    projects: &[oa_auth::repos::Project],
+    token: &str,
+    list: Markup,
+) -> Response {
+    let id = &chat.id;
     let inside = chat.project.as_deref();
     let choice = |label: &str, value: &str, chosen: bool| {
         html! {
@@ -798,7 +843,7 @@ async fn move_page(State(app): State<App>, headers: HeaderMap, Path(id): Path<St
     let page = UiPage::new("Move to project")
         .path(format!("/chat/{id}/project"))
         .head(crate::chat_html::head())
-        .sidebar_section(chat_list(&app, &owner, Some(id.as_str()), false, false).await)
+        .sidebar_section(list)
         .content(crate::ui_page::prose(html! {
             h1 { "Move to project" }
             p { (chat.title) }
@@ -816,5 +861,5 @@ async fn move_page(State(app): State<App>, headers: HeaderMap, Path(id): Path<St
                 }
             }
         }));
-    crate::chat_html::protect(page.respond(&headers))
+    crate::chat_html::protect(page.respond(headers))
 }

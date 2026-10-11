@@ -82,6 +82,14 @@ fn page(headers: &HeaderMap, chat: &DemoChat, extra: &[Message]) -> Response {
     protect(page.respond(headers))
 }
 
+/// The demo page for the chat at `slug`, as its route draws it.
+pub(crate) fn sample(headers: &HeaderMap, slug: &str) -> Response {
+    match chats::find(slug) {
+        Some(chat) => page(headers, chat, &[]),
+        None => missing(headers),
+    }
+}
+
 async fn index(headers: HeaderMap) -> Response {
     page(&headers, &CHATS[0], &[])
 }
