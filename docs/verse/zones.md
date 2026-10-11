@@ -171,7 +171,7 @@ crates, barrels, and planks ([`verse-zone-water`](../../crates/verse-zone-water/
 Its arch, `WATER LAB`, stands on the plaza opposite Lagrange 1's, and
 `verse --water-lab` opens it directly. Entry loads Everglade's pack for the
 character. The renderer's water pass draws the sea, the river, the pool, and
-the falls ([`pbr::water`](../../crates/verse-pbr/src/pbr/water.rs), phase W0
+the falls ([`water`](../../crates/verse-pbr/src/water/mod.rs), phase W0
 of [the water specification](water.md)).
 
 The player wades, slowed by depth, swims with the head up in deep water,
