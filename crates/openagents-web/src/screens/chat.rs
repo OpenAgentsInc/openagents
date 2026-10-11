@@ -575,6 +575,7 @@ fn choices(computers: &[&str]) -> Choices {
             version: 1,
         }],
         computers: computers.iter().map(|c| (*c).to_owned()).collect(),
+        offline: Vec::new(),
         account: true,
         claude_connect: false,
         claude_subscription: false,

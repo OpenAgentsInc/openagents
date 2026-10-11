@@ -498,6 +498,7 @@ async fn serve_for_screenshots() {
             version: 3,
         }],
         computers: vec!["studio-mac".into()],
+        offline: Vec::new(),
         account: true,
         claude_connect: false,
         claude_subscription: false,
