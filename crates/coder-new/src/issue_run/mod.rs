@@ -343,6 +343,25 @@ pub struct Feed {
     cancel: Arc<AtomicBool>,
 }
 
+/// A new feed and the transcript that writes to it; `log` is where the
+/// transcript also records each change.
+pub(crate) fn channel(log: Option<std::fs::File>) -> (Feed, Transcript) {
+    let (sender, events) = mpsc::channel();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let feed = Feed {
+        events,
+        cancel: cancel.clone(),
+    };
+    let transcript = Transcript {
+        entries: Vec::new(),
+        sender,
+        log,
+        started: Instant::now(),
+        cancel,
+    };
+    (feed, transcript)
+}
+
 impl Drop for Feed {
     fn drop(&mut self) {
         self.cancel.store(true, Ordering::Relaxed);
@@ -379,6 +398,11 @@ impl Transcript {
             let _ = writeln!(log, "{line}");
         }
         let _ = self.sender.send(event);
+    }
+
+    /// Plays a recorded `events.jsonl` through this transcript's feed.
+    pub(crate) fn replay(&self, path: &Path, speed: f64) {
+        play(path, speed, &self.sender, &self.cancel);
     }
 
     /// Adds an entry and returns its index.
@@ -601,7 +625,9 @@ impl End<'_> {
         }
         if self.options.open_pr {
             match &self.base {
-                Some(base) => setup::open_pr(self.options, base, &outcome, transcript).await,
+                Some(base) => {
+                    let _ = setup::open_pr(self.options, base, &outcome, transcript).await;
+                }
                 None => transcript.notice("No pull request: the run has no working copy."),
             }
         }
@@ -627,7 +653,7 @@ impl End<'_> {
 /// Stores the run as a trace (`scripts/bench/traces/traces.py capture`),
 /// which marks the folder `trace-captured.json`; only then may a later run
 /// clean its worktree. `CODER_ISSUE_RUN_CAPTURE=0` skips it.
-async fn capture(options: &Options, folder: &Path, transcript: &mut Transcript) {
+pub(crate) async fn capture(options: &Options, folder: &Path, transcript: &mut Transcript) {
     if std::env::var("CODER_ISSUE_RUN_CAPTURE").as_deref() == Ok("0") {
         return;
     }

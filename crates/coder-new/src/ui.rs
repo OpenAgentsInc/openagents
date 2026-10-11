@@ -441,7 +441,7 @@ pub(crate) fn truncate(text: &str, width: u16) -> String {
 }
 
 fn new_chat_heading(app: &App) -> bool {
-    matches!(app.mode, Mode::Live | Mode::Microclaude)
+    matches!(app.mode, Mode::Live | Mode::Microclaude | Mode::Solver)
         && app.screen == Screen::Conversation
         && app.selected_agent.is_none()
         && app.live.entries.is_empty()
@@ -544,6 +544,9 @@ fn repository_rail(app: &App) -> String {
 fn rail_mode(app: &App) -> Option<&'static str> {
     if app.mode == Mode::Microclaude {
         return Some(crate::microclaude::LABEL);
+    }
+    if app.mode == Mode::Solver {
+        return Some(crate::solver::LABEL);
     }
     if app.mode != Mode::Live {
         return None;
@@ -678,7 +681,7 @@ fn wrap_display(lines: Vec<Line<'static>>, width: u16) -> Vec<Line<'static>> {
 fn conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     let content = area.width.saturating_sub(GUTTER);
     // microclaude's conversation is drawn like a live chat's.
-    if matches!(app.mode, Mode::Live | Mode::Microclaude) {
+    if matches!(app.mode, Mode::Live | Mode::Microclaude | Mode::Solver) {
         live_conversation(frame, area, app);
         return;
     }
@@ -1483,7 +1486,7 @@ fn composer_view(
                 Style::default().fg(match contribution.text.as_str() {
                     crate::models::AUTO => t::ACCENT_SKILL,
                     crate::models::FLASH_LABEL => t::ACCENT_MODEL,
-                    crate::microclaude::LABEL => t::ACCENT_DELEGATE,
+                    crate::microclaude::LABEL | crate::solver::LABEL => t::ACCENT_DELEGATE,
                     _ => t::GRAY,
                 }),
             )),

@@ -73,7 +73,25 @@ fn run() -> io::Result<()> {
         return update_command(&args[1..]);
     }
     let mut issue_run = None;
-    let args = if args.first().is_some_and(|command| command == "issue-run") {
+    let mut solver = None;
+    let args = if args.first().is_some_and(|command| command == "solver") {
+        if args
+            .iter()
+            .any(|arg| matches!(arg.as_str(), "--help" | "-h"))
+        {
+            println!("{}", coder_new::solver::USAGE);
+            return Ok(());
+        }
+        let options = coder_new::solver::Options::parse(&args[1..])
+            .map_err(|message| io::Error::new(io::ErrorKind::InvalidInput, message))?;
+        if options.inner.plain || !io::IsTerminal::is_terminal(&io::stdout()) {
+            let snapshot = options.inner.snapshot.clone();
+            let json = options.json;
+            return run_plain(coder_new::solver::start(options), snapshot, json);
+        }
+        solver = Some(options);
+        Vec::new()
+    } else if args.first().is_some_and(|command| command == "issue-run") {
         if args
             .iter()
             .any(|arg| matches!(arg.as_str(), "--help" | "-h"))
@@ -247,6 +265,10 @@ fn run() -> io::Result<()> {
     if let Some(options) = issue_run {
         app.watch_issue_run(coder_new::issue_run::start(options));
     }
+    if let Some(options) = solver {
+        app.set_mode(Mode::Solver);
+        app.watch_issue_run(coder_new::solver::start(options));
+    }
 
     let mut terminal = match ratatui::try_init() {
         Ok(terminal) => terminal,
@@ -365,9 +387,18 @@ fn run() -> io::Result<()> {
 /// `coder issue-run --plain`: the run printed as text, each item once it
 /// has finished, as the terminal screen would draw it.
 fn issue_run_plain(options: coder_new::issue_run::Options) -> io::Result<()> {
-    let width = 110;
     let snapshot = options.snapshot.clone();
-    let feed = coder_new::issue_run::start(options);
+    run_plain(coder_new::issue_run::start(options), snapshot, false)
+}
+
+/// A run's feed printed as text, or as one JSON line per change when
+/// `json`, until the run ends.
+fn run_plain(
+    feed: coder_new::issue_run::Feed,
+    snapshot: Option<std::path::PathBuf>,
+    json: bool,
+) -> io::Result<()> {
+    let width = 110;
     let mut app = App::default();
     app.set_mode(Mode::Live);
     let mut printed = 0;
@@ -387,6 +418,12 @@ fn issue_run_plain(options: coder_new::issue_run::Options) -> io::Result<()> {
             out.flush()
         };
     while let Some(event) = feed.next() {
+        if json {
+            writeln!(out, "{}", coder_new::issue_run::event_to_json(&event))?;
+            out.flush()?;
+            app.apply_issue_run(event);
+            continue;
+        }
         let notice = match &event {
             coder_new::issue_run::Event::Notice(text) => Some(text.clone()),
             _ => None,
@@ -397,7 +434,9 @@ fn issue_run_plain(options: coder_new::issue_run::Options) -> io::Result<()> {
             writeln!(out, "{text}")?;
         }
     }
-    flush(&app, &mut printed, &mut out, true)?;
+    if !json {
+        flush(&app, &mut printed, &mut out, true)?;
+    }
     if let Some(path) = snapshot {
         write_issue_snapshot(&mut app, &path)?;
     }
@@ -659,6 +698,7 @@ Usage:
   coder export --account Save everything on your account to one file (coder export --help).
   coder update           Install the newest Coder now (coder update --help).
   coder issue-run N      Play issue N from issue to pull request as a test run (coder issue-run --help).
+  coder solver N         Solve issue N to a pull request in four constrained hands (coder solver --help).
 
 Options:
   --in DIR            Work in DIR instead of this directory.
