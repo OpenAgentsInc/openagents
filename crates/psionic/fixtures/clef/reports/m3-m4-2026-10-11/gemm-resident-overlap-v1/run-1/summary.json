@@ -1,0 +1,107 @@
+{
+  "correctness_passed": true,
+  "speed_qualified": false,
+  "fixed_gate": "full_ffn median of five ABBA overlap/serial ratios <=0.90 at every size",
+  "commands": 136,
+  "dispatches": 560,
+  "timing_rows": 120,
+  "results": [
+    {
+      "n": 512,
+      "scope": "normalized_pair",
+      "round_ratios": [
+        1.0691291126212332,
+        1.082819618053668,
+        0.9201243851273462,
+        1.0542477264182395,
+        1.2397459918642522
+      ],
+      "median_paired_ratio": 1.0691291126212332,
+      "serial_gpu_median_seconds": 0.002180437499191612,
+      "overlap_gpu_median_seconds": 0.002237437500298256
+    },
+    {
+      "n": 512,
+      "scope": "full_ffn",
+      "round_ratios": [
+        1.0061249077546464,
+        0.9599353404866581,
+        0.8313500981619361,
+        1.0328366738688104,
+        1.4097371385017445
+      ],
+      "median_paired_ratio": 1.0061249077546464,
+      "serial_gpu_median_seconds": 0.0032831874959811103,
+      "overlap_gpu_median_seconds": 0.0034598749989527278
+    },
+    {
+      "n": 1024,
+      "scope": "normalized_pair",
+      "round_ratios": [
+        0.9342448795617962,
+        1.046848246592645,
+        0.9311247856474496,
+        1.3637363993903528,
+        1.0809037901487135
+      ],
+      "median_paired_ratio": 1.046848246592645,
+      "serial_gpu_median_seconds": 0.0038042291671445128,
+      "overlap_gpu_median_seconds": 0.004376291668449994
+    },
+    {
+      "n": 1024,
+      "scope": "full_ffn",
+      "round_ratios": [
+        0.917637546062431,
+        1.0059963812670318,
+        0.8524471106975352,
+        0.7752334612189399,
+        0.7199031466229805
+      ],
+      "median_paired_ratio": 0.8524471106975352,
+      "serial_gpu_median_seconds": 0.007689229169045575,
+      "overlap_gpu_median_seconds": 0.005792395833850605
+    },
+    {
+      "n": 2048,
+      "scope": "normalized_pair",
+      "round_ratios": [
+        1.0572304339619014,
+        1.0328240831303774,
+        0.9764699909977242,
+        0.9328646500547655,
+        0.9934054795648205
+      ],
+      "median_paired_ratio": 0.9934054795648205,
+      "serial_gpu_median_seconds": 0.0068498333312163595,
+      "overlap_gpu_median_seconds": 0.006909041665494442
+    },
+    {
+      "n": 2048,
+      "scope": "full_ffn",
+      "round_ratios": [
+        1.3997434589325761,
+        1.0042408767872721,
+        0.9874721159512775,
+        0.6977604145186027,
+        1.03458248583923
+      ],
+      "median_paired_ratio": 1.0042408767872721,
+      "serial_gpu_median_seconds": 0.011082687502494082,
+      "overlap_gpu_median_seconds": 0.011150145834108116
+    }
+  ],
+  "complete": {
+    "combined_peak_bytes": 940392448,
+    "commands": 136,
+    "dispatches": 560,
+    "explicit_peak_bytes": 587223040,
+    "kind": "complete",
+    "numerical_gate": "all output bits equal",
+    "owned_cpu_bytes_after_cases": 0,
+    "q4_conversion_executed": false,
+    "speed_qualification": "full_ffn paired ratio <=0.90 at every timed size; evaluated offline",
+    "timing_rows": 120
+  },
+  "attribution": "Aggregate GPU command intervals; no proof that the GPU overlapped work."
+}

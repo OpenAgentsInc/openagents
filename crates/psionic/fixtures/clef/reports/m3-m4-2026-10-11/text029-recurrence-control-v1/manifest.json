@@ -1,0 +1,186 @@
+{
+  "schema": "clef.text029-recurrence-control-publication.v1",
+  "scope": "One fixed diagnostic case. Original 40/104 all-top and 0.02 probability acceptance remains unchanged and unmet.",
+  "files": [
+    {
+      "path": "guard.json",
+      "original_bytes": 94192,
+      "original_sha256": "05a66e6dc8dae4efe199ca0246c4e3ba6ad2ebf937d096fabf8b32fd9bf3e385",
+      "published_bytes": 63590,
+      "published_sha256": "3b3cd51a0ff11ae28230f4feca9c8629e7d23cf6ef3617ed4ac25f216af792d3",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "stdout.log",
+      "original_bytes": 8795,
+      "original_sha256": "fe557a9c3e290aaceecea37cfdaade91e2c72440d9ca3e16c5b6d4742a4841a1",
+      "published_bytes": 8795,
+      "published_sha256": "fe557a9c3e290aaceecea37cfdaade91e2c72440d9ca3e16c5b6d4742a4841a1",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "receipt.json",
+      "original_bytes": 541049,
+      "original_sha256": "617ca8f237382bcde4c94671d1a4ac4c657f30781ce0e89b2a9fbf1226c45392",
+      "published_bytes": 541049,
+      "published_sha256": "617ca8f237382bcde4c94671d1a4ac4c657f30781ce0e89b2a9fbf1226c45392",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "recurrence-source-check.json",
+      "original_bytes": 4195,
+      "original_sha256": "544e41b7efb6d05e117f17aec571a15168b4eaebdc80bdf732673aa008d53a06",
+      "published_bytes": 3271,
+      "published_sha256": "f79ba0302aa77aeed25014d05e46ce5769121dd4db3b8b6fd97f742c523aa579",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "recurrence-control-plan.md",
+      "original_bytes": 7773,
+      "original_sha256": "5bd0076a9c553388cccb8406617368d4493a3dca50aa158c1744b6d02e475ab7",
+      "published_bytes": 7773,
+      "published_sha256": "5bd0076a9c553388cccb8406617368d4493a3dca50aa158c1744b6d02e475ab7",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/recurrence_reference.py",
+      "original_bytes": 26290,
+      "original_sha256": "0b77e3effdc10bea430927ca6928dd7ec73e146e07e5e06744110d306865526b",
+      "published_bytes": 26290,
+      "published_sha256": "0b77e3effdc10bea430927ca6928dd7ec73e146e07e5e06744110d306865526b",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/guard_recurrence.py",
+      "original_bytes": 8621,
+      "original_sha256": "513125911f575aea992cc007e04142195ecd6ff103a351183cce1fc6b964af80",
+      "published_bytes": 8476,
+      "published_sha256": "5a36f86296a62a68bf3f11e9b8210feb132ef33bfe10d41fdcff93caa7162f4a",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/precision_hash.py",
+      "original_bytes": 2751,
+      "original_sha256": "595256f7b60826373a80588c0bc1ac1f4554d6dfc6ae117ae9f20f66363aca2f",
+      "published_bytes": 2751,
+      "published_sha256": "595256f7b60826373a80588c0bc1ac1f4554d6dfc6ae117ae9f20f66363aca2f",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/layer0_math.py",
+      "original_bytes": 3438,
+      "original_sha256": "432a1e97996b923e4e16119d6733d9a39df604fcfcac02286eda4f62c670ee91",
+      "published_bytes": 3438,
+      "published_sha256": "432a1e97996b923e4e16119d6733d9a39df604fcfcac02286eda4f62c670ee91",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/layer35_math.py",
+      "original_bytes": 4763,
+      "original_sha256": "bc5438f971303c6936ccd4fe61e08e8e45ff253fae56e98a434d7caaf28d8b57",
+      "published_bytes": 4763,
+      "published_sha256": "bc5438f971303c6936ccd4fe61e08e8e45ff253fae56e98a434d7caaf28d8b57",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/dependencies/mps_reference.py",
+      "original_bytes": 25394,
+      "original_sha256": "d6dd92eb2e0ed4df10b3f9dc56f84ef7bf61c10689b3a2da6b2ae1db0e79835b",
+      "published_bytes": 25394,
+      "published_sha256": "d6dd92eb2e0ed4df10b3f9dc56f84ef7bf61c10689b3a2da6b2ae1db0e79835b",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/dependencies/guard_mps.py",
+      "original_bytes": 9135,
+      "original_sha256": "e576e775eea9b0d9b74c08dfd761be4564824a7781a2d43ed15d3595fecc05df",
+      "published_bytes": 8990,
+      "published_sha256": "aac683b115df362fb4ba063f429a60adca80151bbefa986abbd3a8a607e68be9",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/dependencies/gguf_import.py",
+      "original_bytes": 10181,
+      "original_sha256": "57a152754b1dd224de24b111d7824fc6ecb3c7f4bb1149c6a5a3d78fdb41bc32",
+      "published_bytes": 10100,
+      "published_sha256": "e77df8febc47557f8636e594f5b1ed7034ee24a9b49723ef54af4757d4b206ec",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/dependencies/stream_reference.py",
+      "original_bytes": 13679,
+      "original_sha256": "b1b61674dc9afc362f29bef3bf228ed4d5e6c7cf0150bf203023d28362462041",
+      "published_bytes": 13622,
+      "published_sha256": "926c6cf1c5be1e79b652329294f2a74b9b86c5f1ddc7880bb41f9dec0369d5a2",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/dependencies/mac_quiet_bench.py",
+      "original_bytes": 72242,
+      "original_sha256": "7018be065710be9ffe5dfc2d289770015ca617e2fdd3da253a98e07ba1bc997b",
+      "published_bytes": 72242,
+      "published_sha256": "7018be065710be9ffe5dfc2d289770015ca617e2fdd3da253a98e07ba1bc997b",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/dependencies/mac_memory.py",
+      "original_bytes": 5508,
+      "original_sha256": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd",
+      "published_bytes": 5508,
+      "published_sha256": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "leases/memory.json",
+      "original_bytes": 490,
+      "original_sha256": "7adb397045366c82c66c7fd955ebe4e4cda7bddce28e117951609fff26a1fa0f",
+      "published_bytes": 490,
+      "published_sha256": "7adb397045366c82c66c7fd955ebe4e4cda7bddce28e117951609fff26a1fa0f",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "leases/disk.json",
+      "original_bytes": 484,
+      "original_sha256": "e2be0671c17b8747fa40ead44a3ed329264711feb146d1e292bad2d3441bdcde",
+      "published_bytes": 484,
+      "published_sha256": "e2be0671c17b8747fa40ead44a3ed329264711feb146d1e292bad2d3441bdcde",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "source/package_recurrence.py",
+      "original_bytes": 9358,
+      "original_sha256": "dc3191ee283e4ae989cd2617a933c8fa5f2e05769649fc863167fe71bb2c3b66",
+      "published_bytes": 9358,
+      "published_sha256": "dc3191ee283e4ae989cd2617a933c8fa5f2e05769649fc863167fe71bb2c3b66",
+      "path_reconstruction_verified": true
+    },
+    {
+      "path": "summary.json",
+      "published_bytes": 11989,
+      "published_sha256": "1682dff02eee1f9950399edb203189db523ed4844175b8461b708f97e6842164",
+      "generated_from_saved_receipts_only": true
+    },
+    {
+      "path": "README.md",
+      "published_bytes": 4013,
+      "published_sha256": "4f68f01c97a452bb6458bdfc8a79ce7f5781645f951fd804ebc3477897f1022c",
+      "generated_summary": true
+    }
+  ],
+  "path_tokens": {
+    "@@CLEF_WORKTREE@@": "Worktree root",
+    "@@CLEF_SCRATCH@@": "Task scratch root",
+    "@@CLEF_PYTHON_ENV@@": "Pinned Python environment",
+    "@@CLEF_TARGET@@": "Persistent Cargo target",
+    "@@CLEF_HOME@@": "User home"
+  },
+  "previous_precision_manifest_sha256": "12a1f7fbdea0d2a32119a59e7fce0141480bc001e33f4244bed4f27352ea0811",
+  "excluded": [
+    "model weights",
+    "raw arrays",
+    "binaries",
+    "raw process memory samples"
+  ],
+  "original_result_sha256": "617ca8f237382bcde4c94671d1a4ac4c657f30781ce0e89b2a9fbf1226c45392",
+  "acceptance": "Diagnostic only; original104-question all-top gate is unchanged."
+}

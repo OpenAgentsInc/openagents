@@ -1,0 +1,117 @@
+{
+  "identity": "gemm-register-input-target26_2-v1",
+  "original_directory": "../gemm-register-input-probe",
+  "sources": [
+    {
+      "file": "baseline.metal",
+      "original_sha256": "9505a34d21d4d6bd11a532a62549d00c8cafbad90ab92f2bd07cccb4eae30725",
+      "follow_on_sha256": "9505a34d21d4d6bd11a532a62549d00c8cafbad90ab92f2bd07cccb4eae30725",
+      "byte_identical": true
+    },
+    {
+      "file": "candidate.metal",
+      "original_sha256": "b5b5d77dc4406cd3023cd69f6838d670bfc774ad1e4196af16c2b536d47e9821",
+      "follow_on_sha256": "b5b5d77dc4406cd3023cd69f6838d670bfc774ad1e4196af16c2b536d47e9821",
+      "byte_identical": true
+    },
+    {
+      "file": "production-shapes.metal",
+      "original_sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+      "follow_on_sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+      "byte_identical": true
+    },
+    {
+      "file": "production-fixed-extract.metal",
+      "original_sha256": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+      "follow_on_sha256": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+      "byte_identical": true
+    },
+    {
+      "file": "production-silu-extract.metal",
+      "original_sha256": "fe7844912a63f4219dc05a5a50a5b269ad48a0e3aa5f60cef221ae9223880e61",
+      "follow_on_sha256": "fe7844912a63f4219dc05a5a50a5b269ad48a0e3aa5f60cef221ae9223880e61",
+      "byte_identical": true
+    },
+    {
+      "file": "production-planner.rs",
+      "original_sha256": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac",
+      "follow_on_sha256": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac",
+      "byte_identical": true
+    },
+    {
+      "file": "probe.swift",
+      "original_sha256": "d4f864fa83b1a2ba9852085375210770cfb39e8eb554963e881463f6fc73f0e0",
+      "follow_on_sha256": "d4f864fa83b1a2ba9852085375210770cfb39e8eb554963e881463f6fc73f0e0",
+      "byte_identical": true
+    },
+    {
+      "file": "weights.json",
+      "original_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+      "follow_on_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+      "byte_identical": true
+    },
+    {
+      "file": "build.py",
+      "original_sha256": "705b5097c335167d90fc36344466b103ccd0ced74c215a2fce34634621444cf2",
+      "follow_on_sha256": "8532fd0ead802459123910e90a3acd7315bed89fe140053da3c1348eb3927fbc",
+      "byte_identical": false
+    },
+    {
+      "file": "guard.py",
+      "original_sha256": "4e4cd1fe1d414dbd3c96cbbc75d102eb4c9ed1c1fcebe32135ba6478a660889f",
+      "follow_on_sha256": "ced25b293ce84cf98e57699bedf28c23dce51ee2843bde65b9f76437ac9e932a",
+      "byte_identical": false
+    },
+    {
+      "file": "manifest.json",
+      "original_sha256": "2952afc4c0e2ffbccb9d813d68b69003a4ccd796e7143c30789e66ca69b2148a",
+      "follow_on_sha256": "5edbfda57ab1e84db0c65029348a912c0de693b5b27fa9fdc1f1ed4d86ea5a08",
+      "byte_identical": false
+    },
+    {
+      "file": "summarize.py",
+      "original_sha256": "7b4f707b520221e24ef698e44e574be177d7a36168ee5922cec51219bf8fe26d",
+      "follow_on_sha256": "7b4f707b520221e24ef698e44e574be177d7a36168ee5922cec51219bf8fe26d",
+      "byte_identical": true
+    },
+    {
+      "file": "source_check.py",
+      "original_sha256": "c436ab60c1671b7b3be55da672ca6d4ba4b01ab12dbea18ee01cd6b71e1019c0",
+      "follow_on_sha256": "c436ab60c1671b7b3be55da672ca6d4ba4b01ab12dbea18ee01cd6b71e1019c0",
+      "byte_identical": true
+    },
+    {
+      "file": "README.md",
+      "original_sha256": "dd88a68575fd9b2896275e68c718422a10b0af8ca54820f564b6b2bbb88939a8",
+      "follow_on_sha256": "ca7ead56970b5b8ad59b8a57c6c1db4e8e81c5028d3cec53a1d29e671c0dccd0",
+      "byte_identical": false
+    },
+    {
+      "file": "half_ulp_check.py",
+      "original_sha256": "f5f1d3dcbe7cd4da54c45b9ea2698047ba861bc26575144e0ae4c6f53f015aa4",
+      "follow_on_sha256": "f5f1d3dcbe7cd4da54c45b9ea2698047ba861bc26575144e0ae4c6f53f015aa4",
+      "byte_identical": true
+    },
+    {
+      "file": "half-ulp-fixtures.json",
+      "original_sha256": "bc0a57a7088795ab57884782326d9a1de7285c6bbfd109c68271309381f046d5",
+      "follow_on_sha256": "bc0a57a7088795ab57884782326d9a1de7285c6bbfd109c68271309381f046d5",
+      "byte_identical": true
+    },
+    {
+      "file": "small-cases.json",
+      "original_sha256": "2b3f459f8ea221c786fa71f38fe6acba83bf271d31dc297c31898cad26f4bb94",
+      "follow_on_sha256": "2b3f459f8ea221c786fa71f38fe6acba83bf271d31dc297c31898cad26f4bb94",
+      "byte_identical": true
+    }
+  ],
+  "unchanged_acceptance_fields": [
+    "limits",
+    "expected",
+    "timing",
+    "memory_accounting",
+    "half_activation_gate",
+    "f32_and_f64_sample_absolute_bound"
+  ],
+  "gpu_or_build_executed": false
+}

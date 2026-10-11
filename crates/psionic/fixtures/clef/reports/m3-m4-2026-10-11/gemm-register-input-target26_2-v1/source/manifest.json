@@ -1,0 +1,137 @@
+{
+  "status": "Source-only deployment-repaired follow-on; no GEMM qualification yet",
+  "candidate": "Four independent SIMD groups, each with two 16x32 f32 accumulators, explicit K32 cooperative half inputs, strict 16x32x16 NT primitive and K128 scheduling barriers",
+  "production_sources": [
+    {
+      "path": "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_prefill.metal",
+      "sha256": "623fba25dbe8a230d92f88e840c2c363961f926c3b908089ce8ba3688a3f2865"
+    },
+    {
+      "path": "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_gemm_shapes.metal",
+      "sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978"
+    },
+    {
+      "path": "crates/psionic/crates/psionic-backend-metal/src/clef_gemm.rs",
+      "sha256": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac"
+    }
+  ],
+  "private_source_copied": false,
+  "asset_directory": "../gemm-tile-probe",
+  "weights_manifest_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+  "limits": {
+    "gpu_owned_group_gib": 2,
+    "gpu_minimum_start_gib": 14,
+    "minimum_available_gib": 12,
+    "gpu_wall_seconds": 60,
+    "build_owned_group_gib": 4,
+    "build_minimum_start_gib": 16,
+    "build_wall_seconds": 180,
+    "explicit_buffer_bytes": 1073741824,
+    "internal_gpu_wall_seconds": 50,
+    "driver_and_owned_expected_limit_bytes": 1610612736
+  },
+  "timing": {
+    "tokens": [
+      512,
+      1024,
+      2048
+    ],
+    "rounds": 5,
+    "order": [
+      "baseline",
+      "register_input",
+      "register_input",
+      "baseline"
+    ],
+    "scopes": [
+      "gate",
+      "up",
+      "down_accumulate",
+      "full_ffn_accumulate"
+    ],
+    "commands": 240,
+    "dispatches": 420
+  },
+  "expected": {
+    "input_roundtrip_checks": 12,
+    "small_checks": 24,
+    "weighted_checks": 5,
+    "timing_rows": 240,
+    "total_commands": 319,
+    "total_dispatches": 547,
+    "check_only_commands": 70,
+    "check_only_dispatches": 100,
+    "expectation_checks": 3
+  },
+  "explicit_peak_formula_bytes": 654316032,
+  "changed_factors": [
+    "Relative to rejected independent-SIMD probe: cooperative input fragments instead of direct device operands; explicit K32 loads and operand reuse with the same K128 barriers",
+    "Relative to production: four independent SIMD operations and combined 64x64 tile instead of one four-SIMD 64x128 full-K operation"
+  ],
+  "compile_flags": [
+    "-std=metal4.0",
+    "-mmacosx-version-min=26.2"
+  ],
+  "sdk_support": "Public MPP cooperative input factories and Metal cooperative_tensor load/store, capacity, validity and multidimensional coordinate APIs; installed SDK 26.5. Both cooperative operands use the supported 16x32x16 primitive.",
+  "small_baseline": "Unchanged production planner; unknown synthetic shapes use fixed 64 by 64.",
+  "weighted_baseline": "Unchanged production weight-shape planner: 64 by 128 for all actual Flash gate/up/down shapes.",
+  "guide_url": "https://developer.apple.com/metal/Metal-Shading-Language-Specification.pdf",
+  "memory_accounting": {
+    "n": 2048,
+    "weights_with_redzones": 301991424,
+    "x_with_redzones": 16777728,
+    "one_state_with_redzones": 285214720,
+    "two_owned_full_expectations": 570425344,
+    "one_owned_standalone_down_expectation": 33554432,
+    "initial_explicit_buffers": 654316032,
+    "initial_expected_cpu_bytes": 603979776,
+    "initial_combined_payload_bytes": 1258295808,
+    "timing_explicit_buffers": 654316032,
+    "timing_expected_cpu_bytes": 603979776,
+    "timing_combined_payload_bytes": 1258295808,
+    "mapped_weight_temporary_bytes": 100663296,
+    "note": "Only one GPU State is live at a time. At maximum overlap, one State, common half activation, weights, X and three owned expectations total 1,258,295,808 bytes including redzones. CPU Data copies are counted before allocation; no extra residual array. The mapped weight temporary ends before any expectations. Driver overhead must also fit 1.5 GiB; process cap remains 2 GiB."
+  },
+  "numerical_criterion_version": 2,
+  "half_activation_gate": {
+    "finite": true,
+    "absolute_error_at_most": 0.001,
+    "or_half_ulp_at_most": 1,
+    "signed_zero": "same ordered value",
+    "record_absolute_and_ulp": true,
+    "frozen_before_first_compile_or_gpu": true
+  },
+  "f32_and_f64_sample_absolute_bound": 0.001,
+  "source_provenance": {
+    "public_mlx_commit": "06eb7483f03bca49a80e596f4089d02a507a2cf9",
+    "public_mlx_url": "https://github.com/ml-explore/mlx/tree/06eb7483f03bca49a80e596f4089d02a507a2cf9",
+    "license": "MIT",
+    "source_review": "../mpp-relaxed-precision-review/publication-v1/README.md",
+    "implementation": "Independently implemented with public coordinate APIs; no MLX hard-coded lane mapping copied."
+  },
+  "logical_fragment_payload": {
+    "per_simd_half_values": 2048,
+    "per_simd_f32_values": 1024,
+    "per_simd_bytes": 8192,
+    "per_thread_average_bytes": 256,
+    "threadgroup_bytes": 32768,
+    "threadgroup_shared_bytes": 0,
+    "limitation": "Logical payload only. Cooperative capacity, compiler temporaries and spills can increase actual register or memory use."
+  },
+  "small_cases_file": "small-cases.json",
+  "identity": "gemm-register-input-target26_2-v1",
+  "deployment_minimum": "macOS26.2",
+  "prior_probe": "../gemm-register-input-probe",
+  "source_delta_scope": "Candidate, baseline, Swift host, cases, numerical checks, timing schedule, and gates unchanged. Both shader builds add one fixed supported deployment minimum; guard checks frozen inputs and close-time failure.",
+  "sdk_header_sha256": {
+    "MPPTensorOpsMatMul2d.h": "9c8fa78dd5e9b7a1ad8a2d0e6cd007a816ac750041da15b1015b38c7459d8a6b",
+    "__impl/MPPTensorOpsAvailability.h": "6bf68d9d460de7cb58ed3d23eea10dc42d9dd171619051accea283b217517a72",
+    "__impl/MPPTensorOpsMatMul2dImpl.h": "527511bd1a45f0f4361c684b1019d6cc06e1c9703e6f1908384320133bfaa43a"
+  },
+  "sdk_headers_root": "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/MetalPerformancePrimitives.framework/Versions/A/Headers",
+  "supporting_coordinate_proof": {
+    "path": "../register-target26_2-diagnostic/export-1/analysis.json",
+    "sha256": "b602d48ab2f8d2b9e64d9bed95d6de948393e82799a5ef1886123eaa6b861f54",
+    "scope": "Both fixed coordinate exports have exact physical input coverage/values under macOS26.2. No GEMM was run."
+  }
+}

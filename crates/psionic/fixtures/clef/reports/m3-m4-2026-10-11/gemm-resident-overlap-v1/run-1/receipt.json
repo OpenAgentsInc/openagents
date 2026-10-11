@@ -1,0 +1,109 @@
+{
+  "identity": "gemm-resident-overlap-v1",
+  "mode": "bench",
+  "status": "complete",
+  "max_owned_group_bytes": 2147483648,
+  "minimum_available_bytes": 12884901888,
+  "minimum_start_bytes": 15032385536,
+  "deadline_seconds": 60,
+  "conditions": "shared machine; resident Flash FFN scheduling probe; no model execution",
+  "frozen_sources_sha256": "12f214cdba2af4b1c76d360d534ee39b94b7e8ab182fc2451305e2f5256fd2cd",
+  "source_sha256": {
+    "shapes.metal": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+    "pointwise.metal": "8d67971c519ae0685021c189fa2b536ee81b0dcf98f03c6d3de8e34fabdd80f3",
+    "probe.swift": "3f6ca49e2d00bfb714ba1ce1e36abe86a046b4338cc39fabaa20426da6c69c46",
+    "weights.json": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+    "production-source.json": "fa3aeb840a1ffbc343fe100cd71e3715eba06725f72c93d5753f1c59238776e5",
+    "common.py": "cda7304ca6da23ac06d0a697282cdc2a88475d225c99563ffdfed6f2ed453fb7",
+    "build.py": "723b63e344fca7fda64d3e691ce2b1cc73c8d1dfff3eb48274cedc139a1611a4",
+    "guard.py": "78812ae2f7694eabbf078664a603723e995f03264726a2b21bda5d9f83f5fd84",
+    "summarize.py": "b0d6a600af41522a743ece213bd3488129897c23a555ea9ec018a8e17918916b",
+    "source_check.py": "3552ee85ac6de4cc6eb9c60e200c2a07c6afe8e389c4a8a52d70cb63b6f5b66d",
+    "summary_check.py": "5e514309dbb76c46645ab7b27ad9aa19ceeb6b1ad902b5d59a9503542d6bc633",
+    "PLAN.md": "942f6c85a7533fb627099391816c3460308b501eea94e28d940da3f22186ea20",
+    "manifest.json": "c63c72026b3a9543aceaa649fdf1c60c1ef033ed2d8c80e77d46627e8357c0d8"
+  },
+  "guard_dependency_sha256": {
+    "mac_quiet_bench.py": "7018be065710be9ffe5dfc2d289770015ca617e2fdd3da253a98e07ba1bc997b",
+    "mac_memory.py": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd"
+  },
+  "no_quiet_lease": true,
+  "model_execution": false,
+  "load_before": [
+    64.1904296875,
+    26.24072265625,
+    17.6171875
+  ],
+  "preflight": {
+    "available_memory_bytes": 97155743744,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 3984587,
+      "inactive": 1464347,
+      "speculative": 480982
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "build_artifacts": {
+    "source_sha256": {
+      "shapes.metal": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+      "pointwise.metal": "8d67971c519ae0685021c189fa2b536ee81b0dcf98f03c6d3de8e34fabdd80f3",
+      "probe.swift": "3f6ca49e2d00bfb714ba1ce1e36abe86a046b4338cc39fabaa20426da6c69c46",
+      "weights.json": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+      "production-source.json": "fa3aeb840a1ffbc343fe100cd71e3715eba06725f72c93d5753f1c59238776e5",
+      "common.py": "cda7304ca6da23ac06d0a697282cdc2a88475d225c99563ffdfed6f2ed453fb7",
+      "build.py": "723b63e344fca7fda64d3e691ce2b1cc73c8d1dfff3eb48274cedc139a1611a4",
+      "guard.py": "78812ae2f7694eabbf078664a603723e995f03264726a2b21bda5d9f83f5fd84",
+      "summarize.py": "b0d6a600af41522a743ece213bd3488129897c23a555ea9ec018a8e17918916b",
+      "source_check.py": "3552ee85ac6de4cc6eb9c60e200c2a07c6afe8e389c4a8a52d70cb63b6f5b66d",
+      "summary_check.py": "5e514309dbb76c46645ab7b27ad9aa19ceeb6b1ad902b5d59a9503542d6bc633",
+      "PLAN.md": "942f6c85a7533fb627099391816c3460308b501eea94e28d940da3f22186ea20",
+      "manifest.json": "c63c72026b3a9543aceaa649fdf1c60c1ef033ed2d8c80e77d46627e8357c0d8"
+    },
+    "guard_dependency_sha256": {
+      "mac_quiet_bench.py": "7018be065710be9ffe5dfc2d289770015ca617e2fdd3da253a98e07ba1bc997b",
+      "mac_memory.py": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd"
+    },
+    "frozen_sources_sha256": "12f214cdba2af4b1c76d360d534ee39b94b7e8ab182fc2451305e2f5256fd2cd",
+    "artifacts": {
+      "shapes.air": "298fe4ea8bb07bd042c629b5648dfecc3a2ef4921f129a340267bcd8cd9d7297",
+      "pointwise.air": "a744c707f0fe3f297b66c7c4861d37d8fd23cc688108e757c966f5fd9e73fec3",
+      "kernels.metallib": "d2122a507210d3f51c21f15a37868f409f3d4a969a5adc27a8f209aae3c9541e",
+      "probe": "3cc94a2c5570bfdaa18a3dd3d3e754f35c8b00d3ec4c32c0af486d17c62b37f7"
+    },
+    "gpu_executed": false
+  },
+  "command": [
+    "$SCRATCH/gemm-resident-overlap-probe/probe",
+    "$SCRATCH/gemm-resident-overlap-probe",
+    "$SCRATCH/gemm-tile-probe"
+  ],
+  "exit": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 6240,
+    "max_rss_bytes": 2147483648,
+    "peak_rss_bytes": 1152270336,
+    "peak_physical_footprint_bytes": 1260815896,
+    "peak_accounted_bytes": 1260815896,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 13,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 96512458752,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 7.086832084,
+  "load_after": [
+    61.7724609375,
+    26.369140625,
+    17.712890625
+  ]
+}

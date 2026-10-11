@@ -1,0 +1,153 @@
+--- original/build.py
++++ target26_2/build.py
+@@ -6,14 +6,20 @@
+ names=['baseline.metal', 'candidate.metal', 'production-shapes.metal', 'production-fixed-extract.metal', 'production-silu-extract.metal', 'production-planner.rs', 'probe.swift', 'weights.json', 'build.py', 'guard.py', 'manifest.json', 'summarize.py', 'source_check.py', 'README.md', 'half_ulp_check.py', 'half-ulp-fixtures.json', 'small-cases.json']
+ def hashes(): return {name:hashlib.sha256((root/name).read_bytes()).hexdigest() for name in names}
+ before=hashes()
++frozen=json.loads((root/'frozen-sources.json').read_text())
++assert before==frozen['source_sha256'], 'sources changed since review'
++assert not any((root/name).exists() for name in ['baseline.metal.air','candidate.metal.air','kernels.metallib','probe','build-artifacts.json']), 'preserve prior build attempt'
++manifest=json.loads((root/'manifest.json').read_text())
++sdk=Path(manifest['sdk_headers_root'])
++assert {name:hashlib.sha256((sdk/name).read_bytes()).hexdigest() for name in manifest['sdk_header_sha256']} == manifest['sdk_header_sha256'], 'SDK headers changed'
+ commands=[]
+ for name in ['baseline.metal','candidate.metal']:
+- flags=['-std=metal4.0']
++ flags=['-std=metal4.0','-mmacosx-version-min=26.2']
+  commands.append(['xcrun','-sdk','macosx','metal']+flags+['-c',str(root/name),'-o',str(root/(name+'.air'))])
+ commands.append(['xcrun','-sdk','macosx','metallib']+[str(root/(name+'.air')) for name in ['baseline.metal','candidate.metal']]+['-o',str(root/'kernels.metallib')])
+ commands.append(['xcrun','swiftc','-O','-num-threads','2',str(root/'probe.swift'),'-o',str(root/'probe')])
+ for command in commands:
+  print(json.dumps({'command':command}),flush=True);subprocess.run(command,check=True)
+ if hashes()!=before: raise SystemExit('sources changed during build')
+-record={'source_sha256':before,'artifacts':{name:hashlib.sha256((root/name).read_bytes()).hexdigest() for name in ['probe','kernels.metallib']},'gpu_executed':False}
++record={'source_sha256':before,'frozen_sources_sha256':hashlib.sha256((root/'frozen-sources.json').read_bytes()).hexdigest(),'deployment_minimum':'macOS26.2','sdk_header_sha256':manifest['sdk_header_sha256'],'artifacts':{name:hashlib.sha256((root/name).read_bytes()).hexdigest() for name in ['probe','kernels.metallib']},'gpu_executed':False}
+ (root/'build-artifacts.json').write_text(json.dumps(record,indent=2)+'\n');print(json.dumps(record),flush=True)
+--- original/guard.py
++++ target26_2/guard.py
+@@ -35,6 +35,7 @@
+ record = {'mode': args.mode, 'status': 'preflight', 'preflight': preflight,
+           'max_owned_group_bytes': cap, 'minimum_available_bytes': floor,
+           'minimum_start_bytes': cap + floor, 'deadline_seconds': (180 if args.mode == 'build' else 60),
++          'deployment_minimum': 'macOS26.2',
+           'conditions': 'shared machine; fixed K32 cooperative-input Flash projections with K128 barriers; no model execution',
+           'source_sha256': {name: hashlib.sha256((root / name).read_bytes()).hexdigest()
+                             for name in ['baseline.metal', 'candidate.metal', 'production-shapes.metal', 'production-fixed-extract.metal', 'production-silu-extract.metal', 'production-planner.rs', 'probe.swift', 'weights.json', 'build.py', 'guard.py', 'manifest.json', 'summarize.py', 'source_check.py', 'README.md', 'half_ulp_check.py', 'half-ulp-fixtures.json', 'small-cases.json']},
+@@ -43,6 +44,23 @@
+ def save():
+     (args.output / 'receipt.json').write_text(json.dumps(record, indent=2) + '\n')
+ save()
++frozen = json.loads((root / 'frozen-sources.json').read_text())
++if record['source_sha256'] != frozen['source_sha256'] or record['guard_dependency_sha256'] != frozen['guard_dependency_sha256']:
++    record.update(status='refused', reason='source or guard dependency differs from freeze')
++    save()
++    raise SystemExit(1)
++manifest = json.loads((root / 'manifest.json').read_text())
++record['sdk_header_sha256'] = manifest['sdk_header_sha256']
++record['frozen_sources_sha256'] = hashlib.sha256((root / 'frozen-sources.json').read_bytes()).hexdigest()
++if {name: hashlib.sha256((Path(manifest['sdk_headers_root']) / name).read_bytes()).hexdigest() for name in manifest['sdk_header_sha256']} != manifest['sdk_header_sha256']:
++    record.update(status='refused', reason='SDK headers differ from reviewed deployment proof')
++    save()
++    raise SystemExit(1)
++proof = root / manifest['supporting_coordinate_proof']['path']
++if hashlib.sha256(proof.read_bytes()).hexdigest() != manifest['supporting_coordinate_proof']['sha256']:
++    record.update(status='refused', reason='supporting coordinate proof changed')
++    save()
++    raise SystemExit(1)
+ if preflight['available_memory_bytes'] < cap + floor:
+     record.update(status='refused', reason='insufficient available memory before launch')
+     save()
+@@ -53,7 +71,10 @@
+ if args.mode != 'build':
+     record['build_artifacts'] = json.loads((root / 'build-artifacts.json').read_text())
+     expected = record['build_artifacts']
+-    if expected['source_sha256'] != record['source_sha256']:
++    if (expected['source_sha256'] != record['source_sha256'] or
++        expected['frozen_sources_sha256'] != record['frozen_sources_sha256'] or
++        expected['deployment_minimum'] != 'macOS26.2' or
++        expected['sdk_header_sha256'] != record['sdk_header_sha256']):
+         record.update(status='refused', reason='source hashes changed since build')
+         save()
+         raise SystemExit(1)
+@@ -96,6 +117,8 @@
+         except BaseException as error:
+             record.update(status='failed', cleanup_error=str(error))
+         record['memory'] = guard.receipt()
++        if guard.failure:
++            record.update(status='failed', monitor_failure=guard.failure)
+     elif process is not None:
+         # Construction failure must still clean up only this new child group.
+         from mac_quiet_bench import stop_owned_group
+--- original/manifest.json
++++ target26_2/manifest.json
+@@ -1,5 +1,5 @@
+ {
+-  "status": "source implementation only; no build/GPU",
++  "status": "Source-only deployment-repaired follow-on; no GEMM qualification yet",
+   "candidate": "Four independent SIMD groups, each with two 16x32 f32 accumulators, explicit K32 cooperative half inputs, strict 16x32x16 NT primitive and K128 scheduling barriers",
+   "production_sources": [
+     {
+@@ -69,7 +69,8 @@
+     "Relative to production: four independent SIMD operations and combined 64x64 tile instead of one four-SIMD 64x128 full-K operation"
+   ],
+   "compile_flags": [
+-    "-std=metal4.0"
++    "-std=metal4.0",
++    "-mmacosx-version-min=26.2"
+   ],
+   "sdk_support": "Public MPP cooperative input factories and Metal cooperative_tensor load/store, capacity, validity and multidimensional coordinate APIs; installed SDK 26.5. Both cooperative operands use the supported 16x32x16 primitive.",
+   "small_baseline": "Unchanged production planner; unknown synthetic shapes use fixed 64 by 64.",
+@@ -117,5 +118,20 @@
+     "threadgroup_shared_bytes": 0,
+     "limitation": "Logical payload only. Cooperative capacity, compiler temporaries and spills can increase actual register or memory use."
+   },
+-  "small_cases_file": "small-cases.json"
++  "small_cases_file": "small-cases.json",
++  "identity": "gemm-register-input-target26_2-v1",
++  "deployment_minimum": "macOS26.2",
++  "prior_probe": "../gemm-register-input-probe",
++  "source_delta_scope": "Candidate, baseline, Swift host, cases, numerical checks, timing schedule, and gates unchanged. Both shader builds add one fixed supported deployment minimum; guard checks frozen inputs and close-time failure.",
++  "sdk_header_sha256": {
++    "MPPTensorOpsMatMul2d.h": "9c8fa78dd5e9b7a1ad8a2d0e6cd007a816ac750041da15b1015b38c7459d8a6b",
++    "__impl/MPPTensorOpsAvailability.h": "6bf68d9d460de7cb58ed3d23eea10dc42d9dd171619051accea283b217517a72",
++    "__impl/MPPTensorOpsMatMul2dImpl.h": "527511bd1a45f0f4361c684b1019d6cc06e1c9703e6f1908384320133bfaa43a"
++  },
++  "sdk_headers_root": "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/MetalPerformancePrimitives.framework/Versions/A/Headers",
++  "supporting_coordinate_proof": {
++    "path": "../register-target26_2-diagnostic/export-1/analysis.json",
++    "sha256": "b602d48ab2f8d2b9e64d9bed95d6de948393e82799a5ef1886123eaa6b861f54",
++    "scope": "Both fixed coordinate exports have exact physical input coverage/values under macOS26.2. No GEMM was run."
++  }
+ }
+--- original/README.md
++++ target26_2/README.md
+@@ -1,6 +1,28 @@
+-# Cooperative input projection probe
++# Cooperative input projection probe at macOS 26.2
+ 
+ This is one source-only experiment. It has not been compiled or run. It changes no product files and loads only three existing Flash projection matrices, not a complete model.
++
++
++This follow-on preserves the earlier probe's baseline, candidate, Swift host,
++fixtures, oracles, timing schedule, and acceptance gates byte for byte. The only
++shader build change is adding `-mmacosx-version-min=26.2` to **both** baseline and
++candidate compilation. The earlier default target was measured as 26.0, selecting
++destination-only SDK helpers for input tensors. The separate
++[coordinate proof](../register-target26_2-diagnostic/publication-v1/README.md)
++confirmed that the fixed 26.2 target restores exact input coordinates and bits
++without a mapping edit. That proof did not execute a GEMM.
++
++`source-delta.json` records every unchanged and changed source hash, and
++`source-changes.patch` records the wrapper/metadata changes. The guard now pins
++the reviewed source and current shared guard hashes, records SDK header identity,
++checks the supporting coordinate proof, and fails if its monitor reports an error
++during cleanup. No bound is raised. The build refuses to overwrite an earlier
++attempt. This is one fixed bench attempt after review and an explicit handoff;
++no separate check run or retry is authorized by this document.
++
++Production runtime compilation remains unverified by this offline experiment.
++Even a successful GEMM result would need separate runtime-compilation and complete
++weighted-model acceptance before integration.
+ 
+ ## Fixed candidate
+ 

@@ -116,6 +116,17 @@ question/option-span comparisons, all logits, and source/input hashes are
 retained. The CPU run completes in 203.78 seconds at 5.24 GB peak accounted
 memory under the unchanged 12 GiB cap, with successful cleanup.
 
+The [recurrent Delta control](text029-recurrence-control-v1/README.md) then
+changes only the combined control's chunked Delta operator to the official
+recurrent formulation. All 64 layers complete, including exact saved-head
+replays and exact agreement with the earlier layer-0 recurrent control.
+The disputed P(true) becomes `0.49889134`, still choosing false where native
+chooses true. Whole-memory distance from native decreases slightly, but maximum
+probability distance increases from `0.00218395` to `0.00319975`. The recurrence
+choice alone does not resolve the discrepancy. All three questions and full
+layer comparisons are retained; the 193.69-second CPU run peaks at 5.02 GB
+under its unchanged 12 GiB cap and completes cleanup.
+
 The [activation-weighted Q4 preparation](activation-weighted-q4-preparation-v1/README.md)
 preserves the frozen corpus, recipes, and checks. The two-record pilot passed;
 the full collector was deliberately stopped after 70 of 96 records and
@@ -254,6 +265,25 @@ selects `260200` and operand-specific helpers. With unchanged shader bytes, all
 coverage, and exact values. The original mapping was correct. Both fixed runs
 complete cleanup within unchanged bounds. Full matrix qualification and the
 product's runtime-compilation path remain untested by this diagnostic.
+
+The subsequent [register-input matrix qualification](gemm-register-input-target26_2-v1/README.md)
+passes all 12 exact input roundtrips, 24 small numerical cases, and five
+real-weight cases, but **fails speed**. Its paired full-FFN times are
+2.5874, 2.4366, and 2.6351 times the baseline at 512, 1,024, and 2,048 rows.
+All 240 timing records and 319 command-buffer outcomes are retained. Both
+shaders use the explicit macOS 26.2 target; the arithmetic is unchanged from
+the earlier failed-coordinate attempt. The 11.37-second bench stays under
+its 2 GiB process cap and completes cleanup. The candidate is rejected;
+neither this result nor the coordinate proof changes production code.
+
+The [resident gate/up overlap probe](gemm-resident-overlap-v1/README.md)
+omits only the barrier between two independent projections. All outputs match
+the serial baseline bit for bit, but paired full-FFN ratios are `1.006125`,
+`0.852447`, and `1.004241` at 512, 1,024, and 2,048 rows. This fails the fixed
+requirement of at most `0.90` at every size. All 136 commands, 560 dispatches,
+and 120 timing records are retained, including substantial round variation
+under shared-machine load. The 7.09-second run stays under its 2 GiB cap and
+completes cleanup. This scheduling candidate is also rejected.
 
 All probes use shared GPU/build and bounded memory leases as appropriate.
 None uses a quiet lease or changes desktop applications or system services.

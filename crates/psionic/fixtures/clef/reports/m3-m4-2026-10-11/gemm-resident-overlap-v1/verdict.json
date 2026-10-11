@@ -1,0 +1,32 @@
+{
+  "correctness_passed": true,
+  "speed_qualified": false,
+  "integration": "rejected; no product change",
+  "summary_exit": 2,
+  "summary_exit_reason": "fixed speed gate not met; not a resource or numerical failure",
+  "all_owned_groups_stopped": true,
+  "all_four_leases_released": true,
+  "start_utc": "2026-10-11T15:46:39.569000+00:00",
+  "end_utc": "2026-10-11T15:46:46.895000+00:00",
+  "source_freeze_sha256": "12f214cdba2af4b1c76d360d534ee39b94b7e8ab182fc2451305e2f5256fd2cd",
+  "full_ffn_ratios": {
+    "512": 1.0061249077546464,
+    "1024": 0.8524471106975352,
+    "2048": 1.0042408767872721
+  },
+  "normalization_and_pair_ratios": {
+    "512": 1.0691291126212332,
+    "1024": 1.046848246592645,
+    "2048": 0.9934054795648205
+  },
+  "shared_load_before": [
+    64.1904296875,
+    26.24072265625,
+    17.6171875
+  ],
+  "shared_load_after": [
+    61.7724609375,
+    26.369140625,
+    17.712890625
+  ]
+}

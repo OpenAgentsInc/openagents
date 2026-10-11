@@ -1,0 +1,37 @@
+{
+  "status": "source_checks_passed",
+  "mapping_shapes": 17,
+  "counts": {
+    "input_roundtrip_checks": 12,
+    "small_checks": 24,
+    "weighted_checks": 5,
+    "timing_rows": 240,
+    "total_commands": 319,
+    "total_dispatches": 547,
+    "check_only_commands": 70,
+    "check_only_dispatches": 100,
+    "expectation_checks": 3
+  },
+  "source_sha256": {
+    "baseline.metal": "9505a34d21d4d6bd11a532a62549d00c8cafbad90ab92f2bd07cccb4eae30725",
+    "candidate.metal": "b5b5d77dc4406cd3023cd69f6838d670bfc774ad1e4196af16c2b536d47e9821",
+    "production-shapes.metal": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+    "production-fixed-extract.metal": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+    "production-silu-extract.metal": "fe7844912a63f4219dc05a5a50a5b269ad48a0e3aa5f60cef221ae9223880e61",
+    "production-planner.rs": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac",
+    "probe.swift": "d4f864fa83b1a2ba9852085375210770cfb39e8eb554963e881463f6fc73f0e0",
+    "weights.json": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+    "build.py": "8532fd0ead802459123910e90a3acd7315bed89fe140053da3c1348eb3927fbc",
+    "guard.py": "ced25b293ce84cf98e57699bedf28c23dce51ee2843bde65b9f76437ac9e932a",
+    "manifest.json": "5edbfda57ab1e84db0c65029348a912c0de693b5b27fa9fdc1f1ed4d86ea5a08",
+    "summarize.py": "7b4f707b520221e24ef698e44e574be177d7a36168ee5922cec51219bf8fe26d",
+    "source_check.py": "c436ab60c1671b7b3be55da672ca6d4ba4b01ab12dbea18ee01cd6b71e1019c0",
+    "README.md": "ca7ead56970b5b8ad59b8a57c6c1db4e8e81c5028d3cec53a1d29e671c0dccd0",
+    "half_ulp_check.py": "f5f1d3dcbe7cd4da54c45b9ea2698047ba861bc26575144e0ae4c6f53f015aa4",
+    "half-ulp-fixtures.json": "bc0a57a7088795ab57884782326d9a1de7285c6bbfd109c68271309381f046d5",
+    "small-cases.json": "2b3f459f8ea221c786fa71f38fe6acba83bf271d31dc297c31898cad26f4bb94"
+  },
+  "read_weight_payloads": false,
+  "compiled": false,
+  "gpu_executed": false
+}

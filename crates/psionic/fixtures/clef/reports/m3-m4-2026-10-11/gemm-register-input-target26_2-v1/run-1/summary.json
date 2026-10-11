@@ -1,0 +1,283 @@
+{
+  "coverage_and_correctness_passed": true,
+  "numerical_gate": "exact cooperative input/residual roundtrips before GEMM; f32 gate/up/down absolute .001; finite half activation absolute .001 OR at most one half ULP; independent f64 checks; exact matching-variant repeat bytes; frozen before first compile/run",
+  "timing_included": true,
+  "checks": 29,
+  "exact_input_roundtrips": 12,
+  "timing_rows": 240,
+  "scope": "same-weight synthetic-input projections; shared-machine microbenchmark, not model latency",
+  "conditions": "fixed ABBA order within each round; temporal drift and cache effects remain possible",
+  "by_tokens": [
+    {
+      "n": 512,
+      "scopes": {
+        "gate": {
+          "baseline_median_gpu_ms": 0.8459583368676249,
+          "register_input_median_gpu_ms": 2.3132708302000538,
+          "paired_register_input_over_baseline_median": 2.677094090819315,
+          "paired_ratios": [
+            2.745373645372896,
+            2.975785840629718,
+            2.5290496905106283,
+            2.456133199788418,
+            2.7138352284865492,
+            2.2965612057774245,
+            2.770462089188798,
+            3.0938453738859883,
+            2.6403529531520804,
+            2.231474053576835
+          ]
+        },
+        "up": {
+          "baseline_median_gpu_ms": 1.0016458327299915,
+          "register_input_median_gpu_ms": 2.3122499987948686,
+          "paired_register_input_over_baseline_median": 2.4877721637817607,
+          "paired_ratios": [
+            2.538089366015119,
+            2.4374549615484025,
+            2.779752020465817,
+            2.1179188408923983,
+            2.1294736902086564,
+            2.5460079492650958,
+            2.7813305228768015,
+            2.9269084939559793,
+            2.195435270725261,
+            2.2771008360281297
+          ]
+        },
+        "down_accumulate": {
+          "baseline_median_gpu_ms": 0.9241041661880445,
+          "register_input_median_gpu_ms": 2.6391458304715343,
+          "paired_register_input_over_baseline_median": 2.7745986291465963,
+          "paired_ratios": [
+            2.7969709745275777,
+            2.807131492440955,
+            2.7522262837656153,
+            2.647042160299908,
+            2.3710035814197186,
+            3.0917836562951573,
+            2.4892778267208877,
+            3.0870452068835985,
+            2.5862593196829584,
+            2.803039018818918
+          ]
+        },
+        "projection_sum": {
+          "baseline_median_gpu_ms": 2.7958124956057873,
+          "register_input_median_gpu_ms": 7.277583332324866,
+          "paired_register_input_over_baseline_median": 2.643674047840681,
+          "paired_ratios": [
+            2.69076712862215,
+            2.720264093602841,
+            2.6924170782286154,
+            2.3954349501474104,
+            2.381724665280386,
+            2.623264810515627,
+            2.6640832851657352,
+            3.03696022234327,
+            2.462964344346882,
+            2.4351285820073647
+          ]
+        },
+        "full_ffn_accumulate": {
+          "baseline_median_gpu_ms": 2.7832083324028645,
+          "register_input_median_gpu_ms": 7.107125002221437,
+          "paired_register_input_over_baseline_median": 2.5873695156569423,
+          "paired_ratios": [
+            2.614369825922697,
+            2.145907739964515,
+            2.282455585402362,
+            2.619194201217369,
+            2.479800140796991,
+            2.0719767663706024,
+            2.6161565020390043,
+            2.6001300889207273,
+            2.5746089423931573,
+            2.834247961669629
+          ]
+        }
+      }
+    },
+    {
+      "n": 1024,
+      "scopes": {
+        "gate": {
+          "baseline_median_gpu_ms": 1.774874996044673,
+          "register_input_median_gpu_ms": 4.622541662683943,
+          "paired_register_input_over_baseline_median": 2.6299301265891746,
+          "paired_ratios": [
+            0.7575599432099924,
+            6.091160026684374,
+            2.624075122849914,
+            2.557592749280784,
+            2.519493718620503,
+            2.6357851303284345,
+            2.347750041950502,
+            2.847724937102234,
+            2.6870862564096427,
+            2.8619074578173147
+          ]
+        },
+        "up": {
+          "baseline_median_gpu_ms": 1.8385416660748888,
+          "register_input_median_gpu_ms": 4.697833333921153,
+          "paired_register_input_over_baseline_median": 2.5508383335000264,
+          "paired_ratios": [
+            0.8442758882136365,
+            3.8212146569918835,
+            2.421056212280675,
+            2.562908921672291,
+            2.412044270401865,
+            2.585963308212129,
+            2.865752592925808,
+            2.538767745327762,
+            2.8930093491295508,
+            2.4945163920868154
+          ]
+        },
+        "down_accumulate": {
+          "baseline_median_gpu_ms": 1.9522916627465747,
+          "register_input_median_gpu_ms": 5.192437500227243,
+          "paired_register_input_over_baseline_median": 2.7099592327188633,
+          "paired_ratios": [
+            0.9288583803102461,
+            2.708040478085194,
+            3.5636546731094523,
+            2.7649404079943185,
+            2.9092845118628716,
+            2.499881872467131,
+            2.713061738754959,
+            2.675636333960982,
+            2.7118779873525325,
+            2.3928315786918404
+          ]
+        },
+        "projection_sum": {
+          "baseline_median_gpu_ms": 5.531083334062714,
+          "register_input_median_gpu_ms": 14.736249999259599,
+          "paired_register_input_over_baseline_median": 2.6325512470860506,
+          "paired_ratios": [
+            0.8410104694917456,
+            4.13767433995478,
+            2.8648959697315486,
+            2.633995527893233,
+            2.6134570382019024,
+            2.570080865585998,
+            2.6311069662788675,
+            2.683597175768446,
+            2.760464935280109,
+            2.5699025167677756
+          ]
+        },
+        "full_ffn_accumulate": {
+          "baseline_median_gpu_ms": 5.903875000512926,
+          "register_input_median_gpu_ms": 14.603958330553723,
+          "paired_register_input_over_baseline_median": 2.436556542999125,
+          "paired_ratios": [
+            1.425706546403429,
+            2.5326594081131564,
+            2.7059189532248973,
+            2.4228374553835845,
+            2.608511999889213,
+            2.363030669872875,
+            2.6712196090938027,
+            2.450275630614666,
+            2.3708004512538454,
+            2.343389059803975
+          ]
+        }
+      }
+    },
+    {
+      "n": 2048,
+      "scopes": {
+        "gate": {
+          "baseline_median_gpu_ms": 3.7118541658855975,
+          "register_input_median_gpu_ms": 9.38049999967916,
+          "paired_register_input_over_baseline_median": 2.507119073350857,
+          "paired_ratios": [
+            0.8292438437933239,
+            2.7822054049635994,
+            2.5018636098890985,
+            2.7080631087672433,
+            2.550603528400187,
+            2.5100925780448513,
+            2.382881587199806,
+            2.7308368675834727,
+            2.4172774438745988,
+            2.5041455686568623
+          ]
+        },
+        "up": {
+          "baseline_median_gpu_ms": 3.527125001710374,
+          "register_input_median_gpu_ms": 8.788458333583549,
+          "paired_register_input_over_baseline_median": 2.543001501892046,
+          "paired_ratios": [
+            1.7830738965013158,
+            2.4343461294835365,
+            2.241756932404049,
+            2.5676475885767864,
+            2.5472866675488004,
+            2.6634944521989383,
+            2.5640482030010596,
+            2.659569532639302,
+            2.4629803171457314,
+            2.5387163362352916
+          ]
+        },
+        "down_accumulate": {
+          "baseline_median_gpu_ms": 3.633708332927199,
+          "register_input_median_gpu_ms": 10.482833335117903,
+          "paired_register_input_over_baseline_median": 2.8827123208166103,
+          "paired_ratios": [
+            2.280252948936321,
+            2.8197587194719604,
+            2.983042190925569,
+            2.4538092156549247,
+            2.9456659221612607,
+            2.9593372456612888,
+            3.029253193483069,
+            2.95371802426548,
+            2.7661740715963226,
+            2.816348857791178
+          ]
+        },
+        "projection_sum": {
+          "baseline_median_gpu_ms": 10.884875002375338,
+          "register_input_median_gpu_ms": 28.446958334825467,
+          "paired_register_input_over_baseline_median": 2.637997589728588,
+          "paired_ratios": [
+            1.3791195352800771,
+            2.677013812378789,
+            2.5654418616123933,
+            2.570053137377954,
+            2.679954227063551,
+            2.7096829488809053,
+            2.6564999798924873,
+            2.7814267323972675,
+            2.549061580634669,
+            2.619495199564689
+          ]
+        },
+        "full_ffn_accumulate": {
+          "baseline_median_gpu_ms": 11.343083333485993,
+          "register_input_median_gpu_ms": 29.723437499342253,
+          "paired_register_input_over_baseline_median": 2.6350515001816777,
+          "paired_ratios": [
+            2.1784417400338754,
+            2.4957121780521216,
+            2.5907394615791683,
+            2.632680849123692,
+            2.705951445477408,
+            2.8277884830624544,
+            2.752140690157286,
+            2.725789688102237,
+            2.6374221512396634,
+            2.5853316814990475
+          ]
+        }
+      }
+    }
+  ],
+  "material_full_ffn_gain_all_sizes": false
+}

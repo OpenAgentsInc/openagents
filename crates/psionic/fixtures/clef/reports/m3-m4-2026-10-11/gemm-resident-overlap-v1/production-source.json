@@ -1,0 +1,36 @@
+{
+  "source_files": {
+    "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_prefill.metal": {
+      "sha256": "623fba25dbe8a230d92f88e840c2c363961f926c3b908089ce8ba3688a3f2865",
+      "bytes": 54916
+    },
+    "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_gemm_shapes.metal": {
+      "sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+      "bytes": 4117
+    }
+  },
+  "extracted_functions": {
+    "group_sum": {
+      "sha256": "ba15c9472e78bd13eb51020836f209a7f02f440a712bdf1f4c66c581bfc0a21b",
+      "bytes": 529,
+      "production_start": "inline float group_sum("
+    },
+    "silu": {
+      "sha256": "7b34edf7b519e93172a2e8e132156f0c46de982de84a33501a4dcef9784b9a9c",
+      "bytes": 60,
+      "production_start": "inline float silu("
+    },
+    "rms": {
+      "sha256": "f072248b1e8e24eacdcc0bf28a0919c1556feae7afa4f75234f596f87c652a08",
+      "bytes": 881,
+      "production_start": "kernel void clef_rms_norm_to_f16("
+    },
+    "silu_mul": {
+      "sha256": "1c202a4a8c1ed298da5873d715148f4b97ba1d0ff380c7a289e37efb7cc82442",
+      "bytes": 369,
+      "production_start": "kernel void clef_silu_mul_to_f16("
+    }
+  },
+  "pointwise_prelude": "#include <metal_stdlib>\nusing namespace metal;\nconstant constexpr uint kSimd = 32;\n\n",
+  "unchanged_math": true
+}

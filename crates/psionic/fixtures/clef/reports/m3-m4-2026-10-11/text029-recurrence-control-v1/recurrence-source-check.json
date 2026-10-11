@@ -1,0 +1,47 @@
+{
+  "schema": "clef.text029-recurrence-source-check.v1",
+  "status": "source-only",
+  "gpu_executed": false,
+  "model_executed": false,
+  "sources": {
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/text029-isolation/recurrence_reference.py": "0b77e3effdc10bea430927ca6928dd7ec73e146e07e5e06744110d306865526b",
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/text029-isolation/guard_recurrence.py": "513125911f575aea992cc007e04142195ecd6ff103a351183cce1fc6b964af80",
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/text029-isolation/recurrence-control-plan.md": "5bd0076a9c553388cccb8406617368d4493a3dca50aa158c1744b6d02e475ab7",
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/text029-isolation/precision_hash.py": "595256f7b60826373a80588c0bc1ac1f4554d6dfc6ae117ae9f20f66363aca2f",
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/text029-isolation/layer0_math.py": "432a1e97996b923e4e16119d6733d9a39df604fcfcac02286eda4f62c670ee91",
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/text029-isolation/layer35_math.py": "bc5438f971303c6936ccd4fe61e08e8e45ff253fae56e98a434d7caaf28d8b57",
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/mps_reference.py": "d6dd92eb2e0ed4df10b3f9dc56f84ef7bf61c10689b3a2da6b2ae1db0e79835b",
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/guard_mps.py": "e576e775eea9b0d9b74c08dfd761be4564824a7781a2d43ed15d3595fecc05df",
+    "@@CLEF_SCRATCH@@/cpu27b-diagnostic/streamed-gguf/gguf_import.py": "57a152754b1dd224de24b111d7824fc6ecb3c7f4bb1149c6a5a3d78fdb41bc32",
+    "@@CLEF_SCRATCH@@/cpu27b-diagnostic/streamed-gguf/stream_reference.py": "b1b61674dc9afc362f29bef3bf228ed4d5e6c7cf0150bf203023d28362462041",
+    "@@CLEF_WORKTREE@@/crates/psionic/fixtures/clef/tools/mac_quiet_bench.py": "7018be065710be9ffe5dfc2d289770015ca617e2fdd3da253a98e07ba1bc997b",
+    "@@CLEF_WORKTREE@@/crates/psionic/fixtures/clef/tools/mac_memory.py": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd"
+  },
+  "checks": [
+    "AST syntax only; no model/framework imports",
+    "prior executed A/B/C sources unchanged",
+    "saved WXR layer output and seven Delta hash fields present"
+  ],
+  "saved_layer0_wxr": {
+    "delta.query": "08550a0a25f8e5ba4b2ba9cb45106158d94e4a497879a7698aacdce371fb8208",
+    "delta.key": "20de11722e2d5a2352abed44b42742c26e9ec8418d45b1a3a3d42f4bc5b72ee1",
+    "delta.value": "bb761213124de2846197fb646c9e7c6045b57c3d055f731936545fd00768827e",
+    "delta.g": "e876ca89a27eeb732e8a2adff80c6c2aa4bd69d8dd153222154844488af2acb1",
+    "delta.beta": "f6369922312d2146b0af9307e6b3522c88cee3cc48b60b251645bbdfef616582",
+    "delta.q_normalized_scaled": "336cf77176764f70958ba0b775bb6ffb8d7269e0344e9e7cbbbd2901ccb19384",
+    "delta.k_normalized": "78dc6b1e408144a8059ca881227c9f72caea16cd73711c94a027ec0cd3d8685f",
+    "delta.output": "7bbc313837c71c422219fe36a55a3ff5c4667c97df01915d9ea9eb1175cae227",
+    "delta.final_state": "9dbe63ce60ce7ef3c6bd2e98d588252baa7081317cd820d5437c1f66134e3746",
+    "layer.output": "e135fb2fa6bdb56cae5fd4c9ca4573398f8957dbae5e1c622a9310449f4d0a5f"
+  },
+  "bounds": {
+    "group_gib": 12,
+    "start_gib": 24,
+    "available_floor_gib": 12,
+    "deadline_seconds": 300,
+    "threads": 2,
+    "disk_gib": 2,
+    "disk_floor_gib": 25
+  },
+  "scope": "Exactly one new D=C+official recurrent trajectory; unchanged original 40/104 all-top and0.02 gate."
+}

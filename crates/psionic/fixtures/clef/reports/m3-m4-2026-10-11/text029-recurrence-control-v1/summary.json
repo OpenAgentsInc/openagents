@@ -1,0 +1,423 @@
+{
+  "schema": "clef.text029-recurrence-summary.v1",
+  "original_guard_sha256": "05a66e6dc8dae4efe199ca0246c4e3ba6ad2ebf937d096fabf8b32fd9bf3e385",
+  "original_result_sha256": "617ca8f237382bcde4c94671d1a4ac4c657f30781ce0e89b2a9fbf1226c45392",
+  "questions": [
+    {
+      "id": "rate",
+      "option_ids": [
+        "true",
+        "false"
+      ],
+      "variants": {
+        "A": {
+          "logits": [
+            -0.9667521715164185,
+            -0.28029894828796387
+          ],
+          "probabilities": [
+            0.3348225352885809,
+            0.665177464711419
+          ],
+          "top": "false"
+        },
+        "C": {
+          "logits": [
+            -0.9685022830963135,
+            -0.28757578134536743
+          ],
+          "probabilities": [
+            0.33605454838461646,
+            0.6639454516153835
+          ],
+          "top": "false"
+        },
+        "D": {
+          "logits": [
+            -0.9688856601715088,
+            -0.2860279083251953
+          ],
+          "probabilities": [
+            0.3356237807388068,
+            0.6643762192611933
+          ],
+          "top": "false"
+        },
+        "native_staged": {
+          "logits": [
+            -0.9698238372802734,
+            -0.2881976366043091
+          ],
+          "probabilities": [
+            0.3358984481518185,
+            0.6641015518481814
+          ],
+          "top": "false"
+        },
+        "native_fused-fields": {
+          "logits": [
+            -0.9698238968849182,
+            -0.28819745779037476
+          ],
+          "probabilities": [
+            0.3358983949676259,
+            0.664101605032374
+          ],
+          "top": "false"
+        }
+      }
+    },
+    {
+      "id": "\u65e5\u672c1",
+      "option_ids": [
+        "true",
+        "false"
+      ],
+      "variants": {
+        "A": {
+          "logits": [
+            -0.05995303392410278,
+            -0.032073974609375
+          ],
+          "probabilities": [
+            0.4930306865690331,
+            0.5069693134309669
+          ],
+          "top": "false"
+        },
+        "C": {
+          "logits": [
+            -0.05742320418357849,
+            -0.057051777839660645
+          ],
+          "probabilities": [
+            0.4999071434150881,
+            0.500092856584912
+          ],
+          "top": "false"
+        },
+        "D": {
+          "logits": [
+            -0.05798548460006714,
+            -0.0535508394241333
+          ],
+          "probabilities": [
+            0.49889134052293127,
+            0.5011086594770687
+          ],
+          "top": "false"
+        },
+        "native_staged": {
+          "logits": [
+            -0.05822303891181946,
+            -0.06658744812011719
+          ],
+          "probabilities": [
+            0.502091090110451,
+            0.49790890988954895
+          ],
+          "top": "true"
+        },
+        "native_fused-fields": {
+          "logits": [
+            -0.05822297930717468,
+            -0.06658744812011719
+          ],
+          "probabilities": [
+            0.5020911050113516,
+            0.4979088949886484
+          ],
+          "top": "true"
+        }
+      }
+    },
+    {
+      "id": "rollback_2",
+      "option_ids": [
+        "true",
+        "false"
+      ],
+      "variants": {
+        "A": {
+          "logits": [
+            -3.224686861038208,
+            1.4942960739135742
+          ],
+          "probabilities": [
+            0.008845312691517603,
+            0.9911546873084823
+          ],
+          "top": "false"
+        },
+        "C": {
+          "logits": [
+            -3.2284390926361084,
+            1.4928855895996094
+          ],
+          "probabilities": [
+            0.008824806017146818,
+            0.9911751939828531
+          ],
+          "top": "false"
+        },
+        "D": {
+          "logits": [
+            -3.2287702560424805,
+            1.4930883646011353
+          ],
+          "probabilities": [
+            0.008820136920516463,
+            0.9911798630794835
+          ],
+          "top": "false"
+        },
+        "native_staged": {
+          "logits": [
+            -3.2293167114257812,
+            1.4924194812774658
+          ],
+          "probabilities": [
+            0.00882120729181892,
+            0.991178792708181
+          ],
+          "top": "false"
+        },
+        "native_fused-fields": {
+          "logits": [
+            -3.2293167114257812,
+            1.4924193620681763
+          ],
+          "probabilities": [
+            0.008821208334112722,
+            0.9911787916658873
+          ],
+          "top": "false"
+        }
+      }
+    }
+  ],
+  "bounds": {
+    "group_gib": 12,
+    "start_gib": 24,
+    "available_floor_gib": 12,
+    "gpu_executed": false,
+    "threads": 2,
+    "deadline_seconds": 300,
+    "disk_floor_gib": 25
+  },
+  "seconds": 193.69307675000164,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 9795,
+    "max_rss_bytes": 12884901888,
+    "peak_rss_bytes": 5016748032,
+    "peak_physical_footprint_bytes": 4876226856,
+    "peak_accounted_bytes": 5016748032,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 363,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 85397307392,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "comparisons": {
+    "final_vs_A": {
+      "values": 1838080,
+      "max_abs_error": 0.8116769790649414,
+      "relative_l2": 0.004550391703694368,
+      "zero_reference_norm": false,
+      "minimum_token_cosine": 0.9987440521548987
+    },
+    "final_vs_C": {
+      "values": 1838080,
+      "max_abs_error": 0.29898738861083984,
+      "relative_l2": 0.002343455992231859,
+      "zero_reference_norm": false,
+      "minimum_token_cosine": 0.9998859917467483
+    },
+    "final_vs_native": {
+      "values": 1838080,
+      "max_abs_error": 0.647831916809082,
+      "relative_l2": 0.005028086965304569,
+      "zero_reference_norm": false,
+      "minimum_token_cosine": 0.9983631194931369
+    },
+    "final_spans": {
+      "D_minus_A": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.028816699981689453,
+          "relative_l2": 0.00142988480970901,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.999998930196765
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.12075233459472656,
+          "relative_l2": 0.0028965838731841867,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999829884605974
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.8116769790649414,
+          "relative_l2": 0.01601776443588145,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9987440521548987
+        }
+      },
+      "D_minus_C": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.02076864242553711,
+          "relative_l2": 0.001440508352245228,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999985402598571
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.05210685729980469,
+          "relative_l2": 0.0015486590677315335,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999969246275079
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.29898738861083984,
+          "relative_l2": 0.006203590230470426,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9998859917467483
+        }
+      },
+      "D_minus_native": {
+        "question": {
+          "values": 10240,
+          "max_abs_error": 0.029143810272216797,
+          "relative_l2": 0.0015634005331008917,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999984783160258
+        },
+        "true_option": {
+          "values": 92160,
+          "max_abs_error": 0.057720184326171875,
+          "relative_l2": 0.0013586631434333023,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9999980290047459
+        },
+        "false_option": {
+          "values": 92160,
+          "max_abs_error": 0.647831916809082,
+          "relative_l2": 0.018088363207204628,
+          "zero_reference_norm": false,
+          "minimum_token_cosine": 0.9983631194931369
+        }
+      }
+    },
+    "logits_vs_A": {
+      "questions": [
+        {
+          "max_abs_logit": 0.005728960037231445,
+          "max_abs_probability": 0.0008012454502258626,
+          "same_top": true
+        },
+        {
+          "max_abs_logit": 0.0214768648147583,
+          "max_abs_probability": 0.005860653953898176,
+          "same_top": true
+        },
+        {
+          "max_abs_logit": 0.004083395004272461,
+          "max_abs_probability": 2.5175771001140212e-05,
+          "same_top": true
+        }
+      ],
+      "max_abs_logit": 0.0214768648147583,
+      "max_abs_probability": 0.005860653953898176,
+      "all_tops_match": true
+    },
+    "logits_vs_C": {
+      "questions": [
+        {
+          "max_abs_logit": 0.0015478730201721191,
+          "max_abs_probability": 0.0004307676458097376,
+          "same_top": true
+        },
+        {
+          "max_abs_logit": 0.0035009384155273438,
+          "max_abs_probability": 0.001015802892156803,
+          "same_top": true
+        },
+        {
+          "max_abs_logit": 0.0003311634063720703,
+          "max_abs_probability": 4.669096630355307e-06,
+          "same_top": true
+        }
+      ],
+      "max_abs_logit": 0.0035009384155273438,
+      "max_abs_probability": 0.001015802892156803,
+      "all_tops_match": true
+    },
+    "logits_vs_native": {
+      "staged": {
+        "questions": [
+          {
+            "max_abs_logit": 0.0021697282791137695,
+            "max_abs_probability": 0.00027466741301185316,
+            "same_top": true
+          },
+          {
+            "max_abs_logit": 0.013036608695983887,
+            "max_abs_probability": 0.0031997495875197846,
+            "same_top": false
+          },
+          {
+            "max_abs_logit": 0.0006688833236694336,
+            "max_abs_probability": 1.070371302480666e-06,
+            "same_top": true
+          }
+        ],
+        "max_abs_logit": 0.013036608695983887,
+        "max_abs_probability": 0.0031997495875197846,
+        "all_tops_match": false
+      },
+      "fused-fields": {
+        "questions": [
+          {
+            "max_abs_logit": 0.0021695494651794434,
+            "max_abs_probability": 0.0002746142288192477,
+            "same_top": true
+          },
+          {
+            "max_abs_logit": 0.013036608695983887,
+            "max_abs_probability": 0.0031997644884203535,
+            "same_top": false
+          },
+          {
+            "max_abs_logit": 0.0006690025329589844,
+            "max_abs_probability": 1.0714135962597293e-06,
+            "same_top": true
+          }
+        ],
+        "max_abs_logit": 0.013036608695983887,
+        "max_abs_probability": 0.0031997644884203535,
+        "all_tops_match": false
+      }
+    }
+  },
+  "call_counts": {
+    "recurrent_delta": 48,
+    "online_attention": 16
+  },
+  "layer0_WXR_exact": true,
+  "A_head_replay_exact": true,
+  "C_head_replay_exact": true,
+  "limitations": "These are precision-boundary controls, not bitwise Metal emulation. GEMM/norm reductions, transcendental functions, FMA and residual-in-GEMM accumulation differ. D uses official recurrent Delta, whose dot(updated_state,q) output order still differs from native sq+delta*kq.",
+  "scope": "One fixed diagnostic case. Original 40/104 all-top and 0.02 probability acceptance remains unchanged and unmet."
+}

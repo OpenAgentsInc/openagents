@@ -15,7 +15,872 @@
     "Stage 6 experiments preserve failed correctness gates and resource refusals. Only owned, sanitized trace aggregates are published; raw system traces, model weights, and tensor payloads remain outside Git.",
     "File entries are ordered by file_manifests, followed by inline files. Each manifest part has its own SHA-256 and byte count. Splitting preserves every original file entry unchanged."
   ],
-  "files": [],
+  "files": [
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/README.md",
+      "original_sha256": "882150cec55d25e12e6227349e93a71a0c01365fce17e2c684ec45e3f2722f2e",
+      "original_bytes": 5134,
+      "published": "gemm-register-input-target26_2-v1/README.md",
+      "published_sha256": "882150cec55d25e12e6227349e93a71a0c01365fce17e2c684ec45e3f2722f2e",
+      "published_bytes": 5134,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/build-1/memory.jsonl",
+      "original_sha256": "b06f83bf394ea2be55aadf92427ac28c46c6705bdfaf9ef9f3cbe7c85287f437",
+      "original_bytes": 11053,
+      "published": "gemm-register-input-target26_2-v1/build-1/memory.jsonl",
+      "published_sha256": "b06f83bf394ea2be55aadf92427ac28c46c6705bdfaf9ef9f3cbe7c85287f437",
+      "published_bytes": 11053,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/build-1/receipt.json",
+      "original_sha256": "cba3bde19be0bf51fc25d33a7724af88d99885659075e583616db90c9892dddc",
+      "original_bytes": 3894,
+      "published": "gemm-register-input-target26_2-v1/build-1/receipt.json",
+      "published_sha256": "cba3bde19be0bf51fc25d33a7724af88d99885659075e583616db90c9892dddc",
+      "published_bytes": 3894,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/build-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "gemm-register-input-target26_2-v1/build-1/stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/build-1/stdout.jsonl",
+      "original_sha256": "72fe50f91a57e421422a23ec0756c64f4877585ac7e727397472cad46b4a6fc6",
+      "original_bytes": 3103,
+      "published": "gemm-register-input-target26_2-v1/build-1/stdout.jsonl",
+      "published_sha256": "72fe50f91a57e421422a23ec0756c64f4877585ac7e727397472cad46b4a6fc6",
+      "published_bytes": 3103,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/build-artifacts.json",
+      "original_sha256": "fd29e744846b97daa43eae458fe402f667fd5ddc769c8710e2823e35268ae512",
+      "original_bytes": 2291,
+      "published": "gemm-register-input-target26_2-v1/build-artifacts.json",
+      "published_sha256": "fd29e744846b97daa43eae458fe402f667fd5ddc769c8710e2823e35268ae512",
+      "published_bytes": 2291,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/build-lease-1.json",
+      "original_sha256": "7a14c995ed3efff5c8a2d09c6eb1f22d2a0219ee7e93a89f8e8dca8c793dec51",
+      "original_bytes": 488,
+      "published": "gemm-register-input-target26_2-v1/build-lease-1.json",
+      "published_sha256": "7a14c995ed3efff5c8a2d09c6eb1f22d2a0219ee7e93a89f8e8dca8c793dec51",
+      "published_bytes": 488,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/build-memory-lease-1.json",
+      "original_sha256": "f74abcaf6cbce599b418548936369c84c3861e08c187ad91fde3fddf1f3dca20",
+      "original_bytes": 486,
+      "published": "gemm-register-input-target26_2-v1/build-memory-lease-1.json",
+      "published_sha256": "f74abcaf6cbce599b418548936369c84c3861e08c187ad91fde3fddf1f3dca20",
+      "published_bytes": 486,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/frozen-sources.json",
+      "original_sha256": "8f8e25afafe90aede81ee0fa906cfeace536bfe8284eab89f3cf487a0f503938",
+      "original_bytes": 1813,
+      "published": "gemm-register-input-target26_2-v1/frozen-sources.json",
+      "published_sha256": "8f8e25afafe90aede81ee0fa906cfeace536bfe8284eab89f3cf487a0f503938",
+      "published_bytes": 1813,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/gpu-lease-1.json",
+      "original_sha256": "daf69fe53f526c710c683de57528f16f6e9adff72f5388fcf2d8561e8376260e",
+      "original_bytes": 487,
+      "published": "gemm-register-input-target26_2-v1/gpu-lease-1.json",
+      "published_sha256": "daf69fe53f526c710c683de57528f16f6e9adff72f5388fcf2d8561e8376260e",
+      "published_bytes": 487,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/gpu-memory-lease-1.json",
+      "original_sha256": "bcb5368a199259b6beda1009accb59ddf991df3aa2bbf9a20975cf4dbc2531b4",
+      "original_bytes": 487,
+      "published": "gemm-register-input-target26_2-v1/gpu-memory-lease-1.json",
+      "published_sha256": "bcb5368a199259b6beda1009accb59ddf991df3aa2bbf9a20975cf4dbc2531b4",
+      "published_bytes": 487,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/package.py",
+      "original_sha256": "957ed0c3416f01afbb008ea549b2b434c854c0da42933dfe5020e604e4d79759",
+      "original_bytes": 2937,
+      "published": "gemm-register-input-target26_2-v1/package.py",
+      "published_sha256": "957ed0c3416f01afbb008ea549b2b434c854c0da42933dfe5020e604e4d79759",
+      "published_bytes": 2937,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/run-1/memory.jsonl",
+      "original_sha256": "c26710f5d9604b09bd9c215959975b5e5264c486a524c60a76593579c4df0fdb",
+      "original_bytes": 15957,
+      "published": "gemm-register-input-target26_2-v1/run-1/memory.jsonl",
+      "published_sha256": "c26710f5d9604b09bd9c215959975b5e5264c486a524c60a76593579c4df0fdb",
+      "published_bytes": 15957,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/run-1/receipt.json",
+      "original_sha256": "d27974bcf02226f845b65490cb3808b199e99501a830c5e596586a0778b254d2",
+      "original_bytes": 6304,
+      "published": "gemm-register-input-target26_2-v1/run-1/receipt.json",
+      "published_sha256": "d27974bcf02226f845b65490cb3808b199e99501a830c5e596586a0778b254d2",
+      "published_bytes": 6304,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/run-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "gemm-register-input-target26_2-v1/run-1/stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/run-1/stdout.jsonl/part-00.jsonl",
+      "original_sha256": "1ba29b45e8b690fdf970eb2f634b9731b89c2ae99c920e23df3fabd1021ccb76",
+      "original_bytes": 54797,
+      "published": "gemm-register-input-target26_2-v1/run-1/stdout.jsonl/part-00.jsonl",
+      "published_sha256": "1ba29b45e8b690fdf970eb2f634b9731b89c2ae99c920e23df3fabd1021ccb76",
+      "published_bytes": 54797,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/run-1/stdout.jsonl/part-01.jsonl",
+      "original_sha256": "dfc129306ceb8ca692d4b5ef803682906e44e16d933f6e00afce6e71aa2dba45",
+      "original_bytes": 54481,
+      "published": "gemm-register-input-target26_2-v1/run-1/stdout.jsonl/part-01.jsonl",
+      "published_sha256": "dfc129306ceb8ca692d4b5ef803682906e44e16d933f6e00afce6e71aa2dba45",
+      "published_bytes": 54481,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/run-1/stdout.jsonl/part-02.jsonl",
+      "original_sha256": "a8fb592fd79dd4f05139b6d5e3ede78c370fc1fd3c4f081fda5df94b8efc76bc",
+      "original_bytes": 36711,
+      "published": "gemm-register-input-target26_2-v1/run-1/stdout.jsonl/part-02.jsonl",
+      "published_sha256": "a8fb592fd79dd4f05139b6d5e3ede78c370fc1fd3c4f081fda5df94b8efc76bc",
+      "published_bytes": 36711,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/run-1/summary.json",
+      "original_sha256": "2b21ee361fff15f1c895eac225a2aaa58c209cfe6d73d6cc18680715b5636b1e",
+      "original_bytes": 9605,
+      "published": "gemm-register-input-target26_2-v1/run-1/summary.json",
+      "published_sha256": "2b21ee361fff15f1c895eac225a2aaa58c209cfe6d73d6cc18680715b5636b1e",
+      "published_bytes": 9605,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/sanitization.json",
+      "original_sha256": "644bdf6c5367690702ac5c359cec31001cbc58ac70f390995a61cfb1e1ba27ce",
+      "original_bytes": 20059,
+      "published": "gemm-register-input-target26_2-v1/sanitization.json",
+      "published_sha256": "644bdf6c5367690702ac5c359cec31001cbc58ac70f390995a61cfb1e1ba27ce",
+      "published_bytes": 20059,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/source/README.md",
+      "original_sha256": "ca7ead56970b5b8ad59b8a57c6c1db4e8e81c5028d3cec53a1d29e671c0dccd0",
+      "original_bytes": 8797,
+      "published": "gemm-register-input-target26_2-v1/source/README.md",
+      "published_sha256": "ca7ead56970b5b8ad59b8a57c6c1db4e8e81c5028d3cec53a1d29e671c0dccd0",
+      "published_bytes": 8797,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/source/baseline.metal",
+      "original_sha256": "9505a34d21d4d6bd11a532a62549d00c8cafbad90ab92f2bd07cccb4eae30725",
+      "original_bytes": 6660,
+      "published": "gemm-register-input-target26_2-v1/source/baseline.metal",
+      "published_sha256": "9505a34d21d4d6bd11a532a62549d00c8cafbad90ab92f2bd07cccb4eae30725",
+      "published_bytes": 6660,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/source/build.py",
+      "original_sha256": "8532fd0ead802459123910e90a3acd7315bed89fe140053da3c1348eb3927fbc",
+      "original_bytes": 2349,
+      "published": "gemm-register-input-target26_2-v1/source/build.py",
+      "published_sha256": "8532fd0ead802459123910e90a3acd7315bed89fe140053da3c1348eb3927fbc",
+      "published_bytes": 2349,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/source/candidate.metal",
+      "original_sha256": "b5b5d77dc4406cd3023cd69f6838d670bfc774ad1e4196af16c2b536d47e9821",
+      "original_bytes": 10618,
+      "published": "gemm-register-input-target26_2-v1/source/candidate.metal",
+      "published_sha256": "b5b5d77dc4406cd3023cd69f6838d670bfc774ad1e4196af16c2b536d47e9821",
+      "published_bytes": 10618,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/source/guard.py",
+      "original_sha256": "0b4411c5732e834576f92726f55948259d9e446d26dd2f1c15702762e70cf295",
+      "original_bytes": 7228,
+      "published": "gemm-register-input-target26_2-v1/source/guard.py",
+      "published_sha256": "0b4411c5732e834576f92726f55948259d9e446d26dd2f1c15702762e70cf295",
+      "published_bytes": 7228,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/source/half-ulp-fixtures.json",
+      "original_sha256": "bc0a57a7088795ab57884782326d9a1de7285c6bbfd109c68271309381f046d5",
+      "original_bytes": 2039,
+      "published": "gemm-register-input-target26_2-v1/source/half-ulp-fixtures.json",
+      "published_sha256": "bc0a57a7088795ab57884782326d9a1de7285c6bbfd109c68271309381f046d5",
+      "published_bytes": 2039,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/source/half_ulp_check.py",
+      "original_sha256": "f5f1d3dcbe7cd4da54c45b9ea2698047ba861bc26575144e0ae4c6f53f015aa4",
+      "original_bytes": 2360,
+      "published": "gemm-register-input-target26_2-v1/source/half_ulp_check.py",
+      "published_sha256": "f5f1d3dcbe7cd4da54c45b9ea2698047ba861bc26575144e0ae4c6f53f015aa4",
+      "published_bytes": 2360,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/source/manifest.json",
+      "original_sha256": "5edbfda57ab1e84db0c65029348a912c0de693b5b27fa9fdc1f1ed4d86ea5a08",
+      "original_bytes": 6420,
+      "published": "gemm-register-input-target26_2-v1/source/manifest.json",
+      "published_sha256": "5edbfda57ab1e84db0c65029348a912c0de693b5b27fa9fdc1f1ed4d86ea5a08",
+      "published_bytes": 6420,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/source/probe.swift",
+      "original_sha256": "d4f864fa83b1a2ba9852085375210770cfb39e8eb554963e881463f6fc73f0e0",
+      "original_bytes": 38410,
+      "published": "gemm-register-input-target26_2-v1/source/probe.swift",
+      "published_sha256": "d4f864fa83b1a2ba9852085375210770cfb39e8eb554963e881463f6fc73f0e0",
+      "published_bytes": 38410,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/source/production-fixed-extract.metal",
+      "original_sha256": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+      "original_bytes": 2111,
+      "published": "gemm-register-input-target26_2-v1/source/production-fixed-extract.metal",
+      "published_sha256": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+      "published_bytes": 2111,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/source/production-planner.rs",
+      "original_sha256": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac",
+      "original_bytes": 11864,
+      "published": "gemm-register-input-target26_2-v1/source/production-planner.rs",
+      "published_sha256": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac",
+      "published_bytes": 11864,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/source/production-shapes.metal",
+      "original_sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+      "original_bytes": 4117,
+      "published": "gemm-register-input-target26_2-v1/source/production-shapes.metal",
+      "published_sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+      "published_bytes": 4117,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/source/production-silu-extract.metal",
+      "original_sha256": "fe7844912a63f4219dc05a5a50a5b269ad48a0e3aa5f60cef221ae9223880e61",
+      "original_bytes": 430,
+      "published": "gemm-register-input-target26_2-v1/source/production-silu-extract.metal",
+      "published_sha256": "fe7844912a63f4219dc05a5a50a5b269ad48a0e3aa5f60cef221ae9223880e61",
+      "published_bytes": 430,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/source/small-cases.json",
+      "original_sha256": "2b3f459f8ea221c786fa71f38fe6acba83bf271d31dc297c31898cad26f4bb94",
+      "original_bytes": 991,
+      "published": "gemm-register-input-target26_2-v1/source/small-cases.json",
+      "published_sha256": "2b3f459f8ea221c786fa71f38fe6acba83bf271d31dc297c31898cad26f4bb94",
+      "published_bytes": 991,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/source/source_check.py",
+      "original_sha256": "16ffc32440eb732e9934f3682ab79880c88fcb6b159a48c729f807c23aa1a7b9",
+      "original_bytes": 5854,
+      "published": "gemm-register-input-target26_2-v1/source/source_check.py",
+      "published_sha256": "16ffc32440eb732e9934f3682ab79880c88fcb6b159a48c729f807c23aa1a7b9",
+      "published_bytes": 5854,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/source/summarize.py",
+      "original_sha256": "7b4f707b520221e24ef698e44e574be177d7a36168ee5922cec51219bf8fe26d",
+      "original_bytes": 10435,
+      "published": "gemm-register-input-target26_2-v1/source/summarize.py",
+      "published_sha256": "7b4f707b520221e24ef698e44e574be177d7a36168ee5922cec51219bf8fe26d",
+      "published_bytes": 10435,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/source/weights.json",
+      "original_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+      "original_bytes": 2473,
+      "published": "gemm-register-input-target26_2-v1/source/weights.json",
+      "published_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+      "published_bytes": 2473,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/source-changes.patch",
+      "original_sha256": "275fc04661774f9569fc9b6f65531fe55b0c1c654e1eb890db80ff3ab3984755",
+      "original_bytes": 10242,
+      "published": "gemm-register-input-target26_2-v1/source-changes.patch",
+      "published_sha256": "275fc04661774f9569fc9b6f65531fe55b0c1c654e1eb890db80ff3ab3984755",
+      "published_bytes": 10242,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/source-check.json",
+      "original_sha256": "3533a30be0298fdc3ddc31e0a66d5bd14a40db8cbb10b1b984f8ace84e8ed6d8",
+      "original_bytes": 2010,
+      "published": "gemm-register-input-target26_2-v1/source-check.json",
+      "published_sha256": "3533a30be0298fdc3ddc31e0a66d5bd14a40db8cbb10b1b984f8ace84e8ed6d8",
+      "published_bytes": 2010,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/source-delta.json",
+      "original_sha256": "b8e8e56bb7291bc04e8449bb2b958e99fd666012c4e9772d999c0fd12b997542",
+      "original_bytes": 4818,
+      "published": "gemm-register-input-target26_2-v1/source-delta.json",
+      "published_sha256": "b8e8e56bb7291bc04e8449bb2b958e99fd666012c4e9772d999c0fd12b997542",
+      "published_bytes": 4818,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-register-input-target26_2/publication-v1/verify_bundle.py",
+      "original_sha256": "1029f24c425a5ae53a848472384b84f69aa925e4099f04f7e16b0b89d61da990",
+      "original_bytes": 1510,
+      "published": "gemm-register-input-target26_2-v1/verify_bundle.py",
+      "published_sha256": "1029f24c425a5ae53a848472384b84f69aa925e4099f04f7e16b0b89d61da990",
+      "published_bytes": 1510,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/PLAN.md",
+      "original_sha256": "942f6c85a7533fb627099391816c3460308b501eea94e28d940da3f22186ea20",
+      "original_bytes": 6261,
+      "published": "gemm-resident-overlap-v1/PLAN.md",
+      "published_sha256": "942f6c85a7533fb627099391816c3460308b501eea94e28d940da3f22186ea20",
+      "published_bytes": 6261,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/README.md",
+      "original_sha256": "b0de28ee5658b1f4564764d04d06ebd89b66e988a49eb8b6e19a92906b8af863",
+      "original_bytes": 3655,
+      "published": "gemm-resident-overlap-v1/README.md",
+      "published_sha256": "b0de28ee5658b1f4564764d04d06ebd89b66e988a49eb8b6e19a92906b8af863",
+      "published_bytes": 3655,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/build-1/memory.jsonl",
+      "original_sha256": "1eb6cf43126cc81bad55777fb6102a981bd3889968598bd0afaef854fbb8f20e",
+      "original_bytes": 9287,
+      "published": "gemm-resident-overlap-v1/build-1/memory.jsonl",
+      "published_sha256": "1eb6cf43126cc81bad55777fb6102a981bd3889968598bd0afaef854fbb8f20e",
+      "published_bytes": 9287,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/build-1/receipt.json",
+      "original_sha256": "f327ad660240980cf46a1e74c68e9f7be0dfd9bf4391dc12a7f95e29e7322cf7",
+      "original_bytes": 3304,
+      "published": "gemm-resident-overlap-v1/build-1/receipt.json",
+      "published_sha256": "f327ad660240980cf46a1e74c68e9f7be0dfd9bf4391dc12a7f95e29e7322cf7",
+      "published_bytes": 3304,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/build-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "gemm-resident-overlap-v1/build-1/stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/build-1/stdout.jsonl",
+      "original_sha256": "cc2cf8b14a92351179722882fbc0d9ff3a1edda654e9482d4b9252a0e4efd4ed",
+      "original_bytes": 3928,
+      "published": "gemm-resident-overlap-v1/build-1/stdout.jsonl",
+      "published_sha256": "cc2cf8b14a92351179722882fbc0d9ff3a1edda654e9482d4b9252a0e4efd4ed",
+      "published_bytes": 3928,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/build-artifacts.json",
+      "original_sha256": "0105cab6347f5f2cb271ef40024b24b1a8719df8376a2b31cc20fe3064ab1448",
+      "original_bytes": 1883,
+      "published": "gemm-resident-overlap-v1/build-artifacts.json",
+      "published_sha256": "0105cab6347f5f2cb271ef40024b24b1a8719df8376a2b31cc20fe3064ab1448",
+      "published_bytes": 1883,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/build-lease-1.json",
+      "original_sha256": "1ad395d443fa11bec799a730cd475a33a82beba7c75c734deb30597eddb05b8b",
+      "original_bytes": 457,
+      "published": "gemm-resident-overlap-v1/build-lease-1.json",
+      "published_sha256": "1ad395d443fa11bec799a730cd475a33a82beba7c75c734deb30597eddb05b8b",
+      "published_bytes": 457,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/build-memory-lease-1.json",
+      "original_sha256": "10823341f1e25cadad2147b8162699a5a179d3fe9c82bb02543626103c1c43fa",
+      "original_bytes": 455,
+      "published": "gemm-resident-overlap-v1/build-memory-lease-1.json",
+      "published_sha256": "10823341f1e25cadad2147b8162699a5a179d3fe9c82bb02543626103c1c43fa",
+      "published_bytes": 455,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/build.py",
+      "original_sha256": "723b63e344fca7fda64d3e691ce2b1cc73c8d1dfff3eb48274cedc139a1611a4",
+      "original_bytes": 1643,
+      "published": "gemm-resident-overlap-v1/build.py",
+      "published_sha256": "723b63e344fca7fda64d3e691ce2b1cc73c8d1dfff3eb48274cedc139a1611a4",
+      "published_bytes": 1643,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/common.py",
+      "original_sha256": "918651125a7a9d018c6293aff7b733c0182766a18095825011a78a76b20a0607",
+      "original_bytes": 1216,
+      "published": "gemm-resident-overlap-v1/common.py",
+      "published_sha256": "918651125a7a9d018c6293aff7b733c0182766a18095825011a78a76b20a0607",
+      "published_bytes": 1216,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/frozen-sources.json",
+      "original_sha256": "12f214cdba2af4b1c76d360d534ee39b94b7e8ab182fc2451305e2f5256fd2cd",
+      "original_bytes": 1394,
+      "published": "gemm-resident-overlap-v1/frozen-sources.json",
+      "published_sha256": "12f214cdba2af4b1c76d360d534ee39b94b7e8ab182fc2451305e2f5256fd2cd",
+      "published_bytes": 1394,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/gpu-lease-1.json",
+      "original_sha256": "37990907695a63258ccdd748686a46f7dfe7e2ed21c9e0681e6c113e6e404646",
+      "original_bytes": 455,
+      "published": "gemm-resident-overlap-v1/gpu-lease-1.json",
+      "published_sha256": "37990907695a63258ccdd748686a46f7dfe7e2ed21c9e0681e6c113e6e404646",
+      "published_bytes": 455,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/gpu-memory-lease-1.json",
+      "original_sha256": "0ae0acbf6db1155ce273ff593c94befe25eb7875e26ecac0dd3540a5a1232f60",
+      "original_bytes": 455,
+      "published": "gemm-resident-overlap-v1/gpu-memory-lease-1.json",
+      "published_sha256": "0ae0acbf6db1155ce273ff593c94befe25eb7875e26ecac0dd3540a5a1232f60",
+      "published_bytes": 455,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/guard.py",
+      "original_sha256": "78812ae2f7694eabbf078664a603723e995f03264726a2b21bda5d9f83f5fd84",
+      "original_bytes": 5099,
+      "published": "gemm-resident-overlap-v1/guard.py",
+      "published_sha256": "78812ae2f7694eabbf078664a603723e995f03264726a2b21bda5d9f83f5fd84",
+      "published_bytes": 5099,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/manifest.json",
+      "original_sha256": "c63c72026b3a9543aceaa649fdf1c60c1ef033ed2d8c80e77d46627e8357c0d8",
+      "original_bytes": 1427,
+      "published": "gemm-resident-overlap-v1/manifest.json",
+      "published_sha256": "c63c72026b3a9543aceaa649fdf1c60c1ef033ed2d8c80e77d46627e8357c0d8",
+      "published_bytes": 1427,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/pointwise.metal",
+      "original_sha256": "8d67971c519ae0685021c189fa2b536ee81b0dcf98f03c6d3de8e34fabdd80f3",
+      "original_bytes": 1926,
+      "published": "gemm-resident-overlap-v1/pointwise.metal",
+      "published_sha256": "8d67971c519ae0685021c189fa2b536ee81b0dcf98f03c6d3de8e34fabdd80f3",
+      "published_bytes": 1926,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/probe.swift",
+      "original_sha256": "3f6ca49e2d00bfb714ba1ce1e36abe86a046b4338cc39fabaa20426da6c69c46",
+      "original_bytes": 15744,
+      "published": "gemm-resident-overlap-v1/probe.swift",
+      "published_sha256": "3f6ca49e2d00bfb714ba1ce1e36abe86a046b4338cc39fabaa20426da6c69c46",
+      "published_bytes": 15744,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/production-source.json",
+      "original_sha256": "fa3aeb840a1ffbc343fe100cd71e3715eba06725f72c93d5753f1c59238776e5",
+      "original_bytes": 1324,
+      "published": "gemm-resident-overlap-v1/production-source.json",
+      "published_sha256": "fa3aeb840a1ffbc343fe100cd71e3715eba06725f72c93d5753f1c59238776e5",
+      "published_bytes": 1324,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/publication-index.json",
+      "original_sha256": "722ddd3ba853f5328e1a5a2bc2d4f3ddfd4eb0dd33de85a83d92027cf397f423",
+      "original_bytes": 10124,
+      "published": "gemm-resident-overlap-v1/publication-index.json",
+      "published_sha256": "722ddd3ba853f5328e1a5a2bc2d4f3ddfd4eb0dd33de85a83d92027cf397f423",
+      "published_bytes": 10124,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/run-1/memory.jsonl",
+      "original_sha256": "eb8da722a0648c4e86865b25719add7d3256134954882909a03eda406df4779a",
+      "original_bytes": 9836,
+      "published": "gemm-resident-overlap-v1/run-1/memory.jsonl",
+      "published_sha256": "eb8da722a0648c4e86865b25719add7d3256134954882909a03eda406df4779a",
+      "published_bytes": 9836,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/run-1/receipt.json",
+      "original_sha256": "a2262cd7370615bef1384da3044f49fdb7f93a734d7a12cc879e963c57fa4148",
+      "original_bytes": 5270,
+      "published": "gemm-resident-overlap-v1/run-1/receipt.json",
+      "published_sha256": "a2262cd7370615bef1384da3044f49fdb7f93a734d7a12cc879e963c57fa4148",
+      "published_bytes": 5270,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/run-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "gemm-resident-overlap-v1/run-1/stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/run-1/stdout.jsonl",
+      "original_sha256": "cf27a5e7f072bdafc4201b3c45ac013e5379ac7e885d1078a1347da000aaf06f",
+      "original_bytes": 32730,
+      "published": "gemm-resident-overlap-v1/run-1/stdout.jsonl",
+      "published_sha256": "cf27a5e7f072bdafc4201b3c45ac013e5379ac7e885d1078a1347da000aaf06f",
+      "published_bytes": 32730,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/run-1/summary.json",
+      "original_sha256": "569b6d091f013a3032ed5f4ae3e12dfd0a6cb46f8c7a38663078babee303cf71",
+      "original_bytes": 3102,
+      "published": "gemm-resident-overlap-v1/run-1/summary.json",
+      "published_sha256": "569b6d091f013a3032ed5f4ae3e12dfd0a6cb46f8c7a38663078babee303cf71",
+      "published_bytes": 3102,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/shapes.metal",
+      "original_sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+      "original_bytes": 4117,
+      "published": "gemm-resident-overlap-v1/shapes.metal",
+      "published_sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+      "published_bytes": 4117,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/source-check.json",
+      "original_sha256": "7af007b84b2e1b1405df304d242de7f3d27ed57ef58cde716a839e92ae0b8691",
+      "original_bytes": 1334,
+      "published": "gemm-resident-overlap-v1/source-check.json",
+      "published_sha256": "7af007b84b2e1b1405df304d242de7f3d27ed57ef58cde716a839e92ae0b8691",
+      "published_bytes": 1334,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/source_check.py",
+      "original_sha256": "3552ee85ac6de4cc6eb9c60e200c2a07c6afe8e389c4a8a52d70cb63b6f5b66d",
+      "original_bytes": 2998,
+      "published": "gemm-resident-overlap-v1/source_check.py",
+      "published_sha256": "3552ee85ac6de4cc6eb9c60e200c2a07c6afe8e389c4a8a52d70cb63b6f5b66d",
+      "published_bytes": 2998,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/summarize.py",
+      "original_sha256": "b0d6a600af41522a743ece213bd3488129897c23a555ea9ec018a8e17918916b",
+      "original_bytes": 7267,
+      "published": "gemm-resident-overlap-v1/summarize.py",
+      "published_sha256": "b0d6a600af41522a743ece213bd3488129897c23a555ea9ec018a8e17918916b",
+      "published_bytes": 7267,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/summary-check.json",
+      "original_sha256": "06a5d7baa58beada0bee291c0cdce1e9fbc55573d6b7a03fe67c971b5698329b",
+      "original_bytes": 54,
+      "published": "gemm-resident-overlap-v1/summary-check.json",
+      "published_sha256": "06a5d7baa58beada0bee291c0cdce1e9fbc55573d6b7a03fe67c971b5698329b",
+      "published_bytes": 54,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/summary_check.py",
+      "original_sha256": "5e514309dbb76c46645ab7b27ad9aa19ceeb6b1ad902b5d59a9503542d6bc633",
+      "original_bytes": 3449,
+      "published": "gemm-resident-overlap-v1/summary_check.py",
+      "published_sha256": "5e514309dbb76c46645ab7b27ad9aa19ceeb6b1ad902b5d59a9503542d6bc633",
+      "published_bytes": 3449,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/verdict.json",
+      "original_sha256": "efa5a190f652eba1e4530bbb07d69d328892c71e3a8609a21fa6b0582a450dca",
+      "original_bytes": 912,
+      "published": "gemm-resident-overlap-v1/verdict.json",
+      "published_sha256": "efa5a190f652eba1e4530bbb07d69d328892c71e3a8609a21fa6b0582a450dca",
+      "published_bytes": 912,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-resident-overlap-probe/publication-v1/weights.json",
+      "original_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+      "original_bytes": 2473,
+      "published": "gemm-resident-overlap-v1/weights.json",
+      "published_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+      "published_bytes": 2473,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/recurrence-control-publishable-v1/README.md",
+      "original_sha256": "4f68f01c97a452bb6458bdfc8a79ce7f5781645f951fd804ebc3477897f1022c",
+      "original_bytes": 4013,
+      "published": "text029-recurrence-control-v1/README.md",
+      "published_sha256": "4f68f01c97a452bb6458bdfc8a79ce7f5781645f951fd804ebc3477897f1022c",
+      "published_bytes": 4013,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/recurrence-control-publishable-v1/guard.json",
+      "original_sha256": "3b3cd51a0ff11ae28230f4feca9c8629e7d23cf6ef3617ed4ac25f216af792d3",
+      "original_bytes": 63590,
+      "published": "text029-recurrence-control-v1/guard.json",
+      "published_sha256": "3b3cd51a0ff11ae28230f4feca9c8629e7d23cf6ef3617ed4ac25f216af792d3",
+      "published_bytes": 63590,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/recurrence-control-publishable-v1/leases/disk.json",
+      "original_sha256": "e2be0671c17b8747fa40ead44a3ed329264711feb146d1e292bad2d3441bdcde",
+      "original_bytes": 484,
+      "published": "text029-recurrence-control-v1/leases/disk.json",
+      "published_sha256": "e2be0671c17b8747fa40ead44a3ed329264711feb146d1e292bad2d3441bdcde",
+      "published_bytes": 484,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/recurrence-control-publishable-v1/leases/memory.json",
+      "original_sha256": "7adb397045366c82c66c7fd955ebe4e4cda7bddce28e117951609fff26a1fa0f",
+      "original_bytes": 490,
+      "published": "text029-recurrence-control-v1/leases/memory.json",
+      "published_sha256": "7adb397045366c82c66c7fd955ebe4e4cda7bddce28e117951609fff26a1fa0f",
+      "published_bytes": 490,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/recurrence-control-publishable-v1/manifest.json",
+      "original_sha256": "eaaa6d174d4d4cce129cd2db85a698c71c3342483500fe3cb9fa750bf87ce687",
+      "original_bytes": 7883,
+      "published": "text029-recurrence-control-v1/manifest.json",
+      "published_sha256": "eaaa6d174d4d4cce129cd2db85a698c71c3342483500fe3cb9fa750bf87ce687",
+      "published_bytes": 7883,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/recurrence-control-publishable-v1/receipt.json",
+      "original_sha256": "617ca8f237382bcde4c94671d1a4ac4c657f30781ce0e89b2a9fbf1226c45392",
+      "original_bytes": 541049,
+      "published": "text029-recurrence-control-v1/receipt.json",
+      "published_sha256": "617ca8f237382bcde4c94671d1a4ac4c657f30781ce0e89b2a9fbf1226c45392",
+      "published_bytes": 541049,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/recurrence-control-publishable-v1/recurrence-control-plan.md",
+      "original_sha256": "5bd0076a9c553388cccb8406617368d4493a3dca50aa158c1744b6d02e475ab7",
+      "original_bytes": 7773,
+      "published": "text029-recurrence-control-v1/recurrence-control-plan.md",
+      "published_sha256": "5bd0076a9c553388cccb8406617368d4493a3dca50aa158c1744b6d02e475ab7",
+      "published_bytes": 7773,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/recurrence-control-publishable-v1/recurrence-source-check.json",
+      "original_sha256": "f79ba0302aa77aeed25014d05e46ce5769121dd4db3b8b6fd97f742c523aa579",
+      "original_bytes": 3271,
+      "published": "text029-recurrence-control-v1/recurrence-source-check.json",
+      "published_sha256": "f79ba0302aa77aeed25014d05e46ce5769121dd4db3b8b6fd97f742c523aa579",
+      "published_bytes": 3271,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/recurrence-control-publishable-v1/source/dependencies/gguf_import.py",
+      "original_sha256": "e77df8febc47557f8636e594f5b1ed7034ee24a9b49723ef54af4757d4b206ec",
+      "original_bytes": 10100,
+      "published": "text029-recurrence-control-v1/source/dependencies/gguf_import.py",
+      "published_sha256": "e77df8febc47557f8636e594f5b1ed7034ee24a9b49723ef54af4757d4b206ec",
+      "published_bytes": 10100,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/recurrence-control-publishable-v1/source/dependencies/guard_mps.py",
+      "original_sha256": "aac683b115df362fb4ba063f429a60adca80151bbefa986abbd3a8a607e68be9",
+      "original_bytes": 8990,
+      "published": "text029-recurrence-control-v1/source/dependencies/guard_mps.py",
+      "published_sha256": "aac683b115df362fb4ba063f429a60adca80151bbefa986abbd3a8a607e68be9",
+      "published_bytes": 8990,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/recurrence-control-publishable-v1/source/dependencies/mac_memory.py",
+      "original_sha256": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd",
+      "original_bytes": 5508,
+      "published": "text029-recurrence-control-v1/source/dependencies/mac_memory.py",
+      "published_sha256": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd",
+      "published_bytes": 5508,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/recurrence-control-publishable-v1/source/dependencies/mac_quiet_bench.py",
+      "original_sha256": "7018be065710be9ffe5dfc2d289770015ca617e2fdd3da253a98e07ba1bc997b",
+      "original_bytes": 72242,
+      "published": "text029-recurrence-control-v1/source/dependencies/mac_quiet_bench.py",
+      "published_sha256": "7018be065710be9ffe5dfc2d289770015ca617e2fdd3da253a98e07ba1bc997b",
+      "published_bytes": 72242,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/recurrence-control-publishable-v1/source/dependencies/mps_reference.py",
+      "original_sha256": "d6dd92eb2e0ed4df10b3f9dc56f84ef7bf61c10689b3a2da6b2ae1db0e79835b",
+      "original_bytes": 25394,
+      "published": "text029-recurrence-control-v1/source/dependencies/mps_reference.py",
+      "published_sha256": "d6dd92eb2e0ed4df10b3f9dc56f84ef7bf61c10689b3a2da6b2ae1db0e79835b",
+      "published_bytes": 25394,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/recurrence-control-publishable-v1/source/dependencies/stream_reference.py",
+      "original_sha256": "926c6cf1c5be1e79b652329294f2a74b9b86c5f1ddc7880bb41f9dec0369d5a2",
+      "original_bytes": 13622,
+      "published": "text029-recurrence-control-v1/source/dependencies/stream_reference.py",
+      "published_sha256": "926c6cf1c5be1e79b652329294f2a74b9b86c5f1ddc7880bb41f9dec0369d5a2",
+      "published_bytes": 13622,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/recurrence-control-publishable-v1/source/guard_recurrence.py",
+      "original_sha256": "5a36f86296a62a68bf3f11e9b8210feb132ef33bfe10d41fdcff93caa7162f4a",
+      "original_bytes": 8476,
+      "published": "text029-recurrence-control-v1/source/guard_recurrence.py",
+      "published_sha256": "5a36f86296a62a68bf3f11e9b8210feb132ef33bfe10d41fdcff93caa7162f4a",
+      "published_bytes": 8476,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/recurrence-control-publishable-v1/source/layer0_math.py",
+      "original_sha256": "432a1e97996b923e4e16119d6733d9a39df604fcfcac02286eda4f62c670ee91",
+      "original_bytes": 3438,
+      "published": "text029-recurrence-control-v1/source/layer0_math.py",
+      "published_sha256": "432a1e97996b923e4e16119d6733d9a39df604fcfcac02286eda4f62c670ee91",
+      "published_bytes": 3438,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/recurrence-control-publishable-v1/source/layer35_math.py",
+      "original_sha256": "bc5438f971303c6936ccd4fe61e08e8e45ff253fae56e98a434d7caaf28d8b57",
+      "original_bytes": 4763,
+      "published": "text029-recurrence-control-v1/source/layer35_math.py",
+      "published_sha256": "bc5438f971303c6936ccd4fe61e08e8e45ff253fae56e98a434d7caaf28d8b57",
+      "published_bytes": 4763,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/recurrence-control-publishable-v1/source/package_recurrence.py",
+      "original_sha256": "dc3191ee283e4ae989cd2617a933c8fa5f2e05769649fc863167fe71bb2c3b66",
+      "original_bytes": 9358,
+      "published": "text029-recurrence-control-v1/source/package_recurrence.py",
+      "published_sha256": "dc3191ee283e4ae989cd2617a933c8fa5f2e05769649fc863167fe71bb2c3b66",
+      "published_bytes": 9358,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/recurrence-control-publishable-v1/source/precision_hash.py",
+      "original_sha256": "595256f7b60826373a80588c0bc1ac1f4554d6dfc6ae117ae9f20f66363aca2f",
+      "original_bytes": 2751,
+      "published": "text029-recurrence-control-v1/source/precision_hash.py",
+      "published_sha256": "595256f7b60826373a80588c0bc1ac1f4554d6dfc6ae117ae9f20f66363aca2f",
+      "published_bytes": 2751,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/recurrence-control-publishable-v1/source/recurrence_reference.py",
+      "original_sha256": "0b77e3effdc10bea430927ca6928dd7ec73e146e07e5e06744110d306865526b",
+      "original_bytes": 26290,
+      "published": "text029-recurrence-control-v1/source/recurrence_reference.py",
+      "published_sha256": "0b77e3effdc10bea430927ca6928dd7ec73e146e07e5e06744110d306865526b",
+      "published_bytes": 26290,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/recurrence-control-publishable-v1/stdout.log",
+      "original_sha256": "fe557a9c3e290aaceecea37cfdaade91e2c72440d9ca3e16c5b6d4742a4841a1",
+      "original_bytes": 8795,
+      "published": "text029-recurrence-control-v1/stdout.log",
+      "published_sha256": "fe557a9c3e290aaceecea37cfdaade91e2c72440d9ca3e16c5b6d4742a4841a1",
+      "published_bytes": 8795,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/recurrence-control-publishable-v1/summary.json",
+      "original_sha256": "1682dff02eee1f9950399edb203189db523ed4844175b8461b708f97e6842164",
+      "original_bytes": 11989,
+      "published": "text029-recurrence-control-v1/summary.json",
+      "published_sha256": "1682dff02eee1f9950399edb203189db523ed4844175b8461b708f97e6842164",
+      "published_bytes": 11989,
+      "path_replacements": []
+    }
+  ],
   "current_source_snapshot": [
     {
       "path": "crates/psionic/fixtures/clef/tools/image_parity.py",
@@ -121,5 +986,5 @@
       "file_count": 573
     }
   ],
-  "file_count": 2373
+  "file_count": 2469
 }
