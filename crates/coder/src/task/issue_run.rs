@@ -124,7 +124,7 @@ impl Flow {
         let closing = self.closing.trim().to_owned();
         let landed = matches!(
             link.outcome.as_str(),
-            "landed" | "pull_request" | "unchanged"
+            "landed" | "pull_request" | "queued" | "unchanged"
         );
         let failure = |turn: usize, message: String, ending: &str| {
             CoderEvent::Failure(coder_events::Failure {
@@ -225,10 +225,14 @@ pub enum Land {
     Main,
     /// Push a branch and open a pull request.
     PullRequest,
+    /// Push a branch and hand it to the landing queue
+    /// ([`super::land_queue`]), whose integrator lands it and closes the
+    /// issue (#11242).
+    Queue,
 }
 
 impl Land {
-    /// Reads `main` or `pr` (`pull_request`).
+    /// Reads `main`, `pr` (`pull_request`), or `queue`.
     ///
     /// # Errors
     /// Any other word.
@@ -236,7 +240,8 @@ impl Land {
         match word.trim() {
             "main" => Ok(Land::Main),
             "pr" | "pull_request" | "pull-request" => Ok(Land::PullRequest),
-            other => Err(format!("--land is `main` or `pr`, not `{other}`")),
+            "queue" => Ok(Land::Queue),
+            other => Err(format!("--land is `main`, `pr`, or `queue`, not `{other}`")),
         }
     }
 }
@@ -281,6 +286,10 @@ pub struct Policy {
     /// The GitHub Project names a claim moves ([`crate::claim::Project`]).
     #[serde(default)]
     pub project: crate::claim::Project,
+    /// The landing queue `land: queue` submits to: `gs://bucket/prefix` or
+    /// a folder. `OPENAGENTS_LAND_QUEUE`, else the shared queue, when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queue: Option<String>,
 }
 
 impl Default for Policy {
@@ -296,6 +305,7 @@ impl Default for Policy {
             continue_turns: None,
             trailer: None,
             project: crate::claim::Project::default(),
+            queue: None,
         }
     }
 }
@@ -596,7 +606,7 @@ pub fn stale_claims(
         if flow.link.number == 0
             || matches!(
                 flow.link.outcome.as_str(),
-                "landed" | "pull_request" | "unchanged"
+                "landed" | "pull_request" | "queued" | "unchanged"
             )
         {
             continue;
@@ -1441,6 +1451,9 @@ impl Runner {
         let land = match policy.land {
             Land::Main => format!("lands it on `{branch}` when the checks pass"),
             Land::PullRequest => "opens a pull request when the checks pass".to_owned(),
+            Land::Queue => {
+                format!("hands it to the landing queue for `{branch}` when the checks pass")
+            }
         };
         let claim = format!(
             "Claimed: Coder is working on this from an OpenAgents chat {} (task `{}`), in its \
@@ -1945,6 +1958,7 @@ impl Run<'_> {
         match self.work.policy.land {
             Land::Main => self.land_main(),
             Land::PullRequest => self.land_pull_request(),
+            Land::Queue => self.land_queue(),
         }
     }
 
@@ -2247,6 +2261,98 @@ impl Run<'_> {
         }
     }
 
+    /// Push the committed change to `land/<entry>` and submit it to the
+    /// landing queue (#11242). The integrator lands it, closes the issue,
+    /// and comments the reason if it bounces, so the flow keeps its claim
+    /// and closes nothing itself.
+    fn land_queue(&mut self) {
+        use super::land_queue;
+        if self.stopping() {
+            return self.stopped("Stopped by the person who started it, before queueing.");
+        }
+        let commit = match self.commit() {
+            Ok(commit) => commit,
+            Err(why) => return self.failed(&why, None),
+        };
+        let at = land_queue::now();
+        let machine = land_queue::machine();
+        let id = land_queue::new_id(at, &machine);
+        let branch = format!("land/{id}");
+        if let Err(why) = local::git_out(
+            self.worktree,
+            &["push", "-q", "origin", &format!("HEAD:refs/heads/{branch}")],
+        ) {
+            let _ = local::git_out(self.worktree, &["reset", "-q", "--soft", "HEAD~1"]);
+            self.flow.link.not_landed = Some("push_refused".into());
+            return self.failed(&format!("Git could not push {branch}: {why}"), None);
+        }
+        let target = self.work.branch.clone();
+        let entry = land_queue::Entry {
+            id: id.clone(),
+            branch: branch.clone(),
+            target: target.clone(),
+            issue: Some(self.issue.number),
+            close: true,
+            author: local::git_out(self.worktree, &["config", "user.name"])
+                .map(|name| name.trim().to_owned())
+                .unwrap_or_default(),
+            machine,
+            summary: self.issue.title.clone(),
+            head: commit.clone(),
+            submitted_at: at,
+            state: land_queue::State::Queued,
+            updated_at: at,
+            ..land_queue::Entry::default()
+        };
+        let submitted = match &self.work.policy.queue {
+            Some(url) => land_queue::open(url),
+            None => land_queue::open_default(None),
+        }
+        .and_then(|store| land_queue::Queue { store: &*store }.submit(&entry));
+        if let Err(why) = submitted {
+            self.note(format!("Kept the change on `{branch}` on origin."));
+            self.stranded = Some(branch);
+            return self.failed(
+                &format!("The landing queue refused the change: {why}"),
+                None,
+            );
+        }
+        let files = changed_by(self.worktree, &format!("{commit}~1"), &commit);
+        self.flow.files = Some(files.clone());
+        self.flow.link.commits = vec![commit.clone()];
+        self.flow.link.outcome = "queued".into();
+        let mut comment = self
+            .evidence(
+                &format!(
+                    "Coder queued this change to land on `{target}`: entry `{id}`, branch \
+                     [`{branch}`](https://github.com/{}/tree/{branch}). The landing queue \
+                     lands it and closes this issue, or comments here if it bounces.",
+                    self.repository
+                ),
+                &files,
+            )
+            .replace(
+                "- The checks passed on the exact change that landed.\n",
+                "- The checks passed on the queued change; the landing queue runs them again \
+                 after its rebase.\n",
+            );
+        comment.push_str(&self.artifacts(Some(&format!("{commit}~1"))));
+        let commented = self
+            .work
+            .tracker
+            .comment(self.repository, self.issue.number, &comment);
+        let mut closing = format!(
+            "Queued {} to land on {target} (entry {id}, branch {branch}); #{} closes when it lands",
+            &commit[..10],
+            self.issue.number
+        );
+        match commented {
+            Ok(()) => closing.push('.'),
+            Err(why) => closing.push_str(&format!("; {why}.")),
+        }
+        self.end(closing)
+    }
+
     /// The evidence comment: `headline`, what changed, the checks, and
     /// the run.
     fn evidence(&self, headline: &str, files: &[FileChange]) -> String {
@@ -2541,7 +2647,10 @@ impl Run<'_> {
     }
 
     fn end(&mut self, closing: String) {
-        if !matches!(self.flow.link.outcome.as_str(), "landed" | "pull_request") {
+        if !matches!(
+            self.flow.link.outcome.as_str(),
+            "landed" | "pull_request" | "queued"
+        ) {
             let release = format!("Coder released its claim; nothing landed. {RELEASE_MARK}");
             for said in crate::claim::release(
                 &*self.work.tracker,

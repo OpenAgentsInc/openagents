@@ -142,6 +142,96 @@ fn a_policy_file_is_read_and_its_absence_is_the_safe_default() {
     assert!(Policy::load(dir.path()).is_err());
     assert_eq!(Land::parse("pr").unwrap(), Land::PullRequest);
     assert!(Land::parse("force").is_err());
+    // `land: queue` and the queue it submits to round-trip (#11242).
+    assert_eq!(Land::parse("queue").unwrap(), Land::Queue);
+    std::fs::write(
+        dir.path().join(POLICY_FILE),
+        r#"{"land": "queue", "queue": "/tmp/land-queue"}"#,
+    )
+    .unwrap();
+    let policy = Policy::load(dir.path()).unwrap();
+    assert_eq!(policy.land, Land::Queue);
+    assert_eq!(policy.queue.as_deref(), Some("/tmp/land-queue"));
+    let text = serde_json::to_string(&policy).unwrap();
+    assert_eq!(serde_json::from_str::<Policy>(&text).unwrap(), policy);
+}
+
+/// `--land queue` pushes the change to `land/<entry>` and submits an entry
+/// with the issue and the pushed head; the integrator closes the issue, so
+/// the flow does not (#11242).
+#[test]
+fn a_queued_change_is_pushed_and_submitted_and_the_issue_stays_open() {
+    let dir = tempfile::tempdir().unwrap();
+    let (origin, worktree) = committed_change(dir.path());
+    git(&worktree, &["config", "user.name", "Test"]);
+    git(&worktree, &["config", "user.email", "test@example.invalid"]);
+    std::fs::write(worktree.join("queued.txt"), "queued\n").unwrap();
+    let queue = dir.path().join("queue");
+    let tracker = Arc::new(Comments::default());
+    let record = local_record();
+    let work = Work {
+        store: dir.path().into(),
+        local: Arc::new(Local::new(dir.path().into())),
+        tracker: tracker.clone(),
+        checks: Arc::new(NoChecks),
+        policy: Policy {
+            land: Land::Queue,
+            queue: Some(queue.to_string_lossy().into_owned()),
+            ..Policy::default()
+        },
+        branch: "main".into(),
+        top: worktree.clone(),
+        now: || 100,
+        artifacts: None,
+    };
+    let mut flow = flow("working");
+    flow.finished = false;
+    let issue = issue(&[]);
+    let mut run = Run {
+        work: &work,
+        flow: &mut flow,
+        record: &record,
+        issue: &issue,
+        repository: "acme/app",
+        worktree: &worktree,
+        turn: 1,
+        summaries: vec![],
+        checked: Checked::default(),
+        rounds: 0,
+        stranded: None,
+    };
+    run.land_queue();
+    let store = super::super::land_queue::open(&queue.to_string_lossy()).unwrap();
+    let entries = super::super::land_queue::Queue { store: &*store }
+        .entries()
+        .unwrap();
+    assert_eq!(entries.len(), 1, "one entry is queued");
+    let entry = &entries[0];
+    let head = git(&worktree, &["rev-parse", "HEAD"]);
+    assert_eq!(entry.issue, Some(issue.number));
+    assert!(entry.close);
+    assert_eq!(entry.head, head);
+    assert_eq!(entry.target, "main");
+    assert_eq!(entry.summary, issue.title);
+    assert_eq!(entry.branch, format!("land/{}", entry.id));
+    assert_eq!(
+        git(
+            &origin,
+            &["rev-parse", &format!("refs/heads/{}", entry.branch)]
+        ),
+        head,
+        "the queued head is on origin"
+    );
+    assert_eq!(flow.link.outcome, "queued");
+    assert_eq!(flow.link.commits, vec![head]);
+    assert!(!flow.link.closed, "the flow does not close the issue");
+    let comments = tracker.0.lock().unwrap();
+    let queued = comments
+        .iter()
+        .find(|c| c.contains("queued this change"))
+        .unwrap();
+    assert!(queued.contains(&entry.id) && queued.contains(&entry.branch));
+    assert!(flow.closing.contains(&entry.id), "{}", flow.closing);
 }
 
 /// This repository's own policy lands on main after the checks: fmt, and

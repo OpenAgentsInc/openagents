@@ -75,6 +75,7 @@ fn run_script(credentials: &Credentials, issue: u64, land: Option<Land>, slots: 
     let land = match land {
         Some(Land::Main) => " --land main",
         Some(Land::PullRequest) => " --land pr",
+        Some(Land::Queue) => " --land queue",
         None => "",
     };
     let exports: String = credentials_lines(credentials);
