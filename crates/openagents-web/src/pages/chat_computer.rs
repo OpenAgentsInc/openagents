@@ -1,7 +1,8 @@
 //! Screenshot and Copy a file on a Coder chat (#11185).
 //!
-//! While Coder on the chat's computer is online, the chat's page offers
-//! **Screenshot** and **Copy a file** under the reply box. Each queues an
+//! While Coder on the chat's computer is online, a Screenshot or Copy a
+//! file ask can be posted to the chat (the controls no longer sit under
+//! the reply box). Each queues an
 //! ask on the chat ([`crate::coder_sync::queue_ask`]), the same way a reply
 //! waits there: Coder on the computer takes it at its next check-in, runs
 //! it through that computer's own host, and uploads what came back
@@ -45,31 +46,6 @@ struct AskForm {
     action: Action,
     #[serde(default)]
     path: String,
-}
-
-/// The two controls under a Coder chat's reply box, while its computer is
-/// online. Plain forms: each reloads the chat, which then shows the ask.
-pub(super) fn controls(app: &App, chat: &Conversation, computer: &str) -> Markup {
-    let action = format!("/chat/{}/computer", chat.id);
-    let csrf = csrf(app, &chat.owner);
-    html! {
-        div.oa-thread-computer #chat-computer {
-            form method="post" action=(action) hx-boost="false" {
-                input type="hidden" name="csrf" value=(csrf);
-                input type="hidden" name="action" value="screenshot";
-                (Button::new(format!("Screenshot {computer}")).kind(ButtonType::Submit).variant(openagents_ui::actions::ButtonVariant::Outline))
-            }
-            form method="post" action=(action) hx-boost="false" {
-                input type="hidden" name="csrf" value=(csrf);
-                input type="hidden" name="action" value="pull";
-                label for="chat-computer-path" { "Copy a file from " (computer) }
-                input #chat-computer-path type="text" name="path" required
-                    maxlength=(crate::chat_store::MAX_ASK_PATH_BYTES)
-                    placeholder="~/notes.txt" autocomplete="off" spellcheck="false";
-                (Button::new("Copy").kind(ButtonType::Submit).variant(openagents_ui::actions::ButtonVariant::Outline))
-            }
-        }
-    }
 }
 
 async fn ask(

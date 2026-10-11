@@ -815,7 +815,6 @@ fn terminal_composer(
         .after(html! {
             (ticket(app, chat, false))
             p #chat-feedback.oa-composer-feedback role="status" aria-live="polite" {}
-            (computer::controls(app, chat, computer))
         });
     match notice {
         Some(notice) => composer
