@@ -138,7 +138,15 @@ impl PgStore {
                 "The record changed. Refresh it and try again.",
             ));
         }
-        let mut prepared = self.registry.apply(&snapshot, &req.message, caller, now)?;
+        let fenced = match &req.fence {
+            Some(fence) => {
+                Some(crate::queue_store::verify_fence(&tx, caller, &snapshot.uid, fence).await?)
+            }
+            None => None,
+        };
+        let mut prepared =
+            self.registry
+                .apply_fenced(&snapshot, &req.message, caller, now, fenced)?;
         if !creation_commands.is_empty() {
             if prepared.read_only {
                 return Err(ActorError::new(
@@ -458,6 +466,53 @@ impl PgStore {
         let connection = self.pool.acquire().await?;
         Ok(connection.query("SELECT to_jsonb(h) FROM actor.history h WHERE uid=$1 AND id>$2 ORDER BY id LIMIT $3", &[&snapshot.uid,&after,&bounded_limit(limit)?]).await?.into_iter().map(|row| row.get(0)).collect())
     }
+    /// The caller's own private actors of `actor_type` in its workspace,
+    /// newest first, each with the view the caller is allowed. A record the
+    /// caller can't view is left out. This is how a host lists one account's
+    /// records without an index actor; it reads one bounded page.
+    pub async fn list_own(
+        &self,
+        caller: &Caller,
+        actor_type: &str,
+        limit: usize,
+    ) -> Result<Vec<(ActorId, ViewReply)>> {
+        let account = caller
+            .account_id
+            .as_deref()
+            .filter(|account| !account.is_empty())
+            .ok_or_else(forbidden)?;
+        if caller.workspace_id.is_empty() || caller.principal.is_empty() {
+            return Err(not_found());
+        }
+        if !self.registry.is_private(actor_type)? {
+            return Err(forbidden());
+        }
+        let connection = self.pool.acquire().await?;
+        let rows = connection
+            .query(
+                "SELECT * FROM actor.instances WHERE workspace_id=$1 AND actor_type=$2 AND owner=$3 \
+                 AND status<>'destroyed' ORDER BY created_at DESC, uid LIMIT $4",
+                &[&caller.workspace_id, &actor_type, &account, &bounded_limit(limit)?],
+            )
+            .await?;
+        drop(connection);
+        let mut found = Vec::with_capacity(rows.len());
+        for row in &rows {
+            let snapshot = snapshot_from_row(row)?;
+            if let Ok(view) = self.registry.view(&snapshot, caller) {
+                found.push((
+                    snapshot.id.clone(),
+                    ViewReply {
+                        view,
+                        version: snapshot.version,
+                        event_seq: snapshot.event_seq,
+                    },
+                ));
+            }
+        }
+        Ok(found)
+    }
+
     pub async fn admin_block(&self, caller: &Caller, id: &ActorId, blocked: bool) -> Result<()> {
         require_admin(caller, id)?;
         let mut connection = self.pool.acquire().await?;
@@ -1349,6 +1404,7 @@ mod postgres_tests {
             input,
             idempotency_key: Some(key.into()),
             expected_version: None,
+            fence: None,
         }
     }
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

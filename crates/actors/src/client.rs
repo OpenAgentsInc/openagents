@@ -85,6 +85,7 @@ impl<A: Actor> ActorRef<A> {
                     input: self.input.clone(),
                     idempotency_key: options.idempotency_key,
                     expected_version: options.expected_version,
+                    fence: None,
                 },
             )
             .await?;

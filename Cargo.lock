@@ -162,6 +162,7 @@ dependencies = [
  "axum 0.8.9",
  "futures-util",
  "getrandom 0.4.3",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -8691,9 +8692,13 @@ checksum = "d3d25b0e0b648a86960ac23b7ad4abb9717601dec6f66c165f5b037f3f03065f"
 name = "mac-jobs"
 version = "0.1.0"
 dependencies = [
+ "actors",
+ "getrandom 0.4.3",
  "secret-screen",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
+ "tokio",
 ]
 
 [[package]]
@@ -10554,6 +10559,7 @@ name = "openagents-cli"
 version = "1.0.0"
 dependencies = [
  "acp-client",
+ "actors",
  "atif",
  "axum 0.8.9",
  "background",
@@ -10584,6 +10590,7 @@ dependencies = [
  "discovery",
  "ext-eval",
  "futures-util",
+ "getrandom 0.4.3",
  "github-actions",
  "glam",
  "gym",
@@ -10820,6 +10827,7 @@ dependencies = [
 name = "openagents-web"
 version = "0.1.0"
 dependencies = [
+ "actors",
  "agent-fleet",
  "atif",
  "axum 0.8.9",

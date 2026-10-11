@@ -785,10 +785,11 @@ async fn activity(
 }
 
 async fn agents(State(app): State<App>, headers: HeaderMap) -> Response {
-    let owner = match coder_sync::owner(&app, &headers).await {
-        Ok(owner) => owner,
+    let account = match coder_sync::account(&app, &headers).await {
+        Ok(account) => account,
         Err(response) => return response,
     };
+    let owner = crate::chat_store::account_owner(&account);
     let store = &app.config.chat_store;
     let (agents, computers) = match (
         read_agents(store, &owner).await,
@@ -799,7 +800,7 @@ async fn agents(State(app): State<App>, headers: HeaderMap) -> Response {
     };
     let boards = with_mac_jobs(
         agents.boards,
-        crate::mac_jobs::board_items(store, &owner).await,
+        crate::mac_jobs_actor::board_items(&app, &account).await,
     );
     let mut boards: Vec<(String, Board)> = boards.into_iter().collect();
     boards.sort_by_key(|(_, board)| std::cmp::Reverse(board.updated_unix));
@@ -895,10 +896,11 @@ pub(crate) async fn queue_action(
 }
 
 async fn action(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Response {
-    let owner = match coder_sync::owner(&app, &headers).await {
-        Ok(owner) => owner,
+    let account = match coder_sync::account(&app, &headers).await {
+        Ok(account) => account,
         Err(response) => return response,
     };
+    let owner = crate::chat_store::account_owner(&account);
     let Some(sent) = serde_json::from_slice::<Action>(&body).ok().filter(|sent| {
         valid_request(&sent.request_id)
             && ACTIONS.contains(&sent.action.as_str())
@@ -931,10 +933,9 @@ async fn action(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Resp
     // A Mac job's item (#11223): Approve, Deny, and Stop reach the job
     // itself; the Mac takes the answer at its next report.
     if crate::mac_jobs::is_job(&sent.item) {
-        let store = &app.config.chat_store;
-        return match crate::mac_jobs::act(
-            store,
-            &owner,
+        return match crate::mac_jobs_actor::act(
+            &app,
+            &account,
             &sent.item,
             &sent.action,
             sent.question.as_deref(),

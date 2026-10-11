@@ -103,7 +103,12 @@ def main():
         secret("boat-api-key", "BOAT_API_KEY"),
         # Gemini on Vertex for the chat's images and PDFs (#11221).
         secret("openagents-vertex-sa-key", "VERTEX_SA_JSON"),
-    ])
+    ] + ([] if args.files else [
+        # The actor runtime (#11253, docs/deployment/actors.md) in the
+        # account database. Mac jobs go through it only while the live
+        # spec's OPENAGENTS_WEB_MAC_JOBS_ACTORS is 1 (set_env keeps it).
+        secret(DATABASE_SECRET, "OPENAGENTS_WEB_ACTORS_DATABASE_URL"),
+    ]))
     # The gateway's store read-only: the web reads only its house key.
     web["volumeMounts"] = [
         {"name": "webstate", "mountPath": "/state"},

@@ -46,6 +46,32 @@ pub(crate) fn routes() -> Router<App> {
         .route("/settings/mac-jobs/{id}/answer", post(answer_route))
         .route("/settings/mac-jobs/{id}/stop", post(stop_route))
         .route("/settings/mac-jobs/{id}/files/{file}", get(file_route))
+        .route(LIVE_SCRIPT, get(live_script))
+}
+
+/// The pages' live updates (#11253): reload when the account's jobs
+/// change, from `GET /v1/mac-jobs/events`.
+const LIVE_SCRIPT: &str = "/settings/mac-jobs/live.js";
+
+async fn live_script() -> Response {
+    (
+        [
+            (
+                axum::http::header::CONTENT_TYPE,
+                "text/javascript; charset=utf-8",
+            ),
+            (axum::http::header::CACHE_CONTROL, "public, max-age=300"),
+        ],
+        "(function(){var m=document.querySelector('meta[name=\"oa-live\"]');\
+if(!m||!window.EventSource)return;var seen=false;var es=new EventSource(m.content);\
+es.addEventListener('jobs',function(){if(seen){es.close();location.reload();}seen=true;});})();\n",
+    )
+        .into_response()
+}
+
+/// Whether this account's jobs update live (Mac jobs through actors).
+async fn live(app: &App, account: &str) -> bool {
+    crate::mac_jobs_actor::jobs(app, account).await.is_some()
 }
 
 /// A job's state as the owner reads it.
@@ -57,6 +83,7 @@ pub(crate) fn state_words(state: JobState) -> &'static str {
         JobState::Done => "Done",
         JobState::Failed => "Failed",
         JobState::Cancelled => "Stopped",
+        JobState::Uncertain => "Needs a check: the Mac stopped answering",
     }
 }
 
@@ -87,6 +114,7 @@ fn page(
     title: &str,
     path: &str,
     refresh: bool,
+    live: bool,
     body: Markup,
 ) -> Response {
     let account = Account::SignedIn {
@@ -100,7 +128,12 @@ fn page(
         .section(crate::settings::PAGE)
         .account(account)
         .content(PageColumn::new(body));
-    if refresh {
+    if live {
+        page = page.head(html! {
+            meta name="oa-live" content="/v1/mac-jobs/events";
+            script src=(LIVE_SCRIPT) defer {}
+        });
+    } else if refresh {
         page = page.head(html! {
             meta http-equiv="refresh" content=(REFRESH_SECONDS.to_string());
         });
@@ -172,7 +205,10 @@ async fn list_page(State(app): State<App>, headers: HeaderMap) -> Response {
     let owner = account_owner(&viewer.account_id);
     let store = &app.config.chat_store;
     let found = mac_jobs::macs(store, &owner).await.unwrap_or_default();
-    let jobs = mac_jobs::list(store, &owner).await.unwrap_or_default();
+    let jobs = crate::mac_jobs_actor::all(&app, &viewer.account_id)
+        .await
+        .unwrap_or_default();
+    let live = live(&app, &viewer.account_id).await;
     let now = now_unix();
     let going = jobs.iter().any(|job| !job.state.finished());
     let body = html! {
@@ -198,7 +234,9 @@ async fn list_page(State(app): State<App>, headers: HeaderMap) -> Response {
             }
         }
     };
-    page(&headers, service, &viewer, "Mac jobs", PAGE, going, body)
+    page(
+        &headers, service, &viewer, "Mac jobs", PAGE, going, live, body,
+    )
 }
 
 /// The question card: what the job will do, then Approve and Deny.
@@ -240,10 +278,11 @@ async fn job_page(State(app): State<App>, headers: HeaderMap, Path(id): Path<Str
         Err(response) => return response,
     };
     let owner = account_owner(&viewer.account_id);
-    let job = match mac_jobs::load(&app.config.chat_store, &owner, &id).await {
+    let job = match crate::mac_jobs_actor::find(&app, &viewer.account_id, &id).await {
         Ok(Some(job)) => job,
         _ => return protect(Redirect::to(PAGE).into_response()),
     };
+    let live = live(&app, &viewer.account_id).await;
     let now = now_unix();
     let shown = job.lines.len().saturating_sub(SHOWN_LINES);
     let stop = format!("{PAGE}/{}/stop", job.id);
@@ -318,6 +357,7 @@ async fn job_page(State(app): State<App>, headers: HeaderMap, Path(id): Path<Str
         "Mac job",
         &path,
         !job.state.finished(),
+        live,
         body,
     )
 }
@@ -373,9 +413,9 @@ async fn answer_route(
         "deny" => false,
         _ => return problem(StatusCode::BAD_REQUEST, "Choose Approve or Deny."),
     };
-    match mac_jobs::answer_question(
-        &app.config.chat_store,
-        &owner,
+    match crate::mac_jobs_actor::answer(
+        &app,
+        &viewer.account_id,
         &id,
         &form.question,
         approve,
@@ -421,7 +461,7 @@ async fn stop_route(
             "Something went wrong. Reload the page.",
         );
     }
-    match mac_jobs::cancel(&app.config.chat_store, &owner, &id).await {
+    match crate::mac_jobs_actor::cancel(&app, &viewer.account_id, &id).await {
         Ok(_) => protect(Redirect::to(&path).into_response()),
         Err(_) => problem(
             StatusCode::SERVICE_UNAVAILABLE,
@@ -439,8 +479,7 @@ async fn file_route(
         Ok(found) => found,
         Err(response) => return response,
     };
-    let owner = account_owner(&viewer.account_id);
-    match mac_jobs::artifact_body(&app.config.chat_store, &owner, &id, &file).await {
+    match crate::mac_jobs_actor::artifact(&app, &viewer.account_id, &id, &file).await {
         Ok(Some((size, body))) => protect(mac_jobs::download(&file, size, body)),
         _ => problem(StatusCode::NOT_FOUND, "That file isn't there."),
     }

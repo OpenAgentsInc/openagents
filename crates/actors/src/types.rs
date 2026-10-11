@@ -38,6 +38,7 @@ impl From<serde_json::Error> for ActorError {
         Self::new("bad_args", "The data has an invalid format.")
     }
 }
+#[cfg(feature = "server")]
 impl From<tokio_postgres::Error> for ActorError {
     fn from(error: tokio_postgres::Error) -> Self {
         let code = error.code().map(|c| c.code()).unwrap_or("");
@@ -214,6 +215,29 @@ pub struct ActionRequest {
     pub input: Option<Value>,
     pub idempotency_key: Option<String>,
     pub expected_version: Option<u64>,
+    /// A work claim the call is fenced by: the store checks it against the
+    /// claim in the same transaction and hands it to the handler
+    /// ([`crate::Ctx::fence`]). Only the executor holding that claim, at
+    /// that epoch, before its lease ends, can make the call.
+    #[serde(default)]
+    pub fence: Option<WorkFence>,
+}
+/// The claim a fenced action names.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct WorkFence {
+    pub item_id: String,
+    pub epoch: u64,
+}
+/// What a handler learns of a verified fence.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Fenced {
+    pub item_id: String,
+    pub epoch: u64,
+    /// The work was cancelled; the claim still stands until it is released.
+    pub cancel: bool,
+    /// The lease, renewed by this call unless cancelled.
+    pub heartbeat_until: Timestamp,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ActionReply {

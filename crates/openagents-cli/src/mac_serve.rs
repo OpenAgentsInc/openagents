@@ -27,7 +27,7 @@ use std::time::{Duration, Instant};
 
 use coder_new::risk_policy::{self, Decision, Policy, Rule};
 use coder_sync::Answer;
-use coder_sync::mac_jobs::{self as wire, Ask, End, Heard, Report, Taken};
+use coder_sync::mac_jobs::{self as wire, ActorQueue, Approval, Ask, End, Heard, Report, Taken};
 use mac_jobs::{Capabilities, Places, Recipe, Spec, Step};
 use openagents_login::Saved;
 use serde_json::Value;
@@ -107,6 +107,275 @@ impl Channel for Web<'_> {
     }
 }
 
+/// How long a claim waits for a job when none is ready (a long poll).
+const CLAIM_WAIT: Duration = Duration::from_secs(25);
+/// How often a running actor job's claim is renewed besides its reports.
+const HEARTBEAT_EVERY: Duration = Duration::from_secs(15);
+
+/// One actor job (#11253), through the actor runtime's network client: the
+/// reports are calls fenced by this Mac's claim, the files go up fenced the
+/// same way, and the end finishes the claim (or releases it, when the job
+/// was cancelled). A thread renews the claim while a step runs quietly.
+struct ActorWeb<'a> {
+    runtime: &'a tokio::runtime::Runtime,
+    client: &'a actors::net::Client,
+    queue: &'a str,
+    http: &'a reqwest::Client,
+    saved: &'a Saved,
+    computer: &'a str,
+    claim: actors::ClaimedWork,
+    id: String,
+    /// The website said the job was cancelled.
+    cancelled: bool,
+    /// The claim was lost (fenced): nothing more is sent.
+    lost: bool,
+}
+
+fn actor_answer(error: &actors::ActorError) -> Answer {
+    match error.code.as_str() {
+        "unauthorized" => Answer::SignedOut,
+        _ if error.retryable => Answer::Retry,
+        "bad_args" => Answer::Refused(error.message.clone()),
+        // Fenced, cancelled, or gone: this claim is over.
+        _ => Answer::Unknown,
+    }
+}
+
+impl ActorWeb<'_> {
+    fn fence(&self) -> actors::WorkFence {
+        actors::WorkFence {
+            item_id: self.claim.item_id.clone(),
+            epoch: self.claim.epoch,
+        }
+    }
+
+    fn end(&mut self, end: &End) -> Result<(), actors::ActorError> {
+        let at = (self.claim.uid.as_str(), self.claim.item_id.as_str());
+        if self.cancelled {
+            return self.runtime.block_on(self.client.release(
+                self.queue,
+                at,
+                self.claim.epoch,
+                "cancelled",
+            ));
+        }
+        let outcome = match end {
+            End::Done { summary } => mac_jobs::actor::outcome_done(summary),
+            End::Failed { why } => mac_jobs::actor::outcome_failed(why),
+        };
+        self.runtime.block_on(
+            self.client
+                .finish(self.queue, at, self.claim.epoch, outcome),
+        )
+    }
+}
+
+impl Channel for ActorWeb<'_> {
+    fn report(&mut self, report: &Report<'_>) -> Result<Heard, Answer> {
+        if self.lost {
+            return Err(Answer::Unknown);
+        }
+        let args = serde_json::json!({
+            "lines": report.lines,
+            "commit": report.commit,
+            "ask": report.ask,
+        });
+        let sent = self.runtime.block_on(self.client.call(
+            mac_jobs::actor::TYPE,
+            &self.id,
+            "report@1",
+            args,
+            actors::net::Call {
+                fence: Some(self.fence()),
+                ..actors::net::Call::default()
+            },
+        ));
+        let heard = match sent {
+            Ok(reply) => {
+                let heard: mac_jobs::actor::Heard =
+                    serde_json::from_value(reply.reply).unwrap_or_default();
+                Heard {
+                    cancel: heard.cancel,
+                    approval: heard.approval.map(|a| Approval {
+                        question: a.question,
+                        decision: a.decision,
+                        via: a.via,
+                        at_unix: a.at_unix,
+                    }),
+                }
+            }
+            Err(error) => {
+                let answer = actor_answer(&error);
+                if matches!(answer, Answer::Unknown) {
+                    self.lost = true;
+                }
+                return Err(answer);
+            }
+        };
+        self.cancelled |= heard.cancel;
+        if let Some(end) = report.end {
+            for attempt in 0..5u32 {
+                match self.end(end) {
+                    Ok(()) => break,
+                    Err(error) if error.retryable => {
+                        std::thread::sleep(Duration::from_secs(2u64.pow(attempt)));
+                    }
+                    Err(error) => return Err(actor_answer(&error)),
+                }
+            }
+        }
+        Ok(heard)
+    }
+
+    fn upload(&mut self, name: &str, part: u32, last: bool, bytes: Vec<u8>) -> Result<(), Answer> {
+        if self.lost {
+            return Err(Answer::Unknown);
+        }
+        self.runtime.block_on(wire::upload_part_fenced(
+            self.http,
+            self.saved,
+            self.computer,
+            &self.id,
+            name,
+            part,
+            last,
+            (&self.claim.item_id, self.claim.epoch),
+            bytes,
+        ))
+    }
+}
+
+/// The client for the website's actor routes, as this Mac.
+fn actor_client(
+    saved: &Saved,
+    computer: &str,
+    queue: &ActorQueue,
+) -> Result<actors::net::Client, String> {
+    let mut headers = reqwest::header::HeaderMap::new();
+    let bearer = format!("Bearer {}", saved.token());
+    headers.insert(
+        reqwest::header::AUTHORIZATION,
+        reqwest::header::HeaderValue::from_str(&bearer)
+            .map_err(|_| "This sign-in can't be sent.".to_owned())?,
+    );
+    let name: String = computer
+        .bytes()
+        .map(|b| {
+            if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.') {
+                (b as char).to_string()
+            } else {
+                format!("%{b:02X}")
+            }
+        })
+        .collect();
+    headers.insert(
+        "x-openagents-computer",
+        reqwest::header::HeaderValue::from_str(&name)
+            .map_err(|_| "This Mac's name can't be sent.".to_owned())?,
+    );
+    actors::net::Client::new(saved.origin.clone(), queue.workspace.clone(), headers)
+        .map_err(|error| error.message)
+}
+
+/// Renew `claim` every [`HEARTBEAT_EVERY`] until `stop`, on its own thread
+/// (a step can run for a long time without a log line).
+fn heartbeat(
+    client: actors::net::Client,
+    queue: String,
+    claim: actors::ClaimedWork,
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        else {
+            return;
+        };
+        let mut last = Instant::now();
+        while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+            std::thread::sleep(Duration::from_millis(250));
+            if last.elapsed() < HEARTBEAT_EVERY {
+                continue;
+            }
+            last = Instant::now();
+            let renewed = runtime.block_on(client.heartbeat(
+                &queue,
+                (&claim.uid, &claim.item_id),
+                claim.epoch,
+                None,
+            ));
+            if renewed.is_err_and(|error| !error.retryable) {
+                return;
+            }
+        }
+    })
+}
+
+/// Claim one actor job (a long poll) and run it; whether one ran.
+fn serve_actor_job(
+    runtime: &tokio::runtime::Runtime,
+    http: &reqwest::Client,
+    saved: &Saved,
+    settings: &Settings,
+    queue: &ActorQueue,
+) -> Result<bool, Answer> {
+    let client = actor_client(saved, &settings.computer, queue).map_err(Answer::Refused)?;
+    let claimed = runtime
+        .block_on(client.claim(&queue.queue, Some(&queue.target), 1, CLAIM_WAIT))
+        .map_err(|error| actor_answer(&error))?;
+    let Some(claim) = claimed.into_iter().next() else {
+        return Ok(false);
+    };
+    let Ok(offered) = serde_json::from_value::<mac_jobs::actor::Offered>(claim.payload.clone())
+    else {
+        let _ = runtime.block_on(client.release(
+            &queue.queue,
+            (&claim.uid, &claim.item_id),
+            claim.epoch,
+            "This Mac can't read that job.",
+        ));
+        return Ok(false);
+    };
+    let job = Taken {
+        id: offered.id.clone(),
+        spec: offered.spec,
+    };
+    eprintln!(
+        "Running {} ({}, claim {}).",
+        job.spec.title(),
+        job.id,
+        claim.epoch
+    );
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let beat = heartbeat(
+        client.clone(),
+        queue.queue.clone(),
+        claim.clone(),
+        stop.clone(),
+    );
+    let mut web = ActorWeb {
+        runtime,
+        client: &client,
+        queue: &queue.queue,
+        http,
+        saved,
+        computer: &settings.computer,
+        claim,
+        id: offered.id,
+        cancelled: false,
+        lost: false,
+    };
+    let end = run_job(&job, settings, &saved.label, &mut web);
+    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    let _ = beat.join();
+    match &end {
+        End::Done { summary } => eprintln!("Done: {summary}"),
+        End::Failed { why } => eprintln!("Stopped: {why}"),
+    }
+    Ok(true)
+}
+
 /// Serve jobs until signed out (or one round, with `once`).
 pub(crate) fn serve(saved: &Saved, settings: &Settings) -> Result<(), String> {
     let http = wire::client().ok_or("Couldn't start the web client.")?;
@@ -127,48 +396,71 @@ pub(crate) fn serve(saved: &Saved, settings: &Settings) -> Result<(), String> {
             capabilities = mac_jobs::detect(&settings.root);
             detected = Instant::now();
         }
-        let wait =
-            match runtime.block_on(wire::take(&http, saved, &settings.computer, &capabilities)) {
-                Ok(jobs) => {
-                    for job in jobs {
-                        eprintln!("Running {} ({}).", job.spec.title(), job.id);
-                        capabilities.busy = true;
-                        // Say it's busy while it runs.
-                        let _ = runtime.block_on(wire::take(
-                            &http,
-                            saved,
-                            &settings.computer,
-                            &capabilities,
-                        ));
-                        let mut web = Web {
-                            runtime: &runtime,
-                            http: &http,
-                            saved,
-                            computer: &settings.computer,
-                            id: &job.id,
-                        };
-                        let end = run_job(&job, settings, &saved.label, &mut web);
-                        match &end {
-                            End::Done { summary } => eprintln!("Done: {summary}"),
-                            End::Failed { why } => eprintln!("Stopped: {why}"),
+        let wait = match runtime.block_on(wire::take_all(
+            &http,
+            saved,
+            &settings.computer,
+            &capabilities,
+        )) {
+            Ok(wire::Took { jobs, actors }) => {
+                let legacy = !jobs.is_empty();
+                for job in jobs {
+                    eprintln!("Running {} ({}).", job.spec.title(), job.id);
+                    capabilities.busy = true;
+                    // Say it's busy while it runs.
+                    let _ = runtime.block_on(wire::take(
+                        &http,
+                        saved,
+                        &settings.computer,
+                        &capabilities,
+                    ));
+                    let mut web = Web {
+                        runtime: &runtime,
+                        http: &http,
+                        saved,
+                        computer: &settings.computer,
+                        id: &job.id,
+                    };
+                    let end = run_job(&job, settings, &saved.label, &mut web);
+                    match &end {
+                        End::Done { summary } => eprintln!("Done: {summary}"),
+                        End::Failed { why } => eprintln!("Stopped: {why}"),
+                    }
+                    capabilities = mac_jobs::detect(&settings.root);
+                    detected = Instant::now();
+                }
+                let mut wait = TAKE_EVERY;
+                if let Some(queue) = actors.filter(|_| !legacy) {
+                    match serve_actor_job(&runtime, &http, saved, settings, &queue) {
+                        Ok(ran) => {
+                            if ran {
+                                capabilities = mac_jobs::detect(&settings.root);
+                                detected = Instant::now();
+                            }
+                            // The claim waited already.
+                            wait = Duration::ZERO;
                         }
-                        capabilities = mac_jobs::detect(&settings.root);
-                        detected = Instant::now();
+                        Err(Answer::SignedOut) => {
+                            return Err("This Mac's sign-in stopped working. Sign in \
+                                            again with coder login."
+                                .into());
+                        }
+                        Err(_) => wait = TAKE_EVERY * 2,
                     }
-                    if settings.once {
-                        return Ok(());
-                    }
-                    TAKE_EVERY
                 }
-                Err(Answer::SignedOut) => {
-                    return Err(
-                        "This Mac's sign-in stopped working. Sign in again with coder login."
-                            .into(),
-                    );
+                if settings.once {
+                    return Ok(());
                 }
-                Err(Answer::Unknown) => QUIET_EVERY,
-                Err(_) => TAKE_EVERY * 2,
-            };
+                wait
+            }
+            Err(Answer::SignedOut) => {
+                return Err(
+                    "This Mac's sign-in stopped working. Sign in again with coder login.".into(),
+                );
+            }
+            Err(Answer::Unknown) => QUIET_EVERY,
+            Err(_) => TAKE_EVERY * 2,
+        };
         if settings.once {
             return Ok(());
         }

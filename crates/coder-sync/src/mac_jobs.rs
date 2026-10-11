@@ -32,6 +32,24 @@ pub struct Taken {
     pub spec: Spec,
 }
 
+/// Where this Mac claims jobs when the website runs them as actors
+/// (#11253): the account's workspace, the queue, and this Mac's target.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+pub struct ActorQueue {
+    pub workspace: String,
+    pub queue: String,
+    pub target: String,
+}
+
+/// What a report of this Mac's capabilities is answered with.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Took {
+    /// Jobs from the website's own store, each handed out once.
+    pub jobs: Vec<Taken>,
+    /// With actors on, where to claim the rest.
+    pub actors: Option<ActorQueue>,
+}
+
 /// Report what this Mac can do; the answer is the jobs waiting for it.
 pub async fn take(
     http: &reqwest::Client,
@@ -39,6 +57,18 @@ pub async fn take(
     computer: &str,
     capabilities: &Capabilities,
 ) -> Result<Vec<Taken>, Answer> {
+    take_all(http, saved, computer, capabilities)
+        .await
+        .map(|took| took.jobs)
+}
+
+/// [`take`], with where to claim actor jobs when the website says.
+pub async fn take_all(
+    http: &reqwest::Client,
+    saved: &Saved,
+    computer: &str,
+    capabilities: &Capabilities,
+) -> Result<Took, Answer> {
     let body = json!({"capabilities": capabilities});
     match call(
         http,
@@ -49,13 +79,16 @@ pub async fn take(
     )
     .await
     {
-        (Answer::Done, body) => Ok(body["jobs"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|job| serde_json::from_value::<Taken>(job.clone()).ok())
-            .filter(|job| mac_jobs::valid_job_id(&job.id) && job.spec.check().is_ok())
-            .collect()),
+        (Answer::Done, body) => Ok(Took {
+            jobs: body["jobs"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|job| serde_json::from_value::<Taken>(job.clone()).ok())
+                .filter(|job| mac_jobs::valid_job_id(&job.id) && job.spec.check().is_ok())
+                .collect(),
+            actors: serde_json::from_value(body["actors"].clone()).ok(),
+        }),
         (answer, _) => Err(answer),
     }
 }
@@ -165,13 +198,60 @@ pub async fn upload_part(
     if !mac_jobs::valid_job_id(id) || bytes.len() > PART_BYTES {
         return Err(Answer::Refused("That part can't be sent.".into()));
     }
-    let url = format!(
+    upload_to(http, saved, computer, id, name, (part, last), None, bytes).await
+}
+
+/// [`upload_part`] for an actor job (#11253), fenced by the Mac's claim of
+/// it: `fence` is the claim's work item and epoch.
+#[allow(clippy::too_many_arguments)]
+pub async fn upload_part_fenced(
+    http: &reqwest::Client,
+    saved: &Saved,
+    computer: &str,
+    id: &str,
+    name: &str,
+    part: u32,
+    last: bool,
+    fence: (&str, u64),
+    bytes: Vec<u8>,
+) -> Result<(), Answer> {
+    if !mac_jobs::valid_job_id(id) || bytes.len() > PART_BYTES {
+        return Err(Answer::Refused("That part can't be sent.".into()));
+    }
+    upload_to(
+        http,
+        saved,
+        computer,
+        id,
+        name,
+        (part, last),
+        Some(fence),
+        bytes,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn upload_to(
+    http: &reqwest::Client,
+    saved: &Saved,
+    computer: &str,
+    id: &str,
+    name: &str,
+    (part, last): (u32, bool),
+    fence: Option<(&str, u64)>,
+    bytes: Vec<u8>,
+) -> Result<(), Answer> {
+    let mut url = format!(
         "{}/v1/computers/{}/mac-jobs/{id}/artifacts/{}?part={part}&last={}",
         saved.origin,
         segment(computer),
         segment(name),
         u8::from(last)
     );
+    if let Some((item, epoch)) = fence {
+        url.push_str(&format!("&item={}&epoch={epoch}", segment(item)));
+    }
     let Ok(response) = http
         .put(url)
         .bearer_auth(saved.token())

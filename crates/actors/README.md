@@ -4,7 +4,14 @@
 atomic messages, alarms, effects, and leased work. It implements the foundation
 of [the actor proposal](../../docs/architecture/actors.md) and
 [#11253](https://github.com/OpenAgentsInc/openagents/issues/11253).
-No product crate uses it yet. The bundled counter is an example.
+`openagents-web` runs it against the account database, and Mac jobs are its
+first consumer (`mac.job`, [docs/deployment/actors.md](../../docs/deployment/actors.md)).
+The bundled counter is an example.
+
+Features: `server` (default) is the PostgreSQL store, the runtime, and the HTTP
+routes; `net` is the network client ([`net::Client`](src/net.rs)) a remote
+executor uses. With no features the crate is the actor definitions and wire
+types, so a domain crate can define actors without a database driver.
 
 ## What works
 
@@ -16,9 +23,10 @@ No product crate uses it yet. The bundled counter is an example.
 | Actions | Atomic create-and-call, caller-bound idempotency receipts, argument fingerprints, and read-only handlers. |
 | Inbox | Ordered, bounded, durable delivery; current authority checks; retries; poison-message isolation; operator retry; and rollout deferral for unknown types or newer state. Unknown messages get a one-hour grace period. |
 | Commands | Events, same-workspace sends, one-shot or fixed-interval alarms, work offers, work cancellation, effects, and destruction. |
-| Work | Exact queue/target executor grants, bounded concurrent claims, generations, heartbeat leases, sequenced progress, duplicate completion checks, cancellation, expiry, and explicit resolution of uncertain results. |
+| Work | Exact queue/target executor grants, bounded concurrent claims, long-poll claims (`claim_work_wait`, `wait_ms` up to 30 s), generations, heartbeat leases, sequenced progress, duplicate completion checks, cancellation (an executor releasing a cancelled claim ends it as `cancelled`, freeing its slot), expiry, and explicit resolution of uncertain results. |
+| Fenced actions | An action may name a work claim (`fence: {item_id, epoch}`). The store checks it is the caller's live claim at that epoch in the same transaction, renews its lease, and hands it to the handler (`Ctx::fence`), so an executor's reports can't outlive its claim. |
 | Effects | Bounded concurrency, registered-kind selection, renewable claims, deadlines, attempt limits, and completion messages. Non-repeatable failures stay uncertain until resolved. |
-| Observation | Caller-filtered views, bounded SSE connections, multiplexed feeds, version cursors, and contract JSON. Raw stored events require an administrator. |
+| Observation | Caller-filtered views, bounded SSE connections, multiplexed feeds, version cursors, contract JSON, and `list_own` (one account's private actors of a type, newest first, with views). Raw stored events require an administrator. |
 | Storage | A namespaced, digest-checked migration, bounded connection pool, database clock for leases, transaction timeouts, `SKIP LOCKED`, notifications, and polling recovery. |
 | Operations | Inspection, history, blocking, destruction, bounded export, retention primitives, failed-message retry, work/effect resolution, runtime counters, and a local load probe. |
 
@@ -116,7 +124,10 @@ Under `/v1/w/{workspace}`:
 - `GET /actors/{type}/{key}/view` reads the authorized view.
 - `GET /actors/{type}/{key}/events` streams authorized view snapshots.
 - `GET /feed?topics=type:key,type:key` multiplexes up to 16 actors.
-- `POST /work/{queue}/claim` accepts optional `target` and `max`.
+- `POST /actors/{type}/{key}/actions/{message}` also accepts `fence:
+  {item_id, epoch}` for an executor's call fenced by its claim.
+- `POST /work/{queue}/claim` accepts optional `target`, `max`, and `wait_ms`
+  (a long poll, at most 30 000).
 - `POST /work/{queue}/{uid}/{item}/heartbeat` accepts `epoch` and optional
   `progress: {"seq": n, "value": ...}`.
 - `POST /work/{queue}/{uid}/{item}/finish` accepts `epoch` and `outcome`.
@@ -211,15 +222,19 @@ following work remains:
   cancellation, reconciliation, permission, and receipt contracts. Keep wallet,
   training, access, and artifact rules in their existing owning crates.
 - Add cron/timezone/DST schedules, configurable alarm catch-up policies,
-  long-poll claims, wait-for-inbox results, a network client, and exact proposed
-  wire-protocol conformance where it differs from the routes above.
+  wait-for-inbox results, and exact proposed wire-protocol conformance where
+  it differs from the routes above. (Long-poll claims and the network client
+  landed with the Mac-jobs consumer.)
 - Add per-message schema derivation/compatibility checks, complete schema
   metadata, offline transition replay, full export/import, and a versioned
   restore procedure. Manual schema methods default to permissive metadata;
   Rust deserialization and handler checks enforce actual inputs.
 - Add complete retention, compaction, archival and privacy-erasure policies,
   operational backlog/latency metrics, readiness, and deployment dashboards.
-- Qualify multi-process restart/crash recovery, database outages and failover,
+- `tests/multiprocess.rs` kills an executor process and runtime processes with
+  SIGKILL mid-work (`actors-crash`): fenced expiry and a single reclaim, and
+  every queued message applied exactly once across killed and parallel
+  runtimes. Still to qualify: database outages and failover,
   rolling deployment, reconnect behavior, and realistic hot-key/fanout loads
   on the intended deployment. Current tests exercise concurrency and recovery
   transitions on an isolated local database; they are not a production soak.
