@@ -271,8 +271,12 @@ class NativeRenderer(
         // A card's background draws with its corner radius.
         val radius = style.optInt("radius", 0)
         style.objectOrNull("background")?.let {
-            if (radius > 0) view.background = context.rounded(color(it), radius.toFloat())
-            else view.setBackgroundColor(color(it))
+            if (radius > 0) {
+                view.background = context.rounded(color(it), radius.toFloat())
+            } else {
+                view.setBackgroundColor(color(it))
+            }
+            Unit
         }
             ?: if (!kind.startsWith("button") && kind != "transcript") view.setBackgroundColor(Color.TRANSPARENT) else Unit
         (mounted.text ?: view as? TextView)?.let { text ->
