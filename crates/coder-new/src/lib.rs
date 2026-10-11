@@ -27,6 +27,7 @@ mod demo;
 pub mod file_tools;
 pub mod fleet;
 mod fleet_app;
+mod git_guard;
 pub mod github_tool;
 pub mod issue_run;
 pub mod jev_plugin;
