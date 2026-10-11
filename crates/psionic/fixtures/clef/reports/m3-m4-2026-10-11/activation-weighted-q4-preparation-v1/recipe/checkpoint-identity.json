@@ -1,0 +1,185 @@
+{
+  "schema": "clef.checkpoint-identity-only.v1",
+  "revision": "0b331204bb13fbd2ca93a64df1956f5b55478ce5",
+  "status": "complete",
+  "artifacts": {
+    "README.md": {
+      "sha256": "16ee04d296b1ef5edcdb3c4d3d3cd369acdc627fb5d255b34264a73e224d821a",
+      "hash_rechecked_this_run": true,
+      "bytes": 11105,
+      "inode": 2660792819,
+      "mtime_ns": 1791701167083236446,
+      "ctime_ns": 1791701167083946450
+    },
+    "config.json": {
+      "sha256": "c42e88892bd3fd84e8276b2ad90df58c1c3b797676ea161035006a72ad468c58",
+      "hash_rechecked_this_run": true,
+      "bytes": 3688,
+      "inode": 2660792883,
+      "mtime_ns": 1791701167547848289,
+      "ctime_ns": 1791701167548495793
+    },
+    "generation_config.json": {
+      "sha256": "dc36854b2b25176764cfeeda32a3d80fb4fcffbef2b00d55c6614079bf21eb9f",
+      "hash_rechecked_this_run": true,
+      "bytes": 214,
+      "inode": 2660792982,
+      "mtime_ns": 1791701167924281047,
+      "ctime_ns": 1791701167924898759
+    },
+    "joint_head.safetensors": {
+      "sha256": "a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+      "hash_rechecked_this_run": true,
+      "bytes": 256125024,
+      "inode": 2660793026,
+      "mtime_ns": 1791701177848507007,
+      "ctime_ns": 1791701177851679857
+    },
+    "joint_head_config.json": {
+      "sha256": "890be585d75b981201eb96a35f98a9967afe37bc8d220cfdea2e72d56507534f",
+      "hash_rechecked_this_run": true,
+      "bytes": 119,
+      "inode": 2660798029,
+      "mtime_ns": 1791701178131360485,
+      "ctime_ns": 1791701178132006905
+    },
+    "joint_schema_model.py": {
+      "sha256": "0e304cf7c6500e8bb59bef7e2afd2c6373f82596dfb3b57d1aa93c175e2dc3a3",
+      "hash_rechecked_this_run": true,
+      "bytes": 23263,
+      "inode": 2660800147,
+      "mtime_ns": 1791701178455236176,
+      "ctime_ns": 1791701178455899763
+    },
+    "model-00001-of-00012.safetensors": {
+      "sha256": "54d83c1d36631de231876217a8e0c2483eccee8746369a482b79442bdfc5d958",
+      "hash_rechecked_this_run": false,
+      "bytes": 2542796928,
+      "inode": 2660803929,
+      "mtime_ns": 1791701255735858821,
+      "ctime_ns": 1791701255737118911
+    },
+    "model-00002-of-00012.safetensors": {
+      "sha256": "464086af08be8e2ec14960a4dcff083ebc39974ade00d79d35497385f960ab3a",
+      "hash_rechecked_this_run": false,
+      "bytes": 4842451920,
+      "inode": 2660856448,
+      "mtime_ns": 1791701411483900392,
+      "ctime_ns": 1791701411486633865
+    },
+    "model-00003-of-00012.safetensors": {
+      "sha256": "092212d3a02fafacd6424723eda59d60e5282d2068d68f0e37cb891f63bbb658",
+      "hash_rechecked_this_run": false,
+      "bytes": 4965227944,
+      "inode": 2661018123,
+      "mtime_ns": 1791701568116390712,
+      "ctime_ns": 1791701568118010895
+    },
+    "model-00004-of-00012.safetensors": {
+      "sha256": "d06ff197668c782145fafa74bba61bbc296fb27e39afb15fd522918ce3514dc5",
+      "hash_rechecked_this_run": false,
+      "bytes": 4912819264,
+      "inode": 2661092768,
+      "mtime_ns": 1791701725985837796,
+      "ctime_ns": 1791701725987420977
+    },
+    "model-00005-of-00012.safetensors": {
+      "sha256": "cc693b8829614a72e0c2be303fb290cf05dbb4d7ded872a817b97bb222a78427",
+      "hash_rechecked_this_run": false,
+      "bytes": 4986198544,
+      "inode": 2661153066,
+      "mtime_ns": 1791701920079442577,
+      "ctime_ns": 1791701920083345864
+    },
+    "model-00006-of-00012.safetensors": {
+      "sha256": "e7cce15da2443cb8b84aaed66a9a71f0c87dc9d043f83b5f58f4a89f64ba60ad",
+      "hash_rechecked_this_run": false,
+      "bytes": 4912819320,
+      "inode": 2661169883,
+      "mtime_ns": 1791702100355570136,
+      "ctime_ns": 1791702100357149068
+    },
+    "model-00007-of-00012.safetensors": {
+      "sha256": "75fc7e76b57d5d17a5d85fff3e879d07dd33edc885a8ee04ad437a899bcd5307",
+      "hash_rechecked_this_run": false,
+      "bytes": 4932703272,
+      "inode": 2661193993,
+      "mtime_ns": 1791702291619699602,
+      "ctime_ns": 1791702291620955405
+    },
+    "model-00008-of-00012.safetensors": {
+      "sha256": "189b15cb6b1af48d5f118951446e15639bfeaf76081d5f20aed1f1b4253afe1d",
+      "hash_rechecked_this_run": false,
+      "bytes": 4966314576,
+      "inode": 2661216617,
+      "mtime_ns": 1791702475746799049,
+      "ctime_ns": 1791702475750273367
+    },
+    "model-00009-of-00012.safetensors": {
+      "sha256": "8101e2664bb14684fc7051f2e1f84903dbdf5489b17cae3212ac08a0af744a60",
+      "hash_rechecked_this_run": false,
+      "bytes": 4964162248,
+      "inode": 2661230729,
+      "mtime_ns": 1791702658519658850,
+      "ctime_ns": 1791702658525456098
+    },
+    "model-00010-of-00012.safetensors": {
+      "sha256": "a8e69016a1a8dab1c9ce8dd151c0d3224412ab864cf06d3a5e2b8a5775cfdfb8",
+      "hash_rechecked_this_run": false,
+      "bytes": 4933789824,
+      "inode": 2661242951,
+      "mtime_ns": 1791702834115768213,
+      "ctime_ns": 1791702834120300027
+    },
+    "model-00011-of-00012.safetensors": {
+      "sha256": "b328d21c36ab384696e40a30ac86a95aaf6dd82da89438ba009cb97d87c1d6b9",
+      "hash_rechecked_this_run": false,
+      "bytes": 4965228032,
+      "inode": 2661253662,
+      "mtime_ns": 1791703017939067529,
+      "ctime_ns": 1791703017942782665
+    },
+    "model-00012-of-00012.safetensors": {
+      "sha256": "7505eed910a84ea18e66953572476f8a8a6a6ef54192a6643d6e9cd21a3bb978",
+      "hash_rechecked_this_run": false,
+      "bytes": 2789094896,
+      "inode": 2661263369,
+      "mtime_ns": 1791703122832262601,
+      "ctime_ns": 1791703122836693871
+    },
+    "model.safetensors.index.json": {
+      "sha256": "a600c6626eb1eb653a3f078ab3dd1c7a8fab2e71185c7ef3aa923a39aaa637be",
+      "hash_rechecked_this_run": true,
+      "bytes": 111110,
+      "inode": 2661275030,
+      "mtime_ns": 1791703123338473577,
+      "ctime_ns": 1791703123339196753
+    },
+    "processor_config.json": {
+      "sha256": "d89ef49ce9cd37fbf510158e13c1ef063d9286411c1ec9049932dbe0487143b1",
+      "hash_rechecked_this_run": true,
+      "bytes": 1191,
+      "inode": 2661275048,
+      "mtime_ns": 1791703123744112309,
+      "ctime_ns": 1791703123744799235
+    },
+    "tokenizer.json": {
+      "sha256": "06b9509352d2af50381ab2247e083b80d32d5c0aba91c272ca9ff729b6a0e523",
+      "hash_rechecked_this_run": true,
+      "bytes": 19989325,
+      "inode": 2661275136,
+      "mtime_ns": 1791703126186363317,
+      "ctime_ns": 1791703126188681391
+    },
+    "tokenizer_config.json": {
+      "sha256": "91a08f825d370d085d692e04cf117cdd7faad7bf18e996f1e6031b6dab03db72",
+      "hash_rechecked_this_run": true,
+      "bytes": 1075,
+      "inode": 2661275270,
+      "mtime_ns": 1791703126523992261,
+      "ctime_ns": 1791703126524667104
+    }
+  },
+  "source_reference_sha256": "00b81001171a40b4ce833d94790d9782880c783df28ab360d6bcfbde38e879f9",
+  "extraction": "Only checkpoint artifact identity fields are copied; no request, answer, logit, or error fields are stored."
+}

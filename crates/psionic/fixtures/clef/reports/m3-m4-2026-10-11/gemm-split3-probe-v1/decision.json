@@ -1,0 +1,25 @@
+{
+  "decision": "reject product integration: no demonstrated material speed gain",
+  "correctness": "all 19 initial checks and 240 timed output gates passed the frozen bounds",
+  "fixed_down_absolute_error_bound": 0.001,
+  "weighted_down_max_absolute_difference": 8.106231689453125e-06,
+  "small_down_max_absolute_difference": 1.52587890625e-05,
+  "unchanged_gate_up_activation_bit_differences": 0,
+  "paired_full_ffn_ratios": {
+    "512": 1.2231638984623152,
+    "1024": 1.0007249171817407,
+    "2048": 1.0745348341013359
+  },
+  "predeclared_speed_gate_passed": false,
+  "full_model_or_latency_acceptance": false,
+  "followup_variant_sweep_planned": false,
+  "runtime_seconds": 9.606293791999999,
+  "peak_owned_group_accounted_bytes": 1116898696,
+  "max_recorded_device_allocated_bytes": 990822400,
+  "memory_or_cleanup_errors": false,
+  "limitations": [
+    "Actual layer-0 Flash weights with deterministic synthetic activations.",
+    "Shared-machine timing: unchanged gate/up controls also vary substantially.",
+    "No thermal, frequency, bandwidth, or scheduling cause was established."
+  ]
+}

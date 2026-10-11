@@ -1,0 +1,49 @@
+{
+  "status": "archived_preparation_requires_new_work_authorization",
+  "checkpoint": {
+    "repository": "Cloudflare/clef",
+    "revision": "0b331204bb13fbd2ca93a64df1956f5b55478ce5"
+  },
+  "quantizer": {
+    "repository": "ggml-org/llama.cpp",
+    "revision": "62a6f74bab748b1755f4cd8dfc0871caf865c6c8",
+    "entrypoint": "ggml_quantize_chunk(GGML_TYPE_Q4_K, rows, input_columns, importance_f32)",
+    "importance": "Per-input-column mean(x*x) from BF16 forward-pre-hooks, f64 CPU accumulation, f32 export.",
+    "zero_importance_blocks": "Verified finite and zero-valued by independent decoder."
+  },
+  "path_tokens": {
+    "<OPENAGENTS_WORKTREE>": "Public OpenAgents checkout containing retained guard/e2e helpers",
+    "<REFERENCE_ENV>": "Pinned Python environment: Torch2.9.1, Transformers5.10.2, Accelerate1.15.0, NumPy2.5.4",
+    "<CLEF_EXPERIMENTS>": "Persistent scratch containing pinned public checkpoints and the prior quantizer bridge recipe",
+    "<HOME>": "Local home root if a retained metadata record needs it"
+  },
+  "source_policy": "Published recipe files preserve the executed source except documented absolute-path token substitution. Rehydrate tokens to reviewed local paths before running; source hashes then change and must be recorded. Checkpoint inode/timestamp identities are local evidence: on another machine verify original published SHA256 values and create a fresh identity record, never reuse local stat identity.",
+  "dependencies": [
+    "OpenAgents crates/psionic/fixtures/clef/tools/mac_quiet_bench.py and mac_memory.py at retained hashes",
+    "OpenAgents e2e.py at encoded overlap_helper_sha256",
+    "Previously published fixed-down-q6-v1 pinned bridge build recipe",
+    "Previously published cpu-attribution-v1 gguf_import.py and independent Q4 decoder"
+  ],
+  "guard": {
+    "model_group_gib": 72,
+    "starting_available_gib": 84,
+    "available_floor_gib": 12,
+    "mps_limit_gib": 60,
+    "cpu_threads": 2,
+    "full_deadline_seconds": 1800,
+    "pilot_deadline_seconds": 300,
+    "disk_floor_gib": 25,
+    "quiet_lease": false,
+    "owned_process_groups_only": true
+  },
+  "candidate_recipe_not_executed": {
+    "matrices": "All192 FFN gate/up/down matrices from original BF16",
+    "type": "Q4_K",
+    "all_other_payloads": "Preserve byte for byte",
+    "metadata_and_offsets": "Preserve exactly; no tensor sizes change",
+    "estimated_original_ffn_values": 17112760320,
+    "new_artifact_bytes": 19232219200,
+    "required_next_check": "Measure a fixed small real-weight throughput block before proposing full requantization. Do not raise the deadline automatically.",
+    "calibration_selection": "No acceptance cases/errors or development activations used."
+  }
+}

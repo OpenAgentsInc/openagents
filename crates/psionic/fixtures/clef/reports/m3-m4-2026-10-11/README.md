@@ -3,10 +3,10 @@
 This package records correctness checks on a shared Mac M5 and capacity checks
 on an RTX 4080. The official Clef 27B BF16 reference completed all 40 text
 requests (104 answers) and six image requests (14 answers). Native 27B passed
-the image checks, but both 27B artifacts fail the strict text gate. The original
+the image checks, but both 27B artifacts fail the original BF16 text comparison. The original
 Q4 matches 93 of 104 top answers, with maximum probability difference 0.217407.
 The fixed FFN-down Q6 candidate improves this to 97 of 104 and 0.169436, which
-still fails both requirements.
+still fails both original diagnostic bounds.
 An independent BF16-backbone/CPU-f32-head diagnostic confirms the large native
 gap. Both earlier Flash HTTP modes passed
 against the existing CPU reference. Standalone direct-solve DeltaNet passed its
@@ -16,6 +16,46 @@ Full-model prefix reuse and continuous batching pass the HTTP comparisons
 for Flash and 27B. A shared-machine latency comparison favors fused
 attention and shape-selected GEMM, but misses the absolute M3 targets. These
 files do not establish completion of M3 or M4.
+
+## Runtime acceptance and separate artifact quality
+
+On 2026-10-11, the owner clarified that M4 tests runtime execution against the
+same pinned Q4 model. Quantized-model quality moves to
+[#11306](https://github.com/OpenAgentsInc/openagents/issues/11306), judged on
+routes-v5 and the chat goldens. Historical BF16 failures remain below as
+artifact diagnostics. The M4 speed target remains 1.5× Ollama; current ratios
+of 1.250× / 1.144× / 0.996× do not meet it.
+
+The sub-1e-6 result on all 104 questions compares staged and fused scoring
+heads with identical trunk execution. It is not independent full-runtime
+coverage. The independent Transformers CPU-f32 execution of the same GGUF
+currently covers one case, text-014: top answer agrees with Metal, maximum
+probability difference is `0.000163851`, and maximum logit difference is
+`0.001329958`. No independent same-Q4 full104 comparison is established here.
+Prefix and batching checks compare native execution against native execution.
+
+The [activation-weighted Q4 preparation](activation-weighted-q4-preparation-v1/README.md)
+preserves the frozen corpus, recipes, and checks. The two-record pilot passed;
+the full collector was deliberately stopped after 70 of 96 records and
+exported no moments. No weighted-Q4 model was generated. Future work belongs
+to #11306 and uses the product evaluation scope above.
+
+## Sustained M5 command timing
+
+The [unprofiled sustained experiment](unprofiled-sustained-v1/README.md) completes
+512 timed FFNs using actual Flash layer-0 weights. Successive 16-command GPU
+medians in the first waited phase rise from about 11 ms to 24 ms. Four-deep
+queueing reduces median gaps between command envelopes from about
+0.22–0.26 ms to 0.015 ms, but sustained command medians remain 26–27 ms.
+Submission gaps alone do not explain the slowdown, and a profiler is not
+required to reproduce it. This does not establish a thermal or clock cause.
+
+All final output comparisons, finite scans, and immutable-input checks pass.
+Phase checks interrupt the sequence and may alter device conditions; the
+four-deep timestamp envelopes are not measurements of active GPU occupancy.
+The single shared-machine run takes 14.52 seconds, peaks at 867,042,456 bytes
+of sampled process accounting, and stops its owned child group. It requests
+no quiet lease and changes no desktop app, system service, or power setting.
 
 ## Fixed mixed-precision candidate and bounded kernel probes
 
@@ -65,6 +105,15 @@ comparisons are bitwise identical. Full-FFN baseline/swizzle medians are
 integration. The probe preserves all five ABBA rounds and includes residual
 addition, tails, immutable inputs, and output guards. Both experiments finish
 within their unchanged 2 GiB process caps and stop their owned child groups.
+
+The [three-way parallel K split](gemm-split3-probe-v1/README.md) partitions the
+Flash down projection into three 4,096-element products and a fixed f32
+reduction. All 19 correctness checks and 240 timed output checks pass;
+weighted down differences stay below `8.11e-6`. It fails the fixed speed gate:
+paired full-FFN candidate/baseline medians are `1.223 / 1.001 / 1.075` at
+512/1,024/2,048 tokens. Unchanged gate/up controls also vary, so these data
+establish no material gain and no hardware cause. The patch remains unapplied.
+Its 9.61-second run stays within the 2 GiB cap and cleans up all owned children.
 
 All probes use shared GPU/build and bounded memory leases as appropriate.
 None uses a quiet lease or changes desktop applications or system services.
@@ -314,7 +363,8 @@ Independent GGUF and native CPU final rows agree at relative L2 error
 `1.054e-5`, with all 64 native layer outputs compared and hashed. Both bundles
 retain bounded readers, import-convention checks, model/source identities,
 guard receipts, and layer statistics. Raw intermediate tensors stay outside
-Git. The quantization diagnosis does not change the issue's accuracy gate.
+Git. Under the owner's clarified scope, this artifact diagnosis belongs to
+#11306; M4 validates execution against the same Q4 model.
 
 ## Stage 5 chunk-size comparison
 
@@ -500,7 +550,7 @@ Clef Flash.
 | [Flash default](flash-e2e-stage2/default.jsonl) | 40 requests, 104/104 top answers agree with the committed Flash CPU Q4_K_M reference; maximum probability difference `0.0007844769703932997`. Passed. |
 | [Flash fused attention and shape-selected GEMM](flash-e2e-stage2/fused-shapes.jsonl) | 40 requests, 104/104 top answers agree with the same CPU reference; maximum probability difference `0.0009549690061149141`. Passed. |
 | [Native 27B images](native27b-image-text-parity/0-images.json) | Six requests, 14/14 top answers agree with the official BF16 reference, exact input-token counts, and all ten HTTP refusals passed. Maximum probability difference `0.001797753043799255` is diagnostic; the image gate requires top-answer and token agreement plus refusals. Passed. |
-| [Native 27B text](native27b-image-text-parity/1-text.json) | 40 requests, 94/104 top answers agree with the official BF16 reference; input-token counts agree. Maximum probability difference `0.2199534834774498`. M4's stated BF16 gate applies the original M1 bounds: 100% top-answer agreement and maximum difference at most `0.02`. Failed. |
+| [Native 27B text](native27b-image-text-parity/1-text.json) | 40 requests, 94/104 top answers agree with the official BF16 reference; input-token counts agree. Maximum probability difference `0.2199534834774498`. The original BF16 comparison requires 100% top-answer agreement and maximum difference at most `0.02`. Failed as an artifact diagnostic; the owner later moved this quality work to #11306. |
 
 The [Flash summary](flash-e2e-stage2/summary.json) and
 [request and server records](flash-e2e-stage2/records.jsonl) retain both modes,

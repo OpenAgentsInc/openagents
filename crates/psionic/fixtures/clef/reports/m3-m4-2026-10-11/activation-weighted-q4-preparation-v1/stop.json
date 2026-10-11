@@ -1,0 +1,23 @@
+{
+  "status": "stopped_by_owner_scope_change",
+  "reason": "Owner separated same-Q4 runtime correctness from BF16 artifact-quality work; no further calibration or artifact generation was requested.",
+  "completed_records": 70,
+  "expected_records": 96,
+  "completed_tokens": 28465,
+  "last_completed_record": "calibration-instruction_coverage-09",
+  "raw_collector_status_preserved": "running",
+  "raw_guard_status_preserved": "failed",
+  "guard_signal": 15,
+  "signal_target": "Verified owned guard process only; the guard cleaned up its owned model process group.",
+  "guard_seconds": 304.2168573750023,
+  "peak_accounted_bytes": 57873779184,
+  "minimum_available_bytes": 24902582272,
+  "owned_group_stopped": true,
+  "leases_released": true,
+  "post_stop_source_hashes_match": true,
+  "full_moments_files_persisted": false,
+  "full_moments_limitation": "This collector writes moments only after complete collection. The partial request receipts persist; in-memory sums were not exported.",
+  "no_generated_model": true,
+  "full_guard_sha256": "6c9599c5dd1a72b5e0b0454a6fd465519e2caf83fd23ee46ffce1532c0164830",
+  "full_receipt_sha256": "03098914ad58941ac0953dd8c64b5ee2c9364b0e7f741ec4f72b15334111dc86"
+}

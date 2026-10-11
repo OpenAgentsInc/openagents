@@ -1,0 +1,70 @@
+{
+  "schema": "clef.activation-owned-guard.v1",
+  "status": "complete",
+  "mode": "validate",
+  "command": [
+    "<REFERENCE_ENV>/bin/python",
+    "<CLEF_EXPERIMENTS>/activation-weighted-q4-v1/validate_corpus.py",
+    "--corpus",
+    "<CLEF_EXPERIMENTS>/activation-weighted-q4-v1/corpus-v2",
+    "--output",
+    "<CLEF_EXPERIMENTS>/activation-weighted-q4-v1/corpus-validation-4/encoded.json"
+  ],
+  "max_group_gib": 2,
+  "minimum_start_gib": 14,
+  "minimum_available_gib": 12,
+  "deadline_seconds": 60,
+  "disk_floor_gib": 25,
+  "leases": [
+    "disk",
+    "memory"
+  ],
+  "source_sha256": {
+    "collect.py": "e1ca3e3677e4bccf5d4b3d4d0850d766bf82a61c8fa458163089b946f0846e6b",
+    "validate_corpus.py": "a5380c433553fb1a25d534f45863255e155f123ea7348675c6541a992152fc5d",
+    "moments.py": "672557f4fb755b335f988256132618b270f2fb63926b985e4f5decf49e3ffcbe",
+    "test_moments.py": "4533947d7da5915f816c4395b678a401eca03ca939b8b1d28e7cba0f36d42793",
+    "common.py": "987eb15633be5120561401ca3ada85416207f24c969cf0ca4697355bced52a60",
+    "make_corpus.py": "335de8df8ca26a4e939f497755852ce875ddd4e09969f2e01f17615c52315632",
+    "guard.py": "1ccb8e2864198d967f333fa8571c127e6a716e9a3ff3d3824e27a54cb6851365"
+  },
+  "guard_dependency_sha256": {
+    "mac_quiet_bench.py": "ce5f832d0eeb2ec5c954755c07d00fafcc2bb1c59d6aa6c1d993a2f84bcce9fb",
+    "mac_memory.py": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd"
+  },
+  "before": {
+    "available_memory_bytes": 106496491520,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 4537353,
+      "inactive": 1923975,
+      "speculative": 38702
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "owned_pid": 18199,
+  "exit_code": 0,
+  "source_hashes_rechecked_after_run": true,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 18199,
+    "max_rss_bytes": 2147483648,
+    "peak_rss_bytes": 713392128,
+    "peak_physical_footprint_bytes": 658310272,
+    "peak_accounted_bytes": 713392128,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 5,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 106029334528,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "elapsed_seconds": 2.5155924589998904
+}

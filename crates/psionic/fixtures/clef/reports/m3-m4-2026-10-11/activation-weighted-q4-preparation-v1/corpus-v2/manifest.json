@@ -1,0 +1,30 @@
+{
+  "schema": "clef.independent-activation-corpus-manifest.v1",
+  "status": "authored_not_encoded_or_executed",
+  "corpus_sha256": "0526ae55340a4f3805a4f0c538bf55d5ef966484487d666028bff4aa6fd130aa",
+  "generator_sha256": "335de8df8ca26a4e939f497755852ce875ddd4e09969f2e01f17615c52315632",
+  "calibration_records": 96,
+  "development_records": 24,
+  "calibration_families": [
+    "document_topic",
+    "stock_matching",
+    "code_behavior",
+    "message_intent",
+    "schedule_conflict",
+    "instruction_coverage",
+    "passage_relevance",
+    "work_readiness"
+  ],
+  "development_families": [
+    "dependency_order",
+    "route_endpoint",
+    "statement_consistency",
+    "audience_register"
+  ],
+  "max_tokens": 1024,
+  "seed": "fixed enumerated scenarios; no PRNG",
+  "model_outputs_used": false,
+  "acceptance_examples_used": false,
+  "acceptance_errors_used": false,
+  "limitation": "Small synthetic corpus; no claim to cover the full production distribution."
+}

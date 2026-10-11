@@ -1,0 +1,9 @@
+{
+  "python_ast": "passed",
+  "summary_complete_fixture": "passed",
+  "missing_duplicate_and_failed_runs_refused": true,
+  "gpu_gap_formula_checked": true,
+  "source_only": true,
+  "build_executed": false,
+  "gpu_executed": false
+}

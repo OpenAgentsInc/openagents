@@ -1,0 +1,154 @@
+{
+  "status": "passed",
+  "scope": "Synthetic packing and decoder checks; no model execution or accuracy claim.",
+  "model_payload_bytes_read": 0,
+  "gpu_executed": false,
+  "quantizer": {
+    "revision": "62a6f74bab748b1755f4cd8dfc0871caf865c6c8",
+    "manifest_sha256": "19d3cf0edd31a8983a79973a33e0cec5cb6521069a66212efe932815e27d6fdd",
+    "images": {
+      "quantize": {
+        "path": "<CLEF_EXPERIMENTS>/q4-down-q6-regeneration/helper-build-2/build/cmake/bin/libggml-base.0.26.0.dylib",
+        "sha256": "99beb308a24d8edfeee73d96c03a01a6f788d8b08c6bc22e0037106013dc8c29"
+      },
+      "decode": {
+        "path": "<CLEF_EXPERIMENTS>/q4-down-q6-regeneration/helper-build-2/build/cmake/bin/libggml-base.0.26.0.dylib",
+        "sha256": "99beb308a24d8edfeee73d96c03a01a6f788d8b08c6bc22e0037106013dc8c29"
+      },
+      "validate": {
+        "path": "<CLEF_EXPERIMENTS>/q4-down-q6-regeneration/helper-build-2/build/cmake/bin/libggml-base.0.26.0.dylib",
+        "sha256": "99beb308a24d8edfeee73d96c03a01a6f788d8b08c6bc22e0037106013dc8c29"
+      }
+    },
+    "adapter_sha256": "ca5da00b068b3270e76872278d1470a88279a313002a7f796fc1d286146cb9f6"
+  },
+  "independent_decoder": {
+    "repository": "ggml-org/llama.cpp",
+    "revision": "5d246a792ddf839e87fb777681dd2a9ac7f7eb5e",
+    "path": "gguf-py/gguf/quants.py",
+    "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/5d246a792ddf839e87fb777681dd2a9ac7f7eb5e/gguf-py/gguf/quants.py",
+    "sha256": "2c927a1b3d9f0920dcf4007fb686e1b0999333e9f65ce43dcc689900c0beae8b",
+    "purpose": "Use the original Q4_K NumPy decoder; only detach its inherited registration wrapper."
+  },
+  "cases": [
+    {
+      "width": 5120,
+      "rows": 3,
+      "importance": "zero",
+      "values": 15360,
+      "packed_bytes": 8640,
+      "packed_sha256": "4d520702c1723922bdaac63cf38874969d4734825e4d4bae7df11a1fdedbe464",
+      "decoded_sha256": "0693f6bfa2117a9b14f9ceca13d3a5611de5dca226bf999f20a7f615fbd08dff",
+      "rowwise_packed_exact": true,
+      "independent_decode_exact": true,
+      "guard_bytes_unchanged": true,
+      "finite": true,
+      "weighted_squared_error": 0.0
+    },
+    {
+      "width": 5120,
+      "rows": 3,
+      "importance": "ones",
+      "values": 15360,
+      "packed_bytes": 8640,
+      "packed_sha256": "53361020b211dc23c01a7b19929bae55d002649480f6451b51fe1f30a171f441",
+      "decoded_sha256": "b2288f1824b1eced38885081aa79c5a7d2e3d20d81631611929e54a6811e6cb9",
+      "rowwise_packed_exact": true,
+      "independent_decode_exact": true,
+      "guard_bytes_unchanged": true,
+      "finite": true,
+      "weighted_squared_error": 63.466795490832396
+    },
+    {
+      "width": 5120,
+      "rows": 3,
+      "importance": "sparse_blocks",
+      "values": 15360,
+      "packed_bytes": 8640,
+      "packed_sha256": "e04157f1b0eefaba2de7e9c2de279da7b80e9fd38f2645ddebbe2009d0488570",
+      "decoded_sha256": "8c17190f68359b439f8849e8d75096c71b32843e0d7af90776a255af0466de0b",
+      "rowwise_packed_exact": true,
+      "independent_decode_exact": true,
+      "guard_bytes_unchanged": true,
+      "finite": true,
+      "weighted_squared_error": 32.56804908871358
+    },
+    {
+      "width": 5120,
+      "rows": 3,
+      "importance": "mixed",
+      "values": 15360,
+      "packed_bytes": 8640,
+      "packed_sha256": "95bcb68548bdbd304d9d783dfbd0516cb5bc30cb79273a8d77e651f9d2f3e922",
+      "decoded_sha256": "c88d37f4afebe22eb93ee8dc735151c1cc8ea4f12c450eb42a898aa628569c03",
+      "rowwise_packed_exact": true,
+      "independent_decode_exact": true,
+      "guard_bytes_unchanged": true,
+      "finite": true,
+      "weighted_squared_error": 268.4610486833931
+    },
+    {
+      "width": 17408,
+      "rows": 3,
+      "importance": "zero",
+      "values": 52224,
+      "packed_bytes": 29376,
+      "packed_sha256": "f51869f37cece757242bb58dd9b1329fe1bb750fdebe56c372eeba2252c6ce5e",
+      "decoded_sha256": "3a5c996a2f0859426d2f30527d3dd653ce6068b0c0fc48758c4500aa79d1e979",
+      "rowwise_packed_exact": true,
+      "independent_decode_exact": true,
+      "guard_bytes_unchanged": true,
+      "finite": true,
+      "weighted_squared_error": 0.0
+    },
+    {
+      "width": 17408,
+      "rows": 3,
+      "importance": "ones",
+      "values": 52224,
+      "packed_bytes": 29376,
+      "packed_sha256": "74df596c245b35272ff1401bc037229743dda86351e569a7bcd73eab653eb09b",
+      "decoded_sha256": "713cb60e78f65f80b7384dfbf671605f8fa176eb19c4451d7a7ed80b289db2c5",
+      "rowwise_packed_exact": true,
+      "independent_decode_exact": true,
+      "guard_bytes_unchanged": true,
+      "finite": true,
+      "weighted_squared_error": 220.30200306607736
+    },
+    {
+      "width": 17408,
+      "rows": 3,
+      "importance": "sparse_blocks",
+      "values": 52224,
+      "packed_bytes": 29376,
+      "packed_sha256": "9d0b0be4fe41b3171dba0b8014c0a7dcd5de2eeadda127f43566c0b9c9b1c576",
+      "decoded_sha256": "6969714bfe69f2b7f8c796603552dee23d8c58db77744d9aa933c66db3807836",
+      "rowwise_packed_exact": true,
+      "independent_decode_exact": true,
+      "guard_bytes_unchanged": true,
+      "finite": true,
+      "weighted_squared_error": 112.20127865890596
+    },
+    {
+      "width": 17408,
+      "rows": 3,
+      "importance": "mixed",
+      "values": 52224,
+      "packed_bytes": 29376,
+      "packed_sha256": "740288137779ee640752121279992eed2e595cf4ad526dfa2f24fb0644e9f4c8",
+      "decoded_sha256": "0613032423c19b5991bbc0aaaa949181ef92e0f0f3bccbc73ca9928799ed533d",
+      "rowwise_packed_exact": true,
+      "independent_decode_exact": true,
+      "guard_bytes_unchanged": true,
+      "finite": true,
+      "weighted_squared_error": 931.6365078109347
+    }
+  ],
+  "refusals": [
+    "negative",
+    "nan",
+    "infinity"
+  ],
+  "compared_values": 270336,
+  "seconds": 0.05414408299839124
+}

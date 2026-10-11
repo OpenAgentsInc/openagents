@@ -1,0 +1,19 @@
+{
+  "source_sha256": {
+    "kernels.metal": "3eb6be1a4efb767e2d042e38f6f7afd4f46d66c19f81df9a4a0f2ab56e4b7b10",
+    "production-shapes.metal": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+    "production-silu-extract.metal": "fe7844912a63f4219dc05a5a50a5b269ad48a0e3aa5f60cef221ae9223880e61",
+    "production-planner.rs": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac",
+    "probe.swift": "68a212b618137daa7505ea9093f5af99b5525be80230e06b5f24026b649cbe0e",
+    "weights.json": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+    "build.py": "17c803aa2e4f99ef1a811d8e965a1d0844bf00cba8b20c1241ca5851a1e1e2d5",
+    "guard.py": "567dca0777759336cdb508752269bf7d2a5f7b2d11ea338e2600f689fc87c1f8",
+    "manifest.json": "687ce36f67f4a6f1a0433ac855bd370c03238ae8c8d43831afe071bc7c1bcbbd",
+    "summarize.py": "ad464fdff17caf403b8453cc311d771f691dc8ff20b0cf81c29ea0bcf30cf3d7"
+  },
+  "artifacts": {
+    "probe": "e4dffcb29507c14378ea4b775cdab8c6415c3c4a6d9faa9db8bbfc1087979af9",
+    "kernels.metallib": "067b1df6fb9983ef8a5048fbdd3660dc5ce7691ded589e48190d7de6b49b72ce"
+  },
+  "gpu_executed": false
+}

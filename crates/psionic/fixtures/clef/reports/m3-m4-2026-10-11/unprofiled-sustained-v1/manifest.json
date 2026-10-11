@@ -1,0 +1,46 @@
+{
+  "status": "prepared only; no build or GPU execution",
+  "production_sources": [
+    {
+      "path": "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_gemm_shapes.metal",
+      "sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978"
+    },
+    {
+      "path": "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_prefill.metal",
+      "sha256": "623fba25dbe8a230d92f88e840c2c363961f926c3b908089ce8ba3688a3f2865"
+    },
+    {
+      "path": "crates/psionic/crates/psionic-backend-metal/src/clef_gemm.rs",
+      "sha256": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac"
+    }
+  ],
+  "sequence": [
+    1,
+    4,
+    4,
+    1
+  ],
+  "commands_per_phase": 128,
+  "timed_commands": 512,
+  "total_commands": 514,
+  "total_dispatches": 2053,
+  "n": 2048,
+  "hidden": 4096,
+  "ffn": 12288,
+  "down_accumulate": false,
+  "explicit_bytes": 738203648,
+  "limits": {
+    "explicit_bytes": 805306368,
+    "driver_point_bytes": 1073741824,
+    "owned_process_gib": 2,
+    "start_available_gib": 14,
+    "floor_available_gib": 12,
+    "internal_seconds": 50,
+    "outer_seconds": 60
+  },
+  "weight_manifest_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+  "host_timing_records": 512,
+  "profiled": false,
+  "counters": false,
+  "system_settings_changed": false
+}

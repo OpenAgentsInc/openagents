@@ -1343,6 +1343,17 @@ retains model identities, full reference answers and logits, test receipts,
 failed attempts, and the real CUDA admission check. Its manifest records the
 original and published hashes; local machine paths are replaced with labels.
 
+### Runtime acceptance scope
+
+The owner clarified on 2026-10-11 that M4 validates execution against the same
+pinned Q4 model. BF16-versus-Q4 quality is separate artifact work in
+[#11306](https://github.com/OpenAgentsInc/openagents/issues/11306), evaluated
+with routes-v5 and the chat goldens. The 1.5× speed target remains unchanged.
+The existing 104-question, sub-1e-6 result covers scoring-head equivalence;
+independent full-runtime same-Q4 coverage currently includes one case, with
+matching top answer and maximum probability difference `0.000163851`.
+Broader independent runtime coverage remains incomplete.
+
 ### Metal controls and memory
 
 These settings are read when the model loads. Invalid enabled settings stop
@@ -1444,8 +1455,8 @@ BF16 checkpoint at `0b331204bb13fbd2ca93a64df1956f5b55478ce5`. The GGUF is
 `9997675e4c9e9016273372b5fdedbdda7ad14285bc722949e4b9daca62bf3822`.
 Use `--clef-head PATH` to select the official external head for a reference
 comparison. Download verification establishes artifact identity, not answer
-accuracy; the existing H100 comparison against llama.cpp does not satisfy the
-new official BF16 gate.
+accuracy. Keep same-Q4 runtime comparisons separate from BF16 artifact
+diagnostics and product answer-quality evaluation.
 
 ### CUDA and benchmark memory checks
 
@@ -1538,16 +1549,18 @@ complete before the native comparison starts; do not overlap their model loads.
 | Flash compressed FFN versus resident f16 weights | Passed: 34 compared logits are identical. This is a storage/correctness result, not a speed claim. |
 | Flash route versus the CPU goldens, 40 requests and 104 answers per variant | Passed again on Stage 5: default and fused-attention/weight-shape variants both match all 104 top answers. Maximum probability differences are `0.001047681` and `0.000989952`, respectively. These correctness runs overlap CPU diagnostics and are not latency measurements. |
 | Block DeltaNet | **FAILED in the combined mode:** Stage 5 passes alone at maximum logit difference `8.871e-4`, but reaches `1.405e-3` with fused attention, weight-shape GEMM, and compressed FFN. It remains disabled by default. Both sides of the comparison use the same other optimizations. |
-| Fused field head | Passed on Stage 6: Flash and 27B each preserve all 104 raw-logit and HTTP top answers against their staged heads, with maximum logit differences below `1e-6`. The source reduces head waits from 23 to 8. Same-Q4 head parity does not replace BF16 model acceptance. |
+| Fused field head | Passed on Stage 6: Flash and 27B each preserve all 104 raw-logit and HTTP top answers against their staged heads, with maximum logit differences below `1e-6`. The source reduces head waits from 23 to 8. This is head-only parity, not independent full-runtime same-Q4 coverage. |
 | Shorter DeltaNet blocks | **Rejected:** the 16-token experiment reaches `1.084e-3` alone and `1.355e-3` combined, above the unchanged `1e-3` limit. Its patch and failures are retained; product source restores the preceding block32 experiment. |
 | Official 27B BF16 image goldens and native comparison | Passed again on Stage 6 with fused fields: all six cases and 14 native top answers match the official reference and expected labels, with exact token counts. Maximum probability difference is `0.001779430`; all ten media refusal checks pass. |
 | Real 27B CUDA and Auto startup refusal on the RTX 4080 | Passed: both refused before weight upload, without CPU fallback; GPU memory before/after was unchanged. This does not claim that CUDA context creation uses no memory. |
 | Official 27B BF16 text goldens | Generated: all 40 cases and 104 answers, with exact reference token identity. An earlier capture failure is retained separately; the isolated retry and final resumed run passed. |
-| 27B native BF16 text comparison | **FAILED on Stage 6:** both staged and fused field heads match 93 of 104 top answers, with maximum probability difference about `0.217407`. Stage 5 also fails: all 40 cases have matching token counts, but only 93 of 104 top answers match. Maximum probability difference is `0.217196109`; 64 questions exceed `0.02`. Against a separate BF16-backbone/CPU-f32-head reference, 94 of 104 match and maximum difference is `0.216096109`. Controlled original-weight and independently decoded GGUF executions attribute case 014's large miss to quantized backbone weights. Other mismatches are not individually attributed. |
-| Fixed mixed-precision 27B candidate | **FAILED:** applying the upstream fixed Q6 policy to 32 FFN-down matrices improves BF16 agreement to 97/104, but 60 questions exceed 0.02 and maximum probability difference remains 0.169436199. All token counts, 14 image answers, and ten refusal checks pass. The artifact fits the existing 52 GiB cap. Its recipe uses no acceptance errors, and it is not selected for production. [Recipe and full results](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/fixed-down-q6-quality-v1/README.md). |
+| 27B native BF16 text diagnostic (artifact issue #11306) | **FAILED on Stage 6:** both staged and fused field heads match 93 of 104 top answers, with maximum probability difference about `0.217407`. Stage 5 also fails: all 40 cases have matching token counts, but only 93 of 104 top answers match. Maximum probability difference is `0.217196109`; 64 questions exceed `0.02`. Against a separate BF16-backbone/CPU-f32-head reference, 94 of 104 match and maximum difference is `0.216096109`. Controlled original-weight and independently decoded GGUF executions attribute case 014's large miss to quantized backbone weights. Other mismatches are not individually attributed. |
+| Fixed mixed-precision 27B candidate (artifact issue #11306) | **FAILED the original BF16 diagnostic:** applying the upstream fixed Q6 policy to 32 FFN-down matrices improves BF16 agreement to 97/104, but 60 questions exceed 0.02 and maximum probability difference remains 0.169436199. All token counts, 14 image answers, and ten refusal checks pass. The artifact fits the existing 52 GiB cap. Its recipe uses no acceptance errors, and it is not selected for production. [Recipe and full results](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/fixed-down-q6-quality-v1/README.md). |
 | DeltaNet prepared-diagonal probe | **Rejected on speed:** all 26 standalone correctness checks pass, but paired medians are about 1.37–1.41× sequential duration on Flash and 1.86–1.88× on 27B. No product change or full-model claim follows. [Evidence](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/delta-diagonal-probe-v1/README.md). |
 | Exact half lookup-table capability and actual-weight probe | Tiny checks pass. The actual Flash gate also passes all decoded weights and output checks, but LUT matmul takes 198.011 ms versus fixed64 MPP at 2.376 ms, so integration is rejected. Allocation snapshots cannot exclude transient private expansion. [Full probe](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/lut-gate-probe-v1/README.md). |
 | Fixed tile dispatch swizzle | Rejected: all 15 correctness checks and 240 timed output comparisons are bitwise identical, but full-FFN changes are small and inconsistent across 512/1,024/2,048 tokens. [All paired results](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/gemm-swizzle-probe-v1/README.md). |
+| Three-way Flash down K split | Rejected: 19 correctness checks and 240 timed output checks pass, but paired full-FFN candidate/baseline ratios are 1.223 / 1.001 / 1.075 at 512/1,024/2,048 tokens. Unchanged controls are noisy; no gain is established. [Evidence](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/gemm-split3-probe-v1/README.md). |
+| Sustained M5 submission diagnostic | 512 unprofiled FFNs reproduce the command-duration rise. Four-deep queueing reduces command gaps to about 15 µs but sustained commands remain 26–27 ms. Submission gaps alone do not explain the slowdown; no thermal or clock cause is established. All output/guard checks pass. [Full experiment](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/unprofiled-sustained-v1/README.md). |
 | Two-/four-request Flash HTTP batch acceptance | Passed: 15 successful requests per mode have identical full-precision probabilities to serial references. Actual grouped FFN work, disconnect recovery, and saturation recovery pass. Each overload burst returns three `busy` refusals. The run overlaps compilation; no throughput improvement is claimed. |
 | Prefix raw-logit parity and reuse speed | Passed on Flash and 27B: all 21 question comparisons per model have zero logit difference; repeated-state medians improve by 6.83× and 9.42×, respectively. Changed schemas, state changes, eviction, and restored hits pass. Shared-machine runs overlap CPU compilation and export raw logits. |
 | 27B batching | Passed on Stage 5: two and four slots each compare 15 successful responses with identical serial probabilities, actual grouped FFN work, disconnect recovery, and overload recovery. Each burst returns three `busy` refusals. This functional run overlaps CPU diagnostics and does not establish a throughput target. |
@@ -1570,8 +1583,8 @@ nonfinite outputs with unchanged inputs and weights. The cause remains unknown.
 An independent reference with the official BF16 backbone and CPU-f32 head
 completes all 40 cases with strict immutable-input checks. It agrees with the
 original goldens on 103 of 104 top answers, with maximum probability difference
-`0.0043`; the large native gap remains. This diagnostic does not replace or
-relax the BF16 acceptance gate. The evidence bundle retains both references,
+`0.0043`; the large native gap remains. This is artifact-quality evidence for
+#11306, separate from same-Q4 runtime acceptance. The evidence bundle retains both references,
 all probe failures, resource bounds, and exact source and artifact hashes.
 
 On failing cases 014 and 034, the Rust head and the official CPU-f32 head
@@ -1585,7 +1598,8 @@ checkpoint weights through the same f32 operators restores the BF16 answer
 within `0.008714512`. Replacing only the 192 FFN matrices also restores that
 case within `0.0186441` of BF16. These controls attribute this case's large miss
 to quantized backbone weights; they do not establish the cause of every mismatch
-or validate a replacement quantization. The original accuracy gate remains.
+or validate a replacement quantization. The owner moved that artifact-quality
+work to #11306; the M4 runtime speed gate remains open.
 
 ## File-relevance calibration (X1, 2026-10-10)
 

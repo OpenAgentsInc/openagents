@@ -1,0 +1,41 @@
+{
+  "source": "sustained-trace-probe/publishable-trace-attempt-v1/owned-timings.jsonl",
+  "sha256": "447f20884de2fffcd7a967a043e8013da490e498d3c37e9ce196951c85300a62",
+  "instrumented": true,
+  "periods": [
+    {
+      "relative_seconds": [
+        0,
+        1
+      ],
+      "calls": 59,
+      "median_gpu_ms": 13.517291667085374,
+      "median_between_command_gpu_gap_ms": 0.42212500011373777,
+      "maximum_between_command_gpu_gap_ms": 59.51512500178069,
+      "median_encode_ms": 0.039916667446959764
+    },
+    {
+      "relative_seconds": [
+        1,
+        3
+      ],
+      "calls": 66,
+      "median_gpu_ms": 29.485645833119634,
+      "median_between_command_gpu_gap_ms": 0.5018958345317515,
+      "maximum_between_command_gpu_gap_ms": 3.719874999660533,
+      "median_encode_ms": 0.0527708325535059
+    },
+    {
+      "relative_seconds": [
+        3,
+        13
+      ],
+      "calls": 397,
+      "median_gpu_ms": 24.56158333370695,
+      "median_between_command_gpu_gap_ms": 0.4576249993988313,
+      "maximum_between_command_gpu_gap_ms": 7.90449999840348,
+      "median_encode_ms": 0.04649999755201861
+    }
+  ],
+  "claim": "Most slowdown is inside the recorded command GPU interval, not explained by a corresponding increase in typical between-command gaps. This does not isolate active shader time or a physical cause."
+}

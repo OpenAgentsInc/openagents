@@ -1,0 +1,26 @@
+{
+  "status": "source implementation and independent source review complete; parent execution grant pending",
+  "python_ast": "passed",
+  "grid_and_view_bounds_cases": 50,
+  "explicit_peak_bytes": 989863424,
+  "sources": {
+    "README.md": "0f9c81a37dbf47dab350004d3b02a4be92c9b76435943ae8f283d83e9f33daa3",
+    "baseline.metal": "9505a34d21d4d6bd11a532a62549d00c8cafbad90ab92f2bd07cccb4eae30725",
+    "build.py": "7c7d46da15fa2ec39e402817a41abc290e7347e3b376aaaacb1cf0f556077656",
+    "candidate.metal": "f8ce76964d7025476cc44decde63ef1c4e65cc9cdb8f5e1f09690c2cd31bc1cb",
+    "guard.py": "c1d629587624dd17529cc4ad3b4567aeb82f64106fe84a3331792e1aa02ce673",
+    "manifest.json": "8c2c13f96e5f7e5517a6bf6af0c0f2768a1cfb265c6660c6ffab4923dcff1fb5",
+    "prepare_harness.py": "0fa7c7fb87071a71f3ddf6aa125025905593c38b9b975556d88a6ef4cbf1c41d",
+    "probe.swift": "92b3939d163138048c61e5164b6df6ddacf12645b5b05deb57b2348620c8c62d",
+    "production-fixed-extract.metal": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+    "production-planner.rs": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac",
+    "production-shapes.metal": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+    "production-silu-extract.metal": "fe7844912a63f4219dc05a5a50a5b269ad48a0e3aa5f60cef221ae9223880e61",
+    "reduce.metal": "f1fa850b98b65d55adabc1c2817930cd9f4cfc032a2eb8f797f39dabcbfaffd3",
+    "summarize.py": "35aa2ad9ca8e91352bf27a1a241237b6a4c696b2192530f6581db55c76b60f2b",
+    "weights.json": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8"
+  },
+  "build_executed": false,
+  "gpu_executed": false,
+  "independent_review": "mac_bench_review: no actionable blocker in shaders, dispatch/oracle, guard, or summary; not executed"
+}

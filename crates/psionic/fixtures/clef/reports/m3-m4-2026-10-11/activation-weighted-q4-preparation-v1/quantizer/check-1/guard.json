@@ -1,0 +1,57 @@
+{
+  "status": "complete",
+  "command": [
+    "<REFERENCE_ENV>/bin/python",
+    "<CLEF_EXPERIMENTS>/activation-weighted-q4-v1/quantizer/check_weighted.py",
+    "--output",
+    "<CLEF_EXPERIMENTS>/activation-weighted-q4-v1/quantizer/check-1/checks.json"
+  ],
+  "cap_gib": 2,
+  "start_available_gib": 14,
+  "floor_available_gib": 12,
+  "deadline_seconds": 60,
+  "free_disk_floor_gib": 25,
+  "sources": {
+    "<CLEF_EXPERIMENTS>/activation-weighted-q4-v1/quantizer/guard_checks.py": "4a5953de6a4553646a0aae2bf0354d40b8336ea38e01dab302e34e238932238a",
+    "<CLEF_EXPERIMENTS>/activation-weighted-q4-v1/quantizer/check_weighted.py": "29280c5a158f3d5177b72a8448f37797e44482414d29ef80778505a0a32f54b7",
+    "<CLEF_EXPERIMENTS>/activation-weighted-q4-v1/quantizer/weighted_q4.py": "ca5da00b068b3270e76872278d1470a88279a313002a7f796fc1d286146cb9f6",
+    "<OPENAGENTS_WORKTREE>/crates/psionic/fixtures/clef/tools/mac_quiet_bench.py": "ce5f832d0eeb2ec5c954755c07d00fafcc2bb1c59d6aa6c1d993a2f84bcce9fb",
+    "<OPENAGENTS_WORKTREE>/crates/psionic/fixtures/clef/tools/mac_memory.py": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd"
+  },
+  "gpu_executed": false,
+  "model_executed": false,
+  "before": {
+    "available_memory_bytes": 76099223552,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 2774967,
+      "inactive": 1858582,
+      "speculative": 11179
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "exit_code": 0,
+  "source_hashes_rechecked": true,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 35324,
+    "max_rss_bytes": 2147483648,
+    "peak_rss_bytes": 19972096,
+    "peak_physical_footprint_bytes": 9503176,
+    "peak_accounted_bytes": 19972096,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 1,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 76098453504,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 0.2113547920016572
+}
