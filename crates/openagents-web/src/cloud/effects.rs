@@ -500,6 +500,7 @@ impl Directory {
             return Err(SessionError::Unavailable);
         }
         let user = unsafe { libc::geteuid() };
+        let trusted = super::private::trusted_depth(&parts);
         let mut directory = File::open("/").map_err(|_| SessionError::Unavailable)?;
         for (index, component) in parts[1..].iter().enumerate() {
             let Component::Normal(name) = component else {
@@ -509,9 +510,11 @@ impl Directory {
                 .metadata()
                 .map_err(|_| SessionError::Unavailable)?;
             let sticky = parent.uid() == 0 && parent.mode() & 0o1000 != 0;
+            // Above a test's temporary directory only (#11300).
+            let trusted = index < trusted && index + 2 < parts.len();
             if !parent.is_dir()
-                || parent.uid() != 0 && parent.uid() != user
-                || parent.mode() & 0o022 != 0 && !sticky
+                || !trusted && parent.uid() != 0 && parent.uid() != user
+                || !trusted && parent.mode() & 0o022 != 0 && !sticky
             {
                 return Err(SessionError::Unavailable);
             }

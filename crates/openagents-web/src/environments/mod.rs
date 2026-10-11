@@ -53,23 +53,39 @@ use crate::cloud::session::SessionError;
 use crate::cloud::session::github::RepoCallError;
 use crate::ui_page::UiPage;
 
+#[cfg(not(test))]
 static SHOWN: AtomicBool = AtomicBool::new(false);
+
+// Tests build many sites at once, each on its own runtime thread; one
+// site's studio must not put Environments in another's left panel
+// (#11300: `without_a_studio_the_pages_say_so_and_stay_local` raced).
+#[cfg(test)]
+thread_local! {
+    static SHOWN: AtomicBool = const { AtomicBool::new(false) };
+}
+
+fn set_shown(shown: bool) {
+    #[cfg(not(test))]
+    SHOWN.store(shown, Ordering::Relaxed);
+    #[cfg(test)]
+    SHOWN.with(|flag| flag.store(shown, Ordering::Relaxed));
+}
 
 /// Whether the left panel offers Environments (a studio is configured).
 pub(crate) fn shown() -> bool {
-    SHOWN.load(Ordering::Relaxed)
+    #[cfg(not(test))]
+    return SHOWN.load(Ordering::Relaxed);
+    #[cfg(test)]
+    SHOWN.with(|flag| flag.load(Ordering::Relaxed))
 }
 
 /// Offer Environments in the left panel: the studio opened after start.
 pub(crate) fn mark_shown() {
-    SHOWN.store(true, Ordering::Relaxed);
+    set_shown(true);
 }
 
 pub(crate) fn routes(app: &App) -> Router<App> {
-    SHOWN.store(
-        app.config.environments.is_some() || app.config.environments.configured(),
-        Ordering::Relaxed,
-    );
+    set_shown(app.config.environments.is_some() || app.config.environments.configured());
     Router::new()
         .route("/environments", get(index).post(create))
         .route("/environments/new", get(new))
