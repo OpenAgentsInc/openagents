@@ -44,6 +44,13 @@ pub struct Chat {
     /// How long each finished tool call ran, by entry index.
     pub tool_ms: std::collections::BTreeMap<usize, u64>,
     pub open_tools: std::collections::BTreeSet<usize>,
+    /// Once the chat passes [`crate::long_session::ELIDE_PERCENT`] of the
+    /// context window (#11286), bulky tool outputs older than the newest
+    /// [`crate::long_session::VERBATIM_TURNS`] requests reach the model as
+    /// short stubs. The transcript and the export keep them whole.
+    pub elide_old_outputs: bool,
+    /// The largest estimated context the model read, for the export.
+    pub peak_context_tokens: u64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -187,6 +194,11 @@ impl Chat {
         // A compacted chat (#11179): the model reads from the newest
         // summary on; earlier entries stay on screen only.
         let start = crate::long_session::context_start(&self.entries);
+        let elide_before = if self.elide_old_outputs {
+            crate::long_session::verbatim_start(&self.entries)
+        } else {
+            0
+        };
         let current_plan = self.entries.iter().rev().find_map(|entry| match entry {
             Entry::Tool {
                 name,
@@ -238,15 +250,21 @@ impl Chat {
                             },
                             Entry::Tool {
                                 name,
+                                input,
                                 output,
                                 running,
-                                ..
                             } => Message {
                                 role: "assistant".into(),
-                                content: format!(
-                                    "Tool observation from {name} ({}): {output}",
-                                    if *running { "running" } else { "finished" }
-                                ),
+                                content: match (index < elide_before && !*running)
+                                    .then(|| crate::long_session::stub(name, input, output))
+                                    .flatten()
+                                {
+                                    Some(stub) => stub,
+                                    None => format!(
+                                        "Tool observation from {name} ({}): {output}",
+                                        if *running { "running" } else { "finished" }
+                                    ),
+                                },
                             },
                             Entry::Delegation {
                                 name,

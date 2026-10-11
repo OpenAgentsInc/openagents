@@ -171,6 +171,18 @@ pub fn document(chat: &Chat, id: &str, model: &str, cwd: &Path) -> Value {
     if let Some(notice) = &chat.notice {
         result["extra"]["notice"] = json!(notice);
     }
+    // Context management (#11286): the peak the model read, whether old
+    // outputs were stubbed, and how many summaries were written.
+    if chat.peak_context_tokens > 0 {
+        result["final_metrics"]["extra"]["peak_context_tokens"] = json!(chat.peak_context_tokens);
+    }
+    result["final_metrics"]["extra"]["outputs_elided"] = json!(chat.elide_old_outputs);
+    result["final_metrics"]["extra"]["summaries"] = json!(
+        chat.entries
+            .iter()
+            .filter(|entry| crate::long_session::is_summary(entry))
+            .count()
+    );
     // Identical consecutive tool calls, and whether they reached stuck
     // detection's reminder or stop (#11285).
     let streaks = crate::stuck::streaks(chat.entries.iter().enumerate().filter_map(

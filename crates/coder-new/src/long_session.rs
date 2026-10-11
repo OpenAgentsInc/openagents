@@ -2,9 +2,12 @@
 //! limit, pausing on a usage limit and resuming on its own, and the chat's
 //! dollars on the status line.
 //!
-//! **Compaction.** When the conversation the model reads grows past
-//! [`COMPACT_PERCENT`] of the context window, or when the person types
-//! `/compact`, the older part of the chat becomes one summary entry. The
+//! **Compaction** works in two stages (#11286, the harness study's T4).
+//! Past [`ELIDE_PERCENT`] of the context window, bulky tool outputs older
+//! than the newest [`VERBATIM_TURNS`] requests reach the model as short
+//! stubs (what ran, its exit, its size); the transcript keeps them whole.
+//! Past [`COMPACT_PERCENT`], or when the person types `/compact`, the
+//! older part of the chat becomes one summary entry. The
 //! newest [`KEEP_TURNS`] requests stay word for word. The transcript keeps
 //! every earlier message on screen; only what the model reads changes:
 //! [`crate::live::Chat::messages`] starts at the newest summary. With an
@@ -43,8 +46,26 @@ pub const LIMIT_TOOL: &str = "usage_limit";
 pub const KEEP_TURNS: usize = 3;
 /// The context window assumed when the model does not say.
 pub const DEFAULT_CONTEXT_TOKENS: u64 = 200_000;
-/// Compaction starts at this share of the context window.
-pub const COMPACT_PERCENT: u64 = 80;
+/// Old bulky tool outputs become stubs at this share of the context window.
+pub const ELIDE_PERCENT: u64 = 60;
+/// Requests whose tool outputs always stay whole once elision is on.
+pub const VERBATIM_TURNS: usize = 2;
+/// A tool output shorter than this is never stubbed.
+pub const BULKY_BYTES: usize = 1024;
+/// The summary starts at this share of the context window.
+pub const COMPACT_PERCENT: u64 = 85;
+/// Where the summary alone (the older T3 policy) starts.
+pub const SUMMARY_ONLY_PERCENT: u64 = 80;
+
+/// How a chat keeps within its context window: summary only (the study's
+/// T3), or stubs first and the summary only when still needed (T4).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ContextPolicy {
+    T3,
+    #[default]
+    T4,
+}
 /// How long to pause when a usage limit names no reset time.
 const DEFAULT_PAUSE_SECS: u64 = 60;
 /// Waits shorter than this inside a reply are not shown as a pause.
@@ -72,6 +93,8 @@ pub(crate) struct State {
     /// The model's context window, when known; [`DEFAULT_CONTEXT_TOKENS`]
     /// otherwise.
     pub context_tokens: Option<u64>,
+    /// How the chat keeps within the window (#11286).
+    pub policy: ContextPolicy,
 }
 
 #[derive(Debug)]
@@ -112,6 +135,42 @@ pub(crate) fn is_summary(entry: &Entry) -> bool {
 /// first entry.
 pub(crate) fn context_start(entries: &[Entry]) -> usize {
     entries.iter().rposition(is_summary).unwrap_or(0)
+}
+
+/// Where the newest [`VERBATIM_TURNS`] requests begin; entries before it
+/// may be stubbed. Zero when the chat has fewer requests.
+pub(crate) fn verbatim_start(entries: &[Entry]) -> usize {
+    entries
+        .iter()
+        .enumerate()
+        .rev()
+        .filter(|(_, entry)| matches!(entry, Entry::User(_)))
+        .nth(VERBATIM_TURNS - 1)
+        .map_or(0, |(index, _)| index)
+}
+
+/// A short stand-in for a bulky tool output: what ran, how it ended and
+/// how big the output was. `None` for an output small enough to keep.
+pub(crate) fn stub(name: &str, input: &Value, output: &Value) -> Option<String> {
+    let size = output.to_string().len();
+    if size < BULKY_BYTES {
+        return None;
+    }
+    let what = ["path", "file_path", "command", "pattern", "url", "query"]
+        .iter()
+        .find_map(|key| input.get(*key).and_then(Value::as_str))
+        .map(|text| format!(" {}", one_line(text, 200)))
+        .unwrap_or_default();
+    let ending = if let Some(code) = output.get("exit").and_then(Value::as_i64) {
+        format!("exit {code}")
+    } else if output.get("error").is_some() {
+        "failed".to_owned()
+    } else {
+        "finished".to_owned()
+    };
+    Some(format!(
+        "Tool observation from {name}{what} ({ending}, {size} bytes; the output was elided to save context, run it again if it is needed)"
+    ))
 }
 
 /// What the model reads for a summary entry.
@@ -679,11 +738,29 @@ impl App {
             return;
         }
         self.long_session.checked = self.live.entries.len();
-        let mut used = estimate_tokens(&self.live.messages());
-        if let Some(instructions) = &self.live.instructions {
-            used += instructions.len() as u64 / 4;
+        let limit = self.long_session.limit();
+        let used = |chat: &live::Chat| {
+            estimate_tokens(&chat.messages())
+                + chat
+                    .instructions
+                    .as_ref()
+                    .map_or(0, |instructions| instructions.len() as u64 / 4)
+        };
+        let mut now = used(&self.live);
+        self.live.peak_context_tokens = self.live.peak_context_tokens.max(now);
+        // Stage one: stub old bulky outputs; stage two: summarize.
+        let summarize_at = match self.long_session.policy {
+            ContextPolicy::T3 => SUMMARY_ONLY_PERCENT,
+            ContextPolicy::T4 => COMPACT_PERCENT,
+        };
+        if self.long_session.policy == ContextPolicy::T4
+            && !self.live.elide_old_outputs
+            && now.saturating_mul(100) >= limit.saturating_mul(ELIDE_PERCENT)
+        {
+            self.live.elide_old_outputs = true;
+            now = used(&self.live);
         }
-        if used.saturating_mul(100) >= self.long_session.limit().saturating_mul(COMPACT_PERCENT) {
+        if now.saturating_mul(100) >= limit.saturating_mul(summarize_at) {
             self.start_compaction(false);
         }
     }
@@ -780,6 +857,164 @@ mod tests {
                 .starts_with("Summary of the earlier part")
         );
         assert_eq!(messages.last().unwrap().content, "request 12");
+    }
+
+    fn tool_turns(turns: usize, size: usize) -> Vec<Entry> {
+        (0..turns)
+            .flat_map(|index| {
+                [
+                    Entry::User(format!("request {index}")),
+                    Entry::Tool {
+                        name: "Read".into(),
+                        input: json!({"path": format!("src/file{index}.rs")}),
+                        output: json!({"content": "y".repeat(size)}),
+                        running: false,
+                    },
+                    Entry::Assistant {
+                        text: format!("reply {index}"),
+                        model: None,
+                        elapsed_ms: None,
+                    },
+                ]
+            })
+            .collect()
+    }
+
+    #[test]
+    fn past_sixty_percent_old_bulky_outputs_become_stubs_without_a_summary() {
+        let mut app = live_app();
+        app.live.entries = tool_turns(6, 2_000);
+        let full = estimate_tokens(&app.live.messages());
+        // About 70% of the window: stage one only.
+        app.long_session.context_tokens = Some(full * 100 / 70);
+        app.poll_long_session();
+        assert!(app.live.elide_old_outputs);
+        assert!(!app.live.entries.iter().any(is_summary));
+        assert_eq!(app.live.peak_context_tokens, full);
+        let messages = app.live.messages();
+        let stubbed: Vec<_> = messages
+            .iter()
+            .filter(|message| message.content.contains("elided to save context"))
+            .collect();
+        assert_eq!(stubbed.len(), 4, "the two newest requests stay whole");
+        assert!(stubbed[0].content.contains("Read src/file0.rs (finished, "));
+        assert!(
+            messages
+                .iter()
+                .any(|message| message.content.contains(&"y".repeat(2_000)))
+        );
+        assert!(estimate_tokens(&messages) * 2 < full);
+        // The transcript keeps every output whole.
+        assert!(matches!(&app.live.entries[1], Entry::Tool { output, .. }
+            if output["content"].as_str().unwrap().len() == 2_000));
+        let exported =
+            crate::trajectory::document(&app.live, "t4", "auto", std::path::Path::new("."));
+        assert_eq!(
+            exported["final_metrics"]["extra"]["peak_context_tokens"],
+            full
+        );
+        assert_eq!(exported["final_metrics"]["extra"]["outputs_elided"], true);
+        assert_eq!(exported["final_metrics"]["extra"]["summaries"], 0);
+    }
+
+    #[test]
+    fn below_sixty_percent_nothing_changes_and_past_eighty_five_the_summary_follows() {
+        let mut app = live_app();
+        app.live.entries = tool_turns(6, 2_000);
+        let full = estimate_tokens(&app.live.messages());
+        app.long_session.context_tokens = Some(full * 2);
+        app.poll_long_session();
+        assert!(!app.live.elide_old_outputs);
+        assert!(!app.live.entries.iter().any(is_summary));
+        // Small outputs alone cannot get under the hard threshold.
+        let mut app = live_app();
+        app.live.entries = long_chat(12, 1_000);
+        app.long_session.context_tokens = Some(2_000);
+        app.poll_long_session();
+        assert!(app.live.elide_old_outputs);
+        assert!(app.live.entries.iter().any(is_summary));
+    }
+
+    #[test]
+    fn stubs_name_what_ran_and_how_it_ended() {
+        let big = "z".repeat(BULKY_BYTES);
+        assert!(
+            stub(
+                "Run",
+                &json!({"command":"ls"}),
+                &json!({"exit":0,"output":"short"})
+            )
+            .is_none()
+        );
+        let stubbed = stub(
+            "Run",
+            &json!({"command":"cargo  test\n-p x"}),
+            &json!({"exit":101,"output":big}),
+        )
+        .unwrap();
+        assert!(
+            stubbed.starts_with("Tool observation from Run cargo test -p x (exit 101, "),
+            "{stubbed}"
+        );
+        assert!(
+            stub("Grep", &json!({}), &json!({"error":big}))
+                .unwrap()
+                .contains("(failed, ")
+        );
+        assert_eq!(verbatim_start(&tool_turns(3, 1)), 3);
+        assert_eq!(verbatim_start(&tool_turns(1, 1)), 0);
+    }
+
+    /// Replays saved sessions turn by turn under both policies and prints
+    /// the peak context and summary count for each window. Run with
+    /// `CODER_CONTEXT_REPLAY=<dir of .atif.json> cargo test -p coder-new
+    /// --lib replay_saved_sessions -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "measurement over local sessions"]
+    fn replay_saved_sessions_under_t3_and_t4() {
+        let Ok(dir) = std::env::var("CODER_CONTEXT_REPLAY") else {
+            return;
+        };
+        let chats: Vec<_> = std::fs::read_dir(dir)
+            .unwrap()
+            .filter_map(|entry| crate::trajectory::read(&entry.ok()?.path()).ok())
+            .collect();
+        for window in [32_000u64, 64_000, 128_000] {
+            for policy in [ContextPolicy::T3, ContextPolicy::T4] {
+                let (mut peak_sum, mut summaries, mut sent, mut over) =
+                    (0u64, 0usize, 0u64, 0usize);
+                for chat in &chats {
+                    let mut app = live_app();
+                    app.long_session.context_tokens = Some(window);
+                    app.long_session.policy = policy;
+                    let mut peak = 0;
+                    for entry in &chat.entries {
+                        if matches!(entry, Entry::User(_)) {
+                            app.poll_long_session();
+                            // What the next turn sends.
+                            let tokens = estimate_tokens(&app.live.messages());
+                            peak = peak.max(tokens);
+                            sent += tokens;
+                        }
+                        app.live.entries.push(entry.clone());
+                    }
+                    app.poll_long_session();
+                    peak_sum += peak;
+                    over += usize::from(peak > window);
+                    summaries += app
+                        .live
+                        .entries
+                        .iter()
+                        .filter(|entry| is_summary(entry))
+                        .count();
+                }
+                println!(
+                    "window {window} {policy:?}: sessions {}, mean peak {} tokens, over window {over}, summaries {summaries}, tokens sent at turn starts {sent}",
+                    chats.len(),
+                    peak_sum / chats.len().max(1) as u64,
+                );
+            }
+        }
     }
 
     #[test]

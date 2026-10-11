@@ -200,3 +200,27 @@ harness per run with a typed judgment, test a sibling on a small share of
 traffic, and promote only on paired wins.** That is Coder improving itself on
 its own work, the same loop the self-improving-codebases product applies to a
 customer's repository (`docs/product/self-improving-codebases.md`).
+
+## Measured on Coder's own sessions
+
+**T4 context (#11286).** The saved local sessions that read back (23 of 47),
+replayed turn by turn under the old summary-only policy (T3, summary at 80%)
+and under T4 (stubs at 60%, summary at 85%), with the plain local summary.
+"Sent" is the estimated tokens the model reads at the start of each turn,
+summed over all sessions.
+
+| Window | Policy | Mean peak | Summaries | Sent |
+| --- | --- | --- | --- | --- |
+| 32k | T3 | 10,035 | 8 | 478,707 |
+| 32k | T4 | 10,035 | 7 | 484,183 |
+| 64k | T3 | 10,529 | 6 | 710,026 |
+| 64k | T4 | 10,035 | 5 | 575,904 |
+| 128k | T3 | 13,952 | 2 | 1,561,717 |
+| 128k | T4 | 12,964 | 1 | 900,404 |
+
+T4 called the summarizer less at every window and read 19% fewer tokens at
+64k and 42% fewer at 128k; at 32k, where both summarize early, it was even
+(+1%). Three sessions exceed 32k within one turn, which neither policy can
+help, since both act between turns. Rerun with
+`CODER_CONTEXT_REPLAY=<sessions dir> cargo test -p coder-new --lib
+replay_saved_sessions -- --ignored --nocapture`.
