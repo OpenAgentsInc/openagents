@@ -26,12 +26,23 @@ fn rows(buffer: &Buffer) -> Vec<String> {
         .collect()
 }
 
-/// The transcript's rows: everything but the composer's rules.
+/// The transcript's rows: everything but the input's box.
 fn transcript(buffer: &Buffer) -> Vec<String> {
     rows(buffer)
         .into_iter()
-        .filter(|line| !line.starts_with('─'))
+        .filter(|line| !line.starts_with(['┌', '│', '└']))
         .collect()
+}
+
+/// The input box's top rule, which names the mode (`auto` or `flash`) or
+/// the model the person chose in /models.
+fn top_rule(text: &[String]) -> Option<usize> {
+    text.iter().position(|line| line.starts_with('┌'))
+}
+
+/// The label a rule carries, without its line and corners.
+fn label(line: &str) -> &str {
+    line.trim_matches(['─', '┌', '┐', '└', '┘']).trim()
 }
 
 fn app() -> App {
@@ -114,10 +125,9 @@ fn reply_keeps_its_actual_model_without_showing_it_in_the_transcript() {
             .any(|line| line.starts_with("● Hello from the routed model."))
     );
     assert!(!text.iter().any(|line| line.contains("openai/gpt-6-luna")));
-    assert!(
-        rows(&buffer)
-            .iter()
-            .any(|line| line.trim_matches('─').trim() == "auto")
+    assert_eq!(
+        label(&rows(&buffer)[top_rule(&rows(&buffer)).unwrap()]),
+        "auto"
     );
     app.plugins.model = "anthropic/claude-fable-5.1".into();
     let (buffer, _) = render(&mut app, 110, 36);
@@ -126,10 +136,9 @@ fn reply_keeps_its_actual_model_without_showing_it_in_the_transcript() {
             .iter()
             .any(|line| line.contains("openai/gpt-6-luna"))
     );
-    assert!(
-        rows(&buffer)
-            .iter()
-            .any(|line| line.trim_matches('─').trim() == "claude-fable-5.1")
+    assert_eq!(
+        label(&rows(&buffer)[top_rule(&rows(&buffer)).unwrap()]),
+        "claude-fable-5.1"
     );
     assert!(!rows(&buffer).iter().any(|line| line.contains("anthropic/")));
 }
@@ -140,17 +149,16 @@ fn composer_registration_follows_enablement_and_preserves_input_geometry() {
     for (width, height) in [(24, 12), (80, 24), (110, 36)] {
         let (buffer, cursor) = render(&mut app, width, height);
         let text = rows(&buffer);
-        let top = text
-            .iter()
-            .position(|line| line.starts_with('─') && line.contains(" auto "))
-            .unwrap();
-        assert!(text[top].starts_with('─') && text[top].ends_with('─'));
-        assert!(text[top + 1].starts_with(" ❯ "));
-        assert!(text[top + 2].chars().all(|c| c == '─'));
+        let top = top_rule(&text).unwrap();
+        assert_eq!(label(&text[top]), "auto");
+        assert!(text[top].ends_with('┐'));
+        assert!(text[top + 1].starts_with("│❯ ") && text[top + 1].ends_with('│'));
+        assert!(text[top + 2].starts_with('└') && text[top + 2].ends_with('┘'));
         assert_eq!(cursor, (3, (top + 1) as u16));
         let byte = text[top].find("auto").unwrap();
         let x = UnicodeWidthStr::width(&text[top][..byte]) as u16;
-        assert_eq!(buffer[(x, top as u16)].fg, theme::GRAY);
+        // `auto` is blue; a chosen model would be gray, `flash` cyan.
+        assert_eq!(buffer[(x, top as u16)].fg, theme::ACCENT_SKILL);
     }
     app.plugins.enabled = false;
     assert!(
@@ -163,12 +171,10 @@ fn composer_registration_follows_enablement_and_preserves_input_geometry() {
     app.draft.cursor = app.draft.text.len();
     let (buffer, cursor) = render(&mut app, 80, 24);
     let text = rows(&buffer);
-    let top = text
-        .iter()
-        .position(|line| line.starts_with('─') && line.contains(" auto "))
-        .unwrap();
+    let top = top_rule(&text).unwrap();
+    assert_eq!(label(&text[top]), "auto");
     assert_eq!(cursor, (8, (top + 3) as u16));
-    assert!(text[top + 4].chars().all(|c| c == '─'));
+    assert!(text[top + 4].starts_with('└'));
 }
 
 #[test]
@@ -232,15 +238,12 @@ fn long_attribution_does_not_overwrite_the_reply_or_the_draft_after_resize() {
     assert!(text.iter().any(|line| line.contains("Visible reply body.")));
     assert!(text.iter().any(|line| line.contains("❯ draft")));
     assert_eq!(cursor.0, 8);
-    assert!(
-        text.iter()
-            .any(|line| line.starts_with('─') && line.contains("claude-fable"))
-    );
+    assert!(text[top_rule(&text).unwrap()].contains("claude-fable"));
     assert!(!text.iter().any(|line| line.contains("anthropic/")));
 }
 
 #[test]
-fn input_rails_show_reasoning_and_leave_the_bottom_rule_empty() {
+fn input_rails_name_the_chosen_model_only_and_the_bottom_rule_names_the_repository() {
     let mut app = app();
     app.plugins.model = "openai/gpt-6-luna".into();
     app.plugins.options.reasoning = Some("low".into());
@@ -254,35 +257,21 @@ fn input_rails_show_reasoning_and_leave_the_bottom_rule_empty() {
     for width in [24, 80, 110] {
         let text = rows(&render(&mut app, width, 24).0);
         // The rail names the chosen model only, never its settings.
-        assert!(
-            text.iter()
-                .any(|line| line.starts_with('─') && line.contains("gpt-6"))
-        );
+        assert!(text[top_rule(&text).unwrap()].contains("gpt-6"));
         assert!(!text.iter().any(|line| line.contains(":low")));
-        assert!(
-            text.iter()
-                .rfind(|line| line.starts_with('─'))
-                .unwrap()
-                .chars()
-                .all(|c| c == '─')
-        );
+        // The bottom rule names the repository, never the key's status.
+        let bottom = text.iter().rfind(|line| line.starts_with('└')).unwrap();
+        assert_eq!(label(bottom), "openagents");
     }
     app.plugins.options.reasoning = None;
     let text = rows(&render(&mut app, 110, 24).0);
-    assert!(
-        text.iter()
-            .any(|line| line.trim_matches('─').trim() == "gpt-6-luna")
-    );
+    assert_eq!(label(&text[top_rule(&text).unwrap()]), "gpt-6-luna");
     app.apply_update(Update::Checked {
         id: app.request_id,
         result: Err("HTTP 401".into()),
     });
     let text = rows(&render(&mut app, 110, 24).0);
-    assert!(
-        text.iter()
-            .rfind(|line| line.starts_with('─'))
-            .unwrap()
-            .chars()
-            .all(|c| c == '─')
-    );
+    let bottom = text.iter().rfind(|line| line.starts_with('└')).unwrap();
+    assert_eq!(label(bottom), "openagents");
+    assert!(!text.iter().any(|line| line.contains("401")));
 }

@@ -70,7 +70,8 @@ fn items_start_in_column_zero_hang_two_columns_and_sit_one_blank_row_apart() {
         }
         assert_eq!(text[end], "", "{width}: one blank row after the message");
         assert!(text[end + 1].starts_with("● Run"), "{width}: {text:#?}");
-        assert!(text[end + 2].starts_with("  ⎿  "), "{width}: {text:#?}");
+        // The Run box's scrollbar is its left edge; the result hangs after it.
+        assert!(text[end + 2].starts_with("█   ⎿  "), "{width}: {text:#?}");
         let reply = text
             .iter()
             .position(|row| row.starts_with("● The composer"))

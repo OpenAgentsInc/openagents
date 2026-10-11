@@ -243,8 +243,13 @@ fn nested_cli_delegations_get_their_own_selectable_rows_and_retained_chats() {
     assert_eq!(app.delegations[1].name, "Codex");
     assert!(!app.delegations[1].running);
     let buffer = draw(&mut app, 80, 24);
-    assert!(row(&buffer, 21).contains("microcoder"));
-    assert!(row(&buffer, 22).contains("Codex"));
+    // The delegation rail sits directly under the input's bottom rule, one
+    // row per delegation, nested ones included.
+    let bottom = (0..buffer.area.height)
+        .rfind(|&y| row(&buffer, y).starts_with('└'))
+        .unwrap();
+    assert!(row(&buffer, bottom + 1).contains("microcoder"));
+    assert!(row(&buffer, bottom + 2).contains("Codex"));
     app.selected_agent = Some(1);
     assert!(canvas(&draw(&mut app, 80, 24)).contains("Nested child reply."));
     let root = tempfile::tempdir().unwrap();
@@ -544,9 +549,18 @@ fn served_model_options_are_captured_for_the_request_and_its_delegations() {
         id: request.id,
         result: Ok(reply),
     });
-    assert!(
-        matches!(app.live.entries.last().unwrap(),Entry::Assistant {model:Some(model),..} if model == "openai/gpt-6-luna:low:max-tokens=2048")
-    );
+    // The text streamed before the delegation is committed above it with the
+    // served model and the request's options (kept for exports, never shown);
+    // the finished turn adds nothing it already showed.
+    assert!(matches!(
+        &app.live.entries[1],
+        Entry::Assistant {text, model:Some(model),..}
+            if text == "Streaming answer." && model == "openai/gpt-6-luna:low:max-tokens=2048"
+    ));
+    assert!(matches!(
+        app.live.entries.last().unwrap(),
+        Entry::Delegation { .. }
+    ));
     assert!(
         matches!(app.delegations[0].chat.entries.last().unwrap(),Entry::Assistant {model:Some(model),..} if model == "fixture/child")
     );
