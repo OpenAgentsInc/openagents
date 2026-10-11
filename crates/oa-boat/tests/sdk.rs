@@ -128,6 +128,9 @@ impl Compute for Fake {
         i.label_fingerprint = format!("{}x", i.label_fingerprint);
         Ok(())
     }
+    async fn set_ssh_keys(&self, _zone: &str, _name: &str, _value: &str) -> Result<()> {
+        Ok(())
+    }
     async fn get_image(&self, name: &str) -> Result<Option<Image>> {
         Ok(self.0.lock().unwrap().images.get(name).cloned())
     }

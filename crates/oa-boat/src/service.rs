@@ -592,9 +592,28 @@ fi
             tokio::time::sleep(Duration::from_secs(2)).await;
         };
         self.remote.forget(&ip).await;
+        let mut since = Instant::now();
         loop {
             if start.elapsed() > limit {
                 return Err("the VM never answered SSH".into());
+            }
+            // Key login can be lost inside a VM (something in it rewrote
+            // ~/.ssh): rewriting the ssh-keys metadata makes the guest agent
+            // put the key back. Once a minute while it keeps failing.
+            if since.elapsed() > Duration::from_secs(60) {
+                since = Instant::now();
+                let line = format!(
+                    "{}:{} oa-boat-{}",
+                    self.cfg.user,
+                    self.cfg.ssh_public_key.trim(),
+                    time::now()
+                );
+                match self.compute.set_ssh_keys(zone, &name, &line).await {
+                    Ok(()) => {
+                        eprintln!("oa-boat: bx_{suffix}: SSH refused for a minute; key put back")
+                    }
+                    Err(e) => eprintln!("oa-boat: bx_{suffix}: could not put the key back: {e}"),
+                }
             }
             let o = self
                 .remote

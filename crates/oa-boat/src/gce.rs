@@ -194,6 +194,14 @@ pub trait Compute: Send + Sync + 'static {
         labels: &BTreeMap<String, String>,
         fingerprint: &str,
     ) -> impl Future<Output = Result<()>> + Send;
+    /// Rewrite the instance's `ssh-keys` metadata to `value`, so the guest
+    /// agent writes `authorized_keys` again.
+    fn set_ssh_keys(
+        &self,
+        zone: &str,
+        name: &str,
+        value: &str,
+    ) -> impl Future<Output = Result<()>> + Send;
     fn get_image(&self, name: &str) -> impl Future<Output = Result<Option<Image>>> + Send;
     fn image_from_family(&self, family: &str)
     -> impl Future<Output = Result<Option<Image>>> + Send;
@@ -458,6 +466,38 @@ impl Compute for Rest {
                 reqwest::Method::POST,
                 &self.zone_url(zone, &format!("instances/{name}/setLabels")),
                 Some(json!({"labels": labels, "labelFingerprint": fingerprint})),
+            )
+            .await?;
+        self.wait(op, Duration::from_secs(60)).await
+    }
+
+    async fn set_ssh_keys(&self, zone: &str, name: &str, value: &str) -> Result<()> {
+        let v = self
+            .call(
+                reqwest::Method::GET,
+                &self.zone_url(zone, &format!("instances/{name}")),
+                None,
+            )
+            .await?;
+        let fingerprint = v
+            .pointer("/metadata/fingerprint")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        let mut items: Vec<Value> = v
+            .pointer("/metadata/items")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|i| i.get("key").and_then(Value::as_str) != Some("ssh-keys"))
+            .collect();
+        items.push(json!({"key": "ssh-keys", "value": value}));
+        let op = self
+            .call(
+                reqwest::Method::POST,
+                &self.zone_url(zone, &format!("instances/{name}/setMetadata")),
+                Some(json!({"fingerprint": fingerprint, "items": items})),
             )
             .await?;
         self.wait(op, Duration::from_secs(60)).await
