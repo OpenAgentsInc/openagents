@@ -719,31 +719,59 @@ async fn show_page(app: &App, headers: &HeaderMap, id: &str, notice: Option<&Not
     let chips = crate::suggestions::reply_chips(&app, chat).await;
     let offer = work::offer(&app, &headers, chat).await;
     let links = work::links(&app, &headers).await;
-    let mut page = UiPage::new(chat.title.clone())
-        .path(format!("/chat/{id}"))
-        .app()
-        .breadcrumb(work::breadcrumb(chat, offer.as_ref()))
-        .actions(work::actions(chat, offer.as_ref(), false))
-        .head(crate::chat_html::head())
-        .boosted();
     // A move in place keeps the list it has (`chat_html::main_only`).
-    if !crate::chat_html::main_only(&headers) {
-        page =
-            page.sidebar_section(chat_list(&app, &chat.owner, Some(&chat.id), true, false).await);
-    }
-    let page = page
-        .content(html! {
-            // The thread is private: HTMX never snapshots it into history.
-            div #chat-content.oa-thread-view hx-history="false" { (content(chat, None, chips, links)) }
-        })
-        .composer(composer_with(
+    let sidebar = if crate::chat_html::main_only(&headers) {
+        None
+    } else {
+        Some(chat_list(&app, &chat.owner, Some(&chat.id), true, false).await)
+    };
+    let parts = Parts {
+        breadcrumb: work::breadcrumb(chat, offer.as_ref()),
+        actions: Some(work::actions(chat, offer.as_ref(), false)),
+        sidebar,
+        thread: content(chat, None, chips, links),
+        dock: composer_with(
             &format!("/chat/{id}"),
             "Continue this chat",
             Some(row),
             dock,
             notice,
-        ));
-    crate::chat_html::protect(page.respond(&headers))
+        ),
+    };
+    chat_page(&headers, chat, parts)
+}
+
+/// What a chat's page is drawn from.
+pub(crate) struct Parts {
+    pub(crate) breadcrumb: Breadcrumb,
+    pub(crate) actions: Option<Markup>,
+    pub(crate) sidebar: Option<Markup>,
+    pub(crate) thread: Markup,
+    pub(crate) dock: Markup,
+}
+
+/// A chat's page from its parts, as its route and the screens gallery
+/// draw it.
+pub(crate) fn chat_page(headers: &HeaderMap, chat: &Conversation, parts: Parts) -> Response {
+    let mut page = UiPage::new(chat.title.clone())
+        .path(format!("/chat/{}", chat.id))
+        .app()
+        .breadcrumb(parts.breadcrumb)
+        .head(crate::chat_html::head())
+        .boosted();
+    if let Some(actions) = parts.actions {
+        page = page.actions(actions);
+    }
+    if let Some(sidebar) = parts.sidebar {
+        page = page.sidebar_section(sidebar);
+    }
+    let page = page
+        .content(html! {
+            // The thread is private: HTMX never snapshots it into history.
+            div #chat-content.oa-thread-view hx-history="false" { (parts.thread) }
+        })
+        .composer(parts.dock);
+    crate::chat_html::protect(page.respond(headers))
 }
 
 /// A chat synced from Coder (#11047): the transcript, and a composer
@@ -767,7 +795,7 @@ async fn show_terminal(
         let card = approval::current(app, chat).await;
         html! {
             (card)
-            (terminal_composer(app, chat, computer, notice))
+            (terminal_composer(chat, computer, notice, ticket(app, chat, false)))
         }
     } else if continued::offer(app, headers, chat, online).await.is_some() {
         html! { (terminal_note(computer)) (continued::button(chat)) }
@@ -775,22 +803,19 @@ async fn show_terminal(
         terminal_note(computer)
     };
     let links = work::links(app, headers).await;
-    let mut page = UiPage::new(chat.title.clone())
-        .path(format!("/chat/{id}"))
-        .app()
-        .breadcrumb(Breadcrumb::new(chat.title.clone()))
-        .head(crate::chat_html::head())
-        .boosted();
-    if !crate::chat_html::main_only(headers) {
-        page = page
-            .sidebar_section(chat_list(app, &chat.owner, Some(id.as_str()), false, false).await);
-    }
-    let page = page
-        .content(html! {
-            div #chat-content.oa-thread-view hx-history="false" { (content(chat, None, html! {}, links)) }
-        })
-        .composer(dock);
-    crate::chat_html::protect(page.respond(headers))
+    let sidebar = if crate::chat_html::main_only(headers) {
+        None
+    } else {
+        Some(chat_list(app, &chat.owner, Some(id.as_str()), false, false).await)
+    };
+    let parts = Parts {
+        breadcrumb: Breadcrumb::new(chat.title.clone()),
+        actions: None,
+        sidebar,
+        thread: content(chat, None, html! {}, links),
+        dock,
+    };
+    chat_page(headers, chat, parts)
 }
 
 /// What a Coder chat shows where the composer would be when Coder on its
@@ -807,11 +832,11 @@ pub(crate) fn terminal_note(computer: &str) -> Markup {
 /// The composer on a Coder chat while Coder on its computer is online: a
 /// reply waits for Coder there, which answers it with that computer's
 /// tools.
-fn terminal_composer(
-    app: &App,
+pub(crate) fn terminal_composer(
     chat: &Conversation,
     computer: &str,
     notice: Option<&Notice>,
+    hidden: Markup,
 ) -> Markup {
     let composer = Composer::new("chat-form", format!("/chat/{}", chat.id))
         .label("Reply in Coder")
@@ -822,7 +847,7 @@ fn terminal_composer(
         .placeholder(format!("Reply to Coder on {computer}"))
         .autofocus(true)
         .after(html! {
-            (ticket(app, chat, false))
+            (hidden)
             p #chat-feedback.oa-composer-feedback role="status" aria-live="polite" {}
         });
     match notice {
@@ -1986,7 +2011,12 @@ pub(crate) fn ticket(app: &App, chat: &Conversation, oob: bool) -> Markup {
 /// The thread, its suggestion chips, and the scroll-to-bottom button over
 /// it. The title is the header row's breadcrumb, not part of the thread.
 /// `links` links task rows to their runs ([`work::links`]).
-fn content(chat: &Conversation, before: Option<usize>, chips: Markup, links: bool) -> Markup {
+pub(crate) fn content(
+    chat: &Conversation,
+    before: Option<usize>,
+    chips: Markup,
+    links: bool,
+) -> Markup {
     html! {
         section #chat-thread.oa-thread aria-label="Chat" {
             div.oa-thread-column hx-ext="sse" sse-connect=(format!("/chat/{}/events?after={}",chat.id,chat.revision)) sse-close="retired" {
@@ -2565,13 +2595,13 @@ mod uuid_tests {
 }
 
 #[path = "chat_sidebar.rs"]
-mod sidebar;
+pub(crate) mod sidebar;
 
 #[path = "chat_agents.rs"]
 mod agents;
 pub(crate) use agents::{choose_paused, paused_items};
 #[path = "chat_approval.rs"]
-mod approval;
+pub(crate) mod approval;
 #[path = "chat_computer.rs"]
 mod computer;
 #[path = "chat_continued.rs"]
@@ -2581,7 +2611,7 @@ pub(crate) mod delete_all;
 #[path = "chat_live.rs"]
 mod live;
 #[path = "chat_work.rs"]
-mod work;
+pub(crate) mod work;
 
 #[cfg(test)]
 #[path = "chat_tests.rs"]

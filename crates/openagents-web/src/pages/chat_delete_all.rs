@@ -57,7 +57,27 @@ async fn confirm(State(app): State<App>, headers: HeaderMap) -> Response {
         },
         None => 0,
     };
-    let content = match owner.as_deref().filter(|_| count > 0) {
+    let token = owner
+        .as_deref()
+        .map(|owner| csrf(&app, owner))
+        .unwrap_or_default();
+    let list = match &owner {
+        Some(owner) => Some(chat_list(&app, owner, None, false, false).await),
+        None => None,
+    };
+    confirm_page(&headers, owner.as_deref(), count, &token, list)
+}
+
+/// The Delete all chats page: the question for `count` chats, or that
+/// there are none.
+pub(crate) fn confirm_page(
+    headers: &HeaderMap,
+    owner: Option<&str>,
+    count: usize,
+    token: &str,
+    list: Option<Markup>,
+) -> Response {
+    let content = match owner.filter(|_| count > 0) {
         None => PageColumn::new(html! {
             (MarkdownRoot::new(html! { p { "You have no saved chats." } }))
             div.oa-page-actions { (crate::ui_page::action_link("Home", "/")) }
@@ -65,7 +85,7 @@ async fn confirm(State(app): State<App>, headers: HeaderMap) -> Response {
         Some(owner) => PageColumn::new(html! {
             (MarkdownRoot::new(html! { p { (question(owner, count)) } }))
             form method="post" action=(PATH) {
-                input type="hidden" name="csrf" value=(csrf(&app, owner));
+                input type="hidden" name="csrf" value=(token);
                 div.oa-page-actions {
                     (Button::new("Delete all")
                         .kind(ButtonType::Submit)
@@ -79,10 +99,10 @@ async fn confirm(State(app): State<App>, headers: HeaderMap) -> Response {
         .path(PATH)
         .breadcrumb(Breadcrumb::new("Delete all chats"))
         .content(content);
-    if let Some(owner) = &owner {
-        page = page.sidebar_section(chat_list(&app, owner, None, false, false).await);
+    if let Some(list) = list {
+        page = page.sidebar_section(list);
     }
-    crate::chat_html::protect(page.respond(&headers))
+    crate::chat_html::protect(page.respond(headers))
 }
 
 async fn remove(

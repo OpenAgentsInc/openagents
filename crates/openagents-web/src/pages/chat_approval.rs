@@ -59,7 +59,7 @@ async fn waiting(app: &App, chat: &Conversation) -> Option<Item> {
 
 /// The card for `item`'s question, or its empty place; both read
 /// themselves again while the page is open.
-pub(super) fn card(app: &App, chat: &Conversation, item: Option<&Item>) -> Markup {
+pub(crate) fn card(token: &str, chat: &Conversation, item: Option<&Item>) -> Markup {
     let poll = format!("every {EVERY_SECONDS}s");
     let path = format!("/chat/{}/approval", chat.id);
     let Some((item, question)) = item.and_then(|item| Some((item, item.question.as_ref()?))) else {
@@ -76,7 +76,7 @@ pub(super) fn card(app: &App, chat: &Conversation, item: Option<&Item>) -> Marku
             }
             p { "This answers this one action only, and Coder records that you answered here." }
             form method="post" action=(path) {
-                input type="hidden" name="csrf" value=(csrf(app, &chat.owner));
+                input type="hidden" name="csrf" value=(token);
                 input type="hidden" name="request_id" value=(new_id());
                 input type="hidden" name="item" value=(item.id);
                 input type="hidden" name="question" value=(question.id);
@@ -95,7 +95,7 @@ pub(super) fn card(app: &App, chat: &Conversation, item: Option<&Item>) -> Marku
 /// The card as the chat's page shows it when it loads.
 pub(super) async fn current(app: &App, chat: &Conversation) -> Markup {
     let item = waiting(app, chat).await;
-    card(app, chat, item.as_ref())
+    card(&csrf(app, &chat.owner), chat, item.as_ref())
 }
 
 async fn fragment(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>) -> Response {

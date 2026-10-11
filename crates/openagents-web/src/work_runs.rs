@@ -1822,6 +1822,19 @@ fn page(
         picture: viewer.avatar_url.is_some(),
         admin: viewer.admin,
     };
+    framed(headers, account, title, path, refresh, body)
+}
+
+/// A work page in the shell for `account`; `refresh` reloads it while a
+/// run is going.
+pub(crate) fn framed(
+    headers: &HeaderMap,
+    account: Account,
+    title: &str,
+    path: &str,
+    refresh: bool,
+    body: Markup,
+) -> Response {
     let mut page = UiPage::new(title)
         .path(path)
         .account(account)
@@ -2081,10 +2094,24 @@ async fn run_page(State(app): State<App>, headers: HeaderMap, Path(id): Path<Str
         Ok(Some(run)) => run,
         _ => return protect(Redirect::to(PAGE).into_response()),
     };
-    let now = now_unix();
+    let body = run_body(&run, now_unix(), &crate::pages::chat::csrf(&app, &owner));
+    page(
+        &headers,
+        service,
+        &viewer,
+        "Work run",
+        &path,
+        !run.state.finished(),
+        body,
+    )
+}
+
+/// One run's page body: its state, Stop while it runs, the change, and
+/// its progress.
+pub(crate) fn run_body(run: &WorkRun, now: u64, csrf: &str) -> Markup {
     let issue_url = format!("https://github.com/{}/issues/{}", run.repo, run.issue);
     let stop = format!("{PAGE}/{}/stop", run.id);
-    let body = html! {
+    html! {
         div class="oa-settings" {
             p { a href=(PAGE) { "All runs" } }
             section class="oa-settings-group" aria-labelledby="work-run" {
@@ -2096,13 +2123,13 @@ async fn run_page(State(app): State<App>, headers: HeaderMap, Path(id): Path<Str
                             (engine_words(run.engine.word())) " · " (run.land.words())
                             " · asked " (ago(run.created_unix, now))
                         }
-                        (result_markup(&run))
+                        (result_markup(run))
                         @if let Some(why) = &run.why { span class="oa-settings-hint" { (why) } }
                     }
                     @if !run.state.finished() && !run.cancel {
                         div class="oa-settings-control" {
                             form method="post" action=(stop) {
-                                input type="hidden" name="csrf" value=(crate::pages::chat::csrf(&app, &owner));
+                                input type="hidden" name="csrf" value=(csrf);
                                 (Button::new("Stop")
                                     .kind(ButtonType::Submit)
                                     .variant(ButtonVariant::Soft)
@@ -2146,16 +2173,7 @@ async fn run_page(State(app): State<App>, headers: HeaderMap, Path(id): Path<Str
                 }
             }
         }
-    };
-    page(
-        &headers,
-        service,
-        &viewer,
-        "Work run",
-        &path,
-        !run.state.finished(),
-        body,
-    )
+    }
 }
 
 #[derive(Deserialize)]

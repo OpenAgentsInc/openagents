@@ -628,6 +628,24 @@ async fn choose(
         return plain(StatusCode::FORBIDDEN, "Sign in to pick a project.");
     };
     let picked = choices.resolve(&wanted);
+    let body = match kind.as_str() {
+        "branch" => {
+            let with = |change: &dyn Fn(&mut Picked), focus: &str| {
+                let mut next = picked.clone();
+                change(&mut next);
+                let mut pairs = query(&next, chat);
+                pairs.push(("focus", focus.to_owned()));
+                href(ROW, &pairs)
+            };
+            branch_panel(&app, &headers, &picked, &with).await
+        }
+        _ => panel(&kind, &choices, &picked, chat),
+    };
+    respond(body)
+}
+
+/// The Project (`kind` "project") or Where it runs panel the row loads.
+pub(crate) fn panel(kind: &str, choices: &Choices, picked: &Picked, chat: Option<&str>) -> Markup {
     let with = |change: &dyn Fn(&mut Picked), focus: &str| {
         let mut next = picked.clone();
         change(&mut next);
@@ -635,12 +653,10 @@ async fn choose(
         pairs.push(("focus", focus.to_owned()));
         href(ROW, &pairs)
     };
-    let body = match kind.as_str() {
-        "project" => project_panel(&choices, &picked, &with),
-        "branch" => branch_panel(&app, &headers, &picked, &with).await,
-        _ => target_panel(&choices, &picked, &with),
-    };
-    respond(body)
+    match kind {
+        "project" => project_panel(choices, picked, &with),
+        _ => target_panel(choices, picked, &with),
+    }
 }
 
 type With<'a> = dyn Fn(&dyn Fn(&mut Picked), &str) -> String + Sync + 'a;
