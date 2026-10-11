@@ -53,6 +53,7 @@ pub struct Store {
 struct StoredPlugin {
     version: u32,
     enabled: bool,
+    #[serde(default)]
     model: String,
     #[serde(deserialize_with = "read_key")]
     api_key: Option<ApiKey>,
@@ -403,6 +404,36 @@ mod tests {
             assert_eq!(loaded.key.unwrap().expose(), "fake-plugin-key");
             assert_eq!(fs::read(&path).unwrap(), original);
         }
+    }
+
+    #[test]
+    fn missing_model_uses_auto_and_preserves_the_key_and_options() {
+        let temporary = tempfile::tempdir().unwrap();
+        let path = temporary.path().join("plugins.json");
+        let store = Store::under(temporary.path());
+        let document = serde_json::json!({
+            "version": 1,
+            "enabled": true,
+            "api_key": "fake-plugin-key",
+            "options": { "reasoning": "none", "max_tokens": null },
+        });
+        let original = serde_json::to_vec(&document).unwrap();
+        fs::write(&path, &original).unwrap();
+
+        let loaded = store.load().unwrap();
+        assert!(loaded.enabled);
+        assert_eq!(loaded.model, DEFAULT_MODEL);
+        assert!(!crate::models::pinned(&loaded.model));
+        assert_eq!(loaded.key.as_ref().unwrap().expose(), "fake-plugin-key");
+        assert_eq!(loaded.options.reasoning.as_deref(), Some("none"));
+        assert_eq!(loaded.options.max_tokens, None);
+        assert_eq!(fs::read(&path).unwrap(), original);
+
+        store.save(&loaded).unwrap();
+        let reopened = store.load().unwrap();
+        assert_eq!(reopened.model, DEFAULT_MODEL);
+        assert_eq!(reopened.key.unwrap().expose(), "fake-plugin-key");
+        assert_eq!(reopened.options, loaded.options);
     }
 
     #[test]
