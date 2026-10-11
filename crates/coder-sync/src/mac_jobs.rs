@@ -250,7 +250,19 @@ async fn upload_to(
         u8::from(last)
     );
     if let Some((item, epoch)) = fence {
-        url.push_str(&format!("&item={}&epoch={epoch}", segment(item)));
+        // Not `segment`: that is a computer name's, cut to 64 characters,
+        // and a work item's id is longer.
+        let item: String = item
+            .bytes()
+            .map(|b| {
+                if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.') {
+                    (b as char).to_string()
+                } else {
+                    format!("%{b:02X}")
+                }
+            })
+            .collect();
+        url.push_str(&format!("&item={item}&epoch={epoch}"));
     }
     let Ok(response) = http
         .put(url)

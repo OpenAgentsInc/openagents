@@ -461,6 +461,16 @@ impl Handles<Report> for MacJob {
                 approval: None,
             });
         }
+        // What readers see before, so a report with nothing new (the Mac's
+        // ping) leaves the job's time alone.
+        let before = serde_json::to_string(&(
+            &state.phase,
+            &state.lines,
+            &state.commit,
+            &state.question,
+            &state.approval,
+        ))
+        .unwrap_or_default();
         state.epoch = fence.epoch;
         if matches!(state.phase, Phase::Waiting | Phase::Uncertain) {
             state.phase = Phase::Running;
@@ -513,7 +523,17 @@ impl Handles<Report> for MacJob {
                 state.phase = Phase::Running;
             }
         }
-        state.touch(ctx);
+        let after = serde_json::to_string(&(
+            &state.phase,
+            &state.lines,
+            &state.commit,
+            &state.question,
+            &state.approval,
+        ))
+        .unwrap_or_default();
+        if after != before {
+            state.touch(ctx);
+        }
         Ok(heard)
     }
 }
