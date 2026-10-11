@@ -1,0 +1,40 @@
+-- The C compiler identification is AppleClang 21.0.0.21000101
+-- The CXX compiler identification is AppleClang 21.0.0.21000101
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- llama.cpp version: 0.6.0-dev
+CMAKE_BUILD_TYPE=Release
+-- Found Git: /usr/bin/git (found version "2.50.1 (Apple Git-155)")
+-- The ASM compiler identification is AppleClang
+-- Found assembler: /usr/bin/cc
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- CMAKE_SYSTEM_PROCESSOR: arm64
+-- GGML_SYSTEM_ARCH: ARM
+-- ggml version: 0.26.0
+-- ggml commit:  62a6f74ba
+-- Generating embedded license file for target: llama-app
+-- Configuring done (0.8s)
+-- Generating done (0.0s)
+-- Build files have been written to: $TASK_SCRATCH/q4-down-q6-regeneration/helper-build-2/build/cmake
+[ 10%] Building CXX object ggml/src/CMakeFiles/ggml-base.dir/ggml.cpp.o
+[ 20%] Building C object ggml/src/CMakeFiles/ggml-base.dir/ggml.c.o
+[ 30%] Building C object ggml/src/CMakeFiles/ggml-base.dir/ggml-alloc.c.o
+[ 40%] Building CXX object ggml/src/CMakeFiles/ggml-base.dir/ggml-backend.cpp.o
+[ 50%] Building CXX object ggml/src/CMakeFiles/ggml-base.dir/ggml-backend-meta.cpp.o
+[ 60%] Building CXX object ggml/src/CMakeFiles/ggml-base.dir/ggml-opt.cpp.o
+[ 70%] Building CXX object ggml/src/CMakeFiles/ggml-base.dir/ggml-threading.cpp.o
+[ 80%] Building C object ggml/src/CMakeFiles/ggml-base.dir/ggml-quants.c.o
+[ 90%] Building CXX object ggml/src/CMakeFiles/ggml-base.dir/gguf.cpp.o
+[100%] Linking CXX shared library ../../bin/libggml-base.dylib
+[100%] Built target ggml-base
+{"status": "built", "manifest": "$TASK_SCRATCH/q4-down-q6-regeneration/helper-build-2/build/bridge.json", "bridge_sha256": "77206b1657257981af80816b2b14d40fd1071b96ec0696b486300ab10e031836"}

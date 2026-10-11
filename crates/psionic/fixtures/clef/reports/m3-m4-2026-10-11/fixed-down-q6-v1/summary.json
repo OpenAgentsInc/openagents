@@ -1,0 +1,101 @@
+{
+  "schema": "clef.fixed-down-q6-candidate.v1",
+  "status": "generated_and_payload_checked_not_model_accepted",
+  "original_bf16_gate_unchanged": true,
+  "model_execution": false,
+  "gpu_execution": false,
+  "quiet_lease": false,
+  "artifact": {
+    "name": "Clef-Q4-fixed-down-Q6.gguf",
+    "bytes": 19967533120,
+    "sha256": "a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b"
+  },
+  "source_gguf_sha256": "9997675e4c9e9016273372b5fdedbdda7ad14285bc722949e4b9daca62bf3822",
+  "upstream_revision": "62a6f74bab748b1755f4cd8dfc0871caf865c6c8",
+  "fixed_selected_layers": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    10,
+    13,
+    16,
+    19,
+    22,
+    25,
+    28,
+    31,
+    34,
+    37,
+    40,
+    43,
+    46,
+    49,
+    52,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63
+  ],
+  "replaced_matrices": 32,
+  "byte_preserved_tensors": 979,
+  "metadata_byte_preserved": true,
+  "generation": {
+    "seconds": 72.06765533300495,
+    "peak_sampled_group_bytes": 129449984,
+    "lowest_sampled_available_bytes": 102953205760,
+    "memory_cap_gib": 2,
+    "disk_floor_gib": 25,
+    "owned_group_stopped": true
+  },
+  "helper_checks": {
+    "status": "passed",
+    "compared_values": 2367488,
+    "cases": 5,
+    "invalid_refusals": [
+      "zero_rows",
+      "too_many_rows",
+      "wrong_width",
+      "short_output",
+      "nonfinite"
+    ]
+  },
+  "candidate_checks": {
+    "status": "passed",
+    "rows": 128,
+    "compared_values": 2228224,
+    "payload_bytes_read": 6284288,
+    "full_candidate_hash_rechecked": false
+  },
+  "limitations": [
+    "The artifact has not passed the unchanged 104-answer BF16 accuracy gate, image gate, or speed gate.",
+    "Quantization policy applies the upstream fixed FFN-down subset only; other existing tensor choices are preserved.",
+    "BF16 shard identity matches previously verified file state; this run does not rehash all 54 GB.",
+    "Peak memory is sampled, not an enforced kernel allocation maximum.",
+    "Candidate hash is computed during generation; sampled payload checks do not rehash the whole output."
+  ],
+  "source_attempts": [
+    "Initial public Git refetch failed; pinned archive succeeded with all3767 file/symlink blob identities verified.",
+    "First bridge build lacked explicit macOS SDK sysroot; corrected retry passed."
+  ],
+  "publication": {
+    "excluded": [
+      "model tensors",
+      "GGUF artifacts",
+      "binaries",
+      "source archive",
+      "full checkpoint files"
+    ],
+    "path_redactions": "Task, home, checkout, and Python environment paths use placeholders; original and published hashes are listed.",
+    "scripts": "Evidence copies; configure path placeholders before reuse."
+  }
+}

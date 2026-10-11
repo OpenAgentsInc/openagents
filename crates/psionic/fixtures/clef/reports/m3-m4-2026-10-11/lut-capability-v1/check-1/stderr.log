@@ -1,0 +1,2 @@
+/AppleInternal/Library/BuildRoots/4~CJ7zugCWBHgyY5jF33Pox4qXqx4MT4guvYcGoM4/Library/Caches/com.apple.xbs/TemporaryDirectory.oY3GWR/Sources/MetalPerformanceShaders/MPSCore/Types/MPSNDArray.mm:893: failed assertion `[MPSNDArray, initWithBufferImpl:offset:descriptor:isForNDArrayAlias:isUserBuffer:] Error: buffer is not large enough. Must be 4096 bytes
+'

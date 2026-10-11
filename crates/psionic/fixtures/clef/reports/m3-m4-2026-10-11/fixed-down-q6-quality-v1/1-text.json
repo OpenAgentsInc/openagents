@@ -1,0 +1,3945 @@
+{
+  "kind": "native_image_parity",
+  "reference_sha256": "5fededd9e1df8433b0ec4d4ac0b9d3f1f40c686e7700ee9af8a87ee562771867",
+  "cases_sha256": "3958f5f3b9d09d7fac61a39e40c69e812ef09c39f06baae2ab0286e171ab19bc",
+  "endpoint": "http://127.0.0.1:65328",
+  "cases": [
+    {
+      "id": "text-000",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "import": {
+            "type": "noul",
+            "noul": 0.7075047206986735
+          },
+          "id with space1": {
+            "type": "choice",
+            "choice": "branch_ticket",
+            "confidence": 0.6139665770211465,
+            "probabilities": {
+              "outage": 0.060674419000000646,
+              "upgrade_1": 0.03216509824070363,
+              "branch_ticket": 0.6139665770211465,
+              "invoice_3": 0.008470524306571504,
+              "\u0627\u0644\u0639\u0631\u0628\u064a\u0629": 0.009828941712727815,
+              "a b": 0.2681649526226382,
+              "user_6": 0.006729487096211687
+            }
+          },
+          "login_2": {
+            "type": "noul",
+            "noul": 0.17124865163680822
+          },
+          "dashboard_3": {
+            "type": "noul",
+            "noul": 0.15738577979798343
+          }
+        },
+        "usage": {
+          "input_tokens": 557,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 557,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 1657,
+          "timing": {
+            "encode_ms": 0.3,
+            "queue_ms": 0.0,
+            "prefill_ms": 1638.0,
+            "head_ms": 19.0,
+            "total_ms": 1657.4,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "import": "true",
+        "id with space1": "branch_ticket",
+        "login_2": "false",
+        "dashboard_3": "false"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "import": {
+          "type": "noul",
+          "native_top_answer": "true",
+          "reference_top_answer": "true",
+          "matches_reference": true,
+          "native_top_two_margin": 0.4150094413973471,
+          "reference_top_two_margin": 0.23019999999999996,
+          "maximum_probability_difference": 0.09240472069867356
+        },
+        "id with space1": {
+          "type": "choice",
+          "native_top_answer": "branch_ticket",
+          "reference_top_answer": "branch_ticket",
+          "matches_reference": true,
+          "native_top_two_margin": 0.34580162439850837,
+          "reference_top_two_margin": 0.37989999999999996,
+          "maximum_probability_difference": 0.018764952622638165
+        },
+        "login_2": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.6575026967263835,
+          "reference_top_two_margin": 0.5913999999999999,
+          "maximum_probability_difference": 0.03305134836319179
+        },
+        "dashboard_3": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.6852284404040332,
+          "reference_top_two_margin": 0.7223999999999999,
+          "maximum_probability_difference": 0.018585779797983426
+        }
+      },
+      "maximum_probability_difference": 0.09240472069867356,
+      "seconds": 1.658488625000004
+    },
+    {
+      "id": "text-001",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "latency": {
+            "type": "noul",
+            "noul": 0.18481271096480645
+          },
+          "cart": {
+            "type": "score",
+            "score": 3.834466588664567,
+            "confidence": 0.2584324952221141,
+            "legend": {
+              "0": "checkout reset reset crash deploy webhook \u00c5ngstr\u00f6m line\nbreak feature MiXeD CaSe",
+              "1": "rollback team rollback",
+              "2": "latency fraud family \ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66 api limit",
+              "3": "ticket import region rate login reset \u0440\u0443\u0441\u0441\u043a\u0438\u0439 \u0442\u0435\u043a\u0441\u0442 webhook \u65e5\u672c\u8a9e\u306e\u30c6\u30ad\u30b9\u30c8",
+              "4": "deploy payment branch deploy password export seat import",
+              "5": "team",
+              "6": "timeout timeout",
+              "7": "billing"
+            },
+            "probabilities": {
+              "0": 0.10729105515913374,
+              "1": 0.03263456539739703,
+              "2": 0.2438644691010724,
+              "3": 0.12654312430285933,
+              "4": 0.01772951451542612,
+              "5": 0.09078637567596158,
+              "6": 0.2584324952221141,
+              "7": 0.12271840062603573
+            }
+          },
+          "limit_2": {
+            "type": "noul",
+            "noul": 0.04790854357389073
+          }
+        },
+        "usage": {
+          "input_tokens": 451,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 451,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 1327,
+          "timing": {
+            "encode_ms": 0.4,
+            "queue_ms": 0.0,
+            "prefill_ms": 1305.1,
+            "head_ms": 21.9,
+            "total_ms": 1327.5,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "latency": "false",
+        "cart": "6",
+        "limit_2": "false"
+      },
+      "matches_reference": false,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "latency": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.6303745780703871,
+          "reference_top_two_margin": 0.7646,
+          "maximum_probability_difference": 0.06711271096480645
+        },
+        "cart": {
+          "type": "score",
+          "native_top_answer": "6",
+          "reference_top_answer": "2",
+          "matches_reference": false,
+          "native_top_two_margin": 0.014568026121041688,
+          "reference_top_two_margin": 0.008800000000000002,
+          "maximum_probability_difference": 0.03673249522211408
+        },
+        "limit_2": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.9041829128522185,
+          "reference_top_two_margin": 0.9286000000000001,
+          "maximum_probability_difference": 0.012208543573890729
+        }
+      },
+      "maximum_probability_difference": 0.06711271096480645,
+      "seconds": 1.3284944999999908
+    },
+    {
+      "id": "text-002",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "user_0": {
+            "type": "score",
+            "score": 1.8285560837606623,
+            "confidence": 0.4753855136338665,
+            "legend": {
+              "0": "major",
+              "1": {
+                "what": "declined refund region rate team declined",
+                "not_for": "declined",
+                "examples": [
+                  "crash",
+                  "admin"
+                ]
+              },
+              "2": [
+                999999999999999.9,
+                9007199254740993,
+                {
+                  "feature": 1.1e+16,
+                  "e\u0301 combining": null
+                }
+              ],
+              "3": "quote \" and backslash \\ ticket admin digits 1234567890 release rollback outage fraud",
+              "4": "token key deploy payment billing",
+              "5": "refund",
+              "6": "merge export urgent region token minor declined plan",
+              "7": "webhook"
+            },
+            "probabilities": {
+              "0": 0.4753855136338665,
+              "1": 0.15529051712552572,
+              "2": 0.03946631910006039,
+              "3": 0.07155470050985221,
+              "4": 0.04949303875525209,
+              "5": 0.08927117429295928,
+              "6": 0.10143035565773169,
+              "7": 0.01810838092475203
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 452,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 452,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 1283,
+          "timing": {
+            "encode_ms": 0.4,
+            "queue_ms": 0.0,
+            "prefill_ms": 1260.3,
+            "head_ms": 22.9,
+            "total_ms": 1283.7,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "user_0": "0"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "user_0": {
+          "type": "score",
+          "native_top_answer": "0",
+          "reference_top_answer": "0",
+          "matches_reference": true,
+          "native_top_two_margin": 0.3200949965083408,
+          "reference_top_two_margin": 0.2455,
+          "maximum_probability_difference": 0.037809482874474276
+        }
+      },
+      "maximum_probability_difference": 0.037809482874474276,
+      "seconds": 1.2848934999999955
+    },
+    {
+      "id": "text-003",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "export_0": {
+            "type": "noul",
+            "noul": 0.04145003208671973
+          }
+        },
+        "usage": {
+          "input_tokens": 206,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 206,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 720,
+          "timing": {
+            "encode_ms": 0.4,
+            "queue_ms": 0.0,
+            "prefill_ms": 706.7,
+            "head_ms": 13.6,
+            "total_ms": 720.8,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "export_0": "false"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "export_0": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.9170999358265606,
+          "reference_top_two_margin": 0.9072,
+          "maximum_probability_difference": 0.0049499679132802635
+        }
+      },
+      "maximum_probability_difference": 0.0049499679132802635,
+      "seconds": 0.7219669159999995
+    },
+    {
+      "id": "text-004",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "timeout_0": {
+            "type": "score",
+            "score": 3.206353761608698,
+            "confidence": 0.30841390153609394,
+            "legend": {
+              "0": "ctrl \u0001\u0007\u001f urgent feature bug declined plan \u65e5\u672c\u8a9e\u306e\u30c6\u30ad\u30b9\u30c8 billing",
+              "1": "reset fraud",
+              "2": "billing crash flag \ud83c\uddfa\ud83c\uddf8 checkout downgrade test webhook team ticket",
+              "3": "password login webhook rollback",
+              "4": {
+                "what": "crash e\u0301 combining password",
+                "not_for": "invoice timeout payment",
+                "examples": [
+                  "major",
+                  "cart",
+                  "trailing spaces    timeout cart"
+                ]
+              },
+              "5": "line\nbreak branch rollback region export reset rollback test tilde ~ caret ^ pipe |",
+              "6": "downgrade"
+            },
+            "probabilities": {
+              "0": 0.13577986154378538,
+              "1": 0.14439006346922612,
+              "2": 0.12459744628501476,
+              "3": 0.02604406655330984,
+              "4": 0.30841390153609394,
+              "5": 0.06366696391028367,
+              "6": 0.19710769670228645
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 295,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 295,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 851,
+          "timing": {
+            "encode_ms": 0.3,
+            "queue_ms": 0.0,
+            "prefill_ms": 837.7,
+            "head_ms": 13.5,
+            "total_ms": 851.6,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "timeout_0": "4"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "timeout_0": {
+          "type": "score",
+          "native_top_answer": "4",
+          "reference_top_answer": "4",
+          "matches_reference": true,
+          "native_top_two_margin": 0.11130620483380749,
+          "reference_top_two_margin": 0.0958,
+          "maximum_probability_difference": 0.025897446285014766
+        }
+      },
+      "maximum_probability_difference": 0.025897446285014766,
+      "seconds": 0.8527818750000051
+    },
+    {
+      "id": "text-005",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "bug_0": {
+            "type": "choice",
+            "choice": "seat",
+            "confidence": 0.3280707306513161,
+            "probabilities": {
+              "refund_0": 0.15845121267955314,
+              "quote \" and ": 0.09413021133966228,
+              "rate": 0.04567881644430876,
+              "upgrade": 0.07293414173910014,
+              "seat": 0.3280707306513161,
+              "\u05e2\u05d1\u05e8\u05d9\u05ea": 0.13256305013680014,
+              "\u00c5ngstr\u00f6m": 0.1681718370092595
+            }
+          },
+          "refund": {
+            "type": "noul",
+            "noul": 0.24292103162097728
+          }
+        },
+        "usage": {
+          "input_tokens": 585,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 585,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 1639,
+          "timing": {
+            "encode_ms": 0.5,
+            "queue_ms": 0.0,
+            "prefill_ms": 1618.1,
+            "head_ms": 20.7,
+            "total_ms": 1639.4,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "bug_0": "seat",
+        "refund": "false"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "bug_0": {
+          "type": "choice",
+          "native_top_answer": "seat",
+          "reference_top_answer": "seat",
+          "matches_reference": true,
+          "native_top_two_margin": 0.1598988936420566,
+          "reference_top_two_margin": 0.12830000000000003,
+          "maximum_probability_difference": 0.03752816299074049
+        },
+        "refund": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.5141579367580453,
+          "reference_top_two_margin": 0.4706000000000001,
+          "maximum_probability_difference": 0.021778968379022712
+        }
+      },
+      "maximum_probability_difference": 0.03752816299074049,
+      "seconds": 1.6403717920000105
+    },
+    {
+      "id": "text-006",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "\u00dcn\u00efcode_id0": {
+            "type": "noul",
+            "noul": 0.048694990871475004
+          }
+        },
+        "usage": {
+          "input_tokens": 155,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 155,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 567,
+          "timing": {
+            "encode_ms": 0.2,
+            "queue_ms": 0.0,
+            "prefill_ms": 554.8,
+            "head_ms": 12.5,
+            "total_ms": 567.6,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "\u00dcn\u00efcode_id0": "false"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "\u00dcn\u00efcode_id0": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.90261001825705,
+          "reference_top_two_margin": 0.8896,
+          "maximum_probability_difference": 0.006505009128524995
+        }
+      },
+      "maximum_probability_difference": 0.006505009128524995,
+      "seconds": 0.5686394580000069
+    },
+    {
+      "id": "text-007",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "billing_0": {
+            "type": "noul",
+            "noul": 0.3640319087086838
+          },
+          "dashboard": {
+            "type": "choice",
+            "choice": "minor",
+            "confidence": 0.49775108028800924,
+            "probabilities": {
+              "key_0": 0.05141536480967786,
+              "minor": 0.49775108028800924,
+              "team_2": 0.07173613365676651,
+              "merge_limit": 0.0883953468296837,
+              "build": 0.09284425622518228,
+              "crash_5": 0.1699993846504196,
+              "ticket_6": 0.02785843354026088
+            }
+          },
+          "timeout": {
+            "type": "choice",
+            "choice": "limit_downgrade",
+            "confidence": 0.7765490591346482,
+            "probabilities": {
+              "quote \" and ": 0.22345094086535172,
+              "limit_downgrade": 0.7765490591346482
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 908,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 908,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 2309,
+          "timing": {
+            "encode_ms": 0.6,
+            "queue_ms": 0.0,
+            "prefill_ms": 2287.2,
+            "head_ms": 21.9,
+            "total_ms": 2309.8,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "billing_0": "false",
+        "dashboard": "minor",
+        "timeout": "limit_downgrade"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "billing_0": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.27193618258263236,
+          "reference_top_two_margin": 0.16080000000000005,
+          "maximum_probability_difference": 0.05556809129131618
+        },
+        "dashboard": {
+          "type": "choice",
+          "native_top_answer": "minor",
+          "reference_top_answer": "minor",
+          "matches_reference": true,
+          "native_top_two_margin": 0.32775169563758966,
+          "reference_top_two_margin": 0.3421,
+          "maximum_probability_difference": 0.014344256225182275
+        },
+        "timeout": {
+          "type": "choice",
+          "native_top_answer": "limit_downgrade",
+          "reference_top_answer": "limit_downgrade",
+          "matches_reference": true,
+          "native_top_two_margin": 0.5530981182692964,
+          "reference_top_two_margin": 0.5938000000000001,
+          "maximum_probability_difference": 0.02035094086535183
+        }
+      },
+      "maximum_probability_difference": 0.05556809129131618,
+      "seconds": 2.3109714999999937
+    },
+    {
+      "id": "text-008",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "release_0": {
+            "type": "noul",
+            "noul": 0.8841094339921323
+          },
+          "rollback_1": {
+            "type": "choice",
+            "choice": "reset",
+            "confidence": 0.35140345559976344,
+            "probabilities": {
+              "admin": 0.06883076559507602,
+              "punct !?.,;:": 0.05083557916001856,
+              "reset": 0.35140345559976344,
+              "deploy_branch": 0.08409059833434974,
+              "dashboard_admin": 0.08617280219394687,
+              "test_5": 0.08188102087329567,
+              "bug_6": 0.07552788918995047,
+              "family \ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67": 0.2012578890535992
+            }
+          },
+          "refund": {
+            "type": "noul",
+            "noul": 0.950886338950044
+          }
+        },
+        "usage": {
+          "input_tokens": 607,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 607,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 1635,
+          "timing": {
+            "encode_ms": 0.5,
+            "queue_ms": 0.0,
+            "prefill_ms": 1616.3,
+            "head_ms": 18.1,
+            "total_ms": 1635.0,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "release_0": "true",
+        "rollback_1": "reset",
+        "refund": "true"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "release_0": {
+          "type": "noul",
+          "native_top_answer": "true",
+          "reference_top_answer": "true",
+          "matches_reference": true,
+          "native_top_two_margin": 0.7682188679842645,
+          "reference_top_two_margin": 0.7906,
+          "maximum_probability_difference": 0.01119056600786772
+        },
+        "rollback_1": {
+          "type": "choice",
+          "native_top_answer": "reset",
+          "reference_top_answer": "reset",
+          "matches_reference": true,
+          "native_top_two_margin": 0.15014556654616423,
+          "reference_top_two_margin": 0.1708,
+          "maximum_probability_difference": 0.01949654440023657
+        },
+        "refund": {
+          "type": "noul",
+          "native_top_answer": "true",
+          "reference_top_answer": "true",
+          "matches_reference": true,
+          "native_top_two_margin": 0.9017726779000881,
+          "reference_top_two_margin": 0.9097999999999999,
+          "maximum_probability_difference": 0.00401366104995593
+        }
+      },
+      "maximum_probability_difference": 0.01949654440023657,
+      "seconds": 1.6360820419999982
+    },
+    {
+      "id": "text-009",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "import_0": {
+            "type": "noul",
+            "noul": 0.2013199314643847
+          },
+          "rate": {
+            "type": "choice",
+            "choice": "deploy_reset",
+            "confidence": 0.48123996718452167,
+            "probabilities": {
+              "apple": 0.11270536787398466,
+              "\ud55c\uad6d\uc5b4": 0.0429078829873667,
+              "merge": 0.025837636137471028,
+              "timeout": 0.20803310272056896,
+              "api": 0.12927604309608698,
+              "deploy_reset": 0.48123996718452167
+            }
+          },
+          "key": {
+            "type": "score",
+            "score": 1.0631854181398273,
+            "confidence": 0.36553058799659954,
+            "legend": {
+              "0": {
+                "what": "rate rate latency emoji \ud83d\ude80\ud83d\udd25\u2705 latency",
+                "not_for": "user build",
+                "examples": []
+              },
+              "1": {
+                "what": "del \u007f char dashboard region region nbsp\u00a0space region",
+                "not_for": "export urgent tab\there",
+                "examples": [
+                  "math \u2211\u222b\u221a\u221e",
+                  "import"
+                ]
+              },
+              "2": "payment test \u0395\u03bb\u03bb\u03b7\u03bd\u03b9\u03ba\u03ac import password limit ticket rate MiXeD CaSe ticket"
+            },
+            "probabilities": {
+              "0": 0.30234516985677234,
+              "1": 0.33212424214662817,
+              "2": 0.36553058799659954
+            }
+          },
+          "password_3": {
+            "type": "score",
+            "score": 2.869931914569665,
+            "confidence": 0.2478047950425571,
+            "legend": {
+              "0": "reset seat urgent team",
+              "1": {
+                "what": "refund user emoji \ud83d\ude80\ud83d\udd25\u2705 team user api",
+                "not_for": "\u05e2\u05d1\u05e8\u05d9\u05ea",
+                "examples": [
+                  "major urgent test",
+                  "merge timeout token"
+                ]
+              },
+              "2": "family \ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66 \u2028line sep region bug punct !?.,;:-_()[]{}",
+              "3": "bug webhook ticket",
+              "4": "branch build emoji \ud83d\ude80\ud83d\udd25\u2705 latency feature",
+              "5": "export trailing spaces   ",
+              "6": "emoji \ud83d\ude80\ud83d\udd25\u2705    leading spaces family \ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66",
+              "7": "minor build bug"
+            },
+            "probabilities": {
+              "0": 0.24607547069889826,
+              "1": 0.08550446453003348,
+              "2": 0.06957663370699418,
+              "3": 0.2478047950425571,
+              "4": 0.0687356761516582,
+              "5": 0.15008118132107567,
+              "6": 0.04904126355552038,
+              "7": 0.08318051499326269
+            }
+          },
+          "minor_4": {
+            "type": "choice",
+            "choice": "nbsp\u00a0space",
+            "confidence": 0.6167569709763725,
+            "probabilities": {
+              "user_outage": 0.38324302902362745,
+              "nbsp\u00a0space": 0.6167569709763725
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 970,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 970,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 2365,
+          "timing": {
+            "encode_ms": 0.6,
+            "queue_ms": 0.0,
+            "prefill_ms": 2340.3,
+            "head_ms": 24.2,
+            "total_ms": 2365.2,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "import_0": "false",
+        "rate": "deploy_reset",
+        "key": "2",
+        "password_3": "3",
+        "minor_4": "nbsp\u00a0space"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "import_0": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.5973601370712305,
+          "reference_top_two_margin": 0.6472,
+          "maximum_probability_difference": 0.024919931464384704
+        },
+        "rate": {
+          "type": "choice",
+          "native_top_answer": "deploy_reset",
+          "reference_top_answer": "deploy_reset",
+          "matches_reference": true,
+          "native_top_two_margin": 0.2732068644639527,
+          "reference_top_two_margin": 0.23050000000000004,
+          "maximum_probability_difference": 0.02833996718452164
+        },
+        "key": {
+          "type": "score",
+          "native_top_answer": "2",
+          "reference_top_answer": "2",
+          "matches_reference": true,
+          "native_top_two_margin": 0.033406345849971375,
+          "reference_top_two_margin": 0.051500000000000046,
+          "maximum_probability_difference": 0.012269412003400482
+        },
+        "password_3": {
+          "type": "score",
+          "native_top_answer": "3",
+          "reference_top_answer": "3",
+          "matches_reference": true,
+          "native_top_two_margin": 0.001729324343658828,
+          "reference_top_two_margin": 0.014800000000000008,
+          "maximum_probability_difference": 0.020619485006737312
+        },
+        "minor_4": {
+          "type": "choice",
+          "native_top_answer": "nbsp\u00a0space",
+          "reference_top_answer": "nbsp\u00a0space",
+          "matches_reference": true,
+          "native_top_two_margin": 0.23351394195274505,
+          "reference_top_two_margin": 0.24760000000000004,
+          "maximum_probability_difference": 0.007043029023627523
+        }
+      },
+      "maximum_probability_difference": 0.02833996718452164,
+      "seconds": 2.366226249999997
+    },
+    {
+      "id": "text-010",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "\u65e5\u672c0": {
+            "type": "score",
+            "score": 3.0575409874024553,
+            "confidence": 0.38116485140672096,
+            "legend": {
+              "0": {
+                "what": "<think> tag punct !?.,;:-_()[]{} token",
+                "not_for": "limit",
+                "examples": [
+                  "<think> tag login",
+                  "invoice"
+                ]
+              },
+              "1": {
+                "\u00df": [
+                  "urgent cr\rreturn rate release MiXeD CaSe fraud \ud55c\uad6d\uc5b4 \u00c5ngstr\u00f6m"
+                ],
+                "Zebra": {
+                  "team_token": "cart billing upgrade bug payment minor declined timeout ticket",
+                  "payment": "\ufb01 ligature password login reset"
+                },
+                "test": "checkout feature ticket payment ticket rate invoice rollback \u00c5ngstr\u00f6m",
+                "major": 1e+22
+              },
+              "2": [
+                {
+                  "critical": 0.0001,
+                  "major": "minor build",
+                  "zero\u200bwidth": 1e+16,
+                  "token": "payment major nbsp\u00a0space plan"
+                },
+                1e+22
+              ],
+              "3": "branch token dashboard na\u00efve seat build password",
+              "4": 1e-07,
+              "5": "rollback upgrade crash rollback test cart billing",
+              "6": "ticket merge",
+              "7": "downgrade seat limit"
+            },
+            "probabilities": {
+              "0": 0.14096930056851753,
+              "1": 0.05510670548632351,
+              "2": 0.38116485140672096,
+              "3": 0.03716479975950532,
+              "4": 0.15867503626816465,
+              "5": 0.03504889202072751,
+              "6": 0.024427326782406292,
+              "7": 0.1674430877076343
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 423,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 423,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 1110,
+          "timing": {
+            "encode_ms": 0.3,
+            "queue_ms": 0.0,
+            "prefill_ms": 1095.8,
+            "head_ms": 13.9,
+            "total_ms": 1110.2,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "\u65e5\u672c0": "2"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "\u65e5\u672c0": {
+          "type": "score",
+          "native_top_answer": "2",
+          "reference_top_answer": "2",
+          "matches_reference": true,
+          "native_top_two_margin": 0.21372176369908666,
+          "reference_top_two_margin": 0.1596,
+          "maximum_probability_difference": 0.04386485140672097
+        }
+      },
+      "maximum_probability_difference": 0.04386485140672097,
+      "seconds": 1.1113065839999905
+    },
+    {
+      "id": "text-011",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "region": {
+            "type": "score",
+            "score": 2.1522991245756313,
+            "confidence": 0.4022924925459528,
+            "legend": {
+              "0": 1e-07,
+              "1": "webhook invoice merge branch admin \u0627\u0644\u0639\u0631\u0628\u064a\u0629 upgrade cart checkout",
+              "2": "key admin checkout limit password critical limit MiXeD CaSe",
+              "3": "token minor",
+              "4": "branch admin plan \ud55c\uad6d\uc5b4 critical",
+              "5": {
+                "what": "build billing import",
+                "not_for": "api limit full-width \uff21\uff22\uff23\uff11\uff12\uff13",
+                "examples": [
+                  "api"
+                ]
+              }
+            },
+            "probabilities": {
+              "0": 0.4022924925459528,
+              "1": 0.0659481868216737,
+              "2": 0.05645670137172858,
+              "3": 0.17235633626650332,
+              "4": 0.05836288875971754,
+              "5": 0.24458339423442407
+            }
+          },
+          "user": {
+            "type": "choice",
+            "choice": "billing_key",
+            "confidence": 0.6174863156994211,
+            "probabilities": {
+              "plan_0": 0.045324539989241484,
+              "10": 0.16853444615345464,
+              "login_login": 0.024646532196254213,
+              "billing_key": 0.6174863156994211,
+              "team": 0.01862522397693678,
+              "admin_branch": 0.0861905964056307,
+              "\u65e5\u672c\u8a9e\u306e\u30c6\u30ad\u30b9\u30c8": 0.03919234557906113
+            }
+          },
+          "reset": {
+            "type": "noul",
+            "noul": 0.14564008386933744
+          },
+          "id with space3": {
+            "type": "noul",
+            "noul": 0.030143264218883317
+          },
+          "refund": {
+            "type": "choice",
+            "choice": "branch_seat",
+            "confidence": 0.7372125330294139,
+            "probabilities": {
+              "branch_seat": 0.7372125330294139,
+              "limit_latency": 0.22253004352368952,
+              "billing_outage": 0.04025742344689669
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 968,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 968,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 2370,
+          "timing": {
+            "encode_ms": 0.7,
+            "queue_ms": 0.0,
+            "prefill_ms": 2348.5,
+            "head_ms": 20.7,
+            "total_ms": 2370.0,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "region": "0",
+        "user": "billing_key",
+        "reset": "false",
+        "id with space3": "false",
+        "refund": "branch_seat"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "region": {
+          "type": "score",
+          "native_top_answer": "0",
+          "reference_top_answer": "0",
+          "matches_reference": true,
+          "native_top_two_margin": 0.1577090983115287,
+          "reference_top_two_margin": 0.11260000000000003,
+          "maximum_probability_difference": 0.08994366373349666
+        },
+        "user": {
+          "type": "choice",
+          "native_top_answer": "billing_key",
+          "reference_top_answer": "billing_key",
+          "matches_reference": true,
+          "native_top_two_margin": 0.4489518695459665,
+          "reference_top_two_margin": 0.45929999999999993,
+          "maximum_probability_difference": 0.010013684300578807
+        },
+        "reset": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.7087198322613251,
+          "reference_top_two_margin": 0.7194,
+          "maximum_probability_difference": 0.005340083869337431
+        },
+        "id with space3": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.9397134715622333,
+          "reference_top_two_margin": 0.942,
+          "maximum_probability_difference": 0.0011432642188833157
+        },
+        "refund": {
+          "type": "choice",
+          "native_top_answer": "branch_seat",
+          "reference_top_answer": "branch_seat",
+          "matches_reference": true,
+          "native_top_two_margin": 0.5146824895057244,
+          "reference_top_two_margin": 0.46769999999999995,
+          "maximum_probability_difference": 0.031212533029413958
+        }
+      },
+      "maximum_probability_difference": 0.08994366373349666,
+      "seconds": 2.371098625000002
+    },
+    {
+      "id": "text-012",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "key_0": {
+            "type": "noul",
+            "noul": 0.24440390561324843
+          },
+          "webhook": {
+            "type": "noul",
+            "noul": 0.9346030645880862
+          },
+          "merge_2": {
+            "type": "choice",
+            "choice": "full-width \uff21",
+            "confidence": 0.5026503553113487,
+            "probabilities": {
+              "full-width \uff21": 0.5026503553113487,
+              "": 0.49734964468865134
+            }
+          },
+          "payment_3": {
+            "type": "noul",
+            "noul": 0.02841512054603312
+          },
+          "limit_4": {
+            "type": "noul",
+            "noul": 0.01481422645450153
+          }
+        },
+        "usage": {
+          "input_tokens": 590,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 590,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 1603,
+          "timing": {
+            "encode_ms": 0.4,
+            "queue_ms": 0.0,
+            "prefill_ms": 1583.9,
+            "head_ms": 18.7,
+            "total_ms": 1603.1,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "key_0": "false",
+        "webhook": "true",
+        "merge_2": "full-width \uff21",
+        "payment_3": "false",
+        "limit_4": "false"
+      },
+      "matches_reference": false,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "key_0": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.5111921887735031,
+          "reference_top_two_margin": 0.5926,
+          "maximum_probability_difference": 0.04070390561324844
+        },
+        "webhook": {
+          "type": "noul",
+          "native_top_answer": "true",
+          "reference_top_answer": "true",
+          "matches_reference": true,
+          "native_top_two_margin": 0.8692061291761723,
+          "reference_top_two_margin": 0.871,
+          "maximum_probability_difference": 0.000896935411913824
+        },
+        "merge_2": {
+          "type": "choice",
+          "native_top_answer": "full-width \uff21",
+          "reference_top_answer": "",
+          "matches_reference": false,
+          "native_top_two_margin": 0.00530071062269738,
+          "reference_top_two_margin": 0.07400000000000001,
+          "maximum_probability_difference": 0.039650355311348695
+        },
+        "payment_3": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.9431697589079338,
+          "reference_top_two_margin": 0.9396,
+          "maximum_probability_difference": 0.001784879453966881
+        },
+        "limit_4": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.970371547090997,
+          "reference_top_two_margin": 0.9723999999999999,
+          "maximum_probability_difference": 0.0010142264545015302
+        }
+      },
+      "maximum_probability_difference": 0.04070390561324844,
+      "seconds": 1.604359333000005
+    },
+    {
+      "id": "text-013",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "branch": {
+            "type": "noul",
+            "noul": 0.48443028211282224
+          },
+          "build": {
+            "type": "choice",
+            "choice": "branch_6",
+            "confidence": 0.4100929410698631,
+            "probabilities": {
+              "api_import": 0.0952493644482857,
+              "key_minor": 0.022424472684271165,
+              "urgent": 0.020098004605310013,
+              "critical_3": 0.3154706232845393,
+              "token_admin": 0.026486542455156407,
+              "card": 0.11017805145257435,
+              "branch_6": 0.4100929410698631
+            }
+          },
+          "bug_2": {
+            "type": "choice",
+            "choice": "bug_2",
+            "confidence": 0.9169057426622982,
+            "probabilities": {
+              "merge": 0.03326430635637054,
+              "user_1": 0.017466689032824344,
+              "bug_2": 0.9169057426622982,
+              "deploy": 0.032363261948506854
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 599,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 599,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 1642,
+          "timing": {
+            "encode_ms": 0.5,
+            "queue_ms": 0.0,
+            "prefill_ms": 1623.0,
+            "head_ms": 18.8,
+            "total_ms": 1642.4,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "branch": "false",
+        "build": "branch_6",
+        "bug_2": "bug_2"
+      },
+      "matches_reference": false,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "branch": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "true",
+          "matches_reference": false,
+          "native_top_two_margin": 0.031139435774355517,
+          "reference_top_two_margin": 0.11280000000000001,
+          "maximum_probability_difference": 0.07196971788717776
+        },
+        "build": {
+          "type": "choice",
+          "native_top_answer": "branch_6",
+          "reference_top_answer": "branch_6",
+          "matches_reference": true,
+          "native_top_two_margin": 0.09462231778532382,
+          "reference_top_two_margin": 0.034599999999999964,
+          "maximum_probability_difference": 0.03612937671546074
+        },
+        "bug_2": {
+          "type": "choice",
+          "native_top_answer": "bug_2",
+          "reference_top_answer": "bug_2",
+          "matches_reference": true,
+          "native_top_two_margin": 0.8836414363059276,
+          "reference_top_two_margin": 0.8654000000000001,
+          "maximum_probability_difference": 0.011105742662298135
+        }
+      },
+      "maximum_probability_difference": 0.07196971788717776,
+      "seconds": 1.643318999999991
+    },
+    {
+      "id": "text-014",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "x0": {
+            "type": "choice",
+            "choice": "downgrade_1",
+            "confidence": 0.37089811100839837,
+            "probabilities": {
+              "apple": 0.127360731858193,
+              "downgrade_1": 0.37089811100839837,
+              "branch": 0.05658781296774756,
+              "key": 0.0776929738199305,
+              "export": 0.36746037034573054
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 321,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 321,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 963,
+          "timing": {
+            "encode_ms": 0.2,
+            "queue_ms": 0.0,
+            "prefill_ms": 949.7,
+            "head_ms": 13.1,
+            "total_ms": 963.2,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "x0": "downgrade_1"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "x0": {
+          "type": "choice",
+          "native_top_answer": "downgrade_1",
+          "reference_top_answer": "downgrade_1",
+          "matches_reference": true,
+          "native_top_two_margin": 0.003437740662667832,
+          "reference_top_two_margin": 0.1498,
+          "maximum_probability_difference": 0.07856037034573055
+        }
+      },
+      "maximum_probability_difference": 0.07856037034573055,
+      "seconds": 0.9641534579999984
+    },
+    {
+      "id": "text-015",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "team_0": {
+            "type": "score",
+            "score": 1.8476642598905635,
+            "confidence": 0.5058446792688293,
+            "legend": {
+              "0": "declined \u0627\u0644\u0639\u0631\u0628\u064a\u0629 declined test billing minor timeout rate declined",
+              "1": "bug deploy test import ticket full-width \uff21\uff22\uff23\uff11\uff12\uff13 limit refund billing",
+              "2": [
+                "outage emoji \ud83d\ude80\ud83d\udd25\u2705 card    leading spaces e\u0301 combining payment dashboard dashboard"
+              ],
+              "3": null
+            },
+            "probabilities": {
+              "0": 0.11133277566985791,
+              "1": 0.15624636691551658,
+              "2": 0.5058446792688293,
+              "3": 0.22657617814579617
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 284,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 284,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 901,
+          "timing": {
+            "encode_ms": 0.4,
+            "queue_ms": 0.0,
+            "prefill_ms": 888.0,
+            "head_ms": 13.3,
+            "total_ms": 901.8,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "team_0": "2"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "team_0": {
+          "type": "score",
+          "native_top_answer": "2",
+          "reference_top_answer": "2",
+          "matches_reference": true,
+          "native_top_two_margin": 0.2792685011230331,
+          "reference_top_two_margin": 0.29319999999999996,
+          "maximum_probability_difference": 0.011946366915516565
+        }
+      },
+      "maximum_probability_difference": 0.011946366915516565,
+      "seconds": 0.9028673749999996
+    },
+    {
+      "id": "text-016",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "release": {
+            "type": "noul",
+            "noul": 0.06720939145940008
+          }
+        },
+        "usage": {
+          "input_tokens": 182,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 182,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 629,
+          "timing": {
+            "encode_ms": 0.2,
+            "queue_ms": 0.0,
+            "prefill_ms": 616.3,
+            "head_ms": 12.9,
+            "total_ms": 629.5,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "release": "false"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "release": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.8655812170811998,
+          "reference_top_two_margin": 0.873,
+          "maximum_probability_difference": 0.00370939145940008
+        }
+      },
+      "maximum_probability_difference": 0.00370939145940008,
+      "seconds": 0.6306365419999906
+    },
+    {
+      "id": "text-017",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "upgrade_0": {
+            "type": "choice",
+            "choice": "\u00c4pfel",
+            "confidence": 0.8944983106616339,
+            "probabilities": {
+              "z": 0.10550168933836616,
+              "\u00c4pfel": 0.8944983106616339
+            }
+          },
+          "branch_1": {
+            "type": "choice",
+            "choice": "feature_5",
+            "confidence": 0.3113540310941656,
+            "probabilities": {
+              "apple": 0.22528801025377987,
+              "export": 0.19284266085061869,
+              "math \u2211\u222b\u221a\u221e": 0.016414818040952992,
+              "zero\u200bwidth": 0.12811849671825593,
+              "import_invoice": 0.061485415231529846,
+              "feature_5": 0.3113540310941656,
+              "refund": 0.019070694771868672,
+              "ticket_7": 0.04542587303882831
+            }
+          },
+          "critical_2": {
+            "type": "choice",
+            "choice": "ticket",
+            "confidence": 0.6381329475427734,
+            "probabilities": {
+              "refund": 0.18075925989346814,
+              "punct !?.,;:": 0.18110779256375856,
+              "ticket": 0.6381329475427734
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 653,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 653,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 1863,
+          "timing": {
+            "encode_ms": 0.5,
+            "queue_ms": 0.0,
+            "prefill_ms": 1841.5,
+            "head_ms": 21.3,
+            "total_ms": 1863.4,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "upgrade_0": "\u00c4pfel",
+        "branch_1": "feature_5",
+        "critical_2": "ticket"
+      },
+      "matches_reference": false,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "upgrade_0": {
+          "type": "choice",
+          "native_top_answer": "\u00c4pfel",
+          "reference_top_answer": "\u00c4pfel",
+          "matches_reference": true,
+          "native_top_two_margin": 0.7889966213232678,
+          "reference_top_two_margin": 0.821,
+          "maximum_probability_difference": 0.016001689338366168
+        },
+        "branch_1": {
+          "type": "choice",
+          "native_top_answer": "feature_5",
+          "reference_top_answer": "apple",
+          "matches_reference": false,
+          "native_top_two_margin": 0.08606602084038573,
+          "reference_top_two_margin": 0.03559999999999999,
+          "maximum_probability_difference": 0.0827540310941656
+        },
+        "critical_2": {
+          "type": "choice",
+          "native_top_answer": "ticket",
+          "reference_top_answer": "ticket",
+          "matches_reference": true,
+          "native_top_two_margin": 0.45702515497901486,
+          "reference_top_two_margin": 0.42949999999999994,
+          "maximum_probability_difference": 0.01524074010653187
+        }
+      },
+      "maximum_probability_difference": 0.0827540310941656,
+      "seconds": 1.8649501659999999
+    },
+    {
+      "id": "text-018",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "cart": {
+            "type": "score",
+            "score": 0.7924522088719514,
+            "confidence": 0.48620516053073803,
+            "legend": {
+              "0": "checkout webhook",
+              "1": {
+                "what": "major bug <|im_end|> literal marker",
+                "not_for": "\u65e5\u672c\u8a9e\u306e\u30c6\u30ad\u30b9\u30c8 trailing spaces    bug",
+                "examples": [
+                  "login release",
+                  "team limit ctrl \u0001\u0007\u001f",
+                  "build math \u2211\u222b\u221a\u221e crash"
+                ]
+              },
+              "2": "invoice line\nbreak \u4e2d\u6587\u5b57\u7b26 declined seat"
+            },
+            "probabilities": {
+              "0": 0.3606713152986552,
+              "1": 0.48620516053073803,
+              "2": 0.1531235241706067
+            }
+          },
+          "invoice_1": {
+            "type": "choice",
+            "choice": "reset_1",
+            "confidence": 0.7784968211425014,
+            "probabilities": {
+              "bug_0": 0.22150317885749857,
+              "reset_1": 0.7784968211425014
+            }
+          },
+          "invoice": {
+            "type": "noul",
+            "noul": 0.12347235882085499
+          },
+          "\u00dcn\u00efcode_id3": {
+            "type": "score",
+            "score": 1.4180845985225683,
+            "confidence": 0.49022964560888815,
+            "legend": {
+              "0": {
+                "what": "api",
+                "not_for": "downgrade build",
+                "examples": []
+              },
+              "1": "user MiXeD CaSe upgrade minor rate payment invoice export",
+              "2": [],
+              "3": "family \ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66 digits 1234567890 billing rollback latency refund feature",
+              "4": "import",
+              "5": null,
+              "6": "urgent dashboard build emoji \ud83d\ude80\ud83d\udd25\u2705 webhook minor downgrade rate line\nbreak feature"
+            },
+            "probabilities": {
+              "0": 0.24196429434862415,
+              "1": 0.49022964560888815,
+              "2": 0.13713497891420498,
+              "3": 0.01633532354540318,
+              "4": 0.015730245587691857,
+              "5": 0.049975029872832526,
+              "6": 0.048630482122355066
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 769,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 769,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 2022,
+          "timing": {
+            "encode_ms": 0.6,
+            "queue_ms": 0.0,
+            "prefill_ms": 2001.6,
+            "head_ms": 20.3,
+            "total_ms": 2022.7,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "cart": "1",
+        "invoice_1": "reset_1",
+        "invoice": "false",
+        "\u00dcn\u00efcode_id3": "1"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "cart": {
+          "type": "score",
+          "native_top_answer": "1",
+          "reference_top_answer": "1",
+          "matches_reference": true,
+          "native_top_two_margin": 0.12553384523208283,
+          "reference_top_two_margin": 0.041200000000000014,
+          "maximum_probability_difference": 0.04330516053073802
+        },
+        "invoice_1": {
+          "type": "choice",
+          "native_top_answer": "reset_1",
+          "reference_top_answer": "reset_1",
+          "matches_reference": true,
+          "native_top_two_margin": 0.5569936422850028,
+          "reference_top_two_margin": 0.5758000000000001,
+          "maximum_probability_difference": 0.00940317885749864
+        },
+        "invoice": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.7530552823582901,
+          "reference_top_two_margin": 0.7092,
+          "maximum_probability_difference": 0.021927641179145016
+        },
+        "\u00dcn\u00efcode_id3": {
+          "type": "score",
+          "native_top_answer": "1",
+          "reference_top_answer": "1",
+          "matches_reference": true,
+          "native_top_two_margin": 0.248265351260264,
+          "reference_top_two_margin": 0.3016,
+          "maximum_probability_difference": 0.05266429434862416
+        }
+      },
+      "maximum_probability_difference": 0.05266429434862416,
+      "seconds": 2.0238333749999953
+    },
+    {
+      "id": "text-019",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "payment_0": {
+            "type": "score",
+            "score": 1.4390480491636195,
+            "confidence": 0.4963100467531507,
+            "legend": {
+              "0": {
+                "what": "del \u007f char refund region",
+                "not_for": "user login refund critical",
+                "examples": [
+                  "billing critical \u65e5\u672c\u8a9e\u306e\u30c6\u30ad\u30b9\u30c8",
+                  "bug"
+                ]
+              },
+              "1": "rollback",
+              "2": "release test",
+              "3": [
+                1.7976931348623157e+308,
+                "tab\there"
+              ],
+              "4": "crash build",
+              "5": "upgrade declined timeout invoice declined user ticket"
+            },
+            "probabilities": {
+              "0": 0.07540773772426004,
+              "1": 0.4963100467531507,
+              "2": 0.3643775511195792,
+              "3": 0.0451473711594072,
+              "4": 0.01524567952492455,
+              "5": 0.0035116137186781463
+            }
+          },
+          "bug": {
+            "type": "choice",
+            "choice": "outage_3",
+            "confidence": 0.4281040256739864,
+            "probabilities": {
+              "limit": 0.1237836838110384,
+              "token_latency": 0.1513794632608127,
+              "webhook_2": 0.2967328272541624,
+              "outage_3": 0.4281040256739864
+            }
+          },
+          "rate": {
+            "type": "noul",
+            "noul": 0.24187369023811622
+          },
+          "key": {
+            "type": "choice",
+            "choice": "declined_deploy",
+            "confidence": 0.5640877809166662,
+            "probabilities": {
+              "declined_deploy": 0.5640877809166662,
+              "\u00c4pfel": 0.4359122190833338
+            }
+          },
+          "token_4": {
+            "type": "choice",
+            "choice": "build",
+            "confidence": 0.45451897816546455,
+            "probabilities": {
+              "limit_0": 0.13646776635806643,
+              "team": 0.24429893589172197,
+              "build": 0.45451897816546455,
+              "invoice_rate": 0.057747535890729035,
+              "\u65e5\u672c\u8a9e\u306e\u30c6\u30ad\u30b9\u30c8": 0.10696678369401813
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 994,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 994,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 2325,
+          "timing": {
+            "encode_ms": 0.6,
+            "queue_ms": 0.0,
+            "prefill_ms": 2302.8,
+            "head_ms": 21.5,
+            "total_ms": 2325.0,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "payment_0": "1",
+        "bug": "outage_3",
+        "rate": "false",
+        "key": "declined_deploy",
+        "token_4": "build"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "payment_0": {
+          "type": "score",
+          "native_top_answer": "1",
+          "reference_top_answer": "1",
+          "matches_reference": true,
+          "native_top_two_margin": 0.1319324956335715,
+          "reference_top_two_margin": 0.2544,
+          "maximum_probability_difference": 0.06627755111957923
+        },
+        "bug": {
+          "type": "choice",
+          "native_top_answer": "outage_3",
+          "reference_top_answer": "outage_3",
+          "matches_reference": true,
+          "native_top_two_margin": 0.13137119841982403,
+          "reference_top_two_margin": 0.062399999999999956,
+          "maximum_probability_difference": 0.04890402567398644
+        },
+        "rate": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.5162526195237676,
+          "reference_top_two_margin": 0.5836000000000001,
+          "maximum_probability_difference": 0.03367369023811623
+        },
+        "key": {
+          "type": "choice",
+          "native_top_answer": "declined_deploy",
+          "reference_top_answer": "declined_deploy",
+          "matches_reference": true,
+          "native_top_two_margin": 0.12817556183333245,
+          "reference_top_two_margin": 0.1512,
+          "maximum_probability_difference": 0.011512219083333775
+        },
+        "token_4": {
+          "type": "choice",
+          "native_top_answer": "build",
+          "reference_top_answer": "build",
+          "matches_reference": true,
+          "native_top_two_margin": 0.21022004227374258,
+          "reference_top_two_margin": 0.19749999999999998,
+          "maximum_probability_difference": 0.01841897816546456
+        }
+      },
+      "maximum_probability_difference": 0.06627755111957923,
+      "seconds": 2.3260465420000003
+    },
+    {
+      "id": "text-020",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "invoice": {
+            "type": "score",
+            "score": 1.4580556257189348,
+            "confidence": 0.31642225511791694,
+            "legend": {
+              "0": "upgrade",
+              "1": "api checkout critical",
+              "2": "outage latency",
+              "3": "region plan payment rate deploy refund feature admin",
+              "4": 5e-324,
+              "5": {
+                "what": "invoice feature",
+                "not_for": "crash",
+                "examples": [
+                  "user release"
+                ]
+              },
+              "6": null
+            },
+            "probabilities": {
+              "0": 0.31642225511791694,
+              "1": 0.2688200933831818,
+              "2": 0.2733248534260279,
+              "3": 0.03555202498363685,
+              "4": 0.03639363317667627,
+              "5": 0.026567621649279317,
+              "6": 0.0429195182632808
+            }
+          },
+          "\u00dcn\u00efcode_id1": {
+            "type": "noul",
+            "noul": 0.7878328570686581
+          },
+          "login": {
+            "type": "choice",
+            "choice": "branch_2",
+            "confidence": 0.24524693802588737,
+            "probabilities": {
+              "caf\u00e9": 0.13469810020856685,
+              "billing": 0.1416648437208722,
+              "branch_2": 0.24524693802588737,
+              "webhook_cart": 0.13833160601864475,
+              "timeout_deploy": 0.2295062570081921,
+              "fraud_5": 0.11055225501783668
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 513,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 513,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 1603,
+          "timing": {
+            "encode_ms": 0.3,
+            "queue_ms": 0.0,
+            "prefill_ms": 1584.6,
+            "head_ms": 18.3,
+            "total_ms": 1603.3,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "invoice": "0",
+        "\u00dcn\u00efcode_id1": "true",
+        "login": "branch_2"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "invoice": {
+          "type": "score",
+          "native_top_answer": "0",
+          "reference_top_answer": "0",
+          "matches_reference": true,
+          "native_top_two_margin": 0.043097401691889026,
+          "reference_top_two_margin": 0.07550000000000001,
+          "maximum_probability_difference": 0.03142485342602791
+        },
+        "\u00dcn\u00efcode_id1": {
+          "type": "noul",
+          "native_top_answer": "true",
+          "reference_top_answer": "true",
+          "matches_reference": true,
+          "native_top_two_margin": 0.5756657141373163,
+          "reference_top_two_margin": 0.6528,
+          "maximum_probability_difference": 0.03856714293134189
+        },
+        "login": {
+          "type": "choice",
+          "native_top_answer": "branch_2",
+          "reference_top_answer": "branch_2",
+          "matches_reference": true,
+          "native_top_two_margin": 0.01574068101769527,
+          "reference_top_two_margin": 0.03629999999999997,
+          "maximum_probability_difference": 0.027335156279127804
+        }
+      },
+      "maximum_probability_difference": 0.03856714293134189,
+      "seconds": 1.604214459000005
+    },
+    {
+      "id": "text-021",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "build_0": {
+            "type": "noul",
+            "noul": 0.04774933433265234
+          },
+          "test_1": {
+            "type": "noul",
+            "noul": 0.06971339630362004
+          },
+          "branch": {
+            "type": "score",
+            "score": 2.4261627050016976,
+            "confidence": 0.3616690051430893,
+            "legend": {
+              "0": "token",
+              "1": "build refund tilde ~ caret ^ pipe | \u4e2d\u6587\u5b57\u7b26 \u2028line sep MiXeD CaSe dashboard <think> tag",
+              "2": "MiXeD CaSe urgent upgrade math \u2211\u222b\u221a\u221e",
+              "3": "seat declined billing token login team",
+              "4": "bug \u2028line sep import bug feature",
+              "5": "upgrade team downgrade fraud invoice payment math \u2211\u222b\u221a\u221e branch family \ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67\u200d\ud83d\udc66",
+              "6": null
+            },
+            "probabilities": {
+              "0": 0.3616690051430893,
+              "1": 0.12220520368863111,
+              "2": 0.04514471053648547,
+              "3": 0.069763337440908,
+              "4": 0.19473560374970025,
+              "5": 0.013457183728544361,
+              "6": 0.19302495571264144
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 522,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 522,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 1573,
+          "timing": {
+            "encode_ms": 0.4,
+            "queue_ms": 0.0,
+            "prefill_ms": 1555.8,
+            "head_ms": 17.7,
+            "total_ms": 1573.9,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "build_0": "false",
+        "test_1": "false",
+        "branch": "0"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "build_0": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.9045013313346952,
+          "reference_top_two_margin": 0.9292,
+          "maximum_probability_difference": 0.01234933433265234
+        },
+        "test_1": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.8605732073927599,
+          "reference_top_two_margin": 0.9248000000000001,
+          "maximum_probability_difference": 0.03211339630362004
+        },
+        "branch": {
+          "type": "score",
+          "native_top_answer": "0",
+          "reference_top_answer": "0",
+          "matches_reference": true,
+          "native_top_two_margin": 0.16693340139338905,
+          "reference_top_two_margin": 0.1661,
+          "maximum_probability_difference": 0.026024955712641434
+        }
+      },
+      "maximum_probability_difference": 0.03211339630362004,
+      "seconds": 1.5749506670000102
+    },
+    {
+      "id": "text-022",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "build": {
+            "type": "noul",
+            "noul": 0.18702936184212424
+          }
+        },
+        "usage": {
+          "input_tokens": 186,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 186,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 551,
+          "timing": {
+            "encode_ms": 0.2,
+            "queue_ms": 0.0,
+            "prefill_ms": 539.6,
+            "head_ms": 11.8,
+            "total_ms": 551.6,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "build": "false"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "build": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.6259412763157515,
+          "reference_top_two_margin": 0.7058,
+          "maximum_probability_difference": 0.03992936184212423
+        }
+      },
+      "maximum_probability_difference": 0.03992936184212423,
+      "seconds": 0.5525577500000054
+    },
+    {
+      "id": "text-023",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "plan": {
+            "type": "noul",
+            "noul": 0.2486390870289309
+          }
+        },
+        "usage": {
+          "input_tokens": 261,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 261,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 875,
+          "timing": {
+            "encode_ms": 0.3,
+            "queue_ms": 0.0,
+            "prefill_ms": 862.3,
+            "head_ms": 12.6,
+            "total_ms": 875.3,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "plan": "false"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "plan": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.5027218259421382,
+          "reference_top_two_margin": 0.5373999999999999,
+          "maximum_probability_difference": 0.01733908702893089
+        }
+      },
+      "maximum_probability_difference": 0.01733908702893089,
+      "seconds": 0.8762513749999954
+    },
+    {
+      "id": "text-024",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "billing_0": {
+            "type": "noul",
+            "noul": 0.4830859790582661
+          },
+          "fraud_1": {
+            "type": "choice",
+            "choice": "reset_1",
+            "confidence": 0.56802373614199,
+            "probabilities": {
+              "": 0.43197626385800997,
+              "reset_1": 0.56802373614199
+            }
+          },
+          "test_2": {
+            "type": "noul",
+            "noul": 0.08300739524609893
+          }
+        },
+        "usage": {
+          "input_tokens": 383,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 383,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 1015,
+          "timing": {
+            "encode_ms": 0.3,
+            "queue_ms": 0.0,
+            "prefill_ms": 1000.1,
+            "head_ms": 15.3,
+            "total_ms": 1015.9,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "billing_0": "false",
+        "fraud_1": "reset_1",
+        "test_2": "false"
+      },
+      "matches_reference": false,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "billing_0": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "true",
+          "matches_reference": false,
+          "native_top_two_margin": 0.033828041883467774,
+          "reference_top_two_margin": 0.05459999999999998,
+          "maximum_probability_difference": 0.04421402094173388
+        },
+        "fraud_1": {
+          "type": "choice",
+          "native_top_answer": "reset_1",
+          "reference_top_answer": "reset_1",
+          "matches_reference": true,
+          "native_top_two_margin": 0.13604747228398,
+          "reference_top_two_margin": 0.07600000000000001,
+          "maximum_probability_difference": 0.030023736141990054
+        },
+        "test_2": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.8339852095078022,
+          "reference_top_two_margin": 0.8202,
+          "maximum_probability_difference": 0.006892604753901063
+        }
+      },
+      "maximum_probability_difference": 0.04421402094173388,
+      "seconds": 1.0169586669999973
+    },
+    {
+      "id": "text-025",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "feature": {
+            "type": "noul",
+            "noul": 0.16922222215853877
+          },
+          "upgrade_1": {
+            "type": "choice",
+            "choice": "major_2",
+            "confidence": 0.5457941508544242,
+            "probabilities": {
+              "release": 0.2876763483760976,
+              "password_rollback": 0.16652950076947823,
+              "major_2": 0.5457941508544242
+            }
+          },
+          "feature_2": {
+            "type": "noul",
+            "noul": 0.4360314961684214
+          }
+        },
+        "usage": {
+          "input_tokens": 498,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 498,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 1209,
+          "timing": {
+            "encode_ms": 0.3,
+            "queue_ms": 0.0,
+            "prefill_ms": 1195.3,
+            "head_ms": 14.0,
+            "total_ms": 1209.8,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "feature": "false",
+        "upgrade_1": "major_2",
+        "feature_2": "false"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "feature": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.6615555556829225,
+          "reference_top_two_margin": 0.7078,
+          "maximum_probability_difference": 0.023122222158538763
+        },
+        "upgrade_1": {
+          "type": "choice",
+          "native_top_answer": "major_2",
+          "reference_top_answer": "major_2",
+          "matches_reference": true,
+          "native_top_two_margin": 0.25811780247832655,
+          "reference_top_two_margin": 0.28099999999999997,
+          "maximum_probability_difference": 0.01280584914557581
+        },
+        "feature_2": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.1279370076631572,
+          "reference_top_two_margin": 0.2022,
+          "maximum_probability_difference": 0.03713149616842143
+        }
+      },
+      "maximum_probability_difference": 0.03713149616842143,
+      "seconds": 1.2108193330000034
+    },
+    {
+      "id": "text-026",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "merge": {
+            "type": "noul",
+            "noul": 0.13217451266002958
+          }
+        },
+        "usage": {
+          "input_tokens": 158,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 158,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 600,
+          "timing": {
+            "encode_ms": 0.2,
+            "queue_ms": 0.0,
+            "prefill_ms": 587.4,
+            "head_ms": 12.4,
+            "total_ms": 600.1,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "merge": "false"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "merge": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.7356509746799409,
+          "reference_top_two_margin": 0.5626,
+          "maximum_probability_difference": 0.08652548733997042
+        }
+      },
+      "maximum_probability_difference": 0.08652548733997042,
+      "seconds": 0.6011197090000024
+    },
+    {
+      "id": "text-027",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "import_0": {
+            "type": "choice",
+            "choice": "minor_3",
+            "confidence": 0.5635202986278313,
+            "probabilities": {
+              "bug_import": 0.22026154389670147,
+              "outage_login": 0.024975709337401585,
+              "critical_2": 0.0975910922141018,
+              "minor_3": 0.5635202986278313,
+              "card_4": 0.09365135592396398
+            }
+          },
+          "id with space1": {
+            "type": "noul",
+            "noul": 0.7050118610084737
+          },
+          "crash_2": {
+            "type": "noul",
+            "noul": 0.37848694968626545
+          },
+          "plan_3": {
+            "type": "choice",
+            "choice": "fraud_4",
+            "confidence": 0.31491076699885057,
+            "probabilities": {
+              "outage_build": 0.30690523222039273,
+              "\u0627\u0644\u0639\u0631\u0628\u064a\u0629": 0.11239174483647361,
+              "digits 12345": 0.11281024929456358,
+              "Zebra": 0.15298200664971948,
+              "fraud_4": 0.31491076699885057
+            }
+          },
+          "timeout": {
+            "type": "noul",
+            "noul": 0.179143941268108
+          }
+        },
+        "usage": {
+          "input_tokens": 839,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 839,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 2160,
+          "timing": {
+            "encode_ms": 0.6,
+            "queue_ms": 0.0,
+            "prefill_ms": 2139.1,
+            "head_ms": 21.1,
+            "total_ms": 2160.9,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "import_0": "minor_3",
+        "id with space1": "true",
+        "crash_2": "false",
+        "plan_3": "fraud_4",
+        "timeout": "false"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "import_0": {
+          "type": "choice",
+          "native_top_answer": "minor_3",
+          "reference_top_answer": "minor_3",
+          "matches_reference": true,
+          "native_top_two_margin": 0.34325875473112977,
+          "reference_top_two_margin": 0.40880000000000005,
+          "maximum_probability_difference": 0.03407970137216876
+        },
+        "id with space1": {
+          "type": "noul",
+          "native_top_answer": "true",
+          "reference_top_answer": "true",
+          "matches_reference": true,
+          "native_top_two_margin": 0.41002372201694737,
+          "reference_top_two_margin": 0.5526,
+          "maximum_probability_difference": 0.0712881389915263
+        },
+        "crash_2": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.24302610062746904,
+          "reference_top_two_margin": 0.23839999999999995,
+          "maximum_probability_difference": 0.002313050313734577
+        },
+        "plan_3": {
+          "type": "choice",
+          "native_top_answer": "fraud_4",
+          "reference_top_answer": "fraud_4",
+          "matches_reference": true,
+          "native_top_two_margin": 0.008005534778457835,
+          "reference_top_two_margin": 0.044399999999999995,
+          "maximum_probability_difference": 0.01918923300114944
+        },
+        "timeout": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.6417121174637841,
+          "reference_top_two_margin": 0.5780000000000001,
+          "maximum_probability_difference": 0.031856058731891984
+        }
+      },
+      "maximum_probability_difference": 0.0712881389915263,
+      "seconds": 2.1619590839999887
+    },
+    {
+      "id": "text-028",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "reset_0": {
+            "type": "noul",
+            "noul": 0.6209326145010546
+          },
+          "test_1": {
+            "type": "choice",
+            "choice": "latency",
+            "confidence": 0.4320475640007746,
+            "probabilities": {
+              "user_release": 0.11137056740340211,
+              "latency": 0.4320475640007746,
+              "checkout_billing": 0.1244813524541744,
+              "test_3": 0.33210051614164876
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 347,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 347,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 952,
+          "timing": {
+            "encode_ms": 0.3,
+            "queue_ms": 0.0,
+            "prefill_ms": 939.4,
+            "head_ms": 13.0,
+            "total_ms": 952.8,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "reset_0": "true",
+        "test_1": "latency"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "reset_0": {
+          "type": "noul",
+          "native_top_answer": "true",
+          "reference_top_answer": "true",
+          "matches_reference": true,
+          "native_top_two_margin": 0.24186522900210927,
+          "reference_top_two_margin": 0.3446,
+          "maximum_probability_difference": 0.05136738549894537
+        },
+        "test_1": {
+          "type": "choice",
+          "native_top_answer": "latency",
+          "reference_top_answer": "latency",
+          "matches_reference": true,
+          "native_top_two_margin": 0.09994704785912584,
+          "reference_top_two_margin": 0.17860000000000004,
+          "maximum_probability_difference": 0.03960051614164878
+        }
+      },
+      "maximum_probability_difference": 0.05136738549894537,
+      "seconds": 0.9538486250000062
+    },
+    {
+      "id": "text-029",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "rate": {
+            "type": "noul",
+            "noul": 0.3178417492681203
+          },
+          "\u65e5\u672c1": {
+            "type": "noul",
+            "noul": 0.25636380138319487
+          },
+          "rollback_2": {
+            "type": "noul",
+            "noul": 0.00925120240897435
+          }
+        },
+        "usage": {
+          "input_tokens": 359,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 359,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 962,
+          "timing": {
+            "encode_ms": 0.3,
+            "queue_ms": 0.0,
+            "prefill_ms": 948.4,
+            "head_ms": 13.4,
+            "total_ms": 962.2,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "rate": "false",
+        "\u65e5\u672c1": "false",
+        "rollback_2": "false"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "rate": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.36431650146375943,
+          "reference_top_two_margin": 0.4498,
+          "maximum_probability_difference": 0.0427417492681203
+        },
+        "\u65e5\u672c1": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.4872723972336103,
+          "reference_top_two_margin": 0.14840000000000003,
+          "maximum_probability_difference": 0.16943619861680514
+        },
+        "rollback_2": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.9814975951820513,
+          "reference_top_two_margin": 0.9825999999999999,
+          "maximum_probability_difference": 0.0005512024089743498
+        }
+      },
+      "maximum_probability_difference": 0.16943619861680514,
+      "seconds": 0.9633717919999896
+    },
+    {
+      "id": "text-030",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "export": {
+            "type": "choice",
+            "choice": "downgrade_rate",
+            "confidence": 0.39927749721570166,
+            "probabilities": {
+              "trailing spa": 0.08065155775411093,
+              "plan_1": 0.13188182297567436,
+              "\u00df": 0.12422170915250894,
+              "\u05e2\u05d1\u05e8\u05d9\u05ea": 0.14860842828050064,
+              "downgrade_rate": 0.39927749721570166,
+              "branch_5": 0.11535898462150339
+            }
+          },
+          "ticket_1": {
+            "type": "choice",
+            "choice": "export_latency",
+            "confidence": 0.9034126045699805,
+            "probabilities": {
+              "billing_upgrade": 0.09658739543001947,
+              "export_latency": 0.9034126045699805
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 338,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 338,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 967,
+          "timing": {
+            "encode_ms": 0.2,
+            "queue_ms": 0.0,
+            "prefill_ms": 954.2,
+            "head_ms": 12.8,
+            "total_ms": 967.3,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "export": "downgrade_rate",
+        "ticket_1": "export_latency"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "export": {
+          "type": "choice",
+          "native_top_answer": "downgrade_rate",
+          "reference_top_answer": "downgrade_rate",
+          "matches_reference": true,
+          "native_top_two_margin": 0.250669068935201,
+          "reference_top_two_margin": 0.1648,
+          "maximum_probability_difference": 0.08874844224588907
+        },
+        "ticket_1": {
+          "type": "choice",
+          "native_top_answer": "export_latency",
+          "reference_top_answer": "export_latency",
+          "matches_reference": true,
+          "native_top_two_margin": 0.806825209139961,
+          "reference_top_two_margin": 0.8308,
+          "maximum_probability_difference": 0.011987395430019476
+        }
+      },
+      "maximum_probability_difference": 0.08874844224588907,
+      "seconds": 0.9683713750000038
+    },
+    {
+      "id": "text-031",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "key": {
+            "type": "noul",
+            "noul": 0.28976005047428954
+          }
+        },
+        "usage": {
+          "input_tokens": 169,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 169,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 597,
+          "timing": {
+            "encode_ms": 0.2,
+            "queue_ms": 0.0,
+            "prefill_ms": 585.1,
+            "head_ms": 12.3,
+            "total_ms": 597.6,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "key": "false"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "key": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.4204798990514209,
+          "reference_top_two_margin": 0.3836,
+          "maximum_probability_difference": 0.01843994952571043
+        }
+      },
+      "maximum_probability_difference": 0.01843994952571043,
+      "seconds": 0.5986580840000073
+    },
+    {
+      "id": "text-032",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "card_0": {
+            "type": "choice",
+            "choice": "rollback_0",
+            "confidence": 0.37108393635391995,
+            "probabilities": {
+              "rollback_0": 0.37108393635391995,
+              "latency_1": 0.15946929332029752,
+              "deploy": 0.3011502496411995,
+              "B": 0.1682965206845831
+            }
+          },
+          "merge_1": {
+            "type": "noul",
+            "noul": 0.10153201330914956
+          }
+        },
+        "usage": {
+          "input_tokens": 706,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 706,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 1931,
+          "timing": {
+            "encode_ms": 0.5,
+            "queue_ms": 0.0,
+            "prefill_ms": 1909.7,
+            "head_ms": 21.3,
+            "total_ms": 1931.6,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "card_0": "rollback_0",
+        "merge_1": "false"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "card_0": {
+          "type": "choice",
+          "native_top_answer": "rollback_0",
+          "reference_top_answer": "rollback_0",
+          "matches_reference": true,
+          "native_top_two_margin": 0.06993368671272043,
+          "reference_top_two_margin": 0.08280000000000004,
+          "maximum_probability_difference": 0.009650249641199538
+        },
+        "merge_1": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.796935973381701,
+          "reference_top_two_margin": 0.8171999999999999,
+          "maximum_probability_difference": 0.010132013309149562
+        }
+      },
+      "maximum_probability_difference": 0.010132013309149562,
+      "seconds": 1.933792957999998
+    },
+    {
+      "id": "text-033",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "webhook_0": {
+            "type": "score",
+            "score": 2.8107120464822293,
+            "confidence": 0.6060344005184571,
+            "legend": {
+              "0": "api <|im_end|> literal marker declined refund key math \u2211\u222b\u221a\u221e",
+              "1": "dashboard deploy \u0627\u0644\u0639\u0631\u0628\u064a\u0629 \u0395\u03bb\u03bb\u03b7\u03bd\u03b9\u03ba\u03ac timeout invoice dashboard token billing",
+              "2": "outage downgrade quote \" and backslash \\",
+              "3": "\u2028line sep test user digits 1234567890 payment major math \u2211\u222b\u221a\u221e",
+              "4": "api billing release build rollback full-width \uff21\uff22\uff23\uff11\uff12\uff13 plan feature billing region",
+              "5": {
+                "what": "\u00c5ngstr\u00f6m key",
+                "not_for": "invoice admin rollback",
+                "examples": [
+                  "rate refund refund",
+                  "digits 1234567890",
+                  "build <|im_end|> literal marker"
+                ]
+              },
+              "6": "minor"
+            },
+            "probabilities": {
+              "0": 0.06994517801247858,
+              "1": 0.02565439958883722,
+              "2": 0.6060344005184571,
+              "3": 0.05373030519442362,
+              "4": 0.01681451271289183,
+              "5": 0.022387344415830956,
+              "6": 0.20543385955708082
+            }
+          },
+          "checkout_1": {
+            "type": "choice",
+            "choice": "ticket_latency",
+            "confidence": 0.527944663661586,
+            "probabilities": {
+              "   leading s": 0.14658047302023644,
+              "ticket_latency": 0.527944663661586,
+              "export_2": 0.18580484060726354,
+              "ticket_3": 0.13967002271091405
+            }
+          },
+          "password_2": {
+            "type": "noul",
+            "noul": 0.06323933490598374
+          }
+        },
+        "usage": {
+          "input_tokens": 588,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 588,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 1784,
+          "timing": {
+            "encode_ms": 0.4,
+            "queue_ms": 0.0,
+            "prefill_ms": 1762.9,
+            "head_ms": 21.4,
+            "total_ms": 1784.9,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "webhook_0": "2",
+        "checkout_1": "ticket_latency",
+        "password_2": "false"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "webhook_0": {
+          "type": "score",
+          "native_top_answer": "2",
+          "reference_top_answer": "2",
+          "matches_reference": true,
+          "native_top_two_margin": 0.4006005409613763,
+          "reference_top_two_margin": 0.42679999999999996,
+          "maximum_probability_difference": 0.01906559948154285
+        },
+        "checkout_1": {
+          "type": "choice",
+          "native_top_answer": "ticket_latency",
+          "reference_top_answer": "ticket_latency",
+          "matches_reference": true,
+          "native_top_two_margin": 0.34213982305432245,
+          "reference_top_two_margin": 0.2173,
+          "maximum_probability_difference": 0.07834466366158599
+        },
+        "password_2": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.8735213301880325,
+          "reference_top_two_margin": 0.8504,
+          "maximum_probability_difference": 0.011560665094016265
+        }
+      },
+      "maximum_probability_difference": 0.07834466366158599,
+      "seconds": 1.7861895409999988
+    },
+    {
+      "id": "text-034",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "admin": {
+            "type": "noul",
+            "noul": 0.5609641681176172
+          },
+          "user": {
+            "type": "noul",
+            "noul": 0.5420656820812363
+          },
+          "dashboard_2": {
+            "type": "noul",
+            "noul": 0.09321413059982285
+          }
+        },
+        "usage": {
+          "input_tokens": 1031,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 1031,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 2831,
+          "timing": {
+            "encode_ms": 0.8,
+            "queue_ms": 0.0,
+            "prefill_ms": 2812.4,
+            "head_ms": 18.2,
+            "total_ms": 2831.5,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "admin": "true",
+        "user": "true",
+        "dashboard_2": "false"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "admin": {
+          "type": "noul",
+          "native_top_answer": "true",
+          "reference_top_answer": "true",
+          "matches_reference": true,
+          "native_top_two_margin": 0.12192833623523436,
+          "reference_top_two_margin": 0.3600000000000001,
+          "maximum_probability_difference": 0.11903583188238287
+        },
+        "user": {
+          "type": "noul",
+          "native_top_answer": "true",
+          "reference_top_answer": "true",
+          "matches_reference": true,
+          "native_top_two_margin": 0.08413136416247258,
+          "reference_top_two_margin": 0.34820000000000007,
+          "maximum_probability_difference": 0.13203431791876374
+        },
+        "dashboard_2": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.8135717388003543,
+          "reference_top_two_margin": 0.6736,
+          "maximum_probability_difference": 0.06998586940017716
+        }
+      },
+      "maximum_probability_difference": 0.13203431791876374,
+      "seconds": 2.8326032089999984
+    },
+    {
+      "id": "text-035",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "card": {
+            "type": "score",
+            "score": 1.9614411473274136,
+            "confidence": 0.28583826054705247,
+            "legend": {
+              "0": {
+                "what": "declined cart",
+                "not_for": "build",
+                "examples": [
+                  "del \u007f char major",
+                  "user"
+                ]
+              },
+              "1": "MiXeD CaSe api admin",
+              "2": "timeout release bug",
+              "3": "cart outage export billing invoice \u4e2d\u6587\u5b57\u7b26 emoji \ud83d\ude80\ud83d\udd25\u2705 outage",
+              "4": "card region ticket rollback export webhook checkout region"
+            },
+            "probabilities": {
+              "0": 0.21695474492756286,
+              "1": 0.1281662986546495,
+              "2": 0.28583826054705247,
+              "3": 0.21456445590428194,
+              "4": 0.1544762399664533
+            }
+          },
+          "feature_1": {
+            "type": "noul",
+            "noul": 0.09807540071619097
+          }
+        },
+        "usage": {
+          "input_tokens": 326,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 326,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 895,
+          "timing": {
+            "encode_ms": 0.3,
+            "queue_ms": 0.0,
+            "prefill_ms": 882.2,
+            "head_ms": 13.3,
+            "total_ms": 895.9,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "card": "2",
+        "feature_1": "false"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "card": {
+          "type": "score",
+          "native_top_answer": "2",
+          "reference_top_answer": "2",
+          "matches_reference": true,
+          "native_top_two_margin": 0.0688835156194896,
+          "reference_top_two_margin": 0.11230000000000001,
+          "maximum_probability_difference": 0.07036173945294755
+        },
+        "feature_1": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.8038491985676179,
+          "reference_top_two_margin": 0.8315999999999999,
+          "maximum_probability_difference": 0.013875400716190978
+        }
+      },
+      "maximum_probability_difference": 0.07036173945294755,
+      "seconds": 0.8970218340000002
+    },
+    {
+      "id": "text-036",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "id with space0": {
+            "type": "noul",
+            "noul": 0.060608168333707524
+          },
+          "urgent_1": {
+            "type": "choice",
+            "choice": "apple",
+            "confidence": 0.6528335923269707,
+            "probabilities": {
+              "feature": 0.015675500405689467,
+              "import_1": 0.03127776758735551,
+              "dashboard": 0.01626348291379842,
+              "api_login": 0.023188168259416723,
+              "cart": 0.04440466228425911,
+              "rate_merge": 0.04777198191063687,
+              "payment_6": 0.023550369566264467,
+              "webhook_7": 0.09178665978677653,
+              "\u00c4pfel": 0.031116334537824513,
+              "fraud": 0.022131480421007946,
+              "apple": 0.6528335923269707
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 516,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 516,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 1628,
+          "timing": {
+            "encode_ms": 0.5,
+            "queue_ms": 0.0,
+            "prefill_ms": 1610.2,
+            "head_ms": 17.5,
+            "total_ms": 1628.4,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "id with space0": "false",
+        "urgent_1": "apple"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "id with space0": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.878783663332585,
+          "reference_top_two_margin": 0.8715999999999999,
+          "maximum_probability_difference": 0.0035918316662924693
+        },
+        "urgent_1": {
+          "type": "choice",
+          "native_top_answer": "apple",
+          "reference_top_answer": "apple",
+          "matches_reference": true,
+          "native_top_two_margin": 0.5610469325401941,
+          "reference_top_two_margin": 0.578,
+          "maximum_probability_difference": 0.015666407673029292
+        }
+      },
+      "maximum_probability_difference": 0.015666407673029292,
+      "seconds": 1.6294284579999925
+    },
+    {
+      "id": "text-037",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "token_0": {
+            "type": "noul",
+            "noul": 0.3192929717751623
+          },
+          "crash_1": {
+            "type": "choice",
+            "choice": "import_feature",
+            "confidence": 0.4671404072533467,
+            "probabilities": {
+              "punct !?.,;:": 0.17347442436875005,
+              "plan_feature": 0.3593851683779032,
+              "import_feature": 0.4671404072533467
+            }
+          },
+          "rate_2": {
+            "type": "choice",
+            "choice": "family \ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67",
+            "confidence": 0.6462283785444953,
+            "probabilities": {
+              "\u03a9": 0.15753599077657807,
+              "family \ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67": 0.6462283785444953,
+              "\u65e5\u672c\u8a9e\u306e\u30c6\u30ad\u30b9\u30c8": 0.19623563067892666
+            }
+          },
+          "seat": {
+            "type": "choice",
+            "choice": "bug_2",
+            "confidence": 0.2556889150666334,
+            "probabilities": {
+              "family \ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67": 0.06028030694965267,
+              "e\u0301 combining": 0.14689263294395236,
+              "bug_2": 0.2556889150666334,
+              "timeout": 0.0879325789801368,
+              "test_token": 0.24804446972467845,
+              "login_5": 0.048048629235723346,
+              "\u00df": 0.054012841095808714,
+              "release": 0.09909962600341438
+            }
+          },
+          "team": {
+            "type": "noul",
+            "noul": 0.03256705924551687
+          }
+        },
+        "usage": {
+          "input_tokens": 850,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 850,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 2154,
+          "timing": {
+            "encode_ms": 0.6,
+            "queue_ms": 0.0,
+            "prefill_ms": 2131.8,
+            "head_ms": 22.2,
+            "total_ms": 2154.7,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "token_0": "false",
+        "crash_1": "import_feature",
+        "rate_2": "family \ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67",
+        "seat": "bug_2",
+        "team": "false"
+      },
+      "matches_reference": false,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "token_0": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.36141405644967545,
+          "reference_top_two_margin": 0.22460000000000008,
+          "maximum_probability_difference": 0.06840702822483768
+        },
+        "crash_1": {
+          "type": "choice",
+          "native_top_answer": "import_feature",
+          "reference_top_answer": "plan_feature",
+          "matches_reference": false,
+          "native_top_two_margin": 0.10775523887544353,
+          "reference_top_two_margin": 0.0030999999999999917,
+          "maximum_probability_difference": 0.06634040725334672
+        },
+        "rate_2": {
+          "type": "choice",
+          "native_top_answer": "family \ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67",
+          "reference_top_answer": "family \ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67",
+          "matches_reference": true,
+          "native_top_two_margin": 0.44999274786556864,
+          "reference_top_two_margin": 0.4345,
+          "maximum_probability_difference": 0.030964009223421934
+        },
+        "seat": {
+          "type": "choice",
+          "native_top_answer": "bug_2",
+          "reference_top_answer": "test_token",
+          "matches_reference": false,
+          "native_top_two_margin": 0.007644445341954936,
+          "reference_top_two_margin": 0.03059999999999999,
+          "maximum_probability_difference": 0.028155530275321555
+        },
+        "team": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.9348658815089663,
+          "reference_top_two_margin": 0.9372,
+          "maximum_probability_difference": 0.0011670592455168757
+        }
+      },
+      "maximum_probability_difference": 0.06840702822483768,
+      "seconds": 2.1558318340000113
+    },
+    {
+      "id": "text-038",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "critical": {
+            "type": "choice",
+            "choice": "fraud_4",
+            "confidence": 0.48382603062507523,
+            "probabilities": {
+              "dashboard_0": 0.06954844816885714,
+              "b": 0.2221203386652515,
+              "seat": 0.16406380197141227,
+              "latency_3": 0.06044138056940386,
+              "fraud_4": 0.48382603062507523
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 245,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 245,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 706,
+          "timing": {
+            "encode_ms": 0.4,
+            "queue_ms": 0.0,
+            "prefill_ms": 692.0,
+            "head_ms": 12.5,
+            "total_ms": 706.3,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "critical": "fraud_4"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "critical": {
+          "type": "choice",
+          "native_top_answer": "fraud_4",
+          "reference_top_answer": "fraud_4",
+          "matches_reference": true,
+          "native_top_two_margin": 0.26170569195982374,
+          "reference_top_two_margin": 0.1558,
+          "maximum_probability_difference": 0.07802603062507524
+        }
+      },
+      "maximum_probability_difference": 0.07802603062507524,
+      "seconds": 0.7074614999999937
+    },
+    {
+      "id": "text-039",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "payment_0": {
+            "type": "noul",
+            "noul": 0.2577291793282
+          },
+          "export_1": {
+            "type": "score",
+            "score": 1.6246057497616053,
+            "confidence": 0.35343317968016297,
+            "legend": {
+              "0": "reset dashboard test upgrade region minor",
+              "1": "build billing key quote \" and backslash \\ \ufb01 ligature",
+              "2": "full-width \uff21\uff22\uff23\uff11\uff12\uff13 downgrade \u00c5ngstr\u00f6m",
+              "3": "latency tab\there"
+            },
+            "probabilities": {
+              "0": 0.17567281752245484,
+              "1": 0.35343317968016297,
+              "2": 0.14150943831070403,
+              "3": 0.32938456448667813
+            }
+          },
+          "checkout": {
+            "type": "noul",
+            "noul": 0.37008367878068776
+          },
+          "\u65e5\u672c3": {
+            "type": "choice",
+            "choice": "token_payment",
+            "confidence": 0.3874751388240244,
+            "probabilities": {
+              "_x": 0.17497788588902163,
+              "b": 0.20685584927227776,
+              "token_payment": 0.3874751388240244,
+              "plan_3": 0.07366367078726195,
+              "password": 0.15702745522741426
+            }
+          },
+          "import_4": {
+            "type": "choice",
+            "choice": "seat_reset",
+            "confidence": 0.7905897302386262,
+            "probabilities": {
+              "seat_reset": 0.7905897302386262,
+              "import_1": 0.20941026976137384
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 1090,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4-fixed-down-Q6.gguf",
+          "artifact_digest": "sha256:a8f44a683f241da62b5cc0c355e556957fdfb87f74567d8596f1923ff3825e9b",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 1090,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 2945,
+          "timing": {
+            "encode_ms": 0.7,
+            "queue_ms": 0.0,
+            "prefill_ms": 2924.4,
+            "head_ms": 20.7,
+            "total_ms": 2946.0,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "payment_0": "false",
+        "export_1": "1",
+        "checkout": "false",
+        "\u65e5\u672c3": "token_payment",
+        "import_4": "seat_reset"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "payment_0": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.48454164134360006,
+          "reference_top_two_margin": 0.5206,
+          "maximum_probability_difference": 0.0180291793282
+        },
+        "export_1": {
+          "type": "score",
+          "native_top_answer": "1",
+          "reference_top_answer": "1",
+          "matches_reference": true,
+          "native_top_two_margin": 0.024048615193484835,
+          "reference_top_two_margin": 0.005700000000000038,
+          "maximum_probability_difference": 0.029715435513321842
+        },
+        "checkout": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.2598326424386244,
+          "reference_top_two_margin": 0.28120000000000006,
+          "maximum_probability_difference": 0.010683678780687766
+        },
+        "\u65e5\u672c3": {
+          "type": "choice",
+          "native_top_answer": "token_payment",
+          "reference_top_answer": "token_payment",
+          "matches_reference": true,
+          "native_top_two_margin": 0.18061928955174664,
+          "reference_top_two_margin": 0.2286,
+          "maximum_probability_difference": 0.025755849272277753
+        },
+        "import_4": {
+          "type": "choice",
+          "native_top_answer": "seat_reset",
+          "reference_top_answer": "seat_reset",
+          "matches_reference": true,
+          "native_top_two_margin": 0.5811794604772524,
+          "reference_top_two_margin": 0.48340000000000005,
+          "maximum_probability_difference": 0.048889730238626194
+        }
+      },
+      "maximum_probability_difference": 0.048889730238626194,
+      "seconds": 2.9470090830000117
+    }
+  ],
+  "suite": "text",
+  "acceptance": "all top answers, identical token counts, and maximum probability difference <= 0.02",
+  "http_refusals": [],
+  "top_answers_and_tokens_match": false,
+  "maximum_probability_difference": 0.16943619861680514,
+  "original_M1_numeric_gate": false,
+  "passed": false
+}

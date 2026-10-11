@@ -1,0 +1,59 @@
+{
+  "mode": "build",
+  "status": "complete",
+  "preflight": {
+    "available_memory_bytes": 104189952000,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 2154381,
+      "inactive": 4054359,
+      "speculative": 150510
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "max_owned_group_bytes": 4294967296,
+  "minimum_available_bytes": 12884901888,
+  "minimum_start_bytes": 17179869184,
+  "deadline_seconds": 180,
+  "conditions": "shared machine; synthetic normalized Delta inputs; actual Flash/27B dimensions; no model execution",
+  "source_sha256": {
+    "baseline.metal": "5d7a458c45f36206f5caf0016d210458cac073d7752c49786bfc7ee49e18999d",
+    "candidate.metal": "4fbfb3f3dd47c7c5d5fd55d8551a413b8eb22379ec74e47a70b043875a881ba6",
+    "support.metal": "ed35d8a9effae02cdbb151db1c93838d3c7b27c9d49bb6c09a7cddc8dd241bca",
+    "probe.swift": "ceb726f99057bee01ed4bed784ed965ac54cea242bbe36ad263f3316d9830c71",
+    "build.py": "6ff8c506a171de473911d4d870ee57607fe5f303681559bd3f777dfa3a35159b",
+    "guard.py": "b8b70db9515dc1f9a1c2e4751bb4373cbfc1a032d4482160d41536e9de76c788",
+    "manifest.json": "6ca949476a84a6217aebad328313b20418585cca212d69ece7e916d2bde12a4e"
+  },
+  "guard_dependency_sha256": {
+    "mac_quiet_bench.py": "ce5f832d0eeb2ec5c954755c07d00fafcc2bb1c59d6aa6c1d993a2f84bcce9fb",
+    "mac_memory.py": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd"
+  },
+  "command": [
+    "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+    "run-artifacts/delta-diagonal-candidate/build.py"
+  ],
+  "exit": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 41537,
+    "max_rss_bytes": 4294967296,
+    "peak_rss_bytes": 47349760,
+    "peak_physical_footprint_bytes": 17793864,
+    "peak_accounted_bytes": 47349760,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 6,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 104024227840,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 2.713010708
+}

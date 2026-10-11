@@ -1,0 +1,81 @@
+{
+  "kind": "owned_cpu_q6_candidate_build",
+  "status": "complete",
+  "command": [
+    "$REFERENCE_PYTHON_ENV/bin/python",
+    "$TASK_SCRATCH/q4-down-q6-regeneration/build_bridge.py",
+    "--source",
+    "$TASK_SCRATCH/q4-down-q6-regeneration/upstream-checkout",
+    "--output-dir",
+    "$TASK_SCRATCH/q4-down-q6-regeneration/helper-build-2/build"
+  ],
+  "memory_cap_gib": 4,
+  "start_available_gib": 16,
+  "available_floor_gib": 12,
+  "deadline_seconds": 600,
+  "disk_minimum_gib": 27,
+  "free_disk_floor_gib": 25,
+  "leases": [
+    "build",
+    "disk",
+    "memory"
+  ],
+  "effective_environment": {
+    "CLEF_Q6_REGEN_GUARDED": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "VECLIB_MAXIMUM_THREADS": "1",
+    "CUDA_VISIBLE_DEVICES": ""
+  },
+  "dynamic_library_injection_and_search_overrides_cleared": true,
+  "script_sha256": {
+    "regenerate.py": "f7836ecb3f698321b7760144848aff5c7b2b3cedede25dff972a9276f8fe0293",
+    "build_bridge.py": "94efb15e1f025f6b00cc2cdf7def8aa752bf7b6bbcbadfce5237fdaed34da190",
+    "guard.py": "f829ce1400e83ecd762ea46fc47bd242c419336f3a8f9e22fcf33c06aad9c3a1",
+    "q6_bridge.cpp": "8d22509424e09e3adb9f6c5fb4d060613cdf36c041274a0138c237722aaa6405",
+    "check_bridge.py": "593ac08b0637be87405789423c22b7167181392dc7f878f5caf56f0cff3435db",
+    "check_candidate.py": "0eeccc75909cd29fc3f3e3255c35e99231d4ce6f55cedb2eaaf6e4deb2a3f55a",
+    "fetch_source.py": "010b0aa538abe5f7d58208a0f844f6c554e8b80a725a282676ae4e46486ca1b8"
+  },
+  "guard_dependency_sha256": {
+    "mac_quiet_bench.py": "ce5f832d0eeb2ec5c954755c07d00fafcc2bb1c59d6aa6c1d993a2f84bcce9fb",
+    "mac_memory.py": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd"
+  },
+  "before": {
+    "available_memory_bytes": 104199389184,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 2143282,
+      "inactive": 4063103,
+      "speculative": 153441
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "owned_pid": 48921,
+  "child_exit_code": 0,
+  "result_sha256": "19d3cf0edd31a8983a79973a33e0cec5cb6521069a66212efe932815e27d6fdd",
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 48921,
+    "max_rss_bytes": 4294967296,
+    "peak_rss_bytes": 409911296,
+    "peak_physical_footprint_bytes": 244027280,
+    "peak_accounted_bytes": 409911296,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 10,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 103758512128,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "elapsed_seconds": 5.1560834999982035
+}

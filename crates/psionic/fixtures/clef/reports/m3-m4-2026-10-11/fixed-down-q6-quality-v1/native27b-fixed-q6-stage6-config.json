@@ -1,0 +1,34 @@
+{
+  "binary": "task-scratch/clef-m3-m4/stage6/psionic-openai-server",
+  "gguf": "task-scratch/clef-m3-m4/q4-down-q6-regeneration/generate-1/Clef-Q4-fixed-down-Q6.gguf",
+  "head": "task-scratch/clef-m3-m4/artifacts/clef-bf16/joint_head.safetensors",
+  "vision_manifest": "model-cache/manifests/registry.ollama.ai/library/clef/latest",
+  "vision_blobs": "model-cache/blobs",
+  "output": "task-scratch/clef-m3-m4/native27b-fixed-q6-stage6",
+  "chunk": 512,
+  "max_rss_gib": 52,
+  "minimum_start_available_gib": 64,
+  "minimum_available_gib": 12,
+  "startup_timeout": 600,
+  "deadline_seconds": 1800,
+  "request_timeout": 300,
+  "env": {
+    "PSIONIC_CLEF_METAL_FFN_WEIGHTS": "q4k-on-demand",
+    "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+    "PSIONIC_CLEF_METAL_GEMM": "weight-shapes",
+    "PSIONIC_CLEF_METAL_HEAD": "fused-fields",
+    "PSIONIC_CLEF_METAL_DELTA": "sequential",
+    "RAYON_NUM_THREADS": "2"
+  },
+  "checks": [
+    {
+      "suite": "images",
+      "reference": "task-scratch/clef-m3-m4/reference27b/images-mps-bf16.json"
+    },
+    {
+      "suite": "text",
+      "reference": "task-scratch/clef-m3-m4/reference27b/text-mps-bf16.json",
+      "requests": "repo/crates/psionic/fixtures/clef/e2e/requests.jsonl"
+    }
+  ]
+}

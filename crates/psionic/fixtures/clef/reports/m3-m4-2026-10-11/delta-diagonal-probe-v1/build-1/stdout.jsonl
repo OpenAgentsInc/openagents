@@ -1,0 +1,5 @@
+{"command": ["xcrun", "-sdk", "macosx", "metal", "-std=metal4.0", "-c", "run-artifacts/delta-diagonal-candidate/baseline.metal", "-o", "run-artifacts/delta-diagonal-candidate/baseline.metal.air"]}
+{"command": ["xcrun", "-sdk", "macosx", "metal", "-std=metal4.0", "-c", "run-artifacts/delta-diagonal-candidate/candidate.metal", "-o", "run-artifacts/delta-diagonal-candidate/candidate.metal.air"]}
+{"command": ["xcrun", "-sdk", "macosx", "metal", "-std=metal4.0", "-c", "run-artifacts/delta-diagonal-candidate/support.metal", "-o", "run-artifacts/delta-diagonal-candidate/support.metal.air"]}
+{"command": ["xcrun", "swiftc", "-O", "-num-threads", "2", "run-artifacts/delta-diagonal-candidate/probe.swift", "-o", "run-artifacts/delta-diagonal-candidate/probe"]}
+{"compiled": true, "gpu_executed": false, "binary_sha256": "9f0d90073f4e7dae0072d639e4e86162114d8788652289bcfb3a36c8ec1eaf5b"}

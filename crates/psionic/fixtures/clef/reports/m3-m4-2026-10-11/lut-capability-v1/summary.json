@@ -1,0 +1,46 @@
+{
+  "scope": "Tiny synthetic capability only; no weighted projection, performance, or model acceptance.",
+  "product_source_changed": false,
+  "final_status": "pass",
+  "successful_run": "check-3",
+  "binary_sha256": "592022fc2d41f519bad65f4bea2077dd4521be28562b156e5787831ae2fd3e58",
+  "source_sha256": {
+    "probe.m": "f93d98d73394a9308a6cd25bd558512cc78938bbf4698a64912faf8ddc201bd0",
+    "build.py": "eef42bb25d020f4aa045f99b885fc37949354f4ef2a0d3bcfa7e6594b0d234e9",
+    "guard.py": "e0772ea26f927edf8405658df5c97887cef8927154dd84c01234d18ec8f2a6bd",
+    "sources.json": "002a662495f1ae024dd48bdf80981f57f53086cbf9487177dc96a4776d043545"
+  },
+  "half_decode_cases": 5,
+  "half_values_compared_bitwise": 11264,
+  "matmul_comparisons": 20,
+  "outputs_compared": 792,
+  "fixed_maximum_absolute_error": 0.001,
+  "observed_maximum_absolute_error": 2.384185791015625e-07,
+  "half_output_rounding_discriminator": 0.020751953125,
+  "inputs": "float16 activations; uint4 indices plus grouped float16 LUT; dense float16 control",
+  "output": "explicit float32 storage; reduced precision disabled; separate float32 residual addition",
+  "internal_accumulator": "Opaque library implementation; precision-sensitive behavioral tests passed, no ISA-level proof.",
+  "largest_explicit_buffer_bytes": 69632,
+  "seconds": 0.627058458,
+  "peak_sampled_accounted_bytes": 151257856,
+  "rss_samples": 2,
+  "minimum_observed_available_bytes": 103666188288,
+  "owned_group_stopped": true,
+  "failures_retained": [
+    {
+      "run": "check-1",
+      "exit": -6,
+      "phase": "external NDArray creation",
+      "reason": "Backing buffer smaller than required4096bytes. Exact failed source and binary retained. No decode/matmul reached."
+    },
+    {
+      "run": "check-2",
+      "exit": 2,
+      "phase": "grouped_affine/grouped_decode",
+      "reason": "Packed host UInt4 rows used with default16-byte-row padding. Exact failed source and binary retained; decode mismatch stopped before matmul."
+    }
+  ],
+  "correction": "MPSNDArrayDescriptor.preferPackedRows=YES for every external buffer; page-sized backing; validate all unused padding and all source bytes.",
+  "validation": "5 bit-exact decoded-half checks;20 dense/LUT/no-residual/residual f64 comparisons; finite results; changed rows/groups; poison; allpadding/source invariance.",
+  "next_work": "No weighted execution authorized. Root review required before one bounded real-projection check."
+}

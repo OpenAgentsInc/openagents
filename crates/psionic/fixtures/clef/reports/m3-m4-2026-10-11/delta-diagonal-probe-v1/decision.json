@@ -1,0 +1,10 @@
+{
+  "performance_decision": "rejected",
+  "reason": "Both block32 implementations are slower than production sequential in every tested shape by median paired GPU ratio.",
+  "numerical_checks": "passed_26_synthetic_checks",
+  "weighted_model_gate": "not_run_for_candidate",
+  "product_source_changed": false,
+  "gpu_released": true,
+  "build_released": true,
+  "binary_sha256": "9f0d90073f4e7dae0072d639e4e86162114d8788652289bcfb3a36c8ec1eaf5b"
+}

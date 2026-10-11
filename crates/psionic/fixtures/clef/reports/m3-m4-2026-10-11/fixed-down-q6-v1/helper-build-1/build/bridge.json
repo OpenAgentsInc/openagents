@@ -1,0 +1,83 @@
+{
+  "status": "failed",
+  "upstream_revision": "62a6f74bab748b1755f4cd8dfc0871caf865c6c8",
+  "source": "$TASK_SCRATCH/q4-down-q6-regeneration/upstream-checkout",
+  "source_files": {
+    "src/llama-quant.cpp": {
+      "bytes": 66219,
+      "sha256": "24305a44864f6e12bdbaa29c28ce71395c6ff5af806576f966020939164e13f1",
+      "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/62a6f74bab748b1755f4cd8dfc0871caf865c6c8/src/llama-quant.cpp"
+    },
+    "ggml/include/ggml.h": {
+      "bytes": 116144,
+      "sha256": "12ee71f99db7db9b353bc02b1fbb57c344ee17c01ac5fb7952b41a637a747ea9",
+      "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/62a6f74bab748b1755f4cd8dfc0871caf865c6c8/ggml/include/ggml.h"
+    },
+    "ggml/src/ggml-quants.c": {
+      "bytes": 226847,
+      "sha256": "5574a2dccf7c07e75b143733e04a5412d3d8c819e7945f5217a7b83a2b2ff8ab",
+      "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/62a6f74bab748b1755f4cd8dfc0871caf865c6c8/ggml/src/ggml-quants.c"
+    },
+    "ggml/src/ggml.c": {
+      "bytes": 261157,
+      "sha256": "ef52fd60786ddd505ce25b57e8fb4f39b42e2af7eeae7d5797c892da42c095e7",
+      "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/62a6f74bab748b1755f4cd8dfc0871caf865c6c8/ggml/src/ggml.c"
+    }
+  },
+  "bridge_source_sha256": "8d22509424e09e3adb9f6c5fb4d060613cdf36c041274a0138c237722aaa6405",
+  "commands": [
+    [
+      "cmake",
+      "-S",
+      "$TASK_SCRATCH/q4-down-q6-regeneration/upstream-checkout",
+      "-B",
+      "$TASK_SCRATCH/q4-down-q6-regeneration/helper-build-1/build/cmake",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DBUILD_SHARED_LIBS=ON",
+      "-DGGML_CPU=OFF",
+      "-DGGML_METAL=OFF",
+      "-DGGML_CUDA=OFF",
+      "-DGGML_VULKAN=OFF",
+      "-DGGML_SYCL=OFF",
+      "-DGGML_BLAS=OFF",
+      "-DGGML_ACCELERATE=OFF",
+      "-DGGML_OPENMP=OFF",
+      "-DGGML_NATIVE=OFF",
+      "-DGGML_CCACHE=OFF",
+      "-DLLAMA_BUILD_COMMON=OFF",
+      "-DLLAMA_BUILD_TOOLS=OFF",
+      "-DLLAMA_BUILD_MTMD=OFF",
+      "-DLLAMA_BUILD_TESTS=OFF",
+      "-DLLAMA_BUILD_EXAMPLES=OFF",
+      "-DLLAMA_BUILD_SERVER=OFF"
+    ],
+    [
+      "cmake",
+      "--build",
+      "$TASK_SCRATCH/q4-down-q6-regeneration/helper-build-1/build/cmake",
+      "--target",
+      "ggml-base",
+      "--parallel",
+      "2"
+    ],
+    [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++",
+      "-O2",
+      "-std=c++17",
+      "-fno-fast-math",
+      "-ffp-contract=off",
+      "-dynamiclib",
+      "$TASK_SCRATCH/q4-down-q6-regeneration/q6_bridge.cpp",
+      "-I",
+      "$TASK_SCRATCH/q4-down-q6-regeneration/upstream-checkout/ggml/include",
+      "-L",
+      "$TASK_SCRATCH/q4-down-q6-regeneration/helper-build-1/build/cmake/bin",
+      "-lggml-base",
+      "-Wl,-rpath,$TASK_SCRATCH/q4-down-q6-regeneration/helper-build-1/build/cmake/bin",
+      "-o",
+      "$TASK_SCRATCH/q4-down-q6-regeneration/helper-build-1/build/q6_bridge.dylib"
+    ]
+  ],
+  "error": "Command '['/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++', '-O2', '-std=c++17', '-fno-fast-math', '-ffp-contract=off', '-dynamiclib', '$TASK_SCRATCH/q4-down-q6-regeneration/q6_bridge.cpp', '-I', '$TASK_SCRATCH/q4-down-q6-regeneration/upstream-checkout/ggml/include', '-L', '$TASK_SCRATCH/q4-down-q6-regeneration/helper-build-1/build/cmake/bin', '-lggml-base', '-Wl,-rpath,$TASK_SCRATCH/q4-down-q6-regeneration/helper-build-1/build/cmake/bin', '-o', '$TASK_SCRATCH/q4-down-q6-regeneration/helper-build-1/build/q6_bridge.dylib']' returned non-zero exit status 1.",
+  "error_type": "CalledProcessError"
+}

@@ -3,8 +3,10 @@
 This package records correctness checks on a shared Mac M5 and capacity checks
 on an RTX 4080. The official Clef 27B BF16 reference completed all 40 text
 requests (104 answers) and six image requests (14 answers). Native 27B passed
-the image checks, but the latest Stage 6 build failed the strict text gate:
-93 of 104 top answers agreed, with a maximum probability difference of 0.217407.
+the image checks, but both 27B artifacts fail the strict text gate. The original
+Q4 matches 93 of 104 top answers, with maximum probability difference 0.217407.
+The fixed FFN-down Q6 candidate improves this to 97 of 104 and 0.169436, which
+still fails both requirements.
 An independent BF16-backbone/CPU-f32-head diagnostic confirms the large native
 gap. Both earlier Flash HTTP modes passed
 against the existing CPU reference. Standalone direct-solve DeltaNet passed its
@@ -14,6 +16,41 @@ Full-model prefix reuse and continuous batching pass the HTTP comparisons
 for Flash and 27B. A shared-machine latency comparison favors fused
 attention and shape-selected GEMM, but misses the absolute M3 targets. These
 files do not establish completion of M3 or M4.
+
+## Fixed mixed-precision candidate and bounded kernel probes
+
+The [fixed FFN-down Q6 recipe](fixed-down-q6-v1/README.md) replaces 32 of 64 down
+projections using the upstream layer-selection rule and original BF16 weights.
+All other tensor payloads remain unchanged. No acceptance errors select the
+layers. The CPU-only encoder matches upstream packed bytes, and its decoded
+values match an independent decoder. The 19,967,533,120-byte artifact remains
+outside Git; generation recipes, hashes, sampled row checks, and failed source
+and build attempts are retained.
+
+The [full candidate comparison](fixed-down-q6-quality-v1/README.md) **fails**:
+97 of 104 top answers match, 60 questions exceed the unchanged `0.02` probability
+limit, and the maximum difference is `0.169436199`. All 40 token counts match.
+Images pass all 14 answers and ten refusal checks. The model fits the existing
+52 GiB process cap, with peak sampled accounting of 50,296,061,952 bytes and
+more than 70 GB available throughout. Its owned server stops successfully.
+This artifact is not selected for production, and no speed claim is made.
+
+The [DeltaNet diagonal experiment](delta-diagonal-probe-v1/README.md) passes all
+26 standalone numerical checks but is **rejected on speed**. In paired medians,
+its Flash shapes take about 1.37–1.41 times the sequential duration, and its 27B
+shapes take about 1.86–1.88 times as long. The source patch remains unapplied.
+These synthetic checks do not repair the earlier weighted block-mode failure.
+
+The [exact half lookup-table capability probe](lut-capability-v1/README.md)
+passes five exact-decode cases and 20 tiny matrix comparisons through the
+public MPS quantized-matrix API with an explicit f32 destination. Maximum error
+against a CPU f64 oracle is `2.38418579e-7`; the half-output counterfactual would
+introduce `0.020751953` error. Earlier backing-size and row-layout failures are
+preserved. This establishes a small API capability only: real-weight accuracy,
+speed, private temporary storage, and full-model behavior remain untested.
+
+All probes use shared GPU/build and bounded memory leases as appropriate.
+None uses a quiet lease or changes desktop applications or system services.
 
 ## Stage 6 fused field head
 

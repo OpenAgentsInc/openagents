@@ -1,0 +1,1 @@
+{"accumulator_note":"internal implementation is opaque; these are behavioral tests, not ISA proof","device":"Apple M5 Max","phase":"configuration","precision_contract":"half operands, explicit float32 output, reduced precision disabled; f64 oracle and precision-sensitive fixtures","scope":"tiny synthetic capability only; no weighted, model, or speed acceptance"}

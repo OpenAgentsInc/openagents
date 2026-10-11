@@ -1,0 +1,79 @@
+{
+  "kind": "owned_cpu_q6_candidate_build",
+  "status": "failed",
+  "command": [
+    "$REFERENCE_PYTHON_ENV/bin/python",
+    "$TASK_SCRATCH/q4-down-q6-regeneration/build_bridge.py",
+    "--source",
+    "$TASK_SCRATCH/q4-down-q6-regeneration/upstream-checkout",
+    "--output-dir",
+    "$TASK_SCRATCH/q4-down-q6-regeneration/helper-build-1/build"
+  ],
+  "memory_cap_gib": 4,
+  "start_available_gib": 16,
+  "available_floor_gib": 12,
+  "deadline_seconds": 600,
+  "disk_minimum_gib": 27,
+  "free_disk_floor_gib": 25,
+  "leases": [
+    "build",
+    "disk",
+    "memory"
+  ],
+  "effective_environment": {
+    "CLEF_Q6_REGEN_GUARDED": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "VECLIB_MAXIMUM_THREADS": "1",
+    "CUDA_VISIBLE_DEVICES": ""
+  },
+  "dynamic_library_injection_and_search_overrides_cleared": true,
+  "script_sha256": {
+    "regenerate.py": "f7836ecb3f698321b7760144848aff5c7b2b3cedede25dff972a9276f8fe0293",
+    "build_bridge.py": "08113b9af4692b540160facf964cb050e03c419beb35d1a2bc89cbb532e5c1eb",
+    "guard.py": "8c07bb60d3268ffc46844732e797c263273ca1ba9da2311a4b94f19b5be80186",
+    "q6_bridge.cpp": "8d22509424e09e3adb9f6c5fb4d060613cdf36c041274a0138c237722aaa6405"
+  },
+  "guard_dependency_sha256": {
+    "mac_quiet_bench.py": "ce5f832d0eeb2ec5c954755c07d00fafcc2bb1c59d6aa6c1d993a2f84bcce9fb",
+    "mac_memory.py": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd"
+  },
+  "before": {
+    "available_memory_bytes": 104210612224,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 2165757,
+      "inactive": 4048615,
+      "speculative": 146139
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "owned_pid": 40763,
+  "child_exit_code": 1,
+  "error_type": "ValueError",
+  "error": "owned CPU task failed; inspect stdout.log",
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 40763,
+    "max_rss_bytes": 4294967296,
+    "peak_rss_bytes": 367034368,
+    "peak_physical_footprint_bytes": 221663144,
+    "peak_accounted_bytes": 367034368,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 14,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 103812726784,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "elapsed_seconds": 7.222449250002683
+}

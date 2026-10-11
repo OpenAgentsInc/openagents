@@ -1,0 +1,86 @@
+{
+  "schema": "clef.delta-diagonal-candidate.v1",
+  "status": "prepared_only_not_compiled_or_executed",
+  "files": [
+    {
+      "path": "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_delta_block.metal",
+      "baseline_sha256": "5d7a458c45f36206f5caf0016d210458cac073d7752c49786bfc7ee49e18999d",
+      "candidate_sha256": "4fbfb3f3dd47c7c5d5fd55d8551a413b8eb22379ec74e47a70b043875a881ba6"
+    },
+    {
+      "path": "crates/psionic/crates/psionic-backend-metal/src/clef_prefill/delta.rs",
+      "baseline_sha256": "7e4a76637a5c0e072ff18dded44cfba4f44e8b7751d31e1d8bceb9f2358f48c7",
+      "candidate_sha256": "aaee68828ead29c494e271f2a62fa1b27f8024b8bc239cd6076f027ee1b2f01d"
+    },
+    {
+      "path": "crates/psionic/crates/psionic-backend-metal/src/clef_prefill/delta_tests.rs",
+      "baseline_sha256": "5a9d3582f9deaae77814da4fc92db47749a34b11e3a99c20a421fb40c56d9145",
+      "candidate_sha256": "8f253240c367d9d96ed017df9499406c6761267addbb5e4374cad552e54ccd54"
+    },
+    {
+      "path": "crates/psionic/crates/psionic-serve/src/qwen35/clef_metal.rs",
+      "baseline_sha256": "e0a974181bd63ef9b8a6ef9c2eb83aaa7a419d1ab5653f7f61929252a985ada1",
+      "candidate_sha256": "d4c8df421b3d8c089b6484e4d9097c44d74f8889bd9545bcf1b70f4a000b862d"
+    }
+  ],
+  "support_source": {
+    "path": "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_prefill.metal",
+    "sha256": "623fba25dbe8a230d92f88e840c2c363961f926c3b908089ce8ba3688a3f2865",
+    "extraction": "Exact group_sum and DeltaPrepArgs through four CLEF_DELTA_SCAN entrypoints; sigmoid exact; probe_prepared_dot is a test-only wrapper around group_sum."
+  },
+  "microprobe": {
+    "status": "prepared_only_not_compiled_or_executed",
+    "repo_head_at_snapshot": "715a379690b69cc5b6f3a1c6dd020413e3fdec50",
+    "gpu_cap_bytes": 2147483648,
+    "start_available_bytes": 15032385536,
+    "floor_available_bytes": 12884901888,
+    "guard_deadline_seconds": 60,
+    "internal_deadline_seconds": 55,
+    "fixture_bound_bytes": 805306368,
+    "build_cap_bytes": 4294967296,
+    "build_start_bytes": 17179869184,
+    "build_deadline_seconds": 180,
+    "fixed_rounds_per_shape": 6,
+    "shapes": [
+      {
+        "n": 1024,
+        "key_heads": 16,
+        "value_heads": 32
+      },
+      {
+        "n": 2048,
+        "key_heads": 16,
+        "value_heads": 32
+      },
+      {
+        "n": 1024,
+        "key_heads": 16,
+        "value_heads": 48
+      },
+      {
+        "n": 2048,
+        "key_heads": 16,
+        "value_heads": 48
+      }
+    ]
+  },
+  "scratch_sha256": {
+    "baseline.metal": "5d7a458c45f36206f5caf0016d210458cac073d7752c49786bfc7ee49e18999d",
+    "candidate.metal": "4fbfb3f3dd47c7c5d5fd55d8551a413b8eb22379ec74e47a70b043875a881ba6",
+    "support.metal": "ed35d8a9effae02cdbb151db1c93838d3c7b27c9d49bb6c09a7cddc8dd241bca",
+    "probe.swift": "ceb726f99057bee01ed4bed784ed965ac54cea242bbe36ad263f3316d9830c71",
+    "guard.py": "b8b70db9515dc1f9a1c2e4751bb4373cbfc1a032d4482160d41536e9de76c788",
+    "build.py": "6ff8c506a171de473911d4d870ee57607fe5f303681559bd3f777dfa3a35159b",
+    "summarize.py": "99461c2a39596231e72d2894159f1f6100b3a98ac94b6f55e7b2e83aeba18728",
+    "candidate.patch": "030ee7afbf92755c38fdf9bc449664986ce86125887a7953a90a346ed47c35ba",
+    "README.md": "2fb613c3eea69a6cc61ac50d4d860a88a6c8a868d1f4d4f0280467af63c52bbe"
+  },
+  "static_checks": {
+    "python_ast_parse": true,
+    "baseline_matches_worktree": true,
+    "source_hashes_checked": true,
+    "build_or_gpu_executed": false,
+    "independent_patch_review": "No scaling, head-index, workspace, or test-bound blocker found by fused_attention_review; full probe review pending.",
+    "independent_probe_review": "fused_attention_review found no extraction, binding, dispatch, gate, barrier, reset, input/redzone or paired-timing blocker; check-only summarizer reporting defect corrected before build."
+  }
+}

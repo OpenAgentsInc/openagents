@@ -1,0 +1,52 @@
+{
+  "mode": "build",
+  "status": "complete",
+  "preflight": {
+    "available_memory_bytes": 103920353280,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 550097,
+      "inactive": 4418122,
+      "speculative": 1374576
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "max_owned_group_bytes": 4294967296,
+  "minimum_available_bytes": 12884901888,
+  "minimum_start_bytes": 17179869184,
+  "deadline_seconds": 180,
+  "conditions": "shared machine; tiny exact-half LUT mixed-precision capability only; no weighted/model/latency claim",
+  "source_sha256": {
+    "probe.m": "f93d98d73394a9308a6cd25bd558512cc78938bbf4698a64912faf8ddc201bd0",
+    "build.py": "eef42bb25d020f4aa045f99b885fc37949354f4ef2a0d3bcfa7e6594b0d234e9",
+    "guard.py": "e0772ea26f927edf8405658df5c97887cef8927154dd84c01234d18ec8f2a6bd",
+    "sources.json": "002a662495f1ae024dd48bdf80981f57f53086cbf9487177dc96a4776d043545"
+  },
+  "command": [
+    "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+    "$CANDIDATE/build.py"
+  ],
+  "exit": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 57281,
+    "max_rss_bytes": 4294967296,
+    "peak_rss_bytes": 11124736,
+    "peak_physical_footprint_bytes": 7143712,
+    "peak_accounted_bytes": 11124736,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 2,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 103912882176,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 0.631595292
+}

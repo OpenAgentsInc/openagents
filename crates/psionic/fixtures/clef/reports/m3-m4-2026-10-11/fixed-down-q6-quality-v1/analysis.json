@@ -1,0 +1,14 @@
+{
+  "status": "failed",
+  "text_cases": 40,
+  "text_questions": 104,
+  "matching_top_answers": 97,
+  "questions_above_probability_limit": 60,
+  "probability_limit": 0.02,
+  "max_probability_difference": 0.16943619861680514,
+  "matching_token_count_cases": 40,
+  "image_passed": true,
+  "runner_sha256": "1d5b1d43fbb7d0ae709fc238d264e048dcbb3ba6b314c0b9127e696a5ce530d2",
+  "latency_acceptance_claim": false,
+  "acceptance_changed": false
+}

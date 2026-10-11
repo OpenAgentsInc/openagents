@@ -1,0 +1,52 @@
+{
+  "mode": "check",
+  "status": "failed",
+  "preflight": {
+    "available_memory_bytes": 104009220096,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 2142623,
+      "inactive": 4054973,
+      "speculative": 150623
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "max_owned_group_bytes": 2147483648,
+  "minimum_available_bytes": 12884901888,
+  "minimum_start_bytes": 15032385536,
+  "deadline_seconds": 60,
+  "conditions": "shared machine; tiny exact-half LUT mixed-precision capability only; no weighted/model/latency claim",
+  "source_sha256": {
+    "probe.m": "5635375c49df4b4d62c9ee42deb7ac5507a6533f89e84f9288226e933a5c8f6f",
+    "build.py": "eef42bb25d020f4aa045f99b885fc37949354f4ef2a0d3bcfa7e6594b0d234e9",
+    "guard.py": "e0772ea26f927edf8405658df5c97887cef8927154dd84c01234d18ec8f2a6bd",
+    "sources.json": "002a662495f1ae024dd48bdf80981f57f53086cbf9487177dc96a4776d043545"
+  },
+  "command": [
+    "$CANDIDATE/probe"
+  ],
+  "binary_sha256": "16e82ee027e05eb2e0d3f7274f70957003d3e67836764ed652ed4fdf57b524bb",
+  "exit": -6,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 43390,
+    "max_rss_bytes": 2147483648,
+    "peak_rss_bytes": 32768,
+    "peak_physical_footprint_bytes": 81992,
+    "peak_accounted_bytes": 81992,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 1,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 104011120640,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 0.413025792
+}

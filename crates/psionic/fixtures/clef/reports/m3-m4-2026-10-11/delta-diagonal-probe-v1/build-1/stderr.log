@@ -1,0 +1,7 @@
+run-artifacts/delta-diagonal-candidate/probe.swift:221:21: warning: variable 'args' was never mutated; consider changing to 'let' constant
+219 |                 let decay = try Guarded(device, [Float](repeating: sentinel, count: c.n * c.vh))
+220 |                 let beta = try Guarded(device, [Float](repeating: sentinel, count: c.n * c.vh))
+221 |                 var args = [UInt32(c.kh), UInt32(c.vh), UInt32(dim), UInt32(c.width)]
+    |                     `- warning: variable 'args' was never mutated; consider changing to 'let' constant
+222 |                 encoder.setComputePipelineState(pipelines["prep"]!)
+223 |                 for (index, buffer) in [conv, alpha, betaIn, a, dt, q, k, decay, beta, kq].enumerated() { encoder.setBuffer(buffer.buffer, offset: redzone * 4, index: index) }

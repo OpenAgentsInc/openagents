@@ -1,0 +1,256 @@
+--- a/crates/psionic/crates/psionic-backend-metal/src/kernels/clef_delta_block.metal
++++ b/crates/psionic/crates/psionic-backend-metal/src/kernels/clef_delta_block.metal
+@@ -13,8 +13,8 @@
+ enum : uint {
+     kBlock = 32, kDim = 128, kValueTile = 32, kThreads = 128,
+     // Keep the existing bounded workspace layout. L and beta fit in the
+-    // former W slot; values use the former U0 slot.
+-    kL = 0, kBeta = 1024, kV = 4096, kM = 8192, kG = 9216, kLast = 9248,
++    // former W slot, including the prepared diagonal; values use the former U0 slot.
++    kL = 0, kBeta = 1024, kKq = 1056, kV = 4096, kM = 8192, kG = 9216, kLast = 9248,
+     kWorkspace = 9280,
+ };
+ 
+@@ -41,7 +41,8 @@
+ }
+ 
+ // Independent blocks prepare L[t,j]=beta[t] D(t,j) K[t] K[j]^T, j<t,
+-// and M[t,j]=D(t,j) Q[t] K[j]^T. The scan solves (I+L) U directly from
++// and M[t,j]=D(t,j) Q[t] K[j]^T, j<t. The prepared K[t]·Q[t]
++// supplies the diagonal separately. The scan solves (I+L) U directly from
+ // beta(V-G K S^T), avoiding a rounded inverse and separately transformed
+ // values/state contributions. G[t]=prod(g[0..t]); D(t,j)=prod(g[j+1..t]).
+ // Every intermediate is f32.
+@@ -49,7 +50,8 @@
+     device const float *q [[buffer(0)]], device const float *k [[buffer(1)]],
+     device const float *conv [[buffer(2)]], device const float *decay [[buffer(3)]],
+     device const float *beta [[buffer(4)]], device float *workspace [[buffer(5)]],
+-    constant BlockDeltaArgs &a [[buffer(6)]], uint3 tg [[threadgroup_position_in_grid]],
++    device const float *kq [[buffer(6)]], constant BlockDeltaArgs &a [[buffer(7)]],
++    uint3 tg [[threadgroup_position_in_grid]],
+     uint tid [[thread_index_in_threadgroup]], uint3 threads [[threads_per_threadgroup]]) {
+     if (!valid_block_delta(a, threads) || tg.y >= a.value_heads ||
+         tg.x >= (a.n + kBlock - 1) / kBlock) return;
+@@ -84,12 +86,13 @@
+             ? interval_decay(decay, first + col + 1, first + row + 1, head, a.value_heads) : 0.0f;
+         // Branches avoid reading inactive TensorOps output, including 0*NaN.
+         work[kL + i] = active && col < row ? lower[i] * d * beta[ulong(first + row) * a.value_heads + head] : 0.0f;
+-        work[kM + i] = active && col <= row ? work[kM + i] * d : 0.0f;
++        work[kM + i] = active && col < row ? work[kM + i] * d : 0.0f;
+     }
+     if (tid < kBlock) {
+         work[kG + tid] = tid < count ? interval_decay(decay, first, first + tid + 1, head, a.value_heads) : 0.0f;
+         work[kLast + tid] = tid < count ? interval_decay(decay, first + tid + 1, first + count, head, a.value_heads) : 0.0f;
+         work[kBeta + tid] = tid < count ? beta[ulong(first + tid) * a.value_heads + head] : 0.0f;
++        work[kKq + tid] = tid < count ? kq[ulong(first + tid) * a.key_heads + kh] : 0.0f;
+     }
+     for (uint i = tid; i < count * kDim; i += kThreads) {
+         const uint row = i / kDim, col = i % kDim;
+@@ -99,7 +102,7 @@
+ 
+ // One persistent group owns 32 value coordinates and carries its 32x128 f32
+ // state in threadgroup memory. Solve (I+L) U=diag(beta)(V-diag(G) K S^T)
+-// by forward substitution, then Y=diag(G) Q S^T+M U;
++// by forward substitution, then Y=diag(G) Q S^T+M U+diag(K·Q) U;
+ // S'=G[last] S+U^T diag(D(last,j)) K. No recurrent state is converted to half.
+ // Threadgroup storage is 24 KiB: state (16 KiB), U and Y (4 KiB each).
+ kernel void clef_delta_block32_scan(
+@@ -169,7 +172,10 @@
+         threadgroup_barrier(mem_flags::mem_threadgroup);
+         for (uint i = tid; i < count * kValueTile; i += kThreads) {
+             const uint row = i / kValueTile, col = i % kValueTile;
+-            out[(ulong(first + row) * a.value_heads + head) * kDim + value_first + col] = result[i];
++            // Match the sequential scan's final same-token contribution. U
++            // already includes beta; the same-token decay product is one.
++            out[(ulong(first + row) * a.value_heads + head) * kDim + value_first + col] =
++                result[i] + correction[i] * work[kKq + row];
+             correction[i] *= work[kLast + row];
+         }
+         for (uint i = tid; i < kValueTile * kDim; i += kThreads) carried[i] *= work[kG + count - 1];
+--- a/crates/psionic/crates/psionic-backend-metal/src/clef_prefill/delta.rs
++++ b/crates/psionic/crates/psionic-backend-metal/src/clef_prefill/delta.rs
+@@ -66,7 +66,8 @@
+     /// `workspace` belongs to this request. Reusing it across layers is valid
+     /// when those dispatches are ordered on the same batch. The caller supplies
+     /// finite inputs with decay and beta in `[0, 1]`, as produced by delta prep.
+-    /// Unlike the sequential scan, this path does not use a precomputed K·Q.
++    /// `key_dot_query` contains the prepared dot product for each query/key head,
++    /// including the query scale, as in the sequential scan.
+     #[allow(clippy::too_many_arguments)]
+     pub fn delta_scan_block(
+         &self,
+@@ -75,6 +76,7 @@
+         conv: &ClefMetalBuffer,
+         decay: &ClefMetalBuffer,
+         beta: &ClefMetalBuffer,
++        key_dot_query: &ClefMetalBuffer,
+         state: &ClefMetalBuffer,
+         out: &ClefMetalBuffer,
+         workspace: &ClefMetalBuffer,
+@@ -104,6 +106,11 @@
+             (conv, plan.conv_bytes, "block delta convolution"),
+             (decay, plan.decay_beta_bytes, "block delta decay"),
+             (beta, plan.decay_beta_bytes, "block delta beta"),
++            (
++                key_dot_query,
++                plan.query_key_bytes / dim,
++                "block delta key/query dot",
++            ),
+             (state, plan.state_bytes, "block delta state"),
+             (out, plan.output_bytes, "block delta output"),
+             (workspace, plan.workspace_bytes, "block delta workspace"),
+@@ -122,13 +129,13 @@
+             value_offset: plan.value_offset,
+         };
+         self.pipeline(PREPARE)?;
+-        for (index, buffer) in [qn, kn, conv, decay, beta, workspace]
++        for (index, buffer) in [qn, kn, conv, decay, beta, workspace, key_dot_query]
+             .into_iter()
+             .enumerate()
+         {
+             self.bind(index as u64, buffer, 0);
+         }
+-        self.bytes(6, &args);
++        self.bytes(7, &args);
+         self.groups(
+             size(plan.blocks, value_heads, 1),
+             size(CLEF_DELTA_THREADS, 1, 1),
+--- a/crates/psionic/crates/psionic-backend-metal/src/clef_prefill/delta_tests.rs
++++ b/crates/psionic/crates/psionic-backend-metal/src/clef_prefill/delta_tests.rs
+@@ -212,6 +212,7 @@
+                     &conv.view,
+                     &decay.view,
+                     &beta.view,
++                    &kq.view,
+                     &state.view,
+                     &output.view,
+                     &workspace.view,
+@@ -408,6 +409,7 @@
+         plan.conv_bytes,
+         plan.decay_beta_bytes,
+         plan.decay_beta_bytes,
++        plan.query_key_bytes / 128,
+         plan.state_bytes,
+         plan.output_bytes,
+         plan.workspace_bytes,
+@@ -430,6 +432,7 @@
+                     selected[5],
+                     selected[6],
+                     selected[7],
++                    selected[8],
+                     case.n,
+                     case.kh,
+                     case.vh,
+@@ -448,6 +451,7 @@
+     let batch = metal.batch();
+     batch
+         .delta_scan_block(
++            &empty,
+             &empty,
+             &empty,
+             &empty,
+@@ -468,3 +472,94 @@
+     assert!(!batch.dispatched.get());
+     batch.commit_wait().unwrap();
+ }
++
++#[test]
++#[ignore = "requires explicit Metal hardware validation"]
++fn block_delta_same_token_matches_prepared_diagonal_from_zero_state() {
++    objc::rc::autoreleasepool(|| {
++        let metal = metal();
++        let kh = 2;
++        let vh = 6;
++        let width = (2 * kh + vh) * 128;
++        let offset = 2 * kh * 128;
++        let mut conv_values = vec![0.0; width];
++        for h in 0..kh {
++            for i in 0..128 {
++                conv_values[h * 128 + i] =
++                    (((i * 7 + h * 3) % 19) as f32 - 9.0) / 32.0;
++                conv_values[(kh + h) * 128 + i] =
++                    (((i * 11 + h * 5) % 23) as f32 - 11.0) / 64.0;
++            }
++        }
++        for i in 0..vh * 128 {
++            conv_values[offset + i] = 0.125 + ((i * 13) % 17) as f32 / 64.0;
++        }
++        let conv = Guarded::new(&metal, &conv_values);
++        let alpha = Guarded::new(&metal, &vec![0.0; vh]);
++        let beta_in = Guarded::new(
++            &metal,
++            &(0..vh).map(|h| h as f32 / 8.0 - 0.25).collect::<Vec<_>>(),
++        );
++        let a = Guarded::new(&metal, &vec![-1.0; vh]);
++        let dt = Guarded::new(&metal, &vec![0.0; vh]);
++        let q = Guarded::new(&metal, &vec![SENTINEL; kh * 128]);
++        let k = Guarded::new(&metal, &vec![SENTINEL; kh * 128]);
++        let decay = Guarded::new(&metal, &vec![SENTINEL; vh]);
++        let beta = Guarded::new(&metal, &vec![SENTINEL; vh]);
++        let kq = Guarded::new(&metal, &vec![SENTINEL; kh]);
++        let prep = metal.batch();
++        prep.delta_prep(
++            &conv.view, &alpha.view, &beta_in.view, &a.view, &dt.view,
++            &q.view, &k.view, &decay.view, &beta.view, &kq.view,
++            1, kh, vh, 128, width,
++        ).unwrap();
++        prep.commit_wait().unwrap();
++        let dots = kq.read();
++        assert!(dots.iter().all(|x| x.is_finite() && *x != 0.0));
++        assert_ne!(dots[0].to_bits(), dots[1].to_bits());
++        for reordered in [false, true] {
++            let sequential_state = Guarded::new(&metal, &vec![0.0; vh * 128 * 128]);
++            let block_state = Guarded::new(&metal, &vec![0.0; vh * 128 * 128]);
++            let sequential_output = Guarded::new(&metal, &vec![SENTINEL; vh * 128]);
++            let block_output = Guarded::new(&metal, &vec![SENTINEL; vh * 128]);
++            let shape = ClefDeltaPlan::new(1, kh, vh, 128, reordered, width, offset).unwrap();
++            let workspace = Guarded::new(&metal, &vec![SENTINEL; shape.workspace_bytes / 4]);
++            let batch = metal.batch();
++            batch.delta_scan(
++                &q.view, &k.view, &conv.view, &decay.view, &beta.view, &kq.view,
++                &sequential_state.view, &sequential_output.view,
++                1, kh, vh, 128, reordered, width, offset,
++            ).unwrap();
++            batch.delta_scan_block(
++                &q.view, &k.view, &conv.view, &decay.view, &beta.view, &kq.view,
++                &block_state.view, &block_output.view, &workspace.view,
++                1, kh, vh, 128, reordered, width, offset,
++            ).unwrap();
++            batch.commit_wait().unwrap();
++            let actual = block_output.read();
++            let sequential = sequential_output.read();
++            assert_eq!(
++                actual.iter().map(|x| x.to_bits()).collect::<Vec<_>>(),
++                sequential.iter().map(|x| x.to_bits()).collect::<Vec<_>>(),
++                "same-token output differs for reordered={reordered}",
++            );
++            // This reference updates every state component in f64, then dots
++            // that state with Q. It does not use the supplied K·Q or block solve.
++            let case = Case {
++                n: 1, kh, vh, reordered, width, offset,
++                q: q.read(), k: k.read(), conv: conv_values.clone(),
++                decay: decay.read(), beta: beta.read(),
++                state: vec![0.0; vh * 128 * 128],
++            };
++            let oracle = serial(&case);
++            close(&actual, &oracle.0, "same-token output");
++            close(&block_state.read(), &oracle.1, "same-token state");
++            sequential_state.check();
++            workspace.check();
++        }
++        for input in [&conv, &alpha, &beta_in, &a, &dt, &q, &k, &decay, &beta, &kq] {
++            input.check();
++        }
++        assert_eq!(kq.read(), dots, "prepared diagonal changed");
++    });
++}
+--- a/crates/psionic/crates/psionic-serve/src/qwen35/clef_metal.rs
++++ b/crates/psionic/crates/psionic-serve/src/qwen35/clef_metal.rs
+@@ -1719,6 +1719,7 @@
+                         &s.conv_out,
+                         &s.small_c,
+                         &s.small_d,
++                        &s.key_dot_query,
+                         delta_state,
+                         &s.mid_b,
+                         workspace,

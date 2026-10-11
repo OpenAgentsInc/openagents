@@ -1,0 +1,108 @@
+{
+  "kind": "bounded_synthetic_q6_bridge_checks",
+  "status": "passed",
+  "model_execution": false,
+  "gpu_execution": false,
+  "model_payload_bytes_read": 0,
+  "independent_decoder": {
+    "repository": "ggml-org/llama.cpp",
+    "revision": "5d246a792ddf839e87fb777681dd2a9ac7f7eb5e",
+    "path": "gguf-py/gguf/quants.py",
+    "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/5d246a792ddf839e87fb777681dd2a9ac7f7eb5e/gguf-py/gguf/quants.py",
+    "sha256": "2c927a1b3d9f0920dcf4007fb686e1b0999333e9f65ce43dcc689900c0beae8b",
+    "purpose": "Use the original Q4_K NumPy decoder; only detach its inherited registration wrapper."
+  },
+  "loaded_images": {
+    "bridge": {
+      "path": "$TASK_SCRATCH/q4-down-q6-regeneration/helper-build-2/build/q6_bridge.dylib",
+      "sha256": "77206b1657257981af80816b2b14d40fd1071b96ec0696b486300ab10e031836"
+    },
+    "upstream_quantize": {
+      "path": "$TASK_SCRATCH/q4-down-q6-regeneration/helper-build-2/build/cmake/bin/libggml-base.0.26.0.dylib",
+      "sha256": "99beb308a24d8edfeee73d96c03a01a6f788d8b08c6bc22e0037106013dc8c29"
+    },
+    "upstream_decode": {
+      "path": "$TASK_SCRATCH/q4-down-q6-regeneration/helper-build-2/build/cmake/bin/libggml-base.0.26.0.dylib",
+      "sha256": "99beb308a24d8edfeee73d96c03a01a6f788d8b08c6bc22e0037106013dc8c29"
+    }
+  },
+  "bridge_manifest_sha256": "19d3cf0edd31a8983a79973a33e0cec5cb6521069a66212efe932815e27d6fdd",
+  "script_sha256": "593ac08b0637be87405789423c22b7167181392dc7f878f5caf56f0cff3435db",
+  "cases": [
+    {
+      "rows": 1,
+      "mode": "zero",
+      "values": 17408,
+      "packed_bytes": 14280,
+      "packed_sha256": "fa450de172f193a03e12b4f033df75bc3bbf6a57db586989d298315e8cff94b6",
+      "decoded_sha256": "dc949e2dbd7657ff42c5f78a9271fa0a003b7af81cce03b67c921b39064bdcd6",
+      "max_abs_quantization_error": 0.0,
+      "relative_l2_quantization_error": 0,
+      "packed_direct_and_rowwise_identical": true,
+      "independent_decode_bitwise_equal": true,
+      "input_and_output_guards_unchanged": true
+    },
+    {
+      "rows": 1,
+      "mode": "constant",
+      "values": 17408,
+      "packed_bytes": 14280,
+      "packed_sha256": "9f25202f1cd93c32e0c155cc20153c11001cc75c29d5a45883bdd690934fc32d",
+      "decoded_sha256": "fab3fdcf6ae9eeffe4c69b585e6e9976af5bb1934f1f928a363f9a7761153cbd",
+      "max_abs_quantization_error": 0.0,
+      "relative_l2_quantization_error": 0.0,
+      "packed_direct_and_rowwise_identical": true,
+      "independent_decode_bitwise_equal": true,
+      "input_and_output_guards_unchanged": true
+    },
+    {
+      "rows": 7,
+      "mode": "dyadic",
+      "values": 121856,
+      "packed_bytes": 99960,
+      "packed_sha256": "50362d47d3df0f4396644e6349b58bcbfb7f0520e53911c72b3f811842f7e27d",
+      "decoded_sha256": "a9a86130d542c1ff51731b218c4395574ed34eb06076894eefec3daec6881a77",
+      "max_abs_quantization_error": 0.014883279800415039,
+      "relative_l2_quantization_error": 0.00948619951000409,
+      "packed_direct_and_rowwise_identical": true,
+      "independent_decode_bitwise_equal": true,
+      "input_and_output_guards_unchanged": true
+    },
+    {
+      "rows": 63,
+      "mode": "mixed",
+      "values": 1096704,
+      "packed_bytes": 899640,
+      "packed_sha256": "9a984f3867151b959873b41a5fb34c13ff995d202c262caef30838e3456110db",
+      "decoded_sha256": "eadc7bb7e5908ec4114acb6708acfbdc9ab1bacdd48b4ee4dcaa9f49fc035cc9",
+      "max_abs_quantization_error": 0.23813247680664062,
+      "relative_l2_quantization_error": 0.009486610342055519,
+      "packed_direct_and_rowwise_identical": true,
+      "independent_decode_bitwise_equal": true,
+      "input_and_output_guards_unchanged": true
+    },
+    {
+      "rows": 64,
+      "mode": "mixed",
+      "values": 1114112,
+      "packed_bytes": 913920,
+      "packed_sha256": "0e42f5ca4580319bd6aac796cc4f5c731ea135713557ca0490c14db541339756",
+      "decoded_sha256": "c9e8cf208c3712fb1d3ac02c3202f4bee16370a11dc379fa784e21fbf28d2a6f",
+      "max_abs_quantization_error": 0.23813247680664062,
+      "relative_l2_quantization_error": 0.00948697665849855,
+      "packed_direct_and_rowwise_identical": true,
+      "independent_decode_bitwise_equal": true,
+      "input_and_output_guards_unchanged": true
+    }
+  ],
+  "refusals": [
+    "zero_rows",
+    "too_many_rows",
+    "wrong_width",
+    "short_output",
+    "nonfinite"
+  ],
+  "gate_scope": "Helper packing, unchanged input/guards, and decoder correctness only; no BF16 model acceptance claim.",
+  "compared_values": 2367488,
+  "elapsed_seconds": 0.11829762500565266
+}

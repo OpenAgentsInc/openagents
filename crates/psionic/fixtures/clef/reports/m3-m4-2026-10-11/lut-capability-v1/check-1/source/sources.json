@@ -1,0 +1,40 @@
+{
+  "sdk_version": "26.5",
+  "headers": [
+    {
+      "sdk_relative_path": "System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSNDArray.framework/Versions/A/Headers/MPSNDArrayQuantizedMatrixMultiplication.h",
+      "sha256": "92bf749257f3d169cec772a633634286c7b34b2343efd147cae65b376bc3e433"
+    },
+    {
+      "sdk_relative_path": "System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSNDArray.framework/Versions/A/Headers/MPSNDArrayMatrixMultiplication.h",
+      "sha256": "8af7dfd2a7929aaed64cb3f6ba08ff08cafd91a47fc1b4e4c75effc295a28679"
+    },
+    {
+      "sdk_relative_path": "System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSNDArray.framework/Versions/A/Headers/MPSNDArrayQuantization.h",
+      "sha256": "fb2a2ba6bb3f9ce84f094117d3bddc5e48a248a0b0ee961ed6e7cdbf4bff4090"
+    },
+    {
+      "sdk_relative_path": "System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSCore.framework/Versions/A/Headers/MPSNDArray.h",
+      "sha256": "def688e117d738abd495fd824cabba5628f3a4eac9e70b728d102e0fb370a909"
+    },
+    {
+      "sdk_relative_path": "System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSCore.framework/Versions/A/Headers/MPSCoreTypes.h",
+      "sha256": "c12d9d08885e39e41c5a8f6d92cc4488ce7cc1bbc87137e90245c8cc923d564d"
+    },
+    {
+      "sdk_relative_path": "System/Library/Frameworks/MetalPerformanceShadersGraph.framework/Versions/A/Headers/MPSGraphQuantizationOps.h",
+      "sha256": "28d53895ef67ea99827e558a5087cfaf17ee177afc8de3c48346cd8891e4ee6b"
+    },
+    {
+      "sdk_relative_path": "System/Library/Frameworks/MetalPerformanceShadersGraph.framework/Versions/A/Headers/MPSGraphMatrixMultiplicationOps.h",
+      "sha256": "b9598edf2dd38c0b7285b45730d51ec48457ebe66587f33644a9b6eee3746d97"
+    }
+  ],
+  "primary_sources": [
+    "https://developer.apple.com/videos/play/wwdc2024/10218/",
+    "https://developer.apple.com/documentation/metalperformanceshaders/mpsndarrayquantizedmatrixmultiplication",
+    "https://developer.apple.com/documentation/metalperformanceshadersgraph/mpsgraph/dequantize(_:luttensor:name:)",
+    "https://developer.apple.com/documentation/metal/mtliopriority",
+    "https://developer.apple.com/documentation/dispatch/dispatchqos"
+  ]
+}

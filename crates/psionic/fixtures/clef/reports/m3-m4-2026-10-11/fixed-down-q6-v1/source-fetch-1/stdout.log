@@ -1,0 +1,10 @@
+fatal: missing blob object '75c5f4cec0d406ca4615bf871c8b68aefd486a4b'
+error: remote did not send all necessary objects
+Traceback (most recent call last):
+  File "$TASK_SCRATCH/q4-down-q6-regeneration/fetch_source.py", line 40, in <module>
+    main()
+  File "$TASK_SCRATCH/q4-down-q6-regeneration/fetch_source.py", line 26, in main
+    subprocess.run(command, check=True, timeout=120)
+  File "$HOME/.local/share/uv/python/cpython-3.12.13-macos-aarch64-none/lib/python3.12/subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['git', '-C', '$TASK_SCRATCH/q4-down-q6-regeneration/upstream-checkout', '-c', 'core.hooksPath=/dev/null', '-c', 'pack.threads=1', '-c', 'index.threads=1', 'fetch', '--quiet', '--refetch', '--depth=1', '--no-tags', 'https://github.com/ggml-org/llama.cpp.git', '62a6f74bab748b1755f4cd8dfc0871caf865c6c8']' returned non-zero exit status 1.

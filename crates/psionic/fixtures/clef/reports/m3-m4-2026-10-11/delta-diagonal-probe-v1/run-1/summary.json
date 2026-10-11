@@ -1,0 +1,2572 @@
+{
+  "status": "passed",
+  "scope": "Synthetic one-scan comparison; not model-logit or sustained-latency acceptance.",
+  "correctness_bounds": "Unchanged 2e-5+2e-4*abs(reference); prepared n1 output exact versus sequential; candidate state exact versus original block.",
+  "timing_scope": "Production sequential scan versus each block preparation+scan; common normalization/kq prep excluded from all three.",
+  "receipt": {
+    "mode": "bench",
+    "status": "complete",
+    "preflight": {
+      "available_memory_bytes": 104277999616,
+      "page_size_bytes": 16384,
+      "pages": {
+        "free": 2156504,
+        "inactive": 4055233,
+        "speculative": 152887
+      },
+      "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+    },
+    "max_owned_group_bytes": 2147483648,
+    "minimum_available_bytes": 12884901888,
+    "minimum_start_bytes": 15032385536,
+    "deadline_seconds": 60,
+    "conditions": "shared machine; synthetic normalized Delta inputs; actual Flash/27B dimensions; no model execution",
+    "source_sha256": {
+      "baseline.metal": "5d7a458c45f36206f5caf0016d210458cac073d7752c49786bfc7ee49e18999d",
+      "candidate.metal": "4fbfb3f3dd47c7c5d5fd55d8551a413b8eb22379ec74e47a70b043875a881ba6",
+      "support.metal": "ed35d8a9effae02cdbb151db1c93838d3c7b27c9d49bb6c09a7cddc8dd241bca",
+      "probe.swift": "ceb726f99057bee01ed4bed784ed965ac54cea242bbe36ad263f3316d9830c71",
+      "build.py": "6ff8c506a171de473911d4d870ee57607fe5f303681559bd3f777dfa3a35159b",
+      "guard.py": "b8b70db9515dc1f9a1c2e4751bb4373cbfc1a032d4482160d41536e9de76c788",
+      "manifest.json": "6ca949476a84a6217aebad328313b20418585cca212d69ece7e916d2bde12a4e"
+    },
+    "guard_dependency_sha256": {
+      "mac_quiet_bench.py": "ce5f832d0eeb2ec5c954755c07d00fafcc2bb1c59d6aa6c1d993a2f84bcce9fb",
+      "mac_memory.py": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd"
+    },
+    "command": [
+      "run-artifacts/delta-diagonal-candidate/probe",
+      "run-artifacts/delta-diagonal-candidate",
+      "bench"
+    ],
+    "binary_sha256": "9f0d90073f4e7dae0072d639e4e86162114d8788652289bcfb3a36c8ec1eaf5b",
+    "exit": 0,
+    "memory": {
+      "rss_log": "memory.jsonl",
+      "process_group": 46228,
+      "max_rss_bytes": 2147483648,
+      "peak_rss_bytes": 930529280,
+      "peak_physical_footprint_bytes": 1047397744,
+      "peak_accounted_bytes": 1047397744,
+      "sampling_error": null,
+      "sampler_timeout_seconds": 5,
+      "rss_samples": 64,
+      "sample_interval_seconds": 0.5,
+      "minimum_available_memory_bytes": 12884901888,
+      "lowest_available_memory_bytes": 102744211456,
+      "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+      "memory_rejection": null,
+      "cleanup_error": null,
+      "cleanup_diagnostics": null,
+      "cleanup_observations": [],
+      "owned_group_stopped": true,
+      "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+    },
+    "seconds": 33.802549417
+  },
+  "checks": [
+    {
+      "candidate_vs_sequential_bitwise_diagnostic": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 768
+      },
+      "case": "production-prepared-diagonal",
+      "chunks": [
+        1
+      ],
+      "f64_checks": [
+        {
+          "failed_values": 0,
+          "max_abs": 4.750504815909107e-10,
+          "passed": true,
+          "values": 768
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.3969838619232178e-09,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 2.3376956308218677e-09,
+          "passed": true,
+          "values": 768
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.3969838619232178e-09,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 4.750504815909107e-10,
+          "passed": true,
+          "values": 768
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.3969838619232178e-09,
+          "passed": true,
+          "values": 98304
+        }
+      ],
+      "f64_checks_order": [
+        "sequential_output",
+        "sequential_state",
+        "block_output",
+        "block_state",
+        "candidate_output",
+        "candidate_state"
+      ],
+      "inputs_unchanged": true,
+      "key_heads": 2,
+      "kind": "correctness",
+      "n": 1,
+      "output_candidate_vs_block_diagnostic": {
+        "bit_mismatches": 724,
+        "max_abs": 1.862645149230957e-09,
+        "passed": false,
+        "values": 768
+      },
+      "output_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 768
+      },
+      "passed": true,
+      "prepared_diagonal_exact_gate": true,
+      "redzones_unchanged": true,
+      "reordered": false,
+      "state_candidate_vs_block": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 98304
+      },
+      "state_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 98304
+      },
+      "value_heads": 6
+    },
+    {
+      "candidate_vs_sequential_bitwise_diagnostic": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 768
+      },
+      "case": "production-prepared-diagonal",
+      "chunks": [
+        1
+      ],
+      "f64_checks": [
+        {
+          "failed_values": 0,
+          "max_abs": 4.750504815909107e-10,
+          "passed": true,
+          "values": 768
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.3969838619232178e-09,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 2.3376956308218677e-09,
+          "passed": true,
+          "values": 768
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.3969838619232178e-09,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 4.750504815909107e-10,
+          "passed": true,
+          "values": 768
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.3969838619232178e-09,
+          "passed": true,
+          "values": 98304
+        }
+      ],
+      "f64_checks_order": [
+        "sequential_output",
+        "sequential_state",
+        "block_output",
+        "block_state",
+        "candidate_output",
+        "candidate_state"
+      ],
+      "inputs_unchanged": true,
+      "key_heads": 2,
+      "kind": "correctness",
+      "n": 1,
+      "output_candidate_vs_block_diagnostic": {
+        "bit_mismatches": 724,
+        "max_abs": 1.862645149230957e-09,
+        "passed": false,
+        "values": 768
+      },
+      "output_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 768
+      },
+      "passed": true,
+      "prepared_diagonal_exact_gate": true,
+      "redzones_unchanged": true,
+      "reordered": true,
+      "state_candidate_vs_block": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 98304
+      },
+      "state_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 98304
+      },
+      "value_heads": 6
+    },
+    {
+      "candidate_vs_sequential_bitwise_diagnostic": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 128
+      },
+      "case": "tail",
+      "chunks": [
+        1
+      ],
+      "f64_checks": [
+        {
+          "failed_values": 0,
+          "max_abs": 0,
+          "passed": true,
+          "values": 128
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 0,
+          "passed": true,
+          "values": 16384
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 0,
+          "passed": true,
+          "values": 128
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 0,
+          "passed": true,
+          "values": 16384
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 0,
+          "passed": true,
+          "values": 128
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 0,
+          "passed": true,
+          "values": 16384
+        }
+      ],
+      "f64_checks_order": [
+        "sequential_output",
+        "sequential_state",
+        "block_output",
+        "block_state",
+        "candidate_output",
+        "candidate_state"
+      ],
+      "inputs_unchanged": true,
+      "key_heads": 1,
+      "kind": "correctness",
+      "n": 1,
+      "output_candidate_vs_block_diagnostic": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 128
+      },
+      "output_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 128
+      },
+      "passed": true,
+      "prepared_diagonal_exact_gate": false,
+      "redzones_unchanged": true,
+      "reordered": false,
+      "state_candidate_vs_block": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 16384
+      },
+      "state_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 16384
+      },
+      "value_heads": 1
+    },
+    {
+      "candidate_vs_sequential_bitwise_diagnostic": {
+        "bit_mismatches": 479,
+        "max_abs": 1.862645149230957e-09,
+        "passed": false,
+        "values": 1920
+      },
+      "case": "tail",
+      "chunks": [
+        15
+      ],
+      "f64_checks": [
+        {
+          "failed_values": 0,
+          "max_abs": 1.1372488332994646e-09,
+          "passed": true,
+          "values": 1920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 5.902570099358684e-14,
+          "passed": true,
+          "values": 16384
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.2007610747724606e-09,
+          "passed": true,
+          "values": 1920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 5.902570099358684e-14,
+          "passed": true,
+          "values": 16384
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.2007610747724606e-09,
+          "passed": true,
+          "values": 1920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 5.902570099358684e-14,
+          "passed": true,
+          "values": 16384
+        }
+      ],
+      "f64_checks_order": [
+        "sequential_output",
+        "sequential_state",
+        "block_output",
+        "block_state",
+        "candidate_output",
+        "candidate_state"
+      ],
+      "inputs_unchanged": true,
+      "key_heads": 1,
+      "kind": "correctness",
+      "n": 15,
+      "output_candidate_vs_block_diagnostic": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 1920
+      },
+      "output_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 1.862645149230957e-09,
+        "passed": true,
+        "values": 1920
+      },
+      "passed": true,
+      "prepared_diagonal_exact_gate": false,
+      "redzones_unchanged": true,
+      "reordered": false,
+      "state_candidate_vs_block": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 16384
+      },
+      "state_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 16384
+      },
+      "value_heads": 1
+    },
+    {
+      "candidate_vs_sequential_bitwise_diagnostic": {
+        "bit_mismatches": 4562,
+        "max_abs": 2.7939677238464355e-09,
+        "passed": false,
+        "values": 23808
+      },
+      "case": "tail",
+      "chunks": [
+        31
+      ],
+      "f64_checks": [
+        {
+          "failed_values": 0,
+          "max_abs": 1.8203021225765559e-09,
+          "passed": true,
+          "values": 23808
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.3973614904072562e-08,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 2.6994714779488005e-09,
+          "passed": true,
+          "values": 23808
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.6077994685614883e-08,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 2.6994714779488005e-09,
+          "passed": true,
+          "values": 23808
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.6077994685614883e-08,
+          "passed": true,
+          "values": 98304
+        }
+      ],
+      "f64_checks_order": [
+        "sequential_output",
+        "sequential_state",
+        "block_output",
+        "block_state",
+        "candidate_output",
+        "candidate_state"
+      ],
+      "inputs_unchanged": true,
+      "key_heads": 2,
+      "kind": "correctness",
+      "n": 31,
+      "output_candidate_vs_block_diagnostic": {
+        "bit_mismatches": 273,
+        "max_abs": 1.862645149230957e-09,
+        "passed": false,
+        "values": 23808
+      },
+      "output_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 2.7939677238464355e-09,
+        "passed": true,
+        "values": 23808
+      },
+      "passed": true,
+      "prepared_diagonal_exact_gate": false,
+      "redzones_unchanged": true,
+      "reordered": false,
+      "state_candidate_vs_block": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 98304
+      },
+      "state_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 2.2351741790771484e-08,
+        "passed": true,
+        "values": 98304
+      },
+      "value_heads": 6
+    },
+    {
+      "candidate_vs_sequential_bitwise_diagnostic": {
+        "bit_mismatches": 4911,
+        "max_abs": 3.725290298461914e-09,
+        "passed": false,
+        "values": 24576
+      },
+      "case": "tail",
+      "chunks": [
+        32
+      ],
+      "f64_checks": [
+        {
+          "failed_values": 0,
+          "max_abs": 1.8203021225765559e-09,
+          "passed": true,
+          "values": 24576
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.404596575160788e-08,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 2.6994714779488005e-09,
+          "passed": true,
+          "values": 24576
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.2570433916003765e-08,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 2.6994714779488005e-09,
+          "passed": true,
+          "values": 24576
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.2570433916003765e-08,
+          "passed": true,
+          "values": 98304
+        }
+      ],
+      "f64_checks_order": [
+        "sequential_output",
+        "sequential_state",
+        "block_output",
+        "block_state",
+        "candidate_output",
+        "candidate_state"
+      ],
+      "inputs_unchanged": true,
+      "key_heads": 2,
+      "kind": "correctness",
+      "n": 32,
+      "output_candidate_vs_block_diagnostic": {
+        "bit_mismatches": 273,
+        "max_abs": 1.862645149230957e-09,
+        "passed": false,
+        "values": 24576
+      },
+      "output_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 3.725290298461914e-09,
+        "passed": true,
+        "values": 24576
+      },
+      "passed": true,
+      "prepared_diagonal_exact_gate": false,
+      "redzones_unchanged": true,
+      "reordered": true,
+      "state_candidate_vs_block": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 98304
+      },
+      "state_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 1.4901161193847656e-08,
+        "passed": true,
+        "values": 98304
+      },
+      "value_heads": 6
+    },
+    {
+      "candidate_vs_sequential_bitwise_diagnostic": {
+        "bit_mismatches": 4979,
+        "max_abs": 3.725290298461914e-09,
+        "passed": false,
+        "values": 25344
+      },
+      "case": "tail",
+      "chunks": [
+        33
+      ],
+      "f64_checks": [
+        {
+          "failed_values": 0,
+          "max_abs": 1.8203021225765559e-09,
+          "passed": true,
+          "values": 25344
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.681910884177018e-08,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 3.354032369548565e-09,
+          "passed": true,
+          "values": 25344
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.4896338301761958e-08,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 3.354032369548565e-09,
+          "passed": true,
+          "values": 25344
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.4896338301761958e-08,
+          "passed": true,
+          "values": 98304
+        }
+      ],
+      "f64_checks_order": [
+        "sequential_output",
+        "sequential_state",
+        "block_output",
+        "block_state",
+        "candidate_output",
+        "candidate_state"
+      ],
+      "inputs_unchanged": true,
+      "key_heads": 2,
+      "kind": "correctness",
+      "n": 33,
+      "output_candidate_vs_block_diagnostic": {
+        "bit_mismatches": 374,
+        "max_abs": 1.862645149230957e-09,
+        "passed": false,
+        "values": 25344
+      },
+      "output_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 3.725290298461914e-09,
+        "passed": true,
+        "values": 25344
+      },
+      "passed": true,
+      "prepared_diagonal_exact_gate": false,
+      "redzones_unchanged": true,
+      "reordered": false,
+      "state_candidate_vs_block": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 98304
+      },
+      "state_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 2.2351741790771484e-08,
+        "passed": true,
+        "values": 98304
+      },
+      "value_heads": 6
+    },
+    {
+      "candidate_vs_sequential_bitwise_diagnostic": {
+        "bit_mismatches": 10665,
+        "max_abs": 3.725290298461914e-09,
+        "passed": false,
+        "values": 49920
+      },
+      "case": "tail",
+      "chunks": [
+        65
+      ],
+      "f64_checks": [
+        {
+          "failed_values": 0,
+          "max_abs": 1.8203021225765559e-09,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.1470758398690606e-08,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 3.997715977699379e-09,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.1470758398690606e-08,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 3.997715977699379e-09,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.1470758398690606e-08,
+          "passed": true,
+          "values": 98304
+        }
+      ],
+      "f64_checks_order": [
+        "sequential_output",
+        "sequential_state",
+        "block_output",
+        "block_state",
+        "candidate_output",
+        "candidate_state"
+      ],
+      "inputs_unchanged": true,
+      "key_heads": 2,
+      "kind": "correctness",
+      "n": 65,
+      "output_candidate_vs_block_diagnostic": {
+        "bit_mismatches": 895,
+        "max_abs": 1.862645149230957e-09,
+        "passed": false,
+        "values": 49920
+      },
+      "output_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 3.725290298461914e-09,
+        "passed": true,
+        "values": 49920
+      },
+      "passed": true,
+      "prepared_diagonal_exact_gate": false,
+      "redzones_unchanged": true,
+      "reordered": true,
+      "state_candidate_vs_block": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 98304
+      },
+      "state_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 1.4901161193847656e-08,
+        "passed": true,
+        "values": 98304
+      },
+      "value_heads": 6
+    },
+    {
+      "candidate_vs_sequential_bitwise_diagnostic": {
+        "bit_mismatches": 32450,
+        "max_abs": 1.955777406692505e-08,
+        "passed": false,
+        "values": 49920
+      },
+      "case": "zero-decay",
+      "chunks": [
+        65
+      ],
+      "f64_checks": [
+        {
+          "failed_values": 0,
+          "max_abs": 4.259253588712042e-09,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.4926721225716477e-07,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.8577306071070054e-08,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 9.784653265225429e-08,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.8577306071070054e-08,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 9.784653265225429e-08,
+          "passed": true,
+          "values": 98304
+        }
+      ],
+      "f64_checks_order": [
+        "sequential_output",
+        "sequential_state",
+        "block_output",
+        "block_state",
+        "candidate_output",
+        "candidate_state"
+      ],
+      "inputs_unchanged": true,
+      "key_heads": 2,
+      "kind": "correctness",
+      "n": 65,
+      "output_candidate_vs_block_diagnostic": {
+        "bit_mismatches": 10510,
+        "max_abs": 3.725290298461914e-09,
+        "passed": false,
+        "values": 49920
+      },
+      "output_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 1.955777406692505e-08,
+        "passed": true,
+        "values": 49920
+      },
+      "passed": true,
+      "prepared_diagonal_exact_gate": false,
+      "redzones_unchanged": true,
+      "reordered": false,
+      "state_candidate_vs_block": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 98304
+      },
+      "state_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 1.7881393432617188e-07,
+        "passed": true,
+        "values": 98304
+      },
+      "value_heads": 6
+    },
+    {
+      "candidate_vs_sequential_bitwise_diagnostic": {
+        "bit_mismatches": 32394,
+        "max_abs": 1.955777406692505e-08,
+        "passed": false,
+        "values": 49920
+      },
+      "case": "zero-decay",
+      "chunks": [
+        33,
+        32
+      ],
+      "f64_checks": [
+        {
+          "failed_values": 0,
+          "max_abs": 4.259253588712042e-09,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.4926721225716477e-07,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.8960320784602597e-08,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.0484145307855866e-07,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.9149495682571367e-08,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.0484145307855866e-07,
+          "passed": true,
+          "values": 98304
+        }
+      ],
+      "f64_checks_order": [
+        "sequential_output",
+        "sequential_state",
+        "block_output",
+        "block_state",
+        "candidate_output",
+        "candidate_state"
+      ],
+      "inputs_unchanged": true,
+      "key_heads": 2,
+      "kind": "correctness",
+      "n": 65,
+      "output_candidate_vs_block_diagnostic": {
+        "bit_mismatches": 11421,
+        "max_abs": 3.725290298461914e-09,
+        "passed": false,
+        "values": 49920
+      },
+      "output_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 1.955777406692505e-08,
+        "passed": true,
+        "values": 49920
+      },
+      "passed": true,
+      "prepared_diagonal_exact_gate": false,
+      "redzones_unchanged": true,
+      "reordered": false,
+      "state_candidate_vs_block": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 98304
+      },
+      "state_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 1.7881393432617188e-07,
+        "passed": true,
+        "values": 98304
+      },
+      "value_heads": 6
+    },
+    {
+      "candidate_vs_sequential_bitwise_diagnostic": {
+        "bit_mismatches": 32326,
+        "max_abs": 1.862645149230957e-08,
+        "passed": false,
+        "values": 49920
+      },
+      "case": "zero-decay",
+      "chunks": [
+        15,
+        17,
+        31,
+        2
+      ],
+      "f64_checks": [
+        {
+          "failed_values": 0,
+          "max_abs": 4.259253588712042e-09,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.4926721225716477e-07,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.71826911822201e-08,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.0286089213717986e-07,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.708480072172558e-08,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.0286089213717986e-07,
+          "passed": true,
+          "values": 98304
+        }
+      ],
+      "f64_checks_order": [
+        "sequential_output",
+        "sequential_state",
+        "block_output",
+        "block_state",
+        "candidate_output",
+        "candidate_state"
+      ],
+      "inputs_unchanged": true,
+      "key_heads": 2,
+      "kind": "correctness",
+      "n": 65,
+      "output_candidate_vs_block_diagnostic": {
+        "bit_mismatches": 11834,
+        "max_abs": 3.725290298461914e-09,
+        "passed": false,
+        "values": 49920
+      },
+      "output_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 1.862645149230957e-08,
+        "passed": true,
+        "values": 49920
+      },
+      "passed": true,
+      "prepared_diagonal_exact_gate": false,
+      "redzones_unchanged": true,
+      "reordered": false,
+      "state_candidate_vs_block": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 98304
+      },
+      "state_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 1.4901161193847656e-07,
+        "passed": true,
+        "values": 98304
+      },
+      "value_heads": 6
+    },
+    {
+      "candidate_vs_sequential_bitwise_diagnostic": {
+        "bit_mismatches": 32922,
+        "max_abs": 1.4901161193847656e-08,
+        "passed": false,
+        "values": 49920
+      },
+      "case": "zero-decay",
+      "chunks": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "f64_checks": [
+        {
+          "failed_values": 0,
+          "max_abs": 4.259253588712042e-09,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.4926721225716477e-07,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.432813184071291e-08,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.6190817125893986e-07,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.432813184071291e-08,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.6190817125893986e-07,
+          "passed": true,
+          "values": 98304
+        }
+      ],
+      "f64_checks_order": [
+        "sequential_output",
+        "sequential_state",
+        "block_output",
+        "block_state",
+        "candidate_output",
+        "candidate_state"
+      ],
+      "inputs_unchanged": true,
+      "key_heads": 2,
+      "kind": "correctness",
+      "n": 65,
+      "output_candidate_vs_block_diagnostic": {
+        "bit_mismatches": 10915,
+        "max_abs": 3.725290298461914e-09,
+        "passed": false,
+        "values": 49920
+      },
+      "output_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 1.4901161193847656e-08,
+        "passed": true,
+        "values": 49920
+      },
+      "passed": true,
+      "prepared_diagonal_exact_gate": false,
+      "redzones_unchanged": true,
+      "reordered": false,
+      "state_candidate_vs_block": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 98304
+      },
+      "state_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 1.1920928955078125e-07,
+        "passed": true,
+        "values": 98304
+      },
+      "value_heads": 6
+    },
+    {
+      "candidate_vs_sequential_bitwise_diagnostic": {
+        "bit_mismatches": 115212,
+        "max_abs": 3.0547380447387695e-07,
+        "passed": false,
+        "values": 119040
+      },
+      "case": "correlated",
+      "chunks": [
+        155
+      ],
+      "f64_checks": [
+        {
+          "failed_values": 0,
+          "max_abs": 4.196611661302918e-08,
+          "passed": true,
+          "values": 119040
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 5.258387112405671e-07,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 3.1373040131066343e-07,
+          "passed": true,
+          "values": 119040
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 9.156946599864213e-07,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 3.100051110122015e-07,
+          "passed": true,
+          "values": 119040
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 9.156946599864213e-07,
+          "passed": true,
+          "values": 98304
+        }
+      ],
+      "f64_checks_order": [
+        "sequential_output",
+        "sequential_state",
+        "block_output",
+        "block_state",
+        "candidate_output",
+        "candidate_state"
+      ],
+      "inputs_unchanged": true,
+      "key_heads": 2,
+      "kind": "correctness",
+      "n": 155,
+      "output_candidate_vs_block_diagnostic": {
+        "bit_mismatches": 102448,
+        "max_abs": 4.0978193283081055e-08,
+        "passed": false,
+        "values": 119040
+      },
+      "output_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 3.0547380447387695e-07,
+        "passed": true,
+        "values": 119040
+      },
+      "passed": true,
+      "prepared_diagonal_exact_gate": false,
+      "redzones_unchanged": true,
+      "reordered": false,
+      "state_candidate_vs_block": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 98304
+      },
+      "state_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 1.0132789611816406e-06,
+        "passed": true,
+        "values": 98304
+      },
+      "value_heads": 6
+    },
+    {
+      "candidate_vs_sequential_bitwise_diagnostic": {
+        "bit_mismatches": 115166,
+        "max_abs": 2.9336661100387573e-07,
+        "passed": false,
+        "values": 119040
+      },
+      "case": "correlated",
+      "chunks": [
+        31,
+        33,
+        64,
+        27
+      ],
+      "f64_checks": [
+        {
+          "failed_values": 0,
+          "max_abs": 4.196611661302918e-08,
+          "passed": true,
+          "values": 119040
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 5.258387112405671e-07,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 2.9510394981835386e-07,
+          "passed": true,
+          "values": 119040
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 8.770395022450472e-07,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 2.8765336922143003e-07,
+          "passed": true,
+          "values": 119040
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 8.770395022450472e-07,
+          "passed": true,
+          "values": 98304
+        }
+      ],
+      "f64_checks_order": [
+        "sequential_output",
+        "sequential_state",
+        "block_output",
+        "block_state",
+        "candidate_output",
+        "candidate_state"
+      ],
+      "inputs_unchanged": true,
+      "key_heads": 2,
+      "kind": "correctness",
+      "n": 155,
+      "output_candidate_vs_block_diagnostic": {
+        "bit_mismatches": 102534,
+        "max_abs": 4.0978193283081055e-08,
+        "passed": false,
+        "values": 119040
+      },
+      "output_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 2.9336661100387573e-07,
+        "passed": true,
+        "values": 119040
+      },
+      "passed": true,
+      "prepared_diagonal_exact_gate": false,
+      "redzones_unchanged": true,
+      "reordered": false,
+      "state_candidate_vs_block": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 98304
+      },
+      "state_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 9.5367431640625e-07,
+        "passed": true,
+        "values": 98304
+      },
+      "value_heads": 6
+    },
+    {
+      "candidate_vs_sequential_bitwise_diagnostic": {
+        "bit_mismatches": 32363,
+        "max_abs": 1.955777406692505e-08,
+        "passed": false,
+        "values": 49920
+      },
+      "case": "zero-decay",
+      "chunks": [
+        65
+      ],
+      "f64_checks": [
+        {
+          "failed_values": 0,
+          "max_abs": 4.508258183433256e-09,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.4926721225716477e-07,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.8577306071070054e-08,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 9.784653265225429e-08,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.8577306071070054e-08,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 9.784653265225429e-08,
+          "passed": true,
+          "values": 98304
+        }
+      ],
+      "f64_checks_order": [
+        "sequential_output",
+        "sequential_state",
+        "block_output",
+        "block_state",
+        "candidate_output",
+        "candidate_state"
+      ],
+      "inputs_unchanged": true,
+      "key_heads": 2,
+      "kind": "correctness",
+      "n": 65,
+      "output_candidate_vs_block_diagnostic": {
+        "bit_mismatches": 10501,
+        "max_abs": 3.725290298461914e-09,
+        "passed": false,
+        "values": 49920
+      },
+      "output_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 1.955777406692505e-08,
+        "passed": true,
+        "values": 49920
+      },
+      "passed": true,
+      "prepared_diagonal_exact_gate": false,
+      "redzones_unchanged": true,
+      "reordered": true,
+      "state_candidate_vs_block": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 98304
+      },
+      "state_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 1.7881393432617188e-07,
+        "passed": true,
+        "values": 98304
+      },
+      "value_heads": 6
+    },
+    {
+      "candidate_vs_sequential_bitwise_diagnostic": {
+        "bit_mismatches": 32369,
+        "max_abs": 1.955777406692505e-08,
+        "passed": false,
+        "values": 49920
+      },
+      "case": "zero-decay",
+      "chunks": [
+        33,
+        32
+      ],
+      "f64_checks": [
+        {
+          "failed_values": 0,
+          "max_abs": 4.508258183433256e-09,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.4926721225716477e-07,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.8960320784602597e-08,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.0484145307855866e-07,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.9149495682571367e-08,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.0484145307855866e-07,
+          "passed": true,
+          "values": 98304
+        }
+      ],
+      "f64_checks_order": [
+        "sequential_output",
+        "sequential_state",
+        "block_output",
+        "block_state",
+        "candidate_output",
+        "candidate_state"
+      ],
+      "inputs_unchanged": true,
+      "key_heads": 2,
+      "kind": "correctness",
+      "n": 65,
+      "output_candidate_vs_block_diagnostic": {
+        "bit_mismatches": 11386,
+        "max_abs": 3.725290298461914e-09,
+        "passed": false,
+        "values": 49920
+      },
+      "output_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 1.955777406692505e-08,
+        "passed": true,
+        "values": 49920
+      },
+      "passed": true,
+      "prepared_diagonal_exact_gate": false,
+      "redzones_unchanged": true,
+      "reordered": true,
+      "state_candidate_vs_block": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 98304
+      },
+      "state_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 1.7881393432617188e-07,
+        "passed": true,
+        "values": 98304
+      },
+      "value_heads": 6
+    },
+    {
+      "candidate_vs_sequential_bitwise_diagnostic": {
+        "bit_mismatches": 32186,
+        "max_abs": 1.862645149230957e-08,
+        "passed": false,
+        "values": 49920
+      },
+      "case": "zero-decay",
+      "chunks": [
+        15,
+        17,
+        31,
+        2
+      ],
+      "f64_checks": [
+        {
+          "failed_values": 0,
+          "max_abs": 4.508258183433256e-09,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.4926721225716477e-07,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.71826911822201e-08,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.0286089213717986e-07,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.708480072172558e-08,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.0286089213717986e-07,
+          "passed": true,
+          "values": 98304
+        }
+      ],
+      "f64_checks_order": [
+        "sequential_output",
+        "sequential_state",
+        "block_output",
+        "block_state",
+        "candidate_output",
+        "candidate_state"
+      ],
+      "inputs_unchanged": true,
+      "key_heads": 2,
+      "kind": "correctness",
+      "n": 65,
+      "output_candidate_vs_block_diagnostic": {
+        "bit_mismatches": 11825,
+        "max_abs": 3.725290298461914e-09,
+        "passed": false,
+        "values": 49920
+      },
+      "output_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 1.862645149230957e-08,
+        "passed": true,
+        "values": 49920
+      },
+      "passed": true,
+      "prepared_diagonal_exact_gate": false,
+      "redzones_unchanged": true,
+      "reordered": true,
+      "state_candidate_vs_block": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 98304
+      },
+      "state_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 1.4901161193847656e-07,
+        "passed": true,
+        "values": 98304
+      },
+      "value_heads": 6
+    },
+    {
+      "candidate_vs_sequential_bitwise_diagnostic": {
+        "bit_mismatches": 32941,
+        "max_abs": 1.4901161193847656e-08,
+        "passed": false,
+        "values": 49920
+      },
+      "case": "zero-decay",
+      "chunks": [
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "f64_checks": [
+        {
+          "failed_values": 0,
+          "max_abs": 4.508258183433256e-09,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.4926721225716477e-07,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.432813184071291e-08,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.6190817125893986e-07,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.432813184071291e-08,
+          "passed": true,
+          "values": 49920
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 1.6190817125893986e-07,
+          "passed": true,
+          "values": 98304
+        }
+      ],
+      "f64_checks_order": [
+        "sequential_output",
+        "sequential_state",
+        "block_output",
+        "block_state",
+        "candidate_output",
+        "candidate_state"
+      ],
+      "inputs_unchanged": true,
+      "key_heads": 2,
+      "kind": "correctness",
+      "n": 65,
+      "output_candidate_vs_block_diagnostic": {
+        "bit_mismatches": 10824,
+        "max_abs": 3.725290298461914e-09,
+        "passed": false,
+        "values": 49920
+      },
+      "output_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 1.4901161193847656e-08,
+        "passed": true,
+        "values": 49920
+      },
+      "passed": true,
+      "prepared_diagonal_exact_gate": false,
+      "redzones_unchanged": true,
+      "reordered": true,
+      "state_candidate_vs_block": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 98304
+      },
+      "state_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 1.1920928955078125e-07,
+        "passed": true,
+        "values": 98304
+      },
+      "value_heads": 6
+    },
+    {
+      "candidate_vs_sequential_bitwise_diagnostic": {
+        "bit_mismatches": 115276,
+        "max_abs": 3.0547380447387695e-07,
+        "passed": false,
+        "values": 119040
+      },
+      "case": "correlated",
+      "chunks": [
+        155
+      ],
+      "f64_checks": [
+        {
+          "failed_values": 0,
+          "max_abs": 4.196611661302918e-08,
+          "passed": true,
+          "values": 119040
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 5.258387112405671e-07,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 3.1373040131066343e-07,
+          "passed": true,
+          "values": 119040
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 8.915454459690331e-07,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 3.100051110122015e-07,
+          "passed": true,
+          "values": 119040
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 8.915454459690331e-07,
+          "passed": true,
+          "values": 98304
+        }
+      ],
+      "f64_checks_order": [
+        "sequential_output",
+        "sequential_state",
+        "block_output",
+        "block_state",
+        "candidate_output",
+        "candidate_state"
+      ],
+      "inputs_unchanged": true,
+      "key_heads": 2,
+      "kind": "correctness",
+      "n": 155,
+      "output_candidate_vs_block_diagnostic": {
+        "bit_mismatches": 102585,
+        "max_abs": 4.470348358154297e-08,
+        "passed": false,
+        "values": 119040
+      },
+      "output_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 3.0547380447387695e-07,
+        "passed": true,
+        "values": 119040
+      },
+      "passed": true,
+      "prepared_diagonal_exact_gate": false,
+      "redzones_unchanged": true,
+      "reordered": true,
+      "state_candidate_vs_block": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 98304
+      },
+      "state_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 9.685754776000977e-07,
+        "passed": true,
+        "values": 98304
+      },
+      "value_heads": 6
+    },
+    {
+      "candidate_vs_sequential_bitwise_diagnostic": {
+        "bit_mismatches": 115181,
+        "max_abs": 2.9336661100387573e-07,
+        "passed": false,
+        "values": 119040
+      },
+      "case": "correlated",
+      "chunks": [
+        31,
+        33,
+        64,
+        27
+      ],
+      "f64_checks": [
+        {
+          "failed_values": 0,
+          "max_abs": 4.196611661302918e-08,
+          "passed": true,
+          "values": 119040
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 5.258387112405671e-07,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 2.9510394981835386e-07,
+          "passed": true,
+          "values": 119040
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 9.072278208677176e-07,
+          "passed": true,
+          "values": 98304
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 2.8765336922143003e-07,
+          "passed": true,
+          "values": 119040
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 9.072278208677176e-07,
+          "passed": true,
+          "values": 98304
+        }
+      ],
+      "f64_checks_order": [
+        "sequential_output",
+        "sequential_state",
+        "block_output",
+        "block_state",
+        "candidate_output",
+        "candidate_state"
+      ],
+      "inputs_unchanged": true,
+      "key_heads": 2,
+      "kind": "correctness",
+      "n": 155,
+      "output_candidate_vs_block_diagnostic": {
+        "bit_mismatches": 102607,
+        "max_abs": 4.470348358154297e-08,
+        "passed": false,
+        "values": 119040
+      },
+      "output_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 2.9336661100387573e-07,
+        "passed": true,
+        "values": 119040
+      },
+      "passed": true,
+      "prepared_diagonal_exact_gate": false,
+      "redzones_unchanged": true,
+      "reordered": true,
+      "state_candidate_vs_block": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 98304
+      },
+      "state_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 1.0728836059570312e-06,
+        "passed": true,
+        "values": 98304
+      },
+      "value_heads": 6
+    },
+    {
+      "candidate_vs_sequential_bitwise_diagnostic": {
+        "bit_mismatches": 253508,
+        "max_abs": 2.682209014892578e-07,
+        "passed": false,
+        "values": 260096
+      },
+      "case": "long-correlated",
+      "chunks": [
+        2032
+      ],
+      "f64_checks": [
+        {
+          "failed_values": 0,
+          "max_abs": 5.99754327208768e-08,
+          "passed": true,
+          "values": 260096
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 6.576886556475259e-07,
+          "passed": true,
+          "values": 16384
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 2.5997101110730725e-07,
+          "passed": true,
+          "values": 260096
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 8.678794072569662e-07,
+          "passed": true,
+          "values": 16384
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 2.5997101110730725e-07,
+          "passed": true,
+          "values": 260096
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 8.678794072569662e-07,
+          "passed": true,
+          "values": 16384
+        }
+      ],
+      "f64_checks_order": [
+        "sequential_output",
+        "sequential_state",
+        "block_output",
+        "block_state",
+        "candidate_output",
+        "candidate_state"
+      ],
+      "inputs_unchanged": true,
+      "key_heads": 1,
+      "kind": "correctness",
+      "n": 2032,
+      "output_candidate_vs_block_diagnostic": {
+        "bit_mismatches": 224543,
+        "max_abs": 4.470348358154297e-08,
+        "passed": false,
+        "values": 260096
+      },
+      "output_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 2.682209014892578e-07,
+        "passed": true,
+        "values": 260096
+      },
+      "passed": true,
+      "prepared_diagonal_exact_gate": false,
+      "redzones_unchanged": true,
+      "reordered": false,
+      "state_candidate_vs_block": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 16384
+      },
+      "state_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 1.1920928955078125e-06,
+        "passed": true,
+        "values": 16384
+      },
+      "value_heads": 1
+    },
+    {
+      "candidate_vs_sequential_bitwise_diagnostic": {
+        "bit_mismatches": 253572,
+        "max_abs": 2.7939677238464355e-07,
+        "passed": false,
+        "values": 260096
+      },
+      "case": "long-correlated",
+      "chunks": [
+        257,
+        257,
+        257,
+        257,
+        257,
+        257,
+        257,
+        233
+      ],
+      "f64_checks": [
+        {
+          "failed_values": 0,
+          "max_abs": 5.99754327208768e-08,
+          "passed": true,
+          "values": 260096
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 6.576886556475259e-07,
+          "passed": true,
+          "values": 16384
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 2.5925852401020855e-07,
+          "passed": true,
+          "values": 260096
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 9.260198438054701e-07,
+          "passed": true,
+          "values": 16384
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 2.669311359461933e-07,
+          "passed": true,
+          "values": 260096
+        },
+        {
+          "failed_values": 0,
+          "max_abs": 9.260198438054701e-07,
+          "passed": true,
+          "values": 16384
+        }
+      ],
+      "f64_checks_order": [
+        "sequential_output",
+        "sequential_state",
+        "block_output",
+        "block_state",
+        "candidate_output",
+        "candidate_state"
+      ],
+      "inputs_unchanged": true,
+      "key_heads": 1,
+      "kind": "correctness",
+      "n": 2032,
+      "output_candidate_vs_block_diagnostic": {
+        "bit_mismatches": 224795,
+        "max_abs": 4.470348358154297e-08,
+        "passed": false,
+        "values": 260096
+      },
+      "output_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 2.7939677238464355e-07,
+        "passed": true,
+        "values": 260096
+      },
+      "passed": true,
+      "prepared_diagonal_exact_gate": false,
+      "redzones_unchanged": true,
+      "reordered": false,
+      "state_candidate_vs_block": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 16384
+      },
+      "state_candidate_vs_sequential": {
+        "failed_values": 0,
+        "max_abs": 1.105479896068573e-06,
+        "passed": true,
+        "values": 16384
+      },
+      "value_heads": 1
+    },
+    {
+      "block_vs_sequential_output": {
+        "failed_values": 0,
+        "max_abs": 4.3958425521850586e-07,
+        "passed": true,
+        "values": 4194304
+      },
+      "block_vs_sequential_state": {
+        "failed_values": 0,
+        "max_abs": 1.430511474609375e-06,
+        "passed": true,
+        "values": 524288
+      },
+      "candidate_vs_block_state_bitwise": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 524288
+      },
+      "candidate_vs_sequential_output": {
+        "failed_values": 0,
+        "max_abs": 4.470348358154297e-07,
+        "passed": true,
+        "values": 4194304
+      },
+      "candidate_vs_sequential_state": {
+        "failed_values": 0,
+        "max_abs": 1.430511474609375e-06,
+        "passed": true,
+        "values": 524288
+      },
+      "conv_width": 8192,
+      "fixture_device_bytes": 107545728,
+      "fixture_host_bytes": 52756480,
+      "independent_f64": "small and long-carry fixtures only",
+      "inputs": "synthetic correlated values; not captured model activations",
+      "inputs_unchanged": true,
+      "key_heads": 16,
+      "kind": "actual_shape_correctness",
+      "model_shape": "Flash",
+      "n": 1024,
+      "passed": true,
+      "redzones_unchanged": true,
+      "value_heads": 32,
+      "value_offset": 4096
+    },
+    {
+      "block_vs_sequential_output": {
+        "failed_values": 0,
+        "max_abs": 4.675239324569702e-07,
+        "passed": true,
+        "values": 8388608
+      },
+      "block_vs_sequential_state": {
+        "failed_values": 0,
+        "max_abs": 1.8030405044555664e-06,
+        "passed": true,
+        "values": 524288
+      },
+      "candidate_vs_block_state_bitwise": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 524288
+      },
+      "candidate_vs_sequential_output": {
+        "failed_values": 0,
+        "max_abs": 4.731118679046631e-07,
+        "passed": true,
+        "values": 8388608
+      },
+      "candidate_vs_sequential_state": {
+        "failed_values": 0,
+        "max_abs": 1.8030405044555664e-06,
+        "passed": true,
+        "values": 524288
+      },
+      "conv_width": 8192,
+      "fixture_device_bytes": 212993152,
+      "fixture_host_bytes": 103415808,
+      "independent_f64": "small and long-carry fixtures only",
+      "inputs": "synthetic correlated values; not captured model activations",
+      "inputs_unchanged": true,
+      "key_heads": 16,
+      "kind": "actual_shape_correctness",
+      "model_shape": "Flash",
+      "n": 2048,
+      "passed": true,
+      "redzones_unchanged": true,
+      "value_heads": 32,
+      "value_offset": 4096
+    },
+    {
+      "block_vs_sequential_output": {
+        "failed_values": 0,
+        "max_abs": 4.6193599700927734e-07,
+        "passed": true,
+        "values": 6291456
+      },
+      "block_vs_sequential_state": {
+        "failed_values": 0,
+        "max_abs": 1.8365681171417236e-06,
+        "passed": true,
+        "values": 786432
+      },
+      "candidate_vs_block_state_bitwise": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 786432
+      },
+      "candidate_vs_sequential_output": {
+        "failed_values": 0,
+        "max_abs": 4.721805453300476e-07,
+        "passed": true,
+        "values": 6291456
+      },
+      "candidate_vs_sequential_state": {
+        "failed_values": 0,
+        "max_abs": 1.8365681171417236e-06,
+        "passed": true,
+        "values": 786432
+      },
+      "conv_width": 10240,
+      "fixture_device_bytes": 144508032,
+      "fixture_host_bytes": 62324736,
+      "independent_f64": "small and long-carry fixtures only",
+      "inputs": "synthetic correlated values; not captured model activations",
+      "inputs_unchanged": true,
+      "key_heads": 16,
+      "kind": "actual_shape_correctness",
+      "model_shape": "27B",
+      "n": 1024,
+      "passed": true,
+      "redzones_unchanged": true,
+      "value_heads": 48,
+      "value_offset": 4096
+    },
+    {
+      "block_vs_sequential_output": {
+        "failed_values": 0,
+        "max_abs": 4.6938657760620117e-07,
+        "passed": true,
+        "values": 12582912
+      },
+      "block_vs_sequential_state": {
+        "failed_values": 0,
+        "max_abs": 1.7583370208740234e-06,
+        "passed": true,
+        "values": 786432
+      },
+      "candidate_vs_block_state_bitwise": {
+        "bit_mismatches": 0,
+        "max_abs": 0,
+        "passed": true,
+        "values": 786432
+      },
+      "candidate_vs_sequential_output": {
+        "failed_values": 0,
+        "max_abs": 4.76837158203125e-07,
+        "passed": true,
+        "values": 12582912
+      },
+      "candidate_vs_sequential_state": {
+        "failed_values": 0,
+        "max_abs": 1.7583370208740234e-06,
+        "passed": true,
+        "values": 786432
+      },
+      "conv_width": 10240,
+      "fixture_device_bytes": 285869184,
+      "fixture_host_bytes": 121503744,
+      "independent_f64": "small and long-carry fixtures only",
+      "inputs": "synthetic correlated values; not captured model activations",
+      "inputs_unchanged": true,
+      "key_heads": 16,
+      "kind": "actual_shape_correctness",
+      "model_shape": "27B",
+      "n": 2048,
+      "passed": true,
+      "redzones_unchanged": true,
+      "value_heads": 48,
+      "value_offset": 4096
+    }
+  ],
+  "failures": [],
+  "complete": [
+    {
+      "correctness_passed": true,
+      "elapsed_seconds": 33.50285904166958,
+      "kind": "complete",
+      "model_executed": false,
+      "timing_included": true
+    }
+  ],
+  "timings": [
+    {
+      "model_shape": "Flash",
+      "n": 1024,
+      "gpu_ms_medians": {
+        "sequential": 0.9956249996321276,
+        "block32": 1.0927083349088207,
+        "diagonal32": 1.3937708354205824
+      },
+      "paired_ratios_vs_sequential": {
+        "block32": [
+          1.3830164663239468,
+          1.4330083416310837,
+          0.9237930188267401,
+          1.371356983058203,
+          1.3637607454701304,
+          1.3812335943030893
+        ],
+        "diagonal32": [
+          1.3617804325501808,
+          1.359731417688805,
+          1.4111711316676925,
+          1.36541919280766,
+          1.3738849699457438,
+          1.3870297443342132
+        ]
+      },
+      "paired_ratio_medians_vs_sequential": {
+        "block32": 1.3762952886806463,
+        "diagonal32": 1.369652081376702
+      },
+      "diagonal_vs_block_paired_ratios": [
+        0.9846451330907062,
+        0.9488649704167992,
+        1.527583671783908,
+        0.9956701352573409,
+        1.0074237541366708,
+        1.004196357556774
+      ]
+    },
+    {
+      "model_shape": "Flash",
+      "n": 2048,
+      "gpu_ms_medians": {
+        "sequential": 1.5166250013862737,
+        "block32": 2.1315208323358092,
+        "diagonal32": 2.1385833315434866
+      },
+      "paired_ratios_vs_sequential": {
+        "block32": [
+          1.4745256163362312,
+          2.175269909584143,
+          1.4075489348554886,
+          1.405638067049597,
+          1.391982853872176,
+          1.4024420328121783
+        ],
+        "diagonal32": [
+          1.4543032345981024,
+          1.4089997522052813,
+          1.4209918658410063,
+          1.4003575371962083,
+          1.4020111508842936,
+          1.409329121069561
+        ]
+      },
+      "paired_ratio_medians_vs_sequential": {
+        "block32": 1.4065935009525428,
+        "diagonal32": 1.4091644366374212
+      },
+      "diagonal_vs_block_paired_ratios": [
+        0.9862854998827517,
+        0.6477355963953213,
+        1.0095505958284128,
+        0.9962433218214755,
+        1.007204325099423,
+        1.0049107828318387
+      ]
+    },
+    {
+      "model_shape": "27B",
+      "n": 1024,
+      "gpu_ms_medians": {
+        "sequential": 1.054687501891749,
+        "block32": 1.9608958282333333,
+        "diagonal32": 1.9829791672236752
+      },
+      "paired_ratios_vs_sequential": {
+        "block32": [
+          1.730411075037217,
+          1.8135258038416973,
+          1.8618917674757942,
+          1.8528784619078642,
+          1.8232191863481813,
+          1.8796912013085745
+        ],
+        "diagonal32": [
+          1.3034541751845086,
+          1.8641091613190666,
+          1.8837503420209125,
+          1.8572613084618796,
+          1.842878738501208,
+          1.9459619918216302
+        ]
+      },
+      "paired_ratio_medians_vs_sequential": {
+        "block32": 1.8380488241280228,
+        "diagonal32": 1.860685234890473
+      },
+      "diagonal_vs_block_paired_ratios": [
+        0.753262732762199,
+        1.0278922733661775,
+        1.0117399813066215,
+        1.0023654258194046,
+        1.0107828791514661,
+        1.0352562114813966
+      ]
+    },
+    {
+      "model_shape": "27B",
+      "n": 2048,
+      "gpu_ms_medians": {
+        "sequential": 2.117500003805617,
+        "block32": 3.9360000009764917,
+        "diagonal32": 3.9872499983175658
+      },
+      "paired_ratios_vs_sequential": {
+        "block32": [
+          1.314011331437163,
+          1.8469034303505205,
+          1.7531076608317244,
+          1.8721558859598468,
+          1.8677352282407385,
+          1.8667524491914702
+        ],
+        "diagonal32": [
+          1.1790700263617269,
+          1.8705214714820118,
+          1.821476140986604,
+          1.8949088086549206,
+          1.8936776449102348,
+          1.9009601114854793
+        ]
+      },
+      "paired_ratio_medians_vs_sequential": {
+        "block32": 1.8568279397709953,
+        "diagonal32": 1.8820995581961233
+      },
+      "diagonal_vs_block_paired_ratios": [
+        0.8973058284605141,
+        1.0127879134032518,
+        1.03899844925807,
+        1.0121533270096301,
+        1.0138897721032611,
+        1.0183246912619963
+      ]
+    }
+  ]
+}

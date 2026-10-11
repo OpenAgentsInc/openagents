@@ -1,0 +1,33 @@
+{
+  "status": "fetched",
+  "source": "$TASK_SCRATCH/q4-down-q6-regeneration/upstream-checkout",
+  "upstream_revision": "62a6f74bab748b1755f4cd8dfc0871caf865c6c8",
+  "source_url": "https://codeload.github.com/ggml-org/llama.cpp/tar.gz/62a6f74bab748b1755f4cd8dfc0871caf865c6c8",
+  "archive_sha256": "8bfe6a93f0a816437970b0b14865bef9f9fcce70d9910dcfe18d4a66400b802b",
+  "compressed_bytes": 38071404,
+  "expanded_bytes": 176681277,
+  "verified_git_blobs": 3767,
+  "source_files": {
+    "src/llama-quant.cpp": {
+      "bytes": 66219,
+      "sha256": "24305a44864f6e12bdbaa29c28ce71395c6ff5af806576f966020939164e13f1",
+      "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/62a6f74bab748b1755f4cd8dfc0871caf865c6c8/src/llama-quant.cpp"
+    },
+    "ggml/include/ggml.h": {
+      "bytes": 116144,
+      "sha256": "12ee71f99db7db9b353bc02b1fbb57c344ee17c01ac5fb7952b41a637a747ea9",
+      "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/62a6f74bab748b1755f4cd8dfc0871caf865c6c8/ggml/include/ggml.h"
+    },
+    "ggml/src/ggml-quants.c": {
+      "bytes": 226847,
+      "sha256": "5574a2dccf7c07e75b143733e04a5412d3d8c819e7945f5217a7b83a2b2ff8ab",
+      "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/62a6f74bab748b1755f4cd8dfc0871caf865c6c8/ggml/src/ggml-quants.c"
+    },
+    "ggml/src/ggml.c": {
+      "bytes": 261157,
+      "sha256": "ef52fd60786ddd505ce25b57e8fb4f39b42e2af7eeae7d5797c892da42c095e7",
+      "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/62a6f74bab748b1755f4cd8dfc0871caf865c6c8/ggml/src/ggml.c"
+    }
+  },
+  "original_checkout_changed": false
+}

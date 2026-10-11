@@ -1,0 +1,27 @@
+{
+  "repository": "https://github.com/ggml-org/llama.cpp",
+  "revision": "62a6f74bab748b1755f4cd8dfc0871caf865c6c8",
+  "files": {
+    "src/llama-quant.cpp": {
+      "bytes": 66219,
+      "sha256": "24305a44864f6e12bdbaa29c28ce71395c6ff5af806576f966020939164e13f1",
+      "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/62a6f74bab748b1755f4cd8dfc0871caf865c6c8/src/llama-quant.cpp"
+    },
+    "ggml/include/ggml.h": {
+      "bytes": 116144,
+      "sha256": "12ee71f99db7db9b353bc02b1fbb57c344ee17c01ac5fb7952b41a637a747ea9",
+      "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/62a6f74bab748b1755f4cd8dfc0871caf865c6c8/ggml/include/ggml.h"
+    },
+    "ggml/src/ggml-quants.c": {
+      "bytes": 226847,
+      "sha256": "5574a2dccf7c07e75b143733e04a5412d3d8c819e7945f5217a7b83a2b2ff8ab",
+      "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/62a6f74bab748b1755f4cd8dfc0871caf865c6c8/ggml/src/ggml-quants.c"
+    },
+    "ggml/src/ggml.c": {
+      "bytes": 261157,
+      "sha256": "ef52fd60786ddd505ce25b57e8fb4f39b42e2af7eeae7d5797c892da42c095e7",
+      "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/62a6f74bab748b1755f4cd8dfc0871caf865c6c8/ggml/src/ggml.c"
+    }
+  },
+  "scope": "Primary source snapshots only. No build or quantization has run."
+}
