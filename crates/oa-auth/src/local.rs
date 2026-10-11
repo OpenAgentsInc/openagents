@@ -108,6 +108,14 @@ impl LocalService {
                 "/v1/account/sessions/{id}",
                 axum::routing::delete(app_session_revoke),
             )
+            .route(
+                "/v1/account/sign-in-keys",
+                get(sign_in_keys).post(sign_in_key_create),
+            )
+            .route(
+                "/v1/account/sign-in-keys/{id}",
+                axum::routing::delete(sign_in_key_revoke),
+            )
             .route("/v1/session", get(session).delete(sign_out))
             .route("/v1/account", get(account))
             .route("/v1/workspaces/{id}", get(workspace))
@@ -157,7 +165,7 @@ fn caller(state: &LocalService, headers: &HeaderMap) -> Result<(String, String),
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
-        .filter(|t| t.starts_with("sess_"))
+        .filter(|t| tenancy::sessions::is_session_bearer(t))
         .ok_or_else(unauthenticated)?;
     let store = Sessions::open(&state.0.dir)
         .and_then(|s| s.store())
@@ -175,6 +183,7 @@ fn caller(state: &LocalService, headers: &HeaderMap) -> Result<(String, String),
     if session.kind != SessionKind::User || session.standing(now()) != SessionState::Active {
         return Err(unauthenticated());
     }
+    crate::sign_in_keys::note_use(&state.0.dir, &store, session.id.as_str());
     Ok((
         session.id.as_str().to_string(),
         session.user.as_str().to_string(),
@@ -466,6 +475,49 @@ async fn app_session_revoke(
         Err(response) => return response,
     };
     answer(crate::device::revoke(
+        &state.0.dir,
+        &account,
+        Some(&id),
+        &target,
+    ))
+}
+
+async fn sign_in_keys(State(state): State<LocalService>, headers: HeaderMap) -> Response {
+    let (id, account) = match caller(&state, &headers) {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    answer(crate::sign_in_keys::list(&state.0.dir, &account, Some(&id)))
+}
+
+async fn sign_in_key_create(
+    State(state): State<LocalService>,
+    headers: HeaderMap,
+    request: JsonBody,
+) -> Response {
+    let (id, account) = match caller(&state, &headers) {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    let body = request.map(|j| j.0).unwrap_or(Value::Null);
+    answer(crate::sign_in_keys::create(
+        &state.0.dir,
+        &account,
+        Some(&id),
+        &body,
+    ))
+}
+
+async fn sign_in_key_revoke(
+    State(state): State<LocalService>,
+    UrlPath(target): UrlPath<String>,
+    headers: HeaderMap,
+) -> Response {
+    let (id, account) = match caller(&state, &headers) {
+        Ok(found) => found,
+        Err(response) => return response,
+    };
+    answer(crate::sign_in_keys::revoke(
         &state.0.dir,
         &account,
         Some(&id),

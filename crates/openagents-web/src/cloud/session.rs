@@ -1041,11 +1041,19 @@ fn identifier(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || b"_- .".contains(&byte))
         && !value.contains(' ')
 }
-fn session_token(value: &str) -> bool {
+/// Whether `value` is a session the account service resolves: a `sess_`
+/// sign-in or an `oa_sk_` sign-in key (#11305), each 64 hex characters.
+/// Every bearer and cookie check here goes through this one test, so a
+/// sign-in key reaches exactly what a sign-in does.
+pub(crate) fn session_token(value: &str) -> bool {
     value
         .strip_prefix("sess_")
+        .or_else(|| value.strip_prefix(SIGN_IN_KEY_PREFIX))
         .is_some_and(|hex| hex.len() == 64 && hex.bytes().all(|byte| byte.is_ascii_hexdigit()))
 }
+
+/// The sign-in key's prefix (`tenancy::sessions::SIGN_IN_KEY_PREFIX`).
+pub(crate) const SIGN_IN_KEY_PREFIX: &str = "oa_sk_";
 fn supported_role(value: &str) -> bool {
     matches!(value, "owner" | "admin" | "member")
 }

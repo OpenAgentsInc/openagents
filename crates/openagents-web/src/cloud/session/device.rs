@@ -21,6 +21,38 @@ pub struct AppSession {
     pub expires_at: u64,
 }
 
+/// One sign-in key (#11305), as Settings and `GET /v1/keys` list it:
+/// never its secret.
+#[derive(Clone, Debug, Deserialize, serde::Serialize, PartialEq, Eq)]
+pub struct SignInKey {
+    pub id: String,
+    pub name: String,
+    pub created_at: u64,
+    #[serde(default)]
+    pub last_used_at: Option<u64>,
+    /// `None` for a key that works until revoked.
+    #[serde(default)]
+    pub expires_at: Option<u64>,
+    /// Whether the request was made with this key.
+    #[serde(default)]
+    pub current: bool,
+}
+
+/// A new key and its secret, shown once.
+pub struct MadeKey {
+    pub key: SignInKey,
+    pub token: String,
+}
+
+impl std::fmt::Debug for MadeKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MadeKey")
+            .field("key", &self.key)
+            .field("token", &"[redacted]")
+            .finish()
+    }
+}
+
 /// What the approval page shows about a waiting sign-in.
 #[derive(Clone, Debug, Deserialize)]
 pub struct DeviceRequest {
@@ -95,7 +127,7 @@ impl CloudSession {
     }
 
     /// The browser's own session token, for calls made as the viewer.
-    fn browser_token(&self, headers: &HeaderMap) -> Result<String> {
+    pub(crate) fn browser_token(&self, headers: &HeaderMap) -> Result<String> {
         self.request_host(headers)?;
         let token = value(headers, SESSION_COOKIE)?.ok_or(SessionError::Unauthenticated)?;
         if !session_token(&token) {
@@ -335,6 +367,93 @@ impl CloudSession {
         match crate::cloud::default_workspace(&viewer).map(|w| w.id.clone()) {
             Some(id) => self.read_view(token, Some(&id)).await,
             None => Ok(viewer),
+        }
+    }
+
+    /// The sign-in keys of the account `token` (a sign-in or a sign-in
+    /// key) acts for, newest first (`oa_auth::sign_in_keys::list`).
+    pub async fn sign_in_keys(&self, token: &str) -> Result<Vec<SignInKey>> {
+        if !session_token(token) {
+            return Err(SessionError::Unauthenticated);
+        }
+        let answer = self
+            .device_call(
+                reqwest::Method::GET,
+                "/v1/account/sign-in-keys",
+                Some(token),
+                None,
+            )
+            .await?;
+        match answer.status {
+            200 => serde_json::from_value(answer.body["keys"].clone())
+                .map_err(|_| SessionError::Unavailable),
+            401 | 403 => Err(SessionError::Unauthenticated),
+            _ => Err(SessionError::Unavailable),
+        }
+    }
+
+    /// Make a sign-in key named `name`, working `days` days or until
+    /// revoked. The inner error is the account service's words for a
+    /// name or expiry it won't take, or for too many keys.
+    pub async fn create_sign_in_key(
+        &self,
+        token: &str,
+        name: &str,
+        days: Option<u64>,
+    ) -> Result<std::result::Result<MadeKey, String>> {
+        if !session_token(token) {
+            return Err(SessionError::Unauthenticated);
+        }
+        let answer = self
+            .device_call(
+                reqwest::Method::POST,
+                "/v1/account/sign-in-keys",
+                Some(token),
+                Some(json!({"name": name, "expires_in_days": days})),
+            )
+            .await?;
+        match answer.status {
+            200 => {
+                let key: SignInKey = serde_json::from_value(answer.body["key"].clone())
+                    .map_err(|_| SessionError::Unavailable)?;
+                let token = answer.body["token"]
+                    .as_str()
+                    .filter(|t| t.starts_with(super::SIGN_IN_KEY_PREFIX) && session_token(t))
+                    .ok_or(SessionError::Unavailable)?
+                    .to_owned();
+                Ok(Ok(MadeKey { key, token }))
+            }
+            401 | 403 => Err(SessionError::Unauthenticated),
+            400 | 409 => Ok(Err(answer.body["error"]["message"]
+                .as_str()
+                .unwrap_or("That key couldn't be made.")
+                .to_owned())),
+            _ => Err(SessionError::Unavailable),
+        }
+    }
+
+    /// Revoke one of the account's sign-in keys. `false`: no working key
+    /// of the account's has that id.
+    pub async fn revoke_sign_in_key(&self, token: &str, id: &str) -> Result<bool> {
+        if !session_token(token) {
+            return Err(SessionError::Unauthenticated);
+        }
+        if id.len() != 64 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Ok(false);
+        }
+        let answer = self
+            .device_call(
+                reqwest::Method::DELETE,
+                &format!("/v1/account/sign-in-keys/{id}"),
+                Some(token),
+                None,
+            )
+            .await?;
+        match answer.status {
+            200 => Ok(true),
+            404 => Ok(false),
+            401 | 403 => Err(SessionError::Unauthenticated),
+            _ => Err(SessionError::Unavailable),
         }
     }
 

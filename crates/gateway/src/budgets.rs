@@ -77,7 +77,7 @@ fn with_current_action<T>(
                     .workspaces
                     .get(workspace)
                     .ok_or("The workspace is unavailable.")?;
-                let person = if credential.token.starts_with("sess_") {
+                let person = if tenancy::sessions::is_session_bearer(&credential.token) {
                     let sessions = tenancy::Sessions::open(&state.dir)
                         .map_err(|_| "Current session authority is unavailable.")?;
                     let session_store = sessions

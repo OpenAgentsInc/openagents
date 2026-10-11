@@ -571,7 +571,7 @@ fn computers_markup(rows: &[Row<'_>]) -> Markup {
 }
 
 /// A Unix time as a UTC calendar date, `2026-10-09`.
-fn date(seconds: u64) -> String {
+pub(crate) fn date(seconds: u64) -> String {
     // Civil-from-days (Howard Hinnant), for dates after 1970.
     let days = (seconds / 86_400) as i64 + 719_468;
     let era = days / 146_097;

@@ -457,6 +457,7 @@ impl SessionBook {
             state: SessionState::Active,
             closed_at: None,
             app: Some(label),
+            key: None,
         };
         let grant = self.devices.get_mut(&id).expect("still here");
         grant.state = DeviceState::Redeemed;

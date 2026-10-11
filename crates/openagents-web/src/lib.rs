@@ -67,6 +67,7 @@ mod repo_snapshot;
 pub mod sales_remote;
 mod settings;
 pub mod shutdown;
+mod sign_in_keys;
 mod suggestions;
 mod tasks;
 mod terminal_connect;
@@ -511,6 +512,7 @@ pub fn router(config: Config) -> Router {
         .merge(terminal_connect::routes())
         .merge(account::routes())
         .merge(settings::routes())
+        .merge(sign_in_keys::routes())
         .merge(vault::routes())
         .merge(account_export::routes())
         .merge(projects::routes())
@@ -666,8 +668,11 @@ async fn guard(hosts: Hosts, mut request: Request, next: Next) -> Response {
         .any(|value| {
             value.to_str().is_ok_and(|value| {
                 value.split_once(' ').is_some_and(|(kind, token)| {
-                    kind.eq_ignore_ascii_case("bearer")
-                        && token.trim_start_matches(' ').starts_with("sess_")
+                    kind.eq_ignore_ascii_case("bearer") && {
+                        let token = token.trim_start_matches(' ');
+                        token.starts_with("sess_")
+                            || token.starts_with(cloud::session::SIGN_IN_KEY_PREFIX)
+                    }
                 })
             })
         });

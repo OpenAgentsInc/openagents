@@ -479,6 +479,15 @@ fn settings_content(
                     }
                     div class="oa-settings-control" { (action_link("Manage", crate::api_keys::KEYS)) }
                 }
+                div class="oa-settings-row" {
+                    div class="oa-settings-text" {
+                        span class="oa-settings-label" { "Sign-in keys for agents" }
+                        span class="oa-settings-hint" {
+                            "Keys that let an agent act as you, without a code to approve."
+                        }
+                    }
+                    div class="oa-settings-control" { (action_link("Manage", crate::sign_in_keys::PAGE)) }
+                }
             }
             section class="oa-settings-group" aria-labelledby="settings-memory" {
                 h2 #settings-memory { "Memory" }

@@ -309,7 +309,7 @@ pub(crate) fn admit(state: &Arc<ServeState>, headers: &HeaderMap) -> Result<Call
         scope,
         service,
         account,
-    } = if token.starts_with("sess_") {
+    } = if tenancy::sessions::is_session_bearer(token) {
         admit_session(state, config, headers, token)?
     } else {
         admit_key(state, config, headers, token)?

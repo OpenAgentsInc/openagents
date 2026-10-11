@@ -13,6 +13,8 @@
 //!   stores (find or create the account, issue the session).
 //! - [`device`]: device-code sign-in for apps (RFC 8628 shape) and the
 //!   account's signed-in apps list.
+//! - [`sign_in_keys`]: the account's sign-in keys (`oa_sk_…`) for agents:
+//!   list, make, revoke, and the last-use note.
 //! - `fake` (feature): an in-process fake GitHub for tests and fixtures.
 //! - `local` (feature): a small account service for local fixtures.
 
@@ -29,6 +31,7 @@ pub mod invite;
 pub mod local;
 pub mod repos;
 pub mod service;
+pub mod sign_in_keys;
 
 pub use app::{AppClient, AppCredentials, AppInstall, TokenCache};
 pub use config::{CALLBACK_PATH, Endpoints, GithubApp, GithubCredentials};

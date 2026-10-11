@@ -58,9 +58,14 @@ use sha2::{Digest, Sha256};
 use crate::workspaces::{Membership, UserId, Workspace, WorkspaceId};
 
 mod device;
+mod keys;
 pub use device::{
     APP_SESSION_TTL, AppLabel, DEVICE_CODE_TTL, DEVICE_POLL_INTERVAL, DeviceGrant, DeviceIssued,
     DevicePoll, DeviceRefusal, DeviceState, Paired, normalize_user_code, valid_pair,
+};
+pub use keys::{
+    KEY_LAST_USED_EVERY, KEY_NAME_MAX, KEY_NEVER, KEYS_PER_ACCOUNT, KeyLabel, SIGN_IN_KEY_PREFIX,
+    is_session_bearer, is_session_token,
 };
 
 /// The session token's wire prefix, so a pasted token announces its
@@ -179,6 +184,10 @@ pub struct Session {
     /// device code; `None` for a browser session.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub app: Option<AppLabel>,
+    /// The name and last use of a sign-in key (`oa_sk_…`) the person
+    /// made in Settings for an agent; `None` for every other session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<KeyLabel>,
 }
 
 impl Session {
@@ -434,6 +443,11 @@ pub enum Refusal {
     Membership(crate::workspaces::Refusal),
     /// A device sign-in step was refused.
     Device(DeviceRefusal),
+    /// A sign-in key's name is empty, too long, or holds control
+    /// characters.
+    KeyName,
+    /// The account already holds as many working sign-in keys as it may.
+    KeyLimit,
 }
 
 impl std::fmt::Display for Refusal {
@@ -496,6 +510,16 @@ impl std::fmt::Display for Refusal {
             ),
             Self::Membership(refusal) => write!(f, "{refusal}"),
             Self::Device(refusal) => write!(f, "{refusal}"),
+            Self::KeyName => write!(
+                f,
+                "give the key a name of 1 to {} characters",
+                keys::KEY_NAME_MAX
+            ),
+            Self::KeyLimit => write!(
+                f,
+                "you have {} sign-in keys; revoke one to make another",
+                keys::KEYS_PER_ACCOUNT
+            ),
         }
     }
 }
@@ -639,6 +663,7 @@ impl SessionBook {
             state: SessionState::Active,
             closed_at: None,
             app: None,
+            key: None,
         };
         self.sessions.insert(session.id.clone(), session.clone());
         Ok(Issued {
@@ -657,7 +682,10 @@ impl SessionBook {
     /// the lookup, so the token itself is never stored.
     #[must_use]
     pub fn session_of_token(&self, token: &str) -> Option<&Session> {
-        self.sessions.get(&SessionId(digest_secret(token)))
+        let digest = digest_secret(token);
+        self.sessions
+            .get(&SessionId(digest.clone()))
+            .filter(|found| keys::same_digest(found.id.as_str(), &digest))
     }
 
     /// Resolve a presented recovery token to its record — the digest

@@ -32,7 +32,7 @@ impl Controller {
         let registry = Registry::open(directory).map_err(|_| Error::Denied)?;
         let accounts = Accounts::open(directory)?;
         accounts.read_locked::<_,Error>(|store|{
-            let (member,principal)=if actor.credential.starts_with("sess_") {
+            let (member,principal)=if tenancy::sessions::is_session_bearer(&actor.credential) {
                 let sessions=tenancy::Sessions::open(directory).map_err(|_|Error::Denied)?;
                 let book=sessions.store().map_err(|_|Error::Denied)?;
                 let session=book.book.session_of_token(&actor.credential).ok_or(Error::Denied)?;

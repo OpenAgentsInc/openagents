@@ -226,7 +226,9 @@ fn browser_session(dir: &Path, account: &str, session: Option<&str>) -> Result<(
         .book
         .session(&SessionId::from(session))
         .ok_or_else(denied)?;
-    if record.user.as_str() != account || record.app.is_some() {
+    // An app's sign-in and a sign-in key act as the account, but only a
+    // person at the website approves another sign-in (#11305).
+    if record.user.as_str() != account || record.app.is_some() || record.key.is_some() {
         return Err(denied());
     }
     Ok(())

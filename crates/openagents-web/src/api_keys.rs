@@ -47,7 +47,7 @@ pub(crate) const BASE_URL: &str = "https://api.openagents.com/v1";
 const LIMIT_DOLLARS_MAX: u64 = 100_000;
 
 /// The workspace the person's keys live on: their own.
-fn own_workspace(viewer: &Viewer) -> Option<String> {
+pub(crate) fn own_workspace(viewer: &Viewer) -> Option<String> {
     viewer
         .workspaces
         .iter()

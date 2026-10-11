@@ -165,3 +165,85 @@ fn the_computer_has_a_name() {
     let name = computer_name();
     assert!(!name.is_empty() && name.chars().count() <= 64);
 }
+
+const KEY: &str = "oa_sk_abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+
+#[test]
+fn a_key_is_read_from_standard_input_never_an_argument() {
+    let mut input = std::io::Cursor::new(format!("\n  {KEY}  \n"));
+    assert_eq!(read_key(&mut input).unwrap(), KEY);
+    let mut wrong = std::io::Cursor::new("sk-ant-api03-not-ours\n");
+    let refused = read_key(&mut wrong).unwrap_err();
+    assert!(refused.contains("oa_sk_") && !refused.contains("sk-ant"));
+    assert!(read_key(&mut std::io::Cursor::new("")).is_err());
+}
+
+#[test]
+fn the_token_variable_signs_in_with_no_saved_file() {
+    let env = |pairs: &'static [(&'static str, &'static str)]| {
+        move |name: &str| {
+            pairs
+                .iter()
+                .find(|(n, _)| *n == name)
+                .map(|(_, v)| (*v).to_string())
+        }
+    };
+    let saved = Saved::from_env(env(&[(TOKEN_ENV, KEY)])).unwrap();
+    assert_eq!(saved.token(), KEY);
+    assert_eq!(saved.origin, DEFAULT_ORIGIN);
+    assert!(!saved.expired(u64::MAX - 1));
+    assert!(!format!("{saved:?}").contains(KEY));
+    let staged = Saved::from_env(env(&[
+        (TOKEN_ENV_OLDER, TOKEN),
+        (ORIGIN_ENV, "https://staging.example"),
+    ]))
+    .unwrap();
+    assert_eq!(staged.token(), TOKEN);
+    assert_eq!(staged.origin, "https://staging.example");
+    assert!(Saved::from_env(env(&[(TOKEN_ENV, "nonsense")])).is_none());
+    assert!(Saved::from_env(env(&[])).is_none());
+}
+
+#[tokio::test]
+async fn a_key_signs_in_as_its_account_and_a_bad_one_is_refused() {
+    use axum::routing::get;
+    let router = Router::new().route(
+        "/v1/keys",
+        get(|headers: HeaderMap| async move {
+            if headers["authorization"] != format!("Bearer {KEY}").as_str() {
+                return (
+                    StatusCode::UNAUTHORIZED,
+                    Json(json!({"error": {"code": "signed_out"}})),
+                );
+            }
+            (
+                StatusCode::OK,
+                Json(json!({
+                    "kind": "signin",
+                    "account": {"id": "acct_1", "label": "Octo"},
+                    "keys": [
+                        {"id": "x", "name": "other", "expires_at": 5, "current": false},
+                        {"id": "y", "name": "agent", "expires_at": null, "current": true}
+                    ]
+                })),
+            )
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+
+    let saved = sign_in_with_key(&origin, KEY).await.unwrap();
+    assert_eq!(saved.account, "acct_1");
+    assert_eq!(saved.label, "Octo");
+    assert_eq!(saved.expires_at, u64::MAX);
+    assert_eq!(saved.token(), KEY);
+    let other = format!("oa_sk_{}", "0".repeat(64));
+    let refused = sign_in_with_key(&origin, &other).await.unwrap_err();
+    assert!(refused.to_string().contains("doesn't work"));
+    // Signing out forgets a key here; it isn't ended on the site.
+    sign_out(&saved).await.unwrap();
+    let folder = tempfile::tempdir().unwrap();
+    saved.store(folder.path()).unwrap();
+    assert_eq!(Saved::load_file(folder.path()), Some(saved));
+}

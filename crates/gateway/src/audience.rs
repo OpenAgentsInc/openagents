@@ -135,6 +135,8 @@ pub const ROUTES: &[Route] = &[
     route("/v1/account/identities/github", FirstParty, "Sessions", &[op("post", "linkGithub", "Link GitHub to the signed-in account.")]),
     route("/v1/account/sessions", FirstParty, "Sessions", &[op("get", "listAppSessions", "Signed-in apps and computers.")]),
     route("/v1/account/sessions/{session}", FirstParty, "Sessions", &[op("delete", "signOutApp", "Sign one app or computer out.")]),
+    route("/v1/account/sign-in-keys", FirstParty, "Sessions", &[op("get", "listSignInKeys", "Sign-in keys for agents (never a secret)."), op("post", "createSignInKey", "Make a sign-in key; its secret is in this answer only.")]),
+    route("/v1/account/sign-in-keys/{key}", FirstParty, "Sessions", &[op("delete", "revokeSignInKey", "Revoke a sign-in key.")]),
     route("/v1/workspaces/{workspace}/recovery", FirstParty, "Sessions", &[op("post", "issueRecovery", "An owner recovery token.")]),
     route("/v1/recovery/redeem", FirstParty, "Sessions", &[op("post", "redeemRecovery", "Redeem an owner recovery token.")]),
     // ---- FIRST-PARTY: GitHub access and projects.
@@ -393,7 +395,7 @@ pub fn first_party_document() -> Value {
         "components": {
             "securitySchemes": {
                 "bearer": {"type": "http", "scheme": "bearer",
-                           "description": "An account session (`sess_...`) from sign-in, or an API key (`oak_...`)."}
+                           "description": "An account session (`sess_...`) from sign-in, a sign-in key (`oa_sk_...`), or an API key (`oak_...`)."}
             },
             "schemas": {
                 "Error": {

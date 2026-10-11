@@ -240,6 +240,7 @@ fn checked_scope(scope: &Value) -> Result<()> {
                     && !value.chars().any(char::is_control)
                     && !value.starts_with("sess_")
                     && !value.starts_with("oak_")
+                    && !value.starts_with(super::session::SIGN_IN_KEY_PREFIX)
             }
             _ => true,
         }

@@ -164,7 +164,9 @@ pub(crate) async fn unsubscribe(
 /// opt-in is no opt-in.
 fn identified(state: &ServeState, headers: &HeaderMap) -> Result<String, Response> {
     match authenticate(state, headers) {
-        Ok((_registry, caller)) if caller.tenant.is_some() || caller.key.starts_with("sess_") => {
+        Ok((_registry, caller))
+            if caller.tenant.is_some() || tenancy::sessions::is_session_bearer(&caller.key) =>
+        {
             Ok(caller.key)
         }
         Ok(_) => Err(refused(

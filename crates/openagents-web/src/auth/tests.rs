@@ -872,3 +872,216 @@ async fn deny_signs_nothing_in_and_an_app_signs_its_own_token_out() {
         tenancy::sessions::SessionState::Revoked
     );
 }
+
+/// One request from an agent: method, path, optional JSON body, bearer.
+async fn agent_call(
+    world: &World,
+    method: &str,
+    path: &str,
+    body: Option<serde_json::Value>,
+    bearer: &str,
+) -> (StatusCode, serde_json::Value) {
+    let mut request = Request::builder()
+        .method(method)
+        .uri(path)
+        .header(header::HOST, HOST)
+        .header(header::AUTHORIZATION, format!("Bearer {bearer}"));
+    if body.is_some() {
+        request = request.header(header::CONTENT_TYPE, "application/json");
+    }
+    let response = world
+        .site
+        .clone()
+        .oneshot(
+            request
+                .body(body.map(|b| Body::from(b.to_string())).unwrap_or_default())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null),
+    )
+}
+
+/// The routes an agent signed in with `token` reads as the account: chat
+/// sync, the agents list, and Mac jobs.
+async fn session_routes(world: &World, token: &str) -> Vec<StatusCode> {
+    let mut answers = Vec::new();
+    for path in [crate::coder_sync::SYNCED, "/v1/agents", "/v1/mac-jobs"] {
+        answers.push(agent_call(world, "GET", path, None, token).await.0);
+    }
+    answers
+}
+
+/// Sign-in keys (#11305): made in Settings, shown once, they act as the
+/// account on the same routes a device sign-in reaches, list without a
+/// secret, and are refused once revoked or expired.
+#[tokio::test]
+async fn a_sign_in_key_acts_as_the_account_until_revoked() {
+    let world = world(true).await;
+    let mut browser = Browser::default();
+    browser
+        .through_github(&world, "%2Fsettings", "login=octo-local")
+        .await;
+
+    // Settings offers it beside the API keys.
+    let settings = browser.get(&world, "/settings").await;
+    assert!(settings.body.contains("Sign-in keys for agents"));
+    let page = browser.get(&world, crate::sign_in_keys::PAGE).await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+    crate::copy_guard::assert_plain(crate::sign_in_keys::PAGE, &page.body);
+    assert!(page.body.contains("You have no sign-in keys."));
+    let csrf = form_field(&page.body, crate::sign_in_keys::PAGE, "csrf");
+    let request = form_field(&page.body, crate::sign_in_keys::PAGE, "request");
+    let made = browser
+        .post(
+            &world,
+            crate::sign_in_keys::PAGE,
+            &[
+                ("csrf", csrf.as_str()),
+                ("request", request.as_str()),
+                ("name", "build agent"),
+                ("expires", "30"),
+            ],
+        )
+        .await;
+    assert_eq!(made.status, StatusCode::OK, "{}", made.body);
+    assert_eq!(made.headers[header::CACHE_CONTROL], "no-store");
+    crate::copy_guard::assert_plain(crate::sign_in_keys::PAGE, &made.body);
+    let at = made.body.find("oa_sk_").expect("the key, once");
+    let key: String = made.body[at..at + 70].into();
+    assert!(crate::cloud::session::session_token(&key), "{key}");
+    assert!(made.body.contains(&format!(
+        "OPENAGENTS_ORIGIN={ORIGIN} OPENAGENTS_TOKEN={key} coder"
+    )));
+
+    // The list shows it, never its secret.
+    let page = browser.get(&world, crate::sign_in_keys::PAGE).await;
+    assert!(page.body.contains("build agent"));
+    assert!(page.body.contains("Never used"));
+    assert!(!page.body.contains(&key));
+
+    // It acts as the account on the session routes, as a device sign-in does.
+    assert_eq!(
+        session_routes(&world, &key).await,
+        [StatusCode::OK, StatusCode::OK, StatusCode::OK]
+    );
+    let (status, listed) = agent_call(&world, "GET", "/v1/keys", None, &key).await;
+    assert_eq!(status, StatusCode::OK, "{listed}");
+    assert_eq!(listed["account"]["label"], "Octo Local");
+    assert_eq!(listed["keys"][0]["name"], "build agent");
+    assert_eq!(listed["keys"][0]["current"], true);
+    assert!(listed["keys"][0]["last_used_at"].as_u64().is_some());
+    assert!(listed["keys"][0]["expires_at"].as_u64().is_some());
+    assert!(!listed.to_string().contains(&key));
+
+    // The key can make and revoke another (the CLI's `openagents keys`).
+    let (status, second) = agent_call(
+        &world,
+        "POST",
+        "/v1/keys",
+        Some(json!({"name": "second"})),
+        &key,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{second}");
+    let second_key = second["token"].as_str().unwrap().to_string();
+    assert!(second_key.starts_with("oa_sk_"));
+    assert_eq!(second["key"]["expires_at"], serde_json::Value::Null);
+    let second_id = second["key"]["id"].as_str().unwrap().to_string();
+    let (status, _) = agent_call(
+        &world,
+        "DELETE",
+        &format!("/v1/keys/{second_id}"),
+        None,
+        &key,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        session_routes(&world, &second_key).await,
+        [StatusCode::UNAUTHORIZED; 3]
+    );
+    let (status, _) = agent_call(
+        &world,
+        "DELETE",
+        &format!("/v1/keys/{second_id}"),
+        None,
+        &key,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // A key can't approve another computer's sign-in at the website.
+    let started = device_start(&world, "elsewhere").await;
+    let user_code = started["user_code"].as_str().unwrap().to_string();
+    let mut agent_browser = Browser::default();
+    agent_browser
+        .0
+        .insert("oa_cloud_session".into(), key.clone());
+    let asked = agent_browser
+        .get(&world, &format!("/device?code={user_code}"))
+        .await;
+    assert!(
+        asked
+            .body
+            .contains("Approve sign-ins from the website while signed in."),
+        "{}",
+        asked.body
+    );
+    let (_, still) = device_poll(&world, &started).await;
+    assert_eq!(still["error"], "authorization_pending");
+
+    // Revoked in Settings, it is refused everywhere.
+    let page = browser.get(&world, crate::sign_in_keys::PAGE).await;
+    let csrf = form_field(&page.body, crate::sign_in_keys::REVOKE, "csrf");
+    let request = form_field(&page.body, crate::sign_in_keys::REVOKE, "request");
+    let id = form_field(&page.body, crate::sign_in_keys::REVOKE, "key");
+    let revoked = browser
+        .post(
+            &world,
+            crate::sign_in_keys::REVOKE,
+            &[
+                ("csrf", csrf.as_str()),
+                ("request", request.as_str()),
+                ("key", id.as_str()),
+            ],
+        )
+        .await;
+    assert_eq!(revoked.status, StatusCode::SEE_OTHER, "{}", revoked.body);
+    assert_eq!(
+        session_state(&world, &key),
+        tenancy::sessions::SessionState::Revoked
+    );
+    assert_eq!(
+        session_routes(&world, &key).await,
+        [StatusCode::UNAUTHORIZED; 3]
+    );
+    let (status, _) = agent_call(&world, "GET", "/v1/keys", None, &key).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let page = browser.get(&world, crate::sign_in_keys::PAGE).await;
+    assert!(page.body.contains("You have no sign-in keys."));
+
+    // An expired key is refused the same way.
+    let account = accounts(&world).accounts.keys().next().unwrap().clone();
+    let expired = tenancy::sessions::Sessions::open(&world.root.path().join("accounts"))
+        .unwrap()
+        .mutate(|book, _, now| {
+            book.issue_key(
+                tenancy::workspaces::UserId::from(account.as_str()),
+                tenancy::sessions::KeyLabel::new("old").unwrap(),
+                Some(60),
+                now - 120,
+            )
+        })
+        .unwrap()
+        .once;
+    assert_eq!(
+        session_routes(&world, &expired).await,
+        [StatusCode::UNAUTHORIZED; 3]
+    );
+}

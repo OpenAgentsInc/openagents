@@ -938,6 +938,9 @@ pub fn static_failures(markdown: &str, expected_name: &str) -> Vec<String> {
     if has_token_shape(markdown, "sess_") {
         failures.push("document contains a `sess_` session token".into());
     }
+    if has_token_shape(markdown, crate::sessions::SIGN_IN_KEY_PREFIX) {
+        failures.push("document contains an `oa_sk_` sign-in key".into());
+    }
     if markdown.trim().is_empty() {
         failures.push("document is empty".into());
     }
@@ -1489,6 +1492,9 @@ mod tests {
         let leaked = format!("{doc}\nkey: oak_abcdef123456.secret\n");
         let failures = static_failures(&leaked, "triage");
         assert!(failures.iter().any(|f| f.contains("oak_")));
+        let signed_in = format!("{doc}\ntoken: oa_sk_{}\n", "ab12".repeat(16));
+        let failures = static_failures(&signed_in, "triage");
+        assert!(failures.iter().any(|f| f.contains("oa_sk_")));
         assert!(
             static_failures("# no frontmatter", "triage")
                 .iter()

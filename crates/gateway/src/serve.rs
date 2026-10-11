@@ -1167,7 +1167,7 @@ pub(crate) fn authenticate(
             "The `Authorization` header must be `Bearer oak_<id>.<secret>`.".to_string(),
         )
     })?;
-    if token.starts_with("sess_") {
+    if tenancy::sessions::is_session_bearer(token) {
         return authenticate_session(state, registry, headers, token);
     }
     let authenticated =
@@ -1297,6 +1297,7 @@ fn authenticate_session(
             format!("Your session is {standing}. Sign in again."),
         ));
     }
+    oa_auth::sign_in_keys::note_use(&state.dir, &store, session.id.as_str());
     match session.kind {
         tenancy::SessionKind::Anonymous => {
             if state.config.require_workspace_membership {

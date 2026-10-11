@@ -151,6 +151,32 @@ pub fn login_command(dir: &Path, out: &mut impl Write, pair: Option<&str>) -> Re
     crate::login_choice::after_login(dir, &saved, out)
 }
 
+/// `coder login --key` (#11305): sign in with a sign-in key from Settings,
+/// read from `input` (standard input, or the person pasting at a prompt),
+/// never from the command line. Saves it as a device sign-in is saved.
+pub fn login_key_command(
+    dir: &Path,
+    out: &mut impl Write,
+    input: &mut impl std::io::BufRead,
+) -> Result<(), String> {
+    let key = openagents_login::read_key(input)?;
+    let origin = origin();
+    let saved = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|_| "Couldn't start sign-in.".to_string())?
+        .block_on(openagents_login::sign_in_with_key(&origin, &key))
+        .map_err(|error| error.to_string())?;
+    let label = saved.label.clone();
+    saved.store(dir)?;
+    writeln!(
+        out,
+        "Signed in to OpenAgents as {label} with a sign-in key."
+    )
+    .map_err(|e| e.to_string())?;
+    crate::login_choice::after_login(dir, &saved, out)
+}
+
 /// `coder-new logout`: ends the token on the website and removes it here.
 pub fn logout_command(dir: &Path, out: &mut impl Write) -> Result<(), String> {
     let Some(saved) = Saved::load(dir) else {

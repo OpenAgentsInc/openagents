@@ -467,11 +467,12 @@ fn update_command(rest: &[String]) -> io::Result<()> {
     })
 }
 
-/// `coder login [--pair CODE] [--state DIR]` and `coder logout [--state DIR]`.
+/// `coder login [--pair CODE | --key] [--state DIR]` and `coder logout
+/// [--state DIR]`.
 fn account_command(command: &str, rest: &[String]) -> io::Result<()> {
     let usage = || {
         let pair = if command == "login" {
-            " [--pair CODE]"
+            " [--pair CODE | --key]"
         } else {
             ""
         };
@@ -482,10 +483,19 @@ fn account_command(command: &str, rest: &[String]) -> io::Result<()> {
     };
     let mut state: Option<std::path::PathBuf> = None;
     let mut pair: Option<String> = None;
+    let mut key = false;
     let mut args = rest.iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--state" => state = Some(args.next().ok_or_else(usage)?.into()),
+            "--key" if command == "login" => key = true,
+            // A key typed on the command line lands in shell history.
+            value if command == "login" && value.starts_with("--key=") => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Don't put the key on the command line. Run coder login --key and paste it, or pipe it in: coder login --key < key.txt",
+                ));
+            }
             "--pair" if command == "login" => {
                 let code = args.next().ok_or_else(usage)?;
                 if !openagents_login::valid_pair(code) {
@@ -503,12 +513,48 @@ fn account_command(command: &str, rest: &[String]) -> io::Result<()> {
         .or_else(|| model_access::store::openagents_dir().map(|root| root.join("coder-new")))
         .ok_or_else(|| io::Error::other("Set HOME, or pass --state DIR."))?;
     let mut out = io::stdout();
-    if command == "login" {
+    if key && pair.is_some() {
+        return Err(usage());
+    }
+    if command == "login" && key {
+        coder_new::account::login_key_command(&dir, &mut out, &mut key_input()?)
+    } else if command == "login" {
         coder_new::account::login_command(&dir, &mut out, pair.as_deref())
     } else {
         coder_new::account::logout_command(&dir, &mut out)
     }
     .map_err(io::Error::other)
+}
+
+/// Where `coder login --key` reads the key: piped standard input as is,
+/// or a prompt on a terminal with typing hidden.
+fn key_input() -> io::Result<io::Cursor<String>> {
+    use std::io::{BufRead, IsTerminal, Write};
+    let stdin = io::stdin();
+    if !stdin.is_terminal() {
+        let mut line = String::new();
+        stdin.lock().read_line(&mut line)?;
+        return Ok(io::Cursor::new(line));
+    }
+    eprint!("Paste your sign-in key (from Settings, Sign-in keys for agents): ");
+    let _ = io::stderr().flush();
+    let hidden = cfg!(unix)
+        && std::process::Command::new("stty")
+            .arg("-echo")
+            .stdin(std::process::Stdio::inherit())
+            .status()
+            .is_ok_and(|status| status.success());
+    let mut line = String::new();
+    let read = stdin.lock().read_line(&mut line);
+    if hidden {
+        let _ = std::process::Command::new("stty")
+            .arg("echo")
+            .stdin(std::process::Stdio::inherit())
+            .status();
+        eprintln!();
+    }
+    read?;
+    Ok(io::Cursor::new(line))
 }
 
 /// `coder trace upload …` and `coder trace list [--state DIR]` (#11109).
@@ -602,6 +648,7 @@ fn help() -> String {
 Usage:
   coder [OPTIONS]        Open Coder in this directory.
   coder login            Sign in to openagents.com: approve the code at https://openagents.com/device.
+  coder login --key      Sign in with a sign-in key from Settings, pasted or piped in. Or set OPENAGENTS_TOKEN.
   coder logout           Sign this computer out.
   coder trace upload     Upload a chat to your account as a trace (coder trace --help).
   coder trace list       List the traces on your account.

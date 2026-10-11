@@ -1260,6 +1260,25 @@ fn remembered(key: &[u8; 32]) -> Option<String> {
     (at.elapsed() < REMEMBER).then(|| account.clone())
 }
 
+/// Drop a checked token by its session id (the hex SHA-256 of the token,
+/// as the account service names sessions), so a sign-in key revoked here
+/// is refused at once rather than after [`REMEMBER`] (#11305).
+pub(crate) fn forget_checked(session_id: &str) {
+    if session_id.len() != 64 {
+        return;
+    }
+    let mut key = [0_u8; 32];
+    for (index, byte) in key.iter_mut().enumerate() {
+        match u8::from_str_radix(&session_id[index * 2..index * 2 + 2], 16) {
+            Ok(value) => *byte = value,
+            Err(_) => return,
+        }
+    }
+    if let Ok(mut kept) = checked_tokens().lock() {
+        kept.remove(&key);
+    }
+}
+
 fn remember(key: [u8; 32], account: &str) {
     if let Ok(mut kept) = checked_tokens().lock() {
         kept.retain(|_, (_, at)| at.elapsed() < REMEMBER);

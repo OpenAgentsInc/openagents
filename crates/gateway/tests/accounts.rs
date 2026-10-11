@@ -807,6 +807,86 @@ async fn sign_in_logout_and_session_standing() {
     assert_eq!(code(&body), "unauthenticated");
 }
 
+/// A sign-in key (#11305) is a session: it answers `/v1/session` and the
+/// account routes as the person, decides under their membership, lists
+/// with no secret, and stops on revoke.
+#[tokio::test]
+async fn sign_in_keys_act_as_the_account_until_revoked() {
+    let deployment = deploy(Some(account_config(None)), true).await;
+    let joined = join(&deployment, "ada").await;
+    let other = join(&deployment, "bob").await;
+
+    // An API key can't manage sign-in keys.
+    let (status, body) = get(&deployment, "/v1/account/sign-in-keys", &joined.key_token).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+    assert_eq!(code(&body), "session_required");
+
+    let (status, body) = post(
+        &deployment,
+        "/v1/account/sign-in-keys",
+        Some(&joined.session_token),
+        &json!({"name": "ci agent", "expires_in_days": 30}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let key = body["token"].as_str().unwrap().to_string();
+    let id = body["key"]["id"].as_str().unwrap().to_string();
+    assert!(key.starts_with("oa_sk_"));
+
+    // The key acts as the account, exactly as a session does.
+    let (status, body) = get(&deployment, "/v1/session", &key).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["session"]["account"], json!(joined.account));
+    let (status, body) = get(&deployment, "/v1/account", &key).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, body) = decide(&deployment, Some(&key), Some(&joined.workspace), "acme-kev").await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    // ...and only as that account.
+    let (status, body) = decide(&deployment, Some(&key), Some(&other.workspace), "acme-kev").await;
+    assert_ne!(status, StatusCode::OK, "{body}");
+
+    // Listing shows it, with its last use, and never a secret.
+    let (status, body) = get(&deployment, "/v1/account/sign-in-keys", &key).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["keys"][0]["id"], json!(id));
+    assert_eq!(body["keys"][0]["name"], json!("ci agent"));
+    assert_eq!(body["keys"][0]["current"], json!(true));
+    assert!(body["keys"][0]["last_used_at"].as_u64().is_some());
+    assert!(!body.to_string().contains(&key));
+    // Another account sees none of it and can't revoke it.
+    let (_, body) = get(
+        &deployment,
+        "/v1/account/sign-in-keys",
+        &other.session_token,
+    )
+    .await;
+    assert_eq!(body["keys"], json!([]));
+    let path = format!("/v1/account/sign-in-keys/{id}");
+    let (status, _) = remove(&deployment, &path, &other.session_token).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // A key can't approve another sign-in at the website.
+    let (status, body) = post(
+        &deployment,
+        "/v1/sessions/device/decide",
+        Some(&key),
+        &json!({"user_code": "BCDF-GHJK", "approve": true}),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{body}");
+
+    // Revoked, it is refused everywhere.
+    let (status, body) = remove(&deployment, &path, &joined.session_token).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let (status, body) = get(&deployment, "/v1/session", &key).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
+    assert_eq!(code(&body), "session_closed");
+    let (status, body) = decide(&deployment, Some(&key), Some(&joined.workspace), "acme-kev").await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "{body}");
+    let (status, _) = get(&deployment, "/v1/account/sign-in-keys", &key).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
 #[tokio::test]
 async fn two_users_two_workspaces_and_the_isolation_between_them() {
     let deployment = deploy(Some(account_config(None)), true).await;

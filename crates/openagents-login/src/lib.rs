@@ -14,6 +14,20 @@
 //! 4. [`Saved::store`] keeps the token in a 0600 file; [`sign_out`] ends
 //!    it on the server and [`Saved::forget`] removes the file.
 //!
+//! Or, with no code to approve (#11305): a sign-in key (`oa_sk_…`) the
+//! person made in Settings > Sign-in keys for agents.
+//!
+//! - [`sign_in_with_key`] checks a key with the site and answers the
+//!   [`Saved`] to keep (`coder login --key`, `openagents login --key`);
+//!   [`read_key`] reads it from standard input, never from a command's
+//!   arguments.
+//! - [`TOKEN_ENV`] (`OPENAGENTS_TOKEN`, or the older
+//!   `OPENAGENTS_APP_TOKEN`) holding a key or an app token signs in with
+//!   no saved file at all: [`Saved::load`] answers it first, so every app
+//!   that reads its sign-in here (Coder, `openagents mac serve`, `chat
+//!   work`, the chat sync) picks it up. This is what an agent in a
+//!   sandbox sets.
+//!
 //! The token is a session on the person's account, revocable from
 //! Settings on the website. It never appears in `Debug` output, and
 //! nothing here logs it.
@@ -33,6 +47,81 @@ pub const ORIGIN_ENV: &str = "OPENAGENTS_ORIGIN";
 
 /// The file the token lives in, under the app's own folder.
 pub const FILE: &str = "account.json";
+
+/// The environment variable that signs an app in with no saved file: a
+/// sign-in key (`oa_sk_…`) or an app's token (`sess_…`).
+pub const TOKEN_ENV: &str = "OPENAGENTS_TOKEN";
+
+/// The older name for [`TOKEN_ENV`], still read (cloud environments and
+/// `chat work` pool runs set it).
+pub const TOKEN_ENV_OLDER: &str = "OPENAGENTS_APP_TOKEN";
+
+/// A sign-in key's prefix.
+pub const KEY_PREFIX: &str = "oa_sk_";
+
+/// Whether `token` has a sign-in key's shape: `oa_sk_` and 64 hex
+/// characters.
+#[must_use]
+pub fn is_sign_in_key(token: &str) -> bool {
+    token
+        .strip_prefix(KEY_PREFIX)
+        .is_some_and(|hex| hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
+}
+
+/// Whether `token` is one the site takes as a sign-in: a sign-in key or
+/// an app's `sess_` token.
+#[must_use]
+pub fn is_sign_in_token(token: &str) -> bool {
+    is_sign_in_key(token)
+        || token
+            .strip_prefix("sess_")
+            .is_some_and(|hex| hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
+}
+
+/// Read a sign-in key from `input` (standard input or a prompt's line):
+/// the first line that isn't empty, trimmed.
+pub fn read_key(input: &mut impl std::io::BufRead) -> Result<String, String> {
+    let mut line = String::new();
+    loop {
+        line.clear();
+        let read = input
+            .read_line(&mut line)
+            .map_err(|_| "Couldn't read the key.".to_string())?;
+        if read == 0 {
+            return Err(
+                "No key was given. Paste the key from Settings, Sign-in keys for agents.".into(),
+            );
+        }
+        let key = line.trim();
+        if key.is_empty() {
+            continue;
+        }
+        if !is_sign_in_key(key) {
+            line.fill_secret();
+            return Err(
+                "That isn't a sign-in key. It starts with oa_sk_; make one in Settings, Sign-in keys for agents."
+                    .into(),
+            );
+        }
+        let key = key.to_string();
+        line.fill_secret();
+        return Ok(key);
+    }
+}
+
+/// Overwrite a string that held a secret before it is dropped.
+trait FillSecret {
+    fn fill_secret(&mut self);
+}
+
+impl FillSecret for String {
+    fn fill_secret(&mut self) {
+        let len = self.len();
+        self.clear();
+        self.extend(std::iter::repeat_n('\0', len));
+        self.clear();
+    }
+}
 
 /// The site to sign in to: `OPENAGENTS_ORIGIN`, or openagents.com.
 #[must_use]
@@ -173,11 +262,56 @@ impl Saved {
         self.expires_at <= now
     }
 
-    /// The saved account in `dir`, if there is one. A file that isn't
-    /// ours (wrong shape) reads as none.
+    /// The account to act as: [`TOKEN_ENV`] when it is set, else the one
+    /// saved in `dir`. A file that isn't ours (wrong shape) reads as none.
     pub fn load(dir: &Path) -> Option<Self> {
+        Self::from_env(|name| std::env::var(name).ok()).or_else(|| Self::load_file(dir))
+    }
+
+    /// The account saved in `dir` only, whatever the environment says.
+    pub fn load_file(dir: &Path) -> Option<Self> {
         let text = std::fs::read_to_string(dir.join(FILE)).ok()?;
         serde_json::from_str(&text).ok()
+    }
+
+    /// The sign-in [`TOKEN_ENV`] (or [`TOKEN_ENV_OLDER`]) holds, for the
+    /// site `OPENAGENTS_ORIGIN` names. The account's name isn't known
+    /// without asking the site, so it reads "your account"; the site
+    /// decides whether the token still works.
+    pub fn from_env(get_env: impl Fn(&str) -> Option<String>) -> Option<Self> {
+        let token = [TOKEN_ENV, TOKEN_ENV_OLDER]
+            .into_iter()
+            .filter_map(&get_env)
+            .map(|value| value.trim().to_string())
+            .find(|value| !value.is_empty())?;
+        if !is_sign_in_token(&token) {
+            return None;
+        }
+        Some(Self {
+            origin: origin_from(&get_env),
+            account: String::new(),
+            label: "your account".into(),
+            expires_at: u64::MAX,
+            token,
+        })
+    }
+
+    /// A sign-in made with `token` for `origin`, as the site described it.
+    #[must_use]
+    pub fn with_token(
+        origin: &str,
+        account: &str,
+        label: &str,
+        expires_at: u64,
+        token: &str,
+    ) -> Self {
+        Self {
+            origin: origin.to_string(),
+            account: account.to_string(),
+            label: label.to_string(),
+            expires_at,
+            token: token.to_string(),
+        }
     }
 
     /// Keep this account in `dir/account.json`, readable only by this
@@ -406,9 +540,59 @@ pub async fn wait(origin: &str, started: &Started) -> Result<Saved, Error> {
     }
 }
 
+/// Check sign-in key `key` with `origin` and answer the account to keep:
+/// its id and name, and when the key stops working.
+pub async fn sign_in_with_key(origin: &str, key: &str) -> Result<Saved, Error> {
+    if !is_sign_in_key(key) {
+        return Err(Error::Refused(
+            "That isn't a sign-in key. It starts with oa_sk_.".into(),
+        ));
+    }
+    let http = client()?;
+    let response = http
+        .get(format!("{origin}/v1/keys"))
+        .bearer_auth(key)
+        .send()
+        .await
+        .map_err(|_| Error::Unreachable(origin.to_string()))?;
+    let status = response.status().as_u16();
+    let body: Value = response
+        .json()
+        .await
+        .map_err(|_| Error::Unreachable(origin.to_string()))?;
+    match status {
+        200 => {}
+        401 | 403 => {
+            return Err(Error::Refused(
+                "That key doesn't work: it was revoked, it expired, or it's for another site."
+                    .into(),
+            ));
+        }
+        _ => return Err(Error::Unreachable(origin.to_string())),
+    }
+    let expires_at = body["keys"]
+        .as_array()
+        .and_then(|keys| keys.iter().find(|k| k["current"] == json!(true)))
+        .map_or(u64::MAX, |key| {
+            key["expires_at"].as_u64().unwrap_or(u64::MAX)
+        });
+    Ok(Saved::with_token(
+        origin,
+        body["account"]["id"].as_str().unwrap_or_default(),
+        body["account"]["label"].as_str().unwrap_or("your account"),
+        expires_at,
+        key,
+    ))
+}
+
 /// End the saved token on its site. A token the site no longer knows is
-/// already signed out.
+/// already signed out. A sign-in key isn't ended here: signing out
+/// forgets it on this computer, and Settings (or `openagents keys
+/// revoke`) revokes it.
 pub async fn sign_out(saved: &Saved) -> Result<(), Error> {
+    if is_sign_in_key(&saved.token) {
+        return Ok(());
+    }
     let http = client()?;
     let (status, body) = post(
         &http,

@@ -2,7 +2,8 @@
 //! `sessions.json`, and `keys.json`.
 //!
 //! The stores keep the records; this module is the transport. A caller
-//! presents an `oak_` key or a `sess_` token, the adapter resolves the
+//! presents an `oak_` key or a `sess_` token (or an `oa_sk_` sign-in
+//! key, which is a session too, #11305), the adapter resolves the
 //! account it belongs to, and every workspace operation authorizes the
 //! acting account's membership before it touches state. Secrets cross
 //! the boundary the way the stores keep them: an `oak_` key, an `inv_`
@@ -60,6 +61,11 @@ pub fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
         ("/v1/sessions/device/paired", post(device_paired)),
         ("/v1/account/sessions", get(app_sessions)),
         ("/v1/account/sessions/{session}", delete(app_session_revoke)),
+        (
+            "/v1/account/sign-in-keys",
+            get(sign_in_keys).post(sign_in_key_create),
+        ),
+        ("/v1/account/sign-in-keys/{key}", delete(sign_in_key_revoke)),
         ("/v1/session", get(session_status).delete(logout)),
         ("/v1/accounts", post(sign_up)),
         ("/v1/account", get(account_view)),
@@ -314,7 +320,7 @@ fn principal_unbound(
     action: &str,
 ) -> Result<Principal, Response> {
     let token = bearer(headers)?;
-    if token.starts_with("sess_") {
+    if tenancy::sessions::is_session_bearer(&token) {
         return session_principal(state, &token).map_err(|refusal| match refusal {
             SessionRefusal::Unavailable(details) => unavailable(
                 "sessions_unavailable",
@@ -406,6 +412,8 @@ pub(crate) fn session_principal(
     if standing != sessions::SessionState::Active {
         return Err(SessionRefusal::Closed(standing));
     }
+    // A sign-in key's last use, written at most hourly (#11305).
+    oa_auth::sign_in_keys::note_use(&state.dir, &store, session.id.as_str());
     Ok(match session.kind {
         SessionKind::Anonymous => Principal::Anonymous {
             session: session.id.as_str().to_string(),
@@ -513,6 +521,8 @@ pub(crate) fn sessions_refusal(refusal: sessions::Refusal) -> Response {
         R::AnonymousSessionCapped { .. } => (StatusCode::FORBIDDEN, "session_capped"),
         R::Membership(_) => (StatusCode::FORBIDDEN, "forbidden"),
         R::Device(device) => (StatusCode::BAD_REQUEST, device.code()),
+        R::KeyName => (StatusCode::BAD_REQUEST, "invalid_name"),
+        R::KeyLimit => (StatusCode::CONFLICT, "too_many_keys"),
     };
     refused(status, code, refusal.to_string())
 }
@@ -597,7 +607,7 @@ async fn sign_in(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Re
         Ok(token) => token,
         Err(response) => return response,
     };
-    if token.starts_with("sess_") {
+    if tenancy::sessions::is_session_bearer(&token) {
         return refused(
             StatusCode::BAD_REQUEST,
             "already_signed_in",
@@ -952,6 +962,71 @@ async fn app_session_revoke(
         session.as_deref(),
         &target,
     ))
+}
+
+/// The account and session behind a sign-in key route (#11305): a person's
+/// session or one of their sign-in keys. An `oak_` key manages workspace
+/// keys, not sign-ins, so it is refused here.
+fn key_caller(state: &ServeState, headers: &HeaderMap) -> Result<(String, String), Response> {
+    let (account, session) = device_caller(state, headers)?;
+    let session = session.ok_or_else(|| {
+        refused(
+            StatusCode::FORBIDDEN,
+            "session_required",
+            "Sign-in keys are managed while signed in (a sign-in or a sign-in key), not with an API key.",
+        )
+    })?;
+    Ok((account, session))
+}
+
+/// `GET /v1/account/sign-in-keys` — the account's sign-in keys
+/// (`oa_auth::sign_in_keys::list`).
+async fn sign_in_keys(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Response {
+    match key_caller(&state, &headers) {
+        Ok((account, session)) => device_answer(oa_auth::sign_in_keys::list(
+            &state.dir,
+            &account,
+            Some(&session),
+        )),
+        Err(response) => response,
+    }
+}
+
+/// `POST /v1/account/sign-in-keys` — `{name, expires_in_days?}`: make a
+/// key; its token is in this answer only.
+async fn sign_in_key_create(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    body: Result<Json<Value>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let body = body.map_or(Value::Null, |Json(body)| body);
+    match key_caller(&state, &headers) {
+        Ok((account, session)) => device_answer(oa_auth::sign_in_keys::create(
+            &state.dir,
+            &account,
+            Some(&session),
+            &body,
+        )),
+        Err(response) => response,
+    }
+}
+
+/// `DELETE /v1/account/sign-in-keys/{key}` — revoke one of the account's
+/// keys.
+async fn sign_in_key_revoke(
+    State(state): State<Arc<ServeState>>,
+    Path(target): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    match key_caller(&state, &headers) {
+        Ok((account, session)) => device_answer(oa_auth::sign_in_keys::revoke(
+            &state.dir,
+            &account,
+            Some(&session),
+            &target,
+        )),
+        Err(response) => response,
+    }
 }
 
 /// The anonymous half of sign-in: a session against the funded budget.
