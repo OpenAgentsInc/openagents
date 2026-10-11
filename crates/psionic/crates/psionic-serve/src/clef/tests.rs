@@ -459,12 +459,18 @@ fn dump_head_parity_inputs() {
         super::ClefLimits::default(),
     )
     .expect("lane");
+    let config = lane.head.config;
     let req = lane.parse_request(&body).expect("request");
     let record = lane.encode(&req).expect("encode");
     let mut hidden: Vec<f32> = Vec::new();
     let gguf_logits = lane
-        .logits_with_rows(&record, &mut |_, row| hidden.extend_from_slice(row))
+        .logits_with_rows(&record, &mut |index, row| {
+            assert_eq!(row.len(), config.hidden_size, "hidden row width");
+            assert_eq!(index, hidden.len() / config.hidden_size, "hidden row order");
+            hidden.extend_from_slice(row);
+        })
         .expect("logits");
+    assert_eq!(hidden.len(), record.input_ids.len() * config.hidden_size);
     let bytes: Vec<u8> = hidden.iter().flat_map(|v| v.to_le_bytes()).collect();
     std::fs::write(out.join("hidden.f32"), bytes).expect("hidden");
     let mut option_tokens: Vec<u32> = record
@@ -482,6 +488,7 @@ fn dump_head_parity_inputs() {
         .backbone
         .output_embedding_rows(&option_tokens)
         .expect("rows");
+    assert!(rows.iter().all(|row| row.len() == config.hidden_size));
     let lexical: serde_json::Map<String, Value> = option_tokens
         .iter()
         .zip(&rows)
@@ -489,11 +496,11 @@ fn dump_head_parity_inputs() {
         .collect();
     let mut hf_logits = Value::Null;
     if let Ok(hf) = std::env::var("PSIONIC_CLEF_HF_HEAD") {
-        let head =
-            ClefHeadWeights::from_safetensors(std::path::Path::new(&hf), 4096).expect("hf head");
+        let head = ClefHeadWeights::from_safetensors(std::path::Path::new(&hf), config.hidden_size)
+            .expect("hf head");
         let mut stream = ClefHeadStream::new(&head, &record);
         let d = head.config.hidden_size;
-        for (index, row) in hidden.chunks(d).enumerate() {
+        for (index, row) in hidden.chunks_exact(d).enumerate() {
             stream.push(index, row).expect("push");
         }
         let table: std::collections::HashMap<u32, Vec<f32>> = option_tokens
@@ -506,7 +513,15 @@ fn dump_head_parity_inputs() {
     }
     let dump = serde_json::json!({
         "input_ids": record.input_ids,
-        "hidden_size": 4096,
+        "hidden_size": config.hidden_size,
+        "head_config": {
+            "hidden_size": config.hidden_size,
+            "width": config.width,
+            "routing_layers": config.routing_layers,
+            "layers": config.layers,
+            "heads": config.heads,
+            "feedforward": config.feedforward,
+        },
         "questions": record.questions.iter().map(|q| serde_json::json!({
             "id": q.question_id, "type": q.question_type,
             "question_span": [q.question_span.0, q.question_span.1],

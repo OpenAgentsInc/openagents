@@ -1,0 +1,14 @@
+[
+  {
+    "name": "psionic-serve-tests",
+    "source": "cargo-target/release/deps/psionic_serve-acadeb851218b939",
+    "bytes": 60475936,
+    "sha256": "104cf4c8ceba38c3864f61eeb126c1cf31610f5ad34d12635a97e400f42f436e"
+  },
+  {
+    "name": "psionic-metal-tests",
+    "source": "cargo-target/release/deps/psionic_backend_metal-a2dbd8deab19d6f5",
+    "bytes": 2353032,
+    "sha256": "4ec046121a61e32b3360d9aac09217c2965d09d150912bbfe065d648bb2ccf1e"
+  }
+]

@@ -52,6 +52,106 @@ fn metal() -> ClefMetal {
     .expect("explicit block DeltaNet device")
 }
 
+#[test]
+#[ignore = "requires explicit Metal hardware validation"]
+fn delta_prep_matches_additive_epsilon_reference_for_flash_and_27b_heads() {
+    let metal = ClefMetal::new().expect("explicit DeltaNet preparation device");
+    let n = 4;
+    let dim = 128;
+    let kh = 16;
+    for vh in [32, 48] {
+        let width = (2 * kh + vh) * dim;
+        let scales = [0.0, 1.0 / 65536.0, 1.0 / 1024.0, 0.5];
+        let mut conv_values = vec![0.0; n * width];
+        for (t, scale) in scales.into_iter().enumerate() {
+            for h in 0..kh {
+                for i in 0..dim {
+                    conv_values[t * width + h * dim + i] =
+                        ((i + h) % 7) as f32 * scale - 3.0 * scale;
+                    conv_values[t * width + (kh + h) * dim + i] =
+                        ((i * 3 + h) % 11) as f32 * scale - 5.0 * scale;
+                }
+            }
+        }
+        let conv = Guarded::new(&metal, &conv_values);
+        let alpha = Guarded::new(&metal, &vec![0.0; n * vh]);
+        let beta_in = Guarded::new(&metal, &vec![0.0; n * vh]);
+        let a = Guarded::new(&metal, &vec![-1.0; vh]);
+        let dt = Guarded::new(&metal, &vec![0.0; vh]);
+        let q = Guarded::new(&metal, &vec![SENTINEL; n * kh * dim]);
+        let k = Guarded::new(&metal, &vec![SENTINEL; n * kh * dim]);
+        let decay = Guarded::new(&metal, &vec![SENTINEL; n * vh]);
+        let beta = Guarded::new(&metal, &vec![SENTINEL; n * vh]);
+        let kq = Guarded::new(&metal, &vec![SENTINEL; n * kh]);
+        let batch = metal.batch();
+        batch
+            .delta_prep(
+                &conv.view,
+                &alpha.view,
+                &beta_in.view,
+                &a.view,
+                &dt.view,
+                &q.view,
+                &k.view,
+                &decay.view,
+                &beta.view,
+                &kq.view,
+                n,
+                kh,
+                vh,
+                dim,
+                width,
+            )
+            .unwrap();
+        batch.commit_wait().unwrap();
+        let query = q.read();
+        let key = k.read();
+        let dots = kq.read();
+        let compare = |actual: f32, expected: f64, name: &str| {
+            assert!(
+                actual.is_finite()
+                    && (f64::from(actual) - expected).abs() <= 2e-7 + 3e-6 * expected.abs(),
+                "{name}: {actual} vs {expected}, value heads={vh}"
+            );
+        };
+        for t in 0..n {
+            for h in 0..kh {
+                let q_at = t * width + h * dim;
+                let k_at = t * width + (kh + h) * dim;
+                let norm = |at: usize| {
+                    (conv_values[at..at + dim]
+                        .iter()
+                        .map(|&x| f64::from(x).powi(2))
+                        .sum::<f64>()
+                        + 1e-6)
+                        .sqrt()
+                };
+                let q_denominator = norm(q_at) * (dim as f64).sqrt();
+                let k_denominator = norm(k_at);
+                let mut expected_dot = 0.0;
+                for i in 0..dim {
+                    let expected_q = f64::from(conv_values[q_at + i]) / q_denominator;
+                    let expected_k = f64::from(conv_values[k_at + i]) / k_denominator;
+                    let at = (t * kh + h) * dim + i;
+                    compare(query[at], expected_q, "query");
+                    compare(key[at], expected_k, "key");
+                    expected_dot += expected_q * expected_k;
+                }
+                compare(dots[t * kh + h], expected_dot, "key/query dot");
+            }
+        }
+        for value in decay.read() {
+            compare(value, 0.5, "decay");
+        }
+        for value in beta.read() {
+            compare(value, 0.5, "beta");
+        }
+        for input in [&conv, &alpha, &beta_in, &a, &dt] {
+            input.check();
+        }
+    }
+}
+
 fn plan(case: &Case, n: usize) -> ClefDeltaPlan {
     ClefDeltaPlan::new(
         n,

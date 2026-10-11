@@ -1,0 +1,1180 @@
+warning: associated function `direct` is never used
+    --> crates/psionic-runtime/src/local_multi_device.rs:1244:8
+     |
+1243 | impl LocalDirectStageHandoffReceipt {
+     | ----------------------------------- associated function in this implementation
+1244 |     fn direct(handoff_id: impl Into<String>, tensor_count: usize) -> Self {
+     |        ^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `psionic-runtime` (lib) generated 1 warning
+warning: variable does not need to be mutable
+  --> crates/psionic-compiler/src/tassadar_alm_geometric.rs:68:9
+   |
+68 |     let mut push_point = |points: &mut BTreeMap<u16, Vec<TassadarAlmGeometricPoint>>,
+   |         ----^^^^^^^^^^
+   |         |
+   |         help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> crates/psionic-compiler/src/tassadar_symbolic_alm_bridge.rs:174:9
+    |
+174 |     let mut resolve = |operand: &TassadarSymbolicOperand,
+    |         ----^^^^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: `psionic-compiler` (lib) generated 2 warnings (run `cargo fix --lib -p psionic-compiler` to apply 2 suggestions)
+   Compiling psionic-backend-cuda v0.2.0 (repo/crates/psionic/crates/psionic-backend-cuda)
+   Compiling psionic-backend-metal v0.2.0 (repo/crates/psionic/crates/psionic-backend-metal)
+warning: function `argmax_dense_rows` is never used
+    --> crates/psionic-backend-metal/src/lib.rs:5983:4
+     |
+5983 | fn argmax_dense_rows(
+     |    ^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `write_bytes` and `read_bytes` are never used
+    --> crates/psionic-backend-metal/src/lib.rs:7796:23
+     |
+7795 |     impl PlatformBuffer {
+     |     ------------------- methods in this implementation
+7796 |         pub(super) fn write_bytes(
+     |                       ^^^^^^^^^^^
+...
+7844 |         pub(super) fn read_bytes(&self, byte_len: usize) -> Result<Vec<u8>, RuntimeError> {
+     |                       ^^^^^^^^^^
+
+warning: function `byte_range` is never used
+     --> crates/psionic-backend-metal/src/lib.rs:10862:8
+      |
+10862 |     fn byte_range(byte_len: usize) -> Result<NSRange, RuntimeError> {
+      |        ^^^^^^^^^^
+
+warning: `psionic-backend-metal` (lib) generated 3 warnings
+   Compiling psionic-array v0.2.0 (repo/crates/psionic/crates/psionic-array)
+warning: struct `CudaAllocatorPool` is never constructed
+   --> crates/psionic-backend-cuda/src/lib.rs:194:8
+    |
+194 | struct CudaAllocatorPool {
+    |        ^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: multiple associated items are never used
+   --> crates/psionic-backend-cuda/src/lib.rs:202:8
+    |
+201 | impl CudaAllocatorPool {
+    | ---------------------- associated items in this implementation
+202 |     fn new(policy: AllocatorPoolPolicy) -> Self {
+    |        ^^^
+...
+211 |     fn report(&self) -> AllocatorPoolReport {
+    |        ^^^^^^
+...
+218 |     fn telemetry(&self) -> CudaAllocatorPoolTelemetry {
+    |        ^^^^^^^^^
+...
+222 |     fn checkout(&mut self, cache_key: &str, byte_len: usize) -> Option<usize> {
+    |        ^^^^^^^^
+...
+238 |     fn record_cold_allocation(&mut self, byte_len: usize) {
+    |        ^^^^^^^^^^^^^^^^^^^^^^
+...
+250 |     fn record_device_free(&mut self, byte_len: usize) {
+    |        ^^^^^^^^^^^^^^^^^^
+...
+257 |     fn checkin(&mut self, cache_key: String, byte_len: usize, device_ptr: usize) -> bool {
+    |        ^^^^^^^
+
+warning: function `allocator_pool_cache_key` is never used
+   --> crates/psionic-backend-cuda/src/lib.rs:280:4
+    |
+280 | fn allocator_pool_cache_key(spec: &TensorSpec) -> String {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `encode_matmul_bf16_strided_batched_to_f32` is never used
+     --> crates/psionic-backend-cuda/src/lib.rs:17768:23
+      |
+17624 |     impl PlatformSubmission {
+      |     ----------------------- method in this implementation
+...
+17768 |         pub(super) fn encode_matmul_bf16_strided_batched_to_f32(
+      |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `psionic-backend-cuda` (lib) generated 4 warnings
+   Compiling psionic-transformer v0.2.0 (repo/crates/psionic/crates/psionic-transformer)
+   Compiling psionic-models v0.2.0 (repo/crates/psionic/crates/psionic-models)
+   Compiling psionic-sandbox v0.2.0 (repo/crates/psionic/crates/psionic-sandbox)
+   Compiling psionic-environments v0.2.0 (repo/crates/psionic/crates/psionic-environments)
+   Compiling psionic-router v0.2.0 (repo/crates/psionic/crates/psionic-router)
+   Compiling psionic-eval v0.2.0 (repo/crates/psionic/crates/psionic-eval)
+   Compiling psionic-train v0.2.0 (repo/crates/psionic/crates/psionic-train)
+   Compiling psionic-research v0.2.0 (repo/crates/psionic/crates/psionic-research)
+   Compiling psionic-serve v0.2.0 (repo/crates/psionic/crates/psionic-serve)
+warning: unused import: `VerificationVerdict`
+  --> crates/psionic-train/src/coordinator_conductor.rs:83:47
+   |
+83 |     TerminalRewardAdapter, TrajectoryOutcome, VerificationVerdict, WorkerPoolBinding,
+   |                                               ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `current_model_artifact_path` and `current_model_artifact_sha256` are never read
+    --> crates/psionic-train/src/parameter_golf_distributed_8xh100_train_step.rs:3214:5
+     |
+3202 | struct ParameterGolfDistributed8xH100StepExecution {
+     |        ------------------------------------------- fields in this struct
+...
+3214 |     current_model_artifact_path: PathBuf,
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+3215 |     current_model_artifact_sha256: String,
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `execute_parameter_golf_distributed_8xh100_step` is never used
+    --> crates/psionic-train/src/parameter_golf_distributed_8xh100_train_step.rs:3221:4
+     |
+3221 | fn execute_parameter_golf_distributed_8xh100_step(
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `load_rank_gradient_artifacts_parallel` is never used
+    --> crates/psionic-train/src/parameter_golf_distributed_8xh100_train_step.rs:5240:4
+     |
+5240 | fn load_rank_gradient_artifacts_parallel(
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: field `shape` is never read
+    --> crates/psionic-train/src/parameter_golf_single_h100_training.rs:1693:9
+     |
+1692 |     AdamBf16Master {
+     |     -------------- field in this variant
+1693 |         shape: Vec<usize>,
+     |         ^^^^^
+     |
+     = note: `ParameterGolfParameterState` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: field `shape` is never read
+    --> crates/psionic-train/src/parameter_golf_single_h100_training.rs:1702:9
+     |
+1701 |     AdamFp32 {
+     |     -------- field in this variant
+1702 |         shape: Vec<usize>,
+     |         ^^^^^
+     |
+     = note: `ParameterGolfParameterState` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: method `shape` is never used
+    --> crates/psionic-train/src/parameter_golf_single_h100_training.rs:1727:19
+     |
+1716 | impl ParameterGolfParameterState {
+     | -------------------------------- method in this implementation
+...
+1727 |     pub(crate) fn shape(&self) -> &[usize] {
+     |                   ^^^^^
+
+warning: function `flatten_parameter_golf_optimizer_group_values` is never used
+    --> crates/psionic-train/src/parameter_golf_single_h100_training.rs:3348:15
+     |
+3348 | pub(crate) fn flatten_parameter_golf_optimizer_group_values(
+     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `flatten_parameter_golf_optimizer_group_buffers` is never used
+    --> crates/psionic-train/src/parameter_golf_single_h100_training.rs:3380:15
+     |
+3380 | pub(crate) fn flatten_parameter_golf_optimizer_group_buffers(
+     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `evaluate_validation_with_optional_score_first_ttt_on_cuda` is never used
+    --> crates/psionic-train/src/parameter_golf_single_h100_training.rs:4547:15
+     |
+4547 | pub(crate) fn evaluate_validation_with_optional_score_first_ttt_on_cuda(
+     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `gradient_clip_observation` is never used
+   --> crates/psionic-train/src/parameter_golf_single_h100_visualization.rs:573:15
+    |
+573 | pub(crate) fn gradient_clip_observation(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: field `run_bundle` is never read
+   --> crates/psionic-train/src/parameter_golf_submission_pr.rs:595:5
+    |
+588 | struct LoadedParameterGolfSubmissionFolder {
+    |        ----------------------------------- field in this struct
+...
+595 |     run_bundle: ParameterGolfChallengeRunBundle,
+    |     ^^^^^^^^^^
+
+warning: fields `schema_version`, `host`, and `logical_device_kind` are never read
+  --> crates/psionic-train/src/psion_executor_4080_decision_grade_run.rs:74:5
+   |
+73 | struct OpenAdapterSameNodeWallclockBenchmarkReport {
+   |        ------------------------------------------- fields in this struct
+74 |     schema_version: String,
+   |     ^^^^^^^^^^^^^^
+75 |     host: String,
+   |     ^^^^
+76 |     backend_label: String,
+77 |     logical_device_kind: String,
+   |     ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `OpenAdapterSameNodeWallclockBenchmarkReport` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: fields `steps_per_second`, `batch_count`, `sample_count`, `loss_delta`, and `bundle_artifact_path` are never read
+  --> crates/psionic-train/src/psion_executor_4080_decision_grade_run.rs:89:5
+   |
+84 | struct OpenAdapterSameNodeRetainedRunReport {
+   |        ------------------------------------ fields in this struct
+...
+89 |     steps_per_second: f64,
+   |     ^^^^^^^^^^^^^^^^
+...
+92 |     batch_count: u64,
+   |     ^^^^^^^^^^^
+93 |     sample_count: u64,
+   |     ^^^^^^^^^^^^
+...
+96 |     loss_delta: f32,
+   |     ^^^^^^^^^^
+97 |     final_state_dict_digest: String,
+98 |     bundle_artifact_path: String,
+   |     ^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `OpenAdapterSameNodeRetainedRunReport` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: fields `schema_version`, `local_report`, and `claim_boundary` are never read
+   --> crates/psionic-train/src/psion_executor_4080_decision_grade_run.rs:103:5
+    |
+102 | struct OpenAdapterTailnetAdmittedDeviceMatrixReport {
+    |        -------------------------------------------- fields in this struct
+103 |     schema_version: String,
+    |     ^^^^^^^^^^^^^^
+...
+107 |     local_report: OpenAdapterSameNodeWallclockBenchmarkReport,
+    |     ^^^^^^^^^^^^
+...
+110 |     claim_boundary: String,
+    |     ^^^^^^^^^^^^^^
+    |
+    = note: `OpenAdapterTailnetAdmittedDeviceMatrixReport` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: fields `steps_per_second_gain_pct_local_over_remote`, `samples_per_second_gain_pct_local_over_remote`, and `source_tokens_per_second_gain_pct_local_over_remote` are never read
+   --> crates/psionic-train/src/psion_executor_4080_decision_grade_run.rs:115:5
+    |
+114 | struct OpenAdapterTailnetAdmittedDeviceMatrixComparison {
+    |        ------------------------------------------------ fields in this struct
+115 |     steps_per_second_gain_pct_local_over_remote: f64,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+116 |     samples_per_second_gain_pct_local_over_remote: f64,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+117 |     source_tokens_per_second_gain_pct_local_over_remote: f64,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `OpenAdapterTailnetAdmittedDeviceMatrixComparison` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: fields `drill_id`, `departure_reason`, `suspension_reason`, `operator_action`, and `detail` are never read
+  --> crates/psionic-train/src/psion_executor_4080_interruption_recovery.rs:47:5
+   |
+46 | struct FailureDrill {
+   |        ------------ fields in this struct
+47 |     drill_id: String,
+   |     ^^^^^^^^
+...
+50 |     departure_reason: Option<String>,
+   |     ^^^^^^^^^^^^^^^^
+51 |     suspension_reason: Option<String>,
+   |     ^^^^^^^^^^^^^^^^^
+...
+59 |     operator_action: String,
+   |     ^^^^^^^^^^^^^^^
+60 |     detail: String,
+   |     ^^^^^^
+   |
+   = note: `FailureDrill` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: field `input_checkpoint_pointer` is never read
+  --> crates/psionic-train/src/psion_executor_4080_interruption_recovery.rs:79:5
+   |
+77 | struct WindowPlan {
+   |        ---------- field in this struct
+78 |     dataset_slices: Vec<DatasetSlice>,
+79 |     input_checkpoint_pointer: InputCheckpointPointer,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `WindowPlan` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: fields `checkpoint_family`, `checkpoint`, and `pointer_digest` are never read
+  --> crates/psionic-train/src/psion_executor_4080_interruption_recovery.rs:91:5
+   |
+90 | struct InputCheckpointPointer {
+   |        ---------------------- fields in this struct
+91 |     checkpoint_family: String,
+   |     ^^^^^^^^^^^^^^^^^
+92 |     checkpoint: CheckpointReceipt,
+   |     ^^^^^^^^^^
+93 |     pointer_digest: String,
+   |     ^^^^^^^^^^^^^^
+   |
+   = note: `InputCheckpointPointer` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: fields `checkpoint_ref` and `step` are never read
+  --> crates/psionic-train/src/psion_executor_4080_interruption_recovery.rs:98:5
+   |
+97 | struct CheckpointReceipt {
+   |        ----------------- fields in this struct
+98 |     checkpoint_ref: String,
+   |     ^^^^^^^^^^^^^^
+99 |     step: u64,
+   |     ^^^^
+   |
+   = note: `CheckpointReceipt` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: field `checkpoint_family` is never read
+   --> crates/psionic-train/src/psion_executor_4080_interruption_recovery.rs:159:5
+    |
+157 | struct ContributorReceipt {
+    |        ------------------ field in this struct
+158 |     manifest: ContributorManifest,
+159 |     checkpoint_family: String,
+    |     ^^^^^^^^^^^^^^^^^
+    |
+    = note: `ContributorReceipt` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: fields `tailnet_ip` and `cluster_port` are never read
+  --> crates/psionic-train/src/psion_executor_4080_remote_launch.rs:46:5
+   |
+45 | struct TailnetOperatorEndpoint {
+   |        ----------------------- fields in this struct
+46 |     tailnet_ip: String,
+   |     ^^^^^^^^^^
+47 |     cluster_port: u16,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `TailnetOperatorEndpoint` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: fields `tailnet_ip` and `cluster_port` are never read
+  --> crates/psionic-train/src/psion_executor_4080_remote_launch.rs:54:5
+   |
+52 | struct TailnetOperatorEndpointWithHost {
+   |        ------------------------------- fields in this struct
+53 |     host: String,
+54 |     tailnet_ip: String,
+   |     ^^^^^^^^^^
+55 |     cluster_port: u16,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `TailnetOperatorEndpointWithHost` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: field `contributor_backend_label` is never read
+  --> crates/psionic-train/src/psion_executor_4080_remote_launch.rs:67:5
+   |
+60 | struct TailnetRunBundle {
+   |        ---------------- field in this struct
+...
+67 |     contributor_backend_label: String,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `TailnetRunBundle` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: field `report_digest` is never read
+  --> crates/psionic-train/src/psion_executor_4080_remote_launch.rs:93:5
+   |
+86 | struct ContributorRuntimeReport {
+   |        ------------------------ field in this struct
+...
+93 |     report_digest: String,
+   |     ^^^^^^^^^^^^^
+   |
+   = note: `ContributorRuntimeReport` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: function `read_json` is never used
+   --> crates/psionic-train/src/psion_executor_4080_remote_launch.rs:548:4
+    |
+548 | fn read_json<T: DeserializeOwned>(
+    |    ^^^^^^^^^
+
+warning: function `read_json` is never used
+   --> crates/psionic-train/src/psion_executor_article_closeout_set.rs:382:4
+    |
+382 | fn read_json<T: DeserializeOwned>(
+    |    ^^^^^^^^^
+
+warning: function `read_json` is never used
+   --> crates/psionic-train/src/psion_executor_batch_accumulation_ablation.rs:531:4
+    |
+531 | fn read_json<T: DeserializeOwned>(
+    |    ^^^^^^^^^
+
+warning: function `read_json_fixture` is never used
+   --> crates/psionic-train/src/psion_executor_continue_restart_policy.rs:385:4
+    |
+385 | fn read_json_fixture<T: DeserializeOwned>(
+    |    ^^^^^^^^^^^^^^^^^
+
+warning: function `read_json_fixture` is never used
+   --> crates/psionic-train/src/psion_executor_failure_bundle_taxonomy.rs:497:4
+    |
+497 | fn read_json_fixture<T: DeserializeOwned>(
+    |    ^^^^^^^^^^^^^^^^^
+
+warning: function `read_bytes` is never used
+   --> crates/psionic-train/src/psion_executor_local_cluster_autoblocks.rs:471:4
+    |
+471 | fn read_bytes(
+    |    ^^^^^^^^^^
+
+warning: function `read_json` is never used
+   --> crates/psionic-train/src/psion_executor_local_cluster_autoblocks.rs:482:4
+    |
+482 | fn read_json<T: DeserializeOwned>(
+    |    ^^^^^^^^^
+
+warning: constant `LOCAL_MAC_MLX_PROFILE_ID` is never used
+  --> crates/psionic-train/src/psion_executor_local_cluster_dashboard.rs:31:7
+   |
+31 | const LOCAL_MAC_MLX_PROFILE_ID: &str = "local_mac_mlx_aarch64";
+   |       ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: constant `LOCAL_4080_PROFILE_ID` is never used
+  --> crates/psionic-train/src/psion_executor_local_cluster_dashboard.rs:32:7
+   |
+32 | const LOCAL_4080_PROFILE_ID: &str = "local_4080_cuda_tailnet_x86_64";
+   |       ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `read_bytes` is never used
+   --> crates/psionic-train/src/psion_executor_local_cluster_dashboard.rs:860:4
+    |
+860 | fn read_bytes(
+    |    ^^^^^^^^^^
+
+warning: function `read_json` is never used
+   --> crates/psionic-train/src/psion_executor_local_cluster_dashboard.rs:871:4
+    |
+871 | fn read_json<T: DeserializeOwned>(
+    |    ^^^^^^^^^
+
+warning: function `read_json` is never used
+   --> crates/psionic-train/src/psion_executor_local_cluster_ledger.rs:936:4
+    |
+936 | fn read_json<T: DeserializeOwned>(
+    |    ^^^^^^^^^
+
+warning: function `read_bytes` is never used
+   --> crates/psionic-train/src/psion_executor_local_cluster_review_workflow.rs:667:4
+    |
+667 | fn read_bytes(
+    |    ^^^^^^^^^^
+
+warning: function `read_json` is never used
+   --> crates/psionic-train/src/psion_executor_local_cluster_review_workflow.rs:678:4
+    |
+678 | fn read_json<T: DeserializeOwned>(
+    |    ^^^^^^^^^
+
+warning: function `read_bytes` is never used
+   --> crates/psionic-train/src/psion_executor_local_cluster_roundtrip.rs:548:4
+    |
+548 | fn read_bytes(
+    |    ^^^^^^^^^^
+
+warning: function `read_json` is never used
+   --> crates/psionic-train/src/psion_executor_local_cluster_roundtrip.rs:559:4
+    |
+559 | fn read_json<T: DeserializeOwned>(
+    |    ^^^^^^^^^
+
+warning: function `read_json_fixture` is never used
+   --> crates/psionic-train/src/psion_executor_long_run_rehearsal.rs:611:4
+    |
+611 | fn read_json_fixture<T: DeserializeOwned>(
+    |    ^^^^^^^^^^^^^^^^^
+
+warning: field `note` is never read
+  --> crates/psionic-train/src/psion_executor_mac_export_inspection.rs:60:5
+   |
+55 | struct CpuReproducibilityRow {
+   |        --------------------- field in this struct
+...
+60 |     note: String,
+   |     ^^^^
+   |
+   = note: `CpuReproducibilityRow` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: field `workload_target` is never read
+   --> crates/psionic-train/src/psion_executor_mac_export_inspection.rs:111:5
+    |
+110 | struct HullCacheExactWorkload {
+    |        ---------------------- field in this struct
+111 |     workload_target: String,
+    |     ^^^^^^^^^^^^^^^
+    |
+    = note: `HullCacheExactWorkload` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: function `read_json_fixture` is never used
+   --> crates/psionic-train/src/psion_executor_mandatory_live_metrics.rs:458:4
+    |
+458 | fn read_json_fixture<T: DeserializeOwned>(
+    |    ^^^^^^^^^^^^^^^^^
+
+warning: function `read_json` is never used
+   --> crates/psionic-train/src/psion_executor_mixture_rollback_policy.rs:499:4
+    |
+499 | fn read_json<T: DeserializeOwned>(
+    |    ^^^^^^^^^
+
+warning: function `read_json` is never used
+   --> crates/psionic-train/src/psion_executor_mixture_search_cadence.rs:368:4
+    |
+368 | fn read_json<T: DeserializeOwned>(
+    |    ^^^^^^^^^
+
+warning: fields `schema_version`, `host`, and `logical_device_kind` are never read
+  --> crates/psionic-train/src/psion_executor_mlx_decision_grade_run.rs:61:5
+   |
+60 | struct OpenAdapterSameNodeWallclockBenchmarkReport {
+   |        ------------------------------------------- fields in this struct
+61 |     schema_version: String,
+   |     ^^^^^^^^^^^^^^
+62 |     host: String,
+   |     ^^^^
+63 |     backend_label: String,
+64 |     logical_device_kind: String,
+   |     ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `OpenAdapterSameNodeWallclockBenchmarkReport` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: fields `steps_per_second`, `batch_count`, `sample_count`, and `bundle_artifact_path` are never read
+  --> crates/psionic-train/src/psion_executor_mlx_decision_grade_run.rs:76:5
+   |
+71 | struct OpenAdapterSameNodeRetainedRunReport {
+   |        ------------------------------------ fields in this struct
+...
+76 |     steps_per_second: f64,
+   |     ^^^^^^^^^^^^^^^^
+...
+79 |     batch_count: u64,
+   |     ^^^^^^^^^^^
+80 |     sample_count: u64,
+   |     ^^^^^^^^^^^^
+...
+85 |     bundle_artifact_path: String,
+   |     ^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `OpenAdapterSameNodeRetainedRunReport` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: fields `schema_version`, `run_id`, `target_wallclock_seconds`, and `claim_boundary` are never read
+  --> crates/psionic-train/src/psion_executor_mlx_decision_grade_run.rs:90:5
+   |
+89 | struct OpenAdapterTailnetAdmittedDeviceMatrixReport {
+   |        -------------------------------------------- fields in this struct
+90 |     schema_version: String,
+   |     ^^^^^^^^^^^^^^
+91 |     run_id: String,
+   |     ^^^^^^
+92 |     git_ref: String,
+93 |     target_wallclock_seconds: u64,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^
+94 |     local_report: OpenAdapterSameNodeWallclockBenchmarkReport,
+95 |     claim_boundary: String,
+   |     ^^^^^^^^^^^^^^
+   |
+   = note: `OpenAdapterTailnetAdmittedDeviceMatrixReport` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: function `read_json` is never used
+   --> crates/psionic-train/src/psion_executor_optimizer_ablation.rs:674:4
+    |
+674 | fn read_json<T: DeserializeOwned>(
+    |    ^^^^^^^^^
+
+warning: function `read_json_fixture` is never used
+   --> crates/psionic-train/src/psion_executor_phase_two_preflight_checklist.rs:585:4
+    |
+585 | fn read_json_fixture<T: DeserializeOwned>(
+    |    ^^^^^^^^^^^^^^^^^
+
+warning: function `read_json` is never used
+   --> crates/psionic-train/src/psion_executor_scheduler_ablation.rs:506:4
+    |
+506 | fn read_json<T: DeserializeOwned>(
+    |    ^^^^^^^^^
+
+warning: function `read_fixture` is never used
+   --> crates/psionic-train/src/psion_executor_source_family_contribution.rs:738:4
+    |
+738 | fn read_fixture<T: DeserializeOwned>(
+    |    ^^^^^^^^^^^^
+
+warning: function `read_json` is never used
+   --> crates/psionic-train/src/psion_executor_supervision_density_ablation.rs:522:4
+    |
+522 | fn read_json<T: DeserializeOwned>(
+    |    ^^^^^^^^^
+
+warning: function `read_json` is never used
+   --> crates/psionic-train/src/psion_executor_tokenizer_architecture_gate.rs:427:4
+    |
+427 | fn read_json<T: DeserializeOwned>(
+    |    ^^^^^^^^^
+
+warning: function `read_json` is never used
+   --> crates/psionic-train/src/psion_executor_trace_family_weighting_ablation.rs:691:4
+    |
+691 | fn read_json<T: DeserializeOwned>(
+    |    ^^^^^^^^^
+
+warning: function `read_json` is never used
+    --> crates/psionic-train/src/psion_executor_trained_v1_promotion.rs:1383:4
+     |
+1383 | fn read_json<T: DeserializeOwned>(
+     |    ^^^^^^^^^
+
+warning: function `read_json` is never used
+   --> crates/psionic-train/src/psion_executor_trained_v1_replacement_report.rs:918:4
+    |
+918 | fn read_json<T: DeserializeOwned>(
+    |    ^^^^^^^^^
+
+warning: function `read_json_fixture` is never used
+   --> crates/psionic-train/src/psion_executor_unified_throughput_reporting.rs:598:4
+    |
+598 | fn read_json_fixture<T: DeserializeOwned>(
+    |    ^^^^^^^^^^^^^^^^^
+
+warning: function `reference_descriptor` is never used
+   --> crates/psionic-train/src/psion_plugin_conditioned_compact_decoder.rs:569:4
+    |
+569 | fn reference_descriptor(
+    |    ^^^^^^^^^^^^^^^^^^^^
+
+warning: fields `logits_tensor_id`, `weight_gradient_tensor_id`, and `hidden_gradient_tensor_id` are never read
+    --> crates/psionic-train/src/psion_reference_pilot.rs:1228:5
+     |
+1224 | struct PsionAcceleratedGradientProgram {
+     |        ------------------------------- fields in this struct
+...
+1228 |     logits_tensor_id: TensorId,
+     |     ^^^^^^^^^^^^^^^^
+...
+1232 |     weight_gradient_tensor_id: TensorId,
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+1236 |     hidden_gradient_tensor_id: TensorId,
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `PsionAcceleratedGradientProgram` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: method `mean_loss` is never used
+    --> crates/psionic-train/src/psion_reference_pilot.rs:4483:8
+     |
+4264 | impl PsionCompactDecoderReferencePilotModel {
+     | ------------------------------------------- method in this implementation
+...
+4483 |     fn mean_loss(&self, examples: &[PsionReferenceTrainingExample]) -> f32 {
+     |        ^^^^^^^^^
+
+warning: field `cluster_namespace` is never read
+   --> crates/psionic-train/src/swarm_first_live_runtime.rs:234:5
+    |
+230 | struct RetainedFirstSwarmTopologyContract {
+    |        ---------------------------------- field in this struct
+...
+234 |     cluster_namespace: String,
+    |     ^^^^^^^^^^^^^^^^^
+    |
+    = note: `RetainedFirstSwarmTopologyContract` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: `psionic-train` (lib) generated 64 warnings (run `cargo fix --lib -p psionic-train` to apply 1 suggestion)
+warning: method `admit` is never used
+  --> crates/psionic-serve/src/clef/chunk_schedule.rs:89:12
+   |
+67 | impl<T> ChunkScheduler<T> {
+   | ------------------------- method in this implementation
+...
+89 |     pub fn admit(
+   |            ^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `id` is never used
+   --> crates/psionic-serve/src/clef/chunk_schedule.rs:220:12
+    |
+219 | impl<T> Completed<T> {
+    | -------------------- method in this implementation
+220 |     pub fn id(&self) -> RequestId {
+    |            ^^
+
+warning: struct `CpuQwen35ProxyTextGenerationService` is never constructed
+   --> crates/psionic-serve/src/gguf.rs:892:8
+    |
+892 | struct CpuQwen35ProxyTextGenerationService {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `Qwen35LlamaCppProxyState` is never constructed
+   --> crates/psionic-serve/src/gguf.rs:906:8
+    |
+906 | struct Qwen35LlamaCppProxyState {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `Qwen35ProxyCompletionResponse` is never constructed
+   --> crates/psionic-serve/src/gguf.rs:922:8
+    |
+922 | struct Qwen35ProxyCompletionResponse {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: multiple associated items are never used
+    --> crates/psionic-serve/src/gguf.rs:935:8
+     |
+ 934 | impl CpuQwen35ProxyTextGenerationService {
+     | ---------------------------------------- associated items in this implementation
+ 935 |     fn from_gguf_path(path: impl AsRef<Path>) -> Result<Self, ReferenceTextGenerationError> {
+     |        ^^^^^^^^^^^^^^
+...
+ 988 |     fn model_descriptor(&self) -> &DecoderModelDescriptor {
+     |        ^^^^^^^^^^^^^^^^
+...
+ 993 |     fn runtime_support(&self) -> GgufDecoderRuntimeSupport {
+     |        ^^^^^^^^^^^^^^^
+...
+ 998 |     fn plan_digest(&self, model_id: &str) -> Option<&str> {
+     |        ^^^^^^^^^^^
+...
+1002 |     fn create_session(
+     |        ^^^^^^^^^^^^^^
+...
+1018 |     fn reset_session(
+     |        ^^^^^^^^^^^^^
+...
+1025 |     fn close_session(
+     |        ^^^^^^^^^^^^^
+...
+1033 |     fn loaded_model_views(&mut self) -> Vec<LoadedModelView> {
+     |        ^^^^^^^^^^^^^^^^^^
+...
+1038 |     fn loaded_models(&mut self) -> LoadedModelsObservation {
+     |        ^^^^^^^^^^^^^
+...
+1043 |     fn observability(&mut self) -> LocalRuntimeObservability {
+     |        ^^^^^^^^^^^^^
+...
+1062 |     fn warm_model(
+     |        ^^^^^^^^^^
+...
+1077 |     fn unload_model(
+     |        ^^^^^^^^^^^^
+...
+1090 |     fn generate_continuous_batch(
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+1104 |     fn generate(
+     |        ^^^^^^^^
+
+warning: methods `loaded_model_view` and `residency_snapshot` are never used
+    --> crates/psionic-serve/src/gguf.rs:1223:8
+     |
+1222 | impl CpuQwen35ProxyTextGenerationService {
+     | ---------------------------------------- methods in this implementation
+1223 |     fn loaded_model_view(&self) -> LoadedModelView {
+     |        ^^^^^^^^^^^^^^^^^
+...
+1241 |     fn residency_snapshot(&self) -> psionic_runtime::MemoryResidencySnapshot {
+     |        ^^^^^^^^^^^^^^^^^^
+
+warning: associated items `spawn`, `wait_until_ready`, and `complete` are never used
+    --> crates/psionic-serve/src/gguf.rs:1254:8
+     |
+1253 | impl Qwen35LlamaCppProxyState {
+     | ----------------------------- associated items in this implementation
+1254 |     fn spawn(
+     |        ^^^^^
+...
+1302 |     fn wait_until_ready(&self) -> Result<(), ReferenceTextGenerationError> {
+     |        ^^^^^^^^^^^^^^^^
+...
+1354 |     fn complete(
+     |        ^^^^^^^^
+
+warning: associated function `load` is never used
+    --> crates/psionic-serve/src/gguf.rs:2707:8
+     |
+2706 | impl MetalDenseProjectionMatrix {
+     | ------------------------------- associated function in this implementation
+2707 |     fn load(
+     |        ^^^^
+
+warning: field `outer` is never read
+    --> crates/psionic-serve/src/gguf.rs:2982:5
+     |
+2980 | struct CudaPackedGateUpExpertMatrix {
+     |        ---------------------------- field in this struct
+2981 |     mode: QuantizationMode,
+2982 |     outer: usize,
+     |     ^^^^^
+     |
+     = note: `CudaPackedGateUpExpertMatrix` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: associated function `pack_fused` is never used
+    --> crates/psionic-serve/src/gguf.rs:3057:8
+     |
+2990 | impl CudaPackedGateUpExpertMatrix {
+     | --------------------------------- associated function in this implementation
+...
+3057 |     fn pack_fused(
+     |        ^^^^^^^^^^
+
+warning: field `selected_token` is never read
+    --> crates/psionic-serve/src/gguf.rs:9770:5
+     |
+9766 | struct MetalGemma4ForwardStep {
+     |        ---------------------- field in this struct
+...
+9770 |     selected_token: Option<TokenId>,
+     |     ^^^^^^^^^^^^^^
+     |
+     = note: `MetalGemma4ForwardStep` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: method `sparse_execution_observation` is never used
+     --> crates/psionic-serve/src/gguf.rs:10657:8
+      |
+10619 | impl DistributedGemma4GenerationModel {
+      | ------------------------------------- method in this implementation
+...
+10657 |     fn sparse_execution_observation(&self) -> Option<crate::Gemma4SparseExecutionObservation> {
+      |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: fields `feed_forward_gate_experts_weight_native` and `feed_forward_up_experts_weight_native` are never read
+     --> crates/psionic-serve/src/gguf.rs:13760:5
+      |
+13737 | struct CudaGemma4Layer {
+      |        --------------- fields in this struct
+...
+13760 |     feed_forward_gate_experts_weight_native: Option<CudaQuantizedExpertMatrix>,
+      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+13764 |     feed_forward_up_experts_weight_native: Option<CudaQuantizedExpertMatrix>,
+      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = note: `CudaGemma4Layer` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: method `byte_length` is never used
+     --> crates/psionic-serve/src/gguf.rs:14228:8
+      |
+14164 | impl CudaQuantizedProjectionMatrix {
+      | ---------------------------------- method in this implementation
+...
+14228 |     fn byte_length(&self) -> usize {
+      |        ^^^^^^^^^^^
+
+warning: method `byte_length` is never used
+     --> crates/psionic-serve/src/gguf.rs:14275:8
+      |
+14239 | impl CudaGemma4PerLayerProjectionMatrix {
+      | --------------------------------------- method in this implementation
+...
+14275 |     fn byte_length(&self) -> usize {
+      |        ^^^^^^^^^^^
+
+warning: field `hidden` is never read
+     --> crates/psionic-serve/src/gguf.rs:14295:5
+      |
+14291 | struct CudaGemma4StageStep {
+      |        ------------------- field in this struct
+...
+14295 |     hidden: Vec<f32>,
+      |     ^^^^^^
+      |
+      = note: `CudaGemma4StageStep` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: field `qkv_buffer` is never read
+     --> crates/psionic-serve/src/gguf.rs:14398:5
+      |
+14397 | struct CudaGemma4StepPlan {
+      |        ------------------ field in this struct
+14398 |     qkv_buffer: CudaBuffer,
+      |     ^^^^^^^^^^
+      |
+      = note: `CudaGemma4StepPlan` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: function `qwen35_proxy_runtime_support` is never used
+     --> crates/psionic-serve/src/gguf.rs:14433:4
+      |
+14433 | fn qwen35_proxy_runtime_support(descriptor: &DecoderModelDescriptor) -> GgufDecoderRuntimeSupport {
+      |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `digest_qwen35_proxy_plan` is never used
+     --> crates/psionic-serve/src/gguf.rs:14807:4
+      |
+14807 | fn digest_qwen35_proxy_plan(
+      |    ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `qwen35_proxy_prompt_json` is never used
+     --> crates/psionic-serve/src/gguf.rs:14838:4
+      |
+14838 | fn qwen35_proxy_prompt_json(
+      |    ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `build_qwen35_proxy_generation_response` is never used
+     --> crates/psionic-serve/src/gguf.rs:14870:4
+      |
+14870 | fn build_qwen35_proxy_generation_response(
+      |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `reserve_proxy_port` is never used
+     --> crates/psionic-serve/src/gguf.rs:14954:4
+      |
+14954 | fn reserve_proxy_port() -> Result<u16, ReferenceTextGenerationError> {
+      |    ^^^^^^^^^^^^^^^^^^
+
+warning: function `qwen35_llama_server_bin` is never used
+     --> crates/psionic-serve/src/gguf.rs:14963:4
+      |
+14963 | fn qwen35_llama_server_bin() -> String {
+      |    ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `qwen35_proxy_runtime_error` is never used
+     --> crates/psionic-serve/src/gguf.rs:14973:4
+      |
+14973 | fn qwen35_proxy_runtime_error(error: impl std::fmt::Display) -> ReferenceTextGenerationError {
+      |    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: fields `sparse_ffn_backend`, `router_backend`, and `expert_dispatch_backend` are never read
+     --> crates/psionic-serve/src/gguf.rs:15144:5
+      |
+15140 | struct SparseMoeProjection {
+      |        ------------------- fields in this struct
+...
+15144 |     sparse_ffn_backend: &'static str,
+      |     ^^^^^^^^^^^^^^^^^^
+15145 |     router_backend: &'static str,
+      |     ^^^^^^^^^^^^^^
+15146 |     expert_dispatch_backend: &'static str,
+      |     ^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = note: `SparseMoeProjection` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: function `per_head_rms_norm` is never used
+     --> crates/psionic-serve/src/gguf.rs:16181:4
+      |
+16181 | fn per_head_rms_norm(
+      |    ^^^^^^^^^^^^^^^^^
+
+warning: function `per_head_rms_norm_unit` is never used
+     --> crates/psionic-serve/src/gguf.rs:16247:4
+      |
+16247 | fn per_head_rms_norm_unit(
+      |    ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: constant `LLAMA_CPP_PROXY_RESIDENCY_MODE` is never used
+   --> crates/psionic-serve/src/openai_http.rs:119:7
+    |
+119 | const LLAMA_CPP_PROXY_RESIDENCY_MODE: &str = "llama_cpp_proxy";
+    |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: constant `PROXY_ONLY_FALLBACK_POLICY` is never used
+   --> crates/psionic-serve/src/openai_http.rs:120:7
+    |
+120 | const PROXY_ONLY_FALLBACK_POLICY: &str = "proxy_only";
+    |       ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: constant `CPU_PROXY_PERFORMANCE_CLASS` is never used
+   --> crates/psionic-serve/src/openai_http.rs:121:7
+    |
+121 | const CPU_PROXY_PERFORMANCE_CLASS: &str = "portable_cpu_proxy";
+    |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: associated function `cpu_proxy` is never used
+   --> crates/psionic-serve/src/openai_http.rs:185:14
+    |
+170 | impl LocalServingTruth {
+    | ---------------------- associated function in this implementation
+...
+185 |     const fn cpu_proxy() -> Self {
+    |              ^^^^^^^^^
+
+warning: associated function `cpu_llama_cpp_proxy` is never used
+   --> crates/psionic-serve/src/openai_http.rs:260:14
+    |
+250 | impl OpenAiCompatServingTruth {
+    | ----------------------------- associated function in this implementation
+...
+260 |     const fn cpu_llama_cpp_proxy() -> Self {
+    |              ^^^^^^^^^^^^^^^^^^^
+
+warning: field `default_model_key` is never read
+    --> crates/psionic-serve/src/openai_http.rs:1089:5
+     |
+1083 | struct OpenAiCompatState {
+     |        ----------------- field in this struct
+...
+1089 |     default_model_key: String,
+     |     ^^^^^^^^^^^^^^^^^
+
+warning: field `text` is never read
+     --> crates/psionic-serve/src/openai_http.rs:10848:5
+      |
+10846 | struct GenericRenderedPrompt {
+      |        --------------------- field in this struct
+10847 |     input: crate::GenerationInput,
+10848 |     text: String,
+      |     ^^^^
+      |
+      = note: `GenericRenderedPrompt` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: function `generic_metal_execution_refusal_reason` is never used
+     --> crates/psionic-serve/src/openai_http.rs:11166:4
+      |
+11166 | fn generic_metal_execution_refusal_reason(family: GgufDecoderFamily) -> Option<String> {
+      |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `render_prompt_for_model` is never used
+     --> crates/psionic-serve/src/openai_http.rs:11680:4
+      |
+11680 | fn render_prompt_for_model(
+      |    ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: fields `q_scale` and `k_scale` are never read
+    --> crates/psionic-serve/src/qwen35.rs:5866:5
+     |
+5859 | struct CpuQwen35HybridLayer {
+     |        -------------------- fields in this struct
+...
+5866 |     q_scale: Vec<f32>,
+     |     ^^^^^^^
+5867 |     k_scale: Vec<f32>,
+     |     ^^^^^^^
+     |
+     = note: `CpuQwen35HybridLayer` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: fields `q_scale` and `k_scale` are never read
+    --> crates/psionic-serve/src/qwen35.rs:6560:5
+     |
+6553 | struct MetalQwen35HybridLayer {
+     |        ---------------------- fields in this struct
+...
+6560 |     q_scale: Vec<f32>,
+     |     ^^^^^^^
+6561 |     k_scale: Vec<f32>,
+     |     ^^^^^^^
+     |
+     = note: `MetalQwen35HybridLayer` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: field `output_norm` is never read
+    --> crates/psionic-serve/src/qwen35.rs:7789:5
+     |
+7782 | struct CudaQwen35Model {
+     |        --------------- field in this struct
+...
+7789 |     output_norm: Vec<f32>,
+     |     ^^^^^^^^^^^
+     |
+     = note: `CudaQwen35Model` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: method `forward_host` is never used
+     --> crates/psionic-serve/src/qwen35.rs:11454:8
+      |
+10342 | impl Qwen35Layer {
+      | ---------------- method in this implementation
+...
+11454 |     fn forward_host(
+      |        ^^^^^^^^^^^^
+
+warning: method `forward` is never used
+     --> crates/psionic-serve/src/qwen35.rs:13419:8
+      |
+13267 | impl Qwen35HybridLayer {
+      | ---------------------- method in this implementation
+...
+13419 |     fn forward(
+      |        ^^^^^^^
+
+warning: method `forward` is never used
+     --> crates/psionic-serve/src/qwen35.rs:13563:8
+      |
+13463 | impl Qwen35FullAttentionLayer {
+      | ----------------------------- method in this implementation
+...
+13563 |     fn forward(
+      |        ^^^^^^^
+
+warning: methods `run_projection_matvec`, `run_output_logits`, and `run_output_argmax` are never used
+     --> crates/psionic-serve/src/qwen35.rs:14119:8
+      |
+13758 | impl Qwen35CudaStepPlan {
+      | ----------------------- methods in this implementation
+...
+14119 |     fn run_projection_matvec(
+      |        ^^^^^^^^^^^^^^^^^^^^^
+...
+14184 |     fn run_output_logits(
+      |        ^^^^^^^^^^^^^^^^^
+...
+14500 |     fn run_output_argmax(
+      |        ^^^^^^^^^^^^^^^^^
+
+warning: method `matvec_profiled` is never used
+     --> crates/psionic-serve/src/qwen35.rs:15579:8
+      |
+15569 | impl CudaQuantizedMatrix {
+      | ------------------------ method in this implementation
+...
+15579 |     fn matvec_profiled(
+      |        ^^^^^^^^^^^^^^^
+
+warning: method `matvec_profiled` is never used
+     --> crates/psionic-serve/src/qwen35.rs:15680:8
+      |
+15655 | impl CudaQuantizedProjectionGroup {
+      | --------------------------------- method in this implementation
+...
+15680 |     fn matvec_profiled(
+      |        ^^^^^^^^^^^^^^^
+
+warning: function `family_fact_bool` is never used
+     --> crates/psionic-serve/src/qwen35.rs:16123:4
+      |
+16123 | fn family_fact_bool(
+      |    ^^^^^^^^^^^^^^^^
+
+warning: `psionic-serve` (lib) generated 47 warnings
+warning: (arm64) deps/rustcRdnCxQ/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-regexec.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-regerror.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-regparse.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-regcomp.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-regenc.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-st.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-unicode.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-ascii.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-utf8.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-unicode_unfold_key.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-unicode_fold1_key.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-unicode_fold2_key.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-unicode_fold3_key.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libpsionic_backend_cuda-006dd263d70c426f.rlib(42a6b4e50f1a4f96-clef_prefill_stub.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libring-0aae4747beb5cd2e.rlib(25ac62e5b3c53843-curve25519.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libring-0aae4747beb5cd2e.rlib(0bbbd18bda93c05b-aes_nohw.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libring-0aae4747beb5cd2e.rlib(00c879ee3285a50d-montgomery.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libring-0aae4747beb5cd2e.rlib(00c879ee3285a50d-montgomery_inv.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libring-0aae4747beb5cd2e.rlib(a0330e891e733f4e-ecp_nistz.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libring-0aae4747beb5cd2e.rlib(a0330e891e733f4e-gfp_p384.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libring-0aae4747beb5cd2e.rlib(aaa1ba3e455ee2e1-limbs.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libring-0aae4747beb5cd2e.rlib(a4019cc0736b0423-mem.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libring-0aae4747beb5cd2e.rlib(a0330e891e733f4e-p256-nistz.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libring-0aae4747beb5cd2e.rlib(c322a0bcc369f531-chacha-armv8-ios64.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libring-0aae4747beb5cd2e.rlib(c322a0bcc369f531-chacha20_poly1305_armv8-ios64.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libring-0aae4747beb5cd2e.rlib(c322a0bcc369f531-aesv8-armx-ios64.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libring-0aae4747beb5cd2e.rlib(c322a0bcc369f531-aesv8-gcm-armv8-ios64.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libring-0aae4747beb5cd2e.rlib(c322a0bcc369f531-ghash-neon-armv8-ios64.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libring-0aae4747beb5cd2e.rlib(c322a0bcc369f531-ghashv8-armx-ios64.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libring-0aae4747beb5cd2e.rlib(c322a0bcc369f531-vpaes-armv8-ios64.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libring-0aae4747beb5cd2e.rlib(c322a0bcc369f531-armv8-mont-ios64.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libring-0aae4747beb5cd2e.rlib(c322a0bcc369f531-p256-armv8-asm-ios64.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libring-0aae4747beb5cd2e.rlib(c322a0bcc369f531-sha512-armv8-ios64.o) unable to open object file: No such file or directory
+warning: (arm64) deps/rustcRdnCxQ/libring-0aae4747beb5cd2e.rlib(c322a0bcc369f531-sha256-armv8-ios64.o) unable to open object file: No such file or directory
+    Finished `release` profile [optimized + debuginfo] target(s) in 17m 22s
+warning: the following packages contain code that will be rejected by a future version of Rust: block v0.1.6
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`

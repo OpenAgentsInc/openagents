@@ -1,0 +1,115 @@
+{
+  "schema": "clef.validation.followup_publication_check.v1",
+  "date": "2026-10-11",
+  "previous_manifest_sha256": "dd5e50a88ab8a10afcfdba16aa0d634ca3aec25847abbe1b152eb67c856a0750",
+  "previous_manifest_entries_preserved": true,
+  "previous_copied_files": 85,
+  "previous_copied_files_unchanged": true,
+  "previous_generated_review_files_unchanged": true,
+  "added_files": [
+    "stage4/weighted-direct-delta/receipt.json",
+    "stage4/weighted-direct-delta/output.log",
+    "stage4/weighted-direct-combined-delta/receipt.json",
+    "stage4/weighted-direct-combined-delta/output.log",
+    "stage4/gpu-retry-checks.json",
+    "stage4/gpu_checks.py",
+    "stage4/weighted-gpu-lease.json",
+    "stage4/weighted-memory-lease.json",
+    "cpu27b-diagnostic/run.json",
+    "cpu27b-diagnostic/text-014.json",
+    "cpu27b-diagnostic/cancellation.json",
+    "cpu27b-diagnostic/lease.json",
+    "cpu27b-diagnostic/server.log",
+    "cpu27b-diagnostic/run.py",
+    "cpu27b-diagnostic/requests.jsonl"
+  ],
+  "added_copied_bytes": 37473,
+  "total_copied_files": 100,
+  "total_copied_bytes": 1715421,
+  "published_hashes_match": true,
+  "new_original_hashes_match": true,
+  "only_private_path_replacements": true,
+  "private_path_scan_passed": true,
+  "json_and_jsonl_parse_passed": true,
+  "archived_python_syntax_passed": true,
+  "readme_links_exist": true,
+  "stage4_server_sha256": "bb097ec7fb4c18134377b3877b0d66d2c6fc68812436c3bf10ecd9240b08a0d2",
+  "stage4_test_binary_sha256": "ef60f2f3842ab8d2ef5bbbecb6cbebe0395688b4baa2dc75ee449659b63997ca",
+  "source_manifest": "stage4/source-manifest.json",
+  "source_scope": "Stage 4 frozen snapshot before subsequent normalization, serial Metal wait, and expanded 27B GEMM-routing changes. Earlier source claims are unchanged.",
+  "weighted_results": [
+    {
+      "name": "weighted-direct-delta",
+      "passed": true,
+      "compared_logits": 34,
+      "maximum_absolute_logit_difference": 0.000953912735,
+      "reported_failed_coordinates": []
+    },
+    {
+      "name": "weighted-direct-combined-delta",
+      "passed": false,
+      "compared_logits": 34,
+      "maximum_absolute_logit_difference": 0.00164407492,
+      "reported_failed_coordinates": [
+        {
+          "tokens": 155,
+          "chunk": 155,
+          "question": 0,
+          "option": 0,
+          "actual": -1.1325965,
+          "reference": -1.133729,
+          "reported_delta": 0.00113248825
+        },
+        {
+          "tokens": 155,
+          "chunk": 257,
+          "question": 0,
+          "option": 0,
+          "actual": -1.1325965,
+          "reference": -1.133729,
+          "reported_delta": 0.00113248825
+        },
+        {
+          "tokens": 2032,
+          "chunk": 257,
+          "question": 4,
+          "option": 5,
+          "actual": -0.6216057,
+          "reference": -0.62324977,
+          "reported_delta": 0.00164407492
+        }
+      ]
+    }
+  ],
+  "cpu_diagnostic_status": "partial_cancelled",
+  "completed_cpu_cases": [
+    "text-014"
+  ],
+  "cancelled_cpu_cases": [
+    "text-034"
+  ],
+  "cpu_comparisons_recomputed": [
+    {
+      "comparator": "metal",
+      "cpu_top": "export",
+      "other_top": "export",
+      "maximum_probability_difference": 0.00023842464503166794,
+      "input_tokens": 321
+    },
+    {
+      "comparator": "official_bf16",
+      "cpu_top": "export",
+      "other_top": "downgrade_1",
+      "maximum_probability_difference": 0.09196533972951138,
+      "input_tokens": 321
+    }
+  ],
+  "active_reference_head_capture_excluded": true,
+  "executed_models": false,
+  "executed_builds": false,
+  "limitations": [
+    "The one CPU case does not establish why native outputs differ from BF16 or explain other cases.",
+    "Combined direct-solve DeltaNet remains outside the weighted parity bound. Standalone Flash success does not validate native 27B DeltaNet.",
+    "Full-model prefix reuse, continuous batching, and latency remain pending. Later product changes require their own validation."
+  ]
+}

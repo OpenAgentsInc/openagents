@@ -11,7 +11,7 @@ const FLOAT_GUARD: f32 = 777.5;
 const UPLOAD_ELEMENTS: usize = 32_768;
 
 // Exact f16 bits and the corresponding f32 values avoid a dependency or a
-// full-size f32 copy of a 96 MiB weight matrix. Negative and mixed magnitudes
+// full-size f32 copy of a 170 MiB weight matrix. Negative and mixed magnitudes
 // exercise cancellation and residual accumulation.
 const VALUES: [(u16, f32); 11] = [
     (0x0000, 0.0),
@@ -188,11 +188,18 @@ fn compare_dense_samples(output: &[f32], n: usize, m: usize, k: usize, accumulat
     }
 }
 
-fn exercise_shape(baseline: &ClefMetal, selected: &ClefMetal, n: usize, m: usize, k: usize) {
+fn exercise_shape(
+    baseline: &ClefMetal,
+    selected: &ClefMetal,
+    n: usize,
+    m: usize,
+    k: usize,
+    data_limit_bytes: usize,
+) {
     let weight_elements = (m + GUARD_ROWS) * k;
     let input_elements = INPUT_OFFSET + (n + GUARD_ROWS) * k;
     // Weight and input buffers, the largest output buffer, at most three CPU
-    // output vectors, and one upload block fit below 120 MB of test data.
+    // output vectors, and one upload block fit within the case's bound.
     // Shader libraries and driver allocations are outside this accounting.
     let maximum_data_bytes = weight_elements * 2
         + input_elements * 2
@@ -200,8 +207,8 @@ fn exercise_shape(baseline: &ClefMetal, selected: &ClefMetal, n: usize, m: usize
         + 3 * n * m * 4
         + UPLOAD_ELEMENTS * 4;
     assert!(
-        maximum_data_bytes < 120_000_000,
-        "case needs {maximum_data_bytes} bytes"
+        maximum_data_bytes < data_limit_bytes,
+        "case needs {maximum_data_bytes} bytes, limit {data_limit_bytes}"
     );
     let weights = half_buffer(selected, weight_elements, |index| {
         if index < m * k {
@@ -268,7 +275,31 @@ fn selected_gemm_tiles_match_baseline_and_dense_samples_for_real_clef_weights() 
         (1024, 4096),
         (32, 4096),
     ] {
-        objc::rc::autoreleasepool(|| exercise_shape(&baseline, &selected, 65, m, k));
+        objc::rc::autoreleasepool(|| exercise_shape(&baseline, &selected, 65, m, k, 120_000_000));
+    }
+}
+
+#[test]
+#[ignore = "requires explicit Metal hardware validation"]
+fn selected_gemm_tiles_match_baseline_and_dense_samples_for_clef_27b_weights() {
+    let baseline = ClefMetal::new().expect("baseline Metal device");
+    let selected =
+        ClefMetal::new_with_options(ClefMetalAttention::Staged, ClefMetalGemm::WeightShapes)
+            .expect("shape-selected Metal device");
+    // The public 27B Q4_K_M header has eight distinct trunk GEMM shapes.
+    // Its largest f16 weight is 170 MiB. Each case drops all buffers before
+    // the next allocation; live test data stays below 224 MB per case.
+    for (m, k) in [
+        (48, 5120),
+        (1024, 5120),
+        (5120, 6144),
+        (6144, 5120),
+        (10240, 5120),
+        (12288, 5120),
+        (17408, 5120),
+        (5120, 17408),
+    ] {
+        objc::rc::autoreleasepool(|| exercise_shape(&baseline, &selected, 65, m, k, 224_000_000));
     }
 }
 
@@ -280,6 +311,10 @@ fn selected_narrow_gemm_handles_single_rows_and_token_tile_boundaries() {
         ClefMetal::new_with_options(ClefMetalAttention::Staged, ClefMetalGemm::WeightShapes)
             .expect("shape-selected Metal device");
     for n in [1, 63, 64, 127, 129] {
-        objc::rc::autoreleasepool(|| exercise_shape(&baseline, &selected, n, 32, 4096));
+        for (m, k) in [(32, 4096), (48, 5120)] {
+            objc::rc::autoreleasepool(|| {
+                exercise_shape(&baseline, &selected, n, m, k, 120_000_000)
+            });
+        }
     }
 }

@@ -1,0 +1,195 @@
+{
+  "status": "complete",
+  "leases": [
+    "build",
+    "memory"
+  ],
+  "before": {
+    "available_memory_bytes": 99092856832,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 4174552,
+      "inactive": 1646461,
+      "speculative": 227135
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "guard_sha256": "bbfeb70b3e60d54b5213bf324fc1e9525004ecd67991dddc082b2b7228b0f91c",
+  "checks": [
+    {
+      "command": [
+        "rustc",
+        "+1.97.1",
+        "-Vv"
+      ],
+      "deadline_seconds": 30,
+      "max_owned_bytes": 4294967296,
+      "available_floor_bytes": 12884901888,
+      "status": "complete",
+      "exit_code": 0,
+      "memory": {
+        "rss_log": "toolchain-memory.jsonl",
+        "process_group": 5058,
+        "max_rss_bytes": 4294967296,
+        "peak_rss_bytes": 0,
+        "peak_physical_footprint_bytes": 0,
+        "peak_accounted_bytes": 0,
+        "sampling_error": null,
+        "sampler_timeout_seconds": 5,
+        "rss_samples": 1,
+        "sample_interval_seconds": 0.5,
+        "minimum_available_memory_bytes": 12884901888,
+        "lowest_available_memory_bytes": 99088629760,
+        "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+        "memory_rejection": null,
+        "cleanup_error": null,
+        "cleanup_diagnostics": null,
+        "cleanup_observations": [],
+        "owned_group_stopped": true,
+        "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+      },
+      "elapsed_seconds": 0.10980562500000002
+    },
+    {
+      "command": [
+        "rustc",
+        "+1.97.1",
+        "--edition=2024",
+        "task-scratch/clef-m3-m4/q4k-weight-diagnostic/native_decode.rs",
+        "-L",
+        "dependency=cargo-target/release/deps",
+        "--extern",
+        "psionic_backend_cpu=cargo-target/release/deps/libpsionic_backend_cpu-6e6127db2102f94b.rlib",
+        "--extern",
+        "psionic_core=cargo-target/release/deps/libpsionic_core-36a605d204a58811.rlib",
+        "-C",
+        "opt-level=2",
+        "-C",
+        "lto=thin",
+        "-C",
+        "codegen-units=1",
+        "-o",
+        "task-scratch/clef-m3-m4/q4k-weight-diagnostic/native-run-lto/native_decode"
+      ],
+      "deadline_seconds": 180,
+      "max_owned_bytes": 4294967296,
+      "available_floor_bytes": 12884901888,
+      "status": "complete",
+      "exit_code": 0,
+      "memory": {
+        "rss_log": "compile-memory.jsonl",
+        "process_group": 5062,
+        "max_rss_bytes": 4294967296,
+        "peak_rss_bytes": 1107853312,
+        "peak_physical_footprint_bytes": 1033471608,
+        "peak_accounted_bytes": 1107853312,
+        "sampling_error": null,
+        "sampler_timeout_seconds": 5,
+        "rss_samples": 6,
+        "sample_interval_seconds": 0.5,
+        "minimum_available_memory_bytes": 12884901888,
+        "lowest_available_memory_bytes": 98580447232,
+        "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+        "memory_rejection": null,
+        "cleanup_error": null,
+        "cleanup_diagnostics": null,
+        "cleanup_observations": [],
+        "owned_group_stopped": true,
+        "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+      },
+      "elapsed_seconds": 3.13212325
+    },
+    {
+      "command": [
+        "task-scratch/clef-m3-m4/q4k-weight-diagnostic/native-run-lto/native_decode",
+        "task-scratch/clef-m3-m4/q4k-weight-diagnostic"
+      ],
+      "deadline_seconds": 60,
+      "max_owned_bytes": 4294967296,
+      "available_floor_bytes": 12884901888,
+      "status": "complete",
+      "exit_code": 0,
+      "memory": {
+        "rss_log": "run-memory.jsonl",
+        "process_group": 5134,
+        "max_rss_bytes": 4294967296,
+        "peak_rss_bytes": 32768,
+        "peak_physical_footprint_bytes": 81992,
+        "peak_accounted_bytes": 81992,
+        "sampling_error": null,
+        "sampler_timeout_seconds": 5,
+        "rss_samples": 1,
+        "sample_interval_seconds": 0.5,
+        "minimum_available_memory_bytes": 12884901888,
+        "lowest_available_memory_bytes": 98968567808,
+        "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+        "memory_rejection": null,
+        "cleanup_error": null,
+        "cleanup_diagnostics": null,
+        "cleanup_observations": [],
+        "owned_group_stopped": true,
+        "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+      },
+      "elapsed_seconds": 0.32877379200000023
+    }
+  ],
+  "files": {
+    "harness": {
+      "path": "task-scratch/clef-m3-m4/q4k-weight-diagnostic/native_decode.rs",
+      "bytes": 1504,
+      "sha256": "48aa6e9635522841d145bcfad75b2413915a9bdfdecef685ff5bd6f22bc93520"
+    },
+    "packed_samples": {
+      "path": "task-scratch/clef-m3-m4/q4k-weight-diagnostic/sample-blocks.q4k",
+      "bytes": 746496,
+      "sha256": "515c2af0f7422248cb26a2a31f198bad6724bafa0be1b4b3350194d117cd43b3"
+    },
+    "independent_outputs": {
+      "path": "task-scratch/clef-m3-m4/q4k-weight-diagnostic/independent-decoded.f32",
+      "bytes": 5308416,
+      "sha256": "e5ec4fb9fe10a7a1091994ed30e0d882a21569af5a9959f1f10e8af236ec9e7f"
+    },
+    "backend_rlib": {
+      "path": "cargo-target/release/deps/libpsionic_backend_cpu-6e6127db2102f94b.rlib",
+      "bytes": 1612000,
+      "sha256": "a0aa3a1ee20e57f2779be51722a9d5814cfedb9f84644863b7493cbd14a43a96"
+    },
+    "core_rlib": {
+      "path": "cargo-target/release/deps/libpsionic_core-36a605d204a58811.rlib",
+      "bytes": 4851888,
+      "sha256": "de92cd3d0d24fc2d4bb1d380af2f67adc8507de2c5feea0a2565d137de8e9708"
+    },
+    "backend_fingerprint_json": {
+      "path": "cargo-target/release/.fingerprint/psionic-backend-cpu-6e6127db2102f94b/lib-psionic_backend_cpu.json",
+      "bytes": 635,
+      "sha256": "4a30eb18f63a3404d4eb5d0b86d5f1683cd6f1639560b1692514dd60d33aa014"
+    },
+    "core_fingerprint": {
+      "path": "cargo-target/release/.fingerprint/psionic-core-36a605d204a58811/lib-psionic_core",
+      "bytes": 16,
+      "sha256": "39a0fb25f34aa88422b8816bec5d3cb8a2ccb463fd012b7ef52abdb56207a803"
+    },
+    "backend_source": {
+      "path": "repo/crates/psionic/crates/psionic-backend-cpu/src/lib.rs",
+      "bytes": 123824,
+      "sha256": "736e4e4563480509d9105f39290c27679c7c47156d11324a8b83b0cdb03430fb"
+    },
+    "core_source": {
+      "path": "repo/crates/psionic/crates/psionic-core/src/lib.rs",
+      "bytes": 127129,
+      "sha256": "981533ecad3eacfc6a7dd368b04ca7359b79930819287f5a29a04cb73ae754e8"
+    }
+  },
+  "source_binding": "Current source hashes and Cargo fingerprint dependency selection are recorded; cached artifacts are reused without rebuilding crates.",
+  "binary": {
+    "path": "task-scratch/clef-m3-m4/q4k-weight-diagnostic/native-run-lto/native_decode",
+    "bytes": 525888,
+    "sha256": "3a7e1281865c42077b647b5c8e695bb0f16d2112fe061020f3a2737a3832e73f"
+  },
+  "result": {
+    "values": 1327104,
+    "bitwise_mismatches": 0,
+    "max_abs_delta": 0,
+    "finite": true
+  }
+}

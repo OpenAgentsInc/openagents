@@ -1,0 +1,42 @@
+{
+  "reproducers": [
+    {
+      "file": "reproducers/head_capture.py",
+      "original_sha256": "0d3a34560a7ec28a53dbf8d09137d8090d678bbc8b3451cdef912204276f0fdf",
+      "published_sha256": "bfb58793a6e4e740138876f7b5a254a3df0dd2b5aee4e1b013cceb831a656812",
+      "change": "Local root paths replaced by required environment variables; executable logic is unchanged."
+    },
+    {
+      "file": "reproducers/immutable_probe_finite.py",
+      "original_sha256": "5081db823928ccaf2a89c3fcc75ba7b36173cb7c4d2f1dd6d7a12e3d57973c07",
+      "published_sha256": "5081db823928ccaf2a89c3fcc75ba7b36173cb7c4d2f1dd6d7a12e3d57973c07",
+      "change": "Local root paths replaced by required environment variables; executable logic is unchanged."
+    },
+    {
+      "file": "reproducers/mps_head_parameter_views_probe.py",
+      "original_sha256": "4df7aa63b8ed7088be426d3d1b9f4c31b86bf6c2aafeb0b1ec75a3c0993e2a5f",
+      "published_sha256": "4df7aa63b8ed7088be426d3d1b9f4c31b86bf6c2aafeb0b1ec75a3c0993e2a5f",
+      "change": "Local root paths replaced by required environment variables; executable logic is unchanged."
+    },
+    {
+      "file": "reproducers/guard_parameter_views.py",
+      "original_sha256": "606ece30e41dca39abae0c546d99d7d2b18fa3733ffea64fee8933c1cd192882",
+      "published_sha256": "b3825d16557ea7e74e3d90fd3334d40907fdf11df2c4590ea62e6efc868e64b1",
+      "change": "Local root paths replaced by required environment variables; executable logic is unchanged."
+    }
+  ],
+  "primary_sources": [
+    "https://github.com/pytorch/pytorch/blob/v2.9.1/torch/nn/functional.py#L5711-L5733",
+    "https://github.com/pytorch/pytorch/blob/v2.9.1/aten/src/ATen/native/mps/operations/Linear.mm#L12-L62"
+  ],
+  "repository_dependencies_at_publication": [
+    {
+      "file": "crates/psionic/fixtures/clef/tools/mac_quiet_bench.py",
+      "sha256": "ce5f832d0eeb2ec5c954755c07d00fafcc2bb1c59d6aa6c1d993a2f84bcce9fb"
+    },
+    {
+      "file": "crates/psionic/fixtures/clef/tools/image_parity.py",
+      "sha256": "780b1ff00bf9c99dd3cf5be27a603657abdfce7dc803ed1c3073f72917ad989a"
+    }
+  ]
+}

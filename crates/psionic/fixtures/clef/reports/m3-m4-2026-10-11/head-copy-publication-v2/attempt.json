@@ -1,0 +1,43 @@
+{
+  "source_file": "head-inputs-014-034-parameter-views-head-probe-guard.json",
+  "source_sha256": "9a1377c1d9962819e9002f020b184635402b4cf636c433c2283d8602e699ed10",
+  "execution_status": "complete",
+  "correctness_passed": false,
+  "script_sha256": "4df7aa63b8ed7088be426d3d1b9f4c31b86bf6c2aafeb0b1ec75a3c0993e2a5f",
+  "guard_sha256": "606ece30e41dca39abae0c546d99d7d2b18fa3733ffea64fee8933c1cd192882",
+  "helper_sha256": "5081db823928ccaf2a89c3fcc75ba7b36173cb7c4d2f1dd6d7a12e3d57973c07",
+  "elapsed_seconds": 12.902328583,
+  "effective_environment": {
+    "RAYON_NUM_THREADS": "2",
+    "OMP_NUM_THREADS": "2",
+    "OPENBLAS_NUM_THREADS": "2",
+    "MKL_NUM_THREADS": "2",
+    "VECLIB_MAXIMUM_THREADS": "2",
+    "PYTORCH_ENABLE_MPS_FALLBACK": "0",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "PYTHONDONTWRITEBYTECODE": "1"
+  },
+  "conditions": "shared machine",
+  "process_cap_bytes": 4294967296,
+  "mps_allocator_cap_bytes": 2147483648,
+  "startup_available_gib": 16,
+  "minimum_available_gib": 12,
+  "deadline_seconds": 120,
+  "peak_accounted_bytes": 2398603328,
+  "lowest_available_memory_bytes": 97832878080,
+  "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+  "owned_group_stopped": true,
+  "memory_rejection": null,
+  "cleanup_error": null,
+  "load_average_before": [
+    28.35205078125,
+    30.70556640625,
+    30.3701171875
+  ],
+  "load_average_after": [
+    29.39892578125,
+    30.83154296875,
+    30.4208984375
+  ]
+}

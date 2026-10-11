@@ -11,7 +11,7 @@ pub enum ClefMetalGemm {
     /// Use the original 64-token by 64-output tile for every weight.
     #[default]
     Fixed64,
-    /// Experimental tiles for the six Clef-Flash trunk weight shapes.
+    /// Experimental tiles for Clef-Flash and Clef 27B trunk weight shapes.
     WeightShapes,
 }
 
@@ -77,8 +77,10 @@ impl ClefGemmPlan {
             (ClefMetalGemm::WeightShapes, 32, 4096) => 32,
             (ClefMetalGemm::WeightShapes, 4096 | 8192 | 12288, 4096)
             | (ClefMetalGemm::WeightShapes, 4096, 12288) => 128,
-            // The 1024-column key/value projections and unknown checkpoints
-            // keep the original tile until a measured comparison supports them.
+            (ClefMetalGemm::WeightShapes, 6144 | 10240 | 12288 | 17408, 5120)
+            | (ClefMetalGemm::WeightShapes, 5120, 6144 | 17408) => 128,
+            // Keep the 1024-output key/value and 48-output 27B decay/beta
+            // projections on 64 columns, as well as unknown checkpoint shapes.
             _ => 64,
         };
         let kernel = match (output_tile, accumulate) {
@@ -177,6 +179,16 @@ mod tests {
             (8192, 4096, 128),
             (12288, 4096, 128),
             (4096, 12288, 128),
+            // The eight distinct GEMM weight shapes in Clef 27B Q4_K_M.
+            // Depthwise convolution [10240, 4] does not use this planner.
+            (48, 5120, 64),
+            (1024, 5120, 64),
+            (5120, 6144, 128),
+            (6144, 5120, 128),
+            (10240, 5120, 128),
+            (12288, 5120, 128),
+            (17408, 5120, 128),
+            (5120, 17408, 128),
         ] {
             for n in [1, 33, 63, 64, 65, 1078, 1866, 2048] {
                 for accumulate in [false, true] {
@@ -213,6 +225,17 @@ mod tests {
             (33, 4096),
             (4096, 2048),
             (12289, 4096),
+            (47, 5120),
+            (49, 5120),
+            (6143, 5120),
+            (6145, 5120),
+            (5120, 6143),
+            (5120, 6145),
+            (17408, 5119),
+            (17408, 5121),
+            (17409, 5120),
+            (5120, 17409),
+            (5120, 5120),
         ] {
             for accumulate in [false, true] {
                 let tuned = plan(ClefMetalGemm::WeightShapes, 65, m, k, accumulate);
@@ -234,6 +257,31 @@ mod tests {
         assert_eq!(plan.weight_bytes, 32 * 4096 * 2);
         assert_eq!(plan.output_bytes, 65 * 32 * 4);
         assert_eq!(plan.groups, [1, 2]);
+    }
+
+    #[test]
+    fn clef_27b_offsets_and_token_tails_keep_exact_buffer_bounds() {
+        for (m, k, tile) in [(48, 5120, 64), (17408, 5120, 128), (5120, 17408, 128)] {
+            for n in [1, 63, 64, 65, 127, 128, 129] {
+                let plan = ClefGemmPlan::new(
+                    ClefMetalGemm::WeightShapes,
+                    n,
+                    m,
+                    k,
+                    3 * k + 7,
+                    5 * m + 11,
+                    true,
+                )
+                .unwrap();
+                assert_eq!(plan.nmk, [n as u32, m as u32, k as u32, 0]);
+                assert_eq!(plan.groups, [m.div_ceil(tile), n.div_ceil(64)]);
+                assert_eq!(plan.input_offset_bytes, (3 * k + 7) * 2);
+                assert_eq!(plan.output_offset_bytes, (5 * m + 11) * 4);
+                assert_eq!(plan.input_bytes, n * k * 2);
+                assert_eq!(plan.weight_bytes, m * k * 2);
+                assert_eq!(plan.output_bytes, n * m * 4);
+            }
+        }
     }
 
     #[test]

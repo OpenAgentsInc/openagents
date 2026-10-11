@@ -1,0 +1,32 @@
+{
+  "model_path": "scratch/clef-m3-m4/artifacts/Clef-Q4_K_M.gguf",
+  "measurement_mode": "shared",
+  "max_start_load": 150,
+  "max_run_load": 180,
+  "rounds": 1,
+  "runs": 5,
+  "request_timeout": 300,
+  "variants": [
+    {
+      "name": "27b-q4-fused-shapes",
+      "binary": "scratch/clef-m3-m4/stage4/psionic-openai-server",
+      "chunk": 2048,
+      "env": {
+        "RAYON_NUM_THREADS": "2",
+        "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0",
+        "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+        "PSIONIC_CLEF_METAL_GEMM": "weight-shapes",
+        "PSIONIC_CLEF_METAL_FFN_WEIGHTS": "q4k-on-demand"
+      }
+    }
+  ],
+  "requests": [
+    "scratch/mac-quiet-2026-10-10/requests/len4k.json"
+  ],
+  "output_dir": "scratch/clef-m3-m4/native27b-prefix-stage4",
+  "max_rss_gib": 52,
+  "minimum_available_memory_gib": 12,
+  "startup_timeout": 600,
+  "request_model": "clef",
+  "clef_head": "scratch/clef-m3-m4/artifacts/clef-bf16/joint_head.safetensors"
+}

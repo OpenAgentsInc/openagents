@@ -1,0 +1,661 @@
+{
+  "kind": "native_image_parity",
+  "reference_sha256": "3765b61deabe04fb6f51bbe1f903332a5669e4450b6cb88199d6b005b166eb76",
+  "cases_sha256": "26c30a6470074d8c4005b4de6188873bbd728f75ca1ba65371b0598e0364aa90",
+  "endpoint": "http://127.0.0.1:54221",
+  "cases": [
+    {
+      "id": "solid_red",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "color": {
+            "type": "choice",
+            "choice": "red",
+            "confidence": 0.9916389712192838,
+            "probabilities": {
+              "blue": 0.004068810533750246,
+              "green": 0.0042922182469659126,
+              "red": 0.9916389712192838
+            }
+          },
+          "red": {
+            "type": "noul",
+            "noul": 0.9889392839698838
+          },
+          "red_amount": {
+            "type": "score",
+            "score": 1.9772601986164977,
+            "confidence": 0.9852095949273596,
+            "legend": {
+              "0": "None or almost none",
+              "1": "About half",
+              "2": "All or almost all"
+            },
+            "probabilities": {
+              "0": 0.007949396310861783,
+              "1": 0.006841008761778581,
+              "2": 0.9852095949273596
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 388,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4_K_M.gguf",
+          "artifact_digest": "sha256:9997675e4c9e9016273372b5fdedbdda7ad14285bc722949e4b9daca62bf3822",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 388,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 4130,
+          "timing": {
+            "encode_ms": 6.0,
+            "queue_ms": 0.0,
+            "prefill_ms": 3966.2,
+            "head_ms": 158.5,
+            "total_ms": 4130.9,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "color": "red",
+        "red": "true",
+        "red_amount": "2"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "color": {
+          "type": "choice",
+          "native_top_answer": "red",
+          "reference_top_answer": "red",
+          "matches_reference": true,
+          "native_top_two_margin": 0.9873467529723179,
+          "reference_top_two_margin": 0.9876,
+          "maximum_probability_difference": 0.0002688105337502462
+        },
+        "red": {
+          "type": "noul",
+          "native_top_answer": "true",
+          "reference_top_answer": "true",
+          "matches_reference": true,
+          "native_top_two_margin": 0.9778785679397677,
+          "reference_top_two_margin": 0.9763999999999999,
+          "maximum_probability_difference": 0.0007392839698838749
+        },
+        "red_amount": {
+          "type": "score",
+          "native_top_answer": "2",
+          "reference_top_answer": "2",
+          "matches_reference": true,
+          "native_top_two_margin": 0.9772601986164978,
+          "reference_top_two_margin": 0.9773999999999999,
+          "maximum_probability_difference": 0.00015899123822141897
+        }
+      },
+      "maximum_probability_difference": 0.0007392839698838749,
+      "seconds": 4.133352625000001
+    },
+    {
+      "id": "solid_blue",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "color": {
+            "type": "choice",
+            "choice": "blue",
+            "confidence": 0.991205214556544,
+            "probabilities": {
+              "blue": 0.991205214556544,
+              "green": 0.004242211329543961,
+              "red": 0.004552574113912026
+            }
+          },
+          "red": {
+            "type": "noul",
+            "noul": 0.00893645125980943
+          },
+          "red_amount": {
+            "type": "score",
+            "score": 0.02319618304206786,
+            "confidence": 0.9849836590442216,
+            "legend": {
+              "0": "None or almost none",
+              "1": "About half",
+              "2": "All or almost all"
+            },
+            "probabilities": {
+              "0": 0.9849836590442216,
+              "1": 0.006836498869489403,
+              "2": 0.008179842086289227
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 388,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4_K_M.gguf",
+          "artifact_digest": "sha256:9997675e4c9e9016273372b5fdedbdda7ad14285bc722949e4b9daca62bf3822",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 388,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 4962,
+          "timing": {
+            "encode_ms": 8.7,
+            "queue_ms": 0.0,
+            "prefill_ms": 4804.0,
+            "head_ms": 150.1,
+            "total_ms": 4963.0,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "color": "blue",
+        "red": "false",
+        "red_amount": "0"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "color": {
+          "type": "choice",
+          "native_top_answer": "blue",
+          "reference_top_answer": "blue",
+          "matches_reference": true,
+          "native_top_two_margin": 0.9866526404426319,
+          "reference_top_two_margin": 0.9864999999999999,
+          "maximum_probability_difference": 0.00014742588608797434
+        },
+        "red": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.9821270974803811,
+          "reference_top_two_margin": 0.9832000000000001,
+          "maximum_probability_difference": 0.0005364512598094312
+        },
+        "red_amount": {
+          "type": "score",
+          "native_top_answer": "0",
+          "reference_top_answer": "0",
+          "matches_reference": true,
+          "native_top_two_margin": 0.9768038169579324,
+          "reference_top_two_margin": 0.9757,
+          "maximum_probability_difference": 0.0005836590442215295
+        }
+      },
+      "maximum_probability_difference": 0.0005836590442215295,
+      "seconds": 4.9686997920000096
+    },
+    {
+      "id": "red_left",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "left": {
+            "type": "choice",
+            "choice": "red",
+            "confidence": 0.990283956582902,
+            "probabilities": {
+              "blue": 0.004612513335554191,
+              "green": 0.00510353008154372,
+              "red": 0.990283956582902
+            }
+          },
+          "red_left": {
+            "type": "noul",
+            "noul": 0.990177427967105
+          }
+        },
+        "usage": {
+          "input_tokens": 334,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4_K_M.gguf",
+          "artifact_digest": "sha256:9997675e4c9e9016273372b5fdedbdda7ad14285bc722949e4b9daca62bf3822",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 334,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 5624,
+          "timing": {
+            "encode_ms": 15.5,
+            "queue_ms": 0.0,
+            "prefill_ms": 5554.5,
+            "head_ms": 54.0,
+            "total_ms": 5624.1,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "left": "red",
+        "red_left": "true"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "left": {
+          "type": "choice",
+          "native_top_answer": "red",
+          "reference_top_answer": "red",
+          "matches_reference": true,
+          "native_top_two_margin": 0.9851804265013583,
+          "reference_top_two_margin": 0.9849,
+          "maximum_probability_difference": 0.00018395658290204508
+        },
+        "red_left": {
+          "type": "noul",
+          "native_top_answer": "true",
+          "reference_top_answer": "true",
+          "matches_reference": true,
+          "native_top_two_margin": 0.9803548559342099,
+          "reference_top_two_margin": 0.9796,
+          "maximum_probability_difference": 0.0003774279671049374
+        }
+      },
+      "maximum_probability_difference": 0.0003774279671049374,
+      "seconds": 5.63379170799999
+    },
+    {
+      "id": "blue_left",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "left": {
+            "type": "choice",
+            "choice": "blue",
+            "confidence": 0.9815132289831313,
+            "probabilities": {
+              "blue": 0.9815132289831313,
+              "green": 0.008890238482879256,
+              "red": 0.009596532533989273
+            }
+          },
+          "red_left": {
+            "type": "noul",
+            "noul": 0.009826320051330486
+          }
+        },
+        "usage": {
+          "input_tokens": 334,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4_K_M.gguf",
+          "artifact_digest": "sha256:9997675e4c9e9016273372b5fdedbdda7ad14285bc722949e4b9daca62bf3822",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 334,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 5525,
+          "timing": {
+            "encode_ms": 13.7,
+            "queue_ms": 0.0,
+            "prefill_ms": 5400.2,
+            "head_ms": 111.8,
+            "total_ms": 5525.9,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "left": "blue",
+        "red_left": "false"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "left": {
+          "type": "choice",
+          "native_top_answer": "blue",
+          "reference_top_answer": "blue",
+          "matches_reference": true,
+          "native_top_two_margin": 0.971916696449142,
+          "reference_top_two_margin": 0.9723,
+          "maximum_probability_difference": 0.0001965325339892722
+        },
+        "red_left": {
+          "type": "noul",
+          "native_top_answer": "false",
+          "reference_top_answer": "false",
+          "matches_reference": true,
+          "native_top_two_margin": 0.9803473598973391,
+          "reference_top_two_margin": 0.9810000000000001,
+          "maximum_probability_difference": 0.00032632005133048647
+        }
+      },
+      "maximum_probability_difference": 0.00032632005133048647,
+      "seconds": 5.527182084000003
+    },
+    {
+      "id": "red_then_blue",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "first": {
+            "type": "choice",
+            "choice": "red",
+            "confidence": 0.9921111763564152,
+            "probabilities": {
+              "blue": 0.004782684639012776,
+              "green": 0.003106139004572104,
+              "red": 0.9921111763564152
+            }
+          },
+          "second": {
+            "type": "choice",
+            "choice": "blue",
+            "confidence": 0.9731859468247664,
+            "probabilities": {
+              "blue": 0.9731859468247664,
+              "green": 0.008194097264505913,
+              "red": 0.018619955910727418
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 367,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4_K_M.gguf",
+          "artifact_digest": "sha256:9997675e4c9e9016273372b5fdedbdda7ad14285bc722949e4b9daca62bf3822",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 367,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 6960,
+          "timing": {
+            "encode_ms": 16.8,
+            "queue_ms": 0.0,
+            "prefill_ms": 6878.6,
+            "head_ms": 65.1,
+            "total_ms": 6960.7,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "first": "red",
+        "second": "blue"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "first": {
+          "type": "choice",
+          "native_top_answer": "red",
+          "reference_top_answer": "red",
+          "matches_reference": true,
+          "native_top_two_margin": 0.9873284917174024,
+          "reference_top_two_margin": 0.9886,
+          "maximum_probability_difference": 0.0007888236435847906
+        },
+        "second": {
+          "type": "choice",
+          "native_top_answer": "blue",
+          "reference_top_answer": "blue",
+          "matches_reference": true,
+          "native_top_two_margin": 0.954565990914039,
+          "reference_top_two_margin": 0.9512,
+          "maximum_probability_difference": 0.0017859468247664045
+        }
+      },
+      "maximum_probability_difference": 0.0017859468247664045,
+      "seconds": 6.968932332999998
+    },
+    {
+      "id": "blue_then_red",
+      "response": {
+        "model": "clef",
+        "answers": {
+          "first": {
+            "type": "choice",
+            "choice": "blue",
+            "confidence": 0.992248761842906,
+            "probabilities": {
+              "blue": 0.992248761842906,
+              "green": 0.003149614897896956,
+              "red": 0.004601623259197051
+            }
+          },
+          "second": {
+            "type": "choice",
+            "choice": "red",
+            "confidence": 0.9772963407581504,
+            "probabilities": {
+              "blue": 0.014884099870143119,
+              "green": 0.007819559371706331,
+              "red": 0.9772963407581504
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 367,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4_K_M.gguf",
+          "artifact_digest": "sha256:9997675e4c9e9016273372b5fdedbdda7ad14285bc722949e4b9daca62bf3822",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "metal",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 367,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 16384,
+          "latency_ms": 7528,
+          "timing": {
+            "encode_ms": 15.3,
+            "queue_ms": 0.0,
+            "prefill_ms": 7401.9,
+            "head_ms": 111.0,
+            "total_ms": 7528.3,
+            "cached": false
+          }
+        }
+      },
+      "top_answers": {
+        "first": "blue",
+        "second": "red"
+      },
+      "matches_reference": true,
+      "matches_expected": true,
+      "tokens_match": true,
+      "question_comparisons": {
+        "first": {
+          "type": "choice",
+          "native_top_answer": "blue",
+          "reference_top_answer": "blue",
+          "matches_reference": true,
+          "native_top_two_margin": 0.987647138583709,
+          "reference_top_two_margin": 0.988,
+          "maximum_probability_difference": 0.00035123815709403594
+        },
+        "second": {
+          "type": "choice",
+          "native_top_answer": "red",
+          "reference_top_answer": "red",
+          "matches_reference": true,
+          "native_top_two_margin": 0.9624122408880073,
+          "reference_top_two_margin": 0.9632999999999999,
+          "maximum_probability_difference": 0.0007036592418495635
+        }
+      },
+      "maximum_probability_difference": 0.0007036592418495635,
+      "seconds": 7.5301311670000075
+    }
+  ],
+  "suite": "images",
+  "acceptance": "all top answers, identical token counts, and HTTP refusals",
+  "http_refusals": [
+    {
+      "id": "images_not_array",
+      "http_status": 400,
+      "response": {
+        "error": {
+          "code": "invalid_request",
+          "message": "images must be an array of base64 PNG, JPEG, or WebP strings"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "image_not_string",
+      "http_status": 400,
+      "response": {
+        "error": {
+          "code": "invalid_request",
+          "message": "each image must be a base64 string"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "invalid_base64",
+      "http_status": 400,
+      "response": {
+        "error": {
+          "code": "invalid_request",
+          "message": "image is not valid base64"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "invalid_image",
+      "http_status": 400,
+      "response": {
+        "error": {
+          "code": "invalid_request",
+          "message": "image is not a readable PNG, JPEG, or WebP file"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "remote_url",
+      "http_status": 400,
+      "response": {
+        "error": {
+          "code": "invalid_request",
+          "message": "image is not valid base64"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "wrong_mime",
+      "http_status": 400,
+      "response": {
+        "error": {
+          "code": "invalid_request",
+          "message": "image data URL type does not match its contents"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "unsupported_gif",
+      "http_status": 400,
+      "response": {
+        "error": {
+          "code": "not_admitted",
+          "message": "this Clef server accepts PNG, JPEG, and WebP images"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "too_many_images",
+      "http_status": 400,
+      "response": {
+        "error": {
+          "code": "not_admitted",
+          "message": "this Clef server accepts at most 4 images per request"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "video",
+      "http_status": 400,
+      "response": {
+        "error": {
+          "code": "not_admitted",
+          "message": "videos are not supported by this Clef server; send text or images"
+        }
+      },
+      "passed": true
+    },
+    {
+      "id": "processor_override",
+      "http_status": 400,
+      "response": {
+        "error": {
+          "code": "not_admitted",
+          "message": "custom image processing options are not supported; omit media_kwargs"
+        }
+      },
+      "passed": true
+    }
+  ],
+  "top_answers_and_tokens_match": true,
+  "maximum_probability_difference": 0.0017859468247664045,
+  "passed": true
+}

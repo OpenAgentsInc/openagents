@@ -17032,14 +17032,12 @@ fn axpy(destination: &mut [f32], source: &[f32], alpha: f32) {
 }
 
 fn l2_normalize_into(values: &[f32], epsilon: f32, output: &mut [f32]) {
-    let norm = values
-        .iter()
-        .map(|value| value * value)
-        .sum::<f32>()
-        .sqrt()
-        .max(epsilon);
+    // Qwen3.5's DeltaNet reference adds epsilon to the squared norm. Clamping
+    // the norm instead changes low-magnitude queries and keys.
+    let norm = values.iter().map(|value| value * value).sum::<f32>();
+    let inv_norm = (norm + epsilon).sqrt().recip();
     for (out, value) in output.iter_mut().zip(values.iter().copied()) {
-        *out = value / norm;
+        *out = value * inv_norm;
     }
 }
 
@@ -17312,6 +17310,41 @@ mod tests {
     };
     use psionic_backend_cuda::CudaDeviceMemoryInfo;
     use psionic_core::QuantizationMode;
+
+    #[test]
+    fn qwen35_delta_l2_norm_matches_additive_epsilon_reference() {
+        for width in [1, 3, 128] {
+            for scale in [0.0, 1.0 / 65536.0, 1.0 / 1024.0, 0.5, 8.0] {
+                let values = (0..width)
+                    .map(|i| ((i % 7) as f32 - 3.0) * scale)
+                    .collect::<Vec<_>>();
+                let mut actual = vec![f32::NAN; width];
+                super::l2_normalize_into(&values, 1e-6, &mut actual);
+                // Independent f64 oracle for the executed Transformers/FLA
+                // convention: x / sqrt(sum(x*x) + 1e-6).
+                let denominator =
+                    (values.iter().map(|&x| f64::from(x).powi(2)).sum::<f64>() + 1e-6).sqrt();
+                for (index, (&value, &actual)) in values.iter().zip(&actual).enumerate() {
+                    let expected = f64::from(value) / denominator;
+                    assert!(
+                        actual.is_finite()
+                            && (f64::from(actual) - expected).abs() <= 2e-7 * expected.abs() + 1e-8,
+                        "width={width}, scale={scale}, index={index}: {actual} vs {expected}"
+                    );
+                }
+                if scale == 0.0 {
+                    assert!(actual.iter().all(|&x| x == 0.0));
+                }
+                if scale == 1.0 / 65536.0 {
+                    let squared_norm = actual.iter().map(|x| x * x).sum::<f32>();
+                    assert!(
+                        squared_norm < 0.2,
+                        "low-norm input must stay below unit norm"
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn qwen38_cuda_preflight_refuses_total_or_current_free_memory_shortfall() {

@@ -1,0 +1,112 @@
+{
+  "kind": "official_bf16_head_only_mps_probe",
+  "torch": "2.9.1",
+  "trunk_loaded": false,
+  "head_sha256": "a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+  "parameter_bytes": 256112648,
+  "max_mps_allocator_bytes": 2147483648,
+  "capture_status": "failed",
+  "diagnostic_only": true,
+  "cases": [
+    {
+      "id": "text-014",
+      "repeat": 0,
+      "input_unchanged": {
+        "attention_mask": true,
+        "remapped_input_ids": true,
+        "hidden": true,
+        "lexical": true
+      },
+      "sentinel_unchanged": true,
+      "logits": [
+        [
+          -0.24609375,
+          -0.99609375,
+          0.90234375,
+          0.484375,
+          -0.96875
+        ]
+      ],
+      "max_abs_logit_vs_full_bf16": 0.0
+    },
+    {
+      "id": "text-014",
+      "repeat": 1,
+      "input_unchanged": {
+        "attention_mask": true,
+        "remapped_input_ids": true,
+        "hidden": true,
+        "lexical": true
+      },
+      "sentinel_unchanged": true,
+      "logits": [
+        [
+          -0.24609375,
+          -0.99609375,
+          0.90234375,
+          0.484375,
+          -0.96875
+        ]
+      ],
+      "max_abs_logit_vs_full_bf16": 0.0
+    },
+    {
+      "id": "text-034",
+      "repeat": 0,
+      "input_unchanged": {
+        "attention_mask": true,
+        "remapped_input_ids": false,
+        "hidden": true,
+        "lexical": true
+      },
+      "sentinel_unchanged": true,
+      "logits": [
+        [
+          0.1484375,
+          -0.60546875
+        ],
+        [
+          -0.1875,
+          -0.9140625
+        ],
+        [
+          -1.25,
+          0.384765625
+        ]
+      ],
+      "max_abs_logit_vs_full_bf16": 0.0
+    },
+    {
+      "id": "text-034",
+      "repeat": 1,
+      "input_unchanged": {
+        "attention_mask": true,
+        "remapped_input_ids": true,
+        "hidden": true,
+        "lexical": true
+      },
+      "sentinel_unchanged": true,
+      "logits": [
+        [
+          -0.67578125,
+          -0.60546875
+        ],
+        [
+          -0.1875,
+          -0.9140625
+        ],
+        [
+          -1.25,
+          0.384765625
+        ]
+      ],
+      "max_abs_logit_vs_full_bf16": 0.82421875
+    }
+  ],
+  "completed": true,
+  "elapsed_seconds": 0.3400228749997041,
+  "source_file": "head-inputs-014-034-cpu-cast-2g-head-probe.json",
+  "source_sha256": "dddcc4af65af3726c2e9ef671479a9bbfa9b15a9010213659a7b724818652a97",
+  "correctness_passed": false,
+  "limitation": "The file was loaded once per case. Each repeat uploaded fresh GPU tensors from the same in-memory CPU tensors; CPU backing bytes were not rechecked between repeats. The changed second logit does not establish nondeterminism on identical inputs."
+}

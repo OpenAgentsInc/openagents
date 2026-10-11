@@ -1,0 +1,12 @@
+{
+  "max_abs_logit_delta": 0.0,
+  "compared_questions": 21,
+  "median_seconds": {
+    "disabled": 2.7616324579999976,
+    "reuse": 0.404329374999989
+  },
+  "speedup": 6.830155385074539,
+  "logit_gate": true,
+  "speed_gate": true,
+  "conditions": "shared machine; no idle-machine claim"
+}

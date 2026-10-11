@@ -1,0 +1,49 @@
+{
+  "name": "native27b-head-014",
+  "command": [
+    "task-scratch/clef-m3-m4/stage5/psionic-serve-tests",
+    "clef::tests::dump_head_parity_inputs",
+    "--test-threads=1",
+    "--nocapture",
+    "--exact"
+  ],
+  "binary_sha256": "104cf4c8ceba38c3864f61eeb126c1cf31610f5ad34d12635a97e400f42f436e",
+  "environment": {
+    "PSIONIC_CLEF_DUMP_RECORD": "14",
+    "PSIONIC_CLEF_DUMP_DIR": "task-scratch/clef-m3-m4/stage5/native27b-head-014/inputs"
+  },
+  "conditions": "shared machine; correctness only",
+  "preflight": {
+    "available_memory_bytes": 97741537280,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 4004223,
+      "inactive": 1621064,
+      "speculative": 340383
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "exit": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 18887,
+    "max_rss_bytes": 55834574848,
+    "peak_rss_bytes": 44219236352,
+    "peak_physical_footprint_bytes": 26974290200,
+    "peak_accounted_bytes": 44219236352,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 148,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 71154958336,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 80.599085208
+}

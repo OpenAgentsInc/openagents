@@ -1,0 +1,117 @@
+{
+  "reproducers": [
+    {
+      "file": "reproducers/head_capture.py",
+      "original_sha256": "0d3a34560a7ec28a53dbf8d09137d8090d678bbc8b3451cdef912204276f0fdf",
+      "published_sha256": "bfb58793a6e4e740138876f7b5a254a3df0dd2b5aee4e1b013cceb831a656812",
+      "change": "Replaced local root paths with required environment variables; executable logic is unchanged."
+    },
+    {
+      "file": "reproducers/guard_head.py",
+      "original_sha256": "fa74acce6b11a92289fc5f77f39e56cd27d16864ec85b1516b8d720da2b580a9",
+      "published_sha256": "aa2070d193bb37d2fb66ee1a5a647ca4009cf8f3d31661c5fe9e189a0a97c960",
+      "change": "Replaced local root paths with required environment variables; executable logic is unchanged."
+    },
+    {
+      "file": "reproducers/mps_copy_probe.py",
+      "original_sha256": "cff734c375a5ad97ce5f4f65a0be1b50a08fda4059e9d37f279900724a3d3c60",
+      "published_sha256": "cff734c375a5ad97ce5f4f65a0be1b50a08fda4059e9d37f279900724a3d3c60",
+      "change": "Replaced local root paths with required environment variables; executable logic is unchanged."
+    },
+    {
+      "file": "reproducers/mps_head_probe.py",
+      "original_sha256": "5279dce1f91c0b0f85de701145163b423c107368830b9d5a0f7f7d4c444ad8cf",
+      "published_sha256": "5279dce1f91c0b0f85de701145163b423c107368830b9d5a0f7f7d4c444ad8cf",
+      "change": "Replaced local root paths with required environment variables; executable logic is unchanged."
+    },
+    {
+      "file": "reproducers/guard_head_cpu_cast.py",
+      "original_sha256": "e932adbd82b969166634aaf41341a497932dbd393c6724c5cd463da315d55b97",
+      "published_sha256": "c4fcb1780c16fe2bc22b338604cea29dbcc1336e1f37c2afc4967f6f8f1f46d4",
+      "change": "Replaced local root paths with required environment variables; executable logic is unchanged."
+    },
+    {
+      "file": "reproducers/mps_head_probe_cpu_cast.py",
+      "original_sha256": "3cb0a235f22b9cd2200b25431b66deb46b67eb0874ecb8fc02973e5912f07d29",
+      "published_sha256": "3cb0a235f22b9cd2200b25431b66deb46b67eb0874ecb8fc02973e5912f07d29",
+      "change": "Replaced local root paths with required environment variables; executable logic is unchanged."
+    },
+    {
+      "file": "reproducers/guard_head_2g.py",
+      "original_sha256": "728fe1e8ae9923807170fe8653eb12f1a9875996aaeae58fd7488bc5c8a82be2",
+      "published_sha256": "3fc55475e9a1f95d56f53f684376a0f76be3d8e45482e78a4625c54602185cc2",
+      "change": "Replaced local root paths with required environment variables; executable logic is unchanged."
+    },
+    {
+      "file": "reproducers/mps_head_probe_2g.py",
+      "original_sha256": "3996dfc91b684ac8954c00b61d83a22584a11e530a3f1d2352f08fcf3460b34f",
+      "published_sha256": "3996dfc91b684ac8954c00b61d83a22584a11e530a3f1d2352f08fcf3460b34f",
+      "change": "Replaced local root paths with required environment variables; executable logic is unchanged."
+    },
+    {
+      "file": "reproducers/immutable_probe.py",
+      "original_sha256": "cecf6f6b6ad97ba7e74435bb0f3570f8f11fa724303d748f9e314ce7de9b70ea",
+      "published_sha256": "cecf6f6b6ad97ba7e74435bb0f3570f8f11fa724303d748f9e314ce7de9b70ea",
+      "change": "Replaced local root paths with required environment variables; executable logic is unchanged."
+    },
+    {
+      "file": "reproducers/mps_gather_probe.py",
+      "original_sha256": "4925b84e2947f6eac83b90a768640a71bc03fe68b948491855be1038f67e22e6",
+      "published_sha256": "4925b84e2947f6eac83b90a768640a71bc03fe68b948491855be1038f67e22e6",
+      "change": "Replaced local root paths with required environment variables; executable logic is unchanged."
+    },
+    {
+      "file": "reproducers/mps_head_immutable_probe.py",
+      "original_sha256": "8dd863916f54722ed307478fa57c5741ad8fc59358f900926f5238ddeb942025",
+      "published_sha256": "8dd863916f54722ed307478fa57c5741ad8fc59358f900926f5238ddeb942025",
+      "change": "Replaced local root paths with required environment variables; executable logic is unchanged."
+    },
+    {
+      "file": "reproducers/guard_immutable.py",
+      "original_sha256": "6754d0c8d615df29d65bc79775161841f7cce0a349fde3b117bd7b38faf833aa",
+      "published_sha256": "749766f7fe6b76435c3ccbac97070d5716cb9ccb534ddfe138288c8e7c603e96",
+      "change": "Replaced local root paths with required environment variables; executable logic is unchanged."
+    }
+  ],
+  "primary_sources": [
+    {
+      "url": "https://github.com/pytorch/pytorch/pull/189572",
+      "scope": "MPS dtype-converting CPU copies can overwrite source storage; reproduced here in direct copy tests."
+    },
+    {
+      "url": "https://github.com/pytorch/pytorch/issues/194344",
+      "scope": "MPS nonzero-offset fused copy/cast wrong output; reproduced here."
+    },
+    {
+      "url": "https://github.com/pytorch/pytorch/blob/v2.9.1/aten/src/ATen/mps/MPSAllocator.h#L130-L146",
+      "scope": "The unified-memory allocator can reserve a 1 GiB heap for a 10 MiB parameter."
+    },
+    {
+      "url": "https://github.com/pytorch/pytorch/blob/v2.9.1/aten/src/ATen/native/mps/operations/Indexing.mm#L127-L176",
+      "scope": "Advanced indexing requires int64 and binds the index resource as read-only; no int32 cast is visible in this path."
+    },
+    {
+      "url": "https://github.com/pytorch/pytorch/blob/v2.9.1/aten/src/ATen/native/mps/kernels/Indexing.metal#L7-L67",
+      "scope": "The gather shader reads constant int64 indices."
+    },
+    {
+      "url": "https://github.com/pytorch/pytorch/blob/v2.9.1/torch/nn/functional.py#L5711-L5733",
+      "scope": "Packed attention projection weights create nonzero-offset K/V slices. This is a next diagnostic candidate, not a proven cause."
+    },
+    {
+      "url": "https://github.com/pytorch/pytorch/blob/v2.9.1/aten/src/ATen/native/mps/operations/Linear.mm#L12-L62",
+      "scope": "The MPS no-graph linear path supplies the parameter storage offset explicitly."
+    }
+  ],
+  "repository_dependencies_at_publication": [
+    {
+      "file": "crates/psionic/fixtures/clef/tools/mac_quiet_bench.py",
+      "sha256": "ce5f832d0eeb2ec5c954755c07d00fafcc2bb1c59d6aa6c1d993a2f84bcce9fb"
+    },
+    {
+      "file": "crates/psionic/fixtures/clef/tools/image_parity.py",
+      "sha256": "780b1ff00bf9c99dd3cf5be27a603657abdfce7dc803ed1c3073f72917ad989a"
+    }
+  ],
+  "dependency_hash_limitation": "These dependency hashes were recorded at publication, not at each probe start; each guard receipt records the exact executed probe, guard, and available helper hashes."
+}

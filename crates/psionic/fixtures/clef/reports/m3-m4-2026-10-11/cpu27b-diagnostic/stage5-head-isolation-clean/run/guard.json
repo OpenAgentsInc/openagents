@@ -1,0 +1,87 @@
+{
+  "kind": "owned_cpu_head_isolation",
+  "status": "complete",
+  "command": [
+    "openagents-scratch/codex-01a128ee-daef-7590-baae-4e932a581a2c/clef-image-reference/bin/python",
+    "task-scratch/clef-m3-m4/cpu27b-diagnostic/stage5-head-isolation-clean/head_isolation.py",
+    "--checkpoint",
+    "task-scratch/clef-m3-m4/artifacts/clef-bf16",
+    "--reference-dir",
+    "task-scratch/clef-m3-m4/reference27b/cpu-head-stage1/results",
+    "--native-014",
+    "task-scratch/clef-m3-m4/stage5/native27b-head-014/inputs",
+    "--native-034",
+    "task-scratch/clef-m3-m4/stage5/native27b-head-034/inputs",
+    "--output-dir",
+    "task-scratch/clef-m3-m4/cpu27b-diagnostic/stage5-head-isolation-clean/run/results"
+  ],
+  "script_sha256": "7092423b03c82dc78ad7cea25d3025a0fb705d1743511522fb41dbdcc1241b8e",
+  "guard_sha256": "dad29352b006a1ffd1cd6e2b34616885d3944571978b9b98d0183c5fd0649ab3",
+  "memory_helper_sha256": "ce5f832d0eeb2ec5c954755c07d00fafcc2bb1c59d6aa6c1d993a2f84bcce9fb",
+  "effective_environment": {
+    "RAYON_NUM_THREADS": "2",
+    "OMP_NUM_THREADS": "2",
+    "OPENBLAS_NUM_THREADS": "2",
+    "MKL_NUM_THREADS": "2",
+    "VECLIB_MAXIMUM_THREADS": "2",
+    "CLEF_HEAD_ISOLATION_GUARDED": "1",
+    "PYTORCH_ENABLE_MPS_FALLBACK": "0",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "CUDA_VISIBLE_DEVICES": ""
+  },
+  "max_owned_group_gib": 4,
+  "minimum_start_available_gib": 16,
+  "minimum_available_gib": 12,
+  "deadline_seconds": 300,
+  "conditions": "shared machine; CPU diagnostic only",
+  "lease_resources": [
+    "memory"
+  ],
+  "load_average_before": [
+    17.9189453125,
+    21.8369140625,
+    25.95068359375
+  ],
+  "before": {
+    "available_memory_bytes": 101734121472,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 3552861,
+      "inactive": 2336220,
+      "speculative": 320277
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "owned_pid": 27710,
+  "child_exit_code": 0,
+  "result_sha256": "26aa98b894551a68fef545a84ef91e6967cb481f8c19da2ccfb69998a33ec7ef",
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 27710,
+    "max_rss_bytes": 4294967296,
+    "peak_rss_bytes": 966148096,
+    "peak_physical_footprint_bytes": 910705936,
+    "peak_accounted_bytes": 966148096,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 4,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 102089539584,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "elapsed_seconds": 2.073975625,
+  "load_average_after": [
+    17.28466796875,
+    21.64013671875,
+    25.85693359375
+  ]
+}

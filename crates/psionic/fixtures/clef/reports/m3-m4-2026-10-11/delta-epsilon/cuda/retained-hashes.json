@@ -1,0 +1,20 @@
+{
+  "original_files": {
+    "build.json": "bb8e59b57559d73d803054104f4a2c75b191654f85ad7867f651eceb546b6990",
+    "run.json": "5cc7b349f02b5715c97f1d613dbd0acf0c2b92ba6bb8b57dcba1d57ce67b98e2",
+    "build.stdout.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "build.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "run.stdout.log": "ee75302445f17a99c64bee355162cc18ad0d951bfaac69b05efc05bf75749572",
+    "run.stderr.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "build-lease.json": "61d3ca0a13bb4da0fc6ac256c1f8dd7b5845bd51d0f79b3d77c3c119f0642a2c",
+    "build-memory-lease.json": "5ea1b60dfe7b0fbb229c4aad723c5ffc49b2e82262a4b7f1bf637c484fbbbcf6",
+    "run-memory-lease.json": "d0b32fb2f415e0c2c830eaf70314cab486c82df2815a4e093a07b01ed2750a50",
+    "run-gpu-lease.json": "fb40a7d0009265c0163cf8cc4d55b29673f7fb439cc12e81729d95b536e5b0e7",
+    "hashes.txt": "30a9830731b03e51d6c20c31a83bff6eb323f1a0bea7ee4af438de677ca4c921"
+  },
+  "published_files": {
+    "summary.json": "d06b81a8b396441fcc3559d1aa57c6666b61d0063b71ddd41fa9f9d0e09cfd9e",
+    "oracle.cu": "3858b3ff9e3507656ddf0ed125600c1b3bfa0d395a30cfc101937bc1d4b23f8d",
+    "guard.py": "0cec750f6c7f35120a679ce9175b8487a1e6b2bbc441ccf59a9a5858605ae12e"
+  }
+}

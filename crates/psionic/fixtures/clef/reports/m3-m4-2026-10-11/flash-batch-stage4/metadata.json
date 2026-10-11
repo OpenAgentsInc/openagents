@@ -1,0 +1,57 @@
+{
+  "schema": "clef.metal-batch-check.v1",
+  "created_at": "2026-10-11T09:26:20.705461+00:00",
+  "config": {
+    "model_path": "scratch/mac-quiet-2026-10-10/Clef-Flash-Q4_K_M.gguf",
+    "measurement_mode": "shared",
+    "max_start_load": 150,
+    "max_run_load": 180,
+    "rounds": 2,
+    "runs": 5,
+    "request_timeout": 300,
+    "variants": [
+      {
+        "name": "default",
+        "binary": "scratch/clef-m3-m4/stage4/psionic-openai-server",
+        "chunk": 2048,
+        "env": {
+          "RAYON_NUM_THREADS": "2",
+          "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0"
+        },
+        "engine": "psionic",
+        "model": "clef-flash"
+      }
+    ],
+    "requests": [
+      "scratch/mac-quiet-2026-10-10/requests/len1k.json"
+    ],
+    "output_dir": "scratch/clef-m3-m4/flash-batch-stage4",
+    "batch_check": {
+      "chunk": 256
+    },
+    "max_rss_gib": 36,
+    "minimum_available_memory_gib": 12,
+    "startup_timeout": 180,
+    "settle_seconds": 600,
+    "max_wait_seconds": 1800,
+    "max_start_gpu_percent": 10
+  },
+  "settings": {
+    "chunk": 256,
+    "cases": 4,
+    "repetitions": 128,
+    "saturation_repetitions": 256,
+    "cancellation_repetitions": 1024,
+    "saturation_requests": 12,
+    "probability_tolerance": 0.001,
+    "recovery_timeout": 30,
+    "cancel_after_seconds": 0.1
+  },
+  "binary_sha256": "bb097ec7fb4c18134377b3877b0d66d2c6fc68812436c3bf10ecd9240b08a0d2",
+  "model_sha256": "fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c",
+  "measurement_mode": "shared",
+  "lease_id": "1791710780611-29403-0",
+  "quiet_lease": null,
+  "probability_precision": "full JSON values; no rounding before comparison",
+  "conditions": "shared machine; no idle-machine claim"
+}

@@ -1,0 +1,16 @@
+{
+  "repo": "Cloudflare/clef-flash",
+  "revision": "8b2e5fd17c09fd49bc2880b805d5323ec7ff4ff3",
+  "files": {
+    "config.json": {
+      "url": "https://huggingface.co/Cloudflare/clef-flash/resolve/8b2e5fd17c09fd49bc2880b805d5323ec7ff4ff3/config.json",
+      "sha256": "66f87f6fb2616b46604daf2a9c67ddc87938296d07156efa34d59b5be49e3238",
+      "bytes": 2832
+    },
+    "joint_schema_model.py": {
+      "url": "https://huggingface.co/Cloudflare/clef-flash/resolve/8b2e5fd17c09fd49bc2880b805d5323ec7ff4ff3/joint_schema_model.py",
+      "sha256": "0e304cf7c6500e8bb59bef7e2afd2c6373f82596dfb3b57d1aa93c175e2dc3a3",
+      "bytes": 23263
+    }
+  }
+}

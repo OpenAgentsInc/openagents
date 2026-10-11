@@ -1,0 +1,12 @@
+{
+ "schema_version": 1,
+ "bucket": "gs://openagents-bench-artifacts",
+ "object": "sha256/<sha256>",
+ "restore": "scripts/bench-artifacts.py restore crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/reference27b/cpu-head-stage1/results",
+ "files": {
+  "reference.json": {
+   "bytes": 1433704,
+   "sha256": "00b81001171a40b4ce833d94790d9782880c783df28ab360d6bcfbde38e879f9"
+  }
+ }
+}

@@ -1,0 +1,100 @@
+[
+  {
+    "name": "weighted-direct-delta",
+    "command": [
+      "task-scratch/clef-m3-m4/stage5/psionic-serve-tests",
+      "clef::tests::metal_block_delta_matches_sequential_weighted_logits",
+      "--test-threads=1",
+      "--nocapture",
+      "--ignored",
+      "--exact"
+    ],
+    "binary_sha256": "104cf4c8ceba38c3864f61eeb126c1cf31610f5ad34d12635a97e400f42f436e",
+    "environment": {},
+    "conditions": "shared machine; correctness only",
+    "preflight": {
+      "available_memory_bytes": 102275874816,
+      "page_size_bytes": 16384,
+      "pages": {
+        "free": 3597322,
+        "inactive": 2328802,
+        "speculative": 316300
+      },
+      "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+    },
+    "exit": 0,
+    "memory": {
+      "rss_log": "memory.jsonl",
+      "process_group": 27716,
+      "max_rss_bytes": 38654705664,
+      "peak_rss_bytes": 20800618496,
+      "peak_physical_footprint_bytes": 15940337600,
+      "peak_accounted_bytes": 20800618496,
+      "sampling_error": null,
+      "sampler_timeout_seconds": 5,
+      "rss_samples": 52,
+      "sample_interval_seconds": 0.5,
+      "minimum_available_memory_bytes": 12884901888,
+      "lowest_available_memory_bytes": 87065346048,
+      "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+      "memory_rejection": null,
+      "cleanup_error": null,
+      "cleanup_diagnostics": null,
+      "cleanup_observations": [],
+      "owned_group_stopped": true,
+      "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+    },
+    "seconds": 28.064230459
+  },
+  {
+    "name": "weighted-direct-combined-delta",
+    "command": [
+      "task-scratch/clef-m3-m4/stage5/psionic-serve-tests",
+      "clef::tests::metal_block_delta_matches_sequential_weighted_logits",
+      "--test-threads=1",
+      "--nocapture",
+      "--ignored",
+      "--exact"
+    ],
+    "binary_sha256": "104cf4c8ceba38c3864f61eeb126c1cf31610f5ad34d12635a97e400f42f436e",
+    "environment": {
+      "PSIONIC_CLEF_METAL_ATTENTION": "fused-tensorops",
+      "PSIONIC_CLEF_METAL_GEMM": "weight-shapes",
+      "PSIONIC_CLEF_METAL_FFN_WEIGHTS": "q4k-on-demand"
+    },
+    "conditions": "shared machine; correctness only",
+    "preflight": {
+      "available_memory_bytes": 110809808896,
+      "page_size_bytes": 16384,
+      "pages": {
+        "free": 4814400,
+        "inactive": 1812312,
+        "speculative": 136582
+      },
+      "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+    },
+    "exit": 101,
+    "memory": {
+      "rss_log": "memory.jsonl",
+      "process_group": 30148,
+      "max_rss_bytes": 38654705664,
+      "peak_rss_bytes": 13950222336,
+      "peak_physical_footprint_bytes": 9087184080,
+      "peak_accounted_bytes": 13950222336,
+      "sampling_error": null,
+      "sampler_timeout_seconds": 5,
+      "rss_samples": 45,
+      "sample_interval_seconds": 0.5,
+      "minimum_available_memory_bytes": 12884901888,
+      "lowest_available_memory_bytes": 101004181504,
+      "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+      "memory_rejection": null,
+      "cleanup_error": null,
+      "cleanup_diagnostics": null,
+      "cleanup_observations": [],
+      "owned_group_stopped": true,
+      "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+    },
+    "seconds": 23.962432333999995
+  }
+]

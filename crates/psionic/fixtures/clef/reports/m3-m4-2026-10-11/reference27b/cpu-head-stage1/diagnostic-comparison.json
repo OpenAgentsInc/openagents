@@ -1,0 +1,1913 @@
+{
+  "diagnostic_only": true,
+  "reference_kind": "diagnostic_bf16_mps_trunk_cpu_f32_head",
+  "reference_dtype": "trunk:bfloat16,head:float32",
+  "reference_sha256": "00b81001171a40b4ce833d94790d9782880c783df28ab360d6bcfbde38e879f9",
+  "comparisons": [
+    {
+      "source": "reference27b/text-mps-bf16.json",
+      "source_sha256": "5fededd9e1df8433b0ec4d4ac0b9d3f1f40c686e7700ee9af8a87ee562771867",
+      "cases": 40,
+      "questions": 104,
+      "top_matches": 103,
+      "max_dp": 0.004300000000000026,
+      "over_02": 0,
+      "questions_detail": [
+        {
+          "case": "text-006",
+          "question": "\u00dcn\u00efcode_id0",
+          "top_match": true,
+          "max_dp": 0.000899999999999998
+        },
+        {
+          "case": "text-000",
+          "question": "import",
+          "top_match": true,
+          "max_dp": 0.0008000000000000229
+        },
+        {
+          "case": "text-000",
+          "question": "id with space1",
+          "top_match": true,
+          "max_dp": 0.0025999999999999357
+        },
+        {
+          "case": "text-000",
+          "question": "login_2",
+          "top_match": true,
+          "max_dp": 0.0020000000000000018
+        },
+        {
+          "case": "text-000",
+          "question": "dashboard_3",
+          "top_match": true,
+          "max_dp": 0.0006000000000000172
+        },
+        {
+          "case": "text-001",
+          "question": "latency",
+          "top_match": true,
+          "max_dp": 0.0002999999999999947
+        },
+        {
+          "case": "text-001",
+          "question": "cart",
+          "top_match": true,
+          "max_dp": 0.0007000000000000062
+        },
+        {
+          "case": "text-001",
+          "question": "limit_2",
+          "top_match": true,
+          "max_dp": 0.0
+        },
+        {
+          "case": "text-002",
+          "question": "user_0",
+          "top_match": true,
+          "max_dp": 0.0014000000000000123
+        },
+        {
+          "case": "text-003",
+          "question": "export_0",
+          "top_match": true,
+          "max_dp": 0.0006000000000000033
+        },
+        {
+          "case": "text-004",
+          "question": "timeout_0",
+          "top_match": true,
+          "max_dp": 0.0010000000000000009
+        },
+        {
+          "case": "text-005",
+          "question": "bug_0",
+          "top_match": true,
+          "max_dp": 0.0020999999999999908
+        },
+        {
+          "case": "text-005",
+          "question": "refund",
+          "top_match": true,
+          "max_dp": 0.00029999999999996696
+        },
+        {
+          "case": "text-007",
+          "question": "billing_0",
+          "top_match": true,
+          "max_dp": 0.0011999999999999789
+        },
+        {
+          "case": "text-007",
+          "question": "dashboard",
+          "top_match": true,
+          "max_dp": 0.0009000000000000119
+        },
+        {
+          "case": "text-007",
+          "question": "timeout",
+          "top_match": true,
+          "max_dp": 0.0
+        },
+        {
+          "case": "text-008",
+          "question": "release_0",
+          "top_match": true,
+          "max_dp": 9.999999999998899e-05
+        },
+        {
+          "case": "text-008",
+          "question": "rollback_1",
+          "top_match": true,
+          "max_dp": 0.0010000000000000009
+        },
+        {
+          "case": "text-008",
+          "question": "refund",
+          "top_match": true,
+          "max_dp": 0.00019999999999997797
+        },
+        {
+          "case": "text-009",
+          "question": "import_0",
+          "top_match": true,
+          "max_dp": 0.00020000000000000573
+        },
+        {
+          "case": "text-009",
+          "question": "rate",
+          "top_match": true,
+          "max_dp": 0.0010000000000000009
+        },
+        {
+          "case": "text-009",
+          "question": "key",
+          "top_match": true,
+          "max_dp": 0.0013000000000000234
+        },
+        {
+          "case": "text-009",
+          "question": "password_3",
+          "top_match": true,
+          "max_dp": 0.0007000000000000062
+        },
+        {
+          "case": "text-009",
+          "question": "minor_4",
+          "top_match": true,
+          "max_dp": 0.0015999999999999903
+        },
+        {
+          "case": "text-010",
+          "question": "\u65e5\u672c0",
+          "top_match": true,
+          "max_dp": 0.0014000000000000123
+        },
+        {
+          "case": "text-011",
+          "question": "region",
+          "top_match": true,
+          "max_dp": 0.0015999999999999903
+        },
+        {
+          "case": "text-011",
+          "question": "user",
+          "top_match": true,
+          "max_dp": 0.0015999999999999348
+        },
+        {
+          "case": "text-011",
+          "question": "reset",
+          "top_match": true,
+          "max_dp": 0.00040000000000001146
+        },
+        {
+          "case": "text-011",
+          "question": "id with space3",
+          "top_match": true,
+          "max_dp": 0.00020000000000000226
+        },
+        {
+          "case": "text-011",
+          "question": "refund",
+          "top_match": true,
+          "max_dp": 0.0009000000000000119
+        },
+        {
+          "case": "text-012",
+          "question": "key_0",
+          "top_match": true,
+          "max_dp": 9.999999999998899e-05
+        },
+        {
+          "case": "text-012",
+          "question": "webhook",
+          "top_match": true,
+          "max_dp": 9.999999999998899e-05
+        },
+        {
+          "case": "text-012",
+          "question": "merge_2",
+          "top_match": true,
+          "max_dp": 0.0037000000000000366
+        },
+        {
+          "case": "text-012",
+          "question": "payment_3",
+          "top_match": true,
+          "max_dp": 9.99999999999994e-05
+        },
+        {
+          "case": "text-012",
+          "question": "limit_4",
+          "top_match": true,
+          "max_dp": 0.0002999999999999999
+        },
+        {
+          "case": "text-013",
+          "question": "branch",
+          "top_match": true,
+          "max_dp": 0.0019000000000000128
+        },
+        {
+          "case": "text-013",
+          "question": "build",
+          "top_match": true,
+          "max_dp": 0.0013999999999999985
+        },
+        {
+          "case": "text-013",
+          "question": "bug_2",
+          "top_match": true,
+          "max_dp": 0.00040000000000000105
+        },
+        {
+          "case": "text-014",
+          "question": "x0",
+          "top_match": true,
+          "max_dp": 0.0010000000000000009
+        },
+        {
+          "case": "text-015",
+          "question": "team_0",
+          "top_match": true,
+          "max_dp": 0.0025999999999999357
+        },
+        {
+          "case": "text-016",
+          "question": "release",
+          "top_match": true,
+          "max_dp": 0.0002999999999999947
+        },
+        {
+          "case": "text-017",
+          "question": "upgrade_0",
+          "top_match": true,
+          "max_dp": 0.00040000000000006697
+        },
+        {
+          "case": "text-017",
+          "question": "branch_1",
+          "top_match": true,
+          "max_dp": 0.0020000000000000018
+        },
+        {
+          "case": "text-017",
+          "question": "critical_2",
+          "top_match": true,
+          "max_dp": 0.0006999999999999784
+        },
+        {
+          "case": "text-018",
+          "question": "cart",
+          "top_match": true,
+          "max_dp": 0.0020000000000000018
+        },
+        {
+          "case": "text-018",
+          "question": "invoice_1",
+          "top_match": true,
+          "max_dp": 0.0012000000000000066
+        },
+        {
+          "case": "text-018",
+          "question": "invoice",
+          "top_match": true,
+          "max_dp": 0.0002999999999999947
+        },
+        {
+          "case": "text-018",
+          "question": "\u00dcn\u00efcode_id3",
+          "top_match": true,
+          "max_dp": 0.0010000000000000009
+        },
+        {
+          "case": "text-019",
+          "question": "payment_0",
+          "top_match": true,
+          "max_dp": 0.0015000000000000568
+        },
+        {
+          "case": "text-019",
+          "question": "bug",
+          "top_match": true,
+          "max_dp": 0.001700000000000007
+        },
+        {
+          "case": "text-019",
+          "question": "rate",
+          "top_match": true,
+          "max_dp": 0.0011000000000000176
+        },
+        {
+          "case": "text-019",
+          "question": "key",
+          "top_match": true,
+          "max_dp": 0.0028000000000000247
+        },
+        {
+          "case": "text-019",
+          "question": "token_4",
+          "top_match": true,
+          "max_dp": 0.001600000000000018
+        },
+        {
+          "case": "text-020",
+          "question": "invoice",
+          "top_match": true,
+          "max_dp": 0.0015000000000000013
+        },
+        {
+          "case": "text-020",
+          "question": "\u00dcn\u00efcode_id1",
+          "top_match": true,
+          "max_dp": 0.00019999999999997797
+        },
+        {
+          "case": "text-020",
+          "question": "login",
+          "top_match": true,
+          "max_dp": 0.0010999999999999899
+        },
+        {
+          "case": "text-021",
+          "question": "build_0",
+          "top_match": true,
+          "max_dp": 0.00010000000000000286
+        },
+        {
+          "case": "text-021",
+          "question": "test_1",
+          "top_match": true,
+          "max_dp": 0.0001999999999999988
+        },
+        {
+          "case": "text-021",
+          "question": "branch",
+          "top_match": true,
+          "max_dp": 0.0007999999999999952
+        },
+        {
+          "case": "text-022",
+          "question": "build",
+          "top_match": true,
+          "max_dp": 0.0016999999999999793
+        },
+        {
+          "case": "text-023",
+          "question": "plan",
+          "top_match": true,
+          "max_dp": 0.0005000000000000004
+        },
+        {
+          "case": "text-024",
+          "question": "billing_0",
+          "top_match": true,
+          "max_dp": 0.00019999999999997797
+        },
+        {
+          "case": "text-024",
+          "question": "fraud_1",
+          "top_match": true,
+          "max_dp": 9.999999999998899e-05
+        },
+        {
+          "case": "text-024",
+          "question": "test_2",
+          "top_match": true,
+          "max_dp": 0.0006999999999999923
+        },
+        {
+          "case": "text-025",
+          "question": "feature",
+          "top_match": true,
+          "max_dp": 0.0005999999999999894
+        },
+        {
+          "case": "text-025",
+          "question": "upgrade_1",
+          "top_match": true,
+          "max_dp": 0.0037000000000000366
+        },
+        {
+          "case": "text-025",
+          "question": "feature_2",
+          "top_match": true,
+          "max_dp": 0.00019999999999997797
+        },
+        {
+          "case": "text-026",
+          "question": "merge",
+          "top_match": true,
+          "max_dp": 0.0010000000000000009
+        },
+        {
+          "case": "text-027",
+          "question": "import_0",
+          "top_match": true,
+          "max_dp": 0.0011000000000000038
+        },
+        {
+          "case": "text-027",
+          "question": "id with space1",
+          "top_match": true,
+          "max_dp": 0.0009000000000000119
+        },
+        {
+          "case": "text-027",
+          "question": "crash_2",
+          "top_match": true,
+          "max_dp": 0.0014000000000000123
+        },
+        {
+          "case": "text-027",
+          "question": "plan_3",
+          "top_match": true,
+          "max_dp": 0.0010000000000000009
+        },
+        {
+          "case": "text-027",
+          "question": "timeout",
+          "top_match": true,
+          "max_dp": 0.0003999999999999837
+        },
+        {
+          "case": "text-028",
+          "question": "reset_0",
+          "top_match": true,
+          "max_dp": 0.00019999999999997797
+        },
+        {
+          "case": "text-028",
+          "question": "test_1",
+          "top_match": true,
+          "max_dp": 0.004300000000000026
+        },
+        {
+          "case": "text-029",
+          "question": "rate",
+          "top_match": true,
+          "max_dp": 0.00020000000000003348
+        },
+        {
+          "case": "text-029",
+          "question": "\u65e5\u672c1",
+          "top_match": true,
+          "max_dp": 9.999999999998899e-05
+        },
+        {
+          "case": "text-029",
+          "question": "rollback_2",
+          "top_match": true,
+          "max_dp": 9.99999999999994e-05
+        },
+        {
+          "case": "text-030",
+          "question": "export",
+          "top_match": true,
+          "max_dp": 0.0010999999999999899
+        },
+        {
+          "case": "text-030",
+          "question": "ticket_1",
+          "top_match": true,
+          "max_dp": 0.0009000000000000119
+        },
+        {
+          "case": "text-031",
+          "question": "key",
+          "top_match": true,
+          "max_dp": 0.0016999999999999793
+        },
+        {
+          "case": "text-032",
+          "question": "card_0",
+          "top_match": true,
+          "max_dp": 0.002700000000000008
+        },
+        {
+          "case": "text-032",
+          "question": "merge_1",
+          "top_match": true,
+          "max_dp": 0.00020000000000000573
+        },
+        {
+          "case": "text-033",
+          "question": "webhook_0",
+          "top_match": true,
+          "max_dp": 0.0012999999999999678
+        },
+        {
+          "case": "text-033",
+          "question": "checkout_1",
+          "top_match": true,
+          "max_dp": 0.0012999999999999956
+        },
+        {
+          "case": "text-033",
+          "question": "password_2",
+          "top_match": true,
+          "max_dp": 0.0005999999999999894
+        },
+        {
+          "case": "text-034",
+          "question": "admin",
+          "top_match": true,
+          "max_dp": 0.0015999999999999348
+        },
+        {
+          "case": "text-034",
+          "question": "user",
+          "top_match": true,
+          "max_dp": 0.0010999999999999899
+        },
+        {
+          "case": "text-034",
+          "question": "dashboard_2",
+          "top_match": true,
+          "max_dp": 0.0
+        },
+        {
+          "case": "text-035",
+          "question": "card",
+          "top_match": true,
+          "max_dp": 0.0015000000000000013
+        },
+        {
+          "case": "text-035",
+          "question": "feature_1",
+          "top_match": true,
+          "max_dp": 0.00010000000000000286
+        },
+        {
+          "case": "text-036",
+          "question": "id with space0",
+          "top_match": true,
+          "max_dp": 0.0002999999999999947
+        },
+        {
+          "case": "text-036",
+          "question": "urgent_1",
+          "top_match": true,
+          "max_dp": 0.0019000000000000128
+        },
+        {
+          "case": "text-037",
+          "question": "token_0",
+          "top_match": true,
+          "max_dp": 0.00020000000000003348
+        },
+        {
+          "case": "text-037",
+          "question": "crash_1",
+          "top_match": false,
+          "max_dp": 0.0023999999999999577
+        },
+        {
+          "case": "text-037",
+          "question": "rate_2",
+          "top_match": true,
+          "max_dp": 0.0019000000000000128
+        },
+        {
+          "case": "text-037",
+          "question": "seat",
+          "top_match": true,
+          "max_dp": 0.0008000000000000229
+        },
+        {
+          "case": "text-037",
+          "question": "team",
+          "top_match": true,
+          "max_dp": 0.0
+        },
+        {
+          "case": "text-038",
+          "question": "critical",
+          "top_match": true,
+          "max_dp": 0.000800000000000009
+        },
+        {
+          "case": "text-039",
+          "question": "payment_0",
+          "top_match": true,
+          "max_dp": 0.0005999999999999894
+        },
+        {
+          "case": "text-039",
+          "question": "export_1",
+          "top_match": true,
+          "max_dp": 0.0008000000000000229
+        },
+        {
+          "case": "text-039",
+          "question": "checkout",
+          "top_match": true,
+          "max_dp": 0.0005999999999999894
+        },
+        {
+          "case": "text-039",
+          "question": "\u65e5\u672c3",
+          "top_match": true,
+          "max_dp": 0.0002999999999999947
+        },
+        {
+          "case": "text-039",
+          "question": "import_4",
+          "top_match": true,
+          "max_dp": 0.0007000000000000339
+        }
+      ]
+    },
+    {
+      "source": "native27b-image-text-parity/1-text.json",
+      "source_sha256": "ae222691fb54880cd8f068fd958704b2259d4a1be3267986ddf4a76eda78fd95",
+      "cases": 40,
+      "questions": 104,
+      "top_matches": 95,
+      "max_dp": 0.21885348347744982,
+      "over_02": 63,
+      "questions_detail": [
+        {
+          "case": "text-000",
+          "question": "import",
+          "top_match": true,
+          "max_dp": 0.0762779229687014
+        },
+        {
+          "case": "text-000",
+          "question": "id with space1",
+          "top_match": true,
+          "max_dp": 0.05101862578625416
+        },
+        {
+          "case": "text-000",
+          "question": "login_2",
+          "top_match": true,
+          "max_dp": 0.041042685906127196
+        },
+        {
+          "case": "text-000",
+          "question": "dashboard_3",
+          "top_match": true,
+          "max_dp": 0.01072420714086278
+        },
+        {
+          "case": "text-001",
+          "question": "latency",
+          "top_match": true,
+          "max_dp": 0.05994227753539061
+        },
+        {
+          "case": "text-001",
+          "question": "cart",
+          "top_match": true,
+          "max_dp": 0.038010020080973844
+        },
+        {
+          "case": "text-001",
+          "question": "limit_2",
+          "top_match": true,
+          "max_dp": 0.014745649342975169
+        },
+        {
+          "case": "text-002",
+          "question": "user_0",
+          "top_match": true,
+          "max_dp": 0.029201923840193572
+        },
+        {
+          "case": "text-003",
+          "question": "export_0",
+          "top_match": true,
+          "max_dp": 0.007877887075797667
+        },
+        {
+          "case": "text-004",
+          "question": "timeout_0",
+          "top_match": true,
+          "max_dp": 0.019161635496685536
+        },
+        {
+          "case": "text-005",
+          "question": "bug_0",
+          "top_match": true,
+          "max_dp": 0.0321910774496135
+        },
+        {
+          "case": "text-005",
+          "question": "refund",
+          "top_match": true,
+          "max_dp": 0.036861860702985055
+        },
+        {
+          "case": "text-006",
+          "question": "\u00dcn\u00efcode_id0",
+          "top_match": true,
+          "max_dp": 0.0017851825247783629
+        },
+        {
+          "case": "text-007",
+          "question": "billing_0",
+          "top_match": true,
+          "max_dp": 0.07463672040404767
+        },
+        {
+          "case": "text-007",
+          "question": "dashboard",
+          "top_match": true,
+          "max_dp": 0.018751327758321
+        },
+        {
+          "case": "text-007",
+          "question": "timeout",
+          "top_match": true,
+          "max_dp": 0.01707120710330623
+        },
+        {
+          "case": "text-008",
+          "question": "release_0",
+          "top_match": true,
+          "max_dp": 0.016001641863156224
+        },
+        {
+          "case": "text-008",
+          "question": "rollback_1",
+          "top_match": true,
+          "max_dp": 0.01612121032956125
+        },
+        {
+          "case": "text-008",
+          "question": "refund",
+          "top_match": true,
+          "max_dp": 0.001159273582411413
+        },
+        {
+          "case": "text-009",
+          "question": "import_0",
+          "top_match": true,
+          "max_dp": 0.03672128648117423
+        },
+        {
+          "case": "text-009",
+          "question": "rate",
+          "top_match": true,
+          "max_dp": 0.03216775228519558
+        },
+        {
+          "case": "text-009",
+          "question": "key",
+          "top_match": true,
+          "max_dp": 0.019638923979121536
+        },
+        {
+          "case": "text-009",
+          "question": "password_3",
+          "top_match": false,
+          "max_dp": 0.032655530551228135
+        },
+        {
+          "case": "text-009",
+          "question": "minor_4",
+          "top_match": true,
+          "max_dp": 0.02707471924595206
+        },
+        {
+          "case": "text-010",
+          "question": "\u65e5\u672c0",
+          "top_match": true,
+          "max_dp": 0.03185805622974053
+        },
+        {
+          "case": "text-011",
+          "question": "region",
+          "top_match": true,
+          "max_dp": 0.08134709384115335
+        },
+        {
+          "case": "text-011",
+          "question": "user",
+          "top_match": true,
+          "max_dp": 0.007299252406503726
+        },
+        {
+          "case": "text-011",
+          "question": "reset",
+          "top_match": true,
+          "max_dp": 0.0020211020009661407
+        },
+        {
+          "case": "text-011",
+          "question": "id with space3",
+          "top_match": true,
+          "max_dp": 0.00024988927239720515
+        },
+        {
+          "case": "text-011",
+          "question": "refund",
+          "top_match": true,
+          "max_dp": 0.024442617967487368
+        },
+        {
+          "case": "text-012",
+          "question": "key_0",
+          "top_match": true,
+          "max_dp": 0.014040663427277195
+        },
+        {
+          "case": "text-012",
+          "question": "webhook",
+          "top_match": true,
+          "max_dp": 0.000250456718556169
+        },
+        {
+          "case": "text-012",
+          "question": "merge_2",
+          "top_match": true,
+          "max_dp": 0.03746744673403979
+        },
+        {
+          "case": "text-012",
+          "question": "payment_3",
+          "top_match": true,
+          "max_dp": 1.2855259258752472e-05
+        },
+        {
+          "case": "text-012",
+          "question": "limit_4",
+          "top_match": true,
+          "max_dp": 0.0022340284586390476
+        },
+        {
+          "case": "text-013",
+          "question": "branch",
+          "top_match": false,
+          "max_dp": 0.08458369009823419
+        },
+        {
+          "case": "text-013",
+          "question": "build",
+          "top_match": true,
+          "max_dp": 0.036185907940574025
+        },
+        {
+          "case": "text-013",
+          "question": "bug_2",
+          "top_match": true,
+          "max_dp": 0.02216016057022574
+        },
+        {
+          "case": "text-014",
+          "question": "x0",
+          "top_match": false,
+          "max_dp": 0.09144233479338304
+        },
+        {
+          "case": "text-015",
+          "question": "team_0",
+          "top_match": true,
+          "max_dp": 0.02982105329113527
+        },
+        {
+          "case": "text-016",
+          "question": "release",
+          "top_match": true,
+          "max_dp": 0.009102766655970623
+        },
+        {
+          "case": "text-017",
+          "question": "upgrade_0",
+          "top_match": true,
+          "max_dp": 0.01633324198108732
+        },
+        {
+          "case": "text-017",
+          "question": "branch_1",
+          "top_match": false,
+          "max_dp": 0.08133387268873904
+        },
+        {
+          "case": "text-017",
+          "question": "critical_2",
+          "top_match": true,
+          "max_dp": 0.034989773296970506
+        },
+        {
+          "case": "text-018",
+          "question": "cart",
+          "top_match": true,
+          "max_dp": 0.033566009077014014
+        },
+        {
+          "case": "text-018",
+          "question": "invoice_1",
+          "top_match": true,
+          "max_dp": 0.008764272311226007
+        },
+        {
+          "case": "text-018",
+          "question": "invoice",
+          "top_match": true,
+          "max_dp": 0.019597944855741428
+        },
+        {
+          "case": "text-018",
+          "question": "\u00dcn\u00efcode_id3",
+          "top_match": true,
+          "max_dp": 0.032896260997685445
+        },
+        {
+          "case": "text-019",
+          "question": "payment_0",
+          "top_match": true,
+          "max_dp": 0.03720446901040625
+        },
+        {
+          "case": "text-019",
+          "question": "bug",
+          "top_match": true,
+          "max_dp": 0.05823091439478634
+        },
+        {
+          "case": "text-019",
+          "question": "rate",
+          "top_match": true,
+          "max_dp": 0.01637569424744964
+        },
+        {
+          "case": "text-019",
+          "question": "key",
+          "top_match": true,
+          "max_dp": 0.00199697562918677
+        },
+        {
+          "case": "text-019",
+          "question": "token_4",
+          "top_match": true,
+          "max_dp": 0.015802913366470328
+        },
+        {
+          "case": "text-020",
+          "question": "invoice",
+          "top_match": true,
+          "max_dp": 0.03660677778445637
+        },
+        {
+          "case": "text-020",
+          "question": "\u00dcn\u00efcode_id1",
+          "top_match": true,
+          "max_dp": 0.04885992243981485
+        },
+        {
+          "case": "text-020",
+          "question": "login",
+          "top_match": true,
+          "max_dp": 0.03947094034044729
+        },
+        {
+          "case": "text-021",
+          "question": "build_0",
+          "top_match": true,
+          "max_dp": 0.010895221869807556
+        },
+        {
+          "case": "text-021",
+          "question": "test_1",
+          "top_match": true,
+          "max_dp": 0.05328986323786669
+        },
+        {
+          "case": "text-021",
+          "question": "branch",
+          "top_match": true,
+          "max_dp": 0.07540490454445875
+        },
+        {
+          "case": "text-022",
+          "question": "build",
+          "top_match": true,
+          "max_dp": 0.03224294609033895
+        },
+        {
+          "case": "text-023",
+          "question": "plan",
+          "top_match": true,
+          "max_dp": 0.018389684561713054
+        },
+        {
+          "case": "text-024",
+          "question": "billing_0",
+          "top_match": false,
+          "max_dp": 0.07923329584101202
+        },
+        {
+          "case": "text-024",
+          "question": "fraud_1",
+          "top_match": true,
+          "max_dp": 0.04645724341255908
+        },
+        {
+          "case": "text-024",
+          "question": "test_2",
+          "top_match": true,
+          "max_dp": 0.0003688562363938358
+        },
+        {
+          "case": "text-025",
+          "question": "feature",
+          "top_match": true,
+          "max_dp": 0.01050592540750131
+        },
+        {
+          "case": "text-025",
+          "question": "upgrade_1",
+          "top_match": true,
+          "max_dp": 0.015720163543395504
+        },
+        {
+          "case": "text-025",
+          "question": "feature_2",
+          "top_match": true,
+          "max_dp": 0.038381768974318886
+        },
+        {
+          "case": "text-026",
+          "question": "merge",
+          "top_match": true,
+          "max_dp": 0.09184868743678615
+        },
+        {
+          "case": "text-027",
+          "question": "import_0",
+          "top_match": true,
+          "max_dp": 0.04812110332266217
+        },
+        {
+          "case": "text-027",
+          "question": "id with space1",
+          "top_match": true,
+          "max_dp": 0.04452006789773588
+        },
+        {
+          "case": "text-027",
+          "question": "crash_2",
+          "top_match": true,
+          "max_dp": 0.002598300349727356
+        },
+        {
+          "case": "text-027",
+          "question": "plan_3",
+          "top_match": true,
+          "max_dp": 0.018303155377748292
+        },
+        {
+          "case": "text-027",
+          "question": "timeout",
+          "top_match": true,
+          "max_dp": 0.054985448809908744
+        },
+        {
+          "case": "text-028",
+          "question": "reset_0",
+          "top_match": true,
+          "max_dp": 0.05403318094599496
+        },
+        {
+          "case": "text-028",
+          "question": "test_1",
+          "top_match": true,
+          "max_dp": 0.035852449933618524
+        },
+        {
+          "case": "text-029",
+          "question": "rate",
+          "top_match": true,
+          "max_dp": 0.05988646826261812
+        },
+        {
+          "case": "text-029",
+          "question": "\u65e5\u672c1",
+          "top_match": true,
+          "max_dp": 0.066138450023431
+        },
+        {
+          "case": "text-029",
+          "question": "rollback_2",
+          "top_match": true,
+          "max_dp": 0.00022784917992639542
+        },
+        {
+          "case": "text-030",
+          "question": "export",
+          "top_match": true,
+          "max_dp": 0.08035254974477146
+        },
+        {
+          "case": "text-030",
+          "question": "ticket_1",
+          "top_match": true,
+          "max_dp": 0.01221653447238523
+        },
+        {
+          "case": "text-031",
+          "question": "key",
+          "top_match": true,
+          "max_dp": 0.034259394068650306
+        },
+        {
+          "case": "text-032",
+          "question": "card_0",
+          "top_match": true,
+          "max_dp": 0.006895243636450443
+        },
+        {
+          "case": "text-032",
+          "question": "merge_1",
+          "top_match": true,
+          "max_dp": 0.013411256916676287
+        },
+        {
+          "case": "text-033",
+          "question": "webhook_0",
+          "top_match": true,
+          "max_dp": 0.05426000792636532
+        },
+        {
+          "case": "text-033",
+          "question": "checkout_1",
+          "top_match": true,
+          "max_dp": 0.09702655548569727
+        },
+        {
+          "case": "text-033",
+          "question": "password_2",
+          "top_match": true,
+          "max_dp": 0.027323549447663686
+        },
+        {
+          "case": "text-034",
+          "question": "admin",
+          "top_match": false,
+          "max_dp": 0.1891070431783019
+        },
+        {
+          "case": "text-034",
+          "question": "user",
+          "top_match": false,
+          "max_dp": 0.21885348347744982
+        },
+        {
+          "case": "text-034",
+          "question": "dashboard_2",
+          "top_match": true,
+          "max_dp": 0.08456124654721714
+        },
+        {
+          "case": "text-035",
+          "question": "card",
+          "top_match": true,
+          "max_dp": 0.05757844582124372
+        },
+        {
+          "case": "text-035",
+          "question": "feature_1",
+          "top_match": true,
+          "max_dp": 0.01480084448230222
+        },
+        {
+          "case": "text-036",
+          "question": "id with space0",
+          "top_match": true,
+          "max_dp": 0.005841529439411866
+        },
+        {
+          "case": "text-036",
+          "question": "urgent_1",
+          "top_match": true,
+          "max_dp": 0.07450970526298506
+        },
+        {
+          "case": "text-037",
+          "question": "token_0",
+          "top_match": true,
+          "max_dp": 0.05477960707899604
+        },
+        {
+          "case": "text-037",
+          "question": "crash_1",
+          "top_match": true,
+          "max_dp": 0.06183739755697493
+        },
+        {
+          "case": "text-037",
+          "question": "rate_2",
+          "top_match": true,
+          "max_dp": 0.01812458578692755
+        },
+        {
+          "case": "text-037",
+          "question": "seat",
+          "top_match": false,
+          "max_dp": 0.0420200672476769
+        },
+        {
+          "case": "text-037",
+          "question": "team",
+          "top_match": true,
+          "max_dp": 0.002752033555930476
+        },
+        {
+          "case": "text-038",
+          "question": "critical",
+          "top_match": true,
+          "max_dp": 0.05208761502037973
+        },
+        {
+          "case": "text-039",
+          "question": "payment_0",
+          "top_match": true,
+          "max_dp": 0.01716175121480759
+        },
+        {
+          "case": "text-039",
+          "question": "export_1",
+          "top_match": false,
+          "max_dp": 0.02402308787070334
+        },
+        {
+          "case": "text-039",
+          "question": "checkout",
+          "top_match": true,
+          "max_dp": 0.02626060541237335
+        },
+        {
+          "case": "text-039",
+          "question": "\u65e5\u672c3",
+          "top_match": true,
+          "max_dp": 0.055198692592720755
+        },
+        {
+          "case": "text-039",
+          "question": "import_4",
+          "top_match": true,
+          "max_dp": 0.04081808871761761
+        }
+      ]
+    },
+    {
+      "source": "native27b-stage5-default/1-text.json",
+      "source_sha256": "d756c692ee0ae5beb5851122e9cb78b8714e038d8da99d76ff0b2e79bc9d91f8",
+      "cases": 40,
+      "questions": 104,
+      "top_matches": 94,
+      "max_dp": 0.21609610918470518,
+      "over_02": 63,
+      "questions_detail": [
+        {
+          "case": "text-000",
+          "question": "import",
+          "top_match": true,
+          "max_dp": 0.07641425148068903
+        },
+        {
+          "case": "text-000",
+          "question": "id with space1",
+          "top_match": true,
+          "max_dp": 0.0516681235869767
+        },
+        {
+          "case": "text-000",
+          "question": "login_2",
+          "top_match": true,
+          "max_dp": 0.0414644485277334
+        },
+        {
+          "case": "text-000",
+          "question": "dashboard_3",
+          "top_match": true,
+          "max_dp": 0.010324903510152444
+        },
+        {
+          "case": "text-001",
+          "question": "latency",
+          "top_match": true,
+          "max_dp": 0.05983648964708824
+        },
+        {
+          "case": "text-001",
+          "question": "cart",
+          "top_match": true,
+          "max_dp": 0.038102631790637304
+        },
+        {
+          "case": "text-001",
+          "question": "limit_2",
+          "top_match": true,
+          "max_dp": 0.014663120559964098
+        },
+        {
+          "case": "text-002",
+          "question": "user_0",
+          "top_match": true,
+          "max_dp": 0.029132414403952395
+        },
+        {
+          "case": "text-003",
+          "question": "export_0",
+          "top_match": true,
+          "max_dp": 0.00790726462362578
+        },
+        {
+          "case": "text-004",
+          "question": "timeout_0",
+          "top_match": true,
+          "max_dp": 0.019412618805692824
+        },
+        {
+          "case": "text-005",
+          "question": "bug_0",
+          "top_match": true,
+          "max_dp": 0.03209289635902787
+        },
+        {
+          "case": "text-005",
+          "question": "refund",
+          "top_match": true,
+          "max_dp": 0.036655661533291084
+        },
+        {
+          "case": "text-006",
+          "question": "\u00dcn\u00efcode_id0",
+          "top_match": true,
+          "max_dp": 0.0017567515195102412
+        },
+        {
+          "case": "text-007",
+          "question": "billing_0",
+          "top_match": true,
+          "max_dp": 0.07498606263410085
+        },
+        {
+          "case": "text-007",
+          "question": "dashboard",
+          "top_match": true,
+          "max_dp": 0.018323172366255525
+        },
+        {
+          "case": "text-007",
+          "question": "timeout",
+          "top_match": true,
+          "max_dp": 0.01690294704605866
+        },
+        {
+          "case": "text-008",
+          "question": "release_0",
+          "top_match": true,
+          "max_dp": 0.016127574627493035
+        },
+        {
+          "case": "text-008",
+          "question": "rollback_1",
+          "top_match": true,
+          "max_dp": 0.01615133230392432
+        },
+        {
+          "case": "text-008",
+          "question": "refund",
+          "top_match": true,
+          "max_dp": 0.0011026549792861884
+        },
+        {
+          "case": "text-009",
+          "question": "import_0",
+          "top_match": true,
+          "max_dp": 0.03653131964349854
+        },
+        {
+          "case": "text-009",
+          "question": "rate",
+          "top_match": true,
+          "max_dp": 0.032314904105134934
+        },
+        {
+          "case": "text-009",
+          "question": "key",
+          "top_match": true,
+          "max_dp": 0.019503018694195073
+        },
+        {
+          "case": "text-009",
+          "question": "password_3",
+          "top_match": false,
+          "max_dp": 0.03268203230353206
+        },
+        {
+          "case": "text-009",
+          "question": "minor_4",
+          "top_match": true,
+          "max_dp": 0.0272747471833103
+        },
+        {
+          "case": "text-010",
+          "question": "\u65e5\u672c0",
+          "top_match": true,
+          "max_dp": 0.031862835142023815
+        },
+        {
+          "case": "text-011",
+          "question": "region",
+          "top_match": true,
+          "max_dp": 0.081114887419385
+        },
+        {
+          "case": "text-011",
+          "question": "user",
+          "top_match": true,
+          "max_dp": 0.007232046356172445
+        },
+        {
+          "case": "text-011",
+          "question": "reset",
+          "top_match": true,
+          "max_dp": 0.0022943035098612896
+        },
+        {
+          "case": "text-011",
+          "question": "id with space3",
+          "top_match": true,
+          "max_dp": 0.00023224178829692188
+        },
+        {
+          "case": "text-011",
+          "question": "refund",
+          "top_match": true,
+          "max_dp": 0.024205023417486093
+        },
+        {
+          "case": "text-012",
+          "question": "key_0",
+          "top_match": true,
+          "max_dp": 0.014202970481613036
+        },
+        {
+          "case": "text-012",
+          "question": "webhook",
+          "top_match": true,
+          "max_dp": 0.00020896424842731243
+        },
+        {
+          "case": "text-012",
+          "question": "merge_2",
+          "top_match": true,
+          "max_dp": 0.03770013422440016
+        },
+        {
+          "case": "text-012",
+          "question": "payment_3",
+          "top_match": true,
+          "max_dp": 8.002279040849464e-06
+        },
+        {
+          "case": "text-012",
+          "question": "limit_4",
+          "top_match": true,
+          "max_dp": 0.0022300756201820166
+        },
+        {
+          "case": "text-013",
+          "question": "branch",
+          "top_match": false,
+          "max_dp": 0.08457810274081773
+        },
+        {
+          "case": "text-013",
+          "question": "build",
+          "top_match": true,
+          "max_dp": 0.03580485545432516
+        },
+        {
+          "case": "text-013",
+          "question": "bug_2",
+          "top_match": true,
+          "max_dp": 0.022043528935950074
+        },
+        {
+          "case": "text-014",
+          "question": "x0",
+          "top_match": false,
+          "max_dp": 0.09181042586605226
+        },
+        {
+          "case": "text-015",
+          "question": "team_0",
+          "top_match": true,
+          "max_dp": 0.03026814278108203
+        },
+        {
+          "case": "text-016",
+          "question": "release",
+          "top_match": true,
+          "max_dp": 0.009046350304578218
+        },
+        {
+          "case": "text-017",
+          "question": "upgrade_0",
+          "top_match": true,
+          "max_dp": 0.01624406956398025
+        },
+        {
+          "case": "text-017",
+          "question": "branch_1",
+          "top_match": false,
+          "max_dp": 0.08083556666774527
+        },
+        {
+          "case": "text-017",
+          "question": "critical_2",
+          "top_match": true,
+          "max_dp": 0.03542449351845045
+        },
+        {
+          "case": "text-018",
+          "question": "cart",
+          "top_match": true,
+          "max_dp": 0.03374274030225677
+        },
+        {
+          "case": "text-018",
+          "question": "invoice_1",
+          "top_match": true,
+          "max_dp": 0.008309242251997945
+        },
+        {
+          "case": "text-018",
+          "question": "invoice",
+          "top_match": true,
+          "max_dp": 0.019526178069180777
+        },
+        {
+          "case": "text-018",
+          "question": "\u00dcn\u00efcode_id3",
+          "top_match": true,
+          "max_dp": 0.03379455020974559
+        },
+        {
+          "case": "text-019",
+          "question": "payment_0",
+          "top_match": true,
+          "max_dp": 0.036835770546913615
+        },
+        {
+          "case": "text-019",
+          "question": "bug",
+          "top_match": true,
+          "max_dp": 0.057606602277935015
+        },
+        {
+          "case": "text-019",
+          "question": "rate",
+          "top_match": true,
+          "max_dp": 0.01630410488509132
+        },
+        {
+          "case": "text-019",
+          "question": "key",
+          "top_match": true,
+          "max_dp": 0.0019443271213008817
+        },
+        {
+          "case": "text-019",
+          "question": "token_4",
+          "top_match": true,
+          "max_dp": 0.015234487957233145
+        },
+        {
+          "case": "text-020",
+          "question": "invoice",
+          "top_match": true,
+          "max_dp": 0.036278224173802553
+        },
+        {
+          "case": "text-020",
+          "question": "\u00dcn\u00efcode_id1",
+          "top_match": true,
+          "max_dp": 0.04906694045134741
+        },
+        {
+          "case": "text-020",
+          "question": "login",
+          "top_match": true,
+          "max_dp": 0.039410932442060925
+        },
+        {
+          "case": "text-021",
+          "question": "build_0",
+          "top_match": true,
+          "max_dp": 0.010959839156435676
+        },
+        {
+          "case": "text-021",
+          "question": "test_1",
+          "top_match": true,
+          "max_dp": 0.05302039353593793
+        },
+        {
+          "case": "text-021",
+          "question": "branch",
+          "top_match": true,
+          "max_dp": 0.07641038491670898
+        },
+        {
+          "case": "text-022",
+          "question": "build",
+          "top_match": true,
+          "max_dp": 0.03239839428490496
+        },
+        {
+          "case": "text-023",
+          "question": "plan",
+          "top_match": true,
+          "max_dp": 0.018382614462033958
+        },
+        {
+          "case": "text-024",
+          "question": "billing_0",
+          "top_match": false,
+          "max_dp": 0.07945123381454255
+        },
+        {
+          "case": "text-024",
+          "question": "fraud_1",
+          "top_match": true,
+          "max_dp": 0.04650705792790938
+        },
+        {
+          "case": "text-024",
+          "question": "test_2",
+          "top_match": true,
+          "max_dp": 0.00030005487211218207
+        },
+        {
+          "case": "text-025",
+          "question": "feature",
+          "top_match": true,
+          "max_dp": 0.01038617852763013
+        },
+        {
+          "case": "text-025",
+          "question": "upgrade_1",
+          "top_match": true,
+          "max_dp": 0.015493267438814629
+        },
+        {
+          "case": "text-025",
+          "question": "feature_2",
+          "top_match": true,
+          "max_dp": 0.038150307111529724
+        },
+        {
+          "case": "text-026",
+          "question": "merge",
+          "top_match": true,
+          "max_dp": 0.09197159797869064
+        },
+        {
+          "case": "text-027",
+          "question": "import_0",
+          "top_match": true,
+          "max_dp": 0.048353803134199125
+        },
+        {
+          "case": "text-027",
+          "question": "id with space1",
+          "top_match": true,
+          "max_dp": 0.046952296879790856
+        },
+        {
+          "case": "text-027",
+          "question": "crash_2",
+          "top_match": true,
+          "max_dp": 0.0017870595788602173
+        },
+        {
+          "case": "text-027",
+          "question": "plan_3",
+          "top_match": true,
+          "max_dp": 0.018368261697274957
+        },
+        {
+          "case": "text-027",
+          "question": "timeout",
+          "top_match": true,
+          "max_dp": 0.05508640751277627
+        },
+        {
+          "case": "text-028",
+          "question": "reset_0",
+          "top_match": true,
+          "max_dp": 0.053794464859625246
+        },
+        {
+          "case": "text-028",
+          "question": "test_1",
+          "top_match": true,
+          "max_dp": 0.035776279368844977
+        },
+        {
+          "case": "text-029",
+          "question": "rate",
+          "top_match": true,
+          "max_dp": 0.06062301835798717
+        },
+        {
+          "case": "text-029",
+          "question": "\u65e5\u672c1",
+          "top_match": false,
+          "max_dp": 0.07506584458064819
+        },
+        {
+          "case": "text-029",
+          "question": "rollback_2",
+          "top_match": true,
+          "max_dp": 0.00022648077519134627
+        },
+        {
+          "case": "text-030",
+          "question": "export",
+          "top_match": true,
+          "max_dp": 0.0801225160716645
+        },
+        {
+          "case": "text-030",
+          "question": "ticket_1",
+          "top_match": true,
+          "max_dp": 0.01213861671894706
+        },
+        {
+          "case": "text-031",
+          "question": "key",
+          "top_match": true,
+          "max_dp": 0.034099160832000874
+        },
+        {
+          "case": "text-032",
+          "question": "card_0",
+          "top_match": true,
+          "max_dp": 0.00690179603970309
+        },
+        {
+          "case": "text-032",
+          "question": "merge_1",
+          "top_match": true,
+          "max_dp": 0.013378748067676777
+        },
+        {
+          "case": "text-033",
+          "question": "webhook_0",
+          "top_match": true,
+          "max_dp": 0.05448773687795172
+        },
+        {
+          "case": "text-033",
+          "question": "checkout_1",
+          "top_match": true,
+          "max_dp": 0.09653628571949802
+        },
+        {
+          "case": "text-033",
+          "question": "password_2",
+          "top_match": true,
+          "max_dp": 0.02730118735700126
+        },
+        {
+          "case": "text-034",
+          "question": "admin",
+          "top_match": false,
+          "max_dp": 0.18805260450526667
+        },
+        {
+          "case": "text-034",
+          "question": "user",
+          "top_match": false,
+          "max_dp": 0.21609610918470518
+        },
+        {
+          "case": "text-034",
+          "question": "dashboard_2",
+          "top_match": true,
+          "max_dp": 0.08413136973614256
+        },
+        {
+          "case": "text-035",
+          "question": "card",
+          "top_match": true,
+          "max_dp": 0.05731139323108367
+        },
+        {
+          "case": "text-035",
+          "question": "feature_1",
+          "top_match": true,
+          "max_dp": 0.014724922005892288
+        },
+        {
+          "case": "text-036",
+          "question": "id with space0",
+          "top_match": true,
+          "max_dp": 0.005932666973561429
+        },
+        {
+          "case": "text-036",
+          "question": "urgent_1",
+          "top_match": true,
+          "max_dp": 0.07522337667112355
+        },
+        {
+          "case": "text-037",
+          "question": "token_0",
+          "top_match": true,
+          "max_dp": 0.053952032584027365
+        },
+        {
+          "case": "text-037",
+          "question": "crash_1",
+          "top_match": true,
+          "max_dp": 0.06158586013473005
+        },
+        {
+          "case": "text-037",
+          "question": "rate_2",
+          "top_match": true,
+          "max_dp": 0.01820154754773748
+        },
+        {
+          "case": "text-037",
+          "question": "seat",
+          "top_match": false,
+          "max_dp": 0.04203105471390389
+        },
+        {
+          "case": "text-037",
+          "question": "team",
+          "top_match": true,
+          "max_dp": 0.002738179199760403
+        },
+        {
+          "case": "text-038",
+          "question": "critical",
+          "top_match": true,
+          "max_dp": 0.05220337589008284
+        },
+        {
+          "case": "text-039",
+          "question": "payment_0",
+          "top_match": true,
+          "max_dp": 0.017381336347021797
+        },
+        {
+          "case": "text-039",
+          "question": "export_1",
+          "top_match": false,
+          "max_dp": 0.024124485159935816
+        },
+        {
+          "case": "text-039",
+          "question": "checkout",
+          "top_match": true,
+          "max_dp": 0.026708031277586308
+        },
+        {
+          "case": "text-039",
+          "question": "\u65e5\u672c3",
+          "top_match": true,
+          "max_dp": 0.05330821239977812
+        },
+        {
+          "case": "text-039",
+          "question": "import_4",
+          "top_match": true,
+          "max_dp": 0.04090736455285615
+        }
+      ]
+    }
+  ]
+}

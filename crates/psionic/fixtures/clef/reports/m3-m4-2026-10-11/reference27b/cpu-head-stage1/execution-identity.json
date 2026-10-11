@@ -1,0 +1,13 @@
+{
+  "script_sha256": "9ec1cb3a8aa5279c6b44b1d0b4d911aabe8d1fce104d8c8c159973b19d2ed02b",
+  "wrapper_sha256": "bc6268511145489143491463fbd520a360a1a7b0edb29ccf902d8995f7ef7f23",
+  "guard_sha256": "4f85aa311703d13142ff0ad3c35bf680ab341d72ba2ddf3cb948fa5bf58be7f5",
+  "memory_helper_sha256": "ce5f832d0eeb2ec5c954755c07d00fafcc2bb1c59d6aa6c1d993a2f84bcce9fb",
+  "conditions": "Shared machine, diagnostic only; existing goldens remain unchanged.",
+  "owned_group_cap_gib": 72,
+  "start_available_gib": 84,
+  "available_floor_gib": 12,
+  "mps_allocator_cap_gib": 60,
+  "deadline_seconds": 900,
+  "peak_assessment": "Retains the existing full BF16 reference cap; no assumption that the CPU-head change reduces peak memory."
+}

@@ -1,0 +1,90 @@
+{
+  "id": "text-014",
+  "http_status": 200,
+  "response": {
+    "model": "clef",
+    "answers": {
+      "x0": {
+        "type": "choice",
+        "choice": "export",
+        "confidence": 0.38086533972951137,
+        "probabilities": {
+          "apple": 0.11869914930648073,
+          "downgrade_1": 0.35216195081091417,
+          "branch": 0.06398973998035401,
+          "key": 0.08428382017273965,
+          "export": 0.38086533972951137
+        }
+      }
+    },
+    "usage": {
+      "input_tokens": 321,
+      "output_tokens": 0,
+      "cached_input_tokens": 0
+    },
+    "psionic": {
+      "artifact": "Clef-Q4_K_M.gguf",
+      "artifact_digest": "sha256:9997675e4c9e9016273372b5fdedbdda7ad14285bc722949e4b9daca62bf3822",
+      "head_source": "safetensors",
+      "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+      "backend": "cpu",
+      "execution_mode": "native",
+      "prefill_chunk": 512,
+      "accumulate": "f32",
+      "prompt_tokens": 321,
+      "truncated_state_tokens": 0,
+      "trained_length": 16384,
+      "max_tokens": 2048,
+      "latency_ms": 538704,
+      "timing": {
+        "encode_ms": 0.9,
+        "queue_ms": 0.0,
+        "prefill_ms": 538591.6,
+        "head_ms": 112.0,
+        "total_ms": 538704.7,
+        "cached": false
+      }
+    }
+  },
+  "seconds": 538.706081292,
+  "load_average": [
+    27.70849609375,
+    29.177734375,
+    31.1025390625
+  ],
+  "source_request_sha256": "61150d0f0ec1f1e089410ea8bb764d7aa6e6c4d6c17305cfb0084ed4569cf4b2",
+  "versus_metal": {
+    "tokens_match": true,
+    "top_matches": 1,
+    "questions": 1,
+    "maximum_probability_difference": 0.00023842464503166794,
+    "question_comparisons": {
+      "x0": {
+        "type": "choice",
+        "cpu_top": "export",
+        "other_top": "export",
+        "top_matches": true,
+        "cpu_top_two_margin": 0.028703388918597195,
+        "other_top_two_margin": 0.028452094001872208,
+        "maximum_probability_difference": 0.00023842464503166794
+      }
+    }
+  },
+  "versus_official_bf16": {
+    "tokens_match": true,
+    "top_matches": 0,
+    "questions": 1,
+    "maximum_probability_difference": 0.09196533972951138,
+    "question_comparisons": {
+      "x0": {
+        "type": "choice",
+        "cpu_top": "export",
+        "other_top": "downgrade_1",
+        "top_matches": false,
+        "cpu_top_two_margin": 0.028703388918597195,
+        "other_top_two_margin": 0.1498,
+        "maximum_probability_difference": 0.09196533972951138
+      }
+    }
+  }
+}

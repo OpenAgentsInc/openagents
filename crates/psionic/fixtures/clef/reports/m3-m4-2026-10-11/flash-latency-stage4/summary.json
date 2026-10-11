@@ -1,0 +1,113 @@
+{
+  "status": "complete",
+  "error_type": null,
+  "finished_at": "2026-10-11T09:22:29.170155+00:00",
+  "groups": [
+    {
+      "variant": "default",
+      "workload": "scratch/mac-quiet-2026-10-10/requests/len1k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 0.8189555415000047,
+      "input_tokens": [
+        1075,
+        1078,
+        1079,
+        1080,
+        1081,
+        1082
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "default",
+      "workload": "scratch/mac-quiet-2026-10-10/requests/len4k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 2.664878542000004,
+      "input_tokens": [
+        3915,
+        3916,
+        3917,
+        3918,
+        3919,
+        3920
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "default",
+      "workload": "scratch/mac-quiet-2026-10-10/requests/len16k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 11.097902728999983,
+      "input_tokens": [
+        15509,
+        15510,
+        15511,
+        15512,
+        15513
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "fused-shapes",
+      "workload": "scratch/mac-quiet-2026-10-10/requests/len1k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 0.7080447499999991,
+      "input_tokens": [
+        1075,
+        1078,
+        1079,
+        1080,
+        1081,
+        1082
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "fused-shapes",
+      "workload": "scratch/mac-quiet-2026-10-10/requests/len4k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 2.4382146874999933,
+      "input_tokens": [
+        3915,
+        3916,
+        3917,
+        3918,
+        3919,
+        3920
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    },
+    {
+      "variant": "fused-shapes",
+      "workload": "scratch/mac-quiet-2026-10-10/requests/len16k.json",
+      "count": 10,
+      "expected_count": 10,
+      "median_seconds": 10.55246333300002,
+      "input_tokens": [
+        15509,
+        15510,
+        15511,
+        15512,
+        15513
+      ],
+      "comparison_conditions": "shared machine",
+      "usable_comparison": true
+    }
+  ],
+  "measurement_mode": "shared",
+  "monitor_error": null,
+  "diagnostic_only": false,
+  "gpu_interference_detection": "not enforced in shared mode; total GPU activity sampled",
+  "idle_machine_acceptance": "not applicable: shared machine",
+  "note": "Medians exclude warmups and rejected samples. No quality verdict or tail-latency claim."
+}

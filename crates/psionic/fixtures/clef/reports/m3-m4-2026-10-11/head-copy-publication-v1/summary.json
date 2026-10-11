@@ -1,0 +1,71 @@
+{
+  "kind": "bounded_pytorch_mps_copy_and_head_diagnostics",
+  "torch": "2.9.1",
+  "official_head_sha256": "a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+  "conditions": "Shared machine during a bounded Cargo build. Correctness diagnostics only; no latency claim.",
+  "trunk_loaded": false,
+  "copy_probe_counts": {
+    "cpu_clone_then_cast": {
+      "cases": 25,
+      "wrong_output": 0,
+      "source_mutation": 0,
+      "separate_mask_mutation": 0,
+      "destination_guard_mutation": 0
+    },
+    "destination_offset_copy": {
+      "cases": 25,
+      "wrong_output": 20,
+      "source_mutation": 15,
+      "separate_mask_mutation": 0,
+      "destination_guard_mutation": 0
+    },
+    "fused_to_cpu": {
+      "cases": 25,
+      "wrong_output": 20,
+      "source_mutation": 15,
+      "separate_mask_mutation": 0,
+      "destination_guard_mutation": 0
+    },
+    "mps_cast_then_cpu": {
+      "cases": 25,
+      "wrong_output": 0,
+      "source_mutation": 0,
+      "separate_mask_mutation": 0,
+      "destination_guard_mutation": 0
+    }
+  },
+  "head_replay_calls": 4,
+  "head_replay_input_mutations": 1,
+  "head_replay_largest_logit_difference": 0.82421875,
+  "original_reference_capture_status": "failed",
+  "native_27b_acceptance": "not established; strict original comparison remains failed",
+  "conclusions": [
+    "Two-step copy paths passed all tested cases; fused copy and dtype conversion reproduced wrong output and source mutation.",
+    "The head-only replay reproduced a changed token-ID tensor on text-034, with the original logit values in that first repeat.",
+    "A later repeat changed one logit, but immutable CPU source equality was not checked between those repeats.",
+    "No intentional token-ID or mask mutation exists in the inspected official head.",
+    "The link between the copy bug, the head-input mutation, and the native-versus-BF16 mismatch remains unproven.",
+    "All 44 isolated lexical gathers matched exact rows and means without source mutation, for both original and cloned index offsets.",
+    "With inputs reloaded from immutable bytes, text-034 returned different finite logits despite unchanged input bytes in the first saved call; the next call returned NaN and could not be serialized.",
+    "No upload equality failure was established. The head-index clone branch for text-034 was not reached."
+  ],
+  "allocator_source": "https://github.com/pytorch/pytorch/blob/v2.9.1/aten/src/ATen/mps/MPSAllocator.h#L130-L146",
+  "allocator_explanation": "A 10 MiB parameter triggers a 1 GiB heap on unified memory; additional small heaps explain both 1 GiB refusals. The successful 2 GiB probe held 256,113,664 active MPS bytes and 1,090,994,176 driver bytes after weight upload.",
+  "version": 1,
+  "frozen": true,
+  "immutable_gather": {
+    "calls": 44,
+    "exact_rows": 44,
+    "exact_means": 44,
+    "cpu_source_mutations": 0,
+    "gpu_source_mutations": 0
+  },
+  "immutable_head": {
+    "saved_calls": 5,
+    "stable_text014_calls": 4,
+    "text034_original_first_max_abs_logit_difference": 0.255859375,
+    "saved_text034_cpu_and_gpu_inputs_exact_before_after": true,
+    "next_call": "Returned NaN; serialization rejected it, and its input checks were not retained.",
+    "upload_equality_failure_established": false
+  }
+}

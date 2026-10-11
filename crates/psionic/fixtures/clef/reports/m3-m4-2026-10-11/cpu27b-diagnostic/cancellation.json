@@ -1,0 +1,9 @@
+{
+  "case_id": "text-034",
+  "status": "cancelled",
+  "reason": "CPU text-014 took 538.706 seconds; text-034 is estimated to exceed the remaining total deadline. Parent requested cancellation after preserving the completed diagnostic.",
+  "completed_case": "text-014",
+  "requested_at_utc": "2026-10-11T09:08:38Z",
+  "owned_server_pid": 45724,
+  "owned_wrapper_pid": 42971
+}

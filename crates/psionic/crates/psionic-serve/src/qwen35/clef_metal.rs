@@ -16,7 +16,8 @@
 //!   span sums accumulate there, and only the span sums and the last row
 //!   come back. The head's memory attention reads the device rows.
 //!
-//! A chunk's whole layer stack is one command buffer. The default attention
+//! A chunk's layer stack and head inputs share one command buffer unless
+//! profiling or layer observers require intermediate reads. The default attention
 //! path keeps the existing reduction order. An explicitly selected experimental
 //! fused path uses tiled online softmax and needs separate numerical validation.
 
@@ -830,8 +831,7 @@ impl ClefMetalTrunk {
                     (next_first < length).then(|| scope.spawn(|| build_inputs(next_first, next_n)));
                 let device = (|| -> Result<(), String> {
                     let scratch = state.scratch.as_ref().ok_or("scratch")?;
-                    if layer_observer.is_none() && !profile {
-                        // one command buffer for the chunk's layer stack
+                    let batch = if layer_observer.is_none() && !profile {
                         let batch = state.metal.batch();
                         for (layer_index, layer) in state.layers.iter().enumerate() {
                             encode_layer(
@@ -845,7 +845,7 @@ impl ClefMetalTrunk {
                                 n,
                             )?;
                         }
-                        batch.commit_wait()?;
+                        batch
                     } else {
                         for (layer_index, layer) in state.layers.iter().enumerate() {
                             let layer_began = std::time::Instant::now();
@@ -875,9 +875,9 @@ impl ClefMetalTrunk {
                                 observer(layer_index, first, &rows);
                             }
                         }
-                    }
+                        state.metal.batch()
+                    };
                     // output norm, hidden LayerNorm, memory rows, span sums
-                    let batch = state.metal.batch();
                     batch.rms_norm_f32(
                         &scratch.x,
                         &state.output_norm,

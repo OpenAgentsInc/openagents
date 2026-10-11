@@ -276,10 +276,11 @@ __global__ void delta_prep_kernel(const float *conv, const float *alpha, const f
     const int i = threadIdx.x;
     const float q = i < dim ? row[h * dim + i] : 0.0f;
     const float k = i < dim ? row[key_heads * dim + h * dim + i] : 0.0f;
-    const float qnorm = fmaxf(sqrtf(block_sum(q * q, scratch)), 1e-6f);
-    const float knorm = fmaxf(sqrtf(block_sum(k * k, scratch)), 1e-6f);
-    const float qv = q / qnorm * rsqrtf(static_cast<float>(dim));
-    const float kv = k / knorm;
+    // Match Qwen3.5/FLA: epsilon belongs inside the squared norm.
+    const float qinv = rsqrtf(block_sum(q * q, scratch) + 1e-6f);
+    const float kinv = rsqrtf(block_sum(k * k, scratch) + 1e-6f);
+    const float qv = q * qinv * rsqrtf(static_cast<float>(dim));
+    const float kv = k * kinv;
     if (i < dim) {
         const long long base = (static_cast<long long>(t) * key_heads + h) * dim + i;
         qn[base] = qv;

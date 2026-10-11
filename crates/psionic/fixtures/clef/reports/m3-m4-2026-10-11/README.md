@@ -3,12 +3,111 @@
 This package records correctness checks on a shared Mac M5 and capacity checks
 on an RTX 4080. The official Clef 27B BF16 reference completed all 40 text
 requests (104 answers) and six image requests (14 answers). Native 27B passed
-the image checks, but failed the strict text gate: 94 of 104 top answers agreed,
-with a maximum probability difference of 0.219953. Both Flash HTTP modes passed
-against the existing CPU reference. Full-model prefix reuse, continuous
-batching, current DeltaNet validation, and latency measurements remain pending
-at this publication checkpoint. These files do not establish a speedup or
-completion of M3 or M4.
+the image checks, but the latest Stage 5 build failed the strict text gate:
+93 of 104 top answers agreed, with a maximum probability difference of 0.217196.
+An independent BF16-backbone/CPU-f32-head diagnostic confirms the large native
+gap. Both earlier Flash HTTP modes passed
+against the existing CPU reference. Standalone direct-solve DeltaNet passed its
+Flash weighted check, but the combined optimization mode failed. One native
+27B CPU diagnostic agreed closely with Metal while both differed from BF16.
+Full-model prefix reuse passes for Flash and 27B. Flash continuous batching
+passes the HTTP comparison. A shared-machine latency comparison favors fused
+attention and shape-selected GEMM, but misses the absolute M3 targets. These
+files do not establish completion of M3 or M4.
+
+## Stage 5 normalization, synchronization, and 27B projections
+
+The [source manifest](stage5/source-manifest.json) freezes 2,236 files based on
+commit `452ef01c90d4d704b22568c47181271e1629f2c7`. This build corrects DeltaNet
+query/key normalization to `x / sqrt(sum(x*x) + 1e-6)`, combines each serial
+chunk's layer stack and head-input preparation in one command buffer, and adds
+the eight observed 27B projection shapes to the opt-in GEMM planner. Profiling
+and layer observers retain their intermediate waits.
+
+The [build and test results](stage5/checks.json) pass: the release server,
+72 Clef serving tests, the new CPU normalization oracle, and 23 backend tests.
+The [explicit GPU checks](stage5/small-gpu-checks.json) pass all 18 backend
+tests and six serving tests. They include independent additive-epsilon oracles
+for Flash and 27B head layouts, all eight 27B GEMM shapes with tails and output
+guards, buffer lifetime checks, and prefix and batch scratch checks.
+The [build guard](stage5/guard.json) records successful cleanup and no memory
+rejection. GPU test binary hashes are in [test-binaries.json](stage5/test-binaries.json).
+
+The fresh server has SHA-256
+`e8bb9510ada3d29651e3197ee372d90b3db86ecc46a981b68f14a66a2e58b168`.
+The [27B run](native27b-stage5-default/run.json) uses staged attention,
+fixed-64 GEMM, sequential DeltaNet, on-demand Q4 FFN, a 512-token chunk, and
+the official external BF16 head. All six image cases, 14 top answers, exact
+token counts, and ten refusal checks pass; maximum image probability difference
+is `0.0017859468247664045`. The [text comparison](native27b-stage5-default/1-text.json)
+fails: 93 of 104 top answers match, maximum probability difference is
+`0.21719610918470517`, and 64 questions exceed `0.02`. The normalization fix
+does not resolve this gap. The run overlaps compilation and makes no latency
+claim; its owned server stops without a guard or cleanup failure.
+
+## Independent CPU-head reference and MPS diagnostics
+
+Bounded head-only experiments found instability in PyTorch 2.9.1 MPS on this
+machine. The [first frozen probe bundle](head-copy-publication-v1/README.md)
+records copy/conversion failures and successful isolated lexical gathers.
+The [second bundle](head-copy-publication-v2/README.md) preserves 16 official
+head calls with exact input and weight bytes: all eight case-014 calls agree,
+but case 034 produces four nonfinite and four differing results. Cloning views
+does not reliably fix the failure. The exact runtime or operator cause remains
+unknown. These probes neither invalidate every earlier answer nor establish
+native acceptance.
+
+To check the native gap independently, a new reference runs the official
+BF16 MPS backbone with the official head on CPU in f32. It reads the untied
+lexical output rows directly from the pinned BF16 checkpoint and verifies
+immutable IDs, masks, records, hidden rows, and lexical rows. The
+[complete reference artifact](reference27b/cpu-head-stage1/results/bench-artifacts.json)
+contains all 40 cases and 104 answers, with every immutable-input check passing.
+The 1.43 MB reference is stored by hash in the repository's benchmark bucket;
+restore it with `scripts/bench-artifacts.py restore` followed by the path to
+this report directory. The comparison and run receipts remain in Git.
+Its precision is explicitly `trunk:bfloat16,head:float32`; it is a diagnostic,
+not a relabeled replacement for the original BF16 acceptance goldens.
+
+The [offline comparison](reference27b/cpu-head-stage1/diagnostic-comparison.json)
+finds 103 of 104 matching top answers between this reference and the original
+BF16 goldens, with maximum probability difference `0.0043` and none above
+`0.02`. The Stage 5 native output matches only 94 of 104 against the independent
+reference, with maximum difference `0.21609610918470518` and 63 questions above
+`0.02`. Moving the reference head to CPU therefore confirms the large native
+gap. It does not identify whether quantized weights or native execution causes it.
+
+The [reference guard](reference27b/cpu-head-stage1/guard.json) records completion
+in 219.44 seconds, peak accounted memory of 60,152,859,888 bytes, a 72 GiB cap,
+and successful owned-process cleanup. Model tensors and saved intermediate
+tensor payloads remain outside Git; the reference records their hashes.
+
+The [same-input head isolation](cpu27b-diagnostic/stage5-head-isolation-clean/run/results/isolation.json)
+then compares cases 014 and 034 on CPU with four combinations of native and
+reference hidden and lexical rows. With identical native inputs, Rust and the
+official head differ by at most `9.5367431640625e-7` in logits. Reference hidden
+rows with native lexical rows restore every top answer and differ by at most
+`0.000343262` and `0.000187645` in probability. Native hidden rows with reference
+lexical rows still differ by `0.092048511` and `0.216365304`, respectively.
+These two cases locate the large difference in the backbone output rather than
+head arithmetic or lexical gathering. They do not distinguish quantization
+from backbone execution. The [guard](cpu27b-diagnostic/stage5-head-isolation-clean/run/guard.json)
+records a CPU-only run with a 4 GiB cap and successful cleanup.
+
+The [Q4 weight comparison](q4k-weight-diagnostic/result.json) samples 144 rows
+from 18 FFN tensors across six layers against the official BF16 checkpoint.
+The [actual native Rust decoder](q4k-weight-diagnostic/native-run-lto/receipt.json)
+matches all 1,327,104 independently decoded values bitwise. This rules out a
+Q4 block-decoding mismatch in that sample; it does not establish why the model
+differs from BF16. The first link failure remains recorded separately.
+
+Stage 5 also repeats the weighted block-DeltaNet check. The
+[standalone configuration](stage5/weighted-direct-delta/output.log) passes
+34 logits at maximum difference `8.87095928e-4`. The
+[combined configuration](stage5/weighted-direct-combined-delta/output.log)
+still fails at `1.40523911e-3` for the 2,032-token case, chunk 257, question 4,
+option 5. Block DeltaNet remains experimental and disabled by default; neither
+this failure nor the strict `1e-3` bound is removed.
 
 ## Official 27B reference
 
@@ -74,14 +173,15 @@ The subsequent [small GPU checks](stage4/small-gpu-checks.json) passed all
 [16 backend tests](stage4/metal-gpu/output.log) and
 [six serving tests](stage4/serve-gpu/output.log). The new direct-solve DeltaNet
 test's correlated-key cases differed from the oracle by at most `2.90572643e-7`.
-That synthetic check does not replace the pending full-model DeltaNet check.
+The subsequent weighted checks below cover the same direct-solve kernel on
+Clef Flash.
 
 | HTTP check | Comparison and outcome |
 | --- | --- |
 | [Flash default](flash-e2e-stage2/default.jsonl) | 40 requests, 104/104 top answers agree with the committed Flash CPU Q4_K_M reference; maximum probability difference `0.0007844769703932997`. Passed. |
 | [Flash fused attention and shape-selected GEMM](flash-e2e-stage2/fused-shapes.jsonl) | 40 requests, 104/104 top answers agree with the same CPU reference; maximum probability difference `0.0009549690061149141`. Passed. |
 | [Native 27B images](native27b-image-text-parity/0-images.json) | Six requests, 14/14 top answers agree with the official BF16 reference, exact input-token counts, and all ten HTTP refusals passed. Maximum probability difference `0.001797753043799255` is diagnostic; the image gate requires top-answer and token agreement plus refusals. Passed. |
-| [Native 27B text](native27b-image-text-parity/1-text.json) | 40 requests, 94/104 top answers agree with the official BF16 reference; input-token counts agree. Maximum probability difference `0.2199534834774498`. The original M1 gate requires 100% top-answer agreement and maximum difference at most `0.02`. Failed. |
+| [Native 27B text](native27b-image-text-parity/1-text.json) | 40 requests, 94/104 top answers agree with the official BF16 reference; input-token counts agree. Maximum probability difference `0.2199534834774498`. M4's stated BF16 gate applies the original M1 bounds: 100% top-answer agreement and maximum difference at most `0.02`. Failed. |
 
 The [Flash summary](flash-e2e-stage2/summary.json) and
 [request and server records](flash-e2e-stage2/records.jsonl) retain both modes,
@@ -117,6 +217,161 @@ option so future 27B timing runs can use the same official head; its
 [self-test passed](stage4/harness-head-selftest.log). This Python-only change
 does not change the tested Rust server binary.
 
+## Stage 4 weighted DeltaNet checks
+
+These runs used the Stage 4 serving test binary with SHA-256
+`ef60f2f3842ab8d2ef5bbbecb6cbebe0395688b4baa2dc75ee449659b63997ca`,
+built from the same frozen source snapshot as the `bb097ec7` HTTP server.
+The [runner](stage4/gpu_checks.py),
+[GPU lease receipt](stage4/weighted-gpu-lease.json), and
+[memory lease receipt](stage4/weighted-memory-lease.json) record shared-machine
+correctness checks, with a 36 GiB sampled memory cap and 12 GiB available-memory
+floor. Both owned test groups stopped successfully, without guard failures.
+
+| Configuration | Result |
+| --- | --- |
+| [Direct-solve DeltaNet](stage4/weighted-direct-delta/output.log), staged attention, fixed-64 GEMM, resident FFN | All 34 compared logits passed; maximum absolute difference `9.53912735e-4`. [Receipt](stage4/weighted-direct-delta/receipt.json). |
+| [Direct-solve DeltaNet with fused attention, shape-selected GEMM, and on-demand Q4 FFN](stage4/weighted-direct-combined-delta/output.log) | Failed with maximum absolute difference `1.64407492e-3`. Three coordinates exceeded the test bound. [Receipt](stage4/weighted-direct-combined-delta/receipt.json). |
+
+The combined failure reported question 0, option 0 at 155 tokens with chunk
+sizes 155 and 257 (`-1.1325965` versus `-1.133729`, difference
+`1.13248825e-3`), and question 4, option 5 at 2,032 tokens with chunk size 257
+(`-0.6216057` versus `-0.62324977`, difference `1.64407492e-3`). The
+[combined run record](stage4/gpu-retry-checks.json) preserves both outcomes.
+The standalone pass does not validate the combined mode or native 27B DeltaNet.
+
+## Native 27B CPU diagnostic
+
+The [CPU result](cpu27b-diagnostic/text-014.json) uses the same Q4_K_M artifact,
+official BF16 head, and `bb097ec7` server as the Metal HTTP comparison.
+For `text-014`, both native CPU and Metal selected `export`, with a maximum
+probability difference of `0.00023842464503166794`; the official BF16 reference
+selected `downgrade_1`. CPU versus BF16 differed by at most
+`0.09196533972951138`. All three reported 321 input tokens.
+
+The request took 538.706 seconds with two configured CPU threads on the shared
+machine. That duration is diagnostic, not a performance measurement. The
+[run receipt](cpu27b-diagnostic/run.json) remains `partial_cancelled`:
+[`text-034` was cancelled](cpu27b-diagnostic/cancellation.json) because its
+estimated runtime would exceed the remaining deadline. Only the diagnostic's
+owned processes were stopped. The receipt retains the interruption, completed
+answer, cleanup observation, and confirmation that the owned group stopped;
+the [memory lease receipt](cpu27b-diagnostic/lease.json) retains its nonzero exit.
+There is no completed CPU result for `text-034`.
+
+This one case shows that its BF16 disagreement also occurs on native CPU;
+it does not establish the cause or explain the other text mismatches. The
+[exact diagnostic script](cpu27b-diagnostic/run.py),
+[selected requests](cpu27b-diagnostic/requests.jsonl), and
+[server log](cpu27b-diagnostic/server.log) are included. As with the other
+archived scripts, replace the path labels and select a fresh output directory
+before reproduction. The script requires a memory lease and checks the pinned
+server, model, and head hashes.
+
+These weighted and CPU results precede the later normalization correction,
+serial Metal wait removal, and expanded 27B GEMM routing. They do not validate
+those changes. The earlier source manifests and review records remain unchanged.
+
+## Stage 4 shared-machine latency
+
+The [completed comparison](flash-latency-stage4/summary.json) ran two rounds
+with five measured uncached requests per workload and variant in each round.
+Variant order reversed between rounds. Warmups are excluded. Both variants used the
+same `bb097ec7` server and Flash Q4_K_M artifact, a 2,048-token chunk, resident
+FFN weights, sequential DeltaNet, and disabled prefix reuse.
+
+| Actual input tokens | Default median | Fused attention and weight-shape GEMM median | Relative speed |
+| --- | --- | --- | --- |
+| 1,075–1,082 | 0.818956 s | 0.708045 s | 1.16× |
+| 3,915–3,920 | 2.664879 s | 2.438215 s | 1.09× |
+| 15,509–15,513 | 11.097903 s | 10.552463 s | 1.05× |
+
+These are shared-machine measurements, with other applications running and
+no quiet lease. The task ran no concurrent build or second model. System load
+varied during the run. The results miss the absolute M3 targets of 0.35 s at
+1k and 7.5 s at 16k; they cannot establish idle-machine acceptance.
+[Request records](flash-latency-stage4/records.jsonl) retain real token counts,
+queue and model timing, cache checks, paired nonces, and process cleanup.
+[Metadata](flash-latency-stage4/metadata.json),
+[configuration](flash-latency-stage4/config.json), and the
+[GPU](flash-latency-stage4/gpu-lease.json) and
+[memory](flash-latency-stage4/memory-lease.json) lease receipts identify the run.
+This comparison precedes the next serial-wait reduction and normalization fix.
+
+## Stage 4 Flash HTTP batching
+
+The [batch check](flash-batch-stage4/summary.json) passes for two and four
+concurrent request slots. Each mode compares 15 successful requests with the
+same server's serial responses: every top answer agrees and the maximum
+probability difference is zero. Cohort metadata confirms shared FFN work and
+maximum groups of two and four. Each saturation burst receives nine successful
+responses and three `busy` refusals; requests after a disconnected client and
+after saturation succeed.
+
+The [request records](flash-batch-stage4/records.jsonl) include 57 HTTP outcomes,
+two disconnect attempts, exact question and option identities, token counts,
+queue/model timing, artifact identity, and cleanup. The
+[synthetic inputs](flash-batch-stage4/requests.json),
+[configuration](flash-batch-stage4/config.json), and
+[metadata](flash-batch-stage4/metadata.json) identify the 256-token chunk,
+disabled prefix reuse, and frozen `bb097ec7` server. The run overlaps the
+Stage 5 CPU compilation. Its 1.05× and 1.01× relative throughput values are
+diagnostic only; it establishes correctness and recovery, not the planned
+throughput improvement. It does not validate 27B batching.
+
+## Stage 4 prefix reuse
+
+Five changed-schema requests per model compare the same synthetic state with
+prefix reuse disabled and enabled. Every compared raw logit is identical.
+Each model has 21 question comparisons, including repeated exports from the
+eviction and restoration checks. Whole-answer caching is disabled by raw-logit
+export; the responses report the actual reused token counts.
+
+| Model and evidence | Disabled median | Reuse median | Relative speed |
+| --- | --- | --- | --- |
+| [Flash](flash-prefix-stage4/summary.json) | 2.761632 s | 0.404329 s | 6.83× |
+| [27B](native27b-prefix-stage4/summary.json) | 10.603304 s | 1.125043 s | 9.42× |
+
+Both pass the stated `1e-3` logit and 5× reuse bounds on the shared machine.
+These runs overlap CPU compilation and use raw-logit export; they do not
+establish uncached or idle-machine latency. Both use the frozen `bb097ec7`
+server and a 512 MiB cache limit. Flash uses the default kernels; 27B uses
+fused attention, shape-selected GEMM, on-demand Q4 FFN weights, and the external
+official BF16 head. State changes miss the cache, returning to an evicted state
+misses, and the next identical-state request hits.
+
+The [Flash requests and responses](flash-prefix-stage4/records.jsonl) and
+[27B requests and responses](native27b-prefix-stage4/records.jsonl) retain
+cleanup and memory receipts. Each directory also contains the input pairs,
+configuration, binary/artifact identities, lease receipts, and raw logits under
+`disabled/rows.jsonl` and `reuse/rows.jsonl`.
+
+## DeltaNet normalization correction
+
+The [executed reference source](delta-epsilon/reference-identity.json) normalizes
+queries and keys as `x / sqrt(sum(x*x) + 1e-6)`. The native CPU, CUDA prefill,
+and Metal prefill implementations instead clamped the norm after its square
+root. The correction matches the reference for small norms. Its effect on
+full-model accuracy remains unmeasured at this checkpoint.
+
+The [RTX 4080 oracle check](delta-epsilon/cuda/summary.json) executes the changed
+CUDA kernel in 12 synthetic cases, covering Flash and 27B head counts, zero and
+small norms, dimension tails, guards, and repeatability. All 367,488 comparisons
+pass an independent f64 oracle. The largest gate error is `1.003e-7`, and the
+largest normalized-key error is `1.118e-8`. This run loads no model. The
+[oracle source](delta-epsilon/cuda/oracle.cu),
+[guard](delta-epsilon/cuda/guard.py), and
+[retained hashes](delta-epsilon/cuda/retained-hashes.json) record reproduction
+inputs and bounded execution.
+
+A [sampled artifact comparison](delta-epsilon/static-weight-check.json) finds
+compatible 27B projection rows, exact converted normalization and convolution
+weights, and the expected value-head permutation. This supports compatible
+weights and layout; the GGUF metadata does not bind an HF source revision.
+Tiny individual convolution channels do not establish tiny complete query or
+key norms. Activation evidence is still needed before attributing the text
+accuracy difference to normalization or quantization.
+
 ## Earlier Flash and Metal checks
 
 The Stage 2 serving test binary has SHA-256
@@ -137,8 +392,8 @@ the actual configuration.
 | [Synthetic serving checks](stage2/serve-gpu.log) | Six tests passed. [Receipt](stage2/serve-gpu.json). |
 
 Both historical DeltaNet results precede the direct-solve correction. Neither
-the standalone pass nor the combined failure validates the current kernel.
-The current kernel's full-model check remains pending. These earlier Flash
+the standalone pass nor the combined failure validates that correction; the
+Stage 4 weighted results above evaluate it separately. These earlier Flash
 results do not validate native 27B answers, prefix reuse across full requests,
 or continuous-batch request parity; the later HTTP comparisons are separate
 evidence above.
@@ -212,3 +467,6 @@ The manifest's initial source snapshot identifies reviewed files, while the
 separate Stage 4 source manifest and build records identify the later tested
 server. Neither substitutes for the source of an earlier test binary. Add later
 validation as new evidence, retaining these failures and their original hashes.
+The [follow-up publication check](stage4-followup-publication-check.json)
+verifies the added weighted and CPU records, recomputes the CPU comparison,
+and confirms that all earlier copied files and manifest entries stayed intact.

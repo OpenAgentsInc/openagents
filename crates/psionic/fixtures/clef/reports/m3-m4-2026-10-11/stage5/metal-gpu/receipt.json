@@ -1,0 +1,46 @@
+{
+  "name": "metal-gpu",
+  "command": [
+    "task-scratch/clef-m3-m4/stage5/psionic-metal-tests",
+    "clef",
+    "--test-threads=1",
+    "--nocapture",
+    "--ignored"
+  ],
+  "binary_sha256": "4ec046121a61e32b3360d9aac09217c2965d09d150912bbfe065d648bb2ccf1e",
+  "environment": {},
+  "conditions": "shared machine; correctness only",
+  "preflight": {
+    "available_memory_bytes": 96348340224,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 3911827,
+      "inactive": 1630585,
+      "speculative": 338224
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "exit": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 17751,
+    "max_rss_bytes": 8589934592,
+    "peak_rss_bytes": 417939456,
+    "peak_physical_footprint_bytes": 524960752,
+    "peak_accounted_bytes": 524960752,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 6,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 96347291648,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 2.896694042
+}

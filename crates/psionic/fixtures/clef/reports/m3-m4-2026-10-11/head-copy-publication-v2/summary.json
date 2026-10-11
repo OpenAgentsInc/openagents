@@ -1,0 +1,133 @@
+{
+  "version": 2,
+  "frozen": true,
+  "kind": "bounded_mps_head_parameter_view_diagnostic",
+  "torch": "2.9.1",
+  "trunk_loaded": false,
+  "head_sha256": "a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+  "input_policy": "Each call reloads saved tensors from immutable serialized bytes and reloads the same BF16 head values. CPU/GPU inputs and all head parameter bytes are checked before and after inference.",
+  "clone_policy": "Clone lexical int64 index slices, nonzero-offset linear weight/bias views, both, or neither. Values and arithmetic are unchanged.",
+  "nonfinite_policy": "Nonfinite floats are recorded as explicit strings with logits_finite=false. They remain correctness failures; no numeric gate was changed.",
+  "results": [
+    {
+      "case": "text-014",
+      "mode": "original",
+      "calls": 2,
+      "finite_calls": 2,
+      "maximum_finite_logit_difference": 0.0,
+      "cpu_and_gpu_input_bytes_exact": true,
+      "head_weight_bytes_exact": true,
+      "sentinels_unchanged": true
+    },
+    {
+      "case": "text-014",
+      "mode": "cloned_token_ids",
+      "calls": 2,
+      "finite_calls": 2,
+      "maximum_finite_logit_difference": 0.0,
+      "cpu_and_gpu_input_bytes_exact": true,
+      "head_weight_bytes_exact": true,
+      "sentinels_unchanged": true
+    },
+    {
+      "case": "text-014",
+      "mode": "cloned_linear_parameters",
+      "calls": 2,
+      "finite_calls": 2,
+      "maximum_finite_logit_difference": 0.0,
+      "cpu_and_gpu_input_bytes_exact": true,
+      "head_weight_bytes_exact": true,
+      "sentinels_unchanged": true
+    },
+    {
+      "case": "text-014",
+      "mode": "cloned_indices_and_linear_parameters",
+      "calls": 2,
+      "finite_calls": 2,
+      "maximum_finite_logit_difference": 0.0,
+      "cpu_and_gpu_input_bytes_exact": true,
+      "head_weight_bytes_exact": true,
+      "sentinels_unchanged": true
+    },
+    {
+      "case": "text-034",
+      "mode": "original",
+      "calls": 2,
+      "finite_calls": 0,
+      "maximum_finite_logit_difference": null,
+      "cpu_and_gpu_input_bytes_exact": true,
+      "head_weight_bytes_exact": true,
+      "sentinels_unchanged": true
+    },
+    {
+      "case": "text-034",
+      "mode": "cloned_token_ids",
+      "calls": 2,
+      "finite_calls": 1,
+      "maximum_finite_logit_difference": 0.29296875,
+      "cpu_and_gpu_input_bytes_exact": true,
+      "head_weight_bytes_exact": true,
+      "sentinels_unchanged": true
+    },
+    {
+      "case": "text-034",
+      "mode": "cloned_linear_parameters",
+      "calls": 2,
+      "finite_calls": 2,
+      "maximum_finite_logit_difference": 0.29296875,
+      "cpu_and_gpu_input_bytes_exact": true,
+      "head_weight_bytes_exact": true,
+      "sentinels_unchanged": true
+    },
+    {
+      "case": "text-034",
+      "mode": "cloned_indices_and_linear_parameters",
+      "calls": 2,
+      "finite_calls": 1,
+      "maximum_finite_logit_difference": 0.29296875,
+      "cpu_and_gpu_input_bytes_exact": true,
+      "head_weight_bytes_exact": true,
+      "sentinels_unchanged": true
+    }
+  ],
+  "nonzero_parameter_views": [
+    {
+      "shape": [
+        1024,
+        1024
+      ],
+      "weight_offset_elements": 1048576,
+      "bias_offset_elements": 1024
+    },
+    {
+      "shape": [
+        1024,
+        1024
+      ],
+      "weight_offset_elements": 2097152,
+      "bias_offset_elements": 2048
+    },
+    {
+      "shape": [
+        2048,
+        1024
+      ],
+      "weight_offset_elements": 1048576,
+      "bias_offset_elements": 1024
+    }
+  ],
+  "conclusions": [
+    "All 16 calls had exact input and head-weight bytes before and after inference.",
+    "Case 014 matched the original BF16 logits exactly in all 8 calls.",
+    "Case 034 returned NaN in 4 of 8 calls; the other 4 calls differed from the original BF16 logits by up to 0.29296875.",
+    "Neither token-index cloning nor parameter-view cloning reliably corrected the case 034 failure.",
+    "This probe establishes unstable MPS head results under these conditions without observed input or weight mutation. It does not identify the faulty operator, validate the full BF16 trunk, or establish native 27B acceptance."
+  ],
+  "execution": {
+    "elapsed_seconds": 12.902328583,
+    "peak_accounted_bytes": 2398603328,
+    "owned_group_stopped": true,
+    "conditions": "Shared machine; correctness diagnostics only."
+  },
+  "prior_snapshot": "head-copy-publication-v1 is unchanged and retains earlier copy failures, mutations, resource refusals, and the partial NaN serialization failure."
+}

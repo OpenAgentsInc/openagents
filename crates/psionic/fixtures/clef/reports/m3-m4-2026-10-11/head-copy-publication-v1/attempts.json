@@ -1,0 +1,256 @@
+[
+  {
+    "source_file": "head-inputs-014-034-copy-probe-guard.json",
+    "source_sha256": "e798f5316a9ec9711ace85ee8bca9b8110ab55afe6cbfb69b7625c8f52dd995f",
+    "mode": "copy-probe",
+    "status": "complete",
+    "script_sha256": "cff734c375a5ad97ce5f4f65a0be1b50a08fda4059e9d37f279900724a3d3c60",
+    "guard_sha256": "fa74acce6b11a92289fc5f77f39e56cd27d16864ec85b1516b8d720da2b580a9",
+    "elapsed_seconds": 2.481625792,
+    "effective_environment": {
+      "RAYON_NUM_THREADS": "2",
+      "OMP_NUM_THREADS": "2",
+      "OPENBLAS_NUM_THREADS": "2",
+      "MKL_NUM_THREADS": "2",
+      "VECLIB_MAXIMUM_THREADS": "2",
+      "PYTORCH_ENABLE_MPS_FALLBACK": "0",
+      "HF_HUB_OFFLINE": "1",
+      "TRANSFORMERS_OFFLINE": "1",
+      "PYTHONDONTWRITEBYTECODE": "1"
+    },
+    "conditions": "shared machine",
+    "process_cap_bytes": 4294967296,
+    "mps_allocator_cap_bytes": 1073741824,
+    "startup_available_gib": 16,
+    "minimum_available_gib": 12,
+    "deadline_seconds": 120,
+    "peak_accounted_bytes": 297747440,
+    "lowest_available_memory_bytes": 94632558592,
+    "owned_group_stopped": true,
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "load_average_before": [
+      40.4892578125,
+      37.9111328125,
+      32.931640625
+    ],
+    "load_average_after": [
+      40.85009765625,
+      38.02880859375,
+      33.001953125
+    ],
+    "failure": null
+  },
+  {
+    "source_file": "head-inputs-014-034-head-probe-guard.json",
+    "source_sha256": "e36d4640b425802e53de1bfab258f8e3c0aaa0bd96e372d15b095635391a93d7",
+    "mode": "head-probe",
+    "status": "failed",
+    "script_sha256": "5279dce1f91c0b0f85de701145163b423c107368830b9d5a0f7f7d4c444ad8cf",
+    "guard_sha256": "fa74acce6b11a92289fc5f77f39e56cd27d16864ec85b1516b8d720da2b580a9",
+    "elapsed_seconds": 1.6624220829999998,
+    "effective_environment": {
+      "RAYON_NUM_THREADS": "2",
+      "OMP_NUM_THREADS": "2",
+      "OPENBLAS_NUM_THREADS": "2",
+      "MKL_NUM_THREADS": "2",
+      "VECLIB_MAXIMUM_THREADS": "2",
+      "PYTORCH_ENABLE_MPS_FALLBACK": "0",
+      "HF_HUB_OFFLINE": "1",
+      "TRANSFORMERS_OFFLINE": "1",
+      "PYTHONDONTWRITEBYTECODE": "1"
+    },
+    "conditions": "shared machine",
+    "process_cap_bytes": 4294967296,
+    "mps_allocator_cap_bytes": 1073741824,
+    "startup_available_gib": 16,
+    "minimum_available_gib": 12,
+    "deadline_seconds": 120,
+    "peak_accounted_bytes": 580665344,
+    "lowest_available_memory_bytes": 92533309440,
+    "owned_group_stopped": true,
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "load_average_before": [
+      39.7421875,
+      37.88037109375,
+      33.00732421875
+    ],
+    "load_average_after": [
+      39.7421875,
+      37.88037109375,
+      33.00732421875
+    ],
+    "failure": "MPS allocator refused a 10 MiB upload: 1.01 GiB allocated with a 1 GiB cap; inference did not run."
+  },
+  {
+    "source_file": "head-inputs-014-034-cpu-cast-head-probe-guard.json",
+    "source_sha256": "5a0cc7dbedef8cd9116581025bf533361425fce06bcc9c0c776773045575ce3e",
+    "mode": "head-probe",
+    "status": "failed",
+    "script_sha256": "3cb0a235f22b9cd2200b25431b66deb46b67eb0874ecb8fc02973e5912f07d29",
+    "guard_sha256": "e932adbd82b969166634aaf41341a497932dbd393c6724c5cd463da315d55b97",
+    "elapsed_seconds": 1.664249208,
+    "effective_environment": {
+      "RAYON_NUM_THREADS": "2",
+      "OMP_NUM_THREADS": "2",
+      "OPENBLAS_NUM_THREADS": "2",
+      "MKL_NUM_THREADS": "2",
+      "VECLIB_MAXIMUM_THREADS": "2",
+      "PYTORCH_ENABLE_MPS_FALLBACK": "0",
+      "HF_HUB_OFFLINE": "1",
+      "TRANSFORMERS_OFFLINE": "1",
+      "PYTHONDONTWRITEBYTECODE": "1"
+    },
+    "conditions": "shared machine",
+    "process_cap_bytes": 4294967296,
+    "mps_allocator_cap_bytes": 1073741824,
+    "startup_available_gib": 16,
+    "minimum_available_gib": 12,
+    "deadline_seconds": 120,
+    "peak_accounted_bytes": 519880704,
+    "lowest_available_memory_bytes": 76906594304,
+    "owned_group_stopped": true,
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "load_average_before": [
+      29.9375,
+      34.3525390625,
+      32.8251953125
+    ],
+    "load_average_after": [
+      29.9375,
+      34.3525390625,
+      32.8251953125
+    ],
+    "failure": "MPS allocator refused a 10 MiB upload: 1.01 GiB allocated with a 1 GiB cap; inference did not run."
+  },
+  {
+    "source_file": "head-inputs-014-034-cpu-cast-2g-head-probe-guard.json",
+    "source_sha256": "7f667406115d59c2993d6473026c6710b6ed11c80fd9cab368339cef01c4fb26",
+    "mode": "head-probe",
+    "status": "complete",
+    "script_sha256": "3996dfc91b684ac8954c00b61d83a22584a11e530a3f1d2352f08fcf3460b34f",
+    "guard_sha256": "728fe1e8ae9923807170fe8653eb12f1a9875996aaeae58fd7488bc5c8a82be2",
+    "elapsed_seconds": 1.8680716659999999,
+    "effective_environment": {
+      "RAYON_NUM_THREADS": "2",
+      "OMP_NUM_THREADS": "2",
+      "OPENBLAS_NUM_THREADS": "2",
+      "MKL_NUM_THREADS": "2",
+      "VECLIB_MAXIMUM_THREADS": "2",
+      "PYTORCH_ENABLE_MPS_FALLBACK": "0",
+      "HF_HUB_OFFLINE": "1",
+      "TRANSFORMERS_OFFLINE": "1",
+      "PYTHONDONTWRITEBYTECODE": "1"
+    },
+    "conditions": "shared machine",
+    "process_cap_bytes": 4294967296,
+    "mps_allocator_cap_bytes": 2147483648,
+    "startup_available_gib": 16,
+    "minimum_available_gib": 12,
+    "deadline_seconds": 120,
+    "peak_accounted_bytes": 2126071416,
+    "lowest_available_memory_bytes": 78385840128,
+    "owned_group_stopped": true,
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "load_average_before": [
+      29.1669921875,
+      32.41064453125,
+      32.27783203125
+    ],
+    "load_average_after": [
+      29.1669921875,
+      32.41064453125,
+      32.27783203125
+    ],
+    "failure": null
+  },
+  {
+    "source_file": "head-inputs-014-034-immutable-copy-probe-guard.json",
+    "source_sha256": "dda606853a08da292ebe33aaff87795806aacfdfd509224e96ef660674c9665a",
+    "mode": "copy-probe",
+    "status": "complete",
+    "script_sha256": "4925b84e2947f6eac83b90a768640a71bc03fe68b948491855be1038f67e22e6",
+    "guard_sha256": "6754d0c8d615df29d65bc79775161841f7cce0a349fde3b117bd7b38faf833aa",
+    "helper_sha256": "cecf6f6b6ad97ba7e74435bb0f3570f8f11fa724303d748f9e314ce7de9b70ea",
+    "elapsed_seconds": 1.448399,
+    "effective_environment": {
+      "RAYON_NUM_THREADS": "2",
+      "OMP_NUM_THREADS": "2",
+      "OPENBLAS_NUM_THREADS": "2",
+      "MKL_NUM_THREADS": "2",
+      "VECLIB_MAXIMUM_THREADS": "2",
+      "PYTORCH_ENABLE_MPS_FALLBACK": "0",
+      "HF_HUB_OFFLINE": "1",
+      "TRANSFORMERS_OFFLINE": "1",
+      "PYTHONDONTWRITEBYTECODE": "1"
+    },
+    "conditions": "shared machine",
+    "process_cap_bytes": 4294967296,
+    "mps_allocator_cap_bytes": 1073741824,
+    "startup_available_gib": 16,
+    "minimum_available_gib": 12,
+    "deadline_seconds": 120,
+    "peak_accounted_bytes": 402310272,
+    "lowest_available_memory_bytes": 98387410944,
+    "owned_group_stopped": true,
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "load_average_before": [
+      29.80712890625,
+      30.73193359375,
+      31.15576171875
+    ],
+    "load_average_after": [
+      29.80712890625,
+      30.73193359375,
+      31.15576171875
+    ],
+    "failure": null
+  },
+  {
+    "source_file": "head-inputs-014-034-immutable-head-probe-guard.json",
+    "source_sha256": "ca465685980de880b5076c55a34dd190b432dd4f47f801d822553403d22a19f4",
+    "mode": "head-probe",
+    "status": "failed",
+    "script_sha256": "8dd863916f54722ed307478fa57c5741ad8fc59358f900926f5238ddeb942025",
+    "guard_sha256": "6754d0c8d615df29d65bc79775161841f7cce0a349fde3b117bd7b38faf833aa",
+    "helper_sha256": "cecf6f6b6ad97ba7e74435bb0f3570f8f11fa724303d748f9e314ce7de9b70ea",
+    "elapsed_seconds": 2.066881542,
+    "effective_environment": {
+      "RAYON_NUM_THREADS": "2",
+      "OMP_NUM_THREADS": "2",
+      "OPENBLAS_NUM_THREADS": "2",
+      "MKL_NUM_THREADS": "2",
+      "VECLIB_MAXIMUM_THREADS": "2",
+      "PYTORCH_ENABLE_MPS_FALLBACK": "0",
+      "HF_HUB_OFFLINE": "1",
+      "TRANSFORMERS_OFFLINE": "1",
+      "PYTHONDONTWRITEBYTECODE": "1"
+    },
+    "conditions": "shared machine",
+    "process_cap_bytes": 4294967296,
+    "mps_allocator_cap_bytes": 2147483648,
+    "startup_available_gib": 16,
+    "minimum_available_gib": 12,
+    "deadline_seconds": 120,
+    "peak_accounted_bytes": 2128643704,
+    "lowest_available_memory_bytes": 96688422912,
+    "owned_group_stopped": true,
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "load_average_before": [
+      28.38525390625,
+      30.39501953125,
+      31.03076171875
+    ],
+    "load_average_after": [
+      28.38525390625,
+      30.39501953125,
+      31.03076171875
+    ],
+    "failure": "NaN output could not be JSON-serialized; five preceding calls retained."
+  }
+]

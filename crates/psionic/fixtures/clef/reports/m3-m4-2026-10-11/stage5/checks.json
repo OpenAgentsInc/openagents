@@ -1,0 +1,72 @@
+[
+  {
+    "name": "server",
+    "command": [
+      "cargo",
+      "build",
+      "--release",
+      "--manifest-path",
+      "crates/psionic/Cargo.toml",
+      "-p",
+      "psionic-serve",
+      "--bin",
+      "psionic-openai-server"
+    ],
+    "exit": 0,
+    "seconds": 1042.758892542
+  },
+  {
+    "name": "serve",
+    "command": [
+      "cargo",
+      "test",
+      "--release",
+      "--manifest-path",
+      "crates/psionic/Cargo.toml",
+      "-p",
+      "psionic-serve",
+      "--lib",
+      "clef",
+      "--",
+      "--test-threads=1"
+    ],
+    "exit": 0,
+    "seconds": 653.341733833
+  },
+  {
+    "name": "delta-helper",
+    "command": [
+      "cargo",
+      "test",
+      "--release",
+      "--manifest-path",
+      "crates/psionic/Cargo.toml",
+      "-p",
+      "psionic-serve",
+      "--lib",
+      "qwen35_delta_l2_norm_matches_additive_epsilon_reference",
+      "--",
+      "--test-threads=1"
+    ],
+    "exit": 0,
+    "seconds": 0.7355726669998148
+  },
+  {
+    "name": "metal",
+    "command": [
+      "cargo",
+      "test",
+      "--release",
+      "--manifest-path",
+      "crates/psionic/Cargo.toml",
+      "-p",
+      "psionic-backend-metal",
+      "--lib",
+      "clef",
+      "--",
+      "--test-threads=1"
+    ],
+    "exit": 0,
+    "seconds": 19.513289416999896
+  }
+]

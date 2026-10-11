@@ -1,0 +1,236 @@
+{
+  "kind": "same_gguf_cpu_diagnostic",
+  "status": "partial_cancelled",
+  "cases": [
+    {
+      "id": "text-014",
+      "http_status": 200,
+      "response": {
+        "model": "clef",
+        "answers": {
+          "x0": {
+            "type": "choice",
+            "choice": "export",
+            "confidence": 0.38086533972951137,
+            "probabilities": {
+              "apple": 0.11869914930648073,
+              "downgrade_1": 0.35216195081091417,
+              "branch": 0.06398973998035401,
+              "key": 0.08428382017273965,
+              "export": 0.38086533972951137
+            }
+          }
+        },
+        "usage": {
+          "input_tokens": 321,
+          "output_tokens": 0,
+          "cached_input_tokens": 0
+        },
+        "psionic": {
+          "artifact": "Clef-Q4_K_M.gguf",
+          "artifact_digest": "sha256:9997675e4c9e9016273372b5fdedbdda7ad14285bc722949e4b9daca62bf3822",
+          "head_source": "safetensors",
+          "head_digest": "sha256:a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953",
+          "backend": "cpu",
+          "execution_mode": "native",
+          "prefill_chunk": 512,
+          "accumulate": "f32",
+          "prompt_tokens": 321,
+          "truncated_state_tokens": 0,
+          "trained_length": 16384,
+          "max_tokens": 2048,
+          "latency_ms": 538704,
+          "timing": {
+            "encode_ms": 0.9,
+            "queue_ms": 0.0,
+            "prefill_ms": 538591.6,
+            "head_ms": 112.0,
+            "total_ms": 538704.7,
+            "cached": false
+          }
+        }
+      },
+      "seconds": 538.706081292,
+      "load_average": [
+        27.70849609375,
+        29.177734375,
+        31.1025390625
+      ],
+      "source_request_sha256": "61150d0f0ec1f1e089410ea8bb764d7aa6e6c4d6c17305cfb0084ed4569cf4b2",
+      "versus_metal": {
+        "tokens_match": true,
+        "top_matches": 1,
+        "questions": 1,
+        "maximum_probability_difference": 0.00023842464503166794,
+        "question_comparisons": {
+          "x0": {
+            "type": "choice",
+            "cpu_top": "export",
+            "other_top": "export",
+            "top_matches": true,
+            "cpu_top_two_margin": 0.028703388918597195,
+            "other_top_two_margin": 0.028452094001872208,
+            "maximum_probability_difference": 0.00023842464503166794
+          }
+        }
+      },
+      "versus_official_bf16": {
+        "tokens_match": true,
+        "top_matches": 0,
+        "questions": 1,
+        "maximum_probability_difference": 0.09196533972951138,
+        "question_comparisons": {
+          "x0": {
+            "type": "choice",
+            "cpu_top": "export",
+            "other_top": "downgrade_1",
+            "top_matches": false,
+            "cpu_top_two_margin": 0.028703388918597195,
+            "other_top_two_margin": 0.1498,
+            "maximum_probability_difference": 0.09196533972951138
+          }
+        }
+      }
+    }
+  ],
+  "conditions": "shared machine; correctness diagnostic, not latency evidence",
+  "selected_cases": [
+    "text-014",
+    "text-034"
+  ],
+  "started_utc": "2026-10-11T08:56:34Z",
+  "limits": {
+    "memory_lease_gib": 32,
+    "max_owned_group_gib": 32,
+    "minimum_start_available_gib": 44,
+    "minimum_available_gib": 12,
+    "deadline_seconds": 1800,
+    "startup_timeout_seconds": 180,
+    "first_request_timeout_seconds": 600,
+    "chunk": 512,
+    "max_tokens": 2048
+  },
+  "source_head": "9c1b755d5914848cbc19e97286a70ca966871bdf",
+  "source_is_dirty": true,
+  "script_sha256": "bf9a272f8165fb052339b3cb2b7217974836558fd0824618d80131d6785c7769",
+  "harnesses": {
+    "image_parity.py": "780b1ff00bf9c99dd3cf5be27a603657abdfce7dc803ed1c3073f72917ad989a",
+    "mac_quiet_bench.py": "25fbaf5540d4799a9dd75cfe7f5f9d91a9d466b6baaf3cd53148b6869bd2ce43",
+    "mac_memory.py": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd"
+  },
+  "inputs": {
+    "repo/crates/psionic/fixtures/clef/e2e/requests.jsonl": "3958f5f3b9d09d7fac61a39e40c69e812ef09c39f06baae2ab0286e171ab19bc",
+    "run-artifacts/native27b-image-text-parity/run.json": "328b41daf0133cfe0242843c1e8f3c102a5af08c0026aeaeb81c72958c766b5e",
+    "run-artifacts/native27b-image-text-parity/1-text.json": "ae222691fb54880cd8f068fd958704b2259d4a1be3267986ddf4a76eda78fd95",
+    "run-artifacts/reference27b/text-mps-bf16.json": "5fededd9e1df8433b0ec4d4ac0b9d3f1f40c686e7700ee9af8a87ee562771867"
+  },
+  "artifacts": {
+    "binary": {
+      "path": "run-artifacts/cpu27b-diagnostic/psionic-openai-server-bb097ec7",
+      "bytes": 21964920,
+      "sha256": "bb097ec7fb4c18134377b3877b0d66d2c6fc68812436c3bf10ecd9240b08a0d2"
+    },
+    "gguf": {
+      "path": "run-artifacts/artifacts/Clef-Q4_K_M.gguf",
+      "bytes": 19232219200,
+      "sha256": "9997675e4c9e9016273372b5fdedbdda7ad14285bc722949e4b9daca62bf3822"
+    },
+    "head": {
+      "path": "run-artifacts/artifacts/clef-bf16/joint_head.safetensors",
+      "bytes": 256125024,
+      "sha256": "a010ac04f078e699988e4049cbea5e62c962393f59fec366640b64e8d69a4953"
+    }
+  },
+  "effective_environment": {
+    "RAYON_NUM_THREADS": "2",
+    "TOKIO_WORKER_THREADS": "1",
+    "OMP_NUM_THREADS": "2",
+    "OPENBLAS_NUM_THREADS": "2",
+    "MKL_NUM_THREADS": "2",
+    "VECLIB_MAXIMUM_THREADS": "2",
+    "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0"
+  },
+  "preflight": {
+    "available_memory_bytes": 99912335360,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 3630132,
+      "inactive": 1964523,
+      "speculative": 503510
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "load_average_before": [
+    26.27294921875,
+    28.06591796875,
+    30.98779296875
+  ],
+  "command": [
+    "run-artifacts/cpu27b-diagnostic/psionic-openai-server-bb097ec7",
+    "--decision-model",
+    "run-artifacts/artifacts/Clef-Q4_K_M.gguf",
+    "--clef-head",
+    "run-artifacts/artifacts/clef-bf16/joint_head.safetensors",
+    "--decision-device",
+    "cpu",
+    "--decision-chunk",
+    "512",
+    "--decision-max-tokens",
+    "2048",
+    "--host",
+    "127.0.0.1",
+    "--port",
+    "0"
+  ],
+  "endpoint": "http://127.0.0.1:59413",
+  "startup_seconds": 57.633525000000006,
+  "error_type": "KeyboardInterrupt",
+  "error": "signal 15",
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 45724,
+    "max_rss_bytes": 34359738368,
+    "peak_rss_bytes": 18370822144,
+    "peak_physical_footprint_bytes": 935360288,
+    "peak_accounted_bytes": 18370822144,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 1291,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 93298409472,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [
+      {
+        "owned_pid": 45724,
+        "signal": 0,
+        "error_type": "PermissionError",
+        "errno": 1,
+        "leader_exit_code": -15,
+        "verified_group_members": 0
+      }
+    ],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "elapsed_seconds": 713.947661,
+  "load_average_after": [
+    25.20068359375,
+    28.32177734375,
+    30.556640625
+  ],
+  "cancelled_cases": [
+    {
+      "case_id": "text-034",
+      "status": "cancelled",
+      "reason": "CPU text-014 took 538.706 seconds; text-034 is estimated to exceed the remaining total deadline. Parent requested cancellation after preserving the completed diagnostic.",
+      "completed_case": "text-014",
+      "requested_at_utc": "2026-10-11T09:08:38Z",
+      "owned_server_pid": 45724,
+      "owned_wrapper_pid": 42971
+    }
+  ]
+}

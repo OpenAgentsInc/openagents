@@ -1,0 +1,30 @@
+{
+  "model_path": "scratch/mac-quiet-2026-10-10/model.gguf",
+  "measurement_mode": "shared",
+  "max_start_load": 150,
+  "max_run_load": 180,
+  "rounds": 2,
+  "runs": 5,
+  "request_timeout": 300,
+  "variants": [
+    {
+      "name": "default",
+      "binary": "scratch/clef-m3-m4/stage4/psionic-openai-server",
+      "chunk": 2048,
+      "env": {
+        "RAYON_NUM_THREADS": "2",
+        "PSIONIC_CLEF_PREFIX_CACHE_BYTES": "0"
+      }
+    }
+  ],
+  "requests": [
+    "scratch/mac-quiet-2026-10-10/requests/len1k.json"
+  ],
+  "output_dir": "scratch/clef-m3-m4/flash-batch-stage4",
+  "batch_check": {
+    "chunk": 256
+  },
+  "max_rss_gib": 36,
+  "minimum_available_memory_gib": 12,
+  "startup_timeout": 180
+}
