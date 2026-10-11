@@ -28,6 +28,7 @@ pub mod file_tools;
 pub mod fleet;
 mod fleet_app;
 pub mod github_tool;
+pub mod identity;
 pub mod issue_run;
 pub mod jev_plugin;
 pub mod live;

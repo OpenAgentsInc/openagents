@@ -750,14 +750,21 @@ pub(crate) fn local_task(
     execution: &ExecutionSettings,
 ) -> Result<String, String> {
     const LIMIT: usize = 56 * 1024;
-    let mut prefix = execution
+    // The local loop runs on the person's own Codex or Claude Code login,
+    // whose own prompt names that product: Coder's identity leads (#11264).
+    let mut prefix = format!(
+        "Standing instructions (from the host, not the user):\n{}",
+        crate::identity::prompt(crate::models::AUTO)
+    );
+    if let Some(standing) = execution
         .instructions
         .as_deref()
         .filter(|text| !text.trim().is_empty())
-        .map(|standing| {
-            format!("Standing instructions (from the host, not the user):\n{standing}\n\n")
-        })
-        .unwrap_or_default();
+    {
+        prefix.push_str(standing);
+        prefix.push('\n');
+    }
+    prefix.push('\n');
     // Project instructions and saved memory (#11176), within a share of the
     // local route's allowance; files over it are named, not read.
     if let Some(context) = execution
@@ -769,9 +776,7 @@ pub(crate) fn local_task(
         prefix.push_str(&context);
         prefix.push_str("\n\n");
     }
-    if !prefix.is_empty() {
-        prefix.push_str("The conversation:\n");
-    }
+    prefix.push_str("The conversation:\n");
     let suffix = if execution.cli {
         "\n\nThe bundled OpenAgents CLI is enabled for requested CLI work: openagents --json with an argument array's equivalent syntax. Answer questions directly from what you know and from read-only commands; read a command group's --help only when you need a command you do not know. Follow the user's authorization for effects."
     } else {

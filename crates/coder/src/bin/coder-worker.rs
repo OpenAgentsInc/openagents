@@ -458,6 +458,15 @@ fn allowed(text: &str) -> Result<Vec<String>, String> {
     Ok(keys)
 }
 
+/// The caller's instructions with Coder's identity ahead of them (#11264).
+fn with_identity(caller: &str) -> String {
+    if caller.trim().is_empty() {
+        first::IDENTITY.to_string()
+    } else {
+        format!("{}\n\n{caller}", first::IDENTITY)
+    }
+}
+
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
@@ -2444,10 +2453,8 @@ impl Job {
                     let triage = (judged && !summary)
                         .then(|| self.triage(&turn, &input))
                         .flatten();
-                    let mut instructions = payload["instructions"]
-                        .as_str()
-                        .unwrap_or_default()
-                        .to_string();
+                    let mut instructions =
+                        with_identity(payload["instructions"].as_str().unwrap_or_default());
                     // Where the chat runs, from its typed context: on a
                     // computer, Coder runs here and the project folder is
                     // the working directory (#10077).
@@ -5527,7 +5534,8 @@ mod tests {
     }
 
     /// A turn that does not ask for a first response gets no unrouted
-    /// note: its instructions reach the model as they came.
+    /// note: its instructions reach the model as they came, after Coder's
+    /// identity (#11264).
     #[tokio::test]
     async fn only_a_turn_that_asks_to_be_shown_gets_the_unrouted_note() {
         let stream = include_str!("../../fixtures/gateway/google-gemini-3.8-flash.sse");
@@ -5538,7 +5546,35 @@ mod tests {
         payload["instructions"] = json!("Reply with JSON.");
         let frames = frames_through(door, None, payload).await;
         assert_eq!(frames.last().unwrap().1["type"], "result");
-        assert_eq!(seen.lock().unwrap()[0]["instructions"], "Reply with JSON.");
+        assert_eq!(
+            seen.lock().unwrap()[0]["instructions"],
+            format!("{}\n\nReply with JSON.", first::IDENTITY)
+        );
+    }
+
+    /// #11264: the web chat's model is told it is Coder, never another
+    /// product, and that OpenAgents picks the model, on every turn.
+    #[tokio::test]
+    async fn the_chat_model_is_told_it_is_coder() {
+        let stream = include_str!("../../fixtures/gateway/google-gemini-3.8-flash.sse");
+        let (url, seen) = serve_recorded(1, Duration::ZERO, "text/event-stream", stream.into());
+        let door = Door::Live(coder::generate::ResponsesDoor::new(url, GEMINI, "test"));
+        let mut payload = turn("who are you");
+        payload.as_object_mut().unwrap().remove("instructions");
+        let frames = frames_through(door, None, payload).await;
+        assert_eq!(frames.last().unwrap().1["type"], "result");
+        let instructions = seen.lock().unwrap()[0]["instructions"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        assert!(instructions.starts_with(first::IDENTITY), "{instructions}");
+        for words in [
+            "You are Coder, OpenAgents' coding agent",
+            "Never say you are Claude Code, Codex",
+            "OpenAgents picks the model for each message",
+        ] {
+            assert!(instructions.contains(words), "{words} in {instructions}");
+        }
     }
 
     /// #10183: a fan-out read in a terminal is one `run_coder` offer with
@@ -7236,7 +7272,10 @@ mod tests {
         };
         let here = instructions(on_computer(true)).await;
         assert!(
-            here.starts_with("We are OpenAgents.\n\nAbout this chat:"),
+            here.starts_with(&format!(
+                "{}\n\nWe are OpenAgents.\n\nAbout this chat:",
+                first::IDENTITY
+            )),
             "{here}"
         );
         for words in [
@@ -7264,7 +7303,11 @@ mod tests {
         // With no judge, the reply is unrouted: the fixed note follows.
         assert_eq!(
             phone,
-            format!("We are OpenAgents.\n\n{}", first::UNROUTED_NOTE)
+            format!(
+                "{}\n\nWe are OpenAgents.\n\n{}",
+                first::IDENTITY,
+                first::UNROUTED_NOTE
+            )
         );
     }
 

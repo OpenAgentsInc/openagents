@@ -954,6 +954,8 @@ fn local_route_accounts_for_standing_instructions_and_cli_guidance() {
     assert!(task.len() <= 56 * 1024);
     assert!(task.contains("Keep the following user text."));
     assert!(task.contains("Standing instructions"));
+    // The local loop's own login names its product; Coder's leads (#11264).
+    assert!(task.starts_with("Standing instructions (from the host, not the user):\nYou are Coder, OpenAgents' coding agent."));
     assert!(task.contains("bundled OpenAgents CLI"));
     execution.instructions = Some("x".repeat(56 * 1024));
     assert!(crate::live::local_task(&messages, &execution).is_err());

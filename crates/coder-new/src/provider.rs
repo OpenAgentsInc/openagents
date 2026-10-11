@@ -274,7 +274,8 @@ impl Provider {
         if let Some(limit) = options.max_tokens {
             request = request.max_tokens(limit);
         }
-        let mut history = vec![];
+        // Coder's own identity first, whichever model answers (#11264).
+        let mut history = vec![json!({"role":"system","content":crate::identity::prompt(model)})];
         if let Some(standing) = execution
             .instructions
             .as_deref()
@@ -1422,7 +1423,7 @@ mod tests {
             let followup = requests[1]["messages"].to_string();
             assert!(!followup.contains(FIXTURE_TOKEN));
             assert!(!followup.contains("jev-fixture-secret"));
-            let assistant = &requests[1]["messages"][2];
+            let assistant = &requests[1]["messages"][3];
             let recorded: Value = serde_json::from_str(
                 assistant["tool_calls"][0]["function"]["arguments"]
                     .as_str()
@@ -1533,19 +1534,24 @@ mod tests {
         );
         let requests = model_server.join().unwrap();
         assert_eq!(requests[0]["tools"][0]["function"]["name"], "jev");
+        // Coder's identity leads every route's request (#11264).
+        let identity = requests[0]["messages"][0]["content"].as_str().unwrap();
+        assert_eq!(requests[0]["messages"][0]["role"], "system");
+        assert!(identity.starts_with("You are Coder, OpenAgents' coding agent."));
+        assert!(identity.contains("OpenAgents picks the model"));
         assert!(
-            requests[0]["messages"][0]["content"]
+            requests[0]["messages"][1]["content"]
                 .as_str()
                 .unwrap()
                 .contains("Batch independent questions")
         );
         assert_eq!(
-            requests[1]["messages"][2]["tool_calls"][0]["id"],
+            requests[1]["messages"][3]["tool_calls"][0]["id"],
             "call-jev"
         );
-        assert_eq!(requests[1]["messages"][3]["tool_call_id"], "call-jev");
+        assert_eq!(requests[1]["messages"][4]["tool_call_id"], "call-jev");
         let output: Value =
-            serde_json::from_str(requests[1]["messages"][3]["content"].as_str().unwrap()).unwrap();
+            serde_json::from_str(requests[1]["messages"][4]["content"].as_str().unwrap()).unwrap();
         assert_eq!(output["answers"]["refund"]["noul"], 0.9);
         assert!(
             !requests[1]["messages"]
@@ -1597,13 +1603,13 @@ mod tests {
             );
             let messages = document["messages"].as_array().unwrap();
             assert!(
-                messages[0]["content"]
+                messages[1]["content"]
                     .as_str()
                     .unwrap()
                     .contains("Batch independent questions")
             );
             assert!(
-                messages[1]["content"]
+                messages[2]["content"]
                     .as_str()
                     .unwrap()
                     .contains("Keep the refund judgment")
