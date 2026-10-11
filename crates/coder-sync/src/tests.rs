@@ -559,3 +559,40 @@ fn sends_another_coder_recorded_survive_a_store_but_forgotten_ones_dont() {
         ["mine", "theirs"]
     );
 }
+
+#[test]
+fn a_stale_window_does_not_undo_another_windows_sync_off() {
+    let dir = tempfile::tempdir().unwrap();
+    // Window A turns sync on and keeps that copy.
+    let mut a = Settings::default();
+    a.store_choice(dir.path(), true).unwrap();
+    a.store(dir.path()).unwrap();
+
+    // Window B, open at the same time, runs /sync off.
+    let mut b = Settings::load(dir.path());
+    b.store_choice(dir.path(), false).unwrap();
+    b.merge_choice(dir.path());
+    b.store(dir.path()).unwrap();
+
+    // Window A still holds on, and saves after sending a chat.
+    assert!(a.on);
+    a.sent.insert("chat".into(), "d".into());
+    a.merge_sent(dir.path(), &std::collections::BTreeSet::new());
+    a.merge_choice(dir.path());
+    a.store(dir.path()).unwrap();
+    let stored = Settings::load(dir.path());
+    assert!(!stored.on);
+    assert!(stored.chosen);
+    assert!(!a.on);
+    assert_eq!(stored.sent.get("chat").map(String::as_str), Some("d"));
+
+    // The latest explicit choice wins the other way too: A turns it back on,
+    // and B's next save keeps it.
+    a.store_choice(dir.path(), true).unwrap();
+    a.merge_choice(dir.path());
+    a.store(dir.path()).unwrap();
+    assert!(!b.on);
+    b.merge_choice(dir.path());
+    b.store(dir.path()).unwrap();
+    assert!(Settings::load(dir.path()).on);
+}

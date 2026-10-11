@@ -171,6 +171,30 @@ impl Settings {
         }
     }
 
+    /// Take [`Self::on`] and [`Self::chosen`] from `dir`: several Coders
+    /// share one `sync.json`, and each holds the choice it loaded at start,
+    /// so without this a Coder that stores later undoes another's `/sync
+    /// off` (#11356). An explicit choice is written to the file first, so the
+    /// file holds the latest one.
+    pub fn merge_choice(&mut self, dir: &Path) {
+        let Ok(stored) = Self::load_checked(dir) else {
+            return;
+        };
+        self.on = stored.on;
+        self.chosen = stored.chosen;
+    }
+
+    /// Write an explicit choice to `dir` at once, on a freshly loaded copy,
+    /// and take it here too, so a later [`Self::merge_choice`] keeps it.
+    pub fn store_choice(&mut self, dir: &Path, on: bool) -> Result<(), String> {
+        self.on = on;
+        self.chosen = true;
+        let mut stored = Self::load(dir);
+        stored.on = on;
+        stored.chosen = true;
+        stored.store(dir)
+    }
+
     /// Whether a chat should be sent now.
     #[must_use]
     pub fn sends(&self, session: &str, digest: &str) -> bool {
