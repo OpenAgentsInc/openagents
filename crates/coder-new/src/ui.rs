@@ -1626,6 +1626,27 @@ mod export_notice_tests {
     }
 
     #[test]
+    fn the_composer_cursor_is_placed_and_never_hidden() {
+        // The terminal blinks the block itself; the renderer must not hide it,
+        // or the two blinks fight and the caret reads wrong (#11267).
+        for width in [24, 60, 100] {
+            let mut app = App::default();
+            app.mode = Mode::Live;
+            app.draft.text = "the caret sits after this".into();
+            app.draft.cursor = app.draft.text.len();
+            let mut terminal = Terminal::new(TestBackend::new(width, 20)).unwrap();
+            terminal.draw(|frame| render(frame, &mut app)).unwrap();
+            let backend = terminal.backend();
+            assert!(backend.cursor_visible(), "the caret draws at width {width}");
+            let x = backend.cursor_position().x;
+            assert!(
+                x >= 3 && x <= app.composer_width,
+                "the caret sits inside the input at width {width}, got {x}"
+            );
+        }
+    }
+
+    #[test]
     fn scroll_arrow_does_not_repaint_notice_row() {
         let mut app = App::default();
         app.notice = Some("Exported ATIF to chat.json. Path copied to clipboard. ".repeat(5));

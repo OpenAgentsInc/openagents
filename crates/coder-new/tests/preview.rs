@@ -946,12 +946,11 @@ fn rail_elapsed_time_formats_units_and_preserves_the_clock_across_selection_and_
 }
 
 #[test]
-fn input_restarts_cursor_blink_without_restarting_visible_spinners_or_delegation_pulses() {
+fn input_does_not_restart_visible_spinners_or_delegation_pulses() {
     let mut app = App::default();
     for _ in 0..5 {
         app.tick();
     }
-    assert_eq!(app.cursor_blink_frame, 5);
     let before = screen(&mut app, 110, 70);
     let plugin_header = before
         .lines()
@@ -975,7 +974,6 @@ fn input_restarts_cursor_blink_without_restarting_visible_spinners_or_delegation
         Event::Key(repeat),
     ] {
         assert!(app.handle(event));
-        assert_eq!(app.cursor_blink_frame, 0);
         let rendered = screen(&mut app, 110, 70);
         assert_eq!(
             rendered
@@ -994,7 +992,6 @@ fn input_restarts_cursor_blink_without_restarting_visible_spinners_or_delegation
         );
     }
     app.tick();
-    assert_eq!(app.cursor_blink_frame, 1);
     assert!(
         screen(&mut app, 110, 70)
             .contains(&format!("{} Plugin palette-audit.colors.check", spinner(6)))
@@ -1017,10 +1014,8 @@ fn input_restarts_cursor_blink_without_restarting_visible_spinners_or_delegation
     key(&mut app, KeyCode::Char('q'));
     app.handle(Event::Paste(" edited".into()));
     key(&mut app, KeyCode::Backspace);
-    assert_eq!(app.cursor_blink_frame, 0);
     assert!(screen(&mut app, 110, 70).contains(&run_header));
     app.tick();
-    assert_eq!(app.cursor_blink_frame, 1);
     assert!(screen(&mut app, 110, 70).contains(&format!("{} Run {}", spinner(7), running.input)));
     key(&mut app, KeyCode::Down);
     assert!(screen(&mut app, 110, 70).contains(&format!("{} Run", spinner(7))));

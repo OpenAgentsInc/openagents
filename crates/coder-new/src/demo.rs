@@ -123,7 +123,6 @@ impl crate::App {
         value.scroll = self.scroll;
         value.selected_agent = self.selected_agent;
         value.animation_frame = self.animation_frame;
-        value.cursor_blink_frame = self.cursor_blink_frame;
         value.elapsed_seconds = self.elapsed_seconds;
         value.plugins = self.plugins.demo_view();
         value.cwd = self.cwd.clone();

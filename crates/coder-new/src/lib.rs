@@ -125,7 +125,6 @@ pub struct App {
     pub scroll: u16,
     pub selected_agent: Option<usize>,
     pub animation_frame: u8,
-    pub cursor_blink_frame: u8,
     pub elapsed_seconds: u64,
     pub plugins: plugins::Plugins,
     pub appearance: appearance::Appearance,
@@ -1515,7 +1514,6 @@ impl App {
         self.poll_login();
         self.poll_sync();
         self.animation_frame = self.animation_frame.wrapping_add(1) % 8;
-        self.cursor_blink_frame = self.cursor_blink_frame.wrapping_add(1) % 8;
     }
 
     fn select_agent(&mut self, selected: Option<usize>) {
@@ -1656,7 +1654,6 @@ impl App {
             Event::Paste(text) => {
                 self.footer_focused = false;
                 self.escape_at = None;
-                self.cursor_blink_frame = 0;
                 if self.resume_picker.is_some() {
                     return true;
                 } else if let Some(picker) = &mut self.model_picker {
@@ -1728,7 +1725,6 @@ impl App {
                 }
             }
             Event::Key(key) if key.kind != KeyEventKind::Release => {
-                self.cursor_blink_frame = 0;
                 let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
                 if ctrl && key.code == KeyCode::Char('c') {
                     return false;
