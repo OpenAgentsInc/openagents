@@ -44,12 +44,12 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         appearance::render(frame, frame.area(), app);
         return;
     }
-    // Both composers wrap at the terminal width less the prompt gutter, and
+    // Both composers wrap at the terminal width less the frame and prompt gutter, and
     // Up/Down move through exactly that layout.
     app.composer_width = frame
         .area()
         .width
-        .saturating_sub(if app.mode == Mode::Demo { 3 } else { 2 })
+        .saturating_sub(if app.mode == Mode::Demo { 3 } else { 4 })
         .max(1);
     if app.mode == Mode::Demo {
         let mut demo = app.demo_view();
@@ -122,7 +122,7 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         }
         return;
     }
-    let (draft, cursor) = app.draft.wrapped(terminal_width.saturating_sub(2));
+    let (draft, cursor) = app.draft.wrapped(app.composer_width);
     let rail_height = (if app.mode == Mode::Demo {
         DEMOS.len()
     } else {
@@ -1363,11 +1363,16 @@ fn composer_view(
     fallback_model: Option<&str>,
 ) {
     let block = Block::default()
-        .borders(Borders::TOP | Borders::BOTTOM)
+        .borders(Borders::ALL)
         .border_style(Style::default().fg(t::PROMPT_BORDER_ACTIVE))
         .style(Style::default().bg(t::BG_BASE));
     let inner = block.inner(area);
     frame.render_widget(block, area);
+    coder_terminal::frame(
+        area,
+        frame.buffer_mut(),
+        Style::default().fg(t::PROMPT_BORDER_ACTIVE),
+    );
     if !composer.images.is_empty() {
         coder_terminal::rail(
             area,
@@ -1464,7 +1469,7 @@ mod export_notice_tests {
     use ratatui::{Terminal, backend::TestBackend};
 
     #[test]
-    fn composer_prompt_starts_at_the_left_edge() {
+    fn composer_has_square_corners_and_side_walls() {
         for (mode, glyph) in [
             (crate::composer_state::InputMode::Prompt, "❯"),
             (crate::composer_state::InputMode::Bash, "!"),
@@ -1476,10 +1481,40 @@ mod export_notice_tests {
             let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
             terminal.draw(|frame| render(frame, &mut app)).unwrap();
             let buffer = terminal.backend().buffer();
-            let row = (0..20).find(|&y| buffer[(0, y)].symbol() == glyph).unwrap();
-            assert_eq!(buffer[(1, row)].symbol(), " ");
-            assert_eq!(buffer[(2, row)].symbol(), "h");
-            assert_eq!(app.composer_width, 58);
+            let row = (0..20).find(|&y| buffer[(1, y)].symbol() == glyph).unwrap();
+            assert_eq!(buffer[(2, row)].symbol(), " ");
+            assert_eq!(buffer[(3, row)].symbol(), "h");
+            assert_eq!(app.composer_width, 56);
+            assert_eq!(buffer[(0, row)].symbol(), "│");
+            assert_eq!(buffer[(59, row)].symbol(), "│");
+            for (x, y, glyph) in [
+                (0, row - 1, "┌"),
+                (59, row - 1, "┐"),
+                (0, row + 1, "└"),
+                (59, row + 1, "┘"),
+            ] {
+                assert_eq!(buffer[(x, y)].symbol(), glyph);
+            }
+        }
+    }
+
+    #[test]
+    fn wrapped_input_keeps_the_side_walls_clear() {
+        for width in [24, 60, 100] {
+            let mut app = App::default();
+            app.mode = Mode::Live;
+            app.draft.text = "x".repeat(usize::from(width - 3));
+            app.draft.cursor = app.draft.text.len();
+            let mut terminal = Terminal::new(TestBackend::new(width, 20)).unwrap();
+            terminal.draw(|frame| render(frame, &mut app)).unwrap();
+            let buffer = terminal.backend().buffer();
+            let row = (0..20).find(|&y| buffer[(1, y)].symbol() == "❯").unwrap();
+            for y in row..=row + 1 {
+                assert_eq!(buffer[(0, y)].symbol(), "│");
+                assert_eq!(buffer[(width - 1, y)].symbol(), "│");
+            }
+            assert_eq!(buffer[(3, row + 1)].symbol(), "x");
+            assert_eq!(app.composer_width, width - 4);
         }
     }
 
