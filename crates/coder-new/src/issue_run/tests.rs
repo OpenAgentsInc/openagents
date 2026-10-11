@@ -81,7 +81,35 @@ fn checks() -> Vec<Check> {
         argv: args("cargo test -p coder-new"),
         filter: true,
         what: "run the tests".into(),
+        required: false,
     }]
+}
+
+#[test]
+fn required_checks_are_rust_compiles_and_required_checks_of_other_kinds() {
+    let mut list = checks();
+    list.push(Check {
+        id: "check:coder-new".into(),
+        argv: args("cargo check -p coder-new"),
+        filter: false,
+        what: "compile".into(),
+        required: false,
+    });
+    list.push(Check {
+        id: "tests:scripts".into(),
+        argv: args("python3 -m pytest scripts/tests/test_x.py"),
+        filter: false,
+        what: "run the script's tests".into(),
+        required: true,
+    });
+    let briefing = crate::issue_run::decide::Briefing {
+        checks: list,
+        ..Default::default()
+    };
+    assert_eq!(
+        crate::issue_run::setup::required_checks(&briefing),
+        vec!["check:coder-new".to_owned(), "tests:scripts".to_owned()]
+    );
 }
 
 #[test]

@@ -1,0 +1,368 @@
+diff --git a/INVARIANTS.md b/INVARIANTS.md
+index f1e1c16c2eda5dd2fd2acf6fe4ba62be7f3aaf74..cfec8d79e99df38e895bc42c52e16c43a69f0938 100644
+--- a/INVARIANTS.md
++++ b/INVARIANTS.md
+@@ -274,6 +274,12 @@ path, limits, and refusals are in `docs/coder/runtime/cloud-fallback.md`.
+ | The cloud is always the last provider in Microcoder's lineup, so a host with no provider configured still answers a turn through it, and a host with a provider that has capacity never spends the cloud's quota: a signed-in Claude Code or Codex CLI is chosen over Microcoder on the cloud, and an own door key takes the cloud off the lineup. | New on 2026-09-28. | `the_cloud_is_always_the_last_provider_and_needs_no_configuration`, `the_cloud_answers_only_when_nothing_on_the_host_can`, `a_fresh_host_completes_a_turn_through_the_cloud_fallback` in `crates/coder` |
+ | The cloud worker's `rate_limited`, `busy`, and `quota_exhausted` are capacity refusals held until the worker's `retry_after_ms` (else one minute, one minute, and the next UTC midnight), so the loop fails over and the no-capacity sentence names the reset; any other refusal is the step's plain error and holds nothing. | New on 2026-09-28. | `the_cloud_worker_codes_are_capacity_refusals_with_their_waits` in `crates/microcoder-loop`; `a_quota_refusal_is_a_typed_capacity_refusal_with_its_wait`, `a_rate_limit_holds_a_minute_and_a_too_large_step_is_only_an_error`, `a_cloud_refusal_mid_turn_is_recorded_and_the_next_provider_finishes` in `crates/coder` |
+ 
++## Cloud pool SSH
++
++| Invariant | Status | Checked by |
++| --- | --- | --- |
++| Every ssh to a Cloud pool host or GCE working computer (including the credential upload) checks the host key against the keys GCE publishes for that instance in its `hostkeys/` guest attributes, read through our own gcloud and pinned in a per-host `known_hosts` under the 0700 cloud home, with `StrictHostKeyChecking=yes` and no other known_hosts file, over IAP or the internal address alike. A host with no pin, or with an identifier that is not a plain GCE name, is refused, never reached. | New on 2026-10-11 ([#11281](https://github.com/OpenAgentsInc/openagents/issues/11281), CE-02); replaces `StrictHostKeyChecking=no`. | `pool_ssh_checks_the_host_key_against_the_pin_alone`, `host_keys_are_pinned_from_guest_attributes_only_when_well_formed`, `identifiers_that_reach_a_shell_string_must_be_plain_gce_names`, `a_host_that_cannot_be_checked_is_refused_not_reached`, `the_pin_directory_is_private` in `crates/coder-cloud` |
++
+ ## Your own Claude credential
+ 
+ The policy is `docs/cloud/claude-code-byo.md`.
+diff --git a/crates/coder-cloud/src/pool.rs b/crates/coder-cloud/src/pool.rs
+index 5b289018b0b22245b74f61f7ebad563ef58d10ce..62f1999ba87fde8e351605dc136926e8730bda52 100644
+--- a/crates/coder-cloud/src/pool.rs
++++ b/crates/coder-cloud/src/pool.rs
+@@ -307,7 +307,7 @@ pub fn ensure_key() -> Result<String, String> {
+     let key = key_path();
+     if !key.exists() {
+         if let Some(dir) = key.parent() {
+-            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
++            private_dir(dir)?;
+         }
+         let made = Command::new("ssh-keygen")
+             .args([
+@@ -334,33 +334,226 @@ pub fn ensure_key() -> Result<String, String> {
+     Ok(public.trim().to_owned())
+ }
+ 
+-/// An `ssh` to `host` as `coder` running `remote`: through an IAP tunnel, or
+-/// to the internal address under `OA_POOL_SSH=internal`.
+-pub fn ssh(project: &str, host: &Host, remote: &str) -> Command {
+-    let mut command = Command::new("ssh");
+-    command.arg("-i").arg(key_path()).args([
+-        "-o",
+-        "StrictHostKeyChecking=no",
+-        "-o",
+-        "UserKnownHostsFile=/dev/null",
+-        "-o",
+-        "LogLevel=ERROR",
+-        "-o",
+-        "BatchMode=yes",
+-        "-o",
+-        "IdentitiesOnly=yes",
+-        "-o",
+-        "ConnectTimeout=40",
+-        "-o",
+-        "ServerAliveInterval=20",
+-        "-o",
+-        "ServerAliveCountMax=9",
+-    ]);
+-    let internal = std::env::var("OA_POOL_SSH").is_ok_and(|mode| mode == "internal");
++/// Makes `dir` (and its parents) and leaves it readable by its owner alone.
++fn private_dir(dir: &std::path::Path) -> Result<(), String> {
++    use std::os::unix::fs::{DirBuilderExt as _, PermissionsExt as _};
++    std::fs::DirBuilder::new()
++        .recursive(true)
++        .mode(0o700)
++        .create(dir)
++        .map_err(|e| format!("{}: {e}", dir.display()))?;
++    std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))
++        .map_err(|e| format!("{}: {e}", dir.display()))
++}
++
++/// Whether `name` is a GCE instance name: lowercase letters, digits and
++/// hyphens, starting with a letter, at most 63 characters.
++fn gce_name(name: &str) -> bool {
++    (1..=63).contains(&name.len())
++        && name.starts_with(|c: char| c.is_ascii_lowercase())
++        && !name.ends_with('-')
++        && name
++            .chars()
++            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
++}
++
++/// Whether `project` is a GCP project id (domain-scoped ids carry `:` and
++/// `.`).
++fn gcp_project(project: &str) -> bool {
++    (1..=100).contains(&project.len())
++        && project
++            .chars()
++            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | ':' | '.'))
++}
++
++/// Refuses identifiers that would be interpolated into a shell string
++/// (the IAP `ProxyCommand`) unless they are plain GCE names.
++fn check_identifiers(project: &str, host: &Host) -> Result<(), String> {
++    if !gcp_project(project) {
++        return Err(format!("{project:?} is not a GCP project id"));
++    }
++    if !gce_name(&host.name) {
++        return Err(format!("{:?} is not a GCE instance name", host.name));
++    }
++    if !gce_name(&host.zone) {
++        return Err(format!("{:?} is not a GCE zone", host.zone));
++    }
++    if let Some(address) = &host.address
++        && address.parse::<std::net::IpAddr>().is_err()
++    {
++        return Err(format!("{address:?} is not an IP address"));
++    }
++    Ok(())
++}
++
++/// The host key types a pin may carry.
++const HOST_KEY_TYPES: &[&str] = &[
++    "ssh-ed25519",
++    "ecdsa-sha2-nistp256",
++    "ecdsa-sha2-nistp384",
++    "ecdsa-sha2-nistp521",
++    "ssh-rsa",
++];
++
++/// `known_hosts` lines for `alias` from the `hostkeys/` guest attributes GCE
++/// publishes for an instance (`gcloud compute instances
++/// get-guest-attributes --query-path=hostkeys/ --format=json`). Entries of
++/// another type or with anything but base64 in the key are dropped; no
++/// usable key is an error.
++pub fn known_hosts_from(alias: &str, attributes: &Value) -> Result<String, String> {
++    let mut lines = String::new();
++    for entry in attributes.as_array().map(Vec::as_slice).unwrap_or_default() {
++        let kind = entry["key"].as_str().unwrap_or_default();
++        let mut value = entry["value"].as_str().unwrap_or_default().trim();
++        // Some agents publish "TYPE BASE64"; keep the key alone.
++        if let Some((prefix, rest)) = value.split_once(' ')
++            && prefix == kind
++        {
++            value = rest.split_whitespace().next().unwrap_or_default();
++        }
++        let base64 = !value.is_empty()
++            && value
++                .chars()
++                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '/' | '='));
++        if HOST_KEY_TYPES.contains(&kind) && base64 {
++            lines.push_str(&format!("{alias} {kind} {value}\n"));
++        }
++    }
++    if lines.is_empty() {
++        Err(format!("{alias} has published no ssh host key yet"))
++    } else {
++        Ok(lines)
++    }
++}
++
++/// Where `host`'s pinned host keys live.
++fn known_hosts_path(host: &Host) -> PathBuf {
++    home()
++        .join("known_hosts.d")
++        .join(format!("{}.{}", host.zone, host.name))
++}
++
++/// Runs `gcloud` with a deadline, so a hung call cannot hold an ssh.
++fn gcloud_within(project: &str, args: &[&str], limit: Duration) -> Result<String, String> {
++    let mut child = Command::new("gcloud")
++        .args(args)
++        .args(["--project", project, "--quiet"])
++        .stdin(Stdio::null())
++        .stdout(Stdio::piped())
++        .stderr(Stdio::null())
++        .spawn()
++        .map_err(|e| format!("gcloud did not start: {e}"))?;
++    let deadline = Instant::now() + limit;
++    loop {
++        match child.try_wait() {
++            Ok(Some(status)) => {
++                let mut out = String::new();
++                if let Some(mut stdout) = child.stdout.take() {
++                    std::io::Read::read_to_string(&mut stdout, &mut out)
++                        .map_err(|e| e.to_string())?;
++                }
++                return if status.success() {
++                    Ok(out)
++                } else {
++                    Err(format!("gcloud exited {status}"))
++                };
++            }
++            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(100)),
++            Ok(None) => {
++                let _ = child.kill();
++                let _ = child.wait();
++                return Err("gcloud took too long".into());
++            }
++            Err(error) => return Err(error.to_string()),
++        }
++    }
++}
++
++/// Pins `host`'s ssh host keys: reads what GCE publishes for the instance
++/// in its `hostkeys/` guest attributes (through our own authenticated
++/// gcloud, never through the ssh channel) and writes them to the host's own
++/// `known_hosts` under the private cloud home. GCE is asked on every call,
++/// so an instance recreated under the same name gets its new keys; when GCE
++/// cannot be asked, the last pin stands. No pin at all leaves the file
++/// empty, and the strict ssh that reads it refuses the host.
++fn pin_host_keys(project: &str, host: &Host) -> Result<PathBuf, String> {
++    let path = known_hosts_path(host);
++    if let Some(dir) = path.parent() {
++        private_dir(dir)?;
++    }
++    let fetched = gcloud_within(
++        project,
++        &[
++            "compute",
++            "instances",
++            "get-guest-attributes",
++            &host.name,
++            "--zone",
++            &host.zone,
++            "--query-path=hostkeys/",
++            "--format=json",
++        ],
++        Duration::from_secs(30),
++    )
++    .and_then(|text| serde_json::from_str::<Value>(&text).map_err(|e| e.to_string()))
++    .and_then(|value| known_hosts_from(&host.name, &value));
++    let lines = match fetched {
++        Ok(lines) => lines,
++        Err(_) if path.exists() => return Ok(path),
++        Err(_) => String::new(),
++    };
++    write_private(&path, &lines)?;
++    Ok(path)
++}
++
++/// Writes `text` to `path` readable by its owner alone, atomically.
++fn write_private(path: &std::path::Path, text: &str) -> Result<(), String> {
++    use std::os::unix::fs::OpenOptionsExt as _;
++    let temp = path.with_extension(format!("writing-{}", word(6)));
++    let mut file = std::fs::OpenOptions::new()
++        .write(true)
++        .create_new(true)
++        .mode(0o600)
++        .open(&temp)
++        .map_err(|e| format!("{}: {e}", temp.display()))?;
++    file.write_all(text.as_bytes())
++        .map_err(|e| format!("{}: {e}", temp.display()))?;
++    std::fs::rename(&temp, path).map_err(|e| format!("{}: {e}", path.display()))
++}
++
++/// The ssh arguments, before the target, for a host whose pinned keys are
++/// in `known_hosts`: the host key must match the pin (no first-use trust,
++/// no other known_hosts file), checked under the instance name whichever
++/// way the connection goes.
++fn ssh_args(
++    project: &str,
++    host: &Host,
++    known_hosts: &std::path::Path,
++    internal: bool,
++) -> (Vec<String>, String) {
++    let mut args: Vec<String> = vec!["-i".into(), key_path().display().to_string()];
++    for option in [
++        "StrictHostKeyChecking=yes".to_owned(),
++        format!("UserKnownHostsFile={}", known_hosts.display()),
++        "GlobalKnownHostsFile=/dev/null".into(),
++        format!("HostKeyAlias={}", host.name),
++        "CheckHostIP=no".into(),
++        "UpdateHostKeys=no".into(),
++        "LogLevel=ERROR".into(),
++        "BatchMode=yes".into(),
++        "IdentitiesOnly=yes".into(),
++        "ConnectTimeout=40".into(),
++        "ServerAliveInterval=20".into(),
++        "ServerAliveCountMax=9".into(),
++    ] {
++        args.push("-o".into());
++        args.push(option);
++    }
+     let target = match (&host.address, internal) {
+         (Some(address), true) => address.clone(),
+         _ => {
+-            command.arg("-o").arg(format!(
++            args.push("-o".into());
++            args.push(format!(
+                 "ProxyCommand=gcloud compute start-iap-tunnel {} 22 --listen-on-stdin \
+                  --project {project} --zone {} --verbosity=warning",
+                 host.name, host.zone
+@@ -368,13 +561,53 @@ pub fn ssh(project: &str, host: &Host, remote: &str) -> Command {
+             host.name.clone()
+         }
+     };
+-    command.arg(format!("coder@{target}")).arg(remote);
++    (args, target)
++}
++
++/// An `ssh` to `host` as `coder` running `remote`: through an IAP tunnel, or
++/// to the internal address under `OA_POOL_SSH=internal`. The host key is
++/// checked against the keys GCE publishes for the instance
++/// ([#11281](https://github.com/OpenAgentsInc/openagents/issues/11281)).
++/// When the host cannot be checked, the command refuses: it says why on
++/// stderr and exits 255, as ssh does when it cannot connect.
++pub fn ssh(project: &str, host: &Host, remote: &str) -> Command {
++    try_ssh(project, host, remote).unwrap_or_else(|reason| refused(&reason))
++}
++
++/// A command that exits 255 after printing `reason`.
++fn refused(reason: &str) -> Command {
++    let mut command = Command::new("/bin/sh");
++    command
++        .args([
++            "-c",
++            "printf 'ssh refused: %s\\n' \"$1\" >&2; exit 255",
++            "oa-pool-ssh",
++        ])
++        .arg(reason);
++    command
++}
++
++/// [`ssh`], or why the host cannot be checked.
++///
++/// # Errors
++///
++/// When an identifier is not a plain GCE name or the pin cannot be written.
++pub fn try_ssh(project: &str, host: &Host, remote: &str) -> Result<Command, String> {
++    check_identifiers(project, host)?;
++    let known_hosts = pin_host_keys(project, host)?;
++    let internal = std::env::var("OA_POOL_SSH").is_ok_and(|mode| mode == "internal");
++    let (args, target) = ssh_args(project, host, &known_hosts, internal);
++    let mut command = Command::new("ssh");
+     command
++        .args(args)
++        .arg(format!("coder@{target}"))
++        .arg(remote);
++    Ok(command)
+ }
+ 
+ /// Runs `remote` on `host` and returns its stdout.
+ pub fn ssh_output(project: &str, host: &Host, remote: &str) -> Result<String, String> {
+-    let output = ssh(project, host, remote)
++    let output = try_ssh(project, host, remote)?
+         .stdin(Stdio::null())
+         .output()
+         .map_err(|e| format!("ssh did not start: {e}"))?;
+@@ -632,7 +865,7 @@ fn create_with(
+                     &format!("--labels={MANAGED_LABEL},{POOL_LABEL}={}", pool.pool),
+                     &format!(
+                         "--metadata=block-project-ssh-keys=TRUE,enable-oslogin=FALSE,\
+-                         oa-pool-idle-minutes={}",
++                         enable-guest-attributes=TRUE,oa-pool-idle-minutes={}",
+                         pool.idle_minutes
+                     ),
+                     &format!(
+@@ -758,7 +991,7 @@ fn wait_ssh(project: &str, host: &Host, deadline: Instant) -> Result<(), String>
+ /// with the host; true when it exited 0.
+ fn run_prepare(project: &str, host: &Host, json_output: bool) -> Result<(), String> {
+     let run = format!("prepare-{}", word(6));
+-    let mut child = ssh(project, host, &start_remote(&run))
++    let mut child = try_ssh(project, host, &start_remote(&run))?
+         .stdin(Stdio::piped())
+         .stdout(Stdio::piped())
+         .stderr(Stdio::null())
+diff --git a/crates/coder-working-computer/src/gce.rs b/crates/coder-working-computer/src/gce.rs
+index 3f5fcfeffbbaafb964a7073b8e20d3b25dd220af..7f5f914e1d70e3f3a9b8baab60552a45cc8983ac 100644
+--- a/crates/coder-working-computer/src/gce.rs
++++ b/crates/coder-working-computer/src/gce.rs
+@@ -407,7 +407,7 @@ pub fn create_instance_args(
+         "--shielded-integrity-monitoring".into(),
+         format!("--labels={labels}"),
+         format!(
+-            "--metadata=^;^block-project-ssh-keys=TRUE;enable-oslogin=FALSE;ssh-keys=coder:{}",
++            "--metadata=^;^block-project-ssh-keys=TRUE;enable-oslogin=FALSE;enable-guest-attributes=TRUE;ssh-keys=coder:{}",
+             public_key.trim()
+         ),
+         format!("--max-run-duration={}s", request.max_run_seconds),

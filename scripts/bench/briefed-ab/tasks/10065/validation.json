@@ -1,0 +1,85 @@
+{
+  "on_fix": {
+    "grader": "kinds",
+    "applied": true,
+    "kind_checks": [
+      {
+        "id": "doccheck:.",
+        "ok": true,
+        "available": true,
+        "exit": 0,
+        "secs": 0.4,
+        "tail": ""
+      },
+      {
+        "id": "doccheck:crates/coder-link",
+        "ok": true,
+        "available": true,
+        "exit": 0,
+        "secs": 0.0,
+        "tail": ""
+      },
+      {
+        "id": "doccheck:crates/openagents-desktop",
+        "ok": true,
+        "available": true,
+        "exit": 0,
+        "secs": 0.1,
+        "tail": ""
+      },
+      {
+        "id": "doccheck:crates/rust-native-desktop",
+        "ok": true,
+        "available": true,
+        "exit": 0,
+        "secs": 0.1,
+        "tail": ""
+      },
+      {
+        "id": "doccheck:docs/desktop",
+        "ok": true,
+        "available": true,
+        "exit": 0,
+        "secs": 0.1,
+        "tail": ""
+      },
+      {
+        "id": "doccheck:docs/desktop/verification/2026-09-30-menus-notify-update",
+        "ok": true,
+        "available": true,
+        "exit": 0,
+        "secs": 0.0,
+        "tail": ""
+      },
+      {
+        "id": "doccheck:docs/desktop/verification/2026-09-30-settings",
+        "ok": true,
+        "available": true,
+        "exit": 0,
+        "secs": 0.1,
+        "tail": ""
+      },
+      {
+        "id": "doccheck:docs/research",
+        "ok": true,
+        "available": true,
+        "exit": 0,
+        "secs": 0.1,
+        "tail": ""
+      }
+    ],
+    "kind_checks_ok": true,
+    "hidden_pass": null,
+    "unchecked": false,
+    "tests_pass": true
+  },
+  "on_parent": {
+    "grader": "kinds",
+    "applied": true,
+    "hidden_pass": null,
+    "unchecked": true,
+    "tests_pass": true
+  },
+  "usable": true,
+  "behavioral": false
+}

@@ -1,0 +1,32 @@
+{
+  "grader": "kinds",
+  "kinds": [
+    "docs",
+    "other",
+    "python",
+    "shell"
+  ],
+  "packages": [],
+  "script_tests": [
+    "scripts/tests/test_gate_psionic_fixtures.py"
+  ],
+  "test_targets": [],
+  "issue": 11284,
+  "title": "Make the Psionic fixture state honest: a check that every fixture path resolves (top action #22)",
+  "body": "From the 2026-10-10 codebase-health audit (top action #22: PS1-02, PS2-01, PS3-02, PS4-02, X-DEAD-02, PS1-19).\n\n`crates/psionic` was imported as the dependency closure of `psionic-openai-server`, but most fixture files its crates read were never imported. Tests that load a missing fixture fail by construction, which hides real failures and blocks adding Psionic to any gate. The README also overstated the imported fixture set.\n\n## What this lands\n\n- `scripts/dev/check-psionic-fixtures.py` scans every `*_FIXTURE_PATH` constant under `crates/psionic/crates`, resolves each relative to `crates/psionic/`, and reports the ones that do not exist.\n- `scripts/dev/psionic-missing-fixtures.txt` records the current missing set (204 of 275 constants). The check fails when a **new** missing path appears, and reports when an allowlisted one starts resolving so it can be removed \u2014 the list may only shrink.\n- A new gate phase `psionic-fixtures` runs the check (0.2 s, no compile), added to the default `verify-rust.sh` phase set.\n- `scripts/tests/test_gate_psionic_fixtures.py` covers the ratchet both ways.\n- The psionic README's stale \"only the 23 files\" claim is corrected.\n\n## Remaining (tracked separately)\n\n- Import or regenerate the fixtures the live path needs, and delete the constants and tests for modules that were not imported. The allowlist is the work list.\n- Add `cargo test`/`clippy` for the psionic crates to a lane (PS4-01, PS2-07, PS3-04).\n",
+  "fix": "f4201b045e5c6a881ac48bdab1b6771122d0db04",
+  "parent": "c13bf430a84e0820afab004c995026833ae0fd85",
+  "package": null,
+  "source_files": [
+    "crates/psionic/README.md",
+    "docs/audits/2026-10-10-codebase-health-audit/remediation.md",
+    "scripts/dev/check-psionic-fixtures.py",
+    "scripts/dev/psionic-missing-fixtures.txt",
+    "scripts/verify-rust.sh"
+  ],
+  "test_files": [
+    "scripts/tests/test_gate_psionic_fixtures.py"
+  ],
+  "test_names": [],
+  "fix_lines": 403
+}

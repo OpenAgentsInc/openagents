@@ -1,0 +1,21 @@
+{
+  "grader": "kinds",
+  "kinds": [
+    "kotlin"
+  ],
+  "packages": [],
+  "script_tests": [],
+  "test_targets": [],
+  "issue": 11283,
+  "title": "Android spend approval fails open when the device-credential prompt is unavailable (MOB-02)",
+  "body": "From the 2026-10-10 codebase-health audit (MOB-02). Not fixed by the remediation commits.\n\nOn Android, when the device-credential prompt cannot be created, the larger-payment approval falls open and the payment is approved with no authentication.\n\nIn `bins/openagents-android/host/app/src/main/java/com/openagents/app/AgentPayments.kt`, `approve()` calls `keyguard.createConfirmDeviceCredentialIntent(...)`. When that returns null, the non-trust branch runs `bridge.spend(op, \"request\" to request)` \u2014 approving the payment anyway:\n\n```kotlin\nval intent = keyguard.createConfirmDeviceCredentialIntent(...) ?: run {\n    if (trust) { failure = \"...\"; shown = null; update(bridge.packet) }\n    else bridge.spend(op, \"request\" to request)   // <-- approves without auth\n    return\n}\n```\n\nRust already decides when authentication is required (`crates/openagents-mobile/src/spend.rs`, `AUTHENTICATE_ABOVE_MSAT = 1_000_000`). The Android host must not weaken that: a null prompt should refuse, not approve.\n\n## Fix\n\nFail closed on Android when the credential intent is null (refuse and show the failure), matching the iOS path. Consider requiring an authenticated flag in Rust so a platform host cannot skip it.\n\nLocation: `bins/openagents-android/host/app/src/main/java/com/openagents/app/AgentPayments.kt:127-134`.\n",
+  "fix": "7cb86a711f5000f7bb7a6c76e68dfdfc02fc2b87",
+  "parent": "86189406fa51fd786e1aeac06324d12d13415075",
+  "package": null,
+  "source_files": [
+    "bins/openagents-android/host/app/src/main/java/com/openagents/app/AgentPayments.kt"
+  ],
+  "test_files": [],
+  "test_names": [],
+  "fix_lines": 8
+}

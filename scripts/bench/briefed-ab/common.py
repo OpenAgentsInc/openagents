@@ -41,6 +41,9 @@ LEVERS: dict[str, object] = {
     "briefing_tokens": 14000,    # rough cap on the briefing text
     "history": 2,                # analogous past changes included
     "plan": "deterministic",     # deterministic | none
+    "checks": "rust",            # rust (S2: cargo for 1-2 crates) | kinds (#11310: checks per package kind, multi-package)
+    "acceptance": "bullets",     # bullets (the issue's bullet points) | typed (#11310: typed extraction, mapped to checks)
+    "packages": 4,               # most packages a kinds briefing checks and budgets excerpts across
     "interface": True,           # tell every arm the new items the fix's tests call
     # 2 Instructions
     "template": "v3",            # system prompt template (v3: tool-aware)
@@ -68,6 +71,9 @@ LEVERS: dict[str, object] = {
     "triage": "none",
     # 12 Learning loop
     "learning": "none",
+    # 13 Recovery (#11311): a second briefed attempt from the first one's misses and check evidence
+    "rebrief": 0,                # 0 | 1: at most one re-brief before any fallback
+    "rebrief_worktree": "clean",  # clean (fresh worktree, first diff shown) | keep (continue on the first diff)
 }
 
 

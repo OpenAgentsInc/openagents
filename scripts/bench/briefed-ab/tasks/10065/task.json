@@ -1,0 +1,29 @@
+{
+  "grader": "kinds",
+  "kinds": [
+    "docs"
+  ],
+  "packages": [],
+  "script_tests": [],
+  "test_targets": [],
+  "issue": 10065,
+  "title": "G01: reconcile desktop/runtime docs with what is built",
+  "body": "Source: [T3 Code gap analysis](https://github.com/OpenAgentsInc/openagents/blob/main/docs/research/2026-09-30-t3code-gap-analysis.md), slice G01 (P1, small). Bring README/audit/surface claims in line with the code after the 2026-09-30 desktop landings (#10020\u2013#10029, #10055\u2013#10063): platform limits, notification support per OS, settings, accessibility, Windows/Linux status. Check links. Acceptance: claims match code; links checked.",
+  "fix": "9a200853c7444c138dc699ea3c5634d4db7c464e",
+  "parent": "0a78ebf1434ad22aef5035d46af3bc2cd126e4d6",
+  "package": "coder-link",
+  "source_files": [
+    "README.md",
+    "crates/coder-link/README.md",
+    "crates/openagents-desktop/README.md",
+    "crates/rust-native-desktop/README.md",
+    "docs/desktop/local-coder.md",
+    "docs/desktop/release.md",
+    "docs/desktop/verification/2026-09-30-menus-notify-update/verification.md",
+    "docs/desktop/verification/2026-09-30-settings/README.md",
+    "docs/research/2026-09-29-comet-desktop-ui-port-audit.md"
+  ],
+  "test_files": [],
+  "test_names": [],
+  "fix_lines": 142
+}

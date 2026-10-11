@@ -1,0 +1,89 @@
+{
+  "on_fix": {
+    "grader": "kinds",
+    "applied": true,
+    "kind_checks": [
+      {
+        "id": "doccheck:crates/psionic",
+        "ok": true,
+        "available": true,
+        "exit": 0,
+        "secs": 0.0,
+        "tail": ""
+      },
+      {
+        "id": "doccheck:docs/audits/2026-10-10-codebase-health-audit",
+        "ok": true,
+        "available": true,
+        "exit": 0,
+        "secs": 0.0,
+        "tail": ""
+      },
+      {
+        "id": "py_compile:scripts/dev",
+        "ok": true,
+        "available": true,
+        "exit": 0,
+        "secs": 0.0,
+        "tail": ""
+      },
+      {
+        "id": "bash_n[verify-rust.sh]:scripts",
+        "ok": true,
+        "available": true,
+        "exit": 0,
+        "secs": 0.0,
+        "tail": ""
+      },
+      {
+        "id": "shellcheck:scripts",
+        "ok": true,
+        "available": true,
+        "exit": 0,
+        "secs": 0.3,
+        "tail": ""
+      },
+      {
+        "id": "tests:scripts",
+        "ok": true,
+        "available": true,
+        "exit": 0,
+        "secs": 9.5,
+        "tail": ""
+      }
+    ],
+    "kind_checks_ok": true,
+    "script_tests": [
+      {
+        "id": "hidden0",
+        "ok": true,
+        "available": true,
+        "exit": 0,
+        "secs": 0.7,
+        "tail": ""
+      }
+    ],
+    "hidden_pass": true,
+    "unchecked": false,
+    "tests_pass": true
+  },
+  "on_parent": {
+    "grader": "kinds",
+    "applied": true,
+    "script_tests": [
+      {
+        "id": "hidden0",
+        "ok": false,
+        "available": true,
+        "exit": 1,
+        "secs": 0.2,
+        "tail": "pts/dev/psionic-missing-fixtures.txt'\n/usr/lib/python3.11/pathlib.py:1045: FileNotFoundError\n____________ FixtureCheckTests.test_list_prints_name_and_path_pairs ____________\nself = <test_gate_psionic_fixtures.FixtureCheckTests testMethod=test_list_prints_name_and_path_pairs>\n    def test_list_prints_name_and_path_pairs(self):\n        out = call(\"--list\")\n>       self.assertEqual(out.returncode, 0, out.stderr)\nE       AssertionError: 2 != 0 : /usr/bin/python3: can't open file '/home/coder/oa-11310/scripts/bench/briefed-ab/.work/wt/grade9/scripts/dev/check-psionic-fixtures.py': [Errno 2] No such file or directory\nscripts/tests/test_gate_psionic_fixtures.py:48: AssertionError\n________ FixtureCheckTests.test_the_allowlist_covers_every_current_miss ________\nself = <test_gate_psionic_fixtures.FixtureCheckTests testMethod=test_the_allowlist_covers_every_current_miss>\n    def test_the_allowlist_covers_every_current_miss(self):\n        \"\"\"A bare run passes only while the allowlist is complete.\"\"\"\n        out = call()\n>       self.assertEqual(out.returncode, 0, out.stdout + out.stderr)\nE       AssertionError: 2 != 0 : /usr/bin/python3: can't open file '/home/coder/oa-11310/scripts/bench/briefed-ab/.work/wt/grade9/scripts/dev/check-psionic-fixtures.py': [Errno 2] No such file or directory\nscripts/tests/test_gate_psionic_fixtures.py:22: AssertionError\n=========================== short test summary info ============================\nFAILED scripts/tests/test_gate_psionic_fixtures.py::FixtureCheckTests::test_a_dropped_allowlist_entry_is_a_new_miss\nFAILED scripts/tests/test_gate_psionic_fixtures.py::FixtureCheckTests::test_list_prints_name_and_path_pairs\nFAILED scripts/tests/test_gate_psionic_fixtures.py::FixtureCheckTests::test_the_allowlist_covers_every_current_miss\n3 failed in 0.05s"
+      }
+    ],
+    "hidden_pass": false,
+    "unchecked": false,
+    "tests_pass": false
+  },
+  "usable": true,
+  "behavioral": true
+}

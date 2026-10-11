@@ -1,0 +1,28 @@
+{
+  "on_fix": {
+    "grader": "kinds",
+    "applied": true,
+    "kind_checks": [
+      {
+        "id": "kotlinc:bins/openagents-android",
+        "ok": null,
+        "available": false,
+        "secs": 0.0,
+        "tail": "no Kotlin compiler on this computer: review the change by reading it"
+      }
+    ],
+    "kind_checks_ok": true,
+    "hidden_pass": null,
+    "unchecked": true,
+    "tests_pass": true
+  },
+  "on_parent": {
+    "grader": "kinds",
+    "applied": true,
+    "hidden_pass": null,
+    "unchecked": true,
+    "tests_pass": true
+  },
+  "usable": true,
+  "behavioral": false
+}

@@ -1,0 +1,19 @@
+diff --git a/bins/openagents-android/host/app/src/main/java/com/openagents/app/AgentPayments.kt b/bins/openagents-android/host/app/src/main/java/com/openagents/app/AgentPayments.kt
+index 5ce1fd47ff197002960fc050286087562a12650e..1788cc93e654ff9bcaae0820a8a1924dcfaac616 100644
+--- a/bins/openagents-android/host/app/src/main/java/com/openagents/app/AgentPayments.kt
++++ b/bins/openagents-android/host/app/src/main/java/com/openagents/app/AgentPayments.kt
+@@ -122,9 +122,11 @@ class AgentPayments(private val activity: MainActivity, private val bridge: Mobi
+         @Suppress("DEPRECATION")
+         val intent = keyguard.createConfirmDeviceCredentialIntent("Approve payment",
+             "Pay ${sheet.getString("amount")} for ${sheet.getString("computer")}") ?: run {
+-            if (trust) {
+-                failure = "Set a screen lock on this phone to trust a payee."; shown = null; update(bridge.packet)
+-            } else bridge.spend(op, "request" to request)
++            // No screen-lock prompt means no authentication: refuse, never pay
++            // or trust without it (#11283).
++            failure = if (trust) "Set a screen lock on this phone to trust a payee."
++                else "Couldn't ask for the screen lock. Nothing was paid."
++            shown = null; update(bridge.packet)
+             return
+         }
+         authenticating = request

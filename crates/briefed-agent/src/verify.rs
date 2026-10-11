@@ -55,6 +55,13 @@ pub struct Verify {
     /// The base commit's own compile errors, normalized (`file: msg`).
     pub baseline: BTreeSet<String>,
     pub done_when: Vec<String>,
+    /// The issue's acceptance items (#11310), `{text, kind, check_ids}`,
+    /// reported with their checks' results. Empty: `done_when` is used.
+    pub acceptance: Vec<Value>,
+    /// The check planner (`kinds.py plan`): argv to which the changed files
+    /// are appended; it answers `{"checks": [...]}`, every check each
+    /// changed file's kind needs (#11310). Empty: Rust only.
+    pub planner: Vec<String>,
     /// path -> [(partner, times changed together)].
     pub cochange: BTreeMap<String, Vec<(String, u64)>>,
     /// Appends one JSON line per call when set.
@@ -81,7 +88,7 @@ pub struct Tally {
 impl Tally {
     pub fn record(&mut self, status: &str) {
         self.calls += 1;
-        if !matches!(status, "pass" | "compiles") {
+        if !matches!(status, "pass" | "compiles" | "unchecked") {
             self.failures += 1;
         }
         self.passed |= status == "pass";
@@ -198,6 +205,8 @@ impl Verify {
             crates: strings(&block["crates"]),
             baseline: strings(&block["baseline_errors"]).into_iter().collect(),
             done_when: strings(&block["done_when"]),
+            acceptance: block["acceptance"].as_array().cloned().unwrap_or_default(),
+            planner: strings(&block["planner"]),
             cochange,
             log: block["log"].as_str().map(PathBuf::from),
             cache: std::sync::Mutex::new(None),
@@ -209,13 +218,15 @@ impl Verify {
     pub fn tool(verify: Arc<Self>) -> SdkMcpTool {
         SdkMcpTool::new(
             "verify",
-            "Run this issue's checks on your working copy: run the touched crates' tests (pass \
-             `tests`, space-separated test-name filters, to run fewer), then format them; `fast` \
-             compiles only. `pass` means the tests ran and passed and fmt succeeded; anything else \
-             says what failed or could not run. An unchanged working copy returns the last result. \
+            "Run this issue's checks on your working copy: the touched crates' tests (pass \
+             `tests`, space-separated test-name filters, to run fewer) and fmt, and the checks \
+             every other changed file's kind needs (a script's tests, a document's links); `fast` \
+             compiles only. `pass` means every check ran and passed; `unchecked` means nothing \
+             here can check the files you changed (review them by reading); anything else says \
+             what failed or could not run. An unchanged working copy returns the last result. \
              The verdict: status, compile errors {file,line,msg}, failing tests \
-             {name,file,line,assert}, fmt, files implicated but untouched, and the issue's \
-             acceptance items with their check's result.",
+             {name,file,line,assert}, failing checks {id,tail}, fmt, files implicated but \
+             untouched, and the issue's acceptance items with their checks' results.",
             json!({
                 "type": "object",
                 "properties": {
@@ -355,6 +366,15 @@ impl Verify {
     }
 
     fn packages(&self, changed: &BTreeSet<String>) -> Vec<String> {
+        let mut packages = self.touched_packages(changed);
+        if packages.is_empty() {
+            packages.clone_from(&self.crates);
+        }
+        packages
+    }
+
+    /// The Cargo packages the working copy's Rust files belong to.
+    fn touched_packages(&self, changed: &BTreeSet<String>) -> Vec<String> {
         let mut packages: Vec<String> = Vec::new();
         for path in changed.iter().filter(|path| path.ends_with(".rs")) {
             if let Some(package) = self.package_of(path)
@@ -363,10 +383,93 @@ impl Verify {
                 packages.push(package);
             }
         }
-        if packages.is_empty() {
-            packages.clone_from(&self.crates);
-        }
         packages
+    }
+
+    /// Every check the changed files' kinds need, from the planner
+    /// (#11310). `Err` carries why the planner could not answer.
+    async fn plan(&self, changed: &BTreeSet<String>) -> Result<Vec<Value>, String> {
+        let Some((program, args)) = self.planner.split_first() else {
+            return Ok(Vec::new());
+        };
+        let files: Vec<&String> = changed
+            .iter()
+            .filter(|path| self.root.join(path).exists())
+            .collect();
+        if files.is_empty() {
+            return Ok(Vec::new());
+        }
+        let out = Command::new(program)
+            .args(args)
+            .args(files)
+            .current_dir(&self.root)
+            .output()
+            .await
+            .map_err(|error| format!("the check planner did not run: {error}"))?;
+        if !out.status.success() {
+            return Err(format!(
+                "the check planner failed: {}",
+                tail(&String::from_utf8_lossy(&out.stderr), 8)
+            ));
+        }
+        let answer: Value = serde_json::from_slice(&out.stdout)
+            .map_err(|error| format!("the check planner's answer was not JSON: {error}"))?;
+        Ok(answer["checks"].as_array().cloned().unwrap_or_default())
+    }
+
+    /// Runs one planned non-Rust check (#11310): build commands through
+    /// the build host, the rest directly in the working copy.
+    async fn run_planned(&self, check: &Value) -> Value {
+        let id = check["id"].as_str().unwrap_or("?").to_owned();
+        if !check["available"].as_bool().unwrap_or(true) {
+            return json!({"id": id, "ok": null, "available": false,
+                          "note": check["what"].as_str().unwrap_or("not runnable here")});
+        }
+        let argv = strings(&check["argv"]);
+        let Some((program, args)) = argv.split_first() else {
+            return json!({"id": id, "ok": false, "available": true, "tail": "the check has no command"});
+        };
+        let started = Instant::now();
+        let outcome = if check["runner"].as_str() == Some("exec") {
+            let refs: Vec<&str> = argv.iter().map(String::as_str).collect();
+            self.exec(&refs).await
+        } else {
+            let mut command = Command::new(program);
+            command
+                .args(args)
+                .current_dir(&self.root)
+                .env("PYTHONDONTWRITEBYTECODE", "1")
+                .kill_on_drop(true);
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(PLANNED_SECS),
+                command.output(),
+            )
+            .await
+            {
+                Ok(Ok(out)) => {
+                    let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
+                    text.push_str(&String::from_utf8_lossy(&out.stderr));
+                    Outcome {
+                        code: out.status.code(),
+                        text,
+                    }
+                }
+                Ok(Err(error)) => Outcome {
+                    code: None,
+                    text: format!("could not run the check: {error}"),
+                },
+                Err(_) => Outcome {
+                    code: Some(TIMED_OUT),
+                    text: format!("the check ran past {PLANNED_SECS}s and was stopped"),
+                },
+            }
+        };
+        let ok = outcome.code == Some(0);
+        json!({
+            "id": id, "ok": ok, "available": true, "exit": outcome.code,
+            "secs": started.elapsed().as_secs(),
+            "tail": if ok { String::new() } else { tail(&outcome.text, 20) },
+        })
     }
 
     /// `verify`: the cached result for an unchanged candidate, otherwise a
@@ -447,18 +550,181 @@ impl Verify {
     async fn run_uncached(&self, words: &[String], fast: bool, required: Option<usize>) -> Value {
         let started = Instant::now();
         let changed = self.changed().await;
-        let packages = self.packages(&changed);
+        let (planned, plan_error) = match self.plan(&changed).await {
+            Ok(checks) => (checks, None),
+            Err(error) => (Vec::new(), Some(error)),
+        };
+        // Packages of nested workspaces are checked by their own planned
+        // commands (`--manifest-path`), never by `cargo -p` from the root.
+        let nested: BTreeSet<String> = planned
+            .iter()
+            .filter(|check| check["kind"] == "rust-nested")
+            .filter_map(|check| check["package"].as_str().map(str::to_owned))
+            .collect();
+        let mut packages: Vec<String> = self
+            .touched_packages(&changed)
+            .into_iter()
+            .filter(|package| !nested.contains(package))
+            .collect();
+        for check in planned.iter().filter(|check| check["kind"] == "rust") {
+            if let Some(package) = check["package"].as_str()
+                && !packages.iter().any(|known| known == package)
+            {
+                packages.push(package.to_owned());
+            }
+        }
+        let others: Vec<&Value> = planned
+            .iter()
+            .filter(|check| check["kind"] != "rust")
+            .collect();
+        if packages.is_empty() && others.is_empty() && plan_error.is_none() {
+            packages.clone_from(&self.crates);
+        }
         let mut verdict = json!({"crates": packages, "changed": changed});
-        if packages.is_empty() {
+        if packages.is_empty() && others.is_empty() && plan_error.is_none() {
             verdict["status"] = json!("error");
             verdict["note"] = json!("no crate to check");
             return verdict;
         }
+        let mut implicated: BTreeMap<String, String> = BTreeMap::new();
+        let rust_status = if packages.is_empty() {
+            None
+        } else {
+            Some(
+                self.rust_part(
+                    &mut verdict,
+                    &packages,
+                    words,
+                    fast,
+                    required,
+                    &changed,
+                    &mut implicated,
+                )
+                .await,
+            )
+        };
+        let mut results: Vec<Value> = Vec::new();
+        if let Some(error) = &plan_error {
+            results.push(json!({"id": "plan", "ok": false, "available": true, "tail": error}));
+        }
+        for check in &others {
+            results.push(self.run_planned(check).await);
+        }
+        let failing: Vec<&Value> = results
+            .iter()
+            .filter(|result| result["ok"] == json!(false))
+            .collect();
+        for result in &failing {
+            for file in files_named(result["tail"].as_str().unwrap_or("")) {
+                if !changed.contains(&file) && implicated.len() < 8 {
+                    implicated.entry(file).or_insert_with(|| {
+                        format!(
+                            "the failing check {} names it",
+                            result["id"].as_str().unwrap_or("?")
+                        )
+                    });
+                }
+            }
+        }
+        let any_ran = results.iter().any(|result| result["ok"] == json!(true));
+        let status = match rust_status {
+            Some(status) if !matches!(status, "pass" | "compiles") => status,
+            _ if !failing.is_empty() => "check_failure",
+            Some(status) => status,
+            None if any_ran => {
+                if fast {
+                    "compiles"
+                } else {
+                    "pass"
+                }
+            }
+            None => "unchecked",
+        };
+        verdict["status"] = json!(status);
+        if status == "unchecked" {
+            verdict["note"] = json!(
+                "nothing on this computer can check the files you changed; read your change back and stop when it is right"
+            );
+        }
+        if !results.is_empty() {
+            verdict["checks"] = json!(
+                results
+                    .iter()
+                    .map(|result| json!({"id": result["id"], "ok": result["ok"]}))
+                    .collect::<Vec<_>>()
+            );
+        }
+        if !failing.is_empty() {
+            verdict["failing_checks"] = json!(
+                failing
+                    .iter()
+                    .take(6)
+                    .map(|result| json!({"id": result["id"], "tail": result["tail"]}))
+                    .collect::<Vec<_>>()
+            );
+        }
+        for path in &changed {
+            for (partner, count) in self.cochange.get(path).into_iter().flatten() {
+                if *count >= 3 && !changed.contains(partner) && implicated.len() < 8 {
+                    implicated.entry(partner.clone()).or_insert_with(|| {
+                        format!("changed together with {path} in {count} past commits")
+                    });
+                }
+            }
+        }
+        verdict["untouched_but_implicated"] = json!(
+            implicated
+                .iter()
+                .map(|(file, reason)| json!({"file": file, "reason": reason}))
+                .collect::<Vec<_>>()
+        );
+        let status = verdict["status"].as_str().unwrap_or("error").to_owned();
+        if self.acceptance.is_empty() {
+            verdict["done_when"] = json!(
+                self.done_when
+                    .iter()
+                    .map(|item| json!({
+                        "item": item,
+                        "check": "the touched crates' tests ran and passed",
+                        "status": if status == "pass" { "pass" } else { "not shown" },
+                    }))
+                    .collect::<Vec<_>>()
+            );
+        } else {
+            verdict["acceptance"] =
+                acceptance_report(&self.acceptance, &packages, rust_status, &results);
+        }
+        verdict["secs"] = json!(started.elapsed().as_secs());
+        // The log keeps the evidence a re-briefing reads (#11311).
+        self.log_call(json!({
+            "filter": words.join(" "), "fast": fast, "final": required.is_some(),
+            "status": status, "secs": verdict["secs"],
+            "compile_errors": first(&verdict["compile_errors"], 6),
+            "failing_tests": first(&verdict["failing_tests"], 6),
+            "failing_checks": first(&verdict["failing_checks"], 6),
+            "untouched_but_implicated": verdict["untouched_but_implicated"],
+        }));
+        verdict
+    }
+
+    /// The Rust part of a run: the packages' tests (or `cargo check` when
+    /// `fast`) and fmt, in one build-host call. Returns its status and
+    /// fills the verdict's Rust fields.
+    #[allow(clippy::too_many_arguments)]
+    async fn rust_part(
+        &self,
+        verdict: &mut Value,
+        packages: &[String],
+        words: &[String],
+        fast: bool,
+        required: Option<usize>,
+        changed: &BTreeSet<String>,
+        implicated: &mut BTreeMap<String, String>,
+    ) -> &'static str {
         let selectors: Vec<String> = packages
             .iter()
             .flat_map(|package| ["-p".to_owned(), package.clone()])
             .collect();
-        let mut implicated: BTreeMap<String, String> = BTreeMap::new();
         if fast {
             let mut argv: Vec<&str> = vec!["cargo", "check"];
             argv.extend(selectors.iter().map(String::as_str));
@@ -471,7 +737,7 @@ impl Verify {
                 verdict["note"] = json!(why);
                 "checker_error"
             } else if !errors.is_empty() {
-                self.implicate_errors(&errors, &changed, &mut implicated);
+                self.implicate_errors(&errors, changed, implicated);
                 verdict["compile_errors"] = json!(errors.iter().take(20).collect::<Vec<_>>());
                 "compile_error"
             } else if outcome.code == Some(0) || preexisting > 0 {
@@ -483,7 +749,7 @@ impl Verify {
                 ));
                 "checker_error"
             };
-            verdict["status"] = json!(status);
+            status
         } else {
             let mut run = self.test_and_fmt(&selectors, words, &[]).await;
             let (mut errors, preexisting) = self.compile_errors(&run.text);
@@ -517,7 +783,7 @@ impl Verify {
                 verdict["note"] = json!("the checker's output had no exit markers");
                 "checker_error"
             } else if !errors.is_empty() {
-                self.implicate_errors(&errors, &changed, &mut implicated);
+                self.implicate_errors(&errors, changed, implicated);
                 verdict["compile_errors"] = json!(errors.iter().take(20).collect::<Vec<_>>());
                 "compile_error"
             } else if !run.failures.is_empty() || run.failed > 0 {
@@ -548,45 +814,13 @@ impl Verify {
             } else {
                 "pass"
             };
-            verdict["status"] = json!(status);
             verdict["fmt"] = json!(match run.fmt_code {
                 Some(0) => "ok (applied)",
                 Some(_) => "cargo fmt failed",
                 None => "did not run",
             });
+            status
         }
-        for path in &changed {
-            for (partner, count) in self.cochange.get(path).into_iter().flatten() {
-                if *count >= 3 && !changed.contains(partner) && implicated.len() < 8 {
-                    implicated.entry(partner.clone()).or_insert_with(|| {
-                        format!("changed together with {path} in {count} past commits")
-                    });
-                }
-            }
-        }
-        verdict["untouched_but_implicated"] = json!(
-            implicated
-                .iter()
-                .map(|(file, reason)| json!({"file": file, "reason": reason}))
-                .collect::<Vec<_>>()
-        );
-        let status = verdict["status"].as_str().unwrap_or("error").to_owned();
-        verdict["done_when"] = json!(
-            self.done_when
-                .iter()
-                .map(|item| json!({
-                    "item": item,
-                    "check": "the touched crates' tests ran and passed",
-                    "status": if status == "pass" { "pass" } else { "not shown" },
-                }))
-                .collect::<Vec<_>>()
-        );
-        verdict["secs"] = json!(started.elapsed().as_secs());
-        self.log_call(
-            json!({"filter": words.join(" "), "fast": fast, "final": required.is_some(),
-                             "status": status, "secs": verdict["secs"]}),
-        );
-        verdict
     }
 
     /// Appends one line to the `verify` log, if the run keeps one.
@@ -689,6 +923,125 @@ impl Verify {
         let outcome = self.exec(&["sh", "-c", &script]).await;
         parse_test_run(outcome)
     }
+}
+
+/// How long a planned non-Rust check may run.
+const PLANNED_SECS: u64 = 300;
+
+/// The last `lines` non-empty lines of `text`, at most 1,800 characters.
+fn tail(text: &str, lines: usize) -> String {
+    let rows: Vec<&str> = text
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect();
+    let joined = rows[rows.len().saturating_sub(lines)..].join("\n");
+    let skip = joined.len().saturating_sub(1800);
+    let start = (skip..=joined.len())
+        .find(|i| joined.is_char_boundary(*i))
+        .unwrap_or(joined.len());
+    joined[start..].to_owned()
+}
+
+/// The first `n` items of a JSON array (or null).
+fn first(value: &Value, n: usize) -> Value {
+    value.as_array().map_or(Value::Null, |items| {
+        json!(items.iter().take(n).collect::<Vec<_>>())
+    })
+}
+
+/// Repository files a check's output names: Python tracebacks
+/// (`File "x", line N`), `path:line:` prefixes (pytest, compilers,
+/// doccheck), shellcheck's `In path line N:` and bash's `path: line N:`.
+pub fn files_named(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut push = |file: &str| {
+        let file = file.trim().trim_start_matches("./");
+        if !file.is_empty()
+            && !file.starts_with('/')
+            && !file.starts_with('<')
+            && file.contains('.')
+            && !file.contains(' ')
+            && !out.iter().any(|known| known == file)
+        {
+            out.push(file.to_owned());
+        }
+    };
+    for line in text.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("File \"")
+            && let Some((file, _)) = rest.split_once('"')
+        {
+            push(file);
+        } else if let Some(rest) = line.strip_prefix("In ")
+            && let Some((file, _)) = rest.split_once(" line ")
+        {
+            push(file);
+        } else if let Some((file, rest)) = line.split_once(':')
+            && rest
+                .split(':')
+                .next()
+                .is_some_and(|n| !n.is_empty() && n.trim().chars().all(|c| c.is_ascii_digit()))
+        {
+            push(file);
+        } else if let Some((file, _)) = line.split_once(": line ") {
+            push(file);
+        }
+    }
+    out.truncate(10);
+    out
+}
+
+/// Each acceptance item with its checks' results (#11310): `pass` when
+/// every check it names ran and passed, `fail` when one failed, `not
+/// shown` when none of its checks ran, and `not checkable here` for an
+/// item no check here can show (a capture, receipt, deploy, owner step or
+/// measurement). Rust check ids (`check:`, `test:`, `fmt:`) take the Rust
+/// part's status for their package.
+fn acceptance_report(
+    items: &[Value],
+    packages: &[String],
+    rust_status: Option<&str>,
+    results: &[Value],
+) -> Value {
+    let result_of = |id: &str| -> Option<Option<bool>> {
+        if let Some((step, package)) = id.split_once(':')
+            && matches!(step, "check" | "test" | "fmt")
+            && packages.iter().any(|known| known == package)
+        {
+            return rust_status
+                .map(|status| Some(status == "pass" || (step == "check" && status == "compiles")));
+        }
+        results
+            .iter()
+            .find(|result| result["id"] == id)
+            .map(|result| result["ok"].as_bool())
+    };
+    json!(
+        items
+            .iter()
+            .map(|item| {
+                let kind = item["kind"].as_str().unwrap_or("behavior");
+                let ids = strings(&item["check_ids"]);
+                let seen: Vec<Option<bool>> = ids.iter().filter_map(|id| result_of(id)).collect();
+                let status = if matches!(
+                    kind,
+                    "capture" | "receipt" | "deploy" | "owner" | "measurement"
+                ) {
+                    "not checkable here"
+                } else if seen.iter().any(|ok| *ok == Some(false)) {
+                    "fail"
+                } else if !ids.is_empty()
+                    && seen.len() == ids.len()
+                    && seen.iter().all(|ok| *ok == Some(true))
+                {
+                    "pass"
+                } else {
+                    "not shown"
+                };
+                json!({"item": item["text"], "kind": kind, "checks": ids, "status": status})
+            })
+            .collect::<Vec<_>>()
+    )
 }
 
 /// A test-and-fmt run, parsed.

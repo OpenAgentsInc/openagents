@@ -1,0 +1,26 @@
+{
+  "grader": "kinds",
+  "kinds": [
+    "python",
+    "shell"
+  ],
+  "packages": [],
+  "script_tests": [
+    "scripts/tests/test_boat_run_legacy.py"
+  ],
+  "test_targets": [],
+  "issue": 10257,
+  "title": "scripts/boat-run-legacy.sh loops forever when Boat reports a command as lost",
+  "body": "From #10220: the legacy Boat runner polls forever when a detached command's status is `lost`. Treat `lost` (and any terminal non-exited status) as a failure with a clear message and non-zero exit.",
+  "fix": "44edd848ed487cae230c3790b5cab642d1e6047f",
+  "parent": "8f9ac96972ac419d1dac6500dfe28a1fe21e0328",
+  "package": null,
+  "source_files": [
+    "scripts/boat-run-legacy.sh"
+  ],
+  "test_files": [
+    "scripts/tests/test_boat_run_legacy.py"
+  ],
+  "test_names": [],
+  "fix_lines": 111
+}

@@ -1,0 +1,57 @@
+diff --git a/crates/tenancy/src/quota.rs b/crates/tenancy/src/quota.rs
+index 475e945ef8b7878df96d9ca2fd52c7abb8e8d58e..e5fe6744f4a81f1f686c1c4fe870383df49ca97c 100644
+--- a/crates/tenancy/src/quota.rs
++++ b/crates/tenancy/src/quota.rs
+@@ -822,6 +856,7 @@ mod tests {
+     ) -> Call<'a> {
+         Call {
+             tenant,
++            workspace: None,
+             key: "key-1",
+             request,
+             attempt,
+@@ -856,6 +891,44 @@ mod tests {
+         assert_eq!(usage.outstanding, 0);
+     }
+ 
++    /// #11190: personal workspaces made by sign-up share one tenant, so a
++    /// named workspace counts against its own allowance, and one heavy
++    /// workspace never exhausts another's.
++    #[test]
++    fn each_workspace_on_a_shared_tenant_has_its_own_allowance() {
++        let dir = tempfile::tempdir().unwrap();
++        let manifest = manifest(Some(quota(10, 100, 1)));
++        let mut ledger = Ledger::open(dir.path()).unwrap();
++        let units = units(1, 10);
++        let in_workspace = |workspace, request| Call {
++            workspace: Some(workspace),
++            ..call("acme", request, 1, "digest", &units, 300)
++        };
++        ledger
++            .reserve(&manifest, &in_workspace("ws-ada", "ada-1"))
++            .unwrap();
++        // Ada's one concurrent slot is hers: her second waits, Bo's goes.
++        assert!(matches!(
++            ledger.reserve(&manifest, &in_workspace("ws-ada", "ada-2")),
++            Err(Refusal::Exhausted { .. })
++        ));
++        ledger
++            .reserve(&manifest, &in_workspace("ws-bo", "bo-1"))
++            .unwrap();
++        assert_eq!(ledger.workspace_usage("acme", "ws-ada").outstanding, 1);
++        assert_eq!(ledger.workspace_usage("acme", "ws-bo").outstanding, 1);
++        // A call with no workspace counts against the tenant as a whole.
++        assert_eq!(ledger.usage("acme").outstanding, 2);
++        assert!(matches!(
++            ledger.reserve(&manifest, &call("acme", "svc-1", 1, "digest", &units, 300)),
++            Err(Refusal::Exhausted { .. })
++        ));
++        // The workspace survives a reopen of the ledger.
++        drop(ledger);
++        let reopened = Ledger::open(dir.path()).unwrap();
++        assert_eq!(reopened.workspace_usage("acme", "ws-bo").outstanding, 1);
++    }
++
+     #[test]
+     fn a_retry_is_idempotent_and_changed_content_is_refused() {
+         let dir = tempfile::tempdir().unwrap();

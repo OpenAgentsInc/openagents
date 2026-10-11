@@ -1,0 +1,51 @@
+{
+  "frozen": "2026-10-11",
+  "levers": {
+    "interface": true,
+    "model": "claude-opus-5-5",
+    "effort": "default",
+    "timeout_secs": 1200,
+    "finder": "finder",
+    "template": "v5",
+    "checks": "kinds",
+    "acceptance": "typed"
+  },
+  "pins": {
+    "agent_sha256": "a88372f580c53cfecf2b76abca6ac52cfa08338d4149ba81ae417c8ac674d5e0",
+    "agent_source": "crates/briefed-agent with #11310's planner and acceptance (this commit), built on the environment (release)",
+    "claude_version": "2.1.291 (Claude Code)",
+    "judge_model": "claude-opus-5-5",
+    "host": "oa-dev-env-1 (GCE c3-standard-22 spot, us-central1-b): agents, worktrees, builds and grading on one machine (AB_HOST=local)",
+    "login": "the owner's Claude Code subscription token (same token as ~/work/.secrets/claude-code-oauth-token; checked by hash)"
+  },
+  "outcome": "accepted = the change passes its kinds grade (remote/eval.sh for the fix's Rust tests over every touched crate; the fix's own script tests laid over the change; every check its changed files' kinds need, kinds.py) AND the blind judge accepts (score >= 4). A change with nothing checkable here (Kotlin) is judged by the judge alone. Never from the agent's own report.",
+  "order": "issues in a seeded random order; per issue each rep rotates the arm order from a seeded start",
+  "harness_failures": "a trial that hits the login's usage limit is discarded and rerun when the login answers; nothing else is rerun or excluded.",
+  "workers": 2,
+  "tag": "ab-rebrief",
+  "seed": 20261012,
+  "arms": [
+    "B0",
+    "B0R"
+  ],
+  "reps": 2,
+  "budget_usd": 70,
+  "issues": [
+    10065,
+    10257,
+    11284,
+    11190,
+    11281,
+    11283,
+    10181,
+    10301,
+    10986
+  ],
+  "issue_selection": "the six #11310 kinds issues plus three S2 issues where B0 failed in at least one S2 run and some arm succeeded at least once (#10181, #10301, #10986), fixed before any trial",
+  "question": "#11311: does one re-brief from the first attempt's misses and check evidence (B0R) raise accepted-per-dollar over B0?",
+  "analysis": {
+    "unit": "issue; repeats clustered",
+    "primary": "accepted rate B0R vs B0 with the issue-level bootstrap CI; then cost per accepted (B0R's cost includes both attempts and the replay), median/p90 time; how often the re-brief ran and how often it turned a failure into an accepted change",
+    "decision": "production keeps the re-brief on when B0R's accepted-per-dollar is not lower than B0's in this run"
+  }
+}

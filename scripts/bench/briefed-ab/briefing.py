@@ -316,7 +316,67 @@ def crate_rule(path: str, rev: str) -> str | None:
     return " ".join(m.group(0).split())[:900] if m else None
 
 
-def build(task: dict, levers: dict) -> dict:
+def seeded(files: list[dict], seeds: list[dict], levers: dict) -> list[dict]:
+    """A re-briefing's files (#11311): the first attempt's evidence first
+    (files it had to open, files its checks blamed), then the finder's."""
+    out, seen = [], set()
+    for s_ in seeds:
+        if s_["path"] in seen:
+            continue
+        seen.add(s_["path"])
+        out.append({"path": s_["path"], "score": None, "lines": sorted(set(s_.get("lines") or [])),
+                    "why": list(s_.get("why") or ["the first attempt needed it"])[:4]})
+    for f in files:
+        if f["path"] not in seen:
+            seen.add(f["path"])
+            out.append(f)
+    return out[: int(levers["briefing_files"]) + min(4, len(seeds))]
+
+
+def kind_packages(rev: str, files: list[dict], levers: dict) -> tuple[list[dict], list[dict]]:
+    """(packages, checks) for a kinds briefing (#11310): the packages of the
+    finder's top files grouped by kind, at most `packages` of them, with
+    each package's checks from `kinds.py`."""
+    import kinds
+    tree = kinds.Tree(REPO, rev)
+    top = [f["path"] for f in files][:6]
+    pkgs = [p for p in kinds.group(top, tree) if p["kind"] != "other"][: int(levers["packages"])]
+    for f in files:
+        for p in pkgs:
+            if f["path"] not in p["files"] and any(
+                    q["id"] == p["id"] and q["kind"] == p["kind"] for q in kinds.group([f["path"]], tree)):
+                p["files"].append(f["path"])
+    checks = kinds.plan([f for p in pkgs for f in p["files"]], tree, rev)
+    return pkgs, checks
+
+
+def budget_by_package(briefing: dict, budget_chars: int) -> str:
+    """Trim excerpts so each package keeps a fair share of the briefing:
+    the package most over its share loses lines from its longest excerpt."""
+    md = render(briefing)
+    pkgs = briefing.get("packages") or []
+    owner = {f: p["id"] for p in pkgs for f in p["files"]}
+    while len(md) > budget_chars and any(len(f["excerpt"]) > 400 for f in briefing["files"]):
+        by: dict[str, int] = {}
+        for f in briefing["files"]:
+            by[owner.get(f["path"], "")] = by.get(owner.get(f["path"], ""), 0) + len(f["excerpt"])
+        share = max(1, budget_chars // max(1, len(by)))
+        worst = max(by, key=lambda k: by[k] - share)
+        cands = [f for f in briefing["files"] if owner.get(f["path"], "") == worst and len(f["excerpt"]) > 400] \
+            or [f for f in briefing["files"] if len(f["excerpt"]) > 400]
+        longest = max(cands, key=lambda f: len(f["excerpt"]))
+        rows = longest["excerpt"].splitlines()
+        longest["excerpt"] = "\n".join(rows[: max(10, len(rows) * 2 // 3)])
+        md = render(briefing)
+    return md
+
+
+TESTED_KINDS = ("rust", "rust-nested", "python", "shell")
+
+
+def build(task: dict, levers: dict, seeds: list[dict] | None = None, wrong: str | None = None) -> dict:
+    """The briefing. `seeds` and `wrong` make a re-briefing (#11311): the
+    first attempt's evidence files first, and what went wrong."""
     started = time.time()
     rev = task["parent"]
     finder = levers["finder"]
@@ -326,29 +386,50 @@ def build(task: dict, levers: dict) -> dict:
         files, finder_used = finder_files(task, levers)
     else:
         files, finder_used = lite_files(task, levers), "lite"
+    if seeds:
+        files = seeded(files, seeds, levers)
     for f in files:
         f["excerpt"] = excerpt(rev, f["path"], f["lines"], levers)
-    packages = []
-    for f in [f for f in files if f["path"].endswith(".rs")][:3]:
-        if f["path"].startswith("crates/"):
-            pkg = package_of(rev, f["path"])
-            if pkg and pkg not in packages:
-                packages.append(pkg)
-    packages = packages[:2]
-    checks = []
-    for pkg in packages:
-        checks += [
-            {"id": f"check:{pkg}", "argv": ["cargo", "check", "-p", pkg, "--tests", "--message-format", "short"],
-             "what": f"compile {pkg} and its tests"},
-            {"id": f"test:{pkg}", "argv": ["cargo", "test", "-p", pkg], "filter": True,
-             "what": f"run {pkg}'s tests (pass a test-name filter to run fewer)"},
-            {"id": f"fmt:{pkg}", "argv": ["cargo", "fmt", "-p", pkg], "what": f"format {pkg}"},
-        ]
+    kinds_mode = levers.get("checks") == "kinds"
+    pkgs: list[dict] = []
+    if kinds_mode:
+        pkgs, checks = kind_packages(rev, files, levers)
+        packages = [p["id"] for p in pkgs if p["kind"] == "rust"]
+        # Files grouped by package (package order, then rank), the rest last.
+        rank = {f["path"]: i for i, f in enumerate(files)}
+        pos = {f: i for i, p in enumerate(pkgs) for f in p["files"]}
+        files = sorted(files, key=lambda f: (pos.get(f["path"], len(pkgs)), rank[f["path"]]))
+    else:
+        packages = []
+        for f in [f for f in files if f["path"].endswith(".rs")][:3]:
+            if f["path"].startswith("crates/"):
+                pkg = package_of(rev, f["path"])
+                if pkg and pkg not in packages:
+                    packages.append(pkg)
+        packages = packages[:2]
+        checks = []
+        for pkg in packages:
+            checks += [
+                {"id": f"check:{pkg}", "argv": ["cargo", "check", "-p", pkg, "--tests", "--message-format", "short"],
+                 "what": f"compile {pkg} and its tests"},
+                {"id": f"test:{pkg}", "argv": ["cargo", "test", "-p", pkg], "filter": True,
+                 "what": f"run {pkg}'s tests (pass a test-name filter to run fewer)"},
+                {"id": f"fmt:{pkg}", "argv": ["cargo", "fmt", "-p", pkg], "what": f"format {pkg}"},
+            ]
     rules = list(CORE_RULES)
+    if kinds_mode:
+        rules[0] = "Product code is Rust; scripts stay in the language they are in. Do not add TypeScript."
+        rules[1] = ("The check for a change is the briefing's checks for the packages you edited (`cargo test -p` "
+                    "and `cargo fmt` for a crate; the script's tests; the link check for a document). Do not run "
+                    "clippy, release gates, or other packages' tests.")
     for f in files[:3]:
         rule = crate_rule(f["path"], rev)
         if rule and rule not in rules:
             rules.append(rule)
+    acc = None
+    if levers.get("acceptance") == "typed":
+        import acceptance
+        acc = acceptance.extract({"issue": task["issue"], "title": task["title"], "body": task["body"]}, checks)
     plan = []
     if levers["plan"] != "none":
         body = task["body"] or ""
@@ -357,6 +438,8 @@ def build(task: dict, levers: dict) -> dict:
             for line in body.splitlines()
             if re.match(r"^\s*(?:[-*]|\d+\.)\s+\S", line)
         ][:8]
+        if acc is not None:
+            asks = [i["text"] for i in acc["items"]]
         top = [f["path"] for f in files if not is_test_file(f["path"])][:3]
         tests = [f["path"] for f in files if is_test_file(f["path"])][:2]
         plan.append(f"Goal: {task['title']}")
@@ -364,25 +447,45 @@ def build(task: dict, levers: dict) -> dict:
             plan.append(f"Required: {ask[:220]}")
         if top:
             plan.append("Change the behavior where it lives, most likely in " + ", ".join(f"`{p}`" for p in top) + ".")
-        plan.append(
-            "Add or update a test that pins the new behavior"
-            + (f", next to the existing ones in {', '.join(f'`{t}`' for t in tests)}" if tests else ", beside the code's existing tests")
-            + "."
-        )
+        tested = not kinds_mode or any(p["kind"] in TESTED_KINDS for p in pkgs)
+        if tested:
+            plan.append(
+                "Add or update a test that pins the new behavior"
+                + (f", next to the existing ones in {', '.join(f'`{t}`' for t in tests)}" if tests else ", beside the code's existing tests")
+                + "."
+            )
+        if kinds_mode and any(p["kind"] == "docs" for p in pkgs):
+            plan.append("Keep every relative link and repository path in the documents you edit valid.")
+        if kinds_mode and any(not c.get("available", True) for c in checks):
+            plan.append("Some files here have no checker on this computer ("
+                        + ", ".join(sorted({c["kind"] for c in checks if not c.get("available", True)}))
+                        + "): read your change back carefully.")
         if checks:
-            plan.append("Run " + ", then ".join(f"`{c['id']}`" for c in checks if not c["id"].startswith("fmt")) + ", then `fmt`; stop when they pass.")
+            plan.append("Run " + ", then ".join(f"`{c['id']}`" for c in checks if not c["id"].startswith("fmt")
+                                              and c.get("available", True)) + ", then `fmt`; stop when they pass.")
     hist = history(rev, [f["path"] for f in files if not f["path"].endswith(".md")], int(levers["history"]))
     briefing = {
         "issue": task["issue"], "title": task["title"], "body": task["body"], "base": rev,
         "finder": finder_used, "plan": plan, "files": files, "history": hist,
         "checks": checks, "rules": rules, "levers": {k: levers[k] for k in levers},
     }
-    md = render(briefing)
+    if kinds_mode:
+        briefing["packages"] = [{"kind": p["kind"], "id": p["id"], "files": p["files"]} for p in pkgs]
+    if acc is not None:
+        briefing["acceptance"] = acc
+    if wrong:
+        briefing["wrong"] = wrong
+    if seeds:
+        briefing["seeds"] = [s_["path"] for s_ in seeds]
     budget = int(levers["briefing_tokens"]) * 4
-    while len(md) > budget and any(len(f["excerpt"]) > 400 for f in briefing["files"]):
-        longest = max(briefing["files"], key=lambda f: len(f["excerpt"]))
-        longest["excerpt"] = "\n".join(longest["excerpt"].splitlines()[: max(10, len(longest["excerpt"].splitlines()) * 2 // 3)])
+    if kinds_mode:
+        md = budget_by_package(briefing, budget)
+    else:
         md = render(briefing)
+        while len(md) > budget and any(len(f["excerpt"]) > 400 for f in briefing["files"]):
+            longest = max(briefing["files"], key=lambda f: len(f["excerpt"]))
+            longest["excerpt"] = "\n".join(longest["excerpt"].splitlines()[: max(10, len(longest["excerpt"].splitlines()) * 2 // 3)])
+            md = render(briefing)
     briefing["build_secs"] = round(time.time() - started, 2)
     briefing["chars"] = len(md)
     return briefing
@@ -390,11 +493,27 @@ def build(task: dict, levers: dict) -> dict:
 
 def render(b: dict) -> str:
     out = [f"# Briefing: #{b['issue']} {b['title']}", "", "## The issue", "", (b["body"] or "").strip(), ""]
+    if b.get("wrong"):
+        out += ["## What went wrong in the first attempt", "", b["wrong"].strip(), ""]
     if b["plan"]:
         out += ["## Change plan", ""] + [f"{i}. {s}" for i, s in enumerate(b["plan"], 1)] + [""]
+    if b.get("acceptance"):
+        out += ["## Acceptance", "", "What must be true when you are done, from the issue, and the check that "
+                "shows each (`verify` reports every item):", ""]
+        for item in b["acceptance"]["items"]:
+            shown = ", ".join(f"`{c}`" for c in item["check_ids"]) or "no check here: make sure by reading"
+            out.append(f"- [{item['kind']}] {item['text']} ({shown})")
+        out.append("")
     label = " (ORACLE: the fix's real files; an upper bound, not a finder result)" if b["finder"] == "oracle" else ""
     out += [f"## Files to change{label}", ""]
+    pkgs = b.get("packages") or []
+    owner = {f: p for p in pkgs for f in p["files"]}
+    shown_pkg = None
     for f in b["files"]:
+        p = owner.get(f["path"])
+        if len(pkgs) > 1 and p is not None and p is not shown_pkg:
+            out += [f"### Package `{p['id']}` ({p['kind']})", ""]
+            shown_pkg = p
         out += [f"### `{f['path']}`", "", "Why: " + "; ".join(f["why"] or ["listed by the finder"]), "", "```", f["excerpt"], "```", ""]
     if b["history"]:
         out += ["## Similar past changes", ""]
@@ -402,7 +521,8 @@ def render(b: dict) -> str:
             out += [f"### {h['commit']} {h['subject']}", "", "```diff", h["diff"], "```", ""]
     if b["checks"]:
         out += ["## Checks", ""]
-        out += [f"- `{c['id']}`: `{' '.join(c['argv'])}{' [FILTER]' if c.get('filter') else ''}` ({c['what']})" for c in b["checks"]]
+        out += [f"- `{c['id']}`: `{' '.join(c['argv'])}{' [FILTER]' if c.get('filter') else ''}` ({c['what']})"
+                + ("" if c.get("available", True) else " (not runnable on this computer)") for c in b["checks"]]
         out.append("")
     out += ["## Repo rules", ""] + [f"- {r}" for r in b["rules"]] + [""]
     return "\n".join(out)

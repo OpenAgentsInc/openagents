@@ -46,6 +46,8 @@ import time
 from pathlib import Path
 
 import briefing as briefing_mod
+import kinds
+import rebrief as rebrief_mod
 from common import HERE, LEVERS, REPO, SSH, WORK, dump_json, is_test_file, load_json, run
 from prepare import TASKS, grade, interface_text
 
@@ -322,6 +324,32 @@ SYSTEM_V4 = """Fix the issue in the briefing below, in this Rust checkout. Small
 """
 TEMPLATES["v4"] = SYSTEM_V4
 
+# v5 (#11310): any package kind, as `scripts/work/work_issue.py` briefs it.
+SYSTEM_V5 = """You are a senior engineer making one change in the OpenAgents monorepo. Your working directory is the repository checkout at the issue's base commit.
+
+Below is a briefing for this issue: a change plan, the acceptance items, the files to change with excerpts (line numbers are the file's own), similar past changes, the checks, and the repo rules.
+
+How to work:
+- Trust the briefing. Start from the listed files and excerpts. Open a file the briefing does not list only when the change, the compiler, a test, or a check demands it.
+- Make the smallest complete change that resolves the issue, in the surrounding style. For code and scripts, add or update a test that pins the new behavior; for a document, keep its links and paths valid.
+{tools}
+- Do not commit.
+"""
+TEMPLATES["v5"] = SYSTEM_V5
+
+
+def how_to_work_v5(custom: list[str]) -> str:
+    lines = []
+    if "verify" in custom:
+        lines.append("- Check your work with `verify`, passing `tests` with your new Rust tests' names. It runs the "
+                     "checks every file you changed needs (a crate's tests and fmt, a script's tests, a document's "
+                     "links) and returns only what is wrong, with each acceptance item's result; fix that and call "
+                     "it again. `fast: true` only compiles. `unchecked` means nothing here can check what you "
+                     "changed: read it back and stop when it is right. Call it once when you think you are done, "
+                     "not after every edit.")
+    lines.append("- When the checks pass, stop. Reply in two or three lines with what changed.")
+    return "\n".join(lines)
+
 
 def cochange(rev: str, paths: list[str]) -> dict:
     """path -> partners that changed with it before `rev` (for verify)."""
@@ -341,15 +369,20 @@ def cochange(rev: str, paths: list[str]) -> dict:
     return out
 
 
-def run_arm_b(task: dict, root: Path, out: Path, levers: dict, slot: int) -> dict:
+def run_arm_b(task: dict, root: Path, out: Path, levers: dict, slot: int, seeds: list[dict] | None = None,
+              wrong: str | None = None) -> dict:
     t0 = time.time()
-    b = briefing_mod.build(task, levers)
+    out.mkdir(parents=True, exist_ok=True)
+    b = briefing_mod.build(task, levers, seeds=seeds, wrong=wrong)
     builtins, custom, checks = tool_set(levers["tools"])
-    pkgs = []
-    for c in b["checks"]:
-        pkg = c["id"].split(":", 1)[1]
-        if pkg not in pkgs:
-            pkgs.append(pkg)
+    if "packages" in b:
+        pkgs = [p["id"] for p in b["packages"] if p["kind"] == "rust"]
+    else:
+        pkgs = []
+        for c in b["checks"]:
+            pkg = c["id"].split(":", 1)[1]
+            if pkg not in pkgs:
+                pkgs.append(pkg)
     co = cochange(task["parent"], [f["path"] for f in b["files"]]) if "verify" in custom else {}
     brief_secs = time.time() - t0
     md = briefing_mod.render(b)
@@ -357,7 +390,8 @@ def run_arm_b(task: dict, root: Path, out: Path, levers: dict, slot: int) -> dic
     (out / "briefing.md").write_text(md)
     template = TEMPLATES[levers["template"]]
     if "{tools}" in template:
-        template = template.replace("{tools}", how_to_work(builtins, custom, checks, pkgs))
+        template = template.replace("{tools}", how_to_work_v5(custom) if levers["template"] == "v5"
+                                    else how_to_work(builtins, custom, checks, pkgs))
     if levers["briefing_in"] == "system":
         system, prompt = template + "\n\n" + md, f"Complete issue #{task['issue']} as the briefing describes."
     else:
@@ -390,6 +424,11 @@ def run_arm_b(task: dict, root: Path, out: Path, levers: dict, slot: int) -> dic
             or [task["title"]],
             "cochange": co, "log": str(out / "verify.jsonl"),
         }
+        if levers.get("checks") == "kinds":
+            config["verify"]["planner"] = ["python3", str(HERE / "kinds.py"), "plan", "--root", str(root),
+                                           "--base", task["parent"]]
+        if b.get("acceptance"):
+            config["verify"]["acceptance"] = b["acceptance"]["items"]
     dump_json(out / "agent.json", config)
     started = time.time()
     proc = subprocess.run([str(AGENT_BIN), str(out / "agent.json")], cwd=root, env=env,
@@ -403,7 +442,8 @@ def run_arm_b(task: dict, root: Path, out: Path, levers: dict, slot: int) -> dic
         "tool_calls": summary.get("tool_calls", {}), "files_read": summary.get("files_read", []),
         "misses": summary.get("misses", []), "check_runs": summary.get("check_runs"),
         "denied": summary.get("denied", []), "result": summary.get("result"),
-        "finished": summary.get("finished"),
+        "finished": summary.get("finished"), "briefing_digest": rebrief_mod.digest(md),
+        "acceptance_source": (b.get("acceptance") or {}).get("source"),
     }
 
 
@@ -504,11 +544,147 @@ ARMS: dict[str, dict] = {
     "Blow": {"tools": "verify", "effort": "low"},
     "Bsonnet": {"tools": "verify", "model": "sonnet"},
     "Bcold": {"tools": "verify", "build_cache": "cold"},
+    # #11311: B0 plus one re-brief from the first attempt's evidence when it
+    # fails its replayed checks or makes no change.
+    "B0R": {"tools": "verify", "rebrief": 1},
 }
 
 
 class RateLimited(RuntimeError):
     pass
+
+
+def replay(task: dict, root: Path, slot: int) -> list[dict]:
+    """The checks the driver replays on a change (scripts/work/work_issue.py):
+    every changed file's checks by kind, Rust through the build host."""
+    diff = working_diff(root, task["parent"])
+    files = [f for f in diff_files(diff) if (root / f).exists()]
+    out = []
+    for c in kinds.plan(files, kinds.Tree(root), task["parent"]):
+        if c["id"].startswith("check:"):
+            continue
+        r = kinds.run_check(c, root, str(SHIM / "remote-exec"), timeout=1500, env=trial_env(root, task, slot))
+        out.append({"name": " ".join(c["argv"])[:200], "id": c["id"], "ok": r["ok"], "tail": r["tail"],
+                    "secs": r["secs"]})
+    return out
+
+
+def merged_result(a: dict | None, b: dict | None) -> dict | None:
+    """Two attempts' CLI results as one: costs, turns and tokens summed;
+    the cost is unknown when either is."""
+    if not a or not b:
+        return b or a
+    ua, ub = a.get("usage") or {}, b.get("usage") or {}
+    cost = None if a.get("total_cost_usd") is None or b.get("total_cost_usd") is None \
+        else a["total_cost_usd"] + b["total_cost_usd"]
+    return dict(b, total_cost_usd=cost, num_turns=(a.get("num_turns") or 0) + (b.get("num_turns") or 0),
+                usage={k: (ua.get(k) or 0) + (ub.get(k) or 0) for k in
+                       ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")})
+
+
+def maybe_rebrief(task: dict, root: Path, out: Path, lv: dict, slot: int, m: dict) -> tuple[dict, Path]:
+    """Arm B0R (#11311): replay the checks on the first attempt's change;
+    when there is no change or a check fails, brief again from the evidence
+    and run the briefed agent once more in a fresh worktree."""
+    t0 = time.time()
+    diff = working_diff(root, task["parent"])
+    checks = replay(task, root, slot) if diff.strip() else []
+    first = {"replay": [{k: c[k] for k in ("id", "ok", "secs")} for c in checks],
+             "cost_usd": (m.get("result") or {}).get("total_cost_usd"), "wall_secs": m["wall_secs"],
+             "briefing_digest": m.get("briefing_digest"),
+             "outcome": "passed" if diff.strip() and all(c["ok"] is not False for c in checks)
+             else ("no change" if not diff.strip() else "checks failed")}
+    replay_secs = time.time() - t0
+    if first["outcome"] == "passed":
+        m = dict(m, wall_secs=round(m["wall_secs"] + replay_secs, 1), attempts=[first], rebrief=None)
+        return m, root
+    (out / "first.patch").write_text(diff)
+
+    def exists(path: str) -> bool:
+        return run(["git", "cat-file", "-e", f"{task['parent']}:{path}"], cwd=REPO, check=False).returncode == 0
+
+    ev = rebrief_mod.evidence(out, checks, diff, exists, lv.get("rebrief_worktree", "clean"))
+    drop_worktree(task, root)
+    root = make_worktree(task, WORK / "wt" / f"slot{slot}")
+    if lv.get("rebrief_worktree") == "keep" and diff.strip():
+        subprocess.run(["git", "-C", str(root), "apply", "--binary", "-"], input=diff, text=True, capture_output=True)
+    m2 = run_arm_b(task, root, out / "rebrief", lv, slot, seeds=ev["seeds"], wrong=ev["wrong"])
+    second = {"cost_usd": (m2.get("result") or {}).get("total_cost_usd"), "wall_secs": m2["wall_secs"],
+              "briefing_digest": m2.get("briefing_digest"), "seeds": [s_["path"] for s_ in ev["seeds"]],
+              "sections": ev["sections"], "why": first["outcome"]}
+    merged = dict(m2)
+    merged["result"] = merged_result(m.get("result"), m2.get("result"))
+    merged["wall_secs"] = round(m["wall_secs"] + replay_secs + m2["wall_secs"], 1)
+    merged["tool_calls"] = {k: (m.get("tool_calls") or {}).get(k, 0) + (m2.get("tool_calls") or {}).get(k, 0)
+                            for k in set(m.get("tool_calls") or {}) | set(m2.get("tool_calls") or {})}
+    merged["misses"] = (m.get("misses") or []) + (m2.get("misses") or [])
+    merged["attempts"] = [first, second]
+    merged["rebrief"] = second
+    return merged, root
+
+
+def grade_kinds(task: dict, diff: str, slot: int = 0, hidden_only: bool = False) -> dict:
+    """Grade a change of any package kind (#11310), in a fresh worktree at
+    the parent: the checks its changed files' kinds need, the fix's own
+    script tests laid over it, and the fix's Rust tests on the build host.
+    `tests_pass` needs all three (each when present). With nothing a check
+    here can run (Kotlin), `unchecked` is set and the judge decides."""
+    g: dict = {"grader": "kinds"}
+    root = make_worktree(task, WORK / "wt" / f"grade{slot}")
+    try:
+        applied = True
+        if diff.strip():
+            p = subprocess.run(["git", "-C", str(root), "apply", "--binary", "--whitespace=nowarn", "-"],
+                               input=diff, text=True, capture_output=True)
+            applied = p.returncode == 0
+            if not applied:
+                g["apply_err"] = p.stderr[-800:]
+        g["applied"] = applied
+        if not applied:
+            g["tests_pass"] = False
+            return g
+        env = trial_env(root, task, slot)
+        if not hidden_only:
+            files = [f for f in diff_files(diff) if (root / f).exists()]
+            checks = [c for c in kinds.plan(files, kinds.Tree(root), task["parent"], rust=False)
+                      if not c["id"].startswith(("check:", "fmt:"))]
+            res = [kinds.run_check(c, root, str(SHIM / "remote-exec"), timeout=1500, env=env) for c in checks]
+            g["kind_checks"] = res
+            g["kind_checks_ok"] = all(r["ok"] is not False for r in res)
+        hidden = []
+        tests = task.get("script_tests") or []
+        if tests:
+            for f in tests:
+                text = run(["git", "show", f"{task['fix']}:{f}"], cwd=REPO, check=False).stdout
+                (root / f).parent.mkdir(parents=True, exist_ok=True)
+                (root / f).write_text(text)
+            for i, argv in enumerate(kinds.test_argv(tests)):
+                hidden.append(kinds.run_check({"id": f"hidden{i}", "argv": argv, "runner": "direct"}, root,
+                                              timeout=900, env=env))
+            g["script_tests"] = hidden
+        if task.get("test_names") and task.get("packages"):
+            # The fix's test packages plus every root-workspace crate the
+            # change touches, so a multi-crate change must build in all.
+            pkgs = list(task["packages"])
+            lib_only = task.get("test_targets") == ["--lib"]
+            for f in diff_files(diff):
+                if f.endswith(".rs") and f.startswith("crates/") and not kinds.nested_root(f):
+                    pkg = kinds.cargo_package(kinds.Tree(root), f)
+                    if pkg and pkg[0] not in pkgs and (not lib_only or (root / pkg[1] / "src/lib.rs").exists()):
+                        pkgs.append(pkg[0])
+            g["rust_packages"] = pkgs
+            rust = grade(dict(task, package=",".join(pkgs)), diff, slot)
+            g["rust"] = {k: rust.get(k) for k in ("applied", "compiles", "tests_pass", "passed", "failed",
+                                                  "tests_compiled", "error")}
+            g["compiles"], g["errors"] = rust.get("compiles"), rust.get("errors")
+            hidden.append({"id": "rust", "ok": bool(rust.get("tests_pass"))})
+        g["hidden_pass"] = all(h["ok"] for h in hidden) if hidden else None
+        ran = [r for r in g.get("kind_checks") or [] if r["ok"] is not None] + hidden
+        g["unchecked"] = not ran
+        g["tests_pass"] = bool(g.get("kind_checks_ok", True) and g["hidden_pass"] is not False)
+        return g
+    finally:
+        drop_worktree(task, root)
 
 
 def limited(m: dict) -> bool:
@@ -549,6 +725,10 @@ def run_trial(task: dict, arm: str, rep: int, levers: dict, slot: int, out: Path
             m = run_arm_b(task, root, out, lv, slot)
         if limited(m):
             raise RateLimited("the login hit its usage limit during the trial")
+        if arm != "A" and int(lv.get("rebrief") or 0):
+            m, root = maybe_rebrief(task, root, out, lv, slot, m)
+            if limited(m):
+                raise RateLimited("the login hit its usage limit during the trial")
         diff = working_diff(root, task["parent"])
         if lv.get("post_fmt") and diff.strip() and task.get("package"):
             subprocess.run([str(SHIM / "remote-exec"), "cargo", "fmt", "-p", task["package"]],
@@ -573,6 +753,8 @@ def run_trial(task: dict, arm: str, rep: int, levers: dict, slot: int, out: Path
     hit = set(src_changed) & set(fix_src)
     if not diff.strip():
         g = {"applied": True, "compiles": None, "tests_pass": False, "empty": True}
+    elif task.get("grader") == "kinds":
+        g = grade_kinds(task, diff, slot)
     elif not task.get("package") or not task.get("test_names"):
         # No package or no test of the fix's own to run (a new crate, or a
         # fix without tests): judged on the diff alone.
@@ -639,8 +821,11 @@ def mac_guard() -> None:
 def prewarm(task: dict, slot: int) -> float:
     """Build the parent's package and tests in the slot (the warm cache)."""
     t0 = time.time()
-    pkg = task["package"]
-    run(SSH + [f"AB_NO_WATCH=1 bash ~/ab/bin/run.sh {slot} {task['parent']} . 2400 -- cargo test -p {pkg} --no-run -q"],
+    pkgs = task.get("packages") or ([task["package"]] if task.get("package") else [])
+    if not pkgs:
+        return 0.0
+    sel = " ".join(f"-p {p}" for p in pkgs)
+    run(SSH + [f"AB_NO_WATCH=1 bash ~/ab/bin/run.sh {slot} {task['parent']} . 2400 -- cargo test {sel} --no-run -q"],
         input="0\n", check=False, timeout=3000)
     return time.time() - t0
 

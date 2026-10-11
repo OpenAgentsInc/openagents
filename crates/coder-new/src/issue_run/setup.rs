@@ -466,7 +466,7 @@ pub fn required_checks(briefing: &Briefing) -> Vec<String> {
     briefing
         .checks
         .iter()
-        .filter(|check| check.id.starts_with("check:"))
+        .filter(|check| check.id.starts_with("check:") || check.required)
         .map(|check| check.id.clone())
         .collect()
 }

@@ -23,7 +23,9 @@ import re
 import sys
 import subprocess
 import tarfile
+from pathlib import Path
 
+import kinds
 from common import GH_REPO, HERE, REPO, SSH, dump_json, git, is_test_file, load_json, package_of, run, show
 
 TASKS = HERE / "tasks"
@@ -66,7 +68,12 @@ def added_tests(hunks: list[str]) -> list[str]:
     return names
 
 
-def prepare(issue: int, commit: str) -> dict:
+def is_test(path: str) -> bool:
+    """A test file: Rust's, or a script's own test (#11310)."""
+    return is_test_file(path) or kinds.is_script_test(path)
+
+
+def prepare(issue: int, commit: str, grader: str = "rust") -> dict:
     fix = git("rev-parse", commit).strip()
     parent = git("rev-parse", f"{fix}^").strip()
     meta = json.loads(
@@ -80,7 +87,7 @@ def prepare(issue: int, commit: str) -> dict:
             if path.endswith(".md"):
                 source_files.append(path)
             continue
-        if is_test_file(path):
+        if is_test_file(path) or (grader == "kinds" and is_test(path)):
             test_files.append(path)
             tests_patch.append(header + "".join(hunks))
             names += added_tests(hunks)
@@ -127,7 +134,21 @@ def prepare(issue: int, commit: str) -> dict:
         if joined not in [" ".join(x) for x in [dedup[j:j+2] for j in range(len(dedup))]]:
             dedup += item
         i += len(item)
+    # Kinds tasks (#11310): every root-workspace Rust package that holds a
+    # test of the fix (else a source change), and the scripts' own tests.
+    tree = kinds.Tree(REPO, parent)
+    packages = []
+    rust_tests = [p for p in test_files if p.endswith(".rs")]
+    for path in rust_tests or [p for p in source_files if p.endswith(".rs")]:
+        if path.startswith("crates/") and not kinds.nested_root(path):
+            pkg = package_of(parent, path)
+            if pkg and pkg not in packages:
+                packages.append(pkg)
     task = {
+        "grader": grader,
+        "kinds": sorted({g["kind"] for g in kinds.group(source_files + test_files, tree)}),
+        "packages": packages,
+        "script_tests": sorted(p for p in set(test_files) if not p.endswith(".rs")),
         "test_targets": dedup,
         "issue": issue,
         "title": meta["title"],
@@ -170,7 +191,7 @@ def interface(task: dict) -> list[dict]:
             current = line[6:]
         if not line.startswith("+") or line.startswith("+++"):
             continue
-        m = re.match(r"\+\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?(?:const\s+)?(fn|struct|enum|const|static|type|trait)\s+([A-Za-z_][A-Za-z0-9_]*)", line)
+        m = re.match(r"\+\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?(?:const\s+)?(fn|struct|enum|const|static|type|trait|def|class)\s+([A-Za-z_][A-Za-z0-9_]*)", line)
         if m and m.group(2) in used:
             sig = [line[1:].strip()]
             j = i + 1
@@ -180,8 +201,9 @@ def interface(task: dict) -> list[dict]:
             text = " ".join(sig).rstrip("{").strip().replace("( ", "(").replace(", )", ")")
             defs.append((m.group(2), text, current))
     found = []
+    scope = "." if task.get("grader") == "kinds" else "crates/"
     for name, sig, path in defs:
-        hits = subprocess.run(["git", "grep", "-q", "-w", "-e", name, task["parent"], "--", "crates/"],
+        hits = subprocess.run(["git", "grep", "-q", "-w", "-e", name, task["parent"], "--", scope],
                               cwd=REPO)
         if hits.returncode != 0:  # absent at the parent: new
             found.append({"name": name, "signature": sig, "file": path})
@@ -207,20 +229,39 @@ def contract_strings(task: dict) -> list[str]:
         for lit in re.findall(r'"([^"\\]{4,60})"', line):
             if lit in found or f'"{lit}"' not in added_src:
                 continue
-            hits = subprocess.run(["git", "grep", "-q", "-F", "-e", lit, task["parent"], "--", "crates/"], cwd=REPO)
+            scope = "." if task.get("grader") == "kinds" else "crates/"
+            hits = subprocess.run(["git", "grep", "-q", "-F", "-e", lit, task["parent"], "--", scope], cwd=REPO)
             if hits.returncode != 0:
                 found.append(lit)
     return found[:8]
+
+
+def new_files(task: dict) -> list[str]:
+    """Files the fix adds that its own tests reference by name (a kinds
+    task's script tests call `scripts/dev/NEW.py`)."""
+    tests = (TASKS / str(task["issue"]) / "tests.patch").read_text()
+    added = "\n".join(l for l in tests.splitlines() if l.startswith("+") and not l.startswith("+++"))
+    out = []
+    for path in task["source_files"]:
+        if show(task["parent"], path) is None and Path(path).name in added:
+            out.append(path)
+    return out
 
 
 def interface_text(task: dict) -> str:
     items = interface(task)
     strings = contract_strings(task)
     text = ""
+    if task.get("grader") == "kinds":
+        files = new_files(task)
+        if files:
+            text += ("\n\nThe tests that will check this change expect these new files: "
+                     + ", ".join(f"`{f}`" for f in files) + ".\n")
     if items:
-        rows = "\n".join(f"{i['signature']}    // {i['file']}" for i in items)
+        rows = "\n".join(f"{i['signature']}    {'#' if i['file'].endswith('.py') else '//'} {i['file']}" for i in items)
+        lang = "rust" if all(i["file"].endswith(".rs") for i in items) else ""
         text += ("\n\nThe tests that will check this change call these new items, so define them with "
-                 "these names and signatures:\n\n```rust\n" + rows + "\n```\n")
+                 "these names and signatures:\n\n```" + lang + "\n" + rows + "\n```\n")
     if strings:
         text += ("\n\nThe tests that will check this change expect these exact strings in its output: "
                  + ", ".join(f"`{s_}`" for s_ in strings) + ".\n")
@@ -274,16 +315,38 @@ def validate(task: dict, slot: int = 0) -> dict:
     return verdict
 
 
+def validate_kinds(task: dict, slot: int = 0) -> dict:
+    """A kinds task (#11310) is usable when the fix passes its grade (the
+    checks its files' kinds need, and the fix's own tests of any kind), and
+    its own tests, when it has any, do not already pass on the parent."""
+    import ab  # noqa: E402  (ab imports this module)
+    out = TASKS / str(task["issue"])
+    on_fix = ab.grade_kinds(task, (out / "source.patch").read_text(), slot)
+    on_parent = ab.grade_kinds(task, "", slot, hidden_only=True)
+    hidden = bool(task.get("script_tests") or (task.get("test_names") and task.get("packages")))
+    verdict = {
+        "on_fix": on_fix,
+        "on_parent": on_parent,
+        "usable": bool(on_fix.get("tests_pass") and (not hidden or not on_parent.get("hidden_pass"))),
+        "behavioral": hidden,
+    }
+    dump_json(out / "validation.json", verdict)
+    return verdict
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("pairs", nargs="+", help="ISSUE:COMMIT")
     ap.add_argument("--validate", action="store_true")
+    ap.add_argument("--kinds", action="store_true", help="a task of any package kind, graded by kind (#11310)")
     ap.add_argument("--slot", type=int, default=0)
     args = ap.parse_args()
     for pair in args.pairs:
         issue, commit = pair.split(":")
+        known = TASKS / issue / "task.json"
+        grader = "kinds" if args.kinds else (load_json(known).get("grader", "rust") if known.exists() else "rust")
         try:
-            task = prepare(int(issue), commit)
+            task = prepare(int(issue), commit, grader)
         except Exception as error:  # noqa: BLE001 - report and go on
             print(f"{issue}: {error}", file=sys.stderr)
             continue
@@ -292,7 +355,11 @@ def main() -> None:
             v = load_json(TASKS / issue / "validation.json")
             print(f"{line} usable={v['usable']} (validated before)", flush=True)
             continue
-        if args.validate and task["package"] and task["test_names"]:
+        if args.validate and grader == "kinds":
+            v = validate_kinds(task, args.slot)
+            line += f" kinds={task['kinds']} usable={v['usable']} fix={v['on_fix'].get('tests_pass')}"
+            line += f" parent_hidden={v['on_parent'].get('hidden_pass')}"
+        elif args.validate and task["package"] and task["test_names"]:
             v = validate(task, args.slot)
             line += f" usable={v['usable']} behavioral={v['behavioral']}"
             line += f" fix={v['on_fix'].get('tests_pass')} parent={v['on_parent'].get('tests_pass')}"

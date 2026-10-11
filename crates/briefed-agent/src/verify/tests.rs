@@ -94,6 +94,8 @@ impl Fixture {
             crates: vec!["x".into()],
             baseline: BTreeSet::new(),
             done_when: vec!["it works".into()],
+            acceptance: Vec::new(),
+            planner: Vec::new(),
             cochange: BTreeMap::new(),
             log: None,
             cache: std::sync::Mutex::new(None),
@@ -404,4 +406,167 @@ async fn cached_verify_answers_count_in_the_tally() {
     assert_eq!(tally.failures, 0);
     assert!(tally.passed);
     assert_eq!(tally.last.as_deref(), Some("pass"));
+}
+
+/// A planner that answers `checks` (#11310): a script printing that JSON.
+fn planner(fx: &Fixture, checks: &Value) -> Vec<String> {
+    let path = fx.calls.with_file_name("plan.sh");
+    let answer = json!({"checks": checks});
+    std::fs::write(&path, format!("#!/bin/sh\ncat <<'OUT'\n{answer}\nOUT\n")).unwrap();
+    let mut perms = std::fs::metadata(&path).unwrap().permissions();
+    std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o755);
+    std::fs::set_permissions(&path, perms).unwrap();
+    vec![path.display().to_string()]
+}
+
+fn script_check(id: &str, script: &str, available: bool) -> Value {
+    json!({"id": id, "kind": "python", "package": "scripts", "argv": ["sh", "-c", script],
+           "runner": "direct", "available": available, "what": "a script check"})
+}
+
+fn change_script(fx: &Fixture) {
+    std::fs::create_dir_all(fx.root.join("scripts")).unwrap();
+    std::fs::write(fx.root.join("scripts/a.py"), "print('a')\n").unwrap();
+}
+
+#[tokio::test]
+async fn a_script_only_change_passes_on_its_planned_checks_without_cargo() {
+    let fx = fixture();
+    change_script(&fx);
+    let mut verify = fx.verify();
+    verify.planner = planner(&fx, &json!([script_check("tests:scripts", "exit 0", true)]));
+    let verdict = verify.run("", false).await;
+    assert_eq!(status(&verdict), "pass", "{verdict}");
+    assert_eq!(fx.calls(), 0, "no cargo call for a script-only change");
+    assert_eq!(verdict["checks"][0]["ok"], json!(true));
+}
+
+#[tokio::test]
+async fn a_failing_planned_check_is_a_check_failure_that_names_its_files() {
+    let fx = fixture();
+    change_script(&fx);
+    let mut verify = fx.verify();
+    verify.planner = planner(
+        &fx,
+        &json!([script_check(
+            "tests:scripts",
+            "echo 'File \"scripts/helper.py\", line 3, in x'; echo boom; exit 1",
+            true
+        )]),
+    );
+    let verdict = verify.run("", false).await;
+    assert_eq!(status(&verdict), "check_failure", "{verdict}");
+    assert_eq!(verdict["failing_checks"][0]["id"], json!("tests:scripts"));
+    assert!(
+        verdict["failing_checks"][0]["tail"]
+            .as_str()
+            .unwrap()
+            .contains("boom")
+    );
+    assert_eq!(
+        verdict["untouched_but_implicated"][0]["file"],
+        json!("scripts/helper.py")
+    );
+}
+
+#[tokio::test]
+async fn a_rust_failure_wins_over_passing_planned_checks() {
+    let fx = fixture();
+    change_script(&fx);
+    fx.add_test();
+    fx.mode("---- tests::one_is_one stdout ----\nthread 'x' panicked at crates/x/src/lib.rs:6:9:\nassertion failed\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored\n@@test_exit=101\n@@fmt_exit=0", 101);
+    let mut verify = fx.verify();
+    verify.planner = planner(&fx, &json!([script_check("tests:scripts", "exit 0", true)]));
+    assert_eq!(status(&verify.run("", false).await), "test_failure");
+}
+
+#[tokio::test]
+async fn only_unavailable_checks_is_unchecked_and_not_a_failure() {
+    let fx = fixture();
+    change_script(&fx);
+    let mut verify = fx.verify();
+    verify.planner = planner(&fx, &json!([script_check("kotlinc:app", "exit 0", false)]));
+    let verdict = verify.run("", false).await;
+    assert_eq!(status(&verdict), "unchecked", "{verdict}");
+    let tally = verify.tally.lock().unwrap().clone();
+    assert_eq!((tally.calls, tally.failures, tally.passed), (1, 0, false));
+}
+
+#[tokio::test]
+async fn a_planner_that_fails_is_never_pass() {
+    let fx = fixture();
+    change_script(&fx);
+    let mut verify = fx.verify();
+    verify.planner = vec!["/nonexistent/planner".into()];
+    let verdict = verify.run("", false).await;
+    assert_eq!(status(&verdict), "check_failure", "{verdict}");
+    assert_eq!(verdict["failing_checks"][0]["id"], json!("plan"));
+}
+
+#[tokio::test]
+async fn acceptance_items_report_their_own_checks() {
+    let fx = fixture();
+    change_script(&fx);
+    let mut verify = fx.verify();
+    verify.planner = planner(
+        &fx,
+        &json!([
+            script_check("tests:scripts", "exit 0", true),
+            script_check("doccheck:docs", "exit 1", true)
+        ]),
+    );
+    verify.acceptance = vec![
+        json!({"text": "the script works", "kind": "script", "check_ids": ["tests:scripts"]}),
+        json!({"text": "links work", "kind": "docs", "check_ids": ["doccheck:docs"]}),
+        json!({"text": "a capture", "kind": "capture", "check_ids": []}),
+        json!({"text": "crate behavior", "kind": "behavior", "check_ids": ["test:x"]}),
+    ];
+    let verdict = verify.run("", false).await;
+    let got: Vec<&str> = verdict["acceptance"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["status"].as_str().unwrap())
+        .collect();
+    assert_eq!(got, ["pass", "fail", "not checkable here", "not shown"]);
+    assert!(verdict.get("done_when").is_none());
+}
+
+#[tokio::test]
+async fn the_log_keeps_the_evidence_a_rebriefing_reads() {
+    let fx = fixture();
+    change_script(&fx);
+    let log = fx.calls.with_file_name("verify.jsonl");
+    let mut verify = fx.verify();
+    verify.log = Some(log.clone());
+    verify.planner = planner(
+        &fx,
+        &json!([script_check("tests:scripts", "echo nope; exit 2", true)]),
+    );
+    verify.run("", false).await;
+    let row: Value = serde_json::from_str(
+        std::fs::read_to_string(&log)
+            .unwrap()
+            .lines()
+            .last()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(row["status"], json!("check_failure"));
+    assert_eq!(row["failing_checks"][0]["id"], json!("tests:scripts"));
+    assert!(row.get("untouched_but_implicated").is_some());
+}
+
+#[test]
+fn files_named_reads_tracebacks_compilers_and_shell_errors() {
+    let text = "Traceback:\n  File \"scripts/dev/x.py\", line 4, in main\ncrates/a/src/lib.rs:12:5: error[E0425]: nope\nIn scripts/run.sh line 7:\nscripts/b.sh: line 9: syntax error\n  File \"/usr/lib/python3/x.py\", line 1\nnot a path: 12\n";
+    assert_eq!(
+        files_named(text),
+        [
+            "scripts/dev/x.py",
+            "crates/a/src/lib.rs",
+            "scripts/run.sh",
+            "scripts/b.sh"
+        ]
+    );
 }

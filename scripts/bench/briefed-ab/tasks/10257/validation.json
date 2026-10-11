@@ -1,0 +1,57 @@
+{
+  "on_fix": {
+    "grader": "kinds",
+    "applied": true,
+    "kind_checks": [
+      {
+        "id": "bash_n[boat-run-legacy.sh]:scripts",
+        "ok": true,
+        "available": true,
+        "exit": 0,
+        "secs": 0.0,
+        "tail": ""
+      },
+      {
+        "id": "shellcheck:scripts",
+        "ok": true,
+        "available": true,
+        "exit": 0,
+        "secs": 0.1,
+        "tail": ""
+      }
+    ],
+    "kind_checks_ok": true,
+    "script_tests": [
+      {
+        "id": "hidden0",
+        "ok": true,
+        "available": true,
+        "exit": 0,
+        "secs": 2.1,
+        "tail": ""
+      }
+    ],
+    "hidden_pass": true,
+    "unchecked": false,
+    "tests_pass": true
+  },
+  "on_parent": {
+    "grader": "kinds",
+    "applied": true,
+    "script_tests": [
+      {
+        "id": "hidden0",
+        "ok": false,
+        "available": true,
+        "exit": 1,
+        "secs": 1.2,
+        "tail": "    def test_non_exited_status_fails_without_polling_again(self):\n        for status in ('lost', 'failed', 'cancelled', 'unknown', '', None):\n            with self.subTest(status=status):\n                response = {'stdout': 'partial output\\n', 'stderr': 'partial error\\n',\n                            'exitCode': 0, 'running': False}\n                if status is not None:\n                    response['status'] = status\n                result, polls, sleeps = self.run_boat([response])\n>               self.assertEqual(result.returncode, 1, result.stderr)\nE               AssertionError: 90 != 1 : boat: test on sandbox-123, process process-456\nscripts/tests/test_boat_run_legacy.py:67: AssertionError\n_ BoatRunLegacyTests.test_running_then_lost_fails_even_with_best_effort_running_flag _\nself = <test_boat_run_legacy.BoatRunLegacyTests testMethod=test_running_then_lost_fails_even_with_best_effort_running_flag>\n    def test_running_then_lost_fails_even_with_best_effort_running_flag(self):\n        result, polls, sleeps = self.run_boat([\n            {'status': 'running'},\n            {'status': 'lost', 'running': True, 'exitCode': 0},\n        ])\n>       self.assertEqual(result.returncode, 1)\nE       AssertionError: 90 != 1\nscripts/tests/test_boat_run_legacy.py:95: AssertionError\n=========================== short test summary info ============================\nFAILED scripts/tests/test_boat_run_legacy.py::BoatRunLegacyTests::test_non_exited_status_fails_without_polling_again\nFAILED scripts/tests/test_boat_run_legacy.py::BoatRunLegacyTests::test_running_then_lost_fails_even_with_best_effort_running_flag\n2 failed, 1 passed in 1.10s"
+      }
+    ],
+    "hidden_pass": false,
+    "unchecked": false,
+    "tests_pass": false
+  },
+  "usable": true,
+  "behavioral": true
+}

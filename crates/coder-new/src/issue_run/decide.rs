@@ -33,6 +33,10 @@ pub struct Check {
     pub argv: Vec<String>,
     pub filter: bool,
     pub what: String,
+    /// A check of a non-Rust kind the briefing marks required (#11310): a
+    /// script's tests, a document's link check. Rust's `check:` entries are
+    /// required by id.
+    pub required: bool,
 }
 
 /// What the decision steps hand the agent.
@@ -664,6 +668,9 @@ async fn brief(
                         .unwrap_or_default(),
                     filter: check["filter"].as_bool().unwrap_or(false),
                     what: check["what"].as_str().unwrap_or_default().to_owned(),
+                    required: check["required"].as_bool().unwrap_or(false)
+                        && check["available"].as_bool().unwrap_or(true)
+                        && !matches!(check["kind"].as_str(), None | Some("rust" | "rust-nested")),
                 })
                 .collect()
         })

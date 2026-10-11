@@ -1,0 +1,296 @@
+diff --git a/README.md b/README.md
+index b5b1d5ffe5183680da4198478f9aa2dad9fb1a8f..5c2b09cb312252843886d8ba2c165d39c028eafc 100644
+--- a/README.md
++++ b/README.md
+@@ -96,9 +96,9 @@ A phone ran one of these tests end to end, from chat to +25 XP
+ 
+ | Platform | Status |
+ | --- | --- |
+-| iOS | OpenAgents (`com.openagents.app`) 1.0.0 on TestFlight. Builds 1 to 21 are uploaded: build 19 sends every new chat to OpenAgents, build 20 brings the chat router's prepared answers and offers, and build 21 puts the Gym in chat (test a tool, make your own by chatting, Add to the Gym, check others' results for XP, Gym news, and the Gym board in the Verse). See [OpenAgents for iOS](bins/openagents-ios/README.md). |
++| iOS | OpenAgents (`com.openagents.app`) 1.0.0 on TestFlight. Builds 1 to 36 are uploaded: build 19 sends every new chat to OpenAgents, build 20 brings the chat router's prepared answers and offers, and build 21 puts the Gym in chat (test a tool, make your own by chatting, Add to the Gym, check others' results for XP, Gym news, and the Gym board in the Verse). See [OpenAgents for iOS](bins/openagents-ios/README.md). |
+ | Android | The same app and Rust library. Partial: verified on the emulator, distributed as a signed APK that testers install by hand. See [OpenAgents for Android](bins/openagents-android/README.md). |
+-| Computer | Install Coder and link the computer so the phone can dispatch work to it. See [Coder](#coder). |
++| Computer | OpenAgents for desktop 1.0.0: chat, Coder on this computer, and phone pairing. A signed `.dmg` for macOS and an AppImage and `.deb` for Linux (x86_64) are on the [install page](https://openagents.com/install); Windows packages are unsigned and not published yet. See [OpenAgents desktop](crates/openagents-desktop/README.md). Or install Coder alone and link the computer so the phone can dispatch work to it; see [Coder](#coder). |
+ 
+ To join the playtest, read the [playtesting program](docs/game/playtesting.md)
+ and the [launch roadmap](docs/roadmap/2026-09-29-launch-roadmap.md). The
+diff --git a/crates/coder-link/README.md b/crates/coder-link/README.md
+index f1205a7157f99cae2aadbda3caecf056ccbbdb53..a716605dbc6c2973d6e93f42c0d124878a95136d 100644
+--- a/crates/coder-link/README.md
++++ b/crates/coder-link/README.md
+@@ -139,8 +139,12 @@ one `status` string. The following mapping replaces that logic:
+ ## Limits
+ 
+ - [`coder-host`](../coder-host/README.md) implements a real connector that
+-  tries proven direct routes and falls back to the relay. No application or
+-  screen uses the registry yet.
++  tries proven direct routes and falls back to the relay.
++  [`coder-computers`](../coder-computers/README.md)' live service
++  (`coder_computers::live::Live`) holds a registry with it, and the phone app
++  (`openagents-mobile`) opens that service for its Computers screens.
++  `coder-mobile`'s `App` still keeps its own retry timer; the adoption steps
++  above remain for it.
+ - A server-supplied retry time, such as a rate-limit hint, has no failure
+   variant. An adapter maps it to a transient failure, which follows the
+   ladder instead of the server's time.
+diff --git a/crates/openagents-desktop/README.md b/crates/openagents-desktop/README.md
+index eb0b53324a598d40424cb433f6d4a657ba6a8feb..a51174d923474b1ed09258b029f52b8ed9e93202 100644
+--- a/crates/openagents-desktop/README.md
++++ b/crates/openagents-desktop/README.md
+@@ -1,22 +1,51 @@
+ # openagents-desktop
+ 
+-**OpenAgents** for desktop opens into a chat shell with a sidebar and the live
+-Grid behind its main pane. The sidebar currently contains sample chats;
+-selecting or creating one changes only the window's presentation state.
+-**Phones and computers** opens the existing pairing and computer controls.
+-Their design is
++**OpenAgents** for desktop opens into chat: a sidebar of your saved chats, a
++transcript, and an editable composer, with the live Grid behind the main pane
++on macOS and Linux. Chats are hosted OpenAgents conversations that persist
++across restarts; a coding request runs Coder on this computer
++([local Coder](../../docs/desktop/local-coder.md)). The same shared Rust
++(`openagents-chat`, `openagents-chat-app`) drives the phones' chat.
++**Phones and computers** opens the pairing and computer controls. Their design is
+ [Connect a computer by scanning a QR code](../../docs/coder/design/2026-09-29-auto-pairing.md);
+ the screens are `DSK-01` to `DSK-03` in the
+ [wireframe](../../docs/product/2026-09-28-app-wireframe.md).
+ 
++## What is built
++
++Status on `main` after the 2026-09-30 landings. Each row links its
++verification record; owner-only checks are in the workspace `NEEDS_OWNER.md`.
++
++| Feature | Platforms | Limits | Record |
++| --- | --- | --- | --- |
++| Chat: persisted chats, streaming hosted replies, stop and retry, Markdown and code, image drafts, search, pin, archive, rename, command palette | macOS, Linux, Windows | Hosted chat sends text only; an image draft is kept and Send is refused | [closeout](../../docs/desktop/verification/2026-09-30-basic-chat-closeout/verification.md) |
++| Coder from chat: live events, stop, steer, queue, questions, approvals, saved Codex and Claude Code sessions, engine and usage, **What changed** diff pane | macOS, Linux, Windows | Saved-session browsing reads `.codex` and `.claude` on macOS and Linux only; the diff pane is read-only | [local Coder](../../docs/desktop/local-coder.md) |
++| Gym and evals in chat: the phone's cards and sheets, the shared hosted runner, runs kept in an encrypted store | Cards: macOS, Linux, Windows. Runner and saved runs: macOS, Linux | The trainer key is the Grid's world key, which Windows does not have (`chat_gym` is not built there) | [Gym cards](../../docs/desktop/verification/2026-09-30-gym-cards/verification.md) |
++| Settings: Appearance (Reduce motion), Text size, Keyboard shortcuts, Notifications, Phones and computers, Archived chats | macOS, Linux, Windows | Dark only; there is no light theme. On macOS and Windows the Notifications page still shows a line from before #10061 and #10062 saying this computer doesn't show notifications yet ([`src/settings.rs`](src/settings.rs)); the notifications row below is current | [settings](../../docs/desktop/verification/2026-09-30-settings/README.md) |
++| Theme tokens and reduced motion (system setting or the app's switch) | macOS, Linux, Windows | | [theme tokens](../../docs/desktop/verification/2026-09-30-theme-tokens/verification.md) |
++| Screen readers through AccessKit (VoiceOver, Orca, Narrator) | macOS, Linux, Windows | Checked headlessly and with a macOS AX probe; a person's screen-reader pass is an owner check | [accessibility](../../docs/desktop/verification/2026-09-30-accessibility/verification.md) |
++| Native menu bar from the command registry | macOS | Linux and Windows keep the in-window menus | [menus, notifications, update](../../docs/desktop/verification/2026-09-30-menus-notify-update/verification.md) |
++| Coder notifications (question, approval, finished, failed) whose click opens the chat | Linux (portal, else notification server), macOS (notification center, asked on the first notice), Windows (toasts) | macOS needs the app bundle; Windows needs the MSI's AppUserModelID registration. A click after the app quit opens nothing on macOS or Windows | [Linux](../../docs/desktop/verification/2026-09-30-linux-integration/README.md), [Windows](../../docs/desktop/verification/2026-09-30-windows-notifications/verification.md), [release](../../docs/desktop/release.md#releasing-for-windows) |
++| **Update ready** strip with **Restart to update** | macOS, Linux, Windows | A development build never checks | [menus, notifications, update](../../docs/desktop/verification/2026-09-30-menus-notify-update/verification.md) |
++| Slide viewer: a deck opened from chat (`presentation.open`) or `--open-deck ID`, animated open and close, full screen | macOS, Linux, Windows | Decks open only in the desktop app; the phone and terminal say so | [captures](../../docs/desktop/verification/2026-09-30-slide-viewer/slides-viewer.png), [route](../../docs/coder/measurements/2026-09-30-presentation-route.md) |
++| The Grid: Watch backdrop and Play | macOS, Linux | Verse does not build on Windows | [playable Grid](../../docs/desktop/verification/2026-09-30-playable-grid/verification.md) |
++
++Packages: the signed, notarized macOS `.dmg`; the Linux 1.0.0 AppImage and
++`.deb` ([record](../../docs/desktop/verification/2026-09-30-linux-release/README.md));
++Windows MSIs are built but unsigned, published only to a test prefix until an
++Authenticode certificate exists, so `/install` does not offer Windows yet
++([record](../../docs/desktop/verification/2026-09-30-windows/verification.md)).
++See [release](../../docs/desktop/release.md).
++
+ ## The shell and sidebar
+ 
+ The shell reimplements Zeron's inset content pane, grouped chat list, and
+ anchored footer ([port audit](../../docs/research/2026-09-29-comet-desktop-ui-port-audit.md),
+ [#9993](https://github.com/OpenAgentsInc/openagents/issues/9993)).
+-[`src/chrome.rs`](src/chrome.rs) owns its bounded sample data and typed
+-navigation actions. It projects existing Rust Native elements; desktop layout
+-stays in the adapter.
++[`src/chrome.rs`](src/chrome.rs) owns the typed navigation actions; the
++chat window ([`src/chat.rs`](src/chat.rs)) fills the sidebar from the saved
++chat list (`openagents_chat_app::chat_list`). The shell projects existing
++Rust Native elements; desktop layout stays in the adapter.
+ 
+ - Drag the sidebar seam to resize it from 224 to 400 points.
+ - Click the main header's sidebar button, or press Ctrl+B (Cmd+B on macOS),
+@@ -24,17 +53,15 @@ stays in the adapter.
+ - Click a section to hide or reveal its chats. The list scrolls independently
+   while the header and footer stay in place. Tab brings a focused row into view;
+   Enter or Space activates it.
+-- **New chat**, or Ctrl+N (Cmd+N on macOS), adds a sample chat for this window.
+-  Closing the window discards sample navigation and chats.
+-- **The Grid** opens the world view. **Phones and computers** and **Settings**
+-  lead to the existing computer controls. Opening a chat cancels any displayed
+-  pairing code.
++- **New chat**, or Ctrl+N (Cmd+N on macOS), opens a new chat at the top of
++  Recent.
++- **The Grid** opens the world view. **Phones and computers** opens the
++  computer controls, and **Settings** its six pages. Opening a chat cancels any
++  displayed pairing code.
+ 
+ The window requests 90% of the usable display area, with a 1200×840-point
+ fallback and a minimum of 760×540. A tiling desktop controls its placement.
+-Views can grow to 1.6× their size at 1200×840 points. The shell
+-retains the current painter and backdrop; it does not implement a transcript
+-or editable composer yet.
++Views can grow to 1.6× their size at 1200×840 points.
+ 
+ The foreground retains its pixels between interactions and repaints changed
+ controls. Screen-lock checks run on a separate background thread, once a
+@@ -105,7 +132,9 @@ frame gaps. Focus loss, hidden windows, modals, and navigation release input
+ and pause or end the session. Reduce motion affects Watch; deliberate Play
+ still moves. If cursor capture fails, keyboard movement and wheel zoom remain
+ available. `--no-backdrop` disables Watch's background and still allows Play.
+-Windows shows an unsupported state until Verse portability lands (#10027).
++Windows shows an unsupported state: Verse does not build there, and Windows
++chat parity ([#10027](https://github.com/OpenAgentsInc/openagents/issues/10027))
++shipped without it.
+ 
+ `--fake-host` uses an offline player fixture and reads committed results;
+ it creates no world key and joins no relay as a player. See the
+diff --git a/crates/rust-native-desktop/README.md b/crates/rust-native-desktop/README.md
+index 5b6280263d63b61a73aada46d6fb6ab32605a537..4295e92b81d71a0f5291497dd56a21100db3369d 100644
+--- a/crates/rust-native-desktop/README.md
++++ b/crates/rust-native-desktop/README.md
+@@ -75,7 +75,8 @@ dependency the workspace did not already have; the accessibility adapter
+ | `Surface` | The application's `surface_size` and `paint_surface`; an unregistered resource shows its label. |
+ | `style.background` on a stack | A card with rounded corners. |
+ | `style.padding`, `gap`, `foreground` | As given (`xs` 4, `sm` 8, `md` 16, `lg` 28 points). |
+-| `Transcript`, `Message`, `Tool`, `Composer` | Not supported: recorded in `Scene::unsupported` and drawn as their children or label. |
++| `Composer` | The application's `composer:{key}` surface when the application sizes one, as the desktop chat does with [`composer::field`](src/composer/field.rs); otherwise its placeholder, recorded in `Scene::unsupported`. |
++| `Transcript`, `Message`, `Tool` | Not supported as elements: recorded in `Scene::unsupported` and drawn as their children. The desktop chat paints its transcript in an application surface instead. |
+ 
+ The application supplies the palette through `App::theme`; the defaults are
+ white on black.
+@@ -125,10 +126,10 @@ clears only the submitted edit sequence. Both APIs reimplement Zeron's retained
+ composer editing design for
+ [#9996](https://github.com/OpenAgentsInc/openagents/issues/9996).
+ 
+-This module runs in headless input fixtures. Window key and IME events,
+-clipboard access, focus and caret painting, and the application send callback
+-are not connected yet. The support table above still describes the window's
+-actual rendering capabilities.
++[`composer::field`](src/composer/field.rs) connects it to the window: key
++and IME events, selection, clipboard, caret painting, and the send action
++([#10004](https://github.com/OpenAgentsInc/openagents/issues/10004),
++[composer record](../../docs/desktop/verification/2026-09-30-composer/verification.md)).
+ 
+ ## Use it
+ 
+diff --git a/docs/desktop/local-coder.md b/docs/desktop/local-coder.md
+index f210c30fbc16ddda8d063a91f2453c1998cf961d..07dc54dbbc1bb6e307665bb58ac8605a388e757c 100644
+--- a/docs/desktop/local-coder.md
++++ b/docs/desktop/local-coder.md
+@@ -132,7 +132,8 @@ chat follow` prints.
+ ## Saved Codex and Claude Code sessions
+ 
+ **Saved sessions** reads this computer's `.codex` and `.claude` directories
+-through `coder-history`. The desktop worker opens the configured local roots
++through `coder-history`, on macOS and Linux; `coder-history` does not read
++them on Windows. The desktop worker opens the configured local roots
+ only when you request the list. Catalog pages show each session's title,
+ harness, and saved time. Transcript pages use the shared phone conversation
+ parser and Rust Native transcript surface. The original files remain read-only.
+@@ -161,8 +162,9 @@ while the request was pending.
+ 
+ These local file reads do not extend phone observer authority. The existing
+ NIP history connection continues to expose only Coder sources. The portable
+-reader and continuation factory compile in the phone's Rust library; native
+-phone mounting remains part of #10028.
++reader and continuation factory compile in the phone's Rust library; no phone
++screen mounts them yet. #10028 (closed) brought the phones the shared editing,
++card menus, images, and code colors, not these surfaces.
+ 
+ ## Engine and usage
+ 
+@@ -179,7 +181,7 @@ to send it to that provider's own usage endpoint.
+ 
+ The ring and the route cards reimplement Zeron's account usage rings (public
+ MIT zeronsh/zeron) in Rust Native. The shared strip lives in
+-`openagents-chat-app`. Mounting it on a phone remains part of #10028.
++`openagents-chat-app`; no phone screen mounts it yet.
+ 
+ ## What changed
+ 
+@@ -191,4 +193,4 @@ The shared parser in `openagents-chat-app` keeps the lines. The desktop paints
+ only the lines that fit in the pane, one line at a time, and applies syntax
+ spans as color. Spans do not change the line height. The card and the pane
+ reimplement Zeron's unified diff pane (public MIT zeronsh/zeron) in Rust
+-Native. Mounting the card on a phone remains part of #10028.
++Native. No phone screen mounts the card yet.
+diff --git a/docs/desktop/release.md b/docs/desktop/release.md
+index d9c5ee72856a100ae1f37fc00a517aa6f139dd9c..1ee9a49d4ebcd474fc2ff3a9fc800f497942ee09 100644
+--- a/docs/desktop/release.md
++++ b/docs/desktop/release.md
+@@ -1,4 +1,4 @@
+-# Releasing OpenAgents for Mac (and Linux)
++# Releasing OpenAgents for Mac, Linux, and Windows
+ 
+ How to turn the desktop app into the `.dmg` people download: signed with
+ the OpenAgents Developer ID, hardened runtime, notarized by Apple, stapled,
+diff --git a/docs/desktop/verification/2026-09-30-menus-notify-update/verification.md b/docs/desktop/verification/2026-09-30-menus-notify-update/verification.md
+index 53735cc129b1bef76f08487ae553a87e9ef5dd05..8c41fcc430f18cede61307618c47b4e17dacadc5 100644
+--- a/docs/desktop/verification/2026-09-30-menus-notify-update/verification.md
++++ b/docs/desktop/verification/2026-09-30-menus-notify-update/verification.md
+@@ -37,6 +37,11 @@ into them.
+     through the new `App::focus_request` hook, which calls winit
+     `focus_window`.
+   - macOS and Windows still drop notices (see "Not verified").
++    Since then macOS notices go through the notification center (#10061)
++    and Windows notices are toasts (#10062), and their clicks take the same
++    `native::open_chat` path; see
++    [Windows notifications](../2026-09-30-windows-notifications/verification.md)
++    and [release](../../release.md#releasing-for-windows).
+ - **Update strip** (`strip.rs`). When the updater holds a downloaded,
+   verified build, a small strip at the top right says **Update ready** and
+   shows **Restart to update**.
+diff --git a/docs/desktop/verification/2026-09-30-settings/README.md b/docs/desktop/verification/2026-09-30-settings/README.md
+index d8d4c9f73498a187ce84e9c7dcaa76bba9354c55..65267e4bf4230e3b91164d4bf6b84f754fc1a704 100644
+--- a/docs/desktop/verification/2026-09-30-settings/README.md
++++ b/docs/desktop/verification/2026-09-30-settings/README.md
+@@ -22,6 +22,10 @@ Settings has six pages, chosen from a row of chips at the top:
+ - **Notifications**: a switch for Coder's notifications. Linux delivers them
+   (#10026). On macOS and Windows the page says this computer doesn't show them
+   yet.
++  Later the same day macOS (#10061) and Windows (#10062) started delivering
++  them too; see
++  [Windows notifications](../2026-09-30-windows-notifications/verification.md).
++  The page's macOS and Windows line was not updated with them.
+ - **Phones and computers**: the existing pairing screens (`screens::root`),
+   unchanged. Their buttons keep the person on Settings. Leaving the page for
+   another Settings page, a chat, or the Grid cancels a shown code, as leaving
+diff --git a/docs/research/2026-09-29-comet-desktop-ui-port-audit.md b/docs/research/2026-09-29-comet-desktop-ui-port-audit.md
+index ec56e9f837df0d025c8d34c18b58fc0ca1203bcf..c48af93d0317a4b7f8655d43a335f6904252b8f2 100644
+--- a/docs/research/2026-09-29-comet-desktop-ui-port-audit.md
++++ b/docs/research/2026-09-29-comet-desktop-ui-port-audit.md
+@@ -27,6 +27,7 @@ unless a row explicitly describes the implementation.
+ 
+ ## Contents
+ 
++- [Status on 2026-09-30](#status-on-2026-09-30)
+ - [Executive summary](#executive-summary)
+ - [Completed in this session](#completed-in-this-session)
+ - [Comet architecture overview](#comet-architecture-overview)
+@@ -41,6 +42,38 @@ unless a row explicitly describes the implementation.
+ - [Proposed issue breakdown](#proposed-issue-breakdown)
+ - [Open questions](#open-questions)
+ 
++## Status on 2026-09-30
++
++The rest of this audit is the September 29 snapshot: where it says the
++transcript, composer, menus, settings, or review pane are missing or pending,
++that was true then and is no longer. The application rows of the
++[issue breakdown](#proposed-issue-breakdown) landed under tracker
++[#10003](https://github.com/OpenAgentsInc/openagents/issues/10003), all now
++closed. The [desktop README](../../crates/openagents-desktop/README.md#what-is-built)
++lists what is built per platform, with its limits and verification records.
++
++| Audit rows | Delivered by |
++| --- | --- |
++| CDP-00, CDP-10 (long-content measurement, transcript painter, selection) | #10005, #10010 |
++| CDP-06, CDP-07 (editing contract, IME, clipboard) | #10004 |
++| CDP-08, CDP-11, CDP-19 (commands, key map, overlays, menus, palette) | #10013 |
++| CDP-12, CDP-25 (motion tokens, reduced motion, theme) | #10022, dark only by owner direction rather than light and dark |
++| CDP-13 (images) | #10011 |
++| CDP-14 (syntax spans) | #10010 and #10019 on the desktop, #10028 on the phones |
++| CDP-15 (AccessKit) | #10024 |
++| CDP-16, CDP-17 (real chat state, transcript and chat cards) | #10006, #10007, #10009 |
++| CDP-18 (composer attachments, queue, questions) | #10011, #10016 |
++| CDP-20 (native menu bar and notifications) | #10023 (macOS menu bar), #10026 (Linux), #10061 (macOS), #10062 (Windows) |
++| CDP-21 (diff pane and **What changed**) | #10019 |
++| CDP-22 (settings) | #10021 |
++| CDP-23 (phone hosts) | #10028 |
++
++The framework rows CDP-01 to CDP-05, CDP-09, and CDP-24 were not reconciled
++here. Open question 2 is settled: the desktop and the phones share
++`openagents-chat` and `openagents-chat-app`. Open question 4 is settled:
++Windows runs chat without the Verse backdrop
++([#10027](https://github.com/OpenAgentsInc/openagents/issues/10027)).
++
+ ## Executive summary
+ 
+ **Feasibility.** A port is feasible, but it isn't a port of screens alone.

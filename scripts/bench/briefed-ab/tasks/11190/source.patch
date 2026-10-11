@@ -1,0 +1,237 @@
+diff --git a/crates/gateway/src/serve.rs b/crates/gateway/src/serve.rs
+index 05f270fe6395652242b997ae940036831c53d87a..7effde6b78ba4a42508fa8d232e94460b9f68e20 100644
+--- a/crates/gateway/src/serve.rs
++++ b/crates/gateway/src/serve.rs
+@@ -1878,6 +1878,37 @@ async fn windowed(
+     Ok(())
+ }
+ 
++/// The workspace a caller's door quota counts against (#11190): the one
++/// it was admitted to, else the workspace its key acts in. Every personal
++/// workspace made by sign-up shares one registry tenant, so the tenant's
++/// manifest quota is each workspace's own allowance rather than one pool
++/// that a heavy caller exhausts for everyone. `None` — an anonymous call,
++/// an operator's service tenant with no workspace, or a key that reaches
++/// several — counts against the tenant as a whole.
++fn quota_workspace(state: &ServeState, caller: &Caller) -> Option<String> {
++    if caller.workspace.is_some() {
++        return caller.workspace.clone();
++    }
++    let tenant = caller.tenant.as_deref()?;
++    state.config.accounts.as_ref()?;
++    let accounts = tenancy::Accounts::open(&state.dir).ok()?;
++    let store = accounts.store().ok()?;
++    match store.key_workspace(tenant, &caller.key) {
++        tenancy::accounts::KeyWorkspace::Workspace(workspace) => Some(workspace),
++        _ => None,
++    }
++}
++
++/// The classify concurrency pool a caller draws on: its tenant's, or its
++/// workspace's on a tenant that personal workspaces share (#11190).
++fn classify_pool(state: &ServeState, caller: &Caller) -> Option<String> {
++    let tenant = caller.tenant.clone()?;
++    Some(match quota_workspace(state, caller) {
++        Some(workspace) => format!("{tenant}/{workspace}"),
++        None => tenant,
++    })
++}
++
+ /// Step 4 of every route: the durable reservation. From here the
+ /// attempt settles or it orphans, and either way the ledger accounts
+ /// for it.
+@@ -1895,6 +1926,7 @@ async fn reserved(
+             registry.manifest(),
+             &quota::Call {
+                 tenant: caller.tenant.as_deref().unwrap_or("anonymous"),
++                workspace: quota_workspace(state, caller).as_deref(),
+                 key: &caller.key,
+                 request: naming.request,
+                 attempt: naming.attempt,
+@@ -2917,6 +2949,7 @@ pub(crate) async fn classify_run(
+     let halt = Arc::new(AtomicBool::new(false));
+     let deadline = started + Duration::from_millis(state.config.classify_deadline_ms());
+     let mut scheduled = tokio::task::JoinSet::new();
++    let pool = classify_pool(state, caller);
+     for (index, input) in request.inputs.iter().enumerate() {
+         let (body, asked) = forward_body(request, &plan, input, &artifact);
+         scheduled.spawn(classify_item(ItemWork {
+@@ -2925,7 +2958,7 @@ pub(crate) async fn classify_run(
+             body,
+             asked,
+             state: state.clone(),
+-            tenant: caller.tenant.clone(),
++            tenant: pool.clone(),
+             door: request.model.clone(),
+             endpoint: endpoint.clone(),
+             model: artifact.clone(),
+@@ -3242,11 +3275,13 @@ async fn classify_queue(
+     // An owned permit retains its semaphore. Remove entries with no active
+     // reservations so departed tenants do not accumulate process state.
+     tenants.retain(|_, pool| Arc::strong_count(pool) > 1);
+-    let pool = tenants.entry(caller.tenant.clone()).or_insert_with(|| {
+-        Arc::new(Semaphore::new(
+-            state.config.max_classify_inputs_per_tenant as usize,
+-        ))
+-    });
++    let pool = tenants
++        .entry(classify_pool(state, caller))
++        .or_insert_with(|| {
++            Arc::new(Semaphore::new(
++                state.config.max_classify_inputs_per_tenant as usize,
++            ))
++        });
+     let tenant = pool
+         .clone()
+         .try_acquire_many_owned(inputs)
+diff --git a/crates/tenancy/src/quota.rs b/crates/tenancy/src/quota.rs
+index 475e945ef8b7878df96d9ca2fd52c7abb8e8d58e..e5fe6744f4a81f1f686c1c4fe870383df49ca97c 100644
+--- a/crates/tenancy/src/quota.rs
++++ b/crates/tenancy/src/quota.rs
+@@ -113,6 +113,8 @@ enum Event {
+         attempt: u32,
+         request_digest: String,
+         tenant: String,
++        #[serde(default, skip_serializing_if = "Option::is_none")]
++        workspace: Option<String>,
+         key: String,
+         units: Units,
+         reserved_unix: u64,
+@@ -153,6 +155,9 @@ pub struct Reservation {
+     pub request_digest: String,
+     /// The tenant paying.
+     pub tenant: String,
++    /// The workspace whose allowance it counts against, if not the
++    /// tenant's as a whole.
++    pub workspace: Option<String>,
+     /// The key that reserved, for audit — the id, never the secret.
+     pub key: String,
+     /// The units held.
+@@ -265,6 +270,11 @@ impl std::error::Error for Refusal {}
+ pub struct Call<'a> {
+     /// The tenant paying.
+     pub tenant: &'a str,
++    /// The workspace the key acts in, when the tenant's quota is each
++    /// workspace's own allowance (#11190): every personal workspace made by
++    /// sign-up shares one tenant, so usage counts per workspace there.
++    /// `None` counts against the tenant as a whole.
++    pub workspace: Option<&'a str>,
+     /// The credential id reserving, for audit — never the secret.
+     pub key: &'a str,
+     /// The logical request.
+@@ -388,6 +398,7 @@ impl Ledger {
+                     attempt,
+                     request_digest,
+                     tenant,
++                    workspace,
+                     key,
+                     units,
+                     reserved_unix,
+@@ -401,6 +412,7 @@ impl Ledger {
+                             attempt,
+                             request_digest,
+                             tenant,
++                            workspace,
+                             key,
+                             units,
+                             state: State::Reserved,
+@@ -507,7 +519,10 @@ impl Ledger {
+                     attempt: call.attempt,
+                 });
+             }
+-            if held.request_digest != call.request_digest || held.tenant != call.tenant {
++            if held.request_digest != call.request_digest
++                || held.tenant != call.tenant
++                || held.workspace.as_deref() != call.workspace
++            {
+                 return Err(Refusal::ContentConflict {
+                     request: call.request.to_string(),
+                     attempt: call.attempt,
+@@ -521,7 +536,7 @@ impl Ledger {
+             .get(call.tenant)
+             .and_then(|record| record.quota.clone());
+         if let Some(quota) = &quota {
+-            self.check(call.tenant, quota, call.units)?;
++            self.check(call.tenant, call.workspace, quota, call.units)?;
+         }
+ 
+         let day = day_of(now);
+@@ -530,6 +545,7 @@ impl Ledger {
+             attempt: call.attempt,
+             request_digest: call.request_digest.to_string(),
+             tenant: call.tenant.to_string(),
++            workspace: call.workspace.map(str::to_owned),
+             key: call.key.to_string(),
+             units: call.units.clone(),
+             reserved_unix: now,
+@@ -542,6 +558,7 @@ impl Ledger {
+             attempt: call.attempt,
+             request_digest: call.request_digest.to_string(),
+             tenant: call.tenant.to_string(),
++            workspace: call.workspace.map(str::to_owned),
+             key: call.key.to_string(),
+             units: call.units.clone(),
+             state: State::Reserved,
+@@ -557,8 +574,16 @@ impl Ledger {
+         Ok(reservation)
+     }
+ 
+-    /// Check the tenant's quota against the units a reservation wants.
+-    fn check(&self, tenant: &str, quota: &Quota, units: &Units) -> Result<(), Refusal> {
++    /// Check the tenant's quota against the units a reservation wants:
++    /// against the workspace's own usage when one is named, else the
++    /// tenant's whole usage.
++    fn check(
++        &self,
++        tenant: &str,
++        workspace: Option<&str>,
++        quota: &Quota,
++        units: &Units,
++    ) -> Result<(), Refusal> {
+         let policy = quota.policy.as_deref().unwrap_or(POLICY_V1);
+         if policy != POLICY_V1 {
+             return Err(Refusal::UnknownPolicy {
+@@ -566,14 +591,11 @@ impl Ledger {
+                 policy: policy.to_string(),
+             });
+         }
+-        let usage = self.usage(tenant);
+-        let outstanding: u64 = self
+-            .reservations
+-            .values()
+-            .filter(|reservation| {
+-                reservation.tenant == tenant && reservation.state == State::Reserved
+-            })
+-            .count() as u64;
++        let usage = self.usage_where(|reservation| {
++            reservation.tenant == tenant
++                && (workspace.is_none() || reservation.workspace.as_deref() == workspace)
++        });
++        let outstanding = usage.outstanding;
+         let bounds = [
+             (
+                 quota.requests_per_day,
+@@ -663,10 +685,22 @@ impl Ledger {
+     /// A tenant's position: charged today, held now, orphaned today.
+     #[must_use]
+     pub fn usage(&self, tenant: &str) -> Usage {
++        self.usage_where(|reservation| reservation.tenant == tenant)
++    }
++
++    /// One workspace's position on a tenant whose quota is per workspace.
++    #[must_use]
++    pub fn workspace_usage(&self, tenant: &str, workspace: &str) -> Usage {
++        self.usage_where(|reservation| {
++            reservation.tenant == tenant && reservation.workspace.as_deref() == Some(workspace)
++        })
++    }
++
++    fn usage_where(&self, counts: impl Fn(&Reservation) -> bool) -> Usage {
+         let today = day_of(unix_now());
+         let mut usage = Usage::default();
+         for reservation in self.reservations.values() {
+-            if reservation.tenant != tenant {
++            if !counts(reservation) {
+                 continue;
+             }
+             match reservation.state {

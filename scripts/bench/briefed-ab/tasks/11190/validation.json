@@ -1,0 +1,52 @@
+{
+  "on_fix": {
+    "grader": "kinds",
+    "applied": true,
+    "kind_checks": [],
+    "kind_checks_ok": true,
+    "rust_packages": [
+      "tenancy",
+      "gateway"
+    ],
+    "rust": {
+      "applied": true,
+      "compiles": false,
+      "tests_pass": true,
+      "passed": 1,
+      "failed": 0,
+      "tests_compiled": true,
+      "error": null
+    },
+    "compiles": false,
+    "errors": [
+      "crates/tenancy/src/quota.rs: error[E0063]: missing field `workspace` in initializer of `quota::Call<'_>`: missing `workspace`",
+      "error: could not compile `tenancy` (lib test) due to 1 previous error"
+    ],
+    "hidden_pass": true,
+    "unchecked": false,
+    "tests_pass": true
+  },
+  "on_parent": {
+    "grader": "kinds",
+    "applied": true,
+    "rust_packages": [
+      "tenancy"
+    ],
+    "rust": {
+      "applied": true,
+      "compiles": true,
+      "tests_pass": false,
+      "passed": 0,
+      "failed": 0,
+      "tests_compiled": false,
+      "error": null
+    },
+    "compiles": true,
+    "errors": [],
+    "hidden_pass": false,
+    "unchecked": false,
+    "tests_pass": false
+  },
+  "usable": true,
+  "behavioral": true
+}

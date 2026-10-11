@@ -1,0 +1,36 @@
+{
+  "grader": "kinds",
+  "kinds": [
+    "docs",
+    "rust"
+  ],
+  "packages": [
+    "coder-cloud"
+  ],
+  "script_tests": [],
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 11281,
+  "title": "Cloud pool SSH disables host-key verification on credential upload (CE-02)",
+  "body": "From the 2026-10-10 codebase-health audit (CE-02, X-SEC-07). Not fixed by the remediation commits.\n\nThe Cloud pool SSH path disables host-key verification on the credential-upload channel: `crates/coder-cloud/src/pool.rs:343` passes `StrictHostKeyChecking=no`. A man-in-the-middle on that path can capture the credentials being uploaded.\n\n## Fix\n\nPin host keys from GCE guest attributes into a per-host `known_hosts` and use `StrictHostKeyChecking=yes` (or `accept-new` after first verified pin). Also validate identifiers before interpolating them into shell strings.\n\nRelated low-severity items in the same file: the key directory is created with the default umask (should be 0700) and the GCP project is hard-coded (CE-20).\n\nLocation: `crates/coder-cloud/src/pool.rs:337`.\n",
+  "fix": "946834e81f0e758f5e3de1c3f2d3319d2395b1f6",
+  "parent": "40b9a8fcd58832d409451ed5d6a1fb0208c61833",
+  "package": "coder-cloud",
+  "source_files": [
+    "INVARIANTS.md",
+    "crates/coder-cloud/src/pool.rs",
+    "crates/coder-working-computer/src/gce.rs"
+  ],
+  "test_files": [
+    "crates/coder-cloud/src/pool.rs"
+  ],
+  "test_names": [
+    "a_host_that_cannot_be_checked_is_refused_not_reached",
+    "host_keys_are_pinned_from_guest_attributes_only_when_well_formed",
+    "identifiers_that_reach_a_shell_string_must_be_plain_gce_names",
+    "pool_ssh_checks_the_host_key_against_the_pin_alone",
+    "the_pin_directory_is_private"
+  ],
+  "fix_lines": 405
+}

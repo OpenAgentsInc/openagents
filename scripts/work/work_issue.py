@@ -20,11 +20,23 @@ issue", agent fleet runs, and `openagents chat work` (the default engine):
    agent actually changed: `cargo fmt` and `cargo test` for each package the
    diff touches. A run passes only when there is a diff and every replayed
    check passes.
-4. **Escalation**: low briefing confidence, repeated `verify` failures, a
-   failed replay, or a missing capability (no Rust package to check) falls
-   back to bare Claude Code (`claude -p`, "Complete this issue.") in a fresh
-   worktree, judged the same way. The result records why.
-5. **Landing**: on a pass, commit; `queue` hands the branch to the landing
+   Every other changed file is checked by its kind (#11310,
+   `scripts/bench/briefed-ab/kinds.py`): a script's tests, a document's
+   links, a nested workspace's crate; a kind with no checker here (Kotlin)
+   is reported, never passed.
+4. **Re-brief** (#11311): when the briefed attempt makes no change, keeps
+   failing `verify`, or fails the replayed checks, a second briefing is
+   built from that evidence (the files the agent had to open that the
+   briefing missed, the files the checks blamed, and what went wrong) and
+   the briefed agent tries once more in a fresh worktree (`--rebrief` or
+   `OA_WORK_REBRIEF=1`), within the run's
+   time and dollar budget (`--budget-usd`, `--max-secs`).
+5. **Escalation**: low briefing confidence, a briefed attempt that failed
+   (after the re-brief, when it ran), or a missing capability falls back to
+   bare Claude Code (`claude -p`, "Complete this issue.") in a fresh
+   worktree, judged the same way. The result records why, and each
+   attempt's engine, briefing digest, cost and outcome.
+6. **Landing**: on a pass, commit; `queue` hands the branch to the landing
    queue (`openagents land submit`, docs/cloud/land-queue.md), `pr` pushes a
    branch and opens a pull request, `none` keeps the commit local.
 
@@ -67,14 +79,14 @@ MIN_CONFIDENCE = float(os.environ.get("OA_WORK_MIN_CONFIDENCE", "0.05"))
 # This many failing `verify` calls with no pass is "repeated verify failures".
 MAX_VERIFY_FAILS = int(os.environ.get("OA_WORK_MAX_VERIFY_FAILS", "4"))
 
-SYSTEM = """You are a senior Rust engineer making one change in this repository. Your working directory is the repository checkout at the issue's base commit.
+SYSTEM = """You are a senior engineer making one change in this repository. Your working directory is the repository checkout at the issue's base commit.
 
-Below is a briefing for this issue: a change plan, the files to change with excerpts (line numbers are the file's own), similar past changes, the checks, and the repo rules.
+Below is a briefing for this issue: a change plan, the acceptance items, the files to change with excerpts (line numbers are the file's own), similar past changes, the checks, and the repo rules.
 
 How to work:
-- Trust the briefing. Start from the listed files and excerpts. Open a file the briefing does not list only when the change, the compiler, or a test demands it.
-- Make the smallest complete change that resolves the issue, in the surrounding style, and add or update a test that pins the new behavior.
-- Check your work with `verify`, passing `tests` with your new tests' names. It compiles, runs those tests and formats, and returns only what is wrong; fix that and call it again. `fast: true` only compiles. Call it once when you think you are done, not after every edit.
+- Trust the briefing. Start from the listed files and excerpts. Open a file the briefing does not list only when the change, the compiler, a test, or a check demands it.
+- Make the smallest complete change that resolves the issue, in the surrounding style. For code and scripts, add or update a test that pins the new behavior; for a document, keep its links and paths valid.
+- Check your work with `verify`, passing `tests` with your new Rust tests' names. It runs the checks every file you changed needs (a crate's tests and fmt, a script's tests, a document's links) and returns only what is wrong, with each acceptance item's result; fix that and call it again. `fast: true` only compiles. `unchecked` means nothing here can check what you changed: read it back and stop when it is right. Call it once when you think you are done, not after every edit.
 - When the checks pass, stop. Reply in two or three lines with what changed.
 - Do not commit.
 """
@@ -245,14 +257,28 @@ def cargo(root: Path, args: list[str], timeout: int) -> subprocess.CompletedProc
               env=clean_env({"OA_WORK_CMD_TIMEOUT": str(timeout)}))
 
 
+def kinds_mod():
+    sys.path.insert(0, str(BENCH))
+    import kinds  # noqa: E402
+    return kinds
+
+
 def replay_checks(run: Run, root: Path, base: str) -> list[dict]:
-    """fmt, then the tests of every package the diff touches."""
+    """fmt, then the tests of every root-workspace Rust package the diff
+    touches, then every other changed file's checks by kind (#11310)."""
+    kinds = kinds_mod()
+    files = [f for f in changed_files(root, base) if (root / f).exists()]
+    planned = kinds.plan(files, kinds.Tree(root), base)
+    nested = {c["package"] for c in planned if c["kind"] == "rust-nested"}
     packages = []
-    for path in changed_files(root, base):
+    for path in files:
         if path.endswith(".rs") or path.endswith("Cargo.toml"):
             pkg = package_of(root, path)
-            if pkg and pkg not in packages:
+            if pkg and pkg not in packages and pkg not in nested:
                 packages.append(pkg)
+    for c in planned:
+        if c["kind"] == "rust" and c["package"] not in packages:
+            packages.append(c["package"])
     checks = []
     for pkg in packages:
         run.say("checks", f"formatting {pkg}")
@@ -269,13 +295,29 @@ def replay_checks(run: Run, root: Path, base: str) -> list[dict]:
         checks.append({"name": f"cargo test -p {pkg}", "ok": test.returncode == 0, "passed": ran,
                        "failed": failed, "secs": round(time.time() - t0, 1),
                        "tail": text[-1500:] if test.returncode else ""})
+    for c in planned:
+        if c["kind"] == "rust" or c["id"].startswith("check:"):
+            continue
+        run.say("checks", f"{c['what']}" if c.get("available", True) else f"no checker here: {c['what']}")
+        r = kinds.run_check(c, root, str(LOCAL_EXEC))
+        checks.append({"name": " ".join(c["argv"])[:200], "id": c["id"], "kind": c["kind"], "ok": r["ok"],
+                       "available": r["available"], "secs": r["secs"], "tail": r["tail"]})
     return checks
+
+
+def checks_pass(checks: list[dict]) -> bool:
+    """Every check that ran passed; a kind with no checker here (ok None)
+    is reported, never counted as a pass or a failure."""
+    return all(c["ok"] is not False for c in checks)
 
 
 # ------------------------------------------------------------------ engines
 
-def briefing_for(issue: dict, base: str, checkout: Path) -> dict:
-    """The #11211 briefing, built at `base` in `checkout`."""
+def briefing_for(issue: dict, base: str, checkout: Path, seeds: list[dict] | None = None,
+                 wrong: str | None = None) -> dict:
+    """The #11211 briefing, built at `base` in `checkout`, with checks per
+    package kind and typed acceptance (#11310); `seeds` and `wrong` make the
+    re-briefing (#11311)."""
     os.environ["AB_REPO"] = str(checkout)
     os.environ.setdefault("AB_WORK", str(Path.home() / ".openagents" / "work" / "briefing"))
     sys.path.insert(0, str(BENCH))
@@ -287,8 +329,11 @@ def briefing_for(issue: dict, base: str, checkout: Path) -> dict:
     common.REPO = checkout
     task = {"issue": issue["number"], "title": issue["title"], "body": issue.get("body") or "", "parent": base}
     levers = dict(LEVERS)
-    b = briefing_mod.build(task, levers)
+    levers["checks"] = os.environ.get("OA_WORK_CHECKS", "kinds")
+    levers["acceptance"] = os.environ.get("OA_WORK_ACCEPTANCE", "typed")
+    b = briefing_mod.build(task, levers, seeds=seeds, wrong=wrong)
     b["markdown"] = briefing_mod.render(b)
+    b["digest"] = "sha256:" + __import__("hashlib").sha256(b["markdown"].encode()).hexdigest()[:16]
     return b
 
 
@@ -311,7 +356,7 @@ def verify_fails(log: Path) -> tuple[int, bool]:
             status = (row.get("verdict") or row).get("status")
             if status == "pass":
                 passed = True
-            elif status not in (None, "compiles"):
+            elif status not in (None, "compiles", "unchecked"):
                 fails += 1
     return fails, passed
 
@@ -336,11 +381,14 @@ def backend_of(engine: str) -> str:
 def run_briefed(run: Run, b: dict, root: Path, out: Path, model: str, timeout: int,
                 backend: str = "claude") -> dict:
     out.mkdir(parents=True, exist_ok=True)
-    packages = []
-    for c in b["checks"]:
-        pkg = c["id"].split(":", 1)[1]
-        if pkg not in packages:
-            packages.append(pkg)
+    if "packages" in b:
+        packages = [p["id"] for p in b["packages"] if p["kind"] == "rust"]
+    else:
+        packages = []
+        for c in b["checks"]:
+            pkg = c["id"].split(":", 1)[1]
+            if pkg not in packages:
+                packages.append(pkg)
     system = SYSTEM + "\n\n" + b["markdown"]
     (out / "system.md").write_text(system)
     (out / "prompt.md").write_text(f"Complete issue #{b['issue']} as the briefing describes.")
@@ -354,6 +402,8 @@ def run_briefed(run: Run, b: dict, root: Path, out: Path, model: str, timeout: i
             "exec": str(LOCAL_EXEC), "crates": packages, "baseline_errors": [],
             "done_when": [p.removeprefix("Required: ") for p in b["plan"] if p.startswith("Required: ")]
             or [b["title"]],
+            "acceptance": (b.get("acceptance") or {}).get("items", []),
+            "planner": [sys.executable, str(BENCH / "kinds.py"), "plan", "--root", str(root), "--base", b["base"]],
             "cochange": {}, "log": str(out / "verify.jsonl"),
         },
     }
@@ -468,7 +518,8 @@ def land(run: Run, root: Path, repo: str, issue: dict, how: str, run_id: str, en
     lines = [f"Fixes #{issue['number']}.", "",
              f"Worked by the {engine_words(engine)} "
              f"(`openagents work`, run `{run_id}`).", "", "Checks replayed on this diff:", ""]
-    lines += [f"- {'pass' if c['ok'] else 'FAIL'}: `{c['name']}`" for c in checks] or ["- none (no Rust package touched)"]
+    lines += [f"- {'pass' if c['ok'] else ('no checker here' if c['ok'] is None else 'FAIL')}: `{c['name']}`"
+              for c in checks] or ["- none (nothing to check)"]
     lines += ["", "🤖 Generated with [Claude Code](https://claude.com/claude-code)"]
     proc = sh(["gh", "pr", "create", "--repo", repo, "--head", branch, "--base", "main",
                "--title", f"{issue['title']} (#{issue['number']})", "--body", "\n".join(lines)],
@@ -504,8 +555,13 @@ def say_cost(run: Run, attempts: list[dict]) -> None:
     run.say("cost", text, cost_usd=cost, tokens=tokens)
 
 
-def attempt(run: Run, engine: str, issue: dict, checkout: Path, base: str, out: Path, args, b: dict | None) -> dict:
+def attempt(run: Run, engine: str, issue: dict, checkout: Path, base: str, out: Path, args, b: dict | None,
+            start_from: str | None = None) -> dict:
+    """One engine's attempt in a fresh worktree; `start_from` is a diff
+    applied first (a re-brief that keeps the first attempt's change)."""
     wt = add_worktree(checkout, out / "worktree", base)
+    if start_from:
+        sh(["git", "-C", str(wt), "apply", "--binary", "--whitespace=nowarn", "-"], input=start_from, check=False)
     if engine.startswith("briefed"):
         agent = run_briefed(run, b, wt, out, args.model, args.timeout, backend_of(engine))
     else:
@@ -513,8 +569,71 @@ def attempt(run: Run, engine: str, issue: dict, checkout: Path, base: str, out: 
     files = changed_files(wt, base)
     checks = replay_checks(run, wt, base) if files else []
     stat = diff_stat(wt, base) if files else {"files": [], "added": 0, "removed": 0}
-    ok = bool(files) and all(c["ok"] for c in checks)
-    return {"engine": engine, "worktree": str(wt), "agent": agent, "checks": checks, "diff": stat, "ok": ok}
+    ok = bool(files) and checks_pass(checks)
+    outcome = "passed" if ok else ("no change" if not files else "checks failed")
+    return {"engine": engine, "worktree": str(wt), "out": str(out), "agent": agent, "checks": checks, "diff": stat,
+            "ok": ok, "outcome": outcome, "briefing_digest": (b or {}).get("digest"),
+            "cost_usd": agent["usage"].get("cost_usd"), "secs": agent.get("secs")}
+
+
+def working_patch(root: Path, base: str) -> str:
+    """The attempt's whole change against `base`, untracked files included."""
+    sh(["git", "-C", str(root), "add", "-A"])
+    patch = sh(["git", "-C", str(root), "diff", "--cached", "--binary", base]).stdout
+    sh(["git", "-C", str(root), "reset", "-q"])
+    return patch
+
+
+def failure_reason(a: dict) -> str:
+    ag = a["agent"]
+    if not a["diff"]["files"]:
+        return "the briefed agent made no change"
+    if ag["verify_fails"] >= MAX_VERIFY_FAILS and not ag["verify_passed"]:
+        return f"repeated verify failures ({ag['verify_fails']})"
+    return "the replayed checks failed on the briefed agent's change"
+
+
+def rebrief_allowed(args, attempts: list[dict], started: float) -> tuple[bool, str]:
+    """At most one re-brief, and only when another attempt like the first
+    still fits the run's dollar and time budget."""
+    if not args.rebrief:
+        return False, "re-brief is off"
+    if any(a.get("rebrief") for a in attempts):
+        return False, "already re-briefed once"
+    first = attempts[-1]
+    spent, _ = cost_so_far(attempts)
+    if spent is not None and first.get("cost_usd") is not None and spent + first["cost_usd"] > args.budget_usd:
+        return False, f"another attempt would pass the ${args.budget_usd:.2f} budget"
+    if time.time() - started + (first.get("secs") or 0) > args.max_secs:
+        return False, f"another attempt would pass the {args.max_secs}s limit"
+    return True, ""
+
+
+def rebrief_attempt(run: Run, engine: str, issue: dict, checkout: Path, base: str, out: Path, args,
+                    first: dict) -> dict:
+    """The second briefed attempt (#11311), from the first one's misses,
+    its `verify` evidence and its replayed checks."""
+    sys.path.insert(0, str(BENCH))
+    import rebrief  # noqa: E402
+    wt = Path(first["worktree"])
+    patch = working_patch(wt, base)
+    policy = os.environ.get("OA_WORK_REBRIEF_WORKTREE", "clean")
+
+    def exists(path: str) -> bool:
+        return sh(["git", "-C", str(checkout), "cat-file", "-e", f"{base}:{path}"], check=False).returncode == 0
+
+    ev = rebrief.evidence(Path(first["out"]), first["checks"], patch, exists, policy)
+    why = failure_reason(first)
+    run.say("rebrief", f"{why}; briefing again from what the first attempt found",
+            seeds=[s_["path"] for s_ in ev["seeds"]], sections=ev["sections"])
+    b2 = briefing_for(issue, base, checkout, seeds=ev["seeds"], wrong=ev["wrong"])
+    (out.parent / "briefing-rebrief.md").write_text(b2["markdown"])
+    a = attempt(run, engine, issue, checkout, base, out, args, b2,
+                start_from=patch if policy == "keep" and patch.strip() else None)
+    a["rebrief"] = {"why": why, "seeds": [s_["path"] for s_ in ev["seeds"]], "sections": ev["sections"],
+                    "misses": ev["misses"], "last_verify": ev["last_verify"], "worktree": policy,
+                    "briefing_digest_before": first.get("briefing_digest"), "briefing_digest": b2["digest"]}
+    return a
 
 
 def main() -> int:
@@ -529,6 +648,11 @@ def main() -> int:
     ap.add_argument("--model", default=os.environ.get("OA_WORK_MODEL") or default_model())
     ap.add_argument("--timeout", type=int, default=1500)
     ap.add_argument("--keep", action="store_true", help="keep the worktrees")
+    ap.add_argument("--rebrief", action=argparse.BooleanOptionalAction,
+                    default=os.environ.get("OA_WORK_REBRIEF", "0") == "1",
+                    help="one re-briefed attempt before the bare fallback (#11311)")
+    ap.add_argument("--budget-usd", type=float, default=float(os.environ.get("OA_WORK_BUDGET_USD", "8")))
+    ap.add_argument("--max-secs", type=int, default=int(os.environ.get("OA_WORK_MAX_SECS", "4500")))
     args = ap.parse_args()
 
     run_id = args.run_id or uuid.uuid4().hex[:12]
@@ -569,8 +693,6 @@ def main() -> int:
                 engine, why = "bare", "missing capability: the briefed agent isn't installed on this computer"
             elif not b["files"]:
                 engine, why = "bare", "low briefing confidence: the finder found no files"
-            elif not b["checks"]:
-                engine, why = "bare", "missing capability: no Rust package to check with verify"
             elif b["finder"].startswith("filefind") and conf is not None and conf < MIN_CONFIDENCE:
                 engine, why = "bare", f"low briefing confidence ({conf:.3f} < {MIN_CONFIDENCE})"
         if why:
@@ -580,13 +702,16 @@ def main() -> int:
         result["attempts"].append(a)
         say_cost(run, result["attempts"])
         if engine.startswith("briefed") and not a["ok"]:
-            ag = a["agent"]
-            if not a["diff"]["files"]:
-                why = "the briefed agent made no change"
-            elif ag["verify_fails"] >= MAX_VERIFY_FAILS and not ag["verify_passed"]:
-                why = f"repeated verify failures ({ag['verify_fails']})"
+            allowed, skip = rebrief_allowed(args, result["attempts"], run.started)
+            if allowed:
+                a = rebrief_attempt(run, engine, issue, checkout, base, out / f"{engine}-rebrief", args, a)
+                result["attempts"].append(a)
+                result["rebriefed"] = a["rebrief"]["why"]
+                say_cost(run, result["attempts"])
             else:
-                why = "the replayed checks failed on the briefed agent's change"
+                result["rebrief_skipped"] = skip
+        if engine.startswith("briefed") and not a["ok"]:
+            why = failure_reason(a) + (" after a re-brief" if a.get("rebrief") else "")
             if missing := signed_in("bare"):
                 run.say("escalate", f"{why}; no fallback: {missing}")
                 result["escalated"] = f"{why}; {missing}"
@@ -619,6 +744,7 @@ def main() -> int:
                     pass
         for a in result["attempts"]:
             a.pop("worktree", None)
+            a.pop("out", None)
         (out / "result.json").write_text(json.dumps(result, indent=2))
         run.say("done", "done" if result["ok"] else f"stopped: {result['error']}", ok=result["ok"])
         print(json.dumps(result), flush=True)

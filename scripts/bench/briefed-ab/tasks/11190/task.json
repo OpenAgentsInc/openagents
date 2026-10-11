@@ -1,0 +1,30 @@
+{
+  "grader": "kinds",
+  "kinds": [
+    "rust"
+  ],
+  "packages": [
+    "tenancy"
+  ],
+  "script_tests": [],
+  "test_targets": [
+    "--lib"
+  ],
+  "issue": 11190,
+  "title": "Door quota and classify concurrency are pooled per registry tenant, which every personal workspace shares",
+  "body": "Found while fixing #11186.\n\n`crates/gateway/src/serve.rs` reserves door quota in the quota ledger by `caller.tenant` (`reserved`, `quota::Call { tenant, .. }`), and the classify concurrency pools (`tenant_classify_inputs`, `tenant_classify_in_flight`) are keyed by tenant too. Every personal workspace made by sign-up is bound to the one tenant `signup`, so all signed-up people share one door quota and one classify concurrency budget: one heavy caller can exhaust everyone's.\n\nNo secret or person's data leaks (the receipts and jobs are already keyed by the key id), so #11186 left this out. Fix: reserve quota and pick the pool by the workspace the key acts in (`inference_public::key_scope`), keeping the tenant's manifest quota as the per-workspace allowance, or give sign-up its own per-workspace quota policy; extend `accounts_on_one_tenant_never_see_or_use_each_others_keys_or_state` with a door call.",
+  "fix": "29db2591b0f2bbe1ec1ecc7c94d43f604311579b",
+  "parent": "964a50414c18606ac9b4b70cd1aac72e7adc92b0",
+  "package": "tenancy",
+  "source_files": [
+    "crates/gateway/src/serve.rs",
+    "crates/tenancy/src/quota.rs"
+  ],
+  "test_files": [
+    "crates/tenancy/src/quota.rs"
+  ],
+  "test_names": [
+    "each_workspace_on_a_shared_tenant_has_its_own_allowance"
+  ],
+  "fix_lines": 146
+}

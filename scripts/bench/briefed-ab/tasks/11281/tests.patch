@@ -1,0 +1,117 @@
+diff --git a/crates/coder-cloud/src/pool.rs b/crates/coder-cloud/src/pool.rs
+index 5b289018b0b22245b74f61f7ebad563ef58d10ce..62f1999ba87fde8e351605dc136926e8730bda52 100644
+--- a/crates/coder-cloud/src/pool.rs
++++ b/crates/coder-cloud/src/pool.rs
+@@ -967,6 +1200,112 @@ pub fn activity(project: &str, hosts: &[Host]) -> Vec<Activity> {
+ mod tests {
+     use super::*;
+ 
++    fn a_host() -> Host {
++        Host {
++            name: "oa-pool-a-wxyz".into(),
++            zone: "us-central1-a".into(),
++            status: "RUNNING".into(),
++            machine: DEFAULT_MACHINE.into(),
++            spot: false,
++            created: String::new(),
++            address: Some("10.0.0.7".into()),
++        }
++    }
++
++    #[test]
++    fn pool_ssh_checks_the_host_key_against_the_pin_alone() {
++        let pin = std::path::Path::new("/pins/us-central1-a.oa-pool-a-wxyz");
++        for internal in [false, true] {
++            let (args, target) = ssh_args("openagentsgemini", &a_host(), pin, internal);
++            let joined = args.join(" ");
++            assert!(joined.contains("StrictHostKeyChecking=yes"), "{joined}");
++            assert!(!joined.contains("StrictHostKeyChecking=no"), "{joined}");
++            assert!(!joined.contains("accept-new"), "{joined}");
++            assert!(!joined.contains("UserKnownHostsFile=/dev/null"), "{joined}");
++            assert!(joined.contains(&format!("UserKnownHostsFile={}", pin.display())));
++            assert!(joined.contains("GlobalKnownHostsFile=/dev/null"));
++            assert!(joined.contains("HostKeyAlias=oa-pool-a-wxyz"));
++            let expected = if internal {
++                "10.0.0.7"
++            } else {
++                "oa-pool-a-wxyz"
++            };
++            assert_eq!(target, expected);
++            assert_eq!(joined.contains("ProxyCommand="), !internal);
++        }
++    }
++
++    #[test]
++    fn host_keys_are_pinned_from_guest_attributes_only_when_well_formed() {
++        let attributes = json!([
++            {"namespace": "hostkeys", "key": "ssh-ed25519", "value": "AAAAC3NzaC1lZDI1NTE5AAAAIabc+/="},
++            {"namespace": "hostkeys", "key": "ecdsa-sha2-nistp256", "value": "ecdsa-sha2-nistp256 AAAAE2Vj"},
++            {"namespace": "hostkeys", "key": "ssh-ed25519", "value": "AAAA\n* ssh-rsa EVIL"},
++            {"namespace": "hostkeys", "key": "evil", "value": "AAAA"}
++        ]);
++        let lines = known_hosts_from("oa-pool-a-wxyz", &attributes).unwrap();
++        assert_eq!(
++            lines,
++            "oa-pool-a-wxyz ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIabc+/=\n\
++             oa-pool-a-wxyz ecdsa-sha2-nistp256 AAAAE2Vj\n"
++        );
++        assert!(known_hosts_from("oa-pool-a-wxyz", &json!([])).is_err());
++        assert!(
++            known_hosts_from("oa-pool-a-wxyz", &json!([{"key": "evil", "value": "AAAA"}])).is_err()
++        );
++    }
++
++    #[test]
++    fn identifiers_that_reach_a_shell_string_must_be_plain_gce_names() {
++        assert!(check_identifiers("openagentsgemini", &a_host()).is_ok());
++        assert!(check_identifiers("example.com:my-project", &a_host()).is_ok());
++        assert!(check_identifiers("p; rm -rf ~", &a_host()).is_err());
++        for name in ["", "a;b", "A-host", "-x", "x-", "oa pool", "$(id)"] {
++            let host = Host {
++                name: name.into(),
++                ..a_host()
++            };
++            assert!(check_identifiers("p", &host).is_err(), "{name}");
++        }
++        let zone = Host {
++            zone: "us-central1-a --flag".into(),
++            ..a_host()
++        };
++        assert!(check_identifiers("p", &zone).is_err());
++        let address = Host {
++            address: Some("10.0.0.7 -oProxyCommand=x".into()),
++            ..a_host()
++        };
++        assert!(check_identifiers("p", &address).is_err());
++    }
++
++    #[test]
++    fn a_host_that_cannot_be_checked_is_refused_not_reached() {
++        let host = Host {
++            name: "$(id)".into(),
++            ..a_host()
++        };
++        let output = ssh("openagentsgemini", &host, "true").output().unwrap();
++        assert_eq!(output.status.code(), Some(255));
++        let stderr = String::from_utf8_lossy(&output.stderr);
++        assert!(stderr.starts_with("ssh refused: "), "{stderr}");
++        assert!(stderr.contains("not a GCE instance name"), "{stderr}");
++    }
++
++    #[test]
++    fn the_pin_directory_is_private() {
++        use std::os::unix::fs::PermissionsExt as _;
++        let dir = tempfile::tempdir().unwrap();
++        let pins = dir.path().join("cloud/known_hosts.d");
++        private_dir(&pins).unwrap();
++        let mode = std::fs::metadata(&pins).unwrap().permissions().mode() & 0o777;
++        assert_eq!(mode, 0o700);
++        let file = pins.join("pin");
++        write_private(&file, "x\n").unwrap();
++        let mode = std::fs::metadata(&file).unwrap().permissions().mode() & 0o777;
++        assert_eq!(mode, 0o600);
++    }
++
+     #[test]
+     fn a_new_grant_after_a_revoke_is_the_next_epoch_of_the_same_pool() {
+         let first = Pool::grant(None, DEFAULT_MACHINE, true, 8, 10);

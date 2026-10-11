@@ -1,0 +1,58 @@
+{
+  "on_fix": {
+    "grader": "kinds",
+    "applied": true,
+    "kind_checks": [
+      {
+        "id": "doccheck:.",
+        "ok": true,
+        "available": true,
+        "exit": 0,
+        "secs": 0.6,
+        "tail": ""
+      }
+    ],
+    "kind_checks_ok": true,
+    "rust_packages": [
+      "coder-cloud",
+      "coder-working-computer"
+    ],
+    "rust": {
+      "applied": true,
+      "compiles": true,
+      "tests_pass": true,
+      "passed": 5,
+      "failed": 0,
+      "tests_compiled": true,
+      "error": null
+    },
+    "compiles": true,
+    "errors": [],
+    "hidden_pass": true,
+    "unchecked": false,
+    "tests_pass": true
+  },
+  "on_parent": {
+    "grader": "kinds",
+    "applied": true,
+    "rust_packages": [
+      "coder-cloud"
+    ],
+    "rust": {
+      "applied": true,
+      "compiles": true,
+      "tests_pass": false,
+      "passed": 0,
+      "failed": 0,
+      "tests_compiled": false,
+      "error": null
+    },
+    "compiles": true,
+    "errors": [],
+    "hidden_pass": false,
+    "unchecked": false,
+    "tests_pass": false
+  },
+  "usable": true,
+  "behavioral": true
+}
