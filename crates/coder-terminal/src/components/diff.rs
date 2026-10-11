@@ -347,7 +347,8 @@ fn assemble_rows(
 }
 
 /// The line number, then the change's marker: on the row's band when the
-/// line has one, in the change's color when it does not.
+/// line has one, in the change's color when it does not. The `+` or `-`
+/// keeps the change's color on the band too, never plain white.
 fn render_gutter(
     spans: &mut Vec<Span<'static>>,
     line: &DiffLine,
@@ -366,7 +367,10 @@ fn render_gutter(
         None => Style::default().fg(fg),
     };
     spans.push(Span::styled(format!("{number:>w$}"), style));
-    spans.push(Span::styled(format!("{MARK_GAP}{marker}{MARK_GAP}"), style));
+    spans.push(Span::styled(
+        format!("{MARK_GAP}{marker}{MARK_GAP}"),
+        style.fg(fg),
+    ));
 }
 
 /// The changed words of each line of a hunk, as byte ranges of its text:
@@ -749,6 +753,12 @@ mod tests {
         assert_eq!(removed.spans[2].content.as_ref(), " 2");
         assert_eq!(removed.spans[2].style.bg, Some(delete_bg));
         assert_eq!(removed.spans[3].content.as_ref(), " - ");
+        // The markers keep the change's color on the band, not white.
+        let danger = crate::ladder::rgb(coder_ui::coder_noir::DANGER);
+        let success = crate::ladder::rgb(coder_ui::coder_noir::SUCCESS);
+        assert_eq!(removed.spans[3].style.fg, Some(danger));
+        assert_eq!(lines[2].spans[3].content.as_ref(), " + ");
+        assert_eq!(lines[2].spans[3].style.fg, Some(success));
         assert!(removed.spans[2..].iter().all(|s| s.style.bg.is_some()));
         let keyword = removed
             .spans
