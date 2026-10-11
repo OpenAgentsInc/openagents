@@ -27,8 +27,10 @@ pub const PATH: Color = rgb(coder_ui::coder_noir::WARNING);
 pub const MD_CODE: Color = rgb(coder_ui::coder_noir::ANSI[6]);
 pub const DIFF_DELETE_FG: Color = rgb(coder_ui::coder_noir::DANGER);
 pub const DIFF_INSERT_FG: Color = rgb(coder_ui::coder_noir::SUCCESS);
-pub const DIFF_DELETE_BG: Color = rgb(coder_ui::coder_noir::DANGER_CONTAINER);
-pub const DIFF_INSERT_BG: Color = rgb(coder_ui::coder_noir::SUCCESS_CONTAINER);
+pub const DIFF_DELETE_BG: Color = rgb(coder_ui::coder_noir::DIFF_DELETE_ROW);
+pub const DIFF_INSERT_BG: Color = rgb(coder_ui::coder_noir::DIFF_INSERT_ROW);
+pub const DIFF_DELETE_WORD: Color = rgb(coder_ui::coder_noir::DIFF_DELETE_WORD);
+pub const DIFF_INSERT_WORD: Color = rgb(coder_ui::coder_noir::DIFF_INSERT_WORD);
 pub const CURSOR: Color = rgb(coder_ui::coder_noir::CURSOR);
 pub const CURSOR_TEXT: Color = rgb(coder_ui::coder_noir::CURSOR_TEXT);
 
@@ -88,6 +90,8 @@ mod tests {
             (DIFF_INSERT_FG, shared::DIFF_INSERT_FG),
             (DIFF_DELETE_BG, shared::DIFF_DELETE_BG),
             (DIFF_INSERT_BG, shared::DIFF_INSERT_BG),
+            (DIFF_DELETE_WORD, shared::DIFF_DELETE_WORD),
+            (DIFF_INSERT_WORD, shared::DIFF_INSERT_WORD),
         ] {
             assert_eq!(native, Color::Rgb(shared.red, shared.green, shared.blue));
         }

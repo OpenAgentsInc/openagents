@@ -751,8 +751,8 @@ mod tests {
             [
                 " Coder finished · 1 file changed · +1 -1",
                 "  modified a.rs (+1 -1)",
-                "  1  old",
-                "  1  new",
+                "  1 - old",
+                "  1 + new",
                 "  1 more line not shown",
             ]
         );

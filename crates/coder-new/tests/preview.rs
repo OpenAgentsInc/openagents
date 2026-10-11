@@ -820,8 +820,33 @@ fn animation_ticks_change_running_indicators_without_changing_conversation_state
     assert_eq!(conversation_state(&app), state);
 }
 
+/// `lines` drawn into a `width`-wide test terminal on the base background.
+fn draw(lines: Vec<ratatui::text::Line<'static>>, width: u16) -> ratatui::buffer::Buffer {
+    let height = lines.len() as u16;
+    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+    terminal
+        .draw(|frame| {
+            let area = frame.area();
+            frame.render_widget(
+                Block::default().style(Style::default().bg(theme::BG_BASE)),
+                area,
+            );
+            frame.render_widget(Paragraph::new(Text::from(lines)), area);
+        })
+        .unwrap();
+    terminal.backend().buffer().clone()
+}
+
+fn row_text(buffer: &ratatui::buffer::Buffer, y: u16) -> String {
+    (0..buffer.area.width)
+        .map(|x| buffer[(x, y)].symbol())
+        .collect::<String>()
+        .trim_end()
+        .to_owned()
+}
+
 #[test]
-fn edit_calls_highlight_old_and_new_code_on_bands_with_an_unpainted_gutter() {
+fn edit_calls_draw_marked_rows_on_bands_from_the_number_to_the_edge() {
     let main_edit = MAIN_TOOLS
         .iter()
         .find(|call| call.kind == ToolKind::Edit)
@@ -844,26 +869,13 @@ fn edit_calls_highlight_old_and_new_code_on_bands_with_an_unpainted_gutter() {
                 assert!(line.width() <= usize::from(width));
             }
             let height = lines.len() as u16;
-            let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
-            terminal
-                .draw(|frame| {
-                    let area = frame.area();
-                    frame.render_widget(
-                        Block::default().style(Style::default().bg(theme::BG_BASE)),
-                        area,
-                    );
-                    frame.render_widget(Paragraph::new(Text::from(lines)), area);
-                })
-                .unwrap();
-            let buffer = terminal.backend().buffer();
-            for (band, gutter_color) in [
-                (theme::DIFF_DELETE_BG, theme::DIFF_DELETE_FG),
-                (theme::DIFF_INSERT_BG, theme::DIFF_INSERT_FG),
-            ] {
+            let buffer = draw(lines, width);
+            assert!(row_text(&buffer, 1).contains("⎿  Updated"));
+            for (band, marker) in [(theme::DIFF_DELETE_BG, "-"), (theme::DIFF_INSERT_BG, "+")] {
                 let mut foregrounds = Vec::new();
                 let mut changed_rows = 0;
-                let mut numbered_rows = 0;
-                for y in 1..height {
+                let mut marked_rows = 0;
+                for y in 2..height {
                     let Some(start) = (0..width).find(|x| buffer[(*x, y)].bg == band) else {
                         continue;
                     };
@@ -872,21 +884,31 @@ fn edit_calls_highlight_old_and_new_code_on_bands_with_an_unpainted_gutter() {
                     for x in 0..start {
                         let cell = &buffer[(x, y)];
                         assert_eq!(cell.bg, theme::BG_BASE);
-                        if cell.symbol().chars().any(|ch| ch.is_ascii_digit()) {
-                            numbered_rows += 1;
-                            assert_eq!(cell.fg, gutter_color);
+                        assert_eq!(cell.symbol(), " ", "row {y} starts before its band");
+                    }
+                    let first = buffer[(start, y)].symbol();
+                    let row: String = (start..width).map(|x| buffer[(x, y)].symbol()).collect();
+                    if first.chars().any(|ch| ch.is_ascii_digit()) || first == " " {
+                        let number_end = row.trim_start().find(' ').unwrap_or(0);
+                        if row.trim_start()[number_end..].starts_with(&format!(" {marker} ")) {
+                            marked_rows += 1;
                         }
                     }
                     for x in start..width {
                         let cell = &buffer[(x, y)];
-                        assert_eq!(cell.bg, band);
+                        assert!(
+                            cell.bg == band
+                                || cell.bg == theme::DIFF_DELETE_WORD
+                                || cell.bg == theme::DIFF_INSERT_WORD,
+                            "row {y} cell {x} left the band"
+                        );
                         if !cell.symbol().trim().is_empty() && !foregrounds.contains(&cell.fg) {
                             foregrounds.push(cell.fg);
                         }
                     }
                 }
                 assert!(changed_rows > 0);
-                assert!(numbered_rows > 0);
+                assert!(marked_rows > 0, "no {marker} marker at width {width}");
                 assert!(
                     foregrounds.len() >= 2,
                     "code has no syntax color variation at width {width}"
@@ -894,6 +916,72 @@ fn edit_calls_highlight_old_and_new_code_on_bands_with_an_unpainted_gutter() {
             }
         }
     }
+}
+
+#[test]
+fn an_edit_draws_like_claude_code_numbers_markers_bands_and_changed_words() {
+    let old = "fn a() {}\n\n/// Reads a file inside the workspace.\nfn read() {}\n";
+    let new = "fn a() {}\n\n/// Reads a file on this computer.\nfn read() {}\n";
+    let diff = coder_new::file_tools::unified(old, new);
+    let output = serde_json::json!({
+        "path": "src/read.rs",
+        "diff": diff.text,
+        "added": diff.added,
+        "removed": diff.removed,
+    });
+    let input = serde_json::json!({"path": "src/read.rs"});
+    let width = 60;
+    let lines = coder_new::tools::file_tool_lines("Edit", &input, &output, false, width, 0);
+    let buffer = draw(lines, width);
+    let rows: Vec<String> = (0..buffer.area.height)
+        .map(|y| row_text(&buffer, y))
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            "● Edit src/read.rs",
+            "  ⎿  Updated src/read.rs (+1 -1)",
+            "     1   fn a() {}",
+            "     2",
+            "     3 - /// Reads a file inside the workspace.",
+            "     3 + /// Reads a file on this computer.",
+            "     4   fn read() {}",
+        ]
+    );
+    // The removed and added rows: band from the number to the right edge.
+    for (y, band, word) in [
+        (4u16, theme::DIFF_DELETE_BG, theme::DIFF_DELETE_WORD),
+        (5, theme::DIFF_INSERT_BG, theme::DIFF_INSERT_WORD),
+    ] {
+        let number = (0..width)
+            .find(|x| buffer[(*x, y)].symbol() == "3")
+            .unwrap();
+        assert_eq!(buffer[(number, y)].bg, band);
+        for x in 0..number {
+            assert_eq!(buffer[(x, y)].bg, theme::BG_BASE);
+        }
+        assert_eq!(buffer[(width - 1, y)].bg, band);
+        let words: String = (0..width)
+            .filter(|x| buffer[(*x, y)].bg == word)
+            .map(|x| buffer[(x, y)].symbol().to_owned())
+            .collect();
+        assert_eq!(
+            words,
+            if y == 4 {
+                "inside the workspace"
+            } else {
+                "on this computer"
+            }
+        );
+    }
+    // Context rows carry no band.
+    for x in 0..width {
+        assert_eq!(buffer[(x, 2)].bg, theme::BG_BASE);
+        assert_eq!(buffer[(x, 6)].bg, theme::BG_BASE);
+    }
+    // The summary's counts are colored.
+    let plus = rows[1][..rows[1].find("+1").unwrap()].chars().count() as u16;
+    assert_eq!(buffer[(plus, 1)].fg, theme::DIFF_INSERT_FG);
 }
 
 #[test]

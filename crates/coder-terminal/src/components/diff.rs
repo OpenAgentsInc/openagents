@@ -3,17 +3,20 @@
 //! Ported from grok-build (Apache-2.0, Copyright 2023-2026 SpaceXAI):
 //! `crates/codegen/xai-grok-pager/src/scrollback/blocks/tool/edit.rs`, its
 //! hunk-only phase with the default `DiffRenderConfig` (two-cell indent, one
-//! line-number column, no gutter band, "…" between hunks). Each line is
-//! numbered in the gutter — the new line's number, or the old one for a
-//! removed line, red or green on a change — then its text syntax-highlighted
-//! with the palette's syntect theme, the old and new sides each with their
-//! own highlighter. Removed and added lines sit on Grok Night's (or Grok
-//! Day's) red and green bands, from the text to the row's end.
+//! line-number column). Each line is numbered — the new line's number, or
+//! the old one for a removed line — then marked `-`, `+`, or blank, then its
+//! text syntax-highlighted with the palette's syntect theme, the old and new
+//! sides each with their own highlighter.
 //!
-//! Adapted: the input is a unified diff's text (`@@` hunks) rather than
-//! grok-build's structured edit records, and a word wider than the row
-//! breaks rather than overflowing.
+//! Adapted to look as Claude Code draws an edit: a removed or added line's
+//! whole row, from its number to the row's end, sits on a dark red or green
+//! band; when a removed line is replaced by an added one, the words that
+//! changed sit on a brighter red or green; and `...` stands between hunks.
+//! The input is a unified diff's text (`@@` hunks) rather than grok-build's
+//! structured edit records, and a word wider than the row breaks rather than
+//! overflowing.
 
+use std::ops::Range;
 use std::path::Path;
 
 use code_highlight::grok::syntect::easy::HighlightLines;
@@ -47,9 +50,13 @@ pub type DiffHunk = Vec<DiffLine>;
 const INDENT: &str = "  ";
 /// The cells grok-build's indent takes before the line numbers.
 pub(crate) const INDENT_CELLS: usize = INDENT.len();
-const CONTENT_GAP: &str = "  ";
+/// The cells between the line number and the marker, and between the
+/// marker and the text.
+const MARK_GAP: &str = " ";
 /// The separator between hunks.
-const HUNK_SEPARATOR: &str = "…";
+const HUNK_SEPARATOR: &str = "...";
+/// The cells after the line number: a gap, the marker, a gap.
+const MARK_CELLS: usize = 3;
 
 /// The hunks of a unified diff. Lines before the first `@@`, file headers,
 /// and "\ No newline at end of file" markers are not lines of a hunk.
@@ -140,16 +147,16 @@ pub fn lines(
         text_primary: apply(t::TEXT_PRIMARY),
         muted: apply(t::GRAY),
     };
+    // The changed words of a replaced line; none without a band to sit on.
+    let words =
+        (!theme.uses_line_fg()).then(|| (apply(t::DIFF_DELETE_WORD), apply(t::DIFF_INSERT_WORD)));
     let room = width.saturating_sub(lead);
+    // One number column for the whole diff, so every hunk lines up.
+    let gutter = hunks.iter().map(gutter_width).max().unwrap_or(1);
     let mut out = Vec::new();
     for (i, hunk) in hunks.iter().enumerate() {
         if i > 0 && !out.is_empty() {
-            let sep_text = match hunks.get(i - 1).and_then(|prev| hunk_gap_lines(prev, hunk)) {
-                Some(1) => format!("{HUNK_SEPARATOR} 1 unchanged line"),
-                Some(n) => format!("{HUNK_SEPARATOR} {n} unchanged lines"),
-                None => HUNK_SEPARATOR.to_owned(),
-            };
-            let row = super::clip(&format!("{INDENT}{sep_text}"), room);
+            let row = super::clip(&format!("{INDENT}{HUNK_SEPARATOR}"), room);
             out.push(Line::from(vec![
                 Span::raw(" ".repeat(lead)),
                 Span::styled(row, Style::default().fg(theme.muted)),
@@ -158,18 +165,22 @@ pub fn lines(
         if hunk.is_empty() {
             continue;
         }
-        let gutter = gutter_width(hunk);
-        let total = INDENT.len() + gutter + CONTENT_GAP.len();
+        let total = INDENT.len() + gutter + MARK_CELLS;
         let content_width = room.saturating_sub(total);
+        let texts: Vec<String> = hunk
+            .iter()
+            .map(|line| sanitize(line.text.trim_end_matches(['\r', '\n'])))
+            .collect();
+        let changed_words = words.map(|_| word_changes_in(hunk, &texts));
         // A diff interleaves two file versions; give each side its own highlighter so a multi-line construct can't leak across sides
         // Equal lines render on the new side and advance both
         let mut old_highlighter = syntect.highlight_lines_by_file_path(Path::new(path));
         let mut new_highlighter = syntect.highlight_lines_by_file_path(Path::new(path));
-        for line in hunk {
-            let text = sanitize(line.text.trim_end_matches(['\r', '\n']));
-            let content_spans = match line.tag {
+        for (index, line) in hunk.iter().enumerate() {
+            let text = &texts[index];
+            let mut content_spans = match line.tag {
                 ChangeTag::Delete => render_content_spans(
-                    &text,
+                    text,
                     line.tag,
                     &theme,
                     &mut old_highlighter,
@@ -177,7 +188,7 @@ pub fn lines(
                     level,
                 ),
                 ChangeTag::Insert => render_content_spans(
-                    &text,
+                    text,
                     line.tag,
                     &theme,
                     &mut new_highlighter,
@@ -186,17 +197,25 @@ pub fn lines(
                 ),
                 ChangeTag::Equal => {
                     let spans = render_content_spans(
-                        &text,
+                        text,
                         line.tag,
                         &theme,
                         &mut new_highlighter,
                         syntect,
                         level,
                     );
-                    advance_highlighter(&mut old_highlighter, &text, syntect);
+                    advance_highlighter(&mut old_highlighter, text, syntect);
                     spans
                 }
             };
+            if let (Some((delete_word, insert_word)), Some(changed)) = (words, &changed_words) {
+                let bg = if line.tag == ChangeTag::Delete {
+                    delete_word
+                } else {
+                    insert_word
+                };
+                content_spans = mark_words(content_spans, &changed[index], bg);
+            }
             for row in assemble_rows(line, content_spans, gutter, total, content_width, &theme) {
                 let mut spans = vec![Span::raw(" ".repeat(lead))];
                 spans.extend(fit(row, room));
@@ -226,16 +245,6 @@ fn fit(row: Vec<Span<'static>>, room: usize) -> Vec<Span<'static>> {
         break;
     }
     out
-}
-
-/// Unchanged new-file lines hidden between two hunks, when computable.
-fn hunk_gap_lines(prev: &DiffHunk, next: &DiffHunk) -> Option<usize> {
-    let prev_last = prev.iter().rev().find(|l| l.tag != ChangeTag::Delete)?.ln;
-    let next_first = next.iter().find(|l| l.tag != ChangeTag::Delete)?.ln;
-    next_first
-        .checked_sub(prev_last)
-        .and_then(|d| d.checked_sub(1))
-        .filter(|n| *n > 0)
 }
 
 /// The single line-number column's width for a hunk.
@@ -293,14 +302,24 @@ fn assemble_rows(
     for (i, (wrapped, row)) in wrapped_lines.iter().zip(styled_rows).enumerate() {
         let mut spans = Vec::new();
         if i == 0 {
-            render_gutter(&mut spans, line, gutter, theme);
+            render_gutter(&mut spans, line, gutter, theme, bg);
         } else {
-            spans.push(Span::raw(" ".repeat(total)));
+            spans.push(Span::raw(INDENT));
+            let blank = " ".repeat(total - INDENT.len());
+            spans.push(match bg {
+                Some(bg) => Span::styled(blank, Style::default().bg(bg)),
+                None => Span::raw(blank),
+            });
         }
         match bg {
             Some(bg) => {
+                // A changed word keeps its brighter band.
                 spans.extend(row.into_iter().map(|span| {
-                    let style = span.style.bg(bg);
+                    let style = if span.style.bg.is_some() {
+                        span.style
+                    } else {
+                        span.style.bg(bg)
+                    };
                     span.style(style)
                 }));
                 let pad = content_width.saturating_sub(cells(wrapped));
@@ -315,30 +334,191 @@ fn assemble_rows(
     rows
 }
 
-/// Render the line number gutter.
-fn render_gutter(spans: &mut Vec<Span<'static>>, line: &DiffLine, w: usize, theme: &DiffColors) {
-    let gutter_style = Style::default().fg(theme.gutter_fg);
+/// The line number, then the change's marker: on the row's band when the
+/// line has one, in the change's color when it does not.
+fn render_gutter(
+    spans: &mut Vec<Span<'static>>,
+    line: &DiffLine,
+    w: usize,
+    theme: &DiffColors,
+    bg: Option<Color>,
+) {
     spans.push(Span::raw(INDENT));
-    // Single mode: one column with the relevant line number
-    match line.tag {
-        ChangeTag::Equal => {
-            spans.push(Span::styled(format!("{:>w$}", line.ln), gutter_style));
+    let (number, marker, fg) = match line.tag {
+        ChangeTag::Equal => (line.ln, ' ', theme.gutter_fg),
+        ChangeTag::Delete => (line.lo, '-', theme.delete_fg),
+        ChangeTag::Insert => (line.ln, '+', theme.insert_fg),
+    };
+    let style = match bg {
+        Some(bg) => Style::default().fg(theme.text_primary).bg(bg),
+        None => Style::default().fg(fg),
+    };
+    spans.push(Span::styled(format!("{number:>w$}"), style));
+    spans.push(Span::styled(format!("{MARK_GAP}{marker}{MARK_GAP}"), style));
+}
+
+/// The changed words of each line of a hunk, as byte ranges of its text:
+/// each run of removed lines is paired, line by line, with the run of added
+/// lines right after it. An unpaired line, a context line, and a pair too
+/// unlike to compare word by word have none.
+fn word_changes_in(hunk: &DiffHunk, texts: &[String]) -> Vec<Vec<Range<usize>>> {
+    let mut changes = vec![Vec::new(); hunk.len()];
+    let mut i = 0;
+    while i < hunk.len() {
+        if hunk[i].tag != ChangeTag::Delete {
+            i += 1;
+            continue;
         }
-        ChangeTag::Delete => {
-            spans.push(Span::styled(
-                format!("{:>w$}", line.lo),
-                Style::default().fg(theme.delete_fg),
-            ));
+        let deletes = i;
+        while i < hunk.len() && hunk[i].tag == ChangeTag::Delete {
+            i += 1;
         }
-        ChangeTag::Insert => {
-            spans.push(Span::styled(
-                format!("{:>w$}", line.ln),
-                Style::default().fg(theme.insert_fg),
-            ));
+        let inserts = i;
+        while i < hunk.len() && hunk[i].tag == ChangeTag::Insert {
+            i += 1;
+        }
+        let pairs = (inserts - deletes).min(i - inserts);
+        for k in 0..pairs {
+            let (old, new) = (deletes + k, inserts + k);
+            if let Some((a, b)) = word_changes(&texts[old], &texts[new]) {
+                changes[old] = a;
+                changes[new] = b;
+            }
         }
     }
-    // Gap between gutter and content
-    spans.push(Span::raw(CONTENT_GAP));
+    changes
+}
+
+/// Words, runs of spaces, and single other characters.
+fn tokens(text: &str) -> Vec<Range<usize>> {
+    let class = |c: char| {
+        if c.is_alphanumeric() || c == '_' {
+            0
+        } else if c.is_whitespace() {
+            1
+        } else {
+            2
+        }
+    };
+    let mut out: Vec<Range<usize>> = Vec::new();
+    let mut last = None;
+    for (at, c) in text.char_indices() {
+        let kind = class(c);
+        let end = at + c.len_utf8();
+        match out.last_mut() {
+            Some(token) if kind != 2 && last == Some(kind) => token.end = end,
+            _ => out.push(at..end),
+        }
+        last = Some(kind);
+    }
+    out
+}
+
+/// The changed words of `old` and of `new`, by the longest common run of
+/// their tokens, with words split only by spaces merged into one range;
+/// `None` when the lines share too little for word highlights to help.
+fn word_changes(old: &str, new: &str) -> Option<(Vec<Range<usize>>, Vec<Range<usize>>)> {
+    let a = tokens(old);
+    let b = tokens(new);
+    let (n, m) = (a.len(), b.len());
+    if n == 0 || m == 0 || n.saturating_mul(m) > 250_000 {
+        return None;
+    }
+    let mut table = vec![0u32; (n + 1) * (m + 1)];
+    for i in (0..n).rev() {
+        for j in (0..m).rev() {
+            table[i * (m + 1) + j] = if old[a[i].clone()] == new[b[j].clone()] {
+                table[(i + 1) * (m + 1) + j + 1] + 1
+            } else {
+                table[(i + 1) * (m + 1) + j].max(table[i * (m + 1) + j + 1])
+            };
+        }
+    }
+    let (mut keep_a, mut keep_b) = (vec![false; n], vec![false; m]);
+    let (mut i, mut j) = (0, 0);
+    while i < n && j < m {
+        if old[a[i].clone()] == new[b[j].clone()] {
+            keep_a[i] = true;
+            keep_b[j] = true;
+            i += 1;
+            j += 1;
+        } else if table[(i + 1) * (m + 1) + j] >= table[i * (m + 1) + j + 1] {
+            i += 1;
+        } else {
+            j += 1;
+        }
+    }
+    let common: usize = a
+        .iter()
+        .zip(&keep_a)
+        .filter(|(token, kept)| **kept && !old[(*token).clone()].trim().is_empty())
+        .map(|(token, _)| token.len())
+        .sum();
+    let longest = old.trim().len().max(new.trim().len());
+    // Mostly rewritten: the row's band says enough.
+    if common * 4 < longest {
+        return None;
+    }
+    let ranges = |text: &str, tokens: &[Range<usize>], kept: &[bool]| {
+        let mut out: Vec<Range<usize>> = Vec::new();
+        // Only spaces since the last changed word: the next one joins it.
+        let mut joinable = false;
+        for (token, kept) in tokens.iter().zip(kept) {
+            if *kept {
+                joinable = joinable && text[token.clone()].trim().is_empty();
+                continue;
+            }
+            match out.last_mut() {
+                Some(last) if joinable || last.end == token.start => last.end = token.end,
+                _ => out.push(token.clone()),
+            }
+            joinable = true;
+        }
+        out
+    };
+    Some((ranges(old, &a, &keep_a), ranges(new, &b, &keep_b)))
+}
+
+/// The content spans split at the `changed` byte ranges, those on `bg`.
+fn mark_words(
+    spans: Vec<Span<'static>>,
+    changed: &[Range<usize>],
+    bg: Color,
+) -> Vec<Span<'static>> {
+    if changed.is_empty() {
+        return spans;
+    }
+    let mut out = Vec::new();
+    let mut at = 0;
+    for span in spans {
+        let text = span.content.as_ref();
+        let end = at + text.len();
+        let mut cut = at;
+        let mut edges: Vec<usize> = changed
+            .iter()
+            .flat_map(|r| [r.start, r.end])
+            .filter(|edge| *edge > at && *edge < end)
+            .collect();
+        edges.push(end);
+        for edge in edges {
+            let Some(piece) = text.get(cut - at..edge - at) else {
+                continue;
+            };
+            if piece.is_empty() {
+                continue;
+            }
+            let inside = changed.iter().any(|r| r.start <= cut && cut < r.end);
+            let style = if inside {
+                span.style.bg(bg)
+            } else {
+                span.style
+            };
+            out.push(Span::styled(piece.to_owned(), style));
+            cut = edge;
+        }
+        at = end;
+    }
+    out
 }
 
 /// Span with `style`; empty text paints a single space so the row keeps a visible background band and stays selectable.
@@ -530,32 +710,34 @@ mod tests {
     }
 
     #[test]
-    fn a_diff_draws_numbered_highlighted_lines_on_bands() {
+    fn a_diff_draws_marked_numbered_lines_on_bands_reaching_the_row_end() {
         let palette = Palette::Night;
-        let delete_fg = crate::ladder::rgb(coder_ui::coder_noir::DANGER);
-        let delete_bg = crate::ladder::rgb(coder_ui::coder_noir::DANGER_CONTAINER);
-        let insert_bg = crate::ladder::rgb(coder_ui::coder_noir::SUCCESS_CONTAINER);
+        let delete_bg = crate::ladder::rgb(coder_ui::coder_noir::DIFF_DELETE_ROW);
+        let insert_bg = crate::ladder::rgb(coder_ui::coder_noir::DIFF_INSERT_ROW);
         let lines = lines(PATCH, "src/main.rs", 4, 60, palette, ColorLevel::TrueColor);
         assert_eq!(
             text(&lines),
             [
-                "      1  fn main() {",
-                "      2      let x = 1;",
-                "      2      let x = 2;",
-                "      3  }",
-                "      … 6 unchanged lines",
-                "      10  a",
-                "      10  b",
+                "       1   fn main() {",
+                "       2 -     let x = 1;",
+                "       2 +     let x = 2;",
+                "       3   }",
+                "      ...",
+                "      10 - a",
+                "      10 + b",
             ]
         );
         for line in &lines {
             assert!(line.width() <= 60, "{line}");
         }
-        // The removed line: red number, red band to the row's end, and the
-        // keyword in its Grok Night color on that band.
+        // The removed line: its band starts at the number and runs to the
+        // row's end, under the keyword's Grok Night color.
         let removed = &lines[1];
         assert_eq!(removed.width(), 60);
-        assert_eq!(removed.spans[2].style.fg, Some(delete_fg));
+        assert_eq!(removed.spans[2].content.as_ref(), " 2");
+        assert_eq!(removed.spans[2].style.bg, Some(delete_bg));
+        assert_eq!(removed.spans[3].content.as_ref(), " - ");
+        assert!(removed.spans[2..].iter().all(|s| s.style.bg.is_some()));
         let keyword = removed
             .spans
             .iter()
@@ -570,15 +752,62 @@ mod tests {
             removed.spans.last().map(|span| span.style.bg),
             Some(Some(delete_bg))
         );
-        // The added line on green; the context line on no band.
-        assert!(
-            lines[2]
-                .spans
-                .iter()
-                .skip(4)
-                .all(|s| s.style.bg == Some(insert_bg))
+        // The added line on green from its number; the context line on none.
+        assert_eq!(lines[2].width(), 60);
+        assert_eq!(lines[2].spans[2].style.bg, Some(insert_bg));
+        assert_eq!(
+            lines[2].spans.last().map(|span| span.style.bg),
+            Some(Some(insert_bg))
         );
         assert!(lines[0].spans.iter().all(|s| s.style.bg.is_none()));
+    }
+
+    #[test]
+    fn a_replaced_line_highlights_the_words_that_changed() {
+        let patch = "@@ -251,3 +251,3 @@\n context\n-/// Reads a file inside the workspace.\n+/// Reads a file on this computer.\n end\n";
+        let delete_word = crate::ladder::rgb(coder_ui::coder_noir::DIFF_DELETE_WORD);
+        let insert_word = crate::ladder::rgb(coder_ui::coder_noir::DIFF_INSERT_WORD);
+        let lines = lines(patch, "a.rs", 0, 60, Palette::Night, ColorLevel::TrueColor);
+        assert_eq!(
+            text(&lines),
+            [
+                "  251   context",
+                "  252 - /// Reads a file inside the workspace.",
+                "  252 + /// Reads a file on this computer.",
+                "  253   end",
+            ]
+        );
+        let on = |line: &Line<'_>, bg: Color| -> String {
+            line.spans
+                .iter()
+                .filter(|s| s.style.bg == Some(bg))
+                .map(|s| s.content.as_ref())
+                .collect()
+        };
+        assert_eq!(on(&lines[1], delete_word), "inside the workspace");
+        assert_eq!(on(&lines[2], insert_word), "on this computer");
+        // Unchanged words keep the row's band.
+        let reads = lines[2]
+            .spans
+            .iter()
+            .find(|s| s.content.contains("Reads"))
+            .unwrap();
+        assert_eq!(
+            reads.style.bg,
+            Some(crate::ladder::rgb(coder_ui::coder_noir::DIFF_INSERT_ROW))
+        );
+    }
+
+    #[test]
+    fn unlike_lines_and_unpaired_lines_get_no_word_highlights() {
+        assert_eq!(word_changes("let a = 1;", "fn other(x: u8) {}"), None);
+        let (old, new) = word_changes("x.foo(1, 2)", "x.foo(1, 3)").unwrap();
+        assert_eq!(old, [9..10]);
+        assert_eq!(new, [9..10]);
+        let hunk = hunks("@@ -1 +1,2 @@\n-a b c\n+a b d\n+added\n").remove(0);
+        let texts: Vec<String> = hunk.iter().map(|l| l.text.clone()).collect();
+        let changes = word_changes_in(&hunk, &texts);
+        assert_eq!(changes, [vec![4..5], vec![4..5], vec![]]);
     }
 
     #[test]

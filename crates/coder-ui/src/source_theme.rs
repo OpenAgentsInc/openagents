@@ -25,8 +25,10 @@ pub const PATH: Color = rgb(noir::WARNING);
 pub const MD_CODE: Color = rgb(noir::ANSI[6]);
 pub const DIFF_DELETE_FG: Color = rgb(noir::DANGER);
 pub const DIFF_INSERT_FG: Color = rgb(noir::SUCCESS);
-pub const DIFF_DELETE_BG: Color = rgb(noir::DANGER_CONTAINER);
-pub const DIFF_INSERT_BG: Color = rgb(noir::SUCCESS_CONTAINER);
+pub const DIFF_DELETE_BG: Color = rgb(noir::DIFF_DELETE_ROW);
+pub const DIFF_INSERT_BG: Color = rgb(noir::DIFF_INSERT_ROW);
+pub const DIFF_DELETE_WORD: Color = rgb(noir::DIFF_DELETE_WORD);
+pub const DIFF_INSERT_WORD: Color = rgb(noir::DIFF_INSERT_WORD);
 
 /// The reference profile uses 9 by 20 CSS pixel cells and a 15-point font.
 pub fn style() -> Style {
@@ -63,6 +65,8 @@ pub const TOKENS: &[(&str, Color)] = &[
     ("DIFF_INSERT_FG", DIFF_INSERT_FG),
     ("DIFF_DELETE_BG", DIFF_DELETE_BG),
     ("DIFF_INSERT_BG", DIFF_INSERT_BG),
+    ("DIFF_DELETE_WORD", DIFF_DELETE_WORD),
+    ("DIFF_INSERT_WORD", DIFF_INSERT_WORD),
 ];
 
 /// Coder's source appearance profile for semantic DOM controls.

@@ -136,14 +136,11 @@ pub fn tool_lines(call: &ToolCall, phase: u8, width: u16) -> Vec<Line<'static>> 
             .flatten()
             .filter(|line| line.tag == diff::ChangeTag::Delete)
             .count();
-        lines[0].spans.extend([
-            styled(format!(" +{added}"), t::DIFF_INSERT_FG),
-            styled(format!(" -{removed}"), t::DIFF_DELETE_FG),
-        ]);
+        lines.push(edit_summary("Updated", call.input, added, removed, width));
         lines.extend(t::noir_lines(diff::lines(
             call.output,
             call.input,
-            0,
+            DIFF_LEAD,
             usize::from(width),
             Palette::Night,
             ColorLevel::TrueColor,
@@ -175,6 +172,26 @@ pub fn tool_lines(call: &ToolCall, phase: u8, width: u16) -> Vec<Line<'static>> 
     lines
 }
 
+/// The cells before an edit's diff rows, so their numbers sit under the
+/// summary's text.
+const DIFF_LEAD: usize = 3;
+
+/// An edit's summary under its header: `⎿  Updated <path> (+N -M)`.
+fn edit_summary(verb: &str, path: &str, added: usize, removed: usize, width: u16) -> Line<'static> {
+    let counts = format!(" (+{added} -{removed})");
+    let room = width.saturating_sub(6 + verb.len() as u16 + counts.len() as u16);
+    Line::from(vec![
+        styled("  ⎿  ", t::GRAY_DIM),
+        styled(format!("{verb} "), t::GRAY_BRIGHT),
+        styled(truncate(path, room), t::TEXT_SECONDARY),
+        styled(" (", t::GRAY_BRIGHT),
+        styled(format!("+{added}"), t::DIFF_INSERT_FG),
+        styled(" ", t::GRAY_BRIGHT),
+        styled(format!("-{removed}"), t::DIFF_DELETE_FG),
+        styled(")", t::GRAY_BRIGHT),
+    ])
+}
+
 /// A built-in file tool's transcript rows (#11168): the tool and its path or
 /// pattern, then a page count, the matches, or an edit's diff.
 pub fn file_tool_lines(
@@ -193,11 +210,6 @@ pub fn file_tool_lines(
             .to_owned()
     };
     let number = |key: &str| output.get(key).and_then(serde_json::Value::as_u64);
-    let kind = if matches!(name, "Edit" | "Write") {
-        "edit"
-    } else {
-        "read"
-    };
     let failed = output_failed(output);
     let (glyph, accent) = outcome_header(running, failed, phase);
     let subject = input
@@ -211,7 +223,7 @@ pub fn file_tool_lines(
         .get("path")
         .and_then(serde_json::Value::as_str)
         .map_or(subject.clone(), str::to_owned);
-    let mut header = vec![
+    let header = vec![
         styled(format!("{glyph} "), accent),
         Span::styled(
             name.to_owned(),
@@ -223,18 +235,6 @@ pub fn file_tool_lines(
             t::TEXT_SECONDARY,
         ),
     ];
-    if kind == "edit" && !running && !failed {
-        header.extend([
-            styled(
-                format!(" +{}", number("added").unwrap_or(0)),
-                t::DIFF_INSERT_FG,
-            ),
-            styled(
-                format!(" -{}", number("removed").unwrap_or(0)),
-                t::DIFF_DELETE_FG,
-            ),
-        ]);
-    }
     let mut lines = vec![Line::from(header)];
     let detail = |text: String, color: Color| {
         Line::from(vec![
@@ -256,14 +256,34 @@ pub fn file_tool_lines(
             if diff.is_empty() {
                 lines.push(detail("No changes".into(), t::GRAY_BRIGHT));
             } else {
+                let added = number("added").unwrap_or(0) as usize;
+                let removed = number("removed").unwrap_or(0) as usize;
+                let verb = if name == "Write" { "Wrote" } else { "Updated" };
+                lines.push(edit_summary(verb, &path, added, removed, width));
                 lines.extend(t::noir_lines(diff::lines(
                     &diff,
                     &path,
-                    0,
+                    DIFF_LEAD,
                     usize::from(width),
                     Palette::Night,
                     ColorLevel::TrueColor,
                 )));
+                // The diff stops at its line limit; say what it left out.
+                let shown = diff::hunks(&diff)
+                    .iter()
+                    .flatten()
+                    .filter(|line| line.tag != diff::ChangeTag::Equal)
+                    .count();
+                let more = (added + removed).saturating_sub(shown);
+                if more > 0 {
+                    lines.push(Line::from(vec![
+                        styled(" ".repeat(DIFF_LEAD + 2), t::GRAY_DIM),
+                        styled(
+                            format!("… {more} more {}", if more == 1 { "line" } else { "lines" }),
+                            t::GRAY,
+                        ),
+                    ]));
+                }
             }
         }
         "Read" => {
