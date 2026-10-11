@@ -697,6 +697,7 @@ fn drive(
     // The GitHub broker credential alone, kept for a turn that runs on the
     // person's own key after a pause.
     let broker = credentials(None, push.as_ref());
+    let own_computer = home.is_none();
     let credentials = credentials(key.as_ref(), push.as_ref());
     drop(key);
     let script = push.as_ref().map(|push| {
@@ -778,6 +779,31 @@ fn drive(
         record.error = Some(error);
         let _ = lease.save(&record);
     }
+    if let Some(id) = disposable(own_computer, &record) {
+        runtime.block_on(async {
+            if let Ok(client) = boat::Client::from_env().await {
+                let _ = client
+                    .delete_sandbox(&boat::models::DeleteSandboxParams {
+                        sandbox_id: id.clone(),
+                        x_ascii_confirm_delete: id.clone(),
+                        ..Default::default()
+                    })
+                    .await;
+            }
+        });
+    }
+}
+
+/// The computer to delete once a run has ended: its own fresh computer,
+/// when the run finished (done, failed, or stopped). Nothing uses it
+/// again (a follow-up fetches the branch on a fresh one, a hand-off makes
+/// its own), and stopped it would keep its disk, and its cost, forever.
+/// The person's signed-in computer (`home`, #11294) and a paused run's
+/// computer are kept.
+fn disposable(own_computer: bool, record: &Record) -> Option<String> {
+    (own_computer && record.state.terminal())
+        .then(|| record.resource.clone())
+        .flatten()
 }
 
 /// The run's credentials: the Claude credential and the GitHub broker
@@ -908,6 +934,42 @@ pub fn root(state: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_finished_run_deletes_only_its_own_computer() {
+        let spec = Spec {
+            placement: Placement::Boat,
+            mode: Mode::Coder,
+            agent: coder_cloud::claude::ENGINE.into(),
+            task: task("Fix it", "/home/user/repo"),
+            model: None,
+            reasoning: None,
+            cwd: PathBuf::from("/home/user/repo"),
+            timeout_seconds: RUN_SECONDS,
+            size: "small".into(),
+            template: None,
+            credential_names: vec![],
+        };
+        let mut r = Record::new("claude-env-1-1", spec).unwrap();
+        r.resource = Some("bx_1".into());
+        for (state, own, deleted) in [
+            (State::Completed, true, true),
+            (State::Failed, true, true),
+            (State::Cancelled, true, true),
+            (State::Completed, false, false),
+            (State::Running, true, false),
+        ] {
+            r.state = state;
+            assert_eq!(
+                disposable(own, &r).is_some(),
+                deleted,
+                "{state:?} own={own}"
+            );
+        }
+        r.state = State::Completed;
+        r.resource = None;
+        assert!(disposable(true, &r).is_none());
+    }
+
     use super::*;
     use serde_json::json;
 
