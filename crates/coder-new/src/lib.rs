@@ -2022,6 +2022,13 @@ impl App {
                         self.draft.insert("\n");
                     }
                     KeyCode::Enter if !ctrl => {
+                        if self.mode == Mode::Live
+                            && self.draft.text.trim().is_empty()
+                            && self.composer.images.is_empty()
+                            && self.send_next_queued_prompt()
+                        {
+                            return true;
+                        }
                         if self.composer.mode == composer_state::InputMode::Bash {
                             self.submit_bash();
                             return true;

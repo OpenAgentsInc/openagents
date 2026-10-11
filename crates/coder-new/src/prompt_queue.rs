@@ -149,6 +149,14 @@ impl App {
     }
 
     pub(crate) fn process_prompt_queue(&mut self) {
+        self.drain_prompt_queue(false);
+    }
+
+    pub(crate) fn send_next_queued_prompt(&mut self) -> bool {
+        self.drain_prompt_queue(true)
+    }
+
+    fn drain_prompt_queue(&mut self, immediate: bool) -> bool {
         self.acknowledge_prompts();
         if !self.queued_prompts.iter().any(|p| p.editable)
             && self.notice.as_deref() == Some(QUEUE_HINT)
@@ -156,7 +164,7 @@ impl App {
             self.notice = None;
         }
         if self.mode != Mode::Live
-            || self.live.busy
+            || (self.live.busy && !immediate)
             || self.checking_key
             || self.checking_jev
             || self.brainstorm_job.is_some()
@@ -166,21 +174,34 @@ impl App {
             || self.resume_picker.is_some()
             || self.model_picker.is_some()
         {
-            return;
+            return false;
         }
         let session = self.session_id().map(str::to_owned);
-        let Some(first) = self
-            .queued_prompts
-            .iter()
-            .position(|p| (p.editable || p.notice) && p.session == session)
-        else {
-            return;
+        let selected_agent = self
+            .selected_agent
+            .and_then(|i| self.delegations.get(i))
+            .map(|a| a.id.clone());
+        if immediate {
+            if !self.queued_prompts.iter().any(|p| {
+                (p.editable || p.notice) && p.session == session && p.agent == selected_agent
+            }) {
+                return false;
+            }
+            // Detach the worker's inbox before choosing the next pending message.
+            self.cancel_request();
+        }
+        let Some(first) = self.queued_prompts.iter().position(|p| {
+            (p.editable || p.notice)
+                && p.session == session
+                && (!immediate || p.agent == selected_agent)
+        }) else {
+            return false;
         };
         let agent = self.queued_prompts[first].agent.clone();
         let index = match &agent {
             Some(id) => {
                 let Some(i) = self.delegations.iter().position(|a| &a.id == id) else {
-                    return;
+                    return false;
                 };
                 Some(i)
             }
@@ -188,8 +209,10 @@ impl App {
         };
         let slash = self.queued_prompts[first].text.trim().starts_with('/');
         let rich = self.queued_prompts[first].composer.clone();
-        let single =
-            slash || rich.mode == crate::composer_state::InputMode::Bash || !rich.images.is_empty();
+        let single = immediate
+            || slash
+            || rich.mode == crate::composer_state::InputMode::Bash
+            || !rich.images.is_empty();
         let mut batch = Vec::new();
         let mut position = 0;
         self.queued_prompts.retain(|p| {
@@ -250,6 +273,7 @@ impl App {
         self.draft = draft;
         self.composer = composer;
         self.select_agent(selected);
+        true
     }
 }
 
@@ -295,6 +319,82 @@ mod tests {
             _ => panic!("chat request"),
         }
     }
+    #[test]
+    fn enter_sends_only_next_prompt_and_ignores_old_reply_updates() {
+        let mut app = app();
+        app.submit("first", std::path::Path::new("."));
+        let old_id = app.request.take().unwrap().id;
+        app.submit("second", std::path::Path::new("."));
+        app.submit("third", std::path::Path::new("."));
+        app.handle(crossterm::event::Event::Key(
+            crossterm::event::KeyEvent::new(
+                crossterm::event::KeyCode::Enter,
+                crossterm::event::KeyModifiers::NONE,
+            ),
+        ));
+        assert_eq!(app.queued_prompts.len(), 1);
+        assert_eq!(app.queued_prompts[0].text, "third");
+        assert!(
+            app.live
+                .entries
+                .iter()
+                .any(|e| matches!(e, live::Entry::User(t) if t == "second"))
+        );
+        let request = app.request.take().unwrap();
+        assert_ne!(request.id, old_id);
+        match request.kind {
+            Work::Microcoder { messages, .. } | Work::Chat { messages, .. } => {
+                let texts: Vec<_> = messages
+                    .iter()
+                    .filter(|m| m.role == "user")
+                    .map(|m| m.content.as_str())
+                    .collect();
+                assert_eq!(texts, ["first", "second"]);
+            }
+            _ => panic!("chat request"),
+        }
+        app.apply_update(Update::Finished {
+            id: old_id,
+            result: Err("old reply".into()),
+        });
+        assert!(app.live.busy);
+        app.acknowledge_prompts();
+        assert_eq!(
+            app.live
+                .entries
+                .iter()
+                .filter(|e| matches!(e, live::Entry::User(t) if t == "second"))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn enter_with_draft_still_queues_and_alt_enter_inserts_newline() {
+        let mut app = app();
+        app.submit("first", std::path::Path::new("."));
+        let id = app.request.take().unwrap().id;
+        app.submit("second", std::path::Path::new("."));
+        app.draft.text = "third".into();
+        app.draft.cursor = 5;
+        app.handle(crossterm::event::Event::Key(
+            crossterm::event::KeyEvent::new(
+                crossterm::event::KeyCode::Enter,
+                crossterm::event::KeyModifiers::NONE,
+            ),
+        ));
+        assert_eq!(app.queued_prompts.len(), 2);
+        assert_eq!(app.request_id, id);
+        app.handle(crossterm::event::Event::Key(
+            crossterm::event::KeyEvent::new(
+                crossterm::event::KeyCode::Enter,
+                crossterm::event::KeyModifiers::ALT,
+            ),
+        ));
+        assert_eq!(app.draft.text, "\n");
+        assert_eq!(app.queued_prompts.len(), 2);
+    }
+
     #[test]
     fn consumed_prompts_are_recorded_once_and_not_resubmitted() {
         let mut app = app();
