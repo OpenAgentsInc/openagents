@@ -1086,8 +1086,6 @@ impl Operation {
                 | Self::ControlCrew { .. }
                 | Self::ProposeHire { .. }
                 | Self::DecideHire { .. }
-                | Self::ProposeHire { .. }
-                | Self::DecideHire { .. }
                 | Self::ListHires {}
                 | Self::RecordAgentVerdict { .. }
                 | Self::NewAgent { .. }
@@ -1107,8 +1105,6 @@ impl Operation {
                 | Self::SetAgentCharter { .. }
                 | Self::CrewStatus {}
                 | Self::ControlCrew { .. }
-                | Self::ProposeHire { .. }
-                | Self::DecideHire { .. }
                 | Self::ProposeHire { .. }
                 | Self::DecideHire { .. }
                 | Self::ListHires {}

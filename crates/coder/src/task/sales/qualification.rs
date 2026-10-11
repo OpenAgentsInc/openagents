@@ -178,11 +178,6 @@ impl MarkedSuite {
         }
         Ok(())
     }
-    fn sha256(&self) -> Result<String> {
-        Ok(digest(
-            &serde_json::to_vec(self).map_err(|e| e.to_string())?,
-        ))
-    }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

@@ -6,7 +6,7 @@ use crate::task::sales::{agents, expenses};
 pub const SCHEMA: &str = "openagents.sales-claim-helper.v1";
 const PREFIX: &str = "sales-helper-";
 
-pub(crate) fn retire_lead(state: &mut super::super::State, lead: &str) {
+pub(in crate::task::sales) fn retire_lead(state: &mut super::super::State, lead: &str) {
     state.claims.helpers.retain(|_, record| record.lead != lead);
 }
 
@@ -349,7 +349,8 @@ impl Store {
         drop(executed);
         Ok(record)
     }
-    pub(crate) fn validate_sales_helper_artifacts(
+    #[cfg(test)]
+    pub(in crate::task::sales) fn validate_sales_helper_artifacts(
         &self,
         lead: &str,
         assignment: &str,
@@ -385,7 +386,7 @@ impl Store {
             &native,
         )
     }
-    pub(crate) fn validate_sales_helper_artifacts_with_native(
+    pub(in crate::task::sales) fn validate_sales_helper_artifacts_with_native(
         &self,
         lead: &str,
         assignment: &str,
