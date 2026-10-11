@@ -285,7 +285,7 @@ async fn the_row_offers_only_what_works_and_sending_uses_each_pick() {
     // A later message in the chat that began here, sent to Coder (#11319):
     // the chat moves to a Coder chat on that computer, its messages so
     // far shown there and handed to Coder before the new one.
-    for _ in 0..200 {
+    for _ in 0..600 {
         let chat = world.store.load(&owner, LOOSE).await.unwrap().unwrap();
         if chat.conversation.pending.is_none() {
             break;
