@@ -845,3 +845,35 @@ fn a_judged_step_shows_jevs_estimate_on_the_run_row_and_never_a_budget() {
     assert!(text.contains("Review the fixture implementation · Done"));
     assert!(!text.contains("% done"));
 }
+
+#[test]
+fn new_chat_heading_shows_the_version_and_disappears_on_send() {
+    let mut app = live_app();
+    let title = concat!("OpenAgents Coder v", env!("CARGO_PKG_VERSION"));
+    let buffer = draw(&mut app, 80, 24);
+    assert_eq!(row(&buffer, 0).trim(), title);
+    for x in 2..18 {
+        assert_eq!(buffer[(x, 0)].fg, theme::TEXT_PRIMARY);
+    }
+    for x in 19..(2 + title.len() as u16) {
+        assert_eq!(buffer[(x, 0)].fg, theme::GRAY_BRIGHT);
+    }
+    key(&mut app, KeyCode::Char('H'));
+    assert!(canvas(&draw(&mut app, 80, 24)).contains(title));
+    let root = tempfile::tempdir().unwrap();
+    app.submit("Hello", root.path());
+    let request = app.request.take().unwrap();
+    assert!(!canvas(&draw(&mut app, 80, 24)).contains(title));
+    app.apply_update(Update::Finished {
+        id: request.id,
+        result: Err("Offline fixture".into()),
+    });
+    assert!(!canvas(&draw(&mut app, 80, 24)).contains(title));
+}
+
+#[test]
+fn existing_chat_does_not_show_the_new_chat_heading() {
+    let mut app = live_app();
+    app.live.entries.push(Entry::User("Earlier message".into()));
+    assert!(!canvas(&draw(&mut app, 80, 24)).contains("OpenAgents Coder v"));
+}

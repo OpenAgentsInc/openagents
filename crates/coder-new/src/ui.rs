@@ -130,7 +130,7 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
     })
     .min(usize::from(area.height.saturating_sub(6))) as u16;
     let composer_height = (draft.len() as u16).clamp(1, 6) + 2;
-    let header_height = u16::from(app.selected_agent.is_some());
+    let header_height = u16::from(app.selected_agent.is_some() || new_chat_heading(app));
     let context_text = context_text(app);
     let context_height = u16::from(!context_text.is_empty());
     let reserved = rail_height + 1 + context_height + header_height;
@@ -438,7 +438,26 @@ pub(crate) fn truncate(text: &str, width: u16) -> String {
     result
 }
 
+fn new_chat_heading(app: &App) -> bool {
+    app.mode == Mode::Live
+        && app.screen == Screen::Conversation
+        && app.selected_agent.is_none()
+        && app.live.entries.is_empty()
+        && app.live.partial.is_empty()
+        && !app.live.busy
+}
+
 fn header_view(frame: &mut Frame, area: Rect, app: &App) {
+    if new_chat_heading(app) {
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                span("OpenAgents Coder ", t::TEXT_PRIMARY),
+                span(concat!("v", env!("CARGO_PKG_VERSION")), t::GRAY_BRIGHT),
+            ])),
+            area,
+        );
+        return;
+    }
     let agent = if app.screen == Screen::Conversation {
         app.selected_agent.and_then(|index| {
             if app.mode == Mode::Demo {
