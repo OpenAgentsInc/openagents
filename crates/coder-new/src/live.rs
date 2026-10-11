@@ -33,6 +33,17 @@ pub struct Chat {
     /// transcript, a follower, and an export never show them.
     pub instructions: Option<String>,
     pub(crate) cache: crate::ui::TranscriptCache,
+    /// Each model call's usage, with the index of the first entry it
+    /// produced, for the export.
+    pub rounds: Vec<(usize, crate::bundled_runtime::RoundUsage)>,
+    /// Tokens and dollars this turn's calls already added to the totals,
+    /// so the finished turn adds only the rest.
+    pub turn_counted: (u64, f64),
+    /// When each entry first appeared, in milliseconds since the epoch.
+    pub stamps: Vec<u64>,
+    /// How long each finished tool call ran, by entry index.
+    pub tool_ms: std::collections::BTreeMap<usize, u64>,
+    pub open_tools: std::collections::BTreeSet<usize>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -96,6 +107,35 @@ impl Chat {
                 model: self.partial_model.take(),
             });
         }
+    }
+
+    /// Record one model call's usage against the entries it produces.
+    pub fn round(&mut self, usage: crate::bundled_runtime::RoundUsage) {
+        self.rounds.push((self.entries.len(), usage));
+    }
+
+    /// Stamp entries that appeared since the last stamp, and time tool
+    /// calls from when they appeared to when they finished.
+    pub fn stamp(&mut self) {
+        let now = atif::now_ms();
+        self.stamps.truncate(self.entries.len());
+        self.rounds
+            .retain(|(index, _)| *index <= self.entries.len());
+        while self.stamps.len() < self.entries.len() {
+            self.stamps.push(now);
+        }
+        for (index, entry) in self.entries.iter().enumerate() {
+            if let Entry::Tool { running, .. } = entry {
+                if *running {
+                    self.open_tools.insert(index);
+                } else if self.open_tools.remove(&index) {
+                    self.tool_ms
+                        .insert(index, now.saturating_sub(self.stamps[index]));
+                }
+            }
+        }
+        self.tool_ms.retain(|index, _| *index < self.entries.len());
+        self.open_tools.retain(|index| *index < self.entries.len());
     }
 
     /// Whether this turn (everything after the newest prompt) already
@@ -301,6 +341,11 @@ pub enum Update {
         id: u64,
         text: String,
     },
+    /// One model call's usage, as soon as its stream ends.
+    Usage {
+        id: u64,
+        usage: crate::bundled_runtime::RoundUsage,
+    },
     Model {
         id: u64,
         model: String,
@@ -320,6 +365,7 @@ impl Update {
             | Self::Tool { id, .. }
             | Self::Delegation { id, .. }
             | Self::Delta { id, .. }
+            | Self::Usage { id, .. }
             | Self::Model { id, .. }
             | Self::Finished { id, .. } => *id,
         }
@@ -473,6 +519,9 @@ fn run_with_provider(
             },
             RuntimeEvent::Delegation { id: delegation, name, task, event } => {
                 let _ = sender.send(Update::Delegation { id, delegation, name, task, event: *event });
+            },
+            RuntimeEvent::Usage(usage) => {
+                let _ = sender.send(Update::Usage { id, usage: *usage });
             },
             _ => {},
         };
@@ -680,6 +729,7 @@ async fn local_turn(
         }
         RuntimeEvent::Delegation { .. }
         | RuntimeEvent::Tokens(_)
+        | RuntimeEvent::Usage(_)
         | RuntimeEvent::Progress { .. } => event_callback(event),
     };
     let result = async {

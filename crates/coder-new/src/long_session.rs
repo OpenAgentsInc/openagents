@@ -1018,6 +1018,88 @@ mod tests {
     }
 
     #[test]
+    fn each_model_call_is_counted_live_and_exported_with_its_cost_and_time() {
+        let mut app = live_app();
+        app.submit("work", std::path::Path::new("."));
+        let id = app.request.take().unwrap().id;
+        let usage = |prompt, completion, cost| crate::bundled_runtime::RoundUsage {
+            model: "deepseek/deepseek-v4.1-flash".into(),
+            prompt_tokens: prompt,
+            completion_tokens: completion,
+            reasoning_tokens: None,
+            cost: Some(cost),
+            milliseconds: 1500,
+            first_token_ms: Some(300),
+        };
+        app.apply_update(live::Update::Delta {
+            id,
+            text: "Looking.".into(),
+        });
+        app.apply_update(live::Update::Usage {
+            id,
+            usage: usage(100, 10, 0.001),
+        });
+        assert_eq!(app.live.tokens, 110);
+        let tool = |running| live::Update::Tool {
+            id,
+            name: "Run".into(),
+            input: serde_json::json!({"command":"ls"}),
+            output: if running {
+                serde_json::Value::Null
+            } else {
+                serde_json::json!({"exit":0})
+            },
+            running,
+        };
+        app.apply_update(tool(true));
+        app.apply_update(tool(false));
+        app.apply_update(live::Update::Delta {
+            id,
+            text: "Done.".into(),
+        });
+        app.apply_update(live::Update::Usage {
+            id,
+            usage: usage(200, 20, 0.002),
+        });
+        // The turn's own total includes both calls; nothing is added twice.
+        app.apply_update(live::Update::Finished {
+            id,
+            result: Ok(openrouter::Streamed {
+                text: "Looking.\n\nDone.".into(),
+                usage: openrouter::Usage {
+                    total_tokens: 330,
+                    cost: Some(0.003),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }),
+        });
+        assert_eq!(app.live.tokens, 330);
+        assert!((app.live.cost_usd - 0.003).abs() < 1e-9);
+
+        let document =
+            crate::trajectory::document(&app.live, "t", "auto", std::path::Path::new("."));
+        assert_eq!(document["final_metrics"]["total_prompt_tokens"], 300);
+        assert_eq!(document["final_metrics"]["total_completion_tokens"], 30);
+        assert_eq!(document["final_metrics"]["extra"]["model_calls"], 2);
+        assert!(
+            (document["final_metrics"]["extra"]["total_cost_usd"]
+                .as_f64()
+                .unwrap()
+                - 0.003)
+                .abs()
+                < 1e-9
+        );
+        assert_eq!(document["extra"]["timestamps"], "observed");
+        let steps = document["steps"].as_array().unwrap();
+        assert_eq!(steps[1]["metrics"]["prompt_tokens"], 100);
+        assert_eq!(steps[1]["extra"]["model_calls"][0]["cost_usd"], 0.001);
+        assert_eq!(steps[1]["extra"]["model_calls"][0]["first_token_ms"], 300);
+        assert_eq!(steps[3]["metrics"]["completion_tokens"], 20);
+        assert!(steps[2]["observation"]["results"][0]["extra"]["duration_ms"].is_u64());
+    }
+
+    #[test]
     fn the_status_line_adds_agent_dollars() {
         let mut app = live_app();
         app.live.cost_usd = 0.5;

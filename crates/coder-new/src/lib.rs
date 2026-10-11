@@ -329,6 +329,7 @@ impl App {
         let child = &mut self.delegations[index];
         match event {
             bundled_runtime::RuntimeEvent::Tokens(tokens) => child.chat.tokens = tokens,
+            bundled_runtime::RuntimeEvent::Usage(usage) => child.chat.round(*usage),
             bundled_runtime::RuntimeEvent::Text(text) => child.chat.partial.push_str(&text),
             bundled_runtime::RuntimeEvent::Model(model) => {
                 child.chat.partial_model = live::model_slug(&model)
@@ -631,6 +632,12 @@ impl App {
         if update.id() != self.request_id || self.mode != Mode::Live {
             return;
         }
+        self.live.stamp();
+        self.apply_live_update(update);
+        self.live.stamp();
+    }
+
+    fn apply_live_update(&mut self, update: live::Update) {
         // A summary request's result (#11179) never reaches the transcript.
         let Some(update) = self.finish_compaction(update) else {
             return;
@@ -755,6 +762,17 @@ impl App {
                     self.live.entries.push(live::Entry::Tool { name, input, output, running });
                 }
             }
+            live::Update::Usage { usage, .. } if self.live.busy => {
+                // The totals move as each call ends, not only when the turn
+                // finishes.
+                let tokens = usage.prompt_tokens.saturating_add(usage.completion_tokens);
+                let cost = usage.cost.unwrap_or_default();
+                self.live.tokens = self.live.tokens.saturating_add(tokens);
+                self.live.cost_usd += cost;
+                self.live.turn_counted.0 = self.live.turn_counted.0.saturating_add(tokens);
+                self.live.turn_counted.1 += cost;
+                self.live.round(usage);
+            }
             live::Update::Delta { text, .. } if self.live.busy => {
                 self.live.partial.push_str(&text);
                 self.scroll_main_to_end();
@@ -802,10 +820,14 @@ impl App {
                 }
                 match result {
                     Ok(reply) => {
-                        self.live.tokens =
-                            self.live.tokens.saturating_add(reply.usage.total_tokens);
+                        // Only what the per-call reports didn't already add.
+                        let (counted_tokens, counted_cost) =
+                            std::mem::take(&mut self.live.turn_counted);
+                        self.live.tokens = self.live.tokens.saturating_add(
+                            reply.usage.total_tokens.saturating_sub(counted_tokens),
+                        );
                         if let Some(cost) = reply.usage.cost.filter(|cost| cost.is_finite()) {
-                            self.live.cost_usd += cost;
+                            self.live.cost_usd += (cost - counted_cost).max(0.0);
                         }
                         let model = live::model_slug(&reply.model)
                             .map(|model| self.active_options.slug(&model));
@@ -831,6 +853,7 @@ impl App {
                         }
                     }
                     Err(error) => {
+                        self.live.turn_counted = (0, 0.0);
                         if error.contains("HTTP 401") {
                             self.plugins.connection = plugins::Connection::Failed(error.clone());
                         }

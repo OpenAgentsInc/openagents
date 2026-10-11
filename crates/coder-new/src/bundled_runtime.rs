@@ -193,6 +193,22 @@ pub enum RuntimeEvent {
         step: usize,
         complete: Option<f64>,
     },
+    /// One model call's usage, as the provider reported it, sent as soon as
+    /// the call's stream ends.
+    Usage(Box<RoundUsage>),
+}
+
+/// What one model call used and how long it took.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct RoundUsage {
+    pub model: String,
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub reasoning_tokens: Option<u64>,
+    /// Dollars, when the provider priced the call.
+    pub cost: Option<f64>,
+    pub milliseconds: u64,
+    pub first_token_ms: Option<u64>,
 }
 
 impl RuntimeEvent {
@@ -210,7 +226,7 @@ impl RuntimeEvent {
 
     pub(crate) fn redact(&mut self, keys: &[ApiKey]) {
         match self {
-            Self::Tokens(_) | Self::Progress { .. } => {}
+            Self::Tokens(_) | Self::Progress { .. } | Self::Usage(_) => {}
             Self::Text(text) | Self::Model(text) => *text = redact_text(text, keys),
             Self::Delegation {
                 id,

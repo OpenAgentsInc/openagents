@@ -451,6 +451,7 @@ impl Provider {
             };
             aggregate_usage(&mut aggregate.usage, &streamed.reply.usage, !have_usage);
             have_usage = true;
+            event_callback(RuntimeEvent::Usage(Box::new(round_usage(&streamed.reply))));
             if aggregate.first_text_ms.is_none() {
                 aggregate.first_text_ms = streamed.reply.first_text_ms.map(|millis| {
                     u64::try_from(started.elapsed().as_millis())
@@ -856,6 +857,23 @@ impl Provider {
     #[cfg(test)]
     pub(crate) fn with_base(key: ApiKey, base_url: &str) -> Result<Self, String> {
         Self::build(key, base_url)
+    }
+}
+
+/// One streamed call's usage for the transcript and its export.
+fn round_usage(reply: &Streamed) -> crate::bundled_runtime::RoundUsage {
+    crate::bundled_runtime::RoundUsage {
+        model: reply.model.clone(),
+        prompt_tokens: reply.usage.prompt_tokens,
+        completion_tokens: reply.usage.completion_tokens,
+        reasoning_tokens: reply
+            .usage
+            .completion_tokens_details
+            .as_ref()
+            .and_then(|details| details.reasoning_tokens),
+        cost: reply.usage.cost.filter(|cost| cost.is_finite()),
+        milliseconds: reply.milliseconds,
+        first_token_ms: reply.first_text_ms,
     }
 }
 
@@ -1345,7 +1363,11 @@ mod tests {
                 ),
                 &mut |_| {},
                 &mut |_| {},
-                &mut |event| events.push(event),
+                &mut |event| {
+                    if !matches!(event, RuntimeEvent::Usage(_)) {
+                        events.push(event)
+                    }
+                },
                 &Arc::new(AtomicBool::new(false)),
             ))
             .unwrap();
@@ -1415,7 +1437,11 @@ mod tests {
                     &execution,
                     &mut |_| {},
                     &mut |_| {},
-                    &mut |event| events.push(event),
+                    &mut |event| {
+                        if !matches!(event, RuntimeEvent::Usage(_)) {
+                            events.push(event)
+                        }
+                    },
                     &Arc::new(AtomicBool::new(false)),
                 ))
                 .unwrap();
@@ -1519,7 +1545,11 @@ mod tests {
                 &execution,
                 &mut |delta| text.push_str(delta),
                 &mut |_| {},
-                &mut |event| events.push(event),
+                &mut |event| {
+                    if !matches!(event, RuntimeEvent::Usage(_)) {
+                        events.push(event)
+                    }
+                },
                 &Arc::new(AtomicBool::new(false)),
             ))
             .unwrap();
@@ -1653,7 +1683,11 @@ mod tests {
             &execution,
             &mut |delta| text.push_str(delta),
             &mut |model| models.push(model.to_owned()),
-            &mut |event| events.push(event),
+            &mut |event| {
+                    if !matches!(event, RuntimeEvent::Usage(_)) {
+                        events.push(event)
+                    }
+                },
             &Arc::new(AtomicBool::new(false)),
         )).unwrap();
         assert_eq!(
@@ -1932,7 +1966,11 @@ mod tests {
                 ),
                 &mut |_| {},
                 &mut |_| {},
-                &mut |event| events.push(event),
+                &mut |event| {
+                    if !matches!(event, RuntimeEvent::Usage(_)) {
+                        events.push(event)
+                    }
+                },
                 &Arc::new(AtomicBool::new(false)),
             ))
             .unwrap();
@@ -2042,7 +2080,11 @@ mod tests {
                 &jev_settings(jev_plugin_endpoint(), None),
                 &mut |_| {},
                 &mut |_| {},
-                &mut |event| events.push(event),
+                &mut |event| {
+                    if !matches!(event, RuntimeEvent::Usage(_)) {
+                        events.push(event)
+                    }
+                },
                 &Arc::new(AtomicBool::new(false)),
             ))
             .unwrap();
@@ -2129,7 +2171,11 @@ mod tests {
                         &jev_settings(jev_plugin_endpoint(), None),
                         &mut |_| {},
                         &mut |_| {},
-                        &mut |event| events.push(event),
+                        &mut |event| {
+                            if !matches!(event, RuntimeEvent::Usage(_)) {
+                                events.push(event)
+                            }
+                        },
                         &cancel,
                     )
                     .await
@@ -2237,7 +2283,11 @@ mod tests {
                 &settings,
                 &mut |_| {},
                 &mut |_| {},
-                &mut |event| events.push(event),
+                &mut |event| {
+                    if !matches!(event, RuntimeEvent::Usage(_)) {
+                        events.push(event)
+                    }
+                },
                 &Arc::new(AtomicBool::new(false)),
             ))
             .unwrap();
@@ -2306,7 +2356,11 @@ mod tests {
                 &settings,
                 &mut |_| {},
                 &mut |_| {},
-                &mut |event| events.push(event),
+                &mut |event| {
+                    if !matches!(event, RuntimeEvent::Usage(_)) {
+                        events.push(event)
+                    }
+                },
                 &Arc::new(AtomicBool::new(false)),
             ))
             .unwrap();
