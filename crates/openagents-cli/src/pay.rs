@@ -504,40 +504,25 @@ struct CommandExec {
 
 impl RouteExecutor for CommandExec {
     fn execute(&self, call: &Call<'_>) -> Result<Served, String> {
-        use std::io::Write;
-        use std::process::{Command, Stdio};
-        let mut command = Command::new(&self.program);
-        command
-            .args(&self.args)
-            .env("OPENAGENTS_PAY_ROUTE", call.route)
-            .env(
-                "OPENAGENTS_PAY_PAYMENT_HASH",
-                call.payment_hash.unwrap_or_default(),
-            )
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit());
+        let mut env = vec![
+            ("OPENAGENTS_PAY_ROUTE".to_string(), call.route.to_string()),
+            (
+                "OPENAGENTS_PAY_PAYMENT_HASH".to_string(),
+                call.payment_hash.unwrap_or_default().to_string(),
+            ),
+        ];
         for (name, value) in call.params {
-            command.env(
+            env.push((
                 format!("OPENAGENTS_PAY_PARAM_{}", name.to_ascii_uppercase()),
-                value,
-            );
+                value.to_string(),
+            ));
         }
-        let mut child = command
-            .spawn()
-            .map_err(|error| format!("spawn {}: {error}", self.program))?;
-        if let Some(mut stdin) = child.stdin.take() {
-            let _ = stdin.write_all(&call.request.body);
-        }
-        let done = child.wait_with_output().map_err(|e| e.to_string())?;
-        if done.status.success() {
-            Ok(Served {
-                body: done.stdout,
-                content_type: None,
-            })
-        } else {
-            Err(format!("{} exited with {}", self.program, done.status))
-        }
+        let body = crate::paid_exec::paid_exec(&self.program, &self.args, &env, &call.request.body)
+            .map_err(|error| error.describe(&self.program))?;
+        Ok(Served {
+            body,
+            content_type: None,
+        })
     }
 }
 

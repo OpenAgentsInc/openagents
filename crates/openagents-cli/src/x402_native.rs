@@ -210,26 +210,13 @@ fn publish_output(
 }
 
 fn run_command(program: &str, args: &[String], input: &[u8]) -> Result<Vec<u8>, &'static str> {
-    use std::io::Write;
-    use std::process::{Command, Stdio};
-    let mut child = Command::new(program)
-        .args(args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .map_err(|_| "command did not start")?;
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(input);
-    }
-    let done = child
-        .wait_with_output()
-        .map_err(|_| "command did not finish")?;
-    if done.status.success() {
-        Ok(done.stdout)
-    } else {
-        Err("command exited with failure")
-    }
+    use crate::paid_exec::{PaidError, paid_exec};
+    paid_exec(program, args, &[], input).map_err(|error| match error {
+        PaidError::Spawn(_) => "command did not start",
+        PaidError::TimedOut => "command timed out",
+        PaidError::TooLarge => "command output exceeded the limit",
+        PaidError::Exited { .. } => "command exited with failure",
+    })
 }
 
 /// How an admitted purchase's input is turned into its output.

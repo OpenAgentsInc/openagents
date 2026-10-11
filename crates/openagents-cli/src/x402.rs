@@ -320,26 +320,8 @@ struct Command {
 
 impl Executor for Command {
     fn execute(&self, body: &[u8]) -> Result<Vec<u8>, String> {
-        use std::io::Write;
-        use std::process::{Command as Process, Stdio};
-        let mut child = Process::new(&self.program)
-            .args(&self.args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .map_err(|error| format!("spawn {}: {error}", self.program))?;
-        if let Some(mut stdin) = child.stdin.take() {
-            let _ = stdin.write_all(body);
-        }
-        let done = child
-            .wait_with_output()
-            .map_err(|error| error.to_string())?;
-        if done.status.success() {
-            Ok(done.stdout)
-        } else {
-            Err(format!("{} exited with {}", self.program, done.status))
-        }
+        crate::paid_exec::paid_exec(&self.program, &self.args, &[], body)
+            .map_err(|error| error.describe(&self.program))
     }
 }
 

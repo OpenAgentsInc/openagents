@@ -65,6 +65,8 @@ mod mac_serve;
 mod mcp;
 mod out;
 #[cfg(unix)]
+mod paid_exec;
+#[cfg(unix)]
 mod pay;
 #[cfg(unix)]
 mod pay_commission;
