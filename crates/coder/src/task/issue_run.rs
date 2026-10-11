@@ -91,6 +91,58 @@ pub struct Note {
     pub text: String,
 }
 
+/// Where an issue flow is now (#11250), for its row on openagents.com and
+/// the phone: set as the flow moves, read with the flow file.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "at", rename_all = "snake_case")]
+pub enum Stage {
+    /// Claimed; the engine hasn't started on the change.
+    FindingFiles,
+    /// The first turn.
+    Coding,
+    /// The repository's checks on the change.
+    Checks,
+    /// A turn that fixes what the checks, or a rebase conflict, found.
+    Fix { turn: usize },
+    /// Landing on the branch: its rebase, the checks again, the push.
+    Landing { step: LandingStep },
+    /// Handed to the landing queue as this entry.
+    Queued { entry: String },
+}
+
+/// One step of landing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LandingStep {
+    Rebase,
+    Recheck,
+    Push,
+}
+
+impl Stage {
+    /// The stage in the rows' words: `finding files`, `coding`, `checks`,
+    /// `fix turn N`, `landing: rebase` / `re-check` / `push`, `queued
+    /// <entry>`.
+    #[must_use]
+    pub fn words(&self) -> String {
+        match self {
+            Self::FindingFiles => "finding files".into(),
+            Self::Coding => "coding".into(),
+            Self::Checks => "checks".into(),
+            Self::Fix { turn } => format!("fix turn {turn}"),
+            Self::Landing { step } => format!(
+                "landing: {}",
+                match step {
+                    LandingStep::Rebase => "rebase",
+                    LandingStep::Recheck => "re-check",
+                    LandingStep::Push => "push",
+                }
+            ),
+            Self::Queued { entry } => format!("queued {entry}"),
+        }
+    }
+}
+
 /// An issue flow as its followers read it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Flow {
@@ -113,6 +165,9 @@ pub struct Flow {
     /// first base, which a rebase moved.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub files: Option<Vec<FileChange>>,
+    /// Where the flow is now, while it runs ([`Stage`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage: Option<Stage>,
 }
 
 impl Flow {
@@ -1482,6 +1537,7 @@ impl Runner {
             process_id: Some(std::process::id()),
             closing: String::new(),
             files: None,
+            stage: Some(Stage::FindingFiles),
         };
         for said in
             crate::claim::claim(&*self.tracker, &repository, number, &claim, &policy.project)
@@ -1627,6 +1683,7 @@ impl Started {
             process_id: Some(std::process::id()),
             closing: String::new(),
             files: None,
+            stage: Some(Stage::FindingFiles),
         });
         let worktree = PathBuf::from(&record.worktree);
         let mut run = Run {
@@ -1851,6 +1908,14 @@ struct Run<'a> {
 }
 
 impl Run<'_> {
+    /// The flow is at `stage` now; followers read it with the flow file.
+    fn stage(&mut self, stage: Stage) {
+        if self.flow.stage.as_ref() != Some(&stage) {
+            self.flow.stage = Some(stage);
+            let _ = save(&self.work.store, self.flow);
+        }
+    }
+
     fn note(&mut self, text: impl Into<String>) {
         self.flow.notes.push(Note {
             after_turn: self.turn,
@@ -1864,6 +1929,9 @@ impl Run<'_> {
     }
 
     fn drive(&mut self) {
+        if self.rounds == 0 {
+            self.stage(Stage::Coding);
+        }
         loop {
             match self.wait() {
                 Turn::Finished { summary } => {
@@ -1893,6 +1961,7 @@ impl Run<'_> {
                 return self.unchanged();
             }
             self.note("Running the repository's checks on the change.");
+            self.stage(Stage::Checks);
             self.checked = self.work.checks.check(self.worktree, &self.work.policy);
             if self.stopping() {
                 return self.stopped("Stopped by the person who started it.");
@@ -1919,6 +1988,7 @@ impl Run<'_> {
                 );
             }
             self.rounds += 1;
+            self.stage(Stage::Fix { turn: self.rounds });
             self.note(format!(
                 "The checks find {count} problem(s): {listed}. Coder fixes them (fix turn {} of {}).",
                 self.rounds, self.work.policy.fix_rounds
@@ -2075,6 +2145,9 @@ impl Run<'_> {
         if let Err(why) = self.commit() {
             return self.failed(&why, None);
         }
+        self.stage(Stage::Landing {
+            step: LandingStep::Rebase,
+        });
         let worktree = self.worktree;
         let plan = landing::Plan {
             worktree,
@@ -2317,6 +2390,7 @@ impl Run<'_> {
                 None,
             );
         }
+        self.stage(Stage::Queued { entry: id.clone() });
         let files = changed_by(self.worktree, &format!("{commit}~1"), &commit);
         self.flow.files = Some(files.clone());
         self.flow.link.commits = vec![commit.clone()];
@@ -2699,7 +2773,12 @@ impl landing::Hooks for Run<'_> {
         self.work.local.answer(&task, request)?;
         self.turn += 1;
         self.rounds += 1;
-        match self.wait() {
+        self.stage(Stage::Fix { turn: self.rounds });
+        let ended = self.wait();
+        self.stage(Stage::Landing {
+            step: LandingStep::Rebase,
+        });
+        match ended {
             Turn::Finished { summary } => {
                 self.summaries.push(summary);
                 Ok(())
@@ -2710,6 +2789,34 @@ impl landing::Hooks for Run<'_> {
     }
 
     fn check(&mut self) -> Vec<String> {
+        self.stage(Stage::Landing {
+            step: LandingStep::Recheck,
+        });
+        let problems = self.recheck();
+        if problems.is_empty() {
+            self.stage(Stage::Landing {
+                step: LandingStep::Push,
+            });
+        }
+        problems
+    }
+
+    fn note(&mut self, text: &str) {
+        Run::note(self, text);
+    }
+
+    fn stopping(&self) -> bool {
+        Run::stopping(self)
+    }
+
+    fn enter(&mut self) -> Option<Box<dyn std::any::Any>> {
+        self.enter_landing()
+    }
+}
+
+impl Run<'_> {
+    /// The checks again on the rebased change ([`landing::Hooks::check`]).
+    fn recheck(&mut self) -> Vec<String> {
         let held = local::git_out(self.worktree, &["rev-parse", "HEAD"])
             .map(|head| head.trim().to_owned())
             .unwrap_or_default();
@@ -2728,15 +2835,8 @@ impl landing::Hooks for Run<'_> {
         self.checked.problems.clone()
     }
 
-    fn note(&mut self, text: &str) {
-        Run::note(self, text);
-    }
-
-    fn stopping(&self) -> bool {
-        Run::stopping(self)
-    }
-
-    fn enter(&mut self) -> Option<Box<dyn std::any::Any>> {
+    /// This machine's landing lock ([`landing::Hooks::enter`]).
+    fn enter_landing(&mut self) -> Option<Box<dyn std::any::Any>> {
         const WAITING: &str = "Waiting to land behind another run…";
         let mut said = false;
         let local = match LANDING.try_lock() {

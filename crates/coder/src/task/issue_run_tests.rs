@@ -232,6 +232,63 @@ fn a_queued_change_is_pushed_and_submitted_and_the_issue_stays_open() {
         .unwrap();
     assert!(queued.contains(&entry.id) && queued.contains(&entry.branch));
     assert!(flow.closing.contains(&entry.id), "{}", flow.closing);
+    assert_eq!(
+        flow.stage,
+        Some(Stage::Queued {
+            entry: entry.id.clone()
+        }),
+        "the row says which entry it waits as"
+    );
+    let saved = load(dir.path(), &flow.task).unwrap();
+    assert_eq!(saved.stage, flow.stage, "followers read it with the flow");
+}
+
+/// The stages a flow's row shows (#11250), and how the flow file keeps
+/// them; a flow file from before stages reads as none.
+#[test]
+fn stages_read_as_the_rows_words_and_round_trip() {
+    let words: Vec<String> = [
+        Stage::FindingFiles,
+        Stage::Coding,
+        Stage::Checks,
+        Stage::Fix { turn: 2 },
+        Stage::Landing {
+            step: LandingStep::Rebase,
+        },
+        Stage::Landing {
+            step: LandingStep::Recheck,
+        },
+        Stage::Landing {
+            step: LandingStep::Push,
+        },
+        Stage::Queued {
+            entry: "20261011T080000Z-oa-dev-env-1-ab12".into(),
+        },
+    ]
+    .iter()
+    .map(Stage::words)
+    .collect();
+    assert_eq!(
+        words,
+        [
+            "finding files",
+            "coding",
+            "checks",
+            "fix turn 2",
+            "landing: rebase",
+            "landing: re-check",
+            "landing: push",
+            "queued 20261011T080000Z-oa-dev-env-1-ab12",
+        ]
+    );
+    let mut with = flow("working");
+    with.stage = Some(Stage::Fix { turn: 1 });
+    let text = serde_json::to_string(&with).unwrap();
+    assert!(text.contains(r#""stage":{"at":"fix","turn":1}"#), "{text}");
+    assert_eq!(serde_json::from_str::<Flow>(&text).unwrap(), with);
+    let mut old: serde_json::Value = serde_json::to_value(flow("working")).unwrap();
+    old.as_object_mut().unwrap().remove("stage");
+    assert_eq!(serde_json::from_value::<Flow>(old).unwrap().stage, None);
 }
 
 /// This repository's own policy lands on main after the checks: fmt, and
@@ -266,6 +323,7 @@ fn flow(outcome: &str) -> Flow {
         process_id: None,
         closing: "Closing words.".into(),
         files: None,
+        stage: None,
     }
 }
 

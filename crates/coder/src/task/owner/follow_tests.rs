@@ -123,6 +123,7 @@ async fn following_an_issue_flow_whose_process_died_ends_the_wait() {
         process_id: Some(std::process::id()),
         closing: String::new(),
         files: None,
+        stage: None,
     };
     issue_run::save(&dir, &flow).unwrap();
     let mut follow = Local::new(dir.clone()).follow("task-one", None, None);
