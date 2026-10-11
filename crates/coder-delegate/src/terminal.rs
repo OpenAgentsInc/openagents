@@ -368,6 +368,12 @@ pub fn boundary(
             home.join(".cache"),
             home.join(".local/state/claude"),
             home.join(".local/share/claude"),
+            // OpenCode's login, sessions database and log
+            // (`~/.local/share/opencode/log/opencode.log`): without it the
+            // CLI exits at once with "Unexpected error" (#11359).
+            home.join(".local/share/opencode"),
+            home.join(".local/state/opencode"),
+            home.join(".config/opencode"),
         ]
     });
     let workdir = workdir
