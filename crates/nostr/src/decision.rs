@@ -2478,6 +2478,21 @@ mod tests {
     }
 
     #[test]
+    fn a_question_the_size_of_the_routers_cli_group_is_accepted() {
+        // The chat router's cli_group question is about 33 KB (#11273).
+        let mut body = body();
+        body.questions.insert(
+            "cli_group".to_owned(),
+            json!({
+                "type": "choice",
+                "instructions": "Pick the command group.",
+                "criteria": {"a": {"what": "x".repeat(40 * 1024)}, "b": null},
+            }),
+        );
+        body.validate().unwrap();
+    }
+
+    #[test]
     fn oversize_entries_and_state_are_refused() {
         let mut body = body();
         body.questions.insert(
