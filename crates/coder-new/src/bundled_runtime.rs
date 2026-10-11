@@ -199,6 +199,9 @@ pub enum RuntimeEvent {
     /// The harness a chat's tool turns run under, sent when it is decided
     /// (#11289).
     Harness(Box<crate::harness::Run>),
+    /// Where the Claude plan's windows stand, each time Claude Code reports
+    /// one (#11292): run cards show it.
+    Plan(coder_engine_status::PlanUsage),
 }
 
 /// What one model call used and how long it took.
@@ -229,7 +232,11 @@ impl RuntimeEvent {
 
     pub(crate) fn redact(&mut self, keys: &[ApiKey]) {
         match self {
-            Self::Tokens(_) | Self::Progress { .. } | Self::Usage(_) | Self::Harness(_) => {}
+            Self::Tokens(_)
+            | Self::Progress { .. }
+            | Self::Usage(_)
+            | Self::Harness(_)
+            | Self::Plan(_) => {}
             Self::Text(text) | Self::Model(text) => *text = redact_text(text, keys),
             Self::Delegation {
                 id,

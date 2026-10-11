@@ -608,6 +608,12 @@ async fn attempt(
             return attempt;
         }
     };
+    // Where the plan stands at session start, from Claude Code's own
+    // `get_usage` (#11292): recorded beside the windows its
+    // `rate_limit_event`s report. Nothing here reads the login.
+    if let Ok(Ok(usage)) = tokio::time::timeout(USAGE_WAIT, query.get_usage()).await {
+        record_usage(host.store(), &usage, unix_now());
+    }
     let mut checked = Instant::now();
     let mut asked_at: Option<Instant> = None;
     loop {
@@ -653,6 +659,11 @@ async fn attempt(
                 transcript.assistant(&assistant.message);
             }
             SdkMessage::User(user) => transcript.user(&user.message),
+            SdkMessage::RateLimitEvent(event) => {
+                if let Ok(info) = serde_json::to_value(&event.rate_limit_info) {
+                    record_window(host.store(), &info, unix_now());
+                }
+            }
             SdkMessage::Result(result) => {
                 attempt.finished = Some(Finished::of(&result));
                 break;
@@ -676,6 +687,37 @@ async fn attempt(
         attempt.session = Some(session);
     }
     attempt
+}
+
+/// How long a session start waits for Claude Code's `get_usage`.
+const USAGE_WAIT: Duration = Duration::from_secs(5);
+
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
+/// Records one `rate_limit_event`'s window into the usage book in `store`.
+fn record_window(store: &Path, info: &Value, now: u64) {
+    if let Some(window) = microcoder_loop::usage::rate_limit_window(info, now) {
+        let _ = microcoder_loop::usage::record_reported(store, Provider::Claude, window, now);
+    }
+}
+
+/// Records the windows a `get_usage` answer names into the usage book in
+/// `store`: the same `five_hour` / `seven_day` shape as the plan's usage
+/// endpoint, at the top or under `usage`. Anything else is left unread.
+fn record_usage(store: &Path, answer: &Value, now: u64) {
+    let reading = [answer, &answer["usage"], &answer["response"]]
+        .into_iter()
+        .filter(|value| value.is_object())
+        .find_map(|value| {
+            microcoder_loop::usage::parse_claude(value.to_string().as_bytes(), now).ok()
+        });
+    for window in reading.into_iter().flat_map(|reading| reading.windows) {
+        let _ = microcoder_loop::usage::record_reported(store, Provider::Claude, window, now);
+    }
 }
 
 /// The session's options: the route's model and effort, the six tools,
@@ -990,6 +1032,41 @@ pub(crate) async fn turn(
 #[cfg(test)]
 mod unit {
     use super::*;
+
+    /// A session's `get_usage` answer and its `rate_limit_event`s land in
+    /// the usage book (#11292), and only the book is written: no login or
+    /// credentials file is read or made.
+    #[test]
+    fn get_usage_and_rate_limit_events_record_the_plan_windows() {
+        let store = tempfile::tempdir().unwrap();
+        record_usage(
+            store.path(),
+            &json!({"usage": {"five_hour": {"utilization": 62.0, "resets_at": "2026-10-11T14:20:00Z"}, "seven_day": {"utilization": 31.0}}}),
+            1_791_700_000,
+        );
+        record_window(
+            store.path(),
+            &json!({"status": "allowed", "rateLimitType": "seven_day_opus", "utilization": 0.5}),
+            1_791_700_000,
+        );
+        record_usage(store.path(), &json!({"subtype": "error"}), 1_791_700_000);
+        let book = std::fs::read(store.path().join(microcoder_loop::usage::FILE)).unwrap();
+        let usage = coder_engine_status::PlanUsage::from_book(&book, 1_791_700_000).unwrap();
+        assert_eq!(usage.five_hour.unwrap().used_percent, 62);
+        assert_eq!(usage.seven_day.unwrap().used_percent, 31);
+        assert_eq!(usage.seven_day_top_model.unwrap().used_percent, 50);
+        let mut names: Vec<_> = std::fs::read_dir(store.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        names.sort();
+        assert!(
+            names
+                .iter()
+                .all(|name| !name.contains("credentials") && !name.contains(".claude")),
+            "{names:?}"
+        );
+    }
 
     #[test]
     fn a_file_tool_inside_the_worktree_is_allowed_and_bash_asks() {

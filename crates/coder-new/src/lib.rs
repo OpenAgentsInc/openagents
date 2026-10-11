@@ -412,7 +412,8 @@ impl App {
                     *progress = Some((step, complete));
                 }
             }
-            bundled_runtime::RuntimeEvent::Delegation { .. } => {}
+            bundled_runtime::RuntimeEvent::Delegation { .. }
+            | bundled_runtime::RuntimeEvent::Plan(_) => {}
         }
         if self.selected_agent == Some(index) {
             self.scroll = u16::MAX;

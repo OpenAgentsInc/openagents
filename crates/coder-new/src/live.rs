@@ -773,7 +773,8 @@ async fn local_turn(
         | RuntimeEvent::Tokens(_)
         | RuntimeEvent::Usage(_)
         | RuntimeEvent::Harness(_)
-        | RuntimeEvent::Progress { .. } => event_callback(event),
+        | RuntimeEvent::Progress { .. }
+        | RuntimeEvent::Plan(_) => event_callback(event),
     };
     let result = async {
         let task = local_task(&messages, &execution)?;

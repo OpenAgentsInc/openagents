@@ -241,6 +241,20 @@ fn the_list_shows_one_row_per_agent_with_its_time_and_cost() {
             }),
             paused_until: (task.id == "c").then_some(50_700),
             choices: Vec::new(),
+            plan: (task.id == "b").then(|| {
+                let mut plan = coder_engine_status::PlanUsage::default();
+                plan.record(coder_engine_status::PlanWindow {
+                    kind: coder_engine_status::WindowKind::FiveHour,
+                    used_percent: 62,
+                    resets_at: Some(51_600),
+                });
+                plan.record(coder_engine_status::PlanWindow {
+                    kind: coder_engine_status::WindowKind::SevenDay,
+                    used_percent: 31,
+                    resets_at: Some(600_000),
+                });
+                plan
+            }),
         })
     };
     let rows = run_rows(&chat, read, true, 2_030);
@@ -249,6 +263,11 @@ fn the_list_shows_one_row_per_agent_with_its_time_and_cost() {
     assert_eq!(rows[0].target, Target::Run("b".into()));
     assert_eq!(rows[0].elapsed_seconds, 60 + 30, "both runs count");
     assert_eq!(rows[0].cost_usd, Some(0.75), "both runs' costs");
+    assert_eq!(
+        rows[0].plan.as_deref(),
+        Some("Claude plan: 5h 62% · week 31% · resets 14:20 UTC")
+    );
+    assert_eq!(rows[1].plan, None);
     assert_eq!(rows[0].standing, Standing::Working);
     assert!(rows[0].can_message);
     assert_eq!(
@@ -330,6 +349,7 @@ fn the_panel_offers_stop_message_and_the_transcript_and_reloads_while_working() 
         can_message: true,
         transcript: Some("/environments/env-1/runs/claude-env-1-2".into()),
         choices: Vec::new(),
+        plan: Some("Claude plan: 5h 62% · week 31% · resets 14:20 UTC".into()),
     };
     let paused = Row {
         standing: Standing::Paused(Some(50_700)),
@@ -353,6 +373,7 @@ fn the_panel_offers_stop_message_and_the_transcript_and_reloads_while_working() 
         r#"href="/environments/env-1/runs/claude-env-1-2""#,
         "Open transcript",
         "Paused until 14:05 UTC",
+        "Claude plan: 5h 62% · week 31% · resets 14:20 UTC",
         r#"hx-trigger="every 5s""#,
         "Sent.",
     ] {
@@ -467,6 +488,7 @@ fn a_paused_agent_shows_exactly_the_choices_its_limit_allows() {
                     cost_usd: None,
                     paused_until: Some(4_102_444_800),
                     choices: choices.clone(),
+                    plan: None,
                 })
             },
             true,

@@ -1425,7 +1425,7 @@ fn delegate(
                     } => app.live.tool(name, input, output, running),
                     // A step of this chat's own loop: the JSON event above
                     // carries it; a delegation's step reaches its row.
-                    RuntimeEvent::Progress { .. } => {}
+                    RuntimeEvent::Progress { .. } | RuntimeEvent::Plan(_) => {}
                     RuntimeEvent::Delegation {
                         id,
                         name,
@@ -1484,6 +1484,7 @@ fn delegate(
 fn runtime_value(event: &RuntimeEvent) -> Value {
     match event {
         RuntimeEvent::Tokens(tokens) => json!({"event":"usage","tokens":tokens}),
+        RuntimeEvent::Plan(usage) => usage.event(),
         RuntimeEvent::Usage(usage) => json!({"event":"call_usage","model":usage.model,
             "prompt_tokens":usage.prompt_tokens,"completion_tokens":usage.completion_tokens,
             "reasoning_tokens":usage.reasoning_tokens,"cost_usd":usage.cost,

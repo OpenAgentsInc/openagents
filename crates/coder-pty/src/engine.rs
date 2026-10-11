@@ -9,7 +9,12 @@
 
 use serde::{Deserialize, Serialize};
 
-pub use coder_engine_status::{Engine, Method, Notice, Plan, State, Status};
+pub use coder_engine_status::{
+    Engine, Method, Notice, Plan, PlanUsage, PlanWindow, State, Status, WindowKind,
+};
+
+/// The feature a read names to have the plan's windows in its answer.
+pub const PLAN_USAGE: &str = coder_engine_status::plan::FEATURE;
 
 use crate::wire::{Refusal, common_id, version};
 
@@ -37,12 +42,25 @@ impl EngineStatusRead {
         }
     }
 
+    /// The same read, asking for the plan's windows too (#11292).
+    #[must_use]
+    pub fn with_plan_usage(mut self) -> Self {
+        self.requires = vec![PLAN_USAGE.into()];
+        self
+    }
+
+    /// Whether the read asks for the plan's windows.
+    #[must_use]
+    pub fn wants_plan_usage(&self) -> bool {
+        self.requires.iter().any(|feature| feature == PLAN_USAGE)
+    }
+
     pub fn check(&self) -> Result<(), Refusal> {
         version(&self.v, ENGINE_STATUS)?;
-        if !self.requires.is_empty() {
+        if self.requires.iter().any(|feature| feature != PLAN_USAGE) || self.requires.len() > 1 {
             return Err(Refusal::new(
                 crate::wire::Reason::UnsupportedFeature,
-                "an engine status read requires no feature",
+                "an engine status read requires no feature but the plan's windows",
             ));
         }
         common_id(&self.request, "request")
@@ -63,6 +81,12 @@ mod tests {
         let mut other = read.clone();
         other.requires = vec!["sessions".into()];
         assert!(other.check().is_err());
+        let plan = read.clone().with_plan_usage();
+        assert!(plan.check().is_ok() && plan.wants_plan_usage());
+        assert!(!read.wants_plan_usage());
+        let mut twice = plan.clone();
+        twice.requires.push(PLAN_USAGE.into());
+        assert!(twice.check().is_err());
         let answer = crate::wire::Value::EngineStatus {
             status: Status::unavailable(Engine::Claude, 1),
         };

@@ -849,6 +849,19 @@ pub(crate) fn run_transcript_with(run: &Run, offered: &[PauseChoice]) -> Markup 
         ),
         RunState::Stopped => turns.push(note("Stopped").render()),
     }
+    // Where the Claude plan stands, as Claude Code reported it in this run
+    // (#11292); a window that has reset is left out.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    if let Some(plan) = coder_engine_status::PlanUsage::from_events(&run.events).and_then(|plan| {
+        plan.text(now, &|ms| {
+            let unix = ms / 1000;
+            format!("{:02}:{:02} UTC", unix / 3600 % 24, unix / 60 % 60)
+        })
+    }) {
+        turns.push(note(plan).render());
+    }
     if !run.state.finished() {
         turns.push(html! {
             form action=(format!("/environments/{}/runs/{}/stop", run.environment, run.id)) method="post" {

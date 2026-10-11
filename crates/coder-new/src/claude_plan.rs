@@ -256,46 +256,43 @@ pub async fn admit(
     }
 }
 
+/// The plan's windows as Claude Code last reported them in this process,
+/// typed for the run's event and the cards (#11292). `None` before any
+/// report.
+#[must_use]
+pub fn plan_usage() -> Option<coder_engine_status::PlanUsage> {
+    use coder_engine_status::{PlanUsage, PlanWindow, WindowKind};
+    use microcoder_loop::usage::WindowName;
+    let seen = WINDOWS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut usage = PlanUsage {
+        warning: seen.1,
+        ..PlanUsage::default()
+    };
+    for window in &seen.0 {
+        let kind = match window.window {
+            WindowName::FiveHour => WindowKind::FiveHour,
+            WindowName::SevenDay => WindowKind::SevenDay,
+            WindowName::SevenDayTopModel => WindowKind::SevenDayTopModel,
+            WindowName::Primary | WindowName::Secondary => continue,
+        };
+        usage.record(PlanWindow {
+            kind,
+            used_percent: coder_engine_status::plan::percent(window.used_fraction),
+            resets_at: window.resets_at,
+        });
+    }
+    usage.windows().next().is_some().then_some(usage)
+}
+
 /// The status line's reading of the plan, from Claude Code's own reports:
 /// "Claude plan: 5h 62% · week 31% · resets 14:20", with a quiet "near the
 /// limit" after a warning. `None` before any report, or once every window
 /// reported has reset. `clock` writes a Unix-milliseconds time.
 #[must_use]
 pub fn status_text(now: u64, clock: &dyn Fn(u64) -> String) -> Option<String> {
-    use microcoder_loop::usage::WindowName;
-    let seen = WINDOWS
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner);
-    let current: Vec<_> = seen
-        .0
-        .iter()
-        .filter(|window| window.resets_at.is_none_or(|at| at > now))
-        .collect();
-    if current.is_empty() {
-        return None;
-    }
-    let mut parts: Vec<String> = current
-        .iter()
-        .map(|window| {
-            let name = match window.window {
-                WindowName::FiveHour => "5h",
-                WindowName::SevenDay => "week",
-                WindowName::SevenDayTopModel => "top model week",
-                WindowName::Primary | WindowName::Secondary => "window",
-            };
-            format!("{name} {:.0}%", window.used_fraction * 100.0)
-        })
-        .collect();
-    let fullest = current
-        .iter()
-        .max_by(|a, b| a.used_fraction.total_cmp(&b.used_fraction));
-    if let Some(at) = fullest.and_then(|window| window.resets_at) {
-        parts.push(format!("resets {}", clock(at * 1000)));
-    }
-    if seen.1 {
-        parts.push("near the limit".into());
-    }
-    Some(format!("Claude plan: {}", parts.join(" · ")))
+    plan_usage()?.text(now, clock)
 }
 
 /// The `/agents` panel's line about the plan.
@@ -445,7 +442,24 @@ mod tests {
             status_text(now + 61, &clock).as_deref(),
             Some("Claude plan: week 31% · resets t1600 · near the limit")
         );
+        // The same windows ride in the run's event for the cards (#11292),
+        // and a delegation's copy decodes back to them.
+        let usage = plan_usage().unwrap();
+        assert_eq!(usage.five_hour.unwrap().used_percent, 62);
+        assert_eq!(usage.seven_day.unwrap().resets_at, Some(now + 600));
+        assert!(usage.warning);
+        let event = usage.event();
+        assert_eq!(event["event"], "plan_usage");
+        assert!(matches!(
+            crate::delegation_events::decode(&event, 0),
+            Some(crate::bundled_runtime::RuntimeEvent::Plan(decoded)) if decoded == usage
+        ));
+        assert_eq!(
+            coder_engine_status::PlanUsage::from_events(&[event]),
+            Some(usage)
+        );
         reset_for_test(DEFAULT_SLOTS);
+        assert_eq!(plan_usage(), None);
     }
 
     #[test]

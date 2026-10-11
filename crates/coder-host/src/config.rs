@@ -204,6 +204,9 @@ pub struct Config {
 pub struct EngineStatus {
     pub program: PathBuf,
     pub notices: Option<PathBuf>,
+    /// The home whose usage book holds the plan windows Claude Code
+    /// reported here (#11292); `None` reports none.
+    pub usage_home: Option<PathBuf>,
 }
 
 impl EngineStatus {
@@ -214,6 +217,7 @@ impl EngineStatus {
             program: coder_engine_status::claude::PROGRAM.into(),
             notices: std::env::var_os("HOME")
                 .map(|home| coder_engine_status::claude::notice_dir(home.as_ref())),
+            usage_home: std::env::var_os("HOME").map(PathBuf::from),
         }
     }
 }

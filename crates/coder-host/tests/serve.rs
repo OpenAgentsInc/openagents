@@ -772,15 +772,44 @@ async fn an_engine_status_read_answers_only_the_typed_status() {
     fixture.running.shutdown().await;
     let mut config = Config::new(access, vec![fixture.relay.clone()], 6);
     config.policy = POLICY;
+    // The plan windows Claude Code reported here, in the usage book.
+    let usage_home = fixture.temp.path().join("home");
+    let book = coder_engine_status::plan::book_path(&usage_home);
+    std::fs::create_dir_all(book.parent().unwrap()).unwrap();
+    std::fs::write(
+        &book,
+        format!(
+            r#"{{"schema":"openagents.coder.provider-usage.v1","entries":[{{"provider":"claude","attempted_at":1,"next_probe_at":1,"reading":{{"provider":"claude","observed_at":1,"limit_reached":false,"windows":[{{"window":"five_hour","used_fraction":0.62,"resets_at":{}}}]}}}}]}}"#,
+            now + 3_600
+        ),
+    )
+    .unwrap();
     config.engine_status = Some(coder_host::config::EngineStatus {
         program,
         notices: Some(notices),
+        usage_home: Some(usage_home),
     });
     fixture.running = coder_host::start(config, Arc::new(NoTasks)).await.unwrap();
 
     let link = fixture.direct(&phone).await;
+    // A reader that asks for the plan's windows gets them; one that does
+    // not (a client from before them) never sees the field.
+    let planned = link
+        .terminal(TermRequest::EngineStatus(
+            EngineStatusRead::new(coder_host::reach::new_id(), Engine::Claude).with_plan_usage(),
+        ))
+        .await
+        .unwrap();
+    let Some(Value::EngineStatus { status }) = planned.value else {
+        panic!("plan: {planned:?}")
+    };
+    assert_eq!(
+        status.plan_usage.unwrap().five_hour.unwrap().used_percent,
+        62
+    );
     let answer = link.terminal(read()).await.unwrap();
     let raw = serde_json::to_string(&answer).unwrap();
+    assert!(!raw.contains("plan_usage"), "{raw}");
     assert!(
         !raw.contains("sk-ant") && !raw.contains("someone@"),
         "{raw}"

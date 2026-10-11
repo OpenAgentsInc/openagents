@@ -312,6 +312,9 @@ pub(super) struct Row {
     pub transcript: Option<String>,
     /// While a usage limit pauses it: what the person may do (#11293).
     pub choices: Vec<PauseChoice>,
+    /// Where the Claude plan stands, as Claude Code last reported it in
+    /// this run: "Claude plan: 5h 62% · week 31% · resets 14:20 UTC".
+    pub plan: Option<String>,
 }
 
 impl Row {
@@ -337,6 +340,8 @@ pub(super) struct Live {
     pub paused_until: Option<u64>,
     /// The pause choices this viewer has, while it is paused.
     pub choices: Vec<PauseChoice>,
+    /// The plan windows Claude Code reported during the run (#11292).
+    pub plan: Option<coder_engine_status::PlanUsage>,
 }
 
 /// The panel's rows for the chat's runs: one per agent (its newest run,
@@ -426,6 +431,9 @@ pub(super) fn run_rows(
             } else {
                 Vec::new()
             },
+            plan: live
+                .plan
+                .and_then(|plan| plan.text(now_unix, &|ms| clock(ms / 1000))),
         });
     }
     rows
@@ -468,6 +476,7 @@ pub(super) fn computer_rows(agents: &phone_api::Agents, session: &str, now_unix:
                 waiting: 0,
                 transcript: None,
                 choices: Vec::new(),
+                plan: None,
             });
         }
     }
@@ -506,6 +515,9 @@ pub(super) fn render(chat_id: &str, csrf: &str, rows: &[Row], notice: Option<&st
                             @if let Some(cost) = row.cost_usd { " · " (agent_fleet::dollars(cost)) }
                             @if row.waiting == 1 { " · 1 message waiting" }
                             @else if row.waiting > 1 { " · " (row.waiting) " messages waiting" }
+                        }
+                        @if let Some(plan) = &row.plan {
+                            span.oa-task-row-detail.oa-agents-plan { (plan) }
                         }
                         span.oa-chat-status.oa-task-row-status data-status=(row.standing.key()) {
                             @if row.standing == Standing::Working {
@@ -583,6 +595,7 @@ async fn rows(app: &App, headers: &HeaderMap, chat: &Conversation) -> Vec<Row> {
                 cost_usd: run.cost_usd,
                 paused_until: run.paused_until,
                 choices: studio.claude_choices(&task.environment, &task.id, saved),
+                plan: coder_engine_status::PlanUsage::from_events(&run.events),
             })
         },
         links,

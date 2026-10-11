@@ -2147,8 +2147,9 @@ pub fn recheck(
 
 /// Read the usage book an engine report shows.
 ///
-/// When the policy's usage probe is off, or there is no policy, this
-/// returns an empty book and does not call `fetch`. A cached read loads
+/// When the policy's usage probe is off, this keeps only the plan windows
+/// Claude Code itself reported here (#11292), and with no policy it is
+/// empty; neither calls `fetch`. A cached read loads
 /// `usage.json`. A refresh probes only the admitted providers that have a
 /// usage endpoint, and only when the probe is on; each of `fresh` is read
 /// now rather than when its cache allows ([`usage::refresh_with`]).
@@ -2166,7 +2167,10 @@ pub fn usage_book(
         return usage::Book::default();
     };
     if policy.engine.usage_probe.is_none() {
-        return usage::Book::default();
+        let mut book = usage::Book::load_with(store, identify);
+        book.entries
+            .retain(|entry| entry.provider == Provider::Claude);
+        return book;
     }
     if !refresh {
         return usage::Book::load_with(store, identify);
@@ -2296,7 +2300,9 @@ fn account_lines(
 
 fn route_usage(probes: bool, provider: Provider, usage: &usage::Book, now: u64) -> RouteUsage {
     if !probes {
-        return RouteUsage::Off;
+        // Claude Code reports its plan's windows during each run without a
+        // probe (#11292): show them until they reset.
+        return reported_claude(provider, usage, now).unwrap_or(RouteUsage::Off);
     }
     if !Provider::PROBED.contains(&provider) {
         return RouteUsage::Unsupported;
@@ -2331,6 +2337,37 @@ fn route_usage(probes: bool, provider: Provider, usage: &usage::Book, now: u64) 
     RouteUsage::Unknown {
         reason: reason.into(),
     }
+}
+
+/// The plan windows Claude Code itself reported, less those that reset.
+fn reported_claude(provider: Provider, usage: &usage::Book, now: u64) -> Option<RouteUsage> {
+    if provider != Provider::Claude {
+        return None;
+    }
+    let reading = usage.entry(provider)?.reading.as_ref()?;
+    let current: Vec<&usage::Window> = reading
+        .windows
+        .iter()
+        .filter(|window| window.resets_at.is_some_and(|at| at > now))
+        .collect();
+    let used_percent = current
+        .iter()
+        .map(|window| percent(window.used_fraction))
+        .max()?;
+    Some(RouteUsage::Windows {
+        windows: current
+            .iter()
+            .map(|window| UsageWindow {
+                name: window.window.as_str().into(),
+                label: window_label(window.window).into(),
+                used_percent: percent(window.used_fraction),
+                resets_at: window.resets_at,
+                resets: window.resets_at.and_then(reset_text),
+            })
+            .collect(),
+        limit_reached: reading.limit_reached,
+        used_percent,
+    })
 }
 
 fn provider_name(provider: Provider) -> &'static str {
@@ -5045,6 +5082,51 @@ mod tests {
         );
         assert!(!report.refresh_due);
         assert_eq!(report.usage_probe, None);
+    }
+
+    /// With probes off, the plan windows Claude Code reported during its
+    /// own runs still show on the Claude route until they reset (#11292).
+    #[test]
+    fn claude_codes_own_window_reports_show_with_probes_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let now = 1_790_572_210;
+        for (window, fraction, reset) in
+            [("five_hour", 0.62, now + 600), ("seven_day", 0.31, now - 1)]
+        {
+            usage::record_reported(
+                dir.path(),
+                Provider::Claude,
+                usage::rate_limit_window(
+                    &serde_json::json!({"rateLimitType": window, "utilization": fraction, "resetsAt": reset}),
+                    now,
+                )
+                .unwrap(),
+                now,
+            )
+            .unwrap();
+        }
+        let policy = routed(1);
+        let book = usage_book(Some(&policy), dir.path(), now, true, &[], explode, no_login);
+        let report = engine_report(Some(&policy), now, &|_| true, &book);
+        for route in &report.routes {
+            if route.provider == "claude" {
+                let RouteUsage::Windows {
+                    windows,
+                    used_percent,
+                    ..
+                } = &route.usage
+                else {
+                    panic!("{route:?}")
+                };
+                assert_eq!(*used_percent, 62);
+                assert_eq!(windows.len(), 1, "the week has reset");
+                assert_eq!(windows[0].label, "5 hours");
+            } else {
+                assert_eq!(route.usage, RouteUsage::Off);
+            }
+        }
+        assert!(report.routes.iter().any(|route| route.provider == "claude"));
+        assert!(!report.refresh_due);
     }
 
     #[test]

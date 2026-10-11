@@ -217,6 +217,10 @@ fn line(text: &str, kept: &mut String, emit: &mut dyn FnMut(RuntimeEvent)) {
                     let now = coder_delegate::limit::now();
                     let info = &value["rate_limit_info"];
                     crate::claude_plan::observe_rate_limit(info, now);
+                    // The run's cards show where the plan stands (#11292).
+                    if let Some(usage) = crate::claude_plan::plan_usage() {
+                        emit(RuntimeEvent::Plan(usage));
+                    }
                     // Claude Code's own report of where the plan stands is
                     // the usage reading (#11233); nothing reads the login.
                     if let Some(window) = microcoder_loop::usage::rate_limit_window(info, now) {
