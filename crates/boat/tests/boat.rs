@@ -162,6 +162,12 @@ async fn commands_prompts_and_stops_are_never_retried() {
         seen.iter().map(|r| r.method.as_str()).collect::<Vec<_>>(),
         ["POST", "POST", "POST"]
     );
+    // A body-less POST still says its length (Google's front end answers
+    // 411 otherwise).
+    assert_eq!(
+        seen[2].headers.get("content-length").map(String::as_str),
+        Some("0")
+    );
 }
 
 #[tokio::test]

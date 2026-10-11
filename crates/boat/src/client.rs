@@ -367,6 +367,10 @@ impl Client {
         headers: &[(&str, String)],
         body: Option<&Value>,
     ) -> Result<reqwest::Response> {
+        // A POST, PUT or PATCH with no body still says its length: Google's
+        // front end (Cloud Run, where our own service runs) answers 411 to
+        // one that does not.
+        let says_length = matches!(method, Method::POST | Method::PUT | Method::PATCH);
         let mut request = self.http.request(method, url).query(query);
         for (name, value) in headers {
             let mut value = HeaderValue::from_str(value)
@@ -386,6 +390,10 @@ impl Client {
         }
         if let Some(body) = body {
             request = request.json(body);
+        } else if says_length {
+            request = request
+                .header(reqwest::header::CONTENT_LENGTH, "0")
+                .body(Vec::<u8>::new());
         }
         let response = request.send().await.map_err(|_| Error::Transport)?;
         if !response.status().is_success() {
