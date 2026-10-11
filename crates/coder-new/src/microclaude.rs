@@ -3,8 +3,10 @@
 //! (`crates/claude_agent_sdk`), on Haiku 5.5 alone.
 //!
 //! It is a small agent rather than a full one: a turn is one SDK session
-//! pinned to [`MODEL`], with the basic file tools only ([`TOOLS`]) and no
-//! settings files or MCP servers. A tool call is drawn with Coder's own
+//! pinned to [`MODEL`], with the basic file tools ([`TOOLS`]) and no
+//! settings files or outside MCP servers. While the Solver plugin is on, one
+//! in-process tool beside them hands an issue to Solver
+//! ([`run_with_solver`]). A tool call is drawn with Coder's own
 //! widgets, the same shapes the briefed agent makes
 //! (`crate::issue_run::agent`), so a Read shows a line count, an Edit shows
 //! a diff, and Grep and Glob show their matches.
@@ -71,7 +73,21 @@ pub fn allows(tool: &str) -> bool {
 /// conversation, within [`TASK_LIMIT`].
 #[must_use]
 pub fn task(messages: &[Message]) -> String {
-    let prefix = format!("{}\nThe conversation:\n", crate::identity::prompt(MODEL));
+    task_with(messages, false)
+}
+
+/// [`task`], telling the model about the solver tool when `solver` is on.
+#[must_use]
+pub fn task_with(messages: &[Message], solver: bool) -> String {
+    let tools = if solver {
+        crate::solver_plugin::instructions()
+    } else {
+        ""
+    };
+    let prefix = format!(
+        "{}\n{tools}The conversation:\n",
+        crate::identity::prompt(MODEL)
+    );
     let allowance = TASK_LIMIT.saturating_sub(prefix.len());
     format!(
         "{prefix}{}",
@@ -143,6 +159,60 @@ pub async fn run_with(
     cancel: &AtomicBool,
     emit: &mut dyn FnMut(RuntimeEvent),
 ) -> Result<Streamed, String> {
+    run_inner(prompt, cwd, tools, server, None, cancel, emit).await
+}
+
+/// Runs one turn like [`run`], with the Solver plugin's tool beside the
+/// file tools: an issue the model hands it runs as a delegation whose
+/// progress reaches `emit` while the turn waits, and stopping the turn
+/// stops the run ([`crate::solver_plugin`]).
+///
+/// # Errors
+/// As [`run`].
+pub async fn run_with_solver(
+    prompt: &str,
+    cwd: &Path,
+    cancel: &AtomicBool,
+    emit: &mut dyn FnMut(RuntimeEvent),
+) -> Result<Streamed, String> {
+    let (sender, receiver) = tokio::sync::mpsc::unbounded_channel();
+    let stop = std::sync::Arc::new(AtomicBool::new(false));
+    let server = crate::solver_plugin::mcp_server(cwd.to_owned(), sender, stop.clone());
+    let delegations = Delegations { receiver, stop };
+    run_inner(
+        prompt,
+        cwd,
+        &TOOLS,
+        Some(server),
+        Some(delegations),
+        cancel,
+        emit,
+    )
+    .await
+}
+
+/// Delegation events a tool server sends while the turn waits on it, and
+/// the flag that stops what it runs when the turn ends.
+struct Delegations {
+    receiver: tokio::sync::mpsc::UnboundedReceiver<RuntimeEvent>,
+    stop: std::sync::Arc<AtomicBool>,
+}
+
+impl Drop for Delegations {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+}
+
+async fn run_inner(
+    prompt: &str,
+    cwd: &Path,
+    tools: &[&str],
+    server: Option<claude_agent_sdk::SdkMcpServer>,
+    mut delegations: Option<Delegations>,
+    cancel: &AtomicBool,
+    emit: &mut dyn FnMut(RuntimeEvent),
+) -> Result<Streamed, String> {
     if !crate::approval::tools_allowed() {
         return Err("This host refuses every tool, so microclaude cannot work here.".into());
     }
@@ -181,7 +251,20 @@ pub async fn run_with(
             let _ = query.kill().await;
             return Err(STOPPED.into());
         }
-        let Some(message) = query.next().await else {
+        let next = match delegations.as_mut() {
+            None => query.next().await,
+            Some(delegations) => tokio::select! {
+                biased;
+                Some(event) = delegations.receiver.recv() => {
+                    emit(event);
+                    continue;
+                }
+                message = query.next() => message,
+                // Look at `cancel` while a delegation works quietly.
+                () = tokio::time::sleep(std::time::Duration::from_millis(250)) => continue,
+            },
+        };
+        let Some(message) = next else {
             break;
         };
         match message {
@@ -216,6 +299,10 @@ pub async fn run_with(
                         }
                         Some("tool_use") => {
                             let name = block["name"].as_str().unwrap_or_default();
+                            // The delegation's own entry stands for this call.
+                            if crate::solver_plugin::is_mcp_tool(name) {
+                                continue;
+                            }
                             let sdk_input = block["input"].clone();
                             let (coder_name, coder_input) =
                                 crate::issue_run::agent::coder_call(name, &sdk_input, cwd, &[]);
@@ -272,6 +359,11 @@ pub async fn run_with(
             }
             Ok(SdkMessage::Result(result)) => {
                 let _ = query.kill().await;
+                if let Some(delegations) = delegations.as_mut() {
+                    while let Ok(event) = delegations.receiver.try_recv() {
+                        emit(event);
+                    }
+                }
                 let mut done = finish(result)?;
                 done.milliseconds = elapsed_ms(started);
                 done.first_text_ms = first_text_ms;

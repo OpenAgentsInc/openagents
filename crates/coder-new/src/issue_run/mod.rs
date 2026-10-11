@@ -378,6 +378,24 @@ impl Feed {
     pub fn next(&self) -> Option<Event> {
         self.events.recv().ok()
     }
+
+    /// The changes that arrived since the last call, and whether the run
+    /// has ended (its transcript is gone, so no more will arrive).
+    pub fn poll(&self) -> (Vec<Event>, bool) {
+        let mut events = Vec::new();
+        loop {
+            match self.events.try_recv() {
+                Ok(event) => events.push(event),
+                Err(mpsc::TryRecvError::Empty) => return (events, false),
+                Err(mpsc::TryRecvError::Disconnected) => return (events, true),
+            }
+        }
+    }
+
+    /// Asks the run to stop; it ends at its next step.
+    pub fn stop(&self) {
+        self.cancel.store(true, Ordering::Relaxed);
+    }
 }
 
 /// The transcript the run writes: it sends each change to the terminal and

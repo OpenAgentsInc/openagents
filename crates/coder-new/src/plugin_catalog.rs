@@ -146,16 +146,25 @@ mod tests {
         let start = Instant::now();
         command_p(&mut app);
         refresh(&mut loader, &mut app, start);
-        assert_eq!(app.plugins.definitions().count(), 8);
+        assert_eq!(
+            app.plugins.definitions().count(),
+            crate::plugin_definition::DEFINITIONS.len()
+        );
         assert!(!layout.extensions().exists());
 
         package(&layout, "z-last", "0.1.0");
         loader.sync_at(&mut app, start + REFRESH_INTERVAL / 2);
         assert!(loader.active.is_none());
-        assert_eq!(app.plugins.definitions().count(), 8);
+        assert_eq!(
+            app.plugins.definitions().count(),
+            crate::plugin_definition::DEFINITIONS.len()
+        );
         refresh(&mut loader, &mut app, start + REFRESH_INTERVAL);
-        assert_eq!(app.plugins.definitions().count(), 9);
-        app.plugins.selected = 8;
+        assert_eq!(
+            app.plugins.definitions().count(),
+            crate::plugin_definition::DEFINITIONS.len() + 1
+        );
+        app.plugins.selected = crate::plugin_definition::DEFINITIONS.len();
         assert_eq!(app.plugins.selected_definition().name, "Plugin z-last");
         let selected = app.plugins.selected_definition().id.to_owned();
 
@@ -163,7 +172,10 @@ mod tests {
         package(&layout, "z-last", "0.2.0");
         background::plugins::set_enabled(&layout, &selected, true).unwrap();
         refresh(&mut loader, &mut app, start + REFRESH_INTERVAL * 2);
-        assert_eq!(app.plugins.selected, 9);
+        assert_eq!(
+            app.plugins.selected,
+            crate::plugin_definition::DEFINITIONS.len() + 1
+        );
         assert_eq!(app.plugins.selected_definition().id, selected);
         assert_eq!(app.plugins.selected_installed().unwrap().version, "0.2.0");
         assert!(app.plugins.enabled_for(&selected));
@@ -176,7 +188,10 @@ mod tests {
         package(&layout, "b-middle", "0.1.0");
         command_p(&mut app);
         refresh(&mut loader, &mut app, start + REFRESH_INTERVAL * 2);
-        assert_eq!(app.plugins.definitions().count(), 11);
+        assert_eq!(
+            app.plugins.definitions().count(),
+            crate::plugin_definition::DEFINITIONS.len() + 3
+        );
         assert_eq!(app.plugins.selected_definition().id, selected);
         assert!(app.request.is_none());
     }
@@ -192,7 +207,7 @@ mod tests {
         app.open_plugins();
         let start = Instant::now();
         refresh(&mut loader, &mut app, start);
-        app.plugins.selected = 8;
+        app.plugins.selected = crate::plugin_definition::DEFINITIONS.len();
         app.open_plugin_settings();
         refresh(&mut loader, &mut app, start);
         std::fs::remove_dir_all(dir).unwrap();
@@ -234,7 +249,10 @@ mod tests {
             loader.sync(&mut app);
             assert!(loader.active.is_none());
             assert!(loader.last_scan.is_none());
-            assert_eq!(app.plugins.definitions().count(), 8);
+            assert_eq!(
+                app.plugins.definitions().count(),
+                crate::plugin_definition::DEFINITIONS.len()
+            );
         }
     }
 
@@ -261,13 +279,16 @@ mod tests {
 
         sender.send(old).unwrap();
         loader.sync_at(&mut app, now);
-        assert_eq!(app.plugins.definitions().count(), 8);
+        assert_eq!(
+            app.plugins.definitions().count(),
+            crate::plugin_definition::DEFINITIONS.len()
+        );
         assert_eq!(
             loader.active.as_ref().unwrap().revision,
             app.plugins.catalog_revision
         );
         refresh(&mut loader, &mut app, now);
-        app.plugins.selected = 8;
+        app.plugins.selected = crate::plugin_definition::DEFINITIONS.len();
         assert_eq!(app.plugins.selected_definition().name, "Plugin current");
     }
 }

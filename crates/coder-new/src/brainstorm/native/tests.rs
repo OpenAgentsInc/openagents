@@ -629,6 +629,7 @@ async fn provider_dispatch_uses_host_refs_and_keeps_response_strings_as_bounded_
     execution.microcoder = false;
     execution.cli = false;
     execution.acp = false;
+    execution.solver = false;
     execution.jev_enabled = false;
     let final_reply = "data: {\"choices\":[{\"delta\":{\"content\":\"Finished.\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n".into();
     let (base, server) = model_sequence(vec![

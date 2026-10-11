@@ -26,6 +26,10 @@ struct Preferences {
     microcoder: bool,
     cli: bool,
     acp: bool,
+    /// The Solver plugin; on unless turned off (files saved before it
+    /// existed have no field).
+    #[serde(default = "on")]
+    solver: bool,
     jev_enabled: bool,
     jev_model: String,
     jev_endpoint: String,
@@ -47,6 +51,7 @@ impl Default for Preferences {
             microcoder: true,
             cli: true,
             acp: true,
+            solver: true,
             jev_enabled: true,
             jev_model: jev::defaults::MODEL.into(),
             jev_endpoint: crate::jev_plugin::DEFAULT_ENDPOINT.into(),
@@ -57,6 +62,10 @@ impl Default for Preferences {
             gce: crate::cloud_settings::Configuration::gce(),
         }
     }
+}
+
+const fn on() -> bool {
+    true
 }
 
 fn write_key<S: Serializer>(key: &Option<ApiKey>, serializer: S) -> Result<S::Ok, S::Error> {
@@ -160,6 +169,7 @@ pub struct BundledSettings {
     pub microcoder: bool,
     pub cli: bool,
     pub acp: bool,
+    pub solver: bool,
     pub jev_enabled: bool,
     pub acp_agents: Vec<AcpAgent>,
     pub focus: SettingsFocus,
@@ -197,6 +207,7 @@ impl Default for BundledSettings {
             microcoder: true,
             cli: true,
             acp: true,
+            solver: true,
             jev_enabled: true,
             acp_agents: Vec::new(),
             focus: SettingsFocus::ApiKey,
@@ -232,6 +243,7 @@ impl BundledSettings {
             microcoder: self.microcoder,
             cli: self.cli,
             acp: self.acp,
+            solver: self.solver,
             jev_enabled: self.jev_enabled,
             jev_model: self.jev_model.clone(),
             jev_endpoint: self.jev_endpoint.clone(),
@@ -250,6 +262,7 @@ impl BundledSettings {
         self.microcoder = value.microcoder;
         self.cli = value.cli;
         self.acp = value.acp;
+        self.solver = value.solver;
         self.jev_enabled = value.jev_enabled;
         self.jev_model = value.jev_model;
         self.jev_endpoint = value.jev_endpoint;
@@ -364,6 +377,7 @@ impl BundledSettings {
             "microcoder" => self.microcoder,
             "openagents-cli" => self.cli,
             "acp-subagents" => self.acp,
+            crate::solver_plugin::PLUGIN => self.solver,
             "jev" => self.jev_enabled,
             crate::brainstorm::PLUGIN => self.brainstorm.preferences.enabled,
             _ => false,
@@ -378,6 +392,7 @@ impl BundledSettings {
             "microcoder" => &mut value.microcoder,
             "openagents-cli" => &mut value.cli,
             "acp-subagents" => &mut value.acp,
+            crate::solver_plugin::PLUGIN => &mut value.solver,
             "jev" => &mut value.jev_enabled,
             crate::brainstorm::PLUGIN => &mut value.brainstorm.enabled,
             _ => return false,

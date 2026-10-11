@@ -27,7 +27,7 @@ macro_rules! command_usage {
             "usage: openagents coder COMMAND [OPTIONS]
   status                              Provider, model, plugins, and working directory.
   chat [-p TEXT | --prompt-file FILE | --stdin] [--session ID] [--delegation ID]
-       [--instructions TEXT | --instructions-file FILE]",
+       [--instructions TEXT | --instructions-file FILE] [--mode auto|microclaude]",
             $demo,
             "
                                       Run the same chat and tools as the terminal.
@@ -36,7 +36,8 @@ macro_rules! command_usage {
        [--job ID] [--size small|default|large|xlarge] [--template NAME]
        [--credential-env NAME] [--timeout SECONDS]
        [--revision REF] [--workspace-path PATH] [--include FILE] [--no-workspace]
-                                      Run Microcoder or an enabled ACP subagent.
+                                      Run Microcoder, Solver (--task \"#N [--no-pr]\"),
+                                      or an enabled ACP subagent.
   remote list                         List saved remote jobs.
   remote status ID                    Read one saved remote job.
   remote follow ID                    Observe a remote job to completion.
@@ -963,6 +964,16 @@ pub(crate) fn chat(
     let mut args = args.to_vec();
     let session = take_option(&mut args, "--session")?.unwrap_or_else(new_id);
     let delegation = take_option(&mut args, "--delegation")?;
+    // microclaude: turns on this computer's Claude Code login, as Shift+Tab
+    // picks in the terminal.
+    match take_option(&mut args, "--mode")?.as_deref() {
+        None | Some("auto") => {}
+        Some("microclaude") if crate::microclaude::available() => {
+            app.set_mode(Mode::Microclaude);
+        }
+        Some("microclaude") => return Err(Error::from(crate::microclaude::NEEDS_LOGIN)),
+        Some(_) => return Err(usage("--mode takes auto or microclaude.")),
+    }
     let prompt = take_option(&mut args, "-p")?.or(take_option(&mut args, "--prompt")?);
     let file = take_option(&mut args, "--prompt-file")?;
     let instructions = match (
@@ -1351,6 +1362,17 @@ fn delegate(
     };
     let (name, arguments) = if agent == "microcoder" {
         ("microcoder", json!({"task":task}))
+    } else if agent == crate::solver_plugin::TOOL {
+        // `delegate solver --task "#N"`; `--task "#N --no-pr"` opens none.
+        let no_pr = task.split_whitespace().any(|word| word == "--no-pr");
+        let issue = task
+            .split_whitespace()
+            .find(|word| *word != "--no-pr")
+            .unwrap_or_default();
+        (
+            crate::solver_plugin::TOOL,
+            json!({"issue": issue, "no_pr": no_pr}),
+        )
     } else {
         ("acp_subagent", json!({"agent":agent,"task":task}))
     };
@@ -1367,7 +1389,11 @@ fn delegate(
         .iter()
         .find(|registered| registered.id == agent)
         .map_or_else(|| agent.clone(), |registered| registered.name.clone());
-    let delegated_name = execution.redact_text(&delegated_name);
+    let delegated_name = if agent == crate::solver_plugin::TOOL {
+        crate::solver_plugin::NAME.to_owned()
+    } else {
+        execution.redact_text(&delegated_name)
+    };
     let delegated_task = execution.redact_text(&task);
     let display_task = delegated_task.clone();
     let mut visible_arguments = arguments.clone();

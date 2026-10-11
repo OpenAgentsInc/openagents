@@ -101,7 +101,7 @@ fn acp_ids(app: &App) -> Vec<&str> {
 #[test]
 fn bundled_plugins_are_selectable_and_default_on_with_router_off() {
     let mut app = App::default();
-    assert_eq!(DEFINITIONS.len(), 8);
+    assert_eq!(DEFINITIONS.len(), 9);
     app.open_plugins();
     for definition in DEFINITIONS {
         assert_eq!(app.plugins.selected_definition().id, definition.id);
@@ -109,10 +109,15 @@ fn bundled_plugins_are_selectable_and_default_on_with_router_off() {
             app.plugins.enabled_for(definition.id),
             definition.default_enabled
         );
+        // The demo draws the frozen original plugin list, which predates
+        // later plugins such as Solver.
+        let in_demo = coder_ui::demo::plugin_definition::DEFINITIONS
+            .iter()
+            .any(|demo| demo.id == definition.id);
         key(&mut app, KeyCode::Enter);
         assert!(app.screen == Screen::PluginSettings);
         let preview = rendered_text(&mut app);
-        assert!(preview.contains(definition.name));
+        assert!(!in_demo || preview.contains(definition.name));
         key(&mut app, KeyCode::Esc);
         key(&mut app, KeyCode::Down);
     }

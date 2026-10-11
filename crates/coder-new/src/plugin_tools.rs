@@ -26,6 +26,9 @@ pub struct ExecutionSettings {
     pub microcoder: bool,
     pub cli: bool,
     pub acp: bool,
+    /// The Solver plugin: an issue handed to a four-hand run that ends in
+    /// a pull request ([`crate::solver_plugin`]).
+    pub solver: bool,
     pub jev_enabled: bool,
     pub jev_key: Option<ApiKey>,
     pub redaction_keys: Vec<ApiKey>,
@@ -153,6 +156,7 @@ impl ExecutionSettings {
             ToolBinding::Microcoder => self.microcoder,
             ToolBinding::OpenAgentsCli | ToolBinding::Github => self.cli,
             ToolBinding::AcpSubagent => self.acp,
+            ToolBinding::Solver => self.solver,
             ToolBinding::Jev => self.jev_enabled,
             ToolBinding::BrainstormSearch | ToolBinding::BrainstormRank => self
                 .brainstorm
@@ -218,6 +222,7 @@ impl ExecutionSettings {
                     ToolBinding::Github => Some(crate::github_tool::definition()),
                     ToolBinding::AcpSubagent => bundled_runtime::acp_tool_definition(&self.agents),
                     ToolBinding::Jev => Some(jev_plugin::tool_definition()),
+                    ToolBinding::Solver => Some(crate::solver_plugin::tool_definition()),
                     ToolBinding::BrainstormSearch => {
                         Some(crate::brainstorm::tool_definition(false))
                     }
@@ -291,6 +296,9 @@ impl ExecutionSettings {
             } else {
                 guidance.push_str("No local subagent is enabled for this request. If the user requested a named agent, explain that it is unavailable or turned off; do not substitute another agent or Microcoder.\n");
             }
+        }
+        if self.registered(ToolBinding::Solver) {
+            guidance.push_str(crate::solver_plugin::instructions());
         }
         if self.fleet.is_some() && !crate::fleet::engines(self).is_empty() {
             guidance.push_str(crate::fleet::INSTRUCTIONS);
@@ -564,6 +572,9 @@ impl ExecutionSettings {
                     &mut child,
                 )
                 .await
+            }
+            crate::solver_plugin::TOOL if self.registered(ToolBinding::Solver) => {
+                crate::solver_plugin::execute(&arguments, &self.cwd, cancel, &mut emit).await
             }
             "microcoder" if self.registered(ToolBinding::Microcoder) => {
                 let args: TaskArguments = serde_json::from_value(arguments)
@@ -878,6 +889,7 @@ mod tests {
             microcoder: false,
             cli: false,
             acp: false,
+            solver: false,
             jev_enabled: false,
             jev_key: None,
             redaction_keys: vec![],

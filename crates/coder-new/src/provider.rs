@@ -618,6 +618,12 @@ impl Provider {
                     .replace(self.key.expose(), "[redacted]");
                 let delegation_name = if !has_credential {
                     arguments.as_ref().and_then(|arguments| {
+                        // Solver runs as a delegation with its own child chat.
+                        if call.name == crate::solver_plugin::TOOL {
+                            return (execution.solver
+                                && crate::solver_plugin::task(arguments).is_some())
+                            .then(|| crate::solver_plugin::NAME.to_owned());
+                        }
                         let object = arguments.as_object()?;
                         arguments["task"]
                             .as_str()
@@ -645,7 +651,11 @@ impl Provider {
                 } else {
                     None
                 };
-                let delegation_task = safe_input["task"].as_str().unwrap_or_default().to_owned();
+                let delegation_task = if call.name == crate::solver_plugin::TOOL {
+                    crate::solver_plugin::task(&safe_input).unwrap_or_default()
+                } else {
+                    safe_input["task"].as_str().unwrap_or_default().to_owned()
+                };
                 let mut emit = |event| {
                     event_callback(if let Some(name) = &delegation_name {
                         RuntimeEvent::Delegation {
@@ -1416,6 +1426,7 @@ mod tests {
             microcoder: false,
             cli: false,
             acp: false,
+            solver: false,
             jev_enabled: true,
             jev_key: key,
             redaction_keys: vec![],

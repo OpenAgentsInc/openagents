@@ -66,6 +66,7 @@ mod shells;
 pub mod slash;
 pub mod snapshot;
 pub mod solver;
+pub mod solver_plugin;
 mod stuck;
 mod supervise;
 pub mod theme;
@@ -366,7 +367,11 @@ impl App {
                 input,
                 output,
                 running,
-            } if tool == "microcoder" || tool == "acp_subagent" || tool == "remote_delegate" => {
+            } if tool == "microcoder"
+                || tool == "acp_subagent"
+                || tool == "remote_delegate"
+                || tool == solver_plugin::TOOL =>
+            {
                 child.running = running;
                 child.chat.busy = running;
                 if !running {
@@ -1496,7 +1501,11 @@ impl App {
         self.request = Some(live::Request {
             id: self.request_id,
             key: model_access::ApiKey::new(""),
-            kind: live::Work::Microclaude { messages, cwd },
+            kind: live::Work::Microclaude {
+                messages,
+                cwd,
+                solver: self.plugins.bundled.solver,
+            },
         });
     }
 

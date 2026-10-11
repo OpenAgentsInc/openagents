@@ -459,6 +459,7 @@ impl Plugins {
             microcoder: self.bundled.microcoder,
             cli: self.bundled.cli,
             acp: self.bundled.acp,
+            solver: self.bundled.solver,
             jev_enabled: self.bundled.jev_enabled,
             jev_key: self.bundled.jev_key(),
             jev_model: self.bundled.jev_model().into(),
