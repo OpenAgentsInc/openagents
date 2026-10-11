@@ -197,6 +197,7 @@ fn elapsed_counts_every_run() {
         pending_messages: 0,
         runs: 2,
         run_started_ms: 10_000,
+        waiting: None,
     };
     assert_eq!(row.elapsed_seconds(999_999), 90);
     row.ended_ms = None;

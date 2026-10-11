@@ -276,6 +276,7 @@ mod tests {
             pending_messages: 0,
             runs: 1,
             run_started_ms: 1_000,
+            waiting: None,
         }
     }
 

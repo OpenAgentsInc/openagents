@@ -388,6 +388,16 @@ impl Job {
             return end;
         };
         let lines: Arc<Mutex<Vec<String>>> = Arc::default();
+        // A run handed to this computer is automated: on a Claude plan it
+        // takes a plan slot, and says so while it waits (#11237).
+        crate::claude_plan::automated(Box::new({
+            let lines = lines.clone();
+            move |waiting| {
+                if let (Some(waiting), Ok(mut lines)) = (waiting, lines.lock()) {
+                    lines.push(format!("{waiting}."));
+                }
+            }
+        }));
         let cancel = Arc::new(AtomicBool::new(false));
         let finished = Arc::new(AtomicBool::new(false));
         let work = {

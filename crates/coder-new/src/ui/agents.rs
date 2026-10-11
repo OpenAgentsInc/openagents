@@ -30,6 +30,7 @@ pub(crate) fn lines(app: &App, width: u16) -> Vec<Line<'static>> {
                 .fg(t::TEXT_PRIMARY)
                 .add_modifier(Modifier::BOLD),
         )),
+        Line::from(span(crate::claude_plan::panel_line(), t::GRAY)),
         Line::default(),
     ];
     if rows.is_empty() {
@@ -81,6 +82,9 @@ pub(crate) fn lines(app: &App, width: u16) -> Vec<Line<'static>> {
         let mut detail = row.task.replace('\n', " ");
         if let Some(branch) = &row.branch {
             detail = format!("{branch} · {detail}");
+        }
+        if let Some(waiting) = &row.waiting {
+            detail = format!("{waiting} · {detail}");
         }
         if row.pending_messages > 0 {
             detail = format!("{} message(s) waiting · {detail}", row.pending_messages);

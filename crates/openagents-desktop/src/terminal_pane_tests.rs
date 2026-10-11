@@ -32,6 +32,7 @@ fn row(id: &str, status: Status, started_ms: u64) -> AgentRow {
         pending_messages: 0,
         runs: 1,
         run_started_ms: started_ms,
+        waiting: None,
     }
 }
 

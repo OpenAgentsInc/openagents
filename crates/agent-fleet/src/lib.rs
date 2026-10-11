@@ -123,6 +123,10 @@ pub struct AgentRow {
     pub runs: u32,
     /// When this run started.
     pub run_started_ms: u64,
+    /// Why it has not started its next step yet, such as waiting for the
+    /// person's Claude plan (#11237); `None` while it works.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub waiting: Option<String>,
 }
 
 impl AgentRow {
@@ -465,6 +469,7 @@ impl<E> Registry<E> {
                 pending_messages: 0,
                 runs: 1,
                 run_started_ms: now,
+                waiting: None,
             },
             cancel: Arc::clone(&cancel),
             inbox: Vec::new(),
@@ -692,6 +697,26 @@ impl<E> Control<E> {
             slot.row.worktree = worktree;
             slot.row.branch = branch;
         });
+    }
+
+    /// Says why it is waiting, or that it no longer is.
+    pub fn set_waiting(&self, waiting: Option<String>) {
+        self.registry
+            .with_slot(&self.id, |slot| slot.row.waiting = waiting);
+    }
+
+    /// A handle that sets [`Self::set_waiting`] from another place, such as
+    /// a callback the run hands down.
+    #[must_use]
+    pub fn waiting_setter(&self) -> impl Fn(Option<&str>) + 'static
+    where
+        E: 'static,
+    {
+        let registry = self.registry.clone();
+        let id = self.id.clone();
+        move |waiting| {
+            registry.with_slot(&id, |slot| slot.row.waiting = waiting.map(str::to_owned));
+        }
     }
 
     /// Records where its transcript is kept.

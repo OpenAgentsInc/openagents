@@ -429,6 +429,7 @@ impl Run {
             _ => None,
         };
         crate::bundled_runtime::set_child_env(child_env(&self.host, &id));
+        crate::claude_plan::automated(Box::new(control.waiting_setter()));
         let mut execution = self.execution.clone();
         execution.cwd = cwd.clone();
         execution.prompt_inbox = None;

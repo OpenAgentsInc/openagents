@@ -631,6 +631,9 @@ pub async fn acp(
         return codex_cli(&program, task, cwd, sandbox, cancel, emit).await;
     }
     if agent.transport == AgentTransport::ClaudeCli {
+        // An automated run on a Claude plan login takes a plan slot first
+        // (#11237); a chat the person types into never waits.
+        let _slot = crate::claude_plan::admit(cancel, &|name| std::env::var(name).ok()).await?;
         return claude_print::run(&program, task, cwd, cancel, emit).await;
     }
     let cursor = agent.id == "cursor";

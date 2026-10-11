@@ -212,6 +212,18 @@ fn line(text: &str, kept: &mut String, emit: &mut dyn FnMut(RuntimeEvent)) {
     };
     match value["type"].as_str() {
         Some("system" | "result" | "rate_limit_event") => {
+            match value["type"].as_str() {
+                Some("rate_limit_event") => crate::claude_plan::observe_rate_limit(
+                    &value["rate_limit_info"],
+                    coder_delegate::limit::now(),
+                ),
+                Some("system") if value["subtype"] == "init" => {
+                    crate::claude_plan::observe_credential(credential_type(
+                        value["apiKeySource"].as_str(),
+                    ));
+                }
+                _ => {}
+            }
             kept.push_str(text);
             kept.push('\n');
         }

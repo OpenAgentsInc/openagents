@@ -304,6 +304,18 @@ impl App {
         let chosen = rows.get(panel.selected).cloned();
         match key.code {
             KeyCode::Esc | KeyCode::Char('q') => self.agents_panel = None,
+            KeyCode::Char('+' | '=' | '-') => {
+                let n = crate::claude_plan::limit();
+                let n = if key.code == KeyCode::Char('-') {
+                    n.saturating_sub(1)
+                } else {
+                    n + 1
+                };
+                self.notice = Some(match crate::claude_plan::set_limit(n) {
+                    Ok(_) => crate::claude_plan::panel_line(),
+                    Err(error) => error,
+                });
+            }
             KeyCode::Up | KeyCode::Char('k') => panel.selected = panel.selected.saturating_sub(1),
             KeyCode::Down | KeyCode::Char('j') => panel.selected = (panel.selected + 1).min(last),
             KeyCode::Char('s') => {
