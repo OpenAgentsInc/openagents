@@ -987,6 +987,8 @@ struct CachedEntry {
     run_output: Option<(usize, Vec<Line<'static>>, usize, bool)>,
 }
 
+/// Columns at a Run box's left edge where the wheel scrolls the box.
+const RUN_GRAB: u16 = 8;
 const RUN_OUTPUT_HEIGHT: usize = 5;
 
 impl CachedEntry {
@@ -1042,25 +1044,29 @@ impl CachedEntry {
             .cloned()
             .enumerate()
         {
+            // The scrollbar is the box's left edge, where the wheel scrolls
+            // the box (`RUN_GRAB`); elsewhere the wheel scrolls the chat.
             let width = usize::from(self.width);
-            line.spans.push(Span::raw(
-                " ".repeat(width.saturating_sub(line.width() + 1)),
-            ));
-            line.spans.push(span(
-                if max == 0 || index == thumb {
-                    "█"
-                } else {
-                    "│"
-                },
-                t::GRAY,
-            ));
+            line.spans.insert(
+                0,
+                span(
+                    if max == 0 || index == thumb {
+                        "█ "
+                    } else {
+                        "│ "
+                    },
+                    t::GRAY,
+                ),
+            );
+            line.spans
+                .push(Span::raw(" ".repeat(width.saturating_sub(line.width()))));
             line.style = line.style.bg(t::BG_LIGHT);
             self.lines.push(line);
         }
         if rows.len() > RUN_OUTPUT_HEIGHT {
             self.lines.push(Line::from(span(
                 format!(
-                    "     {}–{} of {}",
+                    "     {}–{} of {} · scroll at the left edge",
                     offset + 1,
                     (offset + RUN_OUTPUT_HEIGHT).min(rows.len()),
                     rows.len()
@@ -1111,6 +1117,7 @@ impl TranscriptCache {
                         Rect {
                             y: area.y + (visible_start - position) as u16,
                             height: (visible_end - visible_start) as u16,
+                            width: area.width.min(RUN_GRAB),
                             ..area
                         },
                     ));
@@ -1949,7 +1956,11 @@ mod run_viewport_tests {
         cache.locate_runs(Rect::new(0, 0, 42, 20), 0);
         assert!(!cache.scroll_run(0, 19, true));
         let area = cache.run_regions[0].1;
-        assert!(cache.scroll_run(39, area.y, true));
+        // Away from the left edge the wheel scrolls the chat, not the box.
+        assert!(!cache.scroll_run(39, area.y, true));
+        assert!(!cache.scroll_run(RUN_GRAB, area.y, true));
+        assert_eq!(cache.entries[0].run_output.as_ref().unwrap().2, 7);
+        assert!(cache.scroll_run(1, area.y, true));
         assert_eq!(cache.entries[0].run_output.as_ref().unwrap().2, 4);
         output(&mut chat, 16, false);
         cache.refresh(&chat, 40, 2);
@@ -1960,7 +1971,7 @@ mod run_viewport_tests {
     }
 
     #[test]
-    fn five_output_rows_have_a_background_and_right_hand_scrollbar() {
+    fn five_output_rows_have_a_background_and_left_hand_scrollbar() {
         let mut chat = crate::live::Chat::default();
         output(&mut chat, 10, false);
         let mut cache = TranscriptCache::default();
@@ -1977,9 +1988,10 @@ mod run_viewport_tests {
             assert_eq!(buffer[(20, y as u16)].bg, t::BG_LIGHT);
             assert_eq!(buffer[(39, y as u16)].bg, t::BG_LIGHT);
             assert_eq!(
-                buffer[(39, y as u16)].symbol(),
+                buffer[(0, y as u16)].symbol(),
                 if y == start + 4 { "█" } else { "│" }
             );
+            assert_ne!(buffer[(39, y as u16)].symbol(), "│");
         }
         let exported = transcript_text(&chat.entries, 40).join("\n");
         assert!(exported.contains("row 1\n"));
