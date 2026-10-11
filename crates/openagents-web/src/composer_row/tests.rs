@@ -36,6 +36,7 @@ fn choices() -> Choices {
         connected: true,
         environments: vec![environment()],
         computers: vec!["studio-mac".into()],
+        offline: Vec::new(),
         account: true,
         claude_connect: false,
         claude_subscription: false,
@@ -180,9 +181,16 @@ fn coder_is_offered_while_a_computer_is_online() {
     // panel says how to bring a computer online (#11319); a browser that
     // isn't an account, with nothing else, sees no selector.
     choices.computers.clear();
+    choices.offline = vec!["studio-mac".into()];
     choices.environments.clear();
     let picked = choices.resolve(&wanted("", "", "coder:studio-mac"));
     assert_eq!(picked.target, Target::Chat);
+    let listed = target_panel(&choices, &picked, &|_: &dyn Fn(&mut Picked), _: &str| {
+        String::new()
+    })
+    .into_string();
+    assert!(listed.contains("Coder on studio-mac (offline)"), "{listed}");
+    assert!(listed.contains("disabled"), "{listed}");
     let html = render(Some(&choices), &picked);
     assert!(
         html.contains(r#"aria-label="Where it runs: Chat""#),

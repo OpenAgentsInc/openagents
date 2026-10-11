@@ -67,7 +67,7 @@ const JOB_SCHEMA: &str = "openagents.web.mac-jobs.job.v1";
 
 /// A Mac whose last report is older than this is offline (it reports
 /// every few seconds).
-pub(crate) const ONLINE_SECONDS: u64 = 60;
+pub(crate) const ONLINE_SECONDS: u64 = crate::coder_sync::ONLINE_SECONDS;
 /// An unchanged report is still written this often, for its time.
 const REWRITE_EVERY: u64 = 20;
 /// A Mac not heard from in this long is forgotten.

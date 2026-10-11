@@ -145,6 +145,9 @@ pub(crate) struct Choices {
     pub environments: Vec<Environment>,
     /// Computers where Coder with sync on checked in lately, newest first.
     pub computers: Vec<String>,
+    /// Computers that checked in before but aren't online now; the panel
+    /// lists them disabled, so the row says why Coder can't run.
+    pub offline: Vec<String>,
     /// A signed-in account (Coder can sync to it): **Where it runs**
     /// shows even when only Chat is possible now, saying why (#11319).
     pub account: bool,
@@ -183,6 +186,7 @@ impl Choices {
     /// A Coder chat's messages go to its own computer: no Where it runs.
     fn for_coder_chat(&mut self) {
         self.computers.clear();
+        self.offline.clear();
         self.account = false;
     }
 
@@ -294,11 +298,17 @@ pub(crate) async fn choices(app: &App, headers: &HeaderMap, owner: &str) -> Opti
     } else {
         Vec::new()
     };
+    let offline = if account && computers.is_empty() {
+        offline_computers(app, owner).await
+    } else {
+        Vec::new()
+    };
     Some(Choices {
         projects: sidebar.status.projects.clone(),
         connected,
         environments,
         computers,
+        offline,
         account,
         claude_connect,
         claude_subscription,
@@ -321,6 +331,21 @@ pub(crate) async fn online_computers(app: &App, owner: &str) -> Vec<String> {
         .collect();
     online.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
     online.into_iter().map(|(name, _)| name).collect()
+}
+
+/// The account's computers that checked in before but aren't online now.
+async fn offline_computers(app: &App, owner: &str) -> Vec<String> {
+    let Ok(seen) = app.config.chat_store.computers(owner).await else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = seen
+        .seen
+        .keys()
+        .filter(|name| !crate::coder_sync::online(&seen, name))
+        .cloned()
+        .collect();
+    names.sort();
+    names
 }
 
 /// Why a message's picks can't be used now.
@@ -791,6 +816,12 @@ fn target_panel(choices: &Choices, picked: &Picked, with: &With<'_>) -> Markup {
                     }),
                     *target == picked.target,
                 ))
+            }
+            @for name in &choices.offline {
+                button type="button" class="oa-composer-choice" disabled aria-disabled="true" {
+                    strong { "Coder on " (name) " (offline)" }
+                    small { "Not online now. Open Coder on it with /sync on." }
+                }
             }
             @if choices.account && choices.computers.is_empty() {
                 p class="oa-composer-note" {
