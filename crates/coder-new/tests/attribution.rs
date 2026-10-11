@@ -55,19 +55,31 @@ fn app() -> App {
 }
 
 #[test]
-fn busy_chats_show_working_beside_the_spinner_with_or_without_openrouter() {
+fn busy_chats_show_working_on_the_input_rail_with_or_without_openrouter() {
     let mut app = app();
     app.live.busy = true;
     for (enabled, key_configured) in [(true, true), (true, false), (false, false)] {
         app.plugins.enabled = enabled;
         app.plugins.key_configured = key_configured;
-        let text = rows(&render(&mut app, 80, 24).0).join("\n");
-        assert!(text.contains(&format!(
-            "{} Working",
-            coder_new::tools::spinner(app.animation_frame)
-        )));
-        assert!(!text.contains("is replying"));
-        assert!(!text.contains("is working"));
+        let text = rows(&render(&mut app, 80, 24).0);
+        let top = top_rule(&text).unwrap();
+        // The spinner rides the input's top-left rail, beside the mode.
+        assert!(
+            label(&text[top]).starts_with(&format!(
+                "{} Working",
+                coder_new::tools::spinner(app.animation_frame)
+            )),
+            "{:?}",
+            text[top]
+        );
+        // The transcript above stays free of it.
+        assert!(
+            !transcript(&render(&mut app, 80, 24).0)
+                .join("\n")
+                .contains("Working")
+        );
+        assert!(!text.join("\n").contains("is replying"));
+        assert!(!text.join("\n").contains("is working"));
     }
 }
 

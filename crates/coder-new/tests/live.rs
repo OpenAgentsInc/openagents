@@ -837,7 +837,7 @@ fn transcript_uses_the_full_terminal_width_without_side_margins() {
 }
 
 #[test]
-fn working_spinner_is_left_aligned_and_the_input_reaches_the_bottom_row() {
+fn working_spinner_rides_the_input_rail_and_the_input_reaches_the_bottom_row() {
     let mut app = App::default();
     app.set_mode(Mode::Live);
     app.live.busy = true;
@@ -845,11 +845,21 @@ fn working_spinner_is_left_aligned_and_the_input_reaches_the_bottom_row() {
         let mut terminal = Terminal::new(TestBackend::new(width, 24)).unwrap();
         terminal.draw(|frame| ui::render(frame, &mut app)).unwrap();
         let buffer = terminal.backend().buffer();
-        assert_eq!(
-            buffer[(0, 0)].symbol(),
-            coder_new::tools::spinner(app.animation_frame)
+        // The input's top rule carries the spinner on its left and the
+        // mode on its right, so the transcript above stays untouched.
+        let top = (0..23)
+            .find(|&y| buffer[(0, y)].symbol() == "┌")
+            .expect("the input's top rule");
+        let top_row: String = (0..width).map(|x| buffer[(x, top)].symbol()).collect();
+        let label = top_row.trim_matches(['─', '┌', '┐']).trim();
+        assert!(
+            label.starts_with(&format!(
+                "{} Working",
+                coder_new::tools::spinner(app.animation_frame)
+            )),
+            "{top_row:?}"
         );
-        assert_eq!(buffer[(2, 0)].symbol(), "W");
+        assert!(label.ends_with(coder_new::models::AUTO), "{top_row:?}");
         // With nothing to say under the input, its rail (the folder) is
         // the screen's last row.
         let bottom: String = (0..width).map(|x| buffer[(x, 23)].symbol()).collect();

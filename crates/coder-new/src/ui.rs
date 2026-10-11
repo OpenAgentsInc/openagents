@@ -183,6 +183,7 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         app.slash_selected,
         app.mode == Mode::Demo,
     );
+    let working = working_label(app);
     composer_view(
         frame,
         Rect {
@@ -201,6 +202,7 @@ fn render_contents(frame: &mut Frame, app: &mut App) {
         // OpenAgents picks the model here, so the rail says `auto` and never
         // the name of whichever vendor answered.
         rail_mode(app),
+        working.as_deref(),
     );
     let path = repository_rail(app);
     let composer_area = Rect {
@@ -554,6 +556,22 @@ fn rail_mode(app: &App) -> Option<&'static str> {
     } else {
         None
     }
+}
+
+/// The spinner and `Working` the input's rail shows while the chat above it
+/// is answering, or `None` when it is idle.
+///
+/// The label rides the input's top-left rail, where the mode's own name is
+/// on the right, so it stays put instead of scrolling away with the
+/// transcript. It follows the same chat the composer does: the selected
+/// delegation's, else the main one.
+fn working_label(app: &App) -> Option<String> {
+    let chat = app
+        .selected_agent
+        .and_then(|index| app.delegations.get(index))
+        .map_or(&app.live, |agent| &agent.chat);
+    chat.busy
+        .then(|| format!("{} Working", crate::tools::spinner(app.animation_frame)))
 }
 
 fn context_text(app: &App) -> String {
@@ -1323,15 +1341,6 @@ fn live_conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     let mut cache = std::mem::take(&mut chat.cache);
     cache.refresh(chat, content, phase);
     let mut tail = Vec::new();
-    if chat.busy {
-        tail.extend(wrap_display(
-            vec![Line::from(vec![
-                span(format!("{} ", crate::tools::spinner(phase)), t::GRAY),
-                span("Working", t::GRAY),
-            ])],
-            content,
-        ));
-    }
     for (message, color) in [
         (chat.notice.as_ref(), t::DIFF_DELETE_FG),
         (notice.as_ref(), t::GRAY),
@@ -1417,6 +1426,7 @@ fn composer_view(
     history_position: Option<(usize, usize)>,
     selected: bool,
     fallback_model: Option<&str>,
+    working: Option<&str>,
 ) {
     let block = Block::default()
         .borders(Borders::ALL)
@@ -1430,6 +1440,12 @@ fn composer_view(
         Style::default().fg(t::PROMPT_BORDER_ACTIVE),
     );
     let mut left_labels = Vec::new();
+    // The spinner rides the top-left rail, where a person watching the
+    // reply sees it without the transcript scrolling it away. While a
+    // reply is going, nothing else claims that spot.
+    if let Some(working) = working {
+        left_labels.push(working.to_owned());
+    }
     if let Some((position, total)) = history_position {
         left_labels.push(format!("History {position}/{total}"));
     }
