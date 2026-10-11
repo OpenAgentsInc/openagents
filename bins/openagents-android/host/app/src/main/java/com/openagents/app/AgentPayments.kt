@@ -122,9 +122,11 @@ class AgentPayments(private val activity: MainActivity, private val bridge: Mobi
         @Suppress("DEPRECATION")
         val intent = keyguard.createConfirmDeviceCredentialIntent("Approve payment",
             "Pay ${sheet.getString("amount")} for ${sheet.getString("computer")}") ?: run {
-            if (trust) {
-                failure = "Set a screen lock on this phone to trust a payee."; shown = null; update(bridge.packet)
-            } else bridge.spend(op, "request" to request)
+            // No screen-lock prompt means no authentication: refuse, never pay
+            // or trust without it (#11283).
+            failure = if (trust) "Set a screen lock on this phone to trust a payee."
+                else "Couldn't ask for the screen lock. Nothing was paid."
+            shown = null; update(bridge.packet)
             return
         }
         authenticating = request
