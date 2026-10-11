@@ -338,3 +338,17 @@ resolves; that the plugin guides name a plugin's five parts and no guide
 says *tool*; that no page but the published legal text names Coder
 Terminal or its install command; a connected test backend's pages and escaping; and the task
 browser.
+
+The landing queue runs these tests inside its write boundary (`bwrap` on
+Linux), where `/` and `/tmp` belong to the overflow user instead of root.
+The private-file checks in `cloud/` therefore take the directories above a
+test's temporary directory on trust in test builds only; to run the tests
+the way the queue does:
+
+```sh
+S=$(mktemp -d); T=${CARGO_TARGET_DIR:-$PWD/target}
+bwrap --die-with-parent --ro-bind / / --dev /dev --proc /proc \
+  --bind "$PWD" "$PWD" --bind "$T" "$T" --bind "$S" "$S" \
+  --setenv TMPDIR "$S" --setenv CARGO_TARGET_DIR "$T" -- \
+  cargo test -p openagents-web
+```
