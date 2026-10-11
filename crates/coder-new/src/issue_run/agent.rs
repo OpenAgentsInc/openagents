@@ -511,6 +511,25 @@ impl Baseline {
         }
         Some(&self.worktree)
     }
+
+    /// Removes the baseline checkout once the run has ended. It is a full
+    /// checkout of the repository (about 2 GB here), and every run used to
+    /// leave one behind beside its working copy.
+    pub async fn remove(&self) {
+        if !self.worktree.join(".git").exists() {
+            return;
+        }
+        let _ = tokio::process::Command::new("git")
+            .args(["worktree", "remove", "--force"])
+            .arg(&self.worktree)
+            .current_dir(&self.repo)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await;
+        let _ = std::fs::remove_dir_all(&self.worktree);
+    }
 }
 
 /// The tests a `cargo test` output reports as failed, in order.

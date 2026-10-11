@@ -458,3 +458,58 @@ fn a_touched_crates_tests_are_required_even_when_the_briefing_listed_them() {
     assert!(checks.iter().any(|c| c.id == "test:b" && c.required));
     assert_eq!(checks.len(), 3);
 }
+
+#[tokio::test]
+async fn a_finished_runs_baseline_checkout_is_removed() {
+    use crate::issue_run::agent::Baseline;
+    let dir = tempfile::tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    std::fs::create_dir(&repo).unwrap();
+    let git = |args: &[&str], at: &std::path::Path| {
+        assert!(
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(at)
+                .output()
+                .unwrap()
+                .status
+                .success()
+        );
+    };
+    git(&["init", "-q"], &repo);
+    std::fs::write(repo.join("a.txt"), "a").unwrap();
+    git(&["add", "."], &repo);
+    git(
+        &[
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-qm",
+            "a",
+        ],
+        &repo,
+    );
+    let worktree = dir.path().join("run").join("baseline");
+    git(
+        &[
+            "worktree",
+            "add",
+            "--detach",
+            "-q",
+            worktree.to_str().unwrap(),
+            "HEAD",
+        ],
+        &repo,
+    );
+    let baseline = Baseline {
+        repo: repo.clone(),
+        commit: "HEAD".into(),
+        worktree: worktree.clone(),
+    };
+    baseline.remove().await;
+    assert!(!worktree.exists());
+    // Removing it again, or one never made, does nothing.
+    baseline.remove().await;
+}

@@ -650,6 +650,9 @@ impl End<'_> {
             }
         }
         capture(self.options, folder, transcript).await;
+        if let Some(base) = &self.base {
+            agent::Baseline::of(base).remove().await;
+        }
         let worktree = self
             .base
             .as_ref()

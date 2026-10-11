@@ -752,6 +752,9 @@ impl End<'_> {
             transcript.notice(format!("{why}. The worktree is kept."));
         }
         issue_run::capture(&self.options.inner, folder, transcript).await;
+        if let Some(base) = &self.base {
+            issue_run::agent::Baseline::of(base).remove().await;
+        }
         let worktree = self
             .base
             .as_ref()
