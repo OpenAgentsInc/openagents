@@ -27,15 +27,21 @@ use serde_json::Value;
 use crate::{App, sessions};
 
 /// What `/sync` says when it is off.
-pub const OFF: &str = "Saving chats to your account is off. /sync on saves new and changed chats; /sync all adds your earlier chats too.";
+pub const OFF: &str = "Saving chats to your account is off. /sync on saves all your chats to your account, earlier ones too.";
 /// What `/sync` says when it is on.
 pub const ON: &str = "Chats and memory save to your account, and you can reply to them on openagents.com while Coder is open here. /sync off stops; /sync delete removes the chats already there.";
 /// What Coder asks, once, when signed in and nobody chose yet (#11089).
 pub const QUESTION: &str = "Where should this computer's chats live? /sync all syncs all your chats to your account; /sync off keeps them on this computer.";
 /// What Coder says when it answers a reply typed on the website.
 pub const ANSWERING: &str = "Answering your reply from openagents.com.";
-/// The most earlier chats `/sync all` sends (the newest).
-pub(crate) const EARLIER: usize = 150;
+/// The folder, beside the saved chats, where background agents write
+/// their transcripts (`fleet::Host::transcripts`): one folder per parent
+/// chat, one file per agent.
+pub(crate) const AGENTS: &str = "agents";
+/// How often a running Coder looks again for chats the account doesn't
+/// have as they are here: ones saved by another process, background
+/// agents' chats, and sends a crash or a lost `sync.json` write dropped.
+pub(crate) const SWEEP_EVERY: std::time::Duration = coder_sync::CHECK_EVERY;
 
 /// The session prefix of a chat started on openagents.com for Coder on
 /// this computer (the website's `coder_sync::web_session`): Coder takes
@@ -81,6 +87,9 @@ pub(crate) struct SyncState {
     /// Coding runs for the account's own API key (#11080), taken while
     /// sync is on.
     own_runs: Option<crate::own_runs::Host>,
+    /// When this computer last looked for chats the account doesn't have
+    /// as they are here ([`unsent`]); `None` until the first look.
+    swept: Option<Instant>,
 }
 
 /// What one take brought for one chat.
@@ -177,6 +186,158 @@ pub fn upload_saved_now(dir: &Path, document: &Value) {
     let _ = settings.store(dir);
 }
 
+/// The account's session for a background agent's chat: its parent chat's
+/// id, then its own (`20261010T002121Z-110ec090-agent-1`). `None` when
+/// that isn't a valid session id.
+pub(crate) fn agent_session(parent: &str, agent: &str) -> Option<String> {
+    let session = format!("{parent}-{agent}");
+    let valid = session.len() <= 128
+        && !parent.is_empty()
+        && !agent.is_empty()
+        && session
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'));
+    valid.then_some(session)
+}
+
+/// The background agents' chats under `dir` (`agents/<parent>/<agent>.json`),
+/// each under its [`agent_session`] and titled with the agent's name and
+/// task, newest first. A file that isn't a chat is skipped.
+pub(crate) fn agent_chats(dir: &Path) -> Vec<(String, Value)> {
+    let mut chats: Vec<(u128, String, Value)> = Vec::new();
+    let Ok(parents) = std::fs::read_dir(dir.join(AGENTS)) else {
+        return Vec::new();
+    };
+    for parent in parents.flatten() {
+        let Some(parent_id) = parent.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        let Ok(files) = std::fs::read_dir(parent.path()) else {
+            continue;
+        };
+        for file in files.flatten() {
+            let path = file.path();
+            let Some(agent) = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .and_then(|name| name.strip_suffix(".json"))
+            else {
+                continue;
+            };
+            let Some(session) = agent_session(&parent_id, agent) else {
+                continue;
+            };
+            let Ok(mut document) = sessions::read_document(&path) else {
+                continue;
+            };
+            if !document.get("steps").is_some_and(Value::is_array) {
+                continue;
+            }
+            let modified = file
+                .metadata()
+                .and_then(|meta| meta.modified())
+                .ok()
+                .and_then(|at| at.duration_since(std::time::UNIX_EPOCH).ok())
+                .map_or(0, |at| at.as_millis());
+            let name = document
+                .pointer("/extra/agent")
+                .and_then(Value::as_str)
+                .unwrap_or(agent)
+                .to_owned();
+            let task = document
+                .get("steps")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .find(|step| step.get("source").and_then(Value::as_str) == Some("user"))
+                .and_then(|step| step.get("message").and_then(Value::as_str))
+                .unwrap_or("")
+                .to_owned();
+            if document.pointer("/extra/title").is_none() {
+                let title = if task.trim().is_empty() {
+                    format!("Agent {name}")
+                } else {
+                    format!("Agent {name}: {task}")
+                };
+                if !document.get("extra").is_some_and(Value::is_object) {
+                    document["extra"] = serde_json::json!({});
+                }
+                document["extra"]["title"] = Value::String(title);
+            }
+            document["session_id"] = Value::String(session.clone());
+            chats.push((modified, session, document));
+        }
+    }
+    chats.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    chats
+        .into_iter()
+        .map(|(_, session, document)| (session, document))
+        .collect()
+}
+
+/// Every chat on this computer the account doesn't have as it is here:
+/// each saved chat (newest first), then each background agent's chat. A
+/// chat kept here after a delete on the website is never sent again.
+pub(crate) fn unsent(
+    dir: &Path,
+    settings: &Settings,
+    computer: &str,
+    screen: &secret_screen::Screen,
+) -> Vec<(String, coder_sync::Upload)> {
+    let mut uploads = Vec::new();
+    if !settings.on {
+        return uploads;
+    }
+    let store = sessions::Store::under(dir);
+    for summary in store.list().unwrap_or_default() {
+        let Ok(document) = store.read(&summary.id) else {
+            continue;
+        };
+        let upload = coder_sync::upload(&document, computer, screen);
+        if settings.sends(&summary.id, &upload.digest) {
+            uploads.push((summary.id, upload));
+        }
+    }
+    for (session, document) in agent_chats(dir) {
+        let upload = coder_sync::upload(&document, computer, screen);
+        if settings.sends(&session, &upload.digest) {
+            uploads.push((session, upload));
+        }
+    }
+    uploads
+}
+
+/// `coder sync`: send every chat on this computer the account doesn't have
+/// as it is here, now ([`unsent`]), and say how many went. Sync stays the
+/// person's choice: when it is off, nothing is sent and it says how to
+/// turn it on.
+pub fn sync_now(dir: &Path) -> Result<String, String> {
+    let settings = Settings::load_checked(dir)?;
+    if !settings.on {
+        return Ok(OFF.into());
+    }
+    let Some(saved) = signed_in(dir) else {
+        return Err("Sign in first with coder login.".into());
+    };
+    let computer = openagents_login::computer_name();
+    let mut uploads = unsent(dir, &settings, &computer, &secret_screen::Screen::host());
+    // Oldest first, so the newest is on top in the sidebar.
+    uploads.reverse();
+    let wanted = uploads.len();
+    let sent = coder_sync::send_now(&saved, uploads);
+    let count = sent.len();
+    // Another Coder may have saved the file meanwhile: keep its sends too.
+    let mut stored = Settings::load(dir);
+    stored.sent.extend(sent);
+    stored.store(dir)?;
+    Ok(match (count, wanted) {
+        (0, 0) => "Every chat here is on your account.".to_owned(),
+        (1, 1) => "Synced 1 chat. It's on openagents.com and in the app.".to_owned(),
+        (n, w) if n == w => format!("Synced {n} chats. They're on openagents.com and in the app."),
+        (n, w) => format!("Synced {n} of {w} chats. Coder sends the rest the next time it runs."),
+    })
+}
+
 impl App {
     /// Read the setting, and start sending when it is on (or deletes are
     /// waiting) and this computer is signed in.
@@ -201,6 +362,7 @@ impl App {
             memory: crate::memory_sync::MemorySync::default(),
             schedules: crate::schedule_sync::ScheduleSync::default(),
             own_runs: None,
+            swept: None,
         });
         sync.settings = settings;
         // Ask the website once where this computer's chats live: a choice
@@ -228,8 +390,46 @@ impl App {
             sync.worker = Some(worker);
             sync.listening = false;
             sync.taking.clear();
+            sync.swept = None;
         }
         self.sync = Some(sync);
+        // Every chat here goes to the account when sync is on, not only
+        // the ones changed since: the earlier ones, the ones another
+        // process saved, and the background agents' chats.
+        self.sweep_sync(false);
+    }
+
+    /// Send every chat the account doesn't have as it is here ([`unsent`]),
+    /// off the terminal's thread: at start, when sync is turned on, and
+    /// every [`SWEEP_EVERY`] after (`due`).
+    pub(crate) fn sweep_sync(&mut self, due: bool) {
+        let Some(dir) = self.account_dir.clone() else {
+            return;
+        };
+        let Some(sync) = &mut self.sync else {
+            return;
+        };
+        let Some(worker) = &sync.worker else {
+            return;
+        };
+        if !sync.settings.on {
+            return;
+        }
+        if due && sync.swept.is_some_and(|at| at.elapsed() < SWEEP_EVERY) {
+            return;
+        }
+        sync.swept = Some(Instant::now());
+        let jobs = worker.sender();
+        let settings = sync.settings.clone();
+        let computer = sync.computer.clone();
+        let screen = sync.screen.clone();
+        std::thread::spawn(move || {
+            for (session, upload) in unsent(&dir, &settings, &computer, &screen) {
+                if jobs.send(Job::Upload { session, upload }).is_err() {
+                    return;
+                }
+            }
+        });
     }
 
     /// Stop sending (signed out).
@@ -474,6 +674,7 @@ impl App {
         }
         self.report_activity();
         self.answer_web_reply();
+        self.sweep_sync(true);
     }
 
     /// Tell the website what runs here when it changed, while sync is on
@@ -739,10 +940,7 @@ impl App {
             "on" => {
                 sync.settings.on = true;
                 sync.settings.chosen = true;
-                self.notice = Some(
-                    "New and changed chats now save to your account. /sync all adds your earlier chats too."
-                        .into(),
-                );
+                self.notice = Some("Saving your chats to your account…".into());
             }
             "all" => {
                 sync.settings.on = true;
@@ -797,33 +995,8 @@ impl App {
                 session: session.clone(),
             });
         }
-        if argument.trim() == "all"
-            && let Some(dir) = self.account_dir.clone()
-        {
-            // Read and send the earlier chats off the terminal's thread.
-            let jobs = worker.sender();
-            let settings = sync.settings.clone();
-            let computer = sync.computer.clone();
-            let screen = sync.screen.clone();
-            std::thread::spawn(move || {
-                let store = sessions::Store::under(&dir);
-                for summary in store.recent(EARLIER).unwrap_or_default() {
-                    let Ok(document) = store.read(&summary.id) else {
-                        continue;
-                    };
-                    let upload = coder_sync::upload(&document, &computer, &screen);
-                    if settings.sends(&summary.id, &upload.digest)
-                        && jobs
-                            .send(Job::Upload {
-                                session: summary.id,
-                                upload,
-                            })
-                            .is_err()
-                    {
-                        return;
-                    }
-                }
-            });
+        if matches!(argument.trim(), "on" | "all") {
+            self.sweep_sync(false);
         }
     }
 }
@@ -1104,5 +1277,120 @@ mod tests {
             ]
         );
         assert!(app.live.busy && app.request.is_some());
+    }
+
+    fn saved_chat(dir: &Path, id: &str, text: &str) {
+        let mut chat = crate::live::Chat::default();
+        chat.entries.push(crate::live::Entry::User(text.into()));
+        let document = crate::trajectory::document(&chat, id, "test/local", dir);
+        sessions::Store::under(dir).save(id, &document).unwrap();
+    }
+
+    fn agent_chat(dir: &Path, parent: &str, agent: &str, name: &str, task: &str) {
+        let mut chat = crate::live::Chat::default();
+        chat.entries.push(crate::live::Entry::User(task.into()));
+        chat.entries.push(crate::live::Entry::Assistant {
+            text: "Done.".into(),
+            model: None,
+            elapsed_ms: None,
+        });
+        let mut document = crate::trajectory::document(&chat, agent, "test/local", dir);
+        document["extra"]["agent"] = serde_json::json!(name);
+        let folder = dir.join(AGENTS).join(parent);
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(
+            folder.join(format!("{agent}.json")),
+            serde_json::to_vec(&document).unwrap(),
+        )
+        .unwrap();
+        // A transcript being written is not a chat yet.
+        std::fs::write(folder.join(format!("{agent}.json.tmp")), b"{").unwrap();
+    }
+
+    #[test]
+    fn an_agent_chat_is_named_after_its_parent_chat_and_itself() {
+        assert_eq!(
+            agent_session("20261010T002121Z-110ec090", "agent-1").as_deref(),
+            Some("20261010T002121Z-110ec090-agent-1")
+        );
+        assert_eq!(agent_session("", "agent-1"), None);
+        assert_eq!(agent_session("a b", "agent-1"), None);
+        assert_eq!(agent_session(&"x".repeat(125), "agent-1"), None);
+    }
+
+    #[test]
+    fn every_chat_here_is_unsent_until_the_account_has_it_as_it_is() {
+        let dir = tempfile::tempdir().unwrap();
+        let screen = secret_screen::Screen::host();
+        saved_chat(dir.path(), "first", "Hello");
+        saved_chat(dir.path(), "second", "Hi again");
+        agent_chat(
+            dir.path(),
+            "first",
+            "agent-1",
+            "alice",
+            "Add subtract to calc.py",
+        );
+        std::fs::write(
+            dir.path().join(AGENTS).join("first").join("notes.json"),
+            b"[]",
+        )
+        .unwrap();
+
+        // Off: nothing goes.
+        let mut settings = Settings::default();
+        assert!(unsent(dir.path(), &settings, "Mac", &screen).is_empty());
+
+        // On: every saved chat, the earlier ones too, and the agent's chat.
+        settings.on = true;
+        let uploads = unsent(dir.path(), &settings, "Mac", &screen);
+        let mut sessions: Vec<&str> = uploads.iter().map(|(s, _)| s.as_str()).collect();
+        sessions.sort_unstable();
+        assert_eq!(sessions, ["first", "first-agent-1", "second"]);
+        let (_, agent) = uploads
+            .iter()
+            .find(|(session, _)| session == "first-agent-1")
+            .unwrap();
+        assert_eq!(agent.body["title"], "Agent alice: Add subtract to calc.py");
+        assert_eq!(agent.body["computer"], "Mac");
+        assert_eq!(agent.body["messages"][1]["text"], "Done.");
+
+        // What the account has as it is here isn't sent again; a changed
+        // chat and one never recorded are.
+        for (session, upload) in &uploads {
+            settings.sent.insert(session.clone(), upload.digest.clone());
+        }
+        assert!(unsent(dir.path(), &settings, "Mac", &screen).is_empty());
+        saved_chat(dir.path(), "second", "Hi again, changed");
+        settings.sent.remove("first");
+        let mut again: Vec<String> = unsent(dir.path(), &settings, "Mac", &screen)
+            .into_iter()
+            .map(|(session, _)| session)
+            .collect();
+        again.sort_unstable();
+        assert_eq!(again, ["first", "second"]);
+
+        // A chat kept here after a delete on the website never goes again.
+        settings.kept_here.insert("first".into());
+        settings.kept_here.insert("second".into());
+        assert!(unsent(dir.path(), &settings, "Mac", &screen).is_empty());
+    }
+
+    #[test]
+    fn sync_now_respects_the_off_switch_and_a_sign_in() {
+        let dir = tempfile::tempdir().unwrap();
+        saved_chat(dir.path(), "first", "Hello");
+        assert_eq!(sync_now(dir.path()).unwrap(), OFF);
+        Settings {
+            on: true,
+            chosen: true,
+            ..Settings::default()
+        }
+        .store(dir.path())
+        .unwrap();
+        assert_eq!(
+            sync_now(dir.path()).unwrap_err(),
+            "Sign in first with coder login."
+        );
     }
 }

@@ -69,6 +69,9 @@ fn run() -> io::Result<()> {
     if args.first().is_some_and(|command| command == "export") {
         return export_command(&args[1..]);
     }
+    if args.first().is_some_and(|command| command == "sync") {
+        return sync_command(&args[1..]);
+    }
     if args.first().is_some_and(|command| command == "update") {
         return update_command(&args[1..]);
     }
@@ -639,6 +642,37 @@ fn trace_command(rest: &[String]) -> io::Result<()> {
 }
 
 /// `coder export --account [--output FILE] [--state DIR]` (#11134).
+/// `coder sync [--state DIR]`: send every chat here to the account now.
+fn sync_command(rest: &[String]) -> io::Result<()> {
+    if rest
+        .iter()
+        .any(|arg| matches!(arg.as_str(), "--help" | "-h"))
+    {
+        println!(
+            "Usage: coder sync [--state DIR]\n\nSend every chat on this computer, background agents' chats included, to your openagents.com account now. Sync must be on (/sync on in Coder)."
+        );
+        return Ok(());
+    }
+    let dir = match rest {
+        [] => model_access::store::openagents_dir().map(|root| root.join("coder-new")),
+        [flag, dir] if flag == "--state" => Some(std::path::PathBuf::from(dir)),
+        _ => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Usage: coder sync [--state DIR]",
+            ));
+        }
+    }
+    .ok_or_else(|| io::Error::other("Set HOME, or pass --state DIR."))?;
+    match coder_new::account_sync::sync_now(&dir) {
+        Ok(text) => {
+            println!("{text}");
+            Ok(())
+        }
+        Err(message) => Err(io::Error::other(message)),
+    }
+}
+
 fn export_command(rest: &[String]) -> io::Result<()> {
     let mut args = rest.to_vec();
     let mut dir = None;
@@ -696,6 +730,7 @@ Usage:
   coder trace upload     Upload a chat to your account as a trace (coder trace --help).
   coder trace list       List the traces on your account.
   coder export --account Save everything on your account to one file (coder export --help).
+  coder sync             Send every chat here to your account now (sync must be on).
   coder update           Install the newest Coder now (coder update --help).
   coder issue-run N      Play issue N from issue to pull request as a test run (coder issue-run --help).
   coder solver N         Solve issue N to a pull request in four constrained hands (coder solver --help).

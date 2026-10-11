@@ -6,9 +6,9 @@
 //! page asks it too: whichever answers first wins, so while the terminal
 //! waits for a typed answer it also checks the website every two seconds.
 //!
-//! Syncing all sends the earlier chats too (the newest
-//! [`crate::account_sync::EARLIER`]), now, so they are on the website when
-//! the command ends.
+//! Syncing all sends every chat here too, background agents' chats
+//! included ([`crate::account_sync::unsent`]), now, so they are on the
+//! website when the command ends.
 
 use std::io::{BufRead, IsTerminal, Write};
 use std::path::Path;
@@ -115,20 +115,7 @@ pub fn apply(
     said(out, &format!("Syncing all your chats{chosen_there}…"))?;
     let _ = out.flush();
     let screen = secret_screen::Screen::host();
-    let store = crate::sessions::Store::under(dir);
-    let mut uploads = Vec::new();
-    for summary in store
-        .recent(crate::account_sync::EARLIER)
-        .unwrap_or_default()
-    {
-        let Ok(document) = store.read(&summary.id) else {
-            continue;
-        };
-        let upload = coder_sync::upload(&document, &computer, &screen);
-        if settings.sends(&summary.id, &upload.digest) {
-            uploads.push((summary.id, upload));
-        }
-    }
+    let mut uploads = crate::account_sync::unsent(dir, &settings, &computer, &screen);
     // Oldest first, so the newest is on top in the sidebar.
     uploads.reverse();
     let wanted = uploads.len();
