@@ -104,6 +104,7 @@ pub struct Ctx {
     random_index: u64,
     commands: Vec<Command>,
     failure: Option<ActorError>,
+    fence: Option<Fenced>,
 }
 
 impl Ctx {
@@ -125,7 +126,16 @@ impl Ctx {
             random_index: 0,
             commands: Vec::new(),
             failure: None,
+            fence: None,
         }
+    }
+
+    /// The work claim this call was fenced by, verified by the store in the
+    /// same transaction (an action sent with [`WorkFence`]); `None` for an
+    /// unfenced call. A handler that only an executor may reach checks it
+    /// names the item it offered.
+    pub fn fence(&self) -> Option<&Fenced> {
+        self.fence.as_ref()
     }
 
     pub fn id(&self) -> &ActorId {
@@ -427,6 +437,7 @@ trait ErasedActor: Send + Sync {
         message: &Envelope,
         caller: &Caller,
         now: Timestamp,
+        fence: Option<Fenced>,
     ) -> Result<Prepared>;
     fn view(&self, snapshot: &Snapshot, caller: &Caller) -> Result<Value>;
     fn authorize(&self, snapshot: &Snapshot, message: &Envelope, caller: &Caller) -> Result<()>;
@@ -521,6 +532,7 @@ impl<A: Actor> ErasedActor for Registered<A> {
         message: &Envelope,
         caller: &Caller,
         now: Timestamp,
+        fence: Option<Fenced>,
     ) -> Result<Prepared> {
         self.authorize(snapshot, message, caller)?;
         let definition = self
@@ -546,6 +558,7 @@ impl<A: Actor> ErasedActor for Registered<A> {
             now,
             definition.read_only,
         );
+        ctx.fence = fence;
         let reply = (definition.invoke)(&mut actor, &mut state, message.args.clone(), &mut ctx)?;
         let state = serialize_value(&state, MAX_STATE_BYTES)?;
         let commands = ctx.finish()?;
@@ -662,12 +675,24 @@ impl Registry {
         caller: &Caller,
         now: Timestamp,
     ) -> Result<Prepared> {
+        self.apply_fenced(snapshot, message, caller, now, None)
+    }
+
+    /// [`Registry::apply`] for a call whose work fence the store verified.
+    pub fn apply_fenced(
+        &self,
+        snapshot: &Snapshot,
+        message: &Envelope,
+        caller: &Caller,
+        now: Timestamp,
+        fence: Option<Fenced>,
+    ) -> Result<Prepared> {
         check_workspace(&snapshot.id, caller)?;
         validate_actor_id(&snapshot.id)?;
         validate_token(&snapshot.uid, 256)?;
         validate_time(now)?;
         let actor = self.actor(&snapshot.id.actor_type)?;
-        guard(|| actor.apply(snapshot, message, caller, now))
+        guard(|| actor.apply(snapshot, message, caller, now, fence))
     }
 
     pub fn view(&self, snapshot: &Snapshot, caller: &Caller) -> Result<Value> {

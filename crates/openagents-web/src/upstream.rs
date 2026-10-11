@@ -116,8 +116,11 @@ const OWNED_EXACT: [&str; 67] = [
 /// `/coder/memory`), so a shipped app still calling them is served here
 /// and its `Bearer sess_...` never reaches the upstream. Current apps ask
 /// the `/v1` paths first (#11158).
-const OWNED_PREFIXES: [&str; 21] = [
+const OWNED_PREFIXES: [&str; 23] = [
     "/auth/",
+    // The actor runtime's routes (#11253, crate::actors_host).
+    "/v1/w/",
+    "/v1/actors/",
     "/coder/",
     "/device/",
     "/v1/device/",

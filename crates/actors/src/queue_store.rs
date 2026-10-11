@@ -202,6 +202,53 @@ fn token() -> Result<String> {
     Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
+/// Check a fenced action's claim inside the action's transaction, with the
+/// actor row already locked: the caller's grant holds the item's queue and
+/// target, the claim is this executor's at this epoch and generation, and
+/// its lease has not ended. A live, uncancelled claim's lease is renewed, so
+/// a fenced call counts as a heartbeat; a cancelled one is reported, not
+/// renewed, so the executor learns of it and releases the claim.
+pub(crate) async fn verify_fence(
+    tx: &Transaction<'_>,
+    caller: &Caller,
+    uid: &str,
+    fence: &WorkFence,
+) -> Result<Fenced> {
+    identifier(&fence.item_id)?;
+    let a = actor(tx, uid).await?;
+    let row = work(tx, uid, &fence.item_id).await?;
+    let at = now(tx).await?;
+    work_scope(caller, &a, &row, at)?;
+    work_fence(caller, &row, fence.epoch, at)?;
+    let until = row.get::<_, Option<i64>>("heartbeat_until").unwrap_or(0);
+    if row.get::<_, String>("state") != "claimed" || until <= at {
+        return Err(refused("stale_claim"));
+    }
+    if row.get::<_, bool>("cancel") {
+        return Ok(Fenced {
+            item_id: fence.item_id.clone(),
+            epoch: fence.epoch,
+            cancel: true,
+            heartbeat_until: until,
+        });
+    }
+    let renewed = at
+        .saturating_add(row.get::<_, i64>("lease_ms"))
+        .min(grant(caller, at)?.expires_at)
+        .max(until);
+    tx.execute(
+        "UPDATE actor.work SET heartbeat_until=$3,updated_at=$4 WHERE uid=$1 AND item_id=$2",
+        &[&uid, &fence.item_id, &renewed, &at],
+    )
+    .await?;
+    Ok(Fenced {
+        item_id: fence.item_id.clone(),
+        epoch: fence.epoch,
+        cancel: false,
+        heartbeat_until: renewed,
+    })
+}
+
 impl PgStore {
     /// Claim work for the authenticated executor. Capacity includes unresolved work.
     pub async fn claim_work(
@@ -298,6 +345,31 @@ impl PgStore {
         }
         tx.commit().await?;
         Ok(claimed)
+    }
+
+    /// [`PgStore::claim_work`], waiting up to `wait` (at most 30 seconds)
+    /// for work to arrive when none is ready: a long-poll claim. Each look
+    /// is its own short transaction, so waiting holds no connection or lock;
+    /// the grant is checked again on every look.
+    pub async fn claim_work_wait(
+        &self,
+        caller: &Caller,
+        queue: &str,
+        target: Option<&str>,
+        max: u32,
+        wait: std::time::Duration,
+    ) -> Result<Vec<ClaimedWork>> {
+        let until = tokio::time::Instant::now() + wait.min(std::time::Duration::from_secs(30));
+        let mut pause = std::time::Duration::from_millis(100);
+        loop {
+            let claimed = self.claim_work(caller, queue, target, max).await?;
+            let left = until.saturating_duration_since(tokio::time::Instant::now());
+            if !claimed.is_empty() || left.is_zero() {
+                return Ok(claimed);
+            }
+            tokio::time::sleep(pause.min(left)).await;
+            pause = (pause * 2).min(std::time::Duration::from_secs(1));
+        }
     }
 
     /// Renew an unexpired claim and atomically record ordered progress.
@@ -418,6 +490,25 @@ impl PgStore {
         let at = now(&tx).await?;
         work_scope(caller, &a, &row, at)?;
         work_fence(caller, &row, epoch, at)?;
+        if row.get::<_, String>("state") == "claimed"
+            && row.get::<_, bool>("cancel")
+            && row.get::<_, Option<i64>>("heartbeat_until").unwrap_or(0) > at
+        {
+            // The executor confirms it stopped cancelled work: the claim
+            // ends without uncertainty and stops counting against capacity.
+            tx.execute("UPDATE actor.work SET state='cancelled',epoch=epoch+1,heartbeat_until=NULL,updated_at=$3 WHERE uid=$1 AND item_id=$2", &[&uid, &item, &at]).await?;
+            internal(
+                &tx,
+                uid,
+                "WorkExpired",
+                json!({"item_id":item,"epoch":epoch,"uncertain":false,"cancelled":true,"state":"cancelled","reason":reason}),
+                &format!("work.released:{item}:{epoch}"),
+                at,
+            )
+            .await?;
+            tx.commit().await?;
+            return Ok(());
+        }
         active_work(&row, at)?;
         let uncertain = row.get::<_, String>("retry_policy") != "idempotent";
         let state = if uncertain { "uncertain" } else { "pending" };

@@ -160,6 +160,7 @@ async fn run() -> Result<()> {
                                 .and_then(Value::as_str)
                                 .map(str::to_owned),
                             expected_version: body.get("expected_version").and_then(Value::as_u64),
+                            fence: None,
                         },
                     )
                     .await?,

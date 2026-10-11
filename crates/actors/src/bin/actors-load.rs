@@ -74,6 +74,7 @@ async fn run() -> Result<()> {
                         input: Some(json!({"initial":0})),
                         idempotency_key: Some(format!("operation-{n}")),
                         expected_version: None,
+                        fence: None,
                     },
                 )
                 .await;
