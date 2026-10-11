@@ -7,7 +7,9 @@
 //! `look`), reads
 //! the keyboard and swipes, shows a small HUD, and keeps the win count in
 //! the browser's storage. A short tutorial (`tutorial`) opens on the first
-//! run and from each How to play button.
+//! run and from each How to play button. In Warren Meadow the page joins
+//! a relay (`presence`) so bunnies see each other in their shades; garden
+//! runs stay offline.
 //!
 //! It draws with WebGL2 directly rather than through `verse-pbr`: that
 //! renderer brings wgpu, naga, glTF and the physics crate, several
@@ -23,6 +25,7 @@ pub mod kit;
 pub mod look;
 pub mod meadow;
 pub mod mesh;
+pub mod presence;
 pub mod scene;
 pub mod tutorial;
 pub mod zone;

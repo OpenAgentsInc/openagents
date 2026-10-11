@@ -261,6 +261,7 @@ The durable record of one entity. Relays store the latest per publisher and
 | `name` | Optional display name. |
 | `set` | A `bodies` snapshot's body set. Required for `bodies`, absent otherwise. |
 | `b` | A `bodies` snapshot's rest poses. Required for `bodies`, absent otherwise. |
+| `look` | Optional, for `avatar`: how to draw it, `{"rig":"<rig id>","shade":<n>}`. The world names its rigs and what a shade means (Grow Little Bunny's `bunny-v1` rig has shades 0 to 20). Clients MUST ignore a `look` whose rig they do not know, and MUST accept a state without one. |
 
 ### Object state
 

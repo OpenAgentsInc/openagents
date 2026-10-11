@@ -2315,8 +2315,11 @@ dependencies = [
  "console_error_panic_hook",
  "glam",
  "js-sys",
+ "nostr",
  "oa-copy",
+ "serde_json",
  "verse-game",
+ "verse-net",
  "wasm-bindgen",
  "web-sys",
 ]

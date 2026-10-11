@@ -1133,6 +1133,7 @@ mod tests {
             name: None,
             set: None,
             b: None,
+            look: None,
         };
         verse::mv::state_event(signer, "test-world", &state, time)
     }

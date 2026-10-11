@@ -21,6 +21,7 @@ use crate::kit::{self, Piece};
 use crate::look::{Options, Tier};
 use crate::meadow::{self, Hopper, Spot, Walker};
 use crate::mesh::{Mesh, STRIDE, rgb};
+use crate::presence::{self, Presence};
 use crate::tutorial::{self, Tour};
 use crate::{copy, scene};
 use bunny_rules::progress::Progress;
@@ -304,6 +305,14 @@ struct Meshes {
     meadow: GpuMesh,
     /// A ladder stone, gray so a tint colours it.
     stone: GpuMesh,
+    /// Other bunnies, one body and ear per shade; empty when offline.
+    shades: Vec<(GpuMesh, GpuMesh)>,
+}
+
+/// The relay link and what it knows of the other bunnies.
+struct Net {
+    link: verse_net::net::Link,
+    presence: Presence,
 }
 
 impl Meshes {
@@ -396,6 +405,8 @@ struct App {
     stride: f32,
     particles: Vec<Particle>,
     touch: Option<(f32, f32, f64)>,
+    /// Other bunnies in the meadow, when the page has a relay.
+    net: Option<Net>,
 }
 
 fn wrap(angle: f32) -> f32 {
@@ -864,6 +875,7 @@ impl App {
         if self.phase == Phase::Meadow {
             self.walk(dtf);
         }
+        self.sync_net(dtf);
         if self.phase == Phase::Playing {
             self.carry += dt;
             let mut steps = 0;
@@ -924,6 +936,37 @@ impl App {
         }
         let card = if self.options.kit { None } else { self.card() };
         self.hud.card(card);
+    }
+
+    /// Trades states and frames with the relay: this bunny's while it is in
+    /// the meadow, everyone else's always.
+    fn sync_net(&mut self, dt: f32) {
+        let here = self.phase == Phase::Meadow;
+        let pose = presence::Pose {
+            x: self.walker.x,
+            z: self.walker.z,
+            yaw: self.walker.yaw,
+        };
+        let wins = self.progress.wins;
+        let Some(net) = self.net.as_mut() else {
+            return;
+        };
+        let now = js_sys::Date::now() as u64;
+        for message in net.link.drain() {
+            match message {
+                verse_net::net::In::Event { event, .. } => net.presence.receive(&event, now),
+                verse_net::net::In::Auth(challenge) => {
+                    let answer = net.presence.answer(&net.link.url, challenge, now);
+                    net.link.send(answer);
+                }
+                _ => {}
+            }
+        }
+        let out = net.presence.tick(here, pose, wins, now);
+        if !out.is_empty() {
+            net.link.send_batch(out);
+        }
+        net.presence.step(dt);
     }
 
     fn tick(&mut self) {
@@ -1515,6 +1558,37 @@ impl App {
                 );
             gpu.draw(&m.ear, &ear, WHITE, outline);
         }
+        // Other bunnies, each in its own shade.
+        if let Some(net) = &self.net {
+            let size = scene::metres(TIER_HEIGHT[1]) * DRAWN * 1.4;
+            for (pose, tone) in net.presence.peers(js_sys::Date::now() as u64) {
+                let Some((body_mesh, ear_mesh)) = m.shades.get(tone as usize) else {
+                    continue;
+                };
+                gpu.look.set(Look::Ground);
+                gpu.draw(
+                    &m.shadow,
+                    &scene::place(Vec3::new(pose.x, 0.0, pose.z), 0.0, size * 1.3),
+                    WHITE,
+                    None,
+                );
+                gpu.look.set(Look::Chroma);
+                let fur = rgb(shade::SHADES[tone as usize]);
+                let outline = Some(([fur[0] * 0.38, fur[1] * 0.36, fur[2] * 0.36], LINE));
+                let body = Mat4::from_translation(Vec3::new(pose.x, 0.0, pose.z))
+                    * Mat4::from_rotation_y(pose.yaw)
+                    * Mat4::from_scale(Vec3::splat(size));
+                gpu.draw(body_mesh, &body, WHITE, outline);
+                for side in [-1.0_f32, 1.0] {
+                    let ear = body
+                        * Mat4::from_translation(Vec3::new(0.1 * side, 0.84, 0.3))
+                        * Mat4::from_quat(
+                            Quat::from_rotation_z(-0.22 * side) * Quat::from_rotation_x(-0.15),
+                        );
+                    gpu.draw(ear_mesh, &ear, WHITE, outline);
+                }
+            }
+        }
         for p in &self.particles {
             let scale = p.size * (p.life / p.span).max(0.2);
             gpu.draw(
@@ -1918,6 +1992,7 @@ pub fn start() {
             .collect(),
         meadow: gpu.upload(&scene::meadow_ground()),
         stone: gpu.upload(&kit::ladder_stone()),
+        shades: Vec::new(),
     };
     let touch = window
         .match_media("(pointer: coarse)")
@@ -1927,6 +2002,23 @@ pub fn start() {
     let hud = Hud::new(&document, &parent, touch);
     let options = Options::parse(&window.location().hash().unwrap_or_default());
     let tier = options.tier.unwrap_or(Tier::default_for(touch));
+    let net = if options.kit || options.garden.is_some() {
+        None
+    } else {
+        join_meadow(&window)
+    };
+    let mut meshes = meshes;
+    if net.is_some() {
+        meshes.shades = shade::SHADES
+            .iter()
+            .map(|fur| {
+                (
+                    gpu.upload(&scene::bunny(*fur, 1)),
+                    gpu.upload(&scene::ear(*fur)),
+                )
+            })
+            .collect();
+    }
     let outline = match crate::outline::Outline::new(&gpu.gl) {
         Ok(outline) => Some(outline),
         Err(error) => {
@@ -1974,6 +2066,7 @@ pub fn start() {
         stride: 0.0,
         particles: Vec::new(),
         touch: None,
+        net,
     };
     let first = app.options.garden.unwrap_or(1).clamp(1, level::COUNT);
     app.new_run(first);
@@ -2130,6 +2223,24 @@ pub fn start() {
     if let Some(callback) = first.borrow().as_ref() {
         let _ = window.request_animation_frame(callback.as_ref().unchecked_ref());
     }
+}
+
+/// Opens the relay link for Warren Meadow with this browser's bunny key,
+/// made and kept on first use. Without a relay the meadow is just local.
+fn join_meadow(window: &Window) -> Option<Net> {
+    let url = presence::relay(&window.location().hash().unwrap_or_default())?;
+    let storage = window.local_storage().ok().flatten();
+    let stored = storage
+        .as_ref()
+        .and_then(|storage| storage.get_item(presence::KEY).ok().flatten());
+    let (identity, made) = presence::identity(stored.as_deref())?;
+    let presence = Presence::new(identity);
+    if made && let Some(storage) = &storage {
+        let _ = storage.set_item(presence::KEY, &presence.secret_hex());
+    }
+    let link = verse_net::net::Link::start(&url);
+    link.send_batch(Presence::subscriptions());
+    Some(Net { link, presence })
 }
 
 /// The kit sheet's fixed camera, over three rows of models.

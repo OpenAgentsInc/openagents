@@ -178,6 +178,7 @@ async fn look_radius_is_in_meters_and_filters_stored_and_live_poses() {
                     name: Some(id.into()),
                     set: None,
                     b: None,
+                    look: None,
                 },
                 now,
             )
