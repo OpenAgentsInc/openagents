@@ -16,7 +16,7 @@
       1,
       4
     ],
-    "daily_budget_usd": 0.4,
+    "daily_budget_usd": 0.6,
     "daily_shape_conc": 1,
     "daily_skip_long": true
   },
@@ -34,10 +34,9 @@
     "max_conc": 32,
     "shape_conc_max": 8,
     "daily_conc": [
-      1,
-      4
+      1
     ],
-    "daily_budget_usd": 0.3,
+    "daily_budget_usd": 0.4,
     "daily_shape_conc": 1,
     "daily_skip_long": true
   },

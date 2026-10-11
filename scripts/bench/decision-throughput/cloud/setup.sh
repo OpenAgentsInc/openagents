@@ -66,7 +66,7 @@ job)
     g run jobs deploy "$JOB" --region "$REGION" --image "$image" --service-account "$SA" \
         --set-secrets "TYPESAFE_API_KEY=$SECRET:latest,GH_TOKEN=coder-pool-git-token:latest" \
         --set-env-vars "DT_BUCKET=$BUCKET" \
-        --cpu 2 --memory 2Gi --task-timeout 2h --max-retries 0 --tasks 1
+        --cpu 2 --memory 4Gi --task-timeout 2h --max-retries 0 --tasks 1
     g run jobs add-iam-policy-binding "$JOB" --region "$REGION" --member "serviceAccount:$SA" --role roles/run.invoker > /dev/null
     ;;
 schedule)

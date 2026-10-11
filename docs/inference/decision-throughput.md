@@ -401,18 +401,6 @@ Best sustained decisions/s at the base shape, per backend and day, from
 every run in Cloud Storage (scheduled and by hand).
 
 <!-- dt:trend:start -->
-| Backend | Day | Plan | Best decisions/s, 1 question | Concurrency | p99 | $ / 1,000 |
-| --- | --- | --- | ---: | ---: | ---: | ---: |
-| jev | 2026-10-11 | full | 173 | 64 | 0.76 s | $0.0663 |
-| gateway-jev | 2026-10-11 | full | 86.39 | 32 | 0.62 s | $0.0662 |
-| gateway-pylon | 2026-10-11 | full | 4.14 | 4 | 1.24 s | $0.0081 |
-| vertex-gemini | 2026-10-11 | full | 3.50 | 16 | 6.35 s | $1.722 |
-| coderos-clef | 2026-10-11 | full | 4.21 | 1 | 0.27 s | $0.0079 |
-| coderos-llamacpp | 2026-10-11 | full | 3.14 | 1 | 0.66 s | $0.0106 |
-| h100-clef-flash | 2026-10-11 | full | 9.87 | 4 | 0.43 s | $0.180 |
-| h100-clef-27b | 2026-10-11 | full | 3.83 | 1 | 0.30 s | $0.464 |
-| sealed-gpu | 2026-10-11 | full | 2.94 | 2 | 0.78 s | $0.646 |
-| sealed-cpu | 2026-10-11 | full | 0.04 | 1 | 31.28 s | $3.472 |
 <!-- dt:trend:end -->
 
 ## First run (2026-10-11): how it was taken
@@ -457,7 +445,7 @@ tables are regenerated from all of them.
 | What | Where | When (UTC) | Backends | Cost |
 | --- | --- | --- | --- | --- |
 | CoderOS daily | user timer `decision-throughput.timer` on coderos-4080 → `~/decision-bench/daily.sh` ([coderos-daily.sh](../../scripts/bench/decision-throughput/coderos-daily.sh)) | daily 09:30 | `coderos-clef` on the `daily` plan. A bench server on 18097 starts, runs and stops; the text pylon is paused and restored only if VRAM is short. It writes as `oa-decision-bench-writer@`, which holds only `storage.objectAdmin` on the bucket | electricity |
-| Cloud daily | Cloud Scheduler `decision-throughput-daily` → Cloud Run job `decision-throughput-daily` ([cloud/](../../scripts/bench/decision-throughput/cloud/)), as `oa-decision-bench@` | daily 11:00 | `jev`, `gateway-jev`, `gateway-pylon`, `vertex-gemini`, `sealed-cpu`, on the `daily` plan: 1 and 4 clients, plus 13 questions and the router at one client. Afterwards it regenerates this doc's tables and pushes them to `main` | about $0.37 of Jev direct, $0.37 of Jev under the gateway's key, up to $0.30 of Vertex, and Cloud Run time: about $1.2 a day |
+| Cloud daily | Cloud Scheduler `decision-throughput-daily` → Cloud Run job `decision-throughput-daily` ([cloud/](../../scripts/bench/decision-throughput/cloud/)), as `oa-decision-bench@` | daily 11:00 | `jev`, `gateway-jev`, `gateway-pylon`, `vertex-gemini`, `sealed-cpu`, on the `daily` plan: 1 and 4 clients (1 for `gateway-jev`), plus 13 questions and the router at one client, each hosted target under a daily spend cap. Afterwards it regenerates this doc's tables and pushes them to `main` | at most $0.60 of Jev direct, $0.40 of Jev under the gateway's key and $0.30 of Vertex, plus Cloud Run time: at most about $1.4 a day |
 | H100 weekly | Cloud Scheduler `decision-throughput-h100-weekly` → Compute `instances.insert` of a spot `a3-highgpu-1g` ([h100/](../../scripts/bench/decision-throughput/h100/)) | Saturdays 10:00 | `h100-clef-flash`, `h100-clef-27b`, and the sealed GPU, which the VM wakes, measures and stops. The VM deletes itself when done, and after 75 minutes at most | about $6–7 a week: about 35 minutes of plain H100 plus about 25 of sealed |
 
 - **Changing the harness.** The weekly run reads it from
@@ -470,6 +458,13 @@ tables are regenerated from all of them.
   one. On CoderOS: `systemctl --user disable --now decision-throughput.timer`.
 - **Not scheduled.** The Mac (below) and llama.cpp/Ollama, which are
   reference points only.
+- **Where the client runs matters.** The first scheduled run, from Cloud
+  Run in us-central1, saw Jev at 6.3 decisions/s from one client (p50
+  0.16 s), against 3.5/s from the Mac. Compare a backend's trend only
+  within one client location: the `host` field of each point.
+- **The pylon path at 16k tokens falls over to Vertex.** On the
+  Pylon-first gateway path, 34 of 36 16k-token requests in that run timed
+  out at the pylon and were answered by Vertex.
 
 
 ## Run it

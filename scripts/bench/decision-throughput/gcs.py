@@ -4,19 +4,20 @@ stdlib only.
 A token comes from, in order: $GOOGLE_OAUTH_ACCESS_TOKEN, the metadata
 server (Cloud Run, GCE), or `gcloud auth print-access-token` (honours
 CLOUDSDK_CONFIG, e.g. the automation account's isolated config). Tokens are
-cached for 45 minutes and never printed.
+cached until shortly before they expire and never printed.
 """
 import json, os, subprocess, tempfile, threading, time
 import urllib.error, urllib.parse, urllib.request
 
 _lock = threading.Lock()
-_cached = {"token": None, "at": 0.0}
+_cached = {"token": None, "until": 0.0}
 
 
 def token():
     with _lock:
-        if _cached["token"] and time.time() - _cached["at"] < 2700:
+        if _cached["token"] and time.time() < _cached["until"]:
             return _cached["token"]
+        life = 2700
         t = os.environ.get("GOOGLE_OAUTH_ACCESS_TOKEN")
         if not t:
             try:
@@ -24,13 +25,14 @@ def token():
                     "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
                     headers={"Metadata-Flavor": "Google"})
                 with urllib.request.urlopen(req, timeout=2) as r:
-                    t = json.loads(r.read())["access_token"]
+                    body = json.loads(r.read())
+                t, life = body["access_token"], int(body.get("expires_in", 600)) - 120
             except Exception:
                 t = None
         if not t:
             t = subprocess.run(["gcloud", "auth", "print-access-token"], capture_output=True, text=True,
                                check=True).stdout.strip()
-        _cached.update(token=t, at=time.time())
+        _cached.update(token=t, until=time.time() + max(60, life))
         return t
 
 
