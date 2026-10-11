@@ -294,7 +294,13 @@ mod tests {
             pin.doors(),
             ["https://ai-gateway.vercel.sh", "https://api.typesafe.ai"]
         );
-        assert_eq!(pin.fallbacks[0].key().expose(), "door-key");
+        assert_eq!(
+            pin.fallbacks[0]
+                .key()
+                .expect("an HTTP door has a key")
+                .expose(),
+            "door-key"
+        );
         assert!(pin.failover().is_some());
     }
 
@@ -314,7 +320,13 @@ mod tests {
                 "https://api.typesafe.ai"
             ]
         );
-        assert_eq!(pin.fallbacks[0].key().expose(), "gw-key");
+        assert_eq!(
+            pin.fallbacks[0]
+                .key()
+                .expect("an HTTP door has a key")
+                .expose(),
+            "gw-key"
+        );
     }
 
     #[test]
