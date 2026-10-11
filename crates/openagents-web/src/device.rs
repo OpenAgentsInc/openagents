@@ -269,7 +269,7 @@ fn respond(
 }
 
 /// Plain words for a code that can't be approved.
-fn problem_text(code: &str) -> &'static str {
+pub(crate) fn problem_text(code: &str) -> &'static str {
     match code {
         "expired_token" => "That code expired. Start sign-in again on your computer.",
         "invalid_grant" => "That code isn't right, or it was already used. Check it and try again.",
@@ -279,7 +279,7 @@ fn problem_text(code: &str) -> &'static str {
 }
 
 /// The form to type a code, with an optional problem above it.
-fn code_form(typed: &str, problem: Option<&str>) -> Markup {
+pub(crate) fn code_form(typed: &str, problem: Option<&str>) -> Markup {
     let field = Field::new("device-code", "Code")
         .required(true)
         .error_opt(problem)
@@ -306,7 +306,7 @@ fn code_form(typed: &str, problem: Option<&str>) -> Markup {
 }
 
 /// "Sign in to Coder on <computer>?" with Approve and Deny.
-fn approve_form(code: &str, app: &str, computer: &str, csrf: &str) -> Markup {
+pub(crate) fn approve_form(code: &str, app: &str, computer: &str, csrf: &str) -> Markup {
     html! {
         (MarkdownRoot::new(html! {
             h1 { "Sign in to " (app) " on " (computer) "?" }

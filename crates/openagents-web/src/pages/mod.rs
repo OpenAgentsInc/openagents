@@ -6,7 +6,7 @@ mod blue_rush;
 mod bunny;
 pub(crate) mod chat;
 mod cloud;
-mod connect;
+pub(crate) mod connect;
 pub(crate) mod content;
 pub(crate) mod download;
 mod efficiency;
