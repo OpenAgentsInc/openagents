@@ -104,4 +104,41 @@ jobs already made stay readable while the database is configured.
 
 ## Log
 
-Filled in as each step lands; see the bottom of this page.
+**2026-10-11, staging** (`openagents-web-1-staging`, `f9db8bca3d`). Actor
+runtime started on `openagents-staging-pg`, migration applied; full smoke 92
+passed, 0 failed. Flag on. With this Mac as the linked computer (`openagents
+mac serve`, the smoke test account's session) and `openagents mac run`:
+
+- `ios-release-gate` on `main` ran end to end through the `mac.job` actor:
+  1 of 1 tests passed, 55 files (97 MB) back with `--out`.
+- Kill and recovery: the Mac was killed (SIGKILL) right after checkout; the
+  lease ended, the claim was fenced, the job went back to waiting ("The Mac
+  stopped answering…"), and the restarted Mac took it again at epoch 3.
+- Upload: `ios-testflight --validate-only` stopped at the question; approving
+  through the generic action API was refused (`forbidden`); Deny from the
+  phone route was recorded, the Mac stopped ("You denied the upload, so
+  nothing was sent."), and a later Approve was refused (`not_asking`).
+- A Mac killed while an upload waited: uncertain within ~70 s; `actors-admin
+  resolve-work` refused the stale epoch and recorded the outcome at the
+  current one; `history` shows each transition and the operator's
+  `work.resolve`.
+- Retries: `mac run` sends one `Idempotency-Key`; the same key is the same job
+  (tests: replay, no second work item, a different body refused).
+- Live: `/settings/mac-jobs` and its job page carry the event stream and
+  reload on change; `GET /v1/mac-jobs/events` answers app tokens (the phone)
+  and cookies; the generic `/v1/w/…/events` stream answers a cookie read.
+
+Found and fixed on the way: the actor routes were nested, so the outer path
+parameter reached them (now merged, with a router test); a file part's work
+item id was cut to 64 characters by the computer-name encoder; heartbeats
+changed versions and reloaded live pages (now views are watched); and
+`crates/openagents-mobile/Cargo.lock` lacked pylon's `base64` and `sha2`, which
+failed the gate's `--locked` iOS build on main.
+
+**2026-10-11, production** (`coder`). `promote` of the staging image
+(`sha256:d63bc625…`): the actor runtime started on `openagents-production-pg`,
+flag off; shifted, `--production` smoke 59 passed. Then revision
+`coder-web-d63bc62598-macjobs-030313` with `OPENAGENTS_WEB_MAC_JOBS_ACTORS=1`,
+shifted, smoke 59 passed; `/v1/actors/contract.json` lists `mac.job`. No
+production Mac serves yet (NEEDS_OWNER: `coder login`, install from main,
+`openagents mac serve`), so no production job has run.

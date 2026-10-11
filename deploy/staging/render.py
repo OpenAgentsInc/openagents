@@ -38,7 +38,7 @@ EGRESS_SUBNET = "openagents-web-staging"
 # Mac jobs through the actor runtime (#11253 step 1): "1" on, "0" off (the
 # chat-store jobs). Flip a live service with `gcloud run services update
 # --container web --update-env-vars OPENAGENTS_WEB_MAC_JOBS_ACTORS=0|1`.
-MAC_JOBS_ACTORS = "0"
+MAC_JOBS_ACTORS = "1"
 # Invite-only sign-in (oa_auth::invite, docs/auth/github.md): only the
 # owner's GitHub account (AtlantisPleb, id 14167547) may sign in, as a site
 # admin. Both the gateway and the web server read it.
