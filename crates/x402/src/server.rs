@@ -324,40 +324,105 @@ impl<S: ReplayStore> Resource<S> {
 }
 
 const MAX_BODY: usize = 8 * 1024 * 1024;
+/// The longest request line or header line accepted, CRLF included.
+const MAX_LINE: usize = 8 * 1024;
+/// The most header bytes, and header lines, one request may carry.
+const MAX_HEAD: usize = 64 * 1024;
+const MAX_HEADERS: usize = 100;
+/// Connections handled at once; one more is answered 503 and closed.
+const MAX_CONNECTIONS: usize = 256;
+/// How long one connection may take to send its whole request.
+const REQUEST_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
 
-fn read_request(stream: &mut TcpStream) -> Result<Request, String> {
-    let mut reader = BufReader::new(stream);
-    let mut line = String::new();
-    reader.read_line(&mut line).map_err(|e| e.to_string())?;
-    let mut parts = line.trim_end().split(' ');
-    let method = parts.next().unwrap_or("").to_string();
-    let target = parts.next().unwrap_or("").to_string();
-    if method.is_empty() || !target.starts_with('/') {
+/// Reads one line of at most `MAX_LINE` bytes, without its line ending.
+fn read_line(reader: &mut impl BufRead, head: &mut usize) -> Result<String, String> {
+    let mut line = Vec::new();
+    let read = reader
+        .by_ref()
+        .take(MAX_LINE as u64)
+        .read_until(b'\n', &mut line)
+        .map_err(|e| e.to_string())?;
+    if read == 0 {
+        return Err("connection closed mid-request".into());
+    }
+    if line.last() != Some(&b'\n') {
+        return Err(if read >= MAX_LINE {
+            "line too long".into()
+        } else {
+            "connection closed mid-request".into()
+        });
+    }
+    *head += read;
+    if *head > MAX_HEAD {
+        return Err("headers too large".into());
+    }
+    line.pop();
+    if line.last() == Some(&b'\r') {
+        line.pop();
+    }
+    String::from_utf8(line).map_err(|_| "header is not UTF-8".into())
+}
+
+/// Whether `name` is an HTTP token (RFC 9110 `tchar`s): no spaces, so
+/// `Content-Length :` cannot slip past the length checks.
+fn token(name: &str) -> bool {
+    !name.is_empty()
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&b))
+}
+
+/// One HTTP/1.1 request from `reader`, with every line and the head
+/// bounded, one `Content-Length` of plain digits at most (a duplicate, even
+/// an equal one, is refused rather than resolved), and no chunked bodies
+/// ([#11278](https://github.com/OpenAgentsInc/openagents/issues/11278)).
+fn read_request(reader: &mut impl BufRead) -> Result<Request, String> {
+    let mut head = 0usize;
+    let line = read_line(reader, &mut head)?;
+    let mut parts = line.split(' ');
+    let (Some(method), Some(target), Some(version), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return Err("bad request line".into());
+    };
+    if !token(method) || !target.starts_with('/') || !version.starts_with("HTTP/1.") {
         return Err("bad request line".into());
     }
+    let (method, target) = (method.to_string(), target.to_string());
     let mut headers = Vec::new();
-    let mut length = 0usize;
+    let mut length: Option<usize> = None;
     loop {
-        let mut line = String::new();
-        reader.read_line(&mut line).map_err(|e| e.to_string())?;
-        let line = line.trim_end_matches(['\r', '\n']);
+        let line = read_line(reader, &mut head)?;
         if line.is_empty() {
             break;
         }
+        if headers.len() >= MAX_HEADERS {
+            return Err("too many headers".into());
+        }
         let (name, value) = line.split_once(':').ok_or("bad header")?;
-        let value = value.trim();
+        if !token(name) {
+            return Err("bad header".into());
+        }
+        let value = value.trim_matches([' ', '\t']);
         if name.eq_ignore_ascii_case("content-length") {
-            length = value.parse().map_err(|_| "bad content-length")?;
-            if length > MAX_BODY {
+            if length.is_some() {
+                return Err("more than one content-length".into());
+            }
+            if value.is_empty() || !value.bytes().all(|b| b.is_ascii_digit()) {
+                return Err("bad content-length".into());
+            }
+            let parsed: usize = value.parse().map_err(|_| "bad content-length")?;
+            if parsed > MAX_BODY {
                 return Err("body too large".into());
             }
+            length = Some(parsed);
         }
         if name.eq_ignore_ascii_case("transfer-encoding") {
             return Err("chunked bodies are not accepted".into());
         }
         headers.push((name.to_ascii_lowercase(), value.to_string()));
     }
-    let mut body = vec![0; length];
+    let mut body = vec![0; length.unwrap_or(0)];
     reader.read_exact(&mut body).map_err(|e| e.to_string())?;
     Ok(Request {
         method,
@@ -365,6 +430,54 @@ fn read_request(stream: &mut TcpStream) -> Result<Request, String> {
         headers,
         body,
     })
+}
+
+/// A connection read under one deadline for the whole request, so a client
+/// trickling a byte at a time cannot hold its thread past it.
+struct Deadline<'a> {
+    stream: &'a TcpStream,
+    until: std::time::Instant,
+}
+
+impl Read for Deadline<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let left = self
+            .until
+            .saturating_duration_since(std::time::Instant::now());
+        if left.is_zero() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::TimedOut,
+                "request took too long",
+            ));
+        }
+        self.stream.set_read_timeout(Some(left))?;
+        let mut stream = self.stream;
+        stream.read(buf)
+    }
+}
+
+/// Counts live connections; dropping a slot frees it.
+struct Slot(Arc<std::sync::atomic::AtomicUsize>);
+
+impl Slot {
+    fn take(live: &Arc<std::sync::atomic::AtomicUsize>) -> Option<Self> {
+        let mut now = live.load(Ordering::Relaxed);
+        loop {
+            if now >= MAX_CONNECTIONS {
+                return None;
+            }
+            match live.compare_exchange_weak(now, now + 1, Ordering::AcqRel, Ordering::Relaxed) {
+                Ok(_) => return Some(Self(live.clone())),
+                Err(current) => now = current,
+            }
+        }
+    }
+}
+
+impl Drop for Slot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
 }
 
 fn write_response(stream: &mut TcpStream, response: &Response) {
@@ -408,7 +521,8 @@ pub fn serve<S: ReplayStore + Send + Sync + 'static>(
 }
 
 /// The HTTP/1.1 loop under [`serve`] and the multi-route front: one thread
-/// per connection, one request per connection, `handle` answers it.
+/// per connection (at most `MAX_CONNECTIONS` at once), one request per
+/// connection read within `REQUEST_DEADLINE`, `handle` answers it.
 pub fn serve_with(
     listener: TcpListener,
     stop: Arc<AtomicBool>,
@@ -416,14 +530,27 @@ pub fn serve_with(
 ) -> std::io::Result<()> {
     listener.set_nonblocking(true)?;
     let handle = Arc::new(handle);
+    let live = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     while !stop.load(Ordering::Relaxed) {
         match listener.accept() {
             Ok((mut stream, _)) => {
+                let _ = stream.set_nonblocking(false);
+                let _ = stream.set_write_timeout(Some(REQUEST_DEADLINE));
+                let Some(slot) = Slot::take(&live) else {
+                    write_response(&mut stream, &Response::json(503, &json!({"error": "busy"})));
+                    continue;
+                };
                 let handle = handle.clone();
                 std::thread::spawn(move || {
-                    let _ = stream.set_nonblocking(false);
-                    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(30)));
-                    match read_request(&mut stream) {
+                    let _slot = slot;
+                    let read = {
+                        let mut reader = BufReader::new(Deadline {
+                            stream: &stream,
+                            until: std::time::Instant::now() + REQUEST_DEADLINE,
+                        });
+                        read_request(&mut reader)
+                    };
+                    match read {
                         Ok(request) => write_response(&mut stream, &handle(&request)),
                         Err(message) => write_response(
                             &mut stream,
@@ -491,6 +618,88 @@ mod tests {
             headers,
             body: b"hello".to_vec(),
         }
+    }
+
+    fn parse(raw: &[u8]) -> Result<Request, String> {
+        read_request(&mut std::io::Cursor::new(raw.to_vec()))
+    }
+
+    #[test]
+    fn a_well_formed_request_is_read_with_its_body() {
+        let request =
+            parse(b"POST /run?x=1 HTTP/1.1\r\nHost: a\r\nContent-Length: 5\r\n\r\nhelloEXTRA")
+                .unwrap();
+        assert_eq!(request.method, "POST");
+        assert_eq!(request.target, "/run?x=1");
+        assert_eq!(request.body, b"hello");
+        assert_eq!(request.header("host"), Some("a"));
+        let bare = parse(b"GET / HTTP/1.1\n\n").unwrap();
+        assert!(bare.body.is_empty());
+    }
+
+    #[test]
+    fn a_second_or_malformed_content_length_is_refused_not_resolved() {
+        for raw in [
+            &b"POST / HTTP/1.1\r\nContent-Length: 5\r\nContent-Length: 0\r\n\r\nhello"[..],
+            b"POST / HTTP/1.1\r\nContent-Length: 5\r\ncontent-length: 5\r\n\r\nhello",
+            b"POST / HTTP/1.1\r\nContent-Length: +5\r\n\r\nhello",
+            b"POST / HTTP/1.1\r\nContent-Length: 5, 5\r\n\r\nhello",
+            b"POST / HTTP/1.1\r\nContent-Length: -1\r\n\r\n",
+            b"POST / HTTP/1.1\r\nContent-Length:\r\n\r\n",
+            b"POST / HTTP/1.1\r\nContent-Length : 0\r\nContent-Length: 5\r\n\r\nhello",
+            b"POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n",
+            b"POST / HTTP/1.1\r\nContent-Length: 99999999999\r\n\r\n",
+        ] {
+            assert!(parse(raw).is_err(), "{}", String::from_utf8_lossy(raw));
+        }
+    }
+
+    #[test]
+    fn request_and_header_lines_are_bounded() {
+        let mut long_target = b"GET /".to_vec();
+        long_target.extend(std::iter::repeat_n(b'a', MAX_LINE));
+        long_target.extend(b" HTTP/1.1\r\n\r\n");
+        assert_eq!(parse(&long_target).err().as_deref(), Some("line too long"));
+
+        let mut long_header = b"GET / HTTP/1.1\r\nX: ".to_vec();
+        long_header.extend(std::iter::repeat_n(b'a', MAX_LINE));
+        long_header.extend(b"\r\n\r\n");
+        assert_eq!(parse(&long_header).err().as_deref(), Some("line too long"));
+
+        let mut many = b"GET / HTTP/1.1\r\n".to_vec();
+        for i in 0..=MAX_HEADERS {
+            many.extend(format!("X-{i}: 1\r\n").as_bytes());
+        }
+        many.extend(b"\r\n");
+        assert_eq!(parse(&many).err().as_deref(), Some("too many headers"));
+
+        let mut big = b"GET / HTTP/1.1\r\n".to_vec();
+        for i in 0..20 {
+            big.extend(format!("X-{i}: {}\r\n", "a".repeat(MAX_LINE - 16)).as_bytes());
+        }
+        big.extend(b"\r\n");
+        assert_eq!(parse(&big).err().as_deref(), Some("headers too large"));
+
+        for raw in [
+            &b"GET /\r\n\r\n"[..],
+            b"GET / HTTP/1.1 x\r\n\r\n",
+            b"GET x HTTP/1.1\r\n\r\n",
+            b"GET / HTTP/1.1\r\nHost",
+        ] {
+            assert!(parse(raw).is_err(), "{}", String::from_utf8_lossy(raw));
+        }
+    }
+
+    #[test]
+    fn connections_past_the_cap_are_refused_until_one_ends() {
+        let live = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let slots: Vec<Slot> = (0..MAX_CONNECTIONS)
+            .map(|_| Slot::take(&live).unwrap())
+            .collect();
+        assert!(Slot::take(&live).is_none());
+        drop(slots);
+        assert_eq!(live.load(Ordering::Relaxed), 0);
+        assert!(Slot::take(&live).is_some());
     }
 
     #[test]
