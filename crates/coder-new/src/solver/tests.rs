@@ -405,3 +405,14 @@ fn a_linker_or_disk_fault_is_the_computers_not_the_changes() {
     )];
     assert_eq!(super::hands::environment_fault(&real), None);
 }
+
+#[test]
+fn a_failed_check_keeps_the_names_of_the_failed_tests() {
+    let text = "running 2 tests\ntest a::one ... ok\ntest a::two ... FAILED\n\nfailures:\n\n---- a::two stdout ----\npanicked at x\n\nfailures:\n    a::two\n\ntest result: FAILED. 1 passed; 1 failed\n";
+    let shown = crate::issue_run::agent::trimmed(text, false);
+    assert!(shown.contains("test a::two ... FAILED"), "{shown}");
+    assert_eq!(
+        crate::issue_run::agent::failing_tests(&shown),
+        vec!["a::two".to_owned()]
+    );
+}

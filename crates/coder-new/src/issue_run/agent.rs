@@ -166,7 +166,10 @@ pub fn trimmed(text: &str, ok: bool) -> String {
             || line.contains("panicked at")
         {
             block = true;
-        } else if line.starts_with("test result:") || line.starts_with("failures:") {
+        } else if line.starts_with("test result:")
+            || line.starts_with("failures:")
+            || (line.starts_with("test ") && line.ends_with("... FAILED"))
+        {
             out.push(*line);
             block = false;
             continue;
