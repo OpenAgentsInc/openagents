@@ -401,6 +401,18 @@ Best sustained decisions/s at the base shape, per backend and day, from
 every run in Cloud Storage (scheduled and by hand).
 
 <!-- dt:trend:start -->
+| Backend | Day | Plan | Best decisions/s, 1 question | Concurrency | p99 | $ / 1,000 |
+| --- | --- | --- | ---: | ---: | ---: | ---: |
+| jev | 2026-10-11 | full | 173 | 64 | 0.76 s | $0.0663 |
+| gateway-jev | 2026-10-11 | full | 86.39 | 32 | 0.62 s | $0.0662 |
+| gateway-pylon | 2026-10-11 | full | 4.14 | 4 | 1.24 s | $0.0081 |
+| vertex-gemini | 2026-10-11 | full | 3.50 | 16 | 6.35 s | $1.722 |
+| coderos-clef | 2026-10-11 | full | 4.21 | 1 | 0.27 s | $0.0079 |
+| coderos-llamacpp | 2026-10-11 | full | 3.14 | 1 | 0.66 s | $0.0106 |
+| h100-clef-flash | 2026-10-11 | full | 9.87 | 4 | 0.43 s | $0.180 |
+| h100-clef-27b | 2026-10-11 | full | 3.83 | 1 | 0.30 s | $0.464 |
+| sealed-gpu | 2026-10-11 | full | 2.94 | 2 | 0.78 s | $0.646 |
+| sealed-cpu | 2026-10-11 | full | 0.04 | 1 | 31.28 s | $3.472 |
 <!-- dt:trend:end -->
 
 ## First run (2026-10-11): how it was taken
