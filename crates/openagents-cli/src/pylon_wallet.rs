@@ -114,7 +114,7 @@ impl Payer for CliPayer {
                 payer,
                 Some(invoice.amount_msat),
             )?;
-            x402::admit(policy.as_ref(), limits, &provider, invoice.amount_msat)?;
+            let hold = x402::admit(policy.as_ref(), limits, &provider, invoice.amount_msat)?;
             let spend = Spend {
                 flags,
                 capability: None,
@@ -130,8 +130,9 @@ impl Payer for CliPayer {
                 limits.max_fee_msat,
                 spend.wait,
                 &spend.resource,
-            )?;
-            x402::record_payment(&spend, network, &provider, &proof, "paid");
+            )
+            .inspect_err(|_| x402::release(&hold))?;
+            x402::record_payment(&spend, network, &provider, &proof, "paid", &hold);
             Ok(proof.preimage)
         })
     }

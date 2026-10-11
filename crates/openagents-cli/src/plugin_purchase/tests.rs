@@ -443,7 +443,6 @@ impl Harness {
             &self.wallet,
             &self.wire,
             None,
-            0,
             &self.ledger,
             1,
             self.now * 1000 + 2,
@@ -506,7 +505,6 @@ fn changed_customer_payer_packet_expiry_and_cancellation_never_dispatch_payment(
                 &h.wallet,
                 &h.wire,
                 None,
-                0,
                 &h.ledger,
                 1,
                 at
@@ -517,6 +515,51 @@ fn changed_customer_payer_packet_expiry_and_cancellation_never_dispatch_payment(
         assert_eq!(h.wallet.payments.load(Ordering::SeqCst), 0);
         assert_eq!(h.ledger.entries().unwrap().len(), 0);
     }
+}
+#[test]
+fn daily_cap_refusal_holds_nothing_and_leaves_the_purchase_approved() {
+    let mut h = Harness::new();
+    h.approve();
+    let earlier = openagents_x402::policy::Entry {
+        paid_at: h.now,
+        binding: "http:1".into(),
+        network: h.offer.payer.network.clone(),
+        provider: h.offer.payment.accepts[0].pay_to.clone(),
+        capability: None,
+        resource: "https://example.test/earlier".into(),
+        amount_msat: 2_000,
+        fee_msat: 0,
+        payment_hash: "cd".repeat(32),
+        phase: "paid".into(),
+    };
+    h.ledger.append(&earlier).unwrap();
+    let policy = Policy {
+        daily_cap_msat: Some(7_000),
+        ..Policy::default()
+    };
+    let before = serde_json::to_value(h.store.plugin_view("one").unwrap()).unwrap();
+    let Err(refused) = buy(
+        &mut h.store,
+        "one",
+        &h.current,
+        &h.offer.payer,
+        &h.offer.packet,
+        &h.wallet,
+        &h.wire,
+        Some(&policy),
+        &h.ledger,
+        1,
+        h.now * 1000 + 2,
+    ) else {
+        panic!("the daily cap must refuse");
+    };
+    assert!(refused.contains("daily cap"), "{refused}");
+    assert_eq!(h.wallet.payments.load(Ordering::SeqCst), 0);
+    assert_eq!(h.ledger.entries().unwrap(), vec![earlier]);
+    assert_eq!(
+        serde_json::to_value(h.store.plugin_view("one").unwrap()).unwrap(),
+        before
+    );
 }
 #[test]
 fn exact_plugin_commercial_join_is_approved_and_rechecked_before_actual_payment() {
@@ -608,7 +651,6 @@ fn exact_plugin_commercial_join_is_approved_and_rechecked_before_actual_payment(
                 &h.wallet,
                 &h.wire,
                 None,
-                0,
                 &h.ledger,
                 1,
                 NOW * 1000 + 2
@@ -633,7 +675,6 @@ fn exact_plugin_commercial_join_is_approved_and_rechecked_before_actual_payment(
         &h.wallet,
         &h.wire,
         None,
-        0,
         &h.ledger,
         1,
         NOW * 1000 + 2,

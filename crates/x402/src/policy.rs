@@ -289,6 +289,11 @@ impl Ledger {
     pub fn append(&self, entry: &Entry) -> Result<(), PolicyError> {
         #[cfg(unix)]
         let _lock = self.mutation_lock()?;
+        self.append_locked(entry)
+    }
+
+    /// Append one line. The caller holds the mutation lock.
+    fn append_locked(&self, entry: &Entry) -> Result<(), PolicyError> {
         let io =
             |error: std::io::Error| PolicyError::Io(format!("{}: {error}", self.path.display()));
         if let Some(parent) = self.path.parent() {
@@ -422,10 +427,15 @@ impl Ledger {
         if !changed {
             return Ok(());
         }
+        self.rewrite(&entries)
+    }
+
+    /// Replace the file with `entries`. The caller holds the mutation lock.
+    fn rewrite(&self, entries: &[Entry]) -> Result<(), PolicyError> {
         let io =
             |error: std::io::Error| PolicyError::Io(format!("{}: {error}", self.path.display()));
         let mut bytes = Vec::new();
-        for entry in &entries {
+        for entry in entries {
             bytes.extend(serde_json::to_vec(entry).map_err(|e| PolicyError::Io(e.to_string()))?);
             bytes.push(b'\n');
         }
@@ -467,6 +477,115 @@ impl Ledger {
             .map(|e| e.amount_msat.saturating_add(e.fee_msat))
             .fold(0u64, u64::saturating_add))
     }
+
+    /// Check the ceiling, the allowlist, and the daily cap for paying
+    /// `amount_msat` to `provider`, and hold the amount plus the fee ceiling
+    /// in the ledger, in one step under the ledger lock. Two buyers racing
+    /// for the last of the cap cannot both pass. Holds count toward the cap
+    /// until `settle` swaps one for the real charge or `release` drops it; a
+    /// hold left by a crash counts for 24 hours, so the cap errs toward
+    /// refusing, never toward overspending.
+    pub fn reserve(
+        &self,
+        policy: Option<&Policy>,
+        limits: Limits,
+        provider: &str,
+        amount_msat: u64,
+        now: u64,
+    ) -> Result<Reservation, PolicyError> {
+        #[cfg(unix)]
+        let _lock = self.mutation_lock()?;
+        let spent = self.spent_since(now.saturating_sub(DAY_SECS))?;
+        Policy::admit(policy, limits, provider, amount_msat, spent)?;
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default();
+        let id = format!(
+            "{HOLD_PREFIX}{}-{nanos}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        );
+        self.append_locked(&Entry {
+            paid_at: now,
+            binding: "hold".into(),
+            network: String::new(),
+            provider: provider.to_owned(),
+            capability: None,
+            resource: String::new(),
+            amount_msat,
+            fee_msat: limits.max_fee_msat,
+            payment_hash: id.clone(),
+            phase: HOLD_PHASE.into(),
+        })?;
+        Ok(Reservation {
+            id,
+            hold_msat: amount_msat.saturating_add(limits.max_fee_msat),
+        })
+    }
+
+    /// Drop a hold when nothing was paid.
+    pub fn release(&self, reservation: &Reservation) -> Result<(), PolicyError> {
+        #[cfg(unix)]
+        let _lock = self.mutation_lock()?;
+        let mut entries = self.entries()?;
+        let before = entries.len();
+        entries.retain(|e| e.payment_hash != reservation.id);
+        if entries.len() == before {
+            return Ok(());
+        }
+        self.rewrite(&entries)
+    }
+
+    /// Swap a hold for the charge actually paid, in one locked rewrite. The
+    /// charge is recorded once: a row already holding its payment hash must
+    /// match it, or the ledger refuses.
+    pub fn settle(&self, reservation: &Reservation, entry: &Entry) -> Result<(), PolicyError> {
+        #[cfg(unix)]
+        let _lock = self.mutation_lock()?;
+        let mut entries = self.entries()?;
+        entries.retain(|e| e.payment_hash != reservation.id);
+        let mut found = false;
+        for old in entries
+            .iter()
+            .filter(|e| e.payment_hash == entry.payment_hash)
+        {
+            if found
+                || old.binding != entry.binding
+                || old.network != entry.network
+                || old.provider != entry.provider
+                || old.resource != entry.resource
+                || old.capability != entry.capability
+                || old.amount_msat != entry.amount_msat
+                || old.fee_msat != entry.fee_msat
+            {
+                return Err(PolicyError::Io(
+                    "Buyer ledger conflicts with the original charge.".into(),
+                ));
+            }
+            found = true;
+        }
+        if !found {
+            entries.push(entry.clone());
+        }
+        self.rewrite(&entries)
+    }
+}
+
+/// `payment_hash` prefix of a ledger row that holds part of the daily cap
+/// while a payment is in flight.
+pub const HOLD_PREFIX: &str = "hold-";
+/// `phase` of a hold row.
+pub const HOLD_PHASE: &str = "reserved";
+
+/// A hold on the daily cap taken by `Ledger::reserve`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Reservation {
+    /// The hold row's `payment_hash`.
+    pub id: String,
+    /// The amount plus the fee ceiling held against the cap.
+    pub hold_msat: u64,
 }
 
 #[cfg(test)]
@@ -659,5 +778,88 @@ mod tests {
             .write_all(b"{partial")
             .unwrap();
         assert!(ledger.record_once(&charge).is_err());
+    }
+
+    fn capped(cap: u64) -> (Policy, Limits) {
+        let p = Policy {
+            daily_cap_msat: Some(cap),
+            ..Policy::default()
+        };
+        let limits = Limits {
+            max_msat: 10_000,
+            max_fee_msat: 0,
+            source: Source::Flag,
+        };
+        (p, limits)
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reserve_holds_the_cap_across_threads() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        };
+        let root = tempfile::tempdir().unwrap();
+        let ledger = Arc::new(Ledger::open(&root.path().join(LEDGER_FILE)));
+        let (p, limits) = capped(3_500);
+        let admitted = AtomicUsize::new(0);
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                let (l, p, admitted) = (ledger.clone(), &p, &admitted);
+                scope.spawn(move || {
+                    if l.reserve(Some(p), limits, "02aa", 1_000, 1_000).is_ok() {
+                        admitted.fetch_add(1, Ordering::SeqCst);
+                    }
+                });
+            }
+        });
+        assert_eq!(admitted.load(Ordering::SeqCst), 3);
+        assert_eq!(ledger.spent_since(0).unwrap(), 3_000);
+        assert!(matches!(
+            ledger.reserve(Some(&p), limits, "02aa", 1_000, 1_000),
+            Err(PolicyError::DailyCap { .. })
+        ));
+    }
+
+    #[test]
+    fn release_frees_the_hold_and_settle_replaces_it_once() {
+        let root = tempfile::tempdir().unwrap();
+        let ledger = Ledger::open(&root.path().join(LEDGER_FILE));
+        let (p, mut limits) = capped(2_000);
+        limits.max_fee_msat = 100;
+        let hold = ledger
+            .reserve(Some(&p), limits, "02aa", 1_500, 1_000)
+            .unwrap();
+        assert_eq!(hold.hold_msat, 1_600);
+        assert!(
+            ledger
+                .reserve(Some(&p), limits, "02aa", 1_500, 1_000)
+                .is_err()
+        );
+        ledger.release(&hold).unwrap();
+        assert_eq!(ledger.entries().unwrap(), Vec::new());
+        let hold = ledger
+            .reserve(Some(&p), limits, "02aa", 1_500, 1_000)
+            .unwrap();
+        let charge = Entry {
+            paid_at: 1_000,
+            binding: "http:1".into(),
+            network: "lnbtc:testnet".into(),
+            provider: "02aa".into(),
+            capability: None,
+            resource: "https://example.test/x".into(),
+            amount_msat: 1_500,
+            fee_msat: 7,
+            payment_hash: "ab".repeat(32),
+            phase: "paid".into(),
+        };
+        ledger.settle(&hold, &charge).unwrap();
+        ledger.settle(&hold, &charge).unwrap();
+        assert_eq!(ledger.entries().unwrap(), vec![charge.clone()]);
+        assert_eq!(ledger.spent_since(0).unwrap(), 1_507);
+        let mut changed = charge;
+        changed.fee_msat += 1;
+        assert!(ledger.settle(&hold, &changed).is_err());
     }
 }

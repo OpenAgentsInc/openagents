@@ -30,7 +30,7 @@ use serde_json::{Map, Value, json};
 use crate::relay::{Client, identity_for, relay_url, unix_now};
 use crate::x402::{
     Node, Spend, admit, ceiling_present, expiry, fail_wallet, flags, load_policy, open_wallet,
-    pay_by, payer, payer_limits, record_payment, replay_dir, set_phase, toll_floor,
+    pay_by, payer, payer_limits, record_payment, release, replay_dir, set_phase, toll_floor,
 };
 use crate::{Args, Output};
 
@@ -1306,7 +1306,7 @@ pub fn buy(output: &Output, words: &[String]) -> u8 {
             "the challenge's payTo is not a receiver the capability advertises",
         );
     }
-    let limits = match payer_limits(
+    let (limits, hold) = match payer_limits(
         policy.as_ref(),
         flags,
         Some(&terms.requirements.pay_to),
@@ -1321,9 +1321,9 @@ pub fn buy(output: &Output, words: &[String]) -> u8 {
             &terms.requirements.pay_to,
             terms.amount_msat,
         )
-        .map(|()| limits)
+        .map(|hold| (limits, hold))
     }) {
-        Ok(limits) => limits,
+        Ok(admitted) => admitted,
         Err(message) => {
             client.close();
             return output.fail("x402", &format!("{message}; nothing was paid"));
@@ -1345,6 +1345,7 @@ pub fn buy(output: &Output, words: &[String]) -> u8 {
     ) {
         Ok(proof) => proof,
         Err(message) => {
+            release(&hold);
             client.close();
             return output.fail("x402", &message);
         }
@@ -1362,6 +1363,7 @@ pub fn buy(output: &Output, words: &[String]) -> u8 {
         &terms.requirements.pay_to,
         &proof,
         "paid",
+        &hold,
     );
     receipt.paid = Some(proof.payment_hash.clone());
     receipt.fee_msat = Some(proof.fee_msat);
