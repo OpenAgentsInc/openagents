@@ -7,7 +7,10 @@
 // `TEST_RUNNER_OPENAGENTS_UITEST_SHOTS=DIR`. The sign-in code is written to
 // `DIR/code.txt`; approve it on the site (the test waits up to five
 // minutes). `TEST_RUNNER_OPENAGENTS_UITEST_ORIGIN=https://staging.openagents.com`
-// signs in to staging (a debug Rust library only).
+// signs in to staging (a debug Rust library only), and
+// `TEST_RUNNER_OPENAGENTS_UITEST_SIGN_OUT=1` signs out at the end.
+// `TEST_RUNNER_OPENAGENTS_UITEST_SESSION_FILE=PATH` starts signed in with a
+// saved session instead (simulator only; never sign out a shared one).
 import XCTest
 
 final class AccountGateUITests: XCTestCase {
@@ -49,6 +52,13 @@ final class AccountGateUITests: XCTestCase {
         let app = XCUIApplication()
         if let origin = environment["OPENAGENTS_UITEST_ORIGIN"] {
             app.launchArguments += ["--account-origin", origin]
+        }
+        // `OPENAGENTS_UITEST_SESSION_FILE`: a saved session (JSON: origin,
+        // account, label, expires_at, token) to start signed in with, on a
+        // simulator, instead of approving a code.
+        if let path = environment["OPENAGENTS_UITEST_SESSION_FILE"],
+           let session = try? String(contentsOfFile: path, encoding: .utf8) {
+            app.launchEnvironment["OPENAGENTS_UITEST_ACCOUNT_SESSION"] = session
         }
         app.launch()
         sleep(3)
@@ -110,5 +120,15 @@ final class AccountGateUITests: XCTestCase {
         settings.tap()
         sleep(2)
         record(app, "40-settings-signed-in")
+
+        // `OPENAGENTS_UITEST_SIGN_OUT`: end this phone's session after.
+        if environment["OPENAGENTS_UITEST_SIGN_OUT"] != nil {
+            app.buttons["account-link"].firstMatch.tap()
+            let signOut = app.buttons["link-sign-out"].firstMatch
+            XCTAssertTrue(signOut.waitForExistence(timeout: 10))
+            signOut.tap()
+            XCTAssertTrue(app.buttons["link-sign-in"].firstMatch.waitForExistence(timeout: 30))
+            record(app, "50-signed-out")
+        }
     }
 }

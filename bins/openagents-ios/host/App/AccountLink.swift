@@ -121,6 +121,13 @@ extension MobileBridge {
     func linkHello() {
         var fields: [String: Any] = ["name": UIDevice.current.name]
         if let session = AccountSessionStore.load() { fields["session"] = session }
+        #if targetEnvironment(simulator)
+        // The signed-in gate (AccountGateUITests) on a simulator only: an
+        // existing session, so a gate on production needs no approval.
+        if let session = ProcessInfo.processInfo.environment["OPENAGENTS_UITEST_ACCOUNT_SESSION"], !session.isEmpty {
+            fields["session"] = session
+        }
+        #endif
         link("hello", fields)
     }
 
