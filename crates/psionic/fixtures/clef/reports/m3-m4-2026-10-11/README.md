@@ -46,8 +46,25 @@ passes five exact-decode cases and 20 tiny matrix comparisons through the
 public MPS quantized-matrix API with an explicit f32 destination. Maximum error
 against a CPU f64 oracle is `2.38418579e-7`; the half-output counterfactual would
 introduce `0.020751953` error. Earlier backing-size and row-layout failures are
-preserved. This establishes a small API capability only: real-weight accuracy,
-speed, private temporary storage, and full-model behavior remain untested.
+preserved. This establishes a small API capability only.
+
+The subsequent [real Flash gate projection](lut-gate-probe-v1/README.md) verifies
+all 50,331,648 decoded half weights and all 12,582,912 output values per path.
+The LUT path passes the unchanged numerical limit, with maximum difference
+`1.3113e-6`, but takes **198.011 ms versus 2.376 ms** for fixed64 MPP: about
+83 times as long. It is rejected. Device allocation counters show no persistent
+96 MiB expansion after these operations, but cannot exclude transient private
+storage. The five samples per path use synthetic activations and actual weights;
+they are not full-model latency measurements.
+
+The [fixed four-token-tile dispatch swizzle](gemm-swizzle-probe-v1/README.md)
+also remains unapplied. All 15 correctness checks and 240 timed full-output
+comparisons are bitwise identical. Full-FFN baseline/swizzle medians are
+`3.021/3.033 ms` at 512 tokens, `5.520/5.492 ms` at 1,024, and
+`10.443/10.517 ms` at 2,048. These small, inconsistent differences do not justify
+integration. The probe preserves all five ABBA rounds and includes residual
+addition, tails, immutable inputs, and output guards. Both experiments finish
+within their unchanged 2 GiB process caps and stop their owned child groups.
 
 All probes use shared GPU/build and bounded memory leases as appropriate.
 None uses a quiet lease or changes desktop applications or system services.

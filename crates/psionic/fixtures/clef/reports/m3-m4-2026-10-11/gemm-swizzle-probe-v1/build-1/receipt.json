@@ -1,0 +1,64 @@
+{
+  "mode": "build",
+  "status": "complete",
+  "preflight": {
+    "available_memory_bytes": 106672324608,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 4545075,
+      "inactive": 1928702,
+      "speculative": 36985
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "max_owned_group_bytes": 4294967296,
+  "minimum_available_bytes": 12884901888,
+  "minimum_start_bytes": 17179869184,
+  "deadline_seconds": 180,
+  "conditions": "shared machine; fixed four-token tile swizzle; actual Flash FFN half weights; no model execution",
+  "source_sha256": {
+    "kernels.metal": "9f568f67affbd42704836909694b63b6add869d872354c06718ac5c39cfb0f5c",
+    "candidate.metal": "f441c80549e842fdc0efd86df8ebd5663d729e7f812f09d0a9bbae29ce2867b4",
+    "production-shapes.metal": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+    "production-fixed-extract.metal": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+    "production-silu-extract.metal": "fe7844912a63f4219dc05a5a50a5b269ad48a0e3aa5f60cef221ae9223880e61",
+    "production-planner.rs": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac",
+    "probe.swift": "14481080a4da06ca14be4c211116210543812a07513d7f0371b34726456d2646",
+    "weights.json": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+    "build.py": "d5cf5c14d47a48c1bb223716e82248bb12dcdf3066e8d816929381e9d90f1457",
+    "guard.py": "58817c17884d26d754f8a665e7f1b0da6fe107bb1f37a306a86af73ce9e3c17b",
+    "manifest.json": "c7e4d8d96de37d2d8c0c6a96dd044d974a874d3741cbafed880b647cf4ebac97",
+    "summarize.py": "0e36af9755f5ca58bdf2953e31715be524866484a889ab9b561e6958ad6c337b"
+  },
+  "guard_dependency_sha256": {
+    "mac_quiet_bench.py": "ce5f832d0eeb2ec5c954755c07d00fafcc2bb1c59d6aa6c1d993a2f84bcce9fb",
+    "mac_memory.py": "72821323f938a5242702e038fda49cff42f679810749375c0acbb19b91994ffd"
+  },
+  "command": [
+    "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+    "run-artifacts/gemm-swizzle-probe/build.py"
+  ],
+  "exit": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 6147,
+    "max_rss_bytes": 4294967296,
+    "peak_rss_bytes": 47448064,
+    "peak_physical_footprint_bytes": 17908576,
+    "peak_accounted_bytes": 47448064,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 5,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 106519199744,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 2.482769125
+}

@@ -1,0 +1,279 @@
+{
+  "scope": "one real layer-0 Flash gate projection; N1024 M12288 K4096; deterministic synthetic half activations; no full-model claim",
+  "decision": "reject LUT performance candidate; keep existing production kernel",
+  "correctness_status": "pass",
+  "performance_candidate_status": "rejected",
+  "fixed_absolute_error_limit": 0.001,
+  "variants": {
+    "mpp_fixed64": {
+      "gpu_ms": [
+        2.144958336430136,
+        2.2633333355770446,
+        2.3757499948260374,
+        3.2518750012968667,
+        3.435708327742759
+      ],
+      "median_gpu_ms": 2.3757499948260374,
+      "range_gpu_ms": [
+        2.144958336430136,
+        3.435708327742759
+      ],
+      "encode_wait_wall_ms": [
+        2.75900000333786,
+        3.1830000057816505,
+        2.8889999985694885,
+        3.7839999943971634,
+        3.625
+      ],
+      "full_outputs_compared": 75497472,
+      "max_absolute_difference_from_production": 0,
+      "nonfinite": 0,
+      "above_0_001": 0,
+      "correctness_comparison": {
+        "above_fixed_0_001": 0,
+        "count": 12582912,
+        "different_bits": 0,
+        "first_failures": [],
+        "max_absolute_error": 0,
+        "mean_absolute_error": 0,
+        "nonfinite": 0,
+        "rms_error": 0
+      },
+      "oracle_sample_count": 96,
+      "oracle_max_absolute_error": 2.1979212760925293e-07
+    },
+    "mpp_weight_shapes": {
+      "gpu_ms": [
+        1.8428333278279752,
+        2.531625003030058,
+        2.375750002101995,
+        3.034875000594184,
+        2.7144583364133723
+      ],
+      "median_gpu_ms": 2.531625003030058,
+      "range_gpu_ms": [
+        1.8428333278279752,
+        3.034875000594184
+      ],
+      "encode_wait_wall_ms": [
+        2.3870000019669533,
+        3.1450000032782555,
+        2.8889999985694885,
+        3.212999999523163,
+        3.2360000014305115
+      ],
+      "full_outputs_compared": 75497472,
+      "max_absolute_difference_from_production": 0,
+      "nonfinite": 0,
+      "above_0_001": 0,
+      "correctness_comparison": {
+        "above_fixed_0_001": 0,
+        "count": 12582912,
+        "different_bits": 0,
+        "first_failures": [],
+        "max_absolute_error": 0,
+        "mean_absolute_error": 0,
+        "nonfinite": 0,
+        "rms_error": 0
+      },
+      "oracle_sample_count": 96,
+      "oracle_max_absolute_error": 2.1979212760925293e-07
+    },
+    "ndarray_dense_half_f32": {
+      "gpu_ms": [
+        1.8835833325283602,
+        2.4902916702558286,
+        2.465749996190425,
+        3.1171250011539087,
+        2.6347500024712645
+      ],
+      "median_gpu_ms": 2.4902916702558286,
+      "range_gpu_ms": [
+        1.8835833325283602,
+        3.1171250011539087
+      ],
+      "encode_wait_wall_ms": [
+        2.4700000062584877,
+        3.0150000005960464,
+        2.9830000028014183,
+        3.717000000178814,
+        3.184000000357628
+      ],
+      "full_outputs_compared": 75497472,
+      "max_absolute_difference_from_production": 0,
+      "nonfinite": 0,
+      "above_0_001": 0,
+      "correctness_comparison": {
+        "above_fixed_0_001": 0,
+        "count": 12582912,
+        "different_bits": 0,
+        "first_failures": [],
+        "max_absolute_error": 0,
+        "mean_absolute_error": 0,
+        "nonfinite": 0,
+        "rms_error": 0
+      },
+      "oracle_sample_count": 96,
+      "oracle_max_absolute_error": 2.1979212760925293e-07
+    },
+    "ndarray_uint4_half_lut_f32": {
+      "gpu_ms": [
+        142.75645833549788,
+        169.70800000126474,
+        198.0109166688635,
+        249.51837499975227,
+        219.9612916665501
+      ],
+      "median_gpu_ms": 198.0109166688635,
+      "range_gpu_ms": [
+        142.75645833549788,
+        249.51837499975227
+      ],
+      "encode_wait_wall_ms": [
+        143.27799999713898,
+        170.23200000077486,
+        198.53499999642372,
+        250.13700000196695,
+        220.52599999308586
+      ],
+      "full_outputs_compared": 75497472,
+      "max_absolute_difference_from_production": 1.3113021850585938e-06,
+      "nonfinite": 0,
+      "above_0_001": 0,
+      "correctness_comparison": {
+        "above_fixed_0_001": 0,
+        "count": 12582912,
+        "different_bits": 11297121,
+        "first_failures": [],
+        "max_absolute_error": 1.3113021850585938e-06,
+        "mean_absolute_error": 4.1015298194816786e-08,
+        "nonfinite": 0,
+        "rms_error": 6.368052218653146e-08
+      },
+      "oracle_sample_count": 96,
+      "oracle_max_absolute_error": 4.936009645462036e-08
+    }
+  },
+  "lut_to_fixed64_paired_ratios": [
+    66.55442015395418,
+    74.98144322519647,
+    83.34669771655106,
+    76.7306169210818,
+    64.02210859705411
+  ],
+  "lut_to_fixed64_ratio_of_medians": 83.34669771655106,
+  "decode_checks": [
+    {
+      "count": 50331648,
+      "half_bit_mismatches": 0,
+      "phase": "cpu_all_weight_decode"
+    },
+    {
+      "count": 50331648,
+      "first_mismatches": [],
+      "half_bit_mismatches": 0,
+      "phase": "gpu_all_weight_decode"
+    }
+  ],
+  "preprocessing": [
+    {
+      "activation_sha256": "105a97272d986dda1efd4a31233384a6969278d032d121147a097eb3f76665fe",
+      "lut_group_m_16_sha256": "75df60e7e4ca25a8bf22e9e5a087fb03434a7f1f9f7fbeba36d5c2038cbda4c6",
+      "phase": "derived_input_hashes",
+      "preprocessing_cpu_ms_before_upload": 428.0869999974966,
+      "q_km_sha256": "4d992782a253adedd8f58bb342fb067c71fc281f297a05ce097e8dd8b9614614",
+      "wt_km_sha256": "9c16f4da08beae530cb54a7dbdaa83158b24f445b570ee30329933ac9a812cc7"
+    },
+    {
+      "cpu_and_upload_ms": 565.3849999979138,
+      "excluded_from_projection_timings": true,
+      "phase": "preprocessing_complete"
+    }
+  ],
+  "device_memory_points": [
+    {
+      "device_current_allocated_bytes": 285769728,
+      "explicit_buffer_bytes": 285233152,
+      "interpretation": "point-in-time library allocation accounting; not a private-expansion or peak guarantee",
+      "named_ndarray_resource_bytes": 285233152,
+      "phase": "memory",
+      "where": "input_upload_complete"
+    },
+    {
+      "device_current_allocated_bytes": 386711552,
+      "explicit_buffer_bytes": 385900544,
+      "interpretation": "point-in-time library allocation accounting; not a private-expansion or peak guarantee",
+      "named_ndarray_resource_bytes": 385900544,
+      "phase": "memory",
+      "where": "exact_decode_complete_before_release"
+    },
+    {
+      "device_current_allocated_bytes": 286031872,
+      "explicit_buffer_bytes": 285233152,
+      "interpretation": "point-in-time library allocation accounting; not a private-expansion or peak guarantee",
+      "named_ndarray_resource_bytes": 285233152,
+      "phase": "memory",
+      "where": "decode_temporary_released"
+    },
+    {
+      "device_current_allocated_bytes": 386727936,
+      "explicit_buffer_bytes": 385904640,
+      "interpretation": "point-in-time library allocation accounting; not a private-expansion or peak guarantee",
+      "named_ndarray_resource_bytes": 385904640,
+      "phase": "memory",
+      "where": "correctness/mpp_fixed64"
+    },
+    {
+      "device_current_allocated_bytes": 386727936,
+      "explicit_buffer_bytes": 385904640,
+      "interpretation": "point-in-time library allocation accounting; not a private-expansion or peak guarantee",
+      "named_ndarray_resource_bytes": 385904640,
+      "phase": "memory",
+      "where": "correctness/mpp_weight_shapes"
+    },
+    {
+      "device_current_allocated_bytes": 386711552,
+      "explicit_buffer_bytes": 385904640,
+      "interpretation": "point-in-time library allocation accounting; not a private-expansion or peak guarantee",
+      "named_ndarray_resource_bytes": 385904640,
+      "phase": "memory",
+      "where": "correctness/ndarray_dense_half_f32"
+    },
+    {
+      "device_current_allocated_bytes": 386711552,
+      "explicit_buffer_bytes": 385904640,
+      "interpretation": "point-in-time library allocation accounting; not a private-expansion or peak guarantee",
+      "named_ndarray_resource_bytes": 385904640,
+      "phase": "memory",
+      "where": "correctness/ndarray_uint4_half_lut_f32"
+    },
+    {
+      "device_current_allocated_bytes": 386711552,
+      "explicit_buffer_bytes": 385904640,
+      "interpretation": "point-in-time library allocation accounting; not a private-expansion or peak guarantee",
+      "named_ndarray_resource_bytes": 385904640,
+      "phase": "memory",
+      "where": "all_checks_complete"
+    }
+  ],
+  "allocation_limitation": "Point-in-time values do not exclude transient/private expansion. No persistent96MiB expanded weight allocation observed at recorded endpoints.",
+  "process_seconds": 4.574694042000001,
+  "sampled_owned_process_peak_bytes": 702776496,
+  "lowest_available_memory_bytes": 102916882432,
+  "owned_group_stopped": true,
+  "binary_sha256": "87fb27072566dd3d57b3e7765aae9f31fad059df17307357f8f9b3cd9807aa1a",
+  "metallib_sha256": "1c49efd2b68b0aee78c95b4dc87e9ef850aa6a7d6117f52ef5f17fe93987a34b",
+  "source_sha256": {
+    "probe.m": "0eedd81aa671c3bbb6a067f1c8078e9db2f67c78b7cf9027fb5d14d7a00c08b5",
+    "baseline.metal": "75219cdc22f24cdaff3887933d654ea8611b36550e189f904e780b0e152c8ec8",
+    "build.py": "3833525f2dcedd344b5f95ae92daee5b8b7f1e6d740e34f0f710371aca00850e",
+    "guard.py": "3d8820b6d90fcbeb53834b4ab75ae27089870d588c1856a98dbf9238e115fe3f",
+    "sources.json": "ddc9cc62e14b3b9a2f6d993c4d614ecff52823d3f6b890519114daf52e8f52d8"
+  },
+  "attempts": {
+    "build-1": "passed; no compile repair",
+    "check-1": "all checks and five rounds completed; no rerun"
+  },
+  "host_conditions": "Shared machine, no quiet lease. Guard records memory availability. No contemporaneous CPU/GPU load sample was recorded by this narrow guard.",
+  "original_product_source_changed": false
+}

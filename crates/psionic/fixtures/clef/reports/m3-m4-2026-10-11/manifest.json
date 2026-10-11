@@ -10255,6 +10255,429 @@
       "published_sha256": "29c98489d648403d427863853d0d476209a00c014fcc3b397aaef47453e663f6",
       "published_bytes": 2454,
       "path_replacements": []
+    },
+    {
+      "source": "lut-gate-projection/publication-v1/README.md",
+      "original_sha256": "d5f15fef3fdf471e3f64a36284bae6f93aaf41a96531213325d1b4bb810c4c2e",
+      "original_bytes": 4920,
+      "published": "lut-gate-probe-v1/README.md",
+      "published_sha256": "d5f15fef3fdf471e3f64a36284bae6f93aaf41a96531213325d1b4bb810c4c2e",
+      "published_bytes": 4920,
+      "path_replacements": []
+    },
+    {
+      "source": "lut-gate-projection/publication-v1/baseline.metal",
+      "original_sha256": "75219cdc22f24cdaff3887933d654ea8611b36550e189f904e780b0e152c8ec8",
+      "original_bytes": 6332,
+      "published": "lut-gate-probe-v1/baseline.metal",
+      "published_sha256": "75219cdc22f24cdaff3887933d654ea8611b36550e189f904e780b0e152c8ec8",
+      "published_bytes": 6332,
+      "path_replacements": []
+    },
+    {
+      "source": "lut-gate-projection/publication-v1/build-1/memory.jsonl",
+      "original_sha256": "7e381457ad0a266cd7693e87efae883ae080270a64177b47cb5dc513b144d8e8",
+      "original_bytes": 3636,
+      "published": "lut-gate-probe-v1/build-1/memory.jsonl",
+      "published_sha256": "7e381457ad0a266cd7693e87efae883ae080270a64177b47cb5dc513b144d8e8",
+      "published_bytes": 3636,
+      "path_replacements": []
+    },
+    {
+      "source": "lut-gate-projection/publication-v1/build-1/receipt.json",
+      "original_sha256": "fe78cd6f8792b1e1a42629f477cb52648a1ae52a9a1c9bd13a855b262da2177e",
+      "original_bytes": 2001,
+      "published": "lut-gate-probe-v1/build-1/receipt.json",
+      "published_sha256": "fe78cd6f8792b1e1a42629f477cb52648a1ae52a9a1c9bd13a855b262da2177e",
+      "published_bytes": 2001,
+      "path_replacements": []
+    },
+    {
+      "source": "lut-gate-projection/publication-v1/build-1/stderr.log",
+      "original_sha256": "3a544179b783fcdd2cd935b719a48aa51c9dda4ec74c748b2f777d149fd958d7",
+      "original_bytes": 767,
+      "published": "lut-gate-probe-v1/build-1/stderr.log",
+      "published_sha256": "3a544179b783fcdd2cd935b719a48aa51c9dda4ec74c748b2f777d149fd958d7",
+      "published_bytes": 767,
+      "path_replacements": []
+    },
+    {
+      "source": "lut-gate-projection/publication-v1/build-1/stdout.jsonl",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "lut-gate-probe-v1/build-1/stdout.jsonl",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "lut-gate-projection/publication-v1/build.py",
+      "original_sha256": "3833525f2dcedd344b5f95ae92daee5b8b7f1e6d740e34f0f710371aca00850e",
+      "original_bytes": 613,
+      "published": "lut-gate-probe-v1/build.py",
+      "published_sha256": "3833525f2dcedd344b5f95ae92daee5b8b7f1e6d740e34f0f710371aca00850e",
+      "published_bytes": 613,
+      "path_replacements": []
+    },
+    {
+      "source": "lut-gate-projection/publication-v1/check-1/memory.jsonl",
+      "original_sha256": "a30df53a5dc4b652a34bc9096b612f03112fdafd73445bba64ff18a51d4d8de7",
+      "original_bytes": 6798,
+      "published": "lut-gate-probe-v1/check-1/memory.jsonl",
+      "published_sha256": "a30df53a5dc4b652a34bc9096b612f03112fdafd73445bba64ff18a51d4d8de7",
+      "published_bytes": 6798,
+      "path_replacements": []
+    },
+    {
+      "source": "lut-gate-projection/publication-v1/check-1/receipt.json",
+      "original_sha256": "e96503b74d4f184a52c7718ed423ea458028186e25a3dff182e2413ac2e3bc1e",
+      "original_bytes": 2152,
+      "published": "lut-gate-probe-v1/check-1/receipt.json",
+      "published_sha256": "e96503b74d4f184a52c7718ed423ea458028186e25a3dff182e2413ac2e3bc1e",
+      "published_bytes": 2152,
+      "path_replacements": []
+    },
+    {
+      "source": "lut-gate-projection/publication-v1/check-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "lut-gate-probe-v1/check-1/stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "lut-gate-projection/publication-v1/check-1/stdout.jsonl",
+      "original_sha256": "8bffd2405930bb5e27d9e3e1d44dacee7844f09d3741516af004309958a70ae6",
+      "original_bytes": 80990,
+      "published": "lut-gate-probe-v1/check-1/stdout.jsonl",
+      "published_sha256": "8bffd2405930bb5e27d9e3e1d44dacee7844f09d3741516af004309958a70ae6",
+      "published_bytes": 80990,
+      "path_replacements": []
+    },
+    {
+      "source": "lut-gate-projection/publication-v1/guard.py",
+      "original_sha256": "fbfe932350b6ca4e2bce6bd28bc17c091143db84f56eb7acd210d57af82b8635",
+      "original_bytes": 4494,
+      "published": "lut-gate-probe-v1/guard.py",
+      "published_sha256": "fbfe932350b6ca4e2bce6bd28bc17c091143db84f56eb7acd210d57af82b8635",
+      "published_bytes": 4494,
+      "path_replacements": []
+    },
+    {
+      "source": "lut-gate-projection/publication-v1/manifest.json",
+      "original_sha256": "e98afc3b47bcade2d6e2f785e08c2c41e3a1a44c9936e509e47399e125a693a2",
+      "original_bytes": 4138,
+      "published": "lut-gate-probe-v1/manifest.json",
+      "published_sha256": "e98afc3b47bcade2d6e2f785e08c2c41e3a1a44c9936e509e47399e125a693a2",
+      "published_bytes": 4138,
+      "path_replacements": []
+    },
+    {
+      "source": "lut-gate-projection/publication-v1/probe.m",
+      "original_sha256": "0eedd81aa671c3bbb6a067f1c8078e9db2f67c78b7cf9027fb5d14d7a00c08b5",
+      "original_bytes": 20817,
+      "published": "lut-gate-probe-v1/probe.m",
+      "published_sha256": "0eedd81aa671c3bbb6a067f1c8078e9db2f67c78b7cf9027fb5d14d7a00c08b5",
+      "published_bytes": 20817,
+      "path_replacements": []
+    },
+    {
+      "source": "lut-gate-projection/publication-v1/production-source-check.json",
+      "original_sha256": "c8babec4ba8c9e4839a589af01d1305a4a2525903ac726d6642d731d8919aad8",
+      "original_bytes": 643,
+      "published": "lut-gate-probe-v1/production-source-check.json",
+      "published_sha256": "c8babec4ba8c9e4839a589af01d1305a4a2525903ac726d6642d731d8919aad8",
+      "published_bytes": 643,
+      "path_replacements": []
+    },
+    {
+      "source": "lut-gate-projection/publication-v1/source-weights.json",
+      "original_sha256": "67f4754c3ed4beb03d2ea283f933e38a98054a6748e24b4857bd90cb4142e275",
+      "original_bytes": 7076,
+      "published": "lut-gate-probe-v1/source-weights.json",
+      "published_sha256": "67f4754c3ed4beb03d2ea283f933e38a98054a6748e24b4857bd90cb4142e275",
+      "published_bytes": 7076,
+      "path_replacements": []
+    },
+    {
+      "source": "lut-gate-projection/publication-v1/sources.json",
+      "original_sha256": "ddc9cc62e14b3b9a2f6d993c4d614ecff52823d3f6b890519114daf52e8f52d8",
+      "original_bytes": 6521,
+      "published": "lut-gate-probe-v1/sources.json",
+      "published_sha256": "ddc9cc62e14b3b9a2f6d993c4d614ecff52823d3f6b890519114daf52e8f52d8",
+      "published_bytes": 6521,
+      "path_replacements": []
+    },
+    {
+      "source": "lut-gate-projection/publication-v1/summary.json",
+      "original_sha256": "16fe5bffcb334d647cd4613d5e7c504570bbcfaea67510ba6f1f334cdf5adfbe",
+      "original_bytes": 9690,
+      "published": "lut-gate-probe-v1/summary.json",
+      "published_sha256": "16fe5bffcb334d647cd4613d5e7c504570bbcfaea67510ba6f1f334cdf5adfbe",
+      "published_bytes": 9690,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/PREPARED_PLAN.md",
+      "original_sha256": "67616721bad594d496ea2b6e9261ea7f02182dd94b4727e0e1cb18c5dc41663b",
+      "original_bytes": 5354,
+      "published": "gemm-swizzle-probe-v1/PREPARED_PLAN.md",
+      "published_sha256": "67616721bad594d496ea2b6e9261ea7f02182dd94b4727e0e1cb18c5dc41663b",
+      "published_bytes": 5354,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/README.md",
+      "original_sha256": "faa3ddfa8e33e05d01097c5ddc91a04bff038bcb70c0fdacbee738d492beb84c",
+      "original_bytes": 2744,
+      "published": "gemm-swizzle-probe-v1/README.md",
+      "published_sha256": "faa3ddfa8e33e05d01097c5ddc91a04bff038bcb70c0fdacbee738d492beb84c",
+      "published_bytes": 2744,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/build-1/receipt.json",
+      "original_sha256": "dea4e5b04af93bd2b910c51796fc5469d0c97e065134cfda82f7f4368a469a46",
+      "original_bytes": 2931,
+      "published": "gemm-swizzle-probe-v1/build-1/receipt.json",
+      "published_sha256": "dea4e5b04af93bd2b910c51796fc5469d0c97e065134cfda82f7f4368a469a46",
+      "published_bytes": 2931,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/build-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "gemm-swizzle-probe-v1/build-1/stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/build-1/stdout.jsonl",
+      "original_sha256": "db5a13fad95c95f3cda3d7b4b1e79b6f2cbb0fa842ce4a50f8eeaf5a5f3516ff",
+      "original_bytes": 1775,
+      "published": "gemm-swizzle-probe-v1/build-1/stdout.jsonl",
+      "published_sha256": "db5a13fad95c95f3cda3d7b4b1e79b6f2cbb0fa842ce4a50f8eeaf5a5f3516ff",
+      "published_bytes": 1775,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/build-artifacts.json",
+      "original_sha256": "4c557a3d9244c69b8f5a3805984404057d84b81efec1a7c80c5a8834e2fad334",
+      "original_bytes": 1354,
+      "published": "gemm-swizzle-probe-v1/build-artifacts.json",
+      "published_sha256": "4c557a3d9244c69b8f5a3805984404057d84b81efec1a7c80c5a8834e2fad334",
+      "published_bytes": 1354,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/build-lease-1.json",
+      "original_sha256": "84733dad8f04a866b03e9fe01ead94c3585677e9a14d481c4add5242f8f1b851",
+      "original_bytes": 486,
+      "published": "gemm-swizzle-probe-v1/build-lease-1.json",
+      "published_sha256": "84733dad8f04a866b03e9fe01ead94c3585677e9a14d481c4add5242f8f1b851",
+      "published_bytes": 486,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/build-memory-lease-1.json",
+      "original_sha256": "1fe8080c3c03174482e434fd946028a8b58749e1b51332a7ec8dd04013465e7e",
+      "original_bytes": 484,
+      "published": "gemm-swizzle-probe-v1/build-memory-lease-1.json",
+      "published_sha256": "1fe8080c3c03174482e434fd946028a8b58749e1b51332a7ec8dd04013465e7e",
+      "published_bytes": 484,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/build.py",
+      "original_sha256": "d5cf5c14d47a48c1bb223716e82248bb12dcdf3066e8d816929381e9d90f1457",
+      "original_bytes": 1305,
+      "published": "gemm-swizzle-probe-v1/build.py",
+      "published_sha256": "d5cf5c14d47a48c1bb223716e82248bb12dcdf3066e8d816929381e9d90f1457",
+      "published_bytes": 1305,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/candidate.metal",
+      "original_sha256": "f441c80549e842fdc0efd86df8ebd5663d729e7f812f09d0a9bbae29ce2867b4",
+      "original_bytes": 2523,
+      "published": "gemm-swizzle-probe-v1/candidate.metal",
+      "published_sha256": "f441c80549e842fdc0efd86df8ebd5663d729e7f812f09d0a9bbae29ce2867b4",
+      "published_bytes": 2523,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/decision.json",
+      "original_sha256": "617ee546664b843e3326fabdcd28b292eda022119b12bce5455163524d6f13e8",
+      "original_bytes": 537,
+      "published": "gemm-swizzle-probe-v1/decision.json",
+      "published_sha256": "617ee546664b843e3326fabdcd28b292eda022119b12bce5455163524d6f13e8",
+      "published_bytes": 537,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/guard.py",
+      "original_sha256": "fed9ee41039431dfa3b512276ca93d11ec632315acf35a3db614c1a4acc6a99e",
+      "original_bytes": 5436,
+      "published": "gemm-swizzle-probe-v1/guard.py",
+      "published_sha256": "fed9ee41039431dfa3b512276ca93d11ec632315acf35a3db614c1a4acc6a99e",
+      "published_bytes": 5436,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/kernels.metal",
+      "original_sha256": "9f568f67affbd42704836909694b63b6add869d872354c06718ac5c39cfb0f5c",
+      "original_bytes": 9184,
+      "published": "gemm-swizzle-probe-v1/kernels.metal",
+      "published_sha256": "9f568f67affbd42704836909694b63b6add869d872354c06718ac5c39cfb0f5c",
+      "published_bytes": 9184,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/manifest.json",
+      "original_sha256": "c7e4d8d96de37d2d8c0c6a96dd044d974a874d3741cbafed880b647cf4ebac97",
+      "original_bytes": 1791,
+      "published": "gemm-swizzle-probe-v1/manifest.json",
+      "published_sha256": "c7e4d8d96de37d2d8c0c6a96dd044d974a874d3741cbafed880b647cf4ebac97",
+      "published_bytes": 1791,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/probe.swift",
+      "original_sha256": "14481080a4da06ca14be4c211116210543812a07513d7f0371b34726456d2646",
+      "original_bytes": 19838,
+      "published": "gemm-swizzle-probe-v1/probe.swift",
+      "published_sha256": "14481080a4da06ca14be4c211116210543812a07513d7f0371b34726456d2646",
+      "published_bytes": 19838,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/production-fixed-extract.metal",
+      "original_sha256": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+      "original_bytes": 2111,
+      "published": "gemm-swizzle-probe-v1/production-fixed-extract.metal",
+      "published_sha256": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+      "published_bytes": 2111,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/production-planner.rs",
+      "original_sha256": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac",
+      "original_bytes": 11864,
+      "published": "gemm-swizzle-probe-v1/production-planner.rs",
+      "published_sha256": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac",
+      "published_bytes": 11864,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/production-shapes.metal",
+      "original_sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+      "original_bytes": 4117,
+      "published": "gemm-swizzle-probe-v1/production-shapes.metal",
+      "published_sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+      "published_bytes": 4117,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/production-silu-extract.metal",
+      "original_sha256": "fe7844912a63f4219dc05a5a50a5b269ad48a0e3aa5f60cef221ae9223880e61",
+      "original_bytes": 430,
+      "published": "gemm-swizzle-probe-v1/production-silu-extract.metal",
+      "published_sha256": "fe7844912a63f4219dc05a5a50a5b269ad48a0e3aa5f60cef221ae9223880e61",
+      "published_bytes": 430,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/run-1/receipt.json",
+      "original_sha256": "942b21ea23c6fb25657f63b38803b75e9fd6160f9dcd2f654138cf4943d91bdd",
+      "original_bytes": 4379,
+      "published": "gemm-swizzle-probe-v1/run-1/receipt.json",
+      "published_sha256": "942b21ea23c6fb25657f63b38803b75e9fd6160f9dcd2f654138cf4943d91bdd",
+      "published_bytes": 4379,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/run-1/stderr.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "gemm-swizzle-probe-v1/run-1/stderr.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/run-1/stdout.jsonl",
+      "original_sha256": "3073485834d58d2fc8ec93c4a85d86c5659c125d920aeaf1b4276572e224d5d2",
+      "original_bytes": 71455,
+      "published": "gemm-swizzle-probe-v1/run-1/stdout.jsonl",
+      "published_sha256": "3073485834d58d2fc8ec93c4a85d86c5659c125d920aeaf1b4276572e224d5d2",
+      "published_bytes": 71455,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/run-1/summary.json",
+      "original_sha256": "671b586f52acdbab4b4d479f3b6ac110a4fba1998353dfe11b3e5eaa9a8f7cd0",
+      "original_bytes": 9201,
+      "published": "gemm-swizzle-probe-v1/run-1/summary.json",
+      "published_sha256": "671b586f52acdbab4b4d479f3b6ac110a4fba1998353dfe11b3e5eaa9a8f7cd0",
+      "published_bytes": 9201,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/run-gpu-lease-1.json",
+      "original_sha256": "90d856df01a8075e3008b484299f95819876b17fdaa986ea8d3c02269ab934fc",
+      "original_bytes": 484,
+      "published": "gemm-swizzle-probe-v1/run-gpu-lease-1.json",
+      "published_sha256": "90d856df01a8075e3008b484299f95819876b17fdaa986ea8d3c02269ab934fc",
+      "published_bytes": 484,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/run-memory-lease-1.json",
+      "original_sha256": "f37f50718614db79f7e2eae647c795658677fde62697c746693cfb57289c4bf1",
+      "original_bytes": 484,
+      "published": "gemm-swizzle-probe-v1/run-memory-lease-1.json",
+      "published_sha256": "f37f50718614db79f7e2eae647c795658677fde62697c746693cfb57289c4bf1",
+      "published_bytes": 484,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/sanitization.json",
+      "original_sha256": "16d0118d95f5987fe3e7e275c53d0827bd608223ad9dcc3019281d8a60d10411",
+      "original_bytes": 10139,
+      "published": "gemm-swizzle-probe-v1/sanitization.json",
+      "published_sha256": "16d0118d95f5987fe3e7e275c53d0827bd608223ad9dcc3019281d8a60d10411",
+      "published_bytes": 10139,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/source-preparation.json",
+      "original_sha256": "a1a0125b965ef4f3c370246919ab54dc48340c5ec0ed9fb111707a659958f45d",
+      "original_bytes": 1420,
+      "published": "gemm-swizzle-probe-v1/source-preparation.json",
+      "published_sha256": "a1a0125b965ef4f3c370246919ab54dc48340c5ec0ed9fb111707a659958f45d",
+      "published_bytes": 1420,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/summarize.py",
+      "original_sha256": "0e36af9755f5ca58bdf2953e31715be524866484a889ab9b561e6958ad6c337b",
+      "original_bytes": 4219,
+      "published": "gemm-swizzle-probe-v1/summarize.py",
+      "published_sha256": "0e36af9755f5ca58bdf2953e31715be524866484a889ab9b561e6958ad6c337b",
+      "published_bytes": 4219,
+      "path_replacements": []
+    },
+    {
+      "source": "gemm-swizzle-probe/publication-v1/weights.json",
+      "original_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+      "original_bytes": 2473,
+      "published": "gemm-swizzle-probe-v1/weights.json",
+      "published_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+      "published_bytes": 2473,
+      "path_replacements": []
     }
   ],
   "current_source_snapshot": [

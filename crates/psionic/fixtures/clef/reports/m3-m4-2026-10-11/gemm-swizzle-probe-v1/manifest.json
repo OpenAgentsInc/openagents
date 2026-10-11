@@ -1,0 +1,63 @@
+{
+  "status": "prepared only; no build or GPU execution",
+  "candidate": "fixed log2=2 tile dispatch remapping",
+  "production_sources": [
+    {
+      "path": "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_prefill.metal",
+      "sha256": "623fba25dbe8a230d92f88e840c2c363961f926c3b908089ce8ba3688a3f2865"
+    },
+    {
+      "path": "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_gemm_shapes.metal",
+      "sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978"
+    },
+    {
+      "path": "crates/psionic/crates/psionic-backend-metal/src/clef_gemm.rs",
+      "sha256": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac"
+    }
+  ],
+  "ml_x_revision": "06eb7483f03bca49a80e596f4089d02a507a2cf9",
+  "private_source_copied": false,
+  "asset_directory": "../gemm-tile-probe",
+  "weights_manifest_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+  "limits": {
+    "gpu_owned_group_gib": 2,
+    "gpu_minimum_start_gib": 14,
+    "minimum_available_gib": 12,
+    "gpu_wall_seconds": 60,
+    "build_owned_group_gib": 4,
+    "build_minimum_start_gib": 16,
+    "build_wall_seconds": 180,
+    "explicit_buffer_bytes": 1073741824,
+    "driver_point_in_time_limit_bytes": 1610612736
+  },
+  "timing": {
+    "tokens": [
+      512,
+      1024,
+      2048
+    ],
+    "rounds": 5,
+    "order": [
+      "baseline",
+      "swizzle",
+      "swizzle",
+      "baseline"
+    ],
+    "scopes": [
+      "gate",
+      "up",
+      "down_accumulate",
+      "full_ffn_accumulate"
+    ],
+    "commands": 240,
+    "dispatches": 420
+  },
+  "expected": {
+    "small_checks": 10,
+    "weighted_checks": 5,
+    "timing_rows": 240,
+    "total_commands": 273,
+    "total_dispatches": 492
+  },
+  "explicit_peak_formula_bytes": 889198592
+}

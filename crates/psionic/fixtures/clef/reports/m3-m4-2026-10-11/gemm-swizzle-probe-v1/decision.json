@@ -1,0 +1,15 @@
+{
+  "decision": "reject product integration: no material speed gain",
+  "correctness": "all15checks and240timed relevant-output comparisons bitwise equal",
+  "paired_full_ffn_ratios": {
+    "512": 1.000936872909726,
+    "1024": 0.9867025469854063,
+    "2048": 1.0134347172778795
+  },
+  "predeclared_speed_gate_passed": false,
+  "model_or_latency_acceptance": false,
+  "followup_variant_sweep_planned": false,
+  "runtime_seconds": 9.286339875000001,
+  "peak_owned_group_accounted_bytes": 1016677672,
+  "memory_or_cleanup_errors": false
+}

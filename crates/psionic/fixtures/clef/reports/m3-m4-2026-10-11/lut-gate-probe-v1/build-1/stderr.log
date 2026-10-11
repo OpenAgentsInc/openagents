@@ -1,0 +1,7 @@
+$CANDIDATE/probe.m:166:46: warning: 'newLibraryWithFile:error:' is deprecated: first deprecated in macOS 13.0 - Use -newLibraryWithURL:error: instead [-Wdeprecated-declarations]
+  166 |             id<MTLLibrary> library = [device newLibraryWithFile:[root stringByAppendingPathComponent:@"baseline.metallib"] error:&error];
+      |                                              ^
+/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/Metal.framework/Headers/MTLDevice.h:765:1: note: 'newLibraryWithFile:error:' has been explicitly marked deprecated here
+  765 | - (nullable id <MTLLibrary>)newLibraryWithFile:(NSString *)filepath error:(__autoreleasing NSError **)error
+      | ^
+1 warning generated.

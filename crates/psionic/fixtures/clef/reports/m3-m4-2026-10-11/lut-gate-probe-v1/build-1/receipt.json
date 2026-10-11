@@ -1,0 +1,53 @@
+{
+  "mode": "build",
+  "status": "complete",
+  "preflight": {
+    "available_memory_bytes": 103881687040,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 2108750,
+      "inactive": 4208514,
+      "speculative": 23171
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "max_owned_group_bytes": 4294967296,
+  "minimum_available_bytes": 12884901888,
+  "minimum_start_bytes": 17179869184,
+  "deadline_seconds": 180,
+  "conditions": "shared machine; one Flash gate projection N1024; no full-model latency claim",
+  "source_sha256": {
+    "probe.m": "0eedd81aa671c3bbb6a067f1c8078e9db2f67c78b7cf9027fb5d14d7a00c08b5",
+    "baseline.metal": "75219cdc22f24cdaff3887933d654ea8611b36550e189f904e780b0e152c8ec8",
+    "build.py": "3833525f2dcedd344b5f95ae92daee5b8b7f1e6d740e34f0f710371aca00850e",
+    "guard.py": "3d8820b6d90fcbeb53834b4ab75ae27089870d588c1856a98dbf9238e115fe3f",
+    "sources.json": "ddc9cc62e14b3b9a2f6d993c4d614ecff52823d3f6b890519114daf52e8f52d8"
+  },
+  "command": [
+    "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
+    "$CANDIDATE/build.py"
+  ],
+  "exit": 0,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 92565,
+    "max_rss_bytes": 4294967296,
+    "peak_rss_bytes": 93372416,
+    "peak_physical_footprint_bytes": 61883568,
+    "peak_accounted_bytes": 93372416,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 4,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 103750959104,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 1.8472976669999999
+}

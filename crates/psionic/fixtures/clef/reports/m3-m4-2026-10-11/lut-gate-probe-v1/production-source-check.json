@@ -1,0 +1,15 @@
+{
+  "match": true,
+  "production_files": {
+    "fixed64": {
+      "path": "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_prefill.metal",
+      "file_sha256": "623fba25dbe8a230d92f88e840c2c363961f926c3b908089ce8ba3688a3f2865",
+      "fragment_sha256": "45eb21b90a2bee61c29016dda161ebcb7d07f50df7ea7325ba983bdb91f097f6"
+    },
+    "shapes": {
+      "path": "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_gemm_shapes.metal",
+      "sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978"
+    }
+  },
+  "copied_baseline_sha256": "75219cdc22f24cdaff3887933d654ea8611b36550e189f904e780b0e152c8ec8"
+}
