@@ -718,27 +718,13 @@ fn run_lines(
         .or_else(|| output.get("command").and_then(|v| v.as_str()))
         .or_else(|| input.as_str())
         .unwrap_or_default();
-    let failed = output.get("error").is_some()
-        || output
-            .get("exit")
-            .and_then(serde_json::Value::as_i64)
-            .is_some_and(|exit| exit != 0)
-        || output.get("timed_out").and_then(serde_json::Value::as_bool) == Some(true)
-        || output.get("canceled").and_then(serde_json::Value::as_bool) == Some(true);
-    let (glyph, color) = if running {
-        (crate::tools::spinner(phase), t::ACCENT_SKILL)
-    } else if failed {
-        ("×", t::DIFF_DELETE_FG)
-    } else {
-        ("●", t::ACCENT_SUCCESS)
-    };
+    let (glyph, color) =
+        crate::tools::outcome_header(running, crate::tools::output_failed(output), phase);
     let mut lines = vec![Line::from(vec![
         span(format!("{glyph} "), color),
         Span::styled(
             "Run",
-            Style::default()
-                .fg(t::ACCENT_SKILL)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(color).add_modifier(Modifier::BOLD),
         ),
         span(
             format!(
@@ -892,22 +878,15 @@ fn entry_lines(entry: &crate::live::Entry, width: u16, phase: u8) -> Vec<Line<'s
                 lines.push(Line::default());
                 return lines;
             }
-            let glyph = if *running {
-                crate::tools::spinner(phase)
-            } else if output.get("error").is_some() {
-                "×"
-            } else {
-                "●"
-            };
+            let (glyph, color) =
+                crate::tools::outcome_header(*running, crate::tools::output_failed(output), phase);
             let native = matches!(name.as_str(), "Run" | "Read" | "Edit" | "Search");
             let label = if native { name.as_str() } else { "Plugin" };
             lines.push(Line::from(vec![
-                span(format!("{glyph} "), t::ACCENT_SKILL),
+                span(format!("{glyph} "), color),
                 Span::styled(
                     label.to_owned(),
-                    Style::default()
-                        .fg(t::ACCENT_SKILL)
-                        .add_modifier(Modifier::BOLD),
+                    Style::default().fg(color).add_modifier(Modifier::BOLD),
                 ),
                 span(
                     truncate(
@@ -1766,6 +1745,46 @@ mod streaming_tests {
 #[cfg(test)]
 mod run_viewport_tests {
     #[test]
+    fn all_tool_headers_use_outcome_colors() {
+        for name in [
+            "Run",
+            "Read",
+            "Write",
+            "Edit",
+            "Grep",
+            "Glob",
+            "Search",
+            "example.plugin",
+        ] {
+            for (running, output, color) in [
+                (
+                    true,
+                    serde_json::json!({"error": "old error"}),
+                    t::ACCENT_SKILL,
+                ),
+                (
+                    false,
+                    serde_json::json!({"error": "Failed"}),
+                    t::DIFF_DELETE_FG,
+                ),
+                (false, serde_json::json!({"exit": 1}), t::DIFF_DELETE_FG),
+                (false, serde_json::json!({}), t::ACCENT_SUCCESS),
+            ] {
+                let entry = crate::live::Entry::Tool {
+                    name: name.into(),
+                    input: serde_json::json!({}),
+                    output,
+                    running,
+                };
+                let lines = entry_lines(&entry, 60, 0);
+                for span in &lines[0].spans[..2] {
+                    assert_eq!(span.style.fg, Some(color), "{name}: {running}");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn run_indicators_use_outcome_colors() {
         for (output, glyph, color) in [
             (serde_json::json!({"exit": 0}), "● ", t::ACCENT_SUCCESS),
@@ -1795,7 +1814,7 @@ mod run_viewport_tests {
             );
             assert_eq!(lines[0].spans[0].content, glyph);
             assert_eq!(lines[0].spans[0].style.fg, Some(color));
-            assert_eq!(lines[0].spans[1].style.fg, Some(t::ACCENT_SKILL));
+            assert_eq!(lines[0].spans[1].style.fg, Some(color));
             let running = run_lines(&serde_json::json!({}), &output, true, 60, 0);
             assert_eq!(running[0].spans[0].style.fg, Some(t::ACCENT_SKILL));
             assert_eq!(

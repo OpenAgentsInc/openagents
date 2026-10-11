@@ -17,6 +17,26 @@ pub fn spinner(phase: u8) -> &'static str {
     FRAMES[usize::from(phase) % FRAMES.len()]
 }
 
+pub(crate) fn outcome_header(running: bool, failed: bool, phase: u8) -> (&'static str, Color) {
+    if running {
+        (spinner(phase), t::ACCENT_SKILL)
+    } else if failed {
+        ("×", t::DIFF_DELETE_FG)
+    } else {
+        ("●", t::ACCENT_SUCCESS)
+    }
+}
+
+pub(crate) fn output_failed(output: &serde_json::Value) -> bool {
+    output.get("error").is_some()
+        || output
+            .get("exit")
+            .and_then(serde_json::Value::as_i64)
+            .is_some_and(|exit| exit != 0)
+        || output.get("timed_out").and_then(serde_json::Value::as_bool) == Some(true)
+        || output.get("canceled").and_then(serde_json::Value::as_bool) == Some(true)
+}
+
 /// Display bounded parameter rows without letting serialized objects run off screen.
 pub fn parameter_lines(value: &serde_json::Value, width: u16) -> Vec<Line<'static>> {
     use serde_json::Value;
@@ -83,19 +103,19 @@ pub fn parameter_lines(value: &serde_json::Value, width: u16) -> Vec<Line<'stati
 }
 
 pub fn tool_lines(call: &ToolCall, phase: u8, width: u16) -> Vec<Line<'static>> {
-    let (label, accent) = match call.kind {
-        ToolKind::Read => ("Read", t::ACCENT_SKILL),
-        ToolKind::Search => ("Search", t::ACCENT_SKILL),
-        ToolKind::Edit => ("Edit", t::ACCENT_SUCCESS),
-        ToolKind::Run => ("Run", t::ACCENT_SUCCESS),
+    let label = match call.kind {
+        ToolKind::Read => "Read",
+        ToolKind::Search => "Search",
+        ToolKind::Edit => "Edit",
+        ToolKind::Run => "Run",
     };
-    let (glyph, status_color) = match call.state {
-        ToolState::Complete => ("●", accent),
-        ToolState::Running => (spinner(phase), accent),
-        ToolState::Failed => ("×", t::DIFF_DELETE_FG),
-    };
+    let (glyph, accent) = outcome_header(
+        call.state == ToolState::Running,
+        call.state == ToolState::Failed,
+        phase,
+    );
     let mut lines = vec![Line::from(vec![
-        styled(format!("{glyph} "), status_color),
+        styled(format!("{glyph} "), accent),
         Span::styled(
             label,
             Style::default().fg(accent).add_modifier(Modifier::BOLD),
@@ -173,18 +193,13 @@ pub fn file_tool_lines(
             .to_owned()
     };
     let number = |key: &str| output.get(key).and_then(serde_json::Value::as_u64);
-    let (kind, accent) = match name {
-        "Edit" | "Write" => ("edit", t::ACCENT_SUCCESS),
-        _ => ("read", t::ACCENT_SKILL),
-    };
-    let failed = output.get("error").is_some();
-    let glyph = if running {
-        spinner(phase)
-    } else if failed {
-        "×"
+    let kind = if matches!(name, "Edit" | "Write") {
+        "edit"
     } else {
-        "●"
+        "read"
     };
+    let failed = output_failed(output);
+    let (glyph, accent) = outcome_header(running, failed, phase);
     let subject = input
         .get("path")
         .filter(|_| !matches!(name, "Grep" | "Glob"))
@@ -197,10 +212,7 @@ pub fn file_tool_lines(
         .and_then(serde_json::Value::as_str)
         .map_or(subject.clone(), str::to_owned);
     let mut header = vec![
-        styled(
-            format!("{glyph} "),
-            if failed { t::DIFF_DELETE_FG } else { accent },
-        ),
+        styled(format!("{glyph} "), accent),
         Span::styled(
             name.to_owned(),
             Style::default().fg(accent).add_modifier(Modifier::BOLD),
@@ -307,17 +319,17 @@ pub fn file_tool_lines(
 }
 
 pub fn plugin_lines(call: &PluginCall, phase: u8) -> Vec<Line<'static>> {
-    let (glyph, status_color) = match call.state {
-        ToolState::Complete => ("●", t::ACCENT_SKILL),
-        ToolState::Running => (spinner(phase), t::ACCENT_SKILL),
-        ToolState::Failed => ("×", t::DIFF_DELETE_FG),
-    };
+    let (glyph, status_color) = outcome_header(
+        call.state == ToolState::Running,
+        call.state == ToolState::Failed,
+        phase,
+    );
     let mut header = Line::from(vec![
         styled(format!("{glyph} "), status_color),
         Span::styled(
             "Plugin",
             Style::default()
-                .fg(t::ACCENT_SKILL)
+                .fg(status_color)
                 .add_modifier(Modifier::BOLD),
         ),
         styled(
