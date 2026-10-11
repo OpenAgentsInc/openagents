@@ -2038,6 +2038,11 @@ mod tests {
     #[cfg(unix)]
     async fn native_codex_starts_with_full_permissions_and_streams_its_protocol() {
         use std::os::unix::fs::PermissionsExt;
+        // The sandbox follows the process-wide approval gate and write
+        // setting, which other tests change while they hold this lock.
+        let _gate_lock = crate::approval::test_lock()
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let dir = tempfile::tempdir().unwrap();
         let program = dir.path().join("codex");
         std::fs::write(&program, r#"#!/bin/sh

@@ -38,7 +38,7 @@ pub struct Lease {
     store: Store,
     id: String,
     path: PathBuf,
-    _lock: File,
+    lock: File,
 }
 
 impl Store {
@@ -80,7 +80,7 @@ impl Store {
             store: self.clone(),
             id: id.into(),
             path,
-            _lock: file,
+            lock: file,
         })
     }
 
@@ -213,6 +213,16 @@ impl Store {
             }
         }
         Ok(true)
+    }
+}
+
+impl Drop for Lease {
+    /// Release the lock itself, not only this descriptor. A process another
+    /// thread forks shares the lock's open file until it execs, so closing
+    /// ours alone can leave the session locked for a moment and the next
+    /// lease would wrongly see "Another process is using this chat session".
+    fn drop(&mut self) {
+        let _ = self.lock.unlock();
     }
 }
 
@@ -358,6 +368,27 @@ mod tests {
         let mut chat = Chat::default();
         chat.entries.push(Entry::User(prompt.into()));
         trajectory::document(&chat, id, "test/local", cwd)
+    }
+
+    /// A child process that shares the lease's open lock file, as one
+    /// another thread forks does until it execs, must not keep the session
+    /// locked after the lease is dropped.
+    #[test]
+    #[cfg(unix)]
+    fn a_dropped_lease_frees_the_session_while_a_child_shares_its_lock_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Store::under(temp.path().join("state"));
+        let lease = store.lease("shared").unwrap();
+        let mut child = std::process::Command::new("/bin/sleep")
+            .arg("5")
+            .stdin(lease.lock.try_clone().unwrap())
+            .spawn()
+            .unwrap();
+        drop(lease);
+        let again = store.lease("shared");
+        let _ = child.kill();
+        let _ = child.wait();
+        assert!(again.is_ok(), "{:?}", again.err());
     }
 
     #[test]
