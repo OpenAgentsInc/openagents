@@ -1,0 +1,282 @@
+{
+  "coverage_and_correctness_passed": true,
+  "numerical_gate": "f32 gate/up/down absolute .001; finite half activation absolute .001 OR at most one half ULP; independent f64 checks; exact matching-variant repeat bytes; frozen before first compile/run",
+  "timing_included": true,
+  "checks": 23,
+  "timing_rows": 240,
+  "scope": "same-weight synthetic-input projections; shared-machine microbenchmark, not model latency",
+  "conditions": "fixed ABBA order within each round; temporal drift and cache effects remain possible",
+  "by_tokens": [
+    {
+      "n": 512,
+      "scopes": {
+        "gate": {
+          "baseline_median_gpu_ms": 0.8514166693203151,
+          "independent_simd_median_gpu_ms": 0.956312502239598,
+          "paired_independent_simd_over_baseline_median": 1.1084006012547998,
+          "paired_ratios": [
+            0.5399541678392547,
+            1.361143087065345,
+            1.3049334208033811,
+            1.258480929114489,
+            1.280762474981327,
+            0.8107049566690042,
+            1.1395816930814362,
+            0.8858871831631621,
+            0.955349850981336,
+            1.0772195094281631
+          ]
+        },
+        "up": {
+          "baseline_median_gpu_ms": 0.848270832648268,
+          "independent_simd_median_gpu_ms": 0.8967083340394311,
+          "paired_independent_simd_over_baseline_median": 1.0409326255435807,
+          "paired_ratios": [
+            0.5787202260495886,
+            1.0338244177446598,
+            0.9080219556803795,
+            1.0480408333425015,
+            1.2566033951674418,
+            1.3359936162269208,
+            1.0793674274282912,
+            0.8072880415044419,
+            1.0209178762703706,
+            1.0878593488539092
+          ]
+        },
+        "down_accumulate": {
+          "baseline_median_gpu_ms": 0.909979164134711,
+          "independent_simd_median_gpu_ms": 1.0297291664755903,
+          "paired_independent_simd_over_baseline_median": 1.0811903739256912,
+          "paired_ratios": [
+            1.3069775879402803,
+            1.0753761785700693,
+            1.2023691970806072,
+            1.3181860807127403,
+            1.0994374159990183,
+            1.0751994930399031,
+            1.0101132243620912,
+            0.9602648993060471,
+            1.0205832707285278,
+            1.087004569281313
+          ]
+        },
+        "projection_sum": {
+          "baseline_median_gpu_ms": 2.693562495551305,
+          "independent_simd_median_gpu_ms": 2.9914375008956995,
+          "paired_independent_simd_over_baseline_median": 1.0768419043627104,
+          "paired_ratios": [
+            0.7256257057983999,
+            1.1550350925504946,
+            1.1286002002618316,
+            1.2107210978302108,
+            1.2096797927020633,
+            1.0536092531147627,
+            1.0696028367712538,
+            0.8833612557198318,
+            0.998650971067963,
+            1.0840809719541669
+          ]
+        },
+        "full_ffn_accumulate": {
+          "baseline_median_gpu_ms": 3.099854166066507,
+          "independent_simd_median_gpu_ms": 2.874604168027872,
+          "paired_independent_simd_over_baseline_median": 1.0395032621979554,
+          "paired_ratios": [
+            0.8959317303959308,
+            1.0534571214944337,
+            1.0282776705326084,
+            1.0507288538633024,
+            1.0578718484609024,
+            1.058097778521319,
+            1.0612825374139332,
+            0.9149607725292038,
+            1.020920668866685,
+            0.8093016638220758
+          ]
+        }
+      }
+    },
+    {
+      "n": 1024,
+      "scopes": {
+        "gate": {
+          "baseline_median_gpu_ms": 1.793104165699333,
+          "independent_simd_median_gpu_ms": 1.7224375005753245,
+          "paired_independent_simd_over_baseline_median": 0.9645685843596712,
+          "paired_ratios": [
+            0.7704042709185129,
+            0.9629479475456393,
+            0.921582998772924,
+            1.0428256714372648,
+            1.0096692128670914,
+            1.0356812719429596,
+            0.7085475880467408,
+            0.9243552722366983,
+            1.0219633756283337,
+            0.9661892211737032
+          ]
+        },
+        "up": {
+          "baseline_median_gpu_ms": 1.8681666660995688,
+          "independent_simd_median_gpu_ms": 1.8970208329847082,
+          "paired_independent_simd_over_baseline_median": 1.0644552001387186,
+          "paired_ratios": [
+            1.0727225213429525,
+            1.1636528022529513,
+            1.010966915406588,
+            1.0588467066283993,
+            1.1575128661987082,
+            1.0346327536249404,
+            1.083556573616627,
+            1.070063693649038,
+            0.965377064278996,
+            0.9783297761420108
+          ]
+        },
+        "down_accumulate": {
+          "baseline_median_gpu_ms": 1.9700833327078726,
+          "independent_simd_median_gpu_ms": 2.1225416639936157,
+          "paired_independent_simd_over_baseline_median": 1.0447776763113201,
+          "paired_ratios": [
+            1.0328856466731668,
+            1.0218464625989674,
+            1.0566697059494736,
+            1.1229992462430023,
+            1.5350530912147764,
+            0.96133047469871,
+            0.6079239839553858,
+            1.158287274556025,
+            1.0708674821478807,
+            1.022088917445412
+          ]
+        },
+        "projection_sum": {
+          "baseline_median_gpu_ms": 5.594812497292878,
+          "independent_simd_median_gpu_ms": 5.7292291639896575,
+          "paired_independent_simd_over_baseline_median": 1.0135413301248573,
+          "paired_ratios": [
+            0.9698993530633532,
+            1.045461656054657,
+            0.9974038341212265,
+            1.0767566186095812,
+            1.2441270732144052,
+            1.006286282252298,
+            0.7863741215656153,
+            1.0504237405775454,
+            1.0207963779974165,
+            0.9902818349475192
+          ]
+        },
+        "full_ffn_accumulate": {
+          "baseline_median_gpu_ms": 6.406625001545763,
+          "independent_simd_median_gpu_ms": 6.175604168674909,
+          "paired_independent_simd_over_baseline_median": 1.025331604896969,
+          "paired_ratios": [
+            1.034779465073018,
+            0.9946448304633699,
+            1.063269292480687,
+            0.988972431143214,
+            1.4095974398133944,
+            1.1536661104710324,
+            0.5946826246605225,
+            1.02776162453128,
+            0.9803838075944034,
+            1.0229015852626577
+          ]
+        }
+      }
+    },
+    {
+      "n": 2048,
+      "scopes": {
+        "gate": {
+          "baseline_median_gpu_ms": 3.504624997731298,
+          "independent_simd_median_gpu_ms": 3.737437498784857,
+          "paired_independent_simd_over_baseline_median": 1.0653016275120253,
+          "paired_ratios": [
+            0.28846881534454105,
+            0.9856263346709748,
+            1.1570585768479031,
+            1.1968371226995116,
+            1.076236497093089,
+            1.0565380438840641,
+            1.0740652111399862,
+            1.1298548298600646,
+            1.0419327386730097,
+            1.0532461482687916
+          ]
+        },
+        "up": {
+          "baseline_median_gpu_ms": 3.4504374998505227,
+          "independent_simd_median_gpu_ms": 3.641979164967779,
+          "paired_independent_simd_over_baseline_median": 1.0908379719288468,
+          "paired_ratios": [
+            0.9150323936272615,
+            1.103522220702247,
+            1.0358134307423064,
+            1.1203361643718548,
+            1.0781537231554466,
+            1.0707615303890206,
+            1.1604387709275905,
+            1.1801325395412408,
+            1.1463881325276937,
+            0.9927862737109778
+          ]
+        },
+        "down_accumulate": {
+          "baseline_median_gpu_ms": 3.5980833308713045,
+          "independent_simd_median_gpu_ms": 4.925500001263572,
+          "paired_independent_simd_over_baseline_median": 1.3840683583823936,
+          "paired_ratios": [
+            1.217841576911368,
+            1.4161266473694896,
+            1.4317769662924906,
+            1.493050812105132,
+            1.3610223682427427,
+            1.453046357752506,
+            1.4071143485220445,
+            1.3080741453488023,
+            1.274571438669311,
+            1.3263463119673544
+          ]
+        },
+        "projection_sum": {
+          "baseline_median_gpu_ms": 10.524104163778247,
+          "independent_simd_median_gpu_ms": 12.581145834701601,
+          "paired_independent_simd_over_baseline_median": 1.1860489379842802,
+          "paired_ratios": [
+            0.5868959169392091,
+            1.1686633042238868,
+            1.2077258345733126,
+            1.2728093737889978,
+            1.1750702556718202,
+            1.1970276202967403,
+            1.217229268709396,
+            1.2063108882362328,
+            1.1580925193255762,
+            1.1297966342011734
+          ]
+        },
+        "full_ffn_accumulate": {
+          "baseline_median_gpu_ms": 11.483729165775003,
+          "independent_simd_median_gpu_ms": 12.963249995664228,
+          "paired_independent_simd_over_baseline_median": 1.1290553963855239,
+          "paired_ratios": [
+            1.0603610817487537,
+            1.1098175426033803,
+            1.0863567399702032,
+            1.2669218248379452,
+            1.1920132592698363,
+            1.1376848117939928,
+            1.074216831595021,
+            1.1433572274687689,
+            1.2543311610989298,
+            1.120425980977055
+          ]
+        }
+      }
+    }
+  ],
+  "material_full_ffn_gain_all_sizes": false
+}

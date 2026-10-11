@@ -1,0 +1,70 @@
+{
+  "status": "source audit and proposed plan only; no implementation/build/GPU",
+  "public_guide": {
+    "url": "https://developer.apple.com/download/files/Metal-Performance-Primitives-Programming-Guide.pdf",
+    "date": "2026-03-16",
+    "version": 1,
+    "sections": [
+      "2.3.1",
+      "2.3.2",
+      "2.3.4"
+    ],
+    "text_or_code_copied": false
+  },
+  "prior_sources": {
+    "q4-tensor-prototype/candidates.metal": "ebcb6ba3f76dc81ab7c8bab59d46dfe476d0d0a46df3c07e7b7205fd24fc51b2",
+    "gemm-tile-probe/tiles.metal": "7ca7dc950cc71b207a6964e98b9d45f88593662aed53d98b8c2648e248d21e53",
+    "gemm-layout-probe/tiles.metal": "5aa57fd8fa2315c2a03e3eefeff7cebb758f49a7ff24f05e8d19c1a2800157e4",
+    "gemm-split3-probe/candidate.metal": "f8ce76964d7025476cc44decde63ef1c4e65cc9cdb8f5e1f09690c2cd31bc1cb",
+    "gemm-two-simd-probe/candidate.metal": "24114d6b601bdbe5978c68cdcf4ce11f094b250642a268d1b10338aa1ec9fefc",
+    "ffn-pair-probe/pair.metal": "b0730fe3a4ee60d4f36f7a847e242db4df373394daa943a38946e27bc371ae0e"
+  },
+  "prior_direct_execution_simdgroup_found": false,
+  "proposed_variant": {
+    "threadgroup_threads": 128,
+    "simd_width": 32,
+    "independent_simdgroups": 4,
+    "simd_output_tile": [
+      32,
+      32
+    ],
+    "threadgroup_output_tile": [
+      64,
+      64
+    ],
+    "k_step": 128,
+    "execution_type": "execution_simdgroup",
+    "input_type": "half",
+    "accumulator_output_type": "float",
+    "weight_transposed_in_descriptor": true,
+    "relaxed_precision": false,
+    "shared_weight_staging": false,
+    "extra_device_partials": false,
+    "barrier": "mem_none at each common K step, reached by every thread"
+  },
+  "numeric_gate": {
+    "full_output_absolute_error": 0.001,
+    "relative_allowance": false,
+    "same_variant_repetition": "bitwise against independently frozen per-variant output",
+    "model_gate_required_before_product": true,
+    "small_full_f64_real_k": [
+      4096,
+      12288
+    ],
+    "nonzero_residual_required": true
+  },
+  "limits": {
+    "owned_group_gib": 2,
+    "start_available_gib": 14,
+    "floor_gib": 12,
+    "wall_seconds": 60,
+    "inner_seconds": 50,
+    "explicit_gib": 1,
+    "driver_point_gib": 1.5,
+    "build_group_gib": 4,
+    "build_start_gib": 16,
+    "build_wall_seconds": 180
+  },
+  "sweep": false,
+  "requires_parent_approval_before_implementation": true
+}

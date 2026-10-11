@@ -1,0 +1,119 @@
+{
+  "criterion_version": 2,
+  "cases": [
+    {
+      "a_bits": 0,
+      "b_bits": 0,
+      "ulp_distance": 0,
+      "allowed": true
+    },
+    {
+      "a_bits": 0,
+      "b_bits": 32768,
+      "ulp_distance": 0,
+      "allowed": true
+    },
+    {
+      "a_bits": 1,
+      "b_bits": 32769,
+      "ulp_distance": 2,
+      "allowed": true
+    },
+    {
+      "a_bits": 0,
+      "b_bits": 1,
+      "ulp_distance": 1,
+      "allowed": true
+    },
+    {
+      "a_bits": 0,
+      "b_bits": 1023,
+      "ulp_distance": 1023,
+      "allowed": true
+    },
+    {
+      "a_bits": 16384,
+      "b_bits": 16385,
+      "ulp_distance": 1,
+      "allowed": true
+    },
+    {
+      "a_bits": 16384,
+      "b_bits": 16386,
+      "ulp_distance": 2,
+      "allowed": false
+    },
+    {
+      "a_bits": 49152,
+      "b_bits": 49153,
+      "ulp_distance": 1,
+      "allowed": true
+    },
+    {
+      "a_bits": 49152,
+      "b_bits": 49154,
+      "ulp_distance": 2,
+      "allowed": false
+    },
+    {
+      "a_bits": 16383,
+      "b_bits": 16384,
+      "ulp_distance": 1,
+      "allowed": true
+    },
+    {
+      "a_bits": 31742,
+      "b_bits": 31743,
+      "ulp_distance": 1,
+      "allowed": true
+    },
+    {
+      "a_bits": 31741,
+      "b_bits": 31743,
+      "ulp_distance": 2,
+      "allowed": false
+    },
+    {
+      "a_bits": 64510,
+      "b_bits": 64511,
+      "ulp_distance": 1,
+      "allowed": true
+    },
+    {
+      "a_bits": 31744,
+      "b_bits": 31744,
+      "ulp_distance": 0,
+      "allowed": false
+    },
+    {
+      "a_bits": 32256,
+      "b_bits": 32256,
+      "ulp_distance": 0,
+      "allowed": false
+    },
+    {
+      "a_bits": 64512,
+      "b_bits": 31744,
+      "ulp_distance": 63488,
+      "allowed": false
+    },
+    {
+      "a_bits": 0,
+      "b_bits": 5120,
+      "ulp_distance": 5120,
+      "allowed": true
+    },
+    {
+      "a_bits": 0,
+      "b_bits": 5121,
+      "ulp_distance": 5121,
+      "allowed": true
+    },
+    {
+      "a_bits": 0,
+      "b_bits": 6144,
+      "ulp_distance": 6144,
+      "allowed": false
+    }
+  ]
+}

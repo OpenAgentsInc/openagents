@@ -1,0 +1,85 @@
+{
+  "logits": [
+    [
+      -0.7595458030700684,
+      0.7471566200256348
+    ]
+  ],
+  "probabilities": [
+    [
+      0.1814280081461352,
+      0.8185719918538648
+    ]
+  ],
+  "hidden_sha256": "d316c10aa7185183e3fa8b67d246b36fbb2fd881daa5b46862ba2f4acf5f442b",
+  "lexical_sha256": "4172f6e161c2a83cbf4f74cf386d8c93fccf35c79bf1d8308b96d44aaf344ae6",
+  "option_token_ids": [
+    220,
+    816,
+    1802,
+    1979,
+    2129,
+    3147,
+    3721,
+    4532,
+    4754,
+    8934,
+    11390,
+    23839,
+    32447,
+    32556,
+    40167,
+    95789,
+    97450,
+    99943
+  ],
+  "id": "text-022",
+  "request_sha256": "932e4d38c3e067df8e0fbe4377494f8ba74b861a15af820551f83ce790d796dd",
+  "input_tokens": 186,
+  "native_stage6_comparisons": {
+    "staged": {
+      "capture_sha256": "406b1e62d2e11e46b07deb9632db173b4148980c873c7e2dc0ece51562108cbb",
+      "http": {
+        "response_sha256": "6eea26bce13cdb95e64c81bea03e71350cb99b381d09b65b2fcd32ee24909143",
+        "contract_passed": true,
+        "input_tokens": 186,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      "mps_vs_native": {
+        "questions": [
+          {
+            "max_abs_logit": 0.00036913156509399414,
+            "max_abs_probability": 1.2649162207778453e-05,
+            "same_top": true
+          }
+        ],
+        "max_abs_logit": 0.00036913156509399414,
+        "max_abs_probability": 1.2649162207778453e-05,
+        "all_tops_match": true
+      }
+    },
+    "fused-fields": {
+      "capture_sha256": "873679a94c6ebb2f7cabc077a34caae6d0020503e1b99f9ae33eee798bde841b",
+      "http": {
+        "response_sha256": "062cbc743e2f57d5279cfd08779b150868e8d48d6937ea2a31c47ed81268a9e3",
+        "contract_passed": true,
+        "input_tokens": 186,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      "mps_vs_native": {
+        "questions": [
+          {
+            "max_abs_logit": 0.00036901235580444336,
+            "max_abs_probability": 1.2702271308673296e-05,
+            "same_top": true
+          }
+        ],
+        "max_abs_logit": 0.00036901235580444336,
+        "max_abs_probability": 1.2702271308673296e-05,
+        "all_tops_match": true
+      }
+    }
+  }
+}

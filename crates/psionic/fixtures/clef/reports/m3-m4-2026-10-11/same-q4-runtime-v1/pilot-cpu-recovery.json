@@ -1,0 +1,954 @@
+{
+  "schema": "clef.same-q4-mps-pilot-cpu-recovery.v1",
+  "status": "complete",
+  "gpu_executed": false,
+  "trunk_executed": false,
+  "failed_guard_sha256": "03bf07b7bf9179b98c5cfb46ebea848d703a0182c1d2acae3d17070e49332269",
+  "failed_result_sha256": "1885ece001e9e480f0500cbd9e32be6597fb7af6ea32ce2f33c1c8de95f712d6",
+  "old_source_sha256": "583b27440131f74b4fc66c79341ae87647b098be560bbde14c8606843c312335",
+  "new_checker_sha256": "d6dd92eb2e0ed4df10b3f9dc56f84ef7bf61c10689b3a2da6b2ae1db0e79835b",
+  "frozen_limits": {
+    "relative_l2": 0.0001,
+    "max_abs_logit": 0.001,
+    "max_abs_probability": 0.0001,
+    "all_tops": true
+  },
+  "numerical_functions_unchanged": true,
+  "actual_official_typed_record_contracts": {
+    "requests": 40,
+    "questions_per_mode": 104,
+    "responses": 80,
+    "passed": true,
+    "checks": [
+      {
+        "case": "text-000",
+        "mode": "staged",
+        "response_sha256": "4473a2de0c5abc3960aaa65e462b2a02fd95e2740261ef5ce6afbf72673dc7f7",
+        "contract_passed": true,
+        "input_tokens": 557,
+        "questions": 4,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-000",
+        "mode": "fused-fields",
+        "response_sha256": "edf019ba94d9b31bf4a05d81adc1b7d5311df416bef95b47ccda0e9868788e8a",
+        "contract_passed": true,
+        "input_tokens": 557,
+        "questions": 4,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-001",
+        "mode": "staged",
+        "response_sha256": "ccd664aa5e7b05e545d7f8cd58da6803bae99e0f83a4b3d2657eb57eff8b26f8",
+        "contract_passed": true,
+        "input_tokens": 451,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-001",
+        "mode": "fused-fields",
+        "response_sha256": "69a952f9c32be1320aeb608e361be475c5d7c88ce5cbe2e020b657bd5f326619",
+        "contract_passed": true,
+        "input_tokens": 451,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-002",
+        "mode": "staged",
+        "response_sha256": "3c2afd6d49d3f41205d1a1c1019319b298ba562a35388f288d37e9c9106a7c46",
+        "contract_passed": true,
+        "input_tokens": 452,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-002",
+        "mode": "fused-fields",
+        "response_sha256": "40aeeeafbd6ab435bdf39733a92aa01a7b576e45badd43d5868d81957d70c584",
+        "contract_passed": true,
+        "input_tokens": 452,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-003",
+        "mode": "staged",
+        "response_sha256": "7b6b3eb080a4f9982d3bb94c7743c41cf0df8c1d992fcc31682660ba43d519e1",
+        "contract_passed": true,
+        "input_tokens": 206,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-003",
+        "mode": "fused-fields",
+        "response_sha256": "4c04481e78927e1bfcec6e9cd96a349af3726f02713f4b2ed7a2dbfb1192cfcd",
+        "contract_passed": true,
+        "input_tokens": 206,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-004",
+        "mode": "staged",
+        "response_sha256": "1ced6a55a034a936104d7c82c0d6342c727febecce82b4dfdf2cdf81917c4952",
+        "contract_passed": true,
+        "input_tokens": 295,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-004",
+        "mode": "fused-fields",
+        "response_sha256": "81e3268846810e1c32dc185b05de178403474ccbf57042467ef8021ddee119b2",
+        "contract_passed": true,
+        "input_tokens": 295,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-005",
+        "mode": "staged",
+        "response_sha256": "f8b4d18114d709ae65c43caec3d722824c47d5a8b3f08ae7b29b84b947f355ad",
+        "contract_passed": true,
+        "input_tokens": 585,
+        "questions": 2,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-005",
+        "mode": "fused-fields",
+        "response_sha256": "6a073926e1b06b02e9641d3be6678b9d1a49742b7f4c06e0d4f2936070ffa6e7",
+        "contract_passed": true,
+        "input_tokens": 585,
+        "questions": 2,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-006",
+        "mode": "staged",
+        "response_sha256": "e7cda002c676543a3613d852525c33617e0567127d630d6728562c7419c09880",
+        "contract_passed": true,
+        "input_tokens": 155,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-006",
+        "mode": "fused-fields",
+        "response_sha256": "e901c5c581359620150d6a212b266d80194c83c746f00d4129063efb8a73665c",
+        "contract_passed": true,
+        "input_tokens": 155,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-007",
+        "mode": "staged",
+        "response_sha256": "70192cfd63f91da86b8f4ee4db2f02e41a029a1fd3ff7216d455a60d4ff41b96",
+        "contract_passed": true,
+        "input_tokens": 908,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-007",
+        "mode": "fused-fields",
+        "response_sha256": "6cf3c175bd70e94eaee7580f959b511ed3e3b255fc8c88e57cc73321dcb29066",
+        "contract_passed": true,
+        "input_tokens": 908,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-008",
+        "mode": "staged",
+        "response_sha256": "df5feac4b74c7c95eb2444a006f2d17eef4175d1409a4748c7ea97ffe7ad94bc",
+        "contract_passed": true,
+        "input_tokens": 607,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-008",
+        "mode": "fused-fields",
+        "response_sha256": "d27d8764caf28ab9a9617abd2a4bb65bae9b6dcdbf154f21f2154e52dcdcd4b5",
+        "contract_passed": true,
+        "input_tokens": 607,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-009",
+        "mode": "staged",
+        "response_sha256": "3c5d6312cac8429261dbe8bda80ec6faf061a7e92c3181baebd9a449375f648f",
+        "contract_passed": true,
+        "input_tokens": 970,
+        "questions": 5,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-009",
+        "mode": "fused-fields",
+        "response_sha256": "1f5d7d8f87712c2a9728a56c3e7cc1f9ffa96165dabb16edde4c3427646eb507",
+        "contract_passed": true,
+        "input_tokens": 970,
+        "questions": 5,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-010",
+        "mode": "staged",
+        "response_sha256": "58c0dfa3caccf343654bc61b73392fcd6449ea4d46b9b1ae84bf03aa274f4909",
+        "contract_passed": true,
+        "input_tokens": 423,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-010",
+        "mode": "fused-fields",
+        "response_sha256": "f0fdfb23b4bf5a1521c0ab38030a634d0d7749a466e703e8e55b2a1a4269d81e",
+        "contract_passed": true,
+        "input_tokens": 423,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-011",
+        "mode": "staged",
+        "response_sha256": "18f944170ca70658631613c2fb80ba5214d7306abd1e65c2e76519d1435facc4",
+        "contract_passed": true,
+        "input_tokens": 968,
+        "questions": 5,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-011",
+        "mode": "fused-fields",
+        "response_sha256": "64ee93dd22a34040f1dd2a06fa4fce3a9ffb34064c30ff34497eec3bc215031b",
+        "contract_passed": true,
+        "input_tokens": 968,
+        "questions": 5,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-012",
+        "mode": "staged",
+        "response_sha256": "4e14450cd0eac51b75651a06bbafd7238c1ed6ff435bc23198358adab72c7762",
+        "contract_passed": true,
+        "input_tokens": 590,
+        "questions": 5,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-012",
+        "mode": "fused-fields",
+        "response_sha256": "cab307f24d923c2a9606c50b7d0fb0b74a292bd0f001bde359f35ac259512861",
+        "contract_passed": true,
+        "input_tokens": 590,
+        "questions": 5,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-013",
+        "mode": "staged",
+        "response_sha256": "86b5b4c85af454e8840e01a6c0ae05880a8f8b683787bd1562e44bded4131603",
+        "contract_passed": true,
+        "input_tokens": 599,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-013",
+        "mode": "fused-fields",
+        "response_sha256": "cc5f7d93d817cab0502eae771428b4fc0487a0daf47d0398c8ccb2682b94cfa4",
+        "contract_passed": true,
+        "input_tokens": 599,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-014",
+        "mode": "staged",
+        "response_sha256": "3725573edcc56a72cb2a43ca28bac8d05dda1003f73a3b7217bfe243bbadc098",
+        "contract_passed": true,
+        "input_tokens": 321,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-014",
+        "mode": "fused-fields",
+        "response_sha256": "8e0e500b025ab3470a64f6c382cfe78549046d076f1917b3b07239a8d68c5278",
+        "contract_passed": true,
+        "input_tokens": 321,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-015",
+        "mode": "staged",
+        "response_sha256": "6b8272eabae79aea22705302457a3524eebc8bfc04cb4d97dd6087a0e795d320",
+        "contract_passed": true,
+        "input_tokens": 284,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-015",
+        "mode": "fused-fields",
+        "response_sha256": "968d7c03c01c641b27f46aae71e863ffe8d73cbb70cd3f768cc91eab4b3e2cc4",
+        "contract_passed": true,
+        "input_tokens": 284,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-016",
+        "mode": "staged",
+        "response_sha256": "a9ff1e943a6cb5be9e9dd408cc4ef288f043d199083882c481465196e86a1292",
+        "contract_passed": true,
+        "input_tokens": 182,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-016",
+        "mode": "fused-fields",
+        "response_sha256": "cbee98cc1a41b35fc65c36892be749210f9344ef0b367e9185917eb707d657ce",
+        "contract_passed": true,
+        "input_tokens": 182,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-017",
+        "mode": "staged",
+        "response_sha256": "9fe1c3ed4360a29785af6e02ffda65e4169ba038b69d0d0c3a03f5b494ab4e20",
+        "contract_passed": true,
+        "input_tokens": 653,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-017",
+        "mode": "fused-fields",
+        "response_sha256": "40e93c60ae063379d607c7c5fd58478a5d9c00eace6ffafe7f4c9adbef81e0f3",
+        "contract_passed": true,
+        "input_tokens": 653,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-018",
+        "mode": "staged",
+        "response_sha256": "824ec1e89340220d695790872d05533dd397bf6fba8be88788104b762351a910",
+        "contract_passed": true,
+        "input_tokens": 769,
+        "questions": 4,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-018",
+        "mode": "fused-fields",
+        "response_sha256": "fb2ff43a3d26a18a4fa192c209c501f912af6a410863108cf63be1c22e7590b7",
+        "contract_passed": true,
+        "input_tokens": 769,
+        "questions": 4,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-019",
+        "mode": "staged",
+        "response_sha256": "e777dc58d15a97f960ecfa13996d4024e7e6d5ce3948bec8870bddf4ba88841a",
+        "contract_passed": true,
+        "input_tokens": 994,
+        "questions": 5,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-019",
+        "mode": "fused-fields",
+        "response_sha256": "29f3120cc12d2d87eee2de137a26ac9631e3cc8c1b8b825bada2c4a724b8b9ed",
+        "contract_passed": true,
+        "input_tokens": 994,
+        "questions": 5,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-020",
+        "mode": "staged",
+        "response_sha256": "a523ed64fbb2c2c8c2433f91ba4325a87efd8b67538360d3eef4c0eb124110e7",
+        "contract_passed": true,
+        "input_tokens": 513,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-020",
+        "mode": "fused-fields",
+        "response_sha256": "740919ffd803ceeaa881ba78d801c8aca1dfbc4c5b9644ec60d9bf9e4995e0c1",
+        "contract_passed": true,
+        "input_tokens": 513,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-021",
+        "mode": "staged",
+        "response_sha256": "ed5a27cf0012f65892c08351503952d3852d03206d224be1c06811f32237b265",
+        "contract_passed": true,
+        "input_tokens": 522,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-021",
+        "mode": "fused-fields",
+        "response_sha256": "072ba263c879186ba0946838587e4e104e6533ea546776935deb7958a1f20ecb",
+        "contract_passed": true,
+        "input_tokens": 522,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-022",
+        "mode": "staged",
+        "response_sha256": "6eea26bce13cdb95e64c81bea03e71350cb99b381d09b65b2fcd32ee24909143",
+        "contract_passed": true,
+        "input_tokens": 186,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-022",
+        "mode": "fused-fields",
+        "response_sha256": "062cbc743e2f57d5279cfd08779b150868e8d48d6937ea2a31c47ed81268a9e3",
+        "contract_passed": true,
+        "input_tokens": 186,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-023",
+        "mode": "staged",
+        "response_sha256": "78ca9f92994a75878f98727ee39c4c3d42f5fb5acea05633b1d3d286e1edc6be",
+        "contract_passed": true,
+        "input_tokens": 261,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-023",
+        "mode": "fused-fields",
+        "response_sha256": "bfccc2e66e05e9b70456631da46fd544aaefe8ff603edc4a010030f6b8f92f33",
+        "contract_passed": true,
+        "input_tokens": 261,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-024",
+        "mode": "staged",
+        "response_sha256": "2dba8a90bb2cb895674d5d5da166d78712e33ed66537a5ea3782325c140945c6",
+        "contract_passed": true,
+        "input_tokens": 383,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-024",
+        "mode": "fused-fields",
+        "response_sha256": "aa861aabd1aa2c8017a5644257e6d432916962d7927fc01888c95fae695b8662",
+        "contract_passed": true,
+        "input_tokens": 383,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-025",
+        "mode": "staged",
+        "response_sha256": "23fd1455d7be67c6d0083d5d10f1c1977ab7a2b6ff0eff7af897c74fa871bcfa",
+        "contract_passed": true,
+        "input_tokens": 498,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-025",
+        "mode": "fused-fields",
+        "response_sha256": "a9ee48dc48fff9bd981aba72a2fd50b8012766b80de2514820b5a104618c00b6",
+        "contract_passed": true,
+        "input_tokens": 498,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-026",
+        "mode": "staged",
+        "response_sha256": "3aecf471393039b094ecad117995df729441d78594073142abb859690fb7103e",
+        "contract_passed": true,
+        "input_tokens": 158,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-026",
+        "mode": "fused-fields",
+        "response_sha256": "2b23493cd5c6ffeb309fbf4f539692e6f6456d77efc3f82c2f493dbe9e646a7d",
+        "contract_passed": true,
+        "input_tokens": 158,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-027",
+        "mode": "staged",
+        "response_sha256": "da31fa88802599ddd5fecbe6dafbb48f738d4f93abdc1313bafdd761156d652f",
+        "contract_passed": true,
+        "input_tokens": 839,
+        "questions": 5,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-027",
+        "mode": "fused-fields",
+        "response_sha256": "cbb918273829cca0d3852f3679e26f35b5fec3693a96a6a92b33dc60a3d956e2",
+        "contract_passed": true,
+        "input_tokens": 839,
+        "questions": 5,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-028",
+        "mode": "staged",
+        "response_sha256": "13e34d794c7363dc0fc329609c3701ee3a7a67a9009be3706fb8a065ad521832",
+        "contract_passed": true,
+        "input_tokens": 347,
+        "questions": 2,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-028",
+        "mode": "fused-fields",
+        "response_sha256": "6cc87ac64e5ecfd0b3558f38ea53f19b57c8db87746b36f1160541199bbc23fb",
+        "contract_passed": true,
+        "input_tokens": 347,
+        "questions": 2,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-029",
+        "mode": "staged",
+        "response_sha256": "9c5fe45f494b025ab9f1dfd59ff3adac4a0426511cc7ed7cdaf777ef5ec61a53",
+        "contract_passed": true,
+        "input_tokens": 359,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-029",
+        "mode": "fused-fields",
+        "response_sha256": "5d5181301cb2365d5b6ef724f7d335457fb562306caa477d98c35795499aec8e",
+        "contract_passed": true,
+        "input_tokens": 359,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-030",
+        "mode": "staged",
+        "response_sha256": "b9d6c349f29ba636003bb8e11666f4d9dde0a671fd9deae35860ec063710e563",
+        "contract_passed": true,
+        "input_tokens": 338,
+        "questions": 2,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-030",
+        "mode": "fused-fields",
+        "response_sha256": "55c5aa91aa19c5e7cfb0e631965505abc8036f178dc1ffbfadfd01733fcfe9fe",
+        "contract_passed": true,
+        "input_tokens": 338,
+        "questions": 2,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-031",
+        "mode": "staged",
+        "response_sha256": "a92cd0179c2b913d18c69e32e5554ac1cfb2870ede13b7b41d4dafbaa1fb0204",
+        "contract_passed": true,
+        "input_tokens": 169,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-031",
+        "mode": "fused-fields",
+        "response_sha256": "dc45ba371e369fe3a7f3c327a8e8e0717b33980783b122c7593037c5f4f1b266",
+        "contract_passed": true,
+        "input_tokens": 169,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-032",
+        "mode": "staged",
+        "response_sha256": "74877dc3f329e624e585734bfee61c648d08e2f8b3750a04eb2159c4c746396b",
+        "contract_passed": true,
+        "input_tokens": 706,
+        "questions": 2,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-032",
+        "mode": "fused-fields",
+        "response_sha256": "0e0a6f810b818fcb0bace43fb8c31befefc15459e4295b2d413c9221dd1e4e08",
+        "contract_passed": true,
+        "input_tokens": 706,
+        "questions": 2,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-033",
+        "mode": "staged",
+        "response_sha256": "b4509722b51c5650c9f0ea2fbcae3f4fd9d70c2fc1434efefcf04901015d0392",
+        "contract_passed": true,
+        "input_tokens": 588,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-033",
+        "mode": "fused-fields",
+        "response_sha256": "38a18c8bf345ccf0163c5af1f035133c95346a158892c5e05d8785bb2c8002ab",
+        "contract_passed": true,
+        "input_tokens": 588,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-034",
+        "mode": "staged",
+        "response_sha256": "28ad8f78a0480b5e19b5bf2bd3bbd2bde1359851bd74ac2f11eda805014fa241",
+        "contract_passed": true,
+        "input_tokens": 1031,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-034",
+        "mode": "fused-fields",
+        "response_sha256": "b6e732bc3f65d744e3d6f257f632f116ac2081e1921e6b05a6b7c7b1e0a7b746",
+        "contract_passed": true,
+        "input_tokens": 1031,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-035",
+        "mode": "staged",
+        "response_sha256": "de67e1feaec910968e9f945be30baae660ae8ff8b3d417b0cd8e9083e5470067",
+        "contract_passed": true,
+        "input_tokens": 326,
+        "questions": 2,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-035",
+        "mode": "fused-fields",
+        "response_sha256": "c29aa47d9a61f07f0187bb825010ecce41b1ad44dc4641c3bee4623b316acd07",
+        "contract_passed": true,
+        "input_tokens": 326,
+        "questions": 2,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-036",
+        "mode": "staged",
+        "response_sha256": "9f1fb4d245088bbad60c81b12ece456f3c5a37ae44d39f0a4a31d9dc60eca8c7",
+        "contract_passed": true,
+        "input_tokens": 516,
+        "questions": 2,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-036",
+        "mode": "fused-fields",
+        "response_sha256": "03e20ad6d071e61dfa40c760c3971a982dd6095cb7ed911e23272e7b2e4fce8a",
+        "contract_passed": true,
+        "input_tokens": 516,
+        "questions": 2,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-037",
+        "mode": "staged",
+        "response_sha256": "8308cddd872d66ad7fc228501556df6c41bc4539683b025cd7bee6050b57aa12",
+        "contract_passed": true,
+        "input_tokens": 850,
+        "questions": 5,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-037",
+        "mode": "fused-fields",
+        "response_sha256": "a60523079b765dbb90c2b792c27de2461442c94f243a3d6ae2d4ac850403c47b",
+        "contract_passed": true,
+        "input_tokens": 850,
+        "questions": 5,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-038",
+        "mode": "staged",
+        "response_sha256": "a54772a23c0fb417bd8fee584e1bbeb9ea9ecc95918fb3fafc308884309d416d",
+        "contract_passed": true,
+        "input_tokens": 245,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-038",
+        "mode": "fused-fields",
+        "response_sha256": "19ce3aba485229bf4f5c8330019ede6988a8a6f4d3f3ab0ec708ba582e700485",
+        "contract_passed": true,
+        "input_tokens": 245,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-039",
+        "mode": "staged",
+        "response_sha256": "0ca54fca3126b193874a9e28f2bb5a4e2dff66bf1f646e220c9bcb172e110837",
+        "contract_passed": true,
+        "input_tokens": 1090,
+        "questions": 5,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      {
+        "case": "text-039",
+        "mode": "fused-fields",
+        "response_sha256": "65e2c96dc3d8fe6e010e5a00e8a8165d0f744f1c47dd48d41f988598daa8c5e9",
+        "contract_passed": true,
+        "input_tokens": 1090,
+        "questions": 5,
+        "logit_probability_consistency_tolerance": 1e-10
+      }
+    ]
+  },
+  "input_layer63": {
+    "file_sha256": "17319171ea2de985fefe00b6cd3e8ece6ba23c3a61bf405919f9c8004278e6e9",
+    "raw_sha256": "4f097da9de71e3a0f68acc657a2c1dde4c6904af7f84684bfb8b69925000e705"
+  },
+  "saved_final_norm_exact": true,
+  "saved_final_file_sha256": "3b9eac6013a5ec2c3ee44ee56209ec3795b30821f86dc0ba117d6268e6b2c4ec",
+  "result": {
+    "logits": [
+      [
+        0.03362730145454407,
+        -0.5843550562858582,
+        1.1211003065109253,
+        1.1993682384490967,
+        -0.30885207653045654
+      ]
+    ],
+    "probabilities": [
+      [
+        0.11870696666202071,
+        0.06398672458554884,
+        0.35217598085911933,
+        0.38084746027550753,
+        0.08428286761780365
+      ]
+    ],
+    "hidden_sha256": "33397dbb7bec50091c17eb7272094d347f027fac7f8d679cbf333fbb7ce613d2",
+    "lexical_sha256": "f31593a11e6011b7e3ce2e6670364adba31133990fd0751f4b280839b0182d76",
+    "option_token_ids": [
+      16,
+      62,
+      99,
+      100,
+      101,
+      102,
+      220,
+      235,
+      239,
+      373,
+      485,
+      767,
+      816,
+      938,
+      1120,
+      1156,
+      1479,
+      1856,
+      1870,
+      1979,
+      2129,
+      2829,
+      2998,
+      3147,
+      3435,
+      3478,
+      4532,
+      4754,
+      5305,
+      5677,
+      6131,
+      6721,
+      6942,
+      7250,
+      7454,
+      8631,
+      8652,
+      8751,
+      8934,
+      9008,
+      9226,
+      9584,
+      10083,
+      10204,
+      10562,
+      10811,
+      11123,
+      12195,
+      15231,
+      15303,
+      17404,
+      18079,
+      18411,
+      21624,
+      21680,
+      22281,
+      22419,
+      23839,
+      27573,
+      35299,
+      35580,
+      49927,
+      56658,
+      59720,
+      66550,
+      72703,
+      76533,
+      82628,
+      85093,
+      149800,
+      152528,
+      185386,
+      210342,
+      247359,
+      248046
+    ],
+    "id": "text-014",
+    "cpu_rows": {
+      "values": 1643520,
+      "max_abs_error": 0.000690460205078125,
+      "relative_l2": 8.182943123434254e-06,
+      "zero_reference_norm": false,
+      "minimum_token_cosine": 0.9999999997590884
+    },
+    "cpu_logits": [
+      [
+        0.03363645076751709,
+        -0.5843357443809509,
+        1.1211087703704834,
+        1.1993741989135742,
+        -0.308840811252594
+      ]
+    ],
+    "cpu_comparison": {
+      "questions": [
+        {
+          "max_abs_logit": 1.9311904907226562e-05,
+          "max_abs_probability": 9.755773348607555e-07,
+          "same_top": true
+        }
+      ],
+      "max_abs_logit": 1.9311904907226562e-05,
+      "max_abs_probability": 9.755773348607555e-07,
+      "all_tops_match": true
+    },
+    "native_stage6_comparisons": {
+      "staged": {
+        "capture_sha256": "406b1e62d2e11e46b07deb9632db173b4148980c873c7e2dc0ece51562108cbb",
+        "http": {
+          "response_sha256": "3725573edcc56a72cb2a43ca28bac8d05dda1003f73a3b7217bfe243bbadc098",
+          "contract_passed": true,
+          "input_tokens": 321,
+          "questions": 1,
+          "logit_probability_consistency_tolerance": 1e-10
+        },
+        "mps_vs_native": {
+          "questions": [
+            {
+              "max_abs_logit": 0.0020743608474731445,
+              "max_abs_probability": 0.0002974253418336348,
+              "same_top": true
+            }
+          ],
+          "max_abs_logit": 0.0020743608474731445,
+          "max_abs_probability": 0.0002974253418336348,
+          "all_tops_match": true
+        },
+        "cpu_vs_native": {
+          "questions": [
+            {
+              "max_abs_logit": 0.0020630955696105957,
+              "max_abs_probability": 0.00029740484370927023,
+              "same_top": true
+            }
+          ],
+          "max_abs_logit": 0.0020630955696105957,
+          "max_abs_probability": 0.00029740484370927023,
+          "all_tops_match": true
+        }
+      },
+      "fused-fields": {
+        "capture_sha256": "873679a94c6ebb2f7cabc077a34caae6d0020503e1b99f9ae33eee798bde841b",
+        "http": {
+          "response_sha256": "8e0e500b025ab3470a64f6c382cfe78549046d076f1917b3b07239a8d68c5278",
+          "contract_passed": true,
+          "input_tokens": 321,
+          "questions": 1,
+          "logit_probability_consistency_tolerance": 1e-10
+        },
+        "mps_vs_native": {
+          "questions": [
+            {
+              "max_abs_logit": 0.0020743608474731445,
+              "max_abs_probability": 0.00029745751205007,
+              "same_top": true
+            }
+          ],
+          "max_abs_logit": 0.0020743608474731445,
+          "max_abs_probability": 0.00029745751205007,
+          "all_tops_match": true
+        },
+        "cpu_vs_native": {
+          "questions": [
+            {
+              "max_abs_logit": 0.0020630955696105957,
+              "max_abs_probability": 0.00029743701392570543,
+              "same_top": true
+            }
+          ],
+          "max_abs_logit": 0.0020630955696105957,
+          "max_abs_probability": 0.00029743701392570543,
+          "all_tops_match": true
+        }
+      }
+    }
+  },
+  "acceleration_screen_passed": true,
+  "passed": true,
+  "normalization_count": 1,
+  "head_device": "cpu",
+  "head_dtype": "f32"
+}

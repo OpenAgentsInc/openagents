@@ -1,0 +1,149 @@
+{
+  "layer": 37,
+  "load_decode_hash_seconds": 1.7378228750021663,
+  "upload_readback_hash_seconds": 0.8499562919969321,
+  "parameter_hashes": {
+    "linear_attn.dt_bias": {
+      "shape": [
+        48
+      ],
+      "sha256": "1bf415b25310415e72436a3f5a7ac139c31ba36dda04ae9f8a73115f73e196a1",
+      "bytes": 192
+    },
+    "linear_attn.A_log": {
+      "shape": [
+        48
+      ],
+      "sha256": "5d89f056865052bcb89c910d2d62872e029fb273c3db03f8968a52a41593c1b5",
+      "bytes": 192
+    },
+    "linear_attn.conv1d.weight": {
+      "shape": [
+        10240,
+        1,
+        4
+      ],
+      "sha256": "277b7556853d2aed6ce386265183e379aee3932f759b1eb16b5ae0593aaea959",
+      "bytes": 163840
+    },
+    "linear_attn.norm.weight": {
+      "shape": [
+        128
+      ],
+      "sha256": "a84a51f082c360ce89c666be5a4bf42b27429a6247c24c9dce2561822df1cc9d",
+      "bytes": 512
+    },
+    "linear_attn.out_proj.weight": {
+      "shape": [
+        5120,
+        6144
+      ],
+      "sha256": "bb5f60e7c99ac9a02ed8ba825cfa9a3cbd4436f7303f29c2c015df1caf9d2192",
+      "bytes": 125829120
+    },
+    "linear_attn.in_proj_qkv.weight": {
+      "shape": [
+        10240,
+        5120
+      ],
+      "sha256": "07e96ee1d50cf6fdd3c3ec48a41b83caf16878ebffb84102fa8a6ab08869f2c4",
+      "bytes": 209715200
+    },
+    "linear_attn.in_proj_z.weight": {
+      "shape": [
+        6144,
+        5120
+      ],
+      "sha256": "8ed668e768b9212f3db566237197512465a10855d1c6b07359281e771ba2f024",
+      "bytes": 125829120
+    },
+    "linear_attn.in_proj_b.weight": {
+      "shape": [
+        48,
+        5120
+      ],
+      "sha256": "e163ee6706f5ad59b252ccad26742b741b191dc7ce3624cef42df94e096ca14b",
+      "bytes": 983040
+    },
+    "linear_attn.in_proj_a.weight": {
+      "shape": [
+        48,
+        5120
+      ],
+      "sha256": "e1091f30397b3a3af0ddcbcea14ed59d1af15128536ceae4c12f19311b2b31e5",
+      "bytes": 983040
+    },
+    "mlp.gate_proj.weight": {
+      "shape": [
+        17408,
+        5120
+      ],
+      "sha256": "873971fc687e40bee7fd1bf7dfdab5dbe3197eb1faa7bf5d93ec8dbeb9933d2f",
+      "bytes": 356515840
+    },
+    "mlp.up_proj.weight": {
+      "shape": [
+        17408,
+        5120
+      ],
+      "sha256": "f1db9cb1856a95e4e13eda876112fc0f1d7ddd24230d14f9b0af216f4f15ed5d",
+      "bytes": 356515840
+    },
+    "mlp.down_proj.weight": {
+      "shape": [
+        5120,
+        17408
+      ],
+      "sha256": "b61950770ab39282f30ac5e5344a937601b5feb2637685168cd724f8cb4a1b04",
+      "bytes": 356515840
+    },
+    "input_layernorm.weight": {
+      "shape": [
+        5120
+      ],
+      "sha256": "8dd9dc862fe640016663726d0f9c74494b7e0096e92349a4f0a7c8c83ab8e999",
+      "bytes": 20480
+    },
+    "post_attention_layernorm.weight": {
+      "shape": [
+        5120
+      ],
+      "sha256": "ef2bd77c8eb830e2444c35d85b1aa7045179d911a43c8232b81abd1e24b8d0ec",
+      "bytes": 20480
+    },
+    "linear_attn.gguf_negative_a": {
+      "shape": [
+        48
+      ],
+      "sha256": "7ab3ef2e94e462c82d1b077449973b33a56b5f733a208aba8cbcfef2302003a7",
+      "bytes": 192
+    }
+  },
+  "requests": [
+    {
+      "id": "text-014",
+      "tokens": 321,
+      "hidden_sha256": "3f473836f96ba62f82e68e672f0eccc9f29087f2cc92c4ae3bf7221339f9abb0",
+      "seconds": 0.09076495900080772,
+      "finite": true,
+      "input_unchanged": true,
+      "auxiliary_unchanged": true,
+      "auxiliary_sha256": {
+        "position_ids": "40ebb4ff888eef1b0ca3cf3bf4487b6bc1fb89cf00f824c36622912a288f1664",
+        "rotary_0": "d9985cd276674067868836bb56af948fa15cf4a00ce568c489de934e1e143804",
+        "rotary_1": "a3bd1fea2c6e433c88dae6ae8c7c5658ab00c66537135ced957d76f68f1e7e34"
+      },
+      "cpu_rows": {
+        "values": 1643520,
+        "max_abs_error": 0.0004119873046875,
+        "relative_l2": 3.226280147975791e-06,
+        "zero_reference_norm": false,
+        "minimum_token_cosine": 0.9999999998037835
+      }
+    }
+  ],
+  "driver_after_cleanup": 11304960,
+  "current_after_cleanup": 0,
+  "seconds": 3.53912354199565,
+  "payload_read_bytes": 10294534336
+}

@@ -1,0 +1,212 @@
+{
+  "logits": [
+    [
+      -0.5824722051620483,
+      0.6976795196533203
+    ],
+    [
+      0.3510713279247284,
+      -2.331106424331665
+    ],
+    [
+      -1.4356296062469482,
+      -1.4489597082138062
+    ],
+    [
+      -2.1649110317230225,
+      1.2978146076202393
+    ],
+    [
+      -2.7961032390594482,
+      1.2990214824676514
+    ]
+  ],
+  "probabilities": [
+    [
+      0.21752439776338797,
+      0.782475602236612
+    ],
+    [
+      0.935966766758107,
+      0.06403323324189301
+    ],
+    [
+      0.5033324761457707,
+      0.4966675238542294
+    ],
+    [
+      0.030391611341041586,
+      0.9696083886589584
+    ],
+    [
+      0.01638086753512424,
+      0.9836191324648758
+    ]
+  ],
+  "hidden_sha256": "64dcd5ab77797ffeeb8e2a4aae18e3e4fa057d9f3a96412192f24103c94ee733",
+  "lexical_sha256": "4ee4779465e130e96d475c46bd6db84f1fce0cf8cf9037931023de3c2170e849",
+  "option_token_ids": [
+    59,
+    92,
+    94,
+    104,
+    239,
+    252,
+    262,
+    279,
+    369,
+    466,
+    760,
+    804,
+    816,
+    867,
+    874,
+    1328,
+    1802,
+    1856,
+    1979,
+    2129,
+    2238,
+    2829,
+    2998,
+    3147,
+    3721,
+    4087,
+    4532,
+    4754,
+    5305,
+    5999,
+    6187,
+    6721,
+    6942,
+    7171,
+    7345,
+    7903,
+    8610,
+    8934,
+    9069,
+    9345,
+    9542,
+    9626,
+    10065,
+    10204,
+    11654,
+    12195,
+    12258,
+    13511,
+    13745,
+    15231,
+    15649,
+    17977,
+    18479,
+    19496,
+    21033,
+    21624,
+    23839,
+    24128,
+    26103,
+    32405,
+    32556,
+    35580,
+    37355,
+    38749,
+    46292,
+    49927,
+    56658,
+    60264,
+    60708,
+    66550,
+    169151,
+    169283,
+    169614
+  ],
+  "id": "text-012",
+  "request_sha256": "1878cb7384937277fc36f775d417cf18f923e769c89c22f695a0342ea578ba0b",
+  "input_tokens": 590,
+  "native_stage6_comparisons": {
+    "staged": {
+      "capture_sha256": "406b1e62d2e11e46b07deb9632db173b4148980c873c7e2dc0ece51562108cbb",
+      "http": {
+        "response_sha256": "4e14450cd0eac51b75651a06bbafd7238c1ed6ff435bc23198358adab72c7762",
+        "contract_passed": true,
+        "input_tokens": 590,
+        "questions": 5,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      "mps_vs_native": {
+        "questions": [
+          {
+            "max_abs_logit": 0.002230048179626465,
+            "max_abs_probability": 0.0003418827307276051,
+            "same_top": true
+          },
+          {
+            "max_abs_logit": 0.0014747083187103271,
+            "max_abs_probability": 3.463665752703737e-05,
+            "same_top": true
+          },
+          {
+            "max_abs_logit": 0.00177001953125,
+            "max_abs_probability": 0.0002712794439388988,
+            "same_top": true
+          },
+          {
+            "max_abs_logit": 0.0036733150482177734,
+            "max_abs_probability": 0.000135289586524312,
+            "same_top": true
+          },
+          {
+            "max_abs_logit": 0.0036003589630126953,
+            "max_abs_probability": 6.677369281435017e-05,
+            "same_top": true
+          }
+        ],
+        "max_abs_logit": 0.0036733150482177734,
+        "max_abs_probability": 0.0003418827307276051,
+        "all_tops_match": true
+      }
+    },
+    "fused-fields": {
+      "capture_sha256": "873679a94c6ebb2f7cabc077a34caae6d0020503e1b99f9ae33eee798bde841b",
+      "http": {
+        "response_sha256": "cab307f24d923c2a9606c50b7d0fb0b74a292bd0f001bde359f35ac259512861",
+        "contract_passed": true,
+        "input_tokens": 590,
+        "questions": 5,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      "mps_vs_native": {
+        "questions": [
+          {
+            "max_abs_logit": 0.0022302865982055664,
+            "max_abs_probability": 0.0003419436707244039,
+            "same_top": true
+          },
+          {
+            "max_abs_logit": 0.0014746487140655518,
+            "max_abs_probability": 3.46187871097664e-05,
+            "same_top": true
+          },
+          {
+            "max_abs_logit": 0.00177001953125,
+            "max_abs_probability": 0.0002712794439388988,
+            "same_top": true
+          },
+          {
+            "max_abs_logit": 0.003673553466796875,
+            "max_abs_probability": 0.000135289586524312,
+            "same_top": true
+          },
+          {
+            "max_abs_logit": 0.0036003589630126953,
+            "max_abs_probability": 6.676986668585627e-05,
+            "same_top": true
+          }
+        ],
+        "max_abs_logit": 0.003673553466796875,
+        "max_abs_probability": 0.0003419436707244039,
+        "all_tops_match": true
+      }
+    }
+  }
+}

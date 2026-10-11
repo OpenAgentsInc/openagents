@@ -1,0 +1,101 @@
+{
+  "logits": [
+    [
+      -0.9959459900856018,
+      0.10816466808319092
+    ]
+  ],
+  "probabilities": [
+    [
+      0.24897047349163529,
+      0.7510295265083647
+    ]
+  ],
+  "hidden_sha256": "2bef36f7c2ca4ae2c15eb0820e8e193eefdeab2012fe63316d93c8f935ac33b5",
+  "lexical_sha256": "e5f8a2645043c3fcce5e5398ca4a60e3bd721b285725ccd938e854ac8b9a5e87",
+  "option_token_ids": [
+    26,
+    30,
+    62,
+    262,
+    307,
+    363,
+    729,
+    816,
+    1249,
+    1802,
+    1979,
+    2129,
+    2179,
+    2487,
+    3147,
+    3575,
+    3721,
+    3817,
+    3966,
+    4416,
+    4532,
+    4754,
+    5249,
+    5351,
+    6061,
+    8481,
+    8751,
+    8934,
+    10625,
+    11123,
+    12258,
+    26849,
+    30323,
+    32556
+  ],
+  "id": "text-023",
+  "request_sha256": "c9409e1f51c5d7ac6cf16fcfa94741ec1f4aaf25ad77ca227e75d5fa12bc6cab",
+  "input_tokens": 261,
+  "native_stage6_comparisons": {
+    "staged": {
+      "capture_sha256": "406b1e62d2e11e46b07deb9632db173b4148980c873c7e2dc0ece51562108cbb",
+      "http": {
+        "response_sha256": "78ca9f92994a75878f98727ee39c4c3d42f5fb5acea05633b1d3d286e1edc6be",
+        "contract_passed": true,
+        "input_tokens": 261,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      "mps_vs_native": {
+        "questions": [
+          {
+            "max_abs_logit": 0.001439213752746582,
+            "max_abs_probability": 0.00030959525319096404,
+            "same_top": true
+          }
+        ],
+        "max_abs_logit": 0.001439213752746582,
+        "max_abs_probability": 0.00030959525319096404,
+        "all_tops_match": true
+      }
+    },
+    "fused-fields": {
+      "capture_sha256": "873679a94c6ebb2f7cabc077a34caae6d0020503e1b99f9ae33eee798bde841b",
+      "http": {
+        "response_sha256": "bfccc2e66e05e9b70456631da46fd544aaefe8ff603edc4a010030f6b8f92f33",
+        "contract_passed": true,
+        "input_tokens": 261,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      "mps_vs_native": {
+        "questions": [
+          {
+            "max_abs_logit": 0.0014392733573913574,
+            "max_abs_probability": 0.0003096064075754912,
+            "same_top": true
+          }
+        ],
+        "max_abs_logit": 0.0014392733573913574,
+        "max_abs_probability": 0.0003096064075754912,
+        "all_tops_match": true
+      }
+    }
+  }
+}

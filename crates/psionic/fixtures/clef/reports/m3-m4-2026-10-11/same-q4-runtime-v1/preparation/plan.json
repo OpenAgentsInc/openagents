@@ -1,0 +1,110 @@
+{
+  "status": "plan_only_no_new_execution",
+  "cases": 40,
+  "questions": 104,
+  "total_tokens": 20894,
+  "minimum_tokens": 155,
+  "maximum_tokens": 1090,
+  "all_hidden_f32_bytes": 427909120,
+  "largest_layer_f32_bytes": 1533092736,
+  "largest_attention_score_f32_bytes": 114057600,
+  "measured_cpu014": {
+    "tokens": 321,
+    "wall_seconds": 141.10285383299924,
+    "load_decode_seconds": 69.93541217199527,
+    "forward_seconds": 60.183506961013336,
+    "payload_read_bytes": 17327907256,
+    "peak_accounted_bytes": 3163324416
+  },
+  "cpu_fallback_cohorts": [
+    {
+      "ids": [
+        "text-000",
+        "text-001",
+        "text-002",
+        "text-003",
+        "text-004",
+        "text-005",
+        "text-006",
+        "text-007"
+      ],
+      "tokens": 3609
+    },
+    {
+      "ids": [
+        "text-008",
+        "text-009",
+        "text-010",
+        "text-011",
+        "text-012"
+      ],
+      "tokens": 3558
+    },
+    {
+      "ids": [
+        "text-013",
+        "text-014",
+        "text-015",
+        "text-016",
+        "text-017",
+        "text-018",
+        "text-019"
+      ],
+      "tokens": 3802
+    },
+    {
+      "ids": [
+        "text-020",
+        "text-021",
+        "text-022",
+        "text-023",
+        "text-024",
+        "text-025",
+        "text-026",
+        "text-027"
+      ],
+      "tokens": 3360
+    },
+    {
+      "ids": [
+        "text-028",
+        "text-029",
+        "text-030",
+        "text-031",
+        "text-032",
+        "text-033",
+        "text-034",
+        "text-035"
+      ],
+      "tokens": 3864
+    },
+    {
+      "ids": [
+        "text-036",
+        "text-037",
+        "text-038",
+        "text-039"
+      ],
+      "tokens": 2701
+    }
+  ],
+  "native_stage6_token_identity": {
+    "native_ids_observed": false,
+    "basis": "identical serialized request bytes, binary, GGUF, head, and trunk flags; exact counts and pooled-row bytes checked",
+    "limitation": "native HTTP export does not contain token IDs; ID equality is inferred, not directly observed"
+  },
+  "native_binary_sha256": "77c74a2cf4c737ae0b92278e7f8384a213dc53f1567963fb6b8c6d0dc7157991",
+  "retained_evidence_sha256": {
+    "cpu27b-diagnostic/streamed-gguf/stream_reference.py": "b1b61674dc9afc362f29bef3bf228ed4d5e6c7cf0150bf203023d28362462041",
+    "cpu27b-diagnostic/streamed-gguf/gguf_import.py": "57a152754b1dd224de24b111d7824fc6ecb3c7f4bb1149c6a5a3d78fdb41bc32",
+    "cpu27b-diagnostic/streamed-gguf/full-1/results/receipt.json": "4bc4e7bc7732bdbb732889d5376dab1c887782a3434ec86620cbc0a666bc8fe5",
+    "cpu27b-diagnostic/streamed-gguf/full-1/guard.json": "5688c44f905cc1c93d0afbf2df5687f3592fafbad4fccaf0cff916bbde637197",
+    "27b-head-stage6-combined/summary.json": "f85a8bf2191d7c55394b03bf5241c97431fff03116d8d3ba9d46f01898353bd8",
+    "27b-head-stage6-combined/staged/rows.jsonl": "406b1e62d2e11e46b07deb9632db173b4148980c873c7e2dc0ece51562108cbb",
+    "27b-head-stage6-combined/fused-fields/rows.jsonl": "873679a94c6ebb2f7cabc077a34caae6d0020503e1b99f9ae33eee798bde841b"
+  },
+  "prepared_source_sha256": {
+    "encoder.rs": "1d6bf6ba7df8e23a075e58bb1611aae208cae3490e5a450d7d0797b5650e4665",
+    "plan.md": "853f894fe850d37ba3b360af04364f62fa705504397c0000e0f469d408a5798a"
+  }
+}

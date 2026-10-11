@@ -1,0 +1,104 @@
+{
+  "status": "source implementation only; no build/GPU",
+  "candidate": "Four independent execution_simdgroup 32 by 32 products in a 2 by 2 threadgroup, K128 cooperative f32 accumulation",
+  "production_sources": [
+    {
+      "path": "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_prefill.metal",
+      "sha256": "623fba25dbe8a230d92f88e840c2c363961f926c3b908089ce8ba3688a3f2865"
+    },
+    {
+      "path": "crates/psionic/crates/psionic-backend-metal/src/kernels/clef_gemm_shapes.metal",
+      "sha256": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978"
+    },
+    {
+      "path": "crates/psionic/crates/psionic-backend-metal/src/clef_gemm.rs",
+      "sha256": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac"
+    }
+  ],
+  "private_source_copied": false,
+  "asset_directory": "../gemm-tile-probe",
+  "weights_manifest_sha256": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+  "limits": {
+    "gpu_owned_group_gib": 2,
+    "gpu_minimum_start_gib": 14,
+    "minimum_available_gib": 12,
+    "gpu_wall_seconds": 60,
+    "build_owned_group_gib": 4,
+    "build_minimum_start_gib": 16,
+    "build_wall_seconds": 180,
+    "explicit_buffer_bytes": 1073741824,
+    "internal_gpu_wall_seconds": 50,
+    "driver_and_owned_expected_limit_bytes": 1610612736
+  },
+  "timing": {
+    "tokens": [
+      512,
+      1024,
+      2048
+    ],
+    "rounds": 5,
+    "order": [
+      "baseline",
+      "independent_simd",
+      "independent_simd",
+      "baseline"
+    ],
+    "scopes": [
+      "gate",
+      "up",
+      "down_accumulate",
+      "full_ffn_accumulate"
+    ],
+    "commands": 240,
+    "dispatches": 420
+  },
+  "expected": {
+    "small_checks": 18,
+    "weighted_checks": 5,
+    "timing_rows": 240,
+    "total_commands": 295,
+    "total_dispatches": 523,
+    "check_only_commands": 46,
+    "check_only_dispatches": 76,
+    "expectation_checks": 3
+  },
+  "explicit_peak_formula_bytes": 889198592,
+  "changed_factors": [
+    "one four-SIMD full-K product to four independent SIMD products",
+    "combined output tile 64 by 128 to 64 by 64",
+    "explicit K128 iteration with scheduling barriers"
+  ],
+  "compile_flags": [
+    "-std=metal4.0"
+  ],
+  "sdk_support": "Public MPP guide version 1 (2026-03-16), sections 2.3.1\u20132.3.4; local SDK execution_simdgroup and cooperative tensor load/store.",
+  "small_baseline": "Unchanged production planner; unknown synthetic shapes use fixed 64 by 64.",
+  "weighted_baseline": "Unchanged production weight-shape planner: 64 by 128 for all actual Flash gate/up/down shapes.",
+  "guide_url": "https://developer.apple.com/download/files/Metal-Performance-Primitives-Programming-Guide.pdf",
+  "memory_accounting": {
+    "n": 2048,
+    "weights_with_redzones": 301991424,
+    "x_with_redzones": 16777728,
+    "one_state_with_redzones": 285214720,
+    "two_owned_full_expectations": 570425344,
+    "one_owned_standalone_down_expectation": 33554432,
+    "initial_explicit_buffers": 889198592,
+    "initial_expected_cpu_bytes": 603979776,
+    "initial_combined_payload_bytes": 1493178368,
+    "timing_explicit_buffers": 654316032,
+    "timing_expected_cpu_bytes": 603979776,
+    "timing_combined_payload_bytes": 1258295808,
+    "mapped_weight_temporary_bytes": 100663296,
+    "note": "Mapped weight temporary ends before expectations exist. Residual seeds are written in place; no residual array. Metal currentAllocatedSize plus owned expectations and any mapped asset bytes must remain <=1.5 GiB. Process guard remains2 GiB."
+  },
+  "numerical_criterion_version": 2,
+  "half_activation_gate": {
+    "finite": true,
+    "absolute_error_at_most": 0.001,
+    "or_half_ulp_at_most": 1,
+    "signed_zero": "same ordered value",
+    "record_absolute_and_ulp": true,
+    "frozen_before_first_compile_or_gpu": true
+  },
+  "f32_and_f64_sample_absolute_bound": 0.001
+}

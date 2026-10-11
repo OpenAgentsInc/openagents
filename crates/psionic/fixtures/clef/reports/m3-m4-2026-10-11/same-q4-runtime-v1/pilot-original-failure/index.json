@@ -1,0 +1,423 @@
+{
+  "original_keys": [
+    "schema",
+    "status",
+    "completed",
+    "mode",
+    "trunk",
+    "head",
+    "native_encoded_sha256",
+    "cpu_pilot_limits",
+    "layers",
+    "cases",
+    "gpu_group_gib",
+    "mps_gib",
+    "cpu_threads",
+    "transport_self_test",
+    "inputs",
+    "gguf_state",
+    "fixtures",
+    "negative_a_adapter",
+    "started_at_unix",
+    "error_type",
+    "error"
+  ],
+  "metadata": {
+    "schema": "clef.same-q4-independent-mps.v1",
+    "status": "failed",
+    "completed": false,
+    "mode": "pilot",
+    "trunk": "Pinned official Transformers decoder operators, independently decoded same GGUF f32 weights, one layer on MPS at a time",
+    "head": "Official external BF16 head weights loaded and executed on CPU in f32",
+    "native_encoded_sha256": "5c7e9cc9c02e78044d17adc1fd5a8816919e62ee13b32eb6bb0e463a18e4ce81",
+    "cpu_pilot_limits": {
+      "relative_l2": 0.0001,
+      "max_abs_logit": 0.001,
+      "max_abs_probability": 0.0001,
+      "all_tops": true
+    },
+    "gpu_group_gib": 12,
+    "mps_gib": 8,
+    "cpu_threads": 2,
+    "transport_self_test": {
+      "passed": true,
+      "cases": [
+        {
+          "noncontiguous": false,
+          "bytes": 8192,
+          "sha256": "ac99fbadae7cfd81d98db4d1a5ba3012d86051d2297ccf202b5b7dc5f3fddff2"
+        },
+        {
+          "noncontiguous": true,
+          "bytes": 4096,
+          "sha256": "5a5531680ff1b0572c8fd71cf720472061d375978b8917268bac0ef663f2736b"
+        }
+      ],
+      "driver_after_cleanup": 507904
+    },
+    "gguf_state": [
+      19232219200,
+      2660377039,
+      1791700892618502144,
+      1791700892619286481
+    ],
+    "fixtures": {
+      "value_rows": true,
+      "QK_rows_unchanged": true,
+      "output_columns": true,
+      "scalar_heads": true,
+      "grouped_key_association": true,
+      "norm_exact_reconstruction": true,
+      "nonreversible_norm_refused": true
+    },
+    "negative_a_adapter": {
+      "original_forward_sha256": "e870fce55f85f0d08c50eb678858d14274004b0c25158a2e09e6bfee2add3c7d",
+      "adapted_forward_sha256": "de846dd390e2e5ee700764f62ee351e9b6ef85053b7d92205d51c6fe399f55f5",
+      "replaced_expression": "-self.A_log.float().exp()",
+      "replacement": "self.gguf_negative_a.float()",
+      "reason": "GGUF stores negative exp(A_log). Use those exact decoded values without a lossy log/exp round trip.",
+      "other_operator_changes": false
+    },
+    "started_at_unix": 1791724842.81934,
+    "error_type": "ValueError",
+    "error": "native HTTP answer type differs"
+  },
+  "arrays": {
+    "layers": [
+      {
+        "path": "pilot-original-failure/layers/000.json",
+        "sha256": "e348e597582c668b4172c04a482afebc4954831431bee9d3d0eea2a0431c811f",
+        "bytes": 4041
+      },
+      {
+        "path": "pilot-original-failure/layers/001.json",
+        "sha256": "f58f47cc00955e0ec75619fd1729bf51040bd6f6f4a7332d15469cc7f0016672",
+        "bytes": 4044
+      },
+      {
+        "path": "pilot-original-failure/layers/002.json",
+        "sha256": "b627e0ee63acd76c2bb41c884a2069362d2a1a79137771bd95b54903196f2261",
+        "bytes": 4043
+      },
+      {
+        "path": "pilot-original-failure/layers/003.json",
+        "sha256": "8f7c593a45de10b1439a213435d17faf6390c7e698a909758786f6a83ddb2a31",
+        "bytes": 3352
+      },
+      {
+        "path": "pilot-original-failure/layers/004.json",
+        "sha256": "ca6fe62bcbaee42604b374170a092d964ded624e50ed83038d1d01b383b23609",
+        "bytes": 4043
+      },
+      {
+        "path": "pilot-original-failure/layers/005.json",
+        "sha256": "84585a34d711fb0a3ded74033586696fd35ae5ecb0b8e93839f9696fcf66ee59",
+        "bytes": 4043
+      },
+      {
+        "path": "pilot-original-failure/layers/006.json",
+        "sha256": "74e9caf7256edadca18b53ff555f50bf44cb50b835a857224ed4ae46bf2955e3",
+        "bytes": 4043
+      },
+      {
+        "path": "pilot-original-failure/layers/007.json",
+        "sha256": "fb7e873452816cfc1f30dc3ab6dbaa1765598f26d39c36db3c2b40ec838c6212",
+        "bytes": 3349
+      },
+      {
+        "path": "pilot-original-failure/layers/008.json",
+        "sha256": "385e716134b724181ab341f200065bda289a66b1f453cd394e398ff011e8d642",
+        "bytes": 4038
+      },
+      {
+        "path": "pilot-original-failure/layers/009.json",
+        "sha256": "0296cb291b2c21674ba1f55a17722cb282a5fc0069cddd6b8c797053fe8b6008",
+        "bytes": 4040
+      },
+      {
+        "path": "pilot-original-failure/layers/010.json",
+        "sha256": "49d41c5250184946fab3790a611968bff21193d8add19cc9ed4129d3f12c7fd2",
+        "bytes": 4044
+      },
+      {
+        "path": "pilot-original-failure/layers/011.json",
+        "sha256": "cb6d3f57c02fb119cc20d827a8d1ffbae52d489e34b8322be7e741d613b427e9",
+        "bytes": 3352
+      },
+      {
+        "path": "pilot-original-failure/layers/012.json",
+        "sha256": "a4d5923fd2524b2bda06d37616be6a38512bf735b77f09ee4e8adc8225fed727",
+        "bytes": 4042
+      },
+      {
+        "path": "pilot-original-failure/layers/013.json",
+        "sha256": "3a22c16585c21cf4fdd6c16fbbc92d1dadf1acb76b3ca62b38c04532b06499eb",
+        "bytes": 4043
+      },
+      {
+        "path": "pilot-original-failure/layers/014.json",
+        "sha256": "18027656a6ce4eaf4f71f6df2cc33b7402cf4ed600de4c9ea77aea6a362561b1",
+        "bytes": 4044
+      },
+      {
+        "path": "pilot-original-failure/layers/015.json",
+        "sha256": "0ce613448c99908a130a3067aeba9bdd587149cd9c01eb71e540422447f1a8c3",
+        "bytes": 3352
+      },
+      {
+        "path": "pilot-original-failure/layers/016.json",
+        "sha256": "db453859be6ab3ca32d6a99606ac9093aca09e0db9d26cb77c18b9f3a7641443",
+        "bytes": 4044
+      },
+      {
+        "path": "pilot-original-failure/layers/017.json",
+        "sha256": "f9b36811c7486b34c19347427600a5bff089ff2a16664b9bc344491d8bb5be32",
+        "bytes": 4043
+      },
+      {
+        "path": "pilot-original-failure/layers/018.json",
+        "sha256": "2a6b8a814d8082224afaac3f5fdad55f12b0edd7b248caac04ffba7504a27e1b",
+        "bytes": 4040
+      },
+      {
+        "path": "pilot-original-failure/layers/019.json",
+        "sha256": "8321266da66a15966493190d2a5eab8d29fdfd5b74cb74c0944a13c06ffac5be",
+        "bytes": 3356
+      },
+      {
+        "path": "pilot-original-failure/layers/020.json",
+        "sha256": "eaea5bb176bd7142bce2edb5631c5c85ebd7e7cd914f300fd4091fb06f6b76c5",
+        "bytes": 4045
+      },
+      {
+        "path": "pilot-original-failure/layers/021.json",
+        "sha256": "252933086ae458c933342d765f14ae464a02e0ab97b5b35fe7b4f83f674b70cf",
+        "bytes": 4044
+      },
+      {
+        "path": "pilot-original-failure/layers/022.json",
+        "sha256": "48f79f089a9f6fa4a7232d8e092ffb9c3ed90108a3699959f85fca7a07b55ab1",
+        "bytes": 4040
+      },
+      {
+        "path": "pilot-original-failure/layers/023.json",
+        "sha256": "fef21791d117dcb62cf053141752b01dffec87971dc646b7a935c5b42db7d97c",
+        "bytes": 3354
+      },
+      {
+        "path": "pilot-original-failure/layers/024.json",
+        "sha256": "8dfb58370143c5dbaf501f5235accc027aff811d57f0372316a7d34fd882875b",
+        "bytes": 4046
+      },
+      {
+        "path": "pilot-original-failure/layers/025.json",
+        "sha256": "d110e91312019cf5678dde21c7781e4a8e08bec6a95d12d924989f06526834b4",
+        "bytes": 4046
+      },
+      {
+        "path": "pilot-original-failure/layers/026.json",
+        "sha256": "7e164a94aeb1a0685a16e55f74fe3bd168d51ec2963e6cf930be50f1a1ea52aa",
+        "bytes": 4038
+      },
+      {
+        "path": "pilot-original-failure/layers/027.json",
+        "sha256": "00e2b84181a35efd044d816456f301d782b8ce27f2e577acabb8649e3ea3d33f",
+        "bytes": 3355
+      },
+      {
+        "path": "pilot-original-failure/layers/028.json",
+        "sha256": "bcea5a5b1dad0d0cc658937343361be2e27c7990f43ebaf61ac13c774f8f0a7a",
+        "bytes": 4042
+      },
+      {
+        "path": "pilot-original-failure/layers/029.json",
+        "sha256": "bb424b480ce90ac1187efdc7a611b0bcb833c72d76f0cc6c9b74c34f48e7b4b5",
+        "bytes": 4046
+      },
+      {
+        "path": "pilot-original-failure/layers/030.json",
+        "sha256": "f7b4dabbd62e0bfbce4b6222e1d88ee522a4b222cbe3e0b7a15a5750c58663f2",
+        "bytes": 4043
+      },
+      {
+        "path": "pilot-original-failure/layers/031.json",
+        "sha256": "50b7e69f3f9ef1a564cc3e101cb1a54c5cfae8859c131b045b4ba1789e5df8a9",
+        "bytes": 3355
+      },
+      {
+        "path": "pilot-original-failure/layers/032.json",
+        "sha256": "2a0926481dbc3128f9a23f969a032b94b9641a3c8e2f3e8ca7b7ed9ddb9b94d4",
+        "bytes": 4042
+      },
+      {
+        "path": "pilot-original-failure/layers/033.json",
+        "sha256": "e4fbf54e829522c56600a979879f8edbf2324fafe3f87cd3da97fa63b7332e71",
+        "bytes": 4046
+      },
+      {
+        "path": "pilot-original-failure/layers/034.json",
+        "sha256": "5b22a6218732519d97856d9960e845e88ec25ac7b0cf1d7ae5c5f95468cf4ae1",
+        "bytes": 4042
+      },
+      {
+        "path": "pilot-original-failure/layers/035.json",
+        "sha256": "83f1a415ad3b09c20c8a5e123683a833a0494477f059c934dbe934b6041d31b1",
+        "bytes": 3356
+      },
+      {
+        "path": "pilot-original-failure/layers/036.json",
+        "sha256": "a5c12aeb7e5115c7282aad1746ff95ea6e13c76f2d162b70d9744c456c716a57",
+        "bytes": 4040
+      },
+      {
+        "path": "pilot-original-failure/layers/037.json",
+        "sha256": "67300c604b213fae4006a418d5f767765c68e57dd7480f222e614b7aa6dfd286",
+        "bytes": 4043
+      },
+      {
+        "path": "pilot-original-failure/layers/038.json",
+        "sha256": "5d00701252d6b4e920160ae1c2179ab9c9be0e47678a9a500dc350a51c428af6",
+        "bytes": 4045
+      },
+      {
+        "path": "pilot-original-failure/layers/039.json",
+        "sha256": "1682ad5c91615ec71ebbbcfa35a26cdf6f0fbe5bea500f290eabb6cff8760d9f",
+        "bytes": 3356
+      },
+      {
+        "path": "pilot-original-failure/layers/040.json",
+        "sha256": "75a07f682e314c30b69b9e0751d78930d236c3a465203102b52888e3ffd23668",
+        "bytes": 4046
+      },
+      {
+        "path": "pilot-original-failure/layers/041.json",
+        "sha256": "408b247909b2afd99f29650efe845885e59229924ff4743ddb07c4b414986bd3",
+        "bytes": 4046
+      },
+      {
+        "path": "pilot-original-failure/layers/042.json",
+        "sha256": "49508dd00658b4048a20cb7d20164b2258100c8ca2d270e28e8503803e4ddc7e",
+        "bytes": 4048
+      },
+      {
+        "path": "pilot-original-failure/layers/043.json",
+        "sha256": "429527c301489c5e3d52259ca430534c65353aca27c9bacd1c8c7a56733512de",
+        "bytes": 3355
+      },
+      {
+        "path": "pilot-original-failure/layers/044.json",
+        "sha256": "aa5ce61ce8618a17d8e189e750c026a901fb735e5320dde408e5e2db20597600",
+        "bytes": 4046
+      },
+      {
+        "path": "pilot-original-failure/layers/045.json",
+        "sha256": "02f1a2e8b3a827794908cef7e9cdafccd49667b1f5703173d10467470de32957",
+        "bytes": 4046
+      },
+      {
+        "path": "pilot-original-failure/layers/046.json",
+        "sha256": "ab6125f68bacfb0124df1c321264f2b705d79755bdd179f4deb61d95a3e03710",
+        "bytes": 4047
+      },
+      {
+        "path": "pilot-original-failure/layers/047.json",
+        "sha256": "42a8b8181a13d5d1bb47b0e07398d0d2a29513f2b990d7468f70ad140eb7d344",
+        "bytes": 3354
+      },
+      {
+        "path": "pilot-original-failure/layers/048.json",
+        "sha256": "fde7c7d52bb6dd3cac0557ba5882cb399baa8144bc38826712e1d75ea6dd4456",
+        "bytes": 4043
+      },
+      {
+        "path": "pilot-original-failure/layers/049.json",
+        "sha256": "a56a1ddbf7f4ec0ab605cac0192d3930edc49dd0f0694e06863cc1d229e198da",
+        "bytes": 4044
+      },
+      {
+        "path": "pilot-original-failure/layers/050.json",
+        "sha256": "94fd920488ffba5f65282b44d485ee20e3b83791ecf65104750e8bcc96912282",
+        "bytes": 4044
+      },
+      {
+        "path": "pilot-original-failure/layers/051.json",
+        "sha256": "031a9a0cfc916e0401e43e6a9fed6448091a8f2011d2a081f5d35dc189b9921a",
+        "bytes": 3356
+      },
+      {
+        "path": "pilot-original-failure/layers/052.json",
+        "sha256": "aa7c01f8ce1ea429c85cdbb4d3c7962130e2af93d71dee6c8baf4232fb91ae0a",
+        "bytes": 4045
+      },
+      {
+        "path": "pilot-original-failure/layers/053.json",
+        "sha256": "4d7d17cc1734a75cf38d33ac9f60600ce6fec1581cc8a193b2dc8ac720897834",
+        "bytes": 4047
+      },
+      {
+        "path": "pilot-original-failure/layers/054.json",
+        "sha256": "efc79a22d7f1e607d6a9f1f65aae459b187bd9356ab6d39ac94bbc0d5f0edc8a",
+        "bytes": 4046
+      },
+      {
+        "path": "pilot-original-failure/layers/055.json",
+        "sha256": "1930035f8a23f60bbdfa860a5e4bde28f8721611ce4ef7ae9e5b6d35b4783f81",
+        "bytes": 3356
+      },
+      {
+        "path": "pilot-original-failure/layers/056.json",
+        "sha256": "b81627ae830b26b36d024ce84c3a6c7afdba08f32a6fcc6ec3c91ebd8ddf9b29",
+        "bytes": 4043
+      },
+      {
+        "path": "pilot-original-failure/layers/057.json",
+        "sha256": "91c622df38be0f6cd735ce07b69ca689f36e58b544652a8c001dd3944f4ddbbf",
+        "bytes": 4044
+      },
+      {
+        "path": "pilot-original-failure/layers/058.json",
+        "sha256": "dd9ca738aeda3ae7e532e055028b45f1846c080ee186ad82650e3d24fbdb52e7",
+        "bytes": 4046
+      },
+      {
+        "path": "pilot-original-failure/layers/059.json",
+        "sha256": "c9ced840b717690a7e068e93d7ab8033a4d7900a9b45b10a45a09f52c8bca9a8",
+        "bytes": 3354
+      },
+      {
+        "path": "pilot-original-failure/layers/060.json",
+        "sha256": "db99f7520fa0a54748bb4aae3447c8d29bfe286c7b3147d16e8e8ff620ac0556",
+        "bytes": 4043
+      },
+      {
+        "path": "pilot-original-failure/layers/061.json",
+        "sha256": "fc0fe56d212a2c9f89ea2b6bfc1a6d6988a3960df0856a1ea6020e9a7fc22324",
+        "bytes": 4045
+      },
+      {
+        "path": "pilot-original-failure/layers/062.json",
+        "sha256": "b04fefb763f78168842c71df9de2b6b6b78b96b7a0edb913d0cffa484b418513",
+        "bytes": 4045
+      },
+      {
+        "path": "pilot-original-failure/layers/063.json",
+        "sha256": "7b648571f6efd18ae02da91b509f3467c6d19734fc5a6537c6fe124528d1ffad",
+        "bytes": 3353
+      }
+    ],
+    "cases": [],
+    "inputs": [
+      {
+        "path": "pilot-original-failure/inputs/000.json",
+        "sha256": "51aa07d2738ca3780ec99c77f30b288328f0df26aa398d6763edb514842011c8",
+        "bytes": 4594
+      }
+    ]
+  },
+  "original_bytes": 292174,
+  "original_sha256": "1885ece001e9e480f0500cbd9e32be6597fb7af6ea32ce2f33c1c8de95f712d6",
+  "sanitized_original_bytes": 292174,
+  "sanitized_original_sha256": "1885ece001e9e480f0500cbd9e32be6597fb7af6ea32ce2f33c1c8de95f712d6",
+  "serialization": "json.dumps(indent=2, allow_nan=False) plus newline",
+  "sanitized_and_original_reconstruction_verified": true
+}

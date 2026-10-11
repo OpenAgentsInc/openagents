@@ -1,0 +1,38 @@
+{
+  "decision": "reject product integration",
+  "correctness_passed": true,
+  "material_speed_gate_passed": false,
+  "variant": "four independent32x32 SIMD-group products, fixedK128, combined64x64 output tile",
+  "frozen_numerical_criterion_version": 2,
+  "timing_rows": 240,
+  "commands": 295,
+  "dispatches": 523,
+  "paired_full_ffn_ratios": [
+    1.0395032621979554,
+    1.025331604896969,
+    1.1290553963855239
+  ],
+  "paired_projection_sum_ratios": [
+    1.0768419043627104,
+    1.0135413301248573,
+    1.1860489379842802
+  ],
+  "tokens": [
+    512,
+    1024,
+    2048
+  ],
+  "maximum_weighted_f32_error": 1.430511474609375e-05,
+  "maximum_weighted_half_ulp": 0,
+  "half_activation_allowance_needed": false,
+  "maximum_weighted_f64_sample_error": 5.732717557549449e-06,
+  "load_average_1m_range": [
+    41.076171875,
+    59.0234375
+  ],
+  "full_model_run": false,
+  "product_changed": false,
+  "retries_or_sweep": false,
+  "hardware_cause_established": false,
+  "owned_group_stopped": true
+}

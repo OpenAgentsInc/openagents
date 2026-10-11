@@ -28,10 +28,24 @@ of 1.250× / 1.144× / 0.996× do not meet it.
 
 The sub-1e-6 result on all 104 questions compares staged and fused scoring
 heads with identical trunk execution. It is not independent full-runtime
-coverage. The independent Transformers CPU-f32 execution of the same GGUF
-currently covers one case, text-014: top answer agrees with Metal, maximum
-probability difference is `0.000163851`, and maximum logit difference is
-`0.001329958`. No independent same-Q4 full104 comparison is established here.
+coverage. The [full independent same-Q4 comparison](same-q4-runtime-v1/README.md)
+now covers all 40 requests and 104 questions with exact token IDs, spans, and
+options. It **fails** the fixed all-top-answers gate: both native head modes
+agree on 103 of 104 answers. The largest probability difference, `0.009059182`,
+passes the separate `0.02` bound. For `text-029`, question `日本1`, the reference
+gives `true` probability `0.493031923`; native execution gives about `0.50209110`.
+This discrepancy requires investigation before runtime acceptance can pass.
+
+The independent reference decodes the unchanged GGUF into f32 and executes
+the pinned official Transformers operators on MPS, one layer and request at
+a time, with a CPU f32 scoring head. A prior CPU-versus-MPS pilot passes its
+fixed numerical checks. Exact production encoder sources reproduce all 20,894
+input token IDs. The full run finishes in 558.57 seconds under its 12 GiB
+process cap, with successful owned-process cleanup. These are correctness
+results, not latency measurements. The earlier independent CPU-f32 case-014
+comparison against an older native capture remains a separate result: matching
+top answer, maximum probability difference `0.000163851`, and maximum logit
+difference `0.001329958`.
 Prefix and batching checks compare native execution against native execution.
 
 The [activation-weighted Q4 preparation](activation-weighted-q4-preparation-v1/README.md)
@@ -124,6 +138,14 @@ Completed 512-token paired full-FFN and projection-sum ratios are 1.068 and
 1.383, respectively. The incomplete experiment establishes no gain and remains
 unapplied. The guard stops its owned child group without a memory or cleanup
 failure; no larger limit or retry follows.
+
+The [independent-SIMD projection experiment](gemm-independent-simd-probe-v1/README.md)
+uses four separate 32×32 products with K128 steps. All 23 initial numerical
+checks and 240 timed output comparisons pass, but paired full-FFN
+candidate/baseline ratios are `1.040 / 1.025 / 1.129` at 512/1,024/2,048 tokens.
+It fails the fixed 10% improvement target at every size and remains unapplied.
+The 21.24-second run peaks at 1,822,771,144 bytes under its 2 GiB cap and releases
+its owned process group and leases. The experiment establishes no hardware cause.
 
 All probes use shared GPU/build and bounded memory leases as appropriate.
 None uses a quiet lease or changes desktop applications or system services.

@@ -1,0 +1,9 @@
+{
+  "status": "passed",
+  "saved_http_responses": 80,
+  "questions_per_mode": 104,
+  "aggregate_failure_checks": 4,
+  "models_or_gpu_executed": false,
+  "limits": "HTTP token counts are capture-derived here; pilot requires independent native encoder IDs/counts. Synthetic zero errors only test gate logic.",
+  "source_sha256": "d6dd92eb2e0ed4df10b3f9dc56f84ef7bf61c10689b3a2da6b2ae1db0e79835b"
+}

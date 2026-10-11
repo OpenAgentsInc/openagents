@@ -1,0 +1,86 @@
+{
+  "logits": [
+    [
+      -2.2056281566619873,
+      0.6539561152458191
+    ]
+  ],
+  "probabilities": [
+    [
+      0.05418800328906534,
+      0.9458119967109345
+    ]
+  ],
+  "hidden_sha256": "71c3d7ac66d0a0d341c715a3779c258929c7a61d0aae23337bb51f3900692b25",
+  "lexical_sha256": "d9a40de53607d0cc724a483e217154b2100ae3559ce0458a1d260d2f657d32f6",
+  "option_token_ids": [
+    279,
+    369,
+    466,
+    760,
+    804,
+    816,
+    867,
+    874,
+    1802,
+    1979,
+    3147,
+    3721,
+    4087,
+    4532,
+    4754,
+    8934,
+    9542,
+    38749,
+    46292
+  ],
+  "id": "text-016",
+  "request_sha256": "0e36c948edbc341f48b68a258caf979469acca3f5f11fc32dd26b603c9133777",
+  "input_tokens": 182,
+  "native_stage6_comparisons": {
+    "staged": {
+      "capture_sha256": "406b1e62d2e11e46b07deb9632db173b4148980c873c7e2dc0ece51562108cbb",
+      "http": {
+        "response_sha256": "a9ff1e943a6cb5be9e9dd408cc4ef288f043d199083882c481465196e86a1292",
+        "contract_passed": true,
+        "input_tokens": 182,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      "mps_vs_native": {
+        "questions": [
+          {
+            "max_abs_logit": 0.0022547245025634766,
+            "max_abs_probability": 0.00012178628849301987,
+            "same_top": true
+          }
+        ],
+        "max_abs_logit": 0.0022547245025634766,
+        "max_abs_probability": 0.00012178628849301987,
+        "all_tops_match": true
+      }
+    },
+    "fused-fields": {
+      "capture_sha256": "873679a94c6ebb2f7cabc077a34caae6d0020503e1b99f9ae33eee798bde841b",
+      "http": {
+        "response_sha256": "cbee98cc1a41b35fc65c36892be749210f9344ef0b367e9185917eb707d657ce",
+        "contract_passed": true,
+        "input_tokens": 182,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      "mps_vs_native": {
+        "questions": [
+          {
+            "max_abs_logit": 0.002254962921142578,
+            "max_abs_probability": 0.00012179238522069813,
+            "same_top": true
+          }
+        ],
+        "max_abs_logit": 0.002254962921142578,
+        "max_abs_probability": 0.00012179238522069813,
+        "all_tops_match": true
+      }
+    }
+  }
+}

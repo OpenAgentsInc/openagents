@@ -1,0 +1,133 @@
+warning: constant `TRAINED_LENGTH` is never used
+  --> @@CLEF_SCRATCH@@/same-q4-runtime-v1/production-source/clef/encode.rs:19:11
+   |
+19 | pub const TRAINED_LENGTH: usize = 16_384;
+   |           ^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `request_order` and `legend` are never read
+  --> @@CLEF_SCRATCH@@/same-q4-runtime-v1/production-source/clef/encode.rs:62:9
+   |
+51 | pub struct ClefQuestion {
+   |            ------------ fields in this struct
+...
+62 |     pub request_order: Vec<String>,
+   |         ^^^^^^^^^^^^^
+63 |     /// The score legend: the criteria values in order.
+64 |     pub legend: Vec<ClefJson>,
+   |         ^^^^^^
+   |
+   = note: `ClefQuestion` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: field `model` is never read
+  --> @@CLEF_SCRATCH@@/same-q4-runtime-v1/production-source/clef/encode.rs:79:9
+   |
+78 | pub struct ClefRequest {
+   |            ----------- field in this struct
+79 |     pub model: String,
+   |         ^^^^^
+   |
+   = note: `ClefRequest` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: methods `as_str`, `to_python_str`, and `to_serde` are never used
+  --> @@CLEF_SCRATCH@@/same-q4-runtime-v1/production-source/clef/json.rs:46:12
+   |
+32 | impl ClefJson {
+   | ------------- methods in this implementation
+...
+46 |     pub fn as_str(&self) -> Option<&str> {
+   |            ^^^^^^
+...
+73 |     pub fn to_python_str(&self) -> String {
+   |            ^^^^^^^^^^^^^
+...
+84 |     pub fn to_serde(&self) -> serde_json::Value {
+   |            ^^^^^^^^
+
+warning: struct `ClefMediaProjection` is never constructed
+  --> @@CLEF_SCRATCH@@/same-q4-runtime-v1/production-source/clef/media.rs:45:12
+   |
+45 | pub struct ClefMediaProjection {
+   |            ^^^^^^^^^^^^^^^^^^^
+
+warning: method `validate` is never used
+  --> @@CLEF_SCRATCH@@/same-q4-runtime-v1/production-source/clef/media.rs:52:12
+   |
+50 | impl ClefMediaProjection {
+   | ------------------------ method in this implementation
+51 |     /// Checks every row and position before a decoder submits work.
+52 |     pub fn validate(&self, tokens: &[TokenId], hidden_size: usize) -> Result<(), String> {
+   |            ^^^^^^^^
+
+warning: struct `ClefImageRuntime` is never constructed
+  --> @@CLEF_SCRATCH@@/same-q4-runtime-v1/production-source/clef/media.rs:87:12
+   |
+87 | pub struct ClefImageRuntime {
+   |            ^^^^^^^^^^^^^^^^
+
+warning: associated items `from_ollama_manifest`, `digest`, and `backend` are never used
+   --> @@CLEF_SCRATCH@@/same-q4-runtime-v1/production-source/clef/media.rs:92:12
+    |
+ 91 | impl ClefImageRuntime {
+    | --------------------- associated items in this implementation
+ 92 |     pub fn from_ollama_manifest(
+    |            ^^^^^^^^^^^^^^^^^^^^
+...
+102 |     pub fn digest(&self) -> &str {
+    |            ^^^^^^
+...
+106 |     pub fn backend(&self) -> &'static str {
+    |            ^^^^^^^
+
+warning: method `project` is never used
+   --> @@CLEF_SCRATCH@@/same-q4-runtime-v1/production-source/clef/media.rs:292:12
+    |
+238 | impl EncodedMedia {
+    | ----------------- method in this implementation
+...
+292 |     pub fn project(&self, runtime: &ClefImageRuntime) -> Result<ClefMediaProjection, String> {
+    |            ^^^^^^^
+
+warning: linker stderr: ld64.lld: @@CLEF_TARGET@@/release/deps/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-regexec.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-regerror.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-regparse.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-regcomp.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-regenc.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-regsyntax.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-regversion.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-st.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-unicode.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-ascii.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-utf8.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-unicode_unfold_key.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-unicode_fold1_key.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-unicode_fold2_key.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libonig_sys-bb8acc62fbc9e782.rlib(a445302c6d3dcb51-unicode_fold3_key.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libpsionic_backend_cuda-006dd263d70c426f.rlib(42a6b4e50f1a4f96-clef_prefill_stub.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libring-0aae4747beb5cd2e.rlib(25ac62e5b3c53843-curve25519.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libring-0aae4747beb5cd2e.rlib(0bbbd18bda93c05b-aes_nohw.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libring-0aae4747beb5cd2e.rlib(00c879ee3285a50d-montgomery.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libring-0aae4747beb5cd2e.rlib(00c879ee3285a50d-montgomery_inv.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libring-0aae4747beb5cd2e.rlib(a0330e891e733f4e-gfp_p384.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libring-0aae4747beb5cd2e.rlib(a0330e891e733f4e-ecp_nistz.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libring-0aae4747beb5cd2e.rlib(aaa1ba3e455ee2e1-limbs.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libring-0aae4747beb5cd2e.rlib(a4019cc0736b0423-mem.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libring-0aae4747beb5cd2e.rlib(d5a9841f3dc6e253-poly1305.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libring-0aae4747beb5cd2e.rlib(a0330e891e733f4e-p256-nistz.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libring-0aae4747beb5cd2e.rlib(c322a0bcc369f531-chacha-armv8-ios64.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libring-0aae4747beb5cd2e.rlib(c322a0bcc369f531-chacha20_poly1305_armv8-ios64.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libring-0aae4747beb5cd2e.rlib(c322a0bcc369f531-aesv8-armx-ios64.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libring-0aae4747beb5cd2e.rlib(c322a0bcc369f531-aesv8-gcm-armv8-ios64.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libring-0aae4747beb5cd2e.rlib(c322a0bcc369f531-ghash-neon-armv8-ios64.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libring-0aae4747beb5cd2e.rlib(c322a0bcc369f531-ghashv8-armx-ios64.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libring-0aae4747beb5cd2e.rlib(c322a0bcc369f531-vpaes-armv8-ios64.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libring-0aae4747beb5cd2e.rlib(c322a0bcc369f531-armv8-mont-ios64.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libring-0aae4747beb5cd2e.rlib(c322a0bcc369f531-p256-armv8-asm-ios64.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libring-0aae4747beb5cd2e.rlib(c322a0bcc369f531-sha512-armv8-ios64.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+         ld64.lld: @@CLEF_TARGET@@/release/deps/libring-0aae4747beb5cd2e.rlib(c322a0bcc369f531-sha256-armv8-ios64.o) has version 26.5.0, which is newer than target minimum of 11.0.0
+  |
+  = note: `#[warn(linker_messages)]` on by default
+
+warning: 10 warnings emitted
+

@@ -1,0 +1,127 @@
+{
+  "logits": [
+    [
+      -0.6610831618309021,
+      -1.866917371749878,
+      -0.030580222606658936,
+      -2.010354518890381,
+      -1.0606300830841064
+    ]
+  ],
+  "probabilities": [
+    [
+      0.24342447896742755,
+      0.07289153661947136,
+      0.4572863063562259,
+      0.06315142345386698,
+      0.1632462546030082
+    ]
+  ],
+  "hidden_sha256": "b152d4f1c6a1f3ae0274261c09edfc5b94f2ac7651b1f33496bc03142e366c6f",
+  "lexical_sha256": "2795740dc3d6ab5409f9695722e33205b3ffee54226d93d05be9db1cfa83ff0a",
+  "option_token_ids": [
+    15,
+    18,
+    19,
+    62,
+    65,
+    98,
+    220,
+    222,
+    242,
+    248,
+    643,
+    816,
+    1328,
+    1856,
+    1870,
+    1979,
+    2129,
+    2179,
+    3147,
+    3705,
+    3853,
+    4238,
+    4532,
+    4619,
+    4754,
+    5305,
+    5351,
+    5653,
+    7171,
+    7250,
+    8652,
+    8934,
+    9008,
+    10407,
+    10838,
+    12195,
+    18079,
+    18193,
+    21624,
+    25686,
+    35580,
+    37355,
+    40884,
+    40958,
+    41637,
+    42760,
+    49927,
+    50203,
+    56658,
+    66550,
+    82118,
+    169286,
+    190925,
+    248068
+  ],
+  "id": "text-038",
+  "request_sha256": "7a25eb1673611edfa06756745f62a8d31b5d851493c44c0fa9197fed64365427",
+  "input_tokens": 245,
+  "native_stage6_comparisons": {
+    "staged": {
+      "capture_sha256": "406b1e62d2e11e46b07deb9632db173b4148980c873c7e2dc0ece51562108cbb",
+      "http": {
+        "response_sha256": "a54772a23c0fb417bd8fee584e1bbeb9ea9ecc95918fb3fafc308884309d416d",
+        "contract_passed": true,
+        "input_tokens": 245,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      "mps_vs_native": {
+        "questions": [
+          {
+            "max_abs_logit": 0.0004928112030029297,
+            "max_abs_probability": 7.96017681027883e-05,
+            "same_top": true
+          }
+        ],
+        "max_abs_logit": 0.0004928112030029297,
+        "max_abs_probability": 7.96017681027883e-05,
+        "all_tops_match": true
+      }
+    },
+    "fused-fields": {
+      "capture_sha256": "873679a94c6ebb2f7cabc077a34caae6d0020503e1b99f9ae33eee798bde841b",
+      "http": {
+        "response_sha256": "19ce3aba485229bf4f5c8330019ede6988a8a6f4d3f3ab0ec708ba582e700485",
+        "contract_passed": true,
+        "input_tokens": 245,
+        "questions": 1,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      "mps_vs_native": {
+        "questions": [
+          {
+            "max_abs_logit": 0.0004928112030029297,
+            "max_abs_probability": 7.955891538807824e-05,
+            "same_top": true
+          }
+        ],
+        "max_abs_logit": 0.0004928112030029297,
+        "max_abs_probability": 7.955891538807824e-05,
+        "all_tops_match": true
+      }
+    }
+  }
+}

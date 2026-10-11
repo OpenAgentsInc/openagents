@@ -1350,9 +1350,15 @@ pinned Q4 model. BF16-versus-Q4 quality is separate artifact work in
 [#11306](https://github.com/OpenAgentsInc/openagents/issues/11306), evaluated
 with routes-v5 and the chat goldens. The 1.5× speed target remains unchanged.
 The existing 104-question, sub-1e-6 result covers scoring-head equivalence;
-independent full-runtime same-Q4 coverage currently includes one case, with
-matching top answer and maximum probability difference `0.000163851`.
-Broader independent runtime coverage remains incomplete.
+the [full independent same-Q4 check](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/same-q4-runtime-v1/README.md)
+now covers all 40 requests and 104 questions. It fails the fixed top-answer
+gate: both native head modes agree on 103 of 104 answers, although the maximum
+probability difference `0.009059182` passes the separate `0.02` bound. One
+yes/no answer crosses 50% (`text-029`, `日本1`). Exact encoder sources reproduce
+all 20,894 reference token IDs. The independent reference uses the pinned
+official Transformers operators, independently decoded Q4 weights, MPS f32
+trunk execution, and a CPU f32 head; a CPU-versus-MPS pilot passes first.
+Runtime correctness and the speed target remain open.
 
 ### Metal controls and memory
 
@@ -1550,6 +1556,7 @@ complete before the native comparison starts; do not overlap their model loads.
 | Flash route versus the CPU goldens, 40 requests and 104 answers per variant | Passed again on Stage 5: default and fused-attention/weight-shape variants both match all 104 top answers. Maximum probability differences are `0.001047681` and `0.000989952`, respectively. These correctness runs overlap CPU diagnostics and are not latency measurements. |
 | Block DeltaNet | **FAILED in the combined mode:** Stage 5 passes alone at maximum logit difference `8.871e-4`, but reaches `1.405e-3` with fused attention, weight-shape GEMM, and compressed FFN. It remains disabled by default. Both sides of the comparison use the same other optimizations. |
 | Fused field head | Passed on Stage 6: Flash and 27B each preserve all 104 raw-logit and HTTP top answers against their staged heads, with maximum logit differences below `1e-6`. The source reduces head waits from 23 to 8. This is head-only parity, not independent full-runtime same-Q4 coverage. |
+| Independent same-Q4 27B text runtime | **FAILED:** both Stage 6 head modes agree with the independent reference on 103/104 top answers. Maximum probability difference `0.009059182` passes the fixed `0.02` bound, but `text-029` / `日本1` changes its top answer. All 40 requests, 20,894 input IDs, spans, and options are covered. [Complete evidence](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/same-q4-runtime-v1/README.md). |
 | Shorter DeltaNet blocks | **Rejected:** the 16-token experiment reaches `1.084e-3` alone and `1.355e-3` combined, above the unchanged `1e-3` limit. Its patch and failures are retained; product source restores the preceding block32 experiment. |
 | Official 27B BF16 image goldens and native comparison | Passed again on Stage 6 with fused fields: all six cases and 14 native top answers match the official reference and expected labels, with exact token counts. Maximum probability difference is `0.001779430`; all ten media refusal checks pass. |
 | Real 27B CUDA and Auto startup refusal on the RTX 4080 | Passed: both refused before weight upload, without CPU fallback; GPU memory before/after was unchanged. This does not claim that CUDA context creation uses no memory. |
@@ -1560,6 +1567,7 @@ complete before the native comparison starts; do not overlap their model loads.
 | Exact half lookup-table capability and actual-weight probe | Tiny checks pass. The actual Flash gate also passes all decoded weights and output checks, but LUT matmul takes 198.011 ms versus fixed64 MPP at 2.376 ms, so integration is rejected. Allocation snapshots cannot exclude transient private expansion. [Full probe](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/lut-gate-probe-v1/README.md). |
 | Fixed tile dispatch swizzle | Rejected: all 15 correctness checks and 240 timed output comparisons are bitwise identical, but full-FFN changes are small and inconsistent across 512/1,024/2,048 tokens. [All paired results](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/gemm-swizzle-probe-v1/README.md). |
 | Three-way Flash down K split | Rejected: 19 correctness checks and 240 timed output checks pass, but paired full-FFN candidate/baseline ratios are 1.223 / 1.001 / 1.075 at 512/1,024/2,048 tokens. Unchanged controls are noisy; no gain is established. [Evidence](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/gemm-split3-probe-v1/README.md). |
+| Independent SIMD projection tiles | Rejected: 23 numerical checks and 240 timed output comparisons pass, but paired full-FFN candidate/baseline ratios are 1.040 / 1.025 / 1.129 at 512/1,024/2,048 tokens. All three miss the fixed 10% improvement target. [Complete probe](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/gemm-independent-simd-probe-v1/README.md). |
 | Two-SIMD-group matrix probe | Unqualified: all 19 initial checks and 149 completed timing checks are bitwise equal, but CPU check overhead contributes to the 60-second deadline before the timing plan finishes. Completed 512-token full-FFN ratio is 1.068; no gain is established or integrated. [Partial evidence](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/gemm-two-simd-probe-v1/README.md). |
 | Attention with 128-key tiles | Candidate: 204 numerical checks pass with maximum difference `0.000120`; all 30 paired timings favor it, with 1.60–1.91× median kernel speedups. Compiled scratch fits the device limit. These are synthetic final-chunk measurements under high shared load; full-model parity and latency remain required. [Full probe](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/attention-key128-probe-v1/README.md). |
 | Sustained M5 submission diagnostic | 512 unprofiled FFNs reproduce the command-duration rise. Four-deep queueing reduces command gaps to about 15 µs but sustained commands remain 26–27 ms. Submission gaps alone do not explain the slowdown; no thermal or clock cause is established. All output/guard checks pass. [Full experiment](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/unprofiled-sustained-v1/README.md). |

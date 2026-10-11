@@ -1,0 +1,111 @@
+{
+  "status": "complete",
+  "mode": "run",
+  "bounds": {
+    "group_gib": 2,
+    "start_gib": 14,
+    "floor_gib": 12,
+    "deadline_seconds": 60,
+    "disk_floor_gib": 25
+  },
+  "model_executed": false,
+  "gpu_executed": false,
+  "quiet_lease": false,
+  "source_sha256": {
+    "encoder_source.rs": "610e107d0d52dc218a5015469a0c3b776eb7165c55e3f5889a0ac6d2a6c98e24",
+    "guard_encoder_source.py": "a90e8770bdc11c198513187e7af35e61b85665a9be73d2a5a18690f2b2a6f359"
+  },
+  "native_http_version_limit": "This export compiles current production parser/encoder/media sources directly, with the linked tokenizer library snapshot. It does not observe historical HTTP process IDs. Compare recorded current and Stage6 source identities before reusing old responses.",
+  "native_source_identity": {
+    "stage6_source_manifest_sha256": "10b8e667124408b68cb097c38bcb55a7f99394ebfc8e7795ce5195557a747b0c",
+    "files": {
+      "crates/psionic/crates/psionic-serve/src/clef/encode.rs": {
+        "current_sha256": "c51df80db6c29f00e2c8fcb6f2b93db012b6edf267e2e028e7f83b28086caa44",
+        "stage6_sha256": "c51df80db6c29f00e2c8fcb6f2b93db012b6edf267e2e028e7f83b28086caa44",
+        "matches_stage6": true
+      },
+      "crates/psionic/crates/psionic-serve/src/clef/json.rs": {
+        "current_sha256": "d9c093f8e057625721312a04a2d55225bec2a9219b2237d024e749e9fa3a1d66",
+        "stage6_sha256": "d9c093f8e057625721312a04a2d55225bec2a9219b2237d024e749e9fa3a1d66",
+        "matches_stage6": true
+      },
+      "crates/psionic/crates/psionic-serve/src/clef/media.rs": {
+        "current_sha256": "38f91be06748d1d3af1d66a2801d7eab10664a1406f21be2b6905f3f90bac2ad",
+        "stage6_sha256": "38f91be06748d1d3af1d66a2801d7eab10664a1406f21be2b6905f3f90bac2ad",
+        "matches_stage6": true
+      },
+      "crates/psionic/crates/psionic-serve/src/clef/media/resize.rs": {
+        "current_sha256": "dd1aa534359a3a4abee296a59a0bbfb6452607f703cfa8c80c09e9b6980d57f7",
+        "stage6_sha256": "dd1aa534359a3a4abee296a59a0bbfb6452607f703cfa8c80c09e9b6980d57f7",
+        "matches_stage6": true
+      },
+      "crates/psionic/crates/psionic-models/src/lib.rs": {
+        "current_sha256": "2c02393eda1fecfea32d5b7ef8c7e1520184df4c83e6aa0c80d0ac6b446e7c8f",
+        "stage6_sha256": "2c02393eda1fecfea32d5b7ef8c7e1520184df4c83e6aa0c80d0ac6b446e7c8f",
+        "matches_stage6": true
+      },
+      "crates/psionic/crates/psionic-models/src/runtime_tokenizer.rs": {
+        "current_sha256": "ee7ef730afe8de2a23831feb2268c126bd002b064783841d35f3ef01a021e84a",
+        "stage6_sha256": "ee7ef730afe8de2a23831feb2268c126bd002b064783841d35f3ef01a021e84a",
+        "matches_stage6": true
+      }
+    }
+  },
+  "exact_source_copies": {
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/production-source/clef/encode.rs": "c51df80db6c29f00e2c8fcb6f2b93db012b6edf267e2e028e7f83b28086caa44",
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/production-source/clef/media.rs": "38f91be06748d1d3af1d66a2801d7eab10664a1406f21be2b6905f3f90bac2ad",
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/production-source/clef/json.rs": "d9c093f8e057625721312a04a2d55225bec2a9219b2237d024e749e9fa3a1d66",
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/production-source/clef/mod.rs": "ef8e7e59c18a1a5072be5a8dd9edfa4884923463138fedda3fb1f3fbe9c8226c",
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/production-source/clef/media/resize.rs": "dd1aa534359a3a4abee296a59a0bbfb6452607f703cfa8c80c09e9b6980d57f7"
+  },
+  "build_sha256": "6443f6a8c1e8b305b2dbb8399e242e001c7461e71bb9617163704445cf41fd29",
+  "binary_sha256": "fe873664be06cb903d7fa8c77b21976001ef31e2b5b440aaba377cbd1d0b6ab3",
+  "gguf_state": [
+    19232219200,
+    2660377039,
+    1791700892618502144,
+    1791700892619286481
+  ],
+  "command": [
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/encoder-source-build-1/encoder",
+    "@@CLEF_SCRATCH@@/artifacts/Clef-Q4_K_M.gguf",
+    "@@CLEF_SCRATCH@@/27b-head-stage6-combined",
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/encoder-source-run-1/native-encoded.json"
+  ],
+  "before": {
+    "available_memory_bytes": 93814964224,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 3676680,
+      "inactive": 1485752,
+      "speculative": 563579
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "owned_pid": 16921,
+  "exit_code": 0,
+  "output_sha256": "5c7e9cc9c02e78044d17adc1fd5a8816919e62ee13b32eb6bb0e463a18e4ce81",
+  "sources_rechecked": true,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 16921,
+    "max_rss_bytes": 2147483648,
+    "peak_rss_bytes": 189054976,
+    "peak_physical_footprint_bytes": 108806960,
+    "peak_accounted_bytes": 189054976,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 2,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 93656252416,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 0.8373332080009277
+}

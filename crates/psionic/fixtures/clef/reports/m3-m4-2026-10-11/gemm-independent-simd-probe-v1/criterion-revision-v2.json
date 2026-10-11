@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "time_utc": "2026-10-11T13:29:13.728585+00:00",
+  "before_first_compile_and_gpu": true,
+  "previous_source_sha256": {
+    "probe.swift": "7554e6809c571e8789ec222083d58a91b6bfd5a950d67e17094634832b96a7ce",
+    "manifest.json": "3229a6ea6038dfd981f75f8e1e1b680fee5bfb565e6d36898bef0405e436c243",
+    "summarize.py": "19683e5d6d76c7601ee888bedbdb7f4cd14514f51adde2ec9ad7f0cb1608bf38",
+    "README.md": "8cfa62091d8ce1d93728a50f4954396eecbde6870befbb5bb2a82af5df33d7a8"
+  },
+  "reason": "A changed f32 reduction can fall on opposite sides of a half-rounding boundary. One half ULP exceeds .001 above magnitude2, so pre-execution activation comparison permits abs<=.001 OR halfULP<=1. The absolute branch preserves existing near-zero allowance. F32 projections, independent f64 samples and ultimate full-model raw1e-3 gates are unchanged. Each variant must repeat exactly.",
+  "no_results_observed": true
+}

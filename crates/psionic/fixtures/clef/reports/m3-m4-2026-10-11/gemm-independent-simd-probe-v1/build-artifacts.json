@@ -1,0 +1,26 @@
+{
+  "source_sha256": {
+    "baseline.metal": "9505a34d21d4d6bd11a532a62549d00c8cafbad90ab92f2bd07cccb4eae30725",
+    "candidate.metal": "a99df4aca3b12685bdf5d1080f2b14503234a8e58ef41c57b3f431d6789c9f39",
+    "production-shapes.metal": "392d4e53863fcfe61519e1108384bd614d2400750fe94830cb432e30fa40f978",
+    "production-fixed-extract.metal": "6a52d4323c13c85bf0bd7b6847f57216ed98d9bd07c8f95382a774f7e8920e25",
+    "production-silu-extract.metal": "fe7844912a63f4219dc05a5a50a5b269ad48a0e3aa5f60cef221ae9223880e61",
+    "production-planner.rs": "b0a83f7dafc9257b4f3f84afd3079dd27857f70e7c7cfdd00d7a15217debecac",
+    "probe.swift": "e64dde35d976035f355bee9630389074cdf24f0c4bcb641240af81263f266e07",
+    "weights.json": "8f05ea58d073e3fc31b73743ab12b922c1d56bfb2347e0e81e0c6bd70303f5f8",
+    "build.py": "379f6150a16a9ab6614cf28ae1bc48cd012a091a75e7471840e529c99e3455f6",
+    "guard.py": "d2c038067f5d0c2a1d6744ec2e1c416d7d174cb68c3ed5223fd9a35f9f25c89d",
+    "manifest.json": "ff6d109a898a3b24c5d4decf0ba058329e5ff2cb8e734bf65bc4b593cb003ac6",
+    "summarize.py": "131e6568a2efcaa57478df817d661fa278117feca7c835616a1a16105118b0a6",
+    "source_check.py": "9371e9111fd4cbcdd18ff687716b15dba6b0eccb23ee96c10027bc3e7378bdf0",
+    "README.md": "1bb17ed1910204fe68db4e6c9cf641c0209e4fb8fae95a086785a4f9143b6df3",
+    "half_ulp_check.py": "f5f1d3dcbe7cd4da54c45b9ea2698047ba861bc26575144e0ae4c6f53f015aa4",
+    "half-ulp-fixtures.json": "bc0a57a7088795ab57884782326d9a1de7285c6bbfd109c68271309381f046d5",
+    "criterion-revision-v2.json": "3b17c973a7a59710b202d8c83aa0227176af6c8255f3e718ee1d80c0a6611d47"
+  },
+  "artifacts": {
+    "probe": "435404999d88054b6b7559f4b33d0c2a4f0fad3a0eafff9c909b39b5ce91a0c4",
+    "kernels.metallib": "ca9062b90472963d0931402b06361c49e5571e9cfb5fbad33b3173f152b81030"
+  },
+  "gpu_executed": false
+}

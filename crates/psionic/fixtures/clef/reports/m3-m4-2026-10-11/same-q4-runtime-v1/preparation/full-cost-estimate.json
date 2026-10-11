@@ -1,0 +1,22 @@
+{
+  "schema": "clef.same-q4-reference-full-cost-estimate.v1",
+  "pilot_layers": 64,
+  "requests": 40,
+  "questions": 104,
+  "tokens": 20894,
+  "token_min": 155,
+  "token_max": 1090,
+  "pilot_linear_forward_seconds": 3.2067164969994337,
+  "pilot_attention_forward_seconds": 1.030103873978078,
+  "pilot_other_layer_seconds": 197.41291983097472,
+  "linear_token_factor": 65.09034267912773,
+  "quadratic_attention_factor": 133.9010685067109,
+  "estimated_seconds_linear_scaling": 473.18900964781,
+  "estimated_seconds_attention_quadratic_scaling": 544.0712048940469,
+  "full_deadline_seconds": 1800,
+  "external_gib": 12,
+  "mps_allocator_gib": 8,
+  "all_CPU_hidden_state_bytes": 427909120,
+  "conditions": "Pilot overlapped Cargo compilation; arithmetic extrapolation only, not a latency benchmark or deadline guarantee. Forty B=1 requests sequential per layer; layer decode/upload/hash reused; no request state reuse.",
+  "pilot_result_sha256": "1885ece001e9e480f0500cbd9e32be6597fb7af6ea32ce2f33c1c8de95f712d6"
+}

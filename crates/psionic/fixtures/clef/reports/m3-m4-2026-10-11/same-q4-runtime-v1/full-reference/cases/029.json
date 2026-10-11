@@ -1,0 +1,122 @@
+{
+  "logits": [
+    [
+      -0.9667593240737915,
+      -0.28033900260925293
+    ],
+    [
+      -0.05994617938995361,
+      -0.03207206726074219
+    ],
+    [
+      -3.2247092723846436,
+      1.4942913055419922
+    ]
+  ],
+  "probabilities": [
+    [
+      0.3348298630909867,
+      0.6651701369090134
+    ],
+    [
+      0.4930319231251634,
+      0.5069680768748365
+    ],
+    [
+      0.008845158015607084,
+      0.9911548419843929
+    ]
+  ],
+  "hidden_sha256": "fb9f0834a7ed1f9e1f408440a831720db6d7e2247e20e340073054c7c885a6ae",
+  "lexical_sha256": "d9a40de53607d0cc724a483e217154b2100ae3559ce0458a1d260d2f657d32f6",
+  "option_token_ids": [
+    279,
+    369,
+    466,
+    760,
+    804,
+    816,
+    867,
+    874,
+    1802,
+    1979,
+    3147,
+    3721,
+    4087,
+    4532,
+    4754,
+    8934,
+    9542,
+    38749,
+    46292
+  ],
+  "id": "text-029",
+  "request_sha256": "d97a363d10a51e9bfd42dbb8f7f5ae01f3a873ee9ea2589c3a0faa54cf6efdad",
+  "input_tokens": 359,
+  "native_stage6_comparisons": {
+    "staged": {
+      "capture_sha256": "406b1e62d2e11e46b07deb9632db173b4148980c873c7e2dc0ece51562108cbb",
+      "http": {
+        "response_sha256": "9c5fe45f494b025ab9f1dfd59ff3adac4a0426511cc7ed7cdaf777ef5ec61a53",
+        "contract_passed": true,
+        "input_tokens": 359,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      "mps_vs_native": {
+        "questions": [
+          {
+            "max_abs_logit": 0.007858633995056152,
+            "max_abs_probability": 0.0010685850608319614,
+            "same_top": true
+          },
+          {
+            "max_abs_logit": 0.034515380859375,
+            "max_abs_probability": 0.009059166985287637,
+            "same_top": false
+          },
+          {
+            "max_abs_logit": 0.004607439041137695,
+            "max_abs_probability": 2.3950723788163097e-05,
+            "same_top": true
+          }
+        ],
+        "max_abs_logit": 0.034515380859375,
+        "max_abs_probability": 0.009059166985287637,
+        "all_tops_match": false
+      }
+    },
+    "fused-fields": {
+      "capture_sha256": "873679a94c6ebb2f7cabc077a34caae6d0020503e1b99f9ae33eee798bde841b",
+      "http": {
+        "response_sha256": "5d5181301cb2365d5b6ef724f7d335457fb562306caa477d98c35795499aec8e",
+        "contract_passed": true,
+        "input_tokens": 359,
+        "questions": 3,
+        "logit_probability_consistency_tolerance": 1e-10
+      },
+      "mps_vs_native": {
+        "questions": [
+          {
+            "max_abs_logit": 0.007858455181121826,
+            "max_abs_probability": 0.001068531876639356,
+            "same_top": true
+          },
+          {
+            "max_abs_logit": 0.034515380859375,
+            "max_abs_probability": 0.00905918188618815,
+            "same_top": false
+          },
+          {
+            "max_abs_logit": 0.004607439041137695,
+            "max_abs_probability": 2.3949681494439545e-05,
+            "same_top": true
+          }
+        ],
+        "max_abs_logit": 0.034515380859375,
+        "max_abs_probability": 0.00905918188618815,
+        "all_tops_match": false
+      }
+    }
+  }
+}

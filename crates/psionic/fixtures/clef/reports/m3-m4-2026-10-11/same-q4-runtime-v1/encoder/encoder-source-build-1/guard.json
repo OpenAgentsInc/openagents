@@ -1,0 +1,206 @@
+{
+  "status": "complete",
+  "mode": "build",
+  "bounds": {
+    "group_gib": 4,
+    "start_gib": 16,
+    "floor_gib": 12,
+    "deadline_seconds": 180,
+    "disk_floor_gib": 25
+  },
+  "model_executed": false,
+  "gpu_executed": false,
+  "quiet_lease": false,
+  "source_sha256": {
+    "encoder_source.rs": "610e107d0d52dc218a5015469a0c3b776eb7165c55e3f5889a0ac6d2a6c98e24",
+    "guard_encoder_source.py": "4cd500d500811235cef767916d020f75fd0ec846f82ed2af482ada098b08844c"
+  },
+  "native_http_version_limit": "This export compiles current production parser/encoder/media sources directly, with the linked tokenizer library snapshot. It does not observe historical HTTP process IDs. Compare recorded current and Stage6 source identities before reusing old responses.",
+  "native_source_identity": {
+    "stage6_source_manifest_sha256": "10b8e667124408b68cb097c38bcb55a7f99394ebfc8e7795ce5195557a747b0c",
+    "files": {
+      "crates/psionic/crates/psionic-serve/src/clef/encode.rs": {
+        "current_sha256": "c51df80db6c29f00e2c8fcb6f2b93db012b6edf267e2e028e7f83b28086caa44",
+        "stage6_sha256": "c51df80db6c29f00e2c8fcb6f2b93db012b6edf267e2e028e7f83b28086caa44",
+        "matches_stage6": true
+      },
+      "crates/psionic/crates/psionic-serve/src/clef/json.rs": {
+        "current_sha256": "d9c093f8e057625721312a04a2d55225bec2a9219b2237d024e749e9fa3a1d66",
+        "stage6_sha256": "d9c093f8e057625721312a04a2d55225bec2a9219b2237d024e749e9fa3a1d66",
+        "matches_stage6": true
+      },
+      "crates/psionic/crates/psionic-serve/src/clef/media.rs": {
+        "current_sha256": "38f91be06748d1d3af1d66a2801d7eab10664a1406f21be2b6905f3f90bac2ad",
+        "stage6_sha256": "38f91be06748d1d3af1d66a2801d7eab10664a1406f21be2b6905f3f90bac2ad",
+        "matches_stage6": true
+      },
+      "crates/psionic/crates/psionic-serve/src/clef/media/resize.rs": {
+        "current_sha256": "dd1aa534359a3a4abee296a59a0bbfb6452607f703cfa8c80c09e9b6980d57f7",
+        "stage6_sha256": "dd1aa534359a3a4abee296a59a0bbfb6452607f703cfa8c80c09e9b6980d57f7",
+        "matches_stage6": true
+      },
+      "crates/psionic/crates/psionic-models/src/lib.rs": {
+        "current_sha256": "2c02393eda1fecfea32d5b7ef8c7e1520184df4c83e6aa0c80d0ac6b446e7c8f",
+        "stage6_sha256": "2c02393eda1fecfea32d5b7ef8c7e1520184df4c83e6aa0c80d0ac6b446e7c8f",
+        "matches_stage6": true
+      }
+    }
+  },
+  "exact_source_copies": {
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/production-source/clef/encode.rs": "c51df80db6c29f00e2c8fcb6f2b93db012b6edf267e2e028e7f83b28086caa44",
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/production-source/clef/media.rs": "38f91be06748d1d3af1d66a2801d7eab10664a1406f21be2b6905f3f90bac2ad",
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/production-source/clef/json.rs": "d9c093f8e057625721312a04a2d55225bec2a9219b2237d024e749e9fa3a1d66",
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/production-source/clef/mod.rs": "ef8e7e59c18a1a5072be5a8dd9edfa4884923463138fedda3fb1f3fbe9c8226c",
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/production-source/clef/media/resize.rs": "dd1aa534359a3a4abee296a59a0bbfb6452607f703cfa8c80c09e9b6980d57f7"
+  },
+  "libraries": {
+    "psionic_models": {
+      "path": "@@CLEF_TARGET@@/release/deps/libpsionic_models-92720d7897a18b10.rlib",
+      "bytes": 86289504,
+      "sha256": "98def0aff595b674e46fa66ae67ac2f58c7222603a9921e92b0ca747768cd5f4"
+    },
+    "serde_json": {
+      "path": "@@CLEF_TARGET@@/release/deps/libserde_json-9edadf2d77c22b62.rlib",
+      "bytes": 3317816,
+      "sha256": "73637474e3d006f1193f38c95b2f80d95b52e32eeedaad41565c7c409783c649"
+    },
+    "sha2": {
+      "path": "@@CLEF_TARGET@@/release/deps/libsha2-1a19b6d3c0a9dc5f.rlib",
+      "bytes": 413312,
+      "sha256": "066bcb3051d73899c7820bced01a5d2d8534b46707065194a77fc0fd036279ed"
+    },
+    "image": {
+      "path": "@@CLEF_TARGET@@/release/deps/libimage-33e294c0b2335960.rlib",
+      "bytes": 29714432,
+      "sha256": "065a8985f23cac4f6d2f65a2490d37af2b43984f3faae3f60268b05cd71fecae"
+    },
+    "base64": {
+      "path": "@@CLEF_TARGET@@/release/deps/libbase64-65d187e97e139933.rlib",
+      "bytes": 420552,
+      "sha256": "c904fa535cce179498ff8415daeeb531253b42fd7c5db25d92e8dc154f0b4e41"
+    },
+    "hex": {
+      "path": "@@CLEF_TARGET@@/release/deps/libhex-e5df813e815ee0ed.rlib",
+      "bytes": 436392,
+      "sha256": "caa9e508ab6f310d61c00074ba082a278378ff0a0a99c184aaac0259f2d2320c"
+    }
+  },
+  "compiler": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: aarch64-apple-darwin\nrelease: 1.97.1\nLLVM version: 22.1.6\n",
+  "linker": {
+    "path": "@@CLEF_HOME@@/.rustup/toolchains/1.97.1-aarch64-apple-darwin/lib/rustlib/aarch64-apple-darwin/bin/rust-lld",
+    "sha256": "8f5fe507df7232eac0a610c12a5d11f3202205235f710eb98c6c78df6d3f548d",
+    "scratch_symlink": "@@CLEF_SCRATCH@@/same-q4-runtime-v1/encoder-source-build-1/ld64.lld",
+    "sdk": "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+    "flavor": "ld64.lld",
+    "threads": 2,
+    "lto_jobs": 2
+  },
+  "native_libraries": {
+    "libonig.a": {
+      "path": "@@CLEF_TARGET@@/release/build/onig_sys-bc5425f70f57fc69/out/libonig.a",
+      "sha256": "2792a26687366b4b18d49043a4187861003492efc4887e83e967958a2cd2e299"
+    },
+    "libring_core_0_17_14__test.a": {
+      "path": "@@CLEF_TARGET@@/release/build/ring-7e0ca41ac8a63172/out/libring_core_0_17_14__test.a",
+      "sha256": "1ab72ba960bb77079df77d1451285837315d7bb726d12c5712398f4bb66e15c1"
+    },
+    "libring_core_0_17_14_.a": {
+      "path": "@@CLEF_TARGET@@/release/build/ring-7e0ca41ac8a63172/out/libring_core_0_17_14_.a",
+      "sha256": "2061de8c87b76cefa0afb1993a487408ff8ad56657ae694d920969fa20e624f1"
+    },
+    "libpsionic_cuda_quantized_kernels.a": {
+      "path": "@@CLEF_TARGET@@/release/build/psionic-backend-cuda-afea7adf9e4595ba/out/libpsionic_cuda_quantized_kernels.a",
+      "sha256": "d4af2a1db709511f84db6da947353f2d872275ee3d7a094edba28144d0a9ecd3"
+    },
+    "libzstd.a": {
+      "path": "@@CLEF_TARGET@@/release/build/zstd-sys-4330cd322000e29c/out/libzstd.a",
+      "sha256": "38fbd72e3a52856fbd1c370a2a2d26c0a12ee25c5d2955923b4d97f0b3ddda23"
+    }
+  },
+  "command": [
+    "rustup",
+    "run",
+    "1.97.1",
+    "rustc",
+    "--edition=2024",
+    "--crate-name",
+    "clef_native_encoder_only",
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/encoder_source.rs",
+    "-C",
+    "opt-level=1",
+    "-C",
+    "linker=@@CLEF_SCRATCH@@/same-q4-runtime-v1/encoder-source-build-1/ld64.lld",
+    "-C",
+    "linker-flavor=ld64.lld",
+    "-C",
+    "link-arg=-syslibroot",
+    "-C",
+    "link-arg=/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+    "-C",
+    "link-arg=--threads=2",
+    "-C",
+    "link-arg=--thinlto-jobs=2",
+    "-C",
+    "link-arg=--lto-O1",
+    "-L",
+    "dependency=@@CLEF_TARGET@@/release/deps",
+    "-o",
+    "@@CLEF_SCRATCH@@/same-q4-runtime-v1/encoder-source-build-1/encoder",
+    "-L",
+    "native=@@CLEF_TARGET@@/release/build/onig_sys-bc5425f70f57fc69/out",
+    "-L",
+    "native=@@CLEF_TARGET@@/release/build/psionic-backend-cuda-afea7adf9e4595ba/out",
+    "-L",
+    "native=@@CLEF_TARGET@@/release/build/ring-7e0ca41ac8a63172/out",
+    "-L",
+    "native=@@CLEF_TARGET@@/release/build/zstd-sys-4330cd322000e29c/out",
+    "--extern",
+    "psionic_models=@@CLEF_TARGET@@/release/deps/libpsionic_models-92720d7897a18b10.rlib",
+    "--extern",
+    "serde_json=@@CLEF_TARGET@@/release/deps/libserde_json-9edadf2d77c22b62.rlib",
+    "--extern",
+    "sha2=@@CLEF_TARGET@@/release/deps/libsha2-1a19b6d3c0a9dc5f.rlib",
+    "--extern",
+    "image=@@CLEF_TARGET@@/release/deps/libimage-33e294c0b2335960.rlib",
+    "--extern",
+    "base64=@@CLEF_TARGET@@/release/deps/libbase64-65d187e97e139933.rlib",
+    "--extern",
+    "hex=@@CLEF_TARGET@@/release/deps/libhex-e5df813e815ee0ed.rlib"
+  ],
+  "before": {
+    "available_memory_bytes": 97145946112,
+    "page_size_bytes": 16384,
+    "pages": {
+      "free": 3979074,
+      "inactive": 1396342,
+      "speculative": 553902
+    },
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size"
+  },
+  "owned_pid": 13355,
+  "exit_code": 0,
+  "binary_sha256": "fe873664be06cb903d7fa8c77b21976001ef31e2b5b440aaba377cbd1d0b6ab3",
+  "sources_rechecked": true,
+  "memory": {
+    "rss_log": "memory.jsonl",
+    "process_group": 13355,
+    "max_rss_bytes": 4294967296,
+    "peak_rss_bytes": 1558134784,
+    "peak_physical_footprint_bytes": 985206048,
+    "peak_accounted_bytes": 1558134784,
+    "sampling_error": null,
+    "sampler_timeout_seconds": 5,
+    "rss_samples": 18,
+    "sample_interval_seconds": 0.5,
+    "minimum_available_memory_bytes": 12884901888,
+    "lowest_available_memory_bytes": 94908874752,
+    "available_memory_formula": "vm_stat (free + inactive + speculative) * page_size",
+    "memory_rejection": null,
+    "cleanup_error": null,
+    "cleanup_diagnostics": null,
+    "cleanup_observations": [],
+    "owned_group_stopped": true,
+    "memory_limit_kind": "sampled per-member max(RSS, physical footprint) on macOS; RSS elsewhere; not a hard allocation limit"
+  },
+  "seconds": 9.198108958000375
+}
