@@ -1029,7 +1029,7 @@ flat-shaded models). Each phase below says how it maps onto that path.
 | B3 | [#11200](https://github.com/OpenAgentsInc/openagents/issues/11200) | Done in part, 3551012941; the rest is [#11206](https://github.com/OpenAgentsInc/openagents/issues/11206) |
 | B4 | [#11201](https://github.com/OpenAgentsInc/openagents/issues/11201) | Done, 581a122fb4 |
 | B5 | [#11202](https://github.com/OpenAgentsInc/openagents/issues/11202) | Done, 595979a089 |
-| B6 | [#11203](https://github.com/OpenAgentsInc/openagents/issues/11203) | Done in part, 311e9a8c44; presence is [#11207](https://github.com/OpenAgentsInc/openagents/issues/11207) |
+| B6 | [#11203](https://github.com/OpenAgentsInc/openagents/issues/11203) | Done in part, 311e9a8c44; presence with `look` is built ([#11207](https://github.com/OpenAgentsInc/openagents/issues/11207)), the two-browser check is still to record |
 
 ### B1: the rules
 
@@ -1239,10 +1239,6 @@ and the second ladder stone lit.
 
 Deviations, and why:
 
-- **No presence or `look` yet.** Other bunnies in their colours need NIP-MV
-  presence from the browser and the additive `look` field in avatar state;
-  the browser build has no relay connection today (the page's policy allows
-  only its own origin). Two clients seeing each other's shades is open.
 - **One hole per garden, not per set.** Only set 1 (gardens 1 to 5) exists,
   so each of its gardens has its own hole; the Wild Hole waits for B8.
 - **No race course or start gate**: those are B9. The Carrot Board shows
@@ -1253,6 +1249,35 @@ Deviations, and why:
 - **Meadow scaled down** to about 85 m across from 160 m, so a walk to any
   spot takes seconds.
 - **No emotes** (thump, binky, ear flop, wave) yet.
+
+### Other bunnies in the meadow
+
+[#11207](https://github.com/OpenAgentsInc/openagents/issues/11207):
+
+- **Presence** (`crates/bunny-web/src/presence.rs`, wired in `app.rs`): the
+  page opens the browser's relay link from `verse-net` to
+  `wss://relay.openagents.com` (`#relay=wss://…` names another, `#relay=off`
+  none; the page's policy allows only that relay besides its own origin).
+  The key is made on first use and kept in the browser's storage
+  (`bunny.key.v1`). In the NIP-MV world `bunny-meadow-v1` the bunny
+  publishes its `avatar` entity state on entering the meadow, on each shade
+  change and every 10 s, and pose frames five times a second; going into a
+  garden publishes it offline, and garden runs send nothing. Each other
+  bunny is drawn, eased between frames, in its own shade, and is gone after
+  10 s without a frame.
+- **`look`** (`verse_net::mv::Look`, `nips/openagents/NIP-MV.md`): an
+  optional `{"rig":"bunny-v1","shade":N}` on avatar state, `N` the win count
+  capped at 20. States without it still decode; a rig a client does not know
+  is ignored.
+
+Tests: two `Presence` values trade their events and see each other in their
+shades, a shade change republishes and leaving goes offline, unknown rigs
+and other worlds are not drawn, and `look` round-trips and stays optional.
+Two browsers seeing each other on the live relay is a manual check still to
+record.
+
+Deviations: no resume of this bunny's own state from the relay (the shade
+comes from the local save), and no names over the bunnies.
 
 ### The tutorial and the guide
 
@@ -1305,7 +1330,7 @@ Deviations, and why:
 - B9: races, ghosts and the Carrot Board with verified receipts
   (`bunny.run-receipt.v1` and `verse.game-replay.v1` already verify by
   replay).
-- Presence with `look` in the meadow; sounds; emotes.
+- Sounds; emotes.
 - [#11206](https://github.com/OpenAgentsInc/openagents/issues/11206): the
   pack format in its own crate, and the `verse` host registering community
   games through `CommunityGame`.

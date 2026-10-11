@@ -43,11 +43,13 @@ pub(crate) const BUNNY_START: &str = "start.js";
 pub(crate) const BUNNY_CANVAS: &str = "bunny-canvas";
 
 /// The page's policy: the site's, plus scripts and the module from this
-/// site only, compiling WebAssembly, and same-origin reads of the module.
+/// site only, compiling WebAssembly, same-origin reads of the module, and
+/// the relay's socket, where bunnies in Warren Meadow see each other.
 /// The game styles its own controls through the CSSOM, which `style-src`
 /// doesn't govern, so no inline style is admitted.
 pub(crate) const BUNNY_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; \
-img-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; \
+img-src 'self'; script-src 'self' 'wasm-unsafe-eval'; \
+connect-src 'self' wss://relay.openagents.com; \
 base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
 const TITLE: &str = "Grow Little Bunny";
@@ -134,7 +136,7 @@ mod tests {
     fn the_policy_allows_only_same_origin_scripts_and_wasm() {
         assert!(BUNNY_POLICY.starts_with("default-src 'none'"));
         assert!(BUNNY_POLICY.contains("script-src 'self' 'wasm-unsafe-eval';"));
-        assert!(BUNNY_POLICY.contains("connect-src 'self';"));
+        assert!(BUNNY_POLICY.contains("connect-src 'self' wss://relay.openagents.com;"));
         assert!(!BUNNY_POLICY.contains("unsafe-inline"));
         assert!(!BUNNY_POLICY.contains("'unsafe-eval'"));
         assert!(!BUNNY_POLICY.contains("http"));

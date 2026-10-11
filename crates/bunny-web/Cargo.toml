@@ -16,6 +16,11 @@ autoplay = []
 [dependencies]
 bunny-rules = { path = "../bunny-rules" }
 verse-game = { path = "../verse-game" }
+# Other bunnies in the meadow: NIP-MV states and frames, and in a browser
+# the relay link over the page's WebSocket.
+verse-net = { path = "../verse-net" }
+nostr = { path = "../nostr" }
+serde_json = "1"
 glam = "0.30.10"
 
 # The page itself is browser-only; natively only the meshes, the scene and

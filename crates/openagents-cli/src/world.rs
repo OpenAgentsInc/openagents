@@ -364,6 +364,7 @@ impl Context {
             name,
             set: None,
             b: None,
+            look: None,
         };
         let state_event = mv::state_event(&self.identity.signer, &self.world, &state, now);
         if online {

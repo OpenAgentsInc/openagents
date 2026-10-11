@@ -1021,6 +1021,7 @@ impl Session {
                 name: name.clone(),
                 set: None,
                 b: None,
+                look: None,
             };
             let event = mv::state_event(&self.id.signer, self.world, &state, unix_now());
             self.publish_now(event);
@@ -2341,6 +2342,7 @@ mod tests {
             name: None,
             set: None,
             b: None,
+            look: None,
         };
         let foreign = nostr::domain::RelaySigner::from_secret_hex(&"02".repeat(32)).unwrap();
         session.handle(

@@ -185,6 +185,19 @@ pub struct State {
     /// A snapshot's rest poses, one per body.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub b: Option<Vec<BodyRest>>,
+    /// An avatar's look: the rig it is drawn with and its shade. Additive;
+    /// a client that does not know the rig ignores it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub look: Option<Look>,
+}
+
+/// An avatar's look in an entity state.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Look {
+    /// The rig, such as `bunny-v1`.
+    pub rig: String,
+    /// The rig's shade, from 0.
+    pub shade: u32,
 }
 
 impl State {
@@ -797,6 +810,7 @@ mod tests {
             name: None,
             set: None,
             b: None,
+            look: None,
         };
         let event = state_event(&signer(), WORLD, &state, 1_790_000_000);
         assert_eq!(event.kind, STATE_KIND);
@@ -838,7 +852,42 @@ mod tests {
                     o: Some("ab".repeat(32)),
                 },
             ]),
+            look: None,
         }
+    }
+
+    #[test]
+    fn an_avatar_look_round_trips_and_is_optional() {
+        let state = State {
+            v: 1,
+            id: "avatar".into(),
+            role: "avatar".into(),
+            p: [1.0, 0.0, 3.0],
+            q: [0.0, 0.0, 0.0, 1.0],
+            t: 5,
+            online: true,
+            follows: None,
+            name: None,
+            set: None,
+            b: None,
+            look: Some(Look {
+                rig: "bunny-v1".into(),
+                shade: 7,
+            }),
+        };
+        let event = state_event(&signer(), WORLD, &state, 1);
+        assert!(event.content.contains(r#""look":{"rig":"bunny-v1","shade":7}"#));
+        assert!(matches!(
+            decode(&event, WORLD),
+            Ok(Received::State { state: got, .. }) if got == state
+        ));
+        let old: State = serde_json::from_str(
+            r#"{"v":1,"id":"avatar","role":"avatar","p":[0,0,0],"q":[0,0,0,1],"t":1,"online":true}"#,
+        )
+        .unwrap();
+        assert_eq!(old.look, None);
+        let plain = State { look: None, ..state };
+        assert!(!serde_json::to_string(&plain).unwrap().contains("look"));
     }
 
     #[test]

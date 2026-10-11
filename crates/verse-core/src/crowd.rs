@@ -615,6 +615,7 @@ mod tests {
                     name: None,
                     set: None,
                     b: None,
+                    look: None,
                 },
             },
             t0,
