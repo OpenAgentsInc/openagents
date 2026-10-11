@@ -849,6 +849,37 @@ scratch) waits for a quiet machine: 1- and 5-minute load averages below
 0.40 `clef-flash` interleaved, three rounds of median-of-5, and records
 the load for each run.
 
+### Gate attempt (2026-10-10 19:12–19:23)
+
+- **Trigger.** The watcher started the run when the 1- and 5-minute load
+  averages were 8.5 and 9.9 and the visualizer was closed.
+- **Load during the run.** It rose from 8.6 to 19 while the run went on.
+- **Method.** Ollama 0.40 `clef-flash` and Psionic Metal (`edd58c7d0f86`,
+  the batched head) were interleaved. Each cell is the median of 5 with a
+  fresh nonce.
+
+| Round (1-minute load at start) | Psionic 1k | Ollama 1k | Psionic 4k | Ollama 4k | Psionic 16k | Ollama 16k |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 (8.6 / 9.5) | 0.85 s | 0.51 s | **2.35 s** | 2.59 s | **9.83 s** | 11.17 s |
+| 2 (10.3 / 14.6) | **0.37 s** | 0.98 s | **2.79 s** | 3.35 s | **12.50 s** | 13.91 s |
+| 3 (19.0 / 16.4) | **0.95 s** | 0.99 s | **3.08 s** | 3.40 s | **13.03 s** | 14.01 s |
+| Gate | ≤ 0.35 s | — | — | — | ≤ 7.5 s | — |
+
+What the attempt shows:
+
+- **Against Ollama.** Psionic is faster at 4k and at 16k in every round,
+  by 9–17 %.
+- **At 1k** the results swing with the load, from 0.37 to 0.95 s for
+  Psionic and from 0.51 to 0.99 s for Ollama.
+- **The absolute gates are not met** under this load: 1k is at best
+  0.37 s against 0.35 s, and 16k is at best 9.8 s against 7.5 s.
+- **Why the times are long.** As measured before, sustained GPU
+  throughput on this shared machine falls to a third of its burst rate.
+  The 16k times are what that predicts.
+- **What a valid gate needs.** It has to run with the machine actually
+  idle for the whole run (about 10 minutes), not just at its start. The
+  watcher's trigger should hold for the run.
+
 ### Next
 
 - The M3 gate on a quiet Mac, against Ollama and MLX, with a per-phase
