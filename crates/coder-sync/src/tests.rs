@@ -106,6 +106,22 @@ fn settings_are_off_by_default_private_and_remember_what_was_sent() {
     }
 }
 
+#[test]
+fn a_corrupt_settings_file_is_moved_aside_and_reported() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join(FILE);
+    std::fs::write(&file, b"{ this is not json").unwrap();
+    let why = Settings::load_checked(dir.path()).unwrap_err();
+    assert!(why.contains("not readable settings"), "{why}");
+    // The old bytes are preserved, not overwritten or deleted.
+    let aside = dir.path().join("sync.json.corrupt");
+    assert!(aside.exists(), "the corrupt file should be kept");
+    assert_eq!(std::fs::read(&aside).unwrap(), b"{ this is not json");
+    // With the bad file gone, the next load is a clean default.
+    assert_eq!(Settings::load(dir.path()), Settings::default());
+    assert!(!Settings::load_checked(dir.path()).unwrap().on);
+}
+
 /// A website that keeps what it is sent; session "gone" was deleted there.
 /// It serves the `/v1` paths, or, when `older`, only the paths of a
 /// website from before #11158.

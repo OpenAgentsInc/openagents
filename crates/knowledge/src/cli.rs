@@ -219,8 +219,25 @@ pub fn source(o: &Options) -> String {
 ///
 /// # Errors
 ///
+/// Why parsing failed: `--help` is not an error.
+#[derive(Debug)]
+pub enum ParseError {
+    /// `-h`/`--help` was asked for; the text is the usage.
+    Help(String),
+    /// An unknown option, a missing value, or a bad value.
+    Bad(String),
+}
+
+impl std::fmt::Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Help(text) | Self::Bad(text) => f.write_str(text),
+        }
+    }
+}
+
 /// An unknown option or a missing value.
-pub fn parse(args: &[String]) -> Result<Options, String> {
+pub fn parse(args: &[String]) -> Result<Options, ParseError> {
     let mut o = Options {
         dir: default_dir(),
         bundled: std::env::var_os(crate::DIR_VAR).is_none_or(|value| value.is_empty()),
@@ -229,7 +246,12 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
     };
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
-        let mut value = || iter.next().cloned().ok_or(format!("{arg} needs a value"));
+        let mut value = || {
+            iter.next()
+                .cloned()
+                .ok_or_else(|| ParseError::Bad(format!("{arg} needs a value")))
+        };
+        let bad = |text: String| ParseError::Bad(text);
         match arg.as_str() {
             "--dir" => {
                 o.dir = PathBuf::from(value()?);
@@ -240,7 +262,7 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
                 let text = value()?;
                 o.limit = text
                     .parse()
-                    .map_err(|_| format!("--limit wants a number, not {text}"))?;
+                    .map_err(|_| bad(format!("--limit wants a number, not {text}")))?;
             }
             "--corpus" => o.corpora.push(PathBuf::from(value()?)),
             "--lexical" => o.lexical = true,
@@ -267,7 +289,10 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
             "--relay" => o.relay = Some(value()?),
             "--timeout" => {
                 let text = value()?;
-                o.timeout = Some(text.parse().map_err(|_| "--timeout needs seconds")?);
+                o.timeout = Some(
+                    text.parse()
+                        .map_err(|_| bad("--timeout needs seconds".to_string()))?,
+                );
             }
             "--output" => o.output = Some(PathBuf::from(value()?)),
             "--package" => o.package = Some(value()?),
@@ -278,20 +303,20 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
                 o.retain_until = Some(
                     value()?
                         .parse()
-                        .map_err(|_| "--retain-until needs Unix seconds")?,
+                        .map_err(|_| bad("--retain-until needs Unix seconds".to_string()))?,
                 )
             }
             "--model-recipient" => o.model_recipients.push(value()?),
             "--key-file" => o.key_file = Some(PathBuf::from(value()?)),
-            "-h" | "--help" => return Err(USAGE.to_string()),
+            "-h" | "--help" => return Err(ParseError::Help(USAGE.to_string())),
             flag if flag.starts_with("--") => {
-                return Err(format!("unknown option {flag}\n\n{USAGE}"));
+                return Err(bad(format!("unknown option {flag}\n\n{USAGE}")));
             }
             word => o.words.push(word.to_string()),
         }
     }
     if o.bundled {
-        crate::seed_bundled(&o.dir)?;
+        crate::seed_bundled(&o.dir).map_err(ParseError::Bad)?;
     }
     Ok(o)
 }
@@ -321,7 +346,11 @@ pub async fn result(args: &[String]) -> Result<(u8, Value), (u8, String)> {
         let command = args
             .first()
             .ok_or((64, "a kb command is required".to_string()))?;
-        let o = parse(&args[1..]).map_err(|error| (64, error))?;
+        let o = parse(&args[1..]).map_err(|error| match error {
+            // `--help` is not a usage error; the text is what was asked for.
+            ParseError::Help(text) => (0, text),
+            ParseError::Bad(text) => (64, text),
+        })?;
         match command.as_str() {
             "search" => search_json(&o).await,
             "show" => show_json(&o),
@@ -404,8 +433,21 @@ async fn run(args: &[String]) -> Result<u8, String> {
         println!("{}", workbench(&args[1..]).await?);
         return Ok(0);
     }
+    // `kb --help` (no subcommand) prints the usage and succeeds.
+    if matches!(args.first().map(String::as_str), Some("-h" | "--help")) {
+        println!("{USAGE}");
+        return Ok(0);
+    }
     let command = args.first().ok_or(USAGE)?.clone();
-    let o = parse(&args[1..])?;
+    let o = match parse(&args[1..]) {
+        Ok(o) => o,
+        // `--help` prints the usage and succeeds.
+        Err(ParseError::Help(text)) => {
+            println!("{text}");
+            return Ok(0);
+        }
+        Err(ParseError::Bad(text)) => return Err(text),
+    };
     match command.as_str() {
         "search" => search(&o).await,
         "show" => show(&o),
@@ -1027,5 +1069,30 @@ async fn workbench(args: &[String]) -> Result<Value, String> {
             serde_json::to_value(session.draft_study(plan)?).map_err(|e| e.to_string())
         }
         _ => Err("Use kb workbench inspect SESSION; harvest SELECTION STAGING OUTPUT; edit SESSION DOCUMENT OUTPUT; or draft-study SESSION PLAN".into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn help_is_not_a_usage_error() {
+        // `-h` and `--help` ask for the usage text; they are not a bad
+        // invocation, so they must not take the error path.
+        for flag in ["-h", "--help"] {
+            match parse(&[flag.to_string()]) {
+                Err(ParseError::Help(text)) => assert!(text.starts_with("usage: kb")),
+                other => panic!("{flag} should be Help, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn an_unknown_option_is_a_usage_error() {
+        match parse(&["--nope".to_string()]) {
+            Err(ParseError::Bad(text)) => assert!(text.contains("unknown option")),
+            other => panic!("--nope should be Bad, got {other:?}"),
+        }
     }
 }

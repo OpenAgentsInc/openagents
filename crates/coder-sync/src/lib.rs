@@ -105,13 +105,43 @@ pub struct Settings {
 }
 
 impl Settings {
-    /// The settings in `dir`; none saved (or unreadable) is off.
+    /// The settings in `dir`. A file that is absent is off. A file that is
+    /// present but unreadable or corrupt is moved aside as `sync.json.corrupt`
+    /// and reported, so a bad file never silently turns sync off.
+    pub fn load_checked(dir: &Path) -> Result<Self, String> {
+        let file = dir.join(FILE);
+        let text = match std::fs::read_to_string(&file) {
+            Ok(text) => text,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
+            Err(e) => {
+                let aside = move_aside(&file);
+                return Err(format!(
+                    "Couldn't read {} ({}). {}",
+                    file.display(),
+                    e,
+                    aside
+                ));
+            }
+        };
+        match serde_json::from_str(&text) {
+            Ok(settings) => Ok(settings),
+            Err(e) => {
+                let aside = move_aside(&file);
+                Err(format!(
+                    "{} was not readable settings ({}). {}",
+                    file.display(),
+                    e,
+                    aside
+                ))
+            }
+        }
+    }
+
+    /// The settings in `dir`; none saved is off. A corrupt file is moved
+    /// aside and treated as off (see [`Settings::load_checked`] to see it).
     #[must_use]
     pub fn load(dir: &Path) -> Self {
-        std::fs::read_to_string(dir.join(FILE))
-            .ok()
-            .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_default()
+        Self::load_checked(dir).unwrap_or_default()
     }
 
     /// Keep the settings in `dir/sync.json`, readable only by this user.
@@ -130,15 +160,36 @@ impl Settings {
     }
 }
 
+/// Move a corrupt settings file aside so the next save starts clean and the
+/// person can still see what was there. Returns a sentence for the caller's
+/// message.
+fn move_aside(file: &Path) -> String {
+    let aside = file.with_extension("json.corrupt");
+    match std::fs::rename(file, &aside) {
+        Ok(()) => format!("Kept the old file at {}.", aside.display()),
+        Err(_) => "The old file could not be kept.".to_owned(),
+    }
+}
+
 fn write_private(file: &Path, bytes: &[u8]) -> Result<(), String> {
     use std::io::Write;
     let dir = file
         .parent()
         .ok_or_else(|| format!("{} has no folder.", file.display()))?;
     std::fs::create_dir_all(dir).map_err(|_| format!("Couldn't make {}.", dir.display()))?;
-    let tmp = dir.join(format!(".{FILE}.{}.tmp", std::process::id()));
+    // A per-call unique temp name, so two writers in one process (or a
+    // crashed earlier write) never share a temp file.
+    let unique = format!(
+        "{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    );
+    let tmp = dir.join(format!(".{FILE}.{unique}.tmp"));
     let mut options = std::fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
+    options.write(true).create_new(true);
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt;

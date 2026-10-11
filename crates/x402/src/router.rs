@@ -64,8 +64,6 @@ pub enum Method {
     Mpp,
     /// L402 on the same invoice. Reserved: no adapter yet.
     L402,
-    /// Cashu NUT-24. Reserved: no adapter yet.
-    Cashu,
 }
 
 impl Method {
@@ -76,7 +74,6 @@ impl Method {
             Self::X402 => "x402",
             Self::Mpp => "mpp",
             Self::L402 => "l402",
-            Self::Cashu => "cashu",
         }
     }
 }

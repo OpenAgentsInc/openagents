@@ -323,7 +323,7 @@ impl PinnedFile {
             // flags zero unlinks one entry without following or recursing.
             let _ = unsafe { libc::unlinkat(directory.as_raw_fd(), name.as_ptr(), 0) };
         };
-        for digest in self.history.iter().take(32).filter(|&&d| d != self.sha256) {
+        for digest in self.history.iter().filter(|&&d| d != self.sha256) {
             if digest.len() == 64
                 && digest
                     .bytes()
