@@ -352,20 +352,31 @@ def kind_packages(rev: str, files: list[dict], levers: dict) -> tuple[list[dict]
     return pkgs, checks
 
 
+def _shrinkable(f: dict) -> bool:
+    """An excerpt the budget trim can still cut: over 400 characters and over
+    the 10 lines a cut keeps. An excerpt of 10 or fewer long lines cannot
+    shrink, and choosing it looped forever (ablate-levers' Blarge on #10295,
+    s2b's B0 on #10095). Every trim that ended before this rule chose only
+    shrinkable excerpts, so those briefings are unchanged."""
+    return len(f["excerpt"]) > 400 and len(f["excerpt"].splitlines()) > 10
+
+
 def budget_by_package(briefing: dict, budget_chars: int) -> str:
     """Trim excerpts so each package keeps a fair share of the briefing:
     the package most over its share loses lines from its longest excerpt."""
     md = render(briefing)
     pkgs = briefing.get("packages") or []
     owner = {f: p["id"] for p in pkgs for f in p["files"]}
-    while len(md) > budget_chars and any(len(f["excerpt"]) > 400 for f in briefing["files"]):
+    while len(md) > budget_chars and any(_shrinkable(f) for f in briefing["files"]):
         by: dict[str, int] = {}
         for f in briefing["files"]:
             by[owner.get(f["path"], "")] = by.get(owner.get(f["path"], ""), 0) + len(f["excerpt"])
         share = max(1, budget_chars // max(1, len(by)))
         worst = max(by, key=lambda k: by[k] - share)
-        cands = [f for f in briefing["files"] if owner.get(f["path"], "") == worst and len(f["excerpt"]) > 400] \
-            or [f for f in briefing["files"] if len(f["excerpt"]) > 400]
+        cands = [f for f in briefing["files"] if owner.get(f["path"], "") == worst and _shrinkable(f)] \
+            or [f for f in briefing["files"] if _shrinkable(f)]
+        if not cands:
+            break
         longest = max(cands, key=lambda f: len(f["excerpt"]))
         rows = longest["excerpt"].splitlines()
         longest["excerpt"] = "\n".join(rows[: max(10, len(rows) * 2 // 3)])
@@ -522,8 +533,8 @@ def build(task: dict, levers: dict, seeds: list[dict] | None = None, wrong: str 
         md = budget_by_package(briefing, budget)
     else:
         md = render(briefing)
-        while len(md) > budget and any(len(f["excerpt"]) > 400 for f in briefing["files"]):
-            longest = max(briefing["files"], key=lambda f: len(f["excerpt"]))
+        while len(md) > budget and any(_shrinkable(f) for f in briefing["files"]):
+            longest = max((f for f in briefing["files"] if _shrinkable(f)), key=lambda f: len(f["excerpt"]))
             longest["excerpt"] = "\n".join(longest["excerpt"].splitlines()[: max(10, len(longest["excerpt"].splitlines()) * 2 // 3)])
             md = render(briefing)
     briefing["build_secs"] = round(time.time() - started, 2)
