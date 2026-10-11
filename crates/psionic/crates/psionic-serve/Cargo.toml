@@ -71,3 +71,6 @@ tower-service = "0.3"
 [dev-dependencies]
 psionic-provider = { path = "../psionic-provider" }
 safetensors = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+objc = "0.2.7"

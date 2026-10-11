@@ -37,6 +37,9 @@ use super::{
 mod memory_view;
 use memory_view::{MemoryViews, PendingMemoryView};
 
+#[cfg(test)]
+mod tests;
+
 struct DeviceWeight {
     buffer: ClefMetalBuffer,
     rows: usize,

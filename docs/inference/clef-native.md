@@ -1030,9 +1030,9 @@ Online softmax rounds unnormalized tile probabilities to f16; the staged path
 rounds normalized probabilities. Their outputs need tolerance-based validation.
 Offline Metal compilation and CPU shape checks do not establish GPU correctness,
 chunk equivalence, answer accuracy, or latency. The hardware conformance tests
-are explicitly ignored by default. No quiet lease or GPU run is part of this
-implementation round, as requested by the owner. Keep the path experimental until
-those checks and a paired full-model comparison pass.
+are explicitly ignored by default. The implementation round used no quiet lease
+or GPU run. Subsequent synthetic GPU checks are recorded below; keep the path
+experimental until a paired full-model comparison also passes.
 
 Validation in this round: offline Metal 4 compilation passed, all seven host-plan
 tests passed, and the Clef serving filter reported 20 passes. Five serving tests
@@ -1052,7 +1052,8 @@ The request owns the normalized view only after the combined batch completes
 successfully. An encoding or completion error leaves that cache
 entry empty and its byte count unchanged. A warm view reuses the completed
 buffer, and a new prefill starts a fresh cache. CPU tests cover these ownership
-and cache transitions; GPU output parity and latency remain unmeasured.
+and cache transitions. Subsequent synthetic GPU checks are recorded below;
+full-model output parity and latency remain unmeasured.
 
 Validation: the release-profile Clef filter in `psionic-serve` reported 28 passes.
 Eight new cache tests and 15 existing CPU checks exercised their assertions;
@@ -1096,13 +1097,14 @@ their existing kernels. The planner checks signed TensorOps extents, buffer
 sizes, and element offsets before binding buffers; device setup checks thread
 width, threadgroup capacity, and static memory use.
 
-Offline Metal 4 compilation passed. Numerical agreement, chunk equivalence,
-answer accuracy, and end-to-end speed remain unmeasured for these tiles.
+Offline Metal 4 compilation passed. At implementation time, numerical agreement,
+chunk equivalence, answer accuracy, and end-to-end speed were unmeasured.
 The ignored hardware checks cover all six real weight shapes, residual
 accumulation, nonaligned chunks, partial token tiles, and output guards against
-the original kernel and sampled f64 products. Keep the mode experimental until
-these checks and paired full-model comparisons pass. This implementation round
-uses no quiet lease, GPU execution, or desktop-app or system-service control.
+the original kernel and sampled f64 products. Subsequent synthetic GPU checks
+are recorded below; keep the mode experimental until paired full-model
+comparisons also pass. The implementation round
+used no quiet lease, GPU execution, or desktop-app or system-service control.
 
 Validation: the backend Clef filter passed 13 CPU tests, including six new
 projection-planner tests; seven hardware tests compiled but remained ignored.
@@ -1111,15 +1113,44 @@ early returns with `PSIONIC_CLEF_*` settings cleared. Both checks used release
 builds under build leases with two Cargo jobs. The new Rust modules pass pinned
 formatting, and the patch passes whitespace checks.
 
+### Synthetic GPU validation (2026-10-11)
+
+For [PR #11271](https://github.com/OpenAgentsInc/openagents/pull/11271), all seven
+ignored backend hardware tests passed on the M5 Max, one test at a time under
+a GPU lease. The five attention checks cover dense and staged references,
+partial tiles, absolute positions, grouped heads, causal masks, large score
+changes, repeatability, nonaligned chunks, output guards, and buffer rejection.
+The two projection checks cover all six checkpoint weight shapes, residual
+accumulation, element offsets, tails, nonaligned chunks, baseline comparisons,
+and sampled f64 products. Agreement means the bounds in the tests passed;
+it does not establish full-model chunk equivalence or answer accuracy.
+
+All three new serving GPU tests also passed under a GPU lease. They exercise
+the evidence-attention consumers with synthetic 64-wide memory, 17 tokens,
+three queries, two heads, and two evidence layers. Outputs meet the independent
+f64 reference bound of `2e-5 + 2e-5 * abs(expected)` and match bit for bit when
+normalization completes in a separate command buffer. Raw, cold, warm,
+reset-request, and cache byte-count checks also pass.
+
+Fresh release-profile CPU checks passed 13 backend tests and reported 28 serving
+passes: 23 CPU checks and five model-dependent early returns with inherited
+`PSIONIC_CLEF_*` settings cleared. The ten hardware tests remain ignored in
+ordinary test runs and ran explicitly, one at a time, for this validation.
+Builds used build leases and two Cargo jobs. New and modified test modules pass
+pinned formatting, and the patch passes whitespace checks.
+
+No model was loaded, no latency benchmark ran, and no quiet lease was requested.
+Desktop apps and system services were not controlled. Projection test data stays
+below 120 MB per case and evidence fixtures below 1 MiB; these bounds exclude
+driver and shader allocations. Completed test commands drain their temporary
+Metal objects before the next case. Experimental modes remain opt-in.
+
 ### Next
 
-- Validate `weight-shapes` against `fixed-64` for numerical agreement and
-  end-to-end latency at 1k, 4k, and 16k tokens, including short final chunks.
-- Validate the experimental fused path's partial tiles, causal masking, grouped
-  heads, large score changes, repeated calls, and nonaligned chunks against the
-  staged and CPU paths.
-- Compare cold and warm evidence attention before and after the combined batch,
-  checking output parity and per-call submission counts on hardware.
+- Compare full-model accuracy, chunk equivalence, and end-to-end latency with
+  both experimental modes at 1k, 4k, and 16k tokens, including short final chunks.
+- Check full-model cold and warm evidence outputs and profile the submission
+  counts after the combined batch.
 - Run a paired Mac comparison against Ollama and MLX with per-phase profiling,
   reporting desktop contention separately.
 

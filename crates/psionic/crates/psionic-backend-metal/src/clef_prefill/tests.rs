@@ -74,65 +74,70 @@ fn upload_half(metal: &ClefMetal, values: &[f32]) -> ClefMetalBuffer {
 }
 
 fn run_attention(metal: &ClefMetal, inputs: &Inputs, fused: bool) -> Vec<f32> {
-    let query = upload_half(metal, &inputs.query);
-    let key = upload_half(metal, &inputs.key);
-    let value = upload_half(metal, &inputs.value);
-    let plan = ClefAttentionPlan::new(inputs.n, inputs.heads, inputs.kv_heads, DIM, inputs.first)
-        .expect("test shape");
-    let count = plan.output_bytes / 4;
-    // Cover a full staged query tile so a missing tail mask remains inside the
-    // test allocation and is reported as a changed sentinel.
-    let guard_elements = GUARD_ROWS * inputs.heads * DIM;
-    let output = metal.buffer_f32(&vec![GUARD; count + guard_elements]);
-    let batch = metal.batch();
-    if fused {
-        batch
-            .attention_fused(
-                &query,
-                &key,
-                &value,
-                &output,
-                inputs.n,
-                inputs.heads,
-                inputs.kv_heads,
-                DIM,
-                inputs.first,
-            )
-            .expect("encode fused attention");
-        batch.commit_wait().expect("fused attention");
-    } else {
-        let scores = metal.buffer(plan.score_bytes);
-        let probabilities = metal.buffer(plan.probability_bytes);
-        batch
-            .attention(
-                &query,
-                &key,
-                &value,
-                &output,
-                &scores,
-                &probabilities,
-                inputs.n,
-                inputs.heads,
-                inputs.kv_heads,
-                DIM,
-                inputs.first,
-            )
-            .expect("encode staged attention");
-        batch.commit_wait().expect("staged attention");
-    }
-    let tail = output
-        .read_f32(count, guard_elements)
-        .expect("output guard");
-    assert!(
-        tail.iter().all(|value| value.to_bits() == GUARD.to_bits()),
-        "output tail was overwritten"
-    );
-    let output = output.read_f32(0, count).expect("attention output");
-    assert!(
-        output.iter().all(|value| value.is_finite()),
-        "nonfinite output"
-    );
-    output
+    // Release completed command buffers and their temporary allocations before
+    // the next synthetic case starts.
+    objc::rc::autoreleasepool(|| {
+        let query = upload_half(metal, &inputs.query);
+        let key = upload_half(metal, &inputs.key);
+        let value = upload_half(metal, &inputs.value);
+        let plan =
+            ClefAttentionPlan::new(inputs.n, inputs.heads, inputs.kv_heads, DIM, inputs.first)
+                .expect("test shape");
+        let count = plan.output_bytes / 4;
+        // Cover a full staged query tile so a missing tail mask remains inside the
+        // test allocation and is reported as a changed sentinel.
+        let guard_elements = GUARD_ROWS * inputs.heads * DIM;
+        let output = metal.buffer_f32(&vec![GUARD; count + guard_elements]);
+        let batch = metal.batch();
+        if fused {
+            batch
+                .attention_fused(
+                    &query,
+                    &key,
+                    &value,
+                    &output,
+                    inputs.n,
+                    inputs.heads,
+                    inputs.kv_heads,
+                    DIM,
+                    inputs.first,
+                )
+                .expect("encode fused attention");
+            batch.commit_wait().expect("fused attention");
+        } else {
+            let scores = metal.buffer(plan.score_bytes);
+            let probabilities = metal.buffer(plan.probability_bytes);
+            batch
+                .attention(
+                    &query,
+                    &key,
+                    &value,
+                    &output,
+                    &scores,
+                    &probabilities,
+                    inputs.n,
+                    inputs.heads,
+                    inputs.kv_heads,
+                    DIM,
+                    inputs.first,
+                )
+                .expect("encode staged attention");
+            batch.commit_wait().expect("staged attention");
+        }
+        let tail = output
+            .read_f32(count, guard_elements)
+            .expect("output guard");
+        assert!(
+            tail.iter().all(|value| value.to_bits() == GUARD.to_bits()),
+            "output tail was overwritten"
+        );
+        let output = output.read_f32(0, count).expect("attention output");
+        assert!(
+            output.iter().all(|value| value.is_finite()),
+            "nonfinite output"
+        );
+        output
+    })
 }
 
 /// Independent dense attention in f64, without the GPU's half-probability
