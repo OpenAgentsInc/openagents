@@ -274,7 +274,10 @@ impl Runs {
         lease.save(&record)?;
         std::thread::Builder::new()
             .name(format!("claude-{n}"))
-            .spawn(move || drive(lease, record, key, files))
+            .spawn({
+                let state = self.root.clone();
+                move || drive(lease, record, key, files, &state)
+            })
             .map_err(|_| "The run couldn't start.")?;
         Ok(id)
     }
@@ -382,7 +385,16 @@ impl Backend for WithFiles {
     }
 }
 
-fn drive(lease: coder_cloud::Lease, mut record: Record, key: Option<Key>, files: Vec<Attachment>) {
+/// How often a paused run looks at its reset and at a stop request.
+const PAUSE_CHECK: Duration = Duration::from_secs(5);
+
+fn drive(
+    lease: coder_cloud::Lease,
+    mut record: Record,
+    key: Option<Key>,
+    files: Vec<Attachment>,
+    state: &Path,
+) {
     let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -405,15 +417,44 @@ fn drive(lease: coder_cloud::Lease, mut record: Record, key: Option<Key>, files:
             },
             files,
         };
-        coder_cloud::drive(
-            &backend,
-            &lease,
-            &mut record,
-            &AtomicBool::new(false),
-            Duration::from_secs(2),
-            &mut |_| {},
-        )
-        .await
+        loop {
+            coder_cloud::drive(
+                &backend,
+                &lease,
+                &mut record,
+                &AtomicBool::new(false),
+                Duration::from_secs(2),
+                &mut |_| {},
+            )
+            .await?;
+            // A usage limit pauses the run until Claude Code's reported
+            // reset, then the same conversation continues; a login that
+            // needs the person stops it with the sign-in prompt (#11293).
+            let book = coder_cloud::claude_task::book(state, &record);
+            let now = || coder_cloud::now_ms() / 1000;
+            match coder_cloud::claude_task::settle(&mut record, &book, now()) {
+                Ok(Some(coder_cloud::claude_task::Outcome::Limited { .. })) => {
+                    lease.save(&record)?;
+                }
+                Ok(Some(coder_cloud::claude_task::Outcome::SignIn)) => {
+                    return lease.save(&record);
+                }
+                Ok(None) | Err(_) => return Ok(()),
+            }
+            while !coder_cloud::claude_task::due(&record, now()) {
+                if lease.cancelled() {
+                    record.cancel_requested = true;
+                    record.state = State::Cancelled;
+                    record.updated_ms = coder_cloud::now_ms();
+                    return lease.save(&record);
+                }
+                tokio::time::sleep(PAUSE_CHECK).await;
+            }
+            if !coder_cloud::claude_task::resume(&mut record, now()) {
+                return Ok(());
+            }
+            lease.save(&record)?;
+        }
     });
     if let Err(error) = result
         && !record.state.terminal()
