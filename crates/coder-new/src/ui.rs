@@ -1265,8 +1265,8 @@ fn live_conversation(frame: &mut Frame, area: Rect, app: &mut App) {
     if chat.busy {
         tail.extend(wrap_display(
             vec![Line::from(vec![
-                span(format!("{} ", crate::tools::spinner(phase)), t::COMMAND),
-                span("Working", t::COMMAND),
+                span(format!("{} ", crate::tools::spinner(phase)), t::GRAY),
+                span("Working", t::GRAY),
             ])],
             content,
         ));
@@ -1732,7 +1732,7 @@ mod run_viewport_tests {
     #[test]
     fn delegate_label_and_indicator_match_the_outcome() {
         for (running, output, color) in [
-            (true, serde_json::json!({}), t::COMMAND),
+            (true, serde_json::json!({}), t::GRAY),
             (
                 false,
                 serde_json::json!({"error": "Failed"}),
@@ -1768,7 +1768,7 @@ mod run_viewport_tests {
             "example.plugin",
         ] {
             for (running, output, color) in [
-                (true, serde_json::json!({"error": "old error"}), t::COMMAND),
+                (true, serde_json::json!({"error": "old error"}), t::GRAY),
                 (
                     false,
                     serde_json::json!({"error": "Failed"}),
@@ -1823,7 +1823,7 @@ mod run_viewport_tests {
             assert_eq!(lines[0].spans[0].style.fg, Some(color));
             assert_eq!(lines[0].spans[1].style.fg, Some(color));
             let running = run_lines(&serde_json::json!({}), &output, true, 60, 0);
-            assert_eq!(running[0].spans[0].style.fg, Some(t::COMMAND));
+            assert_eq!(running[0].spans[0].style.fg, Some(t::GRAY));
             assert_eq!(
                 running[0].spans[0].content,
                 format!("{} ", crate::tools::spinner(0))

@@ -106,7 +106,7 @@ pub fn decision_lines(
         "◇"
     };
     let accent = if running {
-        t::COMMAND
+        t::GRAY
     } else if kind == "model" {
         t::ACCENT_MODEL
     } else {

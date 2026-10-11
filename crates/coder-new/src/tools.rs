@@ -19,7 +19,7 @@ pub fn spinner(phase: u8) -> &'static str {
 
 pub(crate) fn outcome_header(running: bool, failed: bool, phase: u8) -> (&'static str, Color) {
     if running {
-        (spinner(phase), t::COMMAND)
+        (spinner(phase), t::GRAY)
     } else if failed {
         ("×", t::DIFF_DELETE_FG)
     } else {
@@ -346,7 +346,7 @@ pub fn plugin_lines(call: &PluginCall, phase: u8) -> Vec<Line<'static>> {
     match call.state {
         ToolState::Complete => result.push(styled(call.output, t::GRAY_BRIGHT)),
         ToolState::Running => result.extend([
-            styled("Running", t::COMMAND),
+            styled("Running", t::GRAY),
             styled(format!(" · {}", call.output), t::GRAY_BRIGHT),
         ]),
         ToolState::Failed => result.extend([
@@ -364,7 +364,7 @@ pub fn delegation_lines(agent: &DemoAgent, phase: u8, width: u16) -> Vec<Line<'s
         header.extend([
             Span::styled(
                 "Delegate",
-                Style::default().fg(t::COMMAND).add_modifier(Modifier::BOLD),
+                Style::default().fg(t::GRAY).add_modifier(Modifier::BOLD),
             ),
             Span::raw(" "),
         ]);
@@ -383,10 +383,7 @@ pub fn delegation_lines(agent: &DemoAgent, phase: u8, width: u16) -> Vec<Line<'s
             styled(" · ", t::GRAY_DIM),
         ]);
     }
-    detail.extend([
-        styled("Running", t::COMMAND),
-        styled(tokens, t::GRAY_BRIGHT),
-    ]);
+    detail.extend([styled("Running", t::GRAY), styled(tokens, t::GRAY_BRIGHT)]);
     vec![Line::from(header), Line::from(detail)]
 }
 
