@@ -230,11 +230,12 @@ impl App {
         } else {
             match store.lease(&id) {
                 Ok(lease) => Some(lease),
+                Err(error) if error == "Another process is using this chat session." => None,
                 Err(error) => return self.resume_error(error),
             }
         };
-        let target = lease.as_ref().or(self.history.active.as_ref()).unwrap();
-        let document = match target.read() {
+        let held = !same && lease.is_none();
+        let document = match store.read(&id) {
             Ok(document) => document,
             Err(error) => return self.resume_error(error),
         };
@@ -260,8 +261,20 @@ impl App {
         self.screen = Screen::Conversation;
         self.slash_hidden = false;
         self.slash_selected = 0;
-        if let Some(lease) = lease {
-            self.history.active = Some(lease);
+        if !same {
+            self.history.active = lease;
+        }
+        self.history.following = held.then(|| Following {
+            id: id.clone(),
+            seen: None,
+            takeover: true,
+            stick: true,
+        });
+        if held {
+            // Ask an idle terminal to hand over; keep showing updates until it does.
+            if let Ok(path) = store.path(&id) {
+                let _ = std::fs::write(path.with_extension("reclaim"), "reclaim\n");
+            }
         }
         self.history.dirty = false;
         self.history.last_attempt = None;
@@ -304,7 +317,10 @@ impl App {
         };
         match lease.exists() {
             Ok(false) => {}
-            Ok(true) => return self.resume(Some(id)),
+            Ok(true) => {
+                drop(lease);
+                return self.resume(Some(id));
+            }
             Err(error) => return self.resume_error(error),
         }
         if !self.persist_session(true) {
@@ -389,6 +405,7 @@ impl App {
             if let Some(document) = document {
                 self.load_followed(&document);
             }
+            let _ = std::fs::remove_file(lease.path().with_extension("reclaim"));
             self.history.active = Some(lease);
             self.history.following = None;
             self.history.dirty = false;
@@ -432,7 +449,9 @@ impl App {
             }
             return;
         }
-        self.persist_session(true);
+        if !self.persist_session(true) {
+            return;
+        }
         self.history.active = None;
         let _ = std::fs::remove_file(&marker);
         self.history.following = Some(Following {

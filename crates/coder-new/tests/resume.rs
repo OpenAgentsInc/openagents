@@ -169,10 +169,6 @@ fn cancel_errors_and_busy_work_preserve_the_current_chat_and_draft() {
     key(&mut app, KeyCode::Esc);
     assert_eq!(app.draft.text, "Unsent draft");
     assert!(app.live.entries == entries);
-    let lease = store.lease("saved").unwrap();
-    assert!(!app.resume(Some("saved")));
-    assert!(app.notice.as_deref().unwrap().contains("Another process"));
-    drop(lease);
     assert!(!app.resume(Some("missing")));
     assert_eq!(app.session_id(), Some(id.as_str()));
     assert_eq!(app.draft.text, "Unsent draft");
@@ -511,4 +507,66 @@ fn a_held_session_goes_back_to_its_agent_when_she_asks() {
     assert!(!marker.exists());
     assert_eq!(app.draft.text, "half a thought");
     assert!(store.lease("agent-alice").is_ok(), "the agent can take it");
+}
+
+#[test]
+fn resume_opens_a_chat_held_by_another_terminal_and_takes_it_over() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::under(temp.path().join("config"));
+    seed(&store, "other", "Other chat", temp.path(), 1);
+    let mut owner = new_app(&store, temp.path());
+    assert!(owner.resume(Some("other")));
+    let mut app = new_app(&store, temp.path());
+    app.submit("Current chat", temp.path());
+    app.cancel_request();
+    let previous = app.session_id().unwrap().to_owned();
+    assert!(app.resume(None));
+    let index = app
+        .resume_picker
+        .as_ref()
+        .unwrap()
+        .sessions
+        .iter()
+        .position(|session| session.id == "other")
+        .unwrap();
+    app.resume_picker.as_mut().unwrap().selected = index;
+    key(&mut app, KeyCode::Enter);
+    assert!(app.resume_picker.is_none());
+    assert!(app.following());
+    assert!(matches!(&app.live.entries[0], Entry::User(text) if text == "Other chat"));
+    assert!(!app.notice.as_deref().unwrap().contains("Another process"));
+    assert!(store.lease(&previous).is_ok());
+    assert_eq!(
+        store.read(&previous).unwrap()["steps"][0]["message"],
+        "Current chat"
+    );
+    owner.follow_tick();
+    app.follow_tick();
+    assert_eq!(app.session_id(), Some("other"));
+    assert!(!app.following());
+    paste(&mut app, "Continue here");
+    assert_eq!(app.draft.text, "Continue here");
+    assert!(owner.following());
+    assert!(store.lease("other").is_err());
+}
+
+#[test]
+fn resume_shows_locked_chat_updates_until_its_writer_finishes() {
+    let temp = tempfile::tempdir().unwrap();
+    let store = Store::under(temp.path().join("config"));
+    seed(&store, "held", "Held chat", temp.path(), 1);
+    let lease = store.lease("held").unwrap();
+    let mut app = new_app(&store, temp.path());
+    assert!(app.resume(Some("held")));
+    assert!(app.following());
+    app.follow_tick();
+    let mut document = lease.read().unwrap();
+    document["steps"][1]["message"] = json!("Newest reply");
+    lease.save(&document).unwrap();
+    app.follow_tick();
+    assert!(matches!(&app.live.entries[1], Entry::Assistant {text, ..} if text == "Newest reply"));
+    drop(lease);
+    app.follow_tick();
+    assert_eq!(app.session_id(), Some("held"));
+    assert!(!app.following());
 }
