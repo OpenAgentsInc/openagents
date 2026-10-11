@@ -124,8 +124,17 @@ impl Observed {
 /// the whole instructions, the `oa` MCP server as this binary serving
 /// `config_path`, no user config, no session, no approval prompts, and the
 /// prompt from stdin. Without `model`, Codex picks its
-/// login's default model.
-pub fn argv(config: &Value, config_path: &str, self_exe: &str, worktree: &Path) -> Vec<String> {
+/// login's default model. `env_names` are the variables Codex hands the
+/// `oa` server: Codex starts MCP servers with a short default environment,
+/// and `verify`'s checker needs the run's own (the bench's `AB_*`, the
+/// target dir).
+pub fn argv(
+    config: &Value,
+    config_path: &str,
+    self_exe: &str,
+    worktree: &Path,
+    env_names: &[String],
+) -> Vec<String> {
     let toml = |value: &Value| value.to_string();
     let mut args: Vec<String> = [
         "exec",
@@ -165,6 +174,8 @@ pub fn argv(config: &Value, config_path: &str, self_exe: &str, worktree: &Path) 
             ),
             "-c".to_owned(),
             "mcp_servers.oa.tool_timeout_sec=1800".to_owned(),
+            "-c".to_owned(),
+            format!("mcp_servers.oa.env_vars={}", toml(&json!(env_names))),
         ]);
     }
     args.extend([
@@ -195,7 +206,13 @@ pub async fn run(config: &Value, config_path: &str) -> Result<(), String> {
     let binary = config["codex_bin"].as_str().unwrap_or("codex");
 
     let mut child = tokio::process::Command::new(binary)
-        .args(argv(config, config_path, &self_exe, &worktree))
+        .args(argv(
+            config,
+            config_path,
+            &self_exe,
+            &worktree,
+            &forwarded_env(),
+        ))
         .current_dir(&worktree)
         .env_remove("OPENAI_API_KEY")
         .stdin(Stdio::piped())
@@ -277,6 +294,7 @@ pub async fn run(config: &Value, config_path: &str) -> Result<(), String> {
         .unwrap_or_default();
     let summary = json!({
         "engine": "codex",
+        "model": config["model"].as_str().filter(|model| !model.is_empty()),
         "result": {
             "thread_id": observed.thread_id,
             "num_turns": observed.turns,
@@ -301,6 +319,17 @@ pub async fn run(config: &Value, config_path: &str) -> Result<(), String> {
     )
     .map_err(|error| format!("{summary_path}: {error}"))?;
     Ok(())
+}
+
+/// The names of this process's environment variables that the `oa` server
+/// gets (all but Codex's own credential).
+fn forwarded_env() -> Vec<String> {
+    let mut names: Vec<String> = std::env::vars_os()
+        .filter_map(|(name, _)| name.into_string().ok())
+        .filter(|name| name != "OPENAI_API_KEY")
+        .collect();
+    names.sort();
+    names
 }
 
 /// The `verify` tally from the log the serving process appended to, one
@@ -370,6 +399,7 @@ mod tests {
             "/b/agent.json",
             "/bin/briefed-agent",
             Path::new("/w"),
+            &["AB_ROOT".to_owned(), "PATH".to_owned()],
         );
         assert_eq!(args[0], "exec");
         assert!(args.contains(&"--json".to_owned()));
@@ -377,6 +407,7 @@ mod tests {
         assert!(args.contains(&"model_reasoning_effort=\"high\"".to_owned()));
         assert!(args.contains(&"mcp_servers.oa.command=\"/bin/briefed-agent\"".to_owned()));
         assert!(args.contains(&"mcp_servers.oa.args=[\"--serve\",\"/b/agent.json\"]".to_owned()));
+        assert!(args.contains(&"mcp_servers.oa.env_vars=[\"AB_ROOT\",\"PATH\"]".to_owned()));
         assert_eq!(
             args[args.len() - 2..],
             ["--dangerously-bypass-approvals-and-sandbox", "-"]
@@ -385,7 +416,7 @@ mod tests {
 
     #[test]
     fn argv_without_check_tools_has_no_server() {
-        let args = argv(&json!({}), "/b/agent.json", "/bin/x", Path::new("/w"));
+        let args = argv(&json!({}), "/b/agent.json", "/bin/x", Path::new("/w"), &[]);
         assert!(!args.iter().any(|a| a.starts_with("mcp_servers")));
         assert!(!args.contains(&"-m".to_owned()));
     }
