@@ -1373,7 +1373,11 @@ with native execution on one. A
 [64-layer comparison](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/text029-layer-comparison-v1/README.md)
 places the discrepancy in the backbone: the complete native observer memory
 reproduces normal native scoring within `0.000002861` raw logits. Layer drift
-still needs an operator-level explanation. The revised
+still needs an operator-level explanation. A
+[layer-35 replay](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/text029-layer35-replay-v1/README.md)
+shows that this layer mostly amplifies incoming differences. Modeling native
+half-precision boundaries reduces the smaller local residual, but does not
+identify an earlier defect or change the failed all-top gate. The revised
 [QK128/key32 attention probe](../../crates/psionic/fixtures/clef/reports/m3-m4-2026-10-11/attention-qk128-key32-probe-v1/README.md)
 preserves bitwise output agreement in synthetic checks and reduces median
 kernel time by 8–18%. Its

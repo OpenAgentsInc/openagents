@@ -19939,6 +19939,96 @@
       "published_sha256": "d129448bbe8561639468cd05ee93339c66c258bd717703d15682a4998bda7eba",
       "published_bytes": 366,
       "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/layer35-publishable-v1/README.md",
+      "original_sha256": "125cb0becf9a3ac4b203c5743b02807ee6cb59e2c6dcb787b96aff9632f86d8e",
+      "original_bytes": 4300,
+      "published": "text029-layer35-replay-v1/README.md",
+      "published_sha256": "125cb0becf9a3ac4b203c5743b02807ee6cb59e2c6dcb787b96aff9632f86d8e",
+      "published_bytes": 4300,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/layer35-publishable-v1/checkpoint-errors.csv",
+      "original_sha256": "a9f765b3d867774f58cdcfc698babd5fddb26d9e7a7066f148b3b5f9b03e151f",
+      "original_bytes": 6627,
+      "published": "text029-layer35-replay-v1/checkpoint-errors.csv",
+      "published_sha256": "a9f765b3d867774f58cdcfc698babd5fddb26d9e7a7066f148b3b5f9b03e151f",
+      "published_bytes": 6627,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/layer35-publishable-v1/guard.json",
+      "original_sha256": "fbfaa981410e2a0bae00887e6ffa950b03406f69f14c14cb143c42ecb0e5cdff",
+      "original_bytes": 27591,
+      "published": "text029-layer35-replay-v1/guard.json",
+      "published_sha256": "fbfaa981410e2a0bae00887e6ffa950b03406f69f14c14cb143c42ecb0e5cdff",
+      "published_bytes": 27591,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/layer35-publishable-v1/manifest.json",
+      "original_sha256": "8e85c213925d3b470d4312dd5ca97999a4ce6107f219b03a2ed802386209aa61",
+      "original_bytes": 3352,
+      "published": "text029-layer35-replay-v1/manifest.json",
+      "published_sha256": "8e85c213925d3b470d4312dd5ca97999a4ce6107f219b03a2ed802386209aa61",
+      "published_bytes": 3352,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/layer35-publishable-v1/plan.md",
+      "original_sha256": "be21ef9adee55f7dd9d1fb3691c357bd85ba89da27204b63ddf43ae28ed18018",
+      "original_bytes": 3540,
+      "published": "text029-layer35-replay-v1/plan.md",
+      "published_sha256": "be21ef9adee55f7dd9d1fb3691c357bd85ba89da27204b63ddf43ae28ed18018",
+      "published_bytes": 3540,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/layer35-publishable-v1/receipt.json",
+      "original_sha256": "695d04f05474b378df19f17cc24f62dd524271af42499d09b2f91dea967aae3f",
+      "original_bytes": 69778,
+      "published": "text029-layer35-replay-v1/receipt.json",
+      "published_sha256": "695d04f05474b378df19f17cc24f62dd524271af42499d09b2f91dea967aae3f",
+      "published_bytes": 69778,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/layer35-publishable-v1/source/guard_layer35.py",
+      "original_sha256": "e9ce55b533f06bdc5db7788a49424116b1ece6a3659b9f3fb32ce96e534c88e9",
+      "original_bytes": 6511,
+      "published": "text029-layer35-replay-v1/source/guard_layer35.py",
+      "published_sha256": "e9ce55b533f06bdc5db7788a49424116b1ece6a3659b9f3fb32ce96e534c88e9",
+      "published_bytes": 6511,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/layer35-publishable-v1/source/layer35_math.py",
+      "original_sha256": "bc5438f971303c6936ccd4fe61e08e8e45ff253fae56e98a434d7caaf28d8b57",
+      "original_bytes": 4763,
+      "published": "text029-layer35-replay-v1/source/layer35_math.py",
+      "published_sha256": "bc5438f971303c6936ccd4fe61e08e8e45ff253fae56e98a434d7caaf28d8b57",
+      "published_bytes": 4763,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/layer35-publishable-v1/source/layer35_reference.py",
+      "original_sha256": "de7d4f61cd479bd23d959b7bec00581f401408afc8242fec6419480427955aa1",
+      "original_bytes": 10430,
+      "published": "text029-layer35-replay-v1/source/layer35_reference.py",
+      "published_sha256": "de7d4f61cd479bd23d959b7bec00581f401408afc8242fec6419480427955aa1",
+      "published_bytes": 10430,
+      "path_replacements": []
+    },
+    {
+      "source": "same-q4-runtime-v1/text029-isolation/layer35-publishable-v1/stdout.log",
+      "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_bytes": 0,
+      "published": "text029-layer35-replay-v1/stdout.log",
+      "published_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "published_bytes": 0,
+      "path_replacements": []
     }
   ],
   "current_source_snapshot": [

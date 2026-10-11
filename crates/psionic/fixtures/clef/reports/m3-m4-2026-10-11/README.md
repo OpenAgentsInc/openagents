@@ -78,6 +78,17 @@ where drift grows, but does not yet distinguish f16 rounding from an operator
 defect. The native capture and offline comparison both pass their fixed
 resource bounds and cleanup checks.
 
+The [layer-35 CPU replay](text029-layer35-replay-v1/README.md) reproduces the
+saved independent output bit for bit. Running the same f32 layer on native
+input reproduces most of the observed difference, showing that this layer
+amplifies incoming drift. Modeling the native half-precision boundaries reduces
+the remaining whole-layer relative L2 difference from `0.0001871` to
+`0.00007407`. CPU reductions and residual accumulation still differ from Metal;
+this does not identify an operator defect or resolve the 103/104 runtime gate.
+All three variants, 50 checkpoint comparisons, hashes, and cleanup checks are
+retained. The CPU-only run finishes in 10.51 seconds at 3.71 GB peak accounted
+memory under its fixed 12 GiB cap.
+
 The [activation-weighted Q4 preparation](activation-weighted-q4-preparation-v1/README.md)
 preserves the frozen corpus, recipes, and checks. The two-record pilot passed;
 the full collector was deliberately stopped after 70 of 96 records and
